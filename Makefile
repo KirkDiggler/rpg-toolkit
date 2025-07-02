@@ -14,26 +14,40 @@ help:
 # Run tests for all modules
 test:
 	@echo "Running tests..."
+	@echo "→ Testing core module..."
 	cd core && go test -race ./...
+	@echo "→ Testing events module..."
+	cd events && go test -race ./...
 
 # Run linter
 lint:
 	@echo "Running linter..."
 	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0)
+	@echo "→ Linting core module..."
 	cd core && golangci-lint run ./...
+	@echo "→ Linting events module..."
+	cd events && golangci-lint run ./...
 
 # Format code
 fmt:
 	@echo "Formatting code..."
-	go work sync
+	go work sync 2>/dev/null || true
+	@echo "→ Formatting core module..."
 	cd core && go fmt ./...
+	@echo "→ Formatting events module..."
+	cd events && go fmt ./...
 
 # Generate coverage report
 coverage:
 	@echo "Generating coverage report..."
+	@echo "→ Coverage for core module..."
 	cd core && go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 	cd core && go tool cover -html=coverage.txt -o coverage.html
-	@echo "Coverage report generated: core/coverage.html"
+	@echo "  Coverage report: core/coverage.html"
+	@echo "→ Coverage for events module..."
+	cd events && go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+	cd events && go tool cover -html=coverage.txt -o coverage.html
+	@echo "  Coverage report: events/coverage.html"
 
 # Clean generated files
 clean:
@@ -48,10 +62,14 @@ pre-commit:
 	@echo "→ Formatting code..."
 	@go work sync 2>/dev/null || true
 	cd core && go fmt ./...
+	cd events && go fmt ./...
 	@echo "→ Tidying modules..."
 	cd core && go mod tidy
+	cd events && go mod tidy
 	@echo "→ Running linter..."
 	cd core && golangci-lint run --no-config ./...
+	cd events && golangci-lint run --no-config ./...
 	@echo "→ Running tests..."
 	cd core && go test -race ./...
+	cd events && go test -race ./...
 	@echo "✓ All pre-commit checks passed!"

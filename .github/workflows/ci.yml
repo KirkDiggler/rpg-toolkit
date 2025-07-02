@@ -28,15 +28,23 @@ jobs:
       run: |
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.1.6
     
-    - name: Run golangci-lint
+    - name: Run golangci-lint (core)
       working-directory: ./core
       run: golangci-lint run --no-config ./...
     
-    - name: Run tests
+    - name: Run golangci-lint (events)
+      working-directory: ./events
+      run: golangci-lint run --no-config ./...
+    
+    - name: Run tests (core)
       working-directory: ./core
       run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
     
-    - name: Check test coverage
+    - name: Run tests (events)
+      working-directory: ./events
+      run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+    
+    - name: Check test coverage (core)
       working-directory: ./core
       run: |
         go tool cover -func=coverage.txt
@@ -48,8 +56,26 @@ jobs:
         fi
         echo "Test coverage: $coverage%"
     
-    - name: Run go mod tidy
+    - name: Check test coverage (events)
+      working-directory: ./events
+      run: |
+        go tool cover -func=coverage.txt
+        # Ensure 100% coverage for events module
+        coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | sed 's/%//')
+        if (( $(echo "$coverage < 100" | bc -l) )); then
+          echo "Test coverage is below 100% (current: $coverage%)"
+          exit 1
+        fi
+        echo "Test coverage: $coverage%"
+    
+    - name: Run go mod tidy (core)
       working-directory: ./core
+      run: |
+        go mod tidy
+        git diff --exit-code go.mod go.sum || (echo "Please run 'go mod tidy'" && exit 1)
+    
+    - name: Run go mod tidy (events)
+      working-directory: ./events
       run: |
         go mod tidy
         git diff --exit-code go.mod go.sum || (echo "Please run 'go mod tidy'" && exit 1)
