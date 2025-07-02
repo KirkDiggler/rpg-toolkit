@@ -82,6 +82,7 @@ func (b *Bus) Publish(ctx context.Context, event Event) error {
 	b.mu.RUnlock()
 
 	// Sort handlers by priority
+	// TODO: Consider maintaining sorted order on subscribe to avoid sorting on every publish
 	sort.Slice(handlers, func(i, j int) bool {
 		return handlers[i].handler.Priority() < handlers[j].handler.Priority()
 	})

@@ -152,8 +152,8 @@ func (r *RageFeature) Initialize() {
     // Listen for damage calculations
     r.bus.SubscribeFunc(events.EventCalculateDamage, 100, r.handleDamage)
     
-    // Listen for damage taken (for resistance)
-    r.bus.SubscribeFunc(events.EventBeforeDamage, 50, r.handleIncomingDamage)
+    // Listen for damage calculation (for resistance)
+    r.bus.SubscribeFunc(events.EventCalculateDamage, 50, r.handleIncomingDamage)
 }
 
 func (r *RageFeature) handleDamage(ctx context.Context, e events.Event) error {
