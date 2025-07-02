@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package core provides the fundamental interfaces and types for the RPG toolkit.
 package core
 

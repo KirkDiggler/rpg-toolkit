@@ -111,7 +111,13 @@ This is currently a personal project, but discussions and ideas are welcome in t
 
 ## License
 
-MIT
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+### Why GPL?
+
+- **Free for everyone**: Use, modify, and distribute freely
+- **Improvements stay open**: Any modifications must be shared back
+- **Commercial dual licensing**: Available for proprietary use under separate license (contact for details)
 
 ## Acknowledgments
 
