@@ -29,16 +29,16 @@ jobs:
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
     
     - name: Run golangci-lint
-      run: |
-        cd core && golangci-lint run ./...
+      working-directory: ./core
+      run: golangci-lint run --no-config ./...
     
     - name: Run tests
-      run: |
-        cd core && go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+      working-directory: ./core
+      run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
     
     - name: Check test coverage
+      working-directory: ./core
       run: |
-        cd core
         go tool cover -func=coverage.txt
         # Ensure 100% coverage for core module
         coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | sed 's/%//')
@@ -49,7 +49,7 @@ jobs:
         echo "Test coverage: $coverage%"
     
     - name: Run go mod tidy
+      working-directory: ./core
       run: |
-        cd core
         go mod tidy
-        git diff --exit-code go.mod go.sum
+        git diff --exit-code go.mod go.sum || (echo "Please run 'go mod tidy'" && exit 1)
