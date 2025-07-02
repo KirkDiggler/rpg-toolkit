@@ -8,7 +8,7 @@ import (
 
 // sampleEntity is a test implementation of the Entity interface.
 type sampleEntity struct {
-	id       string
+	id         string
 	entityType string
 }
 
@@ -30,7 +30,7 @@ func TestEntity_Implementation(t *testing.T) {
 		{
 			name: "character entity",
 			entity: &sampleEntity{
-				id:       "char-001",
+				id:         "char-001",
 				entityType: "character",
 			},
 			expectedID:   "char-001",
@@ -39,7 +39,7 @@ func TestEntity_Implementation(t *testing.T) {
 		{
 			name: "item entity",
 			entity: &sampleEntity{
-				id:       "item-sword-01",
+				id:         "item-sword-01",
 				entityType: "item",
 			},
 			expectedID:   "item-sword-01",
@@ -48,7 +48,7 @@ func TestEntity_Implementation(t *testing.T) {
 		{
 			name: "location entity",
 			entity: &sampleEntity{
-				id:       "loc-tavern",
+				id:         "loc-tavern",
 				entityType: "location",
 			},
 			expectedID:   "loc-tavern",
@@ -57,7 +57,7 @@ func TestEntity_Implementation(t *testing.T) {
 		{
 			name: "empty values",
 			entity: &sampleEntity{
-				id:       "",
+				id:         "",
 				entityType: "",
 			},
 			expectedID:   "",

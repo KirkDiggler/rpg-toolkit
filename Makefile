@@ -1,14 +1,15 @@
-.PHONY: test lint fmt coverage clean help
+.PHONY: test lint fmt coverage clean pre-commit help
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  test      - Run all tests with race detector"
-	@echo "  lint      - Run golangci-lint on all modules"
-	@echo "  fmt       - Format all Go code"
-	@echo "  coverage  - Generate test coverage report"
-	@echo "  clean     - Remove generated files"
-	@echo "  help      - Show this help message"
+	@echo "  test       - Run all tests with race detector"
+	@echo "  lint       - Run golangci-lint on all modules"
+	@echo "  fmt        - Format all Go code"
+	@echo "  coverage   - Generate test coverage report"
+	@echo "  clean      - Remove generated files"
+	@echo "  pre-commit - Run all pre-commit checks (fmt, lint, test)"
+	@echo "  help       - Show this help message"
 
 # Run tests for all modules
 test:
@@ -40,3 +41,17 @@ clean:
 	find . -name "coverage.txt" -delete
 	find . -name "coverage.html" -delete
 	find . -name "*.test" -delete
+
+# Pre-commit checks
+pre-commit:
+	@echo "Running pre-commit checks..."
+	@echo "→ Formatting code..."
+	@go work sync 2>/dev/null || true
+	cd core && go fmt ./...
+	@echo "→ Tidying modules..."
+	cd core && go mod tidy
+	@echo "→ Running linter..."
+	cd core && golangci-lint run ./...
+	@echo "→ Running tests..."
+	cd core && go test -race ./...
+	@echo "✓ All pre-commit checks passed!"
