@@ -1,94 +1,118 @@
 # RPG Toolkit
 
-A modular toolkit for building RPG game engines, bots, and applications. Build once, use everywhere - from Discord bots to Unity games.
+A modular Go toolkit for building RPG game mechanics. Build once, use everywhere - from Discord bots to game servers.
 
 ## Vision
 
-RPG Toolkit provides reusable components for creating role-playing game experiences across any platform. Whether you're building a Discord bot, web app, or game engine, our modular architecture lets you pick and choose the systems you need.
+RPG Toolkit provides clean, reusable components for RPG mechanics that work across any platform. Our event-driven architecture enables flexible game systems without tight coupling.
 
 ## Architecture
 
+### Event-Driven Design
+
+After building a D&D Discord bot, we learned that features need to compose without knowing about each other. The toolkit uses an event system where:
+
+- **Core mechanics emit events**: Combat actions, status changes, dice rolls
+- **Features listen and modify**: Rage adds damage, sneak attack triggers conditionally  
+- **No direct coupling**: New features can be added without changing core code
+
+Example:
+```go
+// Rage listens for damage calculations
+eventBus.On("calculate_damage", func(e Event) {
+    if attacker.HasEffect("rage") && weapon.IsMelee() {
+        e.AddModifier(Modifier{Source: "rage", Value: 2})
+    }
+})
+```
+
+### Module Structure
+
 ```
 rpg-toolkit/
-├── core/                 # Foundation for all RPG systems
-│   ├── entities/         # Players, NPCs, monsters
-│   ├── state/            # Game state management
-│   ├── events/           # Event system
-│   └── storage/          # Persistence
-├── systems/              # Generic RPG mechanics
-│   ├── combat/           # Base combat interfaces
-│   ├── inventory/        # Item management
-│   ├── progression/      # Leveling, XP
-│   ├── world/            # Maps, locations, dungeons
-│   ├── dialogue/         # Conversations, choices
-│   └── quests/           # Quest tracking
-└── games/                # Game-specific implementations
-    ├── d20/              # D&D, Pathfinder (d20 system)
-    │   ├── dnd5e/        # D&D 5th Edition
-    │   └── pathfinder/   # Pathfinder specific
-    ├── pbta/             # Powered by the Apocalypse games
-    ├── fate/             # FATE system games
-    └── custom/           # User-created systems
+├── core/           # Entity interface, common errors
+├── events/         # Event bus and base event types  
+├── dice/           # Dice rolling mechanics
+├── combat/         # Attack resolution, damage calculation
+├── conditions/     # Status effects (poisoned, stunned, etc)
+├── creatures/      # Characters, monsters, NPCs
+└── campaigns/      # Sessions, encounters, progression
 ```
 
-## Core Principles
+### Storage Agnostic
 
-- **Modular**: Use only what you need
-- **Platform Agnostic**: Works with Discord, Unity, web apps, CLI tools
-- **Game System Flexible**: Support multiple RPG rulesets
-- **TypeScript First**: Full type safety and great DX
-- **Well Tested**: Comprehensive test coverage
+The toolkit defines interfaces, not implementations. Use any storage backend:
+
+```go
+type Repository interface {
+    Save(ctx context.Context, entity Entity) error
+    GetByID(ctx context.Context, id string) (*Entity, error)
+}
+```
 
 ## Getting Started
 
 ```bash
-npm install rpg-toolkit
+# Get the core module
+go get github.com/KirkDiggler/rpg-toolkit/core
+
+# Get specific systems
+go get github.com/KirkDiggler/rpg-toolkit/combat
+go get github.com/KirkDiggler/rpg-toolkit/conditions
 ```
 
-```typescript
-import { DungeonGenerator, Character } from 'rpg-toolkit';
-import { DnD5e } from 'rpg-toolkit/games/dnd5e';
+## Example Usage
 
-// Create a character
-const hero = new Character(DnD5e.templates.fighter);
+```go
+package main
 
-// Generate a dungeon
-const dungeon = new DungeonGenerator().generate({
-  size: 'medium',
-  difficulty: 'moderate',
-  theme: 'ancient_ruins'
-});
+import (
+    "github.com/KirkDiggler/rpg-toolkit/core"
+    "github.com/KirkDiggler/rpg-toolkit/events"
+    "github.com/KirkDiggler/rpg-toolkit/combat"
+)
+
+func main() {
+    // Create event bus
+    bus := events.New()
+    
+    // Register feature listeners
+    rage.RegisterHandlers(bus)
+    sneakAttack.RegisterHandlers(bus)
+    
+    // Combat emits events, features respond
+    result := combat.ResolveAttack(attacker, target, weapon, bus)
+}
 ```
 
-## Roadmap
+## Development Status
 
-### Phase 1: Core Foundation
-- [ ] Entity system (characters, monsters, NPCs)
-- [ ] State management
-- [ ] Event system
-- [ ] Basic storage interfaces
+🚧 **Under Active Development** 🚧
 
-### Phase 2: Essential Systems
-- [ ] Combat engine
-- [ ] Inventory management
-- [ ] World/dungeon generation
-- [ ] Quest system
+We're extracting and refining patterns from a production Discord bot. The API will stabilize as we complete the extraction.
 
-### Phase 3: Game Implementations
-- [ ] D&D 5e ruleset
-- [ ] Generic d20 system
-- [ ] Custom game builder
+### Current Focus
+1. Core entity system and interfaces
+2. Event bus implementation  
+3. Combat mechanics with event integration
+4. Condition/effect system
+
+## Design Principles
+
+1. **Event-Driven**: Features compose through events, not inheritance
+2. **Storage Agnostic**: Define behavior, not persistence
+3. **Game System Flexible**: Core mechanics work for any ruleset
+4. **Well Tested**: Comprehensive test coverage
+5. **Real-World Proven**: Patterns extracted from production use
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+This is currently a personal project, but discussions and ideas are welcome in the issues.
 
 ## License
 
 MIT
 
-## Links
+## Acknowledgments
 
-- [GitHub Discussions](https://github.com/KirkDiggler/rpg-toolkit/discussions) - Design decisions, ideas
-- [Project Board](https://github.com/KirkDiggler/rpg-toolkit/projects) - Track development progress
-- [Wiki](https://github.com/KirkDiggler/rpg-toolkit/wiki) - Documentation, guides
+Patterns and learnings extracted from [dnd-bot-discord](https://github.com/KirkDiggler/dnd-bot-discord).
