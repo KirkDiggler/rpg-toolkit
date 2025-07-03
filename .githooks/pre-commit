@@ -20,18 +20,22 @@ fi
 echo -e "\n${YELLOW}Running formatter checks...${NC}"
 make fmt-all
 
+echo -e "\n${YELLOW}Checking go.mod files...${NC}"
+make mod-tidy
+
 echo -e "\n${YELLOW}Running linter on all modules...${NC}"
 make lint-all
 
 echo -e "\n${YELLOW}Running tests on all modules...${NC}"
 make test-all
 
-# Check if any files were modified by formatting
+# Check if any files were modified by formatting or go mod tidy
 MODIFIED=$(git diff --name-only)
 if [ -n "$MODIFIED" ]; then
-    echo -e "\n${RED}❌ The following files were modified by formatting:${NC}"
+    echo -e "\n${RED}❌ The following files were modified:${NC}"
     echo "$MODIFIED"
-    echo -e "${YELLOW}Please stage the formatting changes and commit again.${NC}"
+    echo -e "${YELLOW}Please stage these changes and commit again.${NC}"
+    echo -e "${YELLOW}Run 'git add -u' to stage the changes.${NC}"
     exit 1
 fi
 

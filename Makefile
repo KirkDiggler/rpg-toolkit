@@ -13,6 +13,7 @@ help:
 	@echo "  clean        - Remove generated files"
 	@echo "  generate     - Run go generate on all modules"
 	@echo "  pre-commit   - Run all pre-commit checks (fmt, lint, test)"
+	@echo "  fix          - Run all auto-fix commands (fmt, mod-tidy)"
 	@echo "  install-tools - Install required development tools"
 	@echo "  install-hooks - Install git hooks"
 	@echo "  help         - Show this help message"
@@ -152,3 +153,8 @@ fmt-all:
 	@echo "→ Ensuring newlines at end of files..."
 	@find . -name "*.go" -type f -exec sh -c 'tail -c1 {} | read -r _ || echo >> {}' \;
 	@echo "✅ All code formatted"
+
+# Fix all auto-fixable issues
+fix: fmt-all mod-tidy
+	@echo "✅ All auto-fixable issues resolved"
+	@echo "Run 'git add -u' to stage the changes"
