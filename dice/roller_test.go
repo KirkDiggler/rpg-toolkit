@@ -24,7 +24,10 @@ func TestCryptoRoller_Roll(t *testing.T) {
 			iterations := size * 100
 
 			for i := 0; i < iterations; i++ {
-				result := roller.Roll(size)
+				result, err := roller.Roll(size)
+				if err != nil {
+					t.Fatalf("Roll(%d) error = %v", size, err)
+				}
 				
 				// Check bounds
 				if result < 1 || result > size {
@@ -59,7 +62,10 @@ func TestCryptoRoller_RollN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := roller.RollN(tt.count, tt.size)
+			results, err := roller.RollN(tt.count, tt.size)
+			if err != nil {
+				t.Fatalf("RollN(%d, %d) error = %v", tt.count, tt.size, err)
+			}
 
 			if len(results) != tt.count {
 				t.Errorf("RollN(%d, %d) returned %d results, want %d", 
@@ -76,47 +82,56 @@ func TestCryptoRoller_RollN(t *testing.T) {
 	}
 }
 
-func TestCryptoRoller_Panics(t *testing.T) {
+func TestCryptoRoller_Errors(t *testing.T) {
 	roller := &CryptoRoller{}
 
 	tests := []struct {
-		name      string
-		fn        func()
-		wantPanic string
+		name    string
+		fn      func() error
+		wantErr string
 	}{
 		{
-			name:      "Roll with zero size",
-			fn:        func() { roller.Roll(0) },
-			wantPanic: "dice: invalid die size 0",
+			name: "Roll with zero size",
+			fn: func() error {
+				_, err := roller.Roll(0)
+				return err
+			},
+			wantErr: "dice: invalid die size 0",
 		},
 		{
-			name:      "Roll with negative size",
-			fn:        func() { roller.Roll(-1) },
-			wantPanic: "dice: invalid die size -1",
+			name: "Roll with negative size",
+			fn: func() error {
+				_, err := roller.Roll(-1)
+				return err
+			},
+			wantErr: "dice: invalid die size -1",
 		},
 		{
-			name:      "RollN with zero size",
-			fn:        func() { roller.RollN(1, 0) },
-			wantPanic: "dice: invalid die size 0",
+			name: "RollN with zero size",
+			fn: func() error {
+				_, err := roller.RollN(1, 0)
+				return err
+			},
+			wantErr: "dice: invalid die size 0",
 		},
 		{
-			name:      "RollN with negative count",
-			fn:        func() { roller.RollN(-1, 6) },
-			wantPanic: "dice: invalid die count -1",
+			name: "RollN with negative count",
+			fn: func() error {
+				_, err := roller.RollN(-1, 6)
+				return err
+			},
+			wantErr: "dice: invalid die count -1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("Expected panic but didn't get one")
-				} else if r != tt.wantPanic {
-					t.Errorf("Got panic %v, want %v", r, tt.wantPanic)
-				}
-			}()
-			
-			tt.fn()
+			err := tt.fn()
+			if err == nil {
+				t.Error("Expected error but got nil")
+			} else if err.Error() != tt.wantErr {
+				t.Errorf("Got error %q, want %q", err.Error(), tt.wantErr)
+			}
 		})
 	}
 }
@@ -128,7 +143,10 @@ func TestDefaultRoller(t *testing.T) {
 	}
 
 	// Test it works
-	result := DefaultRoller.Roll(6)
+	result, err := DefaultRoller.Roll(6)
+	if err != nil {
+		t.Fatalf("DefaultRoller.Roll(6) error = %v", err)
+	}
 	if result < 1 || result > 6 {
 		t.Errorf("DefaultRoller.Roll(6) = %d, want between 1 and 6", result)
 	}
@@ -144,12 +162,15 @@ func TestSetDefaultRoller(t *testing.T) {
 
 	// Set mock roller
 	mockRoller := mock_dice.NewMockRoller(ctrl)
-	mockRoller.EXPECT().Roll(6).Return(4)
+	mockRoller.EXPECT().Roll(6).Return(4, nil)
 	
 	SetDefaultRoller(mockRoller)
 
 	// Verify it was set
-	result := DefaultRoller.Roll(6)
+	result, err := DefaultRoller.Roll(6)
+	if err != nil {
+		t.Fatalf("DefaultRoller.Roll(6) error = %v", err)
+	}
 	if result != 4 {
 		t.Errorf("DefaultRoller.Roll(6) = %d, want 4", result)
 	}

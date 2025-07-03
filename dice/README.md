@@ -9,6 +9,7 @@ The dice package provides cryptographically secure dice rolling for RPG mechanic
 - **ModifierValue implementation** for event system integration
 - **Cached results** - dice are rolled once when needed
 - **Support for negative dice** (penalties)
+- **Proper error handling** - no panics, returns errors instead
 
 ## Installation
 
@@ -29,6 +30,17 @@ total := roll.GetValue()
 
 // Get a description showing the individual rolls
 desc := roll.GetDescription() // "+2d6[4,2]=6"
+
+// Check for errors (e.g., if crypto/rand fails)
+if err := roll.Err(); err != nil {
+    // Handle error
+}
+
+// Or create rolls with custom sizes (returns error for invalid sizes)
+roll, err := dice.NewRoll(3, 8) // 3d8
+if err != nil {
+    // Handle invalid die size
+}
 ```
 
 ### With Event System
@@ -59,10 +71,13 @@ defer ctrl.Finish()
 
 // Create mock roller with expectations
 mockRoller := mock_dice.NewMockRoller(ctrl)
-mockRoller.EXPECT().RollN(2, 6).Return([]int{4, 5})
+mockRoller.EXPECT().RollN(2, 6).Return([]int{4, 5}, nil)
 
 // Use it for a specific roll
-roll := dice.NewRollWithRoller(2, 6, mockRoller)
+roll, err := dice.NewRollWithRoller(2, 6, mockRoller)
+if err != nil {
+    // Handle error
+}
 value := roll.GetValue() // Always 9 (4+5)
 
 // Or set as default for all rolls
@@ -91,8 +106,8 @@ go generate ./dice/...
 
 ```go
 type Roller interface {
-    Roll(size int) int           // Roll a single die of given size
-    RollN(count, size int) []int // Roll multiple dice
+    Roll(size int) (int, error)           // Roll a single die of given size
+    RollN(count, size int) ([]int, error) // Roll multiple dice
 }
 ```
 
@@ -120,16 +135,18 @@ desc := penalty.GetDescription() // "-d4[3]=-3"
 
 1. **Crypto/rand over math/rand**: Security is important for online games
 2. **Cached rolls**: Once rolled, the value doesn't change (immutable)
-3. **Panic on invalid input**: Programming errors should fail fast
+3. **Error returns over panics**: Idiomatic Go error handling
 4. **No parsing**: Use `D6(2)` not `Parse("2d6")` for simplicity
+5. **ModifierValue compatibility**: Errors are handled gracefully, returning 0 on error
 
 ## Testing
 
-The package has 98.2% test coverage, including:
+The package has 96.5% test coverage, including:
 - Unit tests for all dice sizes
 - Mock testing with gomock
-- Panic conditions for invalid inputs
+- Error handling for invalid inputs
 - Cryptographic randomness distribution tests
+- Error propagation through ModifierValue interface
 
 Run tests:
 ```bash

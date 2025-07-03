@@ -4,6 +4,7 @@
 package dice
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -11,13 +12,109 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestNewRoll(t *testing.T) {
+	tests := []struct {
+		name    string
+		count   int
+		size    int
+		wantErr bool
+	}{
+		{
+			name:    "valid d6",
+			count:   1,
+			size:    6,
+			wantErr: false,
+		},
+		{
+			name:    "invalid zero size",
+			count:   1,
+			size:    0,
+			wantErr: true,
+		},
+		{
+			name:    "invalid negative size",
+			count:   1,
+			size:    -1,
+			wantErr: true,
+		},
+		{
+			name:    "valid zero count",
+			count:   0,
+			size:    6,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			roll, err := NewRoll(tt.count, tt.size)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewRoll() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && roll == nil {
+				t.Error("NewRoll() returned nil roll without error")
+			}
+		})
+	}
+}
+
+func TestNewRollWithRoller(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockRoller := mock_dice.NewMockRoller(ctrl)
+
+	tests := []struct {
+		name    string
+		count   int
+		size    int
+		roller  Roller
+		wantErr bool
+	}{
+		{
+			name:    "valid with roller",
+			count:   1,
+			size:    6,
+			roller:  mockRoller,
+			wantErr: false,
+		},
+		{
+			name:    "nil roller",
+			count:   1,
+			size:    6,
+			roller:  nil,
+			wantErr: true,
+		},
+		{
+			name:    "invalid size",
+			count:   1,
+			size:    0,
+			roller:  mockRoller,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			roll, err := NewRollWithRoller(tt.count, tt.size, tt.roller)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewRollWithRoller() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && roll == nil {
+				t.Error("NewRollWithRoller() returned nil roll without error")
+			}
+		})
+	}
+}
+
 func TestRoll_GetValue(t *testing.T) {
 	tests := []struct {
-		name     string
-		count    int
-		size     int
-		rolls    []int
-		expected int
+		name      string
+		count     int
+		size      int
+		rolls     []int
+		rollError error
+		expected  int
+		wantErr   bool
 	}{
 		{
 			name:     "single d6",
@@ -47,6 +144,14 @@ func TestRoll_GetValue(t *testing.T) {
 			rolls:    []int{},
 			expected: 0,
 		},
+		{
+			name:      "roll error",
+			count:     1,
+			size:      6,
+			rollError: errors.New("test error"),
+			expected:  0,
+			wantErr:   true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -56,16 +161,26 @@ func TestRoll_GetValue(t *testing.T) {
 
 			mockRoller := mock_dice.NewMockRoller(ctrl)
 			
-			if len(tt.rolls) > 0 {
-				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls)
+			if tt.rollError != nil {
+				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(nil, tt.rollError)
+			} else if len(tt.rolls) > 0 {
+				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls, nil)
 			}
 
-			roll := NewRollWithRoller(tt.count, tt.size, mockRoller)
+			roll, err := NewRollWithRoller(tt.count, tt.size, mockRoller)
+			if err != nil {
+				t.Fatalf("NewRollWithRoller() error = %v", err)
+			}
 
 			// First call should roll
 			result := roll.GetValue()
 			if result != tt.expected {
 				t.Errorf("GetValue() = %d, want %d", result, tt.expected)
+			}
+
+			// Check error state
+			if (roll.Err() != nil) != tt.wantErr {
+				t.Errorf("roll.Err() = %v, wantErr %v", roll.Err(), tt.wantErr)
 			}
 
 			// Second call should return same cached value
@@ -79,11 +194,12 @@ func TestRoll_GetValue(t *testing.T) {
 
 func TestRoll_GetDescription(t *testing.T) {
 	tests := []struct {
-		name     string
-		count    int
-		size     int
-		rolls    []int
-		expected string
+		name      string
+		count     int
+		size      int
+		rolls     []int
+		rollError error
+		expected  string
 	}{
 		{
 			name:     "single d6",
@@ -120,6 +236,13 @@ func TestRoll_GetDescription(t *testing.T) {
 			rolls:    []int{},
 			expected: "+0d6[]=0",
 		},
+		{
+			name:      "roll error",
+			count:     1,
+			size:      6,
+			rollError: errors.New("test error"),
+			expected:  "ERROR: test error",
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,11 +252,16 @@ func TestRoll_GetDescription(t *testing.T) {
 
 			mockRoller := mock_dice.NewMockRoller(ctrl)
 			
-			if len(tt.rolls) > 0 {
-				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls)
+			if tt.rollError != nil {
+				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(nil, tt.rollError)
+			} else if len(tt.rolls) > 0 {
+				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls, nil)
 			}
 
-			roll := NewRollWithRoller(tt.count, tt.size, mockRoller)
+			roll, err := NewRollWithRoller(tt.count, tt.size, mockRoller)
+			if err != nil {
+				t.Fatalf("NewRollWithRoller() error = %v", err)
+			}
 
 			description := roll.GetDescription()
 			if description != tt.expected {
@@ -149,9 +277,12 @@ func TestRoll_CachedBehavior(t *testing.T) {
 
 	mockRoller := mock_dice.NewMockRoller(ctrl)
 	// Expect only one call to RollN, proving caching works
-	mockRoller.EXPECT().RollN(2, 6).Return([]int{1, 2}).Times(1)
+	mockRoller.EXPECT().RollN(2, 6).Return([]int{1, 2}, nil).Times(1)
 
-	roll := NewRollWithRoller(2, 6, mockRoller)
+	roll, err := NewRollWithRoller(2, 6, mockRoller)
+	if err != nil {
+		t.Fatalf("NewRollWithRoller() error = %v", err)
+	}
 
 	// First GetDescription should roll and cache
 	desc1 := roll.GetDescription()
@@ -173,15 +304,6 @@ func TestRoll_CachedBehavior(t *testing.T) {
 }
 
 func TestRoll_HelperFunctions(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	// Test with mock roller to ensure deterministic results
-	mockRoller := mock_dice.NewMockRoller(ctrl)
-	original := DefaultRoller
-	DefaultRoller = mockRoller
-	defer func() { DefaultRoller = original }()
-
 	tests := []struct {
 		name     string
 		fn       func(int) *Roll
@@ -219,7 +341,10 @@ func TestRoll_HelperFunctions(t *testing.T) {
 
 func TestRoll_RealRandom(t *testing.T) {
 	// Test with real randomness to ensure it works
-	roll := NewRoll(2, 6)
+	roll, err := NewRoll(2, 6)
+	if err != nil {
+		t.Fatalf("NewRoll() error = %v", err)
+	}
 	
 	value := roll.GetValue()
 	if value < 2 || value > 12 {
@@ -233,5 +358,62 @@ func TestRoll_RealRandom(t *testing.T) {
 	}
 	if !strings.Contains(desc, "]=") {
 		t.Errorf("Description doesn't contain expected format: %s", desc)
+	}
+}
+
+func TestRoll_ErrorPropagation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRoller := mock_dice.NewMockRoller(ctrl)
+	expectedErr := errors.New("crypto/rand: test error")
+	mockRoller.EXPECT().RollN(1, 20).Return(nil, expectedErr)
+
+	roll, err := NewRollWithRoller(1, 20, mockRoller)
+	if err != nil {
+		t.Fatalf("NewRollWithRoller() error = %v", err)
+	}
+
+	// GetValue should trigger the roll and return 0 on error
+	value := roll.GetValue()
+	if value != 0 {
+		t.Errorf("GetValue() with error = %d, want 0", value)
+	}
+
+	// Err() should return the error
+	if roll.Err() != expectedErr {
+		t.Errorf("roll.Err() = %v, want %v", roll.Err(), expectedErr)
+	}
+
+	// GetDescription should return error description
+	desc := roll.GetDescription()
+	if !strings.Contains(desc, "ERROR:") {
+		t.Errorf("GetDescription() with error = %q, should contain 'ERROR:'", desc)
+	}
+}
+
+func TestRoll_Err_BeforeRoll(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRoller := mock_dice.NewMockRoller(ctrl)
+	// Expect RollN to be called when Err() is called before any roll
+	mockRoller.EXPECT().RollN(1, 6).Return([]int{4}, nil)
+
+	roll, err := NewRollWithRoller(1, 6, mockRoller)
+	if err != nil {
+		t.Fatalf("NewRollWithRoller() error = %v", err)
+	}
+
+	// Call Err() before any GetValue or GetDescription
+	// This should trigger a roll
+	err = roll.Err()
+	if err != nil {
+		t.Errorf("roll.Err() = %v, want nil", err)
+	}
+
+	// Verify the roll was performed
+	if !roll.rolled {
+		t.Error("roll.Err() should have triggered a roll")
 	}
 }
