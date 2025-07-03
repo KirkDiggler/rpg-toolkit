@@ -8,9 +8,17 @@ RPG Toolkit provides clean, reusable components for RPG mechanics that work acro
 
 ## Architecture
 
-### Event-Driven Design
+### Hybrid Event-Driven Design
 
-After building a D&D Discord bot, we learned that features need to compose without knowing about each other. The toolkit uses an event system where:
+After evaluating ECS (Entity Component System), Event Sourcing, and traditional OOP approaches, we chose a hybrid architecture that combines the best of each:
+
+- **Traditional module structure** for clarity and familiarity
+- **Event-driven communication** for loose coupling between features
+- **Interface-based design** for extensibility without inheritance
+
+This gives us the flexibility of ECS and the decoupling of Event Sourcing without their complexity overhead - perfect for turn-based RPG mechanics.
+
+### How It Works
 
 - **Core mechanics emit events**: Combat actions, status changes, dice rolls
 - **Features listen and modify**: Rage adds damage, sneak attack triggers conditionally  
@@ -19,12 +27,20 @@ After building a D&D Discord bot, we learned that features need to compose witho
 Example:
 ```go
 // Rage listens for damage calculations
-eventBus.On("calculate_damage", func(e Event) {
-    if attacker.HasEffect("rage") && weapon.IsMelee() {
-        e.AddModifier(Modifier{Source: "rage", Value: 2})
+eventBus.SubscribeFunc(events.EventCalculateDamage, 100, func(ctx context.Context, e events.Event) error {
+    if isRaging(e.Source()) {
+        e.Context().AddModifier(events.NewModifier(
+            "rage",
+            events.ModifierDamageBonus,
+            events.NewRawValue(2, "rage"),
+            100,
+        ))
     }
+    return nil
 })
 ```
+
+See [ADR-0002](docs/adr/0002-hybrid-architecture.md) for the full architectural decision.
 
 ### Module Structure
 
