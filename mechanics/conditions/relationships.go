@@ -175,10 +175,13 @@ func (rm *RelationshipManager) UpdateAuras() error {
 				continue
 			}
 			
-			// Check if targets are still in range
-			// This would need position data from somewhere
-			// For now, this is a placeholder
-			inRange := true // Would calculate based on positions
+			// TODO: Implement actual range checking
+			// This requires:
+			// 1. Position data for source and target entities
+			// 2. Range value from rel.Metadata["range"]
+			// 3. Distance calculation logic
+			// For now, auras never expire due to range
+			inRange := true
 			
 			if !inRange {
 				toRemove = append(toRemove, rel)
