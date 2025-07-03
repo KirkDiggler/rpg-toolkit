@@ -319,13 +319,13 @@ func TestEventModifiers(t *testing.T) {
 	// Simulate rage and bless adding modifiers
 	bus.SubscribeFunc(EventCalculateDamage, 100, func(ctx context.Context, e Event) error {
 		// Rage adds damage bonus
-		e.Context().AddModifier(NewModifier("rage", ModifierDamageBonus, 2, 100))
+		e.Context().AddModifier(NewIntModifier("rage", ModifierDamageBonus, 2, 100))
 		return nil
 	})
 
 	bus.SubscribeFunc(EventCalculateDamage, 200, func(ctx context.Context, e Event) error {
 		// Bless adds attack bonus
-		e.Context().AddModifier(NewModifier("bless", ModifierAttackBonus, 4, 50))
+		e.Context().AddModifier(NewIntModifier("bless", ModifierAttackBonus, 4, 50))
 		return nil
 	})
 
@@ -349,12 +349,12 @@ func TestEventModifiers(t *testing.T) {
 		switch mod.Source() {
 		case "rage":
 			foundRage = true
-			if val, ok := mod.Value().(int); !ok || val != 2 {
+			if mod.ModifierValue().GetValue() != 2 {
 				t.Error("Rage modifier has wrong value")
 			}
 		case "bless":
 			foundBless = true
-			if val, ok := mod.Value().(int); !ok || val != 4 {
+			if mod.ModifierValue().GetValue() != 4 {
 				t.Error("Bless modifier has wrong value")
 			}
 		}
