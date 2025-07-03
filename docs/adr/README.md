@@ -23,6 +23,8 @@ Each ADR follows this structure:
 
 - [ADR-0001: Modifier Value Interface Design](0001-modifier-value-interface.md) - How modifiers work in the event system
 - [ADR-0002: Hybrid Event-Driven Architecture](0002-hybrid-architecture.md) - Why we chose a hybrid approach over pure ECS or Event Sourcing
+- [ADR-0003: Conditions as Entities](0003-conditions-as-entities.md) - Why conditions implement the Entity interface
+- [ADR-0004: Generic Condition Relationships](0004-condition-relationships.md) - How conditions relate to their sources and each other
 
 ## Creating a New ADR
 
