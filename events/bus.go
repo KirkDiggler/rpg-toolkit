@@ -1,3 +1,4 @@
+// Package events provides an event bus for handling game events.
 package events
 
 import (
@@ -17,6 +18,8 @@ type Handler interface {
 }
 
 // EventBus manages event publishing and subscriptions.
+//
+//go:generate mockgen -destination=mock/mock_eventbus.go -package=mock github.com/KirkDiggler/rpg-toolkit/events EventBus
 type EventBus interface {
 	// Publish sends an event to all subscribers.
 	Publish(ctx context.Context, event Event) error

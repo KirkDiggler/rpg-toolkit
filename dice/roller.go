@@ -11,6 +11,8 @@ import (
 
 // Roller is the interface for random number generation in the dice package.
 // Implementations must be safe for concurrent use.
+//
+//go:generate mockgen -destination=mock/mock_roller.go -package=mock_dice github.com/KirkDiggler/rpg-toolkit/dice Roller
 type Roller interface {
 	// Roll returns a random number from 1 to size (inclusive).
 	// Returns an error if size <= 0.

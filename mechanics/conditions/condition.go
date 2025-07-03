@@ -13,6 +13,8 @@ import (
 // Condition represents a status effect that affects an entity.
 // Conditions are entities themselves, allowing them to be persisted,
 // queried, and managed like other game objects.
+//
+//go:generate mockgen -destination=mock/mock_condition.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/conditions Condition
 type Condition interface {
 	core.Entity // Conditions are entities with ID and Type
 

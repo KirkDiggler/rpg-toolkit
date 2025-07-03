@@ -19,9 +19,14 @@ type SimpleEntity struct {
 	name string
 }
 
-func (e *SimpleEntity) GetID() string   { return e.id }
+// GetID implements Entity interface
+func (e *SimpleEntity) GetID() string { return e.id }
+
+// GetType implements Entity interface
 func (e *SimpleEntity) GetType() string { return "creature" }
-func (e *SimpleEntity) Name() string    { return e.name }
+
+// Name implements Entity interface
+func (e *SimpleEntity) Name() string { return e.name }
 
 func main() {
 	// Create event bus
@@ -35,8 +40,8 @@ func main() {
 	registerCombatHandlers(bus)
 
 	// Register condition handlers
-	registerRageHandler(bus)      // Rage adds damage
-	registerBlessedHandler(bus)    // Blessed adds to attack rolls
+	registerRageHandler(bus)    // Rage adds damage
+	registerBlessedHandler(bus) // Blessed adds to attack rolls
 
 	fmt.Println("=== Simple Combat Example ===")
 	fmt.Println()
@@ -81,17 +86,17 @@ func registerCombatHandlers(bus *events.Bus) {
 		if attackTotal >= 15 {
 			fmt.Println("   Result: HIT!")
 			fmt.Println()
-			
+
 			// Trigger damage calculation
 			damageEvent := events.NewGameEvent(events.EventCalculateDamage, e.Source(), e.Target())
 			weapon, _ := e.Context().Get("weapon")
 			damageEvent.Context().Set("weapon", weapon)
-			
+
 			// Copy over condition flags
 			if isRaging, ok := e.Context().Get("is_raging"); ok {
 				damageEvent.Context().Set("is_raging", isRaging)
 			}
-			
+
 			return bus.Publish(ctx, damageEvent)
 		}
 
@@ -102,7 +107,7 @@ func registerCombatHandlers(bus *events.Bus) {
 	// Handle damage calculation
 	bus.SubscribeFunc(events.EventCalculateDamage, 100, func(ctx context.Context, e events.Event) error {
 		fmt.Println("2. Damage Calculation Phase")
-		
+
 		// Base weapon damage (2d6 for greatsword)
 		baseDamage := dice.D6(2)
 		totalDamage := baseDamage.GetValue()
@@ -122,27 +127,27 @@ func registerCombatHandlers(bus *events.Bus) {
 		damageApplied := events.NewGameEvent(events.EventAfterDamage, e.Source(), e.Target())
 		damageApplied.Context().Set("damage", totalDamage)
 		damageApplied.Context().Set("damage_type", "slashing")
-		
+
 		return bus.Publish(ctx, damageApplied)
 	})
 
 	// Handle damage application
-	bus.SubscribeFunc(events.EventAfterDamage, 100, func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventAfterDamage, 100, func(_ context.Context, e events.Event) error {
 		fmt.Println("3. Damage Applied Phase")
-		
+
 		damage, _ := e.Context().Get("damage")
 		damageType, _ := e.Context().Get("damage_type")
-		
-		fmt.Printf("   %s takes %d %s damage!\n", 
+
+		fmt.Printf("   %s takes %d %s damage!\n",
 			e.Target().(*SimpleEntity).Name(), damage.(int), damageType.(string))
-		
+
 		return nil
 	})
 }
 
 func registerRageHandler(bus *events.Bus) {
 	// Rage adds +2 damage during damage calculation
-	bus.SubscribeFunc(events.EventCalculateDamage, 50, func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventCalculateDamage, 50, func(_ context.Context, e events.Event) error {
 		// Check if the attacker is raging
 		if isRaging, ok := e.Context().Get("is_raging"); ok && isRaging.(bool) {
 			e.Context().AddModifier(events.NewModifier(
@@ -158,7 +163,7 @@ func registerRageHandler(bus *events.Bus) {
 
 func registerBlessedHandler(bus *events.Bus) {
 	// Blessed adds d4 to attack rolls
-	bus.SubscribeFunc(events.EventBeforeAttack, 50, func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventBeforeAttack, 50, func(_ context.Context, e events.Event) error {
 		// Check if the attacker is blessed
 		if isBlessed, ok := e.Context().Get("is_blessed"); ok && isBlessed.(bool) {
 			e.Context().AddModifier(events.NewModifier(

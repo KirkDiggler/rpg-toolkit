@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"testing"
 
-	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"go.uber.org/mock/gomock"
+
+	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 )
 
 func TestCryptoRoller_Roll(t *testing.T) {

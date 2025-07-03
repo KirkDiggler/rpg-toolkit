@@ -14,7 +14,7 @@ type SimpleConditionConfig struct {
 	Type   string
 	Target core.Entity
 	Source string
-	
+
 	// Optional handlers - receive the condition itself for self-reference
 	ApplyFunc  func(c *SimpleCondition, bus events.EventBus) error
 	RemoveFunc func(c *SimpleCondition, bus events.EventBus) error
@@ -54,7 +54,7 @@ func NewSimpleCondition(cfg SimpleConditionConfig) *SimpleCondition {
 // GetID implements core.Entity
 func (c *SimpleCondition) GetID() string { return c.id }
 
-// GetType implements core.Entity  
+// GetType implements core.Entity
 func (c *SimpleCondition) GetType() string { return c.typ }
 
 // Target returns the affected entity
@@ -65,7 +65,6 @@ func (c *SimpleCondition) Source() string { return c.source }
 
 // IsActive returns whether the condition is active
 func (c *SimpleCondition) IsActive() bool { return c.active }
-
 
 // Apply activates the condition
 func (c *SimpleCondition) Apply(bus events.EventBus) error {
@@ -97,7 +96,9 @@ func (c *SimpleCondition) Remove(bus events.EventBus) error {
 
 	// Unsubscribe all handlers
 	for _, subID := range c.subscriptions {
-		bus.Unsubscribe(subID)
+		if err := bus.Unsubscribe(subID); err != nil {
+			return err
+		}
 	}
 	c.subscriptions = []string{}
 

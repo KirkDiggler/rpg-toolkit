@@ -1,6 +1,8 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package dice provides a simple dice rolling system.
+// It implements events.ModifierValue by rolling dice when GetValue() is called.
 package dice
 
 import (
@@ -14,7 +16,7 @@ type Roll struct {
 	count  int
 	size   int
 	roller Roller
-	
+
 	// Cache the result after first roll
 	rolled bool
 	result int
@@ -81,18 +83,19 @@ func (r *Roll) GetDescription() string {
 	if !r.rolled {
 		r.roll()
 	}
-	
+
 	if r.err != nil {
 		return fmt.Sprintf("ERROR: %v", r.err)
 	}
 
 	// Build notation
 	var notation string
-	if r.count == 1 {
+	switch r.count {
+	case 1:
 		notation = fmt.Sprintf("d%d", r.size)
-	} else if r.count == -1 {
+	case -1:
 		notation = fmt.Sprintf("-d%d", r.size)
-	} else {
+	default:
 		notation = fmt.Sprintf("%dd%d", r.count, r.size)
 	}
 

@@ -1,29 +1,149 @@
+version: "2"
+
 run:
   timeout: 5m
+  tests: true
+  build-tags:
+    - integration
 
 linters:
   enable:
+    # Default linters (all good to keep)
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
-    - gofmt
-    - goimports
-    - misspell
-    - unconvert
-    - unparam
+    # Additional valuable linters
+    - bodyclose      # Check HTTP response body is closed
+    - copyloopvar    # Detect places where loop variables are copied
+    - dupl           # Find duplicate code
+    - goconst        # Find repeated strings that could be constants
+    - gocritic       # Comprehensive checks for bugs, performance, style
+    - gocyclo        # Check cyclomatic complexity
+    - goprintffuncname # Printf-like functions should end with 'f'
+    - gosec          # Security checks
+    - lll            # Line length limit
+    - misspell       # Find misspelled words
+    - nakedret       # Find naked returns
+    - noctx          # Find missing context.Context
+    - prealloc       # Find slices that could be preallocated
+    - revive         # Comprehensive linter, replaces golint
+    - rowserrcheck   # Check sql.Rows.Err
+    - unconvert      # Remove unnecessary type conversions
+    - unparam        # Find unused parameters
+    - whitespace     # Check unnecessary newlines
 
 linters-settings:
+  dupl:
+    threshold: 100
+  
   errcheck:
     check-type-assertions: true
+  
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport # https://github.com/go-critic/go-critic/issues/845
+      - whyNoLint
+  
+  gocyclo:
+    min-complexity: 15
+  
   govet:
     check-shadowing: true
-  goimports:
-    local-prefixes: github.com/KirkDiggler/rpg-toolkit
+  
+  lll:
+    line-length: 120
+    tab-width: 4
+  
+  misspell:
+    locale: US
+  
+  nakedret:
+    max-func-lines: 30
+  
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+  
+  revive:
+    ignore-generated-header: true
+    severity: warning
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
 
 issues:
+  exclude-rules:
+    # Exclude some linters from test files
+    - path: _test\.go
+      linters:
+        - dupl
+        - errcheck
+        - goconst
+        - gosec
+        - gocyclo
+    
+    # Exclude from example files
+    - path: example_test\.go
+      linters:
+        - lll
+        - gocritic
+        - revive
+    
+    # Exclude vendor (if any)
+    - path: vendor/
+      linters:
+        - all
+    
+    # Exclude generated files
+    - path: _gen\.go
+      linters:
+        - all
+    
+    # Allow longer lines in generate directives
+    - source: "^//go:generate "
+      linters:
+        - lll
+  
   max-issues-per-linter: 0
   max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+formatters-settings:
+  gofmt:
+    simplify: true
+  
+  goimports:
+    local-prefixes: github.com/KirkDiggler

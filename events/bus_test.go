@@ -16,7 +16,7 @@ func TestBusSubscribeAndPublish(t *testing.T) {
 	var receivedEvent Event
 
 	// Subscribe to an event
-	id := bus.SubscribeFunc(EventBeforeAttack, 100, func(ctx context.Context, e Event) error {
+	id := bus.SubscribeFunc(EventBeforeAttack, 100, func(_ context.Context, e Event) error {
 		called = true
 		receivedEvent = e
 		return nil
@@ -53,19 +53,19 @@ func TestBusMultipleSubscribers(t *testing.T) {
 	var callOrder []string
 
 	// Subscribe multiple handlers with different priorities
-	bus.SubscribeFunc(EventCalculateDamage, 200, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventCalculateDamage, 200, func(_ context.Context, _ Event) error {
 		callCount++
 		callOrder = append(callOrder, "high-priority")
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 100, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventCalculateDamage, 100, func(_ context.Context, _ Event) error {
 		callCount++
 		callOrder = append(callOrder, "medium-priority")
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 50, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventCalculateDamage, 50, func(_ context.Context, _ Event) error {
 		callCount++
 		callOrder = append(callOrder, "low-priority")
 		return nil
@@ -99,7 +99,7 @@ func TestBusUnsubscribe(t *testing.T) {
 	var callCount int
 
 	// Subscribe
-	id := bus.SubscribeFunc(EventTurnStart, 100, func(ctx context.Context, e Event) error {
+	id := bus.SubscribeFunc(EventTurnStart, 100, func(_ context.Context, _ Event) error {
 		callCount++
 		return nil
 	})
@@ -143,12 +143,12 @@ func TestBusClear(t *testing.T) {
 	var attackCalls, damageCalls int
 
 	// Subscribe to different events
-	bus.SubscribeFunc(EventBeforeAttack, 100, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventBeforeAttack, 100, func(_ context.Context, _ Event) error {
 		attackCalls++
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 100, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventCalculateDamage, 100, func(_ context.Context, _ Event) error {
 		damageCalls++
 		return nil
 	})
@@ -189,7 +189,7 @@ func TestBusHandlerError(t *testing.T) {
 
 	// Subscribe handler that returns error
 	expectedErr := errors.New("handler error")
-	bus.SubscribeFunc(EventStatusApplied, 100, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventStatusApplied, 100, func(_ context.Context, _ Event) error {
 		return expectedErr
 	})
 
@@ -221,7 +221,7 @@ func TestBusConcurrency(t *testing.T) {
 			defer wg.Done()
 
 			// Subscribe
-			bus.SubscribeFunc(EventRoundStart, 100, func(ctx context.Context, e Event) error {
+			bus.SubscribeFunc(EventRoundStart, 100, func(_ context.Context, _ Event) error {
 				mu.Lock()
 				callCount++
 				mu.Unlock()
@@ -255,7 +255,7 @@ type TestHandler struct {
 	err      error
 }
 
-func (h *TestHandler) Handle(ctx context.Context, event Event) error {
+func (h *TestHandler) Handle(_ context.Context, event Event) error {
 	h.calls = append(h.calls, event)
 	return h.err
 }
@@ -317,13 +317,13 @@ func TestEventModifiers(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate rage and bless adding modifiers
-	bus.SubscribeFunc(EventCalculateDamage, 100, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventCalculateDamage, 100, func(_ context.Context, e Event) error {
 		// Rage adds damage bonus
 		e.Context().AddModifier(NewIntModifier("rage", ModifierDamageBonus, 2, 100))
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 200, func(ctx context.Context, e Event) error {
+	bus.SubscribeFunc(EventCalculateDamage, 200, func(_ context.Context, e Event) error {
 		// Bless adds attack bonus
 		e.Context().AddModifier(NewIntModifier("bless", ModifierAttackBonus, 4, 50))
 		return nil
