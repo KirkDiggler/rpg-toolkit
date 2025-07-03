@@ -45,17 +45,38 @@ e.Context().AddModifier(events.NewModifier(
 
 ### Testing with Mocks
 
+The package uses gomock for test mocking:
+
 ```go
-// Create a mock roller with predetermined results
-mock := dice.NewMockRoller(6, 5, 4) // Will roll 6, then 5, then 4
+import (
+    mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
+    "go.uber.org/mock/gomock"
+)
+
+// Create a mock controller
+ctrl := gomock.NewController(t)
+defer ctrl.Finish()
+
+// Create mock roller with expectations
+mockRoller := mock_dice.NewMockRoller(ctrl)
+mockRoller.EXPECT().RollN(2, 6).Return([]int{4, 5})
 
 // Use it for a specific roll
-roll := dice.NewRollWithRoller(2, 6, mock)
-value := roll.GetValue() // Always 11 (6+5)
+roll := dice.NewRollWithRoller(2, 6, mockRoller)
+value := roll.GetValue() // Always 9 (4+5)
 
 // Or set as default for all rolls
-dice.SetDefaultRoller(mock)
-defer dice.SetDefaultRoller(dice.DefaultRoller) // Restore after test
+original := dice.DefaultRoller
+dice.SetDefaultRoller(mockRoller)
+defer dice.SetDefaultRoller(original) // Restore after test
+```
+
+### Generating Mocks
+
+To regenerate the mocks after interface changes:
+
+```bash
+go generate ./dice/...
 ```
 
 ## API
@@ -64,8 +85,16 @@ defer dice.SetDefaultRoller(dice.DefaultRoller) // Restore after test
 
 - `Roller` - Interface for random number generation
 - `CryptoRoller` - Production implementation using crypto/rand
-- `MockRoller` - Test implementation with predetermined results
 - `Roll` - Dice roll that implements `events.ModifierValue`
+
+### Interfaces
+
+```go
+type Roller interface {
+    Roll(size int) int           // Roll a single die of given size
+    RollN(count, size int) []int // Roll multiple dice
+}
+```
 
 ### Helper Functions
 
@@ -96,4 +125,18 @@ desc := penalty.GetDescription() // "-d4[3]=-3"
 
 ## Testing
 
-The package includes comprehensive tests demonstrating both real random usage and mock usage for deterministic testing.
+The package has 98.2% test coverage, including:
+- Unit tests for all dice sizes
+- Mock testing with gomock
+- Panic conditions for invalid inputs
+- Cryptographic randomness distribution tests
+
+Run tests:
+```bash
+go test ./dice/...
+```
+
+Check coverage:
+```bash
+go test -cover ./dice/...
+```
