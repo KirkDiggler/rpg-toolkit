@@ -1,0 +1,6 @@
+# Test coverage files
+coverage.txt
+coverage.html
+
+# Test binaries
+*.test

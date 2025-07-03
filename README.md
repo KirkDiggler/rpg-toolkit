@@ -48,7 +48,7 @@ See [ADR-0002](docs/adr/0002-hybrid-architecture.md) for the full architectural 
 rpg-toolkit/
 ├── core/           # Entity interface, common errors
 ├── events/         # Event bus and base event types  
-├── dice/           # Dice rolling mechanics
+├── dice/           # Cryptographically secure dice rolling
 ├── combat/         # Attack resolution, damage calculation
 ├── conditions/     # Status effects (poisoned, stunned, etc)
 ├── creatures/      # Characters, monsters, NPCs
@@ -73,11 +73,36 @@ type Repository interface {
 go get github.com/KirkDiggler/rpg-toolkit/core
 
 # Get specific systems
+go get github.com/KirkDiggler/rpg-toolkit/dice
 go get github.com/KirkDiggler/rpg-toolkit/combat
 go get github.com/KirkDiggler/rpg-toolkit/conditions
 ```
 
 ## Example Usage
+
+### Dice Rolling
+
+```go
+import "github.com/KirkDiggler/rpg-toolkit/dice"
+
+// Simple dice rolls
+attackRoll := dice.D20(1).GetValue()      // 1d20
+damage := dice.D6(2).GetValue()            // 2d6
+
+// With descriptions
+roll := dice.D20(1)
+fmt.Printf("Attack: %s\n", roll.GetDescription()) // "+d20[17]=17"
+
+// As event modifiers
+event.Context().AddModifier(events.NewModifier(
+    "weapon damage",
+    events.ModifierDamageBonus,
+    dice.D8(1),  // Roll implements ModifierValue
+    100,
+))
+```
+
+### Combat System
 
 ```go
 package main
@@ -108,10 +133,11 @@ func main() {
 We're extracting and refining patterns from a production Discord bot. The API will stabilize as we complete the extraction.
 
 ### Current Focus
-1. Core entity system and interfaces
-2. Event bus implementation  
-3. Combat mechanics with event integration
-4. Condition/effect system
+1. ✅ Core entity system and interfaces
+2. ✅ Event bus implementation  
+3. ✅ Dice rolling system with ModifierValue interface
+4. Combat mechanics with event integration
+5. Condition/effect system
 
 ## Design Principles
 
