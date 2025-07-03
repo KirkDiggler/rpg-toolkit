@@ -86,10 +86,17 @@ jobs:
           fi
           echo "✅ Test coverage: $coverage%"
       
+      - name: Create safe artifact name
+        id: artifact-name
+        run: |
+          # Replace slashes with dashes for artifact name
+          SAFE_NAME=$(echo "${{ matrix.module }}" | tr '/' '-')
+          echo "name=coverage-${SAFE_NAME}" >> $GITHUB_OUTPUT
+      
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.module }}
+          name: ${{ steps.artifact-name.outputs.name }}
           path: ${{ matrix.module }}/coverage.txt
 
   mod-tidy:
