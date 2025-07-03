@@ -307,7 +307,8 @@ func (m *EventManager) checkExpiredConditions(event events.Event) {
 
 // Event types for conditions
 const (
-	EventConditionApplied  = "condition_applied"
-	EventConditionRemoved  = "condition_removed"
-	EventConditionExpired  = "condition_expired"
+	EventConditionApplied = "condition_applied"
+	EventConditionRemoved = "condition_removed"
+	EventConditionExpired = "condition_expired"
 )
+

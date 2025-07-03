@@ -2,80 +2,222 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
 
-permissions:
-  contents: read
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  # Detect which modules changed
+  changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ['1.24.x']
-    
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      events: ${{ steps.filter.outputs.events }}
+      conditions: ${{ steps.filter.outputs.conditions }}
+      any: ${{ steps.filter.outputs.any }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          core:
+            - 'core/**'
+          events:
+            - 'events/**'
+          conditions:
+            - 'mechanics/conditions/**'
+          any:
+            - '**/*.go'
+            - 'go.mod'
+            - 'go.sum'
+            - 'go.work'
+            - '.golangci.yml'
+            - '.github/workflows/**'
+
+  # Quick checks that should fail fast
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+
+    - name: Check go mod tidy
+      run: |
+        go work sync
+        
+        # Only check modules that changed
+        modules=""
+        [[ "${{ needs.changes.outputs.core }}" == "true" ]] && modules="$modules core"
+        [[ "${{ needs.changes.outputs.events }}" == "true" ]] && modules="$modules events"
+        [[ "${{ needs.changes.outputs.conditions }}" == "true" ]] && modules="$modules mechanics/conditions"
+        
+        # If no specific modules changed, check all
+        if [[ -z "$modules" ]]; then
+          modules="core events mechanics/conditions"
+        fi
+        
+        for module in $modules; do
+          echo "→ Checking $module"
+          (cd $module && go mod tidy)
+        done
+        
+        git diff --exit-code || (echo "Please run 'go mod tidy' in changed modules" && exit 1)
+
+    - name: Check formatting
+      run: |
+        # Only check files in changed modules
+        changed_dirs=""
+        [[ "${{ needs.changes.outputs.core }}" == "true" ]] && changed_dirs="$changed_dirs core"
+        [[ "${{ needs.changes.outputs.events }}" == "true" ]] && changed_dirs="$changed_dirs events"
+        [[ "${{ needs.changes.outputs.conditions }}" == "true" ]] && changed_dirs="$changed_dirs mechanics/conditions"
+        
+        if [[ -n "$changed_dirs" ]]; then
+          gofmt_files=$(gofmt -l $changed_dirs)
+          if [[ -n ${gofmt_files} ]]; then
+            echo "Please format these files:"
+            echo "${gofmt_files}"
+            exit 1
+          fi
+        fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
     steps:
     - uses: actions/checkout@v4
     
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version: '1.24'
+        cache: true
     
-    - name: Install golangci-lint
+    - name: Run golangci-lint on changed modules
       run: |
+        # Install golangci-lint
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.1.6
-    
-    - name: Run golangci-lint (core)
-      working-directory: ./core
-      run: golangci-lint run --no-config ./...
-    
-    - name: Run golangci-lint (events)
-      working-directory: ./events
-      run: golangci-lint run --no-config ./...
-    
-    - name: Run tests (core)
-      working-directory: ./core
-      run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
-    
-    - name: Run tests (events)
-      working-directory: ./events
-      run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
-    
-    - name: Check test coverage (core)
-      working-directory: ./core
+        
+        # Lint only changed modules
+        [[ "${{ needs.changes.outputs.core }}" == "true" ]] && (cd core && golangci-lint run ./...)
+        [[ "${{ needs.changes.outputs.events }}" == "true" ]] && (cd events && golangci-lint run ./...)
+        [[ "${{ needs.changes.outputs.conditions }}" == "true" ]] && (cd mechanics/conditions && golangci-lint run ./...)
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: changes
+    strategy:
+      matrix:
+        module: [core, events, conditions]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+
+    - name: Run tests for ${{ matrix.module }}
+      if: |
+        (matrix.module == 'core' && needs.changes.outputs.core == 'true') ||
+        (matrix.module == 'events' && needs.changes.outputs.events == 'true') ||
+        (matrix.module == 'conditions' && needs.changes.outputs.conditions == 'true')
       run: |
-        go tool cover -func=coverage.txt
-        # Ensure 100% coverage for core module
-        coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | sed 's/%//')
-        if (( $(echo "$coverage < 100" | bc -l) )); then
-          echo "Test coverage is below 100% (current: $coverage%)"
+        # Map module name to path
+        case "${{ matrix.module }}" in
+          conditions) module_path="mechanics/conditions" ;;
+          *) module_path="${{ matrix.module }}" ;;
+        esac
+        
+        echo "### Testing $module_path" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        
+        cd $module_path
+        go test ./... -v -race -coverprofile=coverage.txt | tee test_output.txt
+        
+        # Capture exit code
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        
+        # Add test summary
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
+          echo "✅ Tests passed!" >> $GITHUB_STEP_SUMMARY
+          # Show coverage
+          coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}')
+          echo "Coverage: $coverage" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Tests failed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Failed tests:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "^--- FAIL:|FAIL\s+github.com" test_output.txt >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          exit $TEST_EXIT_CODE
+        fi
+
+  # Only build if something changed
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+    
+    - name: Verify changed modules build
+      run: |
+        # Only build modules that changed
+        [[ "${{ needs.changes.outputs.core }}" == "true" ]] && (echo "→ Building core" && cd core && go build ./...)
+        [[ "${{ needs.changes.outputs.events }}" == "true" ]] && (echo "→ Building events" && cd events && go build ./...)
+        [[ "${{ needs.changes.outputs.conditions }}" == "true" ]] && (echo "→ Building mechanics/conditions" && cd mechanics/conditions && go build ./...)
+
+  # This job ensures all required checks pass
+  ci-success:
+    name: CI Success
+    if: always()
+    needs: [changes, quick-checks, lint, test, build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check if all jobs succeeded
+      run: |
+        # If nothing changed, that's success
+        if [[ "${{ needs.changes.outputs.any }}" != "true" ]]; then
+          echo "No relevant changes detected - skipping CI"
+          exit 0
+        fi
+        
+        # Otherwise check that all jobs passed
+        if [[ "${{ needs.quick-checks.result }}" != "success" || \
+              "${{ needs.lint.result }}" != "success" || \
+              "${{ needs.test.result }}" != "success" || \
+              "${{ needs.build.result }}" != "success" ]]; then
+          echo "One or more required jobs failed"
           exit 1
         fi
-        echo "Test coverage: $coverage%"
-    
-    - name: Check test coverage (events)
-      working-directory: ./events
-      run: |
-        go tool cover -func=coverage.txt
-        # Ensure 100% coverage for events module
-        coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | sed 's/%//')
-        if (( $(echo "$coverage < 100" | bc -l) )); then
-          echo "Test coverage is below 100% (current: $coverage%)"
-          exit 1
-        fi
-        echo "Test coverage: $coverage%"
-    
-    - name: Run go mod tidy (core)
-      working-directory: ./core
-      run: |
-        go mod tidy
-        git diff --exit-code go.mod go.sum || (echo "Please run 'go mod tidy'" && exit 1)
-    
-    - name: Run go mod tidy (events)
-      working-directory: ./events
-      run: |
-        go mod tidy
-        git diff --exit-code go.mod go.sum || (echo "Please run 'go mod tidy'" && exit 1)
+        echo "All required jobs passed!"

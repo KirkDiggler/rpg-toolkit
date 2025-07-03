@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        entry: bash -c 'find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" | xargs gofmt -l -w'
+        language: system
+        types: [go]
+        pass_filenames: false
+      
+      - id: go-imports
+        name: go imports
+        entry: bash -c 'which goimports >/dev/null 2>&1 && find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" | xargs goimports -l -w || echo "goimports not installed, skipping"'
+        language: system
+        types: [go]
+        pass_filenames: false
+      
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -c 'golangci-lint run --fix'
+        language: system
+        types: [go]
+        pass_filenames: false

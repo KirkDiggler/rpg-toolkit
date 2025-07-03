@@ -136,3 +136,4 @@ func (c *StunnedCondition) OnRemove(bus events.EventBus, target core.Entity) err
 	}
 	return nil
 }
+

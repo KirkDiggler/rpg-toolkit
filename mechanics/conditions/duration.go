@@ -64,9 +64,9 @@ func (d *RoundsDuration) Description() string {
 
 // TurnsDuration expires after a number of turns.
 type TurnsDuration struct {
-	Turns       int
-	TurnsTaken  int
-	EntityID    string // Whose turns to count
+	Turns      int
+	TurnsTaken int
+	EntityID   string // Whose turns to count
 }
 
 func NewTurnsDuration(turns int, entityID string) *TurnsDuration {
@@ -88,7 +88,7 @@ func (d *TurnsDuration) IsExpired(event events.Event) bool {
 
 	// Increment turn count
 	d.TurnsTaken++
-	
+
 	// Check if we've had enough turns
 	return d.TurnsTaken >= d.Turns
 }
@@ -147,3 +147,4 @@ func (d *EventDuration) IsExpired(event events.Event) bool {
 func (d *EventDuration) Description() string {
 	return fmt.Sprintf("Until %s", d.EventType)
 }
+

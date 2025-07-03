@@ -212,3 +212,4 @@ func TestEventDuration(t *testing.T) {
 		t.Error("Should expire on successful save")
 	}
 }
+

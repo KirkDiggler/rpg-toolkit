@@ -54,32 +54,32 @@ type Duration interface {
 
 // BaseCondition provides a standard implementation of Condition.
 type BaseCondition struct {
-	id           string
+	id            string
 	conditionType string
-	source       string
-	sourceEntity core.Entity
-	duration     Duration
-	appliedAt    time.Time
+	source        string
+	sourceEntity  core.Entity
+	duration      Duration
+	appliedAt     time.Time
 }
 
 // NewCondition creates a new condition with the given parameters.
 func NewCondition(id, conditionType, source string, sourceEntity core.Entity, duration Duration) *BaseCondition {
 	return &BaseCondition{
-		id:           id,
+		id:            id,
 		conditionType: conditionType,
-		source:       source,
-		sourceEntity: sourceEntity,
-		duration:     duration,
-		appliedAt:    time.Now(),
+		source:        source,
+		sourceEntity:  sourceEntity,
+		duration:      duration,
+		appliedAt:     time.Now(),
 	}
 }
 
-func (c *BaseCondition) ID() string              { return c.id }
-func (c *BaseCondition) Type() string            { return c.conditionType }
-func (c *BaseCondition) Source() string          { return c.source }
+func (c *BaseCondition) ID() string                { return c.id }
+func (c *BaseCondition) Type() string              { return c.conditionType }
+func (c *BaseCondition) Source() string            { return c.source }
 func (c *BaseCondition) SourceEntity() core.Entity { return c.sourceEntity }
-func (c *BaseCondition) Duration() Duration      { return c.duration }
-func (c *BaseCondition) AppliedAt() time.Time    { return c.appliedAt }
+func (c *BaseCondition) Duration() Duration        { return c.duration }
+func (c *BaseCondition) AppliedAt() time.Time      { return c.appliedAt }
 
 func (c *BaseCondition) IsExpired(event events.Event) bool {
 	return c.duration.IsExpired(event)
@@ -98,3 +98,4 @@ func (c *BaseCondition) OnRemove(bus events.EventBus, target core.Entity) error 
 func (c *BaseCondition) ModifyEvent(event events.Event) {
 	// Base implementation does nothing
 }
+
