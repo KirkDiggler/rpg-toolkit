@@ -19,6 +19,7 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 - [002: Dice Roller Design](002-dice-roller-design.md) - Thinking through dice implementation
 - [003: Event Participant Ecosystem](003-event-participant-ecosystem.md) - Event system architecture
 - [004: Conditions System](004-conditions-system.md) - Status effects and relationships
+- [005: Generics in Conditions](005-generics-in-conditions.md) - Type safety vs flexibility trade-offs
 
 ## Document Types
 
