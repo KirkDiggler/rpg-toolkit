@@ -22,6 +22,7 @@ Each ADR follows this structure:
 ## Current ADRs
 
 - [ADR-0001: Modifier Value Interface Design](0001-modifier-value-interface.md) - How modifiers work in the event system
+- [ADR-0002: Hybrid Event-Driven Architecture](0002-hybrid-architecture.md) - Why we chose a hybrid approach over pure ECS or Event Sourcing
 
 ## Creating a New ADR
 
