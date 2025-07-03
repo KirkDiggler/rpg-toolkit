@@ -69,7 +69,21 @@ pre-commit:
 	@echo "→ Running linter..."
 	cd core && golangci-lint run --no-config ./...
 	cd events && golangci-lint run --no-config ./...
-	@echo "→ Running tests..."
-	cd core && go test -race ./...
-	cd events && go test -race ./...
+	@echo "→ Running tests with coverage..."
+	@echo "  Testing core..."
+	cd core && go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+	@echo "  Checking core coverage..."
+	@cd core && coverage=$$(go tool cover -func=coverage.txt | grep total | awk '{print $$3}' | sed 's/%//') && \
+		if [ "$$(echo "$$coverage < 100" | bc -l)" = "1" ]; then \
+			echo "❌ Core coverage is $$coverage% (must be 100%)"; \
+			exit 1; \
+		fi
+	@echo "  Testing events..."
+	cd events && go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+	@echo "  Checking events coverage..."
+	@cd events && coverage=$$(go tool cover -func=coverage.txt | grep total | awk '{print $$3}' | sed 's/%//') && \
+		if [ "$$(echo "$$coverage < 100" | bc -l)" = "1" ]; then \
+			echo "❌ Events coverage is $$coverage% (must be 100%)"; \
+			exit 1; \
+		fi
 	@echo "✓ All pre-commit checks passed!"

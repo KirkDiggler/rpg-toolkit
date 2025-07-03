@@ -64,8 +64,8 @@ func TestEventContext(t *testing.T) {
 	}
 
 	// Test modifiers
-	mod1 := NewModifier("rage", ModifierDamageBonus, 2, 100)
-	mod2 := NewModifier("bless", ModifierAttackBonus, 1, 50)
+	mod1 := NewIntModifier("rage", ModifierDamageBonus, 2, 100)
+	mod2 := NewIntModifier("bless", ModifierAttackBonus, 1, 50)
 
 	ctx.AddModifier(mod1)
 	ctx.AddModifier(mod2)
@@ -77,7 +77,7 @@ func TestEventContext(t *testing.T) {
 }
 
 func TestBasicModifier(t *testing.T) {
-	mod := NewModifier("rage", ModifierDamageBonus, 2, 100)
+	mod := NewIntModifier("rage", ModifierDamageBonus, 2, 100)
 
 	if mod.Source() != "rage" {
 		t.Errorf("Expected source 'rage', got %s", mod.Source())
@@ -87,8 +87,8 @@ func TestBasicModifier(t *testing.T) {
 		t.Errorf("Expected type %s, got %s", ModifierDamageBonus, mod.Type())
 	}
 
-	if val, ok := mod.Value().(int); !ok || val != 2 {
-		t.Errorf("Expected value 2, got %v", mod.Value())
+	if mod.ModifierValue().GetValue() != 2 {
+		t.Errorf("Expected value 2, got %v", mod.ModifierValue().GetValue())
 	}
 
 	if mod.Priority() != 100 {
@@ -159,9 +159,9 @@ func TestModifierPriority(t *testing.T) {
 	ctx := NewEventContext()
 
 	// Add modifiers with different priorities
-	ctx.AddModifier(NewModifier("effect1", ModifierDamageBonus, 1, 200))
-	ctx.AddModifier(NewModifier("effect2", ModifierDamageBonus, 2, 100))
-	ctx.AddModifier(NewModifier("effect3", ModifierDamageBonus, 3, 300))
+	ctx.AddModifier(NewIntModifier("effect1", ModifierDamageBonus, 1, 200))
+	ctx.AddModifier(NewIntModifier("effect2", ModifierDamageBonus, 2, 100))
+	ctx.AddModifier(NewIntModifier("effect3", ModifierDamageBonus, 3, 300))
 
 	mods := ctx.Modifiers()
 	if len(mods) != 3 {

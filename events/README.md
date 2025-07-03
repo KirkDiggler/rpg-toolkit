@@ -89,25 +89,49 @@ bus.Subscribe(events.EventCalculateDamage, &SneakAttackHandler{})
 
 ### Working with Modifiers
 
+Modifiers now use a typed interface for clean, type-safe processing:
+
 ```go
-// In your damage calculation system
-event := events.NewGameEvent(events.EventCalculateDamage, attacker, target)
-event.Context().Set("base_damage", 8)
+// Create modifiers with different value types
+proficiencyMod := events.NewModifier(
+    "proficiency",
+    events.ModifierAttackBonus,
+    events.NewRawValue(2, "proficiency"),
+    50,
+)
 
-// Publish to collect modifiers
-bus.Publish(ctx, event)
+// Dice modifiers are rolled at creation time
+blessMod := events.NewModifier(
+    "bless",
+    events.ModifierAttackBonus,
+    events.NewDiceValue(1, 4, "bless"), // Rolls 1d4 immediately
+    100,
+)
 
-// Apply modifiers
-baseDamage := event.Context().Get("base_damage").(int)
-totalDamage := baseDamage
+// Add modifiers to event
+event.Context().AddModifier(proficiencyMod)
+event.Context().AddModifier(blessMod)
+
+// Process modifiers cleanly without type assertions
+total := 0
+descriptions := []string{}
 
 for _, mod := range event.Context().Modifiers() {
-    if mod.Type() == events.ModifierDamageBonus {
-        if bonus, ok := mod.Value().(int); ok {
-            totalDamage += bonus
-        }
+    if mod.Type() == events.ModifierAttackBonus {
+        mv := mod.ModifierValue()
+        total += mv.GetValue()
+        descriptions = append(descriptions, mv.GetDescription())
     }
 }
+
+// Output might be: "total: 5, descriptions: [+2 (proficiency), +d4[3]=3 (bless)]"
+```
+
+For simple integer modifiers, use the convenience function:
+
+```go
+// Simple integer modifier
+rageMod := events.NewIntModifier("rage", events.ModifierDamageBonus, 2, 100)
 ```
 
 ## Common Event Types
@@ -163,7 +187,7 @@ func (r *RageFeature) handleDamage(ctx context.Context, e events.Event) error {
     
     // Only melee attacks get bonus
     if attackType, ok := e.Context().Get("attack_type"); ok && attackType == "melee" {
-        e.Context().AddModifier(events.NewModifier(
+        e.Context().AddModifier(events.NewIntModifier(
             "rage",
             events.ModifierDamageBonus,
             2,

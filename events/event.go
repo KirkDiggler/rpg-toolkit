@@ -52,7 +52,11 @@ type Modifier interface {
 	Type() string
 
 	// Value returns the modifier value.
+	// Deprecated: Use ModifierValue() for type-safe access.
 	Value() interface{}
+
+	// ModifierValue returns the typed modifier value.
+	ModifierValue() ModifierValue
 
 	// Priority determines application order (higher = later).
 	Priority() int
@@ -119,24 +123,25 @@ func (c *EventContext) Modifiers() []Modifier {
 type BasicModifier struct {
 	source   string
 	modType  string
-	value    interface{}
+	modValue ModifierValue
 	priority int
 }
 
 // NewModifier creates a new basic modifier.
-func NewModifier(source, modType string, value interface{}, priority int) *BasicModifier {
+func NewModifier(source, modType string, value ModifierValue, priority int) *BasicModifier {
 	return &BasicModifier{
 		source:   source,
 		modType:  modType,
-		value:    value,
+		modValue: value,
 		priority: priority,
 	}
 }
 
-func (m *BasicModifier) Source() string     { return m.source }
-func (m *BasicModifier) Type() string       { return m.modType }
-func (m *BasicModifier) Value() interface{} { return m.value }
-func (m *BasicModifier) Priority() int      { return m.priority }
+func (m *BasicModifier) Source() string               { return m.source }
+func (m *BasicModifier) Type() string                 { return m.modType }
+func (m *BasicModifier) Value() interface{}           { return m.modValue }
+func (m *BasicModifier) ModifierValue() ModifierValue { return m.modValue }
+func (m *BasicModifier) Priority() int                { return m.priority }
 
 // Common event types
 const (
