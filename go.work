@@ -5,4 +5,5 @@ use (
 	./dice
 	./events
 	./examples/simple_combat
+	./mechanics/conditions
 )
