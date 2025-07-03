@@ -6,6 +6,9 @@ package dice
 import (
 	"strings"
 	"testing"
+
+	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
+	"go.uber.org/mock/gomock"
 )
 
 func TestRoll_GetValue(t *testing.T) {
@@ -41,15 +44,23 @@ func TestRoll_GetValue(t *testing.T) {
 			name:     "zero dice",
 			count:    0,
 			size:     6,
-			rolls:    []int{1}, // Mock needs at least one value even if not used
+			rolls:    []int{},
 			expected: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := NewMockRoller(tt.rolls...)
-			roll := NewRollWithRoller(tt.count, tt.size, mock)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockRoller := mock_dice.NewMockRoller(ctrl)
+			
+			if len(tt.rolls) > 0 {
+				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls)
+			}
+
+			roll := NewRollWithRoller(tt.count, tt.size, mockRoller)
 
 			// First call should roll
 			result := roll.GetValue()
@@ -106,15 +117,23 @@ func TestRoll_GetDescription(t *testing.T) {
 			name:     "zero dice",
 			count:    0,
 			size:     6,
-			rolls:    []int{1}, // Mock needs at least one value even if not used
+			rolls:    []int{},
 			expected: "+0d6[]=0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := NewMockRoller(tt.rolls...)
-			roll := NewRollWithRoller(tt.count, tt.size, mock)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockRoller := mock_dice.NewMockRoller(ctrl)
+			
+			if len(tt.rolls) > 0 {
+				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls)
+			}
+
+			roll := NewRollWithRoller(tt.count, tt.size, mockRoller)
 
 			description := roll.GetDescription()
 			if description != tt.expected {
@@ -125,9 +144,14 @@ func TestRoll_GetDescription(t *testing.T) {
 }
 
 func TestRoll_CachedBehavior(t *testing.T) {
-	// Create a mock that returns different values each time
-	mock := NewMockRoller(1, 2, 3, 4, 5, 6)
-	roll := NewRollWithRoller(2, 6, mock)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRoller := mock_dice.NewMockRoller(ctrl)
+	// Expect only one call to RollN, proving caching works
+	mockRoller.EXPECT().RollN(2, 6).Return([]int{1, 2}).Times(1)
+
+	roll := NewRollWithRoller(2, 6, mockRoller)
 
 	// First GetDescription should roll and cache
 	desc1 := roll.GetDescription()
@@ -149,10 +173,13 @@ func TestRoll_CachedBehavior(t *testing.T) {
 }
 
 func TestRoll_HelperFunctions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	// Test with mock roller to ensure deterministic results
-	mock := NewMockRoller(4)
+	mockRoller := mock_dice.NewMockRoller(ctrl)
 	original := DefaultRoller
-	DefaultRoller = mock
+	DefaultRoller = mockRoller
 	defer func() { DefaultRoller = original }()
 
 	tests := []struct {

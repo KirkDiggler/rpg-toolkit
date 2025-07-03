@@ -6,6 +6,9 @@ package dice
 import (
 	"fmt"
 	"testing"
+
+	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
+	"go.uber.org/mock/gomock"
 )
 
 func TestCryptoRoller_Roll(t *testing.T) {
@@ -136,9 +139,14 @@ func TestSetDefaultRoller(t *testing.T) {
 	original := DefaultRoller
 	defer func() { DefaultRoller = original }()
 
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	// Set mock roller
-	mock := NewMockRoller(4)
-	SetDefaultRoller(mock)
+	mockRoller := mock_dice.NewMockRoller(ctrl)
+	mockRoller.EXPECT().Roll(6).Return(4)
+	
+	SetDefaultRoller(mockRoller)
 
 	// Verify it was set
 	result := DefaultRoller.Roll(6)
