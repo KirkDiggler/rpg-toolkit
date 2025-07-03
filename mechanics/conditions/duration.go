@@ -147,4 +147,3 @@ func (d *EventDuration) IsExpired(event events.Event) bool {
 func (d *EventDuration) Description() string {
 	return fmt.Sprintf("Until %s", d.EventType)
 }
-

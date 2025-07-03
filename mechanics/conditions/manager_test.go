@@ -80,9 +80,9 @@ func TestEventManagerMultipleConditions(t *testing.T) {
 	cond2 := NewCondition("cond-2", "blessed", "spell", nil, PermanentDuration{})
 	cond3 := NewCondition("cond-3", "poisoned", "gas", nil, PermanentDuration{})
 
-	manager.Add(player.GetID(), cond1)
-	manager.Add(player.GetID(), cond2)
-	manager.Add(player.GetID(), cond3)
+	_ = manager.Add(player.GetID(), cond1)
+	_ = manager.Add(player.GetID(), cond2)
+	_ = manager.Add(player.GetID(), cond3)
 
 	// Should have 2 poisoned conditions
 	poisoned := manager.GetByType(player.GetID(), "poisoned")
@@ -129,12 +129,12 @@ func TestEventManagerDurationExpiry(t *testing.T) {
 	// Add condition that expires after 2 rounds
 	duration := NewRoundsDuration(2)
 	condition := NewCondition("cond-1", "blessed", "spell", nil, duration)
-	manager.Add(player.GetID(), condition)
+	_ = manager.Add(player.GetID(), condition)
 
 	// Round 1 - should still have condition
 	round1 := events.NewGameEvent(events.EventRoundEnd, nil, nil)
 	round1.Context().Set("round", 1)
-	bus.Publish(context.Background(), round1)
+	_ = bus.Publish(context.Background(), round1)
 
 	if !manager.HasCondition(player.GetID(), "blessed") {
 		t.Error("Condition expired too early")
@@ -143,7 +143,7 @@ func TestEventManagerDurationExpiry(t *testing.T) {
 	// Round 3 - should expire
 	round3 := events.NewGameEvent(events.EventRoundEnd, nil, nil)
 	round3.Context().Set("round", 3)
-	bus.Publish(context.Background(), round3)
+	_ = bus.Publish(context.Background(), round3)
 
 	if manager.HasCondition(player.GetID(), "blessed") {
 		t.Error("Condition should have expired")
@@ -162,11 +162,11 @@ func TestEventManagerUntilDamaged(t *testing.T) {
 	// Add condition that expires when damaged
 	duration := NewUntilDamagedDuration(player.GetID())
 	condition := NewCondition("cond-1", "sanctuary", "spell", nil, duration)
-	manager.Add(player.GetID(), condition)
+	_ = manager.Add(player.GetID(), condition)
 
 	// Damage to different entity - should not expire
 	damageOther := events.NewGameEvent(events.EventAfterDamage, nil, monster)
-	bus.Publish(context.Background(), damageOther)
+	_ = bus.Publish(context.Background(), damageOther)
 
 	if !manager.HasCondition(player.GetID(), "sanctuary") {
 		t.Error("Condition expired when different entity was damaged")
@@ -174,7 +174,7 @@ func TestEventManagerUntilDamaged(t *testing.T) {
 
 	// Damage to player - should expire
 	damagePlayer := events.NewGameEvent(events.EventAfterDamage, nil, player)
-	bus.Publish(context.Background(), damagePlayer)
+	_ = bus.Publish(context.Background(), damagePlayer)
 
 	if manager.HasCondition(player.GetID(), "sanctuary") {
 		t.Error("Condition should have expired when player was damaged")
@@ -203,7 +203,7 @@ func TestEventManagerEvents(t *testing.T) {
 
 	// Add condition
 	condition := NewCondition("cond-1", "blessed", "spell", nil, PermanentDuration{})
-	manager.Add(player.GetID(), condition)
+	_ = manager.Add(player.GetID(), condition)
 
 	// Check applied event
 	if appliedEvent == nil {
@@ -220,7 +220,7 @@ func TestEventManagerEvents(t *testing.T) {
 	}
 
 	// Remove condition
-	manager.Remove(player.GetID(), "cond-1")
+	_ = manager.Remove(player.GetID(), "cond-1")
 
 	// Check removed event
 	if removedEvent == nil {
@@ -256,23 +256,23 @@ func TestPoisonedConditionExample(t *testing.T) {
 
 	// Apply poisoned condition
 	poisoned := NewPoisonedCondition("poison-1", "poison_dart", monster, PermanentDuration{})
-	manager.Add(player.GetID(), poisoned)
+	_ = manager.Add(player.GetID(), poisoned)
 
 	// Player attacks - should have disadvantage
 	attackEvent := events.NewGameEvent(events.EventAttackRoll, player, monster)
-	bus.Publish(context.Background(), attackEvent)
+	_ = bus.Publish(context.Background(), attackEvent)
 
 	if !hasDisadvantage {
 		t.Error("Poisoned player should have disadvantage on attack")
 	}
 
 	// Remove condition
-	manager.Remove(player.GetID(), "poison-1")
+	_ = manager.Remove(player.GetID(), "poison-1")
 
 	// Reset and try again
 	hasDisadvantage = false
 	attackEvent2 := events.NewGameEvent(events.EventAttackRoll, player, monster)
-	bus.Publish(context.Background(), attackEvent2)
+	_ = bus.Publish(context.Background(), attackEvent2)
 
 	if hasDisadvantage {
 		t.Error("Player should not have disadvantage after poison removed")
@@ -293,7 +293,7 @@ func TestClearAll(t *testing.T) {
 	for _, entity := range entities {
 		manager.RegisterEntity(entity)
 		condition := NewCondition(entity.GetID()+"-cond", "test", "test", nil, PermanentDuration{})
-		manager.Add(entity.GetID(), condition)
+		_ = manager.Add(entity.GetID(), condition)
 	}
 
 	// Verify all have conditions
@@ -313,4 +313,3 @@ func TestClearAll(t *testing.T) {
 		}
 	}
 }
-

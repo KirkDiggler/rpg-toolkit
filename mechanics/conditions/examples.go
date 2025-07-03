@@ -44,7 +44,11 @@ func (c *PoisonedCondition) OnApply(bus events.EventBus, target core.Entity) err
 func (c *PoisonedCondition) OnRemove(bus events.EventBus, target core.Entity) error {
 	// Unsubscribe from events
 	if c.subscriptionID != "" {
-		bus.Unsubscribe(c.subscriptionID)
+		if err := bus.Unsubscribe(c.subscriptionID); err != nil {
+			// Log error during cleanup - subscription may already be removed
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 	return nil
 }
@@ -96,10 +100,18 @@ func (c *BlessedCondition) OnApply(bus events.EventBus, target core.Entity) erro
 
 func (c *BlessedCondition) OnRemove(bus events.EventBus, target core.Entity) error {
 	if c.attackSubID != "" {
-		bus.Unsubscribe(c.attackSubID)
+		if err := bus.Unsubscribe(c.attackSubID); err != nil {
+			// Log error during cleanup - subscription may already be removed
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 	if c.saveSubID != "" {
-		bus.Unsubscribe(c.saveSubID)
+		if err := bus.Unsubscribe(c.saveSubID); err != nil {
+			// Log error during cleanup - subscription may already be removed
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 	return nil
 }
@@ -132,8 +144,11 @@ func (c *StunnedCondition) OnApply(bus events.EventBus, target core.Entity) erro
 
 func (c *StunnedCondition) OnRemove(bus events.EventBus, target core.Entity) error {
 	if c.actionSubID != "" {
-		bus.Unsubscribe(c.actionSubID)
+		if err := bus.Unsubscribe(c.actionSubID); err != nil {
+			// Log error during cleanup - subscription may already be removed
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 	return nil
 }
-

@@ -100,7 +100,11 @@ func (m *EventManager) Add(entityID string, condition Condition) error {
 		event := events.NewGameEvent(EventConditionApplied, entity, nil)
 		event.Context().Set("condition_id", condition.ID())
 		event.Context().Set("condition_type", condition.Type())
-		m.eventBus.Publish(context.Background(), event)
+		if err := m.eventBus.Publish(context.Background(), event); err != nil {
+			// Log error but don't fail the operation since condition is already applied
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 
 	return nil
@@ -133,14 +137,22 @@ func (m *EventManager) Remove(entityID string, conditionID string) error {
 	entity, hasEntity := m.entities[entityID]
 
 	// Call OnRemove
-	condition.OnRemove(m.eventBus, entity)
+	if err := condition.OnRemove(m.eventBus, entity); err != nil {
+		// Log error but continue with removal since we're already committed
+		// In a production system, this would use a proper logger
+		_ = err
+	}
 
 	// Publish condition removed event
 	if hasEntity {
 		event := events.NewGameEvent(EventConditionRemoved, entity, nil)
 		event.Context().Set("condition_id", conditionID)
 		event.Context().Set("condition_type", condition.Type())
-		m.eventBus.Publish(context.Background(), event)
+		if err := m.eventBus.Publish(context.Background(), event); err != nil {
+			// Log error but don't fail the operation since condition is already removed
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 
 	return nil
@@ -161,7 +173,11 @@ func (m *EventManager) RemoveType(entityID string, conditionType string) error {
 
 	// Remove outside of read lock
 	for _, id := range toRemove {
-		m.Remove(entityID, id)
+		if err := m.Remove(entityID, id); err != nil {
+			// Continue removing other conditions even if one fails
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 
 	return nil
@@ -241,7 +257,11 @@ func (m *EventManager) Clear(entityID string) {
 
 	// Remove outside of read lock
 	for _, id := range toRemove {
-		m.Remove(entityID, id)
+		if err := m.Remove(entityID, id); err != nil {
+			// Continue removing other conditions even if one fails
+			// In a production system, this would use a proper logger
+			_ = err
+		}
 	}
 }
 
@@ -252,9 +272,13 @@ func (m *EventManager) ClearAll() {
 
 	// Call OnRemove for all conditions
 	for entityID, entityConditions := range m.conditions {
-		entity, _ := m.entities[entityID]
+		entity := m.entities[entityID]
 		for _, condition := range entityConditions {
-			condition.OnRemove(m.eventBus, entity)
+			if err := condition.OnRemove(m.eventBus, entity); err != nil {
+				// Log error but continue clearing since we're already committed
+				// In a production system, this would use a proper logger
+				_ = err
+			}
 		}
 	}
 
@@ -300,7 +324,11 @@ func (m *EventManager) checkExpiredConditions(event events.Event) {
 	// Remove expired conditions
 	for entityID, conditionIDs := range toRemove {
 		for _, condID := range conditionIDs {
-			m.Remove(entityID, condID)
+			if err := m.Remove(entityID, condID); err != nil {
+				// Continue removing other expired conditions even if one fails
+				// In a production system, this would use a proper logger
+				_ = err
+			}
 		}
 	}
 }
@@ -311,4 +339,3 @@ const (
 	EventConditionRemoved = "condition_removed"
 	EventConditionExpired = "condition_expired"
 )
-

@@ -98,4 +98,3 @@ func (c *BaseCondition) OnRemove(bus events.EventBus, target core.Entity) error 
 func (c *BaseCondition) ModifyEvent(event events.Event) {
 	// Base implementation does nothing
 }
-

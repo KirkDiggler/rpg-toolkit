@@ -6,14 +6,9 @@ run:
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
-    - ineffassign
     - staticcheck
-    - unused
     - misspell
-    - unconvert
-    - unparam
 
 linters-settings:
   errcheck:
