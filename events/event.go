@@ -137,11 +137,11 @@ func NewModifier(source, modType string, value ModifierValue, priority int) *Bas
 	}
 }
 
-func (m *BasicModifier) Source() string            { return m.source }
-func (m *BasicModifier) Type() string              { return m.modType }
-func (m *BasicModifier) Value() interface{}        { return m.modValue }
+func (m *BasicModifier) Source() string               { return m.source }
+func (m *BasicModifier) Type() string                 { return m.modType }
+func (m *BasicModifier) Value() interface{}           { return m.modValue }
 func (m *BasicModifier) ModifierValue() ModifierValue { return m.modValue }
-func (m *BasicModifier) Priority() int             { return m.priority }
+func (m *BasicModifier) Priority() int                { return m.priority }
 
 // Common event types
 const (
