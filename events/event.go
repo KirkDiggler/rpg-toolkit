@@ -82,11 +82,20 @@ func NewGameEvent(eventType string, source, target core.Entity) *GameEvent {
 	}
 }
 
-func (e *GameEvent) Type() string         { return e.eventType }
-func (e *GameEvent) Source() core.Entity  { return e.source }
-func (e *GameEvent) Target() core.Entity  { return e.target }
+// Type returns the event type.
+func (e *GameEvent) Type() string { return e.eventType }
+
+// Source returns the event source.
+func (e *GameEvent) Source() core.Entity { return e.source }
+
+// Target returns the event target.
+func (e *GameEvent) Target() core.Entity { return e.target }
+
+// Timestamp returns the event timestamp.
 func (e *GameEvent) Timestamp() time.Time { return e.timestamp }
-func (e *GameEvent) Context() Context     { return e.context }
+
+// Context returns the event context.
+func (e *GameEvent) Context() Context { return e.context }
 
 // EventContext is the standard implementation of Context.
 type EventContext struct {
@@ -102,19 +111,23 @@ func NewEventContext() *EventContext {
 	}
 }
 
+// Get retrieves a value by key.
 func (c *EventContext) Get(key string) (interface{}, bool) {
 	val, ok := c.data[key]
 	return val, ok
 }
 
+// Set stores a value by key.
 func (c *EventContext) Set(key string, value interface{}) {
 	c.data[key] = value
 }
 
+// AddModifier adds a modifier to this context.
 func (c *EventContext) AddModifier(modifier Modifier) {
 	c.modifiers = append(c.modifiers, modifier)
 }
 
+// Modifiers returns all modifiers added to this context.
 func (c *EventContext) Modifiers() []Modifier {
 	return c.modifiers
 }
@@ -137,11 +150,20 @@ func NewModifier(source, modType string, value ModifierValue, priority int) *Bas
 	}
 }
 
-func (m *BasicModifier) Source() string               { return m.source }
-func (m *BasicModifier) Type() string                 { return m.modType }
-func (m *BasicModifier) Value() interface{}           { return m.modValue }
+// Source returns the source of the modifier.
+func (m *BasicModifier) Source() string { return m.source }
+
+// Type returns the type of the modifier.
+func (m *BasicModifier) Type() string { return m.modType }
+
+// Value returns the value of the modifier.
+func (m *BasicModifier) Value() interface{} { return m.modValue }
+
+// ModifierValue returns the value of the modifier.
 func (m *BasicModifier) ModifierValue() ModifierValue { return m.modValue }
-func (m *BasicModifier) Priority() int                { return m.priority }
+
+// Priority returns the priority of the modifier.
+func (m *BasicModifier) Priority() int { return m.priority }
 
 // Common event types
 const (

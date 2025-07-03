@@ -1,0 +1,136 @@
+name: CI Enhanced
+
+on:
+  push:
+    branches: [ main, project-cleanup ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.24.x'
+  GOLANGCI_VERSION: 'v2.2.1'
+
+jobs:
+  detect-modules:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.set-modules.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Find all Go modules
+        id: set-modules
+        run: |
+          modules=$(find . -name "go.mod" -type f -not -path "./vendor/*" | sed 's|/go.mod||' | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "modules=$modules" >> $GITHUB_OUTPUT
+          echo "Found modules: $modules"
+
+  lint:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect-modules.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${{ env.GOLANGCI_VERSION }}
+      
+      - name: Run golangci-lint
+        working-directory: ${{ matrix.module }}
+        run: |
+          if [ -f "../.golangci.yml" ]; then
+            golangci-lint run --config=../.golangci.yml
+          elif [ -f ".golangci.yml" ]; then
+            golangci-lint run
+          else
+            golangci-lint run --no-config
+          fi
+
+  test:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect-modules.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Run tests
+        working-directory: ${{ matrix.module }}
+        run: |
+          go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+          go tool cover -func=coverage.txt
+      
+      - name: Check coverage for critical modules
+        if: matrix.module == 'core' || matrix.module == 'events'
+        working-directory: ${{ matrix.module }}
+        run: |
+          coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | sed 's/%//')
+          if (( $(echo "$coverage < 100" | bc -l) )); then
+            echo "❌ Test coverage is below 100% (current: $coverage%) for ${{ matrix.module }}"
+            exit 1
+          fi
+          echo "✅ Test coverage: $coverage%"
+      
+      - name: Upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-${{ matrix.module }}
+          path: ${{ matrix.module }}/coverage.txt
+
+  mod-tidy:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect-modules.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Check go mod tidy
+        working-directory: ${{ matrix.module }}
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || (echo "Please run 'go mod tidy' in ${{ matrix.module }}" && exit 1)
+
+  build:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect-modules.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Build
+        working-directory: ${{ matrix.module }}
+        run: go build -v ./...
+
+  all-checks-passed:
+    needs: [lint, test, mod-tidy, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All checks passed
+        run: echo "✅ All CI checks passed successfully!"

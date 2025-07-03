@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"go.uber.org/mock/gomock"
+
+	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 )
 
 func TestNewRoll(t *testing.T) {
@@ -160,7 +161,7 @@ func TestRoll_GetValue(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockRoller := mock_dice.NewMockRoller(ctrl)
-			
+
 			if tt.rollError != nil {
 				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(nil, tt.rollError)
 			} else if len(tt.rolls) > 0 {
@@ -251,7 +252,7 @@ func TestRoll_GetDescription(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockRoller := mock_dice.NewMockRoller(ctrl)
-			
+
 			if tt.rollError != nil {
 				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(nil, tt.rollError)
 			} else if len(tt.rolls) > 0 {
@@ -322,7 +323,7 @@ func TestRoll_HelperFunctions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			roll := tt.fn(tt.count)
-			
+
 			// Check internal state
 			if roll.count != tt.count {
 				t.Errorf("%s(%d).count = %d, want %d", tt.name, tt.count, roll.count, tt.count)
@@ -330,7 +331,7 @@ func TestRoll_HelperFunctions(t *testing.T) {
 			if roll.size != tt.wantSize {
 				t.Errorf("%s(%d).size = %d, want %d", tt.name, tt.count, roll.size, tt.wantSize)
 			}
-			
+
 			// Verify it uses DefaultRoller
 			if roll.roller != DefaultRoller {
 				t.Errorf("%s(%d) not using DefaultRoller", tt.name, tt.count)
@@ -345,12 +346,12 @@ func TestRoll_RealRandom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRoll() error = %v", err)
 	}
-	
+
 	value := roll.GetValue()
 	if value < 2 || value > 12 {
 		t.Errorf("2d6 rolled %d, want between 2 and 12", value)
 	}
-	
+
 	desc := roll.GetDescription()
 	// Should contain the format we expect
 	if !strings.Contains(desc, "+2d6[") {

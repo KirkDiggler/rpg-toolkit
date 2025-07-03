@@ -1,15 +1,21 @@
-.PHONY: test lint fmt coverage clean pre-commit help
+.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  test       - Run all tests with race detector"
-	@echo "  lint       - Run golangci-lint on all modules"
-	@echo "  fmt        - Format all Go code"
-	@echo "  coverage   - Generate test coverage report"
-	@echo "  clean      - Remove generated files"
-	@echo "  pre-commit - Run all pre-commit checks (fmt, lint, test)"
-	@echo "  help       - Show this help message"
+	@echo "  test         - Run tests for core and events modules"
+	@echo "  test-all     - Run tests for all modules"
+	@echo "  lint         - Run golangci-lint on core and events modules"
+	@echo "  lint-all     - Run golangci-lint on all modules"
+	@echo "  fmt          - Format core and events modules"
+	@echo "  fmt-all      - Format all Go code"
+	@echo "  coverage     - Generate test coverage report for core and events"
+	@echo "  clean        - Remove generated files"
+	@echo "  generate     - Run go generate on all modules"
+	@echo "  pre-commit   - Run all pre-commit checks (fmt, lint, test)"
+	@echo "  install-tools - Install required development tools"
+	@echo "  install-hooks - Install git hooks"
+	@echo "  help         - Show this help message"
 
 # Run tests for all modules
 test:
@@ -22,7 +28,7 @@ test:
 # Run linter
 lint:
 	@echo "Running linter..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0)
+	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1)
 	@echo "→ Linting core module..."
 	cd core && golangci-lint run ./...
 	@echo "→ Linting events module..."
@@ -32,10 +38,13 @@ lint:
 fmt:
 	@echo "Formatting code..."
 	go work sync 2>/dev/null || true
-	@echo "→ Formatting core module..."
-	cd core && go fmt ./...
-	@echo "→ Formatting events module..."
-	cd events && go fmt ./...
+	@echo "→ Running gofmt with simplify..."
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./mock/*" -exec gofmt -s -w {} \;
+	@echo "→ Running goimports..."
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./mock/*" -exec goimports -w -local github.com/KirkDiggler {} \;
+	@echo "→ Ensuring newlines at end of files..."
+	@find . -name "*.go" -type f -exec sh -c 'tail -c1 {} | read -r _ || echo >> {}' \;
+	@echo "✅ Formatting complete"
 
 # Generate coverage report
 coverage:
@@ -56,6 +65,16 @@ clean:
 	find . -name "coverage.html" -delete
 	find . -name "*.test" -delete
 
+# Generate mocks and other generated code
+generate:
+	@echo "Generating code..."
+	@find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do \
+		dir=$$(dirname "$$modfile"); \
+		echo "→ Generating in $$dir..."; \
+		(cd "$$dir" && go generate ./...) || exit 1; \
+	done
+	@echo "✅ Code generation complete"
+
 # Pre-commit checks
 pre-commit:
 	@echo "Running pre-commit checks..."
@@ -67,8 +86,8 @@ pre-commit:
 	cd core && go mod tidy
 	cd events && go mod tidy
 	@echo "→ Running linter..."
-	cd core && golangci-lint run --no-config ./...
-	cd events && golangci-lint run --no-config ./...
+	cd core && golangci-lint run ./...
+	cd events && golangci-lint run ./...
 	@echo "→ Running tests with coverage..."
 	@echo "  Testing core..."
 	cd core && go test -race -coverprofile=coverage.txt -covermode=atomic ./...
@@ -87,3 +106,49 @@ pre-commit:
 			exit 1; \
 		fi
 	@echo "✓ All pre-commit checks passed!"
+
+# Install development tools
+install-tools:
+	@echo "Installing development tools..."
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1
+	go install golang.org/x/tools/cmd/goimports@latest
+	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	@echo "✅ Tools installed successfully"
+
+# Install git hooks
+install-hooks:
+	@echo "Installing git hooks..."
+	git config core.hooksPath .githooks
+	@echo "✅ Git hooks installed"
+
+# Test all modules (dynamic discovery)
+test-all:
+	@echo "Running tests for all modules..."
+	@find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do \
+		dir=$$(dirname "$$modfile"); \
+		echo "→ Testing $$dir..."; \
+		(cd "$$dir" && go test -race ./...) || exit 1; \
+	done
+
+# Lint all modules (dynamic discovery)
+lint-all:
+	@echo "Running linter on all modules..."
+	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1)
+	@find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do \
+		dir=$$(dirname "$$modfile"); \
+		echo "→ Linting $$dir..."; \
+		if [ -f ".golangci.yml" ]; then \
+			(cd "$$dir" && golangci-lint run) || exit 1; \
+		else \
+			(cd "$$dir" && golangci-lint run --no-config) || exit 1; \
+		fi; \
+	done
+
+# Format all Go code (dynamic discovery)
+fmt-all:
+	@echo "Formatting all Go code..."
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./mock/*" -exec gofmt -s -w {} \;
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./mock/*" -exec goimports -w -local github.com/KirkDiggler {} \;
+	@echo "→ Ensuring newlines at end of files..."
+	@find . -name "*.go" -type f -exec sh -c 'tail -c1 {} | read -r _ || echo >> {}' \;
+	@echo "✅ All code formatted"

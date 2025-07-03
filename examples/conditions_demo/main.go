@@ -22,7 +22,10 @@ type Character struct {
 	hp   int
 }
 
-func (c *Character) GetID() string   { return c.id }
+// GetID implements Entity interface
+func (c *Character) GetID() string { return c.id }
+
+// GetType implements Entity interface
 func (c *Character) GetType() string { return "character" }
 
 func main() {
@@ -37,7 +40,7 @@ func main() {
 	wizard := &Character{id: "wizard_1", name: "Merlin", hp: 20}
 	goblin := &Character{id: "goblin_1", name: "Sneaky Goblin", hp: 15}
 
-	fmt.Println("=== RPG Toolkit: Conditions & Concentration Demo ===\n")
+	fmt.Println("=== RPG Toolkit: Conditions & Concentration Demo ===")
 
 	// Demo 1: Basic Concentration
 	fmt.Println("--- Scenario 1: Cleric casts Bless (Concentration) ---")
@@ -90,7 +93,9 @@ func main() {
 	fmt.Printf("%s casts Hold Person on %s (Concentration)\n", wizard.name, goblin.name)
 
 	holdPerson := createHoldCondition(goblin, wizard)
-	holdPerson.Apply(bus)
+	if err := holdPerson.Apply(bus); err != nil {
+		log.Fatal(err)
+	}
 
 	err = relationshipMgr.CreateRelationship(
 		conditions.RelationshipConcentration,
@@ -109,7 +114,9 @@ func main() {
 	fmt.Println("This automatically breaks concentration on Hold Person!")
 
 	haste := createHasteCondition(fighter, wizard)
-	haste.Apply(bus)
+	if err := haste.Apply(bus); err != nil {
+		log.Fatal(err)
+	}
 
 	// This will automatically break the Hold Person
 	err = relationshipMgr.CreateRelationship(
@@ -128,16 +135,20 @@ func main() {
 	// Demo 4: Aura Effects
 	fmt.Println("\n--- Scenario 4: Paladin's Aura ---")
 	paladin := &Character{id: "paladin_1", name: "Sir Galahad", hp: 50}
-	
+
 	fmt.Printf("%s's Aura of Protection affects allies within 10 feet\n", paladin.name)
-	
+
 	// Create aura conditions for nearby allies
 	auraCleric := createAuraCondition(cleric, paladin)
 	auraFighter := createAuraCondition(fighter, paladin)
-	
-	auraCleric.Apply(bus)
-	auraFighter.Apply(bus)
-	
+
+	if err := auraCleric.Apply(bus); err != nil {
+		log.Fatal(err)
+	}
+	if err := auraFighter.Apply(bus); err != nil {
+		log.Fatal(err)
+	}
+
 	err = relationshipMgr.CreateRelationship(
 		conditions.RelationshipAura,
 		paladin,
@@ -147,9 +158,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	fmt.Printf("%s and %s gain +2 to all saving throws\n", cleric.name, fighter.name)
-	
+
 	// In a real game, UpdateAuras() would be called when entities move
 	fmt.Printf("\nIf %s moves more than 10 feet away, they would lose the aura bonus\n", fighter.name)
 
@@ -160,14 +171,16 @@ func main() {
 func simulateAttack(bus events.EventBus, attacker, target core.Entity) {
 	ctx := context.Background()
 	attack := events.NewGameEvent(events.EventBeforeAttack, attacker, target)
-	
+
 	// Base attack roll
 	baseRoll := dice.D20(1)
 	fmt.Printf("%s attacks %s: ", attacker.(*Character).name, target.(*Character).name)
-	
+
 	// Publish the event to gather modifiers
-	bus.Publish(ctx, attack)
-	
+	if err := bus.Publish(ctx, attack); err != nil {
+		log.Fatal(err)
+	}
+
 	// Get total with modifiers
 	total := baseRoll.GetValue()
 	for _, mod := range attack.Context().Modifiers() {
@@ -176,11 +189,11 @@ func simulateAttack(bus events.EventBus, attacker, target core.Entity) {
 			total += mod.ModifierValue().GetValue()
 		}
 	}
-	
+
 	if len(attack.Context().Modifiers()) == 0 {
 		fmt.Printf("%s", baseRoll.GetDescription())
 	}
-	
+
 	fmt.Printf("= %d total\n", total)
 }
 
@@ -193,11 +206,11 @@ func createBlessCondition(target, caster core.Entity) *conditions.SimpleConditio
 		Target: target,
 		Source: caster.GetID(),
 		ApplyFunc: func(c *conditions.SimpleCondition, bus events.EventBus) error {
-			c.Subscribe(bus, events.EventBeforeAttack, 50, func(ctx context.Context, e events.Event) error {
+			c.Subscribe(bus, events.EventBeforeAttack, 50, func(_ context.Context, e events.Event) error {
 				if e.Source().GetID() != target.GetID() {
 					return nil
 				}
-				
+
 				bonus := dice.D4(1)
 				e.Context().AddModifier(events.NewModifier(
 					"blessed",
@@ -205,10 +218,10 @@ func createBlessCondition(target, caster core.Entity) *conditions.SimpleConditio
 					bonus,
 					100,
 				))
-				
+
 				return nil
 			})
-			
+
 			// Also add to saves in a real implementation
 			return nil
 		},
@@ -221,11 +234,11 @@ func createHoldCondition(target, caster core.Entity) *conditions.SimpleCondition
 		Type:   "paralyzed",
 		Target: target,
 		Source: caster.GetID(),
-		ApplyFunc: func(c *conditions.SimpleCondition, bus events.EventBus) error {
+		ApplyFunc: func(_ *conditions.SimpleCondition, _ events.EventBus) error {
 			// In a real implementation, would prevent movement and actions
 			return nil
 		},
-		RemoveFunc: func(c *conditions.SimpleCondition, bus events.EventBus) error {
+		RemoveFunc: func(_ *conditions.SimpleCondition, _ events.EventBus) error {
 			// Cleanup when removed
 			return nil
 		},
@@ -238,7 +251,7 @@ func createHasteCondition(target, caster core.Entity) *conditions.SimpleConditio
 		Type:   "hasted",
 		Target: target,
 		Source: caster.GetID(),
-		ApplyFunc: func(c *conditions.SimpleCondition, bus events.EventBus) error {
+		ApplyFunc: func(_ *conditions.SimpleCondition, _ events.EventBus) error {
 			// In a real implementation: double speed, +2 AC, advantage on Dex saves, extra action
 			return nil
 		},
@@ -251,7 +264,7 @@ func createAuraCondition(target, source core.Entity) *conditions.SimpleCondition
 		Type:   "aura_protection",
 		Target: target,
 		Source: source.GetID(),
-		ApplyFunc: func(c *conditions.SimpleCondition, bus events.EventBus) error {
+		ApplyFunc: func(_ *conditions.SimpleCondition, _ events.EventBus) error {
 			// Would add save bonuses
 			return nil
 		},

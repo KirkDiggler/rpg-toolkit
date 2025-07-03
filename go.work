@@ -4,7 +4,7 @@ use (
 	./core
 	./dice
 	./events
-	./examples/simple_combat
 	./examples/conditions_demo
+	./examples/simple_combat
 	./mechanics/conditions
 )
