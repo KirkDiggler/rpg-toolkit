@@ -4,6 +4,7 @@
 package events
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -56,6 +57,8 @@ func TestRawValue(t *testing.T) {
 
 func TestDiceValue(t *testing.T) {
 	// Test basic dice value creation
+	// Note: These tests intentionally inspect internal fields to verify
+	// correct construction. This is acceptable for same-package tests.
 	dv := NewDiceValue(1, 4, "bless")
 
 	// Check notation
@@ -93,6 +96,56 @@ func TestDiceValue(t *testing.T) {
 	}
 	if !strings.Contains(dv2.notation, "2d6") {
 		t.Errorf("Expected notation to contain '2d6', got %s", dv2.notation)
+	}
+}
+
+func TestDiceValuePublicAPI(t *testing.T) {
+	// Black-box test using only public methods
+	tests := []struct {
+		name        string
+		count       int
+		size        int
+		source      string
+		descPattern string
+	}{
+		{
+			name:        "single d4",
+			count:       1,
+			size:        4,
+			source:      "bless",
+			descPattern: `^\+d4\[\d+\]=\d+ \(bless\)$`,
+		},
+		{
+			name:        "multiple d6",
+			count:       2,
+			size:        6,
+			source:      "sneak attack",
+			descPattern: `^\+2d6\[\d+,\d+\]=\d+ \(sneak attack\)$`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dv := NewDiceValue(tt.count, tt.size, tt.source)
+
+			// Test GetValue returns a reasonable number
+			value := dv.GetValue()
+			minValue := tt.count * 1
+			maxValue := tt.count * tt.size
+			if value < minValue || value > maxValue {
+				t.Errorf("GetValue() = %d, want between %d and %d", value, minValue, maxValue)
+			}
+
+			// Test GetDescription matches expected pattern
+			desc := dv.GetDescription()
+			matched, err := regexp.MatchString(tt.descPattern, desc)
+			if err != nil {
+				t.Fatalf("Invalid regex pattern: %v", err)
+			}
+			if !matched {
+				t.Errorf("GetDescription() = %q, want to match pattern %q", desc, tt.descPattern)
+			}
+		})
 	}
 }
 
