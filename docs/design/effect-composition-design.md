@@ -68,6 +68,33 @@ type StackableEffect interface {
 // Example: Bless doesn't stack with itself
 ```
 
+### 6. Property Modifiers
+```go
+// Effects that modify entity properties
+type PropertyModifier interface {
+    GetProperty() string        // "strength", "inventory_slots", "speed"
+    GetModificationType() ModType  // Add, Multiply, Set, Max, Min
+    GetModifierValue() interface{} // Could be int, dice, or other
+}
+
+// Example: Gauntlets of Ogre Power set Strength to 19
+// Example: Bag of Holding adds +500 inventory slots
+// Example: Belt of Giant Strength sets Strength to 21 (or higher)
+```
+
+### 7. Capacity Modifiers
+```go
+// Effects that modify capacities/limits
+type CapacityModifier interface {
+    GetCapacityType() string    // "inventory", "attunement", "prepared_spells"
+    GetModification() int       // +10 slots, +1 attunement
+}
+
+// Example: Bag of Holding adds inventory capacity
+// Example: Artificer feature adds attunement slots
+// Example: Wizard ability adds prepared spell slots
+```
+
 ## Composition Examples
 
 ### Proficiency (Permanent Conditional Effect)
@@ -113,6 +140,53 @@ type ClassFeature struct {
     
     condition ConditionalEffect  // level requirements
     resource  ResourceConsumer   // uses per rest
+}
+```
+
+### Magic Item (Property + Capacity Modifiers)
+```go
+type MagicItem struct {
+    EffectCore
+    wearer Entity
+    
+    property PropertyModifier    // Set STR to 19
+    capacity CapacityModifier   // +500 inventory slots
+    condition ConditionalEffect  // Only while worn/attuned
+}
+
+// Example: Item effects activate on equip events
+func (m *MagicItem) Apply(bus EventBus) error {
+    // Listen for equip/unequip events
+    m.Subscribe(bus, EventItemEquipped, Priority, func(ctx Context, e Event) error {
+        if equipEvent := e.(*ItemEquippedEvent); equipEvent.Item.ID == m.itemID {
+            // Apply property modifiers
+            m.property.Apply(equipEvent.Wearer)
+            m.active = true
+        }
+        return nil
+    })
+    
+    m.Subscribe(bus, EventItemUnequipped, Priority, func(ctx Context, e Event) error {
+        if unequipEvent := e.(*ItemUnequippedEvent); unequipEvent.Item.ID == m.itemID {
+            // Remove property modifiers
+            m.property.Remove(unequipEvent.Wearer)
+            m.active = false
+        }
+        return nil
+    })
+    
+    return m.EffectCore.Apply(bus)
+}
+```
+
+### Ability Score Improvement (Property Modifier)
+```go
+type AbilityBoost struct {
+    EffectCore
+    owner Entity
+    
+    property PropertyModifier   // +2 to ability score
+    stacking StackableEffect    // How multiple boosts interact
 }
 ```
 

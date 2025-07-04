@@ -13,6 +13,8 @@ This document analyzes the common patterns across various game systems in rpg-to
 | **Resources** | Consumables (HP, spell slots) | Variable | Owner | Current/max values, restoration rules |
 | **Features** | Abilities (class features, racial traits) | Permanent | Owner | Usage limits, prerequisites |
 | **Equipment** | Item-granted effects | While equipped | Wearer/wielder | Tied to item state |
+| **Properties** | Ability/stat modifiers | Permanent/Conditional | Owner | Set/modify abilities |
+| **Capacities** | Limit modifiers (inventory, attunement) | Permanent/While equipped | Owner | Expand limits |
 
 *Some proficiencies could be conditional/temporary
 
@@ -73,6 +75,20 @@ type GameModifier {
 - Equipped/unequipped state
 - Attunement requirements
 - Set bonuses
+- Property modifications (STR = 19)
+- Capacity modifications (+inventory)
+
+### Properties
+- Ability score modifications
+- Derived stat changes (AC, HP, saves)
+- Set vs add vs multiply operations
+- Stacking rules (bonuses of same type)
+
+### Capacities  
+- Inventory slot expansion
+- Attunement slot increases
+- Spell preparation limits
+- Carrying capacity changes
 
 ## Proposed Abstraction Hierarchy
 
