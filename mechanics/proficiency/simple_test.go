@@ -39,7 +39,7 @@ func TestSimpleProficiency(t *testing.T) {
 		Source:  "fighter-class",
 		ApplyFunc: func(p *proficiency.SimpleProficiency, bus events.EventBus) error {
 			// Subscribe to attack roll events
-			p.Subscribe(bus, events.EventBeforeAttackRoll, 100, func(_ context.Context, e events.Event) error {
+			p.Subscribe(bus, events.EventBeforeAttack, 100, func(_ context.Context, e events.Event) error {
 				// Check if this is our owner attacking with our subject
 				if e.Source() != nil && e.Source().GetID() == p.Owner().GetID() {
 					// In a real implementation, check if weapon matches
@@ -58,7 +58,7 @@ func TestSimpleProficiency(t *testing.T) {
 	}
 
 	// Simulate an attack event
-	attackEvent := events.NewGameEvent(events.EventBeforeAttackRoll, character, nil)
+	attackEvent := events.NewGameEvent(events.EventBeforeAttack, character, nil)
 	if err := bus.Publish(context.Background(), attackEvent); err != nil {
 		t.Fatalf("Failed to publish event: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestSimpleProficiency(t *testing.T) {
 	bonusApplied = false
 
 	// Attack again - should not apply bonus
-	attackEvent2 := events.NewGameEvent(events.EventBeforeAttackRoll, character, nil)
+	attackEvent2 := events.NewGameEvent(events.EventBeforeAttack, character, nil)
 	if err := bus.Publish(context.Background(), attackEvent2); err != nil {
 		t.Fatalf("Failed to publish event: %v", err)
 	}

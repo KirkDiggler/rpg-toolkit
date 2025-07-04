@@ -1,0 +1,4 @@
+github.com/KirkDiggler/rpg-toolkit/core v0.1.0 h1:BUJ877kikqcQ0aOt2qUhLSUOVtCaCHLOSyw6nd18B7w=
+github.com/KirkDiggler/rpg-toolkit/core v0.1.0/go.mod h1:N7xIvJGjmrHHNjfWQ3O1LlkalzImcMav3O0fNOg+8No=
+github.com/KirkDiggler/rpg-toolkit/events v0.1.0 h1:ec8t66jaZkuir+FfqNZvK6m2PfLOwmtOY2vjZ64+Bpg=
+github.com/KirkDiggler/rpg-toolkit/events v0.1.0/go.mod h1:mOcykXOhLsCR/mZHO4hzM4dVSyo/imwSix+wobEqIPM=

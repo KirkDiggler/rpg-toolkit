@@ -8,7 +8,3 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.0
 )
-
-replace github.com/KirkDiggler/rpg-toolkit/core => ../../core
-
-replace github.com/KirkDiggler/rpg-toolkit/events => ../../events
