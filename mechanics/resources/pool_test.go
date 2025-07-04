@@ -83,12 +83,24 @@ func TestPoolRests(t *testing.T) {
 	secondWind := resources.CreateAbilityUse(owner, "second_wind", 1, resources.RestoreShortRest)
 	actionSurge := resources.CreateAbilityUse(owner, "action_surge", 1, resources.RestoreLongRest)
 
-	_ = pool.Add(secondWind)
-	_ = pool.Add(actionSurge)
+	err := pool.Add(secondWind)
+	if err != nil {
+		t.Fatalf("Failed to add secondWind: %v", err)
+	}
+	err = pool.Add(actionSurge)
+	if err != nil {
+		t.Fatalf("Failed to add actionSurge: %v", err)
+	}
 
 	// Use both abilities
-	_ = pool.Consume("second_wind_uses", 1, bus)
-	_ = pool.Consume("action_surge_uses", 1, bus)
+	err = pool.Consume("second_wind_uses", 1, bus)
+	if err != nil {
+		t.Fatalf("Failed to consume second_wind: %v", err)
+	}
+	err = pool.Consume("action_surge_uses", 1, bus)
+	if err != nil {
+		t.Fatalf("Failed to consume action_surge: %v", err)
+	}
 
 	if secondWind.IsAvailable() || actionSurge.IsAvailable() {
 		t.Error("Expected both abilities to be used")
@@ -105,7 +117,10 @@ func TestPoolRests(t *testing.T) {
 	}
 
 	// Long rest - should restore both
-	_ = secondWind.Consume(1) // Use it again
+	err = secondWind.Consume(1) // Use it again
+	if err != nil {
+		t.Fatalf("Failed to consume second wind again: %v", err)
+	}
 	pool.ProcessLongRest(bus)
 
 	if !secondWind.IsAvailable() || !actionSurge.IsAvailable() {
@@ -119,10 +134,16 @@ func TestHitDiceRestoration(t *testing.T) {
 
 	// Create hit dice for level 10 fighter
 	hitDice := resources.CreateHitDice(owner, "d10", 10)
-	_ = pool.Add(hitDice)
+	err := pool.Add(hitDice)
+	if err != nil {
+		t.Fatalf("Failed to add hit dice: %v", err)
+	}
 
 	// Use 6 hit dice
-	_ = hitDice.Consume(6)
+	err = hitDice.Consume(6)
+	if err != nil {
+		t.Fatalf("Failed to consume hit dice: %v", err)
+	}
 	if hitDice.Current() != 4 {
 		t.Errorf("Expected 4 hit dice remaining, got %d", hitDice.Current())
 	}
@@ -144,9 +165,18 @@ func TestResourceByType(t *testing.T) {
 	pool := resources.NewSimplePool(owner)
 
 	// Add various resource types
-	_ = pool.Add(resources.CreateAbilityUse(owner, "rage", 3, resources.RestoreLongRest))
-	_ = pool.Add(resources.CreateAbilityUse(owner, "second_wind", 1, resources.RestoreShortRest))
-	_ = pool.Add(resources.CreateHitDice(owner, "d12", 5))
+	err := pool.Add(resources.CreateAbilityUse(owner, "rage", 3, resources.RestoreLongRest))
+	if err != nil {
+		t.Fatalf("Failed to add rage resource: %v", err)
+	}
+	err = pool.Add(resources.CreateAbilityUse(owner, "second_wind", 1, resources.RestoreShortRest))
+	if err != nil {
+		t.Fatalf("Failed to add second_wind resource: %v", err)
+	}
+	err = pool.Add(resources.CreateHitDice(owner, "d12", 5))
+	if err != nil {
+		t.Fatalf("Failed to add hit dice resource: %v", err)
+	}
 
 	// Get all ability uses
 	abilityUses := pool.GetByType(resources.ResourceTypeAbilityUse)
