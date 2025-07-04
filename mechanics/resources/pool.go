@@ -35,10 +35,17 @@ type Pool interface {
 	Restore(key string, amount int, reason string, bus events.EventBus) error
 
 	// ProcessShortRest processes a short rest for all resources.
+	// Deprecated: Use ProcessRestoration("short_rest", bus) instead
 	ProcessShortRest(bus events.EventBus)
 
 	// ProcessLongRest processes a long rest for all resources.
+	// Deprecated: Use ProcessRestoration("long_rest", bus) instead
 	ProcessLongRest(bus events.EventBus)
+
+	// ProcessRestoration processes a restoration trigger for all resources.
+	// The trigger is a game-specific string that resources may respond to.
+	// Examples: "short_rest", "long_rest", "dawn", "milestone", "prayer_cast"
+	ProcessRestoration(trigger string, bus events.EventBus)
 
 	// GetSpellSlots returns spell slots organized by level.
 	GetSpellSlots() map[int]Resource
@@ -157,21 +164,23 @@ func (p *SimplePool) Restore(key string, amount int, reason string, bus events.E
 }
 
 // ProcessShortRest processes a short rest for all resources
+// Deprecated: Use ProcessRestoration("short_rest", bus) instead
 func (p *SimplePool) ProcessShortRest(bus events.EventBus) {
-	for _, resource := range p.resources {
-		restoreAmount := resource.RestoreOnShortRest()
-		if restoreAmount > 0 {
-			_ = p.Restore(resource.Key(), restoreAmount, "short_rest", bus)
-		}
-	}
+	p.ProcessRestoration("short_rest", bus)
 }
 
 // ProcessLongRest processes a long rest for all resources
+// Deprecated: Use ProcessRestoration("long_rest", bus) instead
 func (p *SimplePool) ProcessLongRest(bus events.EventBus) {
+	p.ProcessRestoration("long_rest", bus)
+}
+
+// ProcessRestoration processes a restoration trigger for all resources
+func (p *SimplePool) ProcessRestoration(trigger string, bus events.EventBus) {
 	for _, resource := range p.resources {
-		restoreAmount := resource.RestoreOnLongRest()
+		restoreAmount := resource.RestoreOnTrigger(trigger)
 		if restoreAmount > 0 {
-			_ = p.Restore(resource.Key(), restoreAmount, "long_rest", bus)
+			_ = p.Restore(resource.Key(), restoreAmount, trigger, bus)
 		}
 	}
 }

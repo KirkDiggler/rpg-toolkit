@@ -40,10 +40,19 @@ type Resource interface {
 	SetMaximum(value int)
 
 	// RestoreOnShortRest returns the amount restored on a short rest.
+	// Deprecated: Use RestoreOnTrigger with game-specific triggers instead
 	RestoreOnShortRest() int
 
 	// RestoreOnLongRest returns the amount restored on a long rest.
+	// Deprecated: Use RestoreOnTrigger with game-specific triggers instead
 	RestoreOnLongRest() int
+
+	// RestoreOnTrigger returns the amount to restore for a given trigger.
+	// Triggers are game-specific strings like "my.game.short_rest" or "dawn".
+	// Returns 0 if the resource doesn't respond to the trigger.
+	// Special return values:
+	//   -1: Restore to full (maximum - current)
+	RestoreOnTrigger(trigger string) int
 
 	// IsAvailable returns true if any resource is available.
 	IsAvailable() bool

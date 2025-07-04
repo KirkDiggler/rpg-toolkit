@@ -18,10 +18,17 @@ type SimpleResourceConfig struct {
 	Current int
 	Maximum int
 
-	// Restoration configuration
+	// Restoration configuration (deprecated - use RestoreTriggers instead)
 	ShortRestRestore int             // Amount restored on short rest
 	LongRestRestore  int             // Amount restored on long rest (-1 for full)
 	RestoreType      RestorationType // Primary restoration method
+
+	// RestoreTriggers maps trigger strings to restoration amounts.
+	// Special values:
+	//   -1: Restore to full
+	//    0: No restoration (or omit from map)
+	//   >0: Restore specific amount
+	RestoreTriggers map[string]int
 }
 
 // SimpleResource provides a basic implementation of the Resource interface.
@@ -37,6 +44,7 @@ type SimpleResource struct {
 	shortRestRestore int
 	longRestRestore  int
 	restoreType      RestorationType
+	restoreTriggers  map[string]int
 }
 
 // NewSimpleResource creates a new simple resource from a config.
@@ -51,6 +59,35 @@ func NewSimpleResource(cfg SimpleResourceConfig) *SimpleResource {
 		cfg.LongRestRestore = -1 // Full restore
 	}
 
+	// Build trigger map from legacy config if not provided
+	triggers := cfg.RestoreTriggers
+	if triggers == nil {
+		triggers = make(map[string]int)
+	}
+
+	// Map legacy rest configuration to triggers for backward compatibility
+	if cfg.ShortRestRestore != 0 || cfg.RestoreType == RestoreShortRest {
+		if _, exists := triggers["short_rest"]; !exists {
+			triggers["short_rest"] = cfg.ShortRestRestore
+			if triggers["short_rest"] == 0 && cfg.RestoreType == RestoreShortRest {
+				triggers["short_rest"] = -1 // Full restore
+			}
+		}
+	}
+
+	if cfg.LongRestRestore != 0 || cfg.RestoreType == RestoreLongRest || cfg.RestoreType == RestoreShortRest {
+		if _, exists := triggers["long_rest"]; !exists {
+			triggers["long_rest"] = cfg.LongRestRestore
+			// Short rest resources also restore on long rest
+			if triggers["long_rest"] == 0 && cfg.RestoreType == RestoreShortRest {
+				triggers["long_rest"] = cfg.ShortRestRestore
+				if triggers["long_rest"] == 0 {
+					triggers["long_rest"] = -1 // Full restore
+				}
+			}
+		}
+	}
+
 	return &SimpleResource{
 		id:               cfg.ID,
 		typ:              cfg.Type,
@@ -61,6 +98,7 @@ func NewSimpleResource(cfg SimpleResourceConfig) *SimpleResource {
 		shortRestRestore: cfg.ShortRestRestore,
 		longRestRestore:  cfg.LongRestRestore,
 		restoreType:      cfg.RestoreType,
+		restoreTriggers:  triggers,
 	}
 }
 
@@ -133,25 +171,30 @@ func (r *SimpleResource) SetMaximum(value int) {
 }
 
 // RestoreOnShortRest returns the amount restored on a short rest
+// Deprecated: Use RestoreOnTrigger("short_rest") instead
 func (r *SimpleResource) RestoreOnShortRest() int {
-	if r.restoreType == RestoreShortRest || r.shortRestRestore > 0 {
-		if r.shortRestRestore == -1 {
-			return r.maximum - r.current // Full restore
-		}
-		return r.shortRestRestore
-	}
-	return 0
+	return r.RestoreOnTrigger("short_rest")
 }
 
 // RestoreOnLongRest returns the amount restored on a long rest
+// Deprecated: Use RestoreOnTrigger("long_rest") instead
 func (r *SimpleResource) RestoreOnLongRest() int {
-	if r.restoreType == RestoreLongRest || r.restoreType == RestoreShortRest || r.longRestRestore != 0 {
-		if r.longRestRestore == -1 {
-			return r.maximum - r.current // Full restore
-		}
-		return r.longRestRestore
+	return r.RestoreOnTrigger("long_rest")
+}
+
+// RestoreOnTrigger returns the amount to restore for a given trigger
+func (r *SimpleResource) RestoreOnTrigger(trigger string) int {
+	amount, exists := r.restoreTriggers[trigger]
+	if !exists {
+		return 0
 	}
-	return 0
+
+	// Special value: -1 means restore to full
+	if amount == -1 {
+		return r.maximum - r.current
+	}
+
+	return amount
 }
 
 // IsAvailable returns true if any resource is available
