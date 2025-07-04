@@ -35,5 +35,10 @@ jobs:
     
     - name: Check go mod tidy on all modules
       run: |
-        make mod-tidy
-        git diff --exit-code || (echo "Please run 'make mod-tidy'" && exit 1)
+        # Run go mod tidy on all modules
+        find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do
+          dir=$(dirname "$modfile")
+          echo "→ Tidying $dir..."
+          (cd "$dir" && go mod tidy) || exit 1
+        done
+        git diff --exit-code || (echo "Please run 'go mod tidy' on all modules" && exit 1)
