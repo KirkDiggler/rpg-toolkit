@@ -6,6 +6,7 @@ package conditions
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 )
 
 // SimpleConditionConfig holds the configuration for creating a SimpleCondition.
@@ -23,96 +24,86 @@ type SimpleConditionConfig struct {
 // SimpleCondition provides a basic implementation of the Condition interface.
 // It allows custom behavior to be defined through handler functions.
 type SimpleCondition struct {
-	id     string
-	typ    string
+	// Embedded Core for common functionality
+	core *effects.Core
+
 	target core.Entity
-	source string
-	active bool
 
 	// Handler functions
 	applyFunc  func(c *SimpleCondition, bus events.EventBus) error
 	removeFunc func(c *SimpleCondition, bus events.EventBus) error
-
-	// Track subscriptions for cleanup
-	subscriptions []string
 }
 
 // NewSimpleCondition creates a new simple condition from a config.
 func NewSimpleCondition(cfg SimpleConditionConfig) *SimpleCondition {
-	return &SimpleCondition{
-		id:            cfg.ID,
-		typ:           cfg.Type,
-		source:        cfg.Source,
-		target:        cfg.Target,
-		active:        false,
-		applyFunc:     cfg.ApplyFunc,
-		removeFunc:    cfg.RemoveFunc,
-		subscriptions: []string{},
+	c := &SimpleCondition{
+		target:     cfg.Target,
+		applyFunc:  cfg.ApplyFunc,
+		removeFunc: cfg.RemoveFunc,
 	}
+
+	// Create Core with adapted handlers
+	var coreApplyFunc func(bus events.EventBus) error
+	if cfg.ApplyFunc != nil {
+		coreApplyFunc = func(bus events.EventBus) error {
+			return c.applyFunc(c, bus)
+		}
+	}
+
+	var coreRemoveFunc func(bus events.EventBus) error
+	if cfg.RemoveFunc != nil {
+		coreRemoveFunc = func(bus events.EventBus) error {
+			return c.removeFunc(c, bus)
+		}
+	}
+
+	c.core = effects.NewCore(effects.CoreConfig{
+		ID:         cfg.ID,
+		Type:       cfg.Type,
+		Source:     cfg.Source,
+		ApplyFunc:  coreApplyFunc,
+		RemoveFunc: coreRemoveFunc,
+	})
+
+	return c
 }
 
 // GetID implements core.Entity
-func (c *SimpleCondition) GetID() string { return c.id }
+func (c *SimpleCondition) GetID() string { return c.core.GetID() }
 
 // GetType implements core.Entity
-func (c *SimpleCondition) GetType() string { return c.typ }
+func (c *SimpleCondition) GetType() string { return c.core.GetType() }
 
 // Target returns the affected entity
 func (c *SimpleCondition) Target() core.Entity { return c.target }
 
 // Source returns what created this condition
-func (c *SimpleCondition) Source() string { return c.source }
+func (c *SimpleCondition) Source() string { return c.core.Source() }
 
 // IsActive returns whether the condition is active
-func (c *SimpleCondition) IsActive() bool { return c.active }
+func (c *SimpleCondition) IsActive() bool { return c.core.IsActive() }
 
 // Apply activates the condition
 func (c *SimpleCondition) Apply(bus events.EventBus) error {
-	if c.active {
-		return nil // Already active
-	}
-
-	if c.applyFunc != nil {
-		if err := c.applyFunc(c, bus); err != nil {
-			return err
-		}
-	}
-
-	c.active = true
-	return nil
+	// Delegate to Core which handles activation state and calls our wrapped handler
+	return c.core.Apply(bus)
 }
 
 // Subscribe is a helper that subscribes to an event and tracks the subscription
 func (c *SimpleCondition) Subscribe(bus events.EventBus, eventType string, priority int, handler events.HandlerFunc) {
-	subID := bus.SubscribeFunc(eventType, priority, handler)
-	c.AddSubscription(subID)
+	// Delegate to Core which handles subscription tracking
+	c.core.Subscribe(bus, eventType, priority, handler)
 }
 
 // Remove deactivates the condition
 func (c *SimpleCondition) Remove(bus events.EventBus) error {
-	if !c.active {
-		return nil // Already inactive
-	}
-
-	// Unsubscribe all handlers
-	for _, subID := range c.subscriptions {
-		if err := bus.Unsubscribe(subID); err != nil {
-			return err
-		}
-	}
-	c.subscriptions = []string{}
-
-	if c.removeFunc != nil {
-		if err := c.removeFunc(c, bus); err != nil {
-			return err
-		}
-	}
-
-	c.active = false
-	return nil
+	// Delegate to Core which handles deactivation and cleanup
+	return c.core.Remove(bus)
 }
 
 // AddSubscription tracks an event subscription for cleanup
-func (c *SimpleCondition) AddSubscription(id string) {
-	c.subscriptions = append(c.subscriptions, id)
+// Deprecated: This is now handled internally by Core
+func (c *SimpleCondition) AddSubscription(_ string) {
+	// No-op for backward compatibility
+	// Core handles subscription tracking internally
 }

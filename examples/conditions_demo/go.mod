@@ -9,9 +9,12 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/mechanics/conditions v0.0.0
 )
 
+require github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.0.0 // indirect
+
 replace (
 	github.com/KirkDiggler/rpg-toolkit/core => ../../core
 	github.com/KirkDiggler/rpg-toolkit/dice => ../../dice
 	github.com/KirkDiggler/rpg-toolkit/events => ../../events
 	github.com/KirkDiggler/rpg-toolkit/mechanics/conditions => ../../mechanics/conditions
+	github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../../mechanics/effects
 )
