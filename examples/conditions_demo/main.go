@@ -170,7 +170,7 @@ func main() {
 // Helper function to simulate an attack
 func simulateAttack(bus events.EventBus, attacker, target core.Entity) {
 	ctx := context.Background()
-	attack := events.NewGameEvent(events.EventBeforeAttack, attacker, target)
+	attack := events.NewGameEvent(events.EventBeforeAttackRoll, attacker, target)
 
 	// Base attack roll
 	baseRoll := dice.D20(1)
@@ -206,7 +206,7 @@ func createBlessCondition(target, caster core.Entity) *conditions.SimpleConditio
 		Target: target,
 		Source: caster.GetID(),
 		ApplyFunc: func(c *conditions.SimpleCondition, bus events.EventBus) error {
-			c.Subscribe(bus, events.EventBeforeAttack, 50, func(_ context.Context, e events.Event) error {
+			c.Subscribe(bus, events.EventBeforeAttackRoll, 50, func(_ context.Context, e events.Event) error {
 				if e.Source().GetID() != target.GetID() {
 					return nil
 				}

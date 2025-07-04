@@ -16,7 +16,7 @@ func TestBusSubscribeAndPublish(t *testing.T) {
 	var receivedEvent Event
 
 	// Subscribe to an event
-	id := bus.SubscribeFunc(EventBeforeAttack, 100, func(_ context.Context, e Event) error {
+	id := bus.SubscribeFunc(EventBeforeAttackRoll, 100, func(_ context.Context, e Event) error {
 		called = true
 		receivedEvent = e
 		return nil
@@ -28,7 +28,7 @@ func TestBusSubscribeAndPublish(t *testing.T) {
 
 	// Publish event
 	source := &mockEntity{id: "player-1", entityType: "character"}
-	event := NewGameEvent(EventBeforeAttack, source, nil)
+	event := NewGameEvent(EventBeforeAttackRoll, source, nil)
 
 	err := bus.Publish(ctx, event)
 	if err != nil {
@@ -53,26 +53,26 @@ func TestBusMultipleSubscribers(t *testing.T) {
 	var callOrder []string
 
 	// Subscribe multiple handlers with different priorities
-	bus.SubscribeFunc(EventCalculateDamage, 200, func(_ context.Context, _ Event) error {
+	bus.SubscribeFunc(EventOnDamageRoll, 200, func(_ context.Context, _ Event) error {
 		callCount++
 		callOrder = append(callOrder, "high-priority")
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 100, func(_ context.Context, _ Event) error {
+	bus.SubscribeFunc(EventOnDamageRoll, 100, func(_ context.Context, _ Event) error {
 		callCount++
 		callOrder = append(callOrder, "medium-priority")
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 50, func(_ context.Context, _ Event) error {
+	bus.SubscribeFunc(EventOnDamageRoll, 50, func(_ context.Context, _ Event) error {
 		callCount++
 		callOrder = append(callOrder, "low-priority")
 		return nil
 	})
 
 	// Publish event
-	event := NewGameEvent(EventCalculateDamage, nil, nil)
+	event := NewGameEvent(EventOnDamageRoll, nil, nil)
 	err := bus.Publish(ctx, event)
 	if err != nil {
 		t.Errorf("Publish failed: %v", err)
@@ -99,13 +99,13 @@ func TestBusUnsubscribe(t *testing.T) {
 	var callCount int
 
 	// Subscribe
-	id := bus.SubscribeFunc(EventTurnStart, 100, func(_ context.Context, _ Event) error {
+	id := bus.SubscribeFunc(EventOnTurnStart, 100, func(_ context.Context, _ Event) error {
 		callCount++
 		return nil
 	})
 
 	// Publish - should call handler
-	event := NewGameEvent(EventTurnStart, nil, nil)
+	event := NewGameEvent(EventOnTurnStart, nil, nil)
 	if err := bus.Publish(ctx, event); err != nil {
 		t.Errorf("Publish failed: %v", err)
 	}
@@ -143,24 +143,24 @@ func TestBusClear(t *testing.T) {
 	var attackCalls, damageCalls int
 
 	// Subscribe to different events
-	bus.SubscribeFunc(EventBeforeAttack, 100, func(_ context.Context, _ Event) error {
+	bus.SubscribeFunc(EventBeforeAttackRoll, 100, func(_ context.Context, _ Event) error {
 		attackCalls++
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 100, func(_ context.Context, _ Event) error {
+	bus.SubscribeFunc(EventOnDamageRoll, 100, func(_ context.Context, _ Event) error {
 		damageCalls++
 		return nil
 	})
 
 	// Clear attack subscriptions
-	bus.Clear(EventBeforeAttack)
+	bus.Clear(EventBeforeAttackRoll)
 
 	// Publish both events
-	if err := bus.Publish(ctx, NewGameEvent(EventBeforeAttack, nil, nil)); err != nil {
+	if err := bus.Publish(ctx, NewGameEvent(EventBeforeAttackRoll, nil, nil)); err != nil {
 		t.Errorf("Publish attack event failed: %v", err)
 	}
-	if err := bus.Publish(ctx, NewGameEvent(EventCalculateDamage, nil, nil)); err != nil {
+	if err := bus.Publish(ctx, NewGameEvent(EventOnDamageRoll, nil, nil)); err != nil {
 		t.Errorf("Publish damage event failed: %v", err)
 	}
 
@@ -174,7 +174,7 @@ func TestBusClear(t *testing.T) {
 
 	// Clear all
 	bus.ClearAll()
-	if err := bus.Publish(ctx, NewGameEvent(EventCalculateDamage, nil, nil)); err != nil {
+	if err := bus.Publish(ctx, NewGameEvent(EventOnDamageRoll, nil, nil)); err != nil {
 		t.Errorf("Publish after clear all failed: %v", err)
 	}
 
@@ -189,12 +189,12 @@ func TestBusHandlerError(t *testing.T) {
 
 	// Subscribe handler that returns error
 	expectedErr := errors.New("handler error")
-	bus.SubscribeFunc(EventStatusApplied, 100, func(_ context.Context, _ Event) error {
+	bus.SubscribeFunc(EventOnStatusApplied, 100, func(_ context.Context, _ Event) error {
 		return expectedErr
 	})
 
 	// Publish should return the error
-	event := NewGameEvent(EventStatusApplied, nil, nil)
+	event := NewGameEvent(EventOnStatusApplied, nil, nil)
 	err := bus.Publish(ctx, event)
 	if err == nil {
 		t.Error("Expected error from handler")
@@ -221,7 +221,7 @@ func TestBusConcurrency(t *testing.T) {
 			defer wg.Done()
 
 			// Subscribe
-			bus.SubscribeFunc(EventRoundStart, 100, func(_ context.Context, _ Event) error {
+			bus.SubscribeFunc(EventOnTurnStart, 100, func(_ context.Context, _ Event) error {
 				mu.Lock()
 				callCount++
 				mu.Unlock()
@@ -229,7 +229,7 @@ func TestBusConcurrency(t *testing.T) {
 			})
 
 			// Publish
-			event := NewGameEvent(EventRoundStart, nil, nil)
+			event := NewGameEvent(EventOnTurnStart, nil, nil)
 			if err := bus.Publish(ctx, event); err != nil {
 				t.Errorf("Publish in goroutine %d failed: %v", id, err)
 			}
@@ -273,11 +273,11 @@ func TestBusWithHandlerInterface(t *testing.T) {
 	handler2 := &TestHandler{name: "handler2", priority: 200}
 
 	// Subscribe handlers
-	id1 := bus.Subscribe(EventSavingThrow, handler1)
-	_ = bus.Subscribe(EventSavingThrow, handler2)
+	id1 := bus.Subscribe(EventOnSavingThrow, handler1)
+	_ = bus.Subscribe(EventOnSavingThrow, handler2)
 
 	// Publish event
-	event := NewGameEvent(EventSavingThrow, nil, nil)
+	event := NewGameEvent(EventOnSavingThrow, nil, nil)
 	err := bus.Publish(ctx, event)
 	if err != nil {
 		t.Errorf("Publish failed: %v", err)
@@ -317,20 +317,20 @@ func TestEventModifiers(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate rage and bless adding modifiers
-	bus.SubscribeFunc(EventCalculateDamage, 100, func(_ context.Context, e Event) error {
+	bus.SubscribeFunc(EventOnDamageRoll, 100, func(_ context.Context, e Event) error {
 		// Rage adds damage bonus
 		e.Context().AddModifier(NewIntModifier("rage", ModifierDamageBonus, 2, 100))
 		return nil
 	})
 
-	bus.SubscribeFunc(EventCalculateDamage, 200, func(_ context.Context, e Event) error {
+	bus.SubscribeFunc(EventOnDamageRoll, 200, func(_ context.Context, e Event) error {
 		// Bless adds attack bonus
 		e.Context().AddModifier(NewIntModifier("bless", ModifierAttackBonus, 4, 50))
 		return nil
 	})
 
 	// Create and publish event
-	event := NewGameEvent(EventCalculateDamage, nil, nil)
+	event := NewGameEvent(EventOnDamageRoll, nil, nil)
 	err := bus.Publish(ctx, event)
 	if err != nil {
 		t.Errorf("Publish failed: %v", err)

@@ -37,7 +37,7 @@ import (
 bus := events.NewBus()
 
 // Create an event
-event := events.NewGameEvent(events.EventBeforeAttack, attacker, target)
+event := events.NewGameEvent(events.EventBeforeAttackRoll, attacker, target)
 
 // Add context data
 event.Context().Set("weapon", "longsword")
@@ -51,7 +51,7 @@ err := bus.Publish(context.Background(), event)
 
 ```go
 // Subscribe with a function
-bus.SubscribeFunc(events.EventCalculateDamage, 100, func(ctx context.Context, e events.Event) error {
+bus.SubscribeFunc(events.EventOnDamageRoll, 100, func(ctx context.Context, e events.Event) error {
     // Add rage damage bonus
     if hasRage(e.Source()) {
         e.Context().AddModifier(events.NewModifier(
@@ -84,7 +84,7 @@ func (h *SneakAttackHandler) Priority() int {
     return 150 // Higher priority = executes later
 }
 
-bus.Subscribe(events.EventCalculateDamage, &SneakAttackHandler{})
+bus.Subscribe(events.EventOnDamageRoll, &SneakAttackHandler{})
 ```
 
 ### Working with Modifiers
@@ -174,10 +174,10 @@ type RageFeature struct {
 
 func (r *RageFeature) Initialize() {
     // Listen for damage calculations
-    r.bus.SubscribeFunc(events.EventCalculateDamage, 100, r.handleDamage)
+    r.bus.SubscribeFunc(events.EventOnDamageRoll, 100, r.handleDamage)
     
     // Listen for damage calculation (for resistance)
-    r.bus.SubscribeFunc(events.EventCalculateDamage, 50, r.handleIncomingDamage)
+    r.bus.SubscribeFunc(events.EventOnDamageRoll, 50, r.handleIncomingDamage)
 }
 
 func (r *RageFeature) handleDamage(ctx context.Context, e events.Event) error {
@@ -230,7 +230,7 @@ func TestMyFeature(t *testing.T) {
     feature := NewMyFeature(bus)
     
     // Create test event
-    event := events.NewGameEvent(events.EventCalculateDamage, mockAttacker, mockTarget)
+    event := events.NewGameEvent(events.EventOnDamageRoll, mockAttacker, mockTarget)
     
     // Publish event
     err := bus.Publish(context.Background(), event)

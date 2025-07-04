@@ -45,7 +45,7 @@ func TestCombatFlow_Hit(t *testing.T) {
 	var finalDamage int
 
 	// Override damage applied handler to capture result
-	bus.SubscribeFunc(events.EventAfterDamage, 200, func(_ context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventAfterTakeDamage, 200, func(_ context.Context, e events.Event) error {
 		damageApplied = true
 		damage, _ := e.Context().Get("damage")
 		finalDamage = damage.(int)
@@ -53,7 +53,7 @@ func TestCombatFlow_Hit(t *testing.T) {
 	})
 
 	// Execute attack
-	attackEvent := events.NewGameEvent(events.EventBeforeAttack, attacker, target)
+	attackEvent := events.NewGameEvent(events.EventBeforeAttackRoll, attacker, target)
 	attackEvent.Context().Set("weapon", "greatsword")
 	attackEvent.Context().Set("is_raging", true)
 	attackEvent.Context().Set("is_blessed", true)
@@ -104,13 +104,13 @@ func TestCombatFlow_Miss(t *testing.T) {
 
 	// Track if damage was applied
 	damageApplied := false
-	bus.SubscribeFunc(events.EventAfterDamage, 200, func(_ context.Context, _ events.Event) error {
+	bus.SubscribeFunc(events.EventAfterTakeDamage, 200, func(_ context.Context, _ events.Event) error {
 		damageApplied = true
 		return nil
 	})
 
 	// Execute attack
-	attackEvent := events.NewGameEvent(events.EventBeforeAttack, attacker, target)
+	attackEvent := events.NewGameEvent(events.EventBeforeAttackRoll, attacker, target)
 	attackEvent.Context().Set("weapon", "greatsword")
 	attackEvent.Context().Set("is_raging", true)
 	attackEvent.Context().Set("is_blessed", true)
@@ -134,12 +134,12 @@ func TestRageModifier(t *testing.T) {
 	attacker := &SimpleEntity{id: "barb", name: "Barbarian"}
 	target := &SimpleEntity{id: "gob", name: "Goblin"}
 
-	damageEvent := events.NewGameEvent(events.EventCalculateDamage, attacker, target)
+	damageEvent := events.NewGameEvent(events.EventOnDamageRoll, attacker, target)
 	damageEvent.Context().Set("is_raging", true)
 
 	// Capture modifiers
 	var capturedModifiers []events.Modifier
-	bus.SubscribeFunc(events.EventCalculateDamage, 100, func(_ context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventOnDamageRoll, 100, func(_ context.Context, e events.Event) error {
 		capturedModifiers = e.Context().Modifiers()
 		return nil
 	})
@@ -185,12 +185,12 @@ func TestBlessedModifier(t *testing.T) {
 	attacker := &SimpleEntity{id: "pal", name: "Paladin"}
 	target := &SimpleEntity{id: "dem", name: "Demon"}
 
-	attackEvent := events.NewGameEvent(events.EventBeforeAttack, attacker, target)
+	attackEvent := events.NewGameEvent(events.EventBeforeAttackRoll, attacker, target)
 	attackEvent.Context().Set("is_blessed", true)
 
 	// Capture modifiers
 	var capturedModifiers []events.Modifier
-	bus.SubscribeFunc(events.EventBeforeAttack, 100, func(_ context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventBeforeAttackRoll, 100, func(_ context.Context, e events.Event) error {
 		capturedModifiers = e.Context().Modifiers()
 		return nil
 	})

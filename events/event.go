@@ -26,6 +26,12 @@ type Event interface {
 
 	// Context returns the event-specific context with additional data.
 	Context() Context
+
+	// IsCancelled returns whether the event has been cancelled.
+	IsCancelled() bool
+
+	// Cancel marks the event as cancelled, preventing further processing.
+	Cancel()
 }
 
 // Context holds event-specific data and allows modifications.
@@ -69,6 +75,7 @@ type GameEvent struct {
 	target    core.Entity
 	timestamp time.Time
 	context   Context
+	cancelled bool
 }
 
 // NewGameEvent creates a new game event.
@@ -96,6 +103,12 @@ func (e *GameEvent) Timestamp() time.Time { return e.timestamp }
 
 // Context returns the event context.
 func (e *GameEvent) Context() Context { return e.context }
+
+// IsCancelled returns whether the event has been cancelled.
+func (e *GameEvent) IsCancelled() bool { return e.cancelled }
+
+// Cancel marks the event as cancelled.
+func (e *GameEvent) Cancel() { e.cancelled = true }
 
 // EventContext is the standard implementation of Context.
 type EventContext struct {
@@ -167,24 +180,51 @@ func (m *BasicModifier) Priority() int { return m.priority }
 
 // Common event types
 const (
-	// Combat events
-	EventBeforeAttack    = "before_attack"
-	EventAttackRoll      = "attack_roll"
-	EventCalculateDamage = "calculate_damage"
-	EventAfterDamage     = "after_damage"
-	EventBeforeSave      = "before_save"
-	EventSavingThrow     = "saving_throw"
+	// Attack sequence events
+	EventBeforeAttackRoll = "before_attack_roll"
+	EventOnAttackRoll     = "on_attack_roll"
+	EventAfterAttackRoll  = "after_attack_roll"
+	EventBeforeHit        = "before_hit"
+	EventOnHit            = "on_hit"
+	EventAfterHit         = "after_hit"
 
-	// Status events
-	EventStatusApplied = "status_applied"
-	EventStatusRemoved = "status_removed"
-	EventStatusCheck   = "status_check"
+	// Damage events
+	EventBeforeDamageRoll = "before_damage_roll"
+	EventOnDamageRoll     = "on_damage_roll"
+	EventAfterDamageRoll  = "after_damage_roll"
+	EventBeforeTakeDamage = "before_take_damage"
+	EventOnTakeDamage     = "on_take_damage"
+	EventAfterTakeDamage  = "after_take_damage"
 
-	// Turn events
-	EventTurnStart  = "turn_start"
-	EventTurnEnd    = "turn_end"
-	EventRoundStart = "round_start"
-	EventRoundEnd   = "round_end"
+	// Saving throws
+	EventBeforeSavingThrow = "before_saving_throw"
+	EventOnSavingThrow     = "on_saving_throw"
+	EventAfterSavingThrow  = "after_saving_throw"
+
+	// Ability checks
+	EventBeforeAbilityCheck = "before_ability_check"
+	EventOnAbilityCheck     = "on_ability_check"
+	EventAfterAbilityCheck  = "after_ability_check"
+
+	// Turn management
+	EventOnTurnStart = "on_turn_start"
+	EventOnTurnEnd   = "on_turn_end"
+
+	// Status effects
+	EventOnStatusApplied = "on_status_applied"
+	EventOnStatusRemoved = "on_status_removed"
+
+	// Rest events
+	EventOnShortRest = "on_short_rest"
+	EventOnLongRest  = "on_long_rest"
+
+	// Spell events
+	EventOnSpellCast   = "on_spell_cast"
+	EventOnSpellDamage = "on_spell_damage"
+
+	// Condition events
+	EventOnConditionApplied = "on_condition_applied"
+	EventOnConditionRemoved = "on_condition_removed"
 )
 
 // Common modifier types
