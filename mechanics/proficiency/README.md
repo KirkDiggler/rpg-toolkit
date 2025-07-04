@@ -31,21 +31,21 @@ manager := proficiency.NewManager(storage, levelProvider)
 
 ```go
 // Add specific weapon proficiency
-shortswordProf := proficiency.NewProficiency(
-    proficiency.TypeWeapon,
-    "shortsword",
-    "Shortsword",
-    "", // No category for specific proficiency
-)
+shortswordProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+    Type:     proficiency.ProficiencyTypeWeapon,
+    Key:      "shortsword",
+    Name:     "Shortsword",
+    Category: "", // No category for specific proficiency
+})
 manager.AddProficiency(entity, shortswordProf)
 
 // Add category proficiency
-simpleWeaponsProf := proficiency.NewProficiency(
-    proficiency.TypeWeapon,
-    "simple-weapons",
-    "Simple Weapons",
-    "simple-weapons", // Category matches key for group proficiencies
-)
+simpleWeaponsProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+    Type:     proficiency.ProficiencyTypeWeapon,
+    Key:      "simple-weapons",
+    Name:     "Simple Weapons",
+    Category: "simple-weapons", // Category matches key for group proficiencies
+})
 manager.AddProficiency(entity, simpleWeaponsProf)
 ```
 
@@ -83,7 +83,7 @@ The main interface for proficiency operations:
 ```go
 type Manager interface {
     // Check proficiency
-    HasProficiency(entity core.Entity, profType Type, key string) bool
+    HasProficiency(entity core.Entity, profType ProficiencyType, key string) bool
     HasWeaponProficiency(entity core.Entity, weaponKey string) bool
     HasSkillProficiency(entity core.Entity, skillKey string) bool
     
@@ -109,7 +109,7 @@ type Storage interface {
     GetProficiencies(entityID string) ([]Proficiency, error)
     SaveProficiency(entityID string, prof Proficiency) error
     RemoveProficiency(entityID string, profKey string) error
-    HasProficiency(entityID string, profType Type, key string) (bool, error)
+    HasProficiency(entityID string, profType ProficiencyType, key string) (bool, error)
 }
 ```
 
@@ -132,12 +132,11 @@ type LevelProvider interface {
 rogue := &Character{ID: "rogue-1", Level: 3}
 
 // Add shortsword proficiency
-manager.AddProficiency(rogue, proficiency.NewProficiency(
-    proficiency.TypeWeapon,
-    "shortsword",
-    "Shortsword",
-    "",
-))
+manager.AddProficiency(rogue, proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+    Type: proficiency.ProficiencyTypeWeapon,
+    Key:  "shortsword",
+    Name: "Shortsword",
+}))
 
 // Attack with shortsword - gets +2 proficiency bonus
 attackBonus := manager.GetWeaponAttackBonus(rogue, "shortsword") // Returns 2
@@ -150,19 +149,19 @@ attackBonus := manager.GetWeaponAttackBonus(rogue, "shortsword") // Returns 2
 fighter := &Character{ID: "fighter-1", Level: 5}
 
 // Add all simple and martial weapon proficiencies
-manager.AddProficiency(fighter, proficiency.NewProficiency(
-    proficiency.TypeWeapon,
-    "simple-weapons",
-    "Simple Weapons",
-    "simple-weapons",
-))
+manager.AddProficiency(fighter, proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+    Type:     proficiency.ProficiencyTypeWeapon,
+    Key:      "simple-weapons",
+    Name:     "Simple Weapons",
+    Category: "simple-weapons",
+}))
 
-manager.AddProficiency(fighter, proficiency.NewProficiency(
-    proficiency.TypeWeapon,
-    "martial-weapons",
-    "Martial Weapons",
-    "martial-weapons",
-))
+manager.AddProficiency(fighter, proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+    Type:     proficiency.ProficiencyTypeWeapon,
+    Key:      "martial-weapons",
+    Name:     "Martial Weapons",
+    Category: "martial-weapons",
+}))
 
 // Attack with any simple or martial weapon - gets +3 proficiency bonus (level 5)
 attackBonus := manager.GetWeaponAttackBonus(fighter, "longsword") // Returns 3

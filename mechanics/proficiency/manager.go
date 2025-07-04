@@ -14,7 +14,7 @@ import (
 //go:generate mockgen -destination=mock/mock_manager.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency Manager
 type Manager interface {
 	// Check proficiency
-	HasProficiency(entity core.Entity, profType Type, key string) bool
+	HasProficiency(entity core.Entity, profType ProficiencyType, key string) bool
 	HasWeaponProficiency(entity core.Entity, weaponKey string) bool
 	HasSkillProficiency(entity core.Entity, skillKey string) bool
 
@@ -42,7 +42,7 @@ type Storage interface {
 	RemoveProficiency(entityID string, profKey string) error
 
 	// HasProficiency checks if an entity has a specific proficiency.
-	HasProficiency(entityID string, profType Type, key string) (bool, error)
+	HasProficiency(entityID string, profType ProficiencyType, key string) (bool, error)
 }
 
 // LevelProvider provides entity level information for bonus calculation.
@@ -66,7 +66,7 @@ func NewManager(storage Storage, levelProvider LevelProvider) *DefaultManager {
 }
 
 // HasProficiency checks if an entity has a specific proficiency.
-func (m *DefaultManager) HasProficiency(entity core.Entity, profType Type, key string) bool {
+func (m *DefaultManager) HasProficiency(entity core.Entity, profType ProficiencyType, key string) bool {
 	if entity == nil {
 		return false
 	}
@@ -98,12 +98,12 @@ func (m *DefaultManager) HasProficiency(entity core.Entity, profType Type, key s
 
 // HasWeaponProficiency checks if an entity has proficiency with a specific weapon.
 func (m *DefaultManager) HasWeaponProficiency(entity core.Entity, weaponKey string) bool {
-	return m.HasProficiency(entity, TypeWeapon, weaponKey)
+	return m.HasProficiency(entity, ProficiencyTypeWeapon, weaponKey)
 }
 
 // HasSkillProficiency checks if an entity has proficiency with a specific skill.
 func (m *DefaultManager) HasSkillProficiency(entity core.Entity, skillKey string) bool {
-	return m.HasProficiency(entity, TypeSkill, skillKey)
+	return m.HasProficiency(entity, ProficiencyTypeSkill, skillKey)
 }
 
 // GetProficiencyBonus returns the proficiency bonus based on entity level.
@@ -134,7 +134,7 @@ func (m *DefaultManager) GetSkillBonus(entity core.Entity, skillKey string) int 
 
 // GetSaveBonus returns the saving throw bonus (proficiency bonus if proficient).
 func (m *DefaultManager) GetSaveBonus(entity core.Entity, abilityKey string) int {
-	if m.HasProficiency(entity, TypeSave, abilityKey) {
+	if m.HasProficiency(entity, ProficiencyTypeSave, abilityKey) {
 		return m.GetProficiencyBonus(entity)
 	}
 	return 0

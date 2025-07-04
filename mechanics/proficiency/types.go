@@ -3,33 +3,33 @@
 
 package proficiency
 
-// Type represents different kinds of proficiencies in the game system.
-type Type string
+// ProficiencyType represents different kinds of proficiencies in the game system.
+type ProficiencyType string //nolint:revive // Named for clarity when used across packages
 
 const (
-	// TypeWeapon represents proficiency with weapons.
-	TypeWeapon Type = "weapon"
+	// ProficiencyTypeWeapon represents proficiency with weapons.
+	ProficiencyTypeWeapon ProficiencyType = "weapon"
 
-	// TypeArmor represents proficiency with armor.
-	TypeArmor Type = "armor"
+	// ProficiencyTypeArmor represents proficiency with armor.
+	ProficiencyTypeArmor ProficiencyType = "armor"
 
-	// TypeSkill represents proficiency with skills.
-	TypeSkill Type = "skill"
+	// ProficiencyTypeSkill represents proficiency with skills.
+	ProficiencyTypeSkill ProficiencyType = "skill"
 
-	// TypeSave represents proficiency with saving throws.
-	TypeSave Type = "saving_throw"
+	// ProficiencyTypeSave represents proficiency with saving throws.
+	ProficiencyTypeSave ProficiencyType = "saving_throw"
 
-	// TypeTool represents proficiency with tools.
-	TypeTool Type = "tool"
+	// ProficiencyTypeTool represents proficiency with tools.
+	ProficiencyTypeTool ProficiencyType = "tool"
 
-	// TypeInstrument represents proficiency with musical instruments.
-	TypeInstrument Type = "instrument"
+	// ProficiencyTypeInstrument represents proficiency with musical instruments.
+	ProficiencyTypeInstrument ProficiencyType = "instrument"
 )
 
 // Proficiency represents something an entity can be proficient with.
 type Proficiency interface {
 	// Type returns the proficiency type.
-	Type() Type
+	Type() ProficiencyType
 
 	// Key returns the unique key for this proficiency (e.g., "shortsword", "athletics").
 	Key() string
@@ -41,26 +41,34 @@ type Proficiency interface {
 	Category() string
 }
 
+// SimpleProficiencyConfig holds the configuration for creating a SimpleProficiency.
+type SimpleProficiencyConfig struct {
+	Type     ProficiencyType
+	Key      string
+	Name     string
+	Category string
+}
+
 // SimpleProficiency is a basic implementation of Proficiency.
 type SimpleProficiency struct {
-	profType Type
+	profType ProficiencyType
 	key      string
 	name     string
 	category string
 }
 
-// NewProficiency creates a new simple proficiency.
-func NewProficiency(profType Type, key, name, category string) *SimpleProficiency {
+// NewSimpleProficiency creates a new simple proficiency from a config.
+func NewSimpleProficiency(cfg SimpleProficiencyConfig) *SimpleProficiency {
 	return &SimpleProficiency{
-		profType: profType,
-		key:      key,
-		name:     name,
-		category: category,
+		profType: cfg.Type,
+		key:      cfg.Key,
+		name:     cfg.Name,
+		category: cfg.Category,
 	}
 }
 
 // Type returns the proficiency type.
-func (p *SimpleProficiency) Type() Type {
+func (p *SimpleProficiency) Type() ProficiencyType {
 	return p.profType
 }
 
@@ -77,4 +85,15 @@ func (p *SimpleProficiency) Name() string {
 // Category returns the category for this proficiency.
 func (p *SimpleProficiency) Category() string {
 	return p.category
+}
+
+// NewProficiency is a convenience function that creates a proficiency using the old API.
+// Deprecated: Use NewSimpleProficiency with SimpleProficiencyConfig instead.
+func NewProficiency(profType ProficiencyType, key, name, category string) *SimpleProficiency {
+	return NewSimpleProficiency(SimpleProficiencyConfig{
+		Type:     profType,
+		Key:      key,
+		Name:     name,
+		Category: category,
+	})
 }

@@ -82,12 +82,12 @@ func TestWeaponProficiency(t *testing.T) {
 	}
 
 	// Add specific weapon proficiency
-	shortswordProf := proficiency.NewProficiency(
-		proficiency.TypeWeapon,
-		"shortsword",
-		"Shortsword",
-		"",
-	)
+	shortswordProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+		Type:     proficiency.ProficiencyTypeWeapon,
+		Key:      "shortsword",
+		Name:     "Shortsword",
+		Category: "",
+	})
 	manager.AddProficiency(rogue, shortswordProf)
 
 	// Check specific proficiency
@@ -116,12 +116,12 @@ func TestCategoryProficiency(t *testing.T) {
 	fighter := &MockEntity{id: "fighter", level: 5}
 
 	// Add simple weapons proficiency
-	simpleWeaponsProf := proficiency.NewProficiency(
-		proficiency.TypeWeapon,
-		"simple-weapons",
-		"Simple Weapons",
-		"simple-weapons",
-	)
+	simpleWeaponsProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+		Type:     proficiency.ProficiencyTypeWeapon,
+		Key:      "simple-weapons",
+		Name:     "Simple Weapons",
+		Category: "simple-weapons",
+	})
 	manager.AddProficiency(fighter, simpleWeaponsProf)
 
 	// Check proficiency with simple weapons
@@ -152,12 +152,12 @@ func TestSkillProficiency(t *testing.T) {
 	bard := &MockEntity{id: "bard", level: 7}
 
 	// Add performance skill proficiency
-	performanceProf := proficiency.NewProficiency(
-		proficiency.TypeSkill,
-		"performance",
-		"Performance",
-		"",
-	)
+	performanceProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+		Type:     proficiency.ProficiencyTypeSkill,
+		Key:      "performance",
+		Name:     "Performance",
+		Category: "",
+	})
 	manager.AddProficiency(bard, performanceProf)
 
 	// Check skill proficiency
@@ -186,16 +186,16 @@ func TestSavingThrowProficiency(t *testing.T) {
 	paladin := &MockEntity{id: "paladin", level: 10}
 
 	// Add wisdom save proficiency
-	wisdomSaveProf := proficiency.NewProficiency(
-		proficiency.TypeSave,
-		"wisdom",
-		"Wisdom",
-		"",
-	)
+	wisdomSaveProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+		Type:     proficiency.ProficiencyTypeSave,
+		Key:      "wisdom",
+		Name:     "Wisdom",
+		Category: "",
+	})
 	manager.AddProficiency(paladin, wisdomSaveProf)
 
 	// Check save proficiency
-	if !manager.HasProficiency(paladin, proficiency.TypeSave, "wisdom") {
+	if !manager.HasProficiency(paladin, proficiency.ProficiencyTypeSave, "wisdom") {
 		t.Error("Expected wisdom save proficiency")
 	}
 
@@ -214,9 +214,21 @@ func TestGetAllProficiencies(t *testing.T) {
 
 	// Add multiple proficiencies
 	profs := []proficiency.Proficiency{
-		proficiency.NewProficiency(proficiency.TypeWeapon, "longsword", "Longsword", ""),
-		proficiency.NewProficiency(proficiency.TypeSkill, "athletics", "Athletics", ""),
-		proficiency.NewProficiency(proficiency.TypeSave, "strength", "Strength", ""),
+		proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+			Type: proficiency.ProficiencyTypeWeapon,
+			Key:  "longsword",
+			Name: "Longsword",
+		}),
+		proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+			Type: proficiency.ProficiencyTypeSkill,
+			Key:  "athletics",
+			Name: "Athletics",
+		}),
+		proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+			Type: proficiency.ProficiencyTypeSave,
+			Key:  "strength",
+			Name: "Strength",
+		}),
 	}
 
 	for _, prof := range profs {
@@ -249,7 +261,11 @@ func TestRemoveProficiency(t *testing.T) {
 	entity := &MockEntity{id: "test", level: 1}
 
 	// Add proficiency
-	prof := proficiency.NewProficiency(proficiency.TypeWeapon, "dagger", "Dagger", "")
+	prof := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+		Type: proficiency.ProficiencyTypeWeapon,
+		Key:  "dagger",
+		Name: "Dagger",
+	})
 	manager.AddProficiency(entity, prof)
 
 	// Verify it exists

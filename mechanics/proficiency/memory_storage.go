@@ -97,7 +97,7 @@ func (s *MemoryStorage) RemoveProficiency(entityID string, profKey string) error
 }
 
 // HasProficiency checks if an entity has a specific proficiency.
-func (s *MemoryStorage) HasProficiency(entityID string, profType Type, key string) (bool, error) {
+func (s *MemoryStorage) HasProficiency(entityID string, profType ProficiencyType, key string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
