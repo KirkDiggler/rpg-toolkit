@@ -1,14 +1,48 @@
 # Proficiency Module
 
-The proficiency module provides a comprehensive system for handling proficiencies in RPG games, particularly designed for D&D 5e mechanics.
+The proficiency module provides infrastructure for entities to be proficient with various skills, tools, weapons, or other game elements. Proficiencies modify game mechanics through the event system.
 
-## Features
+## Philosophy
 
-- **Multiple Proficiency Types**: Weapons, armor, skills, saving throws, tools, and instruments
-- **Level-based Bonuses**: Automatic proficiency bonus calculation based on entity level
-- **Category Support**: Group proficiencies like "simple-weapons" or "martial-weapons"
-- **Flexible Storage**: Interface-based storage with memory implementation provided
-- **Thread-safe**: Concurrent access supported through the memory storage
+This module follows the rpg-toolkit design principles:
+
+- **Infrastructure, Not Implementation**: We provide the tools for proficiencies, not specific game rules
+- **Event-Driven**: Proficiencies apply their effects by subscribing to events
+- **Generic**: No game-specific logic (no D&D 5e calculations, no weapon categories)
+- **Self-Contained**: Each proficiency manages its own behavior
+
+## Core Concepts
+
+### Proficiencies as Entities
+
+Like conditions, proficiencies are first-class entities in the game world:
+- They have unique IDs for persistence
+- They can be queried and managed
+- They survive across sessions
+
+### Event Integration
+
+Proficiencies work by subscribing to relevant events and modifying them:
+
+```go
+// Example: Weapon proficiency that modifies attack rolls
+weaponProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+    ID:      "prof-longsword",
+    Type:    "proficiency.weapon",
+    Owner:   fighter,
+    Subject: "longsword",
+    Source:  "fighter-class",
+    ApplyFunc: func(p *proficiency.SimpleProficiency, bus events.EventBus) error {
+        // Subscribe to attack events
+        p.Subscribe(bus, events.EventBeforeAttackRoll, 100, func(ctx context.Context, e events.Event) error {
+            // Rulebook-specific logic would check weapon and apply bonus
+            // The infrastructure just provides the hook
+            return nil
+        })
+        return nil
+    },
+})
+```
 
 ## Usage
 
@@ -17,165 +51,104 @@ The proficiency module provides a comprehensive system for handling proficiencie
 ```go
 import (
     "github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency"
+    "github.com/KirkDiggler/rpg-toolkit/events"
 )
 
-// Create storage and level provider
-storage := proficiency.NewMemoryStorage()
-levelProvider := &MyLevelProvider{}
+// Create event bus
+bus := events.NewBus()
 
-// Create manager
-manager := proficiency.NewManager(storage, levelProvider)
+// Apply proficiency
+prof.Apply(bus)
+
+// Later, remove it
+prof.Remove(bus)
 ```
 
-### Adding Proficiencies
+### Creating Custom Proficiencies
+
+For complex proficiencies, implement the Proficiency interface directly:
 
 ```go
-// Add specific weapon proficiency
-shortswordProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-    Type:     proficiency.ProficiencyTypeWeapon,
-    Key:      "shortsword",
-    Name:     "Shortsword",
-    Category: "", // No category for specific proficiency
-})
-manager.AddProficiency(entity, shortswordProf)
-
-// Add category proficiency
-simpleWeaponsProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-    Type:     proficiency.ProficiencyTypeWeapon,
-    Key:      "simple-weapons",
-    Name:     "Simple Weapons",
-    Category: "simple-weapons", // Category matches key for group proficiencies
-})
-manager.AddProficiency(entity, simpleWeaponsProf)
-```
-
-### Checking Proficiencies
-
-```go
-// Check specific proficiency
-if manager.HasWeaponProficiency(entity, "shortsword") {
-    // Entity is proficient with shortswords
+type ExpertiseProficiency struct {
+    id      string
+    owner   core.Entity
+    subject string
+    // Custom fields for your game system
 }
 
-// Get attack bonus (includes proficiency bonus if proficient)
-attackBonus := manager.GetWeaponAttackBonus(entity, "longsword")
-
-// Get skill bonus
-skillBonus := manager.GetSkillBonus(entity, "performance")
-```
-
-### Proficiency Bonus by Level
-
-The module follows standard D&D 5e proficiency bonus progression:
-
-- Levels 1-4: +2
-- Levels 5-8: +3
-- Levels 9-12: +4
-- Levels 13-16: +5
-- Levels 17-20: +6
-
-## Interfaces
-
-### Manager
-
-The main interface for proficiency operations:
-
-```go
-type Manager interface {
-    // Check proficiency
-    HasProficiency(entity core.Entity, profType ProficiencyType, key string) bool
-    HasWeaponProficiency(entity core.Entity, weaponKey string) bool
-    HasSkillProficiency(entity core.Entity, skillKey string) bool
-    
-    // Get bonuses
-    GetProficiencyBonus(entity core.Entity) int
-    GetWeaponAttackBonus(entity core.Entity, weaponKey string) int
-    GetSkillBonus(entity core.Entity, skillKey string) int
-    GetSaveBonus(entity core.Entity, abilityKey string) int
-    
-    // Manage proficiencies
-    AddProficiency(entity core.Entity, prof Proficiency)
-    RemoveProficiency(entity core.Entity, profKey string)
-    GetAllProficiencies(entity core.Entity) []Proficiency
+func (e *ExpertiseProficiency) Apply(bus events.EventBus) error {
+    // Subscribe to relevant events
+    // Apply expertise bonuses (double proficiency, advantage, etc.)
+    return nil
 }
 ```
 
-### Storage
+## Integration with Game Systems
 
-Implement this interface for custom storage backends:
+The proficiency module doesn't define:
+- What proficiency bonuses are (that's rulebook-specific)
+- How proficiencies are gained (class/race/training systems)
+- Proficiency prerequisites or restrictions
+
+Instead, game systems use this infrastructure to implement their specific rules:
 
 ```go
-type Storage interface {
-    GetProficiencies(entityID string) ([]Proficiency, error)
-    SaveProficiency(entityID string, prof Proficiency) error
-    RemoveProficiency(entityID string, profKey string) error
-    HasProficiency(entityID string, profType ProficiencyType, key string) (bool, error)
+// In your D&D 5e rulebook module
+func createWeaponProficiency(character Entity, weapon string) proficiency.Proficiency {
+    return proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
+        // ... configuration ...
+        ApplyFunc: func(p *proficiency.SimpleProficiency, bus events.EventBus) error {
+            p.Subscribe(bus, "BeforeAttackRoll", 100, func(ctx context.Context, e events.Event) error {
+                // D&D 5e specific: Add proficiency bonus based on level
+                level := getCharacterLevel(p.Owner())
+                bonus := calculateProficiencyBonus(level) // +2 to +6
+                // Apply bonus to the event
+                return nil
+            })
+            return nil
+        },
+    })
 }
 ```
 
-### LevelProvider
+## Design Patterns
 
-Implement this to provide entity level information:
+### Self-Reference Pattern
+
+Like conditions, proficiencies receive themselves in handler functions:
 
 ```go
-type LevelProvider interface {
-    GetLevel(entity core.Entity) int
+ApplyFunc: func(p *proficiency.SimpleProficiency, bus events.EventBus) error {
+    // 'p' is the proficiency itself, allowing access to owner, subject, etc.
+    p.Subscribe(bus, eventType, priority, handler)
+    return nil
 }
 ```
+
+### Subscription Tracking
+
+The SimpleProficiency automatically tracks event subscriptions for cleanup:
+
+```go
+// Subscribe helper method tracks the subscription ID
+p.Subscribe(bus, eventType, priority, handler)
+
+// Remove() automatically unsubscribes all tracked subscriptions
+p.Remove(bus)
+```
+
+## Comparison with Conditions
+
+Proficiencies and conditions share similar patterns:
+- Both are entities
+- Both modify game behavior through events
+- Both are self-contained
+- Both use config-based construction
+
+The key difference is conceptual:
+- **Conditions**: Temporary effects (poisoned, blessed, stunned)
+- **Proficiencies**: Permanent capabilities (trained with swords, skilled in athletics)
 
 ## Examples
 
-### Rogue with Weapon Proficiency
-
-```go
-// Create a rogue entity
-rogue := &Character{ID: "rogue-1", Level: 3}
-
-// Add shortsword proficiency
-manager.AddProficiency(rogue, proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-    Type: proficiency.ProficiencyTypeWeapon,
-    Key:  "shortsword",
-    Name: "Shortsword",
-}))
-
-// Attack with shortsword - gets +2 proficiency bonus
-attackBonus := manager.GetWeaponAttackBonus(rogue, "shortsword") // Returns 2
-```
-
-### Fighter with Weapon Categories
-
-```go
-// Create a fighter entity
-fighter := &Character{ID: "fighter-1", Level: 5}
-
-// Add all simple and martial weapon proficiencies
-manager.AddProficiency(fighter, proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-    Type:     proficiency.ProficiencyTypeWeapon,
-    Key:      "simple-weapons",
-    Name:     "Simple Weapons",
-    Category: "simple-weapons",
-}))
-
-manager.AddProficiency(fighter, proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-    Type:     proficiency.ProficiencyTypeWeapon,
-    Key:      "martial-weapons",
-    Name:     "Martial Weapons",
-    Category: "martial-weapons",
-}))
-
-// Attack with any simple or martial weapon - gets +3 proficiency bonus (level 5)
-attackBonus := manager.GetWeaponAttackBonus(fighter, "longsword") // Returns 3
-```
-
-## Customization
-
-The module is designed to be extensible. You can:
-
-1. Implement custom `Storage` for database persistence
-2. Override category matching logic for your game system
-3. Add new proficiency types as needed
-4. Customize proficiency bonus calculation
-
-## Thread Safety
-
-The provided `MemoryStorage` implementation is thread-safe using read/write mutexes. Custom storage implementations should also ensure thread safety if concurrent access is expected.
+See `simple_test.go` for basic examples of proficiency usage.
