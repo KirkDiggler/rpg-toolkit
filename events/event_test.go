@@ -155,6 +155,32 @@ func TestContextDataTypes(t *testing.T) {
 	}
 }
 
+func TestEventCancellation(t *testing.T) {
+	source := &mockEntity{id: "player-1", entityType: "character"}
+	target := &mockEntity{id: "goblin-1", entityType: "monster"}
+
+	event := NewGameEvent(EventBeforeAttackRoll, source, target)
+
+	// Initially not cancelled
+	if event.IsCancelled() {
+		t.Error("New event should not be cancelled")
+	}
+
+	// Cancel the event
+	event.Cancel()
+
+	// Should now be cancelled
+	if !event.IsCancelled() {
+		t.Error("Event should be cancelled after calling Cancel()")
+	}
+
+	// Cancelling again should be idempotent
+	event.Cancel()
+	if !event.IsCancelled() {
+		t.Error("Event should remain cancelled")
+	}
+}
+
 func TestModifierPriority(t *testing.T) {
 	ctx := NewEventContext()
 
