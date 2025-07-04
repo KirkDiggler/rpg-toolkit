@@ -18,11 +18,11 @@ func TestGameEvent(t *testing.T) {
 	source := &mockEntity{id: "player-1", entityType: "character"}
 	target := &mockEntity{id: "goblin-1", entityType: "monster"}
 
-	event := NewGameEvent(EventBeforeAttack, source, target)
+	event := NewGameEvent(EventBeforeAttackRoll, source, target)
 
 	// Test basic properties
-	if event.Type() != EventBeforeAttack {
-		t.Errorf("Expected event type %s, got %s", EventBeforeAttack, event.Type())
+	if event.Type() != EventBeforeAttackRoll {
+		t.Errorf("Expected event type %s, got %s", EventBeforeAttackRoll, event.Type())
 	}
 
 	if event.Source() != source {
@@ -98,7 +98,7 @@ func TestBasicModifier(t *testing.T) {
 
 func TestEventWithNilEntities(t *testing.T) {
 	// Event should handle nil source/target gracefully
-	event := NewGameEvent(EventTurnStart, nil, nil)
+	event := NewGameEvent(EventOnTurnStart, nil, nil)
 
 	if event.Source() != nil {
 		t.Error("Expected nil source")
@@ -152,6 +152,32 @@ func TestContextDataTypes(t *testing.T) {
 		t.Error("Failed to get map")
 	} else if mapVal, ok := val.(map[string]int); !ok || mapVal["a"] != 1 {
 		t.Error("Map type mismatch")
+	}
+}
+
+func TestEventCancellation(t *testing.T) {
+	source := &mockEntity{id: "player-1", entityType: "character"}
+	target := &mockEntity{id: "goblin-1", entityType: "monster"}
+
+	event := NewGameEvent(EventBeforeAttackRoll, source, target)
+
+	// Initially not cancelled
+	if event.IsCancelled() {
+		t.Error("New event should not be cancelled")
+	}
+
+	// Cancel the event
+	event.Cancel()
+
+	// Should now be cancelled
+	if !event.IsCancelled() {
+		t.Error("Event should be cancelled after calling Cancel()")
+	}
+
+	// Cancelling again should be idempotent
+	event.Cancel()
+	if !event.IsCancelled() {
+		t.Error("Event should remain cancelled")
 	}
 }
 

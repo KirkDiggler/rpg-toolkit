@@ -48,7 +48,7 @@ func main() {
 	fmt.Printf("%s attacks %s with a Greatsword!\n\n", barbarian.Name(), goblin.Name())
 
 	// Create attack event
-	attackEvent := events.NewGameEvent(events.EventBeforeAttack, barbarian, goblin)
+	attackEvent := events.NewGameEvent(events.EventBeforeAttackRoll, barbarian, goblin)
 	attackEvent.Context().Set("weapon", "greatsword")
 	attackEvent.Context().Set("is_raging", true)
 	attackEvent.Context().Set("is_blessed", true)
@@ -63,7 +63,7 @@ func main() {
 
 func registerCombatHandlers(bus *events.Bus) {
 	// Handle the attack flow
-	bus.SubscribeFunc(events.EventBeforeAttack, 100, func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventBeforeAttackRoll, 100, func(ctx context.Context, e events.Event) error {
 		fmt.Println("1. Attack Roll Phase")
 		fmt.Printf("   Attacker: %s\n", e.Source().(*SimpleEntity).Name())
 		fmt.Printf("   Target: %s\n", e.Target().(*SimpleEntity).Name())
@@ -88,7 +88,7 @@ func registerCombatHandlers(bus *events.Bus) {
 			fmt.Println()
 
 			// Trigger damage calculation
-			damageEvent := events.NewGameEvent(events.EventCalculateDamage, e.Source(), e.Target())
+			damageEvent := events.NewGameEvent(events.EventOnDamageRoll, e.Source(), e.Target())
 			weapon, _ := e.Context().Get("weapon")
 			damageEvent.Context().Set("weapon", weapon)
 
@@ -105,7 +105,7 @@ func registerCombatHandlers(bus *events.Bus) {
 	})
 
 	// Handle damage calculation
-	bus.SubscribeFunc(events.EventCalculateDamage, 100, func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventOnDamageRoll, 100, func(ctx context.Context, e events.Event) error {
 		fmt.Println("2. Damage Calculation Phase")
 
 		// Base weapon damage (2d6 for greatsword)
@@ -124,7 +124,7 @@ func registerCombatHandlers(bus *events.Bus) {
 		fmt.Printf("   Total Damage: %d slashing\n\n", totalDamage)
 
 		// Apply the damage
-		damageApplied := events.NewGameEvent(events.EventAfterDamage, e.Source(), e.Target())
+		damageApplied := events.NewGameEvent(events.EventAfterTakeDamage, e.Source(), e.Target())
 		damageApplied.Context().Set("damage", totalDamage)
 		damageApplied.Context().Set("damage_type", "slashing")
 
@@ -132,7 +132,7 @@ func registerCombatHandlers(bus *events.Bus) {
 	})
 
 	// Handle damage application
-	bus.SubscribeFunc(events.EventAfterDamage, 100, func(_ context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventAfterTakeDamage, 100, func(_ context.Context, e events.Event) error {
 		fmt.Println("3. Damage Applied Phase")
 
 		damage, _ := e.Context().Get("damage")
@@ -147,7 +147,7 @@ func registerCombatHandlers(bus *events.Bus) {
 
 func registerRageHandler(bus *events.Bus) {
 	// Rage adds +2 damage during damage calculation
-	bus.SubscribeFunc(events.EventCalculateDamage, 50, func(_ context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventOnDamageRoll, 50, func(_ context.Context, e events.Event) error {
 		// Check if the attacker is raging
 		if isRaging, ok := e.Context().Get("is_raging"); ok && isRaging.(bool) {
 			e.Context().AddModifier(events.NewModifier(
@@ -163,7 +163,7 @@ func registerRageHandler(bus *events.Bus) {
 
 func registerBlessedHandler(bus *events.Bus) {
 	// Blessed adds d4 to attack rolls
-	bus.SubscribeFunc(events.EventBeforeAttack, 50, func(_ context.Context, e events.Event) error {
+	bus.SubscribeFunc(events.EventBeforeAttackRoll, 50, func(_ context.Context, e events.Event) error {
 		// Check if the attacker is blessed
 		if isBlessed, ok := e.Context().Get("is_blessed"); ok && isBlessed.(bool) {
 			e.Context().AddModifier(events.NewModifier(

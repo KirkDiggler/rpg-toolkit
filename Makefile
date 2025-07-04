@@ -154,6 +154,16 @@ fmt-all:
 	@find . -name "*.go" -type f -exec sh -c 'tail -c1 {} | read -r _ || echo >> {}' \;
 	@echo "✅ All code formatted"
 
+# Run go mod tidy on all modules
+mod-tidy:
+	@echo "Running go mod tidy on all modules..."
+	@find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do \
+		dir=$$(dirname "$$modfile"); \
+		echo "→ Tidying $$dir..."; \
+		(cd "$$dir" && go mod tidy) || exit 1; \
+	done
+	@echo "✅ All modules tidied"
+
 # Fix all auto-fixable issues
 fix: fmt-all mod-tidy
 	@echo "✅ All auto-fixable issues resolved"
