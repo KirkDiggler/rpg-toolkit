@@ -35,7 +35,7 @@ func TestBehaviorComposition(t *testing.T) {
 
 	// Test that it adds dice to attack rolls
 	var modifiersApplied []interface{}
-	bus.SubscribeFunc("attack.before", 100, events.HandlerFunc(func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc("attack.before", 100, events.HandlerFunc(func(_ context.Context, e events.Event) error {
 		if gameEvent, ok := e.(*events.GameEvent); ok {
 			val, exists := gameEvent.Context().Get("modifiers")
 			if mods, ok := val.([]interface{}); exists && ok {
@@ -73,7 +73,7 @@ func TestConditionalBehavior(t *testing.T) {
 			Type: "feature",
 		}),
 		owner: owner,
-		checkFunc: func(ctx context.Context, e events.Event) bool {
+		checkFunc: func(_ context.Context, e events.Event) bool {
 			// Check for advantage or ally nearby
 			if gameEvent, ok := e.(*events.GameEvent); ok {
 				advVal, _ := gameEvent.Context().Get("advantage")
@@ -92,7 +92,7 @@ func TestConditionalBehavior(t *testing.T) {
 
 	// Subscribe to track damage additions
 	var damageAdded bool
-	bus.SubscribeFunc("damage.calculate", 100, events.HandlerFunc(func(ctx context.Context, e events.Event) error {
+	bus.SubscribeFunc("damage.calculate", 100, events.HandlerFunc(func(_ context.Context, e events.Event) error {
 		if gameEvent, ok := e.(*events.GameEvent); ok {
 			val, _ := gameEvent.Context().Get("source")
 			if source, _ := val.(string); source == "sneak-attack" {
@@ -195,7 +195,7 @@ func TestDiceModifierBehavior(t *testing.T) {
 	flameTongue := &effects.SimpleDiceModifier{
 		Expression: "2d6",
 		ModType:    effects.ModifierDamage,
-		AppliesTo: func(ctx context.Context, e events.Event) bool {
+		AppliesTo: func(_ context.Context, e events.Event) bool {
 			// Only on weapon attacks
 			if gameEvent, ok := e.(*events.GameEvent); ok {
 				val, _ := gameEvent.Context().Get("weapon_type")
@@ -255,7 +255,7 @@ type TemporaryACBonus struct {
 
 func (t *TemporaryACBonus) GetDuration() effects.Duration { return t.duration }
 
-func (t *TemporaryACBonus) CheckExpiration(ctx context.Context, current time.Time) bool {
+func (t *TemporaryACBonus) CheckExpiration(_ context.Context, _ time.Time) bool {
 	return t.roundsElapsed >= t.duration.Value
 }
 
@@ -265,7 +265,7 @@ func (t *TemporaryACBonus) OnExpire(bus events.EventBus) error {
 
 func (t *TemporaryACBonus) Apply(bus events.EventBus) error {
 	// Track rounds
-	t.Subscribe(bus, "time.round_end", 10, events.HandlerFunc(func(ctx context.Context, e events.Event) error {
+	t.Subscribe(bus, "time.round_end", 10, events.HandlerFunc(func(ctx context.Context, _ events.Event) error {
 		t.roundsElapsed++
 		if t.CheckExpiration(ctx, time.Now()) {
 			return t.OnExpire(bus)

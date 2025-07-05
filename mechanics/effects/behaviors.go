@@ -62,14 +62,14 @@ type DurationType string
 
 // Duration type constants
 const (
-	DurationInstant    DurationType = "instant"      // Happens immediately
-	DurationRounds     DurationType = "rounds"       // Combat rounds
-	DurationMinutes    DurationType = "minutes"      // Real-time minutes
-	DurationHours      DurationType = "hours"        // Real-time hours
-	DurationDays       DurationType = "days"         // Game days
-	DurationUntil      DurationType = "until"        // Until a condition
-	DurationMaintained DurationType = "maintained"   // While actively maintained
-	DurationPermanent  DurationType = "permanent"    // Never expires
+	DurationInstant    DurationType = "instant"    // Happens immediately
+	DurationRounds     DurationType = "rounds"     // Combat rounds
+	DurationMinutes    DurationType = "minutes"    // Real-time minutes
+	DurationHours      DurationType = "hours"      // Real-time hours
+	DurationDays       DurationType = "days"       // Game days
+	DurationUntil      DurationType = "until"      // Until a condition
+	DurationMaintained DurationType = "maintained" // While actively maintained
+	DurationPermanent  DurationType = "permanent"  // Never expires
 )
 
 // StackableEffect represents an effect that can stack with itself.

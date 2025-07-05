@@ -26,7 +26,7 @@ func (b *BlessEffect) GetDuration() effects.Duration {
 	return b.duration
 }
 
-func (b *BlessEffect) CheckExpiration(ctx context.Context, currentTime time.Time) bool {
+func (b *BlessEffect) CheckExpiration(_ context.Context, currentTime time.Time) bool {
 	// For rounds-based duration, this would check round count
 	// For time-based, check elapsed time
 	if b.duration.Type == effects.DurationMinutes {
@@ -42,7 +42,7 @@ func (b *BlessEffect) OnExpire(bus events.EventBus) error {
 }
 
 // Implement DiceModifier
-func (b *BlessEffect) GetDiceExpression(ctx context.Context, event events.Event) string {
+func (b *BlessEffect) GetDiceExpression(_ context.Context, _ events.Event) string {
 	return "1d4" // Fresh roll each time
 }
 
@@ -50,7 +50,7 @@ func (b *BlessEffect) GetModifierType() effects.ModifierType {
 	return effects.ModifierAttack
 }
 
-func (b *BlessEffect) ShouldApply(ctx context.Context, event events.Event) bool {
+func (b *BlessEffect) ShouldApply(_ context.Context, event events.Event) bool {
 	// Check if the attacker is blessed
 	if attackEvent, ok := event.(*AttackEvent); ok {
 		for _, target := range b.targets {
@@ -96,7 +96,7 @@ type RageEffect struct {
 }
 
 // Implement ConditionalEffect
-func (r *RageEffect) CheckCondition(ctx context.Context, event events.Event) bool {
+func (r *RageEffect) CheckCondition(_ context.Context, event events.Event) bool {
 	// Rage ends if you haven't attacked or taken damage
 	if event.Type() == "turn.end" {
 		return r.damage > 0
@@ -119,7 +119,7 @@ func (r *RageEffect) GetResourceRequirements() []effects.ResourceRequirement {
 	}
 }
 
-func (r *RageEffect) ConsumeResources(ctx context.Context, bus events.EventBus) error {
+func (r *RageEffect) ConsumeResources(_ context.Context, _ events.EventBus) error {
 	// This would actually consume the rage use from the character's pool
 	// For now, just return success
 	return nil
@@ -133,7 +133,7 @@ func (r *RageEffect) GetDuration() effects.Duration {
 	}
 }
 
-func (r *RageEffect) CheckExpiration(ctx context.Context, currentTime time.Time) bool {
+func (r *RageEffect) CheckExpiration(_ context.Context, currentTime time.Time) bool {
 	return currentTime.After(r.endTime)
 }
 
@@ -162,7 +162,7 @@ func (p *PoisonEffect) GetSaveDetails() effects.SaveDetails {
 	}
 }
 
-func (p *PoisonEffect) OnSaveSuccess(ctx context.Context, bus events.EventBus) error {
+func (p *PoisonEffect) OnSaveSuccess(_ context.Context, bus events.EventBus) error {
 	// Remove poison on successful save
 	return p.Remove(bus)
 }
@@ -178,9 +178,8 @@ func (p *PoisonEffect) OnSaveFailure(ctx context.Context, bus events.EventBus) e
 // Example: Shield spell - triggered effect
 type ShieldSpell struct {
 	*effects.Core
-	caster   core.Entity
-	acBonus  int
-	expireAt time.Time
+	caster  core.Entity
+	acBonus int
 }
 
 // Implement TriggeredEffect
@@ -188,7 +187,7 @@ func (s *ShieldSpell) GetTriggers() []effects.TriggerCondition {
 	return []effects.TriggerCondition{
 		{
 			EventType: "attack.before_hit",
-			Condition: func(ctx context.Context, event events.Event) bool {
+			Condition: func(_ context.Context, event events.Event) bool {
 				// Trigger when caster is attacked
 				if attackEvent, ok := event.(*AttackEvent); ok {
 					return attackEvent.AttackTarget.GetID() == s.caster.GetID()
@@ -200,7 +199,7 @@ func (s *ShieldSpell) GetTriggers() []effects.TriggerCondition {
 	}
 }
 
-func (s *ShieldSpell) OnTrigger(ctx context.Context, event events.Event, bus events.EventBus) error {
+func (s *ShieldSpell) OnTrigger(_ context.Context, event events.Event, _ events.EventBus) error {
 	// Add +5 to AC
 	if attackEvent, ok := event.(*AttackEvent); ok {
 		attackEvent.TargetAC += s.acBonus
@@ -211,11 +210,10 @@ func (s *ShieldSpell) OnTrigger(ctx context.Context, event events.Event, bus eve
 // Example: Powerful Build - permanent conditional effect
 type PowerfulBuildTrait struct {
 	*effects.Core
-	character core.Entity
 }
 
 // Implement ConditionalEffect
-func (p *PowerfulBuildTrait) CheckCondition(ctx context.Context, event events.Event) bool {
+func (p *PowerfulBuildTrait) CheckCondition(_ context.Context, event events.Event) bool {
 	// Only applies to carrying capacity and push/drag/lift
 	eventType := event.Type()
 	return eventType == "capacity.calculate" ||
@@ -243,8 +241,6 @@ func (p *PowerfulBuildTrait) Apply(bus events.EventBus) error {
 // Example: ExclusiveEffect - demonstrates stacking rules
 type ExclusiveEffect struct {
 	*effects.Core
-	caster core.Entity
-	focus  string // What they're focusing on
 }
 
 // Implement StackableEffect
@@ -260,7 +256,7 @@ func (e *ExclusiveEffect) CanStackWith(other core.Entity) bool {
 	return true
 }
 
-func (e *ExclusiveEffect) Stack(other core.Entity) error {
+func (e *ExclusiveEffect) Stack(_ core.Entity) error {
 	// This would never be called due to CanStackWith returning false
 	return fmt.Errorf("cannot maintain multiple exclusive effects")
 }
@@ -310,5 +306,4 @@ func Example() {
 	_ = bless.Apply(bus)
 
 	// When an attack happens, bless would add 1d4 through its subscriptions
-
 }

@@ -103,7 +103,7 @@ func (c *ComposedCondition) defaultApply(bus events.EventBus) error {
 
 	// If temporary, set up expiration checking
 	if c.temporary != nil {
-		c.Subscribe(bus, "time.round_end", 10, events.HandlerFunc(func(ctx context.Context, e events.Event) error {
+		c.Subscribe(bus, "time.round_end", 10, events.HandlerFunc(func(ctx context.Context, _ events.Event) error {
 			if c.temporary.CheckExpiration(ctx, time.Now()) {
 				return c.temporary.OnExpire(bus)
 			}
@@ -115,7 +115,7 @@ func (c *ComposedCondition) defaultApply(bus events.EventBus) error {
 	if c.saves != nil {
 		details := c.saves.GetSaveDetails()
 		if details.RepeatType == SaveRepeat {
-			c.Subscribe(bus, details.RepeatValue, 20, events.HandlerFunc(func(ctx context.Context, e events.Event) error {
+			c.Subscribe(bus, details.RepeatValue, 20, events.HandlerFunc(func(ctx context.Context, _ events.Event) error {
 				// Trigger a save event
 				saveEvent := events.NewGameEvent("save.required", c, c.owner)
 				saveEvent.Context().Set("ability", details.Ability)
@@ -196,7 +196,7 @@ func CreateBlessCondition(owner core.Entity, source string) *ComposedCondition {
 		Dice: &SimpleDiceModifier{
 			Expression: "1d4",
 			ModType:    ModifierAttack,
-			AppliesTo: func(ctx context.Context, e events.Event) bool {
+			AppliesTo: func(_ context.Context, e events.Event) bool {
 				// Applies to attack rolls and saving throws
 				return e.Type() == "attack.before" || e.Type() == "save.before"
 			},
@@ -219,18 +219,18 @@ func CreatePoisonedCondition(owner core.Entity, source string, poisonDC int) *Co
 				RepeatType:  SaveRepeat,
 				RepeatValue: "turn_end",
 			},
-			OnSuccess: func(ctx context.Context, bus events.EventBus) error {
+			OnSuccess: func(_ context.Context, _ events.EventBus) error {
 				// Remove condition on save
 				return nil // Would trigger removal
 			},
-			OnFailure: func(ctx context.Context, bus events.EventBus) error {
+			OnFailure: func(_ context.Context, _ events.EventBus) error {
 				// Poisoned gives disadvantage on attacks
 				return nil
 			},
 		},
 		ApplyFunc: func(c *ComposedCondition, bus events.EventBus) error {
 			// Subscribe to give disadvantage on attacks
-			c.Subscribe(bus, "attack.before", 40, events.HandlerFunc(func(ctx context.Context, e events.Event) error {
+			c.Subscribe(bus, "attack.before", 40, events.HandlerFunc(func(_ context.Context, e events.Event) error {
 				if data, ok := e.(*events.GameEvent); ok {
 					val, _ := data.Context().Get("attacker")
 					if attacker, ok := val.(core.Entity); ok && attacker.GetID() == owner.GetID() {
@@ -252,26 +252,37 @@ type SimpleDuration struct {
 	StartTime time.Time
 }
 
+// GetDuration returns the duration
 func (s *SimpleDuration) GetDuration() Duration { return s.Duration }
-func (s *SimpleDuration) CheckExpiration(ctx context.Context, current time.Time) bool {
+
+// CheckExpiration checks if the duration has expired
+func (s *SimpleDuration) CheckExpiration(_ context.Context, current time.Time) bool {
 	if s.Duration.Type == DurationMinutes {
 		elapsed := current.Sub(s.StartTime).Minutes()
 		return elapsed >= float64(s.Duration.Value)
 	}
 	return false
 }
-func (s *SimpleDuration) OnExpire(bus events.EventBus) error { return nil }
 
+// OnExpire handles expiration logic
+func (s *SimpleDuration) OnExpire(_ events.EventBus) error { return nil }
+
+// SimpleDiceModifier provides a basic dice modifier implementation
 type SimpleDiceModifier struct {
 	Expression string
 	ModType    ModifierType
 	AppliesTo  func(context.Context, events.Event) bool
 }
 
-func (s *SimpleDiceModifier) GetDiceExpression(ctx context.Context, e events.Event) string {
+// GetDiceExpression returns the dice expression
+func (s *SimpleDiceModifier) GetDiceExpression(_ context.Context, _ events.Event) string {
 	return s.Expression
 }
+
+// GetModifierType returns the modifier type
 func (s *SimpleDiceModifier) GetModifierType() ModifierType { return s.ModType }
+
+// ShouldApply checks if the modifier should apply
 func (s *SimpleDiceModifier) ShouldApply(ctx context.Context, e events.Event) bool {
 	if s.AppliesTo != nil {
 		return s.AppliesTo(ctx, e)
@@ -279,25 +290,37 @@ func (s *SimpleDiceModifier) ShouldApply(ctx context.Context, e events.Event) bo
 	return true
 }
 
+// NoStacking prevents effects from stacking
 type NoStacking struct{}
 
-func (n *NoStacking) GetStackingRule() StackingRule       { return StackingNone }
-func (n *NoStacking) CanStackWith(other core.Entity) bool { return false }
-func (n *NoStacking) Stack(other core.Entity) error       { return nil }
+// GetStackingRule returns the stacking rule
+func (n *NoStacking) GetStackingRule() StackingRule { return StackingNone }
 
+// CanStackWith always returns false
+func (n *NoStacking) CanStackWith(_ core.Entity) bool { return false }
+
+// Stack does nothing as stacking is not allowed
+func (n *NoStacking) Stack(_ core.Entity) error { return nil }
+
+// SimpleSaveEffect provides a basic saving throw effect implementation
 type SimpleSaveEffect struct {
 	Details   SaveDetails
 	OnSuccess func(context.Context, events.EventBus) error
 	OnFailure func(context.Context, events.EventBus) error
 }
 
+// GetSaveDetails returns the save details
 func (s *SimpleSaveEffect) GetSaveDetails() SaveDetails { return s.Details }
+
+// OnSaveSuccess handles successful saves
 func (s *SimpleSaveEffect) OnSaveSuccess(ctx context.Context, bus events.EventBus) error {
 	if s.OnSuccess != nil {
 		return s.OnSuccess(ctx, bus)
 	}
 	return nil
 }
+
+// OnSaveFailure handles failed saves
 func (s *SimpleSaveEffect) OnSaveFailure(ctx context.Context, bus events.EventBus) error {
 	if s.OnFailure != nil {
 		return s.OnFailure(ctx, bus)
