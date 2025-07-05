@@ -14,7 +14,8 @@ import (
 )
 
 func TestSimpleFeatureHolder(t *testing.T) {
-	holder := features.NewSimpleFeatureHolder()
+	mockEntity := &mockEntity{id: "test", entityType: "character"}
+	holder := features.NewSimpleFeatureHolder(mockEntity)
 
 	// Add a feature
 	feature := features.NewBasicFeature("test_feature", "Test Feature")
@@ -45,7 +46,8 @@ func TestSimpleFeatureHolder(t *testing.T) {
 }
 
 func TestFeatureHolderActivation(t *testing.T) {
-	holder := features.NewSimpleFeatureHolder()
+	mockEntity := &mockEntity{id: "test", entityType: "character"}
+	holder := features.NewSimpleFeatureHolder(mockEntity)
 	bus := events.NewBus()
 
 	// Add an activated feature
@@ -78,7 +80,8 @@ func TestFeatureHolderActivation(t *testing.T) {
 }
 
 func TestFeatureHolderPassiveFeatures(t *testing.T) {
-	holder := features.NewSimpleFeatureHolder()
+	mockEntity := &mockEntity{id: "test", entityType: "character"}
+	holder := features.NewSimpleFeatureHolder(mockEntity)
 
 	// Add a passive feature
 	passiveFeature := features.NewBasicFeature("darkvision", "Darkvision").

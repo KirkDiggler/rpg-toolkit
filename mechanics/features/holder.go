@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
@@ -16,12 +17,14 @@ import (
 type SimpleFeatureHolder struct {
 	mu       sync.RWMutex
 	features map[string]Feature
+	entity   core.Entity
 }
 
 // NewSimpleFeatureHolder creates a new feature holder.
-func NewSimpleFeatureHolder() *SimpleFeatureHolder {
+func NewSimpleFeatureHolder(entity core.Entity) *SimpleFeatureHolder {
 	return &SimpleFeatureHolder{
 		features: make(map[string]Feature),
+		entity:   entity,
 	}
 }
 
@@ -80,11 +83,7 @@ func (h *SimpleFeatureHolder) GetActiveFeatures() []Feature {
 
 	var active []Feature
 	for _, feature := range h.features {
-		// Note: IsActive needs the entity, but SimpleFeatureHolder doesn't know it
-		// Real implementations would pass the actual entity
-		if feature.GetTiming() == TimingPassive {
-			active = append(active, feature)
-		} else if basic, ok := feature.(*BasicFeature); ok && basic.isActive {
+		if feature.IsActive(h.entity) {
 			active = append(active, feature)
 		}
 	}
@@ -101,8 +100,7 @@ func (h *SimpleFeatureHolder) ActivateFeature(key string, bus events.EventBus) e
 		return fmt.Errorf("feature %s not found", key)
 	}
 
-	// Note: Real implementations would pass the actual entity
-	return feature.Activate(nil, bus)
+	return feature.Activate(h.entity, bus)
 }
 
 // DeactivateFeature deactivates a feature by key.
@@ -115,6 +113,5 @@ func (h *SimpleFeatureHolder) DeactivateFeature(key string, bus events.EventBus)
 		return fmt.Errorf("feature %s not found", key)
 	}
 
-	// Note: Real implementations would pass the actual entity
-	return feature.Deactivate(nil, bus)
+	return feature.Deactivate(h.entity, bus)
 }

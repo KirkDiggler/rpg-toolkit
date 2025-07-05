@@ -28,6 +28,7 @@ type BasicFeature struct {
 	prerequisites       []string
 	isActive            bool
 	prerequisiteChecker PrerequisiteChecker
+	subscriptionIDs     []string // Track event subscriptions for cleanup
 }
 
 // NewBasicFeature creates a new basic feature.
@@ -193,11 +194,13 @@ func (f *BasicFeature) Activate(entity core.Entity, bus events.EventBus) error {
 		return nil // Already active
 	}
 
-	// Register event listeners
+	// Register event listeners and store subscription IDs
+	f.subscriptionIDs = make([]string, 0)
 	for _, listener := range f.eventListeners {
 		for _, eventType := range listener.EventTypes() {
 			handler := f.createEventHandler(listener, entity)
-			bus.SubscribeFunc(eventType, listener.Priority(), handler)
+			subID := bus.SubscribeFunc(eventType, listener.Priority(), handler)
+			f.subscriptionIDs = append(f.subscriptionIDs, subID)
 		}
 	}
 
@@ -206,7 +209,7 @@ func (f *BasicFeature) Activate(entity core.Entity, bus events.EventBus) error {
 }
 
 // Deactivate deactivates the feature for an entity.
-func (f *BasicFeature) Deactivate(_ core.Entity, _ events.EventBus) error {
+func (f *BasicFeature) Deactivate(_ core.Entity, bus events.EventBus) error {
 	if f.timing == TimingPassive {
 		return nil // Passive features are always active
 	}
@@ -219,8 +222,16 @@ func (f *BasicFeature) Deactivate(_ core.Entity, _ events.EventBus) error {
 		return nil // Already inactive
 	}
 
-	// TODO: We need a way to unsubscribe specific handlers
-	// For now, we'll just mark as inactive
+	// Unsubscribe all event handlers
+	for _, subID := range f.subscriptionIDs {
+		if err := bus.Unsubscribe(subID); err != nil {
+			// Log error but continue unsubscribing others
+			// In a real implementation, you might want to handle this differently
+			continue
+		}
+	}
+	f.subscriptionIDs = nil
+
 	f.isActive = false
 	return nil
 }
