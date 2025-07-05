@@ -4,7 +4,9 @@
 package conditions
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -52,7 +54,11 @@ func (cm *ConditionManager) AddImmunity(entity core.Entity, condType ConditionTy
 	cm.immunities[entityID] = append(cm.immunities[entityID], condType)
 
 	// Remove any existing conditions of this type
-	cm.removeConditionTypeUnsafe(entity, condType)
+	if err := cm.removeConditionTypeUnsafe(entity, condType); err != nil {
+		// Log but don't fail - we're adding immunity anyway
+		// The error is non-critical as we're making the entity immune
+		log.Printf("failed to remove conditions of type %s when adding immunity: %v", condType, err)
+	}
 }
 
 // RemoveImmunity removes a condition immunity from an entity.
@@ -146,7 +152,9 @@ func (cm *ConditionManager) ApplyCondition(condition Condition) error {
 		cm.removeSuppressedConditionsUnsafe(target, condType)
 
 		// Remove existing conditions of the same type (unless they stack)
-		cm.removeConditionTypeUnsafe(target, condType)
+		if err := cm.removeConditionTypeUnsafe(target, condType); err != nil {
+			return fmt.Errorf("failed to remove existing conditions of type %s: %w", condType, err)
+		}
 	}
 
 	// Apply the condition
@@ -171,6 +179,7 @@ func (cm *ConditionManager) ApplyCondition(condition Condition) error {
 		// Apply it (this will handle immunity/suppression checks)
 		if err := cm.ApplyCondition(included); err != nil {
 			// Log but don't fail - included conditions are best-effort
+			log.Printf("failed to apply included condition %s: %v", includedType, err)
 			continue
 		}
 	}
@@ -183,7 +192,11 @@ func (cm *ConditionManager) ApplyCondition(condition Condition) error {
 	)
 	event.Context().Set("condition_type", string(condType))
 	event.Context().Set("condition_id", condition.GetID())
-	cm.bus.Publish(nil, event)
+	if err := cm.bus.Publish(context.TODO(), event); err != nil {
+		// Log but don't fail - event publishing failure shouldn't prevent condition application
+		// The condition has already been applied successfully
+		log.Printf("failed to publish condition applied event for %s: %v", condition.GetID(), err)
+	}
 
 	return nil
 }
@@ -288,7 +301,11 @@ func (cm *ConditionManager) removeConditionUnsafe(condition Condition) error {
 			)
 			event.Context().Set("condition_type", condType)
 			event.Context().Set("condition_id", condition.GetID())
-			cm.bus.Publish(nil, event)
+			if err := cm.bus.Publish(context.TODO(), event); err != nil {
+				// Log but don't fail - event publishing failure shouldn't prevent condition removal
+				// The condition has already been removed successfully
+				log.Printf("failed to publish condition removed event for %s: %v", condition.GetID(), err)
+			}
 
 			return nil
 		}

@@ -61,13 +61,13 @@ type ConditionEffect struct {
 
 // ConditionDefinition defines a condition type and its mechanical effects.
 type ConditionDefinition struct {
-	Type        ConditionType      // Unique identifier for this condition
-	Name        string             // Display name
-	Description string             // Human-readable description
-	Effects     []ConditionEffect  // Mechanical effects this condition applies
-	Immunities  []ConditionType    // Conditions this prevents
-	Includes    []ConditionType    // Other conditions this automatically includes
-	Suppresses  []ConditionType    // Weaker conditions this overrides
+	Type        ConditionType     // Unique identifier for this condition
+	Name        string            // Display name
+	Description string            // Human-readable description
+	Effects     []ConditionEffect // Mechanical effects this condition applies
+	Immunities  []ConditionType   // Conditions this prevents
+	Includes    []ConditionType   // Other conditions this automatically includes
+	Suppresses  []ConditionType   // Weaker conditions this overrides
 }
 
 // conditionDefinitions holds registered condition definitions.

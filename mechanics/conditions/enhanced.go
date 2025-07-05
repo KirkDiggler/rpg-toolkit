@@ -57,10 +57,10 @@ func NewEnhancedCondition(cfg EnhancedConditionConfig) (*EnhancedCondition, erro
 		Type:   string(cfg.ConditionType),
 		Target: cfg.Target,
 		Source: cfg.Source,
-		ApplyFunc: func(c *SimpleCondition, bus events.EventBus) error {
+		ApplyFunc: func(_ *SimpleCondition, bus events.EventBus) error {
 			return ec.applyEffects(bus)
 		},
-		RemoveFunc: func(c *SimpleCondition, bus events.EventBus) error {
+		RemoveFunc: func(_ *SimpleCondition, _ events.EventBus) error {
 			// Remove is handled by SimpleCondition's subscription tracking
 			return nil
 		},
@@ -147,7 +147,7 @@ func (ec *EnhancedCondition) applyEffect(bus events.EventBus, effect ConditionEf
 
 // applyAdvantageEffect applies advantage to specific rolls.
 func (ec *EnhancedCondition) applyAdvantageEffect(bus events.EventBus, effect ConditionEffect) error {
-	handler := func(ctx context.Context, event events.Event) error {
+	handler := func(_ context.Context, event events.Event) error {
 		// Check if this event matches the target
 		if !ec.eventMatchesTarget(event, effect.Target) {
 			return nil
@@ -180,7 +180,7 @@ func (ec *EnhancedCondition) applyAdvantageEffect(bus events.EventBus, effect Co
 
 // applyDisadvantageEffect applies disadvantage to specific rolls.
 func (ec *EnhancedCondition) applyDisadvantageEffect(bus events.EventBus, effect ConditionEffect) error {
-	handler := func(ctx context.Context, event events.Event) error {
+	handler := func(_ context.Context, event events.Event) error {
 		if !ec.eventMatchesTarget(event, effect.Target) {
 			return nil
 		}
@@ -209,7 +209,7 @@ func (ec *EnhancedCondition) applyDisadvantageEffect(bus events.EventBus, effect
 
 // applyAutoFailEffect makes specific checks automatically fail.
 func (ec *EnhancedCondition) applyAutoFailEffect(bus events.EventBus, effect ConditionEffect) error {
-	handler := func(ctx context.Context, event events.Event) error {
+	handler := func(_ context.Context, event events.Event) error {
 		if !ec.eventMatchesTarget(event, effect.Target) {
 			return nil
 		}
@@ -234,8 +234,8 @@ func (ec *EnhancedCondition) applyAutoFailEffect(bus events.EventBus, effect Con
 }
 
 // applySpeedEffect modifies movement speed.
-func (ec *EnhancedCondition) applySpeedEffect(bus events.EventBus, effect ConditionEffect, factor float64) error {
-	handler := func(ctx context.Context, event events.Event) error {
+func (ec *EnhancedCondition) applySpeedEffect(bus events.EventBus, _ ConditionEffect, factor float64) error {
+	handler := func(_ context.Context, event events.Event) error {
 		if event.Type() != EventOnMovement {
 			return nil
 		}
@@ -265,7 +265,7 @@ func (ec *EnhancedCondition) applySpeedEffect(bus events.EventBus, effect Condit
 
 // applyIncapacitatedEffect prevents actions and reactions.
 func (ec *EnhancedCondition) applyIncapacitatedEffect(bus events.EventBus) error {
-	handler := func(ctx context.Context, event events.Event) error {
+	handler := func(_ context.Context, event events.Event) error {
 		// Check for action/reaction attempts
 		if event.Type() != EventBeforeAction && event.Type() != EventBeforeReaction {
 			return nil
@@ -289,7 +289,7 @@ func (ec *EnhancedCondition) applyIncapacitatedEffect(bus events.EventBus) error
 
 // applyNoReactionsEffect prevents reactions.
 func (ec *EnhancedCondition) applyNoReactionsEffect(bus events.EventBus) error {
-	handler := func(ctx context.Context, event events.Event) error {
+	handler := func(_ context.Context, event events.Event) error {
 		if event.Type() != EventBeforeReaction {
 			return nil
 		}
@@ -310,7 +310,7 @@ func (ec *EnhancedCondition) applyNoReactionsEffect(bus events.EventBus) error {
 
 // applyDamageModificationEffect applies resistance, vulnerability, or immunity.
 func (ec *EnhancedCondition) applyDamageModificationEffect(bus events.EventBus, effect ConditionEffect) error {
-	handler := func(ctx context.Context, event events.Event) error {
+	handler := func(_ context.Context, event events.Event) error {
 		if event.Type() != events.EventBeforeTakeDamage {
 			return nil
 		}
