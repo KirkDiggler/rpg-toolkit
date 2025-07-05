@@ -92,6 +92,11 @@ func (b *Bus) Publish(ctx context.Context, event Event) error {
 
 	// Execute handlers
 	for _, sub := range handlers {
+		// Skip if event has been cancelled
+		if event.IsCancelled() {
+			break
+		}
+
 		if err := sub.handler.Handle(ctx, event); err != nil {
 			return fmt.Errorf("handler %s failed: %w", sub.id, err)
 		}
