@@ -75,13 +75,83 @@ effect.IsActive()           // true
 err = effect.Remove(bus)    // Deactivates and cleans up
 ```
 
-## Behavioral Interfaces (Coming Soon)
+## Behavioral Interfaces
 
-Future additions will include composable behaviors:
-- `ConditionalEffect` - Only applies under certain conditions
-- `TemporaryEffect` - Has duration/expiration
-- `ResourceConsumer` - Uses limited resources
-- `PropertyModifier` - Modifies entity properties
+The package provides composable behavioral interfaces that effects can implement to gain specific capabilities. This allows effects to mix and match behaviors as needed.
+
+### Available Behaviors
+
+#### ConditionalEffect
+Effects that only apply under certain conditions.
+```go
+type ConditionalEffect interface {
+    CheckCondition(ctx context.Context, event events.Event) bool
+}
+```
+Examples: Weapon proficiency, Sneak Attack, situational bonuses
+
+#### TemporaryEffect
+Effects with limited duration that expire.
+```go
+type TemporaryEffect interface {
+    GetDuration() Duration
+    CheckExpiration(ctx context.Context, currentTime time.Time) bool
+    OnExpire(bus events.EventBus) error
+}
+```
+Examples: Bless (1 minute), Rage (10 rounds), Mage Armor (8 hours)
+
+#### ResourceConsumer
+Effects that consume limited resources when activated.
+```go
+type ResourceConsumer interface {
+    GetResourceRequirements() []ResourceRequirement
+    ConsumeResources(ctx context.Context, bus events.EventBus) error
+}
+```
+Examples: Rage (uses charges), Divine Smite (spell slots), Ki abilities
+
+#### DiceModifier
+Effects that add dice expressions to rolls (rolled fresh each time).
+```go
+type DiceModifier interface {
+    GetDiceExpression(ctx context.Context, event events.Event) string
+    GetModifierType() ModifierType
+    ShouldApply(ctx context.Context, event events.Event) bool
+}
+```
+Examples: Bless (+1d4), Bane (-1d4), Sneak Attack damage
+
+#### StackableEffect
+Effects that define how they combine with other effects.
+```go
+type StackableEffect interface {
+    GetStackingRule() StackingRule
+    CanStackWith(other core.Entity) bool
+    Stack(other core.Entity) error
+}
+```
+Examples: Ability damage (adds), Temporary HP (max), most buffs (none)
+
+#### Additional Behaviors
+- `SavingThrowEffect` - Effects that allow saves
+- `TargetedEffect` - Effects affecting specific entities
+- `TriggeredEffect` - Effects that respond to triggers
+
+### Composition Example
+
+```go
+// Bless combines multiple behaviors
+type BlessEffect struct {
+    *effects.Core
+    // Implements: TemporaryEffect, DiceModifier, TargetedEffect, StackableEffect
+}
+
+// Rage combines different behaviors
+type RageEffect struct {
+    *effects.Core
+    // Implements: ConditionalEffect, TemporaryEffect, ResourceConsumer
+}
 
 ## Design Philosophy
 
