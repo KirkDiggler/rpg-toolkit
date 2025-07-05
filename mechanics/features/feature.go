@@ -44,6 +44,10 @@ const (
 	TimingActivated FeatureTiming = "activated"
 )
 
+// PrerequisiteChecker is a function that checks if an entity meets a prerequisite.
+// Games can provide their own implementations to handle game-specific prerequisites.
+type PrerequisiteChecker func(entity core.Entity, prerequisite string) bool
+
 // Feature represents a character ability, racial trait, or feat.
 type Feature interface {
 	// Key returns the unique identifier for the feature.

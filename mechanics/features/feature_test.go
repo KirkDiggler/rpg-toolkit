@@ -94,6 +94,52 @@ func TestFeatureWithPrerequisites(t *testing.T) {
 	prereqs := feature.GetPrerequisites()
 	assert.Len(t, prereqs, 3)
 	assert.Contains(t, prereqs, "class:fighter")
+
+	// Test that without a prerequisite checker, MeetsPrerequisites returns false
+	mockEntity := &mockEntity{id: "test", entityType: "character"}
+	assert.False(t, feature.MeetsPrerequisites(mockEntity))
+}
+
+func TestFeaturePrerequisiteChecker(t *testing.T) {
+	// Create a feature with prerequisites
+	feature := features.NewBasicFeature("prereq_feature", "Prerequisite Feature").
+		WithPrerequisites("class:fighter", "level:5")
+
+	// Create a mock entity
+	mockEntity := &mockEntity{id: "test", entityType: "character"}
+
+	// Without checker, should return false
+	assert.False(t, feature.MeetsPrerequisites(mockEntity))
+
+	// Add a custom prerequisite checker
+	checker := func(_ core.Entity, prereq string) bool {
+		switch prereq {
+		case "class:fighter":
+			// In a real game, you'd check the entity's class
+			return true
+		case "level:5":
+			// In a real game, you'd check the entity's level
+			return true
+		default:
+			return false
+		}
+	}
+
+	feature.WithPrerequisiteChecker(checker)
+
+	// Now should return true
+	assert.True(t, feature.MeetsPrerequisites(mockEntity))
+
+	// Test with failing prerequisites
+	failingChecker := func(_ core.Entity, prereq string) bool {
+		if prereq == "level:5" {
+			return false // Character is not level 5
+		}
+		return true
+	}
+
+	feature.WithPrerequisiteChecker(failingChecker)
+	assert.False(t, feature.MeetsPrerequisites(mockEntity))
 }
 
 func TestTriggeredFeature(t *testing.T) {

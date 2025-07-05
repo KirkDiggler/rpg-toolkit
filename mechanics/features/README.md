@@ -76,6 +76,39 @@ character.ActivateFeature("rage", eventBus)
 available := registry.GetFeaturesForClass("barbarian", 5)
 ```
 
+### Prerequisites
+
+Features can have prerequisites that must be met:
+
+```go
+// Define a feature with prerequisites
+feature := features.NewBasicFeature("power_attack", "Power Attack").
+    WithPrerequisites("class:fighter", "level:5", "feat:weapon_focus")
+
+// Games must provide a prerequisite checker
+checker := func(entity core.Entity, prereq string) bool {
+    // Parse prerequisite and check against entity
+    // This is game-specific logic
+    parts := strings.Split(prereq, ":")
+    switch parts[0] {
+    case "class":
+        return checkEntityClass(entity, parts[1])
+    case "level":
+        return checkEntityLevel(entity, parts[1])
+    case "feat":
+        return checkEntityHasFeat(entity, parts[1])
+    }
+    return false
+}
+
+feature.WithPrerequisiteChecker(checker)
+
+// Now the feature can verify prerequisites
+if feature.MeetsPrerequisites(character) {
+    character.AddFeature(feature)
+}
+```
+
 ### Event Integration
 
 Features can listen to and modify game events:

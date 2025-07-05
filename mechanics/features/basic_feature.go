@@ -14,19 +14,20 @@ import (
 
 // BasicFeature is a standard implementation of the Feature interface.
 type BasicFeature struct {
-	key            string
-	name           string
-	description    string
-	featureType    FeatureType
-	level          int
-	source         string
-	timing         FeatureTiming
-	modifiers      []events.Modifier
-	proficiencies  []string
-	resources      []resources.Resource
-	eventListeners []EventListener
-	prerequisites  []string
-	isActive       bool
+	key                 string
+	name                string
+	description         string
+	featureType         FeatureType
+	level               int
+	source              string
+	timing              FeatureTiming
+	modifiers           []events.Modifier
+	proficiencies       []string
+	resources           []resources.Resource
+	eventListeners      []EventListener
+	prerequisites       []string
+	isActive            bool
+	prerequisiteChecker PrerequisiteChecker
 }
 
 // NewBasicFeature creates a new basic feature.
@@ -143,9 +144,25 @@ func (f *BasicFeature) HasPrerequisites() bool {
 }
 
 // MeetsPrerequisites checks if the entity meets all prerequisites.
-func (f *BasicFeature) MeetsPrerequisites(_ core.Entity) bool {
-	// This is a simplified implementation
-	// Real implementation would need to parse and check prerequisites
+func (f *BasicFeature) MeetsPrerequisites(entity core.Entity) bool {
+	// If no prerequisites, automatically meets them
+	if len(f.prerequisites) == 0 {
+		return true
+	}
+
+	// If no prerequisite checker is set, we can't verify prerequisites
+	if f.prerequisiteChecker == nil {
+		// Return false to ensure features with prerequisites aren't accidentally granted
+		return false
+	}
+
+	// Check each prerequisite using the provided checker
+	for _, prereq := range f.prerequisites {
+		if !f.prerequisiteChecker(entity, prereq) {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -278,5 +295,11 @@ func (f *BasicFeature) WithEventListeners(listeners ...EventListener) *BasicFeat
 // WithPrerequisites adds prerequisites to the feature.
 func (f *BasicFeature) WithPrerequisites(prerequisites ...string) *BasicFeature {
 	f.prerequisites = append(f.prerequisites, prerequisites...)
+	return f
+}
+
+// WithPrerequisiteChecker sets a custom prerequisite checker for the feature.
+func (f *BasicFeature) WithPrerequisiteChecker(checker PrerequisiteChecker) *BasicFeature {
+	f.prerequisiteChecker = checker
 	return f
 }
