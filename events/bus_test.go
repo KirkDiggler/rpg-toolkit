@@ -364,3 +364,57 @@ func TestEventModifiers(t *testing.T) {
 		t.Error("Missing expected modifiers")
 	}
 }
+
+func TestBusCancelledEvent(t *testing.T) {
+	bus := NewBus()
+	ctx := context.Background()
+
+	// Track handler calls
+	var handler1Called, handler2Called, handler3Called bool
+
+	// Subscribe multiple handlers
+	bus.SubscribeFunc(EventBeforeAttackRoll, 100, func(_ context.Context, e Event) error {
+		handler1Called = true
+		// First handler cancels the event
+		e.Cancel()
+		return nil
+	})
+
+	bus.SubscribeFunc(EventBeforeAttackRoll, 200, func(_ context.Context, _ Event) error {
+		handler2Called = true
+		return nil
+	})
+
+	bus.SubscribeFunc(EventBeforeAttackRoll, 300, func(_ context.Context, _ Event) error {
+		handler3Called = true
+		return nil
+	})
+
+	// Create and publish event
+	source := &mockEntity{id: "player-1", entityType: "character"}
+	event := NewGameEvent(EventBeforeAttackRoll, source, nil)
+
+	err := bus.Publish(ctx, event)
+	if err != nil {
+		t.Errorf("Publish failed: %v", err)
+	}
+
+	// First handler should be called
+	if !handler1Called {
+		t.Error("First handler should have been called")
+	}
+
+	// Subsequent handlers should NOT be called
+	if handler2Called {
+		t.Error("Second handler should not have been called after cancellation")
+	}
+
+	if handler3Called {
+		t.Error("Third handler should not have been called after cancellation")
+	}
+
+	// Event should be cancelled
+	if !event.IsCancelled() {
+		t.Error("Event should be marked as cancelled")
+	}
+}
