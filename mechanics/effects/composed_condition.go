@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
@@ -152,18 +153,50 @@ func (c *ComposedCondition) getEventTypesForModifier(modType ModifierType) []str
 	}
 }
 
-// applyDiceModifier adds the dice expression to the event
+// applyDiceModifier adds the dice modifier to the event
 func (c *ComposedCondition) applyDiceModifier(ctx context.Context, e events.Event) {
 	expr := c.dice.GetDiceExpression(ctx, e)
 
-	// Add to event context
+	// Parse the expression and create a fresh dice.Roll
+	// This ensures we get a new roll each time, not a cached value
+	var roll events.ModifierValue
+	switch expr {
+	case "1d4":
+		roll = dice.D4(1)
+	case "1d6":
+		roll = dice.D6(1)
+	case "1d8":
+		roll = dice.D8(1)
+	case "1d10":
+		roll = dice.D10(1)
+	case "1d12":
+		roll = dice.D12(1)
+	case "2d6":
+		roll = dice.D6(2)
+	default:
+		// For now, just store the expression
+		// A full implementation would parse arbitrary dice expressions
+		if data, ok := e.(*events.GameEvent); ok {
+			val, _ := data.Context().Get("modifiers")
+			modifiers, _ := val.([]interface{})
+			modifiers = append(modifiers, map[string]interface{}{
+				"source":     c.GetID(),
+				"expression": expr,
+				"type":       "dice",
+			})
+			data.Context().Set("modifiers", modifiers)
+		}
+		return
+	}
+
+	// Add the fresh dice roll to the event
 	if data, ok := e.(*events.GameEvent); ok {
 		val, _ := data.Context().Get("modifiers")
 		modifiers, _ := val.([]interface{})
 		modifiers = append(modifiers, map[string]interface{}{
-			"source":     c.GetID(),
-			"expression": expr,
-			"type":       "dice",
+			"source": c.GetID(),
+			"value":  roll,
+			"type":   "dice",
 		})
 		data.Context().Set("modifiers", modifiers)
 	}

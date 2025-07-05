@@ -98,7 +98,8 @@ const (
 )
 
 // DiceModifier represents an effect that adds dice to rolls.
-// IMPORTANT: Dice expressions are rolled fresh each time, not pre-rolled.
+// IMPORTANT: The dice package caches roll results. To ensure fresh rolls,
+// create new dice.Roll instances each time a modifier is needed.
 // Examples: Bless (+1d4 to attacks), Bane (-1d4 to saves)
 type DiceModifier interface {
 	// GetDiceExpression returns the dice to add (e.g., "1d4", "2d6")

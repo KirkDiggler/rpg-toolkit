@@ -57,7 +57,17 @@ func TestBehaviorComposition(t *testing.T) {
 	assert.Len(t, modifiersApplied, 1)
 	if len(modifiersApplied) > 0 {
 		mod := modifiersApplied[0].(map[string]interface{})
-		assert.Equal(t, "1d4", mod["expression"])
+		// Check that we have a dice.Roll value
+		rollValue, ok := mod["value"].(events.ModifierValue)
+		assert.True(t, ok, "Expected ModifierValue in 'value' field")
+		if ok {
+			// The value should be between 1 and 4 for a d4
+			val := rollValue.GetValue()
+			assert.GreaterOrEqual(t, val, 1)
+			assert.LessOrEqual(t, val, 4)
+			// Description should contain d4
+			assert.Contains(t, rollValue.GetDescription(), "d4")
+		}
 		assert.Equal(t, "dice", mod["type"])
 	}
 }
@@ -245,6 +255,71 @@ func TestBlessConditionStartTime(t *testing.T) {
 	// Verify it doesn't expire immediately
 	assert.False(t, simpleDur.CheckExpiration(context.Background(), time.Now()),
 		"Effect should not expire immediately after creation")
+}
+
+func TestFreshDiceRollsEachTime(t *testing.T) {
+	// Test that dice modifiers create fresh rolls each time
+	character := &MockEntity{id: "fighter-1", typ: "character"}
+	bus := events.NewBus()
+
+	// Create a Bless condition
+	bless := effects.CreateBlessCondition(character, "cleric-spell")
+	err := bless.Apply(bus)
+	require.NoError(t, err)
+
+	// Collect multiple modifier values
+	var rollValues []int
+	var rollDescriptions []string
+
+	// Subscribe to capture modifiers
+	bus.SubscribeFunc("attack.before", 100, events.HandlerFunc(func(_ context.Context, e events.Event) error {
+		if gameEvent, ok := e.(*events.GameEvent); ok {
+			val, _ := gameEvent.Context().Get("modifiers")
+			if mods, ok := val.([]interface{}); ok {
+				for _, modInterface := range mods {
+					if mod, ok := modInterface.(map[string]interface{}); ok {
+						if rollValue, ok := mod["value"].(events.ModifierValue); ok {
+							rollValues = append(rollValues, rollValue.GetValue())
+							rollDescriptions = append(rollDescriptions, rollValue.GetDescription())
+						}
+					}
+				}
+			}
+		}
+		return nil
+	}))
+
+	// Simulate multiple attacks
+	for i := 0; i < 10; i++ {
+		attackEvent := events.NewGameEvent("attack.before", character, nil)
+		attackEvent.Context().Set("attacker", character)
+		attackEvent.Context().Set("modifiers", []interface{}{})
+
+		err = bus.Publish(context.Background(), attackEvent)
+		require.NoError(t, err)
+	}
+
+	// We should have 10 rolls
+	assert.Len(t, rollValues, 10)
+
+	// All values should be between 1 and 4
+	for i, val := range rollValues {
+		assert.GreaterOrEqual(t, val, 1, "Roll %d should be at least 1", i)
+		assert.LessOrEqual(t, val, 4, "Roll %d should be at most 4", i)
+	}
+
+	// With 10 d4 rolls, we should see some variety (not all the same)
+	// This could theoretically fail but is extremely unlikely
+	uniqueValues := make(map[int]bool)
+	for _, val := range rollValues {
+		uniqueValues[val] = true
+	}
+	assert.Greater(t, len(uniqueValues), 1, "Should see different roll values with 10 d4 rolls")
+
+	// All descriptions should contain d4
+	for _, desc := range rollDescriptions {
+		assert.Contains(t, desc, "d4")
+	}
 }
 
 // Test implementations
