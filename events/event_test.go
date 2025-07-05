@@ -200,3 +200,331 @@ func TestModifierPriority(t *testing.T) {
 		t.Error("Modifiers should maintain insertion order")
 	}
 }
+
+func TestTypedContextAccessors(t *testing.T) {
+	ctx := NewEventContext()
+
+	// Test GetInt
+	ctx.Set("damage", 10)
+	if val, ok := ctx.GetInt("damage"); !ok || val != 10 {
+		t.Errorf("GetInt failed: got %d, ok=%v", val, ok)
+	}
+
+	// Test GetInt with wrong type
+	ctx.Set("name", "test")
+	if _, ok := ctx.GetInt("name"); ok {
+		t.Error("GetInt should return false for wrong type")
+	}
+
+	// Test GetString
+	ctx.Set("ability", "STR")
+	if val, ok := ctx.GetString("ability"); !ok || val != "STR" {
+		t.Errorf("GetString failed: got %s, ok=%v", val, ok)
+	}
+
+	// Test GetBool
+	ctx.Set("advantage", true)
+	if val, ok := ctx.GetBool("advantage"); !ok || val != true {
+		t.Errorf("GetBool failed: got %v, ok=%v", val, ok)
+	}
+
+	// Test GetFloat64
+	ctx.Set("multiplier", 1.5)
+	if val, ok := ctx.GetFloat64("multiplier"); !ok || val != 1.5 {
+		t.Errorf("GetFloat64 failed: got %f, ok=%v", val, ok)
+	}
+
+	// Test GetEntity
+	entity := &mockEntity{id: "player-1", entityType: "character"}
+	ctx.Set("attacker", entity)
+	if val, ok := ctx.GetEntity("attacker"); !ok || val != entity {
+		t.Errorf("GetEntity failed: got %v, ok=%v", val, ok)
+	}
+
+	// Test GetDuration
+	duration := &RoundsDuration{Rounds: 3, StartRound: 1}
+	ctx.Set("duration", duration)
+	if val, ok := ctx.GetDuration("duration"); !ok || val != duration {
+		t.Errorf("GetDuration failed: got %v, ok=%v", val, ok)
+	}
+
+	// Test missing keys
+	if _, ok := ctx.GetInt("missing"); ok {
+		t.Error("GetInt should return false for missing key")
+	}
+	if _, ok := ctx.GetString("missing"); ok {
+		t.Error("GetString should return false for missing key")
+	}
+	if _, ok := ctx.GetBool("missing"); ok {
+		t.Error("GetBool should return false for missing key")
+	}
+	if _, ok := ctx.GetFloat64("missing"); ok {
+		t.Error("GetFloat64 should return false for missing key")
+	}
+	if _, ok := ctx.GetEntity("missing"); ok {
+		t.Error("GetEntity should return false for missing key")
+	}
+	if _, ok := ctx.GetDuration("missing"); ok {
+		t.Error("GetDuration should return false for missing key")
+	}
+}
+
+func TestEventBuilderPattern(t *testing.T) {
+	source := &mockEntity{id: "player-1", entityType: "character"}
+	target := &mockEntity{id: "goblin-1", entityType: "monster"}
+
+	// Test builder pattern
+	event := NewGameEvent(EventBeforeAttackRoll, nil, nil).
+		WithSource(source).
+		WithTarget(target).
+		WithContext("weapon", "longsword").
+		WithContext("damage_type", "slashing").
+		WithModifier(NewIntModifier("strength", ModifierAttackBonus, 3, 100))
+
+	// Verify source and target
+	if event.Source() != source {
+		t.Error("Source not set correctly via builder")
+	}
+	if event.Target() != target {
+		t.Error("Target not set correctly via builder")
+	}
+
+	// Verify context values
+	weapon, ok := event.Context().GetString("weapon")
+	if !ok || weapon != "longsword" {
+		t.Error("Weapon context not set correctly")
+	}
+
+	damageType, ok := event.Context().GetString("damage_type")
+	if !ok || damageType != "slashing" {
+		t.Error("Damage type context not set correctly")
+	}
+
+	// Verify modifier
+	mods := event.Context().Modifiers()
+	if len(mods) != 1 {
+		t.Fatalf("Expected 1 modifier, got %d", len(mods))
+	}
+	if mods[0].Source() != "strength" {
+		t.Error("Modifier not added correctly via builder")
+	}
+}
+
+func TestTypedEventTypes(t *testing.T) {
+	// Test creating event with typed event type
+	event := NewTypedGameEvent(EventTypeBeforeAttackRoll, nil, nil)
+
+	// Should have both string and typed access
+	if event.Type() != EventBeforeAttackRoll {
+		t.Errorf("String type mismatch: got %s, want %s", event.Type(), EventBeforeAttackRoll)
+	}
+
+	if event.TypedType() != EventTypeBeforeAttackRoll {
+		t.Errorf("Typed type mismatch: got %v, want %v", event.TypedType(), EventTypeBeforeAttackRoll)
+	}
+
+	// Test creating event with string type
+	event2 := NewGameEvent(EventOnDamageRoll, nil, nil)
+
+	if event2.Type() != EventOnDamageRoll {
+		t.Errorf("String type mismatch: got %s, want %s", event2.Type(), EventOnDamageRoll)
+	}
+
+	if event2.TypedType() != EventTypeOnDamageRoll {
+		t.Errorf("Typed type mismatch: got %v, want %v", event2.TypedType(), EventTypeOnDamageRoll)
+	}
+
+	// Test custom event type
+	customEvent := NewGameEvent("custom.event.type", nil, nil)
+
+	if customEvent.Type() != "custom.event.type" {
+		t.Error("Custom event type not preserved")
+	}
+
+	if customEvent.TypedType() != EventTypeCustom {
+		t.Error("Custom event should map to EventTypeCustom")
+	}
+}
+
+func TestConditionalModifier(t *testing.T) {
+	// Create a modifier that only applies to attack rolls
+	attackOnlyModifier := &BasicModifier{
+		source:   "weapon_focus",
+		modType:  ModifierAttackBonus,
+		modValue: NewRawValue(2, "weapon_focus"),
+		priority: 100,
+		condition: func(event Event) bool {
+			return event.Type() == EventBeforeAttackRoll || event.Type() == EventOnAttackRoll
+		},
+	}
+
+	// Test with attack roll event
+	attackEvent := NewGameEvent(EventBeforeAttackRoll, nil, nil)
+	if !attackOnlyModifier.Condition(attackEvent) {
+		t.Error("Modifier should apply to attack roll events")
+	}
+
+	// Test with damage roll event
+	damageEvent := NewGameEvent(EventOnDamageRoll, nil, nil)
+	if attackOnlyModifier.Condition(damageEvent) {
+		t.Error("Modifier should not apply to damage roll events")
+	}
+
+	// Test modifier with nil condition (always applies)
+	alwaysApplies := &BasicModifier{
+		source:   "bless",
+		modType:  ModifierAttackBonus,
+		modValue: NewRawValue(1, "bless"),
+		priority: 50,
+		// condition is nil
+	}
+
+	if !alwaysApplies.Condition(attackEvent) {
+		t.Error("Modifier with nil condition should always apply")
+	}
+	if !alwaysApplies.Condition(damageEvent) {
+		t.Error("Modifier with nil condition should always apply")
+	}
+}
+
+func TestModifierWithDuration(t *testing.T) {
+	// Create a modifier with a duration
+	tempModifier := &BasicModifier{
+		source:   "shield_of_faith",
+		modType:  ModifierACBonus,
+		modValue: NewRawValue(2, "shield_of_faith"),
+		priority: 100,
+		duration: &MinutesDuration{Minutes: 10, StartTime: time.Now()},
+	}
+
+	// Check duration
+	if tempModifier.Duration() == nil {
+		t.Fatal("Modifier should have a duration")
+	}
+
+	if tempModifier.Duration().Type() != DurationTypeMinutes {
+		t.Error("Duration type mismatch")
+	}
+
+	// Test permanent modifier (no duration)
+	permModifier := &BasicModifier{
+		source:   "ring_of_protection",
+		modType:  ModifierACBonus,
+		modValue: NewRawValue(1, "ring_of_protection"),
+		priority: 50,
+		// duration is nil
+	}
+
+	if permModifier.Duration() != nil {
+		t.Error("Permanent modifier should have nil duration")
+	}
+}
+
+func TestModifierSourceDetails(t *testing.T) {
+	sourceDetails := &ModifierSource{
+		Type:        "spell",
+		Name:        "Bless",
+		Description: "You bless up to three creatures of your choice within range",
+		Entity:      &mockEntity{id: "cleric-1", entityType: "character"},
+	}
+
+	modifier := &BasicModifier{
+		source:        "bless",
+		modType:       ModifierAttackBonus,
+		modValue:      NewDiceValue(1, 4, "bless"),
+		priority:      100,
+		sourceDetails: sourceDetails,
+	}
+
+	// Check source details
+	details := modifier.SourceDetails()
+	if details == nil {
+		t.Fatal("Modifier should have source details")
+	}
+
+	if details.Type != "spell" {
+		t.Errorf("Source type mismatch: got %s, want spell", details.Type)
+	}
+
+	if details.Name != "Bless" {
+		t.Errorf("Source name mismatch: got %s, want Bless", details.Name)
+	}
+
+	if details.Entity.GetID() != "cleric-1" {
+		t.Error("Source entity mismatch")
+	}
+}
+
+func TestModifierConfig(t *testing.T) {
+	// Create a modifier using ModifierConfig
+	cfg := ModifierConfig{
+		Source:   "divine_favor",
+		Type:     ModifierDamageBonus,
+		Value:    NewRawValue(3, "divine_favor"),
+		Priority: 150,
+		Condition: func(e Event) bool {
+			// Only applies to weapon attacks
+			weapon, ok := e.Context().GetString("weapon")
+			return ok && weapon != ""
+		},
+		Duration: &RoundsDuration{
+			Rounds:       10,
+			StartRound:   1,
+			IncludeStart: true,
+		},
+		SourceDetails: &ModifierSource{
+			Type:        "spell",
+			Name:        "Divine Favor",
+			Description: "Your prayer empowers you with divine radiance",
+			Entity:      &mockEntity{id: "paladin-1", entityType: "character"},
+		},
+	}
+
+	modifier := NewModifierWithConfig(cfg)
+
+	// Verify all properties
+	if modifier.Source() != "divine_favor" {
+		t.Error("Source mismatch")
+	}
+
+	if modifier.Type() != ModifierDamageBonus {
+		t.Error("Type mismatch")
+	}
+
+	if modifier.ModifierValue().GetValue() != 3 {
+		t.Error("Value mismatch")
+	}
+
+	if modifier.Priority() != 150 {
+		t.Error("Priority mismatch")
+	}
+
+	// Test condition
+	weaponEvent := NewGameEvent(EventOnDamageRoll, nil, nil)
+	weaponEvent.Context().Set("weapon", "longsword")
+	if !modifier.Condition(weaponEvent) {
+		t.Error("Modifier should apply to weapon attacks")
+	}
+
+	spellEvent := NewGameEvent(EventOnDamageRoll, nil, nil)
+	spellEvent.Context().Set("spell", "fireball")
+	if modifier.Condition(spellEvent) {
+		t.Error("Modifier should not apply to spell attacks")
+	}
+
+	// Verify duration
+	if modifier.Duration() == nil {
+		t.Fatal("Modifier should have duration")
+	}
+	if modifier.Duration().Type() != DurationTypeRounds {
+		t.Error("Duration type mismatch")
+	}
+
+	// Verify source details
+	if modifier.SourceDetails() == nil {
+		t.Fatal("Modifier should have source details")
+	}
+	if modifier.SourceDetails().Name != "Divine Favor" {
+		t.Error("Source details name mismatch")
+	}
+}
