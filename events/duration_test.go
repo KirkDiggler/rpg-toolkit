@@ -29,6 +29,7 @@ func TestDurationType_String(t *testing.T) {
 		{"long rest", events.DurationTypeLongRest, "long_rest"},
 		{"until damaged", events.DurationTypeUntilDamaged, "until_damaged"},
 		{"until save", events.DurationTypeUntilSave, "until_save"},
+		{"unknown", events.DurationType(999), "unknown"}, // Test default case
 	}
 
 	for _, tt := range tests {
