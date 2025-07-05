@@ -10,4 +10,6 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.0.0
 )
 
+require github.com/KirkDiggler/rpg-toolkit/dice v0.1.0 // indirect
+
 replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects
