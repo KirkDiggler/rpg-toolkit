@@ -1,239 +1,172 @@
-# Conditions Module
+# Conditions System
 
-The conditions module provides a comprehensive system for status effects and conditions in RPG games, with full support for D&D 5e mechanics.
+The conditions system provides generic infrastructure for implementing status effects in tabletop RPGs. Games define their own condition types and effects using the provided building blocks.
 
-## Features
+## Design Philosophy
 
-- **All D&D 5e Conditions**: Complete implementation of the 15 standard conditions
-- **Mechanical Effects**: Automatic application of advantage/disadvantage, auto-fails, speed changes, etc.
-- **Condition Interactions**: Support for immunity, suppression, and included conditions
-- **Exhaustion Levels**: Special handling for the 6-level exhaustion system
-- **Event Integration**: Conditions automatically modify rolls and actions through the event system
-- **Builder Pattern**: Easy creation of conditions with fluent interface
-- **Relationship Management**: Track concentration, auras, and linked conditions
+This is **infrastructure, not implementation**. The toolkit provides:
+- Generic condition types and effect frameworks
+- Builder patterns for easy condition creation
+- Event-driven effect application
+- Condition management with immunity/suppression
+- Relationship tracking (concentration, auras, etc.)
 
-## Quick Start
+Games implement their specific rules using these tools.
+
+## Basic Usage
+
+### 1. Define Your Game's Conditions
 
 ```go
-import (
-    "github.com/KirkDiggler/rpg-toolkit/mechanics/conditions"
-    "github.com/KirkDiggler/rpg-toolkit/events"
-)
+// Register your game's condition types
+conditions.RegisterConditionDefinition(&conditions.ConditionDefinition{
+    Type:        conditions.ConditionType("poisoned"),
+    Name:        "Poisoned",
+    Description: "A poisoned creature has disadvantage on attack rolls and ability checks.",
+    Effects: []conditions.ConditionEffect{
+        {Type: conditions.EffectDisadvantage, Target: conditions.TargetAttackRolls},
+        {Type: conditions.EffectDisadvantage, Target: conditions.TargetAbilityChecks},
+    },
+})
 
-// Create event bus and condition manager
+conditions.RegisterConditionDefinition(&conditions.ConditionDefinition{
+    Type:        conditions.ConditionType("unconscious"),
+    Name:        "Unconscious", 
+    Description: "An unconscious creature is incapacitated and prone.",
+    Effects: []conditions.ConditionEffect{
+        {Type: conditions.EffectIncapacitated, Target: conditions.TargetActions},
+    },
+    Includes: []conditions.ConditionType{
+        conditions.ConditionType("incapacitated"),
+        conditions.ConditionType("prone"),
+    },
+})
+```
+
+### 2. Create Condition Builder Helpers
+
+```go
+// Your game can create convenient builder functions
+func Poisoned() *conditions.ConditionBuilder {
+    return conditions.NewConditionBuilder(conditions.ConditionType("poisoned"))
+}
+
+func Unconscious() *conditions.ConditionBuilder {
+    return conditions.NewConditionBuilder(conditions.ConditionType("unconscious"))
+}
+```
+
+### 3. Apply Conditions
+
+```go
 bus := events.NewBus()
 manager := conditions.NewConditionManager(bus)
 
-// Apply poisoned condition
-poisoned, err := conditions.Poisoned().
-    WithTarget(target).
-    WithSource("giant_spider").
-    WithSaveDC(11).
-    WithMinutesDuration(1).
+// Apply a condition
+poisoned, err := Poisoned().
+    WithTarget(character).
+    WithSource("spider_bite").
+    WithSaveDC(13).
+    WithMinutesDuration(10).
     Build()
 
-err = manager.ApplyCondition(poisoned)
-
-// Conditions automatically apply their effects
-// When the poisoned creature attacks, they'll have disadvantage
-```
-
-## Condition Types
-
-### Standard Conditions
-
-| Condition | Effects |
-|-----------|---------|
-| **Blinded** | Can't see, auto-fail sight checks, attacks have disadvantage, attacks against have advantage |
-| **Charmed** | Can't attack charmer, charmer has advantage on social checks |
-| **Deafened** | Can't hear, auto-fail hearing checks |
-| **Frightened** | Disadvantage on ability checks and attacks while source in sight, can't move closer |
-| **Grappled** | Speed becomes 0 |
-| **Incapacitated** | Can't take actions or reactions |
-| **Invisible** | Heavily obscured, attacks have advantage, attacks against have disadvantage |
-| **Paralyzed** | Incapacitated, can't move/speak, auto-fail STR/DEX saves, attacks against have advantage |
-| **Petrified** | Incapacitated, can't move/speak, resistance to all damage, immune to poison/disease |
-| **Poisoned** | Disadvantage on attacks and ability checks |
-| **Prone** | Disadvantage on attacks, melee attacks against have advantage, ranged have disadvantage |
-| **Restrained** | Speed 0, disadvantage on attacks and DEX saves, attacks against have advantage |
-| **Stunned** | Incapacitated, can't move, speak falteringly, auto-fail STR/DEX saves |
-| **Unconscious** | Incapacitated, prone, drops items, auto-fail STR/DEX saves, attacks are crits in melee |
-
-### Exhaustion
-
-Exhaustion has 6 cumulative levels:
-
-1. Disadvantage on ability checks
-2. Speed halved
-3. Disadvantage on attacks and saves
-4. Hit point maximum halved
-5. Speed reduced to 0
-6. Death
-
-```go
-// Exhaustion management
-exhaustionMgr := conditions.NewExhaustionManager(manager)
-
-// Add exhaustion
-err = exhaustionMgr.AddExhaustion(character, 2, "forced_march")
-
-// Remove on long rest
-err = exhaustionMgr.ApplyExhaustionOnRest(character, "long")
-
-// Check for death
-if exhaustionMgr.CheckExhaustionDeath(character) {
-    // Character has died from exhaustion
+if err := manager.ApplyCondition(poisoned); err != nil {
+    log.Fatal(err)
 }
 ```
 
-## Enhanced Conditions
-
-Enhanced conditions provide full mechanical effects:
+### 4. Handle Game-Specific Logic
 
 ```go
-// Create enhanced condition with all effects
-config := conditions.EnhancedConditionConfig{
-    ID:            "unique_id",
-    ConditionType: conditions.ConditionPoisoned,
-    Target:        target,
-    Source:        "poison_dart",
-    SaveDC:        15,
-    Duration:      events.NewRoundsDuration(10),
+// Your game can add immunity
+manager.AddImmunity(paladin, conditions.ConditionType("frightened"))
+
+// Check conditions
+if manager.HasCondition(character, conditions.ConditionType("poisoned")) {
+    fmt.Println("Character is poisoned!")
 }
 
-condition, err := conditions.NewEnhancedCondition(config)
+// Get all conditions for display
+activeConditions := manager.GetConditions(character)
+for _, cond := range activeConditions {
+    fmt.Printf("- %s (from %s)\n", cond.GetType(), cond.Source())
+}
 ```
 
-## Condition Manager
+## Available Effect Types
 
-The condition manager handles interactions between conditions:
+The toolkit provides these generic effect types that games can use:
+
+- `EffectAdvantage` / `EffectDisadvantage` - Modify dice rolls
+- `EffectAutoFail` / `EffectAutoSucceed` - Force roll outcomes
+- `EffectSpeedReduction` / `EffectSpeedZero` - Movement effects
+- `EffectIncapacitated` / `EffectNoReactions` - Action restrictions
+- `EffectResistance` / `EffectVulnerability` - Damage modifications
+- `EffectCantSpeak` / `EffectCantHear` / `EffectCantSee` - Sensory effects
+
+## Available Effect Targets
+
+Effects can target different game mechanics:
+
+- `TargetAttackRolls` / `TargetAttacksAgainst` - Combat
+- `TargetSavingThrows` / `TargetAbilityChecks` - Dice rolling
+- `TargetMovement` / `TargetActions` / `TargetReactions` - Actions
+- `TargetSight` / `TargetHearing` / `TargetSpeech` - Senses
+- `TargetDamage` - Damage calculations
+
+## Condition Relationships
+
+Conditions can have complex relationships:
 
 ```go
-// Add immunity
-manager.AddImmunity(entity, conditions.ConditionPoisoned)
+// Paralyzed includes Incapacitated
+paralyzedDef := &conditions.ConditionDefinition{
+    Type: conditions.ConditionType("paralyzed"),
+    // ...
+    Includes: []conditions.ConditionType{
+        conditions.ConditionType("incapacitated"),
+    },
+}
 
-// Check if can apply
-canApply, reason := manager.CanApplyCondition(entity, conditions.ConditionCharmed)
-
-// Get all conditions
-activeConditions := manager.GetConditions(entity)
-
-// Remove specific condition type
-err = manager.RemoveConditionType(entity, conditions.ConditionBlinded)
-```
-
-## Builder Pattern
-
-Use the builder for easy condition creation:
-
-```go
-// Simple conditions
-blinded := conditions.Blinded().
-    WithTarget(target).
-    WithSource("darkness_spell").
-    Build()
-
-// With metadata
-charmed := conditions.Charmed().
-    WithTarget(target).
-    WithSource("charm_person").
-    WithCharmer(caster).
-    WithSaveDC(14).
-    WithConcentration().
-    Build()
-
-// Exhaustion
-exhausted := conditions.Exhaustion(3).
-    WithTarget(target).
-    WithSource("extreme_conditions").
-    Build()
+// Immunity relationships
+eldrichKnightDef := &conditions.ConditionDefinition{
+    Type: conditions.ConditionType("eldritch_ward"),
+    // ...
+    Immunities: []conditions.ConditionType{
+        conditions.ConditionType("charmed"),
+        conditions.ConditionType("frightened"),
+    },
+}
 ```
 
 ## Event Integration
 
-Conditions automatically modify events:
+Conditions automatically integrate with the event system:
 
 ```go
-// Attack with disadvantage from poisoned
-attackEvent := events.NewGameEvent(
-    events.EventOnAttackRoll,
-    poisonedCreature,
-    target,
-    nil,
-)
-
-// Publish event - conditions apply their modifiers
-bus.Publish(ctx, attackEvent)
-
-// Check modifiers
-for _, mod := range attackEvent.Context().GetModifiers() {
-    if mod.Type() == events.ModifierDisadvantage {
-        // Poisoned applied disadvantage
-    }
-}
+// The condition system listens for events and applies effects
+bus.Subscribe(events.EventOnAttackRoll, func(ctx context.Context, event events.Event) error {
+    // Poisoned conditions automatically add disadvantage
+    // Blessed conditions automatically add bonuses
+    // etc.
+    return nil
+})
 ```
 
-## Relationships
+## Examples
 
-Track condition relationships like concentration:
+For complete examples of how to implement specific game systems:
 
-```go
-relationships := conditions.NewRelationshipManager(bus)
+- **D&D 5e**: See `/examples/dnd5e/conditions/`
+- **Custom Systems**: The tests show various usage patterns
 
-// Create concentration relationship
-err = relationships.CreateRelationship(
-    conditions.RelationshipConcentration,
-    caster,
-    []conditions.Condition{holdPerson, charmPerson},
-    nil,
-)
+## Architecture
 
-// Break concentration
-err = relationships.BreakAllRelationships(caster)
-```
+The conditions system follows our core principles:
 
-## Discord Bot Examples
+1. **Generic Infrastructure**: Provides building blocks, not rules
+2. **Event-Driven**: Integrates seamlessly with the event bus
+3. **Entity-Based**: Conditions are entities with full lifecycle management
+4. **Composable**: Mix and match effects to create complex conditions
 
-See the `examples` directory for Discord bot integration:
-
-- Spell implementations
-- Combat condition handling
-- Condition display formatting
-- Save mechanics
-- Environmental hazards
-
-```go
-// Example: Display conditions in Discord
-func getConditionEmbed(character Entity) *discordgo.MessageEmbed {
-    conditions := manager.GetConditions(character)
-    
-    fields := []*discordgo.MessageEmbedField{}
-    for _, cond := range conditions {
-        fields = append(fields, &discordgo.MessageEmbedField{
-            Name:  getConditionIcon(cond) + " " + cond.GetType(),
-            Value: getConditionDescription(cond),
-        })
-    }
-    
-    return &discordgo.MessageEmbed{
-        Title:  "Active Conditions",
-        Fields: fields,
-    }
-}
-```
-
-## Design Philosophy
-
-1. **Full Mechanical Support**: All D&D 5e condition effects are implemented
-2. **Event-Driven**: Conditions work through the event system, not direct modification
-3. **Extensible**: Easy to add custom conditions and effects
-4. **Type-Safe**: Use Go's type system to prevent errors
-5. **Discord-Ready**: Designed for the needs of the Discord bot
-
-## Future Enhancements
-
-- Duration tracking with automatic expiration
-- Condition icons and formatting helpers
-- More complex condition relationships
-- Custom condition templates
-- Saving throw automation
+This allows the same infrastructure to support D&D 5e, Pathfinder, custom homebrew systems, or any other RPG ruleset.

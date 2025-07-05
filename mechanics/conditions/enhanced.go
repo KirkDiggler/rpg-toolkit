@@ -41,12 +41,7 @@ func NewEnhancedCondition(cfg EnhancedConditionConfig) (*EnhancedCondition, erro
 		return nil, fmt.Errorf("unknown condition type: %s", cfg.ConditionType)
 	}
 
-	// Validate exhaustion level
-	if cfg.ConditionType == ConditionExhaustion {
-		if cfg.Level < 1 || cfg.Level > 6 {
-			return nil, fmt.Errorf("exhaustion level must be between 1 and 6, got %d", cfg.Level)
-		}
-	}
+	// Games can add their own validation for specific condition types
 
 	ec := &EnhancedCondition{
 		conditionType: cfg.ConditionType,
@@ -104,10 +99,7 @@ func (ec *EnhancedCondition) applyEffects(bus events.EventBus) error {
 	// Get effects based on condition type
 	effects := ec.definition.Effects
 
-	// Special handling for exhaustion
-	if ec.conditionType == ConditionExhaustion {
-		effects = GetExhaustionEffects(ExhaustionLevel(ec.level))
-	}
+	// Games can implement special effect handling based on condition type and level
 
 	// Apply each effect
 	for _, effect := range effects {

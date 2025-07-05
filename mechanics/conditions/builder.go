@@ -60,15 +60,8 @@ func (b *ConditionBuilder) WithSource(source string) *ConditionBuilder {
 	return b
 }
 
-// WithLevel sets the level for exhaustion conditions.
+// WithLevel sets the level for conditions that support it (e.g., exhaustion levels).
 func (b *ConditionBuilder) WithLevel(level int) *ConditionBuilder {
-	if b.conditionType != ConditionExhaustion {
-		b.errors = append(b.errors, fmt.Errorf("level can only be set for exhaustion conditions"))
-		return b
-	}
-	if level < 1 || level > 6 {
-		b.errors = append(b.errors, fmt.Errorf("exhaustion level must be between 1 and 6"))
-	}
 	b.level = level
 	return b
 }
@@ -119,45 +112,13 @@ func (b *ConditionBuilder) WithMetadata(key string, value interface{}) *Conditio
 	return b
 }
 
-// WithCharmer sets the charmer for charmed conditions.
-func (b *ConditionBuilder) WithCharmer(charmer core.Entity) *ConditionBuilder {
-	if b.conditionType != ConditionCharmed {
-		b.errors = append(b.errors, fmt.Errorf("charmer can only be set for charmed conditions"))
+// WithRelatedEntity sets a related entity for the condition (e.g., charmer, grappler).
+func (b *ConditionBuilder) WithRelatedEntity(key string, entity core.Entity) *ConditionBuilder {
+	if entity == nil {
+		b.errors = append(b.errors, fmt.Errorf("related entity cannot be nil"))
 		return b
 	}
-	if charmer == nil {
-		b.errors = append(b.errors, fmt.Errorf("charmer cannot be nil"))
-		return b
-	}
-	b.metadata["charmer"] = charmer
-	return b
-}
-
-// WithFearSource sets the source of fear for frightened conditions.
-func (b *ConditionBuilder) WithFearSource(source core.Entity) *ConditionBuilder {
-	if b.conditionType != ConditionFrightened {
-		b.errors = append(b.errors, fmt.Errorf("fear source can only be set for frightened conditions"))
-		return b
-	}
-	if source == nil {
-		b.errors = append(b.errors, fmt.Errorf("fear source cannot be nil"))
-		return b
-	}
-	b.metadata["fear_source"] = source
-	return b
-}
-
-// WithGrappler sets the grappler for grappled conditions.
-func (b *ConditionBuilder) WithGrappler(grappler core.Entity) *ConditionBuilder {
-	if b.conditionType != ConditionGrappled {
-		b.errors = append(b.errors, fmt.Errorf("grappler can only be set for grappled conditions"))
-		return b
-	}
-	if grappler == nil {
-		b.errors = append(b.errors, fmt.Errorf("grappler cannot be nil"))
-		return b
-	}
-	b.metadata["grappler"] = grappler
+	b.metadata[key] = entity
 	return b
 }
 
@@ -176,10 +137,7 @@ func (b *ConditionBuilder) Build() (*EnhancedCondition, error) {
 		return nil, fmt.Errorf("condition source is required")
 	}
 
-	// Set defaults for exhaustion
-	if b.conditionType == ConditionExhaustion && b.level == 0 {
-		b.level = 1
-	}
+	// Games can set defaults for their specific condition types as needed
 
 	// Create the enhanced condition
 	config := EnhancedConditionConfig{
@@ -222,82 +180,12 @@ func (b *ConditionBuilder) BuildSimple() (*SimpleCondition, error) {
 	return NewSimpleCondition(config), nil
 }
 
-// Common condition creation helpers
-
-// Blinded creates a builder for the blinded condition.
-func Blinded() *ConditionBuilder {
-	return NewConditionBuilder(ConditionBlinded)
-}
-
-// Charmed creates a builder for the charmed condition.
-func Charmed() *ConditionBuilder {
-	return NewConditionBuilder(ConditionCharmed)
-}
-
-// Deafened creates a builder for the deafened condition.
-func Deafened() *ConditionBuilder {
-	return NewConditionBuilder(ConditionDeafened)
-}
-
-// Exhaustion creates a builder for the exhaustion condition.
-func Exhaustion(level int) *ConditionBuilder {
-	return NewConditionBuilder(ConditionExhaustion).WithLevel(level)
-}
-
-// Frightened creates a builder for the frightened condition.
-func Frightened() *ConditionBuilder {
-	return NewConditionBuilder(ConditionFrightened)
-}
-
-// Grappled creates a builder for the grappled condition.
-func Grappled() *ConditionBuilder {
-	return NewConditionBuilder(ConditionGrappled)
-}
-
-// Incapacitated creates a builder for the incapacitated condition.
-func Incapacitated() *ConditionBuilder {
-	return NewConditionBuilder(ConditionIncapacitated)
-}
-
-// Invisible creates a builder for the invisible condition.
-func Invisible() *ConditionBuilder {
-	return NewConditionBuilder(ConditionInvisible)
-}
-
-// Paralyzed creates a builder for the paralyzed condition.
-func Paralyzed() *ConditionBuilder {
-	return NewConditionBuilder(ConditionParalyzed)
-}
-
-// Petrified creates a builder for the petrified condition.
-func Petrified() *ConditionBuilder {
-	return NewConditionBuilder(ConditionPetrified)
-}
-
-// Poisoned creates a builder for the poisoned condition.
-func Poisoned() *ConditionBuilder {
-	return NewConditionBuilder(ConditionPoisoned)
-}
-
-// Prone creates a builder for the prone condition.
-func Prone() *ConditionBuilder {
-	return NewConditionBuilder(ConditionProne)
-}
-
-// Restrained creates a builder for the restrained condition.
-func Restrained() *ConditionBuilder {
-	return NewConditionBuilder(ConditionRestrained)
-}
-
-// Stunned creates a builder for the stunned condition.
-func Stunned() *ConditionBuilder {
-	return NewConditionBuilder(ConditionStunned)
-}
-
-// Unconscious creates a builder for the unconscious condition.
-func Unconscious() *ConditionBuilder {
-	return NewConditionBuilder(ConditionUnconscious)
-}
+// Games can create their own builder helper functions for common conditions.
+// Example:
+//
+//   func Poisoned() *ConditionBuilder {
+//       return NewConditionBuilder(ConditionType("poisoned"))
+//   }
 
 // Simple ID generator (in production, use a better ID generation strategy)
 var idCounter int

@@ -31,7 +31,7 @@ func NewConditionManager(bus events.EventBus) *ConditionManager {
 	}
 
 	// Optionally create a relationship manager
-	cm.relationships = NewRelationshipManager(bus)
+	// cm.relationships = NewRelationshipManager(bus)
 
 	return cm
 }
@@ -140,10 +140,7 @@ func (cm *ConditionManager) ApplyCondition(condition Condition) error {
 			return fmt.Errorf("cannot apply %s: %s", condType, reason)
 		}
 
-		// Handle exhaustion specially - it stacks
-		if condType == ConditionExhaustion {
-			return cm.applyExhaustionUnsafe(enhanced)
-		}
+		// Games can implement special stacking logic for specific condition types
 
 		// Remove weaker conditions that this suppresses
 		cm.removeSuppressedConditionsUnsafe(target, condType)
@@ -256,23 +253,7 @@ func (cm *ConditionManager) HasCondition(entity core.Entity, condType ConditionT
 	return len(cm.GetConditionsByType(entity, condType)) > 0
 }
 
-// GetExhaustionLevel returns the current exhaustion level for an entity.
-func (cm *ConditionManager) GetExhaustionLevel(entity core.Entity) int {
-	conditions := cm.GetConditionsByType(entity, ConditionExhaustion)
-	if len(conditions) == 0 {
-		return 0
-	}
-
-	// Get the highest exhaustion level
-	maxLevel := 0
-	for _, cond := range conditions {
-		if enhanced, ok := cond.(*EnhancedCondition); ok && enhanced.level > maxLevel {
-			maxLevel = enhanced.level
-		}
-	}
-
-	return maxLevel
-}
+// Games can add their own helper methods for specific condition types
 
 // Internal helper methods
 
@@ -368,52 +349,4 @@ func (cm *ConditionManager) isSuppressedBy(condType, suppressorType ConditionTyp
 	return false
 }
 
-func (cm *ConditionManager) applyExhaustionUnsafe(condition *EnhancedCondition) error {
-	target := condition.Target()
-
-	// Check current exhaustion level
-	currentLevel := cm.GetExhaustionLevel(target)
-	newLevel := condition.level
-
-	// If adding exhaustion, increase the level
-	if currentLevel > 0 && newLevel == 1 {
-		// Adding 1 level to existing exhaustion
-		newLevel = currentLevel + 1
-		if newLevel > 6 {
-			newLevel = 6
-		}
-
-		// Remove old exhaustion
-		cm.removeConditionTypeUnsafe(target, ConditionExhaustion)
-
-		// Create new exhaustion with increased level
-		newExhaustion, err := Exhaustion(newLevel).
-			WithTarget(target).
-			WithSource(condition.Source()).
-			Build()
-		if err != nil {
-			return err
-		}
-
-		// Apply the new exhaustion (avoiding recursion)
-		if err := newExhaustion.Apply(cm.bus); err != nil {
-			return err
-		}
-
-		cm.conditions[target.GetID()] = append(cm.conditions[target.GetID()], newExhaustion)
-		return nil
-	}
-
-	// Otherwise, apply normally (replacing existing exhaustion if higher level)
-	if newLevel > currentLevel {
-		cm.removeConditionTypeUnsafe(target, ConditionExhaustion)
-
-		if err := condition.Apply(cm.bus); err != nil {
-			return err
-		}
-
-		cm.conditions[target.GetID()] = append(cm.conditions[target.GetID()], condition)
-	}
-
-	return nil
-}
+// Games can implement their own special condition application logic
