@@ -99,6 +99,12 @@ type Feature interface {
 
 	// IsActive checks if the feature is currently active for the entity.
 	IsActive(entity core.Entity) bool
+
+	// Activate activates the feature for an entity.
+	Activate(entity core.Entity, bus events.EventBus) error
+
+	// Deactivate deactivates the feature for an entity.
+	Deactivate(entity core.Entity, bus events.EventBus) error
 }
 
 // EventListener handles events for features.
@@ -113,35 +119,50 @@ type EventListener interface {
 	HandleEvent(feature Feature, entity core.Entity, event events.Event) error
 }
 
-// FeatureManager manages features for entities.
-type FeatureManager interface {
-	// GetFeatures returns all features of a specific type for an entity.
-	GetFeatures(entity core.Entity, featureType FeatureType) []Feature
+// FeatureHolder represents an entity that can have features.
+type FeatureHolder interface {
+	// AddFeature adds a feature to the entity.
+	AddFeature(feature Feature) error
 
-	// GetActiveFeatures returns all currently active features for an entity.
-	GetActiveFeatures(entity core.Entity) []Feature
+	// RemoveFeature removes a feature by key.
+	RemoveFeature(key string) error
 
-	// AddFeature adds a feature to an entity.
-	AddFeature(entity core.Entity, feature Feature) error
+	// GetFeature retrieves a feature by key.
+	GetFeature(key string) (Feature, bool)
 
-	// RemoveFeature removes a feature from an entity.
-	RemoveFeature(entity core.Entity, featureKey string) error
+	// GetFeatures returns all features.
+	GetFeatures() []Feature
 
-	// ActivateFeature activates an activated-type feature.
-	ActivateFeature(entity core.Entity, featureKey string) error
+	// GetActiveFeatures returns all currently active features.
+	GetActiveFeatures() []Feature
 
-	// DeactivateFeature deactivates an activated-type feature.
-	DeactivateFeature(entity core.Entity, featureKey string) error
+	// ActivateFeature activates a feature by key.
+	ActivateFeature(key string, bus events.EventBus) error
 
-	// ProcessLevelUp grants new features when an entity levels up.
-	ProcessLevelUp(entity core.Entity, newLevel int) error
+	// DeactivateFeature deactivates a feature by key.
+	DeactivateFeature(key string, bus events.EventBus) error
+}
 
-	// GetAvailableFeatures returns features available at a given level.
-	GetAvailableFeatures(entity core.Entity, level int) []Feature
-
-	// RegisterFeature registers a feature in the system.
+// FeatureRegistry manages feature definitions and availability.
+type FeatureRegistry interface {
+	// RegisterFeature registers a feature definition.
 	RegisterFeature(feature Feature) error
 
 	// GetFeature retrieves a registered feature by key.
 	GetFeature(key string) (Feature, bool)
+
+	// GetAllFeatures returns all registered features.
+	GetAllFeatures() []Feature
+
+	// GetFeaturesByType returns all features of a specific type.
+	GetFeaturesByType(featureType FeatureType) []Feature
+
+	// GetAvailableFeatures returns features available for an entity at a given level.
+	GetAvailableFeatures(entity core.Entity, level int) []Feature
+
+	// GetFeaturesForClass returns features for a specific class at a level.
+	GetFeaturesForClass(class string, level int) []Feature
+
+	// GetFeaturesForRace returns features for a specific race.
+	GetFeaturesForRace(race string) []Feature
 }

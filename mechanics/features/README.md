@@ -49,20 +49,31 @@ sneakAttack := features.NewBasicFeature("sneak_attack", "Sneak Attack").
 
 ### Managing Features
 
-```go
-manager := features.NewManager()
+The feature system uses a hybrid approach:
 
-// Register features in the system
-manager.RegisterFeature(rageFeature)
+1. **FeatureRegistry** - For feature definitions and discovery
+2. **FeatureHolder** - Entities store and manage their own features
+
+```go
+// Registry for feature definitions
+registry := features.NewRegistry()
+registry.RegisterFeature(rageFeature)
+registry.RegisterFeature(sneakAttackFeature)
+
+// Entities implement FeatureHolder
+type Character struct {
+    features.FeatureHolder
+    // other fields...
+}
 
 // Add features to entities
-manager.AddFeature(barbarian, rageFeature)
+character.AddFeature(rageFeature)
 
 // Activate features
-manager.ActivateFeature(barbarian, "rage")
+character.ActivateFeature("rage", eventBus)
 
-// Get active features
-activeFeatures := manager.GetActiveFeatures(barbarian)
+// Query available features
+available := registry.GetFeaturesForClass("barbarian", 5)
 ```
 
 ### Event Integration

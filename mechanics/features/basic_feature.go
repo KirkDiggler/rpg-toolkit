@@ -4,6 +4,9 @@
 package features
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
@@ -157,6 +160,63 @@ func (f *BasicFeature) IsActive(_ core.Entity) bool {
 		return true
 	}
 	return f.isActive
+}
+
+// Activate activates the feature for an entity.
+func (f *BasicFeature) Activate(entity core.Entity, bus events.EventBus) error {
+	if f.timing == TimingPassive {
+		return nil // Passive features are always active
+	}
+
+	if f.timing != TimingActivated {
+		return fmt.Errorf("feature %s cannot be activated", f.key)
+	}
+
+	if f.isActive {
+		return nil // Already active
+	}
+
+	// Register event listeners
+	for _, listener := range f.eventListeners {
+		for _, eventType := range listener.EventTypes() {
+			handler := f.createEventHandler(listener, entity)
+			bus.SubscribeFunc(eventType, listener.Priority(), handler)
+		}
+	}
+
+	f.isActive = true
+	return nil
+}
+
+// Deactivate deactivates the feature for an entity.
+func (f *BasicFeature) Deactivate(_ core.Entity, _ events.EventBus) error {
+	if f.timing == TimingPassive {
+		return nil // Passive features are always active
+	}
+
+	if f.timing != TimingActivated {
+		return fmt.Errorf("feature %s cannot be deactivated", f.key)
+	}
+
+	if !f.isActive {
+		return nil // Already inactive
+	}
+
+	// TODO: We need a way to unsubscribe specific handlers
+	// For now, we'll just mark as inactive
+	f.isActive = false
+	return nil
+}
+
+// createEventHandler creates a handler function for the event bus.
+func (f *BasicFeature) createEventHandler(listener EventListener, entity core.Entity) events.HandlerFunc {
+	return func(_ context.Context, event events.Event) error {
+		// Only handle events for this entity
+		if event.Source() == entity || event.Target() == entity {
+			return listener.HandleEvent(f, entity, event)
+		}
+		return nil
+	}
 }
 
 // Builder methods for fluent API

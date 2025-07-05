@@ -4,8 +4,6 @@
 package examples
 
 import (
-	"context"
-
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/features"
@@ -109,24 +107,9 @@ func CreateRageFeature() features.Feature {
 		WithPrerequisites("class:barbarian", "level:1")
 }
 
-// RageEventHandler can be registered with the event bus to handle rage activation.
-type RageEventHandler struct {
-	manager features.FeatureManager
-}
-
-// NewRageEventHandler creates a new rage event handler.
-func NewRageEventHandler(manager features.FeatureManager) *RageEventHandler {
-	return &RageEventHandler{manager: manager}
-}
-
-// Handle processes rage-related events.
-func (h *RageEventHandler) Handle(_ context.Context, _ events.Event) error {
-	// This would handle the actual activation of rage
-	// when a player uses a bonus action to rage
-	return nil
-}
-
-// Priority returns the handler priority.
-func (h *RageEventHandler) Priority() int {
-	return 100
+// RageActivationExample shows how rage might be activated in a game.
+// This is just an example - actual implementation would be game-specific.
+func RageActivationExample(character features.FeatureHolder, eventBus events.EventBus) error {
+	// When a player uses a bonus action to rage
+	return character.ActivateFeature("rage", eventBus)
 }
