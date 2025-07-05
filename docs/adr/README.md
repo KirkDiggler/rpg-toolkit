@@ -25,6 +25,9 @@ Each ADR follows this structure:
 - [ADR-0002: Hybrid Event-Driven Architecture](0002-hybrid-architecture.md) - Why we chose a hybrid approach over pure ECS or Event Sourcing
 - [ADR-0003: Conditions as Entities](0003-conditions-as-entities.md) - Why conditions implement the Entity interface
 - [ADR-0004: Generic Condition Relationships](0004-condition-relationships.md) - How conditions relate to their sources and each other
+- [ADR-0005: Effect Composition](0005-effect-composition.md) - Design for composable effects system
+- [ADR-0006: Feature Management Pattern](0006-feature-management-pattern.md) - Hybrid approach for feature management
+- [ADR-0007: Generic Restoration Triggers](0007-generic-restoration-triggers.md) - Generic trigger system for resource restoration
 
 ## Creating a New ADR
 
