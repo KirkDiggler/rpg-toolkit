@@ -129,9 +129,6 @@ func (cm *ConditionManager) CanApplyCondition(entity core.Entity, condType Condi
 
 // ApplyCondition applies a condition to an entity.
 func (cm *ConditionManager) ApplyCondition(condition Condition) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
 	target := condition.Target()
 
 	// Get condition type if it's an enhanced condition
@@ -141,20 +138,23 @@ func (cm *ConditionManager) ApplyCondition(condition Condition) error {
 		condType = enhanced.conditionType
 		includes = enhanced.definition.Includes
 
-		// Check if we can apply this condition
+		// Check if we can apply this condition before acquiring the lock
 		if canApply, reason := cm.CanApplyCondition(target, condType); !canApply {
 			return fmt.Errorf("cannot apply %s: %s", condType, reason)
 		}
+	}
 
-		// Games can implement special stacking logic for specific condition types
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
-		// Remove weaker conditions that this suppresses
-		cm.removeSuppressedConditionsUnsafe(target, condType)
+	// Games can implement special stacking logic for specific condition types
 
-		// Remove existing conditions of the same type (unless they stack)
-		if err := cm.removeConditionTypeUnsafe(target, condType); err != nil {
-			return fmt.Errorf("failed to remove existing conditions of type %s: %w", condType, err)
-		}
+	// Remove weaker conditions that this suppresses
+	cm.removeSuppressedConditionsUnsafe(target, condType)
+
+	// Remove existing conditions of the same type (unless they stack)
+	if err := cm.removeConditionTypeUnsafe(target, condType); err != nil {
+		return fmt.Errorf("failed to remove existing conditions of type %s: %w", condType, err)
 	}
 
 	// Apply the condition

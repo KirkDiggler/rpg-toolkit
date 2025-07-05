@@ -5,6 +5,7 @@ package conditions
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -188,9 +189,8 @@ func (b *ConditionBuilder) BuildSimple() (*SimpleCondition, error) {
 //   }
 
 // Simple ID generator (in production, use a better ID generation strategy)
-var idCounter int
+var idCounter int64
 
 func generateID() int {
-	idCounter++
-	return idCounter
+	return int(atomic.AddInt64(&idCounter, 1))
 }

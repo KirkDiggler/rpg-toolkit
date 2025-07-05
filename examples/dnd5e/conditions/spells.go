@@ -98,7 +98,7 @@ func (se *SpellExamples) CastCharmPerson(
 	charmed, err := conditions.Charmed().
 		WithTarget(target).
 		WithSource(fmt.Sprintf("charm_person_%s", caster.GetID())).
-		WithCharmer(caster).
+		WithRelatedEntity("charmer", caster).
 		WithSaveDC(spellDC).
 		WithMinutesDuration(duration).
 		WithConcentration().
@@ -271,11 +271,12 @@ func (se *SpellExamples) CastSickeningRadiance(
 	for _, target := range targetsInArea {
 		// Check save
 		// If failed, apply 1 level of exhaustion
-		exhaustion, err := conditions.NewExhaustionCondition(
-			target,
-			1,
-			fmt.Sprintf("sickening_radiance_%s", caster.GetID()),
-		)
+		exhaustion, err := conditions.NewConditionBuilder().
+			WithType(conditions.ConditionExhaustion).
+			WithTarget(target).
+			WithSource(fmt.Sprintf("sickening_radiance_%s", caster.GetID())).
+			WithMetadata("exhaustion_level", 1).
+			Build()
 
 		if err != nil {
 			return err
