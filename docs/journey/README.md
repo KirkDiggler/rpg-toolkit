@@ -16,10 +16,15 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 ## Current Documents
 
 - [001: Architectural Dragons](001-architectural-dragons.md) - Big challenges we see ahead
-- [002: Dice Roller Design](002-dice-roller-design.md) - Thinking through dice implementation
+- [002: Dice Package Design](002-dice-package-design.md) - Initial dice package design
 - [003: Event Participant Ecosystem](003-event-participant-ecosystem.md) - Event system architecture
 - [004: Conditions System](004-conditions-system.md) - Status effects and relationships
-- [005: Generics in Conditions](005-generics-in-conditions.md) - Type safety vs flexibility trade-offs
+- [005: Effect Composition](005-effect-composition.md) - Designing composable effects system
+- [006: Feature Management Pattern](006-feature-management-pattern.md) - Exploring feature system patterns
+- [007: Enhanced Conditions](007-enhanced-conditions.md) - Advanced condition system capabilities
+- [008: Dice Roller Design](008-dice-roller-design.md) - Global vs instance-based dice patterns
+- [009: Generics in Conditions](009-generics-in-conditions.md) - Type safety vs flexibility trade-offs
+- [010: Generic Event Patterns](010-generic-event-patterns.md) - Event-driven restoration triggers
 
 ## Document Types
 
