@@ -143,6 +143,10 @@ func (c *ComposedCondition) getEventTypesForModifier(modType ModifierType) []str
 		return []string{"skill.check.before", "skill.check.calculate"}
 	case ModifierAll:
 		return []string{"roll.before", "roll.calculate"}
+	case ModifierInitiative:
+		return []string{"initiative.before", "initiative.calculate"}
+	case ModifierAbilityCheck:
+		return []string{"ability.check.before", "ability.check.calculate"}
 	default:
 		return []string{}
 	}
@@ -178,6 +182,11 @@ func (c *ComposedCondition) CanStack(other core.Entity) bool {
 	return c.stackable.CanStackWith(other)
 }
 
+// GetTemporary returns the temporary behavior if set
+func (c *ComposedCondition) GetTemporary() TemporaryEffect {
+	return c.temporary
+}
+
 // Example factory functions for common conditions
 
 // CreateBlessCondition creates a Bless condition using composition
@@ -192,6 +201,7 @@ func CreateBlessCondition(owner core.Entity, source string) *ComposedCondition {
 				Type:  DurationMinutes,
 				Value: 1,
 			},
+			StartTime: time.Now(),
 		},
 		Dice: &SimpleDiceModifier{
 			Expression: "1d4",

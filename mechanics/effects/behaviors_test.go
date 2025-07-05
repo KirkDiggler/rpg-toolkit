@@ -221,6 +221,32 @@ func TestDiceModifierBehavior(t *testing.T) {
 	assert.False(t, flameTongue.ShouldApply(ctx, bowAttack))
 }
 
+func TestBlessConditionStartTime(t *testing.T) {
+	owner := &MockEntity{id: "cleric-1", typ: "character"}
+
+	// Create bless condition
+	before := time.Now()
+	bless := effects.CreateBlessCondition(owner, "divine-favor")
+	after := time.Now()
+
+	// Get the temporary behavior
+	tempEffect := bless.GetTemporary()
+	require.NotNil(t, tempEffect)
+
+	// Check that StartTime is set correctly
+	simpleDur, ok := tempEffect.(*effects.SimpleDuration)
+	require.True(t, ok, "Expected SimpleDuration type")
+
+	assert.True(t, simpleDur.StartTime.After(before) || simpleDur.StartTime.Equal(before),
+		"StartTime should be after or equal to before time")
+	assert.True(t, simpleDur.StartTime.Before(after) || simpleDur.StartTime.Equal(after),
+		"StartTime should be before or equal to after time")
+
+	// Verify it doesn't expire immediately
+	assert.False(t, simpleDur.CheckExpiration(context.Background(), time.Now()),
+		"Effect should not expire immediately after creation")
+}
+
 // Test implementations
 
 type ConditionalDamageBonus struct {
