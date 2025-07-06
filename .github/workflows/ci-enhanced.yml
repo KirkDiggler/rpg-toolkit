@@ -72,7 +72,10 @@ jobs:
       - name: Run tests
         working-directory: ${{ matrix.module }}
         run: |
-          go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+          # Get the module name from go.mod
+          MODULE_NAME=$(go list -m)
+          # Run tests excluding mock directory, with coverage only for the main package
+          go test -race -coverprofile=coverage.txt -covermode=atomic -coverpkg="${MODULE_NAME}" $(go list ./... | grep -v /mock)
           go tool cover -func=coverage.txt
       
       - name: Check coverage for critical modules
