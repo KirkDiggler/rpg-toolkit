@@ -217,7 +217,7 @@ flowchart LR
     
     subgraph "Toolkit Processes"
         Pool[Resource Pool]
-        Trigger[ProcessRestoration<br/>with trigger]
+        Trigger[ProcessRestoration#40;trigger#41;]
     end
     
     subgraph "Resources Respond"
