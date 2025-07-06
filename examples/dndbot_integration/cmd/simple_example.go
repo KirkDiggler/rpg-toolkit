@@ -1,5 +1,10 @@
+//go:build ignore
+
 // Package main shows a simplified integration example
 package main
+
+// This file should be in its own directory or renamed to avoid conflicts
+// For now, let's make it a separate build tag
 
 import (
 	"fmt"
