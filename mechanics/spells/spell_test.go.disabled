@@ -1,0 +1,179 @@
+package spells_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/spells"
+)
+
+type mockEntity struct {
+	id   string
+	name string
+}
+
+func (m *mockEntity) GetID() string   { return m.id }
+func (m *mockEntity) GetName() string { return m.name }
+
+func TestSimpleSpell(t *testing.T) {
+	// Create a test spell
+	testSpell := spells.NewSimpleSpell(spells.SimpleSpellConfig{
+		ID:          "test_bolt",
+		Name:        "Test Bolt",
+		Level:       1,
+		School:      "evocation",
+		CastingTime: 6 * time.Second,
+		Range:       60,
+		Duration:    events.Instantaneous,
+		Components: spells.CastingComponents{
+			Verbal:  true,
+			Somatic: true,
+		},
+		TargetType: spells.TargetCreature,
+		MaxTargets: 1,
+		CastFunc: func(ctx spells.CastContext) error {
+			// Simple test implementation
+			return nil
+		},
+	})
+
+	// Test basic properties
+	if testSpell.GetID() != "test_bolt" {
+		t.Errorf("Expected ID 'test_bolt', got '%s'", testSpell.GetID())
+	}
+
+	if testSpell.Level() != 1 {
+		t.Errorf("Expected level 1, got %d", testSpell.Level())
+	}
+
+	if testSpell.School() != "evocation" {
+		t.Errorf("Expected school 'evocation', got '%s'", testSpell.School())
+	}
+
+	// Test casting
+	caster := &mockEntity{id: "wizard1", name: "Test Wizard"}
+	target := &mockEntity{id: "goblin1", name: "Test Goblin"}
+	bus := events.NewBus()
+
+	context := spells.CastContext{
+		Caster:    caster,
+		Targets:   []core.Entity{target},
+		SlotLevel: 1,
+		Bus:       bus,
+		Metadata: map[string]interface{}{
+			"ctx": nil,
+		},
+	}
+
+	err := testSpell.Cast(context)
+	if err != nil {
+		t.Errorf("Unexpected error casting spell: %v", err)
+	}
+}
+
+func TestSpellSlotPool(t *testing.T) {
+	// Create a spell slot pool for a level 5 wizard
+	table := spells.NewStandardSpellSlotTable()
+	pool := spells.NewSpellSlotPool("wizard", 5, table)
+
+	// Check initial slots
+	slots := pool.GetAvailableSlots()
+
+	// Level 5 wizard should have:
+	// 1st: 4, 2nd: 3, 3rd: 2
+	if slots[1] != 4 {
+		t.Errorf("Expected 4 1st level slots, got %d", slots[1])
+	}
+	if slots[2] != 3 {
+		t.Errorf("Expected 3 2nd level slots, got %d", slots[2])
+	}
+	if slots[3] != 2 {
+		t.Errorf("Expected 2 3rd level slots, got %d", slots[3])
+	}
+
+	// Use a slot
+	err := pool.UseSlot(1)
+	if err != nil {
+		t.Errorf("Failed to use slot: %v", err)
+	}
+
+	// Check remaining
+	if !pool.HasSlot(1) || pool.GetAvailableSlots()[1] != 3 {
+		t.Errorf("Expected 3 remaining 1st level slots")
+	}
+
+	// Try to use a slot that doesn't exist
+	err = pool.UseSlot(9)
+	if err == nil {
+		t.Error("Expected error using 9th level slot at level 5")
+	}
+}
+
+func TestSpellList(t *testing.T) {
+	// Test known caster (sorcerer style)
+	knownList := spells.NewSimpleSpellList(spells.SpellListConfig{
+		PreparationStyle: "known",
+	})
+
+	// Create test spells
+	spell1 := &spells.SimpleSpell{}
+	spell1 = spells.NewSimpleSpell(spells.SimpleSpellConfig{
+		ID:    "burning_hands",
+		Name:  "Burning Hands",
+		Level: 1,
+	})
+
+	cantrip := spells.NewSimpleSpell(spells.SimpleSpellConfig{
+		ID:    "fire_bolt",
+		Name:  "Fire Bolt",
+		Level: 0,
+	})
+
+	// Add spells
+	err := knownList.AddKnownSpell(spell1)
+	if err != nil {
+		t.Errorf("Failed to add known spell: %v", err)
+	}
+
+	err = knownList.AddCantrip(cantrip)
+	if err != nil {
+		t.Errorf("Failed to add cantrip: %v", err)
+	}
+
+	// Check if spells can be cast
+	if !knownList.CanCast("burning_hands") {
+		t.Error("Known spell should be castable")
+	}
+
+	if !knownList.CanCast("fire_bolt") {
+		t.Error("Cantrip should be castable")
+	}
+
+	// Test prepared caster (wizard style)
+	preparedList := spells.NewSimpleSpellList(spells.SpellListConfig{
+		PreparationStyle:  "prepared",
+		MaxPreparedSpells: 5,
+	})
+
+	err = preparedList.AddKnownSpell(spell1)
+	if err != nil {
+		t.Errorf("Failed to add spell to spellbook: %v", err)
+	}
+
+	// Spell is known but not prepared
+	if preparedList.CanCast("burning_hands") {
+		t.Error("Unprepared spell should not be castable")
+	}
+
+	// Prepare the spell
+	err = preparedList.PrepareSpell(spell1)
+	if err != nil {
+		t.Errorf("Failed to prepare spell: %v", err)
+	}
+
+	if !preparedList.CanCast("burning_hands") {
+		t.Error("Prepared spell should be castable")
+	}
+}

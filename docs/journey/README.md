@@ -25,6 +25,7 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 - [008: Dice Roller Design](008-dice-roller-design.md) - Global vs instance-based dice patterns
 - [009: Generics in Conditions](009-generics-in-conditions.md) - Type safety vs flexibility trade-offs
 - [010: Generic Event Patterns](010-generic-event-patterns.md) - Event-driven restoration triggers
+- [011: Spell System Design](011-spell-system-design.md) - Designing the spell casting system
 
 ## Document Types
 
