@@ -71,12 +71,16 @@ type SpellCastFailedEvent struct {
 // SpellSaveEvent is published when a saving throw is made against a spell.
 type SpellSaveEvent struct {
 	events.GameEvent
-	Target   core.Entity
-	Spell    Spell
-	SaveType string
-	DC       int
-	Result   int
-	Success  bool
+	Target       core.Entity
+	Spell        Spell
+	SaveType     string
+	DC           int
+	Result       int // Deprecated: Use SaveRoll instead
+	SaveRoll     int // The actual dice roll
+	SaveBonus    int // The bonus applied to the roll
+	Success      bool
+	CriticalSave bool // Natural 20
+	CriticalFail bool // Natural 1
 }
 
 // SpellAttackEvent is published when a spell attack is made.
@@ -98,15 +102,27 @@ type SpellDamageEvent struct {
 	Spell      Spell
 	Damage     int
 	DamageType string
+	IsCritical bool // Whether this was a critical hit
 }
 
 // ConcentrationCheckEvent is published when concentration must be maintained.
 type ConcentrationCheckEvent struct {
 	events.GameEvent
-	Caster  core.Entity
-	Spell   Spell
-	DC      int
-	Damage  int // Damage that triggered the check
-	Result  int
-	Success bool
+	Caster      core.Entity
+	Spell       Spell
+	DC          int
+	Damage      int // Damage that triggered the check
+	DamageTaken int // Alias for Damage
+	Result      int // The total result (roll + bonus)
+	SaveRoll    int // The actual dice roll
+	SaveBonus   int // The bonus applied to the roll
+	Success     bool
+}
+
+// ConcentrationBrokenEvent is published when concentration is lost.
+type ConcentrationBrokenEvent struct {
+	events.GameEvent
+	Caster core.Entity
+	Spell  Spell
+	Reason string // Why concentration was broken
 }

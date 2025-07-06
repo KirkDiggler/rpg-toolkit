@@ -59,13 +59,11 @@ func Fireball() *spells.SimpleSpell {
 			for _, target := range ctx.Targets {
 				// Publish save event
 				saveEvent := &spells.SpellSaveEvent{
-					GameEvent: events.GameEvent{
-						EventType: spells.EventSpellSave,
-					},
-					Target:   target,
-					Spell:    spell,
-					SaveType: "dexterity",
-					DC:       saveDC,
+					GameEvent: *events.NewGameEvent(spells.EventSpellSave, ctx.Caster, target),
+					Target:    target,
+					Spell:     spell,
+					SaveType:  "dexterity",
+					DC:        saveDC,
 				}
 
 				if err := ctx.Bus.Publish(context.TODO(), saveEvent); err != nil {
@@ -80,9 +78,7 @@ func Fireball() *spells.SimpleSpell {
 
 				// Publish damage event
 				dmgEvent := &spells.SpellDamageEvent{
-					GameEvent: events.GameEvent{
-						EventType: spells.EventSpellDamage,
-					},
+					GameEvent:  *events.NewGameEvent(spells.EventSpellDamage, ctx.Caster, target),
 					Source:     ctx.Caster,
 					Target:     target,
 					Spell:      spell,
@@ -137,9 +133,7 @@ func MagicMissile() *spells.SimpleSpell {
 				}
 
 				dmgEvent := &spells.SpellDamageEvent{
-					GameEvent: events.GameEvent{
-						EventType: spells.EventSpellDamage,
-					},
+					GameEvent:  *events.NewGameEvent(spells.EventSpellDamage, ctx.Caster, target),
 					Source:     ctx.Caster,
 					Target:     target,
 					Spell:      spell,
@@ -187,12 +181,10 @@ func FireBolt() *spells.SimpleSpell {
 			}
 
 			attackEvent := &spells.SpellAttackEvent{
-				GameEvent: events.GameEvent{
-					EventType: spells.EventSpellAttack,
-				},
-				Attacker: ctx.Caster,
-				Target:   ctx.Targets[0],
-				Spell:    spell,
+				GameEvent: *events.NewGameEvent(spells.EventSpellAttack, ctx.Caster, ctx.Targets[0]),
+				Attacker:  ctx.Caster,
+				Target:    ctx.Targets[0],
+				Spell:     spell,
 			}
 
 			if err := ctx.Bus.Publish(context.TODO(), attackEvent); err != nil {
@@ -221,9 +213,7 @@ func FireBolt() *spells.SimpleSpell {
 				damage := dice.D(10, damageDice).Roll()
 
 				dmgEvent := &spells.SpellDamageEvent{
-					GameEvent: events.GameEvent{
-						EventType: spells.EventSpellDamage,
-					},
+					GameEvent:  *events.NewGameEvent(spells.EventSpellDamage, ctx.Caster, ctx.Targets[0]),
 					Source:     ctx.Caster,
 					Target:     ctx.Targets[0],
 					Spell:      spell,

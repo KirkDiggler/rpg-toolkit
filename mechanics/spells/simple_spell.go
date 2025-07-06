@@ -83,6 +83,9 @@ func (s *SimpleSpell) GetID() string { return s.id }
 // GetName returns the name of the spell.
 func (s *SimpleSpell) GetName() string { return s.name }
 
+// GetType returns the entity type.
+func (s *SimpleSpell) GetType() string { return "spell" }
+
 // Spell interface
 
 // Level returns the spell level (0 for cantrips, 1-9 for leveled spells).

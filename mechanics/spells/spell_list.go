@@ -139,7 +139,7 @@ func (sl *SimpleSpellList) PrepareSpell(spell Spell) error {
 
 	// Check preparation limit
 	if len(sl.preparedSpells) >= sl.maxPrepared {
-		return fmt.Errorf("already prepared maximum number of spells (%d)", sl.maxPrepared)
+		return fmt.Errorf("already at max prepared spells (%d)", sl.maxPrepared)
 	}
 
 	sl.preparedSpells[spell.GetID()] = spell
@@ -196,6 +196,10 @@ func (sl *SimpleSpellList) AddCantrip(spell Spell) error {
 
 	if spell.Level() != 0 {
 		return fmt.Errorf("spell %s is not a cantrip", spell.GetID())
+	}
+
+	if _, exists := sl.cantrips[spell.GetID()]; exists {
+		return fmt.Errorf("cantrip %s is already known", spell.GetID())
 	}
 
 	sl.cantrips[spell.GetID()] = spell
