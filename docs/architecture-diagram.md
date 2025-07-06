@@ -1,4 +1,4 @@
-# RPG Toolkit Architecture Diagram
+    # RPG Toolkit Architecture Diagram
 
 ## Overview
 RPG Toolkit provides infrastructure for tabletop RPG mechanics through an event-driven architecture. Games implement their specific rules using our generic tools.

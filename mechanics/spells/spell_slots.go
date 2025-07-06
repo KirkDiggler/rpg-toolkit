@@ -11,6 +11,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
 
+//go:generate mockgen -destination=mock/mock_spell_slot_table.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/spells SpellSlotTable
+
 // SpellSlotTable defines spell slots by class and level.
 type SpellSlotTable interface {
 	GetSlots(classLevel int, spellLevel int) int

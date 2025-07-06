@@ -58,6 +58,16 @@ type SpellCastCompleteEvent struct {
 	SlotLevel int
 }
 
+// SpellCastFailedEvent is published when a spell cast fails.
+type SpellCastFailedEvent struct {
+	events.GameEvent
+	Caster    core.Entity
+	Spell     Spell
+	Targets   []core.Entity
+	SlotLevel int
+	Error     error
+}
+
 // SpellSaveEvent is published when a saving throw is made against a spell.
 type SpellSaveEvent struct {
 	events.GameEvent

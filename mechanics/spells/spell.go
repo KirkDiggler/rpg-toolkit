@@ -57,6 +57,8 @@ type CastingComponents struct {
 	Cost      int    // GP value of materials
 }
 
+//go:generate mockgen -destination=mock/mock_spell.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/spells Spell
+
 // Spell represents a magical spell that can be cast.
 type Spell interface {
 	core.Entity

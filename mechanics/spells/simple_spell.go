@@ -175,6 +175,7 @@ func (s *SimpleSpell) Cast(castContext CastContext) error {
 			failedEvent.Context().Set("spell", s)
 			failedEvent.Context().Set("targets", castContext.Targets)
 			failedEvent.Context().Set("slotLevel", castContext.SlotLevel)
+			failedEvent.Context().Set("error", err)
 
 			if publishErr := castContext.Bus.Publish(ctx, failedEvent); publishErr != nil {
 				// Log the publish error but return the original error

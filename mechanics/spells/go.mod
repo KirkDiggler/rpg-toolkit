@@ -7,6 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/conditions v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.1.0
+	go.uber.org/mock v0.5.2
 )
 
 require (

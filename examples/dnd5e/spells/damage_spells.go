@@ -42,6 +42,19 @@ func Fireball() *spells.SimpleSpell {
 			// Roll damage
 			damage := dice.D(6, totalDice).Roll()
 
+			// Get spell from context - the SimpleSpell.Cast method doesn't set this
+			// In a real implementation, you'd pass the spell reference another way
+			var spell spells.Spell
+			if s, ok := ctx.Metadata["spell"].(spells.Spell); ok {
+				spell = s
+			}
+
+			// Get save DC from metadata
+			saveDC := 15 // Default DC
+			if dc, ok := ctx.Metadata["save_dc"].(int); ok {
+				saveDC = dc
+			}
+
 			// Apply to all targets
 			for _, target := range ctx.Targets {
 				// Publish save event
@@ -50,9 +63,9 @@ func Fireball() *spells.SimpleSpell {
 						EventType: spells.EventSpellSave,
 					},
 					Target:   target,
-					Spell:    ctx.Metadata["spell"].(spells.Spell),
+					Spell:    spell,
 					SaveType: "dexterity",
-					DC:       ctx.Metadata["save_dc"].(int),
+					DC:       saveDC,
 				}
 
 				if err := ctx.Bus.Publish(context.TODO(), saveEvent); err != nil {
@@ -72,7 +85,7 @@ func Fireball() *spells.SimpleSpell {
 					},
 					Source:     ctx.Caster,
 					Target:     target,
-					Spell:      ctx.Metadata["spell"].(spells.Spell),
+					Spell:      spell,
 					Damage:     finalDamage,
 					DamageType: "fire",
 				}
@@ -117,13 +130,19 @@ func MagicMissile() *spells.SimpleSpell {
 				damage := dice.D(4, 1).Roll() + 1
 
 				// Magic missile always hits
+				// Get spell from context if available
+				var spell spells.Spell
+				if s, ok := ctx.Metadata["spell"].(spells.Spell); ok {
+					spell = s
+				}
+
 				dmgEvent := &spells.SpellDamageEvent{
 					GameEvent: events.GameEvent{
 						EventType: spells.EventSpellDamage,
 					},
 					Source:     ctx.Caster,
 					Target:     target,
-					Spell:      ctx.Metadata["spell"].(spells.Spell),
+					Spell:      spell,
 					Damage:     damage,
 					DamageType: "force",
 				}
@@ -161,13 +180,19 @@ func FireBolt() *spells.SimpleSpell {
 			}
 
 			// Make spell attack
+			// Get spell from context if available
+			var spell spells.Spell
+			if s, ok := ctx.Metadata["spell"].(spells.Spell); ok {
+				spell = s
+			}
+
 			attackEvent := &spells.SpellAttackEvent{
 				GameEvent: events.GameEvent{
 					EventType: spells.EventSpellAttack,
 				},
 				Attacker: ctx.Caster,
 				Target:   ctx.Targets[0],
-				Spell:    ctx.Metadata["spell"].(spells.Spell),
+				Spell:    spell,
 			}
 
 			if err := ctx.Bus.Publish(context.TODO(), attackEvent); err != nil {
@@ -177,7 +202,11 @@ func FireBolt() *spells.SimpleSpell {
 			// If hit, deal damage
 			if attackEvent.Hit {
 				// Cantrip damage scales with level
-				casterLevel := ctx.Metadata["caster_level"].(int)
+				casterLevel := 1 // Default level
+				if lvl, ok := ctx.Metadata["caster_level"].(int); ok {
+					casterLevel = lvl
+				}
+
 				damageDice := 1
 				if casterLevel >= 5 {
 					damageDice = 2
@@ -197,7 +226,7 @@ func FireBolt() *spells.SimpleSpell {
 					},
 					Source:     ctx.Caster,
 					Target:     ctx.Targets[0],
-					Spell:      ctx.Metadata["spell"].(spells.Spell),
+					Spell:      spell,
 					Damage:     damage,
 					DamageType: "fire",
 				}

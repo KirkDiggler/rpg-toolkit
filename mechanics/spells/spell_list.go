@@ -14,6 +14,8 @@ const (
 	PreparationStylePrepared = "prepared" // For wizards, clerics, etc.
 )
 
+//go:generate mockgen -destination=mock/mock_spell_list.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/spells SpellList
+
 // SpellList manages known and prepared spells for a caster.
 type SpellList interface {
 	// Known spells (sorcerer, bard, ranger)
