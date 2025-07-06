@@ -169,7 +169,7 @@ flowchart TD
     Start --> CheckSlot
     
     CheckSlot -->|No| Fail[Cast fails]
-    CheckSlot -->|Yes| ConsumeSlot[Consume spell slot<br/>pool.ConsumeSpellSlot(3)]
+    CheckSlot -->|Yes| ConsumeSlot[Consume spell slot<br/>pool.ConsumeSpellSlot#40;3#41;]
     
     ConsumeSlot --> PublishCast[Publish spell.cast event]
     
