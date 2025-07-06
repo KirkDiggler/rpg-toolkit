@@ -7,6 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.2-0.20250705165954-baefa5c079e7
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.0.0-20250705165954-baefa5c079e7
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/mock v0.5.2
 )
 
 require (

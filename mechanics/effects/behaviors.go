@@ -12,12 +12,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
+//go:generate mockgen -destination=mock/mock_conditional_effect.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects ConditionalEffect
+
 // ConditionalEffect represents an effect that only applies under certain conditions.
 // Examples: Weapon proficiency (only with that weapon), Sneak Attack (only with advantage)
 type ConditionalEffect interface {
 	// CheckCondition returns true if the effect should apply given the context
 	CheckCondition(ctx context.Context, event events.Event) bool
 }
+
+//go:generate mockgen -destination=mock/mock_resource_consumer.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects ResourceConsumer
 
 // ResourceConsumer represents an effect that consumes limited resources.
 // Examples: Rage (uses rage charges), Divine Smite (uses spell slots)
@@ -36,6 +40,8 @@ type ResourceRequirement struct {
 	Amount   int    // Amount needed
 	Optional bool   // If true, effect can still apply without this resource
 }
+
+//go:generate mockgen -destination=mock/mock_temporary_effect.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects TemporaryEffect
 
 // TemporaryEffect represents an effect with a limited duration.
 // Examples: Bless (10 rounds), Rage (1 minute), Poison (until cured)
@@ -72,6 +78,8 @@ const (
 	DurationPermanent  DurationType = "permanent"  // Never expires
 )
 
+//go:generate mockgen -destination=mock/mock_stackable_effect.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects StackableEffect
+
 // StackableEffect represents an effect that can stack with itself.
 // Examples: Ability score damage, temporary hit points (special stacking)
 type StackableEffect interface {
@@ -97,9 +105,10 @@ const (
 	StackingCustom   StackingRule = "custom"   // Custom stacking logic
 )
 
+//go:generate mockgen -destination=mock/mock_dice_modifier.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects DiceModifier
+
 // DiceModifier represents an effect that adds dice to rolls.
-// IMPORTANT: The dice package caches roll results. To ensure fresh rolls,
-// create new dice.Roll instances each time a modifier is needed.
+// IMPORTANT: Dice expressions are rolled fresh each time, not pre-rolled.
 // Examples: Bless (+1d4 to attacks), Bane (-1d4 to saves)
 type DiceModifier interface {
 	// GetDiceExpression returns the dice to add (e.g., "1d4", "2d6")
@@ -126,6 +135,8 @@ const (
 	ModifierAll          ModifierType = "all"           // All rolls
 )
 
+//go:generate mockgen -destination=mock/mock_targeted_effect.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects TargetedEffect
+
 // TargetedEffect represents an effect that affects specific entities.
 // Examples: Auras, charm effects, curses
 type TargetedEffect interface {
@@ -141,6 +152,8 @@ type TargetedEffect interface {
 	// IsValidTarget checks if an entity can be targeted
 	IsValidTarget(target core.Entity) bool
 }
+
+//go:generate mockgen -destination=mock/mock_triggered_effect.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/effects TriggeredEffect
 
 // TriggeredEffect represents an effect that responds to specific triggers.
 // Examples: Reactions, contingent spells, trap effects

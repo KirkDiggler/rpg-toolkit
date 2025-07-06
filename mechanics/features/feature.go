@@ -48,6 +48,8 @@ const (
 // Games can provide their own implementations to handle game-specific prerequisites.
 type PrerequisiteChecker func(entity core.Entity, prerequisite string) bool
 
+//go:generate mockgen -destination=mock/mock_feature.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/features Feature
+
 // Feature represents a character ability, racial trait, or feat.
 type Feature interface {
 	// Key returns the unique identifier for the feature.
@@ -111,6 +113,8 @@ type Feature interface {
 	Deactivate(entity core.Entity, bus events.EventBus) error
 }
 
+//go:generate mockgen -destination=mock/mock_event_listener.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/features EventListener
+
 // EventListener handles events for features.
 type EventListener interface {
 	// EventTypes returns the event types this listener cares about.
@@ -122,6 +126,8 @@ type EventListener interface {
 	// HandleEvent processes the event for the feature.
 	HandleEvent(feature Feature, entity core.Entity, event events.Event) error
 }
+
+//go:generate mockgen -destination=mock/mock_feature_holder.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/features FeatureHolder
 
 // FeatureHolder represents an entity that can have features.
 type FeatureHolder interface {

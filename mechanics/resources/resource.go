@@ -10,6 +10,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
+//go:generate mockgen -destination=mock/mock_resource.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/resources Resource
+
 // Resource represents a consumable game resource with current and maximum values.
 type Resource interface {
 	core.Entity // Resources are entities with ID and Type

@@ -11,6 +11,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
+//go:generate mockgen -destination=mock/mock_pool.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/resources Pool
+
 // Pool manages a collection of resources for an entity.
 type Pool interface {
 	// Owner returns the entity that owns this resource pool.
