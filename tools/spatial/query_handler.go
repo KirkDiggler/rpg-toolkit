@@ -9,6 +9,8 @@ import (
 )
 
 // SpatialQueryHandler handles spatial query events
+//
+//nolint:revive // type name follows package naming conventions used throughout codebase
 type SpatialQueryHandler struct {
 	rooms map[string]Room
 }
@@ -49,6 +51,8 @@ func (h *SpatialQueryHandler) HandleQuery(ctx context.Context, query interface{}
 }
 
 // handlePositionsInRange handles position range queries
+//
+//nolint:unparam // error is always nil by design - errors are stored in data struct
 func (h *SpatialQueryHandler) handlePositionsInRange(
 	_ context.Context, data *QueryPositionsInRangeData,
 ) (*QueryPositionsInRangeData, error) {
@@ -63,6 +67,8 @@ func (h *SpatialQueryHandler) handlePositionsInRange(
 }
 
 // handleEntitiesInRange handles entity range queries
+//
+//nolint:unparam // error is always nil by design - errors are stored in data struct
 func (h *SpatialQueryHandler) handleEntitiesInRange(
 	_ context.Context, data *QueryEntitiesInRangeData,
 ) (*QueryEntitiesInRangeData, error) {
@@ -91,6 +97,8 @@ func (h *SpatialQueryHandler) handleEntitiesInRange(
 }
 
 // handleLineOfSight handles line of sight queries
+//
+//nolint:unparam // error is always nil by design - errors are stored in data struct
 func (h *SpatialQueryHandler) handleLineOfSight(
 	_ context.Context, data *QueryLineOfSightData,
 ) (*QueryLineOfSightData, error) {
@@ -106,6 +114,8 @@ func (h *SpatialQueryHandler) handleLineOfSight(
 }
 
 // handleMovement handles movement queries
+//
+//nolint:unparam // error is always nil by design - errors are stored in data struct
 func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovementData) (*QueryMovementData, error) {
 	room, exists := h.rooms[data.RoomID]
 	if !exists {
@@ -126,6 +136,8 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 }
 
 // handlePlacement handles placement queries
+//
+//nolint:unparam // error is always nil by design - errors are stored in data struct
 func (h *SpatialQueryHandler) handlePlacement(
 	_ context.Context, data *QueryPlacementData,
 ) (*QueryPlacementData, error) {
