@@ -17,15 +17,17 @@ We're designing a spatial module for the RPG Toolkit to handle room generation, 
 ### Core Architecture
 
 ```
-mechanics/spatial/
-├── interfaces.go     # Core interfaces (Room, Grid, Placeable)
-├── position.go       # Position and dimension types
-├── room.go          # Room implementation
-├── square_grid.go   # Square grid implementation
-├── hex_grid.go      # Hex grid implementation
-├── gridless.go      # Gridless room implementation
-├── events.go        # Event types and data structures
-└── queries.go       # Query types and implementations
+tools/spatial/
+├── interfaces.go         # Core interfaces (Room, Grid, Placeable)
+├── position.go           # Position and dimension types
+├── room.go              # Room implementation
+├── square_grid.go       # Square grid implementation
+├── hex_grid.go          # Hex grid implementation
+├── gridless.go          # Gridless room implementation
+├── events.go            # Event types and data structures
+├── query_handler.go     # Query handler implementation
+├── query_utils.go       # Query utility functions
+└── *_test.go           # Comprehensive test suite
 ```
 
 ### Core Interfaces
@@ -282,3 +284,116 @@ func TestEntityPlacement(t *testing.T) {
 5. **Encounter Balancing**: Room generation benefits from encounter balancing logic
 
 This spatial module will provide the foundation for rich, event-driven spatial gameplay in the RPG Toolkit while maintaining the flexibility and extensibility that makes the toolkit valuable.
+
+## Implementation Completion
+
+**Status**: ✅ Complete (July 16, 2025)
+
+### What Was Implemented
+
+The spatial module has been fully implemented in `tools/spatial/` with all planned features:
+
+**Core Implementation**:
+- ✅ Complete Grid interface with pluggable grid system
+- ✅ Room interface with triple entity tracking (entities, positions, occupancy)
+- ✅ Square Grid with D&D 5e Chebyshev distance calculation
+- ✅ Hex Grid with cube coordinate system for accurate distance/neighbor calculations
+- ✅ Gridless room with Euclidean distance for theater-of-mind play
+- ✅ Full event integration with toolkit event bus
+- ✅ Comprehensive spatial query system with event-driven queries
+
+**Key Features Delivered**:
+- **Grid-Agnostic Architecture**: Room works seamlessly with all three grid types
+- **Event-Driven State Changes**: All spatial operations emit events
+- **Comprehensive Query System**: Position queries, entity queries, LOS, movement validation
+- **Thread-Safe Operations**: All room operations are mutex-protected
+- **Flexible Entity Filtering**: Advanced filtering by type, ID, exclusions
+- **Utility Functions**: Convenient query utilities and common filters
+
+**Testing**:
+- ✅ Complete test suite using testify suite pattern
+- ✅ All grid types tested with grid interface
+- ✅ Event integration thoroughly tested
+- ✅ Query system tested both directly and through events
+- ✅ Comprehensive examples and usage documentation
+
+**Architecture Insights**:
+- **Triple Entity Tracking**: Using three maps (entities, positions, occupancy) provides O(1) lookups
+- **Grid-Specific Distance**: Different grids calculate distance differently (Chebyshev vs Hex vs Euclidean)
+- **Event-Driven Queries**: Query system works both directly and through event bus
+- **Filter Composition**: Entity filters can be combined for complex queries
+
+### Architecture Decision: tools/ Directory
+
+Following ADR-0008, the spatial module was implemented in `tools/spatial/` rather than `mechanics/spatial/`, establishing the three-tier architecture:
+
+1. **Foundation** (`core/`, `events/`, `dice/`) - Used by everything
+2. **Tools** (`tools/spatial/`) - Specialized infrastructure  
+3. **Mechanics** (`mechanics/conditions/`, etc.) - Game mechanics
+
+This creates clear separation between infrastructure tools and game mechanics.
+
+### Grid-Specific Implementations
+
+**Square Grid (D&D 5e)**:
+- Distance: `max(|x1-x2|, |y1-y2|)` (Chebyshev)
+- 8 neighbors per position
+- Bresenham's line algorithm for line of sight
+
+**Hex Grid (Cube Coordinates)**:
+- Distance: `(|x1-x2| + |y1-y2| + |z1-z2|) / 2`
+- 6 neighbors per position
+- Ring and spiral patterns for area queries
+
+**Gridless (Theater-of-Mind)**:
+- Distance: `sqrt((x1-x2)² + (y1-y2)²)` (Euclidean)
+- 8 neighbors with sampling for continuous positioning
+- Flexible placement rules
+
+### Query System Architecture
+
+The query system provides both direct API access and event-driven queries:
+
+```go
+// Direct API
+queryHandler := spatial.NewSpatialQueryHandler()
+result, err := queryHandler.HandleQuery(ctx, query)
+
+// Event-driven (through QueryUtils)
+queryUtils := spatial.NewQueryUtils(eventBus)
+entities, err := queryUtils.QueryEntitiesInRange(ctx, pos, radius, roomID, filter)
+```
+
+**Query Types**:
+- Position queries (positions in range)
+- Entity queries (entities in range, with filtering)
+- Line of sight queries (positions + blocked status)
+- Movement queries (validity, path, distance)
+- Placement queries (can entity be placed)
+
+### Files Implemented
+
+- `interfaces.go` - Core interfaces (Grid, Room, Placeable, QueryHandler, EntityFilter)
+- `position.go` - Position, Dimensions, coordinate types
+- `room.go` - BasicRoom implementation with event integration
+- `square_grid.go` - Square grid with D&D 5e distance calculations
+- `hex_grid.go` - Hex grid with cube coordinate system
+- `gridless.go` - Gridless room with Euclidean distance
+- `events.go` - Event constants and data structures
+- `query_handler.go` - Spatial query handler with event integration
+- `query_utils.go` - Convenient query utilities and filters
+- `*_test.go` - Comprehensive test suite for all components
+- `examples_test.go` - Usage examples and documentation
+
+### Integration Points Achieved
+
+**With Toolkit Modules**:
+- ✅ Uses `core.Entity` interface for all spatial objects
+- ✅ Emits events through `events.EventBus` for all state changes
+- ✅ Follows toolkit patterns for configuration and error handling
+
+**Ready for Game Integration**:
+- ✅ Combat systems can react to spatial events
+- ✅ Spell systems can use spatial queries for targeting
+- ✅ Condition systems can listen for movement events
+- ✅ Vision systems can use line of sight queries
