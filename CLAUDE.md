@@ -26,7 +26,53 @@ This project uses a clean module development approach:
    - Clear dependency tracking
    - No confusion about which version is being used
 
-## Testing Commands
+## Testing Strategy
+
+### Preferred Testing Approach: Testify Suite Pattern
+
+**Use testify suite for clean test organization**:
+
+```go
+type ServiceTestSuite struct {
+    suite.Suite
+    service  *Service
+    mockDep  *MockDependency
+    testData *TestData
+}
+
+// SetupTest runs before EACH test function
+func (s *ServiceTestSuite) SetupTest() {
+    // Create mocks - fresh for each test
+    s.mockDep = NewMockDependency(s.T())
+    s.service = NewService(&ServiceConfig{
+        Dependency: s.mockDep,
+    })
+    // Initialize common test data
+    s.testData = createTestData()
+}
+
+// SetupSubTest runs before EACH s.Run()
+func (s *ServiceTestSuite) SetupSubTest() {
+    // Reset test data to clean state for each subtest
+    s.testData = createTestData()
+    // Can also reset specific mock expectations if needed
+}
+
+// Run the suite
+func TestServiceSuite(t *testing.T) {
+    suite.Run(t, new(ServiceTestSuite))
+}
+```
+
+**Key Testing Principles**:
+- Use `suite.Suite` for test organization
+- Use `s.Run()` for subtests with test cases
+- `SetupTest()` runs before each test function - establish mocks here
+- `SetupSubTest()` runs before each `s.Run()` - reset test data here
+- Keep test bodies focused on arrange/act/assert
+- Use suite assertions: `s.Assert()`, `s.Require()`
+
+### Testing Commands
 
 When working on a module:
 ```bash
