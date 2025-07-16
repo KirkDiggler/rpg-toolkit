@@ -3,8 +3,8 @@ package spatial_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+	"github.com/stretchr/testify/suite"
 )
 
 type HexGridTestSuite struct {
@@ -25,7 +25,7 @@ func (s *HexGridTestSuite) SetupTest() {
 func (s *HexGridTestSuite) TestHexGridCreation() {
 	s.Require().NotNil(s.grid)
 	s.Assert().Equal(spatial.GridShapeHex, s.grid.GetShape())
-	
+
 	dimensions := s.grid.GetDimensions()
 	s.Assert().Equal(10.0, dimensions.Width)
 	s.Assert().Equal(10.0, dimensions.Height)
@@ -33,27 +33,7 @@ func (s *HexGridTestSuite) TestHexGridCreation() {
 
 // TestIsValidPosition tests position validation
 func (s *HexGridTestSuite) TestIsValidPosition() {
-	testCases := []struct {
-		name     string
-		position spatial.Position
-		expected bool
-	}{
-		{"origin", spatial.Position{X: 0, Y: 0}, true},
-		{"center", spatial.Position{X: 5, Y: 5}, true},
-		{"top-right corner", spatial.Position{X: 9, Y: 9}, true},
-		{"negative x", spatial.Position{X: -1, Y: 5}, false},
-		{"negative y", spatial.Position{X: 5, Y: -1}, false},
-		{"x too large", spatial.Position{X: 10, Y: 5}, false},
-		{"y too large", spatial.Position{X: 5, Y: 10}, false},
-		{"both too large", spatial.Position{X: 10, Y: 10}, false},
-	}
-	
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			result := s.grid.IsValidPosition(tc.position)
-			s.Assert().Equal(tc.expected, result)
-		})
-	}
+	spatial.RunPositionValidationTests(s.T(), s.grid)
 }
 
 // TestHexDistance tests hex distance calculations using cube coordinates
@@ -73,7 +53,7 @@ func (s *HexGridTestSuite) TestHexDistance() {
 		{"diagonal movement", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 6}, 1},
 		{"longer diagonal", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 7, Y: 7}, 3},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.grid.Distance(tc.from, tc.to)
@@ -87,18 +67,18 @@ func (s *HexGridTestSuite) TestGetNeighbors() {
 	s.Run("center position", func() {
 		neighbors := s.grid.GetNeighbors(spatial.Position{X: 5, Y: 5})
 		s.Assert().Len(neighbors, 6) // Hex grids have 6 neighbors
-		
+
 		// All neighbors should be distance 1 away
 		center := spatial.Position{X: 5, Y: 5}
 		for _, neighbor := range neighbors {
 			s.Assert().Equal(1.0, s.grid.Distance(center, neighbor))
 		}
 	})
-	
+
 	s.Run("corner position", func() {
 		neighbors := s.grid.GetNeighbors(spatial.Position{X: 0, Y: 0})
 		s.Assert().True(len(neighbors) <= 6) // Some neighbors will be out of bounds
-		
+
 		// All returned neighbors should be valid and distance 1
 		origin := spatial.Position{X: 0, Y: 0}
 		for _, neighbor := range neighbors {
@@ -106,11 +86,11 @@ func (s *HexGridTestSuite) TestGetNeighbors() {
 			s.Assert().Equal(1.0, s.grid.Distance(origin, neighbor))
 		}
 	})
-	
+
 	s.Run("edge position", func() {
 		neighbors := s.grid.GetNeighbors(spatial.Position{X: 0, Y: 5})
 		s.Assert().True(len(neighbors) <= 6) // Some neighbors will be out of bounds
-		
+
 		// All returned neighbors should be valid and distance 1
 		edge := spatial.Position{X: 0, Y: 5}
 		for _, neighbor := range neighbors {
@@ -123,7 +103,7 @@ func (s *HexGridTestSuite) TestGetNeighbors() {
 // TestIsAdjacent tests adjacency checking
 func (s *HexGridTestSuite) TestIsAdjacent() {
 	center := spatial.Position{X: 5, Y: 5}
-	
+
 	testCases := []struct {
 		name     string
 		position spatial.Position
@@ -134,7 +114,7 @@ func (s *HexGridTestSuite) TestIsAdjacent() {
 		{"two hexes away", spatial.Position{X: 7, Y: 5}, false},
 		{"three hexes away", spatial.Position{X: 8, Y: 5}, false},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.grid.IsAdjacent(center, tc.position)
@@ -150,14 +130,14 @@ func (s *HexGridTestSuite) TestGetLineOfSight() {
 		s.Assert().Len(los, 1)
 		s.Assert().Equal(spatial.Position{X: 5, Y: 5}, los[0])
 	})
-	
+
 	s.Run("adjacent positions", func() {
 		los := s.grid.GetLineOfSight(spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 5})
 		s.Assert().Len(los, 2)
 		s.Assert().Contains(los, spatial.Position{X: 5, Y: 5})
 		s.Assert().Contains(los, spatial.Position{X: 6, Y: 5})
 	})
-	
+
 	s.Run("longer line", func() {
 		los := s.grid.GetLineOfSight(spatial.Position{X: 2, Y: 2}, spatial.Position{X: 5, Y: 5})
 		s.Assert().True(len(los) >= 2) // Should have at least start and end
@@ -169,40 +149,40 @@ func (s *HexGridTestSuite) TestGetLineOfSight() {
 // TestGetPositionsInRange tests hex range queries
 func (s *HexGridTestSuite) TestGetPositionsInRange() {
 	center := spatial.Position{X: 5, Y: 5}
-	
+
 	s.Run("range 0", func() {
 		positions := s.grid.GetPositionsInRange(center, 0)
 		s.Assert().Len(positions, 1)
 		s.Assert().Contains(positions, center)
 	})
-	
+
 	s.Run("range 1", func() {
 		positions := s.grid.GetPositionsInRange(center, 1)
 		s.Assert().Len(positions, 7) // Center + 6 neighbors
 		s.Assert().Contains(positions, center)
-		
+
 		// All positions should be within range 1
 		for _, pos := range positions {
 			s.Assert().True(s.grid.Distance(center, pos) <= 1)
 		}
 	})
-	
+
 	s.Run("range 2", func() {
 		positions := s.grid.GetPositionsInRange(center, 2)
 		s.Assert().Len(positions, 19) // Hex pattern: 1 + 6 + 12 = 19
 		s.Assert().Contains(positions, center)
-		
+
 		// All positions should be within range 2
 		for _, pos := range positions {
 			s.Assert().True(s.grid.Distance(center, pos) <= 2)
 		}
 	})
-	
+
 	s.Run("range at edge", func() {
 		edge := spatial.Position{X: 0, Y: 0}
 		positions := s.grid.GetPositionsInRange(edge, 1)
 		s.Assert().True(len(positions) <= 7) // Some positions will be out of bounds
-		
+
 		// All returned positions should be valid and within range
 		for _, pos := range positions {
 			s.Assert().True(s.grid.IsValidPosition(pos))
@@ -217,13 +197,13 @@ func (s *HexGridTestSuite) TestGetPositionsInCircle() {
 		Center: spatial.Position{X: 5, Y: 5},
 		Radius: 2,
 	}
-	
+
 	positions := s.grid.GetPositionsInCircle(circle)
 	s.Assert().Len(positions, 19) // Same as range 2 test
-	
+
 	// Check center is included
 	s.Assert().Contains(positions, spatial.Position{X: 5, Y: 5})
-	
+
 	// All positions should be within the circle using hex distance
 	for _, pos := range positions {
 		s.Assert().True(s.grid.Distance(circle.Center, pos) <= circle.Radius)
@@ -234,7 +214,7 @@ func (s *HexGridTestSuite) TestGetPositionsInCircle() {
 func (s *HexGridTestSuite) TestGetPositionsInLine() {
 	from := spatial.Position{X: 2, Y: 2}
 	to := spatial.Position{X: 5, Y: 5}
-	
+
 	positions := s.grid.GetPositionsInLine(from, to)
 	s.Assert().True(len(positions) >= 2)
 	s.Assert().Contains(positions, from)
@@ -244,27 +224,27 @@ func (s *HexGridTestSuite) TestGetPositionsInLine() {
 // TestGetHexRing tests hex-specific ring functionality
 func (s *HexGridTestSuite) TestGetHexRing() {
 	center := spatial.Position{X: 5, Y: 5}
-	
+
 	s.Run("ring 0", func() {
 		ring := s.grid.GetHexRing(center, 0)
 		s.Assert().Len(ring, 1)
 		s.Assert().Contains(ring, center)
 	})
-	
+
 	s.Run("ring 1", func() {
 		ring := s.grid.GetHexRing(center, 1)
 		s.Assert().Len(ring, 6) // 6 positions in first ring
-		
+
 		// All positions should be exactly distance 1 from center
 		for _, pos := range ring {
 			s.Assert().Equal(1.0, s.grid.Distance(center, pos))
 		}
 	})
-	
+
 	s.Run("ring 2", func() {
 		ring := s.grid.GetHexRing(center, 2)
 		s.Assert().Len(ring, 12) // 12 positions in second ring
-		
+
 		// All positions should be exactly distance 2 from center
 		for _, pos := range ring {
 			s.Assert().Equal(2.0, s.grid.Distance(center, pos))
@@ -275,19 +255,19 @@ func (s *HexGridTestSuite) TestGetHexRing() {
 // TestGetHexSpiral tests hex-specific spiral functionality
 func (s *HexGridTestSuite) TestGetHexSpiral() {
 	center := spatial.Position{X: 5, Y: 5}
-	
+
 	s.Run("spiral radius 0", func() {
 		spiral := s.grid.GetHexSpiral(center, 0)
 		s.Assert().Len(spiral, 1)
 		s.Assert().Contains(spiral, center)
 	})
-	
+
 	s.Run("spiral radius 1", func() {
 		spiral := s.grid.GetHexSpiral(center, 1)
 		s.Assert().Len(spiral, 7) // 1 + 6 = 7
 		s.Assert().Contains(spiral, center)
 	})
-	
+
 	s.Run("spiral radius 2", func() {
 		spiral := s.grid.GetHexSpiral(center, 2)
 		s.Assert().Len(spiral, 19) // 1 + 6 + 12 = 19
@@ -306,13 +286,13 @@ func (s *HexGridTestSuite) TestCubeCoordinateConversion() {
 		{"corner", spatial.Position{X: 9, Y: 9}},
 		{"edge", spatial.Position{X: 0, Y: 5}},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			// Convert to cube and back
 			cube := spatial.OffsetCoordinateToCube(tc.offset)
 			s.Assert().True(cube.IsValid()) // Should be valid cube coordinate
-			
+
 			converted := cube.ToOffsetCoordinate()
 			s.Assert().Equal(tc.offset, converted) // Should round-trip correctly
 		})
@@ -326,18 +306,18 @@ func (s *HexGridTestSuite) TestSmallHexGrid() {
 		Height:    3,
 		PointyTop: true,
 	})
-	
+
 	s.Assert().Equal(spatial.GridShapeHex, smallGrid.GetShape())
-	
+
 	// Test all positions are valid
 	s.Assert().True(smallGrid.IsValidPosition(spatial.Position{X: 0, Y: 0}))
 	s.Assert().True(smallGrid.IsValidPosition(spatial.Position{X: 2, Y: 2}))
 	s.Assert().False(smallGrid.IsValidPosition(spatial.Position{X: 3, Y: 0}))
-	
+
 	// Test neighbors
 	neighbors := smallGrid.GetNeighbors(spatial.Position{X: 1, Y: 1})
 	s.Assert().True(len(neighbors) <= 6)
-	
+
 	// All neighbors should be valid
 	for _, neighbor := range neighbors {
 		s.Assert().True(smallGrid.IsValidPosition(neighbor))

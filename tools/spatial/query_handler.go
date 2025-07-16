@@ -49,7 +49,9 @@ func (h *SpatialQueryHandler) HandleQuery(ctx context.Context, query interface{}
 }
 
 // handlePositionsInRange handles position range queries
-func (h *SpatialQueryHandler) handlePositionsInRange(ctx context.Context, data *QueryPositionsInRangeData) (*QueryPositionsInRangeData, error) {
+func (h *SpatialQueryHandler) handlePositionsInRange(
+	_ context.Context, data *QueryPositionsInRangeData,
+) (*QueryPositionsInRangeData, error) {
 	room, exists := h.rooms[data.RoomID]
 	if !exists {
 		data.Error = fmt.Errorf("room %s not found", data.RoomID)
@@ -61,7 +63,9 @@ func (h *SpatialQueryHandler) handlePositionsInRange(ctx context.Context, data *
 }
 
 // handleEntitiesInRange handles entity range queries
-func (h *SpatialQueryHandler) handleEntitiesInRange(ctx context.Context, data *QueryEntitiesInRangeData) (*QueryEntitiesInRangeData, error) {
+func (h *SpatialQueryHandler) handleEntitiesInRange(
+	_ context.Context, data *QueryEntitiesInRangeData,
+) (*QueryEntitiesInRangeData, error) {
 	room, exists := h.rooms[data.RoomID]
 	if !exists {
 		data.Error = fmt.Errorf("room %s not found", data.RoomID)
@@ -69,7 +73,7 @@ func (h *SpatialQueryHandler) handleEntitiesInRange(ctx context.Context, data *Q
 	}
 
 	entities := room.GetEntitiesInRange(data.Center, data.Radius)
-	
+
 	// Apply filter if provided
 	if data.Filter != nil {
 		filtered := make([]core.Entity, 0)
@@ -82,12 +86,14 @@ func (h *SpatialQueryHandler) handleEntitiesInRange(ctx context.Context, data *Q
 	} else {
 		data.Results = entities
 	}
-	
+
 	return data, nil
 }
 
 // handleLineOfSight handles line of sight queries
-func (h *SpatialQueryHandler) handleLineOfSight(ctx context.Context, data *QueryLineOfSightData) (*QueryLineOfSightData, error) {
+func (h *SpatialQueryHandler) handleLineOfSight(
+	_ context.Context, data *QueryLineOfSightData,
+) (*QueryLineOfSightData, error) {
 	room, exists := h.rooms[data.RoomID]
 	if !exists {
 		data.Error = fmt.Errorf("room %s not found", data.RoomID)
@@ -100,7 +106,7 @@ func (h *SpatialQueryHandler) handleLineOfSight(ctx context.Context, data *Query
 }
 
 // handleMovement handles movement queries
-func (h *SpatialQueryHandler) handleMovement(ctx context.Context, data *QueryMovementData) (*QueryMovementData, error) {
+func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovementData) (*QueryMovementData, error) {
 	room, exists := h.rooms[data.RoomID]
 	if !exists {
 		data.Error = fmt.Errorf("room %s not found", data.RoomID)
@@ -109,18 +115,20 @@ func (h *SpatialQueryHandler) handleMovement(ctx context.Context, data *QueryMov
 
 	// Check if the entity can move to the target position
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
-	
+
 	// Calculate distance using the room's grid
 	data.Distance = room.GetGrid().Distance(data.From, data.To)
-	
+
 	// Get the path (line of sight for now, could be enhanced with pathfinding)
 	data.Path = room.GetLineOfSight(data.From, data.To)
-	
+
 	return data, nil
 }
 
 // handlePlacement handles placement queries
-func (h *SpatialQueryHandler) handlePlacement(ctx context.Context, data *QueryPlacementData) (*QueryPlacementData, error) {
+func (h *SpatialQueryHandler) handlePlacement(
+	_ context.Context, data *QueryPlacementData,
+) (*QueryPlacementData, error) {
 	room, exists := h.rooms[data.RoomID]
 	if !exists {
 		data.Error = fmt.Errorf("room %s not found", data.RoomID)
@@ -147,24 +155,24 @@ func (h *SpatialQueryHandler) handlePositionsInRangeEvent(ctx context.Context, e
 	center, _ := event.Context().Get("center")
 	radius, _ := event.Context().Get("radius")
 	roomID, _ := event.Context().Get("room_id")
-	
+
 	data := &QueryPositionsInRangeData{
 		Center: center.(Position),
 		Radius: radius.(float64),
 		RoomID: roomID.(string),
 	}
-	
+
 	result, err := h.handlePositionsInRange(ctx, data)
 	if err != nil {
 		return err
 	}
-	
+
 	// Store result back in event context
 	event.Context().Set("results", result.Results)
 	if result.Error != nil {
 		event.Context().Set("error", result.Error)
 	}
-	
+
 	return nil
 }
 
@@ -173,28 +181,28 @@ func (h *SpatialQueryHandler) handleEntitiesInRangeEvent(ctx context.Context, ev
 	radius, _ := event.Context().Get("radius")
 	roomID, _ := event.Context().Get("room_id")
 	filter, _ := event.Context().Get("filter")
-	
+
 	data := &QueryEntitiesInRangeData{
 		Center: center.(Position),
 		Radius: radius.(float64),
 		RoomID: roomID.(string),
 	}
-	
+
 	if filter != nil {
 		data.Filter = filter.(EntityFilter)
 	}
-	
+
 	result, err := h.handleEntitiesInRange(ctx, data)
 	if err != nil {
 		return err
 	}
-	
+
 	// Store result back in event context
 	event.Context().Set("results", result.Results)
 	if result.Error != nil {
 		event.Context().Set("error", result.Error)
 	}
-	
+
 	return nil
 }
 
@@ -202,25 +210,25 @@ func (h *SpatialQueryHandler) handleLineOfSightEvent(ctx context.Context, event 
 	from, _ := event.Context().Get("from")
 	to, _ := event.Context().Get("to")
 	roomID, _ := event.Context().Get("room_id")
-	
+
 	data := &QueryLineOfSightData{
 		From:   from.(Position),
 		To:     to.(Position),
 		RoomID: roomID.(string),
 	}
-	
+
 	result, err := h.handleLineOfSight(ctx, data)
 	if err != nil {
 		return err
 	}
-	
+
 	// Store result back in event context
 	event.Context().Set("results", result.Results)
 	event.Context().Set("blocked", result.Blocked)
 	if result.Error != nil {
 		event.Context().Set("error", result.Error)
 	}
-	
+
 	return nil
 }
 
@@ -229,19 +237,19 @@ func (h *SpatialQueryHandler) handleMovementEvent(ctx context.Context, event eve
 	from, _ := event.Context().Get("from")
 	to, _ := event.Context().Get("to")
 	roomID, _ := event.Context().Get("room_id")
-	
+
 	data := &QueryMovementData{
 		Entity: entity.(core.Entity),
 		From:   from.(Position),
 		To:     to.(Position),
 		RoomID: roomID.(string),
 	}
-	
+
 	result, err := h.handleMovement(ctx, data)
 	if err != nil {
 		return err
 	}
-	
+
 	// Store result back in event context
 	event.Context().Set("valid", result.Valid)
 	event.Context().Set("path", result.Path)
@@ -249,7 +257,7 @@ func (h *SpatialQueryHandler) handleMovementEvent(ctx context.Context, event eve
 	if result.Error != nil {
 		event.Context().Set("error", result.Error)
 	}
-	
+
 	return nil
 }
 
@@ -257,23 +265,23 @@ func (h *SpatialQueryHandler) handlePlacementEvent(ctx context.Context, event ev
 	entity, _ := event.Context().Get("entity")
 	position, _ := event.Context().Get("position")
 	roomID, _ := event.Context().Get("room_id")
-	
+
 	data := &QueryPlacementData{
 		Entity:   entity.(core.Entity),
 		Position: position.(Position),
 		RoomID:   roomID.(string),
 	}
-	
+
 	result, err := h.handlePlacement(ctx, data)
 	if err != nil {
 		return err
 	}
-	
+
 	// Store result back in event context
 	event.Context().Set("valid", result.Valid)
 	if result.Error != nil {
 		event.Context().Set("error", result.Error)
 	}
-	
+
 	return nil
 }

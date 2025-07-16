@@ -15,12 +15,12 @@ type BasicRoom struct {
 	roomType string
 	grid     Grid
 	eventBus events.EventBus
-	
+
 	// Triple entity tracking for efficient lookups
-	entities  map[string]core.Entity  // ID -> Entity
-	positions map[string]Position     // ID -> Position
-	occupancy map[Position][]string   // Position -> []EntityID
-	
+	entities  map[string]core.Entity // ID -> Entity
+	positions map[string]Position    // ID -> Position
+	occupancy map[Position][]string  // Position -> []EntityID
+
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
@@ -44,15 +44,15 @@ func NewBasicRoom(config BasicRoomConfig) *BasicRoom {
 		positions: make(map[string]Position),
 		occupancy: make(map[Position][]string),
 	}
-	
+
 	// Emit room creation event
 	if room.eventBus != nil {
 		event := events.NewGameEvent(EventRoomCreated, nil, nil)
 		event.Context().Set("room_id", room.id)
 		event.Context().Set("grid", room.grid)
-		room.eventBus.Publish(context.Background(), event)
+		_ = room.eventBus.Publish(context.Background(), event)
 	}
-	
+
 	return room
 }
 
@@ -90,38 +90,38 @@ func (r *BasicRoom) PlaceEntity(entity core.Entity, pos Position) error {
 	if entity == nil {
 		return fmt.Errorf("entity cannot be nil")
 	}
-	
+
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	
+
 	// Check if position is valid
 	if !r.grid.IsValidPosition(pos) {
 		return fmt.Errorf("position %v is not valid for this room", pos)
 	}
-	
+
 	// Check if entity can be placed at this position
 	if !r.canPlaceEntityUnsafe(entity, pos) {
 		return fmt.Errorf("entity %s cannot be placed at position %v", entity.GetID(), pos)
 	}
-	
+
 	// Remove entity from old position if it exists
 	if oldPos, exists := r.positions[entity.GetID()]; exists {
 		r.removeFromOccupancyUnsafe(entity.GetID(), oldPos)
 	}
-	
+
 	// Add entity to new position
 	r.entities[entity.GetID()] = entity
 	r.positions[entity.GetID()] = pos
 	r.addToOccupancyUnsafe(entity.GetID(), pos)
-	
+
 	// Emit placement event
 	if r.eventBus != nil {
 		event := events.NewGameEvent(EventEntityPlaced, entity, nil)
 		event.Context().Set("position", pos)
 		event.Context().Set("room_id", r.id)
-		r.eventBus.Publish(context.Background(), event)
+		_ = r.eventBus.Publish(context.Background(), event)
 	}
-	
+
 	return nil
 }
 
@@ -129,43 +129,43 @@ func (r *BasicRoom) PlaceEntity(entity core.Entity, pos Position) error {
 func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	
+
 	// Check if entity exists
 	entity, exists := r.entities[entityID]
 	if !exists {
 		return fmt.Errorf("entity %s not found in room", entityID)
 	}
-	
+
 	// Get current position
 	oldPos, exists := r.positions[entityID]
 	if !exists {
 		return fmt.Errorf("entity %s has no position in room", entityID)
 	}
-	
+
 	// Check if new position is valid
 	if !r.grid.IsValidPosition(newPos) {
 		return fmt.Errorf("position %v is not valid for this room", newPos)
 	}
-	
+
 	// Check if entity can be placed at new position
 	if !r.canPlaceEntityUnsafe(entity, newPos) {
 		return fmt.Errorf("entity %s cannot be moved to position %v", entityID, newPos)
 	}
-	
+
 	// Update positions
 	r.removeFromOccupancyUnsafe(entityID, oldPos)
 	r.positions[entityID] = newPos
 	r.addToOccupancyUnsafe(entityID, newPos)
-	
+
 	// Emit movement event
 	if r.eventBus != nil {
 		event := events.NewGameEvent(EventEntityMoved, entity, nil)
 		event.Context().Set("old_position", oldPos)
 		event.Context().Set("new_position", newPos)
 		event.Context().Set("room_id", r.id)
-		r.eventBus.Publish(context.Background(), event)
+		_ = r.eventBus.Publish(context.Background(), event)
 	}
-	
+
 	return nil
 }
 
@@ -173,32 +173,32 @@ func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 func (r *BasicRoom) RemoveEntity(entityID string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	
+
 	// Check if entity exists
 	entity, exists := r.entities[entityID]
 	if !exists {
 		return fmt.Errorf("entity %s not found in room", entityID)
 	}
-	
+
 	// Get current position
 	pos, exists := r.positions[entityID]
 	if !exists {
 		return fmt.Errorf("entity %s has no position in room", entityID)
 	}
-	
+
 	// Remove entity
 	delete(r.entities, entityID)
 	delete(r.positions, entityID)
 	r.removeFromOccupancyUnsafe(entityID, pos)
-	
+
 	// Emit removal event
 	if r.eventBus != nil {
 		event := events.NewGameEvent(EventEntityRemoved, entity, nil)
 		event.Context().Set("position", pos)
 		event.Context().Set("room_id", r.id)
-		r.eventBus.Publish(context.Background(), event)
+		_ = r.eventBus.Publish(context.Background(), event)
 	}
-	
+
 	return nil
 }
 
@@ -206,19 +206,19 @@ func (r *BasicRoom) RemoveEntity(entityID string) error {
 func (r *BasicRoom) GetEntitiesAt(pos Position) []core.Entity {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	entityIDs, exists := r.occupancy[pos]
 	if !exists {
 		return []core.Entity{}
 	}
-	
+
 	entities := make([]core.Entity, 0, len(entityIDs))
 	for _, entityID := range entityIDs {
 		if entity, exists := r.entities[entityID]; exists {
 			entities = append(entities, entity)
 		}
 	}
-	
+
 	return entities
 }
 
@@ -226,7 +226,7 @@ func (r *BasicRoom) GetEntitiesAt(pos Position) []core.Entity {
 func (r *BasicRoom) GetEntityPosition(entityID string) (Position, bool) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	pos, exists := r.positions[entityID]
 	return pos, exists
 }
@@ -235,13 +235,13 @@ func (r *BasicRoom) GetEntityPosition(entityID string) (Position, bool) {
 func (r *BasicRoom) GetAllEntities() map[string]core.Entity {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	// Create a copy to avoid concurrent access issues
 	entities := make(map[string]core.Entity, len(r.entities))
 	for id, entity := range r.entities {
 		entities[id] = entity
 	}
-	
+
 	return entities
 }
 
@@ -249,9 +249,9 @@ func (r *BasicRoom) GetAllEntities() map[string]core.Entity {
 func (r *BasicRoom) GetEntitiesInRange(center Position, radius float64) []core.Entity {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	entities := make([]core.Entity, 0)
-	
+
 	for entityID, pos := range r.positions {
 		if r.grid.Distance(center, pos) <= radius {
 			if entity, exists := r.entities[entityID]; exists {
@@ -259,7 +259,7 @@ func (r *BasicRoom) GetEntitiesInRange(center Position, radius float64) []core.E
 			}
 		}
 	}
-	
+
 	return entities
 }
 
@@ -267,7 +267,7 @@ func (r *BasicRoom) GetEntitiesInRange(center Position, radius float64) []core.E
 func (r *BasicRoom) IsPositionOccupied(pos Position) bool {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	entityIDs, exists := r.occupancy[pos]
 	return exists && len(entityIDs) > 0
 }
@@ -276,7 +276,7 @@ func (r *BasicRoom) IsPositionOccupied(pos Position) bool {
 func (r *BasicRoom) CanPlaceEntity(entity core.Entity, pos Position) bool {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	return r.canPlaceEntityUnsafe(entity, pos)
 }
 
@@ -286,7 +286,7 @@ func (r *BasicRoom) canPlaceEntityUnsafe(entity core.Entity, pos Position) bool 
 	if !r.grid.IsValidPosition(pos) {
 		return false
 	}
-	
+
 	// Check if position is occupied by other entities
 	if entityIDs, exists := r.occupancy[pos]; exists {
 		for _, entityID := range entityIDs {
@@ -303,7 +303,7 @@ func (r *BasicRoom) canPlaceEntityUnsafe(entity core.Entity, pos Position) bool 
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -325,7 +325,7 @@ func (r *BasicRoom) removeFromOccupancyUnsafe(entityID string, pos Position) {
 				break
 			}
 		}
-		
+
 		// Remove position from map if no entities remain
 		if len(r.occupancy[pos]) == 0 {
 			delete(r.occupancy, pos)
@@ -347,9 +347,9 @@ func (r *BasicRoom) GetLineOfSight(from, to Position) []Position {
 func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	losPositions := r.grid.GetLineOfSight(from, to)
-	
+
 	// Check each position along the line of sight (except start and end)
 	for i := 1; i < len(losPositions)-1; i++ {
 		pos := losPositions[i]
@@ -365,7 +365,7 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -373,7 +373,7 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 func (r *BasicRoom) GetEntityCount() int {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	return len(r.entities)
 }
 
@@ -381,11 +381,11 @@ func (r *BasicRoom) GetEntityCount() int {
 func (r *BasicRoom) GetOccupiedPositions() []Position {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	positions := make([]Position, 0, len(r.occupancy))
 	for pos := range r.occupancy {
 		positions = append(positions, pos)
 	}
-	
+
 	return positions
 }

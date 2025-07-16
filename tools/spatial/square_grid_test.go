@@ -3,8 +3,8 @@ package spatial_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+	"github.com/stretchr/testify/suite"
 )
 
 type SquareGridTestSuite struct {
@@ -24,7 +24,7 @@ func (s *SquareGridTestSuite) SetupTest() {
 func (s *SquareGridTestSuite) TestSquareGridCreation() {
 	s.Require().NotNil(s.grid)
 	s.Assert().Equal(spatial.GridShapeSquare, s.grid.GetShape())
-	
+
 	dimensions := s.grid.GetDimensions()
 	s.Assert().Equal(10.0, dimensions.Width)
 	s.Assert().Equal(10.0, dimensions.Height)
@@ -32,27 +32,7 @@ func (s *SquareGridTestSuite) TestSquareGridCreation() {
 
 // TestIsValidPosition tests position validation
 func (s *SquareGridTestSuite) TestIsValidPosition() {
-	testCases := []struct {
-		name     string
-		position spatial.Position
-		expected bool
-	}{
-		{"origin", spatial.Position{X: 0, Y: 0}, true},
-		{"center", spatial.Position{X: 5, Y: 5}, true},
-		{"top-right corner", spatial.Position{X: 9, Y: 9}, true},
-		{"negative x", spatial.Position{X: -1, Y: 5}, false},
-		{"negative y", spatial.Position{X: 5, Y: -1}, false},
-		{"x too large", spatial.Position{X: 10, Y: 5}, false},
-		{"y too large", spatial.Position{X: 5, Y: 10}, false},
-		{"both too large", spatial.Position{X: 10, Y: 10}, false},
-	}
-	
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			result := s.grid.IsValidPosition(tc.position)
-			s.Assert().Equal(tc.expected, result)
-		})
-	}
+	spatial.RunPositionValidationTests(s.T(), s.grid)
 }
 
 // TestDND5eDistance tests D&D 5e distance calculations (Chebyshev distance)
@@ -72,7 +52,7 @@ func (s *SquareGridTestSuite) TestDND5eDistance() {
 		{"mixed orthogonal", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 8}, 3},
 		{"knight's move", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 7, Y: 6}, 2},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.grid.Distance(tc.from, tc.to)
@@ -86,41 +66,41 @@ func (s *SquareGridTestSuite) TestGetNeighbors() {
 	s.Run("center position", func() {
 		neighbors := s.grid.GetNeighbors(spatial.Position{X: 5, Y: 5})
 		s.Assert().Len(neighbors, 8)
-		
+
 		// Should have all 8 neighbors
 		expected := []spatial.Position{
 			{X: 4, Y: 4}, {X: 4, Y: 5}, {X: 4, Y: 6},
-			{X: 5, Y: 4},                 {X: 5, Y: 6},
+			{X: 5, Y: 4}, {X: 5, Y: 6},
 			{X: 6, Y: 4}, {X: 6, Y: 5}, {X: 6, Y: 6},
 		}
-		
+
 		for _, exp := range expected {
 			s.Assert().Contains(neighbors, exp)
 		}
 	})
-	
+
 	s.Run("corner position", func() {
 		neighbors := s.grid.GetNeighbors(spatial.Position{X: 0, Y: 0})
 		s.Assert().Len(neighbors, 3)
-		
+
 		expected := []spatial.Position{
 			{X: 0, Y: 1}, {X: 1, Y: 0}, {X: 1, Y: 1},
 		}
-		
+
 		for _, exp := range expected {
 			s.Assert().Contains(neighbors, exp)
 		}
 	})
-	
+
 	s.Run("edge position", func() {
 		neighbors := s.grid.GetNeighbors(spatial.Position{X: 0, Y: 5})
 		s.Assert().Len(neighbors, 5)
-		
+
 		expected := []spatial.Position{
 			{X: 0, Y: 4}, {X: 0, Y: 6},
 			{X: 1, Y: 4}, {X: 1, Y: 5}, {X: 1, Y: 6},
 		}
-		
+
 		for _, exp := range expected {
 			s.Assert().Contains(neighbors, exp)
 		}
@@ -130,7 +110,7 @@ func (s *SquareGridTestSuite) TestGetNeighbors() {
 // TestIsAdjacent tests adjacency checking
 func (s *SquareGridTestSuite) TestIsAdjacent() {
 	center := spatial.Position{X: 5, Y: 5}
-	
+
 	testCases := []struct {
 		name     string
 		position spatial.Position
@@ -142,7 +122,7 @@ func (s *SquareGridTestSuite) TestIsAdjacent() {
 		{"two squares away", spatial.Position{X: 7, Y: 5}, false},
 		{"knight's move", spatial.Position{X: 7, Y: 6}, false},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.grid.IsAdjacent(center, tc.position)
@@ -158,7 +138,7 @@ func (s *SquareGridTestSuite) TestGetLineOfSight() {
 		s.Assert().Len(los, 1)
 		s.Assert().Equal(spatial.Position{X: 5, Y: 5}, los[0])
 	})
-	
+
 	s.Run("horizontal line", func() {
 		los := s.grid.GetLineOfSight(spatial.Position{X: 2, Y: 5}, spatial.Position{X: 5, Y: 5})
 		s.Assert().Len(los, 4)
@@ -167,7 +147,7 @@ func (s *SquareGridTestSuite) TestGetLineOfSight() {
 		s.Assert().Contains(los, spatial.Position{X: 4, Y: 5})
 		s.Assert().Contains(los, spatial.Position{X: 5, Y: 5})
 	})
-	
+
 	s.Run("vertical line", func() {
 		los := s.grid.GetLineOfSight(spatial.Position{X: 5, Y: 2}, spatial.Position{X: 5, Y: 5})
 		s.Assert().Len(los, 4)
@@ -176,7 +156,7 @@ func (s *SquareGridTestSuite) TestGetLineOfSight() {
 		s.Assert().Contains(los, spatial.Position{X: 5, Y: 4})
 		s.Assert().Contains(los, spatial.Position{X: 5, Y: 5})
 	})
-	
+
 	s.Run("diagonal line", func() {
 		los := s.grid.GetLineOfSight(spatial.Position{X: 2, Y: 2}, spatial.Position{X: 5, Y: 5})
 		s.Assert().Len(los, 4)
@@ -188,13 +168,13 @@ func (s *SquareGridTestSuite) TestGetLineOfSight() {
 // TestGetPositionsInRange tests range queries
 func (s *SquareGridTestSuite) TestGetPositionsInRange() {
 	center := spatial.Position{X: 5, Y: 5}
-	
+
 	s.Run("range 0", func() {
 		positions := s.grid.GetPositionsInRange(center, 0)
 		s.Assert().Len(positions, 1)
 		s.Assert().Contains(positions, center)
 	})
-	
+
 	s.Run("range 1", func() {
 		positions := s.grid.GetPositionsInRange(center, 1)
 		s.Assert().Len(positions, 9) // 3x3 area
@@ -202,7 +182,7 @@ func (s *SquareGridTestSuite) TestGetPositionsInRange() {
 		s.Assert().Contains(positions, spatial.Position{X: 4, Y: 4})
 		s.Assert().Contains(positions, spatial.Position{X: 6, Y: 6})
 	})
-	
+
 	s.Run("range 2", func() {
 		positions := s.grid.GetPositionsInRange(center, 2)
 		s.Assert().Len(positions, 25) // 5x5 area
@@ -210,7 +190,7 @@ func (s *SquareGridTestSuite) TestGetPositionsInRange() {
 		s.Assert().Contains(positions, spatial.Position{X: 3, Y: 3})
 		s.Assert().Contains(positions, spatial.Position{X: 7, Y: 7})
 	})
-	
+
 	s.Run("range at edge", func() {
 		edge := spatial.Position{X: 0, Y: 0}
 		positions := s.grid.GetPositionsInRange(edge, 1)
@@ -228,16 +208,16 @@ func (s *SquareGridTestSuite) TestGetPositionsInRectangle() {
 		Position:   spatial.Position{X: 2, Y: 2},
 		Dimensions: spatial.Dimensions{Width: 3, Height: 3},
 	}
-	
+
 	positions := s.grid.GetPositionsInRectangle(rect)
 	s.Assert().Len(positions, 9) // 3x3 area
-	
+
 	// Check corners
 	s.Assert().Contains(positions, spatial.Position{X: 2, Y: 2})
 	s.Assert().Contains(positions, spatial.Position{X: 4, Y: 2})
 	s.Assert().Contains(positions, spatial.Position{X: 2, Y: 4})
 	s.Assert().Contains(positions, spatial.Position{X: 4, Y: 4})
-	
+
 	// Check center
 	s.Assert().Contains(positions, spatial.Position{X: 3, Y: 3})
 }
@@ -248,19 +228,19 @@ func (s *SquareGridTestSuite) TestGetPositionsInCircle() {
 		Center: spatial.Position{X: 5, Y: 5},
 		Radius: 2,
 	}
-	
+
 	positions := s.grid.GetPositionsInCircle(circle)
 	s.Assert().Len(positions, 25) // 5x5 area with D&D 5e distance
-	
+
 	// Check center
 	s.Assert().Contains(positions, spatial.Position{X: 5, Y: 5})
-	
+
 	// Check positions at radius 2
 	s.Assert().Contains(positions, spatial.Position{X: 3, Y: 5})
 	s.Assert().Contains(positions, spatial.Position{X: 7, Y: 5})
 	s.Assert().Contains(positions, spatial.Position{X: 5, Y: 3})
 	s.Assert().Contains(positions, spatial.Position{X: 5, Y: 7})
-	
+
 	// Check diagonal positions at radius 2
 	s.Assert().Contains(positions, spatial.Position{X: 3, Y: 3})
 	s.Assert().Contains(positions, spatial.Position{X: 7, Y: 7})
@@ -270,7 +250,7 @@ func (s *SquareGridTestSuite) TestGetPositionsInCircle() {
 func (s *SquareGridTestSuite) TestGetPositionsInLine() {
 	from := spatial.Position{X: 2, Y: 2}
 	to := spatial.Position{X: 5, Y: 5}
-	
+
 	positions := s.grid.GetPositionsInLine(from, to)
 	s.Assert().Len(positions, 4)
 	s.Assert().Contains(positions, from)
@@ -283,14 +263,14 @@ func (s *SquareGridTestSuite) TestSmallGrid() {
 		Width:  2,
 		Height: 2,
 	})
-	
+
 	s.Assert().Equal(spatial.GridShapeSquare, smallGrid.GetShape())
-	
+
 	// Test all positions are valid
 	s.Assert().True(smallGrid.IsValidPosition(spatial.Position{X: 0, Y: 0}))
 	s.Assert().True(smallGrid.IsValidPosition(spatial.Position{X: 1, Y: 1}))
 	s.Assert().False(smallGrid.IsValidPosition(spatial.Position{X: 2, Y: 0}))
-	
+
 	// Test neighbors
 	neighbors := smallGrid.GetNeighbors(spatial.Position{X: 0, Y: 0})
 	s.Assert().Len(neighbors, 3)

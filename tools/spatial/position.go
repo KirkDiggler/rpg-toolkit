@@ -134,7 +134,7 @@ func (c CubeCoordinate) GetNeighbors() []CubeCoordinate {
 		{1, -1, 0}, {1, 0, -1}, {0, 1, -1},
 		{-1, 1, 0}, {-1, 0, 1}, {0, -1, 1},
 	}
-	
+
 	neighbors := make([]CubeCoordinate, 6)
 	for i, dir := range directions {
 		neighbors[i] = c.Add(dir)
@@ -153,11 +153,11 @@ func (c CubeCoordinate) ToOffsetCoordinate() Position {
 func OffsetCoordinateToCube(pos Position) CubeCoordinate {
 	col := int(pos.X)
 	row := int(pos.Y)
-	
+
 	x := col
 	z := row - (col-(col&1))/2
 	y := -x - z
-	
+
 	return CubeCoordinate{X: x, Y: y, Z: z}
 }
 

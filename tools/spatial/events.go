@@ -1,3 +1,4 @@
+// Package spatial provides 2D spatial positioning and movement capabilities for RPG games.
 package spatial
 
 import (
@@ -11,10 +12,10 @@ const (
 	EventEntityPlaced  = "spatial.entity.placed"
 	EventEntityMoved   = "spatial.entity.moved"
 	EventEntityRemoved = "spatial.entity.removed"
-	
+
 	// Room events
 	EventRoomCreated = "spatial.room.created"
-	
+
 	// Query events
 	EventQueryPositionsInRange = "spatial.query.positions_in_range"
 	EventQueryEntitiesInRange  = "spatial.query.entities_in_range"
@@ -47,50 +48,50 @@ type EntityRemovedData struct {
 
 // RoomCreatedData contains data for room creation events
 type RoomCreatedData struct {
-	RoomID    string    `json:"room_id"`
-	Grid      Grid      `json:"grid"`
-	EventBus  events.EventBus `json:"-"` // Don't serialize event bus
+	RoomID   string          `json:"room_id"`
+	Grid     Grid            `json:"grid"`
+	EventBus events.EventBus `json:"-"` // Don't serialize event bus
 }
 
 // QueryPositionsInRangeData contains data for position range queries
 type QueryPositionsInRangeData struct {
-	Center    Position  `json:"center"`
-	Radius    float64   `json:"radius"`
-	RoomID    string    `json:"room_id"`
-	Results   []Position `json:"results,omitempty"`
-	Error     error     `json:"error,omitempty"`
+	Center  Position   `json:"center"`
+	Radius  float64    `json:"radius"`
+	RoomID  string     `json:"room_id"`
+	Results []Position `json:"results,omitempty"`
+	Error   error      `json:"error,omitempty"`
 }
 
 // QueryEntitiesInRangeData contains data for entity range queries
 type QueryEntitiesInRangeData struct {
-	Center    Position      `json:"center"`
-	Radius    float64       `json:"radius"`
-	RoomID    string        `json:"room_id"`
-	Filter    EntityFilter  `json:"filter,omitempty"`
-	Results   []core.Entity `json:"results,omitempty"`
-	Error     error         `json:"error,omitempty"`
+	Center  Position      `json:"center"`
+	Radius  float64       `json:"radius"`
+	RoomID  string        `json:"room_id"`
+	Filter  EntityFilter  `json:"filter,omitempty"`
+	Results []core.Entity `json:"results,omitempty"`
+	Error   error         `json:"error,omitempty"`
 }
 
 // QueryLineOfSightData contains data for line of sight queries
 type QueryLineOfSightData struct {
-	From     Position   `json:"from"`
-	To       Position   `json:"to"`
-	RoomID   string     `json:"room_id"`
-	Results  []Position `json:"results,omitempty"`
-	Blocked  bool       `json:"blocked,omitempty"`
-	Error    error      `json:"error,omitempty"`
+	From    Position   `json:"from"`
+	To      Position   `json:"to"`
+	RoomID  string     `json:"room_id"`
+	Results []Position `json:"results,omitempty"`
+	Blocked bool       `json:"blocked,omitempty"`
+	Error   error      `json:"error,omitempty"`
 }
 
 // QueryMovementData contains data for movement queries
 type QueryMovementData struct {
-	Entity      core.Entity `json:"entity"`
-	From        Position    `json:"from"`
-	To          Position    `json:"to"`
-	RoomID      string      `json:"room_id"`
-	Valid       bool        `json:"valid,omitempty"`
-	Path        []Position  `json:"path,omitempty"`
-	Distance    float64     `json:"distance,omitempty"`
-	Error       error       `json:"error,omitempty"`
+	Entity   core.Entity `json:"entity"`
+	From     Position    `json:"from"`
+	To       Position    `json:"to"`
+	RoomID   string      `json:"room_id"`
+	Valid    bool        `json:"valid,omitempty"`
+	Path     []Position  `json:"path,omitempty"`
+	Distance float64     `json:"distance,omitempty"`
+	Error    error       `json:"error,omitempty"`
 }
 
 // QueryPlacementData contains data for placement queries
@@ -114,14 +115,14 @@ func (f *SimpleEntityFilter) Matches(entity core.Entity) bool {
 	if entity == nil {
 		return false
 	}
-	
+
 	// Check exclusions first
 	for _, excludeID := range f.ExcludeIDs {
 		if entity.GetID() == excludeID {
 			return false
 		}
 	}
-	
+
 	// Check specific entity IDs
 	if len(f.EntityIDs) > 0 {
 		for _, id := range f.EntityIDs {
@@ -131,7 +132,7 @@ func (f *SimpleEntityFilter) Matches(entity core.Entity) bool {
 		}
 		return false
 	}
-	
+
 	// Check entity types
 	if len(f.EntityTypes) > 0 {
 		for _, entityType := range f.EntityTypes {
@@ -141,7 +142,7 @@ func (f *SimpleEntityFilter) Matches(entity core.Entity) bool {
 		}
 		return false
 	}
-	
+
 	// No filters specified, match all
 	return true
 }

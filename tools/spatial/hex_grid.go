@@ -57,7 +57,7 @@ func (hg *HexGrid) Distance(from, to Position) float64 {
 func (hg *HexGrid) GetNeighbors(pos Position) []Position {
 	cube := OffsetCoordinateToCube(pos)
 	neighborCubes := cube.GetNeighbors()
-	
+
 	neighbors := make([]Position, 0, 6)
 	for _, neighborCube := range neighborCubes {
 		neighborPos := neighborCube.ToOffsetCoordinate()
@@ -65,7 +65,7 @@ func (hg *HexGrid) GetNeighbors(pos Position) []Position {
 			neighbors = append(neighbors, neighborPos)
 		}
 	}
-	
+
 	return neighbors
 }
 
@@ -80,24 +80,24 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 	if from.Equals(to) {
 		return []Position{from}
 	}
-	
+
 	fromCube := OffsetCoordinateToCube(from)
 	toCube := OffsetCoordinateToCube(to)
-	
+
 	distance := fromCube.Distance(toCube)
 	positions := make([]Position, 0, distance+1)
-	
+
 	for i := 0; i <= distance; i++ {
 		t := float64(i) / float64(distance)
 		lerpedCube := hg.lerpCube(fromCube, toCube, t)
 		roundedCube := hg.roundCube(lerpedCube)
 		pos := roundedCube.ToOffsetCoordinate()
-		
+
 		if hg.IsValidPosition(pos) {
 			positions = append(positions, pos)
 		}
 	}
-	
+
 	return positions
 }
 
@@ -105,14 +105,14 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 func (hg *HexGrid) GetPositionsInRange(center Position, radius float64) []Position {
 	positions := make([]Position, 0)
 	centerCube := OffsetCoordinateToCube(center)
-	
+
 	// Calculate bounding box in cube coordinates
 	iRadius := int(radius)
 	for x := -iRadius; x <= iRadius; x++ {
 		for y := math.Max(float64(-iRadius), float64(-x-iRadius)); y <= math.Min(float64(iRadius), float64(-x+iRadius)); y++ {
 			z := -x - int(y)
 			cube := CubeCoordinate{X: centerCube.X + x, Y: centerCube.Y + int(y), Z: centerCube.Z + z}
-			
+
 			if cube.Distance(centerCube) <= iRadius {
 				pos := cube.ToOffsetCoordinate()
 				if hg.IsValidPosition(pos) {
@@ -121,7 +121,7 @@ func (hg *HexGrid) GetPositionsInRange(center Position, radius float64) []Positi
 			}
 		}
 	}
-	
+
 	return positions
 }
 
@@ -129,12 +129,12 @@ func (hg *HexGrid) GetPositionsInRange(center Position, radius float64) []Positi
 // Note: This is approximate for hex grids since rectangles don't align perfectly with hex geometry
 func (hg *HexGrid) GetPositionsInRectangle(rect Rectangle) []Position {
 	positions := make([]Position, 0)
-	
+
 	minX := math.Max(0, rect.Position.X)
 	maxX := math.Min(hg.dimensions.Width-1, rect.Position.X+rect.Dimensions.Width-1)
 	minY := math.Max(0, rect.Position.Y)
 	maxY := math.Min(hg.dimensions.Height-1, rect.Position.Y+rect.Dimensions.Height-1)
-	
+
 	for x := minX; x <= maxX; x++ {
 		for y := minY; y <= maxY; y++ {
 			pos := Position{X: x, Y: y}
@@ -143,7 +143,7 @@ func (hg *HexGrid) GetPositionsInRectangle(rect Rectangle) []Position {
 			}
 		}
 	}
-	
+
 	return positions
 }
 
@@ -161,47 +161,47 @@ func (hg *HexGrid) GetPositionsInLine(from, to Position) []Position {
 // This is more complex for hex grids due to the 6-sided nature
 func (hg *HexGrid) GetPositionsInCone(origin Position, direction Position, length float64, angle float64) []Position {
 	positions := make([]Position, 0)
-	
+
 	// Convert to cube coordinates for easier math
 	_ = OffsetCoordinateToCube(origin)
-	
+
 	// Normalize direction vector
 	dirLength := math.Sqrt(direction.X*direction.X + direction.Y*direction.Y)
 	if dirLength == 0 {
 		return positions
 	}
-	
+
 	dirX := direction.X / dirLength
 	dirY := direction.Y / dirLength
-	
+
 	// Get all positions in range and filter by angle
 	rangePositions := hg.GetPositionsInRange(origin, length)
-	
+
 	for _, pos := range rangePositions {
 		if pos.Equals(origin) {
 			positions = append(positions, pos)
 			continue
 		}
-		
+
 		// Calculate angle between direction and position vector
 		posX := pos.X - origin.X
 		posY := pos.Y - origin.Y
 		posLength := math.Sqrt(posX*posX + posY*posY)
-		
+
 		if posLength == 0 {
 			continue
 		}
-		
+
 		// Dot product to get cosine of angle
 		dot := (dirX*posX + dirY*posY) / posLength
 		angleToPos := math.Acos(math.Max(-1, math.Min(1, dot)))
-		
+
 		// Check if within cone angle
 		if angleToPos <= angle/2 {
 			positions = append(positions, pos)
 		}
 	}
-	
+
 	return positions
 }
 
@@ -211,10 +211,10 @@ func (hg *HexGrid) GetHexRing(center Position, radius int) []Position {
 	if radius == 0 {
 		return []Position{center}
 	}
-	
+
 	positions := make([]Position, 0)
 	centerCube := OffsetCoordinateToCube(center)
-	
+
 	// Simple approach: get all positions at exactly the specified distance
 	for x := int(center.X) - radius; x <= int(center.X)+radius; x++ {
 		for y := int(center.Y) - radius; y <= int(center.Y)+radius; y++ {
@@ -227,7 +227,7 @@ func (hg *HexGrid) GetHexRing(center Position, radius int) []Position {
 			}
 		}
 	}
-	
+
 	return positions
 }
 
@@ -235,12 +235,12 @@ func (hg *HexGrid) GetHexRing(center Position, radius int) []Position {
 // Useful for area effects that expand outward
 func (hg *HexGrid) GetHexSpiral(center Position, radius int) []Position {
 	positions := make([]Position, 0)
-	
+
 	for r := 0; r <= radius; r++ {
 		ring := hg.GetHexRing(center, r)
 		positions = append(positions, ring...)
 	}
-	
+
 	return positions
 }
 
@@ -258,18 +258,19 @@ func (hg *HexGrid) roundCube(cube CubeCoordinate) CubeCoordinate {
 	rx := math.Round(float64(cube.X))
 	ry := math.Round(float64(cube.Y))
 	rz := math.Round(float64(cube.Z))
-	
+
 	xDiff := math.Abs(rx - float64(cube.X))
 	yDiff := math.Abs(ry - float64(cube.Y))
 	zDiff := math.Abs(rz - float64(cube.Z))
-	
-	if xDiff > yDiff && xDiff > zDiff {
+
+	switch {
+	case xDiff > yDiff && xDiff > zDiff:
 		rx = -ry - rz
-	} else if yDiff > zDiff {
+	case yDiff > zDiff:
 		ry = -rx - rz
-	} else {
+	default:
 		rz = -rx - ry
 	}
-	
+
 	return CubeCoordinate{X: int(rx), Y: int(ry), Z: int(rz)}
 }

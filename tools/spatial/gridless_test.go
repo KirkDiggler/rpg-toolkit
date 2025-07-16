@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+	"github.com/stretchr/testify/suite"
 )
 
 type GridlessTestSuite struct {
@@ -25,7 +25,7 @@ func (s *GridlessTestSuite) SetupTest() {
 func (s *GridlessTestSuite) TestGridlessRoomCreation() {
 	s.Require().NotNil(s.room)
 	s.Assert().Equal(spatial.GridShapeGridless, s.room.GetShape())
-	
+
 	dimensions := s.room.GetDimensions()
 	s.Assert().Equal(100.0, dimensions.Width)
 	s.Assert().Equal(100.0, dimensions.Height)
@@ -48,7 +48,7 @@ func (s *GridlessTestSuite) TestIsValidPosition() {
 		{"y too large", spatial.Position{X: 50, Y: 101}, false},
 		{"both too large", spatial.Position{X: 101, Y: 101}, false},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.room.IsValidPosition(tc.position)
@@ -69,10 +69,10 @@ func (s *GridlessTestSuite) TestEuclideanDistance() {
 		{"horizontal movement", spatial.Position{X: 50, Y: 50}, spatial.Position{X: 53, Y: 50}, 3},
 		{"vertical movement", spatial.Position{X: 50, Y: 50}, spatial.Position{X: 50, Y: 54}, 4},
 		{"diagonal movement", spatial.Position{X: 50, Y: 50}, spatial.Position{X: 53, Y: 54}, 5}, // 3-4-5 triangle
-		{"pythagorean triple", spatial.Position{X: 0, Y: 0}, spatial.Position{X: 5, Y: 12}, 13},   // 5-12-13 triangle
+		{"pythagorean triple", spatial.Position{X: 0, Y: 0}, spatial.Position{X: 5, Y: 12}, 13},  // 5-12-13 triangle
 		{"decimal positions", spatial.Position{X: 10.5, Y: 20.5}, spatial.Position{X: 11.5, Y: 21.5}, math.Sqrt(2)},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.room.Distance(tc.from, tc.to)
@@ -86,18 +86,18 @@ func (s *GridlessTestSuite) TestGetNeighbors() {
 	s.Run("center position", func() {
 		neighbors := s.room.GetNeighbors(spatial.Position{X: 50, Y: 50})
 		s.Assert().Len(neighbors, 8) // 8 directions at 45-degree intervals
-		
+
 		// All neighbors should be distance 1 away
 		center := spatial.Position{X: 50, Y: 50}
 		for _, neighbor := range neighbors {
 			s.Assert().InDelta(1.0, s.room.Distance(center, neighbor), 0.0001)
 		}
 	})
-	
+
 	s.Run("corner position", func() {
 		neighbors := s.room.GetNeighbors(spatial.Position{X: 0, Y: 0})
 		s.Assert().True(len(neighbors) <= 8) // Some neighbors will be out of bounds
-		
+
 		// All returned neighbors should be valid and distance 1
 		origin := spatial.Position{X: 0, Y: 0}
 		for _, neighbor := range neighbors {
@@ -105,11 +105,11 @@ func (s *GridlessTestSuite) TestGetNeighbors() {
 			s.Assert().InDelta(1.0, s.room.Distance(origin, neighbor), 0.0001)
 		}
 	})
-	
+
 	s.Run("edge position", func() {
 		neighbors := s.room.GetNeighbors(spatial.Position{X: 0, Y: 50})
 		s.Assert().True(len(neighbors) <= 8) // Some neighbors will be out of bounds
-		
+
 		// All returned neighbors should be valid and distance 1
 		edge := spatial.Position{X: 0, Y: 50}
 		for _, neighbor := range neighbors {
@@ -122,7 +122,7 @@ func (s *GridlessTestSuite) TestGetNeighbors() {
 // TestIsAdjacent tests adjacency checking
 func (s *GridlessTestSuite) TestIsAdjacent() {
 	center := spatial.Position{X: 50, Y: 50}
-	
+
 	testCases := []struct {
 		name     string
 		position spatial.Position
@@ -134,7 +134,7 @@ func (s *GridlessTestSuite) TestIsAdjacent() {
 		{"just over 1 unit", spatial.Position{X: 51.1, Y: 50}, false},
 		{"far away", spatial.Position{X: 55, Y: 55}, false},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.room.IsAdjacent(center, tc.position)
@@ -150,14 +150,14 @@ func (s *GridlessTestSuite) TestGetLineOfSight() {
 		s.Assert().Len(los, 1)
 		s.Assert().Equal(spatial.Position{X: 50, Y: 50}, los[0])
 	})
-	
+
 	s.Run("horizontal line", func() {
 		los := s.room.GetLineOfSight(spatial.Position{X: 20, Y: 50}, spatial.Position{X: 25, Y: 50})
 		s.Assert().True(len(los) >= 2) // Should have at least start and end
 		s.Assert().Contains(los, spatial.Position{X: 20, Y: 50})
 		s.Assert().Contains(los, spatial.Position{X: 25, Y: 50})
 	})
-	
+
 	s.Run("diagonal line", func() {
 		los := s.room.GetLineOfSight(spatial.Position{X: 20, Y: 20}, spatial.Position{X: 25, Y: 25})
 		s.Assert().True(len(los) >= 2) // Should have at least start and end
@@ -169,40 +169,40 @@ func (s *GridlessTestSuite) TestGetLineOfSight() {
 // TestGetPositionsInRange tests range queries
 func (s *GridlessTestSuite) TestGetPositionsInRange() {
 	center := spatial.Position{X: 50, Y: 50}
-	
+
 	s.Run("range 0", func() {
 		positions := s.room.GetPositionsInRange(center, 0)
 		s.Assert().Len(positions, 1)
 		s.Assert().Contains(positions, center)
 	})
-	
+
 	s.Run("range 1", func() {
 		positions := s.room.GetPositionsInRange(center, 1)
 		s.Assert().True(len(positions) > 1) // Should have multiple positions
 		s.Assert().Contains(positions, center)
-		
+
 		// All positions should be within range 1
 		for _, pos := range positions {
 			s.Assert().True(s.room.Distance(center, pos) <= 1.0)
 		}
 	})
-	
+
 	s.Run("range 5", func() {
 		positions := s.room.GetPositionsInRange(center, 5)
 		s.Assert().True(len(positions) > 1) // Should have many positions
 		s.Assert().Contains(positions, center)
-		
+
 		// All positions should be within range 5
 		for _, pos := range positions {
 			s.Assert().True(s.room.Distance(center, pos) <= 5.0)
 		}
 	})
-	
+
 	s.Run("range at edge", func() {
 		edge := spatial.Position{X: 0, Y: 0}
 		positions := s.room.GetPositionsInRange(edge, 5)
 		s.Assert().True(len(positions) > 0)
-		
+
 		// All returned positions should be valid and within range
 		for _, pos := range positions {
 			s.Assert().True(s.room.IsValidPosition(pos))
@@ -217,13 +217,13 @@ func (s *GridlessTestSuite) TestGetPositionsInCircle() {
 		Center: spatial.Position{X: 50, Y: 50},
 		Radius: 5,
 	}
-	
+
 	positions := s.room.GetPositionsInCircle(circle)
 	s.Assert().True(len(positions) > 0)
-	
+
 	// Check center is included
 	s.Assert().Contains(positions, spatial.Position{X: 50, Y: 50})
-	
+
 	// All positions should be within the circle
 	for _, pos := range positions {
 		s.Assert().True(s.room.Distance(circle.Center, pos) <= circle.Radius)
@@ -236,10 +236,10 @@ func (s *GridlessTestSuite) TestGetPositionsInRectangle() {
 		Position:   spatial.Position{X: 20, Y: 20},
 		Dimensions: spatial.Dimensions{Width: 10, Height: 10},
 	}
-	
+
 	positions := s.room.GetPositionsInRectangle(rect)
 	s.Assert().True(len(positions) > 0)
-	
+
 	// All positions should be within the rectangle
 	for _, pos := range positions {
 		s.Assert().True(rect.Contains(pos))
@@ -250,17 +250,17 @@ func (s *GridlessTestSuite) TestGetPositionsInRectangle() {
 func (s *GridlessTestSuite) TestGetPositionsInArc() {
 	center := spatial.Position{X: 50, Y: 50}
 	radius := 10.0
-	startAngle := 0.0                // 0 radians (east)
-	endAngle := math.Pi / 2          // π/2 radians (north)
-	
+	startAngle := 0.0       // 0 radians (east)
+	endAngle := math.Pi / 2 // π/2 radians (north)
+
 	positions := s.room.GetPositionsInArc(center, radius, startAngle, endAngle)
 	s.Assert().True(len(positions) > 0)
-	
+
 	// All positions should be within the arc
 	for _, pos := range positions {
 		distance := s.room.Distance(center, pos)
 		s.Assert().True(distance <= radius)
-		
+
 		// Check angle is within arc (for non-center positions)
 		if !pos.Equals(center) {
 			angle := math.Atan2(pos.Y-center.Y, pos.X-center.X)
@@ -286,7 +286,7 @@ func (s *GridlessTestSuite) TestGetNearestPosition() {
 		{"y too large", spatial.Position{X: 50, Y: 105}, spatial.Position{X: 50, Y: 100}},
 		{"both out of bounds", spatial.Position{X: -5, Y: 105}, spatial.Position{X: 0, Y: 100}},
 	}
-	
+
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			result := s.room.GetNearestPosition(tc.position)
@@ -301,19 +301,19 @@ func (s *GridlessTestSuite) TestSmallGridlessRoom() {
 		Width:  5.0,
 		Height: 5.0,
 	})
-	
+
 	s.Assert().Equal(spatial.GridShapeGridless, smallRoom.GetShape())
-	
+
 	// Test positions are valid
 	s.Assert().True(smallRoom.IsValidPosition(spatial.Position{X: 0, Y: 0}))
 	s.Assert().True(smallRoom.IsValidPosition(spatial.Position{X: 2.5, Y: 2.5}))
 	s.Assert().True(smallRoom.IsValidPosition(spatial.Position{X: 5, Y: 5}))
 	s.Assert().False(smallRoom.IsValidPosition(spatial.Position{X: 6, Y: 0}))
-	
+
 	// Test neighbors
 	neighbors := smallRoom.GetNeighbors(spatial.Position{X: 2.5, Y: 2.5})
 	s.Assert().True(len(neighbors) <= 8)
-	
+
 	// All neighbors should be valid
 	for _, neighbor := range neighbors {
 		s.Assert().True(smallRoom.IsValidPosition(neighbor))
