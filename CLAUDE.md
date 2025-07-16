@@ -103,3 +103,27 @@ These run automatically on commit.
 3. Never create files unless necessary - prefer editing existing ones
 4. When creating PRs, use gh CLI with proper formatting
 5. Run the full test suite before committing
+
+## AI Assistant Guidelines
+
+**CRITICAL: NO ASSUMPTIONS WITHOUT VERIFICATION**
+
+1. **Research Before Acting**
+   - Never make assumptions about tool versions, compatibility, or technical specifications
+   - Always research and verify facts before providing commands or instructions
+   - Use web search, documentation, or other verification methods when uncertain
+
+2. **Explicit Assumption Declaration**
+   - If you must make an assumption, explicitly state: "I'm making an assumption here that..."
+   - Explain what you're assuming and why
+   - Suggest verification steps the user can take
+
+3. **Version Compatibility**
+   - Always check actual compatibility matrices for tools and dependencies
+   - Don't assume version support without verification
+   - When in doubt, recommend checking official documentation
+
+4. **Error Recovery**
+   - When corrected, acknowledge the mistake clearly
+   - Update long-term memory (this file) with correct information
+   - Learn from the correction to avoid similar errors
