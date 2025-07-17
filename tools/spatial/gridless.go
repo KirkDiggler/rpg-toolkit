@@ -111,8 +111,16 @@ func (gr *GridlessRoom) GetLineOfSight(from, to Position) []Position {
 func (gr *GridlessRoom) GetPositionsInRange(center Position, radius float64) []Position {
 	positions := make([]Position, 0)
 
-	// Sample resolution - smaller values give more positions
-	sampleSize := 0.5
+	// Adaptive sampling based on area to prevent excessive sample points
+	// Target ~10,000 samples maximum for performance
+	maxSamples := 10000.0
+	area := math.Pi * radius * radius
+	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
+	
+	// For small areas, maintain reasonable precision
+	if sampleSize > 0.5 {
+		sampleSize = 0.5
+	}
 
 	// Create a bounding box around the circle
 	minX := math.Max(0, center.X-radius)
@@ -120,10 +128,19 @@ func (gr *GridlessRoom) GetPositionsInRange(center Position, radius float64) []P
 	minY := math.Max(0, center.Y-radius)
 	maxY := math.Min(gr.dimensions.Height, center.Y+radius)
 
+	// Always include the center position if it's within the radius and valid
+	if gr.IsValidPosition(center) && gr.Distance(center, center) <= radius {
+		positions = append(positions, center)
+	}
+
 	// Sample points in the bounding box
 	for x := minX; x <= maxX; x += sampleSize {
 		for y := minY; y <= maxY; y += sampleSize {
 			pos := Position{X: x, Y: y}
+			// Skip if this is very close to center (already added)
+			if gr.Distance(center, pos) < sampleSize/2 {
+				continue
+			}
 			if gr.IsValidPosition(pos) && gr.Distance(center, pos) <= radius {
 				positions = append(positions, pos)
 			}
@@ -136,7 +153,16 @@ func (gr *GridlessRoom) GetPositionsInRange(center Position, radius float64) []P
 // GetPositionsInRectangle returns positions within a rectangular area
 func (gr *GridlessRoom) GetPositionsInRectangle(rect Rectangle) []Position {
 	positions := make([]Position, 0)
-	sampleSize := 0.5
+	
+	// Adaptive sampling based on rectangle area
+	maxSamples := 10000.0
+	area := rect.Dimensions.Width * rect.Dimensions.Height
+	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
+	
+	// For small areas, maintain reasonable precision
+	if sampleSize > 0.5 {
+		sampleSize = 0.5
+	}
 
 	minX := math.Max(0, rect.Position.X)
 	maxX := math.Min(gr.dimensions.Width, rect.Position.X+rect.Dimensions.Width)
@@ -180,7 +206,15 @@ func (gr *GridlessRoom) GetPositionsInCone(
 	dirX := direction.X / dirLength
 	dirY := direction.Y / dirLength
 
-	sampleSize := 0.5
+	// Adaptive sampling based on cone area
+	maxSamples := 10000.0
+	area := math.Pi * length * length * (angle / (2 * math.Pi)) // Cone sector area
+	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
+	
+	// For small areas, maintain reasonable precision
+	if sampleSize > 0.5 {
+		sampleSize = 0.5
+	}
 
 	// Check positions within the cone's bounding area
 	for x := origin.X - length; x <= origin.X+length; x += sampleSize {
@@ -223,7 +257,17 @@ func (gr *GridlessRoom) GetPositionsInCone(
 // This is useful for gridless rooms where you want spell effects in arcs
 func (gr *GridlessRoom) GetPositionsInArc(center Position, radius float64, startAngle, endAngle float64) []Position {
 	positions := make([]Position, 0)
-	sampleSize := 0.5
+	
+	// Adaptive sampling based on arc area
+	maxSamples := 10000.0
+	arcAngle := math.Abs(endAngle - startAngle)
+	area := 0.5 * radius * radius * arcAngle // Arc sector area
+	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
+	
+	// For small areas, maintain reasonable precision
+	if sampleSize > 0.5 {
+		sampleSize = 0.5
+	}
 
 	// Normalize angles to [0, 2π)
 	for startAngle < 0 {
