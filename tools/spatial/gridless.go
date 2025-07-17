@@ -116,7 +116,7 @@ func (gr *GridlessRoom) GetPositionsInRange(center Position, radius float64) []P
 	maxSamples := 10000.0
 	area := math.Pi * radius * radius
 	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
-	
+
 	// For small areas, maintain reasonable precision
 	if sampleSize > 0.5 {
 		sampleSize = 0.5
@@ -153,12 +153,12 @@ func (gr *GridlessRoom) GetPositionsInRange(center Position, radius float64) []P
 // GetPositionsInRectangle returns positions within a rectangular area
 func (gr *GridlessRoom) GetPositionsInRectangle(rect Rectangle) []Position {
 	positions := make([]Position, 0)
-	
+
 	// Adaptive sampling based on rectangle area
 	maxSamples := 10000.0
 	area := rect.Dimensions.Width * rect.Dimensions.Height
 	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
-	
+
 	// For small areas, maintain reasonable precision
 	if sampleSize > 0.5 {
 		sampleSize = 0.5
@@ -210,7 +210,7 @@ func (gr *GridlessRoom) GetPositionsInCone(
 	maxSamples := 10000.0
 	area := math.Pi * length * length * (angle / (2 * math.Pi)) // Cone sector area
 	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
-	
+
 	// For small areas, maintain reasonable precision
 	if sampleSize > 0.5 {
 		sampleSize = 0.5
@@ -257,13 +257,13 @@ func (gr *GridlessRoom) GetPositionsInCone(
 // This is useful for gridless rooms where you want spell effects in arcs
 func (gr *GridlessRoom) GetPositionsInArc(center Position, radius float64, startAngle, endAngle float64) []Position {
 	positions := make([]Position, 0)
-	
+
 	// Adaptive sampling based on arc area
 	maxSamples := 10000.0
 	arcAngle := math.Abs(endAngle - startAngle)
 	area := 0.5 * radius * radius * arcAngle // Arc sector area
 	sampleSize := math.Max(0.1, math.Sqrt(area/maxSamples))
-	
+
 	// For small areas, maintain reasonable precision
 	if sampleSize > 0.5 {
 		sampleSize = 0.5
