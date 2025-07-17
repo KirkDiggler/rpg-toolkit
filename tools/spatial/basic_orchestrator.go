@@ -310,8 +310,9 @@ func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(entityID, fromRoom, 
 
 	// Check if connection links the specified rooms (forward or reverse direction)
 	forwardDirection := connection.GetFromRoom() == fromRoom && connection.GetToRoom() == toRoom
-	reverseDirection := connection.IsReversible() && connection.GetFromRoom() == toRoom && connection.GetToRoom() == fromRoom
-	
+	reverseDirection := connection.IsReversible() && connection.GetFromRoom() == toRoom &&
+		connection.GetToRoom() == fromRoom
+
 	if !forwardDirection && !reverseDirection {
 		return false
 	}
