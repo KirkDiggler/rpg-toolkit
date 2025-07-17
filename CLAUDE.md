@@ -154,7 +154,7 @@ These run automatically on commit.
 - **Dice Modifiers**: Need fresh rolls each time (e.g., Bless adds 1d4 per attack)
 - **ADR-0009**: Multi-room orchestration architecture (extend spatial module)
 - **ADR-0010**: Architecture review confirming orchestrator placement
-- **Journey 013**: Multi-room orchestration implementation complete
+- **Journey 013**: Multi-room orchestration implementation complete with thread safety and type safety
 
 ### Multi-Room Orchestrator Usage
 The spatial module now includes multi-room orchestration capabilities:

@@ -3,6 +3,7 @@ package spatial
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -10,18 +11,20 @@ import (
 
 // BasicRoomOrchestrator implements the RoomOrchestrator interface
 type BasicRoomOrchestrator struct {
-	id          string
-	entityType  string
-	eventBus    events.EventBus
-	rooms       map[string]Room
-	connections map[string]Connection
-	entityRooms map[string]string // entityID -> roomID mapping
-	layout      LayoutType
+	mu            sync.RWMutex
+	id            OrchestratorID
+	entityType    string
+	eventBus      events.EventBus
+	rooms         map[RoomID]Room
+	connections   map[ConnectionID]Connection
+	entityRooms   map[EntityID]RoomID // entityID -> roomID mapping
+	layout        LayoutType
+	subscriptions []string // Track event subscription IDs
 }
 
 // BasicRoomOrchestratorConfig holds configuration for creating a basic room orchestrator
 type BasicRoomOrchestratorConfig struct {
-	ID       string
+	ID       OrchestratorID // Optional: if empty, will auto-generate
 	Type     string
 	EventBus events.EventBus
 	Layout   LayoutType
@@ -34,34 +37,48 @@ func NewBasicRoomOrchestrator(config BasicRoomOrchestratorConfig) *BasicRoomOrch
 		layout = LayoutTypeOrganic // Default to organic layout
 	}
 
+	id := config.ID
+	if id == "" {
+		id = NewOrchestratorID()
+	}
+
 	return &BasicRoomOrchestrator{
-		id:          config.ID,
-		entityType:  config.Type,
-		eventBus:    config.EventBus,
-		rooms:       make(map[string]Room),
-		connections: make(map[string]Connection),
-		entityRooms: make(map[string]string),
-		layout:      layout,
+		id:            id,
+		entityType:    config.Type,
+		eventBus:      config.EventBus,
+		rooms:         make(map[RoomID]Room),
+		connections:   make(map[ConnectionID]Connection),
+		entityRooms:   make(map[EntityID]RoomID),
+		layout:        layout,
+		subscriptions: make([]string, 0),
 	}
 }
 
 // GetID returns the orchestrator ID
 func (bro *BasicRoomOrchestrator) GetID() string {
-	return bro.id
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
+	return bro.id.String()
 }
 
 // GetType returns the entity type
 func (bro *BasicRoomOrchestrator) GetType() string {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
 	return bro.entityType
 }
 
 // SetEventBus sets the event bus for the orchestrator
 func (bro *BasicRoomOrchestrator) SetEventBus(bus events.EventBus) {
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
 	bro.eventBus = bus
 }
 
 // GetEventBus returns the current event bus
 func (bro *BasicRoomOrchestrator) GetEventBus() events.EventBus {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
 	return bro.eventBus
 }
 
@@ -71,7 +88,10 @@ func (bro *BasicRoomOrchestrator) AddRoom(room Room) error {
 		return fmt.Errorf("room cannot be nil")
 	}
 
-	roomID := room.GetID()
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
+
+	roomID := RoomID(room.GetID())
 	if _, exists := bro.rooms[roomID]; exists {
 		return fmt.Errorf("room %s already exists", roomID)
 	}
@@ -80,22 +100,24 @@ func (bro *BasicRoomOrchestrator) AddRoom(room Room) error {
 
 	// Track all entities currently in this room
 	entities := room.GetAllEntities()
-	for entityID := range entities {
+	for entityIDStr := range entities {
+		entityID := EntityID(entityIDStr)
 		bro.entityRooms[entityID] = roomID
 	}
 
-	// Subscribe to room events to track entity movements
-	if bro.eventBus != nil {
+	// Subscribe to room events to track entity movements (only once)
+	if bro.eventBus != nil && len(bro.subscriptions) == 0 {
 		// Subscribe to entity placement events for this room
-		bro.eventBus.SubscribeFunc(EventEntityPlaced, 0, bro.handleEntityPlaced)
-		bro.eventBus.SubscribeFunc(EventEntityMoved, 0, bro.handleEntityMoved)
-		bro.eventBus.SubscribeFunc(EventEntityRemoved, 0, bro.handleEntityRemoved)
+		sub1 := bro.eventBus.SubscribeFunc(EventEntityPlaced, 0, bro.handleEntityPlaced)
+		sub2 := bro.eventBus.SubscribeFunc(EventEntityMoved, 0, bro.handleEntityMoved)
+		sub3 := bro.eventBus.SubscribeFunc(EventEntityRemoved, 0, bro.handleEntityRemoved)
+		bro.subscriptions = append(bro.subscriptions, sub1, sub2, sub3)
 	}
 
 	// Emit event
 	if bro.eventBus != nil {
 		event := events.NewGameEvent(EventRoomAdded, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id)
+		event.Context().Set("orchestrator_id", bro.id.String())
 		event.Context().Set("room", room)
 		_ = bro.eventBus.Publish(context.Background(), event)
 	}
@@ -104,37 +126,53 @@ func (bro *BasicRoomOrchestrator) AddRoom(room Room) error {
 }
 
 // RemoveRoom removes a room from the orchestrator
-func (bro *BasicRoomOrchestrator) RemoveRoom(roomID string) error {
+func (bro *BasicRoomOrchestrator) RemoveRoom(roomIDStr string) error {
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
+
+	roomID := RoomID(roomIDStr)
 	_, exists := bro.rooms[roomID]
 	if !exists {
 		return fmt.Errorf("room %s not found", roomID)
 	}
 
-	// Remove all entity mappings for this room
+	// Remove all entity mappings for this room - collect keys first
+	toRemoveEntities := make([]EntityID, 0)
 	for entityID, mappedRoomID := range bro.entityRooms {
 		if mappedRoomID == roomID {
-			delete(bro.entityRooms, entityID)
+			toRemoveEntities = append(toRemoveEntities, entityID)
 		}
+	}
+	for _, entityID := range toRemoveEntities {
+		delete(bro.entityRooms, entityID)
 	}
 
-	// Remove connections that reference this room
-	toRemove := make([]string, 0)
+	// Remove connections that reference this room - collect keys first
+	toRemoveConnections := make([]ConnectionID, 0)
 	for connID, conn := range bro.connections {
-		if conn.GetFromRoom() == roomID || conn.GetToRoom() == roomID {
-			toRemove = append(toRemove, connID)
+		if conn.GetFromRoom() == roomIDStr || conn.GetToRoom() == roomIDStr {
+			toRemoveConnections = append(toRemoveConnections, connID)
 		}
 	}
-	for _, connID := range toRemove {
+	for _, connID := range toRemoveConnections {
 		delete(bro.connections, connID)
 	}
 
 	delete(bro.rooms, roomID)
 
+	// Clean up subscriptions when last room is removed
+	if len(bro.rooms) == 0 && bro.eventBus != nil {
+		for _, subID := range bro.subscriptions {
+			_ = bro.eventBus.Unsubscribe(subID)
+		}
+		bro.subscriptions = nil
+	}
+
 	// Emit event
 	if bro.eventBus != nil {
 		event := events.NewGameEvent(EventRoomRemoved, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id)
-		event.Context().Set("room_id", roomID)
+		event.Context().Set("orchestrator_id", bro.id.String())
+		event.Context().Set("room_id", roomIDStr)
 		_ = bro.eventBus.Publish(context.Background(), event)
 	}
 
@@ -142,17 +180,22 @@ func (bro *BasicRoomOrchestrator) RemoveRoom(roomID string) error {
 }
 
 // GetRoom retrieves a room by ID
-func (bro *BasicRoomOrchestrator) GetRoom(roomID string) (Room, bool) {
+func (bro *BasicRoomOrchestrator) GetRoom(roomIDStr string) (Room, bool) {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
+	roomID := RoomID(roomIDStr)
 	room, exists := bro.rooms[roomID]
 	return room, exists
 }
 
 // GetAllRooms returns all managed rooms
 func (bro *BasicRoomOrchestrator) GetAllRooms() map[string]Room {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
 	// Return a copy to prevent modification
 	result := make(map[string]Room)
 	for id, room := range bro.rooms {
-		result[id] = room
+		result[id.String()] = room
 	}
 	return result
 }
@@ -163,14 +206,17 @@ func (bro *BasicRoomOrchestrator) AddConnection(connection Connection) error {
 		return fmt.Errorf("connection cannot be nil")
 	}
 
-	connID := connection.GetID()
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
+
+	connID := ConnectionID(connection.GetID())
 	if _, exists := bro.connections[connID]; exists {
 		return fmt.Errorf("connection %s already exists", connID)
 	}
 
 	// Validate that both rooms exist
-	fromRoom := connection.GetFromRoom()
-	toRoom := connection.GetToRoom()
+	fromRoom := RoomID(connection.GetFromRoom())
+	toRoom := RoomID(connection.GetToRoom())
 
 	if _, exists := bro.rooms[fromRoom]; !exists {
 		return fmt.Errorf("from room %s does not exist", fromRoom)
@@ -185,7 +231,7 @@ func (bro *BasicRoomOrchestrator) AddConnection(connection Connection) error {
 	// Emit event
 	if bro.eventBus != nil {
 		event := events.NewGameEvent(EventConnectionAdded, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id)
+		event.Context().Set("orchestrator_id", bro.id.String())
 		event.Context().Set("connection", connection)
 		_ = bro.eventBus.Publish(context.Background(), event)
 	}
@@ -194,7 +240,11 @@ func (bro *BasicRoomOrchestrator) AddConnection(connection Connection) error {
 }
 
 // RemoveConnection removes a connection
-func (bro *BasicRoomOrchestrator) RemoveConnection(connectionID string) error {
+func (bro *BasicRoomOrchestrator) RemoveConnection(connectionIDStr string) error {
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
+
+	connectionID := ConnectionID(connectionIDStr)
 	if _, exists := bro.connections[connectionID]; !exists {
 		return fmt.Errorf("connection %s not found", connectionID)
 	}
@@ -204,8 +254,8 @@ func (bro *BasicRoomOrchestrator) RemoveConnection(connectionID string) error {
 	// Emit event
 	if bro.eventBus != nil {
 		event := events.NewGameEvent(EventConnectionRemoved, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id)
-		event.Context().Set("connection_id", connectionID)
+		event.Context().Set("orchestrator_id", bro.id.String())
+		event.Context().Set("connection_id", connectionIDStr)
 		_ = bro.eventBus.Publish(context.Background(), event)
 	}
 
@@ -213,16 +263,21 @@ func (bro *BasicRoomOrchestrator) RemoveConnection(connectionID string) error {
 }
 
 // GetConnection retrieves a connection by ID
-func (bro *BasicRoomOrchestrator) GetConnection(connectionID string) (Connection, bool) {
+func (bro *BasicRoomOrchestrator) GetConnection(connectionIDStr string) (Connection, bool) {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
+	connectionID := ConnectionID(connectionIDStr)
 	conn, exists := bro.connections[connectionID]
 	return conn, exists
 }
 
 // GetRoomConnections returns all connections for a specific room
-func (bro *BasicRoomOrchestrator) GetRoomConnections(roomID string) []Connection {
+func (bro *BasicRoomOrchestrator) GetRoomConnections(roomIDStr string) []Connection {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
 	connections := make([]Connection, 0)
 	for _, conn := range bro.connections {
-		if conn.GetFromRoom() == roomID || (conn.IsReversible() && conn.GetToRoom() == roomID) {
+		if conn.GetFromRoom() == roomIDStr || (conn.IsReversible() && conn.GetToRoom() == roomIDStr) {
 			connections = append(connections, conn)
 		}
 	}
@@ -231,17 +286,29 @@ func (bro *BasicRoomOrchestrator) GetRoomConnections(roomID string) []Connection
 
 // GetAllConnections returns all connections
 func (bro *BasicRoomOrchestrator) GetAllConnections() map[string]Connection {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
 	// Return a copy to prevent modification
 	result := make(map[string]Connection)
 	for id, conn := range bro.connections {
-		result[id] = conn
+		result[id.String()] = conn
 	}
 	return result
 }
 
 // MoveEntityBetweenRooms moves an entity from one room to another
-func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(entityID, fromRoom, toRoom, connectionID string) error {
-	if !bro.CanMoveEntityBetweenRooms(entityID, fromRoom, toRoom, connectionID) {
+func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(
+	entityIDStr, fromRoomStr, toRoomStr, connectionIDStr string,
+) error {
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
+
+	entityID := EntityID(entityIDStr)
+	fromRoom := RoomID(fromRoomStr)
+	toRoom := RoomID(toRoomStr)
+	connectionID := ConnectionID(connectionIDStr)
+
+	if !bro.canMoveEntityBetweenRoomsUnsafe(entityID, fromRoom, toRoom, connectionID) {
 		return fmt.Errorf("cannot move entity %s from %s to %s via %s", entityID, fromRoom, toRoom, connectionID)
 	}
 
@@ -263,20 +330,20 @@ func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(entityID, fromRoom, toR
 	}
 
 	// Get entity position in from room
-	entity, exists := fromRoomObj.GetAllEntities()[entityID]
+	entity, exists := fromRoomObj.GetAllEntities()[entityIDStr]
 	if !exists {
 		return fmt.Errorf("entity %s not found in room %s", entityID, fromRoom)
 	}
 
 	// Remove from source room
-	err := fromRoomObj.RemoveEntity(entityID)
+	err := fromRoomObj.RemoveEntity(entityIDStr)
 	if err != nil {
 		return fmt.Errorf("failed to remove entity from source room: %w", err)
 	}
 
 	// Place in destination room at connection position
 	var targetPosition Position
-	if connection.GetFromRoom() == fromRoom {
+	if connection.GetFromRoom() == fromRoomStr {
 		targetPosition = connection.GetToPosition()
 	} else {
 		targetPosition = connection.GetFromPosition()
@@ -296,7 +363,24 @@ func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(entityID, fromRoom, toR
 }
 
 // CanMoveEntityBetweenRooms checks if entity movement is possible
-func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(entityID, fromRoom, toRoom, connectionID string) bool {
+func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(
+	entityIDStr, fromRoomStr, toRoomStr, connectionIDStr string,
+) bool {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
+
+	entityID := EntityID(entityIDStr)
+	fromRoom := RoomID(fromRoomStr)
+	toRoom := RoomID(toRoomStr)
+	connectionID := ConnectionID(connectionIDStr)
+
+	return bro.canMoveEntityBetweenRoomsUnsafe(entityID, fromRoom, toRoom, connectionID)
+}
+
+// canMoveEntityBetweenRoomsUnsafe is the internal version that doesn't acquire locks
+func (bro *BasicRoomOrchestrator) canMoveEntityBetweenRoomsUnsafe(
+	entityID EntityID, fromRoom, toRoom RoomID, connectionID ConnectionID,
+) bool {
 	// Check if entity is in the from room
 	if currentRoom, exists := bro.entityRooms[entityID]; !exists || currentRoom != fromRoom {
 		return false
@@ -309,9 +393,9 @@ func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(entityID, fromRoom, 
 	}
 
 	// Check if connection links the specified rooms (forward or reverse direction)
-	forwardDirection := connection.GetFromRoom() == fromRoom && connection.GetToRoom() == toRoom
-	reverseDirection := connection.IsReversible() && connection.GetFromRoom() == toRoom &&
-		connection.GetToRoom() == fromRoom
+	forwardDirection := connection.GetFromRoom() == fromRoom.String() && connection.GetToRoom() == toRoom.String()
+	reverseDirection := connection.IsReversible() && connection.GetFromRoom() == toRoom.String() &&
+		connection.GetToRoom() == fromRoom.String()
 
 	if !forwardDirection && !reverseDirection {
 		return false
@@ -324,7 +408,7 @@ func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(entityID, fromRoom, 
 	}
 
 	entities := fromRoomObj.GetAllEntities()
-	entity, exists := entities[entityID]
+	entity, exists := entities[entityID.String()]
 	if !exists {
 		return false
 	}
@@ -333,9 +417,12 @@ func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(entityID, fromRoom, 
 }
 
 // GetEntityRoom returns which room contains the entity
-func (bro *BasicRoomOrchestrator) GetEntityRoom(entityID string) (string, bool) {
+func (bro *BasicRoomOrchestrator) GetEntityRoom(entityIDStr string) (string, bool) {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
+	entityID := EntityID(entityIDStr)
 	roomID, exists := bro.entityRooms[entityID]
-	return roomID, exists
+	return roomID.String(), exists
 }
 
 // FindPath finds a path between rooms using connections (simple implementation)
@@ -448,12 +535,14 @@ func (bro *BasicRoomOrchestrator) handleEntityPlaced(_ context.Context, event ev
 	}
 
 	// Only track if this room is managed by this orchestrator
-	if _, exists := bro.rooms[roomIDStr]; !exists {
+	roomTypedID := RoomID(roomIDStr)
+	if _, exists := bro.rooms[roomTypedID]; !exists {
 		return nil
 	}
 
 	if event.Source() != nil {
-		bro.entityRooms[event.Source().GetID()] = roomIDStr
+		entityID := EntityID(event.Source().GetID())
+		bro.entityRooms[entityID] = roomTypedID
 	}
 
 	return nil
@@ -472,12 +561,14 @@ func (bro *BasicRoomOrchestrator) handleEntityMoved(_ context.Context, event eve
 	}
 
 	// Only track if this room is managed by this orchestrator
-	if _, exists := bro.rooms[roomIDStr]; !exists {
+	roomTypedID := RoomID(roomIDStr)
+	if _, exists := bro.rooms[roomTypedID]; !exists {
 		return nil
 	}
 
 	if event.Source() != nil {
-		bro.entityRooms[event.Source().GetID()] = roomIDStr
+		entityID := EntityID(event.Source().GetID())
+		bro.entityRooms[entityID] = roomTypedID
 	}
 
 	return nil
@@ -496,12 +587,14 @@ func (bro *BasicRoomOrchestrator) handleEntityRemoved(_ context.Context, event e
 	}
 
 	// Only track if this room is managed by this orchestrator
-	if _, exists := bro.rooms[roomIDStr]; !exists {
+	roomTypedID := RoomID(roomIDStr)
+	if _, exists := bro.rooms[roomTypedID]; !exists {
 		return nil
 	}
 
 	if event.Source() != nil {
-		delete(bro.entityRooms, event.Source().GetID())
+		entityID := EntityID(event.Source().GetID())
+		delete(bro.entityRooms, entityID)
 	}
 
 	return nil
