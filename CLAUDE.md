@@ -126,6 +126,16 @@ These run automatically on commit.
 5. **mechanics/proficiency** - Proficiency system
 6. **mechanics/effects** - Shared infrastructure for conditions/proficiencies
 7. **mechanics/resources** - Resource management (spell slots, abilities, etc.)
+8. **tools/spatial** - Complete spatial positioning system with multi-room orchestration
+
+### Spatial Module Features (Completed)
+- **Grid Systems**: Square (D&D 5e), Hex, and Gridless positioning
+- **Room Management**: Entity placement, movement, and spatial queries
+- **Multi-Room Orchestration**: Connection system, layout patterns, entity transitions
+- **Event Integration**: Full event-driven architecture
+- **Query System**: Efficient spatial queries with filtering
+- **Connection Types**: Doors, stairs, passages, portals, bridges, tunnels
+- **Layout Patterns**: Tower, branching, grid, and organic arrangements
 
 ### Pending Work (Issues #31-#33)
 1. **Equipment System (#31)** - Items, inventory, equip/unequip mechanics
@@ -142,6 +152,40 @@ These run automatically on commit.
 - **ADR-0005**: Extract shared effect infrastructure from conditions/proficiencies
 - **Journey 005**: Documents the discovery of duplicate code and extraction pattern
 - **Dice Modifiers**: Need fresh rolls each time (e.g., Bless adds 1d4 per attack)
+- **ADR-0009**: Multi-room orchestration architecture (extend spatial module with architectural validation)
+- **Journey 013**: Multi-room orchestration implementation complete with thread safety and type safety
+
+### Multi-Room Orchestrator Usage
+The spatial module now includes multi-room orchestration capabilities:
+
+```go
+// Create orchestrator
+orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
+    ID:       "dungeon-orchestrator",
+    Type:     "orchestrator",
+    EventBus: eventBus,
+    Layout:   spatial.LayoutTypeOrganic,
+})
+
+// Add rooms
+orchestrator.AddRoom(room1)
+orchestrator.AddRoom(room2)
+
+// Create connections
+door := spatial.CreateDoorConnection("door-1", "room-1", "room-2", 
+    spatial.Position{X: 9, Y: 5}, spatial.Position{X: 0, Y: 5})
+orchestrator.AddConnection(door)
+
+// Move entities between rooms
+orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
+```
+
+**Key Features**:
+- Connection types: doors, stairs, passages, portals, bridges, tunnels
+- Layout patterns: tower, branching, grid, organic
+- Entity tracking across rooms
+- Event-driven architecture
+- Pathfinding between connected rooms
 
 ### Development Workflow Reminders
 1. Always check existing patterns in similar modules

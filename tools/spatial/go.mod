@@ -7,6 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.1
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.10.0
 )
 
