@@ -9,6 +9,8 @@
 
 We need to extend the spatial module to handle multi-room coordination and connections. Rather than building complex template systems, we should focus on infrastructure for connecting rooms and orchestrating spatial relationships across multiple connected spaces.
 
+During implementation, we also conducted an architectural review to validate that multi-room orchestration belongs in the spatial module rather than as a separate module or higher-level abstraction, ensuring it aligns with the project's architectural principles and three-tier system.
+
 ## Key Requirements
 
 1. **Connection Management**: Link rooms with typed connections (doors, stairs, passages)
@@ -20,7 +22,7 @@ We need to extend the spatial module to handle multi-room coordination and conne
 
 ## Decision
 
-We will **extend the existing spatial module** rather than create a separate module, implementing:
+We will **extend the existing spatial module** rather than create a separate module, implementing multi-room orchestration as infrastructure within the tools/spatial directory. This placement was validated against the project's architectural principles and three-tier system.
 
 ### 1. Connection System
 ```go
@@ -129,6 +131,11 @@ woods := orchestrator.
 **Cons**: Premature abstraction, unclear boundaries  
 **Rejected**: Too speculative for current needs
 
+### D. Separate Module or Higher-Level Abstraction
+**Pros**: Could grow independently from spatial concerns  
+**Cons**: Violates three-tier architecture, unclear boundaries between spatial and orchestration  
+**Rejected**: Multi-room coordination is "spatial relationships at larger scale" - natural extension of spatial module
+
 ## Implementation Strategy
 
 ### Phase 1: Connection Infrastructure
@@ -154,20 +161,55 @@ woods := orchestrator.
 ## Consequences
 
 ### Positive
-- Simple, focused infrastructure approach
-- Extends existing well-understood spatial concepts
-- Supports diverse environments with same primitives
-- Clean separation of infrastructure vs content
-- Single import for all spatial functionality
+- **Simple, focused infrastructure approach**: Extends existing well-understood spatial concepts
+- **Supports diverse environments** with same primitives (towers, dungeons, towns, woods)
+- **Clean separation of infrastructure vs content**: Maintains "infrastructure not implementation" philosophy
+- **Single import for all spatial functionality**: Cohesive API from positioning to multi-room coordination
+- **Architectural consistency**: Maintains clean separation between infrastructure (tools) and game mechanics
+- **Cohesive design**: Multi-room coordination is spatial relationships at larger scale - natural extension
+- **Three-tier architecture compliance**: Fits properly in tools layer as specialized infrastructure
+- **Scalable design**: Can grow with additional spatial features without breaking architectural boundaries
+- **Future-proof**: Proper foundation for planned dungeons module to build game-specific content
 
 ### Negative
-- Spatial module grows larger (mitigated by internal/ organization)
-- May need refactoring if multi-room concepts become very complex
-- Generic entity classification may be too simple for some games
+- **Spatial module grows larger** (mitigated by internal/ organization)
+- **May need refactoring** if multi-room concepts become very complex
+- **Generic entity classification** may be too simple for some games
+- **Module complexity**: More interfaces and abstractions within a single module
 
 ### Neutral
-- Requires careful API design to avoid complexity creep
-- Need clear documentation for orchestration patterns
+- **Requires careful API design** to avoid complexity creep
+- **Need clear documentation** for orchestration patterns and usage
+- **Documentation requirements**: Clear documentation of orchestration patterns and architectural boundaries
+- **Future refactoring**: May need functional splitting if spatial module becomes too large
+
+## Architectural Validation
+
+The implementation was validated against the project's architectural principles:
+
+### Three-Tier Architecture Compliance
+- **Foundation** (`core/`, `events/`, `dice/`) - Used by orchestrator for basic types and communication
+- **Tools** (`tools/spatial/`) - Orchestrator provides specialized spatial infrastructure
+- **Mechanics** (future `mechanics/` modules) - Will use orchestrator for game-specific features
+
+### Infrastructure vs Implementation Philosophy
+- **Infrastructure**: Provides connection types, layout patterns, entity transitions
+- **Implementation**: Games decide what connections mean (doors vs portals, stairs vs elevators)
+- **Abstraction level**: Operates at same level as other spatial tools while providing coordination
+
+### Example of Proper Separation
+```go
+// Infrastructure: Generic spatial patterns
+tower := orchestrator.
+    WithLayout(spatial.VerticalTower(5)).
+    WithConnections(spatial.StairConnections()).
+    WithRoomSize(20, 20)
+
+// Games decide what these mean:
+// - Castle tower? Wizard spire? Modern building?
+// - Stone stairs? Magical lifts? Elevators?
+// - Throne rooms? Laboratories? Offices?
+```
 
 ## Acceptance Criteria
 
@@ -178,6 +220,8 @@ woods := orchestrator.
 - [x] Events fired for connections and transitions
 - [x] Package reorganized with internal/ structure
 - [x] Performance: Handle 100 connected rooms efficiently
+- [x] Architectural validation: Confirmed proper placement in tools layer
+- [x] Infrastructure philosophy: Maintains clear separation from game content
 
 ## Implementation Summary
 

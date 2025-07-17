@@ -152,8 +152,7 @@ These run automatically on commit.
 - **ADR-0005**: Extract shared effect infrastructure from conditions/proficiencies
 - **Journey 005**: Documents the discovery of duplicate code and extraction pattern
 - **Dice Modifiers**: Need fresh rolls each time (e.g., Bless adds 1d4 per attack)
-- **ADR-0009**: Multi-room orchestration architecture (extend spatial module)
-- **ADR-0010**: Architecture review confirming orchestrator placement
+- **ADR-0009**: Multi-room orchestration architecture (extend spatial module with architectural validation)
 - **Journey 013**: Multi-room orchestration implementation complete with thread safety and type safety
 
 ### Multi-Room Orchestrator Usage

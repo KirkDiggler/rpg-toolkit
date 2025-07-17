@@ -236,8 +236,7 @@ The multi-room orchestration system is **now complete** with:
 
 #### Documentation Completed
 - **README.md**: Comprehensive documentation with usage examples, API reference, and advanced patterns
-- **ADR-0009**: Updated with completed acceptance criteria and implementation summary
-- **ADR-0010**: Architecture review confirming correct placement in spatial module
+- **ADR-0009**: Updated with completed acceptance criteria, implementation summary, and architectural validation
 - **Journey 014**: Learning documentation about factory vs helper function patterns
 
 #### Testing & Validation
