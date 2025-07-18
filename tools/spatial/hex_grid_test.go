@@ -3,8 +3,9 @@ package spatial_test
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type HexGridTestSuite struct {

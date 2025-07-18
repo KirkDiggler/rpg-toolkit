@@ -83,6 +83,32 @@ The method used to create environments:
 ### **Environment Generator**
 A system that creates complete environments using prefabs, generation algorithms, and configuration parameters.
 
+### **Wall Pattern**
+An algorithmic approach to generating internal walls within rooms. Types:
+- **Empty**: No internal walls
+- **Random**: Procedural wall placement based on density parameters
+
+### **Wall Entity**
+A wall represented as a spatial entity that implements the `Placeable` interface. Integrates with spatial module's obstacle system for line-of-sight and movement blocking.
+
+### **Destructible Wall**
+A wall that can be damaged and destroyed during gameplay, creating tactical opportunities for environmental interaction.
+
+### **Wall Density**
+A parameter (0.0-1.0) that controls how many walls are generated in a room. 0.0 = no walls, 1.0 = maximum walls.
+
+### **Destructible Ratio**
+A parameter (0.0-1.0) that controls what percentage of generated walls can be destroyed. 0.0 = all indestructible, 1.0 = all destructible.
+
+### **Room Builder**
+A fluent API for constructing rooms with specific shapes, wall patterns, and features. Follows the toolkit's config pattern.
+
+### **Room Shape**
+A geometric template that defines the boundary and connection points of a room. Examples: rectangle, square, L-shape, T-shape, cross, oval.
+
+### **Query Delegation**
+An architectural pattern where environment-level queries aggregate results from multiple rooms by delegating to spatial module queries.
+
 ## Architecture Terms
 
 ### **Three-Tier Architecture**
@@ -90,6 +116,9 @@ The project's layered structure:
 1. **Foundation Layer**: Core utilities (core, events, dice)
 2. **Tools Layer**: Specialized infrastructure (spatial, environments)
 3. **Mechanics Layer**: Game mechanics (conditions, spells, features)
+
+### **Middleware Pattern**
+The environment module's role as a client-friendly layer over the spatial module, providing semantic enhancement while delegating core operations.
 
 ### **Config Pattern**
 The consistent approach of using configuration structs for constructors rather than long parameter lists. Example: `NewBasicRoom(BasicRoomConfig{...})`.
@@ -113,6 +142,10 @@ Design pattern where components communicate through events rather than direct me
 ### **"Spatial" vs "Environment"**
 - **Spatial**: Low-level positioning and movement infrastructure
 - **Environment**: Higher-level complete game spaces built using spatial infrastructure
+
+### **"Wall Pattern" vs "Wall Entity"**
+- **Wall Pattern**: The algorithmic approach to generating walls (empty, random)
+- **Wall Entity**: Individual wall segments placed as spatial entities
 
 ### **"Connection" vs "Door"**
 - **Connection**: The abstract link between rooms (infrastructure)
@@ -178,6 +211,9 @@ The performance cost of publishing and handling events, particularly relevant fo
 - Use **"connection"** when discussing links between rooms
 - Use **"orchestrator"** when discussing coordination systems
 - Use **"generation"** when discussing the creation of environments
+- Use **"wall pattern"** when discussing algorithmic wall generation
+- Use **"wall entity"** when discussing individual wall segments
+- Use **"destructible"** when discussing walls that can be damaged/destroyed
 
 ### **Avoid Ambiguous Terms**
 - **"Space"** - Too vague, use "room" or "environment"
