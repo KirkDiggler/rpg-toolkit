@@ -65,10 +65,10 @@ func NewGraphBasedGenerator(config GraphBasedGeneratorConfig) *GraphBasedGenerat
 	}
 
 	generator := &GraphBasedGenerator{
-		id:            config.ID,
-		typ:           config.Type,
-		eventBus:      config.EventBus,
-		spatialQuery:  config.SpatialQuery,
+		id:           config.ID,
+		typ:          config.Type,
+		eventBus:     config.EventBus,
+		spatialQuery: config.SpatialQuery,
 		// #nosec G404 - Using math/rand for seeded, reproducible procedural generation
 		// Same seed must produce identical environments for gameplay consistency
 		random:        rand.New(rand.NewSource(seed)),

@@ -186,7 +186,7 @@ func (e *BasicEnvironment) QueryRooms(ctx context.Context, query RoomQuery) ([]s
 	return e.queryHandler.HandleRoomQuery(ctx, query)
 }
 
-func (e *BasicEnvironment) FindPath(from, to spatial.Position) ([]spatial.Position, error) {
+func (e *BasicEnvironment) FindPath(_ spatial.Position, to spatial.Position) ([]spatial.Position, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 

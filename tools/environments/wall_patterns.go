@@ -104,7 +104,7 @@ var WallPatterns = map[string]WallPatternFunc{
 
 // EmptyPattern generates no internal walls
 func EmptyPattern(
-	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
+	_ context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
 ) ([]WallSegment, error) {
 	// No walls to generate, but still validate the empty room
 	var walls []WallSegment
@@ -159,7 +159,7 @@ func RandomPattern(
 // Helper functions for wall generation
 
 func generateRandomWall(
-	shape *RoomShape, size spatial.Dimensions, params PatternParams, random *rand.Rand,
+	_ *RoomShape, size spatial.Dimensions, params PatternParams, random *rand.Rand,
 ) *WallSegment {
 	// Generate a random wall segment
 	// Place randomly within the room bounds, away from edges
@@ -243,7 +243,7 @@ func validatePathSafety(walls []WallSegment, shape *RoomShape, size spatial.Dime
 }
 
 func validateAndFixPathfinding(
-	ctx context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions, 
+	ctx context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions,
 	safety PathSafetyParams, params PatternParams,
 ) ([]WallSegment, error) {
 	// First, try to validate as-is
@@ -298,7 +298,7 @@ func validateAndFixPathfinding(
 	return fixedWalls, nil
 }
 
-func hasMinimumOpenSpace(walls []WallSegment, shape *RoomShape, size spatial.Dimensions, minPercent float64) bool {
+func hasMinimumOpenSpace(walls []WallSegment, _ *RoomShape, size spatial.Dimensions, minPercent float64) bool {
 	totalArea := float64(size.Width * size.Height)
 	wallArea := calculateWallArea(walls)
 	openPercent := (totalArea - wallArea) / totalArea
@@ -320,7 +320,7 @@ func calculateWallArea(walls []WallSegment) float64 {
 	return totalArea
 }
 
-func pathExists(walls []WallSegment, path Path, minWidth float64) bool {
+func pathExists(walls []WallSegment, path Path, _ float64) bool {
 	// Simplified path existence check
 	// In production, would use proper A* pathfinding with wall collision detection
 
