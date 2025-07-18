@@ -17,10 +17,12 @@ func TestEmergencyFallbackEventPublishing(t *testing.T) {
 
 	// Set up event capture
 	var capturedEvents []events.Event
-	eventBus.SubscribeFunc(EventEmergencyFallbackTriggered, 0, events.HandlerFunc(func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		return nil
-	}))
+	eventBus.SubscribeFunc(EventEmergencyFallbackTriggered, 0, events.HandlerFunc(
+		func(_ context.Context, event events.Event) error {
+			capturedEvents = append(capturedEvents, event)
+			return nil
+		},
+	))
 
 	// Create test shape and size
 	testShape := &RoomShape{

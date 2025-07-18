@@ -140,6 +140,7 @@ func (sl *ShapeLoader) loadShapeFromFile(shapeName string) (*RoomShape, error) {
 	filePath := filepath.Join(sl.shapesPath, shapeName+".yaml")
 
 	// Read file
+	// #nosec G304 - File path is constructed from controlled input (shapesPath + shapeName)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read shape file: %w", err)

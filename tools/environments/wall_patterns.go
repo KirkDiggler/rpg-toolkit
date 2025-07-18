@@ -90,7 +90,9 @@ type Path struct {
 }
 
 // WallPatternFunc generates wall patterns algorithmically
-type WallPatternFunc func(ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams) ([]WallSegment, error)
+type WallPatternFunc func(
+	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
+) ([]WallSegment, error)
 
 // Pattern registry for available wall patterns
 var WallPatterns = map[string]WallPatternFunc{
@@ -101,7 +103,9 @@ var WallPatterns = map[string]WallPatternFunc{
 // Pattern implementations
 
 // EmptyPattern generates no internal walls
-func EmptyPattern(ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams) ([]WallSegment, error) {
+func EmptyPattern(
+	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
+) ([]WallSegment, error) {
 	// No walls to generate, but still validate the empty room
 	var walls []WallSegment
 
@@ -114,7 +118,11 @@ func EmptyPattern(ctx context.Context, shape *RoomShape, size spatial.Dimensions
 }
 
 // RandomPattern generates random wall segments based on density parameter
-func RandomPattern(ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams) ([]WallSegment, error) {
+func RandomPattern(
+	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
+) ([]WallSegment, error) {
+	// #nosec G404 - Using math/rand for seeded, reproducible wall pattern generation
+	// Same RandomSeed must produce identical wall layouts for consistent gameplay
 	random := rand.New(rand.NewSource(params.RandomSeed))
 	var walls []WallSegment
 
@@ -150,7 +158,9 @@ func RandomPattern(ctx context.Context, shape *RoomShape, size spatial.Dimension
 
 // Helper functions for wall generation
 
-func generateRandomWall(shape *RoomShape, size spatial.Dimensions, params PatternParams, random *rand.Rand) *WallSegment {
+func generateRandomWall(
+	shape *RoomShape, size spatial.Dimensions, params PatternParams, random *rand.Rand,
+) *WallSegment {
 	// Generate a random wall segment
 	// Place randomly within the room bounds, away from edges
 
@@ -233,7 +243,8 @@ func validatePathSafety(walls []WallSegment, shape *RoomShape, size spatial.Dime
 }
 
 func validateAndFixPathfinding(
-	ctx context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions, safety PathSafetyParams, params PatternParams,
+	ctx context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions, 
+	safety PathSafetyParams, params PatternParams,
 ) ([]WallSegment, error) {
 	// First, try to validate as-is
 	if err := validatePathSafety(walls, shape, size, safety); err == nil {

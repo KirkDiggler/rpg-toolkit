@@ -69,6 +69,8 @@ func NewGraphBasedGenerator(config GraphBasedGeneratorConfig) *GraphBasedGenerat
 		typ:           config.Type,
 		eventBus:      config.EventBus,
 		spatialQuery:  config.SpatialQuery,
+		// #nosec G404 - Using math/rand for seeded, reproducible procedural generation
+		// Same seed must produce identical environments for gameplay consistency
 		random:        rand.New(rand.NewSource(seed)),
 		roomFactories: config.RoomFactories,
 		capabilities: GeneratorCapabilities{
@@ -364,7 +366,9 @@ func (g *GraphBasedGenerator) generateBranchingLayoutUnsafe(
 	return graph, nil
 }
 
-func (g *GraphBasedGenerator) createBranchUnsafe(ctx context.Context, graph *RoomGraph, hubID string, branchIdx, branchSize int, config GenerationConfig) error {
+func (g *GraphBasedGenerator) createBranchUnsafe(
+	ctx context.Context, graph *RoomGraph, hubID string, branchIdx, branchSize int, config GenerationConfig,
+) error {
 	var previousRoomID = hubID
 
 	for i := 0; i < branchSize; i++ {
@@ -654,7 +658,9 @@ func (g *GraphBasedGenerator) createGridConnectionUnsafe(graph *RoomGraph, roomI
 
 // Graph-to-spatial translation implementation
 
-func (g *GraphBasedGenerator) createOrchestratorUnsafe(ctx context.Context, config GenerationConfig) (spatial.RoomOrchestrator, error) {
+func (g *GraphBasedGenerator) createOrchestratorUnsafe(
+	ctx context.Context, config GenerationConfig,
+) (spatial.RoomOrchestrator, error) {
 	// Create spatial orchestrator for this environment
 	orchestratorID := fmt.Sprintf("%s_orchestrator", g.id)
 
@@ -684,7 +690,9 @@ func (g *GraphBasedGenerator) createOrchestratorUnsafe(ctx context.Context, conf
 	return orchestrator, nil
 }
 
-func (g *GraphBasedGenerator) placeRoomsSpatiallyUnsafe(ctx context.Context, graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig) error {
+func (g *GraphBasedGenerator) placeRoomsSpatiallyUnsafe(
+	ctx context.Context, graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
+) error {
 	// Create shape loader for room shapes
 	shapeLoader := NewShapeLoader("tools/environments/shapes")
 
@@ -899,7 +907,9 @@ func (g *GraphBasedGenerator) createRequiredPathsUnsafe(roomNode *RoomNode, shap
 	return paths
 }
 
-func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(roomNode *RoomNode, shape *RoomShape, walls []WallSegment, config GenerationConfig) (spatial.Room, error) {
+func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(
+	roomNode *RoomNode, shape *RoomShape, walls []WallSegment, config GenerationConfig,
+) (spatial.Room, error) {
 	// Create a grid for the room
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
 		Width:  roomNode.Size.Width,
@@ -932,7 +942,9 @@ func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(roomNode *RoomNod
 	return room, nil
 }
 
-func (g *GraphBasedGenerator) createConnectionsUnsafe(ctx context.Context, graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig) error {
+func (g *GraphBasedGenerator) createConnectionsUnsafe(
+	ctx context.Context, graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
+) error {
 	// Create spatial connections based on graph edges
 	for _, edge := range graph.edges {
 		// Get the spatial rooms
@@ -961,7 +973,9 @@ func (g *GraphBasedGenerator) createConnectionsUnsafe(ctx context.Context, graph
 	return nil
 }
 
-func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(edge *ConnectionEdge, fromRoom, toRoom spatial.Room, config GenerationConfig) (spatial.Connection, error) {
+func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
+	edge *ConnectionEdge, fromRoom, toRoom spatial.Room, config GenerationConfig,
+) (spatial.Connection, error) {
 	// Determine connection positions
 	fromPos := g.findConnectionPositionUnsafe(fromRoom, toRoom, "exit")
 	toPos := g.findConnectionPositionUnsafe(toRoom, fromRoom, "entrance")
@@ -982,7 +996,9 @@ func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(edge *ConnectionEdge
 	}
 }
 
-func (g *GraphBasedGenerator) findConnectionPositionUnsafe(room spatial.Room, otherRoom spatial.Room, purpose string) spatial.Position {
+func (g *GraphBasedGenerator) findConnectionPositionUnsafe(
+	room spatial.Room, otherRoom spatial.Room, purpose string,
+) spatial.Position {
 	// Find appropriate connection position on room boundary
 	// For now, use simple center-edge position
 	// Note: Rooms don't have positions directly, using defaults
@@ -998,7 +1014,9 @@ func (g *GraphBasedGenerator) findConnectionPositionUnsafe(room spatial.Room, ot
 	return spatial.Position{X: centerX, Y: centerY}
 }
 
-func (g *GraphBasedGenerator) createEnvironmentUnsafe(ctx context.Context, orchestrator spatial.RoomOrchestrator, config GenerationConfig) (Environment, error) {
+func (g *GraphBasedGenerator) createEnvironmentUnsafe(
+	ctx context.Context, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
+) (Environment, error) {
 	// Create query handler for this environment
 	queryHandler := NewBasicQueryHandler(BasicQueryHandlerConfig{
 		Orchestrator: orchestrator,

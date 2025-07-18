@@ -391,7 +391,9 @@ func (h *BasicQueryHandler) findRoomContainingPositionUnsafe(position spatial.Po
 	return ""
 }
 
-func (h *BasicQueryHandler) handleSameRoomPathUnsafe(ctx context.Context, query PathQuery, roomID string) ([]spatial.Position, error) {
+func (h *BasicQueryHandler) handleSameRoomPathUnsafe(
+	ctx context.Context, query PathQuery, roomID string,
+) ([]spatial.Position, error) {
 	// For same-room pathfinding, delegate to spatial room
 	_, exists := h.orchestrator.GetRoom(roomID)
 	if !exists {
@@ -408,7 +410,9 @@ func (h *BasicQueryHandler) handleSameRoomPathUnsafe(ctx context.Context, query 
 	return []spatial.Position{query.From, query.To}, nil
 }
 
-func (h *BasicQueryHandler) handleCrossRoomPathUnsafe(ctx context.Context, query PathQuery, fromRoomID, toRoomID string) ([]spatial.Position, error) {
+func (h *BasicQueryHandler) handleCrossRoomPathUnsafe(
+	ctx context.Context, query PathQuery, fromRoomID, toRoomID string,
+) ([]spatial.Position, error) {
 	// For cross-room pathfinding, we need to:
 	// 1. Find path between rooms using orchestrator
 	// 2. Find path within each room
@@ -456,15 +460,19 @@ func (h *BasicQueryHandler) applyEnvironmentFiltersUnsafe(entities []core.Entity
 		if query.InTheme != "" {
 			// TODO: Check if entity is in a room with specified theme
 			// This requires environment metadata
+			// For now, skip entities when theme filter is specified
+			continue
 		}
 
 		// Apply feature filter
 		if query.HasFeature != "" {
 			// TODO: Check if entity is in a room with specified feature
 			// This requires environment metadata
+			// For now, skip entities when feature filter is specified
+			continue
 		}
 
-		// For now, include all entities
+		// Include entities that pass all filters
 		filteredEntities = append(filteredEntities, entity)
 	}
 
@@ -478,12 +486,16 @@ func (h *BasicQueryHandler) roomMatchesEntityQueryUnsafe(room spatial.Room, quer
 	if query.InTheme != "" {
 		// TODO: Check room theme
 		// This requires environment metadata
+		// For now, reject rooms when theme filter is specified
+		return false
 	}
 
 	// Check feature filter
 	if query.HasFeature != "" {
 		// TODO: Check room features
 		// This requires environment metadata
+		// For now, reject rooms when feature filter is specified
+		return false
 	}
 
 	return true
