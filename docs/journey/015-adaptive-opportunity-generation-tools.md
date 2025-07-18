@@ -1,6 +1,6 @@
 # Journey 015: Adaptive Opportunity Generation Tools - Building Blocks for Cooperative RPG Experiences
 
-**Date**: 2025-01-17  
+**Date**: 2025-07-17  
 **Context**: Brainstorming session for cooperative dungeon crawler tools and party-adaptive content generation  
 **Status**: Design Exploration  
 
