@@ -226,3 +226,93 @@ orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
    - Use Go context only where cancellation/timeouts are genuinely needed
    - Remove unused Go context parameters from internal functions
    - Use event context for game data flow between event handlers
+
+## CI Protection Guidelines
+
+**CRITICAL: ALL PUBLIC APIS MUST BE DOCUMENTED**
+
+Follow these patterns to avoid CI failures:
+
+### Documentation Requirements
+1. **All Public Functions** must have comments explaining what they do:
+   ```go
+   // NewBasicTable creates a new weighted selection table with the specified configuration
+   func NewBasicTable[T any](config BasicTableConfig) *BasicTable[T] {
+   ```
+
+2. **All Public Types** must have comments explaining their purpose:
+   ```go
+   // SelectionTable provides weighted random selection for any content type
+   // Purpose: Core interface for all grabbag/loot table functionality
+   type SelectionTable[T any] interface {
+   ```
+
+3. **All Public Constants** must have comments explaining their meaning:
+   ```go
+   // SelectionModeUnique prevents duplicate selections in multi-item rolls
+   const SelectionModeUnique SelectionMode = "unique"
+   ```
+
+4. **All Public Variables** must have comments explaining their purpose:
+   ```go
+   // ErrEmptyTable indicates an attempt to select from a table with no items
+   var ErrEmptyTable = errors.New("selection table contains no items")
+   ```
+
+### Documentation Patterns from Environments Package
+Based on `/home/frank/projects/rpg-toolkit/tools/environments/`:
+
+1. **Multi-line purpose explanations**:
+   ```go
+   // ConstraintType categorizes different kinds of generation constraints
+   // Purpose: Allows the generator to handle different constraint types appropriately.
+   // Some constraints affect placement, others affect connections, etc.
+   type ConstraintType int
+   ```
+
+2. **Constructor functions**:
+   ```go
+   // NewBasicEnvironment creates a new environment with the specified configuration
+   // Purpose: Standard constructor with config struct, proper initialization
+   func NewBasicEnvironment(config BasicEnvironmentConfig) *BasicEnvironment {
+   ```
+
+3. **Interface method documentation**:
+   ```go
+   // GetID returns the unique identifier for this environment
+   func (e *BasicEnvironment) GetID() string {
+   
+   // SetTheme changes the visual and atmospheric theme of the environment.
+   // Purpose: Allows dynamic environment appearance changes during gameplay
+   func (e *BasicEnvironment) SetTheme(theme string) error {
+   ```
+
+### Implementation Rules
+1. **NO functions that only return nil** - CI will fail
+2. **NO empty function bodies** - implement meaningful functionality or document why it's intentionally empty
+3. **ALL public methods** must have accompanying comments
+4. **Follow toolkit naming patterns** - see existing code for conventions
+
+### Error Handling Patterns
+```go
+// SelectMany selects multiple items from the table with the specified count
+// Returns ErrEmptyTable if the table contains no items
+// Returns ErrInvalidCount if count is less than 1
+func (t *BasicTable[T]) SelectMany(ctx SelectionContext, count int) ([]T, error) {
+    if len(t.items) == 0 {
+        return nil, ErrEmptyTable
+    }
+    if count < 1 {
+        return nil, ErrInvalidCount
+    }
+    // ... implementation
+}
+```
+
+### Pre-Implementation Checklist
+Before writing any public API:
+1. ✅ Function/type has descriptive comment
+2. ✅ Comment explains purpose and behavior  
+3. ✅ Error cases documented in comment
+4. ✅ Function has meaningful implementation (not just `return nil`)
+5. ✅ Follows existing toolkit patterns
