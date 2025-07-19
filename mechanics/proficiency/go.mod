@@ -11,6 +11,9 @@ require (
 	go.uber.org/mock v0.5.2
 )
 
-require github.com/KirkDiggler/rpg-toolkit/dice v0.1.0 // indirect
+require (
+	github.com/KirkDiggler/rpg-toolkit/dice v0.1.0 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
+)
 
 replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects
