@@ -28,7 +28,7 @@ const (
 	LayoutTypeOrganic   LayoutType = "organic"   // Irregular organic connections
 )
 
-// Connection represents a link between two rooms
+// Connection represents a logical link between two rooms (ADR-0015: Abstract Connections)
 type Connection interface {
 	core.Entity
 
@@ -40,12 +40,6 @@ type Connection interface {
 
 	// GetToRoom returns the destination room ID
 	GetToRoom() string
-
-	// GetFromPosition returns the position in the source room
-	GetFromPosition() Position
-
-	// GetToPosition returns the position in the destination room
-	GetToPosition() Position
 
 	// IsPassable checks if entities can currently traverse this connection
 	IsPassable(entity core.Entity) bool
@@ -196,6 +190,7 @@ const (
 	EventConnectionRemoved     = "spatial.orchestrator.connection_removed"
 	EventEntityTransitionBegan = "spatial.orchestrator.entity_transition_began"
 	EventEntityTransitionEnded = "spatial.orchestrator.entity_transition_ended"
+	EventEntityRoomTransition  = "entity.room_transition"
 	EventLayoutChanged         = "spatial.orchestrator.layout_changed"
 )
 

@@ -4,15 +4,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// BasicConnection implements the Connection interface
+// BasicConnection implements the Connection interface (ADR-0015: Abstract Connections)
 type BasicConnection struct {
 	id           string
 	entityType   string
 	connType     ConnectionType
 	fromRoom     string
 	toRoom       string
-	fromPosition Position
-	toPosition   Position
 	reversible   bool
 	passable     bool
 	cost         float64
@@ -26,8 +24,6 @@ type BasicConnectionConfig struct {
 	ConnType     ConnectionType
 	FromRoom     string
 	ToRoom       string
-	FromPosition Position
-	ToPosition   Position
 	Reversible   bool
 	Passable     bool
 	Cost         float64
@@ -47,8 +43,6 @@ func NewBasicConnection(config BasicConnectionConfig) *BasicConnection {
 		connType:     config.ConnType,
 		fromRoom:     config.FromRoom,
 		toRoom:       config.ToRoom,
-		fromPosition: config.FromPosition,
-		toPosition:   config.ToPosition,
 		reversible:   config.Reversible,
 		passable:     config.Passable,
 		cost:         config.Cost,
@@ -79,16 +73,6 @@ func (bc *BasicConnection) GetFromRoom() string {
 // GetToRoom returns the destination room ID
 func (bc *BasicConnection) GetToRoom() string {
 	return bc.toRoom
-}
-
-// GetFromPosition returns the position in the source room
-func (bc *BasicConnection) GetFromPosition() Position {
-	return bc.fromPosition
-}
-
-// GetToPosition returns the position in the destination room
-func (bc *BasicConnection) GetToPosition() Position {
-	return bc.toPosition
 }
 
 // IsPassable checks if entities can currently traverse this connection
