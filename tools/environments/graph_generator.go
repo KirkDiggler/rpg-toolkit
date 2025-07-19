@@ -138,11 +138,7 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 	}
 
 	// Step 2: Create spatial orchestrator for this environment
-	orchestrator, err := g.createOrchestratorUnsafe(config)
-	if err != nil {
-		g.publishGenerationFailedUnsafe(ctx, err, "orchestrator creation failed")
-		return nil, fmt.Errorf("failed to create orchestrator: %w", err)
-	}
+	orchestrator := g.createOrchestratorUnsafe(config)
 
 	// Step 3: Place rooms spatially using the graph
 	if err := g.placeRoomsSpatiallyUnsafe(ctx, roomGraph, orchestrator, config); err != nil {
@@ -157,11 +153,7 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 	}
 
 	// Step 5: Create environment wrapper
-	environment, err := g.createEnvironmentUnsafe(orchestrator, config)
-	if err != nil {
-		g.publishGenerationFailedUnsafe(ctx, err, "environment creation failed")
-		return nil, fmt.Errorf("failed to create environment: %w", err)
-	}
+	environment := g.createEnvironmentUnsafe(orchestrator, config)
 
 	// Publish generation completed event
 	if g.eventBus != nil {
@@ -361,9 +353,7 @@ func (g *GraphBasedGenerator) generateBranchingLayoutUnsafe(
 			branchSize++
 		}
 
-		if err := g.createBranchUnsafe(graph, hubID, branchIdx, branchSize, config); err != nil {
-			return nil, fmt.Errorf("failed to create branch %d: %w", branchIdx, err)
-		}
+		g.createBranchUnsafe(graph, hubID, branchIdx, branchSize, config)
 
 		progress := float64(branchIdx+1) / float64(branchCount)
 		g.publishGenerationProgressUnsafe(ctx, progress, "generating branching layout")
@@ -374,8 +364,7 @@ func (g *GraphBasedGenerator) generateBranchingLayoutUnsafe(
 
 func (g *GraphBasedGenerator) createBranchUnsafe(
 	graph *RoomGraph, hubID string, branchIdx, branchSize int, config GenerationConfig,
-) error {
-	// Note: Currently always returns nil, but error return is preserved for future validation
+) {
 	var previousRoomID = hubID
 
 	for i := 0; i < branchSize; i++ {
@@ -413,8 +402,6 @@ func (g *GraphBasedGenerator) createBranchUnsafe(
 
 		previousRoomID = roomID
 	}
-
-	return nil
 }
 
 // Simplified implementations for other layouts
@@ -667,7 +654,7 @@ func (g *GraphBasedGenerator) createGridConnectionUnsafe(graph *RoomGraph, roomI
 
 func (g *GraphBasedGenerator) createOrchestratorUnsafe(
 	config GenerationConfig,
-) (spatial.RoomOrchestrator, error) {
+) spatial.RoomOrchestrator {
 	// Create spatial orchestrator for this environment
 	orchestratorID := fmt.Sprintf("%s_orchestrator", g.id)
 
@@ -694,7 +681,7 @@ func (g *GraphBasedGenerator) createOrchestratorUnsafe(
 		Layout:   layoutType,
 	})
 
-	return orchestrator, nil
+	return orchestrator
 }
 
 func (g *GraphBasedGenerator) placeRoomsSpatiallyUnsafe(
@@ -966,10 +953,7 @@ func (g *GraphBasedGenerator) createConnectionsUnsafe(
 		}
 
 		// Create spatial connection
-		connection, err := g.createSpatialConnectionUnsafe(edge, fromRoom, toRoom, config)
-		if err != nil {
-			return fmt.Errorf("failed to create connection %s: %w", edge.ID, err)
-		}
+		connection := g.createSpatialConnectionUnsafe(edge, fromRoom, toRoom, config)
 
 		// Add connection to orchestrator
 		if err := orchestrator.AddConnection(connection); err != nil {
@@ -982,7 +966,7 @@ func (g *GraphBasedGenerator) createConnectionsUnsafe(
 
 func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
 	edge *ConnectionEdge, fromRoom, toRoom spatial.Room, _ GenerationConfig,
-) (spatial.Connection, error) {
+) spatial.Connection {
 	// Determine connection positions
 	fromPos := g.findConnectionPositionUnsafe(fromRoom, toRoom, "exit")
 	toPos := g.findConnectionPositionUnsafe(toRoom, fromRoom, "entrance")
@@ -990,16 +974,16 @@ func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
 	// Create spatial connection based on edge type
 	switch edge.Type {
 	case "door":
-		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos), nil
+		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos)
 	case "stairs":
-		return spatial.CreateStairsConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, true), nil
+		return spatial.CreateStairsConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, true)
 	case "passage":
-		return spatial.CreateSecretPassageConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, []string{}), nil
+		return spatial.CreateSecretPassageConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, []string{})
 	case "portal":
-		return spatial.CreatePortalConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, true), nil
+		return spatial.CreatePortalConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, true)
 	default:
 		// Default to door connection
-		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos), nil
+		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos)
 	}
 }
 
@@ -1033,7 +1017,7 @@ func (g *GraphBasedGenerator) findConnectionPositionUnsafe(
 
 func (g *GraphBasedGenerator) createEnvironmentUnsafe(
 	orchestrator spatial.RoomOrchestrator, config GenerationConfig,
-) (Environment, error) {
+) Environment {
 	// Create query handler for this environment
 	queryHandler := NewBasicQueryHandler(BasicQueryHandlerConfig{
 		Orchestrator: orchestrator,
@@ -1052,7 +1036,7 @@ func (g *GraphBasedGenerator) createEnvironmentUnsafe(
 		QueryHandler: queryHandler,
 	})
 
-	return environment, nil
+	return environment
 }
 
 // Event helpers
