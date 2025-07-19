@@ -217,3 +217,12 @@ orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
    - When corrected, acknowledge the mistake clearly
    - Update long-term memory (this file) with correct information
    - Learn from the correction to avoid similar errors
+
+5. **Context Disambiguation**
+   - **CRITICAL**: This project uses two different "context" concepts
+   - **Go Context**: Standard `context.Context` for cancellation, timeouts, request-scoped values
+   - **Event Context**: Custom `events.Context` for game data (damage, modifiers, entities)
+   - Always specify which context you're referring to
+   - Use Go context only where cancellation/timeouts are genuinely needed
+   - Remove unused Go context parameters from internal functions
+   - Use event context for game data flow between event handlers

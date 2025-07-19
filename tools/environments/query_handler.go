@@ -42,6 +42,8 @@ func NewBasicQueryHandler(config BasicQueryHandlerConfig) *BasicQueryHandler {
 
 // QueryHandler interface implementation
 
+// HandleEntityQuery processes an entity query across the environment
+// It handles different query types: specific rooms, range-based, or environment-wide.
 func (h *BasicQueryHandler) HandleEntityQuery(ctx context.Context, query EntityQuery) ([]core.Entity, error) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
@@ -63,6 +65,8 @@ func (h *BasicQueryHandler) HandleEntityQuery(ctx context.Context, query EntityQ
 	}
 }
 
+// HandleRoomQuery processes a room query across the environment
+// It applies filters for room types, themes, features, spatial proximity, and connections.
 func (h *BasicQueryHandler) HandleRoomQuery(ctx context.Context, query RoomQuery) ([]spatial.Room, error) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
@@ -101,6 +105,8 @@ func (h *BasicQueryHandler) HandleRoomQuery(ctx context.Context, query RoomQuery
 	return matchingRooms, nil
 }
 
+// HandlePathQuery processes a pathfinding query between two positions
+// It finds the rooms containing the positions and delegates pathfinding to spatial infrastructure.
 func (h *BasicQueryHandler) HandlePathQuery(ctx context.Context, query PathQuery) ([]spatial.Position, error) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
@@ -122,11 +128,11 @@ func (h *BasicQueryHandler) HandlePathQuery(ctx context.Context, query PathQuery
 
 	// If same room, delegate to spatial room pathfinding
 	if fromRoomID == toRoomID {
-		return h.handleSameRoomPathUnsafe(ctx, query, fromRoomID)
+		return h.handleSameRoomPathUnsafe(query, fromRoomID)
 	}
 
 	// Cross-room pathfinding
-	return h.handleCrossRoomPathUnsafe(ctx, query, fromRoomID, toRoomID)
+	return h.handleCrossRoomPathUnsafe(query, fromRoomID, toRoomID)
 }
 
 // Entity query implementations
@@ -239,15 +245,15 @@ func (h *BasicQueryHandler) querySingleRoomEntitiesUnsafe(
 		// Fallback to room's direct methods
 		if query.Center != nil {
 			return room.GetEntitiesInRange(*query.Center, query.Radius), nil
-		} else {
-			// Get all entities in room
-			entitiesMap := room.GetAllEntities()
-			entities := make([]core.Entity, 0, len(entitiesMap))
-			for _, entity := range entitiesMap {
-				entities = append(entities, entity)
-			}
-			return entities, nil
 		}
+
+		// Get all entities in room
+		entitiesMap := room.GetAllEntities()
+		entities := make([]core.Entity, 0, len(entitiesMap))
+		for _, entity := range entitiesMap {
+			entities = append(entities, entity)
+		}
+		return entities, nil
 	}
 
 	// Use spatial query utils for more sophisticated queries
@@ -255,13 +261,12 @@ func (h *BasicQueryHandler) querySingleRoomEntitiesUnsafe(
 
 	if query.Center != nil {
 		return h.spatialQuery.QueryEntitiesInRange(ctx, *query.Center, query.Radius, room.GetID(), filter)
-	} else {
-		// Query entire room
-		center := spatial.Position{X: 0, Y: 0} // Room center would be better
-		dimensions := room.GetGrid().GetDimensions()
-		maxRadius := float64(dimensions.Width+dimensions.Height) / 2.0
-		return h.spatialQuery.QueryEntitiesInRange(ctx, center, maxRadius, room.GetID(), filter)
 	}
+	// Query entire room
+	center := spatial.Position{X: 0, Y: 0} // Room center would be better
+	dimensions := room.GetGrid().GetDimensions()
+	maxRadius := float64(dimensions.Width+dimensions.Height) / 2.0
+	return h.spatialQuery.QueryEntitiesInRange(ctx, center, maxRadius, room.GetID(), filter)
 }
 
 // Room query helper methods
@@ -309,7 +314,7 @@ func (h *BasicQueryHandler) filterRoomsByProximityUnsafe(
 		return rooms
 	}
 
-	var filteredRooms []spatial.Room
+	filteredRooms := make([]spatial.Room, 0, len(rooms))
 
 	for _, room := range rooms {
 		// Calculate distance from position to room
@@ -334,7 +339,7 @@ func (h *BasicQueryHandler) filterRoomsByProximityUnsafe(
 func (h *BasicQueryHandler) filterRoomsByConnectionUnsafe(
 	rooms []spatial.Room, connectedTo string, minConnections, maxConnections int,
 ) []spatial.Room {
-	var filteredRooms []spatial.Room
+	filteredRooms := make([]spatial.Room, 0, len(rooms))
 
 	for _, room := range rooms {
 		// Count connections for this room
@@ -392,7 +397,7 @@ func (h *BasicQueryHandler) findRoomContainingPositionUnsafe(position spatial.Po
 }
 
 func (h *BasicQueryHandler) handleSameRoomPathUnsafe(
-	ctx context.Context, query PathQuery, roomID string,
+	query PathQuery, roomID string,
 ) ([]spatial.Position, error) {
 	// For same-room pathfinding, delegate to spatial room
 	_, exists := h.orchestrator.GetRoom(roomID)
@@ -411,7 +416,7 @@ func (h *BasicQueryHandler) handleSameRoomPathUnsafe(
 }
 
 func (h *BasicQueryHandler) handleCrossRoomPathUnsafe(
-	ctx context.Context, query PathQuery, fromRoomID, toRoomID string,
+	query PathQuery, fromRoomID, toRoomID string,
 ) ([]spatial.Position, error) {
 	// For cross-room pathfinding, we need to:
 	// 1. Find path between rooms using orchestrator
@@ -453,7 +458,7 @@ func (h *BasicQueryHandler) createSpatialFilterUnsafe(query EntityQuery) spatial
 
 func (h *BasicQueryHandler) applyEnvironmentFiltersUnsafe(entities []core.Entity, query EntityQuery) []core.Entity {
 	// Apply environment-specific filters that go beyond spatial
-	var filteredEntities []core.Entity
+	filteredEntities := make([]core.Entity, 0, len(entities))
 
 	for _, entity := range entities {
 		// Apply theme filter
@@ -479,7 +484,7 @@ func (h *BasicQueryHandler) applyEnvironmentFiltersUnsafe(entities []core.Entity
 	return filteredEntities
 }
 
-func (h *BasicQueryHandler) roomMatchesEntityQueryUnsafe(room spatial.Room, query EntityQuery) bool {
+func (h *BasicQueryHandler) roomMatchesEntityQueryUnsafe(_ spatial.Room, query EntityQuery) bool {
 	// Check if room matches entity query filters
 
 	// Check theme filter
@@ -503,20 +508,29 @@ func (h *BasicQueryHandler) roomMatchesEntityQueryUnsafe(room spatial.Room, quer
 
 func (h *BasicQueryHandler) roomIntersectsRangeUnsafe(room spatial.Room, center spatial.Position, radius float64) bool {
 	// Check if room intersects with query range
-	// This is a simplified implementation
+	grid := room.GetGrid()
+	dimensions := grid.GetDimensions()
 
-	// TODO: Implement proper room bounds checking
-	// For now, assume all rooms intersect
+	// Get room bounds (simplified - assumes room starts at origin)
+	roomWidth := dimensions.Width
+	roomHeight := dimensions.Height
+
+	// Check if the query circle intersects with the room rectangle
+	// Simple bounding box intersection check
+	// TODO: Implement more sophisticated spatial intersection
+	if center.X+radius < 0 || center.X-radius > roomWidth ||
+		center.Y+radius < 0 || center.Y-radius > roomHeight {
+		return false
+	}
 	return true
 }
 
 func (h *BasicQueryHandler) isPositionInRoomUnsafe(position spatial.Position, room spatial.Room) bool {
 	// Check if position is within room bounds
-	// This is a simplified implementation
+	grid := room.GetGrid()
 
-	// TODO: Implement proper position-in-room checking
-	// Would need room bounds/position information
-	return true
+	// Use the grid's built-in position validation
+	return grid.IsValidPosition(position)
 }
 
 // Event publishing

@@ -162,6 +162,7 @@ func (e *BasicEnvironment) GetMetadata() EnvironmentMetadata {
 
 // Environment-specific functionality - this is where we add value beyond spatial
 
+// QueryEntities searches for entities within the environment based on the provided query criteria.
 func (e *BasicEnvironment) QueryEntities(ctx context.Context, query EntityQuery) ([]core.Entity, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -174,6 +175,7 @@ func (e *BasicEnvironment) QueryEntities(ctx context.Context, query EntityQuery)
 	return e.queryHandler.HandleEntityQuery(ctx, query)
 }
 
+// QueryRooms searches for rooms within the environment based on the provided query criteria.
 func (e *BasicEnvironment) QueryRooms(ctx context.Context, query RoomQuery) ([]spatial.Room, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -186,7 +188,8 @@ func (e *BasicEnvironment) QueryRooms(ctx context.Context, query RoomQuery) ([]s
 	return e.queryHandler.HandleRoomQuery(ctx, query)
 }
 
-func (e *BasicEnvironment) FindPath(_ spatial.Position, to spatial.Position) ([]spatial.Position, error) {
+// FindPath finds a path between two positions within the environment.
+func (e *BasicEnvironment) FindPath(_ spatial.Position, _ spatial.Position) ([]spatial.Position, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
@@ -202,6 +205,7 @@ func (e *BasicEnvironment) FindPath(_ spatial.Position, to spatial.Position) ([]
 	return nil, fmt.Errorf("position-to-position pathfinding not yet implemented")
 }
 
+// Export serializes the environment to a byte array for storage or transmission.
 func (e *BasicEnvironment) Export() ([]byte, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -305,6 +309,7 @@ func (e *BasicEnvironment) Cleanup() {
 
 // Theme management - environment-specific functionality
 
+// SetTheme changes the visual and atmospheric theme of the environment.
 func (e *BasicEnvironment) SetTheme(newTheme string) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
@@ -322,6 +327,7 @@ func (e *BasicEnvironment) SetTheme(newTheme string) {
 	}
 }
 
+// UpdateMetadata updates the environment's metadata with new information.
 func (e *BasicEnvironment) UpdateMetadata(metadata EnvironmentMetadata) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
@@ -340,8 +346,9 @@ func (e *BasicEnvironment) UpdateMetadata(metadata EnvironmentMetadata) {
 
 func (e *BasicEnvironment) getAllRoomIDsUnsafe() []string {
 	// Unsafe version for internal use when already holding lock
-	var roomIDs []string
-	for _, room := range e.orchestrator.GetAllRooms() {
+	allRooms := e.orchestrator.GetAllRooms()
+	roomIDs := make([]string, 0, len(allRooms))
+	for _, room := range allRooms {
 		roomIDs = append(roomIDs, room.GetID())
 	}
 	return roomIDs

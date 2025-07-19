@@ -129,6 +129,11 @@ Convenience functions that wrap constructors with common configurations. Example
 ### **Event-Driven Architecture**
 Design pattern where components communicate through events rather than direct method calls, enabling loose coupling and flexibility.
 
+### **Context (Disambiguation)**
+This project uses two different types of "context" - be explicit about which one you mean:
+- **Go Context**: The standard `context.Context` used for cancellation, timeouts, and request-scoped values
+- **Event Context**: The custom `events.Context` system that carries game-specific data (damage, modifiers, entity references) between event handlers
+
 ## Common Misunderstandings
 
 ### **"Dungeon" vs "Environment"**

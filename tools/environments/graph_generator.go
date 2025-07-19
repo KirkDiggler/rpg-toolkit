@@ -94,18 +94,21 @@ func NewGraphBasedGenerator(config GraphBasedGeneratorConfig) *GraphBasedGenerat
 
 // EnvironmentGenerator interface implementation
 
+// GetID returns the unique identifier of the generator.
 func (g *GraphBasedGenerator) GetID() string {
 	g.mutex.RLock()
 	defer g.mutex.RUnlock()
 	return g.id
 }
 
+// GetType returns the type of the generator.
 func (g *GraphBasedGenerator) GetType() string {
 	g.mutex.RLock()
 	defer g.mutex.RUnlock()
 	return g.typ
 }
 
+// Generate creates a new environment based on the provided configuration.
 func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationConfig) (Environment, error) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
@@ -135,7 +138,7 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 	}
 
 	// Step 2: Create spatial orchestrator for this environment
-	orchestrator, err := g.createOrchestratorUnsafe(ctx, config)
+	orchestrator, err := g.createOrchestratorUnsafe(config)
 	if err != nil {
 		g.publishGenerationFailedUnsafe(ctx, err, "orchestrator creation failed")
 		return nil, fmt.Errorf("failed to create orchestrator: %w", err)
@@ -148,13 +151,13 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 	}
 
 	// Step 4: Create connections based on graph relationships
-	if err := g.createConnectionsUnsafe(ctx, roomGraph, orchestrator, config); err != nil {
+	if err := g.createConnectionsUnsafe(roomGraph, orchestrator, config); err != nil {
 		g.publishGenerationFailedUnsafe(ctx, err, "connection creation failed")
 		return nil, fmt.Errorf("failed to create connections: %w", err)
 	}
 
 	// Step 5: Create environment wrapper
-	environment, err := g.createEnvironmentUnsafe(ctx, orchestrator, config)
+	environment, err := g.createEnvironmentUnsafe(orchestrator, config)
 	if err != nil {
 		g.publishGenerationFailedUnsafe(ctx, err, "environment creation failed")
 		return nil, fmt.Errorf("failed to create environment: %w", err)
@@ -172,16 +175,19 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 	return environment, nil
 }
 
+// GetGenerationType returns the type of generation this generator performs.
 func (g *GraphBasedGenerator) GetGenerationType() GenerationType {
 	return GenerationTypeGraph
 }
 
+// Validate checks if the provided configuration is valid for this generator.
 func (g *GraphBasedGenerator) Validate(config GenerationConfig) error {
 	g.mutex.RLock()
 	defer g.mutex.RUnlock()
 	return g.validateUnsafe(config)
 }
 
+// GetCapabilities returns the capabilities of this generator.
 func (g *GraphBasedGenerator) GetCapabilities() GeneratorCapabilities {
 	g.mutex.RLock()
 	defer g.mutex.RUnlock()
@@ -355,7 +361,7 @@ func (g *GraphBasedGenerator) generateBranchingLayoutUnsafe(
 			branchSize++
 		}
 
-		if err := g.createBranchUnsafe(ctx, graph, hubID, branchIdx, branchSize, config); err != nil {
+		if err := g.createBranchUnsafe(graph, hubID, branchIdx, branchSize, config); err != nil {
 			return nil, fmt.Errorf("failed to create branch %d: %w", branchIdx, err)
 		}
 
@@ -367,8 +373,9 @@ func (g *GraphBasedGenerator) generateBranchingLayoutUnsafe(
 }
 
 func (g *GraphBasedGenerator) createBranchUnsafe(
-	ctx context.Context, graph *RoomGraph, hubID string, branchIdx, branchSize int, config GenerationConfig,
+	graph *RoomGraph, hubID string, branchIdx, branchSize int, config GenerationConfig,
 ) error {
+	// Note: Currently always returns nil, but error return is preserved for future validation
 	var previousRoomID = hubID
 
 	for i := 0; i < branchSize; i++ {
@@ -610,7 +617,7 @@ func (g *GraphBasedGenerator) calculateRoomSizeUnsafe(roomType string, config Ge
 	return spatial.Dimensions{Width: width, Height: height}
 }
 
-func (g *GraphBasedGenerator) generateRoomFeaturesUnsafe(roomType string, config GenerationConfig) []Feature {
+func (g *GraphBasedGenerator) generateRoomFeaturesUnsafe(roomType string, _ GenerationConfig) []Feature {
 	// Generate features based on room type
 	var features []Feature
 
@@ -659,7 +666,7 @@ func (g *GraphBasedGenerator) createGridConnectionUnsafe(graph *RoomGraph, roomI
 // Graph-to-spatial translation implementation
 
 func (g *GraphBasedGenerator) createOrchestratorUnsafe(
-	ctx context.Context, config GenerationConfig,
+	config GenerationConfig,
 ) (spatial.RoomOrchestrator, error) {
 	// Create spatial orchestrator for this environment
 	orchestratorID := fmt.Sprintf("%s_orchestrator", g.id)
@@ -743,7 +750,7 @@ func (g *GraphBasedGenerator) createSpatialRoomUnsafe(
 	}
 
 	// Create spatial room with generated walls
-	spatialRoom, err := g.createSpatialRoomWithWallsUnsafe(roomNode, scaledShape, walls, config)
+	spatialRoom, err := g.createSpatialRoomWithWallsUnsafe(roomNode, walls)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create spatial room %s: %w", roomNode.ID, err)
 	}
@@ -751,7 +758,7 @@ func (g *GraphBasedGenerator) createSpatialRoomUnsafe(
 	return spatialRoom, nil
 }
 
-func (g *GraphBasedGenerator) selectRoomShapeUnsafe(roomType string, config GenerationConfig) string {
+func (g *GraphBasedGenerator) selectRoomShapeUnsafe(roomType string, _ GenerationConfig) string {
 	// Select shape based on room type
 	switch roomType {
 	case RoomTypeEntrance, RoomTypeExit:
@@ -815,7 +822,7 @@ func (g *GraphBasedGenerator) generateRoomWallsUnsafe(
 	return walls, nil
 }
 
-func (g *GraphBasedGenerator) selectWallPatternUnsafe(roomType string, config GenerationConfig) string {
+func (g *GraphBasedGenerator) selectWallPatternUnsafe(roomType string, _ GenerationConfig) string {
 	// Select wall pattern based on room type
 	switch roomType {
 	case RoomTypeEntrance, RoomTypeExit:
@@ -839,7 +846,7 @@ func (g *GraphBasedGenerator) selectWallPatternUnsafe(roomType string, config Ge
 	}
 }
 
-func (g *GraphBasedGenerator) calculateDensityUnsafe(roomType string, config GenerationConfig) float64 {
+func (g *GraphBasedGenerator) calculateDensityUnsafe(roomType string, _ GenerationConfig) float64 {
 	// Calculate wall density based on room type
 	switch roomType {
 	case "entrance", "exit", "corridor", "junction":
@@ -857,7 +864,7 @@ func (g *GraphBasedGenerator) calculateDensityUnsafe(roomType string, config Gen
 	}
 }
 
-func (g *GraphBasedGenerator) calculateDestructibleRatioUnsafe(roomType string, config GenerationConfig) float64 {
+func (g *GraphBasedGenerator) calculateDestructibleRatioUnsafe(roomType string, _ GenerationConfig) float64 {
 	// Calculate destructible ratio based on room type
 	switch roomType {
 	case RoomTypeBoss:
@@ -871,7 +878,7 @@ func (g *GraphBasedGenerator) calculateDestructibleRatioUnsafe(roomType string, 
 	}
 }
 
-func (g *GraphBasedGenerator) selectMaterialUnsafe(roomType string, config GenerationConfig) string {
+func (g *GraphBasedGenerator) selectMaterialUnsafe(_ string, config GenerationConfig) string {
 	// Select material based on theme and room type
 	switch config.Theme {
 	case "dungeon", "castle":
@@ -887,7 +894,7 @@ func (g *GraphBasedGenerator) selectMaterialUnsafe(roomType string, config Gener
 	}
 }
 
-func (g *GraphBasedGenerator) createRequiredPathsUnsafe(roomNode *RoomNode, shape *RoomShape) []Path {
+func (g *GraphBasedGenerator) createRequiredPathsUnsafe(_ *RoomNode, shape *RoomShape) []Path {
 	// Create required paths based on room connections
 	var paths []Path
 
@@ -908,7 +915,7 @@ func (g *GraphBasedGenerator) createRequiredPathsUnsafe(roomNode *RoomNode, shap
 }
 
 func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(
-	roomNode *RoomNode, shape *RoomShape, walls []WallSegment, config GenerationConfig,
+	roomNode *RoomNode, walls []WallSegment,
 ) (spatial.Room, error) {
 	// Create a grid for the room
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
@@ -943,7 +950,7 @@ func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(
 }
 
 func (g *GraphBasedGenerator) createConnectionsUnsafe(
-	ctx context.Context, graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
+	graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
 ) error {
 	// Create spatial connections based on graph edges
 	for _, edge := range graph.edges {
@@ -974,7 +981,7 @@ func (g *GraphBasedGenerator) createConnectionsUnsafe(
 }
 
 func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
-	edge *ConnectionEdge, fromRoom, toRoom spatial.Room, config GenerationConfig,
+	edge *ConnectionEdge, fromRoom, toRoom spatial.Room, _ GenerationConfig,
 ) (spatial.Connection, error) {
 	// Determine connection positions
 	fromPos := g.findConnectionPositionUnsafe(fromRoom, toRoom, "exit")
@@ -1000,22 +1007,32 @@ func (g *GraphBasedGenerator) findConnectionPositionUnsafe(
 	room spatial.Room, otherRoom spatial.Room, purpose string,
 ) spatial.Position {
 	// Find appropriate connection position on room boundary
-	// For now, use simple center-edge position
-	// Note: Rooms don't have positions directly, using defaults
-	roomPos := spatial.Position{X: 0, Y: 0}
-	dimensions := spatial.Position{X: 10, Y: 10} // Default dimensions
+	// Get room dimensions from the grid
+	grid := room.GetGrid()
+	dimensions := grid.GetDimensions()
+
+	// Get grid dimensions
+	width := dimensions.Width
+	height := dimensions.Height
 
 	// Calculate center of room
-	centerX := roomPos.X + dimensions.X/2
-	centerY := roomPos.Y + dimensions.Y/2
+	centerX := width / 2
+	centerY := height / 2
 
-	// For now, return center of appropriate edge
-	// In a complete implementation, would consider room shape and other room position
+	// TODO: Use otherRoom and purpose parameters to determine optimal connection
+	// In a complete implementation, would:
+	// 1. Get the other room's position to determine direction
+	// 2. Find the appropriate edge based on that direction
+	// 3. Account for connection purpose (entrance/exit positioning)
+	// 4. Account for room shape and existing connections
+	// For now, return room center as connection point
+	_ = otherRoom // Acknowledge parameter until TODO is implemented
+	_ = purpose   // Acknowledge parameter until TODO is implemented
 	return spatial.Position{X: centerX, Y: centerY}
 }
 
 func (g *GraphBasedGenerator) createEnvironmentUnsafe(
-	ctx context.Context, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
+	orchestrator spatial.RoomOrchestrator, config GenerationConfig,
 ) (Environment, error) {
 	// Create query handler for this environment
 	queryHandler := NewBasicQueryHandler(BasicQueryHandlerConfig{
@@ -1078,12 +1095,14 @@ func (g *GraphBasedGenerator) validateUnsafe(config GenerationConfig) error {
 
 // Component factory management
 
+// RegisterRoomFactory registers a custom room factory for a specific room type.
 func (g *GraphBasedGenerator) RegisterRoomFactory(roomType string, factory ComponentFactory) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 	g.roomFactories[roomType] = factory
 }
 
+// UnregisterRoomFactory removes a custom room factory for a specific room type.
 func (g *GraphBasedGenerator) UnregisterRoomFactory(roomType string) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()

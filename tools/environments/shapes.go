@@ -3,6 +3,7 @@ package environments
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -124,7 +125,7 @@ func (sl *ShapeLoader) GetAvailableShapes() ([]string, error) {
 		return nil, fmt.Errorf("failed to find shape files: %w", err)
 	}
 
-	var shapes []string
+	shapes := make([]string, 0, len(files))
 	for _, file := range files {
 		shapeName := filepath.Base(file)
 		shapeName = shapeName[:len(shapeName)-5] // Remove .yaml extension
@@ -285,6 +286,122 @@ func ScaleShape(shape *RoomShape, size spatial.Dimensions) *RoomShape {
 	}
 
 	return scaled
+}
+
+// RotateShape rotates a shape by the specified angle (in degrees)
+// Purpose: Applies 2D rotation transformation to shape boundary and connection points
+func RotateShape(shape *RoomShape, degrees int) *RoomShape {
+	// Normalize angle to 0-360 range
+	normalizedDegrees := degrees % 360
+	if normalizedDegrees < 0 {
+		normalizedDegrees += 360
+	}
+
+	// Early return for no rotation
+	if normalizedDegrees == 0 {
+		return shape
+	}
+
+	rotated := &RoomShape{
+		Name:        shape.Name,
+		Description: shape.Description,
+		Type:        shape.Type,
+		Properties:  shape.Properties,
+		GridHints:   shape.GridHints,
+	}
+
+	// Convert degrees to radians
+	radians := float64(normalizedDegrees) * math.Pi / 180.0
+	cosTheta := math.Cos(radians)
+	sinTheta := math.Sin(radians)
+
+	// Rotate boundary points around center (0.5, 0.5)
+	rotated.Boundary = make([]spatial.Position, len(shape.Boundary))
+	for i, point := range shape.Boundary {
+		rotated.Boundary[i] = rotatePointAroundCenter(point, cosTheta, sinTheta)
+	}
+
+	// Rotate connections
+	rotated.Connections = make([]ConnectionPoint, len(shape.Connections))
+	for i, conn := range shape.Connections {
+		rotated.Connections[i] = ConnectionPoint{
+			Name:       conn.Name,
+			Position:   rotatePointAroundCenter(conn.Position, cosTheta, sinTheta),
+			Direction:  rotateDirection(conn.Direction, normalizedDegrees),
+			Type:       conn.Type,
+			Required:   conn.Required,
+			Properties: conn.Properties,
+		}
+	}
+
+	return rotated
+}
+
+// rotatePointAroundCenter rotates a normalized point around center (0.5, 0.5)
+func rotatePointAroundCenter(point spatial.Position, cosTheta, sinTheta float64) spatial.Position {
+	// Translate to origin (center at 0,0)
+	x := point.X - 0.5
+	y := point.Y - 0.5
+
+	// Apply rotation matrix
+	rotatedX := x*cosTheta - y*sinTheta
+	rotatedY := x*sinTheta + y*cosTheta
+
+	// Translate back
+	return spatial.Position{
+		X: rotatedX + 0.5,
+		Y: rotatedY + 0.5,
+	}
+}
+
+// rotateDirection updates connection direction based on rotation angle
+func rotateDirection(direction string, degrees int) string {
+	// Map directions to angles that match our coordinate rotation
+	// In our system: south->east, east->north, north->west, west->south (90° clockwise)
+	// This means we need: south=270°, east=0°, north=90°, west=180°
+	directionMap := map[string]int{
+		"east":      0,
+		"northeast": 45,
+		"north":     90,
+		"northwest": 135,
+		"west":      180,
+		"southwest": 225,
+		"south":     270,
+		"southeast": 315,
+	}
+
+	reverseMap := map[int]string{
+		0:   "east",
+		45:  "northeast",
+		90:  "north",
+		135: "northwest",
+		180: "west",
+		225: "southwest",
+		270: "south",
+		315: "southeast",
+	}
+
+	currentAngle, exists := directionMap[direction]
+	if !exists {
+		// Unknown direction, return as-is
+		return direction
+	}
+
+	// Rotate the direction (clockwise)
+	// Since our coordinate rotation rotates positions clockwise,
+	// directions should rotate the same way
+	newAngle := (currentAngle + degrees) % 360
+	if newAngle < 0 {
+		newAngle += 360
+	}
+
+	newDirection, exists := reverseMap[newAngle]
+	if !exists {
+		// Fallback to original direction if we can't map it
+		return direction
+	}
+
+	return newDirection
 }
 
 // IsShapeCompatibleWithGrid checks if a shape works well with a specific grid type

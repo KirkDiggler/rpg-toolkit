@@ -56,10 +56,14 @@ type GenerationConfig struct {
 type EnvironmentSize int
 
 const (
-	EnvironmentSizeSmall  EnvironmentSize = iota // ~5-15 rooms
-	EnvironmentSizeMedium                        // ~15-50 rooms
-	EnvironmentSizeLarge                         // ~50-150 rooms
-	EnvironmentSizeCustom                        // Use custom dimensions
+	// EnvironmentSizeSmall represents small environment sizes ~10-20 rooms
+	EnvironmentSizeSmall EnvironmentSize = iota
+	// EnvironmentSizeMedium is the default size for most environments ~20-50 rooms
+	EnvironmentSizeMedium
+	// EnvironmentSizeLarge represents large environments ~50-150 rooms
+	EnvironmentSizeLarge
+	// EnvironmentSizeCustom allows for custom dimensions
+	EnvironmentSizeCustom
 )
 
 // LayoutType represents different spatial arrangement patterns
@@ -68,11 +72,16 @@ const (
 type LayoutType int
 
 const (
-	LayoutTypeLinear    LayoutType = iota // Rooms in sequence (classic dungeon crawl)
-	LayoutTypeBranching                   // Hub with branches (town with districts)
-	LayoutTypeGrid                        // Regular grid pattern (structured facility)
-	LayoutTypeOrganic                     // Irregular, natural connections (cave system)
-	LayoutTypeCustom                      // Use custom layout algorithm
+	// LayoutTypeLinear represents a linear sequence of rooms
+	LayoutTypeLinear LayoutType = iota
+	// LayoutTypeBranching represents a branching structure with multiple paths
+	LayoutTypeBranching
+	// LayoutTypeGrid represents a regular grid pattern
+	LayoutTypeGrid
+	// LayoutTypeOrganic represents irregular, natural connections
+	LayoutTypeOrganic
+	// LayoutTypeCustom represents a custom layout algorithm // Use custom layout algorithm
+	LayoutTypeCustom
 )
 
 // GenerationConstraint represents a rule that must be satisfied during generation
@@ -92,10 +101,14 @@ type GenerationConstraint struct {
 type ConstraintType int
 
 const (
-	ConstraintTypePlacement  ConstraintType = iota // Where rooms can be placed
-	ConstraintTypeConnection                       // How rooms can connect
-	ConstraintTypeProximity                        // Distance relationships
-	ConstraintTypeSequence                         // Order requirements
+	// ConstraintTypePlacement represents where rooms can be placed
+	ConstraintTypePlacement ConstraintType = iota
+	// ConstraintTypeConnection represents how rooms can connect
+	ConstraintTypeConnection
+	// ConstraintTypeProximity represents distance relationships
+	ConstraintTypeProximity
+	// ConstraintTypeSequence represents order requirements
+	ConstraintTypeSequence
 )
 
 // GeneratorCapabilities describes what a generator can do
@@ -179,10 +192,14 @@ type PathConstraint struct {
 type PathConstraintType int
 
 const (
-	PathConstraintTypeAvoid   PathConstraintType = iota // Avoid certain connection types
-	PathConstraintTypePrefer                            // Prefer certain routes
-	PathConstraintTypeRequire                           // Require certain capabilities
-	PathConstraintTypeCost                              // Consider movement costs
+	// PathConstraintTypeAvoid represents constraints to avoid certain connections
+	PathConstraintTypeAvoid PathConstraintType = iota
+	// PathConstraintTypePrefer represents constraints to prefer certain routes
+	PathConstraintTypePrefer
+	// PathConstraintTypeRequire represents constraints that must be satisfied
+	PathConstraintTypeRequire
+	// PathConstraintTypeCost represents constraints that consider movement costs
+	PathConstraintTypeCost
 )
 
 // Feature represents an environmental feature that can be added to rooms

@@ -534,6 +534,43 @@ This approach leverages the spatial module's existing obstacle infrastructure wh
 
 ---
 
+## Amendment: Shape Rotation System
+
+**Date**: 2025-07-18  
+**Status**: Accepted  
+
+### Problem
+Room shapes (L, T, rectangle, etc.) need to support rotation for optimal layout in generated environments. Different orientations are required for proper fitting and connection placement.
+
+### Decision
+Implement **runtime shape rotation** using coordinate transformation rather than pre-defined rotated variants.
+
+### Rationale
+- **Performance**: Coordinate transforms are fast enough for generation-time usage
+- **Extensibility**: New shapes automatically support all rotations (0°, 90°, 180°, 270°)
+- **Maintenance**: Single source of truth per shape type
+- **Flexibility**: Supports arbitrary rotation angles for future enhancements
+- **Architecture fit**: Consistent with existing runtime shape scaling pattern
+
+### Implementation
+```go
+type RoomShapeConfig struct {
+    ShapeName string
+    Rotation  int    // 0, 90, 180, 270 degrees
+}
+
+func rotateConnectionPoint(point ConnectionPoint, degrees int) ConnectionPoint
+func loadAndRotateShape(shapeName string, rotation int) (*RoomShape, error)
+```
+
+### Consequences
+- Connection positioning must handle rotated connection points
+- Shape loading becomes slightly more complex but remains fast
+- Future procedural shapes and arbitrary angles are supported
+- No file proliferation (rejected 4x files per shape approach)
+
+---
+
 **Author**: Development Team  
 **Reviewers**: TBD  
 **Implementation**: tools/environments module

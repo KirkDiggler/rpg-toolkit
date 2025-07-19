@@ -3,6 +3,8 @@ package environments
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -21,12 +23,14 @@ const (
 // Purpose: Provides a fluent API for building rooms with shapes, patterns, and walls
 type BasicRoomBuilder struct {
 	// Configuration
-	shape         *RoomShape
-	size          spatial.Dimensions
-	pattern       string
-	patternParams PatternParams
-	theme         string
-	features      []Feature
+	shape          *RoomShape
+	size           spatial.Dimensions
+	pattern        string
+	patternParams  PatternParams
+	theme          string
+	features       []Feature
+	rotation       int  // Rotation angle in degrees (0, 90, 180, 270)
+	randomRotation bool // Whether to apply random rotation
 
 	// Dependencies
 	eventBus    events.EventBus
@@ -66,21 +70,31 @@ func NewBasicRoomBuilder(config BasicRoomBuilderConfig) *BasicRoomBuilder {
 
 // RoomBuilder interface implementation
 
+// WithSize sets the room size
+// It accepts width and height in pixels
 func (b *BasicRoomBuilder) WithSize(width, height int) RoomBuilder {
 	b.size = spatial.Dimensions{Width: float64(width), Height: float64(height)}
 	return b
 }
 
+// WithTheme sets the room theme for styling and generation context.
+// It accepts a RoomShape object or a shape name to load from the shape loader
 func (b *BasicRoomBuilder) WithTheme(theme string) RoomBuilder {
 	b.theme = theme
 	return b
 }
 
+// WithFeatures adds features to the room
+// Features can be any spatial.Placeable entity like furniture, decorations, etc.
+// It accepts a variadic list of Feature objects
 func (b *BasicRoomBuilder) WithFeatures(features ...Feature) RoomBuilder {
 	b.features = append(b.features, features...)
 	return b
 }
 
+// WithLayout sets the room layout
+// It accepts a Layout object which defines the layout type and parameters
+// The layout type can be linear, branching, grid, or organic
 func (b *BasicRoomBuilder) WithLayout(layout Layout) RoomBuilder {
 	// Convert layout to appropriate density and pattern
 	// This is a simplified implementation
@@ -102,6 +116,8 @@ func (b *BasicRoomBuilder) WithLayout(layout Layout) RoomBuilder {
 	return b
 }
 
+// WithPrefab applies a room prefab configuration
+// It accepts a RoomPrefab object which contains predefined settings for size, theme, and features
 func (b *BasicRoomBuilder) WithPrefab(prefab RoomPrefab) RoomBuilder {
 	// Convert prefab to builder configuration
 	b.size = prefab.Size
@@ -119,6 +135,7 @@ func (b *BasicRoomBuilder) WithPrefab(prefab RoomPrefab) RoomBuilder {
 	return b
 }
 
+// Build finalizes the room configuration and generates the room
 func (b *BasicRoomBuilder) Build() (spatial.Room, error) {
 	if b.built {
 		return nil, fmt.Errorf("room builder can only be used once")
@@ -137,8 +154,31 @@ func (b *BasicRoomBuilder) Build() (spatial.Room, error) {
 		}
 	}
 
+	// Apply rotation if needed
+	rotatedShape := b.shape
+	if b.randomRotation {
+		// Generate random rotation using seeded random if available
+		// Note: Using math/rand (not crypto/rand) for deterministic game generation
+		// This allows reproducible room layouts when using the same seed
+		var rng *rand.Rand
+		if b.patternParams.RandomSeed != 0 {
+			//nolint:gosec // G404: Deterministic game generation, not cryptographic
+			rng = rand.New(rand.NewSource(b.patternParams.RandomSeed))
+		} else {
+			//nolint:gosec // G404: Deterministic game generation, not cryptographic
+			rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		}
+		// Random rotation: 0°, 90°, 180°, or 270°
+		rotations := []int{0, 90, 180, 270}
+		randomRotation := rotations[rng.Intn(len(rotations))]
+		rotatedShape = RotateShape(b.shape, randomRotation)
+	} else if b.rotation != 0 {
+		// Apply specific rotation
+		rotatedShape = RotateShape(b.shape, b.rotation)
+	}
+
 	// Scale shape to size
-	scaledShape := ScaleShape(b.shape, b.size)
+	scaledShape := ScaleShape(rotatedShape, b.size)
 
 	// Generate wall pattern
 	walls, err := b.generateWalls(context.Background(), scaledShape)
@@ -200,6 +240,29 @@ func (b *BasicRoomBuilder) WithShape(shapeName string) RoomBuilder {
 			b.shape = shape
 		}
 	}
+	return b
+}
+
+// WithRotation sets a specific rotation angle for the room shape
+// Accepts angles in degrees: 0, 90, 180, 270
+func (b *BasicRoomBuilder) WithRotation(degrees int) RoomBuilder {
+	// Normalize angle to 0-360 range and snap to 90-degree increments
+	normalizedDegrees := degrees % 360
+	if normalizedDegrees < 0 {
+		normalizedDegrees += 360
+	}
+
+	// Snap to nearest 90-degree increment
+	b.rotation = (normalizedDegrees / 90) * 90
+	b.randomRotation = false // Explicit rotation overrides random
+	return b
+}
+
+// WithRandomRotation enables random rotation for the room shape
+// The rotation will be randomly selected from [0, 90, 180, 270] degrees
+// Uses math/rand for reproducible generation when combined with WithRandomSeed
+func (b *BasicRoomBuilder) WithRandomRotation() RoomBuilder {
+	b.randomRotation = true
 	return b
 }
 
@@ -290,7 +353,7 @@ func (b *BasicRoomBuilder) createRequiredPaths(shape *RoomShape) []Path {
 	return paths
 }
 
-func (b *BasicRoomBuilder) createSpatialRoom(shape *RoomShape, walls []WallSegment) (spatial.Room, error) {
+func (b *BasicRoomBuilder) createSpatialRoom(_ *RoomShape, walls []WallSegment) (spatial.Room, error) {
 	// Create a grid for the room
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
 		Width:  b.size.Width,
@@ -321,7 +384,7 @@ func (b *BasicRoomBuilder) createSpatialRoom(shape *RoomShape, walls []WallSegme
 	return room, nil
 }
 
-func (b *BasicRoomBuilder) placeFeatures(room spatial.Room, shape *RoomShape) error {
+func (b *BasicRoomBuilder) placeFeatures(room spatial.Room, _ *RoomShape) error {
 	// Place features in the room
 	for i, feature := range b.features {
 		featureEntity := b.createFeatureEntity(feature, i)
@@ -365,10 +428,18 @@ type FeatureEntity struct {
 	properties  map[string]interface{}
 }
 
-func (f *FeatureEntity) GetID() string           { return f.id }
-func (f *FeatureEntity) GetType() string         { return f.featureType }
-func (f *FeatureEntity) GetSize() int            { return 1 }
-func (f *FeatureEntity) BlocksMovement() bool    { return false } // Features don't block movement by default
+// GetID returns the unique ID of this feature entity
+func (f *FeatureEntity) GetID() string { return f.id }
+
+// GetType returns the type of this feature entity
+func (f *FeatureEntity) GetType() string { return f.featureType }
+
+// GetSize returns the size of this feature entity
+func (f *FeatureEntity) GetSize() int { return 1 }
+
+// BlocksMovement checks if this feature blocks movement
+func (f *FeatureEntity) BlocksMovement() bool { return false } // Features don't block movement by default
+// BlocksLineOfSight checks if this feature blocks line of sight
 func (f *FeatureEntity) BlocksLineOfSight() bool { return false } // Features don't block LOS by default
 
 // Convenience functions

@@ -23,10 +23,14 @@ type WallSegment struct {
 type WallType int
 
 const (
+	// WallTypeIndestructible represents permanent structural walls.
 	WallTypeIndestructible WallType = iota // Permanent structural walls
-	WallTypeDestructible                   // Can be destroyed by players
-	WallTypeTemporary                      // Can be bypassed with effort
-	WallTypeConditional                    // Requires specific tools/abilities
+	// WallTypeDestructible represents walls that can be destroyed by players.
+	WallTypeDestructible // Can be destroyed by players
+	// WallTypeTemporary represents walls that can be bypassed with effort.
+	WallTypeTemporary // Can be bypassed with effort
+	// WallTypeConditional represents walls that require specific tools/abilities.
+	WallTypeConditional // Requires specific tools/abilities
 )
 
 // WallProperties defines wall behavior and appearance
@@ -94,7 +98,7 @@ type WallPatternFunc func(
 	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
 ) ([]WallSegment, error)
 
-// Pattern registry for available wall patterns
+// WallPatterns is the registry for available wall patterns.
 var WallPatterns = map[string]WallPatternFunc{
 	"empty":  EmptyPattern,
 	"random": RandomPattern,

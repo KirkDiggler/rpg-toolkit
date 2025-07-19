@@ -51,20 +51,22 @@ func NewWallEntity(config WallEntityConfig) *WallEntity {
 	return entity
 }
 
-// Core entity interface implementation
+// GetID returns the unique ID of this entity
 func (w *WallEntity) GetID() string {
 	return w.id
 }
 
+// GetType returns the type of this entity
 func (w *WallEntity) GetType() string {
 	return "wall"
 }
 
-// Placeable interface implementation
+// GetSize returns the size of this entity
 func (w *WallEntity) GetSize() int {
 	return 1 // Each wall entity occupies a single position
 }
 
+// BlocksMovement checks if this wall blocks movement
 func (w *WallEntity) BlocksMovement() bool {
 	// Destroyed walls don't block movement
 	if w.destroyed {
@@ -74,6 +76,7 @@ func (w *WallEntity) BlocksMovement() bool {
 	return w.properties.BlocksMovement
 }
 
+// BlocksLineOfSight checks if this wall blocks line of sight
 func (w *WallEntity) BlocksLineOfSight() bool {
 	// Destroyed walls don't block line of sight
 	if w.destroyed {
@@ -191,7 +194,7 @@ func (w *WallEntity) calculateActualDamage(damage int, damageType string) int {
 // Purpose: Discretizes wall segments into individual positioned entities
 // that can be placed in spatial rooms for obstacle detection
 func CreateWallEntities(walls []WallSegment) []spatial.Placeable {
-	var entities []spatial.Placeable
+	entities := make([]spatial.Placeable, 0, len(walls)*4) // Estimate 4 entities per wall
 
 	for _, wall := range walls {
 		wallEntities := discretizeWallSegment(wall)
@@ -205,11 +208,10 @@ func CreateWallEntities(walls []WallSegment) []spatial.Placeable {
 
 // discretizeWallSegment converts a wall segment into positioned entities
 func discretizeWallSegment(wall WallSegment) []*WallEntity {
-	var entities []*WallEntity
-
 	// Calculate positions along the wall segment
 	positions := calculateWallPositions(wall.Start, wall.End, wall.Properties.Thickness)
 
+	entities := make([]*WallEntity, 0, len(positions))
 	// Create a wall entity for each position
 	for i, pos := range positions {
 		config := WallEntityConfig{
@@ -272,7 +274,7 @@ func calculateWallPositions(start, end spatial.Position, thickness float64) []sp
 func addWallThickness(
 	basePositions []spatial.Position, start, end spatial.Position, thickness float64,
 ) []spatial.Position {
-	var allPositions []spatial.Position
+	allPositions := make([]spatial.Position, 0, len(basePositions)*2) // Estimate 2 positions per base position
 
 	// Calculate perpendicular direction
 	dx := end.X - start.X
