@@ -51,14 +51,16 @@ room := environments.NewRoomBuilder(config).
 ### 3. Convenience Functions
 
 ```go
-// Quick tactical room
-tacticalRoom := environments.TacticalRoom(20, 15)
+// Dense cover room (high wall density 0.6-0.9)
+denseCoverRoom := environments.DenseCoverRoom(20, 15)
 
-// Boss encounter room
-bossRoom := environments.BossRoom(25, 25)
+// Sparse cover room (low wall density 0.1-0.4) 
+sparseCoverRoom := environments.SparseCoverRoom(20, 15)
 
-// Treasure room
-treasureRoom := environments.TreasureRoom(12, 12)
+// Balanced cover room (medium wall density 0.4-0.7)
+balancedRoom := environments.BalancedCoverRoom(20, 15)
+
+
 ```
 
 ## Wall System

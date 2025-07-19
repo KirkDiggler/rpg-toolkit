@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/tools/selectables"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -456,54 +457,66 @@ func QuickRoom(width, height int, pattern string) (spatial.Room, error) {
 		Build()
 }
 
-// TacticalRoom creates a room optimized for tactical gameplay
-func TacticalRoom(width, height int) (spatial.Room, error) {
+// buildRoomWithTables is a helper function that reduces duplication across room generation functions
+func buildRoomWithTables(width, height int, tables RoomTables) (spatial.Room, error) {
 	builder := NewBasicRoomBuilder(BasicRoomBuilderConfig{
 		ShapeLoader: NewShapeLoader("tools/environments/shapes"),
 	})
 
+	// Use selectables for parameter selection
+	ctx := selectables.NewBasicSelectionContext()
+
+	// Select parameters using provided tables
+	densityRange, err := tables.DensityTable.Select(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select density range: %w", err)
+	}
+
+	destructibleRange, err := tables.DestructibleTable.Select(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select destructible range: %w", err)
+	}
+
+	pattern, err := tables.PatternTable.Select(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select wall pattern: %w", err)
+	}
+
+	shape, err := tables.ShapeTable.Select(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select room shape: %w", err)
+	}
+
+	safetyProfile, err := tables.SafetyTable.Select(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select safety profile: %w", err)
+	}
+
+	// Build room with selectables-driven parameters
 	return builder.
 		WithSize(width, height).
-		WithWallPattern("random").
-		WithDestructibleRatio(0.8).
-		WithWallDensity(0.5).
+		WithWallPattern(pattern).
+		WithDestructibleRatio(destructibleRange.Random()).
+		WithWallDensity(densityRange.Random()).
+		WithShape(shape).
+		WithSafety(safetyProfile.ToPathSafetyParams()).
 		Build()
 }
 
-// BossRoom creates a room optimized for boss encounters
-func BossRoom(width, height int) (spatial.Room, error) {
-	builder := NewBasicRoomBuilder(BasicRoomBuilderConfig{
-		ShapeLoader: NewShapeLoader("tools/environments/shapes"),
-	})
-
-	return builder.
-		WithSize(width, height).
-		WithShape("square").
-		WithWallPattern("random").
-		WithDestructibleRatio(0.3).
-		WithWallDensity(0.6).
-		Build()
+// DenseCoverRoom creates a room with high wall density using selectables
+// for infinite variety within dense cover constraints (0.6-0.9 density range)
+func DenseCoverRoom(width, height int) (spatial.Room, error) {
+	return buildRoomWithTables(width, height, GetDenseCoverTables())
 }
 
-// TreasureRoom creates a room with hiding spots and alcoves
-func TreasureRoom(width, height int) (spatial.Room, error) {
-	builder := NewBasicRoomBuilder(BasicRoomBuilderConfig{
-		ShapeLoader: NewShapeLoader("tools/environments/shapes"),
-	})
+// SparseCoverRoom creates a room with low wall density using selectables
+// for infinite variety within sparse cover constraints (0.1-0.4 density range)
+func SparseCoverRoom(width, height int) (spatial.Room, error) {
+	return buildRoomWithTables(width, height, GetSparseCoverTables())
+}
 
-	return builder.
-		WithSize(width, height).
-		WithShape("square").
-		WithWallPattern("random").
-		WithDestructibleRatio(0.5).
-		WithWallDensity(0.3).
-		WithFeatures(Feature{
-			Type: "treasure_chest",
-			Name: "Treasure Chest",
-			Properties: map[string]interface{}{
-				"locked": true,
-				"value":  "high",
-			},
-		}).
-		Build()
+// BalancedCoverRoom creates a room with medium wall density using selectables
+// for infinite variety within balanced cover constraints (0.4-0.7 density range)
+func BalancedCoverRoom(width, height int) (spatial.Room, error) {
+	return buildRoomWithTables(width, height, GetBalancedCoverTables())
 }
