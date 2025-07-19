@@ -342,4 +342,44 @@ Abstract connections enable performance optimizations:
 - **Connection caching** more straightforward
 - **Reduced spatial calculations** during room layout
 
+## Implementation Dependencies
+
+### Spawn Layer Integration (Critical)
+
+**Abstract connections require the spawn layer to handle entity placement after room transitions.**
+
+#### Current Limitation
+- The spatial module's `MoveEntityBetweenRooms` now only removes entities from source rooms and emits `entity.room_transition` events
+- Entity placement in destination rooms must be handled by the spawn layer via event subscription
+- **Tests requiring complete entity movement are currently skipped** until spawn layer implementation
+
+#### Required Spawn Layer Functionality
+```go
+// Spawn layer must subscribe to room transition events
+func (s *SpawnEngine) HandleRoomTransition(ctx context.Context, event events.Event) error {
+    entityID := event.Context().Get("entity_id").(string)
+    toRoom := event.Context().Get("to_room").(string)
+    connectionID := event.Context().Get("connection_id").(string)
+    
+    // Determine appropriate placement position in destination room
+    position := s.calculateTransitionPosition(toRoom, connectionID)
+    
+    // Place entity in destination room
+    return s.PlaceEntityInRoom(entityID, toRoom, position)
+}
+```
+
+#### Integration Points
+- **Event Type**: `"entity.room_transition"`
+- **Event Context**: `entity_id`, `from_room`, `to_room`, `connection_id`
+- **Spawn Responsibility**: Calculate placement position and execute `room.PlaceEntity()`
+- **Orchestrator Responsibility**: Track logical room assignment via `entityRooms` mapping
+
+#### Testing Impact
+- **Skipped Test**: `TestEntityMovementBetweenRooms` - requires spawn layer for complete entity transitions
+- **Working Tests**: Connection creation, logical room tracking, event emission
+- **Future Work**: Re-enable entity movement tests once spawn layer handles placement events
+
+This dependency ensures clean separation between connection logic (spatial module) and placement logic (spawn module), following the toolkit's modular architecture principles.
+
 This ADR establishes abstract connections as the default approach while preserving precise spatial connections for games that specifically require exact spatial relationships. The decision significantly simplifies multi-room orchestration while maximizing flexibility for room generation and shape variety.

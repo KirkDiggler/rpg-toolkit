@@ -296,7 +296,7 @@ func (bro *BasicRoomOrchestrator) GetAllConnections() map[string]Connection {
 	return result
 }
 
-// MoveEntityBetweenRooms moves an entity from one room to another
+// MoveEntityBetweenRooms moves an entity from one room to another (ADR-0015: Abstract Connections)
 func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(
 	entityIDStr, fromRoomStr, toRoomStr, connectionIDStr string,
 ) error {
@@ -318,18 +318,7 @@ func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(
 		return fmt.Errorf("from room %s not found", fromRoom)
 	}
 
-	toRoomObj, exists := bro.rooms[toRoom]
-	if !exists {
-		return fmt.Errorf("to room %s not found", toRoom)
-	}
-
-	// Get the connection
-	connection, exists := bro.connections[connectionID]
-	if !exists {
-		return fmt.Errorf("connection %s not found", connectionID)
-	}
-
-	// Get entity position in from room
+	// Get entity from source room
 	entity, exists := fromRoomObj.GetAllEntities()[entityIDStr]
 	if !exists {
 		return fmt.Errorf("entity %s not found in room %s", entityID, fromRoom)
@@ -341,23 +330,18 @@ func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(
 		return fmt.Errorf("failed to remove entity from source room: %w", err)
 	}
 
-	// Place in destination room at connection position
-	var targetPosition Position
-	if connection.GetFromRoom() == fromRoomStr {
-		targetPosition = connection.GetToPosition()
-	} else {
-		targetPosition = connection.GetFromPosition()
-	}
-
-	err = toRoomObj.PlaceEntity(entity, targetPosition)
-	if err != nil {
-		// Try to restore entity to original room
-		_ = fromRoomObj.PlaceEntity(entity, connection.GetFromPosition())
-		return fmt.Errorf("failed to place entity in destination room: %w", err)
-	}
-
 	// Update entity room mapping
 	bro.entityRooms[entityID] = toRoom
+
+	// Emit transition event for game to handle positioning (ADR-0015)
+	if bro.eventBus != nil {
+		event := events.NewGameEvent(EventEntityRoomTransition, entity, nil)
+		event.Context().Set("entity_id", entityIDStr)
+		event.Context().Set("from_room", fromRoomStr)
+		event.Context().Set("to_room", toRoomStr)
+		event.Context().Set("connection_id", connectionIDStr)
+		_ = bro.eventBus.Publish(context.Background(), event)
+	}
 
 	return nil
 }

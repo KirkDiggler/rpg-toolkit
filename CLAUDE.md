@@ -194,6 +194,29 @@ orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
 4. When creating PRs, use gh CLI with proper formatting
 5. Run the full test suite before committing
 
+### Critical Module Isolation Rules
+**LEARNED FROM PR #76 TROUBLESHOOTING**
+
+1. **NEVER touch other modules when working on a specific module**
+   - Other modules are READ-ONLY for reference
+   - If other modules have issues, create separate PRs
+   - Don't run `go mod tidy` or similar commands in other modules
+
+2. **Be extremely careful with troubleshooting commands**
+   - Always check current directory before running go commands
+   - Don't run bulk operations across all modules unless absolutely necessary
+   - Accidental `go mod tidy` in wrong modules can corrupt dependencies
+
+3. **Focus on actual changes, not CI configuration**
+   - When CI fails, check what files were actually changed first
+   - Don't assume CI configuration issues - often it's code conflicts
+   - Look for accidentally committed files (like stray modules without go.mod)
+
+4. **Type conflicts from orphaned modules**
+   - Files without go.mod get treated as part of root workspace
+   - Can cause type conflicts with existing modules
+   - Always ensure new modules have proper go.mod or remove them entirely
+
 ## AI Assistant Guidelines
 
 **CRITICAL: NO ASSUMPTIONS WITHOUT VERIFICATION**
