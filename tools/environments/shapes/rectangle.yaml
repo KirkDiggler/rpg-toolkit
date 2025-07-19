@@ -1,0 +1,54 @@
+name: "rectangle"
+description: "Basic rectangular room - most versatile shape"
+type: "basic"
+boundary:
+  - x: 0.0
+    y: 0.0
+  - x: 1.0
+    y: 0.0
+  - x: 1.0
+    y: 1.0
+  - x: 0.0
+    y: 1.0
+connections:
+  - name: "south"
+    position:
+      x: 0.5
+      y: 0.0
+    direction: "south"
+    type: "door"
+    required: false
+  - name: "north"
+    position:
+      x: 0.5
+      y: 1.0
+    direction: "north"
+    type: "door"
+    required: false
+  - name: "east"
+    position:
+      x: 1.0
+      y: 0.5
+    direction: "east"
+    type: "door"
+    required: false
+  - name: "west"
+    position:
+      x: 0.0
+      y: 0.5
+    direction: "west"
+    type: "door"
+    required: false
+grid_hints:
+  preferred_grid_types: ["square", "gridless"]
+  min_size:
+    width: 4
+    height: 4
+  max_size:
+    width: 50
+    height: 50
+  aspect_ratio: 1.5
+  snap_to_grid: true
+properties:
+  common_usage: ["chamber", "hall", "storage"]
+  wall_pattern_friendly: true

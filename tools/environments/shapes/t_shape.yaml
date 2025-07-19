@@ -1,0 +1,63 @@
+name: "t_shape"
+description: "T-shaped room for three-way junctions"
+type: "junction"
+boundary:
+  - x: 0.0
+    y: 0.0
+  - x: 1.0
+    y: 0.0
+  - x: 1.0
+    y: 0.4
+  - x: 0.7
+    y: 0.4
+  - x: 0.7
+    y: 1.0
+  - x: 0.3
+    y: 1.0
+  - x: 0.3
+    y: 0.4
+  - x: 0.0
+    y: 0.4
+connections:
+  - name: "south"
+    position:
+      x: 0.5
+      y: 0.0
+    direction: "south"
+    type: "door"
+    required: false
+  - name: "north"
+    position:
+      x: 0.5
+      y: 1.0
+    direction: "north"
+    type: "door"
+    required: false
+  - name: "east"
+    position:
+      x: 1.0
+      y: 0.2
+    direction: "east"
+    type: "door"
+    required: false
+  - name: "west"
+    position:
+      x: 0.0
+      y: 0.2
+    direction: "west"
+    type: "door"
+    required: false
+grid_hints:
+  preferred_grid_types: ["square", "gridless"]
+  min_size:
+    width: 8
+    height: 8
+  max_size:
+    width: 40
+    height: 40
+  aspect_ratio: 1.0
+  snap_to_grid: true
+properties:
+  junction_type: "three_way"
+  decision_point: true
+  tactical_value: "high"

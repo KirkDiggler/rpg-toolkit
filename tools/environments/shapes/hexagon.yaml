@@ -1,0 +1,73 @@
+name: "hexagon"
+description: "Hexagonal room optimized for hex grids"
+type: "organic"
+boundary:
+  - x: 0.5
+    y: 0.0
+  - x: 0.866
+    y: 0.25
+  - x: 0.866
+    y: 0.75
+  - x: 0.5
+    y: 1.0
+  - x: 0.134
+    y: 0.75
+  - x: 0.134
+    y: 0.25
+connections:
+  - name: "south"
+    position:
+      x: 0.5
+      y: 0.0
+    direction: "south"
+    type: "passage"
+    required: false
+  - name: "southeast"
+    position:
+      x: 0.866
+      y: 0.25
+    direction: "southeast"
+    type: "passage"
+    required: false
+  - name: "northeast"
+    position:
+      x: 0.866
+      y: 0.75
+    direction: "northeast"
+    type: "passage"
+    required: false
+  - name: "north"
+    position:
+      x: 0.5
+      y: 1.0
+    direction: "north"
+    type: "passage"
+    required: false
+  - name: "northwest"
+    position:
+      x: 0.134
+      y: 0.75
+    direction: "northwest"
+    type: "passage"
+    required: false
+  - name: "southwest"
+    position:
+      x: 0.134
+      y: 0.25
+    direction: "southwest"
+    type: "passage"
+    required: false
+grid_hints:
+  preferred_grid_types: ["hex"]
+  min_size:
+    width: 6
+    height: 6
+  max_size:
+    width: 20
+    height: 20
+  aspect_ratio: 1.0
+  snap_to_grid: true
+properties:
+  hex_optimized: true
+  natural_flow: true
+  six_fold_symmetry: true

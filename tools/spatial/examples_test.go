@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // TestSpatialSystem demonstrates how to use the spatial system
