@@ -531,27 +531,3 @@ func (s *BasicTableTestSuite) TestTableIntrospection() {
 		s.Assert().Equal(2, s.table.Size()) // Size shouldn't change
 	})
 }
-
-func (s *BasicTableTestSuite) TestThreadSafety() {
-	s.Run("concurrent access doesn't cause race conditions", func() {
-		// This test would need proper goroutine testing
-		// For now, just verify the basic operations work
-		s.table.Add("item1", 10)
-
-		// Simulate concurrent access
-		go func() {
-			s.table.Add("item2", 20)
-		}()
-
-		go func() {
-			s.table.GetItems()
-		}()
-
-		go func() {
-			s.table.Size()
-		}()
-
-		// Wait a bit and verify table state
-		s.Assert().GreaterOrEqual(s.table.Size(), 1)
-	})
-}

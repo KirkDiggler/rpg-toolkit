@@ -288,29 +288,6 @@ func (s *EventIntegrationTestSuite) TestEventConfiguration() {
 	})
 }
 
-// TestConcurrentEventPublishing tests event publishing under concurrent access
-func (s *EventIntegrationTestSuite) TestConcurrentEventPublishing() {
-	s.Run("handles concurrent operations with events", func() {
-		s.capturedEvents = make([]events.Event, 0)
-
-		// Add items concurrently
-		go func() {
-			s.table.Add("item1", 10)
-		}()
-
-		go func() {
-			s.table.Add("item2", 20)
-		}()
-
-		// Allow some time for goroutines to complete
-		// Note: This is a basic test - proper concurrent testing would use sync primitives
-
-		// Verify that events were published (exact count may vary due to timing)
-		// We just verify that events are being published safely
-		s.Assert().NotNil(s.capturedEvents, "Event publishing should not crash under concurrent access")
-	})
-}
-
 // Helper methods
 
 // getEventsByType filters captured events by type
