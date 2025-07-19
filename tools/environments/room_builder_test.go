@@ -342,35 +342,22 @@ func (s *RoomBuilderTestSuite) TestConvenienceFunctions() {
 		s.Assert().NotNil(room)
 	})
 
-	s.Run("TacticalRoom creates room", func() {
-		room, err := TacticalRoom(20, 15)
+	s.Run("DenseCoverRoom creates room", func() {
+		room, err := DenseCoverRoom(20, 15)
 		s.Require().NoError(err)
 		s.Assert().NotNil(room)
 	})
 
-	s.Run("BossRoom creates room", func() {
-		room, err := BossRoom(25, 25)
+	s.Run("SparseCoverRoom creates room", func() {
+		room, err := SparseCoverRoom(20, 15)
 		s.Require().NoError(err)
 		s.Assert().NotNil(room)
 	})
 
-	s.Run("TreasureRoom creates room", func() {
-		room, err := TreasureRoom(12, 12)
+	s.Run("BalancedCoverRoom creates room", func() {
+		room, err := BalancedCoverRoom(20, 15)
 		s.Require().NoError(err)
 		s.Assert().NotNil(room)
-
-		// Should have treasure chest feature
-		entities := room.GetAllEntities()
-		found := false
-		for _, entity := range entities {
-			if featureEntity, ok := entity.(*FeatureEntity); ok {
-				if featureEntity.featureType == "treasure_chest" {
-					found = true
-					break
-				}
-			}
-		}
-		s.Assert().True(found, "TreasureRoom should have treasure chest feature")
 	})
 }
 
