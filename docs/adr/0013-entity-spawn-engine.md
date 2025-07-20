@@ -366,6 +366,51 @@ if placeable, ok := entity.(spatial.Placeable); ok {
 }
 ```
 
+#### 7. Gridless Room Design Intent ✅ IMPLEMENTED
+
+**Decision**: For gridless rooms, the spawn engine provides simple entity placement within room boundaries without grid constraints.
+
+**Design Intent**:
+- **Continuous Positioning**: Gridless rooms use floating-point coordinates for smooth, realistic positioning
+- **Simplified Placement**: No grid alignment requirements - entities can be placed at any valid coordinate
+- **Boundary Respect**: Entities respect room boundaries and wall proximity constraints
+- **Natural Distribution**: Uses random sampling within room bounds for organic entity distribution
+- **Constraint Compatibility**: All spatial constraints (distance, line of sight, etc.) work with gridless positioning
+
+**Implementation Strategy**:
+```go
+// Gridless room detection and handling
+func (cs *ConstraintSolver) isGridlessRoom(grid spatial.Grid) bool {
+    return grid == nil // Gridless rooms have no grid system
+}
+
+// Optimized position finding for continuous positioning
+func (cs *ConstraintSolver) findValidPositionsGridless(
+    room spatial.Room, entity core.Entity, constraints SpatialConstraints,
+    existingEntities []SpawnedEntity, maxPositions int,
+) ([]spatial.Position, error) {
+    // Use random sampling within room bounds
+    roomDimensions := room.GetDimensions()
+    margin := 1.0 // Wall proximity buffer
+    
+    for attempts := 0; attempts < maxAttempts; attempts++ {
+        x := margin + (roomDimensions.Width-2*margin)*rand.Float64()
+        y := margin + (roomDimensions.Height-2*margin)*rand.Float64()
+        position := spatial.Position{X: x, Y: y}
+        
+        if cs.ValidatePosition(room, position, entity, constraints, existingEntities) == nil {
+            validPositions = append(validPositions, position)
+        }
+    }
+}
+```
+
+**Rationale**:
+- **Flexibility**: Supports both tactical grid-based games and fluid, realistic positioning systems
+- **Performance**: Random sampling is more efficient than exhaustive grid searches for large spaces
+- **Natural Placement**: Avoids artificial grid-locked positioning in continuous environments
+- **Toolkit Philosophy**: Provides infrastructure for any positioning system, not imposing specific mechanics
+
 #### Environment Package Integration Analysis
 
 **Key Capabilities Discovered**:

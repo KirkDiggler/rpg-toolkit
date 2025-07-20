@@ -80,6 +80,7 @@ type FormationConstraints struct {
 
 // SpawnZone defines an area where players can choose spawn positions.
 // Purpose: Restricts player spawn choices to specific rectangular areas with type filtering.
+//
 //nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnZone struct {
 	ID          string            `json:"id"`
@@ -100,6 +101,14 @@ type SpatialConstraints struct {
 	MinDistance   map[string]float64 `json:"min_distance"`
 	LineOfSight   LineOfSightRules   `json:"line_of_sight"`
 	WallProximity float64            `json:"wall_proximity"`
+	AreaOfEffect  map[string]float64 `json:"area_of_effect"`
+	PathingRules  PathingConstraints `json:"pathing_rules"`
+}
+
+// PathingConstraints define movement and accessibility requirements
+type PathingConstraints struct {
+	MaintainExitAccess bool    `json:"maintain_exit_access"`
+	MinPathWidth       float64 `json:"min_path_width"`
 }
 
 // LineOfSightRules define visibility requirements between entities

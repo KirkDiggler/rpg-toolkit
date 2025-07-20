@@ -23,6 +23,7 @@ type BasicSpawnEngine struct {
 	enableEvents       bool
 	maxAttempts        int
 	random             *rand.Rand
+	constraintSolver   *ConstraintSolver
 }
 
 // BasicSpawnEngineConfig configures a BasicSpawnEngine.
@@ -56,6 +57,7 @@ func NewBasicSpawnEngine(config BasicSpawnEngineConfig) *BasicSpawnEngine {
 		enableEvents:       config.EnableEvents,
 		maxAttempts:        config.MaxAttempts,
 		random:             rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404
+		constraintSolver:   NewConstraintSolver(),
 	}
 }
 
@@ -166,6 +168,11 @@ func (e *BasicSpawnEngine) ValidateSpawnConfig(config SpawnConfig) error {
 		}
 	}
 
+	// Phase 3: Validate spatial constraints
+	if err := e.validateSpatialConstraints(config.SpatialRules); err != nil {
+		return fmt.Errorf("spatial constraints validation failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -198,6 +205,82 @@ func (e *BasicSpawnEngine) findValidPosition(_ spatial.Room, _ core.Entity) spat
 	y := e.random.Float64() * 10.0
 
 	return spatial.Position{X: x, Y: y}
+}
+
+// findValidPositionWithConstraints finds a position that satisfies spatial constraints.
+// Purpose: Phase 3 constraint-aware position finding.
+func (e *BasicSpawnEngine) findValidPositionWithConstraints(
+	room spatial.Room, entity core.Entity, constraints SpatialConstraints,
+	existingEntities []SpawnedEntity,
+) (spatial.Position, error) {
+	validPositions, err := e.constraintSolver.FindValidPositions(
+		room, entity, constraints, existingEntities, 10,
+	)
+	if err != nil {
+		return spatial.Position{}, err
+	}
+
+	if len(validPositions) == 0 {
+		return spatial.Position{}, fmt.Errorf("no valid positions found for entity %s", entity.GetType())
+	}
+
+	// Select random position from valid options
+	selectedIndex := e.random.Intn(len(validPositions))
+	return validPositions[selectedIndex], nil
+}
+
+// validateSpatialConstraints validates the spatial constraint configuration.
+func (e *BasicSpawnEngine) validateSpatialConstraints(constraints SpatialConstraints) error {
+	// Validate minimum distance rules
+	for key, distance := range constraints.MinDistance {
+		if distance < 0 {
+			return fmt.Errorf("invalid min distance for %s: %.2f (must be >= 0)", key, distance)
+		}
+	}
+
+	// Validate area of effect rules
+	for entityType, radius := range constraints.AreaOfEffect {
+		if radius < 0 {
+			return fmt.Errorf("invalid area of effect for %s: %.2f (must be >= 0)", entityType, radius)
+		}
+	}
+
+	// Validate wall proximity
+	if constraints.WallProximity < 0 {
+		return fmt.Errorf("invalid wall proximity: %.2f (must be >= 0)", constraints.WallProximity)
+	}
+
+	// Validate line of sight rules
+	for _, pair := range constraints.LineOfSight.RequiredSight {
+		if pair.From == "" || pair.To == "" {
+			return fmt.Errorf("invalid line of sight rule: from='%s', to='%s'", pair.From, pair.To)
+		}
+	}
+
+	for _, pair := range constraints.LineOfSight.BlockedSight {
+		if pair.From == "" || pair.To == "" {
+			return fmt.Errorf("invalid blocked sight rule: from='%s', to='%s'", pair.From, pair.To)
+		}
+	}
+
+	// Validate pathing constraints
+	if constraints.PathingRules.MinPathWidth < 0 {
+		return fmt.Errorf("invalid min path width: %.2f (must be >= 0)", constraints.PathingRules.MinPathWidth)
+	}
+
+	return nil
+}
+
+// hasValidConstraints checks if spatial constraints are meaningful and should be applied.
+func (e *BasicSpawnEngine) hasValidConstraints(constraints SpatialConstraints) bool {
+	// Check if any constraint rules are actually specified
+	return len(constraints.MinDistance) > 0 ||
+		len(constraints.AreaOfEffect) > 0 ||
+		constraints.WallProximity > 0 ||
+		len(constraints.LineOfSight.RequiredSight) > 0 ||
+		len(constraints.LineOfSight.BlockedSight) > 0 ||
+		constraints.PathingRules.MinPathWidth > 0 ||
+		constraints.PathingRules.MaintainExitAccess
 }
 
 // placeEntityInRoom places entity in the spatial room

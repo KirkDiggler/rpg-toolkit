@@ -40,6 +40,59 @@ func (s *BasicSpawnEngineTestSuite) SetupTest() {
 	}
 }
 
+func (s *BasicSpawnEngineTestSuite) TestConstraintValidation() {
+	s.Run("validates spatial constraints", func() {
+		config := SpawnConfig{
+			EntityGroups: []EntityGroup{
+				{
+					ID:             "test-group",
+					Type:           "enemy",
+					SelectionTable: "enemies",
+					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+				},
+			},
+			Pattern: PatternScattered,
+			SpatialRules: SpatialConstraints{
+				MinDistance: map[string]float64{
+					"player:enemy": 2.0,
+				},
+				WallProximity: 1.0,
+				LineOfSight: LineOfSightRules{
+					RequiredSight: []EntityPair{
+						{From: "guard", To: "treasure"},
+					},
+				},
+			},
+		}
+
+		err := s.engine.ValidateSpawnConfig(config)
+		s.Assert().NoError(err)
+	})
+
+	s.Run("rejects invalid spatial constraints", func() {
+		config := SpawnConfig{
+			EntityGroups: []EntityGroup{
+				{
+					ID:             "test-group",
+					Type:           "enemy",
+					SelectionTable: "enemies",
+					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+				},
+			},
+			Pattern: PatternScattered,
+			SpatialRules: SpatialConstraints{
+				MinDistance: map[string]float64{
+					"player:enemy": -1.0, // Invalid negative distance
+				},
+			},
+		}
+
+		err := s.engine.ValidateSpawnConfig(config)
+		s.Assert().Error(err)
+		s.Assert().Contains(err.Error(), "spatial constraints")
+	})
+}
+
 func (s *BasicSpawnEngineTestSuite) TestConfigValidation() {
 	s.Run("validates valid config", func() {
 		config := SpawnConfig{

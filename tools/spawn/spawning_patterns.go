@@ -31,7 +31,22 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(
 
 		// Place entities using scattered pattern
 		for _, entity := range entities {
-			position := e.findValidPosition(room, entity)
+			// Phase 3: Use constraint-aware positioning if spatial rules provided
+			var position spatial.Position
+			var err error
+
+			if e.hasValidConstraints(config.SpatialRules) {
+				position, err = e.findValidPositionWithConstraints(room, entity, config.SpatialRules, result.SpawnedEntities)
+				if err != nil {
+					result.Failures = append(result.Failures, SpawnFailure{
+						EntityType: entity.GetType(),
+						Reason:     fmt.Sprintf("constraint validation failed: %v", err),
+					})
+					continue
+				}
+			} else {
+				position = e.findValidPosition(room, entity)
+			}
 
 			// Place entity in room
 			if err := e.placeEntityInRoom(room, entity, position); err != nil {
@@ -124,7 +139,21 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 				})
 			} else {
 				// Non-player entities use scattered placement
-				position := e.findValidPosition(room, entity)
+				var position spatial.Position
+				var err error
+
+				if e.hasValidConstraints(config.SpatialRules) {
+					position, err = e.findValidPositionWithConstraints(room, entity, config.SpatialRules, result.SpawnedEntities)
+					if err != nil {
+						result.Failures = append(result.Failures, SpawnFailure{
+							EntityType: entity.GetType(),
+							Reason:     fmt.Sprintf("constraint validation failed: %v", err),
+						})
+						continue
+					}
+				} else {
+					position = e.findValidPosition(room, entity)
+				}
 
 				result.SpawnedEntities = append(result.SpawnedEntities, SpawnedEntity{
 					Entity:   entity,
