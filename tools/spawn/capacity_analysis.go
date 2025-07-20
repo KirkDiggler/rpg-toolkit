@@ -19,10 +19,7 @@ func (e *BasicSpawnEngine) handleCapacityAnalysis(
 	}
 
 	// Calculate total entity count from groups
-	totalEntityCount, err := e.calculateTotalEntityCount(config.EntityGroups)
-	if err != nil {
-		return fmt.Errorf("failed to calculate entity count: %w", err)
-	}
+	totalEntityCount := e.calculateTotalEntityCount(config.EntityGroups)
 
 	// Get current room dimensions (simplified for Phase 4)
 	currentDimensions := spatial.Dimensions{Width: 10, Height: 10} // Default room size
@@ -112,7 +109,7 @@ func (e *BasicSpawnEngine) handleRoomScaling(
 }
 
 // calculateTotalEntityCount calculates total entities from groups
-func (e *BasicSpawnEngine) calculateTotalEntityCount(groups []EntityGroup) (int, error) {
+func (e *BasicSpawnEngine) calculateTotalEntityCount(groups []EntityGroup) int {
 	total := 0
 	for _, group := range groups {
 		if group.Quantity.Fixed != nil {
@@ -122,7 +119,7 @@ func (e *BasicSpawnEngine) calculateTotalEntityCount(groups []EntityGroup) (int,
 			total++
 		}
 	}
-	return total, nil
+	return total
 }
 
 // convertEnvironmentSplitOptions converts environment split options to spawn types

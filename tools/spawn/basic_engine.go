@@ -191,13 +191,13 @@ func (e *BasicSpawnEngine) getRoomFromSpatial(_ string) (spatial.Room, error) {
 }
 
 // findValidPosition finds a valid position for an entity (simplified for Phase 1)
-func (e *BasicSpawnEngine) findValidPosition(_ spatial.Room, _ core.Entity) (spatial.Position, error) {
+func (e *BasicSpawnEngine) findValidPosition(_ spatial.Room, _ core.Entity) spatial.Position {
 	// Phase 1: Simple random position within reasonable bounds
 	// Real implementation would query the spatial room for valid positions
 	x := e.random.Float64() * 10.0
 	y := e.random.Float64() * 10.0
 
-	return spatial.Position{X: x, Y: y}, nil
+	return spatial.Position{X: x, Y: y}
 }
 
 // placeEntityInRoom places entity in the spatial room

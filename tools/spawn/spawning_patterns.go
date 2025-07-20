@@ -31,14 +31,7 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(
 
 		// Place entities using scattered pattern
 		for _, entity := range entities {
-			position, err := e.findValidPosition(room, entity)
-			if err != nil {
-				result.Failures = append(result.Failures, SpawnFailure{
-					EntityType: entity.GetType(),
-					Reason:     err.Error(),
-				})
-				continue
-			}
+			position := e.findValidPosition(room, entity)
 
 			// Place entity in room
 			if err := e.placeEntityInRoom(room, entity, position); err != nil {
@@ -131,14 +124,7 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 				})
 			} else {
 				// Non-player entities use scattered placement
-				position, err := e.findValidPosition(room, entity)
-				if err != nil {
-					result.Failures = append(result.Failures, SpawnFailure{
-						EntityType: entity.GetType(),
-						Reason:     err.Error(),
-					})
-					continue
-				}
+				position := e.findValidPosition(room, entity)
 
 				result.SpawnedEntities = append(result.SpawnedEntities, SpawnedEntity{
 					Entity:   entity,
