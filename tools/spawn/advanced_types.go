@@ -80,6 +80,7 @@ type FormationConstraints struct {
 
 // SpawnZone defines an area where players can choose spawn positions.
 // Purpose: Restricts player spawn choices to specific rectangular areas with type filtering.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnZone struct {
 	ID          string            `json:"id"`
 	Area        spatial.Rectangle `json:"area"`

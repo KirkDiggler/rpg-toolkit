@@ -2,6 +2,7 @@ package spawn
 
 // SpawnConfig specifies how to spawn entities in a room.
 // Purpose: Complete configuration for entity placement following ADR-0013 patterns.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnConfig struct {
 	// What to spawn
 	EntityGroups []EntityGroup `json:"entity_groups"`
@@ -40,6 +41,7 @@ type QuantitySpec struct {
 
 // SpawnPattern defines how entities are arranged in space.
 // Purpose: Categorizes different spatial arrangement strategies per ADR-0013.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnPattern string
 
 const (
@@ -57,6 +59,7 @@ const (
 
 // SpawnStrategy defines the spawning approach.
 // Purpose: Controls randomization vs deterministic behavior in entity placement.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnStrategy string
 
 const (

@@ -10,6 +10,7 @@ import (
 // SpawnEngine provides entity placement capabilities for game spaces.
 // Purpose: Core interface for all entity spawning functionality per ADR-0013.
 // Supports split-aware spawning, capacity analysis, and adaptive room scaling.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnEngine interface {
 	// Core spawning - works with single rooms or split room configurations
 	PopulateSpace(ctx context.Context, roomOrGroup interface{}, config SpawnConfig) (SpawnResult, error)
@@ -42,6 +43,7 @@ type SelectablesRegistry interface {
 
 // SpawnResult contains the results of a spawn operation.
 // Purpose: Complete outcome of entity placement including successes, failures, and room modifications.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnResult struct {
 	Success              bool               `json:"success"`
 	SpawnedEntities      []SpawnedEntity    `json:"spawned_entities"`
@@ -61,6 +63,7 @@ type SpawnedEntity struct {
 
 // SpawnFailure represents an entity that could not be placed.
 // Purpose: Error tracking for debugging placement issues and constraint violations.
+//nolint:revive // type name follows ADR-0013 public API requirements
 type SpawnFailure struct {
 	EntityType string `json:"entity_type"`
 	Reason     string `json:"reason"`
