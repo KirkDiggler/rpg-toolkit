@@ -19,7 +19,7 @@ We will create an Entity Spawn Engine as a new tool (`tools/spawn`) that provide
 
 ### Key Architectural Decision: Entity Management Strategy
 
-**Decision**: The spawn engine will NOT create entities. Instead, clients provide categorized pools of pre-existing entities, and the spawn engine uses selectables for selection and spatial module for positioning.
+**Decision**: The spawn engine will NOT create entities. Instead, clients provide categorized pools of pre-existing entities, and the spawn engine uses selectables for selection and spatial module for positioning. Optional helper configs are provided for client convenience.
 
 **Rationale**: This approach aligns with RPG Toolkit's philosophy of "infrastructure, not implementation":
 - **Client Control**: Games define their own entity categories (e.g., "goblinoids", "treasure", "environmental")
@@ -27,6 +27,7 @@ We will create an Entity Spawn Engine as a new tool (`tools/spawn`) that provide
 - **Natural Selectables Integration**: Entity pools become selection tables with game-specific weights
 - **Maximum Flexibility**: Supports any game genre with any categorization scheme
 - **Compositional Spawning**: Mix and match categories for rich scenarios
+- **Helper Configs**: Optional convenience configs for common patterns
 
 **Implementation Pattern**:
 ```go
@@ -46,6 +47,10 @@ selectionTables := map[string]selectables.SelectionTable[core.Entity]{
 
 // Spawn engine handles selection + positioning
 result := spawnEngine.PopulateRoom(roomID, entityPools, selectionTables, spawnConfig)
+
+// Optional: Helper config for common patterns
+helperConfig := CreateDungeonRoomConfig(entityCount, difficulty)
+result := spawnEngine.PopulateRoomWithHelper(roomID, entityPools, helperConfig)
 ```
 
 This decision eliminates entity factory patterns and provides a clean, flexible foundation for all subsequent design decisions.
@@ -89,35 +94,117 @@ config := SpawnConfig{
 - **Flexible Control**: Client has full control over selectables setup while spawn engine handles references
 - **Consistent Patterns**: Follows existing selectables module conventions
 
-#### 3. Space Calculation and Room Scaling Strategy
+#### 3. Space Calculation and Room Scaling Strategy ✅ IMPLEMENTED
 
-**Decision**: Capacity-first approach using environment package for space calculations, with automatic room scaling when needed.
+**Decision**: Capacity-first approach using environment package for space calculations, with room scaling and split-awareness for overcrowding scenarios.
 
-**Implementation Pattern**:
+**Use Case**: Client provides room config with too many entities to fit comfortably. Spawn engine detects this, scales room if needed, communicates split recommendations as passthrough to client, and adapts spawning logic to work with whatever room structure results.
+
+**Responsibility Separation**:
+- **Environment Package**: Provides capacity analysis and split recommendations
+- **Spawn Engine**: Detects capacity issues, relays recommendations, adapts to any room structure
+- **Client/Upstream**: Decides whether to split rooms, creates split rooms when needed
+
+**Implementation Pattern Using Environment Package Queries**:
 ```go
-// 1. Count entities and calculate space requirements using environment package
-spaceQuery := environments.SpaceRequirementQuery{
-    Entities: selectedEntities,
-    Constraints: config.SpatialRules,
+// 1. Check if current room can handle the entities (request split options)
+capacityQuery := environments.CapacityQuery{
+    RoomSize:            currentRoomDimensions,  // Client's original room config
+    EntityCount:         len(selectedEntities),  // Number of entities to spawn  
+    IncludeSplitOptions: true,                   // Always get split recommendations
+    Constraints: environments.CapacityConstraints{
+        TargetSpatialFeeling:      environments.SpatialFeelingNormal,
+        MinEntitySpacing:          2.0,
+        MinMovementSpace:          0.6,
+        WallDensityModifier:       0.5,
+        RequiredPathwayMultiplier: 1.2,
+    },
 }
-spaceResult := environmentQueryHandler.ProcessSpaceQuery(spaceQuery)
 
-// 2. Scale room if insufficient space (0.0-1.0 percentage scaling)
-if !spaceResult.IsAdequate {
-    scaleFactor := spaceResult.RecommendedScale
-    environmentPackage.ScaleRoom(roomID, scaleFactor)
-    // Emit scaling event with reason and dimensions
+response, err := environmentQueryHandler.HandleCapacityQuery(ctx, capacityQuery)
+
+// 2. If room is too small, calculate optimal size and scale
+if !response.Satisfied {
+    sizingQuery := environments.SizingQuery{
+        Intent:        environments.GetDefaultSpatialIntentProfile(environments.SpatialFeelingNormal),
+        EntityCount:   len(selectedEntities),     // The "too many" entities
+        MinDimensions: currentRoomDimensions,     // Don't go smaller than original
+        AdditionalSpace: 1.2,                    // 20% buffer space
+    }
+    
+    newDimensions, err := environmentQueryHandler.HandleSizingQuery(ctx, sizingQuery)
+    
+    // Scale up the room to fit all entities
+    scaleFactor := newDimensions.Width / currentRoomDimensions.Width
+    err = h.scaleExistingRoom(roomID, scaleFactor)
+    
+    // Emit scaling event with detailed reasoning
+    h.publishRoomScalingEvent(ctx, roomID, currentRoomDimensions, newDimensions, 
+        len(selectedEntities), response.Alternatives)
 }
 
-// 3. Simple placement since space is guaranteed
-placeEntities(selectedEntities, roomID, config)
+// 3. Communicate split recommendations to client (passthrough role)
+if len(response.SplitOptions) > 0 {
+    h.publishSplitRecommendationEvent(ctx, roomID, response.SplitOptions)
+    // Client decides whether to split - spawn engine adapts to result
+}
+
+// 4. Adapt spawning logic to room structure (single or split)
+roomStructure := h.analyzeRoomStructure(roomID)
+if roomStructure.IsSplit {
+    // Handle multi-room spawning with entity distribution
+    err = h.populateSplitRooms(roomStructure.ConnectedRooms, selectedEntities, config)
+} else {
+    // Handle single room spawning
+    err = h.populateSingleRoom(roomID, selectedEntities, config)
+}
+```
+
+**Environment Package Functions Used**:
+- `HandleCapacityQuery()` - Analyzes if entities fit in current room
+- `HandleSizingQuery()` - Calculates optimal room dimensions for entity count  
+- `EstimateRoomCapacity()` - Core capacity analysis with spatial feeling support
+- `CalculateOptimalRoomSize()` - Mathematical sizing based on entity density and movement needs
+
+**Capacity Analysis Response with Split Options**:
+```go
+response := CapacityQueryResponse{
+    Satisfied: false,                    // Room too small for entity count
+    Alternatives: []string{              // What spawn engine can relay to client
+        "Consider scaling the room up",
+        "Reduce entity count", 
+        "Split room into multiple rooms",
+    },
+    Estimate: CapacityEstimate{
+        RecommendedEntityCount: 8,       // Room comfortably fits 8 entities
+        MaxEntityCount:         12,      // Could squeeze 12 entities max
+        SpatialFeelingActual:   SpatialFeelingTight,  // Would feel cramped
+        QualityScore:           0.3,     // Poor spatial quality with overcrowding
+    },
+    SplitOptions: []RoomSplit{           // Detailed split recommendations from environment
+        {
+            SuggestedSize: spatial.Dimensions{Width: 10, Height: 20},
+            ConnectionPoints: []spatial.Position{{X: 10, Y: 10}},
+            RecommendedEntityDistribution: map[string]int{
+                "room_1": 10, "room_2": 10,  // Distribute 20 entities across split
+            },
+            RecommendedConnectionType: "door",
+            SplitReason: "Horizontal split for manageable entity density",
+            EstimatedCapacityImprovement: 0.8,
+        },
+        // Additional split patterns available...
+    },
+}
 ```
 
 **Rationale**:
 - **Eliminates Constraint Solving**: Pre-calculating space requirements avoids complex backtracking algorithms
-- **Leverages Existing Infrastructure**: Environment package already handles room structure and scaling
-- **Performance Optimized**: Simple placement after capacity validation is much faster than constraint satisfaction
-- **Event Transparency**: Room scaling events provide debugging and analytics visibility
+- **Leverages Proven Infrastructure**: Environment package provides mathematically sound space calculations
+- **Clean Separation of Concerns**: Spawn engine focuses on entity placement, not room structure decisions
+- **Split-Aware Design**: Spawn engine works seamlessly with single rooms or multi-room configurations
+- **Client Autonomy**: Upstream clients retain full control over room splitting decisions
+- **Event Transparency**: Room scaling and split recommendation events provide debugging visibility
+- **Quality Assurance**: Maintains proper spatial relationships regardless of room structure
 
 #### 4. Entity Size and Spatial Integration
 
@@ -136,38 +223,84 @@ entity.BlocksLineOfSight() bool   // Line of sight constraints
 - Account for `BlocksMovement()` in pathability calculations
 - Factor `BlocksLineOfSight()` into LOS constraint validation
 
-#### 5. Environment Package Query Extension
+#### 5. Environment Package Query Integration ✅ IMPLEMENTED
 
-**Decision**: Extend environment package with space calculation queries rather than implementing in spawn engine.
+**Decision**: Leverage existing environment package query capabilities for space calculations and room analysis.
 
-**New Query Types for Environment Package**:
+**Available Query Types in Environment Package**:
 ```go
-type SpaceRequirementQuery struct {
-    Entities     []core.Entity
-    Constraints  SpaceConstraints
-    RoomType     string
+// Space capacity analysis
+type CapacityQuery struct {
+    RoomID              string
+    Intent              SpatialIntentProfile
+    EntityCount         int
+    RoomSize            spatial.Dimensions
+    Constraints         CapacityConstraints
+    ExistingEntityCount int
+    IncludeSplitOptions bool
 }
 
-type SpaceAvailabilityQuery struct {
-    RoomID      string
-    Constraints SpaceConstraints  
+// Room sizing calculations  
+type SizingQuery struct {
+    Intent          SpatialIntentProfile
+    EntityCount     int
+    AdditionalSpace float64
+    MinDimensions   spatial.Dimensions
+    MaxDimensions   spatial.Dimensions
 }
 
-type SpaceQueryResult struct {
-    RequiredSpaces   int
-    AvailableSpaces  int
-    PathingSpaces    int
-    BufferSpaces     int
-    RecommendedScale float64
-    IsAdequate       bool
+// Multi-room entity queries
+type EntityQuery struct {
+    Center      *spatial.Position
+    Radius      float64
+    RoomIDs     []string
+    EntityTypes []string
+    InTheme     string
+    HasFeature  string
+    Limit       int
+}
+
+// Room discovery and filtering
+type RoomQuery struct {
+    RoomTypes      []string
+    Themes         []string
+    Features       []string
+    NearPosition   *spatial.Position
+    ConnectedTo    string
+    MinConnections int
+    MaxConnections int
+}
+```
+
+**Integration Pattern for Spawn Engine**:
+```go
+// Use environment queries for space planning
+capacityQuery := environments.CapacityQuery{
+    EntityCount: len(selectedEntities),
+    RoomSize:    currentRoomDimensions,
+    Constraints: environments.CapacityConstraints{
+        TargetSpatialFeeling: SpatialFeelingNormal,
+        MinEntitySpacing:     2.0,
+    },
+}
+response, err := environmentQueryHandler.HandleCapacityQuery(ctx, capacityQuery)
+
+// Scale room if needed
+if !response.Satisfied {
+    sizingQuery := environments.SizingQuery{
+        Intent:      environments.GetDefaultSpatialIntentProfile(SpatialFeelingNormal),
+        EntityCount: len(selectedEntities),
+    }
+    newDimensions, err := environmentQueryHandler.HandleSizingQuery(ctx, sizingQuery)
+    // Apply scaling using existing environment capabilities
 }
 ```
 
 **Rationale**:
-- **Centralized Expertise**: Environment package owns room structure knowledge and spatial calculations
+- **Existing Infrastructure**: Environment package already provides comprehensive space calculation
 - **Clean Separation**: Spawn engine orchestrates, environment package calculates
-- **Reusability**: Space queries useful for other toolkit modules beyond spawning
-- **Architectural Consistency**: Maintains environment package as authoritative source for spatial analysis
+- **Proven Implementation**: Space queries are implemented and tested
+- **Consistent API**: Follows established toolkit query patterns
 
 #### 6. Error Recovery and Placement Strategy
 
@@ -232,6 +365,51 @@ if placeable, ok := entity.(spatial.Placeable); ok {
     blocksLOS := placeable.BlocksLineOfSight()
 }
 ```
+
+#### 7. Gridless Room Design Intent ✅ IMPLEMENTED
+
+**Decision**: For gridless rooms, the spawn engine provides simple entity placement within room boundaries without grid constraints.
+
+**Design Intent**:
+- **Continuous Positioning**: Gridless rooms use floating-point coordinates for smooth, realistic positioning
+- **Simplified Placement**: No grid alignment requirements - entities can be placed at any valid coordinate
+- **Boundary Respect**: Entities respect room boundaries and wall proximity constraints
+- **Natural Distribution**: Uses random sampling within room bounds for organic entity distribution
+- **Constraint Compatibility**: All spatial constraints (distance, line of sight, etc.) work with gridless positioning
+
+**Implementation Strategy**:
+```go
+// Gridless room detection and handling
+func (cs *ConstraintSolver) isGridlessRoom(grid spatial.Grid) bool {
+    return grid == nil // Gridless rooms have no grid system
+}
+
+// Optimized position finding for continuous positioning
+func (cs *ConstraintSolver) findValidPositionsGridless(
+    room spatial.Room, entity core.Entity, constraints SpatialConstraints,
+    existingEntities []SpawnedEntity, maxPositions int,
+) ([]spatial.Position, error) {
+    // Use random sampling within room bounds
+    roomDimensions := room.GetDimensions()
+    margin := 1.0 // Wall proximity buffer
+    
+    for attempts := 0; attempts < maxAttempts; attempts++ {
+        x := margin + (roomDimensions.Width-2*margin)*rand.Float64()
+        y := margin + (roomDimensions.Height-2*margin)*rand.Float64()
+        position := spatial.Position{X: x, Y: y}
+        
+        if cs.ValidatePosition(room, position, entity, constraints, existingEntities) == nil {
+            validPositions = append(validPositions, position)
+        }
+    }
+}
+```
+
+**Rationale**:
+- **Flexibility**: Supports both tactical grid-based games and fluid, realistic positioning systems
+- **Performance**: Random sampling is more efficient than exhaustive grid searches for large spaces
+- **Natural Placement**: Avoids artificial grid-locked positioning in continuous environments
+- **Toolkit Philosophy**: Provides infrastructure for any positioning system, not imposing specific mechanics
 
 #### Environment Package Integration Analysis
 
@@ -385,9 +563,31 @@ func (e *SpawnEngine) processEntity(entity core.Entity) error {
 #### Primary Interface
 ```go
 type SpawnEngine interface {
+    // Core spawning - works with single rooms or split room configurations
+    PopulateSpace(roomOrGroup interface{}, config SpawnConfig) (SpawnResult, error)
+    
+    // Legacy single-room interface for backwards compatibility
     PopulateRoom(roomID string, config SpawnConfig) (SpawnResult, error)
+    
+    // Multi-room spawning for split room scenarios
+    PopulateSplitRooms(connectedRooms []string, config SpawnConfig) (SpawnResult, error)
+    
+    // Room transition handling
     HandleRoomTransition(entityID, fromRoom, toRoom, connectionID string) (Position, error)
+    
+    // Configuration validation
     ValidateSpawnConfig(config SpawnConfig) error
+    
+    // Room structure analysis for split-awareness
+    AnalyzeRoomStructure(roomID string) RoomStructureInfo
+}
+
+// Room structure information for split-aware spawning
+type RoomStructureInfo struct {
+    IsSplit         bool     `json:"is_split"`
+    ConnectedRooms  []string `json:"connected_rooms"`  
+    ConnectionTypes []string `json:"connection_types"`
+    TotalCapacity   int      `json:"total_capacity"`
 }
 ```
 
@@ -460,16 +660,19 @@ type PathingConstraints struct {
 #### Result and Event System
 ```go
 type SpawnResult struct {
-    Success          bool                    `json:"success"`
-    SpawnedEntities  []SpawnedEntity         `json:"spawned_entities"`
-    Failures         []SpawnFailure          `json:"failures"`
-    RoomModifications []RoomModification     `json:"room_modifications"`
-    Metadata         SpawnMetadata          `json:"metadata"`
+    Success           bool                    `json:"success"`
+    SpawnedEntities   []SpawnedEntity         `json:"spawned_entities"`
+    Failures          []SpawnFailure          `json:"failures"`
+    RoomModifications []RoomModification      `json:"room_modifications"`
+    SplitRecommendations []RoomSplit          `json:"split_recommendations"`  // Passthrough from environment
+    RoomStructure     RoomStructureInfo       `json:"room_structure"`         // What structure was used
+    Metadata          SpawnMetadata           `json:"metadata"`
 }
 
 type SpawnedEntity struct {
     Entity           core.Entity             `json:"entity"`
     Position         spatial.Position        `json:"position"`
+    RoomID           string                  `json:"room_id"`          // Which room in split configuration
     GroupID          string                  `json:"group_id"`
     SpawnReason      string                  `json:"spawn_reason"`
 }
@@ -530,6 +733,8 @@ type ScalingConfig struct {
 ```
 
 #### Team-Based Spawning
+**Purpose**: Keep allied entities grouped together and separated from opposing teams, not scattered randomly.
+
 ```go
 type TeamConfig struct {
     Teams            []Team                  `json:"teams"`
@@ -538,12 +743,45 @@ type TeamConfig struct {
 }
 
 type Team struct {
-    ID               string                  `json:"id"`
-    EntityTypes      []string                `json:"entity_types"`
-    Formation        *FormationPattern       `json:"formation,omitempty"`
-    PreferredZone    string                  `json:"preferred_zone"`
+    ID               string                  `json:"id"`                // "friendlies", "enemies", "neutrals"
+    EntityTypes      []string                `json:"entity_types"`      // Entity types for this team
+    Formation        *FormationPattern       `json:"formation,omitempty"` // How team members are arranged
+    PreferredZone    string                  `json:"preferred_zone"`    // Spawn zone for this team
+    Cohesion         float64                 `json:"cohesion"`          // How tightly grouped (0.0-1.0)
 }
+
+type SeparationConstraints struct {
+    MinTeamDistance  float64                 `json:"min_team_distance"`  // Minimum distance between teams
+    BufferZones      []BufferZone            `json:"buffer_zones"`       // No-spawn areas between teams  
+    TeamPlacement    TeamPlacementStrategy   `json:"team_placement"`     // "corners", "opposite_sides", "random"
+}
+
+// Example: Friendlies spawn together in northwest, enemies together in southeast
+// No random mixing - tactical positioning for clear team boundaries
 ```
+
+### Performance and Quality Trade-offs ✅ DECIDED
+
+**Decision**: Prioritize reliability and simplicity over optimal placement efficiency.
+
+**Approach**:
+- **Operation Timeout**: 30 seconds maximum for spawn operations (configurable)
+- **Iteration Limits**: 1000 placement attempts per entity maximum
+- **Quality Threshold**: Accept 80% constraint satisfaction as "good enough" placement
+- **Caching Strategy**: Cache constraint validation results within single spawn operation for reuse
+- **Graceful Degradation**: Ensure every entity gets placed rather than failing entirely
+
+**Rationale**: For RPG scenarios, ensuring all entities are placed is more important than finding mathematically optimal positions. The capacity-first approach with room scaling eliminates most performance bottlenecks. Games need predictable behavior over perfect optimization.
+
+### Error Recovery Strategy 📝 TODO
+
+**Decision**: Plan progressive constraint relaxation during implementation phase.
+
+**Areas to Define**:
+- Exact priority order for constraint relaxation
+- Which constraints are "critical" vs. "nice-to-have"
+- Fallback mechanisms when all placement attempts fail
+- Event reporting for constraint violations and recoveries
 
 ## Consequences
 
@@ -807,67 +1045,86 @@ The spawn engine publishes comprehensive events for observability, debugging, an
 ```go
 // Event constants following toolkit patterns
 const (
-    EventSpawnOperationStarted  = "spawn.operation.started"
-    EventEntitySpawned         = "spawn.entity.spawned"
-    EventEntitySpawnFailed     = "spawn.entity.failed"
-    EventRoomModified          = "spawn.room.modified"
+    EventSpawnOperationStarted   = "spawn.operation.started"
+    EventEntitySpawned          = "spawn.entity.spawned"
+    EventEntitySpawnFailed      = "spawn.entity.failed"
+    EventRoomModified           = "spawn.room.modified"
+    EventRoomScaled             = "spawn.room.scaled"
+    EventSplitRecommended       = "spawn.split.recommended"      // Passthrough event to client
+    EventMultiRoomSpawn         = "spawn.multiroom.completed"    // Split room spawning completed
     EventSpawnOperationCompleted = "spawn.operation.completed"
-    EventFormationApplied      = "spawn.formation.applied"
-    EventConstraintViolation   = "spawn.constraint.violation"
-    EventAdaptiveScaling       = "spawn.room.scaled"
+    EventFormationApplied       = "spawn.formation.applied"
+    EventConstraintViolation    = "spawn.constraint.violation"
 )
 
-// Example: Event publishing patterns
-func (e *BasicSpawnEngine) publishSpawnEvents(roomID string, config SpawnConfig, 
+// Example: Event publishing patterns with split-awareness
+func (e *BasicSpawnEngine) publishSpawnEvents(roomOrGroup interface{}, config SpawnConfig, 
     result SpawnResult) {
     
     if e.eventBus == nil || !e.config.EnableEvents {
         return
     }
     
-    // Create room entity for event context
-    roomEntity := &SpawnRoomEntity{id: roomID, roomType: "spawn_target"}
+    // Handle both single room and split room scenarios
+    var roomEntity core.Entity
+    var roomID string
+    
+    if result.RoomStructure.IsSplit {
+        roomID = strings.Join(result.RoomStructure.ConnectedRooms, "+")
+        roomEntity = &SpawnRoomGroupEntity{
+            id:              roomID, 
+            roomType:        "split_spawn_target",
+            connectedRooms:  result.RoomStructure.ConnectedRooms,
+        }
+    } else {
+        roomID = roomOrGroup.(string)
+        roomEntity = &SpawnRoomEntity{id: roomID, roomType: "single_spawn_target"}
+    }
+    
+    // Publish split recommendations if available (passthrough to client)
+    if len(result.SplitRecommendations) > 0 {
+        splitData := SplitRecommendationEventData{
+            OriginalRoomID:   roomID,
+            SplitOptions:     result.SplitRecommendations,
+            EntityCount:      len(config.EntityGroups),
+            Reason:           "Capacity analysis suggests room splitting",
+        }
+        splitEvent := events.NewGameEvent(EventSplitRecommended, roomEntity, splitData)
+        e.eventBus.Publish(context.Background(), splitEvent)
+    }
     
     // Publish operation completed event
     operationData := SpawnOperationEventData{
-        RoomID:           roomID,
-        Configuration:    config,
-        Result:          result,
+        RoomOrGroup:       roomOrGroup,
+        Configuration:     config,
+        Result:           result,
         TotalEntities:    len(result.SpawnedEntities),
         FailedEntities:   len(result.Failures),
         ExecutionTime:    result.Metadata.ExecutionTime,
         RoomModifications: result.RoomModifications,
+        UsedSplitRooms:   result.RoomStructure.IsSplit,
     }
     
-    event := events.NewGameEvent(EventSpawnOperationCompleted, roomEntity, operationData)
+    eventType := EventSpawnOperationCompleted
+    if result.RoomStructure.IsSplit {
+        eventType = EventMultiRoomSpawn
+    }
+    
+    event := events.NewGameEvent(eventType, roomEntity, operationData)
     e.eventBus.Publish(context.Background(), event)
     
-    // Publish individual entity spawn events
+    // Publish individual entity spawn events (now with room info for splits)
     for _, spawnedEntity := range result.SpawnedEntities {
         entityData := EntitySpawnEventData{
             Entity:      spawnedEntity.Entity,
             Position:    spawnedEntity.Position,
+            RoomID:      spawnedEntity.RoomID,  // Specific room in split config
             GroupID:     spawnedEntity.GroupID,
             SpawnReason: spawnedEntity.SpawnReason,
-            RoomID:      roomID,
         }
         
         entityEvent := events.NewGameEvent(EventEntitySpawned, roomEntity, entityData)
         e.eventBus.Publish(context.Background(), entityEvent)
-    }
-    
-    // Publish failure events for debugging
-    for _, failure := range result.Failures {
-        failureData := EntitySpawnFailureEventData{
-            EntityType:        failure.EntityType,
-            Reason:           failure.Reason,
-            AttemptedPosition: failure.AttemptedPosition,
-            ConstraintsFailed: failure.ConstraintsFailed,
-            RoomID:           roomID,
-        }
-        
-        failureEvent := events.NewGameEvent(EventEntitySpawnFailed, roomEntity, failureData)
-        e.eventBus.Publish(context.Background(), failureEvent)
     }
 }
 

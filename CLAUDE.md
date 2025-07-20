@@ -127,6 +127,7 @@ These run automatically on commit.
 6. **mechanics/effects** - Shared infrastructure for conditions/proficiencies
 7. **mechanics/resources** - Resource management (spell slots, abilities, etc.)
 8. **tools/spatial** - Complete spatial positioning system with multi-room orchestration
+9. **tools/spawn** - Complete entity spawn engine with Phases 1-4 implementation per ADR-0013
 
 ### Spatial Module Features (Completed)
 - **Grid Systems**: Square (D&D 5e), Hex, and Gridless positioning
@@ -186,6 +187,13 @@ orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
 - Entity tracking across rooms
 - Event-driven architecture
 - Pathfinding between connected rooms
+
+### Spawn Module Features (Completed)
+- **Phase 1**: Basic spawn engine infrastructure with entity selection and pattern support
+- **Phase 2**: Advanced patterns (formation, team-based, player choice, clustered spawning)
+- **Phase 3**: Constraint system (spatial constraints, line of sight, area of effect, wall proximity)
+- **Phase 4**: Environment integration (capacity analysis, room scaling, split recommendations)
+- **Cross-Cutting**: Event system, split-aware architecture, gridless room support, configuration validation
 
 ### Development Workflow Reminders
 1. Always check existing patterns in similar modules
