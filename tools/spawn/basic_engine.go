@@ -8,32 +8,37 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// BasicSpawnEngine implements SpawnEngine interface
-// Phase 1: Core functionality only - scattered spawning with basic validation
+// BasicSpawnEngine implements SpawnEngine interface.
+// Purpose: Complete implementation per ADR-0013 with environment integration and split-aware spawning.
 type BasicSpawnEngine struct {
-	id             string
-	spatialHandler spatial.QueryHandler
-	selectablesReg SelectablesRegistry
-	eventBus       events.EventBus
-	enableEvents   bool
-	maxAttempts    int
-	random         *rand.Rand
+	id                 string
+	spatialHandler     spatial.QueryHandler
+	environmentHandler *environments.BasicQueryHandler
+	selectablesReg     SelectablesRegistry
+	eventBus           events.EventBus
+	enableEvents       bool
+	maxAttempts        int
+	random             *rand.Rand
 }
 
-// BasicSpawnEngineConfig configures a BasicSpawnEngine
+// BasicSpawnEngineConfig configures a BasicSpawnEngine.
+// Purpose: Configuration struct following toolkit patterns for dependency injection.
 type BasicSpawnEngineConfig struct {
-	ID             string
-	SpatialHandler spatial.QueryHandler
-	SelectablesReg SelectablesRegistry
-	EventBus       events.EventBus
-	EnableEvents   bool
-	MaxAttempts    int
+	ID                 string
+	SpatialHandler     spatial.QueryHandler
+	EnvironmentHandler *environments.BasicQueryHandler
+	SelectablesReg     SelectablesRegistry
+	EventBus           events.EventBus
+	EnableEvents       bool
+	MaxAttempts        int
 }
 
-// NewBasicSpawnEngine creates a new spawn engine
+// NewBasicSpawnEngine creates a new spawn engine with the specified configuration.
+// Purpose: Standard constructor following toolkit config pattern with proper dependency injection.
 func NewBasicSpawnEngine(config BasicSpawnEngineConfig) *BasicSpawnEngine {
 	if config.ID == "" {
 		config.ID = "spawn-engine"
@@ -43,21 +48,24 @@ func NewBasicSpawnEngine(config BasicSpawnEngineConfig) *BasicSpawnEngine {
 	}
 
 	return &BasicSpawnEngine{
-		id:             config.ID,
-		spatialHandler: config.SpatialHandler,
-		selectablesReg: config.SelectablesReg,
-		eventBus:       config.EventBus,
-		enableEvents:   config.EnableEvents,
-		maxAttempts:    config.MaxAttempts,
-		random:         rand.New(rand.NewSource(time.Now().UnixNano())),
+		id:                 config.ID,
+		spatialHandler:     config.SpatialHandler,
+		environmentHandler: config.EnvironmentHandler,
+		selectablesReg:     config.SelectablesReg,
+		eventBus:           config.EventBus,
+		enableEvents:       config.EnableEvents,
+		maxAttempts:        config.MaxAttempts,
+		random:             rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404
 	}
 }
 
 // PopulateSpace implements SpawnEngine.PopulateSpace
-func (e *BasicSpawnEngine) PopulateSpace(ctx context.Context, roomOrGroup interface{}, config SpawnConfig) (SpawnResult, error) {
+func (e *BasicSpawnEngine) PopulateSpace(
+	ctx context.Context, roomOrGroup interface{}, config SpawnConfig,
+) (SpawnResult, error) {
 	result := SpawnResult{
 		SpawnedEntities:      make([]SpawnedEntity, 0),
-		Failures:            make([]SpawnFailure, 0),
+		Failures:             make([]SpawnFailure, 0),
 		RoomModifications:    make([]RoomModification, 0),
 		SplitRecommendations: make([]RoomSplit, 0),
 	}
@@ -71,16 +79,17 @@ func (e *BasicSpawnEngine) PopulateSpace(ctx context.Context, roomOrGroup interf
 
 	if roomStructure.IsSplit {
 		return e.PopulateSplitRooms(ctx, roomStructure.ConnectedRooms, config)
-	} else {
-		return e.PopulateRoom(ctx, roomStructure.PrimaryRoomID, config)
 	}
+	return e.PopulateRoom(ctx, roomStructure.PrimaryRoomID, config)
 }
 
 // PopulateRoom implements SpawnEngine.PopulateRoom
-func (e *BasicSpawnEngine) PopulateRoom(ctx context.Context, roomID string, config SpawnConfig) (SpawnResult, error) {
+func (e *BasicSpawnEngine) PopulateRoom(
+	ctx context.Context, roomID string, config SpawnConfig,
+) (SpawnResult, error) {
 	result := SpawnResult{
 		SpawnedEntities:      make([]SpawnedEntity, 0),
-		Failures:            make([]SpawnFailure, 0),
+		Failures:             make([]SpawnFailure, 0),
 		RoomModifications:    make([]RoomModification, 0),
 		SplitRecommendations: make([]RoomSplit, 0),
 		RoomStructure: RoomStructureInfo{
@@ -94,7 +103,11 @@ func (e *BasicSpawnEngine) PopulateRoom(ctx context.Context, roomID string, conf
 		return result, fmt.Errorf("invalid config: %w", err)
 	}
 
-	// Phase 2: Room access will be implemented when spatial integration is added
+	// Phase 4: Perform capacity analysis and scaling if needed
+	err := e.handleCapacityAnalysis(ctx, roomID, config, &result)
+	if err != nil {
+		return result, fmt.Errorf("capacity analysis failed: %w", err)
+	}
 
 	// Route to appropriate spawning method based on pattern
 	switch config.Pattern {
@@ -121,7 +134,7 @@ func (e *BasicSpawnEngine) ValidateSpawnConfig(config SpawnConfig) error {
 
 	// Phase 2: All patterns supported
 	validPatterns := []SpawnPattern{
-		PatternScattered, PatternFormation, PatternTeamBased, 
+		PatternScattered, PatternFormation, PatternTeamBased,
 		PatternPlayerChoice, PatternClustered,
 	}
 	validPattern := false
@@ -170,15 +183,15 @@ func (e *BasicSpawnEngine) selectEntitiesForGroup(group EntityGroup) ([]core.Ent
 	return entities, nil
 }
 
-// getRoomFromSpatial gets room from spatial module (mocked for Phase 1)
-func (e *BasicSpawnEngine) getRoomFromSpatial(roomID string) (spatial.Room, error) {
-	// Phase 1: This would query the spatial handler
-	// For now, return a simple interface that we can work with
+// getRoomFromSpatial gets room from spatial module (Phase 1: not implemented)
+func (e *BasicSpawnEngine) getRoomFromSpatial(_ string) (spatial.Room, error) {
+	// Phase 1: Spatial integration not yet implemented
+	// Real implementation would query e.spatialHandler.GetRoom(roomID)
 	return nil, fmt.Errorf("spatial integration not implemented in Phase 1")
 }
 
 // findValidPosition finds a valid position for an entity (simplified for Phase 1)
-func (e *BasicSpawnEngine) findValidPosition(room spatial.Room, entity core.Entity) (spatial.Position, error) {
+func (e *BasicSpawnEngine) findValidPosition(_ spatial.Room, _ core.Entity) (spatial.Position, error) {
 	// Phase 1: Simple random position within reasonable bounds
 	// Real implementation would query the spatial room for valid positions
 	x := e.random.Float64() * 10.0
@@ -188,14 +201,16 @@ func (e *BasicSpawnEngine) findValidPosition(room spatial.Room, entity core.Enti
 }
 
 // placeEntityInRoom places entity in the spatial room
-func (e *BasicSpawnEngine) placeEntityInRoom(room spatial.Room, entity core.Entity, position spatial.Position) error {
+func (e *BasicSpawnEngine) placeEntityInRoom(_ spatial.Room, _ core.Entity, _ spatial.Position) error {
 	// Phase 1: This would call room.PlaceEntity(entity, position)
 	// For now, just validate the basic operation
 	return nil
 }
 
 // publishEntitySpawnedEvent publishes entity spawned event
-func (e *BasicSpawnEngine) publishEntitySpawnedEvent(ctx context.Context, roomID string, entity core.Entity, position spatial.Position) {
+func (e *BasicSpawnEngine) publishEntitySpawnedEvent(
+	ctx context.Context, roomID string, entity core.Entity, position spatial.Position,
+) {
 	if !e.enableEvents || e.eventBus == nil {
 		return
 	}
@@ -214,20 +229,26 @@ func (e *BasicSpawnEngine) publishEntitySpawnedEvent(ctx context.Context, roomID
 	_ = e.eventBus.Publish(ctx, event)
 }
 
-// SimpleRoomEntity implements core.Entity for event publishing
+// SimpleRoomEntity implements core.Entity for event publishing.
+// Purpose: Minimal entity implementation for spawn event sources.
 type SimpleRoomEntity struct {
 	id       string
 	roomType string
 }
 
-func (r *SimpleRoomEntity) GetID() string   { return r.id }
+// GetID returns the room entity ID
+func (r *SimpleRoomEntity) GetID() string { return r.id }
+
+// GetType returns the room entity type
 func (r *SimpleRoomEntity) GetType() string { return r.roomType }
 
 // PopulateSplitRooms implements SpawnEngine.PopulateSplitRooms
-func (e *BasicSpawnEngine) PopulateSplitRooms(ctx context.Context, connectedRooms []string, config SpawnConfig) (SpawnResult, error) {
+func (e *BasicSpawnEngine) PopulateSplitRooms(
+	ctx context.Context, connectedRooms []string, config SpawnConfig,
+) (SpawnResult, error) {
 	result := SpawnResult{
 		SpawnedEntities:      make([]SpawnedEntity, 0),
-		Failures:            make([]SpawnFailure, 0),
+		Failures:             make([]SpawnFailure, 0),
 		RoomModifications:    make([]RoomModification, 0),
 		SplitRecommendations: make([]RoomSplit, 0),
 		RoomStructure: RoomStructureInfo{

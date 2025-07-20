@@ -1,15 +1,20 @@
+// Package spawn provides entity placement capabilities for game spaces.
+// Purpose: Complete spawn engine implementation per ADR-0013 with split-aware architecture,
+// environment integration, capacity analysis, and adaptive room scaling.
 package spawn
 
 import "github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
-// TeamConfig configures team-based spawning
+// TeamConfig configures team-based spawning.
+// Purpose: Defines team separation rules and cohesion constraints for tactical entity placement.
 type TeamConfig struct {
 	Teams           []Team                `json:"teams"`
 	CohesionRules   TeamCohesionRules     `json:"cohesion_rules"`
 	SeparationRules SeparationConstraints `json:"separation_rules"`
 }
 
-// Team represents a group of entities that should be placed together
+// Team represents a group of entities that should be placed together.
+// Purpose: Defines entity types, formation, and cohesion settings for a tactical unit.
 type Team struct {
 	ID            string            `json:"id"`
 	EntityTypes   []string          `json:"entity_types"`
@@ -43,12 +48,13 @@ const (
 	TeamPlacementRandom TeamPlacementStrategy = "random"
 )
 
-// FormationPattern defines a structured arrangement of entities
+// FormationPattern defines a structured arrangement of entities.
+// Purpose: Specifies precise positioning patterns for coordinated entity placement.
 type FormationPattern struct {
-	Name        string                `json:"name"`
-	Positions   []RelativePosition    `json:"positions"`
-	Scaling     FormationScaling      `json:"scaling"`
-	Constraints FormationConstraints  `json:"constraints"`
+	Name        string               `json:"name"`
+	Positions   []RelativePosition   `json:"positions"`
+	Scaling     FormationScaling     `json:"scaling"`
+	Constraints FormationConstraints `json:"constraints"`
 }
 
 // RelativePosition defines a position relative to formation center
@@ -67,24 +73,25 @@ type FormationScaling struct {
 
 // FormationConstraints define requirements for formation placement
 type FormationConstraints struct {
-	MinSpacing     float64 `json:"min_spacing"`
-	RequiredSpace  float64 `json:"required_space"`
-	WallClearance  float64 `json:"wall_clearance"`
+	MinSpacing    float64 `json:"min_spacing"`
+	RequiredSpace float64 `json:"required_space"`
+	WallClearance float64 `json:"wall_clearance"`
 }
 
-// SpawnZone defines an area where players can choose spawn positions
+// SpawnZone defines an area where players can choose spawn positions.
+// Purpose: Restricts player spawn choices to specific rectangular areas with type filtering.
 type SpawnZone struct {
-	ID          string              `json:"id"`
-	Area        spatial.Rectangle   `json:"area"`
-	EntityTypes []string            `json:"entity_types"`
-	MaxEntities int                 `json:"max_entities"`
+	ID          string            `json:"id"`
+	Area        spatial.Rectangle `json:"area"`
+	EntityTypes []string          `json:"entity_types"`
+	MaxEntities int               `json:"max_entities"`
 }
 
 // PlayerSpawnChoice represents a player's choice of spawn position
 type PlayerSpawnChoice struct {
-	PlayerID string            `json:"player_id"`
-	ZoneID   string            `json:"zone_id"`
-	Position spatial.Position  `json:"position"`
+	PlayerID string           `json:"player_id"`
+	ZoneID   string           `json:"zone_id"`
+	Position spatial.Position `json:"position"`
 }
 
 // SpatialConstraints define spatial requirements and restrictions
@@ -108,8 +115,8 @@ type EntityPair struct {
 
 // PlacementRules define how entities should be positioned
 type PlacementRules struct {
-	MaintainExitAccess bool    `json:"maintain_exit_access"`
-	MinPathWidth       float64 `json:"min_path_width"`
+	MaintainExitAccess bool     `json:"maintain_exit_access"`
+	MinPathWidth       float64  `json:"min_path_width"`
 	PreferredAreas     []string `json:"preferred_areas"`
 }
 

@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -118,6 +119,135 @@ func (s *BasicSpawnEngineTestSuite) TestEntitySelection() {
 	})
 }
 
+func (s *BasicSpawnEngineTestSuite) TestConfigValidationComprehensive() {
+	s.Run("validates complex configurations", func() {
+		// Register test entities
+		err := s.registry.RegisterTable("mixed-entities", s.testEntities)
+		s.Require().NoError(err)
+
+		config := SpawnConfig{
+			EntityGroups: []EntityGroup{
+				{
+					ID:             "group1",
+					Type:           "enemy",
+					SelectionTable: "mixed-entities",
+					Quantity:       QuantitySpec{Fixed: &[]int{2}[0]},
+				},
+				{
+					ID:             "group2",
+					Type:           "treasure",
+					SelectionTable: "mixed-entities",
+					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+				},
+			},
+			Pattern: PatternScattered,
+		}
+
+		err = s.engine.ValidateSpawnConfig(config)
+		s.Assert().NoError(err, "Complex config should validate successfully")
+	})
+}
+
+func (s *BasicSpawnEngineTestSuite) TestPatternValidation() {
+	s.Run("validates all supported patterns", func() {
+		// Register test entities
+		err := s.registry.RegisterTable("test-entities", s.testEntities)
+		s.Require().NoError(err)
+
+		patterns := []SpawnPattern{
+			PatternScattered,
+			PatternFormation,
+			PatternTeamBased,
+			PatternPlayerChoice,
+			PatternClustered,
+		}
+
+		for _, pattern := range patterns {
+			s.Run(fmt.Sprintf("pattern_%s_validates", pattern), func() {
+				config := SpawnConfig{
+					EntityGroups: []EntityGroup{
+						{
+							ID:             "test-group",
+							Type:           "mixed",
+							SelectionTable: "test-entities",
+							Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+						},
+					},
+					Pattern: pattern,
+				}
+
+				// Add required config for specific patterns
+				if pattern == PatternTeamBased {
+					config.TeamConfiguration = &TeamConfig{
+						Teams: []Team{
+							{ID: "team1", EntityTypes: []string{"enemy"}},
+						},
+					}
+				}
+				if pattern == PatternPlayerChoice {
+					config.PlayerSpawnZones = []SpawnZone{
+						{
+							ID:          "zone1",
+							EntityTypes: []string{"player"},
+							MaxEntities: 5,
+						},
+					}
+				}
+
+				err := s.engine.ValidateSpawnConfig(config)
+				s.Assert().NoError(err, "Pattern %s should validate", pattern)
+			})
+		}
+	})
+}
+
+func (s *BasicSpawnEngineTestSuite) TestInterfaceCompliance() {
+	s.Run("implements all SpawnEngine methods", func() {
+		// This test verifies interface compliance by calling all methods
+		// Even if they don't fully work due to missing spatial integration
+
+		config := SpawnConfig{
+			EntityGroups: []EntityGroup{
+				{
+					ID:             "test-group",
+					Type:           "test",
+					SelectionTable: "nonexistent",
+					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+				},
+			},
+			Pattern: PatternScattered,
+		}
+
+		// All these methods should exist and be callable
+		info := s.engine.AnalyzeRoomStructure("test-room")
+		s.Assert().False(info.IsSplit)
+		s.Assert().Equal("test-room", info.PrimaryRoomID)
+
+		err := s.engine.ValidateSpawnConfig(config)
+		s.Assert().NoError(err) // Validation only checks config structure, not table existence
+
+		// PopulateSpace should also be callable (even if it fails)
+		_, err = s.engine.PopulateSpace(context.Background(), "test-room", config)
+		s.Assert().Error(err) // Expected to fail due to spatial integration
+
+		_, err = s.engine.PopulateRoom(context.Background(), "test-room", config)
+		s.Assert().Error(err) // Expected to fail due to spatial integration
+
+		_, err = s.engine.PopulateSplitRooms(context.Background(), []string{"room1"}, config)
+		s.Assert().Error(err) // Expected to fail due to spatial integration
+	})
+}
+
+func (s *BasicSpawnEngineTestSuite) TestRoomStructureAnalysis() {
+	s.Run("analyzes room structure correctly", func() {
+		// Test single room
+		info := s.engine.AnalyzeRoomStructure("single-room")
+		s.Assert().False(info.IsSplit)
+		s.Assert().Equal([]string{"single-room"}, info.ConnectedRooms)
+		s.Assert().Equal("single-room", info.PrimaryRoomID)
+	})
+}
+
 func TestBasicSpawnEngineTestSuite(t *testing.T) {
 	suite.Run(t, new(BasicSpawnEngineTestSuite))
 }
@@ -140,23 +270,23 @@ func NewMockEventBus(t *testing.T) *MockEventBus {
 	return &MockEventBus{t: t}
 }
 
-func (m *MockEventBus) Publish(ctx context.Context, event events.Event) error {
+func (m *MockEventBus) Publish(_ context.Context, _ events.Event) error {
 	return nil
 }
 
-func (m *MockEventBus) Subscribe(eventType string, handler events.Handler) string {
+func (m *MockEventBus) Subscribe(_ string, _ events.Handler) string {
 	return "mock-subscription"
 }
 
-func (m *MockEventBus) SubscribeFunc(eventType string, priority int, fn events.HandlerFunc) string {
+func (m *MockEventBus) SubscribeFunc(_ string, _ int, _ events.HandlerFunc) string {
 	return "mock-subscription"
 }
 
-func (m *MockEventBus) Unsubscribe(subscriptionID string) error {
+func (m *MockEventBus) Unsubscribe(_ string) error {
 	return nil
 }
 
-func (m *MockEventBus) Clear(eventType string) {
+func (m *MockEventBus) Clear(_ string) {
 }
 
 func (m *MockEventBus) ClearAll() {

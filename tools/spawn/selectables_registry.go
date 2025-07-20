@@ -7,18 +7,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// BasicSelectablesRegistry implements SelectablesRegistry
-// Phase 1: Simple registry without full selectables integration
+// BasicSelectablesRegistry implements SelectablesRegistry.
+// Purpose: Simple entity selection registry for Phase 1 implementation.
 type BasicSelectablesRegistry struct {
 	tables map[string][]core.Entity
 	random *rand.Rand
 }
 
-// NewBasicSelectablesRegistry creates a new registry
+// NewBasicSelectablesRegistry creates a new registry.
+// Purpose: Constructor for entity selection table management.
 func NewBasicSelectablesRegistry() *BasicSelectablesRegistry {
 	return &BasicSelectablesRegistry{
 		tables: make(map[string][]core.Entity),
-		random: rand.New(rand.NewSource(42)), // Fixed seed for Phase 1
+		random: rand.New(rand.NewSource(42)), // #nosec G404 - deterministic for testing, not cryptographic
 	}
 }
 

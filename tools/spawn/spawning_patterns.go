@@ -9,7 +9,9 @@ import (
 )
 
 // applyScatteredSpawning implements scattered spawning pattern
-func (e *BasicSpawnEngine) applyScatteredSpawning(ctx context.Context, roomID string, config SpawnConfig, result SpawnResult) (SpawnResult, error) {
+func (e *BasicSpawnEngine) applyScatteredSpawning(
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+) (SpawnResult, error) {
 	// Get room from spatial handler
 	room, err := e.getRoomFromSpatial(roomID)
 	if err != nil {
@@ -62,14 +64,18 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(ctx context.Context, roomID st
 }
 
 // applyFormationSpawning implements formation-based spawning pattern
-func (e *BasicSpawnEngine) applyFormationSpawning(ctx context.Context, roomID string, config SpawnConfig, result SpawnResult) (SpawnResult, error) {
+func (e *BasicSpawnEngine) applyFormationSpawning(
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+) (SpawnResult, error) {
 	// Phase 2: Simple implementation - delegate to scattered for now
 	// TODO: Implement actual formation logic
 	return e.applyScatteredSpawning(ctx, roomID, config, result)
 }
 
 // applyTeamBasedSpawning implements team-based spawning pattern
-func (e *BasicSpawnEngine) applyTeamBasedSpawning(ctx context.Context, roomID string, config SpawnConfig, result SpawnResult) (SpawnResult, error) {
+func (e *BasicSpawnEngine) applyTeamBasedSpawning(
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+) (SpawnResult, error) {
 	// Phase 2: Basic implementation
 	if config.TeamConfiguration == nil {
 		return result, fmt.Errorf("team configuration required for team-based spawning")
@@ -81,7 +87,9 @@ func (e *BasicSpawnEngine) applyTeamBasedSpawning(ctx context.Context, roomID st
 }
 
 // applyPlayerChoiceSpawning implements player choice spawning pattern
-func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(ctx context.Context, roomID string, config SpawnConfig, result SpawnResult) (SpawnResult, error) {
+func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+) (SpawnResult, error) {
 	// Phase 2: Basic implementation
 	if len(config.PlayerSpawnZones) == 0 {
 		return result, fmt.Errorf("player spawn zones required for player choice spawning")
@@ -148,7 +156,9 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(ctx context.Context, roomID
 }
 
 // applyClusteredSpawning implements clustered spawning pattern
-func (e *BasicSpawnEngine) applyClusteredSpawning(ctx context.Context, roomID string, config SpawnConfig, result SpawnResult) (SpawnResult, error) {
+func (e *BasicSpawnEngine) applyClusteredSpawning(
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+) (SpawnResult, error) {
 	// Phase 2: Simple implementation - delegate to scattered for now
 	// TODO: Implement actual clustering logic
 	return e.applyScatteredSpawning(ctx, roomID, config, result)
@@ -161,7 +171,9 @@ func (e *BasicSpawnEngine) isPlayerEntity(entity core.Entity) bool {
 }
 
 // findPlayerSpawnPosition finds a position for a player within spawn zones
-func (e *BasicSpawnEngine) findPlayerSpawnPosition(entity core.Entity, zones []SpawnZone, choices []PlayerSpawnChoice) (spatial.Position, error) {
+func (e *BasicSpawnEngine) findPlayerSpawnPosition(
+	entity core.Entity, zones []SpawnZone, choices []PlayerSpawnChoice,
+) (spatial.Position, error) {
 	entityID := entity.GetID()
 
 	// Check if player made a specific choice
@@ -193,7 +205,9 @@ func (e *BasicSpawnEngine) findPlayerSpawnPosition(entity core.Entity, zones []S
 }
 
 // isEntityAllowedInZone checks if an entity can spawn in a zone
-func (e *BasicSpawnEngine) isEntityAllowedInZone(entity core.Entity, zone SpawnZone) bool {
+func (e *BasicSpawnEngine) isEntityAllowedInZone(
+	entity core.Entity, zone SpawnZone,
+) bool {
 	if len(zone.EntityTypes) == 0 {
 		return true // Zone allows all types
 	}
@@ -208,6 +222,8 @@ func (e *BasicSpawnEngine) isEntityAllowedInZone(entity core.Entity, zone SpawnZ
 }
 
 // isPositionInZone checks if a position is within zone boundaries
-func (e *BasicSpawnEngine) isPositionInZone(position spatial.Position, zone SpawnZone) bool {
+func (e *BasicSpawnEngine) isPositionInZone(
+	position spatial.Position, zone SpawnZone,
+) bool {
 	return zone.Area.Contains(position)
 }
