@@ -222,8 +222,8 @@ Games provide:
 
 ### Negative
 - **Complexity**: Multiple paradigms mean more to learn/maintain
-- **No defaults**: Games must implement all behaviors from scratch
-- **Integration burden**: Games must wire perception, spatial, and behaviors together
+- **No defaults**: Games must implement all behaviors from scratch (though this is actually positive - see below)
+- **Integration burden**: Games must wire perception, spatial, and behaviors together (also positive - see below)
 
 ### Neutral
 - **Performance**: Behavior execution should be fast, but complex perception might be costly
@@ -237,8 +237,101 @@ Games provide:
 4. Pathfinding can use A* on spatial grid
 5. Consider behavior composition (combining multiple behaviors)
 
+## Philosophy: Infrastructure as a Feature
+
+The "negative" consequences listed above are actually **positive design decisions**:
+
+### No Defaults is Good
+- **Clean separation**: Toolkit provides infrastructure, games provide rules
+- **No hidden behavior**: Games have full control over AI decisions
+- **Explicit is better**: No surprising default behaviors to override
+- **Rulebook clarity**: Each game's rulebook can implement its specific AI behaviors
+
+### Integration Points are Features
+- **Explicit hooks**: Higher-level implementations have clear places to connect systems
+- **Composable**: Pick only the behavior paradigms you need
+- **Testable**: Each integration point can be mocked/tested independently
+- **Maintainable**: Changes to one system don't cascade unexpectedly
+
+### Benefits for Rulebook Pattern
+```go
+// The rulebook can cleanly implement game-specific behaviors
+type DnD5eRulebook struct {
+    behaviorTemplates map[BehaviorType]Behavior
+}
+
+// Rulebook defines how goblins behave in D&D 5e
+func (r *DnD5eRulebook) CreateGoblinBehavior() Behavior {
+    return &StateMachineBehavior{
+        states: map[StateID]State{
+            StateIDIdle:    &GoblinIdleState{},
+            StateIDCombat:  &GoblinCombatState{},
+            StateIDFleeing: &GoblinFleeingState{},
+        },
+        current: StateIDIdle,
+    }
+}
+
+// Different rulebook, different behavior
+type PathfinderRulebook struct{}
+
+func (r *PathfinderRulebook) CreateGoblinBehavior() Behavior {
+    // Pathfinder goblins might be more pyromaniacal
+    return &UtilityAIBehavior{
+        evaluators: []UtilityEvaluator{
+            &SetThingsOnFireEvaluator{Score: 0.8},
+            &AttackEvaluator{Score: 0.6},
+            &FleeEvaluator{Score: 0.4},
+        },
+    }
+}
+```
+
+This separation ensures:
+- **Game fidelity**: Each game's monsters behave according to their rules
+- **No contamination**: D&D behaviors don't leak into Pathfinder
+- **Clear ownership**: Rulebook owns behavior, toolkit owns infrastructure
+
+## Exported Type Documentation
+
+All exported types, constants, and interfaces must have proper godoc comments per the linter requirements:
+
+```go
+// BehaviorContext provides access to perception, memory, and decision
+// publishing for behavior implementations. It acts as the bridge between
+// the behavior system and the game world.
+type BehaviorContext interface {
+    // Entity returns the entity making the behavior decision
+    Entity() core.Entity
+    
+    // GetPerception returns current perception data for the entity
+    GetPerception() PerceptionData
+    
+    // GetSpatialInfo returns spatial context for movement decisions
+    GetSpatialInfo() SpatialInfo
+    
+    // GetMemory retrieves a stored memory value by key
+    GetMemory(key MemoryKey) any
+    
+    // SetMemory stores a value in behavior memory
+    SetMemory(key MemoryKey, value any)
+    
+    // PublishDecision broadcasts the AI decision for observability
+    PublishDecision(decision Decision)
+}
+
+// MemoryKey represents typed keys for behavior memory storage.
+// Using typed keys prevents typos and enables IDE auto-completion.
+type MemoryKey string
+
+// MemoryKeyLastAttacker tracks who last dealt damage to this entity.
+// Used by berserker and vengeful behavior patterns.
+const MemoryKeyLastAttacker MemoryKey = "last_attacker"
+```
+
 ## References
 - Journey Document 017: Encounter System Design
 - ADR-0009: Multi-Room Orchestration (spatial foundation)
 - ADR-0012: Selectables Tool Architecture (for weighted decisions)
 - Event system documentation
+- Toolkit design philosophy: Infrastructure, not implementation
