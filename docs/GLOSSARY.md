@@ -61,6 +61,40 @@ A spatial arrangement strategy for organizing multiple rooms:
 ### **Multi-Room Orchestration**
 The complete system for managing multiple connected rooms, including room management, connections, entity tracking, and layout patterns.
 
+## Entity Spawning Terms
+
+### **Spawn Engine**
+A system that handles entity placement in game spaces. Supports single room and multi-room scenarios with team coordination, player choice mechanics, and environment integration for capacity analysis and room scaling.
+
+### **Split-Aware Architecture**
+Design pattern where systems can work with both single rooms and multi-room configurations without requiring different APIs. The spawn engine is split-aware but not split-responsible - it handles placement regardless of room structure.
+
+### **Entity Spawning**
+The process of placing game entities (characters, enemies, items) into spatial positions within rooms. Includes validation, collision detection, and constraint satisfaction.
+
+### **Team Cohesion Rules**
+Spawn engine configuration that keeps entities of certain types together spatially. Examples: keep all allies near each other, keep enemies in groups, maintain minimum distance between opposing teams.
+
+### **Player Spawn Zones**
+Designated areas within rooms where players can choose their starting positions. Each zone has boundaries, entity type restrictions, and capacity limits. Supports player agency in tactical positioning.
+
+### **Capacity-First Approach**
+Spawn engine strategy that prioritizes fitting entities into available space. If entities don't fit, the engine recommends room scaling or provides split recommendations rather than failing.
+
+### **Spawn Pattern**
+The spatial arrangement strategy for entity placement:
+- **Scattered**: Random distribution across available space
+- **Clustered**: Groups entities with controlled spacing
+- **Formation**: Structured arrangements (lines, circles, etc.)
+- **Team-Based**: Teams placed in separate areas with cohesion rules
+- **Player Choice**: Players choose positions within designated zones
+
+### **Room Scaling**
+Automatic enlargement of room dimensions when entities don't fit in available space. The spawn engine can trigger scaling through environment package integration, preserving aspect ratios and spatial relationships.
+
+### **Split Recommendation**
+Suggestions provided by the spawn engine when a room is too crowded for effective gameplay. Includes analysis of where the room could be divided and how entities would be distributed across the resulting spaces.
+
 ## Environment Generation Terms
 
 ### **Environment**
@@ -109,6 +143,12 @@ A geometric template that defines the boundary and connection points of a room. 
 ### **Query Delegation**
 An architectural pattern where environment-level queries aggregate results from multiple rooms by delegating to spatial module queries.
 
+### **Capacity Analysis**
+Environment package queries that determine if entities will fit in available room space. Used by spawn engine to trigger room scaling or split recommendations when space is insufficient.
+
+### **Feeling-Based Sizing**
+Environment generation approach that creates rooms with emotional/atmospheric qualities (cozy, spacious, cramped) rather than purely geometric constraints. Integrates with spawn engine capacity analysis.
+
 ## Architecture Terms
 
 ### **Three-Tier Architecture**
@@ -133,6 +173,11 @@ Design pattern where components communicate through events rather than direct me
 This project uses two different types of "context" - be explicit about which one you mean:
 - **Go Context**: The standard `context.Context` used for cancellation, timeouts, and request-scoped values
 - **Event Context**: The custom `events.Context` system that carries game-specific data (damage, modifiers, entity references) between event handlers
+
+### **Split-Responsible vs Split-Aware**
+Important architectural distinction for multi-room systems:
+- **Split-Responsible**: System decides when to split rooms and how to manage multiple spaces
+- **Split-Aware**: System can work with existing split configurations but doesn't decide splitting policy. The spawn engine is split-aware but not split-responsible.
 
 ## Common Misunderstandings
 
@@ -159,6 +204,19 @@ This project uses two different types of "context" - be explicit about which one
 ### **"Layout" vs "Generation"**
 - **Layout**: The spatial arrangement pattern of rooms
 - **Generation**: The complete process of creating an environment
+
+### **"Spawning" vs "Placement"**
+- **Spawning**: The complete process of entity creation and spatial positioning, including validation and event publishing
+- **Placement**: The specific act of putting an entity at spatial coordinates (subset of spawning)
+
+### **"Team" vs "Group"**
+- **Team**: Entities with shared tactical relationships (allies, enemies) that affect spawn cohesion rules
+- **Group**: Organizational unit in spawn configuration that defines what entities to spawn together
+
+### **"Zone" vs "Area" vs "Region"**
+- **Zone**: Specific spawn engine concept for designated player choice areas with boundaries and restrictions
+- **Area**: Generic spatial concept referring to any bounded space
+- **Region**: Environment concept for larger spatial divisions (avoid when discussing spawn zones)
 
 ## Generation Type Terms
 
@@ -219,12 +277,22 @@ The performance cost of publishing and handling events, particularly relevant fo
 - Use **"wall pattern"** when discussing algorithmic wall generation
 - Use **"wall entity"** when discussing individual wall segments
 - Use **"destructible"** when discussing walls that can be damaged/destroyed
+- Use **"spawn engine"** when discussing entity placement systems
+- Use **"spawning"** when discussing the complete entity placement process
+- Use **"team cohesion"** when discussing keeping related entities together
+- Use **"player spawn zone"** when discussing designated areas for player positioning
+- Use **"capacity analysis"** when discussing whether entities fit in available space
+- Use **"split-aware"** when discussing systems that work with multi-room configurations
+- Use **"room scaling"** when discussing automatic room size adjustments
 
 ### **Avoid Ambiguous Terms**
 - **"Space"** - Too vague, use "room" or "environment"
-- **"Area"** - Too vague, use "room", "environment", or "region"
+- **"Area"** - Too vague, use "room", "environment", "region", or "spawn zone"
 - **"Map"** - Could mean many things, be specific
 - **"Level"** - Game-specific term, use "environment" or "floor"
+- **"Placement"** - When you mean full spawning process, use "spawning"
+- **"Group"** - Could mean team or entity group, be specific
+- **"Position"** - When you mean spawn choice or zone, be specific
 
 ---
 
