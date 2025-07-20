@@ -333,15 +333,15 @@ type CapacityEstimate struct {
 // Purpose: Advisory information about how rooms could be divided
 type RoomSplit struct {
 	Reason                        string               `json:"reason"`                          // Why split is recommended
-	SplitType                     string               `json:"split_type"`                      // Type of split (horizontal, vertical)
-	Dimensions                    []spatial.Dimensions `json:"dimensions"`                      // Resulting room dimensions
-	Benefits                      []string             `json:"benefits"`                        // Advantages of this split
-	Complexity                    float64              `json:"complexity"`                      // Implementation complexity
+	SplitType                     string               `json:"split_type"`                      // Split type
+	Dimensions                    []spatial.Dimensions `json:"dimensions"`                      // Room dimensions
+	Benefits                      []string             `json:"benefits"`                        // Split advantages
+	Complexity                    float64              `json:"complexity"`                      // Complexity rating
 	SuggestedSize                 spatial.Dimensions   `json:"suggested_size"`                  // Split room dimensions
-	ConnectionPoints              []spatial.Position   `json:"connection_points"`               // Suggested connection points
+	ConnectionPoints              []spatial.Position   `json:"connection_points"`               // Connection points
 	RecommendedEntityDistribution map[string]int       `json:"recommended_entity_distribution"` // Entity distribution
 	RecommendedConnectionType     string               `json:"recommended_connection_type"`     // Connection type to use
-	SplitReason                   string               `json:"split_reason"`                    // Detailed reason for split
+	SplitReason                   string               `json:"split_reason"`                    // Reason for split
 	EstimatedCapacityImprovement  float64              `json:"estimated_capacity_improvement"`  // Expected improvement
 }
 
