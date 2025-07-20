@@ -135,6 +135,138 @@ func (h *BasicQueryHandler) HandlePathQuery(ctx context.Context, query PathQuery
 	return h.handleCrossRoomPathUnsafe(query, fromRoomID, toRoomID)
 }
 
+// HandleCapacityQuery processes a capacity analysis query
+// Purpose: Provides advisory information about room capacity for intelligent room design
+func (h *BasicQueryHandler) HandleCapacityQuery(
+	ctx context.Context, query CapacityQuery,
+) (CapacityQueryResponse, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Publish query event for monitoring/debugging
+	h.publishQueryEventUnsafe(ctx, "capacity_query", query)
+
+	// Use room size from query or try to get from existing room
+	roomSize := query.RoomSize
+	if roomSize.Width == 0 || roomSize.Height == 0 {
+		if query.RoomID != "" {
+			room, exists := h.orchestrator.GetRoom(query.RoomID)
+			if exists {
+				dimensions := room.GetGrid().GetDimensions()
+				roomSize = spatial.Dimensions{Width: dimensions.Width, Height: dimensions.Height}
+			}
+		}
+	}
+
+	// Use default constraints if none provided
+	constraints := query.Constraints
+	if constraints.TargetSpatialFeeling == "" {
+		constraints.TargetSpatialFeeling = SpatialFeelingNormal
+	}
+	if constraints.MinMovementSpace == 0 {
+		constraints.MinMovementSpace = 0.6
+	}
+	if constraints.MinEntitySpacing == 0 {
+		constraints.MinEntitySpacing = 1.0
+	}
+	if constraints.WallDensityModifier == 0 {
+		constraints.WallDensityModifier = 0.5
+	}
+	if constraints.RequiredPathwayMultiplier == 0 {
+		constraints.RequiredPathwayMultiplier = 1.2
+	}
+
+	// Estimate capacity
+	estimate := EstimateRoomCapacity(roomSize, constraints)
+
+	// Get split options if requested
+	var splitOptions []RoomSplit
+	if query.IncludeSplitOptions {
+		entityCount := query.EntityCount
+		if entityCount == 0 {
+			entityCount = query.ExistingEntityCount
+		}
+		if entityCount == 0 {
+			entityCount = estimate.RecommendedEntityCount
+		}
+		splitOptions = GetSplitOptions(roomSize, entityCount, constraints)
+	}
+
+	// Analyze capacity for specific entity count if provided
+	var analysis CapacityAnalysis
+	entityCount := query.EntityCount
+	if entityCount == 0 {
+		entityCount = query.ExistingEntityCount
+	}
+	if entityCount > 0 {
+		analysis = AnalyzeRoomCapacityForEntityCount(roomSize, entityCount, constraints)
+	}
+
+	// Determine if requirements are satisfied
+	satisfied := true
+	var alternatives []string
+	if entityCount > 0 && entityCount > estimate.RecommendedEntityCount {
+		satisfied = false
+		alternatives = append(alternatives, "Consider splitting the room")
+		alternatives = append(alternatives, "Reduce entity count")
+		alternatives = append(alternatives, "Increase room size")
+	}
+
+	return CapacityQueryResponse{
+		Estimate:     estimate,
+		SplitOptions: splitOptions,
+		Analysis:     analysis,
+		Satisfied:    satisfied,
+		Alternatives: alternatives,
+	}, nil
+}
+
+// HandleSizingQuery processes a room sizing query
+// Purpose: Calculates optimal room dimensions for specific requirements
+func (h *BasicQueryHandler) HandleSizingQuery(ctx context.Context, query SizingQuery) (spatial.Dimensions, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Publish query event for monitoring/debugging
+	h.publishQueryEventUnsafe(ctx, "sizing_query", query)
+
+	// Use IntentProfile if Intent is empty
+	intent := query.Intent
+	if intent.Feeling == "" && query.IntentProfile.Feeling != "" {
+		intent = query.IntentProfile
+	}
+
+	// Use default intent if none provided
+	if intent.Feeling == "" {
+		intent = GetDefaultSpatialIntentProfile(SpatialFeelingNormal)
+	}
+
+	// Calculate optimal room size
+	dimensions := CalculateOptimalRoomSize(intent, query.EntityCount)
+
+	// Apply additional space multiplier
+	if query.AdditionalSpace > 0 {
+		dimensions.Width *= query.AdditionalSpace
+		dimensions.Height *= query.AdditionalSpace
+	}
+
+	// Enforce constraints
+	if query.MinDimensions.Width > 0 && dimensions.Width < query.MinDimensions.Width {
+		dimensions.Width = query.MinDimensions.Width
+	}
+	if query.MinDimensions.Height > 0 && dimensions.Height < query.MinDimensions.Height {
+		dimensions.Height = query.MinDimensions.Height
+	}
+	if query.MaxDimensions.Width > 0 && dimensions.Width > query.MaxDimensions.Width {
+		dimensions.Width = query.MaxDimensions.Width
+	}
+	if query.MaxDimensions.Height > 0 && dimensions.Height > query.MaxDimensions.Height {
+		dimensions.Height = query.MaxDimensions.Height
+	}
+
+	return dimensions, nil
+}
+
 // Entity query implementations
 
 func (h *BasicQueryHandler) handleSpecificRoomsEntityQueryUnsafe(

@@ -254,3 +254,111 @@ type PrefabConnection struct {
 	Required bool             `json:"required"` // Must this connection exist
 	Name     string           `json:"name"`     // Connection identifier
 }
+
+// SpatialIntentProfile translates design concepts into technical parameters
+// Purpose: Converts feeling-based design decisions into concrete spatial calculations
+type SpatialIntentProfile struct {
+	Feeling              SpatialFeeling `json:"feeling"`                // The desired spatial experience
+	EntityDensityTarget  float64        `json:"entity_density_target"`  // Target entity density (0.0-1.0)
+	MovementFreedomIndex float64        `json:"movement_freedom_index"` // Movement space factor (0.0-1.0)
+	VisualScopeIndex     float64        `json:"visual_scope_index"`     // Visual range factor (0.0-1.0)
+	TacticalComplexity   float64        `json:"tactical_complexity"`    // Tactical positioning complexity (0.0-1.0)
+}
+
+// CapacityQuery represents a query for room capacity analysis
+// Purpose: Allows games to analyze room capacity for intelligent design decisions
+type CapacityQuery struct {
+	RoomID              string               `json:"room_id"`                         // Target room for analysis
+	Intent              SpatialIntentProfile `json:"intent"`                          // Desired spatial experience
+	EntityCount         int                  `json:"entity_count,omitempty"`          // Number of entities to accommodate
+	EntitySizes         []spatial.Dimensions `json:"entity_sizes,omitempty"`          // Sizes of entities to place
+	RoomSize            spatial.Dimensions   `json:"room_size,omitempty"`             // Room dimensions for analysis
+	Constraints         CapacityConstraints  `json:"constraints,omitempty"`           // Capacity constraints
+	ExistingEntityCount int                  `json:"existing_entity_count,omitempty"` // Current entity count
+	IncludeSplitOptions bool                 `json:"include_split_options,omitempty"` // Include split recommendations
+}
+
+// CapacityQueryResponse contains results from capacity analysis
+// Purpose: Provides advisory information about room capacity and recommendations
+type CapacityQueryResponse struct {
+	Estimate     CapacityEstimate `json:"estimate"`      // Capacity analysis results
+	SplitOptions []RoomSplit      `json:"split_options"` // Room splitting recommendations
+	Analysis     CapacityAnalysis `json:"analysis"`      // Detailed capacity analysis
+	Satisfied    bool             `json:"satisfied"`     // Whether requirements can be met
+	Alternatives []string         `json:"alternatives"`  // Alternative approaches
+}
+
+// SizingQuery represents a query for optimal room sizing
+// Purpose: Helps determine appropriate room dimensions for specific requirements
+type SizingQuery struct {
+	Intent          SpatialIntentProfile `json:"intent"`                     // Desired spatial experience
+	IntentProfile   SpatialIntentProfile `json:"intent_profile"`             // Alternative field name for intent
+	EntityCount     int                  `json:"entity_count,omitempty"`     // Number of entities
+	EntitySizes     []spatial.Dimensions `json:"entity_sizes,omitempty"`     // Entity dimensions
+	Constraints     CapacityConstraints  `json:"constraints,omitempty"`      // Additional constraints
+	AdditionalSpace float64              `json:"additional_space,omitempty"` // Extra space multiplier
+	MinDimensions   spatial.Dimensions   `json:"min_dimensions,omitempty"`   // Minimum allowed dimensions
+	MaxDimensions   spatial.Dimensions   `json:"max_dimensions,omitempty"`   // Maximum allowed dimensions
+}
+
+// CapacityConstraints define limits and requirements for capacity calculations
+// Purpose: Allows games to specify constraints on room sizing and capacity
+type CapacityConstraints struct {
+	MinDimensions             spatial.Dimensions `json:"min_dimensions"`              // Minimum room size
+	MaxDimensions             spatial.Dimensions `json:"max_dimensions"`              // Maximum room size
+	AspectRatio               float64            `json:"aspect_ratio"`                // Preferred width/height ratio
+	MaxEntitiesPerRoom        int                `json:"max_entities_per_room"`       // Maximum entities allowed per room
+	MinMovementSpace          float64            `json:"min_movement_space"`          // Minimum movement space factor
+	WallDensityModifier       float64            `json:"wall_density_modifier"`       // Wall density impact
+	RequiredPathwayMultiplier float64            `json:"required_pathway_multiplier"` // Pathway space multiplier
+	TargetSpatialFeeling      SpatialFeeling     `json:"target_spatial_feeling"`      // Target spatial experience
+	MinEntitySpacing          float64            `json:"min_entity_spacing"`          // Minimum space between entities
+}
+
+// CapacityEstimate provides analysis of room capacity
+// Purpose: Advisory information about how well a room accommodates entities
+type CapacityEstimate struct {
+	RecommendedEntityCount int            `json:"recommended_entity_count"` // Recommended entity count
+	MaxEntityCount         int            `json:"max_entity_count"`         // Maximum entities that fit comfortably
+	UtilizationPercent     float64        `json:"utilization_percent"`      // How much of room would be used
+	CrowdingFactor         float64        `json:"crowding_factor"`          // How crowded it would feel (0.0-1.0)
+	MovementSpace          float64        `json:"movement_space"`           // Available movement area
+	SpatialFeelingActual   SpatialFeeling `json:"spatial_feeling_actual"`   // Actual spatial feeling achieved
+	MovementFreedomActual  float64        `json:"movement_freedom_actual"`  // Actual movement freedom achieved
+	QualityScore           float64        `json:"quality_score"`            // Overall quality score (0.0-1.0)
+	UsableArea             float64        `json:"usable_area"`              // Total usable area for entities
+}
+
+// RoomSplit represents a room splitting recommendation
+// Purpose: Advisory information about how rooms could be divided
+type RoomSplit struct {
+	Reason                        string               `json:"reason"`                          // Why split is recommended
+	SplitType                     string               `json:"split_type"`                      // Split type
+	Dimensions                    []spatial.Dimensions `json:"dimensions"`                      // Room dimensions
+	Benefits                      []string             `json:"benefits"`                        // Split advantages
+	Complexity                    float64              `json:"complexity"`                      // Complexity rating
+	SuggestedSize                 spatial.Dimensions   `json:"suggested_size"`                  // Split room dimensions
+	ConnectionPoints              []spatial.Position   `json:"connection_points"`               // Connection points
+	RecommendedEntityDistribution map[string]int       `json:"recommended_entity_distribution"` // Entity distribution
+	RecommendedConnectionType     string               `json:"recommended_connection_type"`     // Connection type to use
+	SplitReason                   string               `json:"split_reason"`                    // Reason for split
+	EstimatedCapacityImprovement  float64              `json:"estimated_capacity_improvement"`  // Expected improvement
+}
+
+// CapacityAnalysis provides detailed capacity analysis results
+// Purpose: In-depth analysis for games that need detailed capacity information
+type CapacityAnalysis struct {
+	TotalArea               float64          `json:"total_area"`                // Total room area
+	UsableArea              float64          `json:"usable_area"`               // Area available for entities
+	EntityArea              float64          `json:"entity_area"`               // Area occupied by entities
+	MovementArea            float64          `json:"movement_area"`             // Area for movement
+	InteractionArea         float64          `json:"interaction_area"`          // Area for entity interactions
+	EfficiencyRating        float64          `json:"efficiency_rating"`         // How efficiently space is used
+	ComfortRating           float64          `json:"comfort_rating"`            // How comfortable the space feels
+	RecommendedActions      []string         `json:"recommended_actions"`       // Suggested improvements
+	RoomCapacity            CapacityEstimate `json:"room_capacity"`             // Room capacity analysis
+	RequestedEntityCount    int              `json:"requested_entity_count"`    // Number of entities requested
+	CapacityUtilization     float64          `json:"capacity_utilization"`      // Capacity utilization ratio
+	ResultingSpatialFeeling SpatialFeeling   `json:"resulting_spatial_feeling"` // Resulting spatial experience
+	SplitOptions            []RoomSplit      `json:"split_options"`             // Room splitting options
+}
