@@ -1,10 +1,26 @@
 package spawn
 
 // SpawnConfig specifies how to spawn entities in a room
-// Phase 1: Basic configuration for scattered spawning only
+// Complete configuration per ADR-0013
 type SpawnConfig struct {
+	// What to spawn
 	EntityGroups []EntityGroup `json:"entity_groups"`
-	Pattern      SpawnPattern  `json:"pattern"`
+
+	// How to spawn
+	Pattern          SpawnPattern        `json:"pattern"`
+	TeamConfiguration *TeamConfig        `json:"team_config,omitempty"`
+
+	// Constraints
+	SpatialRules SpatialConstraints `json:"spatial_rules"`
+	Placement    PlacementRules     `json:"placement"`
+
+	// Behavior
+	Strategy        SpawnStrategy  `json:"strategy"`
+	AdaptiveScaling *ScalingConfig `json:"adaptive_scaling,omitempty"`
+
+	// Player spawn zones and choices
+	PlayerSpawnZones []SpawnZone         `json:"player_spawn_zones,omitempty"`
+	PlayerChoices    []PlayerSpawnChoice `json:"player_choices,omitempty"`
 }
 
 // EntityGroup represents a group of entities to spawn
@@ -26,4 +42,24 @@ type SpawnPattern string
 const (
 	// PatternScattered distributes entities randomly across available space
 	PatternScattered SpawnPattern = "scattered"
+	// PatternFormation uses structured arrangements
+	PatternFormation SpawnPattern = "formation"
+	// PatternClustered groups entities with spacing
+	PatternClustered SpawnPattern = "clustered"
+	// PatternTeamBased separates teams into distinct areas
+	PatternTeamBased SpawnPattern = "team_based"
+	// PatternPlayerChoice allows players to choose positions
+	PatternPlayerChoice SpawnPattern = "player_choice"
+)
+
+// SpawnStrategy defines the spawning approach
+type SpawnStrategy string
+
+const (
+	// StrategyRandomized uses random placement within constraints
+	StrategyRandomized SpawnStrategy = "randomized"
+	// StrategyDeterministic produces consistent results
+	StrategyDeterministic SpawnStrategy = "deterministic"
+	// StrategyBalanced optimizes for gameplay balance
+	StrategyBalanced SpawnStrategy = "balanced"
 )

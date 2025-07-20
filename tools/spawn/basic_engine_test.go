@@ -78,12 +78,12 @@ func (s *BasicSpawnEngineTestSuite) TestConfigValidation() {
 					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
 				},
 			},
-			Pattern: "formation", // Not supported in Phase 1
+			Pattern: "invalid_pattern", // Truly unsupported pattern
 		}
 
 		err := s.engine.ValidateSpawnConfig(config)
 		s.Assert().Error(err)
-		s.Assert().Contains(err.Error(), "only scattered pattern")
+		s.Assert().Contains(err.Error(), "unsupported pattern")
 	})
 }
 

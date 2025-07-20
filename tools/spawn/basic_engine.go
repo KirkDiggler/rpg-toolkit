@@ -53,66 +53,64 @@ func NewBasicSpawnEngine(config BasicSpawnEngineConfig) *BasicSpawnEngine {
 	}
 }
 
+// PopulateSpace implements SpawnEngine.PopulateSpace
+func (e *BasicSpawnEngine) PopulateSpace(ctx context.Context, roomOrGroup interface{}, config SpawnConfig) (SpawnResult, error) {
+	result := SpawnResult{
+		SpawnedEntities:      make([]SpawnedEntity, 0),
+		Failures:            make([]SpawnFailure, 0),
+		RoomModifications:    make([]RoomModification, 0),
+		SplitRecommendations: make([]RoomSplit, 0),
+	}
+
+	// Analyze room structure
+	roomStructure, err := e.analyzeRoomStructure(roomOrGroup)
+	if err != nil {
+		return result, fmt.Errorf("failed to analyze room structure: %w", err)
+	}
+	result.RoomStructure = roomStructure
+
+	if roomStructure.IsSplit {
+		return e.PopulateSplitRooms(ctx, roomStructure.ConnectedRooms, config)
+	} else {
+		return e.PopulateRoom(ctx, roomStructure.PrimaryRoomID, config)
+	}
+}
+
 // PopulateRoom implements SpawnEngine.PopulateRoom
 func (e *BasicSpawnEngine) PopulateRoom(ctx context.Context, roomID string, config SpawnConfig) (SpawnResult, error) {
 	result := SpawnResult{
-		SpawnedEntities: make([]SpawnedEntity, 0),
-		Failures:        make([]SpawnFailure, 0),
+		SpawnedEntities:      make([]SpawnedEntity, 0),
+		Failures:            make([]SpawnFailure, 0),
+		RoomModifications:    make([]RoomModification, 0),
+		SplitRecommendations: make([]RoomSplit, 0),
+		RoomStructure: RoomStructureInfo{
+			IsSplit:        false,
+			ConnectedRooms: []string{roomID},
+			PrimaryRoomID:  roomID,
+		},
 	}
 
 	if err := e.ValidateSpawnConfig(config); err != nil {
 		return result, fmt.Errorf("invalid config: %w", err)
 	}
 
-	// Get room from spatial handler
-	room, err := e.getRoomFromSpatial(roomID)
-	if err != nil {
-		return result, fmt.Errorf("failed to get room: %w", err)
+	// Phase 2: Room access will be implemented when spatial integration is added
+
+	// Route to appropriate spawning method based on pattern
+	switch config.Pattern {
+	case PatternScattered:
+		return e.applyScatteredSpawning(ctx, roomID, config, result)
+	case PatternFormation:
+		return e.applyFormationSpawning(ctx, roomID, config, result)
+	case PatternTeamBased:
+		return e.applyTeamBasedSpawning(ctx, roomID, config, result)
+	case PatternPlayerChoice:
+		return e.applyPlayerChoiceSpawning(ctx, roomID, config, result)
+	case PatternClustered:
+		return e.applyClusteredSpawning(ctx, roomID, config, result)
+	default:
+		return result, fmt.Errorf("unsupported spawn pattern: %s", config.Pattern)
 	}
-
-	// Process each entity group
-	for _, group := range config.EntityGroups {
-		entities, err := e.selectEntitiesForGroup(group)
-		if err != nil {
-			result.Failures = append(result.Failures, SpawnFailure{
-				EntityType: group.Type,
-				Reason:     fmt.Sprintf("selection failed: %v", err),
-			})
-			continue
-		}
-
-		// Place entities using scattered pattern
-		for _, entity := range entities {
-			position, err := e.findValidPosition(room, entity)
-			if err != nil {
-				result.Failures = append(result.Failures, SpawnFailure{
-					EntityType: entity.GetType(),
-					Reason:     err.Error(),
-				})
-				continue
-			}
-
-			// Place entity in room
-			if err := e.placeEntityInRoom(room, entity, position); err != nil {
-				result.Failures = append(result.Failures, SpawnFailure{
-					EntityType: entity.GetType(),
-					Reason:     fmt.Sprintf("placement failed: %v", err),
-				})
-				continue
-			}
-
-			result.SpawnedEntities = append(result.SpawnedEntities, SpawnedEntity{
-				Entity:   entity,
-				Position: position,
-				RoomID:   roomID,
-			})
-
-			e.publishEntitySpawnedEvent(ctx, roomID, entity, position)
-		}
-	}
-
-	result.Success = len(result.SpawnedEntities) > 0
-	return result, nil
 }
 
 // ValidateSpawnConfig implements SpawnEngine.ValidateSpawnConfig
@@ -121,8 +119,20 @@ func (e *BasicSpawnEngine) ValidateSpawnConfig(config SpawnConfig) error {
 		return fmt.Errorf("no entity groups specified")
 	}
 
-	if config.Pattern != PatternScattered {
-		return fmt.Errorf("only scattered pattern supported in Phase 1")
+	// Phase 2: All patterns supported
+	validPatterns := []SpawnPattern{
+		PatternScattered, PatternFormation, PatternTeamBased, 
+		PatternPlayerChoice, PatternClustered,
+	}
+	validPattern := false
+	for _, pattern := range validPatterns {
+		if config.Pattern == pattern {
+			validPattern = true
+			break
+		}
+	}
+	if !validPattern {
+		return fmt.Errorf("unsupported pattern: %s", config.Pattern)
 	}
 
 	for i, group := range config.EntityGroups {
@@ -212,3 +222,71 @@ type SimpleRoomEntity struct {
 
 func (r *SimpleRoomEntity) GetID() string   { return r.id }
 func (r *SimpleRoomEntity) GetType() string { return r.roomType }
+
+// PopulateSplitRooms implements SpawnEngine.PopulateSplitRooms
+func (e *BasicSpawnEngine) PopulateSplitRooms(ctx context.Context, connectedRooms []string, config SpawnConfig) (SpawnResult, error) {
+	result := SpawnResult{
+		SpawnedEntities:      make([]SpawnedEntity, 0),
+		Failures:            make([]SpawnFailure, 0),
+		RoomModifications:    make([]RoomModification, 0),
+		SplitRecommendations: make([]RoomSplit, 0),
+		RoomStructure: RoomStructureInfo{
+			IsSplit:        true,
+			ConnectedRooms: connectedRooms,
+			PrimaryRoomID:  connectedRooms[0],
+		},
+	}
+
+	if err := e.ValidateSpawnConfig(config); err != nil {
+		return result, fmt.Errorf("invalid config: %w", err)
+	}
+
+	// For Phase 2: Distribute entities across connected rooms
+	// Simple approach: spawn in first room for now
+	singleRoomResult, err := e.PopulateRoom(ctx, connectedRooms[0], config)
+	if err != nil {
+		return result, err
+	}
+
+	// Copy results and update room structure info
+	result.Success = singleRoomResult.Success
+	result.SpawnedEntities = singleRoomResult.SpawnedEntities
+	result.Failures = singleRoomResult.Failures
+
+	return result, nil
+}
+
+// AnalyzeRoomStructure implements SpawnEngine.AnalyzeRoomStructure
+func (e *BasicSpawnEngine) AnalyzeRoomStructure(roomID string) RoomStructureInfo {
+	// Phase 2: Simple implementation - assume single room
+	return RoomStructureInfo{
+		IsSplit:        false,
+		ConnectedRooms: []string{roomID},
+		PrimaryRoomID:  roomID,
+	}
+}
+
+// analyzeRoomStructure analyzes the room structure from roomOrGroup parameter
+func (e *BasicSpawnEngine) analyzeRoomStructure(roomOrGroup interface{}) (RoomStructureInfo, error) {
+	switch v := roomOrGroup.(type) {
+	case string:
+		// Single room
+		return RoomStructureInfo{
+			IsSplit:        false,
+			ConnectedRooms: []string{v},
+			PrimaryRoomID:  v,
+		}, nil
+	case []string:
+		// Multiple connected rooms
+		if len(v) == 0 {
+			return RoomStructureInfo{}, fmt.Errorf("empty room list")
+		}
+		return RoomStructureInfo{
+			IsSplit:        true,
+			ConnectedRooms: v,
+			PrimaryRoomID:  v[0],
+		}, nil
+	default:
+		return RoomStructureInfo{}, fmt.Errorf("unsupported room structure type: %T", roomOrGroup)
+	}
+}
