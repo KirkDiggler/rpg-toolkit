@@ -14,6 +14,27 @@ This document outlines the concrete implementation plan for the encounter system
 
 **Deliverables**:
 ```go
+// SpawnDensity defines how many entities to spawn
+type SpawnDensity string
+
+const (
+    SpawnDensityLight    SpawnDensity = "light"    // 1-2 entities per 100 sq ft
+    SpawnDensityModerate SpawnDensity = "moderate" // 3-4 entities per 100 sq ft
+    SpawnDensityHeavy    SpawnDensity = "heavy"    // 5-6 entities per 100 sq ft
+    SpawnDensityPacked   SpawnDensity = "packed"   // 7+ entities per 100 sq ft
+)
+
+// EntityPoolType categorizes groups of entities
+type EntityPoolType string
+
+const (
+    EntityPoolTypeMonsters    EntityPoolType = "monsters"
+    EntityPoolTypeTreasure    EntityPoolType = "treasure"
+    EntityPoolTypeHazards     EntityPoolType = "hazards"
+    EntityPoolTypeNPCs        EntityPoolType = "npcs"
+    EntityPoolTypeInteractive EntityPoolType = "interactive"
+)
+
 // Core spawn interfaces
 type SpawnEngine interface {
     PopulateRoom(roomID string, config SpawnConfig) (SpawnResult, error)
@@ -21,10 +42,10 @@ type SpawnEngine interface {
 }
 
 type SpawnConfig struct {
-    EntityPools   map[string][]core.Entity  // Pre-created entities by category
-    SelectionTables map[string]*selectables.Table // What to spawn
-    Density      SpawnDensity               // How many to spawn
-    Constraints  []PlacementConstraint      // Where to place
+    EntityPools     map[EntityPoolType][]core.Entity  // Pre-created entities by category
+    SelectionTables map[EntityPoolType]*selectables.Table // What to spawn
+    Density         SpawnDensity                      // How many to spawn
+    Constraints     []PlacementConstraint             // Where to place
 }
 ```
 
@@ -39,22 +60,53 @@ type SpawnConfig struct {
 
 **Deliverables**:
 ```go
+// PerceptionType categorizes what was perceived
+type PerceptionType string
+
+const (
+    PerceptionTypeVisual   PerceptionType = "visual"   // Seen entities
+    PerceptionTypeAuditory PerceptionType = "auditory" // Heard sounds
+    PerceptionTypeTactile  PerceptionType = "tactile"  // Felt vibrations
+    PerceptionTypeMagical  PerceptionType = "magical"  // Detected via magic
+)
+
 // Perception system
 type PerceptionData struct {
     VisibleEntities []PerceivedEntity
     AudibleEvents   []PerceivedEvent
     RoomLayout      *spatial.RoomInfo
+    Type            PerceptionType
 }
+
+// PathfindingAlgorithm specifies which algorithm to use
+type PathfindingAlgorithm string
+
+const (
+    PathfindingAlgorithmAStar     PathfindingAlgorithm = "astar"     // A* for optimal paths
+    PathfindingAlgorithmDijkstra  PathfindingAlgorithm = "dijkstra"  // For multiple targets
+    PathfindingAlgorithmGreedy    PathfindingAlgorithm = "greedy"    // Fast but suboptimal
+    PathfindingAlgorithmStraight  PathfindingAlgorithm = "straight"  // Direct line if possible
+)
 
 // Basic pathfinding
 type Pathfinder interface {
-    FindPath(from, to spatial.Position, room *spatial.Room) ([]spatial.Position, error)
+    FindPath(from, to spatial.Position, room *spatial.Room, algorithm PathfindingAlgorithm) ([]spatial.Position, error)
     GetReachablePositions(from spatial.Position, maxDistance float64) []spatial.Position
 }
 
+// ActionPriority defines execution order in the queue
+type ActionPriority int
+
+const (
+    ActionPriorityImmediate ActionPriority = 1000 // Reactions, interrupts
+    ActionPriorityHigh      ActionPriority = 800  // Bonus actions
+    ActionPriorityNormal    ActionPriority = 500  // Standard actions
+    ActionPriorityLow       ActionPriority = 200  // Delayed effects
+)
+
 // Action queue for turn-based combat
 type ActionQueue interface {
-    QueueAction(entity core.Entity, action Action, priority int) error
+    QueueAction(entity core.Entity, action Action, priority ActionPriority) error
     GetNext() (core.Entity, Action, error)
     Clear(entity core.Entity) error
 }
@@ -105,21 +157,58 @@ func (tm *TurnManager) ProcessTurn(action Action) (TurnResult, error) {
 ### 2.3 Monster Templates
 
 **Template Structure**:
-```yaml
-# aggressive.yaml
-name: "Aggressive"
-description: "Charges nearest enemy, ignores safety"
-target_selection:
-  priority: ["nearest", "most_damaged", "random"]
-  range_preference: "closest"
-action_weights:
-  attack: 0.8
-  move_closer: 0.2
-  special_ability: 0.0
-conditions:
-  - if: "health < 25%"
-    modify_weights:
-      attack: 1.0  # Fight to the death
+```go
+// TargetPriority defines how AI selects targets
+type TargetPriority string
+
+const (
+    TargetPriorityNearest        TargetPriority = "nearest"         // Closest enemy
+    TargetPriorityMostDamaged    TargetPriority = "most_damaged"    // Lowest HP
+    TargetPriorityLeastDamaged   TargetPriority = "least_damaged"   // Highest HP
+    TargetPriorityHighestThreat  TargetPriority = "highest_threat"  // Most damage dealt
+    TargetPriorityWeakest        TargetPriority = "weakest"         // Lowest defense
+    TargetPriorityIsolated       TargetPriority = "isolated"        // Away from allies
+    TargetPriorityRandom         TargetPriority = "random"          // Random selection
+)
+
+// RangePreference defines preferred combat distance
+type RangePreference string
+
+const (
+    RangePreferenceMelee   RangePreference = "melee"   // Get close
+    RangePreferenceRanged  RangePreference = "ranged"  // Keep distance
+    RangePreferenceOptimal RangePreference = "optimal" // Best for abilities
+)
+
+// Template structure in Go (instead of YAML)
+type MonsterTemplate struct {
+    Name        string
+    Description string
+    TargetSelection struct {
+        Priority []TargetPriority
+        RangePref RangePreference
+    }
+    ActionWeights map[ActionType]float64
+    Conditions    []BehaviorCondition
+}
+
+// Example: Aggressive template
+var AggressiveTemplate = MonsterTemplate{
+    Name:        "Aggressive",
+    Description: "Charges nearest enemy, ignores safety",
+    TargetSelection: struct {
+        Priority []TargetPriority
+        RangePref RangePreference
+    }{
+        Priority:  []TargetPriority{TargetPriorityNearest, TargetPriorityMostDamaged, TargetPriorityRandom},
+        RangePref: RangePreferenceMelee,
+    },
+    ActionWeights: map[ActionType]float64{
+        ActionTypeAttack: 0.8,
+        ActionTypeMove:   0.2,
+        ActionTypeCast:   0.0,
+    },
+}
 ```
 
 ## Phase 3: Visualization (Web App)
@@ -185,13 +274,13 @@ type GoblinStates struct {
     Fleeing *FleeingState
 }
 
-func (s *CombatState) Execute(ctx BehaviorContext) (string, Action, error) {
+func (s *CombatState) Execute(ctx BehaviorContext) (StateID, Action, error) {
     perception := ctx.GetPerception()
     
     // Find nearest enemy
     nearest := findNearestEnemy(perception.VisibleEntities)
     if nearest == nil {
-        return "Alert", NoAction, nil
+        return StateIDAlert, NoAction, nil
     }
     
     // Check if in melee range

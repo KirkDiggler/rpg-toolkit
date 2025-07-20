@@ -19,18 +19,41 @@ We will implement a pluggable behavior system with these components:
 
 #### 1. Behavior Context
 ```go
+// MemoryKey represents typed keys for behavior memory storage
+type MemoryKey string
+
+const (
+    MemoryKeyLastAttacker   MemoryKey = "last_attacker"
+    MemoryKeyLastPosition   MemoryKey = "last_position"
+    MemoryKeyTargetPriority MemoryKey = "target_priority"
+    MemoryKeyFleeThreshold  MemoryKey = "flee_threshold"
+    MemoryKeyAllyPositions  MemoryKey = "ally_positions"
+)
+
 type BehaviorContext interface {
     Entity() core.Entity
     GetPerception() PerceptionData
     GetSpatialInfo() SpatialInfo
-    GetMemory(key string) interface{}
-    SetMemory(key string, value interface{})
+    GetMemory(key MemoryKey) any
+    SetMemory(key MemoryKey, value any)
     PublishDecision(decision Decision)
 }
 ```
 
 #### 2. Behavior Interface
 ```go
+// BehaviorPriority defines the execution order of behaviors
+type BehaviorPriority int
+
+const (
+    BehaviorPriorityEmergency BehaviorPriority = 1000 // Flee, death saves
+    BehaviorPriorityDefensive BehaviorPriority = 800  // Healing, defensive stance
+    BehaviorPriorityCombat    BehaviorPriority = 600  // Attack, spell casting
+    BehaviorPrioritySupport   BehaviorPriority = 400  // Buff allies, debuff enemies
+    BehaviorPriorityDefault   BehaviorPriority = 200  // Standard movement, patrol
+    BehaviorPriorityIdle      BehaviorPriority = 0    // No immediate action needed
+)
+
 type Behavior interface {
     // Execute returns the next action to take
     Execute(ctx BehaviorContext) (Action, error)
@@ -39,7 +62,7 @@ type Behavior interface {
     CanExecute(ctx BehaviorContext) bool
     
     // Priority for behavior selection
-    Priority() int
+    Priority() BehaviorPriority
 }
 ```
 
@@ -47,26 +70,49 @@ type Behavior interface {
 
 **State Machine**:
 ```go
+// StateID represents a unique state identifier
+type StateID string
+
+const (
+    StateIDIdle       StateID = "idle"
+    StateIDPatrol     StateID = "patrol"
+    StateIDAlert      StateID = "alert"
+    StateIDCombat     StateID = "combat"
+    StateIDFleeing    StateID = "fleeing"
+    StateIDSupporting StateID = "supporting"
+    StateIDDead       StateID = "dead"
+)
+
 type StateMachineBehavior struct {
-    states map[string]State
-    current string
+    states  map[StateID]State
+    current StateID
 }
 
 type State interface {
+    ID() StateID
     Enter(ctx BehaviorContext) error
-    Execute(ctx BehaviorContext) (nextState string, action Action, err error)
+    Execute(ctx BehaviorContext) (nextState StateID, action Action, err error)
     Exit(ctx BehaviorContext) error
 }
 ```
 
 **Behavior Tree**:
 ```go
+// NodeStatus represents the execution status of a behavior tree node
+type NodeStatus string
+
+const (
+    NodeStatusRunning NodeStatus = "running" // Still executing
+    NodeStatusSuccess NodeStatus = "success" // Completed successfully
+    NodeStatusFailure NodeStatus = "failure" // Failed to complete
+)
+
 type BehaviorNode interface {
     Execute(ctx BehaviorContext) NodeResult
 }
 
 type NodeResult struct {
-    Status Status // Running, Success, Failure
+    Status NodeStatus
     Action *Action
 }
 ```
@@ -107,20 +153,47 @@ type ActionQueue interface {
 
 All behavior decisions publish events:
 ```go
+// BehaviorType identifies the type of behavior making decisions
+type BehaviorType string
+
+const (
+    BehaviorTypeAggressive BehaviorType = "aggressive"
+    BehaviorTypeTactical   BehaviorType = "tactical"
+    BehaviorTypeFrightened BehaviorType = "frightened"
+    BehaviorTypeSupport    BehaviorType = "support"
+    BehaviorTypeBerserker  BehaviorType = "berserker"
+    BehaviorTypeDefensive  BehaviorType = "defensive"
+)
+
+// ActionType represents the type of action being taken
+type ActionType string
+
+const (
+    ActionTypeMove           ActionType = "move"
+    ActionTypeAttack         ActionType = "attack"
+    ActionTypeCast           ActionType = "cast"
+    ActionTypeDefend         ActionType = "defend"
+    ActionTypeFlee           ActionType = "flee"
+    ActionTypeHeal           ActionType = "heal"
+    ActionTypeHide           ActionType = "hide"
+    ActionTypeInteract       ActionType = "interact"
+    ActionTypeWait           ActionType = "wait"
+)
+
 // Decision made
 behaviorEvent.DecisionMade{
-    EntityID: "goblin-1",
-    Behavior: "aggressive",
-    ChosenAction: "attack",
-    Reasoning: "nearest enemy in range",
+    EntityID:     "goblin-1",
+    Behavior:     BehaviorTypeAggressive,
+    ChosenAction: ActionTypeAttack,
+    Reasoning:    "nearest enemy in range",
 }
 
 // State changed (for state machines)
 behaviorEvent.StateChanged{
-    EntityID: "wizard-1",
-    FromState: "exploring",
-    ToState: "combat",
-    Trigger: "spotted enemy",
+    EntityID:  "wizard-1",
+    FromState: StateIDAlert,
+    ToState:   StateIDCombat,
+    Trigger:   "spotted enemy",
 }
 ```
 
