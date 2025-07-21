@@ -1,6 +1,6 @@
-# ADR-0018: Content Provider Interface Architecture
+# ADR-0018: Content Integration Orchestrator
 
-Date: 2025-01-20
+Date: 2025-01-21
 
 ## Status
 
@@ -8,301 +8,419 @@ Proposed
 
 ## Context
 
-The experiences architecture (ADR-0017) requires a content management system that can integrate multiple game systems (D&D 5e, Pathfinder, custom content) through a unified interface. This content system needs to:
+The orchestrators architecture (ADR-0017) requires content coordination across specialized content domains (monsters, items, quests, rewards, economics). However, content is too broad and complex to handle as a monolithic system. Each content domain has enough complexity to warrant its own specialized tool, similar to how we separated spatial, spawn, and selectables.
 
-1. **Multi-Source Integration**: Support API-based providers (D&D 5e API), file-based providers (YAML/JSON), and user-generated content
-2. **Content Normalization**: Transform system-specific data into normalized schemas for toolkit consumption
-3. **Performance Optimization**: Cache content for offline usage and performance
-4. **Provider Discovery**: Allow dynamic registration and discovery of content sources
-5. **Integration with Existing Tools**: Feed normalized content into selectables, spawn engine, and other toolkit components
+Current content domains requiring specialized tools:
+- **Monsters/Creatures**: Combat stats, AI behavior, spawning patterns, encounter balancing
+- **Items/Equipment**: Properties, enchantments, economy integration, treasure generation  
+- **Quests**: Objectives, dependencies, narrative branching, completion tracking
+- **Rewards**: Experience points, achievement systems, progression mechanics
+- **Economics**: Currency, trade, market simulation, value calculations
 
-Currently, there is no content management infrastructure in the toolkit. Individual tools like selectables can handle content selection, but there's no system for content acquisition, normalization, or multi-source integration.
+The challenge is coordinating these specialized content tools while maintaining clean integration with game content sources (D&D 5e API, custom data) and orchestration systems (World Manager).
 
-The challenge is designing a content provider interface that is flexible enough to handle diverse content sources while maintaining the toolkit's philosophy of providing infrastructure rather than implementation.
+Current challenges:
+1. **Content Integration**: How do games connect their content sources to our tools (spatial, spawn, selectables)?
+2. **Minimal Normalization**: What's the minimum data structure our tools need to function?
+3. **Generation vs Persistence**: How do games choose between procedural generation and precise placement?
+4. **Seed-Based Recreation**: How do games recreate worlds deterministically without storing full state?
+5. **Flexibility**: How do games handle different scenarios (full reset, partial reset, persistence)?
+
+The challenge is defining lightweight interfaces that let games integrate any content source while keeping the toolkit focused on generation infrastructure rather than content management.
 
 ## Decision
 
-We will create a `/tools/content` module that provides content management infrastructure through a pluggable provider system.
+We will create a **Content Integration Orchestrator** that coordinates specialized content tools and provides unified game integration patterns. This is NOT a content storage system - it's the coordination layer between game content sources and specialized toolkit domains.
 
-### Content Provider Interface
+### Content Architecture Overview
 
-```go
-// Core provider interface - all content sources implement this
-type ContentProvider interface {
-    // Provider metadata
-    GetName() string
-    GetVersion() string
-    GetSupportedSystems() []string
-    GetStatus() ProviderStatus
-    
-    // Content retrieval with filtering
-    GetMonsters(ctx context.Context, criteria MonsterCriteria) ([]Monster, error)
-    GetEquipment(ctx context.Context, criteria EquipmentCriteria) ([]Equipment, error)
-    GetSpells(ctx context.Context, criteria SpellCriteria) ([]Spell, error)
-    
-    // Content discovery
-    ListAvailableContent(ctx context.Context, contentType ContentType) ([]ContentSummary, error)
-    
-    // Lifecycle management
-    Initialize(ctx context.Context, config ProviderConfig) error
-    Refresh(ctx context.Context) error
-    Close(ctx context.Context) error
-}
-
-// Provider registry for multi-source management
-type Registry struct {
-    providers map[string]ContentProvider
-    cache     ContentCache
-    eventBus  events.Bus
-}
-
-func (r *Registry) RegisterProvider(name string, provider ContentProvider) error
-func (r *Registry) GetContent(ctx context.Context, criteria ContentCriteria) ([]Content, error)
-func (r *Registry) CreateSelectionTable(ctx context.Context, criteria ContentCriteria) (*selectables.Table, error)
+```
+Game Content Sources → Content Integration → Specialized Content Tools → Experience Orchestrators
+    (D&D 5e API,           Orchestrator         ↗ tools/monsters
+     Custom Files,                              ↗ tools/items  
+     Databases)                                 ↗ tools/quests
+                                               ↗ tools/rewards
+                                               ↗ tools/economics
+                                                     ↓
+                                               World Manager, etc.
 ```
 
-### Provider Implementations
+### Specialized Content Tools
 
-**API-Based Provider (D&D 5e)**
-```go
-type DnD5eAPIProvider struct {
-    client   *http.Client
-    baseURL  string
-    cache    ContentCache
-    transformer *DnD5eTransformer
-}
+Each content domain gets its own specialized tool following toolkit patterns:
 
-func (p *DnD5eAPIProvider) GetMonsters(ctx context.Context, criteria MonsterCriteria) ([]Monster, error) {
-    // 1. Check cache first
-    // 2. Hit D&D 5e API with filters
-    // 3. Transform to normalized Monster schema
-    // 4. Apply theme/environment filters
-    // 5. Cache results
-    // 6. Return normalized content
-}
-```
+**tools/monsters** - Creature Management Infrastructure
+- Combat statistics and ability systems
+- AI behavior patterns and triggers  
+- Spawning coordination with spawn engine
+- Challenge rating calculations and encounter balancing
+- Creature ecosystem relationships
 
-**File-Based Provider (Custom Content)**
-```go
-type FileProvider struct {
-    contentDir string
-    templates  TemplateLibrary
-    validator  ContentValidator
-}
+**tools/items** - Equipment and Treasure Infrastructure  
+- Item properties, enchantments, and durability systems
+- Equipment slot management and compatibility
+- Treasure generation and rarity distribution
+- Economic integration with tools/economics
+- Crafting patterns and item relationships
 
-func (p *FileProvider) GetMonsters(ctx context.Context, criteria MonsterCriteria) ([]Monster, error) {
-    // 1. Scan content directory for monster files
-    // 2. Load and parse YAML/JSON content
-    // 3. Apply template expansion if needed
-    // 4. Validate content against schemas
-    // 5. Apply filters and return
-}
-```
+**tools/rewards** - Experience and Achievement Infrastructure
+- Experience point distribution and scaling
+- Achievement tracking and milestone systems  
+- Progression mechanics and level calculations
+- Reward allocation and balancing
+- Integration with quest completion systems
 
-### Content Criteria and Filtering
+**tools/economics** - Economic Simulation Infrastructure
+- Currency systems and exchange mechanisms
+- Market price fluctuations and supply/demand
+- Trade route management between world locations
+- Economic event systems (market crashes, embargos)
+- Value calculation algorithms
 
-```go
-type MonsterCriteria struct {
-    // Challenge/Difficulty
-    ChallengeRange *ChallengeRange
-    
-    // Type/Category Filters
-    Types       []string  // ["undead", "fiend", "humanoid"]
-    Subtypes    []string  // ["goblinoid", "shapechanger"]
-    Sizes       []string  // ["small", "medium", "large"]
-    
-    // Theme/Environment Filters  
-    Themes      []string  // ["horror", "boss", "minion"]
-    Environment []string  // ["dungeon", "forest", "urban"]
-    
-    // System-Specific Filters
-    SystemFilters map[string]interface{}
-    
-    // Result Controls
-    Limit  int
-    Offset int
-    SortBy string
-}
+**tools/quests** - Objective Management Infrastructure (already planned)
+- Quest lifecycle and dependency management
+- Cross-location quest chains and branching
+- Dynamic objective generation based on world state
+- NPC goal systems and motivations
+- Completion tracking and reward integration
 
-type EquipmentCriteria struct {
-    Categories []string  // ["weapon", "armor", "treasure"]
-    Rarity     []string  // ["common", "uncommon", "rare"]
-    Themes     []string  // ["magical", "mundane", "cursed"]
-    ValueRange *ValueRange
-    
-    // Equipment-specific filters
-    WeaponTypes []string  // ["martial_melee", "simple_ranged"]
-    ArmorTypes  []string  // ["light", "medium", "heavy"]
-    
-    Limit  int
-    Offset int
-}
-```
+### Content Integration Orchestrator
 
-### Caching Strategy
+The orchestrator coordinates between game content sources and specialized tools:
 
 ```go
-type ContentCache interface {
-    Get(key string) ([]byte, bool)
-    Set(key string, data []byte, ttl time.Duration) error
-    Clear(pattern string) error
-    Stats() CacheStats
+// Content Integration Orchestrator
+type ContentOrchestrator struct {
+    // Game integration
+    gameProviders map[string]ContentProvider  // Game-implemented content sources
+    
+    // Specialized tool coordination  
+    monsterTool   *monsters.Manager
+    itemTool      *items.Manager
+    questTool     *quests.Manager
+    rewardTool    *rewards.Manager
+    economicsTool *economics.Manager
+    
+    eventBus      *events.Bus
 }
 
-// Multi-tier caching
-type MultiTierCache struct {
-    memory ContentCache  // Fast in-memory cache
-    disk   ContentCache  // Persistent disk cache  
-    ttl    time.Duration // Cache expiration
-}
-```
-
-### Integration with Selectables
-
-```go
-// Registry creates selection tables from content
-func (r *Registry) CreateMonsterTable(ctx context.Context, criteria MonsterCriteria) (*selectables.Table[Monster], error) {
-    monsters, err := r.GetContent(ctx, criteria)
-    if err != nil {
-        return nil, err
+// Unified content request handling
+func (c *ContentOrchestrator) RequestContent(ctx context.Context, request ContentRequest) (*ContentResponse, error) {
+    // Route to appropriate specialized tool based on content type
+    switch request.Domain {
+    case "monsters":
+        return c.monsterTool.HandleRequest(ctx, request, c.gameProviders)
+    case "items": 
+        return c.itemTool.HandleRequest(ctx, request, c.gameProviders)
+    case "quests":
+        return c.questTool.HandleRequest(ctx, request, c.gameProviders)
+    // ... etc
     }
+}
+```
+
+### Game Integration Interface
+
+Games implement simple content providers for their sources:
+
+```go
+// Games implement this for their content sources
+type ContentProvider interface {
+    GetName() string
+    GetDomains() []string  // ["monsters", "items", "spells"]
     
-    // Create weighted table based on challenge rating, rarity, etc.
-    table := selectables.NewBasicTable[Monster](selectables.BasicTableConfig{
-        ID: "monster-table",
+    // Provide raw content for specific domain
+    GetContent(ctx context.Context, domain string, criteria map[string]interface{}) ([]interface{}, error)
+}
+
+// Example: Game's D&D 5e provider
+type GameDnD5eProvider struct {
+    apiClient *dnd5e.Client
+    cache     GameCache
+}
+
+func (p *GameDnD5eProvider) GetContent(ctx context.Context, domain string, criteria map[string]interface{}) ([]interface{}, error) {
+    switch domain {
+    case "monsters":
+        return p.getMonsters(ctx, criteria)
+    case "items":
+        return p.getItems(ctx, criteria)
+    case "spells":
+        return p.getSpells(ctx, criteria) 
+    }
+}
+```
+
+### Core Philosophy
+
+**Toolkit Provides:**
+- Specialized content tools for each domain (monsters, items, quests, rewards, economics)
+- Content integration orchestrator to coordinate between domains
+- Game integration interface patterns
+- Cross-domain event coordination
+
+**Games Handle:**  
+- Content acquisition from their sources (APIs, files, databases)
+- Content transformation to domain-specific formats
+- Caching and performance optimization
+- Actual storage/persistence of game state
+
+### Minimal Content Interface
+
+```go
+// Minimal interface our tools need - games implement this
+type Entity interface {
+    GetID() string
+    GetType() string
+    GetPosition() *Position      // For spatial placement
+    GetChallenge() *float32      // For difficulty balancing (optional)
+    GetProperties() map[string]interface{} // System-specific data
+}
+
+// Content provider interface - games implement for their sources
+type ContentProvider interface {
+    // Provide entities matching criteria for generative spawning
+    GetEntities(ctx context.Context, criteria EntityCriteria) ([]Entity, error)
+    
+    // Provide specific entity by ID for direct placement
+    GetEntity(ctx context.Context, id string) (Entity, error)
+}
+
+// Minimal criteria our tools use for content selection
+type EntityCriteria struct {
+    Types           []string    // ["monster", "npc", "item"]
+    ChallengeRange  *Range      // Min/max difficulty
+    Themes          []string    // ["undead", "treasure", "boss"] 
+    Tags            []string    // Game-specific categorization
+    Count           int         // How many needed
+}
+```
+
+
+### Generation Patterns
+
+**Toolkit provides both generative and direct methods:**
+
+```go
+// Generative spawning - uses patterns, seeds, content providers
+type SpawnEngine interface {
+    // Uses content provider for procedural placement
+    PopulateArea(seed string, provider ContentProvider, config PopulationConfig) error
+    
+    // Direct placement for loading saved states
+    PlaceEntity(entity Entity, position Position) error
+    PlaceEntities(placements []EntityPlacement) error
+}
+
+// Similar pattern for all generation tools
+type SpatialOrchestrator interface {
+    // Seed-based layout generation
+    GenerateRooms(seed string, config RoomConfig) (*RoomLayout, error)
+    
+    // Direct room construction
+    CreateRoom(id string, bounds Bounds) (*Room, error)
+}
+```
+
+### Seed-Based Recreation Patterns
+
+**World Recreation Recipe:**
+```yaml
+# What games store - minimal generative recipe
+world_recipe:
+  seed: "abc123"
+  locations:
+    - id: "dungeon-entrance" 
+      type: "dungeon_room"
+      seed: "def456"
+      content_criteria:
+        types: ["monster", "treasure"]
+        themes: ["undead", "horror"]
+        challenge_range: {min: 1, max: 3}
+  connections:
+    - from: "dungeon-entrance"
+      to: "main-hall"  
+      type: "door"
+      seed: "ghi789"
+
+# Current game state (separate from recipe)
+current_state:
+  entities:
+    - id: "goblin-1"
+      position: {x: 5, y: 3}
+      health: 8
+    - id: "treasure-chest"
+      position: {x: 9, y: 7}
+      opened: true
+```
+
+**Three Recreation Scenarios:**
+
+```go
+// 1. Full random reset - new seeds, fresh everything
+worldManager.CreateWorld(NewWorldConfig{
+    GenerateNewSeeds: true,
+    ContentProvider: gameContentProvider,
+})
+
+// 2. Partial reset - keep layout, regenerate content in specific rooms
+worldManager.RecreateWorld(worldRecipe, RecreationOptions{
+    ResetRooms: []string{"boss-chamber"}, // Only regenerate this room
+    PreserveLayout: true,
+})
+
+// 3. Load saved state - use seeds for layout, direct placement for entities
+world := worldManager.RecreateWorld(worldRecipe)
+for _, entity := range currentState.Entities {
+    world.PlaceEntity(entity, entity.Position)
+}
+```
+
+### Storage Interface Patterns
+
+```go
+// Pattern for what games should store
+type WorldRecipe struct {
+    Seed        string             `json:"seed"`
+    Locations   []LocationRecipe   `json:"locations"`  
+    Connections []ConnectionRecipe `json:"connections"`
+}
+
+type LocationRecipe struct {
+    ID       string           `json:"id"`
+    Type     string           `json:"type"`
+    Seed     string           `json:"seed"`
+    Criteria EntityCriteria   `json:"content_criteria"` // What was supposed to spawn
+}
+
+// Games can extend with their own data
+type GameWorldRecipe struct {
+    WorldRecipe                    // Embed toolkit recipe
+    QuestStates map[string]string  `json:"quest_states"`
+    NPCRelations map[string]int    `json:"npc_relations"`
+    // ... other game-specific data
+}
+```
+
+### Integration Example
+
+**How games integrate their D&D 5e content:**
+
+```go
+// Game implements content provider for D&D 5e API
+type GameDnD5eProvider struct {
+    apiClient *dnd5e.Client
+    cache     GameCache  // Game handles caching
+}
+
+func (p *GameDnD5eProvider) GetEntities(ctx context.Context, criteria EntityCriteria) ([]Entity, error) {
+    // 1. Game hits D&D 5e API with filters
+    monsters, err := p.apiClient.GetMonsters(dnd5e.MonsterFilter{
+        Challenge: criteria.ChallengeRange,
+        Type:      criteria.Types,
     })
     
-    for _, monster := range monsters {
-        weight := calculateWeight(monster, criteria)
-        table.AddItem(monster, weight)
+    // 2. Game transforms to toolkit interface
+    entities := make([]Entity, len(monsters))
+    for i, monster := range monsters {
+        entities[i] = &GameMonster{
+            id:         monster.Index,
+            entityType: "monster",
+            challenge:  &monster.ChallengeRating,
+            properties: map[string]interface{}{
+                "hit_points": monster.HitPoints,
+                "armor_class": monster.ArmorClass,
+                "dnd5e_data": monster, // Preserve original
+            },
+        }
     }
-    
-    return table, nil
-}
-```
-
-### Provider Configuration
-
-```go
-type ProviderConfig struct {
-    Type     string                 `yaml:"type"`     // "dnd5e_api", "file", "composite"
-    Name     string                 `yaml:"name"`
-    Settings map[string]interface{} `yaml:"settings"`
-    Cache    CacheConfig           `yaml:"cache"`
-    Filters  DefaultFilters        `yaml:"filters"`
+    return entities, nil
 }
 
-// Example configurations
-dnd5e_config:
-  type: "dnd5e_api"
-  name: "Official D&D 5e"
-  settings:
-    api_url: "https://www.dnd5eapi.co/api"
-    timeout: "30s"
-  cache:
-    ttl: "24h"
-    max_size: "100MB"
-    
-custom_config:
-  type: "file"
-  name: "My Custom Monsters"
-  settings:
-    content_dir: "./content/monsters"
-    watch_changes: true
-  filters:
-    default_themes: ["custom"]
+// Use with toolkit
+spawnEngine := spawn.NewEngine(spawn.Config{
+    SpatialManager: spatialManager,
+    EventBus:      eventBus,
+})
+
+// Generative spawning
+spawnEngine.PopulateArea("room-seed-123", gameContentProvider, spawn.PopulationConfig{
+    Criteria: EntityCriteria{
+        Types: ["monster"],
+        ChallengeRange: &Range{Min: 1, Max: 5},
+        Themes: ["undead"],
+    },
+    Density: "medium",
+})
+
+// Or direct placement for loading saves
+spawnEngine.PlaceEntity(savedGoblin, Position{X: 5, Y: 3})
 ```
 
 ## Consequences
 
 ### Positive
 
-- **Pluggable Architecture**: Easy to add new content sources (Pathfinder, Starfinder, etc.)
-- **Performance**: Multi-tier caching reduces API calls and improves response times
-- **Unified Interface**: All content sources expose the same interface for consistent usage
-- **Integration Ready**: Direct integration with selectables and spawn engine
-- **Offline Support**: Cached content enables offline dungeon generation
-- **User Flexibility**: Support for custom content alongside official sources
+- **True Toolkit Philosophy**: We provide patterns, games handle implementation
+- **Maximum Flexibility**: Games choose their content sources and storage strategies  
+- **Lightweight**: Minimal interface requirements, no toolkit content management overhead
+- **Deterministic**: Seed-based generation enables reliable recreation
+- **Choice of Control**: Games choose between generative convenience and precise control
 
-### Negative
+### Negative  
 
-- **Implementation Complexity**: Multiple provider types require different implementation strategies
-- **Cache Management**: Cache invalidation and consistency across multiple sources
-- **Error Handling**: Network failures, API changes, and malformed content need robust handling
-- **Memory Usage**: Caching large content databases may consume significant memory
+- **Integration Burden**: Games must implement content provider interfaces
+- **No Built-in Caching**: Games responsible for performance optimizations
+- **Documentation Need**: Clear examples needed for integration patterns
 
 ### Neutral
 
-- **Provider Dependencies**: API-based providers depend on external service availability
-- **Content Versioning**: Need to handle content updates and version compatibility
-- **Configuration Complexity**: Multiple providers require careful configuration management
+- **Game-Specific Storage**: Games design their own persistence strategies
+- **Content Source Agnostic**: Works with any content source games choose
 
 ## Example
 
-### Provider Registration and Usage
+### Complete Integration Flow
 
 ```go
-// Initialize content registry
-registry := content.NewRegistry(content.RegistryConfig{
-    EventBus: eventBus,
-    Cache:    content.NewMultiTierCache(cacheConfig),
-})
-
-// Register D&D 5e API provider
-dnd5eProvider := adapters.NewDnD5eAPIProvider(dnd5eConfig)
-registry.RegisterProvider("dnd5e_official", dnd5eProvider)
-
-// Register custom content provider
-customProvider := adapters.NewFileProvider(customConfig)
-registry.RegisterProvider("my_custom", customProvider)
-
-// Use in dungeon generation
-monsterCriteria := content.MonsterCriteria{
-    ChallengeRange: &content.ChallengeRange{Min: 1, Max: 5},
-    Themes:        []string{"undead", "horror"},
-    Environment:   []string{"dungeon"},
-    Limit:         20,
+// Game creates content provider
+contentProvider := &MyGameContentProvider{
+    dnd5eAPI: dnd5e.NewClient(apiKey),
+    customContent: loadCustomContent("./monsters/"),
+    cache: newGameCache(),
 }
 
-// Get content from all registered providers
-monsters, err := registry.GetContent(ctx, monsterCriteria)
+// Game creates world recipe
+recipe := WorldRecipe{
+    Seed: "my-campaign-world",
+    Locations: []LocationRecipe{{
+        ID:   "starter-dungeon",
+        Type: "dungeon", 
+        Seed: "dungeon-123",
+        Criteria: EntityCriteria{
+            Types: ["monster", "treasure"],
+            ChallengeRange: &Range{Min: 1, Max: 3},
+            Themes: ["undead", "horror"],
+        },
+    }},
+}
 
-// Or create selection table for spawn engine
-monsterTable, err := registry.CreateMonsterTable(ctx, monsterCriteria)
-spawnEngine.RegisterEntityGroup("dungeon_monsters", spawn.EntityGroup{
-    SelectionTable: monsterTable,
-    SpawnPattern:   spawn.PatternScattered,
-})
+// Generate fresh world
+world := worldManager.CreateWorldFromRecipe(recipe, contentProvider)
+
+// Later: save minimal recipe + current positions
+gameState := GameState{
+    Recipe: recipe,
+    EntityPositions: world.GetAllEntityPositions(),
+    QuestStates: getCurrentQuests(),
+}
+saveGameState(gameState)
+
+// Later: load game
+loadedState := loadGameState()
+world = worldManager.RecreateWorld(loadedState.Recipe, contentProvider)
+world.PlaceEntities(loadedState.EntityPositions)
+restoreQuests(loadedState.QuestStates)
 ```
 
-### Custom Content Definition
-
-```yaml
-# custom_monsters.yaml
-monsters:
-  - id: "shadow_stalker"
-    name: "Shadow Stalker"
-    type: "undead"
-    subtype: "shadow"
-    challenge: 3.0
-    hit_points: 45
-    armor_class: 14
-    themes: ["horror", "stealth"]
-    environment: ["dungeon", "ruins"]
-    abilities:
-      - name: "Shadow Step"
-        description: "Teleport between shadows"
-        usage:
-          type: "recharge"
-          dice_size: 6
-          min_value: 4
-    actions:
-      - name: "Drain Touch"
-        type: "attack"
-        attack_bonus: 6
-        damage:
-          - dice: "2d6+3"
-            type: "necrotic"
-```
-
-This architecture provides the foundation for flexible, performant content management that can scale from simple custom content to complex multi-system integration.
+This approach keeps the toolkit focused on generation infrastructure while giving games complete control over their content sources and storage strategies.

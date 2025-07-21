@@ -24,7 +24,7 @@ The challenge is maintaining the toolkit's core philosophy of "infrastructure, n
 
 ## Decision
 
-We will introduce an `experiences/` module hierarchy that sits above the existing `tools/` and `mechanics/` modules, with a comprehensive World Manager as the primary orchestrator. The World Manager addresses several critical design challenges:
+We will introduce an `orchestrators/` module hierarchy that sits above the existing `tools/` and `mechanics/` modules, with a comprehensive World Manager as the primary orchestrator. The World Manager addresses several critical design challenges:
 
 ### Design Challenges Addressed
 
@@ -44,8 +44,8 @@ rpg-toolkit/
 ├── mechanics/               # Game mechanics (single responsibility)
 ├── tools/                   # Infrastructure tools (single responsibility)
 ├── content/                 # Content adapters & normalization (see ADR-0018)
-└── experiences/             # Higher-level orchestrators (new)
-    └── worlds/             # World management and building experience
+└── orchestrators/           # Higher-level orchestrators (new)
+    └── worlds/             # World management and building orchestration
         ├── manager.go      # Core WorldManager orchestrator
         ├── locations.go    # Location registry and management
         ├── entities.go     # Cross-location entity tracking
@@ -325,11 +325,11 @@ type LootConfig struct {
 - Validation catches incompatible combinations (e.g., fire monsters + underwater theme)
 - Missing fields auto-filled based on difficulty and theme
 
-### Experience Architecture
+### Orchestrator Architecture
 
 ```go
-// experiences/dungeons
-type DungeonExperience struct {
+// orchestrators/dungeons
+type DungeonOrchestrator struct {
     contentRegistry  *content.Registry       // Multi-source content (see ADR-0018)
     spatialManager   *spatial.Orchestrator   // Room management  
     spawnEngine      *spawn.Engine           // Entity placement
@@ -359,7 +359,7 @@ func (w *WorldManager) orchestrateWorldCreation(config WorldConfig) (*World, err
     w.orchestrationID = generateOrchestrationID()
     
     // Phase 1: Request content loading for entire world
-    contentEvent := events.NewGameEvent("experience.world.content_load_requested", w, nil).
+    contentEvent := events.NewGameEvent("orchestrator.world.content_load_requested", w, nil).
         WithContext("orchestration_id", w.orchestrationID).
         WithContext("config", config.Content).
         WithContext("location_types", w.extractLocationTypes(config))
@@ -372,7 +372,7 @@ func (w *WorldManager) orchestrateWorldCreation(config WorldConfig) (*World, err
 
 // Tools respond to world orchestration events independently
 func (registry *ContentRegistry) setupWorldHandlers() {
-    registry.eventBus.SubscribeFunc("experience.world.content_load_requested", 0,
+    registry.eventBus.SubscribeFunc("orchestrator.world.content_load_requested", 0,
         func(ctx context.Context, event events.Event) error {
             // Load content for all location types and publish completion event
             return registry.handleWorldContentLoadRequest(ctx, event)
@@ -381,7 +381,7 @@ func (registry *ContentRegistry) setupWorldHandlers() {
 
 // Cross-location entity management through events
 func (w *WorldManager) MoveEntity(entityID, fromLocationID, toLocationID string) error {
-    moveEvent := events.NewGameEvent("experience.world.entity_move_requested", w, nil).
+    moveEvent := events.NewGameEvent("orchestrator.world.entity_move_requested", w, nil).
         WithContext("entity_id", entityID).
         WithContext("from_location", fromLocationID).
         WithContext("to_location", toLocationID).
@@ -408,13 +408,13 @@ func (w *WorldManager) MoveEntity(entityID, fromLocationID, toLocationID string)
 5. **Persistence Operations**: Auto-save, manual save, world state snapshots
 
 **Event Patterns:**
-- **World Request Events**: `experience.world.{operation}_requested` (World Manager → Tools)
-- **Location Request Events**: `experience.location.{operation}_requested` (World Manager → Tools)
-- **Completion Events**: `experience.world.{operation}_completed` (Tools → World Manager)
-- **Cross-Location Events**: `experience.world.entity_moved`, `experience.world.connection_used`
-- **World State Events**: `experience.world.saved`, `experience.world.loaded`
-- **Error Events**: `experience.world.{operation}_error` (Tools → World Manager)
-- **Fallback Events**: `experience.world.fallback_triggered` (World Manager → Tools)
+- **World Request Events**: `orchestrator.world.{operation}_requested` (World Manager → Tools)
+- **Location Request Events**: `orchestrator.location.{operation}_requested` (World Manager → Tools)
+- **Completion Events**: `orchestrator.world.{operation}_completed` (Tools → World Manager)
+- **Cross-Location Events**: `orchestrator.world.entity_moved`, `orchestrator.world.connection_used`
+- **World State Events**: `orchestrator.world.saved`, `orchestrator.world.loaded`
+- **Error Events**: `orchestrator.world.{operation}_error` (Tools → World Manager)
+- **Fallback Events**: `orchestrator.world.fallback_triggered` (World Manager → Tools)
 
 ### Error Handling and Fallbacks
 
@@ -429,7 +429,7 @@ func (w *WorldManager) handleWorldOperationError(ctx context.Context, event even
     fallbackConfig := w.createWorldFallbackConfig(operation, locationID)
     
     // Publish fallback event
-    fallbackEvent := events.NewGameEvent("experience.world.fallback_triggered", w, nil).
+    fallbackEvent := events.NewGameEvent("orchestrator.world.fallback_triggered", w, nil).
         WithContext("orchestration_id", w.orchestrationID).
         WithContext("failed_operation", operation).
         WithContext("location_id", locationID).
@@ -655,7 +655,7 @@ contentRegistry.RegisterProvider("dnd5e", dnd5e.NewAPIProvider(apiConfig))
 contentRegistry.RegisterProvider("custom", custom.NewFileProvider("./content/"))
 
 // Create world manager
-worldManager := experiences.NewWorldManager(WorldManagerConfig{
+worldManager := orchestrators.NewWorldManager(WorldManagerConfig{
     ContentRegistry: contentRegistry,
     EventBus:        eventBus,
     PersistenceLayer: persistence.NewFileStore("./worlds/"),
@@ -679,5 +679,404 @@ worldManager.MoveEntity("npc-trader-1", "town_center", "the_prancing_pony")
 worldManager.TriggerWorldEvent("seasonal_festival", "town_center")
 worldManager.SaveWorld("my_campaign_world")
 ```
+
+## Implementation Phases
+
+Given the comprehensive scope of the World Manager architecture, implementation will be broken into manageable phases that build incrementally while delivering value at each stage.
+
+### Phase 1: Single Location Experience (Foundation)
+
+**Goal:** Establish basic experience orchestration with one location to prove the architecture and event patterns.
+
+**Scope:**
+- Create `orchestrators/worlds/` module structure
+- Implement basic `WorldManager` with single location support
+- Establish event-driven tool coordination patterns
+- Build integration with existing tools (spatial, spawn, selectables, content per ADR-0018)
+- Create simplified configuration schema for single locations
+- Implement basic error handling and fallback strategies
+
+**Key Components:**
+```go
+// Phase 1 simplified architecture
+type WorldManager struct {
+    contentRegistry *content.Registry
+    eventBus       *events.Bus
+    validator      *ConfigValidator
+    currentWorld   *SingleLocationWorld
+}
+
+type SingleLocationWorld struct {
+    Location        *Location
+    SpatialManager  *spatial.Orchestrator
+    SpawnEngine     *spawn.Engine
+    Environment     *environments.Generator
+}
+```
+
+**Configuration Example (Phase 1):**
+```yaml
+# Simplified single-location config
+name: "Test Dungeon"
+type: "dungeon"
+preset: "horror_dungeon"
+
+content:
+  sources:
+    - name: "dnd5e_api"
+  monster_types: ["undead", "fiend"]
+
+spatial:
+  room_count: 5
+  layout: "branching"
+
+spawning:
+  monster_density: "medium"
+```
+
+**Event Patterns (Phase 1):**
+- `orchestrator.location.content_load_requested`
+- `orchestrator.location.generation_requested`
+- `orchestrator.location.spawning_requested`
+- `orchestrator.location.{operation}_completed`
+- `orchestrator.location.{operation}_error`
+
+**Deliverables:**
+- Working `WorldManager` that can create and populate a single location
+- Event orchestration patterns established and documented
+- Configuration validation and defaults system
+- Integration tests with spatial, spawn, selectables, content tools
+- Error handling and fallback mechanisms
+- Phase 1 documentation and examples
+
+**Success Criteria:** 
+- Can generate a complete single location (dungeon, town, or forest) with populated entities using declarative YAML configuration
+- All existing tools integrate through event bus without direct coupling
+- Error scenarios trigger appropriate fallbacks
+- Configuration validation catches common mistakes with helpful error messages
+
+**Dependencies:** Existing tools (spatial, spawn, selectables), ADR-0018 content providers
+
+---
+
+### Phase 2: Multi-Location World (Expansion)
+
+**Goal:** Add support for multiple connected locations to create true "worlds" rather than single locations.
+
+**Scope:**
+- Implement `LocationRegistry` for managing multiple locations
+- Create location connection and travel route systems
+- Expand configuration schema to support multiple locations
+- Develop cross-location event coordination
+- Enhanced error handling for partial location failures
+- Location-specific content and spawning overrides
+
+**Key Components:**
+```go
+// Phase 2 expanded architecture
+type WorldManager struct {
+    contentRegistry   *content.Registry
+    locationRegistry  *LocationRegistry
+    connectionManager *ConnectionManager
+    eventBus         *events.Bus
+    validator        *WorldConfigValidator
+    currentWorld     *MultiLocationWorld
+}
+
+type LocationRegistry struct {
+    locations   map[string]*Location
+    connections []LocationConnection
+}
+
+type LocationConnection struct {
+    FromLocationID string
+    ToLocationID   string
+    ConnectionType string // "door", "path", "portal", etc.
+    TravelTime     string
+    Requirements   []string // "climbing_gear", "key", etc.
+}
+```
+
+**Configuration Example (Phase 2):**
+```yaml
+# Multi-location world config
+name: "Riverside Trading Post"
+theme: "medieval"
+scale: "town"
+
+content:
+  sources:
+    - name: "dnd5e_api"
+
+locations:
+  - id: "town_center"
+    type: "town"
+    name: "Riverside Center"
+    preset: "trading_hub"
+    
+  - id: "the_prancing_pony"
+    type: "inn"
+    name: "The Prancing Pony"
+    services: ["lodging", "food", "rumors"]
+    
+  - id: "nearby_forest"
+    type: "forest"
+    name: "Whispering Woods"
+    content:
+      monster_types: ["beast", "fey"]  # Override world content
+    spawning:
+      monster_density: "sparse"
+
+connections:
+  - from: "town_center"
+    to: "the_prancing_pony"
+    type: "street"
+    travel_time: "5_minutes"
+  - from: "town_center" 
+    to: "nearby_forest"
+    type: "path"
+    travel_time: "30_minutes"
+```
+
+**Event Patterns (Phase 2):**
+- `orchestrator.world.location_registry_updated`
+- `orchestrator.world.connection_established`
+- `orchestrator.world.location_generation_requested`
+- `orchestrator.world.multi_location_coordination`
+- Cross-location event forwarding and aggregation
+
+**Deliverables:**
+- Support for 3+ different location types in single world
+- Location connection and travel route system
+- Multi-location configuration validation
+- Cross-location event coordination patterns
+- Location-specific content override capabilities
+- Enhanced error handling for partial failures
+
+**Success Criteria:** 
+- Can create worlds with multiple connected locations of different types
+- Travel routes work between all connected locations
+- Location-specific content overrides function correctly
+- Partial location failures don't break entire world generation
+- Event coordination works across multiple location boundaries
+
+**Dependencies:** Phase 1 completion
+
+---
+
+### Phase 3: Cross-Location Entity Management
+
+**Goal:** Track and manage entities moving between locations to create dynamic, living worlds.
+
+**Scope:**
+- Implement `CrossLocationTracker` for entity management across locations
+- Create entity movement events and coordination systems
+- Build population distribution and demographic management
+- Develop entity migration and mobility systems
+- World-wide population configuration and balancing
+- Entity lifecycle management (spawning, movement, despawning)
+
+**Key Components:**
+```go
+// Phase 3 entity management
+type CrossLocationTracker struct {
+    entityLocations map[string]string // entityID -> locationID
+    entityStates   map[string]*EntityState
+    migrationRules *MigrationRuleSet
+    eventBus       *events.Bus
+}
+
+type EntityState struct {
+    Entity      core.Entity
+    LocationID  string
+    LastMoved   time.Time
+    Destination string
+    MovementPlan *MovementPlan
+}
+
+type PopulationManager struct {
+    worldPopulation   int
+    locationTargets   map[string]int // locationID -> target population
+    migrationEnabled  bool
+    mobilityRate      float32
+}
+```
+
+**Configuration Example (Phase 3):**
+```yaml
+# Cross-location entity management config
+name: "Living Valley"
+scale: "region"
+
+population:
+  total_npcs: 200
+  mobility_rate: 0.15           # 15% of entities move per time period
+  distribution: "urban_focused" # More entities in towns
+  
+  migration:
+    enabled: true
+    seasonal_patterns: true
+    trade_routes: ["town_center", "mining_camp"]
+    
+locations:
+  - id: "town_center"
+    population:
+      target_count: 100
+      demographics: ["human", "halfling", "dwarf"]
+      roles: ["merchant", "guard", "citizen"]
+      
+  - id: "mining_camp"
+    population:
+      target_count: 50
+      demographics: ["human", "dwarf"]
+      roles: ["miner", "foreman", "cook"]
+      migration_source: "town_center"  # Workers come from town
+```
+
+**Event Patterns (Phase 3):**
+- `orchestrator.world.entity_move_requested`
+- `orchestrator.world.entity_moved`
+- `orchestrator.world.population_rebalanced`
+- `orchestrator.world.migration_triggered`
+- `orchestrator.world.entity_spawned_at_location`
+- `orchestrator.world.entity_despawned_from_location`
+
+**Deliverables:**
+- Cross-location entity tracking system
+- Entity movement APIs and event patterns
+- Population management across multiple locations
+- Migration and mobility configuration options
+- Entity lifecycle management (spawn/move/despawn)
+- Demographic and role-based population distribution
+
+**Success Criteria:** 
+- NPCs and monsters can move between locations seamlessly
+- Population distributions maintain balance across the world
+- Entity states are tracked consistently across location boundaries
+- Migration patterns create believable population movement
+- Entity movement respects location connections and requirements
+
+**Dependencies:** Phase 2 completion
+
+---
+
+### Phase 4: World Persistence & Advanced Features
+
+**Goal:** Create persistent worlds with advanced dynamic systems for long-term campaign management.
+
+**Scope:**
+- Integration with persistence tool (Issue #83)
+- World save/load functionality with complete entity state preservation
+- Advanced configuration options (economics, events, factions when available)
+- Dynamic world events and scheduling systems
+- World state snapshots and rollback capabilities
+- Integration with future world tools (Issue #84)
+
+**Key Components:**
+```go
+// Phase 4 persistence and advanced features
+type PersistentWorldManager struct {
+    WorldManager                    // Embed base functionality
+    persistenceLayer *persistence.Store
+    worldState      *WorldSnapshot
+    eventScheduler  *EventScheduler
+    advancedSystems *AdvancedSystemsManager
+}
+
+type WorldSnapshot struct {
+    WorldID        string
+    Timestamp      time.Time
+    LocationStates map[string]*LocationSnapshot
+    EntityStates   map[string]*EntitySnapshot
+    SystemStates   map[string]interface{} // Economics, factions, etc.
+}
+
+type EventScheduler struct {
+    scheduledEvents []ScheduledEvent
+    eventTriggers   map[string]EventTrigger
+    worldClock     *WorldClock
+}
+```
+
+**Configuration Example (Phase 4):**
+```yaml
+# Advanced persistent world config
+name: "The Northern Reaches Campaign"
+scale: "region"
+
+persistence:
+  auto_save: true
+  save_interval: "10_minutes"
+  snapshot_retention: 10
+  track_entity_history: true
+
+events:
+  enabled: true
+  types: ["seasonal_festivals", "trade_caravans", "monster_migrations"]
+  frequency: "weekly"
+  custom_events:
+    - name: "harvest_festival"
+      trigger: "autumn_equinox"
+      effects: ["increased_trade", "population_gathering"]
+
+advanced_systems:
+  economics:
+    enabled: true
+    trade_simulation: true
+  
+  time:
+    calendar: "standard_fantasy"
+    time_scale: "1_day_per_hour"
+    seasonal_effects: true
+```
+
+**Event Patterns (Phase 4):**
+- `orchestrator.world.save_requested`
+- `orchestrator.world.load_requested`
+- `orchestrator.world.snapshot_created`
+- `orchestrator.world.scheduled_event_triggered`
+- `orchestrator.world.advanced_system_updated`
+- `orchestrator.world.state_corruption_detected`
+
+**Deliverables:**
+- Complete world persistence system with save/load
+- Advanced configuration schemas for all systems
+- Dynamic event system integration
+- World state management and recovery capabilities
+- Integration hooks for future advanced tools
+- Campaign-scale world management features
+
+**Success Criteria:** 
+- Can save/load complete worlds with all entity states preserved
+- Dynamic world events trigger and affect world state appropriately  
+- World state corruption can be detected and recovered from
+- Advanced systems integrate seamlessly with core world management
+- Campaign-scale features support long-term play
+
+**Dependencies:** Phase 3 completion, Issue #83 (Persistence Tool)
+
+---
+
+## Phase Implementation Strategy
+
+**Development Approach:**
+- Each phase must be fully functional before moving to the next
+- Comprehensive testing at each phase boundary
+- User feedback collection after each phase
+- Architecture refinement between phases as needed
+
+**Risk Mitigation:**
+- Phase boundaries allow for course correction
+- Each phase delivers independent value
+- Complexity is introduced gradually
+- Fallback to previous phase if needed
+
+**Success Metrics:**
+- Phase completion defined by success criteria achievement
+- Integration test pass rates for cross-tool coordination
+- Performance benchmarks for scalability
+- User feedback scores for usability
+
+This phased approach transforms the comprehensive World Manager vision into manageable, deliverable increments while maintaining architectural coherence and allowing for early feedback and course correction.
 
 This World Manager architecture enables the toolkit to provide complete world-building and management experiences while maintaining the clean separation and reusability of the underlying tools. It transforms the toolkit from individual tool usage to comprehensive world orchestration, making it possible for users to create rich, persistent, multi-location game worlds with minimal technical complexity.
