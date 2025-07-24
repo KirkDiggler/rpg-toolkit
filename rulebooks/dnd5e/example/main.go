@@ -163,7 +163,7 @@ func saveCharacter(char *character.Character) {
 		log.Fatal("Failed to marshal character:", err)
 	}
 
-	err = os.WriteFile("ragnar.json", jsonData, 0644) // #nosec G306 - Example code with reasonable permissions
+	err = os.WriteFile("ragnar.json", jsonData, 0644) // #nosec G306 - Example code, not sensitive data
 	if err != nil {
 		log.Fatal("Failed to save character:", err)
 	}
@@ -229,7 +229,7 @@ func saveCharacterToFile(char *character.Character, filename string) {
 		return
 	}
 
-	err = os.WriteFile(filename, jsonData, 0644) // #nosec G306 - Example code with reasonable permissions
+	err = os.WriteFile(filename, jsonData, 0644) // #nosec G306 - Example code, not sensitive data
 	if err != nil {
 		fmt.Printf("Failed to save character: %v\n", err)
 		return

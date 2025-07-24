@@ -66,7 +66,7 @@ jobs:
         done
         
         # Remove duplicates and format as JSON array
-        UNIQUE_MODULES=$(printf '%s\n' "${MODULES[@]}" | sort -u | jq -R . | jq -s .)
+        UNIQUE_MODULES=$(printf '%s\n' "${MODULES[@]}" | sort -u | jq -R . | jq -s -c .)
         echo "modules=$UNIQUE_MODULES" >> $GITHUB_OUTPUT
         echo "should_run_all=false" >> $GITHUB_OUTPUT
         
@@ -112,7 +112,7 @@ jobs:
         go mod tidy
         
         echo "→ Installing golangci-lint..."
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.2.1
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
         
         echo "→ Running linter..."
         golangci-lint run ./...
@@ -149,7 +149,9 @@ jobs:
         go-version: ${{ matrix.go-version }}
     
     - name: Install tools
-      run: make install-tools
+      run: |
+        echo "Installing golangci-lint v1.55.2..."
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
     
     - name: Run linter on all modules
       run: make lint-all
