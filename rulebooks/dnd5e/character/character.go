@@ -325,8 +325,8 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 	}
 
 	return &Character{
-		playerID:         data.PlayerID,
 		id:               data.ID,
+		playerID:         data.PlayerID,
 		name:             data.Name,
 		level:            data.Level,
 		proficiencyBonus: calculateProficiencyBonus(data.Level),
