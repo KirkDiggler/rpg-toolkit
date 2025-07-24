@@ -15,6 +15,7 @@ import (
 // Character represents a D&D 5e character with full game mechanics
 type Character struct {
 	id               string
+	playerID         string
 	name             string
 	level            int
 	proficiencyBonus int
@@ -180,6 +181,7 @@ func (c *Character) GetEffects() []effects.Effect {
 // Data represents the persistent state of a character
 type Data struct {
 	ID         string `json:"id"`
+	PlayerID   string `json:"player_id"`
 	Name       string `json:"name"`
 	Level      int    `json:"level"`
 	Experience int    `json:"experience"`
@@ -255,6 +257,7 @@ func (c *Character) ToData() Data {
 	}
 
 	data := Data{
+		PlayerID:       c.playerID,
 		ID:             c.id,
 		Name:           c.name,
 		Level:          c.level,
@@ -323,6 +326,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 
 	return &Character{
 		id:               data.ID,
+		playerID:         data.PlayerID,
 		name:             data.Name,
 		level:            data.Level,
 		proficiencyBonus: calculateProficiencyBonus(data.Level),

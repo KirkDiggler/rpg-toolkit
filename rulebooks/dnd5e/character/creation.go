@@ -14,6 +14,7 @@ import (
 // CreationData contains all data needed to create a character
 type CreationData struct {
 	ID             string // Required - must be provided by caller
+	PlayerID       string
 	Name           string
 	RaceData       *race.Data
 	SubraceID      string
@@ -105,6 +106,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	// Build character
 	char := &Character{
 		id:               data.ID,
+		playerID:         data.PlayerID,
 		name:             data.Name,
 		level:            1,
 		proficiencyBonus: 2,

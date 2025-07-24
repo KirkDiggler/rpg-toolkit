@@ -407,6 +407,7 @@ func (b *Builder) compileCharacter() (*Character, error) {
 	// Start with base character data
 	charData := Data{
 		ID:           b.draft.ID,
+		PlayerID:     b.draft.PlayerID,
 		Name:         b.draft.Name,
 		Level:        1, // Starting level
 		RaceID:       b.raceData.ID,
