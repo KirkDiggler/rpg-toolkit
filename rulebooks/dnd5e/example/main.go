@@ -116,6 +116,16 @@ func displayCharacter(char *character.Character) {
 		}
 		fmt.Println()
 	}
+
+	if len(data.Skills) > 0 {
+		fmt.Print("Skills: ")
+		for skill, prof := range data.Skills {
+			if prof > 0 {
+				fmt.Printf("%s ", skill)
+			}
+		}
+		fmt.Println()
+	}
 }
 
 func simulateCombat(char *character.Character) {
@@ -153,7 +163,7 @@ func saveCharacter(char *character.Character) {
 		log.Fatal("Failed to marshal character:", err)
 	}
 
-	err = os.WriteFile("ragnar.json", jsonData, 0644) // #nosec G306 - Example code with reasonable permissions
+	err = os.WriteFile("ragnar.json", jsonData, 0644) // #nosec G306 - Example code, not sensitive data
 	if err != nil {
 		log.Fatal("Failed to save character:", err)
 	}
@@ -219,7 +229,7 @@ func saveCharacterToFile(char *character.Character, filename string) {
 		return
 	}
 
-	err = os.WriteFile(filename, jsonData, 0644) // #nosec G306 - Example code with reasonable permissions
+	err = os.WriteFile(filename, jsonData, 0644) // #nosec G306 - Example code, not sensitive data
 	if err != nil {
 		fmt.Printf("Failed to save character: %v\n", err)
 		return
