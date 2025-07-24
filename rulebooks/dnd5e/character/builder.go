@@ -22,22 +22,6 @@ type Builder struct {
 	backgroundData *shared.Background
 }
 
-// Draft represents a character in progress
-type Draft struct {
-	ID        string
-	PlayerID  string
-	Name      string
-	Choices   map[shared.ChoiceCategory]any
-	Progress  DraftProgress
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-// DraftProgress tracks completion of character creation steps
-type DraftProgress struct {
-	flags uint32
-}
-
 // Progress flags
 const (
 	ProgressName uint32 = 1 << iota
@@ -69,14 +53,9 @@ func NewCharacterBuilder(draftID string) (*Builder, error) {
 
 // LoadDraft creates a builder from existing draft data
 func LoadDraft(data DraftData) (*Builder, error) {
-	draft := &Draft{
-		ID:        data.ID,
-		PlayerID:  data.PlayerID,
-		Name:      data.Name,
-		Choices:   data.Choices,
-		Progress:  DraftProgress{flags: data.ProgressFlags},
-		CreatedAt: data.CreatedAt,
-		UpdatedAt: data.UpdatedAt,
+	draft, err := LoadDraftFromData(data)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Builder{
@@ -239,21 +218,13 @@ func (b *Builder) Build() (*Character, error) {
 		return nil, fmt.Errorf("validation failed: %v", errors)
 	}
 
-	// Compile all choices into final character
-	return b.compileCharacter()
+	// Use the draft's ToCharacter method
+	return b.draft.ToCharacter(b.raceData, b.classData, b.backgroundData)
 }
 
 // ToData converts the draft to its persistent representation
 func (b *Builder) ToData() DraftData {
-	return DraftData{
-		ID:            b.draft.ID,
-		PlayerID:      b.draft.PlayerID,
-		Name:          b.draft.Name,
-		Choices:       b.draft.Choices,
-		ProgressFlags: b.draft.Progress.flags,
-		CreatedAt:     b.draft.CreatedAt,
-		UpdatedAt:     b.draft.UpdatedAt,
-	}
+	return b.draft.ToData()
 }
 
 // DraftData is the persistent representation of a draft
@@ -276,14 +247,6 @@ type BuilderProgress struct {
 }
 
 // Helper methods
-
-func (p *DraftProgress) setFlag(flag uint32) {
-	p.flags |= flag
-}
-
-func (p *DraftProgress) hasFlag(flag uint32) bool {
-	return p.flags&flag != 0
-}
 
 func (b *Builder) getCurrentStep() string {
 	if !b.draft.Progress.hasFlag(ProgressName) {
@@ -397,96 +360,6 @@ func (b *Builder) calculateCompletedSteps() int {
 	}
 
 	return count
-}
-
-func (b *Builder) compileCharacter() (*Character, error) {
-	if b.raceData == nil || b.classData == nil || b.backgroundData == nil {
-		return nil, errors.New("missing required data: race, class, or background")
-	}
-
-	// Start with base character data
-	charData := Data{
-		ID:           b.draft.ID,
-		PlayerID:     b.draft.PlayerID,
-		Name:         b.draft.Name,
-		Level:        1, // Starting level
-		RaceID:       b.raceData.ID,
-		ClassID:      b.classData.ID,
-		BackgroundID: b.backgroundData.ID,
-	}
-
-	// Get ability scores from choices
-	if scores, ok := b.draft.Choices[shared.ChoiceAbilityScores].(shared.AbilityScores); ok {
-		charData.AbilityScores = scores
-		// Apply racial ability score improvements
-		for ability, bonus := range b.raceData.AbilityScoreIncreases {
-			switch ability {
-			case shared.AbilityStrength:
-				charData.AbilityScores.Strength += bonus
-			case shared.AbilityDexterity:
-				charData.AbilityScores.Dexterity += bonus
-			case shared.AbilityConstitution:
-				charData.AbilityScores.Constitution += bonus
-			case shared.AbilityIntelligence:
-				charData.AbilityScores.Intelligence += bonus
-			case shared.AbilityWisdom:
-				charData.AbilityScores.Wisdom += bonus
-			case shared.AbilityCharisma:
-				charData.AbilityScores.Charisma += bonus
-			}
-		}
-	}
-
-	// Calculate HP
-	charData.MaxHitPoints = b.classData.HitPointsAt1st + ((charData.AbilityScores.Constitution - 10) / 2)
-	charData.HitPoints = charData.MaxHitPoints
-
-	// Skills
-	charData.Skills = make(map[string]int)
-	if skills, ok := b.draft.Choices[shared.ChoiceSkills].([]string); ok {
-		for _, skill := range skills {
-			charData.Skills[skill] = int(shared.Proficient)
-		}
-	}
-	// Add background skills
-	for _, skill := range b.backgroundData.SkillProficiencies {
-		charData.Skills[skill] = int(shared.Proficient)
-	}
-
-	// Languages
-	charData.Languages = append([]string{}, b.raceData.Languages...)
-	charData.Languages = append(charData.Languages, b.backgroundData.Languages...)
-	// TODO: Add language choices
-
-	// Proficiencies
-	charData.Proficiencies = shared.Proficiencies{
-		Armor:   b.classData.ArmorProficiencies,
-		Weapons: append(b.classData.WeaponProficiencies, b.raceData.WeaponProficiencies...),
-		Tools:   append(b.classData.ToolProficiencies, b.backgroundData.ToolProficiencies...),
-	}
-
-	// Saving throws
-	charData.SavingThrows = make(map[string]int)
-	for _, save := range b.classData.SavingThrows {
-		charData.SavingThrows[save] = int(shared.Proficient)
-	}
-
-	// Store choices made
-	for category, choice := range b.draft.Choices {
-		if choiceData, ok := choice.(shared.ChoiceData); ok {
-			charData.Choices = append(charData.Choices, ChoiceData{
-				Category:  string(category),
-				Source:    "draft",
-				Selection: choiceData,
-			})
-		}
-	}
-
-	charData.CreatedAt = time.Now()
-	charData.UpdatedAt = time.Now()
-
-	// Create the character domain object
-	return LoadCharacterFromData(charData, b.raceData, b.classData, b.backgroundData)
 }
 
 // RaceChoice represents a race selection with optional subrace
