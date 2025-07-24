@@ -130,14 +130,15 @@ func (c *CLI) createCharacterWizard() {
 	cha := c.getAbilityScoreInput("Charisma: ")
 
 	// Background
+	fmt.Println("\nAssigning Soldier background (provides: Athletics, Intimidation)")
 	backgroundData := getSoldierBackgroundData()
 
 	// Select skills
-	fmt.Println("\nAvailable skills:")
+	fmt.Printf("\nAvailable %s skills (choose %d):\n", classData.Name, classData.SkillProficiencyCount)
 	for i, skill := range classData.SkillOptions {
 		fmt.Printf("%d. %s\n", i+1, skill)
 	}
-	fmt.Printf("Select %d skills (comma-separated numbers): ", classData.SkillProficiencyCount)
+	fmt.Printf("Select %d skills (comma-separated numbers, e.g., 1,3): ", classData.SkillProficiencyCount)
 	skillInput := c.getInput("")
 
 	selectedSkills := []string{}
@@ -148,6 +149,7 @@ func (c *CLI) createCharacterWizard() {
 			}
 		}
 	}
+	fmt.Printf("Selected skills: %v\n", selectedSkills)
 
 	// Build choices map
 	choices := map[string]any{
@@ -191,6 +193,12 @@ func (c *CLI) createCharacterWizard() {
 
 	c.char = char
 	fmt.Println("\nCharacter created successfully!")
+
+	// Show combined skills summary
+	fmt.Printf("\nYour character has the following skill proficiencies:\n")
+	fmt.Printf("- From class selection: %v\n", selectedSkills)
+	fmt.Printf("- From soldier background: Athletics, Intimidation\n")
+
 	c.displayCharacterSummary(char)
 }
 
@@ -369,6 +377,40 @@ func (c *CLI) demonstrateBuilder() {
 func (c *CLI) displayCharacterSummary(char *character.Character) {
 	fmt.Println("\n--- Character Summary ---")
 	displayCharacter(char)
+
+	// Show skill sources
+	data := char.ToData()
+	if len(data.Skills) > 0 {
+		fmt.Println("\nSkill Proficiencies (with sources):")
+		// Get background skills for comparison
+		backgroundSkills := map[string]bool{
+			"athletics":    true,
+			"intimidation": true,
+		}
+
+		for skill, prof := range data.Skills {
+			if prof > 0 {
+				source := "class selection"
+				if backgroundSkills[skill] {
+					source = "soldier background"
+					// Check if also selected by player
+					for _, choice := range data.Choices {
+						if choice.Category == "skills" {
+							if skills, ok := choice.Selection.([]string); ok {
+								for _, s := range skills {
+									if s == skill {
+										source = "class selection + soldier background"
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+				fmt.Printf("  - %s (%s)\n", skill, source)
+			}
+		}
+	}
 	fmt.Println("------------------------")
 }
 

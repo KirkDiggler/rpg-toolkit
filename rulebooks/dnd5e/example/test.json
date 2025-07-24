@@ -1,0 +1,68 @@
+{
+  "id": "char-stan-1753377996",
+  "name": "stan",
+  "level": 1,
+  "experience": 0,
+  "race_id": "dwarf",
+  "class_id": "fighter",
+  "background_id": "soldier",
+  "ability_scores": {
+    "Strength": 16,
+    "Dexterity": 14,
+    "Constitution": 18,
+    "Intelligence": 11,
+    "Wisdom": 9,
+    "Charisma": 12
+  },
+  "hit_points": 14,
+  "max_hit_points": 14,
+  "skills": {
+    "acrobatics": 1,
+    "athletics": 1,
+    "intimidation": 1
+  },
+  "saving_throws": {
+    "constitution": 1,
+    "strength": 1
+  },
+  "languages": [
+    "common",
+    "dwarvish"
+  ],
+  "proficiencies": {
+    "Armor": [
+      "light",
+      "medium",
+      "heavy",
+      "shields"
+    ],
+    "Weapons": [
+      "simple",
+      "martial"
+    ],
+    "Tools": [
+      "gaming_set"
+    ]
+  },
+  "conditions": [],
+  "effects": [],
+  "exhaustion": 0,
+  "death_saves": {
+    "Successes": 0,
+    "Failures": 0
+  },
+  "spell_slots": {},
+  "class_resources": {},
+  "choices": [
+    {
+      "category": "skills",
+      "source": "creation",
+      "selection": [
+        "acrobatics",
+        "athletics"
+      ]
+    }
+  ],
+  "created_at": "0001-01-01T00:00:00Z",
+  "updated_at": "2025-07-24T10:26:58.217483087-07:00"
+}

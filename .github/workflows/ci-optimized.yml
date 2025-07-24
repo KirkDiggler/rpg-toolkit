@@ -1,0 +1,201 @@
+name: CI Optimized
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  # Detect what changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.detect.outputs.modules }}
+      all_modules: ${{ steps.detect.outputs.all_modules }}
+      should_run_all: ${{ steps.detect.outputs.should_run_all }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Detect changed modules
+      id: detect
+      run: |
+        # For main branch pushes, always run all
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "should_run_all=true" >> $GITHUB_OUTPUT
+          echo "Running all checks for main branch push"
+          exit 0
+        fi
+        
+        # Check if PR has "full-check" label
+        if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-check') }}" == "true" ]]; then
+          echo "should_run_all=true" >> $GITHUB_OUTPUT
+          echo "Running all checks due to 'full-check' label"
+          exit 0
+        fi
+        
+        # Get list of changed files
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.go$' || true)
+        else
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '\.go$' || true)
+        fi
+        
+        if [[ -z "$CHANGED_FILES" ]]; then
+          echo "No Go files changed"
+          echo "modules=[]" >> $GITHUB_OUTPUT
+          echo "should_run_all=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Find modules with changes
+        MODULES=()
+        for file in $CHANGED_FILES; do
+          dir=$(dirname "$file")
+          while [[ ! -f "$dir/go.mod" && "$dir" != "." && "$dir" != "/" ]]; do
+            dir=$(dirname "$dir")
+          done
+          if [[ -f "$dir/go.mod" ]]; then
+            MODULES+=("$dir")
+          fi
+        done
+        
+        # Remove duplicates and format as JSON array
+        UNIQUE_MODULES=$(printf '%s\n' "${MODULES[@]}" | sort -u | jq -R . | jq -s .)
+        echo "modules=$UNIQUE_MODULES" >> $GITHUB_OUTPUT
+        echo "should_run_all=false" >> $GITHUB_OUTPUT
+        
+        echo "Changed modules: $UNIQUE_MODULES"
+
+  # Run checks on changed modules only (for PRs)
+  test-changed:
+    needs: changes
+    if: needs.changes.outputs.should_run_all == 'false' && needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.changes.outputs.modules) }}
+        go-version: ['1.24.x']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ matrix.module }}-${{ hashFiles(format('{0}/go.sum', matrix.module)) }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ matrix.module }}-
+    
+    - name: Check module ${{ matrix.module }}
+      run: |
+        echo "🔍 Checking module: ${{ matrix.module }}"
+        cd "${{ matrix.module }}"
+        
+        echo "→ Running go fmt..."
+        go fmt ./...
+        
+        echo "→ Running go mod tidy..."
+        go mod tidy
+        
+        echo "→ Installing golangci-lint..."
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.2.1
+        
+        echo "→ Running linter..."
+        golangci-lint run ./...
+        
+        echo "→ Running tests..."
+        go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+        
+        echo "✅ Module ${{ matrix.module }} passed all checks"
+    
+    - name: Check for modifications
+      run: |
+        if [[ -n $(git status --porcelain) ]]; then
+          echo "❌ Files were modified during checks:"
+          git status --porcelain
+          echo "Please run 'go fmt ./...' and 'go mod tidy' locally"
+          exit 1
+        fi
+
+  # Run all checks (for main branch or full-check label)
+  test-all:
+    needs: changes
+    if: needs.changes.outputs.should_run_all == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.24.x']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Install tools
+      run: make install-tools
+    
+    - name: Run linter on all modules
+      run: make lint-all
+    
+    - name: Run tests on all modules
+      run: make test-all
+    
+    - name: Check go mod tidy on all modules
+      run: |
+        # Run go mod tidy on all modules
+        find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do
+          dir=$(dirname "$modfile")
+          echo "→ Tidying $dir..."
+          (cd "$dir" && go mod tidy) || exit 1
+        done
+        git diff --exit-code || (echo "Please run 'go mod tidy' on all modules" && exit 1)
+
+  # Summary job for branch protection
+  ci-status:
+    needs: [changes, test-changed, test-all]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: CI Status Summary
+      run: |
+        echo "📊 CI Summary:"
+        echo "Changes detection: ${{ needs.changes.result }}"
+        echo "Changed modules test: ${{ needs.test-changed.result }}"
+        echo "All modules test: ${{ needs.test-all.result }}"
+        
+        # Fail if any required job failed
+        if [[ "${{ needs.changes.result }}" == "failure" ]]; then
+          echo "❌ Changes detection failed"
+          exit 1
+        fi
+        
+        # If we ran changed modules test, check its result
+        if [[ "${{ needs.test-changed.result }}" == "failure" ]]; then
+          echo "❌ Changed modules test failed"
+          exit 1
+        fi
+        
+        # If we ran all modules test, check its result
+        if [[ "${{ needs.test-all.result }}" == "failure" ]]; then
+          echo "❌ All modules test failed"
+          exit 1
+        fi
+        
+        echo "✅ All CI checks passed!"

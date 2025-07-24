@@ -116,6 +116,16 @@ func displayCharacter(char *character.Character) {
 		}
 		fmt.Println()
 	}
+
+	if len(data.Skills) > 0 {
+		fmt.Print("Skills: ")
+		for skill, prof := range data.Skills {
+			if prof > 0 {
+				fmt.Printf("%s ", skill)
+			}
+		}
+		fmt.Println()
+	}
 }
 
 func simulateCombat(char *character.Character) {
