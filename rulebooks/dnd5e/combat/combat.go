@@ -31,20 +31,35 @@ type Combat struct {
 }
 
 // RollAttack performs an attack roll
+// TODO: This is a placeholder implementation. In a complete system, this would:
+// - Roll 1d20 + attacker's attack bonus
+// - Compare against target's AC
+// - Check for critical hits (natural 20) and misses (natural 1)
+// - Apply advantage/disadvantage if applicable
 func RollAttack(_ Attacker, _ Target, _ Weapon) AttackRoll {
-	// TODO: Implement attack logic
+	// Placeholder implementation - returns empty result
+	// Real implementation would use dice roller and calculate modifiers
 	return AttackRoll{}
 }
 
 // RollDamage calculates damage
+// TODO: This is a placeholder implementation. In a complete system, this would:
+// - Parse weapon damage string (e.g., "1d8")
+// - Roll damage dice
+// - Apply critical hit rules (roll damage dice twice)
+// - Add relevant modifiers
 func RollDamage(_ Weapon, _ bool) DamageRoll {
-	// TODO: Implement damage calculation
+	// Placeholder implementation - returns empty result
 	return DamageRoll{}
 }
 
 // RollInitiative rolls initiative for combat
+// TODO: This is a placeholder implementation. In a complete system, this would:
+// - Roll 1d20 + dexterity modifier
+// - Track initiative order for all combatants
+// - Handle tie-breaking rules
 func RollInitiative(_ int) Initiative {
-	// TODO: Implement initiative
+	// Placeholder implementation - returns empty result
 	return Initiative{}
 }
 

@@ -78,24 +78,40 @@ type Resource struct {
 }
 
 // Attack performs an attack roll against a target
+// TODO: This is a placeholder implementation. In a complete system, this would:
+// - Calculate attack bonus (ability modifier + proficiency if proficient)
+// - Roll attack using combat.RollAttack
+// - Apply any active effects that modify attacks
+// - Return detailed attack results
 func (c *Character) Attack(_ Weapon, _ Target) AttackResult {
-	// TODO: Implement attack logic
+	// Placeholder implementation - returns empty result
 	return AttackResult{}
 }
 
 // SaveThrow performs a saving throw
+// TODO: This is a placeholder implementation. In a complete system, this would:
+// - Calculate ability modifier for the given ability
+// - Add proficiency bonus if proficient in that save
+// - Apply any active effects (like Bless) that modify saves
+// - Roll 1d20 + modifiers vs DC
 func (c *Character) SaveThrow(_ string, _ int) SaveResult {
+	// Placeholder implementation - returns empty result
+	// The commented code shows the intended logic structure
 	// mod := c.abilityModifier(ability)
 	// if c.isProficient(ability + "_save") {
 	// 	mod += c.proficiencyBonus
 	// }
-	// TODO: Roll dice and calculate
 	return SaveResult{}
 }
 
 // SkillCheck performs a skill check
+// TODO: This is a placeholder implementation. In a complete system, this would:
+// - Determine ability modifier for the skill
+// - Add proficiency bonus if proficient (or expertise for double)
+// - Apply any active effects that modify skill checks
+// - Roll 1d20 + modifiers vs DC
 func (c *Character) SkillCheck(_ string, _ int) CheckResult {
-	// TODO: Implement skill check logic
+	// Placeholder implementation - returns empty result
 	return CheckResult{}
 }
 

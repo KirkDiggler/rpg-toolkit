@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -55,6 +57,7 @@ const (
 func NewCharacterBuilder() *Builder {
 	return &Builder{
 		draft: &Draft{
+			ID:        uuid.New().String(),
 			Choices:   make(map[shared.ChoiceCategory]any),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),

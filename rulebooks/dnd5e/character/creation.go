@@ -3,8 +3,8 @@ package character
 
 import (
 	"errors"
-	"fmt"
-	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -136,8 +136,8 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 }
 
 func generateID() string {
-	// Simple ID generation - you'd implement something better
-	return fmt.Sprintf("char_%d", time.Now().Unix())
+	// Use UUID for unique ID generation to avoid collisions
+	return uuid.New().String()
 }
 
 func buildChoiceData(data CreationData) []ChoiceData {
