@@ -80,46 +80,16 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	// Get ability scores from choices
 	if scores, ok := d.Choices[shared.ChoiceAbilityScores].(shared.AbilityScores); ok {
 		charData.AbilityScores = scores
+
 		// Apply racial ability score improvements
-		for ability, bonus := range raceData.AbilityScoreIncreases {
-			switch ability {
-			case shared.AbilityStrength:
-				charData.AbilityScores.Strength += bonus
-			case shared.AbilityDexterity:
-				charData.AbilityScores.Dexterity += bonus
-			case shared.AbilityConstitution:
-				charData.AbilityScores.Constitution += bonus
-			case shared.AbilityIntelligence:
-				charData.AbilityScores.Intelligence += bonus
-			case shared.AbilityWisdom:
-				charData.AbilityScores.Wisdom += bonus
-			case shared.AbilityCharisma:
-				charData.AbilityScores.Charisma += bonus
-			}
-		}
+		applyAbilityScoreIncreases(&charData.AbilityScores, raceData.AbilityScoreIncreases)
 
 		// Apply subrace ability score improvements if applicable
 		if raceChoice, ok := d.Choices[shared.ChoiceRace].(RaceChoice); ok && raceChoice.SubraceID != "" {
 			// Find the subrace data
 			for _, subrace := range raceData.Subraces {
 				if subrace.ID == raceChoice.SubraceID {
-					// Apply subrace ability score increases
-					for ability, bonus := range subrace.AbilityScoreIncreases {
-						switch ability {
-						case shared.AbilityStrength:
-							charData.AbilityScores.Strength += bonus
-						case shared.AbilityDexterity:
-							charData.AbilityScores.Dexterity += bonus
-						case shared.AbilityConstitution:
-							charData.AbilityScores.Constitution += bonus
-						case shared.AbilityIntelligence:
-							charData.AbilityScores.Intelligence += bonus
-						case shared.AbilityWisdom:
-							charData.AbilityScores.Wisdom += bonus
-						case shared.AbilityCharisma:
-							charData.AbilityScores.Charisma += bonus
-						}
-					}
+					applyAbilityScoreIncreases(&charData.AbilityScores, subrace.AbilityScoreIncreases)
 					break
 				}
 			}
@@ -145,7 +115,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	// Languages
 	charData.Languages = append([]string{}, raceData.Languages...)
 	charData.Languages = append(charData.Languages, backgroundData.Languages...)
-	// TODO: Add language choices
+	// TODO(#106): Add language choices
 
 	// Proficiencies
 	charData.Proficiencies = shared.Proficiencies{
@@ -226,4 +196,24 @@ func (p *DraftProgress) setFlag(flag uint32) {
 
 func (p *DraftProgress) hasFlag(flag uint32) bool {
 	return p.flags&flag != 0
+}
+
+// applyAbilityScoreIncreases applies ability score increases to the given scores
+func applyAbilityScoreIncreases(scores *shared.AbilityScores, increases map[string]int) {
+	for ability, bonus := range increases {
+		switch ability {
+		case shared.AbilityStrength:
+			scores.Strength += bonus
+		case shared.AbilityDexterity:
+			scores.Dexterity += bonus
+		case shared.AbilityConstitution:
+			scores.Constitution += bonus
+		case shared.AbilityIntelligence:
+			scores.Intelligence += bonus
+		case shared.AbilityWisdom:
+			scores.Wisdom += bonus
+		case shared.AbilityCharisma:
+			scores.Charisma += bonus
+		}
+	}
 }
