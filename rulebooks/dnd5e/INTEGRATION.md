@@ -41,7 +41,12 @@ type CharacterService struct {
 
 // Start character creation
 func (s *CharacterService) StartCharacterCreation(playerID string) (*dnd5e.CharacterDraftData, error) {
-    builder := dnd5e.NewCharacterBuilder()
+    // Generate unique draft ID using your preferred method
+    draftID := generateDraftID() // e.g., UUID, database sequence, etc.
+    builder, err := dnd5e.NewCharacterBuilder(draftID)
+    if err != nil {
+        return err
+    }
     
     // Save initial draft
     draftData := builder.ToData()

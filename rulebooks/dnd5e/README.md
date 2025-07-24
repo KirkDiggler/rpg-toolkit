@@ -33,7 +33,7 @@ You can import the entire package:
 import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 
 // Use the facade
-builder := dnd5e.NewCharacterBuilder(loader)
+builder, err := dnd5e.NewCharacterBuilder("draft-123")
 char := &dnd5e.Character{}
 ```
 
@@ -117,6 +117,7 @@ backgroundData := loadBackgroundData("soldier")
 
 // Create character directly
 character, err := character.NewFromCreationData(character.CreationData{
+    ID:             "char-ragnar-001", // Game service provides ID
     Name:           "Ragnar",
     RaceData:       raceData,
     ClassData:      classData,
@@ -140,7 +141,7 @@ saveToDatabase(data)
 
 ```go
 // Create builder
-builder := NewCharacterBuilder()
+builder, err := NewCharacterBuilder("draft-123")
 
 // Load your game data from wherever (API, files, etc.)
 raceData := loadRaceData("human")     // You implement this

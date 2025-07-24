@@ -49,6 +49,7 @@ This launches an interactive command-line interface where you can:
 ### 1. Direct Character Creation
 ```go
 char, err := character.NewFromCreationData(character.CreationData{
+    ID:             "char-ragnar-001",
     Name:           "Ragnar",
     RaceData:       raceData,
     ClassData:      classData,
@@ -60,7 +61,10 @@ char, err := character.NewFromCreationData(character.CreationData{
 
 ### 2. Using the Builder
 ```go
-builder := dnd5e.NewCharacterBuilder()
+builder, err := dnd5e.NewCharacterBuilder("draft-001")
+if err != nil {
+    log.Fatal(err)
+}
 builder.SetName("Thorin")
 builder.SetRaceData(raceData, "")
 builder.SetClassData(classData)

@@ -62,6 +62,7 @@ func main() {
 func createCharacter(raceData *race.Data, classData *class.Data,
 	backgroundData *shared.Background) *character.Character {
 	char, err := character.NewFromCreationData(character.CreationData{
+		ID:             "char-ragnar-001",
 		Name:           "Ragnar",
 		RaceData:       raceData,
 		ClassData:      classData,
@@ -232,7 +233,10 @@ func saveCharacterToFile(char *character.Character, filename string) {
 func demonstrateBuilder(raceData *race.Data, classData *class.Data, backgroundData *shared.Background) {
 	fmt.Println("Creating character step-by-step with builder...")
 
-	builder := dnd5e.NewCharacterBuilder()
+	builder, err := dnd5e.NewCharacterBuilder("demo-builder-thorin")
+	if err != nil {
+		log.Fatal("Failed to create builder:", err)
+	}
 
 	// Step 1: Name
 	if err := builder.SetName("Thorin"); err != nil {

@@ -4,8 +4,6 @@ package character
 import (
 	"errors"
 
-	"github.com/google/uuid"
-
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
@@ -15,6 +13,7 @@ import (
 
 // CreationData contains all data needed to create a character
 type CreationData struct {
+	ID             string // Required - must be provided by caller
 	Name           string
 	RaceData       *race.Data
 	SubraceID      string
@@ -28,6 +27,9 @@ type CreationData struct {
 // This is a simpler alternative to the builder pattern
 func NewFromCreationData(data CreationData) (*Character, error) {
 	// Validate required fields
+	if data.ID == "" {
+		return nil, errors.New("character ID is required")
+	}
 	if data.Name == "" {
 		return nil, errors.New("name is required")
 	}
@@ -102,7 +104,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Build character
 	char := &Character{
-		id:               generateID(), // You implement this
+		id:               data.ID,
 		name:             data.Name,
 		level:            1,
 		proficiencyBonus: 2,
@@ -133,11 +135,6 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	}
 
 	return char, nil
-}
-
-func generateID() string {
-	// Use UUID for unique ID generation to avoid collisions
-	return uuid.New().String()
 }
 
 func buildChoiceData(data CreationData) []ChoiceData {

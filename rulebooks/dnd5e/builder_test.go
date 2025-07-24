@@ -56,10 +56,11 @@ func createTestBackgroundData() dnd5e.Background {
 }
 
 func TestCharacterBuilder(t *testing.T) {
-	builder := dnd5e.NewCharacterBuilder()
+	builder, err := dnd5e.NewCharacterBuilder("test-draft-id")
+	require.NoError(t, err)
 
 	// Test name setting
-	err := builder.SetName("Test Character")
+	err = builder.SetName("Test Character")
 	require.NoError(t, err)
 
 	// Test empty name validation
@@ -92,10 +93,11 @@ func TestCharacterBuilder(t *testing.T) {
 
 func TestCharacterCreationFlow(t *testing.T) {
 	// Create a builder and complete character creation
-	builder := dnd5e.NewCharacterBuilder()
+	builder, err := dnd5e.NewCharacterBuilder("test-draft-id")
+	require.NoError(t, err)
 
 	// Set name
-	err := builder.SetName("Ragnar")
+	err = builder.SetName("Ragnar")
 	require.NoError(t, err)
 
 	// Set race

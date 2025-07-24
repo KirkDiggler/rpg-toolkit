@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -167,6 +168,7 @@ func (c *CLI) createCharacterWizard() {
 
 	// Create character
 	char, err := character.NewFromCreationData(character.CreationData{
+		ID:             fmt.Sprintf("char-%s-%d", name, time.Now().Unix()),
 		Name:           name,
 		RaceData:       raceData,
 		ClassData:      classData,
@@ -289,7 +291,11 @@ func (c *CLI) demonstrateBuilder() {
 	fmt.Println("\n=== Builder Pattern Demo ===")
 	fmt.Println("Creating character step-by-step...")
 
-	builder := dnd5e.NewCharacterBuilder()
+	builder, err := dnd5e.NewCharacterBuilder("demo-draft-" + time.Now().Format("20060102150405"))
+	if err != nil {
+		fmt.Printf("Failed to create builder: %v\n", err)
+		return
+	}
 
 	// Step through each stage
 	fmt.Println("\nStep 1: Setting name...")

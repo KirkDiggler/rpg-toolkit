@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -53,17 +51,20 @@ const (
 	ProgressSpells
 )
 
-// NewCharacterBuilder creates a new builder
-func NewCharacterBuilder() *Builder {
+// NewCharacterBuilder creates a new builder with the provided draft ID
+func NewCharacterBuilder(draftID string) (*Builder, error) {
+	if draftID == "" {
+		return nil, errors.New("draft ID is required")
+	}
 	return &Builder{
 		draft: &Draft{
-			ID:        uuid.New().String(),
+			ID:        draftID,
 			Choices:   make(map[shared.ChoiceCategory]any),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 		validator: NewValidator(),
-	}
+	}, nil
 }
 
 // LoadDraft creates a builder from existing draft data
