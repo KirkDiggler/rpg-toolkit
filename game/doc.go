@@ -11,7 +11,14 @@
 //
 //	// Create context with game infrastructure
 //	ctx := context.Background()
-//	gameCtx := game.NewContext(eventBus, characterData)
+//	gameCtx, err := game.NewContext(eventBus, characterData)
+//	if err != nil {
+//	    // Handle validation error
+//	}
+//
+//	// Access data through getter methods
+//	data := gameCtx.Data()
+//	bus := gameCtx.EventBus()
 //
 //	// Load entity (implementation in rulebook/entity package)
 //	character, err := LoadCharacterFromContext(ctx, gameCtx)

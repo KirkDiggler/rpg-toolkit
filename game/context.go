@@ -21,19 +21,21 @@ import (
 //   - Self-contained data (T has everything needed to reconstruct the entity)
 //   - Access to game infrastructure (event bus, future systems)
 //   - Clean separation between data and behavior
+//
+// Context is immutable after creation to guarantee validity.
 type Context[T any] struct {
-	// EventBus provides event-driven communication between game systems.
+	// eventBus provides event-driven communication between game systems.
 	// This allows entities to participate in the game's event ecosystem.
-	EventBus events.EventBus
+	eventBus events.EventBus
 
-	// Data contains all information needed to reconstruct the entity.
+	// data contains all information needed to reconstruct the entity.
 	// This should be self-contained with no external dependencies.
-	Data T
+	data T
 
 	// Future infrastructure can be added here as needed:
-	// Registry EntityRegistry  // For complex entity lookups
-	// Logger   Logger          // For debugging
-	// Metrics  MetricsCollector // For performance tracking
+	// registry EntityRegistry  // For complex entity lookups
+	// logger   Logger          // For debugging
+	// metrics  MetricsCollector // For performance tracking
 }
 
 // NewContext creates a new Context with the provided infrastructure and data.
@@ -50,7 +52,17 @@ func NewContext[T any](eventBus events.EventBus, data T) (Context[T], error) {
 	}
 
 	return Context[T]{
-		EventBus: eventBus,
-		Data:     data,
+		eventBus: eventBus,
+		data:     data,
 	}, nil
+}
+
+// EventBus returns the event bus for this context.
+func (c Context[T]) EventBus() events.EventBus {
+	return c.eventBus
+}
+
+// Data returns the entity data for this context.
+func (c Context[T]) Data() T {
+	return c.data
 }
