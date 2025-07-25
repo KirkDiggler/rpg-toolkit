@@ -1,4 +1,4 @@
-# Journey 014: Self-Contained Entity Data Pattern
+# Journey 019: Self-Contained Entity Data Pattern
 
 ## Context
 
