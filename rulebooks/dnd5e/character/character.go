@@ -2,9 +2,11 @@
 package character
 
 import (
+	"context"
 	"errors"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/game"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
@@ -355,6 +357,27 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		classResources:   resources,
 		choices:          data.Choices,
 	}, nil
+}
+
+// LoadCharacterFromContext creates a character using the game.Context pattern.
+// This provides a consistent loading interface across all game entities.
+// Note: This still requires external dependencies (race, class, background) for now.
+// A future version will use fully self-contained data as explored in Journey 019.
+func LoadCharacterFromContext(_ context.Context, gameCtx game.Context[Data],
+	raceData *race.Data, classData *class.Data, backgroundData *shared.Background) (*Character, error) {
+	// Use the existing loader with data from context
+	char, err := LoadCharacterFromData(gameCtx.Data(), raceData, classData, backgroundData)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: When event types are defined, emit character.loaded event
+	// if gameCtx.EventBus() != nil {
+	//     event := events.NewGameEvent("character.loaded", char, nil)
+	//     gameCtx.EventBus().Publish(ctx, event)
+	// }
+
+	return char, nil
 }
 
 // Weapon represents a weapon for attacks
