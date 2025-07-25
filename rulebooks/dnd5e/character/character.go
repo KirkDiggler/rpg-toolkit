@@ -371,7 +371,7 @@ func LoadCharacterFromContext(_ context.Context, gameCtx game.Context[Data],
 		return nil, err
 	}
 
-	// TODO: When event types are defined, emit character.loaded event
+	// TODO(#113): When event types are defined, emit character.loaded event
 	// if gameCtx.EventBus() != nil {
 	//     event := events.NewGameEvent("character.loaded", char, nil)
 	//     gameCtx.EventBus().Publish(ctx, event)
