@@ -6,6 +6,7 @@ package resources_test
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
@@ -70,14 +71,24 @@ func Example() {
 	_ = pool.Add(divineSense)
 	_ = pool.Add(inspiration)
 
-	// Subscribe to restoration events to track what happens
+	// Track restoration events (sorted for deterministic output)
+	restorations := []string{}
 	handler := func(_ context.Context, e events.Event) error {
 		event := e.(*resources.ResourceRestoredEvent)
-		fmt.Printf("  %s restored %d points (trigger: %s)\n",
-			event.Resource.Key(), event.Amount, event.Reason)
+		restorations = append(restorations, fmt.Sprintf("  %s restored %d points (trigger: %s)",
+			event.Resource.Key(), event.Amount, event.Reason))
 		return nil
 	}
 	bus.SubscribeFunc(resources.EventResourceRestored, 0, events.HandlerFunc(handler))
+
+	// Helper to print sorted restoration messages
+	printRestorations := func() {
+		sort.Strings(restorations)
+		for _, msg := range restorations {
+			fmt.Println(msg)
+		}
+		restorations = restorations[:0] // Clear for next batch
+	}
 
 	// Use some resources to see restoration
 	layOnHands.SetCurrent(10)
@@ -88,23 +99,27 @@ func Example() {
 	// Dawn breaks - divine resources restore
 	fmt.Println("Dawn breaks...")
 	pool.ProcessRestoration("my.game.dawn", bus)
+	printRestorations()
 
 	// Character performs a heroic deed
 	fmt.Println("Paladin saves innocent - heroic deed!")
 	pool.ProcessRestoration("my.game.heroic_deed", bus)
+	printRestorations()
 
 	// Party reaches a milestone
 	fmt.Println("Major story milestone reached!")
 	pool.ProcessRestoration("my.game.milestone", bus)
+	printRestorations()
 
 	// Game-specific rest (not D&D's short/long rest)
 	fmt.Println("Party takes shelter in temple - blessed rest")
 	pool.ProcessRestoration("my.game.blessed_rest", bus)
+	printRestorations()
 
 	// Output:
 	// Dawn breaks...
-	//   lay_on_hands_hp restored 40 points (trigger: my.game.dawn)
 	//   divine_sense_uses restored 5 points (trigger: my.game.dawn)
+	//   lay_on_hands_hp restored 40 points (trigger: my.game.dawn)
 	// Paladin saves innocent - heroic deed!
 	//   inspiration_points restored 1 points (trigger: my.game.heroic_deed)
 	// Major story milestone reached!
