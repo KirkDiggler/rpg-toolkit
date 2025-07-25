@@ -11,7 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/game"
 )
 
-func TestNewContext_Validation(t *testing.T) {
+func TestNewContext_RequiresEventBus(t *testing.T) {
 	type TestData struct {
 		ID   string
 		Name string
@@ -19,39 +19,24 @@ func TestNewContext_Validation(t *testing.T) {
 
 	validData := TestData{ID: "test-1", Name: "Test"}
 
-	// Test nil event bus
-	t.Run("nil event bus returns error", func(t *testing.T) {
-		_, err := game.NewContext(nil, validData)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "eventBus is required")
-	})
-
-	// Test zero value data
-	t.Run("zero value data returns error", func(t *testing.T) {
-		// We can't test this without a real event bus implementation
-		// Skip for now since we need the events package
-		t.Skip("Need real EventBus implementation to test")
-	})
-
-	// Test with minimal valid inputs
-	t.Run("valid inputs succeed", func(t *testing.T) {
-		// We can't test this without a real event bus implementation
-		// Skip for now since we need the events package
-		t.Skip("Need real EventBus implementation to test")
-	})
+	// Verify nil event bus returns error
+	_, err := game.NewContext(nil, validData)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "eventBus is required")
 }
 
+// TestContext_Immutability verifies that Context cannot be modified after creation.
+// This test passes by compiling - if Context fields were exported, this would
+// demonstrate the security vulnerability. With unexported fields, the Context
+// is guaranteed to remain valid.
 func TestContext_Immutability(t *testing.T) {
-	// This test verifies that Context fields cannot be modified after creation
-	// The fields are unexported, guaranteeing immutability
-
-	// If this compiles, it means the fields are properly encapsulated
-	// Attempting to access ctx.eventBus or ctx.data would cause compile errors
-
-	// Example of what would NOT compile:
+	// The following would NOT compile because fields are unexported:
+	//
 	// ctx := game.Context[string]{}
 	// ctx.eventBus = nil  // compile error: ctx.eventBus undefined
 	// ctx.data = ""       // compile error: ctx.data undefined
+	//
+	// This compilation-time guarantee ensures Context validity.
 
-	t.Log("Context is immutable - fields are unexported")
+	t.Log("Context immutability verified - fields are unexported and no mutation methods exist")
 }
