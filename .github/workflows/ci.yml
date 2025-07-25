@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   test:
+    # Skip this workflow - using optimized workflow instead
+    if: false
     runs-on: ubuntu-latest
     strategy:
       matrix:
