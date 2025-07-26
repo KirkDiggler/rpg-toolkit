@@ -199,6 +199,10 @@ type Data struct {
 	HitPoints     int                  `json:"hit_points"`
 	MaxHitPoints  int                  `json:"max_hit_points"`
 
+	// Physical characteristics (denormalized from race)
+	Speed int    `json:"speed"`
+	Size  string `json:"size"`
+
 	// Proficiencies and skills
 	Skills        map[string]int       `json:"skills"`        // skill name -> proficiency level
 	SavingThrows  map[string]int       `json:"saving_throws"` // ability -> proficiency level
@@ -269,6 +273,8 @@ func (c *Character) ToData() Data {
 		AbilityScores:  c.abilityScores,
 		HitPoints:      c.hitPoints,
 		MaxHitPoints:   c.maxHitPoints,
+		Speed:          c.speed,
+		Size:           c.size,
 		Skills:         skillsData,
 		SavingThrows:   savesData,
 		Languages:      c.languages,
@@ -336,8 +342,8 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		classID:          data.ClassID,
 		backgroundID:     data.BackgroundID,
 		abilityScores:    data.AbilityScores,
-		size:             raceData.Size,
-		speed:            raceData.Speed,
+		size:             data.Size,
+		speed:            data.Speed,
 		hitPoints:        data.HitPoints,
 		maxHitPoints:     data.MaxHitPoints,
 		tempHitPoints:    0,                                              // Reset on load
