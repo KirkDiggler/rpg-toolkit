@@ -33,7 +33,6 @@ func createTestClassData() dnd5e.ClassData {
 		ID:                    "fighter",
 		Name:                  "Fighter",
 		HitDice:               10,
-		HitPointsAt1st:        10,
 		HitPointsPerLevel:     6,
 		SkillProficiencyCount: 2,
 		SkillOptions: []string{

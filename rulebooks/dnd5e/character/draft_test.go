@@ -41,7 +41,6 @@ func (s *DraftTestSuite) SetupTest() {
 		ID:                    "fighter",
 		Name:                  "Fighter",
 		HitDice:               10,
-		HitPointsAt1st:        10,
 		SavingThrows:          []string{shared.AbilityStrength, shared.AbilityConstitution},
 		SkillProficiencyCount: 2,
 		SkillOptions: []string{

@@ -9,7 +9,6 @@ type Data struct {
 
 	// Core mechanics
 	HitDice           int `json:"hit_dice"`             // d6, d8, d10, d12
-	HitPointsAt1st    int `json:"hit_points_at_1st"`    // Base HP at level 1
 	HitPointsPerLevel int `json:"hit_points_per_level"` // Average HP per level
 
 	// Proficiencies
