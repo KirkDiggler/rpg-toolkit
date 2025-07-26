@@ -40,7 +40,7 @@ type RoomData struct {
 	Entities map[string]EntityPlacement `json:"entities,omitempty"`
 }
 
-// EntityPlacement represents an entity's position and basic data in a room
+// EntityPlacement represents an entity's position and spatial properties in a room
 type EntityPlacement struct {
 	// EntityID is the unique identifier of the entity
 	EntityID string `json:"entity_id"`
@@ -50,6 +50,53 @@ type EntityPlacement struct {
 
 	// Position is where the entity is placed in the room
 	Position Position `json:"position"`
+
+	// Size is how many grid spaces the entity occupies (default 1)
+	Size int `json:"size,omitempty"`
+
+	// BlocksMovement indicates if this entity blocks movement through its space
+	BlocksMovement bool `json:"blocks_movement"`
+
+	// BlocksLineOfSight indicates if this entity blocks line of sight
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+}
+
+// PlaceableData is a minimal implementation of Placeable for spatial queries.
+// It contains just enough data to support movement and line of sight calculations.
+type PlaceableData struct {
+	id                string
+	entityType        string
+	size              int
+	blocksMovement    bool
+	blocksLineOfSight bool
+}
+
+// GetID returns the entity's unique identifier
+func (p *PlaceableData) GetID() string {
+	return p.id
+}
+
+// GetType returns the entity's type
+func (p *PlaceableData) GetType() string {
+	return p.entityType
+}
+
+// GetSize returns the size of the entity
+func (p *PlaceableData) GetSize() int {
+	if p.size < 1 {
+		return 1 // Default size
+	}
+	return p.size
+}
+
+// BlocksMovement returns true if the entity blocks movement
+func (p *PlaceableData) BlocksMovement() bool {
+	return p.blocksMovement
+}
+
+// BlocksLineOfSight returns true if the entity blocks line of sight
+func (p *PlaceableData) BlocksLineOfSight() bool {
+	return p.blocksLineOfSight
 }
 
 // ToData converts a BasicRoom to RoomData for persistence.
@@ -78,11 +125,20 @@ func (r *BasicRoom) ToData() RoomData {
 	entities := make(map[string]EntityPlacement)
 	for id, entity := range r.entities {
 		if pos, exists := r.positions[id]; exists {
-			entities[id] = EntityPlacement{
+			placement := EntityPlacement{
 				EntityID:   entity.GetID(),
 				EntityType: entity.GetType(),
 				Position:   pos,
 			}
+
+			// Check if entity implements Placeable to get spatial properties
+			if placeable, ok := entity.(Placeable); ok {
+				placement.Size = placeable.GetSize()
+				placement.BlocksMovement = placeable.BlocksMovement()
+				placement.BlocksLineOfSight = placeable.BlocksLineOfSight()
+			}
+
+			entities[id] = placement
 		}
 	}
 
@@ -132,9 +188,24 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 		EventBus: eventBus,
 	})
 
-	// Note: Entity placement would be handled by the caller
-	// They would need to resolve entity IDs to actual entities
-	// This keeps the room loader focused on room construction
+	// Place entities using minimal spatial data
+	for _, placement := range data.Entities {
+		// Create a minimal placeable entity with just spatial properties
+		entity := &PlaceableData{
+			id:                placement.EntityID,
+			entityType:        placement.EntityType,
+			size:              placement.Size,
+			blocksMovement:    placement.BlocksMovement,
+			blocksLineOfSight: placement.BlocksLineOfSight,
+		}
+
+		// Place the entity in the room
+		if err := room.PlaceEntity(entity, placement.Position); err != nil {
+			// Log error but continue loading other entities
+			// In production, might want to handle this differently
+			continue
+		}
+	}
 
 	return room, nil
 }
