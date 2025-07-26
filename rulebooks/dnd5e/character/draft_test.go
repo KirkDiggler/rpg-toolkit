@@ -115,6 +115,10 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal(12, character.maxHitPoints)
 	s.Assert().Equal(12, character.hitPoints)
 
+	// Verify physical characteristics from race
+	s.Assert().Equal(30, character.speed)
+	s.Assert().Equal("Medium", character.size)
+
 	// Verify skills
 	s.Assert().Equal(shared.Proficient, character.skills["Perception"])
 	s.Assert().Equal(shared.Proficient, character.skills["Survival"])
@@ -195,6 +199,10 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 	// Verify ability scores include racial bonuses
 	s.Assert().Equal(17, character.abilityScores.Dexterity)    // 15 + 2 (elf)
 	s.Assert().Equal(13, character.abilityScores.Intelligence) // 12 + 1 (high elf)
+
+	// Verify physical characteristics from elf race
+	s.Assert().Equal(30, character.speed)
+	s.Assert().Equal("Medium", character.size)
 }
 
 func (s *DraftTestSuite) TestToCharacter_IncompleteDraft() {

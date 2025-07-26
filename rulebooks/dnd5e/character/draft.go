@@ -100,6 +100,10 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	charData.MaxHitPoints = classData.HitPointsAt1st + ((charData.AbilityScores.Constitution - 10) / 2)
 	charData.HitPoints = charData.MaxHitPoints
 
+	// Physical characteristics from race
+	charData.Speed = raceData.Speed
+	charData.Size = raceData.Size
+
 	// Skills
 	charData.Skills = make(map[string]int)
 	if skills, ok := d.Choices[shared.ChoiceSkills].([]string); ok {
