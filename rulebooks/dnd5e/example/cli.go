@@ -493,7 +493,6 @@ func getWizardClassData() *class.Data {
 		Name:                  "Wizard",
 		Description:           "Scholars of the arcane",
 		HitDice:               6,
-		HitPointsAt1st:        6,
 		HitPointsPerLevel:     4,
 		SkillProficiencyCount: 2,
 		SkillOptions: []string{
@@ -521,7 +520,6 @@ func getRogueClassData() *class.Data {
 		Name:                  "Rogue",
 		Description:           "Skilled in stealth and subterfuge",
 		HitDice:               8,
-		HitPointsAt1st:        8,
 		HitPointsPerLevel:     5,
 		SkillProficiencyCount: 4,
 		SkillOptions: []string{

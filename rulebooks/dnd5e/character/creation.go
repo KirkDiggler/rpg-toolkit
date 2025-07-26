@@ -59,7 +59,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Calculate HP
 	conMod := (abilityScores.Constitution - 10) / 2
-	maxHP := data.ClassData.HitPointsAt1st + conMod
+	maxHP := data.ClassData.HitDice + conMod
 
 	// Build skills map
 	skills := make(map[string]shared.ProficiencyLevel)

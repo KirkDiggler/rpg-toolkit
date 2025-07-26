@@ -341,7 +341,6 @@ func getFighterClassData() *class.Data {
 		Name:                  "Fighter",
 		Description:           "Masters of martial combat",
 		HitDice:               10,
-		HitPointsAt1st:        10,
 		HitPointsPerLevel:     6,
 		SkillProficiencyCount: 2,
 		SkillOptions: []string{

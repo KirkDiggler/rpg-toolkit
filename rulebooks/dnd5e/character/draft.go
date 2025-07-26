@@ -97,7 +97,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Calculate HP
-	charData.MaxHitPoints = classData.HitPointsAt1st + ((charData.AbilityScores.Constitution - 10) / 2)
+	charData.MaxHitPoints = classData.HitDice + ((charData.AbilityScores.Constitution - 10) / 2)
 	charData.HitPoints = charData.MaxHitPoints
 
 	// Physical characteristics from race
