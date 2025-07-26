@@ -294,7 +294,7 @@ func (b *Builder) getCompletedSteps() []string {
 }
 
 func (b *Builder) canBuild() bool {
-	required := ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores
+	required := ProgressName | ProgressRace | ProgressClass | ProgressAbilityScores
 	return b.draft.Progress.flags&required == required
 }
 
