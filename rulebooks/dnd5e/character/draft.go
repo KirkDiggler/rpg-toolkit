@@ -185,6 +185,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 		charData.Choices = append(charData.Choices, ChoiceData{
 			Category:  string(category),
 			Source:    source,
+			ChoiceID:  "", // Legacy draft system doesn't track specific choice IDs
 			Selection: choice,
 		})
 	}

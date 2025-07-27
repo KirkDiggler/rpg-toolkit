@@ -164,11 +164,13 @@ func buildChoiceData(data CreationData) []ChoiceData {
 
 	// Record all choices made
 	for category, selection := range data.Choices {
-		choices = append(choices, ChoiceData{
+		choiceData := ChoiceData{
 			Category:  category,
 			Source:    "creation",
+			ChoiceID:  "", // No specific choice ID for legacy creation data
 			Selection: selection,
-		})
+		}
+		choices = append(choices, choiceData)
 	}
 
 	return choices

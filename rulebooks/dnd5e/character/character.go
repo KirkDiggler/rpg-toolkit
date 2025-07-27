@@ -237,8 +237,9 @@ type ResourceData struct {
 
 // ChoiceData represents a choice made during character creation
 type ChoiceData struct {
-	Category  string `json:"category"`
-	Source    string `json:"source"`    // race, class, background
+	Category  string `json:"category"`  // Standard: "skills", "languages", etc.
+	Source    string `json:"source"`    // "race", "class", "background"
+	ChoiceID  string `json:"choice_id"` // Specific choice identifier like "fighter_proficiencies_1"
 	Selection any    `json:"selection"` // The actual choice made
 }
 

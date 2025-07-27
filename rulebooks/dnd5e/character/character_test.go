@@ -11,6 +11,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
+const (
+	categorySkills    = "skills"
+	categoryLanguages = "languages"
+)
+
 type CharacterTestSuite struct {
 	suite.Suite
 	testRace       *race.Data
@@ -58,16 +63,18 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 			Weapons: []string{"Simple", "Martial"},
 			Tools:   []string{"Gaming set", "Land vehicles"},
 		},
-		// Choices as shown in the issue
+		// Choices as shown in the issue - enhanced with ChoiceID field
 		Choices: []ChoiceData{
 			{
-				Category:  "class_fighter_proficiencies_1",
-				Source:    "creation",
+				Category:  categorySkills,            // Standard category
+				Source:    "class",                   // Source is class
+				ChoiceID:  "fighter_proficiencies_1", // Specific choice identifier
 				Selection: []string{"skill-acrobatics", "skill-athletics"},
 			},
 			{
-				Category:  "race_human_language_1",
-				Source:    "creation",
+				Category:  categoryLanguages,  // Standard category
+				Source:    "race",             // Source is race
+				ChoiceID:  "human_language_1", // Specific choice identifier
 				Selection: []string{"goblin"},
 			},
 		},
@@ -101,6 +108,37 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		"Common should always be included")
 	s.Assert().Contains(character.languages, "Dwarvish",
 		"Background language Dwarvish should be included")
+
+	// Verify ChoiceID tracking - NEW functionality from issue 129
+	s.Assert().Len(character.choices, 2, "Should have 2 choice records")
+
+	// Find the skill choice and verify its ChoiceID
+	var skillChoice *ChoiceData
+	for _, choice := range character.choices {
+		if choice.Category == categorySkills {
+			skillChoice = &choice
+			break
+		}
+	}
+	s.Require().NotNil(skillChoice, "Should find skill choice")
+	s.Assert().Equal("fighter_proficiencies_1", skillChoice.ChoiceID,
+		"Skill choice should have specific ChoiceID for granular tracking")
+	s.Assert().Equal("class", skillChoice.Source,
+		"Skill choice should be from class")
+
+	// Find the language choice and verify its ChoiceID
+	var languageChoice *ChoiceData
+	for _, choice := range character.choices {
+		if choice.Category == categoryLanguages {
+			languageChoice = &choice
+			break
+		}
+	}
+	s.Require().NotNil(languageChoice, "Should find language choice")
+	s.Assert().Equal("human_language_1", languageChoice.ChoiceID,
+		"Language choice should have specific ChoiceID for granular tracking")
+	s.Assert().Equal("race", languageChoice.Source,
+		"Language choice should be from race")
 }
 
 func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() {
