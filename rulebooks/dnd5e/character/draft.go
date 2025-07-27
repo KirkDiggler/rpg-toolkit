@@ -135,14 +135,35 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Store choices made
+	charData.Choices = []ChoiceData{}
 	for category, choice := range d.Choices {
-		if choiceData, ok := choice.(shared.ChoiceData); ok {
-			charData.Choices = append(charData.Choices, ChoiceData{
-				Category:  string(category),
-				Source:    "draft",
-				Selection: choiceData,
-			})
+		// Determine the source based on the choice category
+		source := "player" // Default for player-made choices
+		switch category {
+		case shared.ChoiceRace, shared.ChoiceSubrace, shared.ChoiceLanguages:
+			// Languages can come from race or background, but if it's a choice, it's usually race
+			source = "race"
+		case shared.ChoiceClass, shared.ChoiceSkills, shared.ChoiceFightingStyle,
+			shared.ChoiceSpells, shared.ChoiceCantrips, shared.ChoiceEquipment:
+			source = "class"
+		case shared.ChoiceBackground:
+			source = "background"
+		case shared.ChoiceAbilityScores, shared.ChoiceName:
+			source = "player"
 		}
+
+		// Store all choices, not just shared.ChoiceData
+		// TODO(#125): Selection is 'any' type to support various choice types:
+		// - string (fighting style, background, name)
+		// - []string (skills, spells, cantrips, languages)
+		// - shared.AbilityScores (ability scores)
+		// - RaceChoice (race with optional subrace)
+		// This should be refactored to use a consistent type instead of 'any'
+		charData.Choices = append(charData.Choices, ChoiceData{
+			Category:  string(category),
+			Source:    source,
+			Selection: choice,
+		})
 	}
 
 	charData.CreatedAt = time.Now()
