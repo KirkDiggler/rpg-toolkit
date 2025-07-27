@@ -153,6 +153,12 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 		}
 
 		// Store all choices, not just shared.ChoiceData
+		// TODO(#125): Selection is 'any' type to support various choice types:
+		// - string (fighting style, background, name)
+		// - []string (skills, spells, cantrips, languages)
+		// - shared.AbilityScores (ability scores)
+		// - RaceChoice (race with optional subrace)
+		// This should be refactored to use a consistent type instead of 'any'
 		charData.Choices = append(charData.Choices, ChoiceData{
 			Category:  string(category),
 			Source:    source,
