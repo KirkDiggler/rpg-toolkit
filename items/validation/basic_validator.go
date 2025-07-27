@@ -5,7 +5,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/items"
 )
 
-// BasicValidatorConfig holds configuration for the basic validator
+// BasicValidatorConfig provides configuration settings for the BasicValidator.
+// It defines rules and restrictions that influence the validation of equipment
+// for characters in the game. The struct includes:
+//   - DefaultAttunementLimit: Specifies the default maximum number of items a character
+//     can attune to if not explicitly set elsewhere. Defaults to 3 (D&D 5e standard).
+//   - ClassRestrictions: Maps item IDs to a list of character classes that are allowed
+//     to equip the item.
+//   - RaceRestrictions: Maps item IDs to a list of character races that are allowed
+//     to equip the item.
+//   - AlignmentRestrictions: Maps item IDs to a list of character alignments that are
+//     allowed to equip the item.
 type BasicValidatorConfig struct {
 
 	// DefaultAttunementLimit if character doesn't specify
@@ -282,7 +292,7 @@ func (v *BasicValidator) validateTwoHandedConflicts(equipped map[string]items.It
 	}
 
 	// Check for conflicts
-	if twoHandedWeapon != nil && offHand != nil {
+	if twoHandedWeapon != nil && offHand != nil && offHand != twoHandedWeapon {
 		return core.NewEquipmentError("validate", "", twoHandedWeapon.GetID(), "main_hand",
 			core.ErrTwoHandedConflict)
 	}
