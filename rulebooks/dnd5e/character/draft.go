@@ -135,14 +135,14 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Store choices made
+	charData.Choices = []ChoiceData{}
 	for category, choice := range d.Choices {
-		if choiceData, ok := choice.(shared.ChoiceData); ok {
-			charData.Choices = append(charData.Choices, ChoiceData{
-				Category:  string(category),
-				Source:    "draft",
-				Selection: choiceData,
-			})
-		}
+		// Store all choices, not just shared.ChoiceData
+		charData.Choices = append(charData.Choices, ChoiceData{
+			Category:  string(category),
+			Source:    "draft",
+			Selection: choice,
+		})
 	}
 
 	charData.CreatedAt = time.Now()
