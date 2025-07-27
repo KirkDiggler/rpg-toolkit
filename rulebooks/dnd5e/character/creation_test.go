@@ -18,52 +18,9 @@ type CreationTestSuite struct {
 }
 
 func (s *CreationTestSuite) SetupTest() {
-	// Create test race data
-	s.testRace = &race.Data{
-		ID:    "human",
-		Name:  "Human",
-		Size:  "Medium",
-		Speed: 30,
-		AbilityScoreIncreases: map[string]int{
-			shared.AbilityStrength:     1,
-			shared.AbilityDexterity:    1,
-			shared.AbilityConstitution: 1,
-			shared.AbilityIntelligence: 1,
-			shared.AbilityWisdom:       1,
-			shared.AbilityCharisma:     1,
-		},
-		Languages: []string{"Common"},
-	}
-
-	// Create test class data
-	s.testClass = &class.Data{
-		ID:                    "fighter",
-		Name:                  "Fighter",
-		HitDice:               10,
-		SavingThrows:          []string{shared.AbilityStrength, shared.AbilityConstitution},
-		SkillProficiencyCount: 2,
-		SkillOptions: []string{
-			"Acrobatics", "Animal Handling", "Athletics", "History",
-			"Insight", "Intimidation", "Perception", "Survival",
-		},
-		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
-		WeaponProficiencies: []string{"Simple", "Martial"},
-		Features: map[int][]class.FeatureData{
-			1: {
-				{ID: "fighting-style", Name: "Fighting Style", Level: 1},
-				{ID: "second-wind", Name: "Second Wind", Level: 1},
-			},
-		},
-	}
-
-	// Create test background data
-	s.testBackground = &shared.Background{
-		ID:                 "soldier",
-		Name:               "Soldier",
-		SkillProficiencies: []string{"Athletics", "Intimidation"},
-		Languages:          []string{"Dwarvish"},
-		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
-	}
+	s.testRace = createTestRaceData()
+	s.testClass = createTestClassData()
+	s.testBackground = createTestBackgroundData()
 }
 
 func (s *CreationTestSuite) TestNewFromCreationData_ProcessesChoices() {
