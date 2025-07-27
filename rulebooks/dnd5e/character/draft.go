@@ -117,9 +117,32 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Languages
-	charData.Languages = append([]string{}, raceData.Languages...)
-	charData.Languages = append(charData.Languages, backgroundData.Languages...)
-	// TODO(#106): Add language choices
+	// Start with ensuring Common is always included
+	languageSet := make(map[string]bool)
+	languageSet["Common"] = true
+
+	// Add race languages
+	for _, lang := range raceData.Languages {
+		languageSet[lang] = true
+	}
+
+	// Add background languages
+	for _, lang := range backgroundData.Languages {
+		languageSet[lang] = true
+	}
+
+	// Add language choices
+	if languages, ok := d.Choices[shared.ChoiceLanguages].([]string); ok {
+		for _, lang := range languages {
+			languageSet[lang] = true
+		}
+	}
+
+	// Convert set to slice
+	charData.Languages = make([]string, 0, len(languageSet))
+	for lang := range languageSet {
+		charData.Languages = append(charData.Languages, lang)
+	}
 
 	// Proficiencies
 	charData.Proficiencies = shared.Proficiencies{

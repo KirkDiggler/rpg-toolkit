@@ -82,11 +82,31 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 		saves[save] = shared.Proficient
 	}
 
-	// Compile languages
-	languages := append([]string{}, data.RaceData.Languages...)
-	languages = append(languages, data.BackgroundData.Languages...)
+	// Compile languages - ensure Common is always included
+	languageSet := make(map[string]bool)
+	languageSet["Common"] = true
+
+	// Add race languages
+	for _, lang := range data.RaceData.Languages {
+		languageSet[lang] = true
+	}
+
+	// Add background languages
+	for _, lang := range data.BackgroundData.Languages {
+		languageSet[lang] = true
+	}
+
+	// Add chosen languages
 	if chosenLangs, ok := data.Choices["languages"].([]string); ok {
-		languages = append(languages, chosenLangs...)
+		for _, lang := range chosenLangs {
+			languageSet[lang] = true
+		}
+	}
+
+	// Convert set to slice
+	languages := make([]string, 0, len(languageSet))
+	for lang := range languageSet {
+		languages = append(languages, lang)
 	}
 
 	// Compile proficiencies
