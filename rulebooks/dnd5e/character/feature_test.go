@@ -135,6 +135,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		for _, choice := range character.choices {
 			if choice.Category == string(shared.ChoiceFightingStyle) && choice.Selection == "defense" {
 				hasDefenseChoice = true
+				s.Assert().Equal("class", choice.Source, "Fighting style should come from class")
 				break
 			}
 		}
@@ -317,7 +318,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().Contains(character.features, "spellcasting")
 		s.Assert().Contains(character.features, "arcane_recovery")
 
-		// Check if spell choices are preserved
+		// Check if spell choices are preserved with correct sources
 		hasCantripChoice := false
 		hasSpellChoice := false
 		for _, choice := range character.choices {
@@ -326,12 +327,14 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				cantrips, ok := choice.Selection.([]string)
 				s.Assert().True(ok)
 				s.Assert().Len(cantrips, 3)
+				s.Assert().Equal("class", choice.Source, "Cantrips should come from class")
 			}
 			if choice.Category == string(shared.ChoiceSpells) {
 				hasSpellChoice = true
 				spells, ok := choice.Selection.([]string)
 				s.Assert().True(ok)
 				s.Assert().Len(spells, 6)
+				s.Assert().Equal("class", choice.Source, "Spells should come from class")
 			}
 		}
 		s.Assert().True(hasCantripChoice, "Cantrip choices should be stored")
