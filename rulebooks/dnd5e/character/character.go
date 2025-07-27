@@ -4,6 +4,7 @@ package character
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/game"
@@ -303,10 +304,52 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		return nil, errors.New("race, class, and background data are required")
 	}
 
-	// Convert data back to domain types
-	skills := make(map[string]shared.ProficiencyLevel)
-	for skill, level := range data.Skills {
-		skills[skill] = shared.ProficiencyLevel(level)
+	// If we have stored skills/languages but no choices, use them directly (backwards compatibility)
+	// Otherwise, rebuild from base data + choices
+	var skills map[string]shared.ProficiencyLevel
+	var languages []string
+
+	if len(data.Choices) == 0 && len(data.Skills) > 0 {
+		// Backwards compatibility: use stored data directly
+		skills = make(map[string]shared.ProficiencyLevel)
+		for skill, level := range data.Skills {
+			skills[skill] = shared.ProficiencyLevel(level)
+		}
+		languages = data.Languages
+	} else {
+		// Rebuild skills from base data + choices
+		skills = make(map[string]shared.ProficiencyLevel)
+
+		// Add background skills
+		for _, skill := range backgroundData.SkillProficiencies {
+			skills[skill] = shared.Proficient
+		}
+
+		// Process skill choices from stored character data
+		processSkillChoices(data.Choices, skills)
+
+		// Rebuild languages from base data + choices
+		languageSet := make(map[string]bool)
+		languageSet["Common"] = true // Always include Common
+
+		// Add race languages
+		for _, lang := range raceData.Languages {
+			languageSet[lang] = true
+		}
+
+		// Add background languages
+		for _, lang := range backgroundData.Languages {
+			languageSet[lang] = true
+		}
+
+		// Process language choices from stored character data
+		processLanguageChoices(data.Choices, languageSet)
+
+		// Convert language set to slice
+		languages = make([]string, 0, len(languageSet))
+		for lang := range languageSet {
+			languages = append(languages, lang)
+		}
 	}
 
 	saves := make(map[string]shared.ProficiencyLevel)
@@ -352,7 +395,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		hitDice:          classData.HitDice,
 		skills:           skills,
 		savingThrows:     saves,
-		languages:        data.Languages,
+		languages:        languages,
 		proficiencies:    data.Proficiencies,
 		features:         features,
 		conditions:       data.Conditions,
@@ -413,4 +456,53 @@ type SaveResult struct {
 type CheckResult struct {
 	Success bool
 	Roll    int
+}
+
+// processSkillChoices extracts skill proficiencies from character creation choices
+func processSkillChoices(choices []ChoiceData, skills map[string]shared.ProficiencyLevel) {
+	for _, choice := range choices {
+		// Check for various skill choice patterns
+		if choice.Category == "skills" ||
+			strings.Contains(choice.Category, "_proficiencies_") ||
+			strings.Contains(choice.Category, "_skills_") {
+			if skillList, ok := choice.Selection.([]interface{}); ok {
+				for _, s := range skillList {
+					if skillName, ok := s.(string); ok {
+						// Remove "skill-" prefix if present
+						skillName = strings.TrimPrefix(skillName, "skill-")
+						skills[skillName] = shared.Proficient
+					}
+				}
+			} else if skillList, ok := choice.Selection.([]string); ok {
+				for _, skillName := range skillList {
+					// Remove "skill-" prefix if present
+					skillName = strings.TrimPrefix(skillName, "skill-")
+					skills[skillName] = shared.Proficient
+				}
+			}
+		}
+	}
+}
+
+// processLanguageChoices extracts languages from character creation choices
+func processLanguageChoices(choices []ChoiceData, languageSet map[string]bool) {
+	for _, choice := range choices {
+		// Check for various language choice patterns
+		if choice.Category == "languages" ||
+			strings.Contains(choice.Category, "language") {
+			if langList, ok := choice.Selection.([]interface{}); ok {
+				for _, l := range langList {
+					if langName, ok := l.(string); ok {
+						languageSet[langName] = true
+					}
+				}
+			} else if langList, ok := choice.Selection.([]string); ok {
+				for _, langName := range langList {
+					languageSet[langName] = true
+				}
+			} else if langName, ok := choice.Selection.(string); ok {
+				languageSet[langName] = true
+			}
+		}
+	}
 }

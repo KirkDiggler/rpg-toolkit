@@ -125,7 +125,7 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal(shared.Proficient, character.skills["Intimidation"]) // From background
 
 	// Verify languages
-	s.Assert().Contains(character.languages, "Common")   // From race
+	s.Assert().Contains(character.languages, "Common")   // Always included
 	s.Assert().Contains(character.languages, "Dwarvish") // From background
 
 	// Verify proficiencies
@@ -349,6 +349,104 @@ func (s *DraftTestSuite) TestIsComplete() {
 			s.Assert().Equal(tc.expected, draft.IsComplete())
 		})
 	}
+}
+
+func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
+	// Create a complete draft with language choices
+	draft := &Draft{
+		ID:       "test-draft-lang",
+		PlayerID: "player-123",
+		Name:     "Multilingual Hero",
+		Choices: map[shared.ChoiceCategory]any{
+			shared.ChoiceName: "Multilingual Hero",
+			shared.ChoiceRace: RaceChoice{
+				RaceID: "human",
+			},
+			shared.ChoiceClass:      "fighter",
+			shared.ChoiceBackground: "soldier",
+			shared.ChoiceAbilityScores: shared.AbilityScores{
+				Strength:     15,
+				Dexterity:    14,
+				Constitution: 13,
+				Intelligence: 12,
+				Wisdom:       10,
+				Charisma:     8,
+			},
+			shared.ChoiceLanguages: []string{"Elvish", "Goblin", "Draconic"},
+		},
+		Progress: DraftProgress{
+			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	// Convert to character
+	character, err := draft.ToCharacter(s.testRace, s.testClass, s.testBackground)
+	s.Require().NoError(err)
+	s.Assert().NotNil(character)
+
+	// Verify languages include all sources
+	s.Assert().Contains(character.languages, "Common", "Common should always be included")
+	s.Assert().Contains(character.languages, "Dwarvish", "Background language should be included")
+
+	// Verify chosen languages
+	s.Assert().Contains(character.languages, "Elvish", "Chosen language Elvish should be included")
+	s.Assert().Contains(character.languages, "Goblin", "Chosen language Goblin should be included")
+	s.Assert().Contains(character.languages, "Draconic", "Chosen language Draconic should be included")
+
+	// Verify no duplicates (set behavior)
+	languageCount := make(map[string]int)
+	for _, lang := range character.languages {
+		languageCount[lang]++
+	}
+	for lang, count := range languageCount {
+		s.Assert().Equal(1, count, "Language %s should appear only once", lang)
+	}
+}
+
+func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
+	// Test with a race that doesn't include Common
+	nonCommonRace := &race.Data{
+		ID:        "exotic",
+		Name:      "Exotic Race",
+		Size:      "Medium",
+		Speed:     30,
+		Languages: []string{"Exotic Language"}, // No Common
+	}
+
+	draft := &Draft{
+		ID:       "test-draft-no-common",
+		PlayerID: "player-123",
+		Name:     "Exotic Hero",
+		Choices: map[shared.ChoiceCategory]any{
+			shared.ChoiceName: "Exotic Hero",
+			shared.ChoiceRace: RaceChoice{
+				RaceID: "exotic",
+			},
+			shared.ChoiceClass:      "fighter",
+			shared.ChoiceBackground: "soldier",
+			shared.ChoiceAbilityScores: shared.AbilityScores{
+				Strength:     15,
+				Dexterity:    14,
+				Constitution: 13,
+				Intelligence: 12,
+				Wisdom:       10,
+				Charisma:     8,
+			},
+		},
+		Progress: DraftProgress{
+			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
+		},
+	}
+
+	// Convert to character
+	character, err := draft.ToCharacter(nonCommonRace, s.testClass, s.testBackground)
+	s.Require().NoError(err)
+	s.Assert().NotNil(character)
+
+	// Verify Common is still included
+	s.Assert().Contains(character.languages, "Common", "Common should always be included even if race doesn't have it")
 }
 
 func TestDraftTestSuite(t *testing.T) {
