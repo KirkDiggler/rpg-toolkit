@@ -295,7 +295,7 @@ func demonstrateBuilder(raceData *race.Data, classData *class.Data, backgroundDa
 
 	// Save draft (useful for multi-step UIs)
 	draftData := builder.ToData()
-	fmt.Printf("\nDraft saved with %d choices\n", len(draftData.Choices))
+	fmt.Printf("\nDraft saved with ID: %s\n", draftData.ID)
 
 	// Build character
 	if progress.CanBuild {

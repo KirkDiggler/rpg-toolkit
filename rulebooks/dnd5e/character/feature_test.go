@@ -94,24 +94,21 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			ID:       "test-fighter-1",
 			PlayerID: "player-123",
 			Name:     "Test Fighter",
-			Choices: map[shared.ChoiceCategory]any{
-				shared.ChoiceName: "Test Fighter",
-				shared.ChoiceRace: RaceChoice{
-					RaceID: "human",
-				},
-				shared.ChoiceClass:      "fighter",
-				shared.ChoiceBackground: "soldier",
-				shared.ChoiceAbilityScores: shared.AbilityScores{
-					constants.STR: 16,
-					constants.DEX: 14,
-					constants.CON: 15,
-					constants.INT: 10,
-					constants.WIS: 12,
-					constants.CHA: 8,
-				},
-				shared.ChoiceSkills:        []string{"Perception", "Survival"},
-				shared.ChoiceFightingStyle: "defense", // Fighter-specific choice
+			RaceChoice: RaceChoice{
+				RaceID: "human",
 			},
+			ClassChoice:      "fighter",
+			BackgroundChoice: "soldier",
+			AbilityScoreChoice: shared.AbilityScores{
+				constants.STR: 16,
+				constants.DEX: 14,
+				constants.CON: 15,
+				constants.INT: 10,
+				constants.WIS: 12,
+				constants.CHA: 8,
+			},
+			SkillChoices:        []string{"Perception", "Survival"},
+			FightingStyleChoice: "defense", // Fighter-specific choice
 			Progress: DraftProgress{
 				flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 			},
@@ -282,28 +279,25 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			ID:       "test-wizard",
 			PlayerID: "player-456",
 			Name:     "Test Wizard",
-			Choices: map[shared.ChoiceCategory]any{
-				shared.ChoiceName: "Test Wizard",
-				shared.ChoiceRace: RaceChoice{
-					RaceID:    "elf",
-					SubraceID: "high-elf",
-				},
-				shared.ChoiceClass:      "wizard",
-				shared.ChoiceBackground: "sage",
-				shared.ChoiceAbilityScores: shared.AbilityScores{
-					constants.STR: 8,
-					constants.DEX: 14,
-					constants.CON: 13,
-					constants.INT: 15,
-					constants.WIS: 12,
-					constants.CHA: 10,
-				},
-				shared.ChoiceSkills:   []string{"Investigation", "Insight"},
-				shared.ChoiceCantrips: []string{"fire_bolt", "mage_hand", "prestidigitation"},
-				shared.ChoiceSpells: []string{
-					"shield", "magic_missile", "detect_magic",
-					"identify", "sleep", "charm_person",
-				},
+			RaceChoice: RaceChoice{
+				RaceID:    "elf",
+				SubraceID: "high-elf",
+			},
+			ClassChoice:      "wizard",
+			BackgroundChoice: "sage",
+			AbilityScoreChoice: shared.AbilityScores{
+				constants.STR: 8,
+				constants.DEX: 14,
+				constants.CON: 13,
+				constants.INT: 15,
+				constants.WIS: 12,
+				constants.CHA: 10,
+			},
+			SkillChoices:   []string{"Investigation", "Insight"},
+			CantripChoices: []string{"fire_bolt", "mage_hand", "prestidigitation"},
+			SpellChoices: []string{
+				"shield", "magic_missile", "detect_magic",
+				"identify", "sleep", "charm_person",
 			},
 			Progress: DraftProgress{
 				flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,

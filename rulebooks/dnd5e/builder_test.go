@@ -130,7 +130,7 @@ func TestCharacterCreationFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Select skills
-	skills := []string{"athletics", "intimidation"}
+	skills := []string{"perception", "survival"}
 	err = builder.SelectSkills(skills)
 	require.NoError(t, err)
 
@@ -161,7 +161,7 @@ func TestCharacterCreationFlow(t *testing.T) {
 
 	// Save draft for later
 	draftData := builder.ToData()
-	assert.NotEmpty(t, draftData.Choices)
+	assert.NotEmpty(t, draftData.SkillChoices)
 
 	// Load draft and continue
 	builder2, err := dnd5e.LoadDraft(draftData)

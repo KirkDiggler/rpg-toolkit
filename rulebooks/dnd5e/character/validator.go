@@ -33,8 +33,8 @@ func (v *Validator) ValidateDraft(draft *Draft, raceData *race.Data, classData *
 	}
 
 	// Race validation if selected
-	if raceChoice, ok := draft.Choices[shared.ChoiceRace].(RaceChoice); ok {
-		if err := v.ValidateRaceChoice(raceChoice, raceData); err != nil {
+	if draft.RaceChoice.RaceID != "" {
+		if err := v.ValidateRaceChoice(draft.RaceChoice, raceData); err != nil {
 			errors = append(errors, ValidationError{
 				Field:   "race",
 				Message: err.Error(),
@@ -43,8 +43,8 @@ func (v *Validator) ValidateDraft(draft *Draft, raceData *race.Data, classData *
 	}
 
 	// Ability scores validation if set
-	if scores, ok := draft.Choices[shared.ChoiceAbilityScores].(shared.AbilityScores); ok {
-		if err := v.ValidateAbilityScores(scores); err != nil {
+	if len(draft.AbilityScoreChoice) > 0 {
+		if err := v.ValidateAbilityScores(draft.AbilityScoreChoice); err != nil {
 			errors = append(errors, ValidationError{
 				Field:   "ability_scores",
 				Message: err.Error(),
@@ -53,8 +53,8 @@ func (v *Validator) ValidateDraft(draft *Draft, raceData *race.Data, classData *
 	}
 
 	// Skills validation if selected
-	if skills, ok := draft.Choices[shared.ChoiceSkills].([]string); ok {
-		if err := v.ValidateSkillSelection(draft, skills, classData, backgroundData); err != nil {
+	if len(draft.SkillChoices) > 0 {
+		if err := v.ValidateSkillSelection(draft, draft.SkillChoices, classData, backgroundData); err != nil {
 			errors = append(errors, ValidationError{
 				Field:   "skills",
 				Message: err.Error(),
@@ -143,6 +143,26 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData 
 		if !found {
 			return fmt.Errorf("skill %s is not available for this class", skill)
 		}
+	}
+
+	// Check for redundant selections (skills already granted by background/race)
+	// Note: This is a warning, not an error - it's valid but suboptimal
+	redundantSkills := []string{}
+	for _, skill := range skills {
+		// Check if background already grants this skill
+		for _, bgSkill := range backgroundData.SkillProficiencies {
+			if skill == bgSkill {
+				redundantSkills = append(redundantSkills, skill)
+				break
+			}
+		}
+		// TODO: Also check racial skill proficiencies when we have race data here
+	}
+
+	if len(redundantSkills) > 0 {
+		// For now, we'll return this as an error, but it could be a warning
+		return fmt.Errorf("skills already granted by background: %v. Choose different skills to maximize proficiencies",
+			redundantSkills)
 	}
 
 	// Check for duplicates
