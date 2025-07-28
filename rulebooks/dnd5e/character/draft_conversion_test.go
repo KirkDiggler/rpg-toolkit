@@ -83,6 +83,11 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
 		WeaponProficiencies: []string{"Simple", "Martial"},
 		ToolProficiencies:   []string{},
+		StartingEquipment: []class.EquipmentData{
+			{ItemID: "Chain Mail", Quantity: 1},
+			{ItemID: "Shield", Quantity: 1},
+			{ItemID: "Javelin", Quantity: 5},
+		},
 	}
 
 	// Setup Wizard class
@@ -107,6 +112,7 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		SkillProficiencies: []string{"Athletics", "Intimidation"},
 		Languages:          []string{"Orc"},
 		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
+		Equipment:          []string{"Insignia of rank", "Trophy", "Deck of cards", "Common clothes"},
 	}
 
 	// Setup Hermit background
@@ -764,6 +770,77 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 	s.Assert().Contains(character.languages, "Giant")
 	s.Assert().Equal(shared.Proficient, character.skills["Perception"])
 	s.Assert().Equal(shared.Proficient, character.skills["History"])
+}
+
+func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
+	// Create a draft with equipment choices including bundles
+	draft := &Draft{
+		ID:               "test-equipment",
+		PlayerID:         "player-eq",
+		Name:             "Equipment Tester",
+		RaceChoice:       RaceChoice{RaceID: "human"},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 15,
+			constants.DEX: 13,
+			constants.CON: 14,
+			constants.INT: 10,
+			constants.WIS: 12,
+			constants.CHA: 11,
+		},
+		SkillChoices:     []string{"Perception", "Survival"},
+		EquipmentChoices: []string{"Longsword", "Dungeoneer's Pack"},
+	}
+	// Set progress flags
+	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
+		ProgressAbilityScores | ProgressSkills | ProgressEquipment
+
+	// Convert to character
+	character, err := draft.ToCharacter(s.humanRace, s.fighterClass, s.soldierBg)
+	s.Require().NoError(err)
+
+	// Get character equipment
+	equipment := character.GetEquipment()
+
+	// Verify starting equipment from class
+	s.Assert().Contains(equipment, "Chain Mail")
+	s.Assert().Contains(equipment, "Shield")
+	s.Assert().Contains(equipment, "Javelin (5)")
+
+	// Verify background equipment
+	s.Assert().Contains(equipment, "Insignia of rank")
+	s.Assert().Contains(equipment, "Trophy")
+	s.Assert().Contains(equipment, "Deck of cards")
+	s.Assert().Contains(equipment, "Common clothes")
+
+	// Verify equipment choices
+	s.Assert().Contains(equipment, "Longsword")
+
+	// Verify Dungeoneer's Pack was expanded
+	s.Assert().Contains(equipment, "Backpack")
+	s.Assert().Contains(equipment, "Crowbar")
+	s.Assert().Contains(equipment, "Hammer")
+	s.Assert().Contains(equipment, "Piton (10)")
+	s.Assert().Contains(equipment, "Torch (10)")
+	s.Assert().Contains(equipment, "Tinderbox")
+	s.Assert().Contains(equipment, "Rations (10 days)")
+	s.Assert().Contains(equipment, "Waterskin")
+	s.Assert().Contains(equipment, "Hempen Rope (50 feet)")
+
+	// Verify equipment choice was stored
+	var equipmentChoice *ChoiceData
+	for i := range character.choices {
+		if character.choices[i].Category == string(shared.ChoiceEquipment) {
+			equipmentChoice = &character.choices[i]
+			break
+		}
+	}
+	s.Require().NotNil(equipmentChoice, "Equipment choice should be stored")
+	equipment, ok := equipmentChoice.Selection.([]string)
+	s.Require().True(ok, "Equipment selection should be []string")
+	s.Assert().Contains(equipment, "Longsword")
+	s.Assert().Contains(equipment, "Dungeoneer's Pack")
 }
 
 func TestDraftConversionTestSuite(t *testing.T) {

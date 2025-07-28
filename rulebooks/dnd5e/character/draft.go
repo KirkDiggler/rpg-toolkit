@@ -270,6 +270,24 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 		})
 	}
 
+	// Process equipment choices
+	equipment := make([]string, 0)
+
+	// Add starting equipment from class
+	for _, eq := range classData.StartingEquipment {
+		equipment = append(equipment, formatEquipmentWithQuantity(eq.ItemID, eq.Quantity))
+	}
+
+	// Add equipment from background
+	equipment = append(equipment, backgroundData.Equipment...)
+
+	// Process equipment choices (expanding bundles)
+	if len(d.EquipmentChoices) > 0 {
+		chosenEquipment := processEquipmentChoices(d.EquipmentChoices)
+		equipment = append(equipment, chosenEquipment...)
+	}
+
+	charData.Equipment = equipment
 	charData.CreatedAt = time.Now()
 	charData.UpdatedAt = time.Now()
 

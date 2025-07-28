@@ -61,6 +61,9 @@ type Character struct {
 	spellSlots     SpellSlots
 	classResources map[string]Resource // rage uses, ki points, etc
 
+	// Equipment
+	equipment []string
+
 	// Choices made during creation
 	choices []ChoiceData
 }
@@ -182,6 +185,11 @@ func (c *Character) GetEffects() []effects.Effect {
 	return c.effects
 }
 
+// GetEquipment returns the character's equipment
+func (c *Character) GetEquipment() []string {
+	return c.equipment
+}
+
 // Data represents the persistent state of a character
 type Data struct {
 	ID         string `json:"id"`
@@ -220,6 +228,9 @@ type Data struct {
 	// Resources
 	SpellSlots     map[int]SlotInfo        `json:"spell_slots"`
 	ClassResources map[string]ResourceData `json:"class_resources"`
+
+	// Equipment
+	Equipment []string `json:"equipment"`
 
 	// Character creation choices
 	Choices []ChoiceData `json:"choices"`
@@ -288,6 +299,7 @@ func (c *Character) ToData() Data {
 		DeathSaves:     c.deathSaves,
 		SpellSlots:     c.spellSlots,
 		ClassResources: resourcesData,
+		Equipment:      c.equipment,
 		Choices:        c.choices,
 		UpdatedAt:      time.Now(),
 	}
@@ -406,6 +418,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		deathSaves:       data.DeathSaves,
 		spellSlots:       data.SpellSlots,
 		classResources:   resources,
+		equipment:        data.Equipment,
 		choices:          data.Choices,
 	}, nil
 }
