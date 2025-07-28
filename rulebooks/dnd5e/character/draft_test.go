@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -75,12 +76,12 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 			shared.ChoiceClass:      "fighter",
 			shared.ChoiceBackground: "soldier",
 			shared.ChoiceAbilityScores: shared.AbilityScores{
-				Strength:     15,
-				Dexterity:    14,
-				Constitution: 13,
-				Intelligence: 12,
-				Wisdom:       10,
-				Charisma:     8,
+				constants.STR: 15,
+				constants.DEX: 14,
+				constants.CON: 13,
+				constants.INT: 12,
+				constants.WIS: 10,
+				constants.CHA: 8,
 			},
 			shared.ChoiceSkills: []string{"Perception", "Survival"},
 		},
@@ -103,12 +104,12 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal(1, character.level)
 
 	// Verify ability scores (with racial bonuses)
-	s.Assert().Equal(16, character.abilityScores.Strength)     // 15 + 1
-	s.Assert().Equal(15, character.abilityScores.Dexterity)    // 14 + 1
-	s.Assert().Equal(14, character.abilityScores.Constitution) // 13 + 1
-	s.Assert().Equal(13, character.abilityScores.Intelligence) // 12 + 1
-	s.Assert().Equal(11, character.abilityScores.Wisdom)       // 10 + 1
-	s.Assert().Equal(9, character.abilityScores.Charisma)      // 8 + 1
+	s.Assert().Equal(16, character.abilityScores[constants.STR]) // 15 + 1
+	s.Assert().Equal(15, character.abilityScores[constants.DEX]) // 14 + 1
+	s.Assert().Equal(14, character.abilityScores[constants.CON]) // 13 + 1
+	s.Assert().Equal(13, character.abilityScores[constants.INT]) // 12 + 1
+	s.Assert().Equal(11, character.abilityScores[constants.WIS]) // 10 + 1
+	s.Assert().Equal(9, character.abilityScores[constants.CHA])  // 8 + 1
 
 	// Verify HP (10 base + 2 from Con modifier)
 	s.Assert().Equal(12, character.maxHitPoints)
@@ -174,12 +175,12 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 			shared.ChoiceClass:      "fighter",
 			shared.ChoiceBackground: "soldier",
 			shared.ChoiceAbilityScores: shared.AbilityScores{
-				Strength:     14,
-				Dexterity:    15,
-				Constitution: 13,
-				Intelligence: 12,
-				Wisdom:       10,
-				Charisma:     8,
+				constants.STR: 14,
+				constants.DEX: 15,
+				constants.CON: 13,
+				constants.INT: 12,
+				constants.WIS: 10,
+				constants.CHA: 8,
 			},
 		},
 		Progress: DraftProgress{
@@ -196,8 +197,8 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 	s.Assert().Equal("test-draft-2", character.id)
 
 	// Verify ability scores include racial bonuses
-	s.Assert().Equal(17, character.abilityScores.Dexterity)    // 15 + 2 (elf)
-	s.Assert().Equal(13, character.abilityScores.Intelligence) // 12 + 1 (high elf)
+	s.Assert().Equal(17, character.abilityScores[constants.DEX]) // 15 + 2 (elf)
+	s.Assert().Equal(13, character.abilityScores[constants.INT]) // 12 + 1 (high elf)
 
 	// Verify physical characteristics from elf race
 	s.Assert().Equal(30, character.speed)
@@ -365,12 +366,12 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 			shared.ChoiceClass:      "fighter",
 			shared.ChoiceBackground: "soldier",
 			shared.ChoiceAbilityScores: shared.AbilityScores{
-				Strength:     15,
-				Dexterity:    14,
-				Constitution: 13,
-				Intelligence: 12,
-				Wisdom:       10,
-				Charisma:     8,
+				constants.STR: 15,
+				constants.DEX: 14,
+				constants.CON: 13,
+				constants.INT: 12,
+				constants.WIS: 10,
+				constants.CHA: 8,
 			},
 			shared.ChoiceLanguages: []string{"Elvish", "Goblin", "Draconic"},
 		},
@@ -427,12 +428,12 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 			shared.ChoiceClass:      "fighter",
 			shared.ChoiceBackground: "soldier",
 			shared.ChoiceAbilityScores: shared.AbilityScores{
-				Strength:     15,
-				Dexterity:    14,
-				Constitution: 13,
-				Intelligence: 12,
-				Wisdom:       10,
-				Charisma:     8,
+				constants.STR: 15,
+				constants.DEX: 14,
+				constants.CON: 13,
+				constants.INT: 12,
+				constants.WIS: 10,
+				constants.CHA: 8,
 			},
 		},
 		Progress: DraftProgress{

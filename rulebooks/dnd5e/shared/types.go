@@ -1,14 +1,91 @@
 // Package shared provides common types used across the D&D 5e rulebook
 package shared
 
-// AbilityScores holds the six ability scores used throughout D&D 5e
-type AbilityScores struct {
-	Strength     int
-	Dexterity    int
-	Constitution int
-	Intelligence int
-	Wisdom       int
-	Charisma     int
+import (
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+)
+
+// AbilityScores maps ability constants to their scores (includes all bonuses)
+type AbilityScores map[constants.Ability]int
+
+// AbilityScoreConfig provides a clear way to specify all ability scores at creation
+type AbilityScoreConfig struct {
+	STR int
+	DEX int
+	CON int
+	INT int
+	WIS int
+	CHA int
+}
+
+// Validate ensures all scores are in valid range for character creation (3-18)
+func (c *AbilityScoreConfig) Validate() error {
+	scores := []struct {
+		name  string
+		value int
+	}{
+		{"STR", c.STR},
+		{"DEX", c.DEX},
+		{"CON", c.CON},
+		{"INT", c.INT},
+		{"WIS", c.WIS},
+		{"CHA", c.CHA},
+	}
+
+	for _, score := range scores {
+		if score.value < 3 || score.value > 18 {
+			return fmt.Errorf("ability %s must be between 3-18 for character creation, got %d", score.name, score.value)
+		}
+	}
+	return nil
+}
+
+// NewAbilityScores creates ability scores with validation
+func NewAbilityScores(config *AbilityScoreConfig) (AbilityScores, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
+	return AbilityScores{
+		constants.STR: config.STR,
+		constants.DEX: config.DEX,
+		constants.CON: config.CON,
+		constants.INT: config.INT,
+		constants.WIS: config.WIS,
+		constants.CHA: config.CHA,
+	}, nil
+}
+
+// Increase increments a specific ability, enforcing the maximum of 20
+func (a AbilityScores) Increase(ability constants.Ability, amount int) error {
+	newValue := a[ability] + amount
+	if newValue > 20 {
+		return fmt.Errorf("ability %s cannot exceed 20 (current: %d, increase: %d)", ability.Display(), a[ability], amount)
+	}
+	a[ability] = newValue
+	return nil
+}
+
+// ApplyIncreases applies multiple increases at once (e.g., racial bonuses)
+func (a AbilityScores) ApplyIncreases(increases map[constants.Ability]int) error {
+	// Check all increases first
+	for ability, bonus := range increases {
+		if a[ability]+bonus > 20 {
+			return fmt.Errorf("ability %s would exceed 20 with increase", ability.Display())
+		}
+	}
+	// Then apply
+	for ability, bonus := range increases {
+		a[ability] += bonus
+	}
+	return nil
+}
+
+// Modifier calculates the ability modifier for a given ability
+func (a AbilityScores) Modifier(ability constants.Ability) int {
+	return (a[ability] - 10) / 2
 }
 
 // ProficiencyLevel represents expertise levels

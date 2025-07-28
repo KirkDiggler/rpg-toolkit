@@ -6,6 +6,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -40,25 +41,34 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Apply racial ability score improvements
 	abilityScores := data.AbilityScores
-	for ability, bonus := range data.RaceData.AbilityScoreIncreases {
-		switch ability {
-		case shared.AbilityStrength:
-			abilityScores.Strength += bonus
-		case shared.AbilityDexterity:
-			abilityScores.Dexterity += bonus
-		case shared.AbilityConstitution:
-			abilityScores.Constitution += bonus
-		case shared.AbilityIntelligence:
-			abilityScores.Intelligence += bonus
-		case shared.AbilityWisdom:
-			abilityScores.Wisdom += bonus
-		case shared.AbilityCharisma:
-			abilityScores.Charisma += bonus
+	// Convert string ability names to constants for racial increases
+	racialIncreases := make(map[constants.Ability]int)
+	for abilityStr, bonus := range data.RaceData.AbilityScoreIncreases {
+		var ability constants.Ability
+		switch abilityStr {
+		case shared.AbilityStrength, "strength":
+			ability = constants.STR
+		case shared.AbilityDexterity, "dexterity":
+			ability = constants.DEX
+		case shared.AbilityConstitution, "constitution":
+			ability = constants.CON
+		case shared.AbilityIntelligence, "intelligence":
+			ability = constants.INT
+		case shared.AbilityWisdom, "wisdom":
+			ability = constants.WIS
+		case shared.AbilityCharisma, "charisma":
+			ability = constants.CHA
+		default:
+			continue // Skip unknown abilities
 		}
+		racialIncreases[ability] = bonus
 	}
 
+	// Apply the increases
+	_ = abilityScores.ApplyIncreases(racialIncreases) // Ignore errors about exceeding 20 during creation
+
 	// Calculate HP
-	conMod := (abilityScores.Constitution - 10) / 2
+	conMod := abilityScores.Modifier(constants.CON)
 	maxHP := data.ClassData.HitDice + conMod
 
 	// Build skills map
@@ -139,8 +149,8 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 		hitPoints:        maxHP,
 		maxHitPoints:     maxHP,
 		tempHitPoints:    0,
-		armorClass:       10 + ((abilityScores.Dexterity - 10) / 2),
-		initiative:       (abilityScores.Dexterity - 10) / 2,
+		armorClass:       10 + abilityScores.Modifier(constants.DEX),
+		initiative:       abilityScores.Modifier(constants.DEX),
 		hitDice:          data.ClassData.HitDice,
 		skills:           skills,
 		savingThrows:     saves,

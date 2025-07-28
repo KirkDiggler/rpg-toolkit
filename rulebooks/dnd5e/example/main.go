@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -68,12 +69,12 @@ func createCharacter(raceData *race.Data, classData *class.Data,
 		ClassData:      classData,
 		BackgroundData: backgroundData,
 		AbilityScores: shared.AbilityScores{
-			Strength:     15,
-			Dexterity:    14,
-			Constitution: 13,
-			Intelligence: 12,
-			Wisdom:       10,
-			Charisma:     8,
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
 		},
 		Choices: map[string]any{
 			"skills":   []string{"athletics", "intimidation"},
@@ -94,12 +95,12 @@ func displayCharacter(char *character.Character) {
 	fmt.Printf("HP: %d/%d\n", data.HitPoints, data.MaxHitPoints)
 	fmt.Printf("AC: %d\n", char.AC())
 	fmt.Printf("Ability Scores: STR %d, DEX %d, CON %d, INT %d, WIS %d, CHA %d\n",
-		data.AbilityScores.Strength,
-		data.AbilityScores.Dexterity,
-		data.AbilityScores.Constitution,
-		data.AbilityScores.Intelligence,
-		data.AbilityScores.Wisdom,
-		data.AbilityScores.Charisma)
+		data.AbilityScores[constants.STR],
+		data.AbilityScores[constants.DEX],
+		data.AbilityScores[constants.CON],
+		data.AbilityScores[constants.INT],
+		data.AbilityScores[constants.WIS],
+		data.AbilityScores[constants.CHA])
 
 	if len(data.Conditions) > 0 {
 		fmt.Print("Conditions: ")
@@ -274,8 +275,8 @@ func demonstrateBuilder(raceData *race.Data, classData *class.Data, backgroundDa
 
 	// Step 5: Ability Scores
 	if err := builder.SetAbilityScores(shared.AbilityScores{
-		Strength: 16, Dexterity: 13, Constitution: 14,
-		Intelligence: 10, Wisdom: 12, Charisma: 11,
+		constants.STR: 16, constants.DEX: 13, constants.CON: 14,
+		constants.INT: 10, constants.WIS: 12, constants.CHA: 11,
 	}); err != nil {
 		log.Fatal("Failed to set ability scores:", err)
 	}
@@ -317,12 +318,12 @@ func getHumanRaceData() *race.Data {
 		Size:        "medium",
 		Speed:       30,
 		AbilityScoreIncreases: map[string]int{
-			shared.AbilityStrength:     1,
-			shared.AbilityDexterity:    1,
-			shared.AbilityConstitution: 1,
-			shared.AbilityIntelligence: 1,
-			shared.AbilityWisdom:       1,
-			shared.AbilityCharisma:     1,
+			string(constants.STR): 1,
+			string(constants.DEX): 1,
+			string(constants.CON): 1,
+			string(constants.INT): 1,
+			string(constants.WIS): 1,
+			string(constants.CHA): 1,
 		},
 		Languages: []string{"common"},
 		LanguageChoice: &race.ChoiceData{
@@ -347,7 +348,7 @@ func getFighterClassData() *class.Data {
 			"acrobatics", "animal_handling", "athletics", "history",
 			"insight", "intimidation", "perception", "survival",
 		},
-		SavingThrows:        []string{shared.AbilityStrength, shared.AbilityConstitution},
+		SavingThrows:        []string{string(constants.STR), string(constants.CON)},
 		ArmorProficiencies:  []string{"light", "medium", "heavy", "shields"},
 		WeaponProficiencies: []string{"simple", "martial"},
 		Features: map[int][]class.FeatureData{

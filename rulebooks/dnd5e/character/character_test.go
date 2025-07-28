@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -40,12 +41,12 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		ClassID:      "fighter",
 		BackgroundID: "soldier",
 		AbilityScores: shared.AbilityScores{
-			Strength:     16,
-			Dexterity:    15,
-			Constitution: 14,
-			Intelligence: 13,
-			Wisdom:       11,
-			Charisma:     9,
+			constants.STR: 16,
+			constants.DEX: 15,
+			constants.CON: 14,
+			constants.INT: 13,
+			constants.WIS: 11,
+			constants.CHA: 9,
 		},
 		Speed:        30,
 		Size:         "Medium",
@@ -152,12 +153,12 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 		ClassID:      "fighter",
 		BackgroundID: "soldier",
 		AbilityScores: shared.AbilityScores{
-			Strength:     16,
-			Dexterity:    15,
-			Constitution: 14,
-			Intelligence: 13,
-			Wisdom:       11,
-			Charisma:     9,
+			constants.STR: 16,
+			constants.DEX: 15,
+			constants.CON: 14,
+			constants.INT: 13,
+			constants.WIS: 11,
+			constants.CHA: 9,
 		},
 		Speed:        30,
 		Size:         "Medium",
@@ -214,12 +215,12 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 		ClassID:      "fighter",
 		BackgroundID: "soldier",
 		AbilityScores: shared.AbilityScores{
-			Strength:     16,
-			Dexterity:    15,
-			Constitution: 14,
-			Intelligence: 13,
-			Wisdom:       11,
-			Charisma:     9,
+			constants.STR: 16,
+			constants.DEX: 15,
+			constants.CON: 14,
+			constants.INT: 13,
+			constants.WIS: 11,
+			constants.CHA: 9,
 		},
 		Speed:        30,
 		Size:         "Medium",

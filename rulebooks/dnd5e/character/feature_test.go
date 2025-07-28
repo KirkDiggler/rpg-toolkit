@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -101,12 +102,12 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				shared.ChoiceClass:      "fighter",
 				shared.ChoiceBackground: "soldier",
 				shared.ChoiceAbilityScores: shared.AbilityScores{
-					Strength:     16,
-					Dexterity:    14,
-					Constitution: 15,
-					Intelligence: 10,
-					Wisdom:       12,
-					Charisma:     8,
+					constants.STR: 16,
+					constants.DEX: 14,
+					constants.CON: 15,
+					constants.INT: 10,
+					constants.WIS: 12,
+					constants.CHA: 8,
 				},
 				shared.ChoiceSkills:        []string{"Perception", "Survival"},
 				shared.ChoiceFightingStyle: "defense", // Fighter-specific choice
@@ -154,12 +155,12 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			ClassID:      "fighter",
 			BackgroundID: "soldier",
 			AbilityScores: shared.AbilityScores{
-				Strength:     17, // With racial bonus
-				Dexterity:    15,
-				Constitution: 16,
-				Intelligence: 11,
-				Wisdom:       13,
-				Charisma:     9,
+				constants.STR: 17, // With racial bonus
+				constants.DEX: 15,
+				constants.CON: 16,
+				constants.INT: 11,
+				constants.WIS: 13,
+				constants.CHA: 9,
 			},
 			MaxHitPoints: 20, // 10 + 3 (con) at level 1, +6 +3 at level 2
 			HitPoints:    20,
@@ -290,12 +291,12 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				shared.ChoiceClass:      "wizard",
 				shared.ChoiceBackground: "sage",
 				shared.ChoiceAbilityScores: shared.AbilityScores{
-					Strength:     8,
-					Dexterity:    14,
-					Constitution: 13,
-					Intelligence: 15,
-					Wisdom:       12,
-					Charisma:     10,
+					constants.STR: 8,
+					constants.DEX: 14,
+					constants.CON: 13,
+					constants.INT: 15,
+					constants.WIS: 12,
+					constants.CHA: 10,
 				},
 				shared.ChoiceSkills:   []string{"Investigation", "Insight"},
 				shared.ChoiceCantrips: []string{"fire_bolt", "mage_hand", "prestidigitation"},
@@ -341,12 +342,12 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().True(hasSpellChoice, "Spell choices should be stored")
 
 		// Check ability scores with racial bonuses
-		s.Assert().Equal(8, character.abilityScores.Strength)
-		s.Assert().Equal(16, character.abilityScores.Dexterity) // 14 + 2 (elf)
-		s.Assert().Equal(13, character.abilityScores.Constitution)
-		s.Assert().Equal(16, character.abilityScores.Intelligence) // 15 + 1 (high elf)
-		s.Assert().Equal(12, character.abilityScores.Wisdom)
-		s.Assert().Equal(10, character.abilityScores.Charisma)
+		s.Assert().Equal(8, character.abilityScores[constants.STR])
+		s.Assert().Equal(16, character.abilityScores[constants.DEX]) // 14 + 2 (elf)
+		s.Assert().Equal(13, character.abilityScores[constants.CON])
+		s.Assert().Equal(16, character.abilityScores[constants.INT]) // 15 + 1 (high elf)
+		s.Assert().Equal(12, character.abilityScores[constants.WIS])
+		s.Assert().Equal(10, character.abilityScores[constants.CHA])
 	})
 }
 

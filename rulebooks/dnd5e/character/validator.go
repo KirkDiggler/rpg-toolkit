@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -98,24 +99,15 @@ func (v *Validator) ValidateAbilityScores(scores shared.AbilityScores) error {
 	// Point buy: 27 points, scores 8-15 before racial modifiers
 	// Rolled: Each score 3-18
 
-	// Check minimum and maximum values
-	if scores.Strength < 3 || scores.Strength > 20 {
-		return fmt.Errorf("strength must be between 3 and 20")
-	}
-	if scores.Dexterity < 3 || scores.Dexterity > 20 {
-		return fmt.Errorf("dexterity must be between 3 and 20")
-	}
-	if scores.Constitution < 3 || scores.Constitution > 20 {
-		return fmt.Errorf("constitution must be between 3 and 20")
-	}
-	if scores.Intelligence < 3 || scores.Intelligence > 20 {
-		return fmt.Errorf("intelligence must be between 3 and 20")
-	}
-	if scores.Wisdom < 3 || scores.Wisdom > 20 {
-		return fmt.Errorf("wisdom must be between 3 and 20")
-	}
-	if scores.Charisma < 3 || scores.Charisma > 20 {
-		return fmt.Errorf("charisma must be between 3 and 20")
+	// Check that all abilities are present and within range
+	for _, ability := range constants.AllAbilities() {
+		score, ok := scores[ability]
+		if !ok {
+			return fmt.Errorf("missing ability score: %s", ability.Display())
+		}
+		if score < 3 || score > 20 {
+			return fmt.Errorf("%s must be between 3 and 20", ability.Display())
+		}
 	}
 
 	// TODO: Validate based on character creation method (point buy, standard array, rolled)
