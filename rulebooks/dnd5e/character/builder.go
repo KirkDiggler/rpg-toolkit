@@ -43,7 +43,6 @@ func NewCharacterBuilder(draftID string) (*Builder, error) {
 	return &Builder{
 		draft: &Draft{
 			ID:        draftID,
-			Choices:   make(map[shared.ChoiceCategory]any),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
@@ -71,7 +70,6 @@ func (b *Builder) SetName(name string) error {
 	}
 
 	b.draft.Name = name
-	b.draft.Choices[shared.ChoiceName] = name
 	b.draft.Progress.setFlag(ProgressName)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -95,19 +93,12 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 		return err
 	}
 
-	b.draft.Choices[shared.ChoiceRace] = choice
-	if subraceID != "" {
-		b.draft.Choices[shared.ChoiceSubrace] = subraceID
-	}
+	b.draft.RaceChoice = choice
 	b.draft.Progress.setFlag(ProgressRace)
 	b.draft.UpdatedAt = time.Now()
 
-	// Add race choices to the draft
-	raceObj := race.LoadFromData(raceData)
-	for _, choice := range raceObj.GetChoices() {
-		// These need to be resolved by the user
-		b.draft.Choices[shared.ChoiceCategory("race_"+choice.ID)] = choice
-	}
+	// Note: Race-specific choices (e.g., variant human feat, half-elf skills)
+	// should be handled through dedicated methods
 
 	return nil
 }
@@ -121,15 +112,12 @@ func (b *Builder) SetClassData(classData class.Data) error {
 	// Store the class data
 	b.classData = &classData
 
-	b.draft.Choices[shared.ChoiceClass] = classData.ID
+	b.draft.ClassChoice = classData.ID
 	b.draft.Progress.setFlag(ProgressClass)
 	b.draft.UpdatedAt = time.Now()
 
-	// Add class choices to the draft (skills, equipment)
-	classObj := class.LoadFromData(classData)
-	for _, choice := range classObj.GetChoicesAtLevel(1) {
-		b.draft.Choices[shared.ChoiceCategory("class_"+choice.ID)] = choice
-	}
+	// Note: Class-specific choices (skills, equipment, etc.) will be set
+	// through their dedicated methods (SelectSkills, etc.)
 
 	return nil
 }
@@ -143,17 +131,12 @@ func (b *Builder) SetBackgroundData(backgroundData shared.Background) error {
 	// Store the background data
 	b.backgroundData = &backgroundData
 
-	b.draft.Choices[shared.ChoiceBackground] = backgroundData.ID
+	b.draft.BackgroundChoice = backgroundData.ID
 	b.draft.Progress.setFlag(ProgressBackground)
 	b.draft.UpdatedAt = time.Now()
 
-	// Add background choices if any
-	if backgroundData.LanguageChoice != nil {
-		b.draft.Choices[shared.ChoiceCategory("background_language")] = *backgroundData.LanguageChoice
-	}
-	if backgroundData.ToolChoice != nil {
-		b.draft.Choices[shared.ChoiceCategory("background_tool")] = *backgroundData.ToolChoice
-	}
+	// Note: Background-specific choices (extra languages, tools)
+	// should be handled through SelectLanguages or similar methods
 
 	return nil
 }
@@ -164,7 +147,7 @@ func (b *Builder) SetAbilityScores(scores shared.AbilityScores) error {
 		return err
 	}
 
-	b.draft.Choices[shared.ChoiceAbilityScores] = scores
+	b.draft.AbilityScoreChoice = scores
 	b.draft.Progress.setFlag(ProgressAbilityScores)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -177,8 +160,49 @@ func (b *Builder) SelectSkills(skills []string) error {
 		return err
 	}
 
-	b.draft.Choices[shared.ChoiceSkills] = skills
+	b.draft.SkillChoices = skills
 	b.draft.Progress.setFlag(ProgressSkills)
+	b.draft.UpdatedAt = time.Now()
+	return nil
+}
+
+// SelectLanguages records language selections
+func (b *Builder) SelectLanguages(languages []string) error {
+	b.draft.LanguageChoices = languages
+	b.draft.Progress.setFlag(ProgressLanguages)
+	b.draft.UpdatedAt = time.Now()
+	return nil
+}
+
+// SelectFightingStyle records fighting style selection (for appropriate classes)
+func (b *Builder) SelectFightingStyle(style string) error {
+	// TODO: Validate fighting style is available to this class
+	b.draft.FightingStyleChoice = style
+	b.draft.UpdatedAt = time.Now()
+	return nil
+}
+
+// SelectSpells records spell selections (for spellcasting classes)
+func (b *Builder) SelectSpells(spells []string) error {
+	// TODO: Validate spells against class spell list
+	b.draft.SpellChoices = spells
+	b.draft.UpdatedAt = time.Now()
+	return nil
+}
+
+// SelectCantrips records cantrip selections (for spellcasting classes)
+func (b *Builder) SelectCantrips(cantrips []string) error {
+	// TODO: Validate cantrips against class cantrip list
+	b.draft.CantripChoices = cantrips
+	b.draft.UpdatedAt = time.Now()
+	return nil
+}
+
+// SelectEquipment records equipment selections
+func (b *Builder) SelectEquipment(equipment []string) error {
+	// TODO: Validate equipment choices against class/background options
+	b.draft.EquipmentChoices = equipment
+	b.draft.Progress.setFlag(ProgressEquipment)
 	b.draft.UpdatedAt = time.Now()
 	return nil
 }
@@ -229,13 +253,26 @@ func (b *Builder) ToData() DraftData {
 
 // DraftData is the persistent representation of a draft
 type DraftData struct {
-	ID            string                        `json:"id"`
-	PlayerID      string                        `json:"player_id"`
-	Name          string                        `json:"name"`
-	Choices       map[shared.ChoiceCategory]any `json:"choices"`
-	ProgressFlags uint32                        `json:"progress_flags"`
-	CreatedAt     time.Time                     `json:"created_at"`
-	UpdatedAt     time.Time                     `json:"updated_at"`
+	ID            string `json:"id"`
+	PlayerID      string `json:"player_id"`
+	Name          string `json:"name"`
+	ProgressFlags uint32 `json:"progress_flags"`
+
+	// Explicit typed choices - matches Draft struct
+	RaceChoice          RaceChoice           `json:"race_choice"`
+	ClassChoice         string               `json:"class_choice"`
+	BackgroundChoice    string               `json:"background_choice"`
+	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
+	SkillChoices        []string             `json:"skill_choices"`
+	LanguageChoices     []string             `json:"language_choices"`
+	FightingStyleChoice string               `json:"fighting_style_choice,omitempty"`
+	SpellChoices        []string             `json:"spell_choices,omitempty"`
+	CantripChoices      []string             `json:"cantrip_choices,omitempty"`
+	EquipmentChoices    []string             `json:"equipment_choices,omitempty"`
+	FeatChoices         []string             `json:"feat_choices,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // BuilderProgress provides information about the current state

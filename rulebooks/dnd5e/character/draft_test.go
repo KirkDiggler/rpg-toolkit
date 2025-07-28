@@ -68,23 +68,20 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 		ID:       "test-draft-1",
 		PlayerID: "player-123",
 		Name:     "Test Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName: "Test Hero",
-			shared.ChoiceRace: RaceChoice{
-				RaceID: "human",
-			},
-			shared.ChoiceClass:      "fighter",
-			shared.ChoiceBackground: "soldier",
-			shared.ChoiceAbilityScores: shared.AbilityScores{
-				constants.STR: 15,
-				constants.DEX: 14,
-				constants.CON: 13,
-				constants.INT: 12,
-				constants.WIS: 10,
-				constants.CHA: 8,
-			},
-			shared.ChoiceSkills: []string{"Perception", "Survival"},
+		RaceChoice: RaceChoice{
+			RaceID: "human",
 		},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
+		},
+		SkillChoices: []string{"Perception", "Survival"},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -166,22 +163,19 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 		ID:       "test-draft-2",
 		PlayerID: "player-123",
 		Name:     "Elf Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName: "Elf Hero",
-			shared.ChoiceRace: RaceChoice{
-				RaceID:    "elf",
-				SubraceID: "high-elf",
-			},
-			shared.ChoiceClass:      "fighter",
-			shared.ChoiceBackground: "soldier",
-			shared.ChoiceAbilityScores: shared.AbilityScores{
-				constants.STR: 14,
-				constants.DEX: 15,
-				constants.CON: 13,
-				constants.INT: 12,
-				constants.WIS: 10,
-				constants.CHA: 8,
-			},
+		RaceChoice: RaceChoice{
+			RaceID:    "elf",
+			SubraceID: "high-elf",
+		},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 14,
+			constants.DEX: 15,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
 		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
@@ -208,15 +202,13 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 func (s *DraftTestSuite) TestToCharacter_IncompleteDraft() {
 	// Create incomplete draft (missing ability scores)
 	draft := &Draft{
-		ID:       "test-draft-3",
-		PlayerID: "player-123",
-		Name:     "Incomplete Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName:       "Incomplete Hero",
-			shared.ChoiceRace:       RaceChoice{RaceID: "human"},
-			shared.ChoiceClass:      "fighter",
-			shared.ChoiceBackground: "soldier",
-		},
+		ID:               "test-draft-3",
+		PlayerID:         "player-123",
+		Name:             "Incomplete Hero",
+		RaceChoice:       RaceChoice{RaceID: "human"},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		// AbilityScoreChoice is missing
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground,
 		},
@@ -259,10 +251,10 @@ func (s *DraftTestSuite) TestLoadDraftFromData() {
 		ID:       "test-draft-5",
 		PlayerID: "player-123",
 		Name:     "Loaded Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName: "Loaded Hero",
+		RaceChoice: RaceChoice{
+			RaceID: "human",
 		},
-		ProgressFlags: ProgressName,
+		ProgressFlags: ProgressName | ProgressRace,
 		CreatedAt:     time.Now().Add(-1 * time.Hour),
 		UpdatedAt:     time.Now(),
 	}
@@ -274,8 +266,10 @@ func (s *DraftTestSuite) TestLoadDraftFromData() {
 	s.Assert().Equal(data.ID, draft.ID)
 	s.Assert().Equal(data.PlayerID, draft.PlayerID)
 	s.Assert().Equal(data.Name, draft.Name)
+	s.Assert().Equal(data.RaceChoice, draft.RaceChoice)
 	s.Assert().Equal(data.ProgressFlags, draft.Progress.flags)
 	s.Assert().True(draft.Progress.hasFlag(ProgressName))
+	s.Assert().True(draft.Progress.hasFlag(ProgressRace))
 }
 
 func (s *DraftTestSuite) TestLoadDraftFromData_NoID() {
@@ -294,12 +288,14 @@ func (s *DraftTestSuite) TestDraftToData() {
 		ID:       "test-draft-6",
 		PlayerID: "player-123",
 		Name:     "Test Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName: "Test Hero",
+		RaceChoice: RaceChoice{
+			RaceID: "human",
 		},
-		Progress:  DraftProgress{flags: ProgressName},
-		CreatedAt: time.Now().Add(-1 * time.Hour),
-		UpdatedAt: time.Now(),
+		ClassChoice:  "fighter",
+		SkillChoices: []string{"Athletics", "Perception"},
+		Progress:     DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
+		CreatedAt:    time.Now().Add(-1 * time.Hour),
+		UpdatedAt:    time.Now(),
 	}
 
 	data := draft.ToData()
@@ -307,7 +303,9 @@ func (s *DraftTestSuite) TestDraftToData() {
 	s.Assert().Equal(draft.ID, data.ID)
 	s.Assert().Equal(draft.PlayerID, data.PlayerID)
 	s.Assert().Equal(draft.Name, data.Name)
-	s.Assert().Equal(draft.Choices, data.Choices)
+	s.Assert().Equal(draft.RaceChoice, data.RaceChoice)
+	s.Assert().Equal(draft.ClassChoice, data.ClassChoice)
+	s.Assert().Equal(draft.SkillChoices, data.SkillChoices)
 	s.Assert().Equal(draft.Progress.flags, data.ProgressFlags)
 	s.Assert().Equal(draft.CreatedAt, data.CreatedAt)
 	s.Assert().Equal(draft.UpdatedAt, data.UpdatedAt)
@@ -358,23 +356,20 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 		ID:       "test-draft-lang",
 		PlayerID: "player-123",
 		Name:     "Multilingual Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName: "Multilingual Hero",
-			shared.ChoiceRace: RaceChoice{
-				RaceID: "human",
-			},
-			shared.ChoiceClass:      "fighter",
-			shared.ChoiceBackground: "soldier",
-			shared.ChoiceAbilityScores: shared.AbilityScores{
-				constants.STR: 15,
-				constants.DEX: 14,
-				constants.CON: 13,
-				constants.INT: 12,
-				constants.WIS: 10,
-				constants.CHA: 8,
-			},
-			shared.ChoiceLanguages: []string{"Elvish", "Goblin", "Draconic"},
+		RaceChoice: RaceChoice{
+			RaceID: "human",
 		},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
+		},
+		LanguageChoices: []string{"Elvish", "Goblin", "Draconic"},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -420,21 +415,18 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 		ID:       "test-draft-no-common",
 		PlayerID: "player-123",
 		Name:     "Exotic Hero",
-		Choices: map[shared.ChoiceCategory]any{
-			shared.ChoiceName: "Exotic Hero",
-			shared.ChoiceRace: RaceChoice{
-				RaceID: "exotic",
-			},
-			shared.ChoiceClass:      "fighter",
-			shared.ChoiceBackground: "soldier",
-			shared.ChoiceAbilityScores: shared.AbilityScores{
-				constants.STR: 15,
-				constants.DEX: 14,
-				constants.CON: 13,
-				constants.INT: 12,
-				constants.WIS: 10,
-				constants.CHA: 8,
-			},
+		RaceChoice: RaceChoice{
+			RaceID: "exotic",
+		},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
 		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
