@@ -62,8 +62,10 @@ func (l Language) Display() string {
 		return "Undercommon"
 	default:
 		// Capitalize first letter as fallback
-		if len(l) > 0 {
+		if len(l) > 1 {
 			return strings.ToUpper(string(l[0])) + string(l[1:])
+		} else if len(l) == 1 {
+			return strings.ToUpper(string(l))
 		}
 		return string(l)
 	}

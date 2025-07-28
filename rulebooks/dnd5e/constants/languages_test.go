@@ -69,6 +69,16 @@ func (s *LanguagesTestSuite) TestLanguageDisplay_EmptyLanguage() {
 	s.Equal("", empty.Display())
 }
 
+func (s *LanguagesTestSuite) TestLanguageDisplay_SingleCharacterLanguage() {
+	// Test the edge case that Copilot identified
+	single := constants.Language("x")
+	s.Equal("X", single.Display()) // Should uppercase single character without panic
+
+	// Test another single character
+	single2 := constants.Language("a")
+	s.Equal("A", single2.Display())
+}
+
 func (s *LanguagesTestSuite) TestStandardLanguages() {
 	languages := constants.StandardLanguages()
 	s.Len(languages, 8)
