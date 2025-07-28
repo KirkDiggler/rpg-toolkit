@@ -288,6 +288,24 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	charData.Equipment = equipment
+
+	// Initialize class resources
+	classResources := initializeClassResources(classData, 1, charData.AbilityScores)
+	resourcesData := make(map[string]ResourceData)
+	for name, res := range classResources {
+		resourcesData[name] = ResourceData{
+			Name:    res.Name,
+			Max:     res.Max,
+			Current: res.Current,
+			Resets:  string(res.Resets),
+		}
+	}
+	charData.ClassResources = resourcesData
+
+	// Initialize spell slots
+	spellSlots := initializeSpellSlots(classData, 1)
+	charData.SpellSlots = spellSlots
+
 	charData.CreatedAt = time.Now()
 	charData.UpdatedAt = time.Now()
 

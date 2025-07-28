@@ -843,6 +843,114 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 	s.Assert().Contains(equipment, "Dungeoneer's Pack")
 }
 
+func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
+	// Set up fighter with resources
+	s.fighterClass.Resources = []class.ResourceData{
+		{
+			ID:         "second_wind",
+			Name:       "Second Wind",
+			MaxFormula: "1",
+			ResetOn:    "short_rest",
+		},
+		{
+			ID:         "action_surge",
+			Name:       "Action Surge",
+			MaxFormula: "1", // Would increase at higher levels
+			ResetOn:    "short_rest",
+		},
+	}
+
+	// Create a draft
+	draft := &Draft{
+		ID:               "test-resources",
+		PlayerID:         "player-res",
+		Name:             "Resource Fighter",
+		RaceChoice:       RaceChoice{RaceID: "human"},
+		ClassChoice:      "fighter",
+		BackgroundChoice: "soldier",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 16,
+			constants.DEX: 14,
+			constants.CON: 15,
+			constants.INT: 10,
+			constants.WIS: 13,
+			constants.CHA: 12,
+		},
+		SkillChoices: []string{"History", "Perception"},
+	}
+	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
+		ProgressAbilityScores | ProgressSkills
+
+	// Convert to character
+	character, err := draft.ToCharacter(s.humanRace, s.fighterClass, s.soldierBg)
+	s.Require().NoError(err)
+
+	// Check resources were initialized
+	resources := character.GetClassResources()
+	s.Len(resources, 2)
+
+	// Check Second Wind
+	secondWind, ok := resources["second_wind"]
+	s.Require().True(ok)
+	s.Equal("Second Wind", secondWind.Name)
+	s.Equal(1, secondWind.Max)
+	s.Equal(1, secondWind.Current)
+	s.Equal(shared.ResetType("short_rest"), secondWind.Resets)
+
+	// Check Action Surge
+	actionSurge, ok := resources["action_surge"]
+	s.Require().True(ok)
+	s.Equal("Action Surge", actionSurge.Name)
+	s.Equal(1, actionSurge.Max)
+	s.Equal(1, actionSurge.Current)
+}
+
+func (s *DraftConversionTestSuite) TestSpellSlotsInitialization() {
+	// Set up wizard with spell slots
+	s.wizardClass.Spellcasting = &class.SpellcastingData{
+		Ability: "Intelligence",
+		SpellSlots: map[int][]int{
+			1: {2},    // Level 1: 2 first-level slots
+			2: {3},    // Level 2: 3 first-level slots
+			3: {4, 2}, // Level 3: 4 first, 2 second
+		},
+	}
+
+	// Create a wizard draft
+	draft := &Draft{
+		ID:               "test-spellslots",
+		PlayerID:         "player-spell",
+		Name:             "Spell Wizard",
+		RaceChoice:       RaceChoice{RaceID: "elf", SubraceID: "high-elf"},
+		ClassChoice:      "wizard",
+		BackgroundChoice: "hermit",
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 8,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 16,
+			constants.WIS: 12,
+			constants.CHA: 10,
+		},
+		SkillChoices: []string{"Arcana", "Investigation"},
+	}
+	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
+		ProgressAbilityScores | ProgressSkills
+
+	// Convert to character
+	character, err := draft.ToCharacter(s.elfRace, s.wizardClass, s.hermitBg)
+	s.Require().NoError(err)
+
+	// Check spell slots were initialized (level 1 wizard)
+	spellSlots := character.GetSpellSlots()
+	s.Len(spellSlots, 1)
+
+	slot1, ok := spellSlots[1]
+	s.Require().True(ok)
+	s.Equal(2, slot1.Max)
+	s.Equal(0, slot1.Used)
+}
+
 func TestDraftConversionTestSuite(t *testing.T) {
 	suite.Run(t, new(DraftConversionTestSuite))
 }
