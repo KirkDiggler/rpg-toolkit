@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/game"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -390,9 +391,9 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		speed:            data.Speed,
 		hitPoints:        data.HitPoints,
 		maxHitPoints:     data.MaxHitPoints,
-		tempHitPoints:    0,                                              // Reset on load
-		armorClass:       10 + ((data.AbilityScores.Dexterity - 10) / 2), // Base AC, equipment will modify
-		initiative:       (data.AbilityScores.Dexterity - 10) / 2,
+		tempHitPoints:    0,                                               // Reset on load
+		armorClass:       10 + data.AbilityScores.Modifier(constants.DEX), // Base AC, equipment will modify
+		initiative:       data.AbilityScores.Modifier(constants.DEX),
 		hitDice:          classData.HitDice,
 		skills:           skills,
 		savingThrows:     saves,

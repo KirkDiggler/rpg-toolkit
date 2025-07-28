@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -176,12 +177,12 @@ func (c *CLI) createCharacterWizard() {
 		ClassData:      classData,
 		BackgroundData: backgroundData,
 		AbilityScores: shared.AbilityScores{
-			Strength:     str,
-			Dexterity:    dex,
-			Constitution: con,
-			Intelligence: intl,
-			Wisdom:       wis,
-			Charisma:     cha,
+			constants.STR: str,
+			constants.DEX: dex,
+			constants.CON: con,
+			constants.INT: intl,
+			constants.WIS: wis,
+			constants.CHA: cha,
 		},
 		Choices: choices,
 	})
@@ -340,8 +341,8 @@ func (c *CLI) demonstrateBuilder() {
 
 	fmt.Println("\nStep 5: Setting ability scores...")
 	if err := builder.SetAbilityScores(shared.AbilityScores{
-		Strength: 16, Dexterity: 13, Constitution: 14,
-		Intelligence: 10, Wisdom: 12, Charisma: 11,
+		constants.STR: 16, constants.DEX: 13, constants.CON: 14,
+		constants.INT: 10, constants.WIS: 12, constants.CHA: 11,
 	}); err != nil {
 		fmt.Printf("Failed to set ability scores: %v\n", err)
 		return
@@ -441,8 +442,8 @@ func getElfRaceData() *race.Data {
 		Size:        "medium",
 		Speed:       30,
 		AbilityScoreIncreases: map[string]int{
-			shared.AbilityDexterity:    2,
-			shared.AbilityIntelligence: 1,
+			string(constants.DEX): 2,
+			string(constants.INT): 1,
 		},
 		Languages: []string{"common", "elvish"},
 		Traits: []race.TraitData{
@@ -468,7 +469,7 @@ func getDwarfRaceData() *race.Data {
 		Size:        "medium",
 		Speed:       25,
 		AbilityScoreIncreases: map[string]int{
-			shared.AbilityConstitution: 2,
+			string(constants.CON): 2,
 		},
 		Languages: []string{"common", "dwarvish"},
 		Traits: []race.TraitData{
@@ -499,11 +500,11 @@ func getWizardClassData() *class.Data {
 			"arcana", "history", "insight", "investigation",
 			"medicine", "religion",
 		},
-		SavingThrows:        []string{shared.AbilityIntelligence, shared.AbilityWisdom},
+		SavingThrows:        []string{string(constants.INT), string(constants.WIS)},
 		ArmorProficiencies:  []string{},
 		WeaponProficiencies: []string{"daggers", "darts", "slings", "quarterstaffs", "light_crossbows"},
 		Spellcasting: &class.SpellcastingData{
-			Ability: shared.AbilityIntelligence,
+			Ability: string(constants.INT),
 			CantripsKnown: map[int]int{
 				1: 3, 2: 3, 3: 3, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4, 9: 4, 10: 5,
 				11: 5, 12: 5, 13: 5, 14: 5, 15: 5, 16: 5, 17: 5, 18: 5, 19: 5, 20: 5,
@@ -527,7 +528,7 @@ func getRogueClassData() *class.Data {
 			"investigation", "perception", "performance", "persuasion",
 			"sleight_of_hand", "stealth",
 		},
-		SavingThrows:        []string{shared.AbilityDexterity, shared.AbilityIntelligence},
+		SavingThrows:        []string{string(constants.DEX), string(constants.INT)},
 		ArmorProficiencies:  []string{"light"},
 		WeaponProficiencies: []string{"simple", "hand_crossbows", "longswords", "rapiers", "shortswords"},
 		Features: map[int][]class.FeatureData{

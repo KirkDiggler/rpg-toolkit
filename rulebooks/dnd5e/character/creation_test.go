@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -33,12 +34,12 @@ func (s *CreationTestSuite) TestNewFromCreationData_ProcessesChoices() {
 		ClassData:      s.testClass,
 		BackgroundData: s.testBackground,
 		AbilityScores: shared.AbilityScores{
-			Strength:     15,
-			Dexterity:    14,
-			Constitution: 13,
-			Intelligence: 12,
-			Wisdom:       10,
-			Charisma:     8,
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
 		},
 		Choices: map[string]any{
 			"skills":    []string{"Acrobatics", "Animal Handling"},
@@ -93,12 +94,12 @@ func (s *CreationTestSuite) TestNewFromCreationData_EmptyChoices() {
 		ClassData:      s.testClass,
 		BackgroundData: s.testBackground,
 		AbilityScores: shared.AbilityScores{
-			Strength:     15,
-			Dexterity:    14,
-			Constitution: 13,
-			Intelligence: 12,
-			Wisdom:       10,
-			Charisma:     8,
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
 		},
 		Choices: map[string]any{}, // Empty choices
 	}
@@ -147,12 +148,12 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 		ClassData:      s.testClass,
 		BackgroundData: exoticBackground,
 		AbilityScores: shared.AbilityScores{
-			Strength:     15,
-			Dexterity:    14,
-			Constitution: 13,
-			Intelligence: 12,
-			Wisdom:       10,
-			Charisma:     8,
+			constants.STR: 15,
+			constants.DEX: 14,
+			constants.CON: 13,
+			constants.INT: 12,
+			constants.WIS: 10,
+			constants.CHA: 8,
 		},
 		Choices: map[string]any{
 			"languages": []string{"Infernal"}, // Also no Common

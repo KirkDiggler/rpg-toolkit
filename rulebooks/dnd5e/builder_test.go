@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // Test data helpers
@@ -17,12 +19,12 @@ func createTestRaceData() dnd5e.RaceData {
 		Size:  "medium",
 		Speed: 30,
 		AbilityScoreIncreases: map[string]int{
-			"strength":     1,
-			"dexterity":    1,
-			"constitution": 1,
-			"intelligence": 1,
-			"wisdom":       1,
-			"charisma":     1,
+			"str": 1,
+			"dex": 1,
+			"con": 1,
+			"int": 1,
+			"wis": 1,
+			"cha": 1,
 		},
 		Languages: []string{"common"},
 	}
@@ -39,7 +41,7 @@ func createTestClassData() dnd5e.ClassData {
 			"acrobatics", "athletics", "history", "insight",
 			"intimidation", "perception", "survival",
 		},
-		SavingThrows:        []string{"strength", "constitution"},
+		SavingThrows:        []string{"str", "con"},
 		ArmorProficiencies:  []string{"light", "medium", "heavy", "shields"},
 		WeaponProficiencies: []string{"simple", "martial"},
 	}
@@ -115,14 +117,15 @@ func TestCharacterCreationFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set ability scores
-	scores := dnd5e.AbilityScores{
-		Strength:     15,
-		Dexterity:    14,
-		Constitution: 13,
-		Intelligence: 12,
-		Wisdom:       10,
-		Charisma:     8,
-	}
+	scores, err := shared.NewAbilityScores(&shared.AbilityScoreConfig{
+		STR: 15,
+		DEX: 14,
+		CON: 13,
+		INT: 12,
+		WIS: 10,
+		CHA: 8,
+	})
+	require.NoError(t, err)
 	err = builder.SetAbilityScores(scores)
 	require.NoError(t, err)
 
@@ -149,8 +152,8 @@ func TestCharacterCreationFlow(t *testing.T) {
 	assert.Equal(t, "soldier", charData.BackgroundID)
 
 	// Check ability scores include racial bonuses
-	assert.Equal(t, 16, charData.AbilityScores.Strength)  // 15 + 1 racial
-	assert.Equal(t, 15, charData.AbilityScores.Dexterity) // 14 + 1 racial
+	assert.Equal(t, 16, charData.AbilityScores[constants.STR]) // 15 + 1 racial
+	assert.Equal(t, 15, charData.AbilityScores[constants.DEX]) // 14 + 1 racial
 
 	// Check HP calculation
 	// Base 10 + CON modifier ((14 - 10) / 2 = 2)
