@@ -618,11 +618,11 @@ func (s *DraftConversionTestSuite) TestFightingStyleDefenseAppliesACBonus() {
 	s.Assert().Equal("defense", character.fightingStyle)
 
 	// Verify AC calculation includes Defense bonus
-	// Base AC: 10 + DEX modifier 
+	// Base AC: 10 + DEX modifier
 	// DEX 14 + Human racial bonus +1 = 15, so +2 modifier
 	// Defense fighting style: +1 AC
 	// Expected total: 10 + 2 + 1 = 13
-	expectedBaseAC := 10 + 2 // Base + DEX modifier (14+1 human bonus = 15, so +2 modifier)
+	expectedBaseAC := 10 + 2                    // Base + DEX modifier (14+1 human bonus = 15, so +2 modifier)
 	expectedACWithDefense := expectedBaseAC + 1 // + Defense fighting style
 	s.Assert().Equal(expectedACWithDefense, character.AC())
 
@@ -654,7 +654,7 @@ func (s *DraftConversionTestSuite) TestFightingStyleNoBonus() {
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 13,
-			constants.DEX: 15, // +2 modifier  
+			constants.DEX: 15, // +2 modifier
 			constants.CON: 14,
 			constants.INT: 10,
 			constants.WIS: 12,
@@ -673,7 +673,7 @@ func (s *DraftConversionTestSuite) TestFightingStyleNoBonus() {
 	s.Require().NotNil(character)
 
 	// Verify fighting style is stored
-	s.Assert().Equal("archery", character.fightingStyle) 
+	s.Assert().Equal("archery", character.fightingStyle)
 
 	// Verify AC calculation does NOT include any fighting style bonus
 	// Base AC: 10 + DEX modifier (2) = 12

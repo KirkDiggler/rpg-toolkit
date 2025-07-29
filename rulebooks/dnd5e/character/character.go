@@ -126,10 +126,10 @@ func (c *Character) SkillCheck(_ string, _ int) CheckResult {
 // AC returns the character's armor class
 func (c *Character) AC() int {
 	ac := c.armorClass
-	
+
 	// Apply fighting style bonuses
 	ac += c.getFightingStyleACBonus()
-	
+
 	// Apply any AC bonuses from effects
 	for _, effect := range c.effects {
 		ac += effect.ACBonus
