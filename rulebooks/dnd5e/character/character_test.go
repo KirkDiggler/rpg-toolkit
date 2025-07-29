@@ -175,7 +175,11 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 			string(constants.SkillPerception):   2,
 			string(constants.SkillSurvival):     2,
 		},
-		Languages: []string{string(constants.LanguageCommon), string(constants.LanguageDwarvish), string(constants.LanguageElvish)},
+		Languages: []string{
+			string(constants.LanguageCommon),
+			string(constants.LanguageDwarvish),
+			string(constants.LanguageElvish),
+		},
 		SavingThrows: map[string]int{
 			string(constants.STR): 2,
 			string(constants.CON): 2,

@@ -58,21 +58,26 @@ func (s *CreationTestSuite) TestNewFromCreationData_ProcessesChoices() {
 	s.Assert().NotNil(character)
 
 	// Verify skills from choices are processed
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAcrobatics], "Chosen skill Acrobatics should be proficient")
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAcrobatics],
+		"Chosen skill Acrobatics should be proficient")
 	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAnimalHandling],
 		"Chosen skill Animal Handling should be proficient")
 
 	// Verify skills from background are included
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics], "Background skill Athletics should be proficient")
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics],
+		"Background skill Athletics should be proficient")
 	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation],
 		"Background skill Intimidation should be proficient")
 
 	// Verify languages from choices are processed
-	s.Assert().Contains(character.languages, constants.LanguageGoblin, "Chosen language Goblin should be included")
+	s.Assert().Contains(character.languages, constants.LanguageGoblin,
+		"Chosen language Goblin should be included")
 
 	// Verify languages from race and background are included
-	s.Assert().Contains(character.languages, constants.LanguageCommon, "Race language Common should be included")
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish, "Background language Dwarvish should be included")
+	s.Assert().Contains(character.languages, constants.LanguageCommon,
+		"Race language Common should be included")
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish,
+		"Background language Dwarvish should be included")
 
 	// Verify saving throws from class
 	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR],
@@ -171,10 +176,14 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 	s.Assert().NotNil(character)
 
 	// Verify Common is still included
-	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included")
-	s.Assert().Contains(character.languages, constants.Language(testLanguageExotic), "Race language should be included")
-	s.Assert().Contains(character.languages, constants.LanguageCelestial, "Background language should be included")
-	s.Assert().Contains(character.languages, constants.LanguageInfernal, "Chosen language should be included")
+	s.Assert().Contains(character.languages, constants.LanguageCommon,
+		"Common should always be included")
+	s.Assert().Contains(character.languages, constants.Language(testLanguageExotic),
+		"Race language should be included")
+	s.Assert().Contains(character.languages, constants.LanguageCelestial,
+		"Background language should be included")
+	s.Assert().Contains(character.languages, constants.LanguageInfernal,
+		"Chosen language should be included")
 }
 
 func TestCreationTestSuite(t *testing.T) {
