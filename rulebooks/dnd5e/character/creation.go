@@ -41,7 +41,8 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Apply racial ability score improvements
 	abilityScores := data.AbilityScores
-	_ = abilityScores.ApplyIncreases(data.RaceData.AbilityScoreIncreases) // Ignore errors about exceeding 20 during creation
+	// Ignore errors about exceeding 20 during creation
+	_ = abilityScores.ApplyIncreases(data.RaceData.AbilityScoreIncreases)
 
 	// Calculate HP
 	conMod := abilityScores.Modifier(constants.CON)

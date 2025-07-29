@@ -98,7 +98,7 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		SavingThrows:          []constants.Ability{constants.INT, constants.WIS},
 		SkillProficiencyCount: 2,
 		SkillOptions: []constants.Skill{
-			constants.SkillArcana, constants.SkillHistory, constants.SkillInsight, 
+			constants.SkillArcana, constants.SkillHistory, constants.SkillInsight,
 			constants.SkillInvestigation, constants.SkillMedicine, constants.SkillReligion,
 		},
 		ArmorProficiencies:  []string{},
@@ -192,10 +192,10 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	s.Assert().Equal(expectedSkills, character.skills)
 
 	// Verify languages (race + background + chosen)
-	s.Assert().Contains(character.languages, constants.LanguageCommon)    // Human
-	s.Assert().Contains(character.languages, constants.LanguageOrc)       // Soldier background
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish)  // Chosen
-	s.Assert().Contains(character.languages, constants.LanguageGiant)     // Chosen
+	s.Assert().Contains(character.languages, constants.LanguageCommon)   // Human
+	s.Assert().Contains(character.languages, constants.LanguageOrc)      // Soldier background
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish) // Chosen
+	s.Assert().Contains(character.languages, constants.LanguageGiant)    // Chosen
 	s.Assert().Len(character.languages, 4)
 
 	// Verify proficiencies
@@ -294,7 +294,10 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 	s.Assert().Equal(expectedSkills, character.skills)
 
 	// Verify languages
-	expectedLanguages := []constants.Language{constants.LanguageCommon, constants.LanguageElvish, constants.LanguageCelestial, constants.LanguageDraconic, constants.LanguageSylvan}
+	expectedLanguages := []constants.Language{
+		constants.LanguageCommon, constants.LanguageElvish, constants.LanguageCelestial,
+		constants.LanguageDraconic, constants.LanguageSylvan,
+	}
 	s.Assert().Len(character.languages, len(expectedLanguages))
 	for _, lang := range expectedLanguages {
 		s.Assert().Contains(character.languages, lang)

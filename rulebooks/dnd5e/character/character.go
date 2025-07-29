@@ -226,7 +226,7 @@ type Data struct {
 	Skills        map[string]shared.ProficiencyLevel `json:"skills"`        // skill name -> proficiency level
 	SavingThrows  map[string]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
 	Languages     []string                           `json:"languages"`
-	Proficiencies shared.Proficiencies `json:"proficiencies"`
+	Proficiencies shared.Proficiencies               `json:"proficiencies"`
 
 	// Current state
 	Conditions []conditions.Condition `json:"conditions"`
@@ -338,7 +338,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 	skills := make(map[constants.Skill]shared.ProficiencyLevel)
 	for skillStr, level := range data.Skills {
 		skill := constants.Skill(skillStr)
-		skills[skill] = shared.ProficiencyLevel(level)
+		skills[skill] = level
 	}
 
 	// Build languages from persisted data
@@ -351,7 +351,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 	saves := make(map[constants.Ability]shared.ProficiencyLevel)
 	for saveStr, level := range data.SavingThrows {
 		save := constants.Ability(saveStr)
-		saves[save] = shared.ProficiencyLevel(level)
+		saves[save] = level
 	}
 
 	resources := make(map[string]Resource)
@@ -455,4 +455,3 @@ type CheckResult struct {
 	Success bool
 	Roll    int
 }
-

@@ -14,13 +14,13 @@ type Data struct {
 	HitPointsPerLevel int `json:"hit_points_per_level"` // Average HP per level
 
 	// Proficiencies
-	ArmorProficiencies  []string `json:"armor_proficiencies"`
-	WeaponProficiencies []string `json:"weapon_proficiencies"`
-	ToolProficiencies   []string `json:"tool_proficiencies"`
+	ArmorProficiencies  []string            `json:"armor_proficiencies"`
+	WeaponProficiencies []string            `json:"weapon_proficiencies"`
+	ToolProficiencies   []string            `json:"tool_proficiencies"`
 	SavingThrows        []constants.Ability `json:"saving_throws"` // Two ability scores
 
 	// Skills
-	SkillProficiencyCount int                `json:"skill_proficiency_count"`
+	SkillProficiencyCount int               `json:"skill_proficiency_count"`
 	SkillOptions          []constants.Skill `json:"skill_options"` // Available skills to choose from
 
 	// Starting equipment
@@ -55,11 +55,11 @@ type FeatureData struct {
 // SpellcastingData for spellcasting classes
 type SpellcastingData struct {
 	Ability         constants.Ability `json:"ability"`                    // Intelligence, Wisdom, Charisma
-	PreparedFormula string        `json:"prepared_formula,omitempty"` // e.g., "wisdom_modifier + cleric_level"
-	RitualCasting   bool          `json:"ritual_casting"`
-	SpellsKnown     map[int]int   `json:"spells_known,omitempty"`   // Level -> number known
-	CantripsKnown   map[int]int   `json:"cantrips_known,omitempty"` // Level -> number known
-	SpellSlots      map[int][]int `json:"spell_slots"`              // Level -> slots per spell level
+	PreparedFormula string            `json:"prepared_formula,omitempty"` // e.g., "wisdom_modifier + cleric_level"
+	RitualCasting   bool              `json:"ritual_casting"`
+	SpellsKnown     map[int]int       `json:"spells_known,omitempty"`   // Level -> number known
+	CantripsKnown   map[int]int       `json:"cantrips_known,omitempty"` // Level -> number known
+	SpellSlots      map[int][]int     `json:"spell_slots"`              // Level -> slots per spell level
 }
 
 // ResourceData for class resources
