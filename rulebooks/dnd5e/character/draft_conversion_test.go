@@ -133,10 +133,10 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 		PlayerID: "player-123",
 		Name:     "Garen the Bold",
 		RaceChoice: RaceChoice{
-			RaceID: "human",
+			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
 			constants.DEX: 13,
@@ -145,8 +145,8 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices:    []string{"perception", "survival"},
-		LanguageChoices: []string{"dwarvish", "giant"},
+		SkillChoices:    []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+		LanguageChoices: []constants.Language{constants.LanguageDwarvish, constants.LanguageGiant},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -218,17 +218,17 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	for _, choice := range character.choices {
 		if choice.Category == string(shared.ChoiceSkills) {
 			hasSkillChoice = true
-			skills, ok := choice.Selection.([]string)
+			skills, ok := choice.Selection.([]constants.Skill)
 			s.Assert().True(ok)
-			s.Assert().Contains(skills, "perception")
-			s.Assert().Contains(skills, "survival")
+			s.Assert().Contains(skills, constants.SkillPerception)
+			s.Assert().Contains(skills, constants.SkillSurvival)
 		}
 		if choice.Category == string(shared.ChoiceLanguages) {
 			hasLanguageChoice = true
-			langs, ok := choice.Selection.([]string)
+			langs, ok := choice.Selection.([]constants.Language)
 			s.Assert().True(ok)
-			s.Assert().Contains(langs, "dwarvish")
-			s.Assert().Contains(langs, "giant")
+			s.Assert().Contains(langs, constants.LanguageDwarvish)
+			s.Assert().Contains(langs, constants.LanguageGiant)
 		}
 	}
 	s.Assert().True(hasSkillChoice, "Should have recorded skill choices")
@@ -242,11 +242,11 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 		PlayerID: "player-456",
 		Name:     "Elaria Moonshadow",
 		RaceChoice: RaceChoice{
-			RaceID:    "elf",
-			SubraceID: "high-elf",
+			RaceID:    constants.RaceElf,
+			SubraceID: constants.SubraceHighElf,
 		},
-		ClassChoice:      "wizard",
-		BackgroundChoice: "hermit",
+		ClassChoice:      constants.ClassWizard,
+		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
 			constants.DEX: 14,
@@ -255,8 +255,8 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 			constants.WIS: 12,
 			constants.CHA: 10,
 		},
-		SkillChoices:    []string{"arcana", "investigation"},
-		LanguageChoices: []string{"draconic", "sylvan"},
+		SkillChoices:    []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
+		LanguageChoices: []constants.Language{constants.LanguageDraconic, constants.LanguageSylvan},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -330,9 +330,9 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 		ID:               "test-exotic",
 		PlayerID:         "player-789",
 		Name:             "Zyx'tar",
-		RaceChoice:       RaceChoice{RaceID: "exotic"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.Race("exotic")},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 14,
 			constants.DEX: 12,
@@ -341,7 +341,7 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 			constants.WIS: 13,
 			constants.CHA: 8,
 		},
-		SkillChoices: []string{"perception", "survival"},
+		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -365,9 +365,9 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 		ID:               "test-duplicate-lang",
 		PlayerID:         "player-999",
 		Name:             "Linguist",
-		RaceChoice:       RaceChoice{RaceID: "elf"},
-		ClassChoice:      "wizard",
-		BackgroundChoice: "hermit",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceElf},
+		ClassChoice:      constants.ClassWizard,
+		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 10,
 			constants.DEX: 14,
@@ -376,9 +376,12 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 			constants.WIS: 13,
 			constants.CHA: 8,
 		},
-		SkillChoices: []string{"arcana", "history"},
+		SkillChoices: []constants.Skill{constants.SkillArcana, constants.SkillHistory},
 		// Choosing languages that overlap with race/background
-		LanguageChoices: []string{"common", "elvish", "celestial", "draconic"},
+		LanguageChoices: []constants.Language{
+			constants.LanguageCommon, constants.LanguageElvish,
+			constants.LanguageCelestial, constants.LanguageDraconic,
+		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -413,9 +416,9 @@ func (s *DraftConversionTestSuite) TestAllProficienciesApplied() {
 		ID:               "test-all-prof",
 		PlayerID:         "player-prof",
 		Name:             "Jack of All Trades",
-		RaceChoice:       RaceChoice{RaceID: "elf", SubraceID: "wood-elf"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceWoodElf},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 14,
 			constants.DEX: 15,
@@ -424,7 +427,7 @@ func (s *DraftConversionTestSuite) TestAllProficienciesApplied() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices: []string{"perception", "survival"},
+		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -459,11 +462,11 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 		PlayerID: "player-choices",
 		Name:     "Choice Tracker",
 		RaceChoice: RaceChoice{
-			RaceID:    "elf",
-			SubraceID: "high-elf",
+			RaceID:    constants.RaceElf,
+			SubraceID: constants.SubraceHighElf,
 		},
-		ClassChoice:      "wizard",
-		BackgroundChoice: "hermit",
+		ClassChoice:      constants.ClassWizard,
+		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
 			constants.DEX: 14,
@@ -472,8 +475,8 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 			constants.WIS: 13,
 			constants.CHA: 10,
 		},
-		SkillChoices:    []string{"arcana", "history"},
-		LanguageChoices: []string{"draconic"},
+		SkillChoices:    []constants.Skill{constants.SkillArcana, constants.SkillHistory},
+		LanguageChoices: []constants.Language{constants.LanguageDraconic},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -528,9 +531,9 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 		ID:               "test-fighting-style",
 		PlayerID:         "player-fs",
 		Name:             "Fighter with Style",
-		RaceChoice:       RaceChoice{RaceID: "human"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 16,
 			constants.DEX: 14,
@@ -539,7 +542,7 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices:        []string{"perception", "survival"},
+		SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 		FightingStyleChoice: "dueling", // Fighting style choice
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
@@ -570,9 +573,9 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 		ID:               "test-spells",
 		PlayerID:         "player-spells",
 		Name:             "Spellcaster Supreme",
-		RaceChoice:       RaceChoice{RaceID: "elf", SubraceID: "high-elf"},
-		ClassChoice:      "wizard",
-		BackgroundChoice: "hermit",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		ClassChoice:      constants.ClassWizard,
+		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
 			constants.DEX: 14,
@@ -581,7 +584,7 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 			constants.WIS: 12,
 			constants.CHA: 10,
 		},
-		SkillChoices:   []string{"arcana", "investigation"},
+		SkillChoices:   []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
 		CantripChoices: []string{"Mage Hand", "Prestidigitation", "Minor Illusion"},
 		SpellChoices:   []string{"Magic Missile", "Shield", "Identify", "Detect Magic", "Sleep", "Burning Hands"},
 		Progress: DraftProgress{
@@ -637,9 +640,9 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 		ID:               "test-equipment",
 		PlayerID:         "player-eq",
 		Name:             "Well Equipped",
-		RaceChoice:       RaceChoice{RaceID: "human"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 16,
 			constants.DEX: 14,
@@ -648,7 +651,7 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices: []string{"perception", "survival"},
+		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 		EquipmentChoices: []string{
 			"Chain Mail", "Shield", "Longsword", "Javelin (5)",
 			"Dungeoneer's Pack", "Explorer's Pack",
@@ -689,9 +692,9 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 		ID:               "test-comprehensive",
 		PlayerID:         "player-all",
 		Name:             "Jack of All Trades",
-		RaceChoice:       RaceChoice{RaceID: "elf", SubraceID: "high-elf"},
-		ClassChoice:      "fighter", // Fighter with spellcasting (e.g., Eldritch Knight)
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		ClassChoice:      constants.ClassFighter, // Fighter with spellcasting (e.g., Eldritch Knight)
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
 			constants.DEX: 14,
@@ -700,8 +703,8 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		SkillChoices:        []string{"perception", "history"},
-		LanguageChoices:     []string{"draconic", "giant"},
+		SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillHistory},
+		LanguageChoices:     []constants.Language{constants.LanguageDraconic, constants.LanguageGiant},
 		FightingStyleChoice: "protection",
 		CantripChoices:      []string{"Mage Hand", "Minor Illusion"},
 		SpellChoices:        []string{"Shield", "Magic Missile"},
@@ -782,9 +785,9 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 		ID:               "test-equipment",
 		PlayerID:         "player-eq",
 		Name:             "Equipment Tester",
-		RaceChoice:       RaceChoice{RaceID: "human"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
 			constants.DEX: 13,
@@ -793,7 +796,7 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 			constants.WIS: 12,
 			constants.CHA: 11,
 		},
-		SkillChoices:     []string{"perception", "survival"},
+		SkillChoices:     []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 		EquipmentChoices: []string{"Longsword", "Dungeoneer's Pack"},
 	}
 	// Set progress flags
@@ -869,9 +872,9 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 		ID:               "test-resources",
 		PlayerID:         "player-res",
 		Name:             "Resource Fighter",
-		RaceChoice:       RaceChoice{RaceID: "human"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 16,
 			constants.DEX: 14,
@@ -880,7 +883,7 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 			constants.WIS: 13,
 			constants.CHA: 12,
 		},
-		SkillChoices: []string{"history", "perception"},
+		SkillChoices: []constants.Skill{constants.SkillHistory, constants.SkillPerception},
 	}
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
 		ProgressAbilityScores | ProgressSkills
@@ -925,9 +928,9 @@ func (s *DraftConversionTestSuite) TestSpellSlotsInitialization() {
 		ID:               "test-spellslots",
 		PlayerID:         "player-spell",
 		Name:             "Spell Wizard",
-		RaceChoice:       RaceChoice{RaceID: "elf", SubraceID: "high-elf"},
-		ClassChoice:      "wizard",
-		BackgroundChoice: "hermit",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		ClassChoice:      constants.ClassWizard,
+		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
 			constants.DEX: 14,
@@ -936,7 +939,7 @@ func (s *DraftConversionTestSuite) TestSpellSlotsInitialization() {
 			constants.WIS: 12,
 			constants.CHA: 10,
 		},
-		SkillChoices: []string{"arcana", "investigation"},
+		SkillChoices: []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
 	}
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
 		ProgressAbilityScores | ProgressSkills

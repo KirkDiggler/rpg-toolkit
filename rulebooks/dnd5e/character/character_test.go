@@ -37,7 +37,7 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		PlayerID:     "player-123",
 		Name:         "Test Hero",
 		Level:        1,
-		RaceID:       "human",
+		RaceID:       string(constants.RaceHuman),
 		ClassID:      "fighter",
 		BackgroundID: "soldier",
 		AbilityScores: shared.AbilityScores{
@@ -153,7 +153,7 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 		PlayerID:     "player-123",
 		Name:         "Old Format Hero",
 		Level:        1,
-		RaceID:       "human",
+		RaceID:       string(constants.RaceHuman),
 		ClassID:      "fighter",
 		BackgroundID: "soldier",
 		AbilityScores: shared.AbilityScores{
@@ -219,7 +219,7 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 		PlayerID:     "player-123",
 		Name:         "Mixed Format Hero",
 		Level:        1,
-		RaceID:       "human",
+		RaceID:       string(constants.RaceHuman),
 		ClassID:      "fighter",
 		BackgroundID: "soldier",
 		AbilityScores: shared.AbilityScores{

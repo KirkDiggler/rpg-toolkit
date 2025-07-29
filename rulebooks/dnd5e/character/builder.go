@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -85,8 +86,8 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 	b.raceData = &raceData
 
 	choice := RaceChoice{
-		RaceID:    raceData.ID,
-		SubraceID: subraceID,
+		RaceID:    constants.Race(raceData.ID),
+		SubraceID: constants.Subrace(subraceID),
 	}
 
 	if err := b.validator.ValidateRaceChoice(choice, &raceData); err != nil {
@@ -112,7 +113,7 @@ func (b *Builder) SetClassData(classData class.Data) error {
 	// Store the class data
 	b.classData = &classData
 
-	b.draft.ClassChoice = classData.ID
+	b.draft.ClassChoice = constants.Class(classData.ID)
 	b.draft.Progress.setFlag(ProgressClass)
 	b.draft.UpdatedAt = time.Now()
 
@@ -131,7 +132,7 @@ func (b *Builder) SetBackgroundData(backgroundData shared.Background) error {
 	// Store the background data
 	b.backgroundData = &backgroundData
 
-	b.draft.BackgroundChoice = backgroundData.ID
+	b.draft.BackgroundChoice = constants.Background(backgroundData.ID)
 	b.draft.Progress.setFlag(ProgressBackground)
 	b.draft.UpdatedAt = time.Now()
 
@@ -155,12 +156,17 @@ func (b *Builder) SetAbilityScores(scores shared.AbilityScores) error {
 
 // SelectSkills records skill proficiency selections
 func (b *Builder) SelectSkills(skills []string) error {
-	// Validate skills are available based on class/background
-	if err := b.validator.ValidateSkillSelection(b.draft, skills, b.classData, b.backgroundData); err != nil {
-		return err
+	// Convert string skills to typed constants
+	typedSkills := make([]constants.Skill, len(skills))
+	for i, skill := range skills {
+		typedSkills[i] = constants.Skill(skill)
 	}
 
-	b.draft.SkillChoices = skills
+	// Validate skills are available based on class/background
+	if err := b.validator.ValidateSkillSelection(b.draft, typedSkills, b.classData, b.backgroundData); err != nil {
+		return err
+	}
+	b.draft.SkillChoices = typedSkills
 	b.draft.Progress.setFlag(ProgressSkills)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -168,7 +174,12 @@ func (b *Builder) SelectSkills(skills []string) error {
 
 // SelectLanguages records language selections
 func (b *Builder) SelectLanguages(languages []string) error {
-	b.draft.LanguageChoices = languages
+	// Convert string languages to typed constants
+	typedLanguages := make([]constants.Language, len(languages))
+	for i, lang := range languages {
+		typedLanguages[i] = constants.Language(lang)
+	}
+	b.draft.LanguageChoices = typedLanguages
 	b.draft.Progress.setFlag(ProgressLanguages)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -260,11 +271,11 @@ type DraftData struct {
 
 	// Explicit typed choices - matches Draft struct
 	RaceChoice          RaceChoice           `json:"race_choice"`
-	ClassChoice         string               `json:"class_choice"`
-	BackgroundChoice    string               `json:"background_choice"`
+	ClassChoice         constants.Class      `json:"class_choice"`
+	BackgroundChoice    constants.Background `json:"background_choice"`
 	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
-	SkillChoices        []string             `json:"skill_choices"`
-	LanguageChoices     []string             `json:"language_choices"`
+	SkillChoices        []constants.Skill    `json:"skill_choices"`
+	LanguageChoices     []constants.Language `json:"language_choices"`
 	FightingStyleChoice string               `json:"fighting_style_choice,omitempty"`
 	SpellChoices        []string             `json:"spell_choices,omitempty"`
 	CantripChoices      []string             `json:"cantrip_choices,omitempty"`
@@ -401,8 +412,8 @@ func (b *Builder) calculateCompletedSteps() int {
 
 // RaceChoice represents a race selection with optional subrace
 type RaceChoice struct {
-	RaceID    string `json:"race_id"`
-	SubraceID string `json:"subrace_id,omitempty"`
+	RaceID    constants.Race    `json:"race_id"`
+	SubraceID constants.Subrace `json:"subrace_id,omitempty"`
 }
 
 // ValidationError represents a validation failure

@@ -71,7 +71,7 @@ func (v *Validator) ValidateRaceChoice(choice RaceChoice, raceData *race.Data) e
 		return fmt.Errorf("race data is required")
 	}
 
-	if choice.RaceID != raceData.ID {
+	if string(choice.RaceID) != raceData.ID {
 		return fmt.Errorf("race choice does not match provided race data")
 	}
 
@@ -80,7 +80,7 @@ func (v *Validator) ValidateRaceChoice(choice RaceChoice, raceData *race.Data) e
 		// Check if subrace exists in race data
 		found := false
 		for _, subrace := range raceData.Subraces {
-			if subrace.ID == choice.SubraceID {
+			if subrace.ID == string(choice.SubraceID) {
 				found = true
 				break
 			}
@@ -116,7 +116,7 @@ func (v *Validator) ValidateAbilityScores(scores shared.AbilityScores) error {
 }
 
 // ValidateSkillSelection validates skill proficiency choices
-func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData *class.Data,
+func (v *Validator) ValidateSkillSelection(_ *Draft, skills []constants.Skill, classData *class.Data,
 	backgroundData *shared.Background) error {
 	if classData == nil {
 		return fmt.Errorf("class data is required for skill validation")
@@ -135,13 +135,13 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData 
 	for _, skill := range skills {
 		found := false
 		for _, option := range classData.SkillOptions {
-			if skill == string(option) {
+			if skill == option {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("skill %s is not available for this class", skill)
+			return fmt.Errorf("skill %s is not available for this class", skill.Display())
 		}
 	}
 
@@ -151,8 +151,8 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData 
 	for _, skill := range skills {
 		// Check if background already grants this skill
 		for _, bgSkill := range backgroundData.SkillProficiencies {
-			if skill == string(bgSkill) {
-				redundantSkills = append(redundantSkills, skill)
+			if skill == bgSkill {
+				redundantSkills = append(redundantSkills, string(skill))
 				break
 			}
 		}
@@ -166,7 +166,7 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData 
 	}
 
 	// Check for duplicates
-	seen := make(map[string]bool)
+	seen := make(map[constants.Skill]bool)
 	for _, skill := range skills {
 		if seen[skill] {
 			return fmt.Errorf("duplicate skill selection: %s", skill)

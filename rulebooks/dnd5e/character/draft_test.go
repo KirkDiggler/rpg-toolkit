@@ -69,10 +69,10 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 		PlayerID: "player-123",
 		Name:     "Test Hero",
 		RaceChoice: RaceChoice{
-			RaceID: "human",
+			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
 			constants.DEX: 14,
@@ -81,7 +81,7 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		SkillChoices: []string{"perception", "survival"},
+		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -164,11 +164,11 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 		PlayerID: "player-123",
 		Name:     "Elf Hero",
 		RaceChoice: RaceChoice{
-			RaceID:    "elf",
-			SubraceID: "high-elf",
+			RaceID:    constants.RaceElf,
+			SubraceID: constants.SubraceHighElf,
 		},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 14,
 			constants.DEX: 15,
@@ -205,9 +205,9 @@ func (s *DraftTestSuite) TestToCharacter_IncompleteDraft() {
 		ID:               "test-draft-3",
 		PlayerID:         "player-123",
 		Name:             "Incomplete Hero",
-		RaceChoice:       RaceChoice{RaceID: "human"},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		// AbilityScoreChoice is missing
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground,
@@ -252,7 +252,7 @@ func (s *DraftTestSuite) TestLoadDraftFromData() {
 		PlayerID: "player-123",
 		Name:     "Loaded Hero",
 		RaceChoice: RaceChoice{
-			RaceID: "human",
+			RaceID: constants.RaceHuman,
 		},
 		ProgressFlags: ProgressName | ProgressRace,
 		CreatedAt:     time.Now().Add(-1 * time.Hour),
@@ -289,10 +289,10 @@ func (s *DraftTestSuite) TestDraftToData() {
 		PlayerID: "player-123",
 		Name:     "Test Hero",
 		RaceChoice: RaceChoice{
-			RaceID: "human",
+			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:  "fighter",
-		SkillChoices: []string{"athletics", "perception"},
+		ClassChoice:  constants.ClassFighter,
+		SkillChoices: []constants.Skill{constants.SkillAthletics, constants.SkillPerception},
 		Progress:     DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
 		CreatedAt:    time.Now().Add(-1 * time.Hour),
 		UpdatedAt:    time.Now(),
@@ -357,10 +357,10 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 		PlayerID: "player-123",
 		Name:     "Multilingual Hero",
 		RaceChoice: RaceChoice{
-			RaceID: "human",
+			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
 			constants.DEX: 14,
@@ -369,7 +369,7 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		LanguageChoices: []string{"elvish", "goblin", "draconic"},
+		LanguageChoices: []constants.Language{constants.LanguageElvish, constants.LanguageGoblin, constants.LanguageDraconic},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -416,10 +416,10 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 		PlayerID: "player-123",
 		Name:     "Exotic Hero",
 		RaceChoice: RaceChoice{
-			RaceID: "exotic",
+			RaceID: constants.Race("exotic"),
 		},
-		ClassChoice:      "fighter",
-		BackgroundChoice: "soldier",
+		ClassChoice:      constants.ClassFighter,
+		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
 			constants.DEX: 14,
