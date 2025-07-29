@@ -71,7 +71,9 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 		RaceChoice: RaceChoice{
 			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:      constants.ClassFighter,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
@@ -167,7 +169,9 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 			RaceID:    constants.RaceElf,
 			SubraceID: constants.SubraceHighElf,
 		},
-		ClassChoice:      constants.ClassFighter,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 14,
@@ -202,11 +206,13 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 func (s *DraftTestSuite) TestToCharacter_IncompleteDraft() {
 	// Create incomplete draft (missing ability scores)
 	draft := &Draft{
-		ID:               "test-draft-3",
-		PlayerID:         "player-123",
-		Name:             "Incomplete Hero",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-draft-3",
+		PlayerID:   "player-123",
+		Name:       "Incomplete Hero",
+		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		// AbilityScoreChoice is missing
 		Progress: DraftProgress{
@@ -291,7 +297,9 @@ func (s *DraftTestSuite) TestDraftToData() {
 		RaceChoice: RaceChoice{
 			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:  constants.ClassFighter,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		SkillChoices: []constants.Skill{constants.SkillAthletics, constants.SkillPerception},
 		Progress:     DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
 		CreatedAt:    time.Now().Add(-1 * time.Hour),
@@ -359,7 +367,9 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 		RaceChoice: RaceChoice{
 			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:      constants.ClassFighter,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
@@ -418,7 +428,9 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 		RaceChoice: RaceChoice{
 			RaceID: constants.Race("exotic"),
 		},
-		ClassChoice:      constants.ClassFighter,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,

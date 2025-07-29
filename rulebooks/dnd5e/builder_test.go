@@ -14,7 +14,7 @@ import (
 // Test data helpers
 func createTestRaceData() dnd5e.RaceData {
 	return dnd5e.RaceData{
-		ID:    "human",
+		ID:    constants.RaceHuman,
 		Name:  "Human",
 		Size:  "medium",
 		Speed: 30,
@@ -32,7 +32,7 @@ func createTestRaceData() dnd5e.RaceData {
 
 func createTestClassData() dnd5e.ClassData {
 	return dnd5e.ClassData{
-		ID:                    "fighter",
+		ID:                    constants.ClassFighter,
 		Name:                  "Fighter",
 		HitDice:               10,
 		HitPointsPerLevel:     6,
@@ -49,7 +49,7 @@ func createTestClassData() dnd5e.ClassData {
 
 func createTestBackgroundData() dnd5e.Background {
 	return dnd5e.Background{
-		ID:                 "soldier",
+		ID:                 constants.BackgroundSoldier,
 		Name:               "Soldier",
 		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
 		Languages:          []constants.Language{},
@@ -75,7 +75,7 @@ func TestCharacterBuilder(t *testing.T) {
 
 	// Test class setting
 	classData := createTestClassData()
-	err = builder.SetClassData(classData)
+	err = builder.SetClassData(classData, "")
 	require.NoError(t, err)
 
 	// Test background setting
@@ -108,7 +108,7 @@ func TestCharacterCreationFlow(t *testing.T) {
 
 	// Set class
 	classData := createTestClassData()
-	err = builder.SetClassData(classData)
+	err = builder.SetClassData(classData, "")
 	require.NoError(t, err)
 
 	// Set background
@@ -147,9 +147,9 @@ func TestCharacterCreationFlow(t *testing.T) {
 	charData := character.ToData()
 	assert.Equal(t, "Ragnar", charData.Name)
 	assert.Equal(t, 1, charData.Level)
-	assert.Equal(t, "human", charData.RaceID)
-	assert.Equal(t, "fighter", charData.ClassID)
-	assert.Equal(t, "soldier", charData.BackgroundID)
+	assert.Equal(t, constants.RaceHuman, charData.RaceID)
+	assert.Equal(t, constants.ClassFighter, charData.ClassID)
+	assert.Equal(t, constants.BackgroundSoldier, charData.BackgroundID)
 
 	// Check ability scores include racial bonuses
 	assert.Equal(t, 16, charData.AbilityScores[constants.STR]) // 15 + 1 racial

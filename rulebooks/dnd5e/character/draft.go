@@ -21,7 +21,7 @@ type Draft struct {
 
 	// Explicit typed choices - compile-time safe!
 	RaceChoice          RaceChoice           `json:"race_choice"`
-	ClassChoice         constants.Class      `json:"class_choice"`
+	ClassChoice         ClassChoice          `json:"class_choice"`
 	BackgroundChoice    constants.Background `json:"background_choice"`
 	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
 	SkillChoices        []constants.Skill    `json:"skill_choices"`
@@ -81,14 +81,19 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 		PlayerID:     d.PlayerID,
 		Name:         d.Name,
 		Level:        1, // Starting level
-		RaceID:       raceData.ID,
-		ClassID:      classData.ID,
-		BackgroundID: backgroundData.ID,
+		RaceID:       d.RaceChoice.RaceID,
+		ClassID:      d.ClassChoice.ClassID,
+		BackgroundID: d.BackgroundChoice,
 	}
 
 	// Set subrace ID if present
 	if d.RaceChoice.SubraceID != "" {
-		charData.SubraceID = string(d.RaceChoice.SubraceID)
+		charData.SubraceID = d.RaceChoice.SubraceID
+	}
+
+	// Set subclass ID if present
+	if d.ClassChoice.SubclassID != "" {
+		charData.SubclassID = d.ClassChoice.SubclassID
 	}
 
 	// Set ability scores from explicit field
@@ -101,7 +106,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	if d.RaceChoice.SubraceID != "" {
 		// Find the subrace data
 		for _, subrace := range raceData.Subraces {
-			if subrace.ID == string(d.RaceChoice.SubraceID) {
+			if subrace.ID == d.RaceChoice.SubraceID {
 				applyAbilityScoreIncreases(charData.AbilityScores, subrace.AbilityScoreIncreases)
 				break
 			}

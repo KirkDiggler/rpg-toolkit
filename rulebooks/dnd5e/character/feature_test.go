@@ -97,7 +97,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			RaceChoice: RaceChoice{
 				RaceID: constants.RaceHuman,
 			},
-			ClassChoice:      constants.ClassFighter,
+			ClassChoice: ClassChoice{
+				ClassID: constants.ClassFighter,
+			},
 			BackgroundChoice: constants.BackgroundSoldier,
 			AbilityScoreChoice: shared.AbilityScores{
 				constants.STR: 16,
@@ -120,7 +122,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().NotNil(character)
 
 		// Check basic fighter features
-		s.Assert().Equal("fighter", character.classID)
+		s.Assert().Equal(constants.ClassFighter, character.classID)
 		s.Assert().Equal(10, character.hitDice)
 
 		// Check features - should have fighting_style and second_wind
@@ -148,9 +150,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID:     "player-123",
 			Name:         "Level 2 Fighter",
 			Level:        2, // Level 2
-			RaceID:       string(constants.RaceHuman),
-			ClassID:      "fighter",
-			BackgroundID: "soldier",
+			RaceID:       constants.RaceHuman,
+			ClassID:      constants.ClassFighter,
+			BackgroundID: constants.BackgroundSoldier,
 			AbilityScores: shared.AbilityScores{
 				constants.STR: 17, // With racial bonus
 				constants.DEX: 15,
@@ -284,7 +286,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				RaceID:    constants.RaceElf,
 				SubraceID: constants.SubraceHighElf,
 			},
-			ClassChoice:      constants.ClassWizard,
+			ClassChoice: ClassChoice{
+				ClassID: constants.ClassWizard,
+			},
 			BackgroundChoice: constants.BackgroundSage,
 			AbilityScoreChoice: shared.AbilityScores{
 				constants.STR: 8,

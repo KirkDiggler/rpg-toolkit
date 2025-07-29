@@ -10,7 +10,7 @@ import (
 // createTestRaceData creates standard test race data for tests
 func createTestRaceData() *race.Data {
 	return &race.Data{
-		ID:    "human",
+		ID:    constants.RaceHuman,
 		Name:  "Human",
 		Size:  "Medium",
 		Speed: 30,
@@ -29,7 +29,7 @@ func createTestRaceData() *race.Data {
 // createTestClassData creates standard test class data for tests
 func createTestClassData() *class.Data {
 	return &class.Data{
-		ID:                    "fighter",
+		ID:                    constants.ClassFighter,
 		Name:                  "Fighter",
 		HitDice:               10,
 		SavingThrows:          []constants.Ability{constants.STR, constants.CON},
@@ -52,7 +52,7 @@ func createTestClassData() *class.Data {
 // createTestBackgroundData creates standard test background data for tests
 func createTestBackgroundData() *shared.Background {
 	return &shared.Background{
-		ID:                 "soldier",
+		ID:                 constants.BackgroundSoldier,
 		Name:               "Soldier",
 		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
 		Languages:          []constants.Language{constants.LanguageDwarvish},

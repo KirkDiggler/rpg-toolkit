@@ -3,6 +3,9 @@ package constants
 // Class represents a D&D 5e character class
 type Class string
 
+// Subclass represents a D&D 5e character subclass (archetype)
+type Subclass string
+
 // Class constants
 const (
 	ClassBarbarian Class = "barbarian"

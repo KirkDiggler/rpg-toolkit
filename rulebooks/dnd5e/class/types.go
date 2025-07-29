@@ -5,9 +5,9 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 
 // Data contains all the data needed to define a D&D 5e class
 type Data struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          constants.Class `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
 
 	// Core mechanics
 	HitDice           int `json:"hit_dice"`             // d6, d8, d10, d12
@@ -125,7 +125,7 @@ type Class struct {
 }
 
 // ID returns the class ID
-func (c *Class) ID() string {
+func (c *Class) ID() constants.Class {
 	return c.data.ID
 }
 

@@ -71,7 +71,7 @@ func (v *Validator) ValidateRaceChoice(choice RaceChoice, raceData *race.Data) e
 		return fmt.Errorf("race data is required")
 	}
 
-	if string(choice.RaceID) != raceData.ID {
+	if choice.RaceID != raceData.ID {
 		return fmt.Errorf("race choice does not match provided race data")
 	}
 
@@ -80,7 +80,7 @@ func (v *Validator) ValidateRaceChoice(choice RaceChoice, raceData *race.Data) e
 		// Check if subrace exists in race data
 		found := false
 		for _, subrace := range raceData.Subraces {
-			if subrace.ID == string(choice.SubraceID) {
+			if subrace.ID == choice.SubraceID {
 				found = true
 				break
 			}
