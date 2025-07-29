@@ -275,6 +275,9 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 		})
 	}
 
+	// Set fighting style from draft
+	charData.FightingStyle = d.FightingStyleChoice
+
 	// Process equipment choices
 	equipment := make([]string, 0)
 
