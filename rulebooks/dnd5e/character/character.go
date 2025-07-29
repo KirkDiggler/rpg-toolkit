@@ -4,7 +4,6 @@ package character
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/game"
