@@ -48,6 +48,7 @@ type Character struct {
 	languages     []constants.Language
 	proficiencies shared.Proficiencies
 	features      []string // Feature IDs they have
+	fightingStyle string   // Fighting style ID (empty if none)
 
 	// Current state - changes during play
 	conditions    []conditions.Condition
@@ -125,11 +126,25 @@ func (c *Character) SkillCheck(_ string, _ int) CheckResult {
 // AC returns the character's armor class
 func (c *Character) AC() int {
 	ac := c.armorClass
+	
+	// Apply fighting style bonuses
+	ac += c.getFightingStyleACBonus()
+	
 	// Apply any AC bonuses from effects
 	for _, effect := range c.effects {
 		ac += effect.ACBonus
 	}
 	return ac
+}
+
+// getFightingStyleACBonus returns AC bonus from fighting styles
+func (c *Character) getFightingStyleACBonus() int {
+	switch c.fightingStyle {
+	case "defense":
+		return 1 // Defense fighting style grants +1 AC
+	default:
+		return 0
+	}
 }
 
 // Initiative returns the character's initiative modifier
@@ -245,6 +260,9 @@ type Data struct {
 	// Character creation choices
 	Choices []ChoiceData `json:"choices"`
 
+	// Fighting style
+	FightingStyle string `json:"fighting_style,omitempty"`
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -318,6 +336,7 @@ func (c *Character) ToData() Data {
 		ClassResources: resourcesData,
 		Equipment:      c.equipment,
 		Choices:        c.choices,
+		FightingStyle:  c.fightingStyle,
 		UpdatedAt:      time.Now(),
 	}
 
@@ -396,6 +415,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		languages:        languages,
 		proficiencies:    data.Proficiencies,
 		features:         features,
+		fightingStyle:    data.FightingStyle,
 		conditions:       data.Conditions,
 		effects:          data.Effects,
 		exhaustion:       data.Exhaustion,

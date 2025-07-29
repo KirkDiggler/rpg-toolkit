@@ -581,6 +581,109 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 	s.Assert().Equal("class", fightingStyleChoice.Source)
 }
 
+func (s *DraftConversionTestSuite) TestFightingStyleDefenseAppliesACBonus() {
+	// Create a draft with Defense fighting style
+	draft := &Draft{
+		ID:       "test-fighter-defense",
+		PlayerID: "player-123",
+		Name:     "Tanky Fighter",
+		RaceChoice: RaceChoice{
+			RaceID: constants.RaceHuman,
+		},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
+		BackgroundChoice: constants.BackgroundSoldier,
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 15,
+			constants.DEX: 14, // +2 modifier
+			constants.CON: 13,
+			constants.INT: 10,
+			constants.WIS: 12,
+			constants.CHA: 8,
+		},
+		FightingStyleChoice: "defense", // Defense fighting style
+		SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+		Progress: DraftProgress{
+			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
+		},
+	}
+
+	// Convert to character
+	character, err := draft.ToCharacter(s.humanRace, s.fighterClass, s.soldierBg)
+	s.Require().NoError(err)
+	s.Require().NotNil(character)
+
+	// Verify fighting style is stored
+	s.Assert().Equal("defense", character.fightingStyle)
+
+	// Verify AC calculation includes Defense bonus
+	// Base AC: 10 + DEX modifier 
+	// DEX 14 + Human racial bonus +1 = 15, so +2 modifier
+	// Defense fighting style: +1 AC
+	// Expected total: 10 + 2 + 1 = 13
+	expectedBaseAC := 10 + 2 // Base + DEX modifier (14+1 human bonus = 15, so +2 modifier)
+	expectedACWithDefense := expectedBaseAC + 1 // + Defense fighting style
+	s.Assert().Equal(expectedACWithDefense, character.AC())
+
+	// Verify the fighting style choice is stored in choices
+	var hasFightingStyleChoice bool
+	for _, choice := range character.choices {
+		if choice.Category == string(shared.ChoiceFightingStyle) {
+			hasFightingStyleChoice = true
+			s.Assert().Equal("class", choice.Source)
+			s.Assert().Equal("defense", choice.Selection)
+			break
+		}
+	}
+	s.Assert().True(hasFightingStyleChoice, "Should have recorded fighting style choice")
+}
+
+func (s *DraftConversionTestSuite) TestFightingStyleNoBonus() {
+	// Create a draft with a non-Defense fighting style (e.g., Archery)
+	draft := &Draft{
+		ID:       "test-fighter-archery",
+		PlayerID: "player-123",
+		Name:     "Archer Fighter",
+		RaceChoice: RaceChoice{
+			RaceID: constants.RaceHuman,
+		},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
+		BackgroundChoice: constants.BackgroundSoldier,
+		AbilityScoreChoice: shared.AbilityScores{
+			constants.STR: 13,
+			constants.DEX: 15, // +2 modifier  
+			constants.CON: 14,
+			constants.INT: 10,
+			constants.WIS: 12,
+			constants.CHA: 8,
+		},
+		FightingStyleChoice: "archery", // Archery fighting style (no AC bonus)
+		SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+		Progress: DraftProgress{
+			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
+		},
+	}
+
+	// Convert to character
+	character, err := draft.ToCharacter(s.humanRace, s.fighterClass, s.soldierBg)
+	s.Require().NoError(err)
+	s.Require().NotNil(character)
+
+	// Verify fighting style is stored
+	s.Assert().Equal("archery", character.fightingStyle) 
+
+	// Verify AC calculation does NOT include any fighting style bonus
+	// Base AC: 10 + DEX modifier (2) = 12
+	// Human racial bonus: DEX +1, so DEX becomes 16, modifier becomes +3
+	// So actual AC = 10 + 3 = 13
+	// Archery fighting style: no AC bonus
+	expectedAC := 10 + 3 // Base + DEX modifier (15+1 human bonus = 16, so +3 modifier)
+	s.Assert().Equal(expectedAC, character.AC())
+}
+
 func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	// Test that spells and cantrips are properly stored in choices
 	draft := &Draft{
