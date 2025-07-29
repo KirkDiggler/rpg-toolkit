@@ -95,10 +95,10 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID: "player-123",
 			Name:     "Test Fighter",
 			RaceChoice: RaceChoice{
-				RaceID: "human",
+				RaceID: constants.RaceHuman,
 			},
-			ClassChoice:      "fighter",
-			BackgroundChoice: "soldier",
+			ClassChoice:      constants.ClassFighter,
+			BackgroundChoice: constants.BackgroundSoldier,
 			AbilityScoreChoice: shared.AbilityScores{
 				constants.STR: 16,
 				constants.DEX: 14,
@@ -107,7 +107,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				constants.WIS: 12,
 				constants.CHA: 8,
 			},
-			SkillChoices:        []string{"perception", "survival"},
+			SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 			FightingStyleChoice: "defense", // Fighter-specific choice
 			Progress: DraftProgress{
 				flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
@@ -148,7 +148,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID:     "player-123",
 			Name:         "Level 2 Fighter",
 			Level:        2, // Level 2
-			RaceID:       "human",
+			RaceID:       string(constants.RaceHuman),
 			ClassID:      "fighter",
 			BackgroundID: "soldier",
 			AbilityScores: shared.AbilityScores{
@@ -281,11 +281,11 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID: "player-456",
 			Name:     "Test Wizard",
 			RaceChoice: RaceChoice{
-				RaceID:    "elf",
-				SubraceID: "high-elf",
+				RaceID:    constants.RaceElf,
+				SubraceID: constants.SubraceHighElf,
 			},
-			ClassChoice:      "wizard",
-			BackgroundChoice: "sage",
+			ClassChoice:      constants.ClassWizard,
+			BackgroundChoice: constants.BackgroundSage,
 			AbilityScoreChoice: shared.AbilityScores{
 				constants.STR: 8,
 				constants.DEX: 14,
@@ -294,7 +294,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				constants.WIS: 12,
 				constants.CHA: 10,
 			},
-			SkillChoices:   []string{"investigation", "insight"},
+			SkillChoices:   []constants.Skill{constants.SkillInvestigation, constants.SkillInsight},
 			CantripChoices: []string{"fire_bolt", "mage_hand", "prestidigitation"},
 			SpellChoices: []string{
 				"shield", "magic_missile", "detect_magic",

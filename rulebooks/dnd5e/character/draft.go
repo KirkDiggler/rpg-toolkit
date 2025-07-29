@@ -21,11 +21,11 @@ type Draft struct {
 
 	// Explicit typed choices - compile-time safe!
 	RaceChoice          RaceChoice           `json:"race_choice"`
-	ClassChoice         string               `json:"class_choice"`
-	BackgroundChoice    string               `json:"background_choice"`
+	ClassChoice         constants.Class      `json:"class_choice"`
+	BackgroundChoice    constants.Background `json:"background_choice"`
 	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
-	SkillChoices        []string             `json:"skill_choices"`
-	LanguageChoices     []string             `json:"language_choices"`
+	SkillChoices        []constants.Skill    `json:"skill_choices"`
+	LanguageChoices     []constants.Language `json:"language_choices"`
 	FightingStyleChoice string               `json:"fighting_style_choice,omitempty"`
 	SpellChoices        []string             `json:"spell_choices,omitempty"`
 	CantripChoices      []string             `json:"cantrip_choices,omitempty"`
@@ -88,7 +88,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 
 	// Set subrace ID if present
 	if d.RaceChoice.SubraceID != "" {
-		charData.SubraceID = d.RaceChoice.SubraceID
+		charData.SubraceID = string(d.RaceChoice.SubraceID)
 	}
 
 	// Set ability scores from explicit field
@@ -101,7 +101,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	if d.RaceChoice.SubraceID != "" {
 		// Find the subrace data
 		for _, subrace := range raceData.Subraces {
-			if subrace.ID == d.RaceChoice.SubraceID {
+			if subrace.ID == string(d.RaceChoice.SubraceID) {
 				applyAbilityScoreIncreases(charData.AbilityScores, subrace.AbilityScoreIncreases)
 				break
 			}
@@ -120,7 +120,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	charData.Skills = make(map[string]shared.ProficiencyLevel)
 	// Add chosen skills
 	for _, skill := range d.SkillChoices {
-		charData.Skills[skill] = shared.Proficient
+		charData.Skills[string(skill)] = shared.Proficient
 	}
 	// Add background skills
 	// Note: If a skill is already proficient (e.g., Half-Orc gets Intimidation,
@@ -147,7 +147,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 
 	// Add language choices
 	for _, lang := range d.LanguageChoices {
-		languageSet[lang] = true
+		languageSet[string(lang)] = true
 	}
 
 	// Convert set to slice
