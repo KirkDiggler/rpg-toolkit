@@ -80,6 +80,16 @@ func (s *ResourcesTestSuite) TestEvaluateSimpleExpression() {
 			expr:     "5 / 0",
 			hasError: true,
 		},
+		{
+			name:     "consecutive operators",
+			expr:     "10 + -3",
+			hasError: true,
+		},
+		{
+			name:     "double negative",  
+			expr:     "5--3",
+			hasError: true,
+		},
 	}
 
 	for _, tc := range testCases {

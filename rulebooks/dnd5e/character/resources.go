@@ -49,6 +49,16 @@ func calculateResourceMax(resourceData class.ResourceData, level int, abilitySco
 }
 
 // evaluateResourceFormula parses and evaluates simple formulas like "level", "1 + charisma_modifier"
+// Supported patterns:
+//   - "level" - character level
+//   - "charisma_modifier" or "cha_modifier" - ability modifiers  
+//   - "5" - constants
+//   - "1 + charisma_modifier" - basic arithmetic
+//   - "min(5, level)" or "max(1, wisdom_modifier)" - min/max functions
+// NOT supported:
+//   - "10 + -3" - consecutive operators
+//   - Complex parentheses beyond min/max
+//   - Variables other than level and ability modifiers
 func evaluateResourceFormula(formula string, level int, abilityScores shared.AbilityScores) int {
 	// Simple formula parser - handles basic cases
 	formula = strings.TrimSpace(strings.ToLower(formula))
@@ -105,6 +115,17 @@ func replaceAbilityModifiers(formula string, abilityScores shared.AbilityScores)
 func evaluateSimpleExpression(expr string) (int, error) {
 	// Remove spaces
 	expr = strings.ReplaceAll(expr, " ", "")
+	
+	// Validate expression doesn't have patterns we can't handle
+	// Check for operators followed by operators (like "+-" or "*-")
+	for i := 0; i < len(expr)-1; i++ {
+		curr := expr[i]
+		next := expr[i+1]
+		if (curr == '+' || curr == '-' || curr == '*' || curr == '/') &&
+		   (next == '+' || next == '-' || next == '*' || next == '/') {
+			return 0, fmt.Errorf("unsupported expression: consecutive operators at position %d", i)
+		}
+	}
 
 	// Handle min/max functions
 	if strings.HasPrefix(expr, "min(") || strings.HasPrefix(expr, "max(") {
