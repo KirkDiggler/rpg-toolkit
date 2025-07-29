@@ -439,7 +439,8 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 	s.Assert().NotNil(character)
 
 	// Verify Common is still included
-	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included even if race doesn't have it")
+	s.Assert().Contains(character.languages, constants.LanguageCommon,
+		"Common should always be included even if race doesn't have it")
 }
 
 func TestDraftTestSuite(t *testing.T) {
