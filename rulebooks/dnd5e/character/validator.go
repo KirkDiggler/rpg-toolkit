@@ -86,7 +86,7 @@ func (v *Validator) ValidateRaceChoice(choice RaceChoice, raceData *race.Data) e
 			}
 		}
 		if !found {
-			return fmt.Errorf("invalid subrace %s for race %s", choice.SubraceID, raceData.Name)
+			return fmt.Errorf("invalid subrace %s for race %s", choice.SubraceID.Display(), raceData.Name)
 		}
 	}
 
@@ -169,7 +169,7 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []constants.Skill, c
 	seen := make(map[constants.Skill]bool)
 	for _, skill := range skills {
 		if seen[skill] {
-			return fmt.Errorf("duplicate skill selection: %s", skill)
+			return fmt.Errorf("duplicate skill selection: %s", skill.Display())
 		}
 		seen[skill] = true
 	}
