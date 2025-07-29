@@ -223,9 +223,9 @@ type Data struct {
 	Size  string `json:"size"`
 
 	// Proficiencies and skills
-	Skills        map[string]int       `json:"skills"`        // skill name -> proficiency level
-	SavingThrows  map[string]int       `json:"saving_throws"` // ability -> proficiency level
-	Languages     []string             `json:"languages"`
+	Skills        map[string]shared.ProficiencyLevel `json:"skills"`        // skill name -> proficiency level
+	SavingThrows  map[string]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
+	Languages     []string                           `json:"languages"`
 	Proficiencies shared.Proficiencies `json:"proficiencies"`
 
 	// Current state
@@ -267,14 +267,14 @@ type ChoiceData struct {
 
 // ToData converts the character to its persistent representation
 func (c *Character) ToData() Data {
-	skillsData := make(map[string]int)
+	skillsData := make(map[string]shared.ProficiencyLevel)
 	for skill, prof := range c.skills {
-		skillsData[string(skill)] = int(prof)
+		skillsData[string(skill)] = prof
 	}
 
-	savesData := make(map[string]int)
+	savesData := make(map[string]shared.ProficiencyLevel)
 	for save, prof := range c.savingThrows {
-		savesData[string(save)] = int(prof)
+		savesData[string(save)] = prof
 	}
 
 	resourcesData := make(map[string]ResourceData)

@@ -53,15 +53,15 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		HitPoints:    12,
 		MaxHitPoints: 12,
 		// Skills and languages from character choices
-		Skills: map[string]int{
-			"acrobatics":   2, // From class choice
-			"athletics":    2, // From class choice and background
-			"intimidation": 2, // From background
+		Skills: map[string]shared.ProficiencyLevel{
+			"acrobatics":   shared.Proficient, // From class choice
+			"athletics":    shared.Proficient, // From class choice and background
+			"intimidation": shared.Proficient, // From background
 		},
 		Languages: []string{"common", "goblin", "dwarvish"},
-		SavingThrows: map[string]int{
-			shared.AbilityStrength:     2, // Proficient
-			shared.AbilityConstitution: 2,
+		SavingThrows: map[string]shared.ProficiencyLevel{
+			shared.AbilityStrength:     shared.Proficient,
+			shared.AbilityConstitution: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
@@ -169,20 +169,20 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 		HitPoints:    12,
 		MaxHitPoints: 12,
 		// Pre-populated skills and languages (no choices)
-		Skills: map[string]int{
-			string(constants.SkillAthletics):    2,
-			string(constants.SkillIntimidation): 2,
-			string(constants.SkillPerception):   2,
-			string(constants.SkillSurvival):     2,
+		Skills: map[string]shared.ProficiencyLevel{
+			string(constants.SkillAthletics):    shared.Proficient,
+			string(constants.SkillIntimidation): shared.Proficient,
+			string(constants.SkillPerception):   shared.Proficient,
+			string(constants.SkillSurvival):     shared.Proficient,
 		},
 		Languages: []string{
 			string(constants.LanguageCommon),
 			string(constants.LanguageDwarvish),
 			string(constants.LanguageElvish),
 		},
-		SavingThrows: map[string]int{
-			string(constants.STR): 2,
-			string(constants.CON): 2,
+		SavingThrows: map[string]shared.ProficiencyLevel{
+			string(constants.STR): shared.Proficient,
+			string(constants.CON): shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
@@ -201,10 +201,10 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 	s.Assert().NotNil(character)
 
 	// Verify skills are preserved
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillAthletics])
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillIntimidation])
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillPerception])
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillSurvival])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillSurvival])
 
 	// Verify languages are preserved
 	s.Assert().Contains(character.languages, constants.LanguageCommon)
@@ -234,16 +234,16 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 		Size:         "Medium",
 		HitPoints:    12,
 		MaxHitPoints: 12,
-		Skills: map[string]int{
-			"perception":   2,
-			"survival":     2,
-			"athletics":    2, // From background
-			"intimidation": 2, // From background
+		Skills: map[string]shared.ProficiencyLevel{
+			"perception":   shared.Proficient,
+			"survival":     shared.Proficient,
+			"athletics":    shared.Proficient, // From background
+			"intimidation": shared.Proficient, // From background
 		},
 		Languages: []string{"common", "orc", "elvish", "draconic", "dwarvish"},
-		SavingThrows: map[string]int{
-			shared.AbilityStrength:     2,
-			shared.AbilityConstitution: 2,
+		SavingThrows: map[string]shared.ProficiencyLevel{
+			shared.AbilityStrength:     shared.Proficient,
+			shared.AbilityConstitution: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},

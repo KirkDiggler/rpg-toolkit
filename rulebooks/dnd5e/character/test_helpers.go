@@ -2,6 +2,7 @@ package character
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -13,15 +14,15 @@ func createTestRaceData() *race.Data {
 		Name:  "Human",
 		Size:  "Medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[string]int{
-			shared.AbilityStrength:     1,
-			shared.AbilityDexterity:    1,
-			shared.AbilityConstitution: 1,
-			shared.AbilityIntelligence: 1,
-			shared.AbilityWisdom:       1,
-			shared.AbilityCharisma:     1,
+		AbilityScoreIncreases: map[constants.Ability]int{
+			constants.STR: 1,
+			constants.DEX: 1,
+			constants.CON: 1,
+			constants.INT: 1,
+			constants.WIS: 1,
+			constants.CHA: 1,
 		},
-		Languages: []string{"Common"},
+		Languages: []constants.Language{constants.LanguageCommon},
 	}
 }
 
@@ -31,11 +32,11 @@ func createTestClassData() *class.Data {
 		ID:                    "fighter",
 		Name:                  "Fighter",
 		HitDice:               10,
-		SavingThrows:          []string{shared.AbilityStrength, shared.AbilityConstitution},
+		SavingThrows:          []constants.Ability{constants.STR, constants.CON},
 		SkillProficiencyCount: 2,
-		SkillOptions: []string{
-			"Acrobatics", "Animal Handling", "Athletics", "History",
-			"Insight", "Intimidation", "Perception", "Survival",
+		SkillOptions: []constants.Skill{
+			constants.SkillAcrobatics, constants.SkillAnimalHandling, constants.SkillAthletics, constants.SkillHistory,
+			constants.SkillInsight, constants.SkillIntimidation, constants.SkillPerception, constants.SkillSurvival,
 		},
 		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
 		WeaponProficiencies: []string{"Simple", "Martial"},
@@ -53,8 +54,8 @@ func createTestBackgroundData() *shared.Background {
 	return &shared.Background{
 		ID:                 "soldier",
 		Name:               "Soldier",
-		SkillProficiencies: []string{"Athletics", "Intimidation"},
-		Languages:          []string{"Dwarvish"},
+		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
+		Languages:          []constants.Language{constants.LanguageDwarvish},
 		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
 	}
 }

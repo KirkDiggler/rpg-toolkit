@@ -47,8 +47,8 @@ func (s *CreationTestSuite) TestNewFromCreationData_ProcessesChoices() {
 			constants.CHA: 8,
 		},
 		Choices: map[string]any{
-			"skills":    []string{"Acrobatics", "Animal Handling"},
-			"languages": []string{"Goblin"},
+			"skills":    []string{"acrobatics", "animal-handling"},
+			"languages": []string{"goblin"},
 		},
 	}
 
@@ -139,15 +139,15 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 		Name:      "Exotic Race",
 		Size:      "Medium",
 		Speed:     30,
-		Languages: []string{testLanguageExotic}, // No Common
+		Languages: []constants.Language{constants.Language(testLanguageExotic)}, // No Common
 	}
 
 	// Test background without Common
 	exoticBackground := &shared.Background{
 		ID:                 "exotic-bg",
 		Name:               "Exotic Background",
-		SkillProficiencies: []string{"Arcana"},
-		Languages:          []string{"Celestial"}, // No Common
+		SkillProficiencies: []constants.Skill{constants.SkillArcana},
+		Languages:          []constants.Language{constants.LanguageCelestial}, // No Common
 	}
 
 	data := CreationData{
@@ -166,7 +166,7 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 			constants.CHA: 8,
 		},
 		Choices: map[string]any{
-			"languages": []string{"Infernal"}, // Also no Common
+			"languages": []string{"infernal"}, // Also no Common
 		},
 	}
 

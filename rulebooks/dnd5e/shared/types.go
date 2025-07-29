@@ -162,11 +162,11 @@ type Background struct {
 	Description string `json:"description"`
 
 	// Skill proficiencies (usually 2)
-	SkillProficiencies []string `json:"skill_proficiencies"`
+	SkillProficiencies []constants.Skill `json:"skill_proficiencies"`
 
 	// Languages
-	Languages      []string    `json:"languages,omitempty"`
-	LanguageChoice *ChoiceData `json:"language_choice,omitempty"`
+	Languages      []constants.Language `json:"languages,omitempty"`
+	LanguageChoice *ChoiceData          `json:"language_choice,omitempty"`
 
 	// Tool proficiencies
 	ToolProficiencies []string    `json:"tool_proficiencies,omitempty"`

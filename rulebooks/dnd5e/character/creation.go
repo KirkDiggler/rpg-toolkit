@@ -41,31 +41,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Apply racial ability score improvements
 	abilityScores := data.AbilityScores
-	// Convert string ability names to constants for racial increases
-	racialIncreases := make(map[constants.Ability]int)
-	for abilityStr, bonus := range data.RaceData.AbilityScoreIncreases {
-		var ability constants.Ability
-		switch abilityStr {
-		case shared.AbilityStrength, "strength":
-			ability = constants.STR
-		case shared.AbilityDexterity, "dexterity":
-			ability = constants.DEX
-		case shared.AbilityConstitution, "constitution":
-			ability = constants.CON
-		case shared.AbilityIntelligence, "intelligence":
-			ability = constants.INT
-		case shared.AbilityWisdom, "wisdom":
-			ability = constants.WIS
-		case shared.AbilityCharisma, "charisma":
-			ability = constants.CHA
-		default:
-			continue // Skip unknown abilities
-		}
-		racialIncreases[ability] = bonus
-	}
-
-	// Apply the increases
-	_ = abilityScores.ApplyIncreases(racialIncreases) // Ignore errors about exceeding 20 during creation
+	_ = abilityScores.ApplyIncreases(data.RaceData.AbilityScoreIncreases) // Ignore errors about exceeding 20 during creation
 
 	// Calculate HP
 	conMod := abilityScores.Modifier(constants.CON)
@@ -75,8 +51,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	skills := make(map[constants.Skill]shared.ProficiencyLevel)
 
 	// Add background skills
-	for _, skillStr := range data.BackgroundData.SkillProficiencies {
-		skill := constants.Skill(skillStr)
+	for _, skill := range data.BackgroundData.SkillProficiencies {
 		skills[skill] = shared.Proficient
 	}
 
@@ -90,8 +65,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Build saving throws
 	saves := make(map[constants.Ability]shared.ProficiencyLevel)
-	for _, saveStr := range data.ClassData.SavingThrows {
-		save := constants.Ability(saveStr)
+	for _, save := range data.ClassData.SavingThrows {
 		saves[save] = shared.Proficient
 	}
 
@@ -100,14 +74,12 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	languageSet[constants.LanguageCommon] = true
 
 	// Add race languages
-	for _, langStr := range data.RaceData.Languages {
-		lang := constants.Language(langStr)
+	for _, lang := range data.RaceData.Languages {
 		languageSet[lang] = true
 	}
 
 	// Add background languages
-	for _, langStr := range data.BackgroundData.Languages {
-		lang := constants.Language(langStr)
+	for _, lang := range data.BackgroundData.Languages {
 		languageSet[lang] = true
 	}
 
