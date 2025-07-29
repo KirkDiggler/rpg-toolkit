@@ -1,6 +1,8 @@
 // Package class provides D&D 5e class data structures and functionality
 package class
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+
 // Data contains all the data needed to define a D&D 5e class
 type Data struct {
 	ID          string `json:"id"`
@@ -12,14 +14,14 @@ type Data struct {
 	HitPointsPerLevel int `json:"hit_points_per_level"` // Average HP per level
 
 	// Proficiencies
-	ArmorProficiencies  []string `json:"armor_proficiencies"`
-	WeaponProficiencies []string `json:"weapon_proficiencies"`
-	ToolProficiencies   []string `json:"tool_proficiencies"`
-	SavingThrows        []string `json:"saving_throws"` // Two ability scores
+	ArmorProficiencies  []string            `json:"armor_proficiencies"`
+	WeaponProficiencies []string            `json:"weapon_proficiencies"`
+	ToolProficiencies   []string            `json:"tool_proficiencies"`
+	SavingThrows        []constants.Ability `json:"saving_throws"` // Two ability scores
 
 	// Skills
-	SkillProficiencyCount int      `json:"skill_proficiency_count"`
-	SkillOptions          []string `json:"skill_options"` // Available skills to choose from
+	SkillProficiencyCount int               `json:"skill_proficiency_count"`
+	SkillOptions          []constants.Skill `json:"skill_options"` // Available skills to choose from
 
 	// Starting equipment
 	StartingEquipment []EquipmentData       `json:"starting_equipment"`
@@ -52,12 +54,12 @@ type FeatureData struct {
 
 // SpellcastingData for spellcasting classes
 type SpellcastingData struct {
-	Ability         string        `json:"ability"`                    // Intelligence, Wisdom, Charisma
-	PreparedFormula string        `json:"prepared_formula,omitempty"` // e.g., "wisdom_modifier + cleric_level"
-	RitualCasting   bool          `json:"ritual_casting"`
-	SpellsKnown     map[int]int   `json:"spells_known,omitempty"`   // Level -> number known
-	CantripsKnown   map[int]int   `json:"cantrips_known,omitempty"` // Level -> number known
-	SpellSlots      map[int][]int `json:"spell_slots"`              // Level -> slots per spell level
+	Ability         constants.Ability `json:"ability"`                    // Intelligence, Wisdom, Charisma
+	PreparedFormula string            `json:"prepared_formula,omitempty"` // e.g., "wisdom_modifier + cleric_level"
+	RitualCasting   bool              `json:"ritual_casting"`
+	SpellsKnown     map[int]int       `json:"spells_known,omitempty"`   // Level -> number known
+	CantripsKnown   map[int]int       `json:"cantrips_known,omitempty"` // Level -> number known
+	SpellSlots      map[int][]int     `json:"spell_slots"`              // Level -> slots per spell level
 }
 
 // ResourceData for class resources
@@ -138,12 +140,12 @@ func (c *Class) HitDice() int {
 }
 
 // GetSavingThrowProficiencies returns saving throw proficiencies
-func (c *Class) GetSavingThrowProficiencies() []string {
+func (c *Class) GetSavingThrowProficiencies() []constants.Ability {
 	return c.data.SavingThrows
 }
 
 // GetSkillOptions returns available skill choices
-func (c *Class) GetSkillOptions() (int, []string) {
+func (c *Class) GetSkillOptions() (int, []constants.Skill) {
 	return c.data.SkillProficiencyCount, c.data.SkillOptions
 }
 
@@ -159,11 +161,15 @@ func (c *Class) GetChoicesAtLevel(level int) []ChoiceData {
 	// Starting choices
 	if level == 1 {
 		// Skills are always a choice at level 1
+		skillStrings := make([]string, len(c.data.SkillOptions))
+		for i, skill := range c.data.SkillOptions {
+			skillStrings[i] = string(skill)
+		}
 		choices = append(choices, ChoiceData{
 			ID:     "class_skills",
 			Type:   "skill",
 			Choose: c.data.SkillProficiencyCount,
-			From:   c.data.SkillOptions,
+			From:   skillStrings,
 		})
 
 		// Equipment choices
@@ -193,7 +199,7 @@ func (c *Class) IsSpellcaster() bool {
 }
 
 // GetSpellcastingAbility returns the spellcasting ability score
-func (c *Class) GetSpellcastingAbility() string {
+func (c *Class) GetSpellcastingAbility() constants.Ability {
 	if c.data.Spellcasting == nil {
 		return ""
 	}

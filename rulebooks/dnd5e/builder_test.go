@@ -18,15 +18,15 @@ func createTestRaceData() dnd5e.RaceData {
 		Name:  "Human",
 		Size:  "medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[string]int{
-			"str": 1,
-			"dex": 1,
-			"con": 1,
-			"int": 1,
-			"wis": 1,
-			"cha": 1,
+		AbilityScoreIncreases: map[constants.Ability]int{
+			constants.STR: 1,
+			constants.DEX: 1,
+			constants.CON: 1,
+			constants.INT: 1,
+			constants.WIS: 1,
+			constants.CHA: 1,
 		},
-		Languages: []string{"common"},
+		Languages: []constants.Language{constants.LanguageCommon},
 	}
 }
 
@@ -37,11 +37,11 @@ func createTestClassData() dnd5e.ClassData {
 		HitDice:               10,
 		HitPointsPerLevel:     6,
 		SkillProficiencyCount: 2,
-		SkillOptions: []string{
-			"acrobatics", "athletics", "history", "insight",
-			"intimidation", "perception", "survival",
+		SkillOptions: []constants.Skill{
+			constants.SkillAcrobatics, constants.SkillAthletics, constants.SkillHistory, constants.SkillInsight,
+			constants.SkillIntimidation, constants.SkillPerception, constants.SkillSurvival,
 		},
-		SavingThrows:        []string{"str", "con"},
+		SavingThrows:        []constants.Ability{constants.STR, constants.CON},
 		ArmorProficiencies:  []string{"light", "medium", "heavy", "shields"},
 		WeaponProficiencies: []string{"simple", "martial"},
 	}
@@ -51,8 +51,8 @@ func createTestBackgroundData() dnd5e.Background {
 	return dnd5e.Background{
 		ID:                 "soldier",
 		Name:               "Soldier",
-		SkillProficiencies: []string{"athletics", "intimidation"},
-		Languages:          []string{},
+		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
+		Languages:          []constants.Language{},
 	}
 }
 

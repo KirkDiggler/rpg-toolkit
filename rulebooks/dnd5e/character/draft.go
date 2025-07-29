@@ -117,32 +117,32 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	charData.Size = raceData.Size
 
 	// Skills
-	charData.Skills = make(map[string]int)
+	charData.Skills = make(map[string]shared.ProficiencyLevel)
 	// Add chosen skills
 	for _, skill := range d.SkillChoices {
-		charData.Skills[skill] = int(shared.Proficient)
+		charData.Skills[skill] = shared.Proficient
 	}
 	// Add background skills
 	// Note: If a skill is already proficient (e.g., Half-Orc gets Intimidation,
 	// player chooses Intimidation from Fighter), this is fine - you just don't
 	// get double proficiency. The map structure naturally handles this.
 	for _, skill := range backgroundData.SkillProficiencies {
-		charData.Skills[skill] = int(shared.Proficient)
+		charData.Skills[string(skill)] = shared.Proficient
 	}
 
 	// Languages
 	// Start with ensuring Common is always included
 	languageSet := make(map[string]bool)
-	languageSet["Common"] = true
+	languageSet[string(constants.LanguageCommon)] = true
 
 	// Add race languages
 	for _, lang := range raceData.Languages {
-		languageSet[lang] = true
+		languageSet[string(lang)] = true
 	}
 
 	// Add background languages
 	for _, lang := range backgroundData.Languages {
-		languageSet[lang] = true
+		languageSet[string(lang)] = true
 	}
 
 	// Add language choices
@@ -164,9 +164,9 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Saving throws
-	charData.SavingThrows = make(map[string]int)
+	charData.SavingThrows = make(map[string]shared.ProficiencyLevel)
 	for _, save := range classData.SavingThrows {
-		charData.SavingThrows[save] = int(shared.Proficient)
+		charData.SavingThrows[string(save)] = shared.Proficient
 	}
 
 	// Store choices made - now using explicit typed fields!
@@ -390,30 +390,7 @@ func (p *DraftProgress) hasFlag(flag uint32) bool {
 }
 
 // applyAbilityScoreIncreases applies ability score increases to the given scores
-func applyAbilityScoreIncreases(scores shared.AbilityScores, increases map[string]int) {
-	// Convert string ability names to constants
-	constIncreases := make(map[constants.Ability]int)
-	for abilityStr, bonus := range increases {
-		var ability constants.Ability
-		switch abilityStr {
-		case shared.AbilityStrength, "strength":
-			ability = constants.STR
-		case shared.AbilityDexterity, "dexterity":
-			ability = constants.DEX
-		case shared.AbilityConstitution, "constitution":
-			ability = constants.CON
-		case shared.AbilityIntelligence, "intelligence":
-			ability = constants.INT
-		case shared.AbilityWisdom, "wisdom":
-			ability = constants.WIS
-		case shared.AbilityCharisma, "charisma":
-			ability = constants.CHA
-		default:
-			continue // Skip unknown abilities
-		}
-		constIncreases[ability] = bonus
-	}
-
-	// Apply the increases
-	_ = scores.ApplyIncreases(constIncreases) // Ignore errors about exceeding 20 during creation
+func applyAbilityScoreIncreases(scores shared.AbilityScores, increases map[constants.Ability]int) {
+	// Apply the increases directly - no conversion needed!
+	_ = scores.ApplyIncreases(increases) // Ignore errors about exceeding 20 during creation
 }

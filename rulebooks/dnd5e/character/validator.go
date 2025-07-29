@@ -135,7 +135,7 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData 
 	for _, skill := range skills {
 		found := false
 		for _, option := range classData.SkillOptions {
-			if skill == option {
+			if skill == string(option) {
 				found = true
 				break
 			}
@@ -151,7 +151,7 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []string, classData 
 	for _, skill := range skills {
 		// Check if background already grants this skill
 		for _, bgSkill := range backgroundData.SkillProficiencies {
-			if skill == bgSkill {
+			if skill == string(bgSkill) {
 				redundantSkills = append(redundantSkills, skill)
 				break
 			}

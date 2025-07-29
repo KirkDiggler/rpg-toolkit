@@ -26,15 +26,15 @@ func (s *DraftTestSuite) SetupTest() {
 		Name:  "Human",
 		Size:  "Medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[string]int{
-			shared.AbilityStrength:     1,
-			shared.AbilityDexterity:    1,
-			shared.AbilityConstitution: 1,
-			shared.AbilityIntelligence: 1,
-			shared.AbilityWisdom:       1,
-			shared.AbilityCharisma:     1,
+		AbilityScoreIncreases: map[constants.Ability]int{
+			constants.STR: 1,
+			constants.DEX: 1,
+			constants.CON: 1,
+			constants.INT: 1,
+			constants.WIS: 1,
+			constants.CHA: 1,
 		},
-		Languages: []string{"Common"},
+		Languages: []constants.Language{constants.LanguageCommon},
 	}
 
 	// Create test class data
@@ -42,11 +42,11 @@ func (s *DraftTestSuite) SetupTest() {
 		ID:                    "fighter",
 		Name:                  "Fighter",
 		HitDice:               10,
-		SavingThrows:          []string{shared.AbilityStrength, shared.AbilityConstitution},
+		SavingThrows:          []constants.Ability{constants.STR, constants.CON},
 		SkillProficiencyCount: 2,
-		SkillOptions: []string{
-			"Acrobatics", "Animal Handling", "Athletics", "History",
-			"Insight", "Intimidation", "Perception", "Survival",
+		SkillOptions: []constants.Skill{
+			constants.SkillAcrobatics, constants.SkillAnimalHandling, constants.SkillAthletics, constants.SkillHistory,
+			constants.SkillInsight, constants.SkillIntimidation, constants.SkillPerception, constants.SkillSurvival,
 		},
 		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
 		WeaponProficiencies: []string{"Simple", "Martial"},
@@ -56,8 +56,8 @@ func (s *DraftTestSuite) SetupTest() {
 	s.testBackground = &shared.Background{
 		ID:                 "soldier",
 		Name:               "Soldier",
-		SkillProficiencies: []string{"Athletics", "Intimidation"},
-		Languages:          []string{"Dwarvish"},
+		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
+		Languages:          []constants.Language{constants.LanguageDwarvish},
 		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
 	}
 }
@@ -81,7 +81,7 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		SkillChoices: []string{"Perception", "Survival"},
+		SkillChoices: []string{"perception", "survival"},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -117,14 +117,14 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal("Medium", character.size)
 
 	// Verify skills
-	s.Assert().Equal(shared.Proficient, character.skills["Perception"])
-	s.Assert().Equal(shared.Proficient, character.skills["Survival"])
-	s.Assert().Equal(shared.Proficient, character.skills["Athletics"])    // From background
-	s.Assert().Equal(shared.Proficient, character.skills["Intimidation"]) // From background
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillSurvival])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics])    // From background
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation]) // From background
 
 	// Verify languages
-	s.Assert().Contains(character.languages, "Common")   // Always included
-	s.Assert().Contains(character.languages, "Dwarvish") // From background
+	s.Assert().Contains(character.languages, constants.LanguageCommon)   // Always included
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish) // From background
 
 	// Verify proficiencies
 	s.Assert().Equal(s.testClass.ArmorProficiencies, character.proficiencies.Armor)
@@ -132,8 +132,8 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal(s.testBackground.ToolProficiencies, character.proficiencies.Tools)
 
 	// Verify saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityStrength])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityConstitution])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.CON])
 }
 
 func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
@@ -143,16 +143,16 @@ func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
 		Name:  "Elf",
 		Size:  "Medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[string]int{
-			shared.AbilityDexterity: 2,
+		AbilityScoreIncreases: map[constants.Ability]int{
+			constants.DEX: 2,
 		},
-		Languages: []string{"Common", "Elvish"},
+		Languages: []constants.Language{constants.LanguageCommon, constants.LanguageElvish},
 		Subraces: []race.SubraceData{
 			{
 				ID:   "high-elf",
 				Name: "High Elf",
-				AbilityScoreIncreases: map[string]int{
-					shared.AbilityIntelligence: 1,
+				AbilityScoreIncreases: map[constants.Ability]int{
+					constants.INT: 1,
 				},
 			},
 		},
@@ -292,7 +292,7 @@ func (s *DraftTestSuite) TestDraftToData() {
 			RaceID: "human",
 		},
 		ClassChoice:  "fighter",
-		SkillChoices: []string{"Athletics", "Perception"},
+		SkillChoices: []string{"athletics", "perception"},
 		Progress:     DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
 		CreatedAt:    time.Now().Add(-1 * time.Hour),
 		UpdatedAt:    time.Now(),
@@ -369,7 +369,7 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		LanguageChoices: []string{"Elvish", "Goblin", "Draconic"},
+		LanguageChoices: []string{"elvish", "goblin", "draconic"},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -383,16 +383,16 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 	s.Assert().NotNil(character)
 
 	// Verify languages include all sources
-	s.Assert().Contains(character.languages, "Common", "Common should always be included")
-	s.Assert().Contains(character.languages, "Dwarvish", "Background language should be included")
+	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included")
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish, "Background language should be included")
 
 	// Verify chosen languages
-	s.Assert().Contains(character.languages, "Elvish", "Chosen language Elvish should be included")
-	s.Assert().Contains(character.languages, "Goblin", "Chosen language Goblin should be included")
-	s.Assert().Contains(character.languages, "Draconic", "Chosen language Draconic should be included")
+	s.Assert().Contains(character.languages, constants.LanguageElvish, "Chosen language Elvish should be included")
+	s.Assert().Contains(character.languages, constants.LanguageGoblin, "Chosen language Goblin should be included")
+	s.Assert().Contains(character.languages, constants.LanguageDraconic, "Chosen language Draconic should be included")
 
 	// Verify no duplicates (set behavior)
-	languageCount := make(map[string]int)
+	languageCount := make(map[constants.Language]int)
 	for _, lang := range character.languages {
 		languageCount[lang]++
 	}
@@ -408,7 +408,7 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 		Name:      "Exotic Race",
 		Size:      "Medium",
 		Speed:     30,
-		Languages: []string{"Exotic Language"}, // No Common
+		Languages: []constants.Language{constants.Language(testLanguageExotic)}, // No Common
 	}
 
 	draft := &Draft{
@@ -439,7 +439,8 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 	s.Assert().NotNil(character)
 
 	// Verify Common is still included
-	s.Assert().Contains(character.languages, "Common", "Common should always be included even if race doesn't have it")
+	s.Assert().Contains(character.languages, constants.LanguageCommon,
+		"Common should always be included even if race doesn't have it")
 }
 
 func TestDraftTestSuite(t *testing.T) {

@@ -1,6 +1,8 @@
 // Package race provides D&D 5e race data structures and functionality
 package race
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+
 // Data contains all the data needed to define a D&D 5e race
 type Data struct {
 	ID          string `json:"id"`
@@ -12,19 +14,19 @@ type Data struct {
 	Speed int    `json:"speed"` // Base walking speed
 
 	// Ability score improvements
-	AbilityScoreIncreases map[string]int `json:"ability_score_increases"`
+	AbilityScoreIncreases map[constants.Ability]int `json:"ability_score_increases"`
 
 	// Features and traits
 	Traits []TraitData `json:"traits"`
 
 	// Proficiencies
-	SkillProficiencies  []string `json:"skill_proficiencies"`
-	WeaponProficiencies []string `json:"weapon_proficiencies"`
-	ToolProficiencies   []string `json:"tool_proficiencies"`
+	SkillProficiencies  []constants.Skill `json:"skill_proficiencies"`
+	WeaponProficiencies []string          `json:"weapon_proficiencies"`
+	ToolProficiencies   []string          `json:"tool_proficiencies"`
 
 	// Languages
-	Languages      []string    `json:"languages"`
-	LanguageChoice *ChoiceData `json:"language_choice,omitempty"`
+	Languages      []constants.Language `json:"languages"`
+	LanguageChoice *ChoiceData          `json:"language_choice,omitempty"`
 
 	// Other choices
 	SkillChoice *ChoiceData `json:"skill_choice,omitempty"`
@@ -41,7 +43,7 @@ type SubraceData struct {
 	Description string `json:"description"`
 
 	// Additional ability score improvements
-	AbilityScoreIncreases map[string]int `json:"ability_score_increases"`
+	AbilityScoreIncreases map[constants.Ability]int `json:"ability_score_increases"`
 
 	// Additional traits
 	Traits []TraitData `json:"traits"`
@@ -113,7 +115,7 @@ func (r *Race) Size() string {
 }
 
 // GetAbilityScoreIncreases returns ability score improvements
-func (r *Race) GetAbilityScoreIncreases() map[string]int {
+func (r *Race) GetAbilityScoreIncreases() map[constants.Ability]int {
 	return r.data.AbilityScoreIncreases
 }
 
@@ -123,7 +125,7 @@ func (r *Race) GetTraits() []TraitData {
 }
 
 // GetLanguages returns known languages
-func (r *Race) GetLanguages() []string {
+func (r *Race) GetLanguages() []constants.Language {
 	return r.data.Languages
 }
 

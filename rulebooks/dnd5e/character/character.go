@@ -4,7 +4,6 @@ package character
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/game"
@@ -44,9 +43,9 @@ type Character struct {
 	hitDice      int // From class
 
 	// Capabilities (compiled from race/class/background)
-	skills        map[string]shared.ProficiencyLevel
-	savingThrows  map[string]shared.ProficiencyLevel
-	languages     []string
+	skills        map[constants.Skill]shared.ProficiencyLevel
+	savingThrows  map[constants.Ability]shared.ProficiencyLevel
+	languages     []constants.Language
 	proficiencies shared.Proficiencies
 	features      []string // Feature IDs they have
 
@@ -224,10 +223,10 @@ type Data struct {
 	Size  string `json:"size"`
 
 	// Proficiencies and skills
-	Skills        map[string]int       `json:"skills"`        // skill name -> proficiency level
-	SavingThrows  map[string]int       `json:"saving_throws"` // ability -> proficiency level
-	Languages     []string             `json:"languages"`
-	Proficiencies shared.Proficiencies `json:"proficiencies"`
+	Skills        map[string]shared.ProficiencyLevel `json:"skills"`        // skill name -> proficiency level
+	SavingThrows  map[string]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
+	Languages     []string                           `json:"languages"`
+	Proficiencies shared.Proficiencies               `json:"proficiencies"`
 
 	// Current state
 	Conditions []conditions.Condition `json:"conditions"`
@@ -268,14 +267,14 @@ type ChoiceData struct {
 
 // ToData converts the character to its persistent representation
 func (c *Character) ToData() Data {
-	skillsData := make(map[string]int)
+	skillsData := make(map[string]shared.ProficiencyLevel)
 	for skill, prof := range c.skills {
-		skillsData[skill] = int(prof)
+		skillsData[string(skill)] = prof
 	}
 
-	savesData := make(map[string]int)
+	savesData := make(map[string]shared.ProficiencyLevel)
 	for save, prof := range c.savingThrows {
-		savesData[save] = int(prof)
+		savesData[string(save)] = prof
 	}
 
 	resourcesData := make(map[string]ResourceData)
@@ -286,6 +285,11 @@ func (c *Character) ToData() Data {
 			Current: res.Current,
 			Resets:  string(res.Resets),
 		}
+	}
+
+	languagesData := make([]string, len(c.languages))
+	for i, lang := range c.languages {
+		languagesData[i] = string(lang)
 	}
 
 	data := Data{
@@ -303,7 +307,7 @@ func (c *Character) ToData() Data {
 		Size:           c.size,
 		Skills:         skillsData,
 		SavingThrows:   savesData,
-		Languages:      c.languages,
+		Languages:      languagesData,
 		Proficiencies:  c.proficiencies,
 		Conditions:     c.conditions,
 		Effects:        c.effects,
@@ -330,57 +334,24 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		return nil, errors.New("race, class, and background data are required")
 	}
 
-	// If we have stored skills/languages but no choices, use them directly (backwards compatibility)
-	// Otherwise, rebuild from base data + choices
-	var skills map[string]shared.ProficiencyLevel
-	var languages []string
-
-	if len(data.Choices) == 0 && len(data.Skills) > 0 {
-		// Backwards compatibility: use stored data directly
-		skills = make(map[string]shared.ProficiencyLevel)
-		for skill, level := range data.Skills {
-			skills[skill] = shared.ProficiencyLevel(level)
-		}
-		languages = data.Languages
-	} else {
-		// Rebuild skills from base data + choices
-		skills = make(map[string]shared.ProficiencyLevel)
-
-		// Add background skills
-		for _, skill := range backgroundData.SkillProficiencies {
-			skills[skill] = shared.Proficient
-		}
-
-		// Process skill choices from stored character data
-		processSkillChoices(data.Choices, skills)
-
-		// Rebuild languages from base data + choices
-		languageSet := make(map[string]bool)
-		languageSet["Common"] = true // Always include Common
-
-		// Add race languages
-		for _, lang := range raceData.Languages {
-			languageSet[lang] = true
-		}
-
-		// Add background languages
-		for _, lang := range backgroundData.Languages {
-			languageSet[lang] = true
-		}
-
-		// Process language choices from stored character data
-		processLanguageChoices(data.Choices, languageSet)
-
-		// Convert language set to slice
-		languages = make([]string, 0, len(languageSet))
-		for lang := range languageSet {
-			languages = append(languages, lang)
-		}
+	// Build skills from persisted data
+	skills := make(map[constants.Skill]shared.ProficiencyLevel)
+	for skillStr, level := range data.Skills {
+		skill := constants.Skill(skillStr)
+		skills[skill] = level
 	}
 
-	saves := make(map[string]shared.ProficiencyLevel)
-	for save, level := range data.SavingThrows {
-		saves[save] = shared.ProficiencyLevel(level)
+	// Build languages from persisted data
+	languages := make([]constants.Language, len(data.Languages))
+	for i, langStr := range data.Languages {
+		languages[i] = constants.Language(langStr)
+	}
+
+	// Build saving throws from persisted data
+	saves := make(map[constants.Ability]shared.ProficiencyLevel)
+	for saveStr, level := range data.SavingThrows {
+		save := constants.Ability(saveStr)
+		saves[save] = level
 	}
 
 	resources := make(map[string]Resource)
@@ -483,53 +454,4 @@ type SaveResult struct {
 type CheckResult struct {
 	Success bool
 	Roll    int
-}
-
-// processSkillChoices extracts skill proficiencies from character creation choices
-func processSkillChoices(choices []ChoiceData, skills map[string]shared.ProficiencyLevel) {
-	for _, choice := range choices {
-		// Check for various skill choice patterns
-		if choice.Category == "skills" ||
-			strings.Contains(choice.Category, "_proficiencies_") ||
-			strings.Contains(choice.Category, "_skills_") {
-			if skillList, ok := choice.Selection.([]interface{}); ok {
-				for _, s := range skillList {
-					if skillName, ok := s.(string); ok {
-						// Remove "skill-" prefix if present
-						skillName = strings.TrimPrefix(skillName, "skill-")
-						skills[skillName] = shared.Proficient
-					}
-				}
-			} else if skillList, ok := choice.Selection.([]string); ok {
-				for _, skillName := range skillList {
-					// Remove "skill-" prefix if present
-					skillName = strings.TrimPrefix(skillName, "skill-")
-					skills[skillName] = shared.Proficient
-				}
-			}
-		}
-	}
-}
-
-// processLanguageChoices extracts languages from character creation choices
-func processLanguageChoices(choices []ChoiceData, languageSet map[string]bool) {
-	for _, choice := range choices {
-		// Check for various language choice patterns
-		if choice.Category == "languages" ||
-			strings.Contains(choice.Category, "language") {
-			if langList, ok := choice.Selection.([]interface{}); ok {
-				for _, l := range langList {
-					if langName, ok := l.(string); ok {
-						languageSet[langName] = true
-					}
-				}
-			} else if langList, ok := choice.Selection.([]string); ok {
-				for _, langName := range langList {
-					languageSet[langName] = true
-				}
-			} else if langName, ok := choice.Selection.(string); ok {
-				languageSet[langName] = true
-			}
-		}
-	}
 }

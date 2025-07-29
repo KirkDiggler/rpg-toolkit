@@ -41,38 +41,15 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Apply racial ability score improvements
 	abilityScores := data.AbilityScores
-	// Convert string ability names to constants for racial increases
-	racialIncreases := make(map[constants.Ability]int)
-	for abilityStr, bonus := range data.RaceData.AbilityScoreIncreases {
-		var ability constants.Ability
-		switch abilityStr {
-		case shared.AbilityStrength, "strength":
-			ability = constants.STR
-		case shared.AbilityDexterity, "dexterity":
-			ability = constants.DEX
-		case shared.AbilityConstitution, "constitution":
-			ability = constants.CON
-		case shared.AbilityIntelligence, "intelligence":
-			ability = constants.INT
-		case shared.AbilityWisdom, "wisdom":
-			ability = constants.WIS
-		case shared.AbilityCharisma, "charisma":
-			ability = constants.CHA
-		default:
-			continue // Skip unknown abilities
-		}
-		racialIncreases[ability] = bonus
-	}
-
-	// Apply the increases
-	_ = abilityScores.ApplyIncreases(racialIncreases) // Ignore errors about exceeding 20 during creation
+	// Ignore errors about exceeding 20 during creation
+	_ = abilityScores.ApplyIncreases(data.RaceData.AbilityScoreIncreases)
 
 	// Calculate HP
 	conMod := abilityScores.Modifier(constants.CON)
 	maxHP := data.ClassData.HitDice + conMod
 
 	// Build skills map
-	skills := make(map[string]shared.ProficiencyLevel)
+	skills := make(map[constants.Skill]shared.ProficiencyLevel)
 
 	// Add background skills
 	for _, skill := range data.BackgroundData.SkillProficiencies {
@@ -81,20 +58,21 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Add chosen skills
 	if chosenSkills, ok := data.Choices["skills"].([]string); ok {
-		for _, skill := range chosenSkills {
+		for _, skillStr := range chosenSkills {
+			skill := constants.Skill(skillStr)
 			skills[skill] = shared.Proficient
 		}
 	}
 
 	// Build saving throws
-	saves := make(map[string]shared.ProficiencyLevel)
+	saves := make(map[constants.Ability]shared.ProficiencyLevel)
 	for _, save := range data.ClassData.SavingThrows {
 		saves[save] = shared.Proficient
 	}
 
 	// Compile languages - ensure Common is always included
-	languageSet := make(map[string]bool)
-	languageSet["Common"] = true
+	languageSet := make(map[constants.Language]bool)
+	languageSet[constants.LanguageCommon] = true
 
 	// Add race languages
 	for _, lang := range data.RaceData.Languages {
@@ -108,13 +86,14 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 
 	// Add chosen languages
 	if chosenLangs, ok := data.Choices["languages"].([]string); ok {
-		for _, lang := range chosenLangs {
+		for _, langStr := range chosenLangs {
+			lang := constants.Language(langStr)
 			languageSet[lang] = true
 		}
 	}
 
 	// Convert set to slice
-	languages := make([]string, 0, len(languageSet))
+	languages := make([]constants.Language, 0, len(languageSet))
 	for lang := range languageSet {
 		languages = append(languages, lang)
 	}
