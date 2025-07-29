@@ -133,7 +133,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	// Languages
 	// Start with ensuring Common is always included
 	languageSet := make(map[string]bool)
-	languageSet["common"] = true
+	languageSet[string(constants.LanguageCommon)] = true
 
 	// Add race languages
 	for _, lang := range raceData.Languages {

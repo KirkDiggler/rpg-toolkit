@@ -11,6 +11,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
+// Test constants for non-standard languages used in tests
+const (
+	testLanguageExotic = "exotic language"
+)
+
 type CreationTestSuite struct {
 	suite.Suite
 	testRace       *race.Data
@@ -129,7 +134,7 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 		Name:      "Exotic Race",
 		Size:      "Medium",
 		Speed:     30,
-		Languages: []string{"Exotic Language"}, // No Common
+		Languages: []string{testLanguageExotic}, // No Common
 	}
 
 	// Test background without Common
@@ -167,7 +172,7 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 
 	// Verify Common is still included
 	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included")
-	s.Assert().Contains(character.languages, constants.Language("exotic language"), "Race language should be included")
+	s.Assert().Contains(character.languages, constants.Language(testLanguageExotic), "Race language should be included")
 	s.Assert().Contains(character.languages, constants.LanguageCelestial, "Background language should be included")
 	s.Assert().Contains(character.languages, constants.LanguageInfernal, "Chosen language should be included")
 }
