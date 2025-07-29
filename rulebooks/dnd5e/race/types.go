@@ -5,9 +5,9 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 
 // Data contains all the data needed to define a D&D 5e race
 type Data struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          constants.Race `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
 
 	// Physical characteristics
 	Size  string `json:"size"`  // Small, Medium, Large
@@ -38,9 +38,9 @@ type Data struct {
 
 // SubraceData defines a subrace variant
 type SubraceData struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          constants.Subrace `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
 
 	// Additional ability score improvements
 	AbilityScoreIncreases map[constants.Ability]int `json:"ability_score_increases"`
@@ -95,7 +95,7 @@ type Race struct {
 }
 
 // ID returns the race ID
-func (r *Race) ID() string {
+func (r *Race) ID() constants.Race {
 	return r.data.ID
 }
 

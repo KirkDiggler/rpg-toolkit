@@ -135,7 +135,9 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 		RaceChoice: RaceChoice{
 			RaceID: constants.RaceHuman,
 		},
-		ClassChoice:      constants.ClassFighter,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
@@ -162,9 +164,9 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	s.Assert().Equal("player-123", character.playerID)
 	s.Assert().Equal("Garen the Bold", character.name)
 	s.Assert().Equal(1, character.level)
-	s.Assert().Equal("human", character.raceID)
-	s.Assert().Equal("fighter", character.classID)
-	s.Assert().Equal("soldier", character.backgroundID)
+	s.Assert().Equal(constants.RaceHuman, character.raceID)
+	s.Assert().Equal(constants.ClassFighter, character.classID)
+	s.Assert().Equal(constants.BackgroundSoldier, character.backgroundID)
 
 	// Verify ability scores with Human racial bonuses (+1 to all)
 	s.Assert().Equal(16, character.abilityScores[constants.STR]) // 15 + 1
@@ -245,7 +247,9 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 			RaceID:    constants.RaceElf,
 			SubraceID: constants.SubraceHighElf,
 		},
-		ClassChoice:      constants.ClassWizard,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassWizard,
+		},
 		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
@@ -327,11 +331,13 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 	}
 
 	draft := &Draft{
-		ID:               "test-exotic",
-		PlayerID:         "player-789",
-		Name:             "Zyx'tar",
-		RaceChoice:       RaceChoice{RaceID: constants.Race("exotic")},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-exotic",
+		PlayerID:   "player-789",
+		Name:       "Zyx'tar",
+		RaceChoice: RaceChoice{RaceID: constants.Race("exotic")},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 14,
@@ -362,11 +368,13 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 	// Create a draft where chosen languages overlap with race/background
 	draft := &Draft{
-		ID:               "test-duplicate-lang",
-		PlayerID:         "player-999",
-		Name:             "Linguist",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceElf},
-		ClassChoice:      constants.ClassWizard,
+		ID:         "test-duplicate-lang",
+		PlayerID:   "player-999",
+		Name:       "Linguist",
+		RaceChoice: RaceChoice{RaceID: constants.RaceElf},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassWizard,
+		},
 		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 10,
@@ -413,11 +421,13 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 func (s *DraftConversionTestSuite) TestAllProficienciesApplied() {
 	// Test that all proficiencies from race, class, and background are applied
 	draft := &Draft{
-		ID:               "test-all-prof",
-		PlayerID:         "player-prof",
-		Name:             "Jack of All Trades",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceWoodElf},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-all-prof",
+		PlayerID:   "player-prof",
+		Name:       "Jack of All Trades",
+		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceWoodElf},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 14,
@@ -465,7 +475,9 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 			RaceID:    constants.RaceElf,
 			SubraceID: constants.SubraceHighElf,
 		},
-		ClassChoice:      constants.ClassWizard,
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassWizard,
+		},
 		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
@@ -528,11 +540,13 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 	// Test that fighting styles are properly stored in choices
 	draft := &Draft{
-		ID:               "test-fighting-style",
-		PlayerID:         "player-fs",
-		Name:             "Fighter with Style",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-fighting-style",
+		PlayerID:   "player-fs",
+		Name:       "Fighter with Style",
+		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 16,
@@ -570,11 +584,13 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	// Test that spells and cantrips are properly stored in choices
 	draft := &Draft{
-		ID:               "test-spells",
-		PlayerID:         "player-spells",
-		Name:             "Spellcaster Supreme",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
-		ClassChoice:      constants.ClassWizard,
+		ID:         "test-spells",
+		PlayerID:   "player-spells",
+		Name:       "Spellcaster Supreme",
+		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassWizard,
+		},
 		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,
@@ -637,11 +653,13 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 	// Test that equipment choices are properly stored in choices
 	draft := &Draft{
-		ID:               "test-equipment",
-		PlayerID:         "player-eq",
-		Name:             "Well Equipped",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-equipment",
+		PlayerID:   "player-eq",
+		Name:       "Well Equipped",
+		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 16,
@@ -689,11 +707,13 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 	// Comprehensive test with all choice types
 	draft := &Draft{
-		ID:               "test-comprehensive",
-		PlayerID:         "player-all",
-		Name:             "Jack of All Trades",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
-		ClassChoice:      constants.ClassFighter, // Fighter with spellcasting (e.g., Eldritch Knight)
+		ID:         "test-comprehensive",
+		PlayerID:   "player-all",
+		Name:       "Jack of All Trades",
+		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		}, // Fighter with spellcasting (e.g., Eldritch Knight)
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
@@ -782,11 +802,13 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 	// Create a draft with equipment choices including bundles
 	draft := &Draft{
-		ID:               "test-equipment",
-		PlayerID:         "player-eq",
-		Name:             "Equipment Tester",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-equipment",
+		PlayerID:   "player-eq",
+		Name:       "Equipment Tester",
+		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 15,
@@ -869,11 +891,13 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 
 	// Create a draft
 	draft := &Draft{
-		ID:               "test-resources",
-		PlayerID:         "player-res",
-		Name:             "Resource Fighter",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceHuman},
-		ClassChoice:      constants.ClassFighter,
+		ID:         "test-resources",
+		PlayerID:   "player-res",
+		Name:       "Resource Fighter",
+		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassFighter,
+		},
 		BackgroundChoice: constants.BackgroundSoldier,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 16,
@@ -925,11 +949,13 @@ func (s *DraftConversionTestSuite) TestSpellSlotsInitialization() {
 
 	// Create a wizard draft
 	draft := &Draft{
-		ID:               "test-spellslots",
-		PlayerID:         "player-spell",
-		Name:             "Spell Wizard",
-		RaceChoice:       RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
-		ClassChoice:      constants.ClassWizard,
+		ID:         "test-spellslots",
+		PlayerID:   "player-spell",
+		Name:       "Spell Wizard",
+		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		ClassChoice: ClassChoice{
+			ClassID: constants.ClassWizard,
+		},
 		BackgroundChoice: constants.BackgroundHermit,
 		AbilityScoreChoice: shared.AbilityScores{
 			constants.STR: 8,

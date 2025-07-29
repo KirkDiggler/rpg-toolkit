@@ -24,9 +24,9 @@ type Character struct {
 	proficiencyBonus int
 
 	// Character creation info (IDs only for reference)
-	raceID       string
-	classID      string
-	backgroundID string
+	raceID       constants.Race
+	classID      constants.Class
+	backgroundID constants.Background
 
 	// Core attributes
 	abilityScores shared.AbilityScores
@@ -208,10 +208,11 @@ type Data struct {
 	Experience int    `json:"experience"`
 
 	// References to external data
-	RaceID       string `json:"race_id"`
-	SubraceID    string `json:"subrace_id,omitempty"`
-	ClassID      string `json:"class_id"`
-	BackgroundID string `json:"background_id"`
+	RaceID       constants.Race       `json:"race_id"`
+	SubraceID    constants.Subrace    `json:"subrace_id,omitempty"`
+	ClassID      constants.Class      `json:"class_id"`
+	SubclassID   constants.Subclass   `json:"subclass_id,omitempty"`
+	BackgroundID constants.Background `json:"background_id"`
 
 	// Core stats
 	AbilityScores shared.AbilityScores `json:"ability_scores"`

@@ -157,9 +157,9 @@ type DeathSaves struct {
 
 // Background represents character background
 type Background struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          constants.Background `json:"id"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
 
 	// Skill proficiencies (usually 2)
 	SkillProficiencies []constants.Skill `json:"skill_proficiencies"`

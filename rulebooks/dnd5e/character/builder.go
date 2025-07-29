@@ -86,7 +86,7 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 	b.raceData = &raceData
 
 	choice := RaceChoice{
-		RaceID:    constants.Race(raceData.ID),
+		RaceID:    raceData.ID,
 		SubraceID: constants.Subrace(subraceID),
 	}
 
@@ -105,7 +105,7 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 }
 
 // SetClassData sets the character's class using class data
-func (b *Builder) SetClassData(classData class.Data) error {
+func (b *Builder) SetClassData(classData class.Data, subclassID constants.Subclass) error {
 	if classData.ID == "" {
 		return errors.New("class data must have an ID")
 	}
@@ -113,7 +113,10 @@ func (b *Builder) SetClassData(classData class.Data) error {
 	// Store the class data
 	b.classData = &classData
 
-	b.draft.ClassChoice = constants.Class(classData.ID)
+	b.draft.ClassChoice = ClassChoice{
+		ClassID:    classData.ID,
+		SubclassID: subclassID,
+	}
 	b.draft.Progress.setFlag(ProgressClass)
 	b.draft.UpdatedAt = time.Now()
 
@@ -132,7 +135,7 @@ func (b *Builder) SetBackgroundData(backgroundData shared.Background) error {
 	// Store the background data
 	b.backgroundData = &backgroundData
 
-	b.draft.BackgroundChoice = constants.Background(backgroundData.ID)
+	b.draft.BackgroundChoice = backgroundData.ID
 	b.draft.Progress.setFlag(ProgressBackground)
 	b.draft.UpdatedAt = time.Now()
 
@@ -271,7 +274,7 @@ type DraftData struct {
 
 	// Explicit typed choices - matches Draft struct
 	RaceChoice          RaceChoice           `json:"race_choice"`
-	ClassChoice         constants.Class      `json:"class_choice"`
+	ClassChoice         ClassChoice          `json:"class_choice"`
 	BackgroundChoice    constants.Background `json:"background_choice"`
 	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
 	SkillChoices        []constants.Skill    `json:"skill_choices"`
@@ -414,6 +417,12 @@ func (b *Builder) calculateCompletedSteps() int {
 type RaceChoice struct {
 	RaceID    constants.Race    `json:"race_id"`
 	SubraceID constants.Subrace `json:"subrace_id,omitempty"`
+}
+
+// ClassChoice represents a class selection with optional subclass
+type ClassChoice struct {
+	ClassID    constants.Class    `json:"class_id"`
+	SubclassID constants.Subclass `json:"subclass_id,omitempty"`
 }
 
 // ValidationError represents a validation failure
