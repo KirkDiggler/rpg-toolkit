@@ -190,6 +190,16 @@ func (c *Character) GetEquipment() []string {
 	return c.equipment
 }
 
+// GetClassResources returns the character's class resources
+func (c *Character) GetClassResources() map[string]Resource {
+	return c.classResources
+}
+
+// GetSpellSlots returns the character's spell slots
+func (c *Character) GetSpellSlots() SpellSlots {
+	return c.spellSlots
+}
+
 // Data represents the persistent state of a character
 type Data struct {
 	ID         string `json:"id"`
@@ -242,6 +252,7 @@ type Data struct {
 
 // ResourceData represents persistent resource data
 type ResourceData struct {
+	Name    string `json:"name"`
 	Max     int    `json:"max"`
 	Current int    `json:"current"`
 	Resets  string `json:"resets"`
@@ -270,6 +281,7 @@ func (c *Character) ToData() Data {
 	resourcesData := make(map[string]ResourceData)
 	for name, res := range c.classResources {
 		resourcesData[name] = ResourceData{
+			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
 			Resets:  string(res.Resets),
@@ -374,7 +386,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 	resources := make(map[string]Resource)
 	for name, res := range data.ClassResources {
 		resources[name] = Resource{
-			Name:    name,
+			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
 			Resets:  shared.ResetType(res.Resets),
