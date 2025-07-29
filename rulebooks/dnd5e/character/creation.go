@@ -72,49 +72,55 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	maxHP := data.ClassData.HitDice + conMod
 
 	// Build skills map
-	skills := make(map[string]shared.ProficiencyLevel)
+	skills := make(map[constants.Skill]shared.ProficiencyLevel)
 
 	// Add background skills
-	for _, skill := range data.BackgroundData.SkillProficiencies {
+	for _, skillStr := range data.BackgroundData.SkillProficiencies {
+		skill := constants.Skill(skillStr)
 		skills[skill] = shared.Proficient
 	}
 
 	// Add chosen skills
 	if chosenSkills, ok := data.Choices["skills"].([]string); ok {
-		for _, skill := range chosenSkills {
+		for _, skillStr := range chosenSkills {
+			skill := constants.Skill(skillStr)
 			skills[skill] = shared.Proficient
 		}
 	}
 
 	// Build saving throws
-	saves := make(map[string]shared.ProficiencyLevel)
-	for _, save := range data.ClassData.SavingThrows {
+	saves := make(map[constants.Ability]shared.ProficiencyLevel)
+	for _, saveStr := range data.ClassData.SavingThrows {
+		save := constants.Ability(saveStr)
 		saves[save] = shared.Proficient
 	}
 
 	// Compile languages - ensure Common is always included
-	languageSet := make(map[string]bool)
-	languageSet["Common"] = true
+	languageSet := make(map[constants.Language]bool)
+	languageSet[constants.LanguageCommon] = true
 
 	// Add race languages
-	for _, lang := range data.RaceData.Languages {
+	for _, langStr := range data.RaceData.Languages {
+		lang := constants.Language(langStr)
 		languageSet[lang] = true
 	}
 
 	// Add background languages
-	for _, lang := range data.BackgroundData.Languages {
+	for _, langStr := range data.BackgroundData.Languages {
+		lang := constants.Language(langStr)
 		languageSet[lang] = true
 	}
 
 	// Add chosen languages
 	if chosenLangs, ok := data.Choices["languages"].([]string); ok {
-		for _, lang := range chosenLangs {
+		for _, langStr := range chosenLangs {
+			lang := constants.Language(langStr)
 			languageSet[lang] = true
 		}
 	}
 
 	// Convert set to slice
-	languages := make([]string, 0, len(languageSet))
+	languages := make([]constants.Language, 0, len(languageSet))
 	for lang := range languageSet {
 		languages = append(languages, lang)
 	}

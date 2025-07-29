@@ -44,9 +44,9 @@ type Character struct {
 	hitDice      int // From class
 
 	// Capabilities (compiled from race/class/background)
-	skills        map[string]shared.ProficiencyLevel
-	savingThrows  map[string]shared.ProficiencyLevel
-	languages     []string
+	skills        map[constants.Skill]shared.ProficiencyLevel
+	savingThrows  map[constants.Ability]shared.ProficiencyLevel
+	languages     []constants.Language
 	proficiencies shared.Proficiencies
 	features      []string // Feature IDs they have
 
@@ -270,12 +270,12 @@ type ChoiceData struct {
 func (c *Character) ToData() Data {
 	skillsData := make(map[string]int)
 	for skill, prof := range c.skills {
-		skillsData[skill] = int(prof)
+		skillsData[string(skill)] = int(prof)
 	}
 
 	savesData := make(map[string]int)
 	for save, prof := range c.savingThrows {
-		savesData[save] = int(prof)
+		savesData[string(save)] = int(prof)
 	}
 
 	resourcesData := make(map[string]ResourceData)
@@ -286,6 +286,11 @@ func (c *Character) ToData() Data {
 			Current: res.Current,
 			Resets:  string(res.Resets),
 		}
+	}
+
+	languagesData := make([]string, len(c.languages))
+	for i, lang := range c.languages {
+		languagesData[i] = string(lang)
 	}
 
 	data := Data{
@@ -303,7 +308,7 @@ func (c *Character) ToData() Data {
 		Size:           c.size,
 		Skills:         skillsData,
 		SavingThrows:   savesData,
-		Languages:      c.languages,
+		Languages:      languagesData,
 		Proficiencies:  c.proficiencies,
 		Conditions:     c.conditions,
 		Effects:        c.effects,
@@ -330,56 +335,23 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		return nil, errors.New("race, class, and background data are required")
 	}
 
-	// If we have stored skills/languages but no choices, use them directly (backwards compatibility)
-	// Otherwise, rebuild from base data + choices
-	var skills map[string]shared.ProficiencyLevel
-	var languages []string
-
-	if len(data.Choices) == 0 && len(data.Skills) > 0 {
-		// Backwards compatibility: use stored data directly
-		skills = make(map[string]shared.ProficiencyLevel)
-		for skill, level := range data.Skills {
-			skills[skill] = shared.ProficiencyLevel(level)
-		}
-		languages = data.Languages
-	} else {
-		// Rebuild skills from base data + choices
-		skills = make(map[string]shared.ProficiencyLevel)
-
-		// Add background skills
-		for _, skill := range backgroundData.SkillProficiencies {
-			skills[skill] = shared.Proficient
-		}
-
-		// Process skill choices from stored character data
-		processSkillChoices(data.Choices, skills)
-
-		// Rebuild languages from base data + choices
-		languageSet := make(map[string]bool)
-		languageSet["Common"] = true // Always include Common
-
-		// Add race languages
-		for _, lang := range raceData.Languages {
-			languageSet[lang] = true
-		}
-
-		// Add background languages
-		for _, lang := range backgroundData.Languages {
-			languageSet[lang] = true
-		}
-
-		// Process language choices from stored character data
-		processLanguageChoices(data.Choices, languageSet)
-
-		// Convert language set to slice
-		languages = make([]string, 0, len(languageSet))
-		for lang := range languageSet {
-			languages = append(languages, lang)
-		}
+	// Build skills from persisted data
+	skills := make(map[constants.Skill]shared.ProficiencyLevel)
+	for skillStr, level := range data.Skills {
+		skill := constants.Skill(skillStr)
+		skills[skill] = shared.ProficiencyLevel(level)
 	}
 
-	saves := make(map[string]shared.ProficiencyLevel)
-	for save, level := range data.SavingThrows {
+	// Build languages from persisted data
+	languages := make([]constants.Language, len(data.Languages))
+	for i, langStr := range data.Languages {
+		languages[i] = constants.Language(langStr)
+	}
+
+	// Build saving throws from persisted data
+	saves := make(map[constants.Ability]shared.ProficiencyLevel)
+	for saveStr, level := range data.SavingThrows {
+		save := constants.Ability(saveStr)
 		saves[save] = shared.ProficiencyLevel(level)
 	}
 

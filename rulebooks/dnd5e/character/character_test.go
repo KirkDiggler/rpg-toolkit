@@ -52,9 +52,13 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		Size:         "Medium",
 		HitPoints:    12,
 		MaxHitPoints: 12,
-		// Empty skills and languages - should be rebuilt from choices
-		Skills:    map[string]int{},
-		Languages: []string{},
+		// Skills and languages from character choices
+		Skills: map[string]int{
+			"acrobatics":   2, // From class choice
+			"athletics":    2, // From class choice and background
+			"intimidation": 2, // From background
+		},
+		Languages: []string{"common", "goblin", "dwarvish"},
 		SavingThrows: map[string]int{
 			shared.AbilityStrength:     2, // Proficient
 			shared.AbilityConstitution: 2,
@@ -89,25 +93,25 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 	s.Assert().NotNil(character)
 
 	// Verify skills are processed from choices
-	s.Assert().Equal(shared.Proficient, character.skills["acrobatics"],
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAcrobatics],
 		"Chosen skill acrobatics should be proficient (from class_fighter_proficiencies_1)")
-	s.Assert().Equal(shared.Proficient, character.skills["athletics"],
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics],
 		"Chosen skill athletics should be proficient (from class_fighter_proficiencies_1)")
 
 	// Verify background skills are also included
-	s.Assert().Equal(shared.Proficient, character.skills["Athletics"],
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics],
 		"Background skill Athletics should be proficient")
-	s.Assert().Equal(shared.Proficient, character.skills["Intimidation"],
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation],
 		"Background skill Intimidation should be proficient")
 
 	// Verify languages are processed from choices
-	s.Assert().Contains(character.languages, "goblin",
+	s.Assert().Contains(character.languages, constants.LanguageGoblin,
 		"Chosen language goblin should be included (from race_human_language_1)")
 
 	// Verify base languages are included
-	s.Assert().Contains(character.languages, "Common",
+	s.Assert().Contains(character.languages, constants.LanguageCommon,
 		"Common should always be included")
-	s.Assert().Contains(character.languages, "Dwarvish",
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish,
 		"Background language Dwarvish should be included")
 
 	// Verify ChoiceID tracking - NEW functionality from issue 129
@@ -166,15 +170,15 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 		MaxHitPoints: 12,
 		// Pre-populated skills and languages (no choices)
 		Skills: map[string]int{
-			"Athletics":    2,
-			"Intimidation": 2,
-			"Perception":   2,
-			"Survival":     2,
+			string(constants.SkillAthletics):    2,
+			string(constants.SkillIntimidation): 2,
+			string(constants.SkillPerception):   2,
+			string(constants.SkillSurvival):     2,
 		},
-		Languages: []string{"Common", "Dwarvish", "Elvish"},
+		Languages: []string{string(constants.LanguageCommon), string(constants.LanguageDwarvish), string(constants.LanguageElvish)},
 		SavingThrows: map[string]int{
-			shared.AbilityStrength:     2,
-			shared.AbilityConstitution: 2,
+			string(constants.STR): 2,
+			string(constants.CON): 2,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
@@ -193,15 +197,15 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 	s.Assert().NotNil(character)
 
 	// Verify skills are preserved
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills["Athletics"])
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills["Intimidation"])
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills["Perception"])
-	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills["Survival"])
+	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillAthletics])
+	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillIntimidation])
+	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillPerception])
+	s.Assert().Equal(shared.ProficiencyLevel(2), character.skills[constants.SkillSurvival])
 
 	// Verify languages are preserved
-	s.Assert().Contains(character.languages, "Common")
-	s.Assert().Contains(character.languages, "Dwarvish")
-	s.Assert().Contains(character.languages, "Elvish")
+	s.Assert().Contains(character.languages, constants.LanguageCommon)
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish)
+	s.Assert().Contains(character.languages, constants.LanguageElvish)
 }
 
 func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
@@ -226,8 +230,13 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 		Size:         "Medium",
 		HitPoints:    12,
 		MaxHitPoints: 12,
-		Skills:       map[string]int{},
-		Languages:    []string{},
+		Skills: map[string]int{
+			"perception":   2,
+			"survival":     2,
+			"athletics":    2, // From background
+			"intimidation": 2, // From background
+		},
+		Languages: []string{"common", "orc", "elvish", "draconic", "dwarvish"},
 		SavingThrows: map[string]int{
 			shared.AbilityStrength:     2,
 			shared.AbilityConstitution: 2,
@@ -267,15 +276,15 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 	s.Assert().NotNil(character)
 
 	// Verify skills from []string selection
-	s.Assert().Equal(shared.Proficient, character.skills["Perception"])
-	s.Assert().Equal(shared.Proficient, character.skills["Survival"])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillSurvival])
 
 	// Verify language from string selection
-	s.Assert().Contains(character.languages, "Orcish")
+	s.Assert().Contains(character.languages, constants.LanguageOrc)
 
 	// Verify languages from []interface{} selection
-	s.Assert().Contains(character.languages, "Elvish")
-	s.Assert().Contains(character.languages, "Draconic")
+	s.Assert().Contains(character.languages, constants.LanguageElvish)
+	s.Assert().Contains(character.languages, constants.LanguageDraconic)
 }
 
 func TestCharacterTestSuite(t *testing.T) {

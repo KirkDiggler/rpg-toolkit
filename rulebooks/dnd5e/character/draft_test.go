@@ -117,14 +117,14 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal("Medium", character.size)
 
 	// Verify skills
-	s.Assert().Equal(shared.Proficient, character.skills["Perception"])
-	s.Assert().Equal(shared.Proficient, character.skills["Survival"])
-	s.Assert().Equal(shared.Proficient, character.skills["Athletics"])    // From background
-	s.Assert().Equal(shared.Proficient, character.skills["Intimidation"]) // From background
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillSurvival])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics])    // From background
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation]) // From background
 
 	// Verify languages
-	s.Assert().Contains(character.languages, "Common")   // Always included
-	s.Assert().Contains(character.languages, "Dwarvish") // From background
+	s.Assert().Contains(character.languages, constants.LanguageCommon)   // Always included
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish) // From background
 
 	// Verify proficiencies
 	s.Assert().Equal(s.testClass.ArmorProficiencies, character.proficiencies.Armor)
@@ -132,8 +132,8 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 	s.Assert().Equal(s.testBackground.ToolProficiencies, character.proficiencies.Tools)
 
 	// Verify saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityStrength])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityConstitution])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.CON])
 }
 
 func (s *DraftTestSuite) TestToCharacter_WithSubrace() {
@@ -383,16 +383,16 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 	s.Assert().NotNil(character)
 
 	// Verify languages include all sources
-	s.Assert().Contains(character.languages, "Common", "Common should always be included")
-	s.Assert().Contains(character.languages, "Dwarvish", "Background language should be included")
+	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included")
+	s.Assert().Contains(character.languages, constants.LanguageDwarvish, "Background language should be included")
 
 	// Verify chosen languages
-	s.Assert().Contains(character.languages, "Elvish", "Chosen language Elvish should be included")
-	s.Assert().Contains(character.languages, "Goblin", "Chosen language Goblin should be included")
-	s.Assert().Contains(character.languages, "Draconic", "Chosen language Draconic should be included")
+	s.Assert().Contains(character.languages, constants.LanguageElvish, "Chosen language Elvish should be included")
+	s.Assert().Contains(character.languages, constants.LanguageGoblin, "Chosen language Goblin should be included")
+	s.Assert().Contains(character.languages, constants.LanguageDraconic, "Chosen language Draconic should be included")
 
 	// Verify no duplicates (set behavior)
-	languageCount := make(map[string]int)
+	languageCount := make(map[constants.Language]int)
 	for _, lang := range character.languages {
 		languageCount[lang]++
 	}
@@ -439,7 +439,7 @@ func (s *DraftTestSuite) TestToCharacter_CommonAlwaysIncluded() {
 	s.Assert().NotNil(character)
 
 	// Verify Common is still included
-	s.Assert().Contains(character.languages, "Common", "Common should always be included even if race doesn't have it")
+	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included even if race doesn't have it")
 }
 
 func TestDraftTestSuite(t *testing.T) {

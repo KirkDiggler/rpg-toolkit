@@ -203,12 +203,12 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	s.Assert().Equal(s.soldierBg.ToolProficiencies, character.proficiencies.Tools)
 
 	// Verify saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityStrength])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityConstitution])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[shared.AbilityDexterity])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[shared.AbilityIntelligence])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[shared.AbilityWisdom])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[shared.AbilityCharisma])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.CON])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.DEX])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.INT])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.WIS])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.CHA])
 
 	// Verify choices were recorded
 	s.Assert().True(len(character.choices) > 0)
@@ -308,8 +308,8 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 	}
 
 	// Verify saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityIntelligence])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[shared.AbilityWisdom])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.INT])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.WIS])
 }
 
 func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
@@ -386,7 +386,7 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 	s.Require().NotNil(character)
 
 	// Count each language occurrence
-	languageCount := make(map[string]int)
+	languageCount := make(map[constants.Language]int)
 	for _, lang := range character.languages {
 		languageCount[lang]++
 	}
@@ -768,8 +768,8 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 	s.Assert().Contains(character.languages, "Elvish")
 	s.Assert().Contains(character.languages, "Draconic")
 	s.Assert().Contains(character.languages, "Giant")
-	s.Assert().Equal(shared.Proficient, character.skills["Perception"])
-	s.Assert().Equal(shared.Proficient, character.skills["History"])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
+	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillHistory])
 }
 
 func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
