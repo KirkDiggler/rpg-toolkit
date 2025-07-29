@@ -86,7 +86,7 @@ func (s *ResourcesTestSuite) TestEvaluateSimpleExpression() {
 			hasError: true,
 		},
 		{
-			name:     "double negative",  
+			name:     "double negative",
 			expr:     "5--3",
 			hasError: true,
 		},
