@@ -151,14 +151,106 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 func buildChoiceData(data CreationData) []ChoiceData {
 	choices := make([]ChoiceData, 0, len(data.Choices))
 
-	// Record all choices made
+	// Record all choices made - need to handle the legacy map[string]any format
 	for category, selection := range data.Choices {
 		choiceData := ChoiceData{
-			Category:  shared.ChoiceCategory(category),
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "", // No specific choice ID for legacy creation data
-			Selection: selection,
+			Category: shared.ChoiceCategory(category),
+			Source:   shared.SourcePlayer,
+			ChoiceID: "", // No specific choice ID for legacy creation data
 		}
+
+		// Convert the selection based on category
+		switch shared.ChoiceCategory(category) {
+		case shared.ChoiceName:
+			if name, ok := selection.(string); ok {
+				choiceData.NameSelection = &name
+			}
+		case shared.ChoiceSkills:
+			// Could be []string or []interface{} from JSON
+			switch v := selection.(type) {
+			case []string:
+				skills := make([]constants.Skill, len(v))
+				for i, s := range v {
+					skills[i] = constants.Skill(s)
+				}
+				choiceData.SkillSelection = skills
+			case []interface{}:
+				skills := make([]constants.Skill, 0, len(v))
+				for _, item := range v {
+					if s, ok := item.(string); ok {
+						skills = append(skills, constants.Skill(s))
+					}
+				}
+				choiceData.SkillSelection = skills
+			}
+		case shared.ChoiceLanguages:
+			// Could be []string or []interface{} from JSON
+			switch v := selection.(type) {
+			case []string:
+				langs := make([]constants.Language, len(v))
+				for i, l := range v {
+					langs[i] = constants.Language(l)
+				}
+				choiceData.LanguageSelection = langs
+			case []interface{}:
+				langs := make([]constants.Language, 0, len(v))
+				for _, item := range v {
+					if l, ok := item.(string); ok {
+						langs = append(langs, constants.Language(l))
+					}
+				}
+				choiceData.LanguageSelection = langs
+			}
+		case shared.ChoiceEquipment:
+			// Could be []string or []interface{} from JSON
+			switch v := selection.(type) {
+			case []string:
+				choiceData.EquipmentSelection = v
+			case []interface{}:
+				equipment := make([]string, 0, len(v))
+				for _, item := range v {
+					if e, ok := item.(string); ok {
+						equipment = append(equipment, e)
+					}
+				}
+				choiceData.EquipmentSelection = equipment
+			}
+		case shared.ChoiceFightingStyle:
+			if style, ok := selection.(string); ok {
+				choiceData.FightingStyleSelection = &style
+			}
+		case shared.ChoiceSpells:
+			// Could be []string or []interface{} from JSON
+			switch v := selection.(type) {
+			case []string:
+				choiceData.SpellSelection = v
+			case []interface{}:
+				spells := make([]string, 0, len(v))
+				for _, item := range v {
+					if s, ok := item.(string); ok {
+						spells = append(spells, s)
+					}
+				}
+				choiceData.SpellSelection = spells
+			}
+		case shared.ChoiceCantrips:
+			// Could be []string or []interface{} from JSON
+			switch v := selection.(type) {
+			case []string:
+				choiceData.CantripSelection = v
+			case []interface{}:
+				cantrips := make([]string, 0, len(v))
+				for _, item := range v {
+					if c, ok := item.(string); ok {
+						cantrips = append(cantrips, c)
+					}
+				}
+				choiceData.CantripSelection = cantrips
+			}
+			// For now, skip complex types that don't have a direct mapping
+			// (AbilityScores, Race, Class, Background would need special handling)
+		}
+
 		choices = append(choices, choiceData)
 	}
 

@@ -258,12 +258,25 @@ type ResourceData struct {
 	Resets  string `json:"resets"`
 }
 
-// ChoiceData represents a choice made during character creation
+// ChoiceData represents a choice made during character creation using a sum type pattern
+// Only one of the selection fields should be populated based on the Category
 type ChoiceData struct {
-	Category  shared.ChoiceCategory `json:"category"`  // Type-safe category
-	Source    shared.ChoiceSource   `json:"source"`    // Type-safe source
-	ChoiceID  string                `json:"choice_id"` // Specific choice identifier like "fighter_proficiencies_1"
-	Selection any                   `json:"selection"` // The actual choice made
+	Category shared.ChoiceCategory `json:"category"`  // Type-safe category
+	Source   shared.ChoiceSource   `json:"source"`    // Type-safe source
+	ChoiceID string                `json:"choice_id"` // Specific choice identifier like "fighter_proficiencies_1"
+
+	// Selection fields - only one should be populated based on Category
+	NameSelection          *string               `json:"name,omitempty"`           // For ChoiceName
+	SkillSelection         []constants.Skill     `json:"skills,omitempty"`         // For ChoiceSkills
+	LanguageSelection      []constants.Language  `json:"languages,omitempty"`      // For ChoiceLanguages
+	AbilityScoreSelection  *shared.AbilityScores `json:"ability_scores,omitempty"` // For ChoiceAbilityScores
+	FightingStyleSelection *string               `json:"fighting_style,omitempty"` // For ChoiceFightingStyle
+	EquipmentSelection     []string              `json:"equipment,omitempty"`      // For ChoiceEquipment
+	RaceSelection          *RaceChoice           `json:"race,omitempty"`           // For ChoiceRace
+	ClassSelection         *ClassChoice          `json:"class,omitempty"`          // For ChoiceClass
+	BackgroundSelection    *constants.Background `json:"background,omitempty"`     // For ChoiceBackground
+	SpellSelection         []string              `json:"spells,omitempty"`         // For ChoiceSpells
+	CantripSelection       []string              `json:"cantrips,omitempty"`       // For ChoiceCantrips
 }
 
 // ToData converts the character to its persistent representation

@@ -257,11 +257,9 @@ func (d *Draft) compileSkills(
 
 	// Extract chosen skills from Choices
 	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceSkills {
-			if chosenSkills, ok := choice.Selection.([]constants.Skill); ok {
-				for _, skill := range chosenSkills {
-					skills[skill] = shared.Proficient
-				}
+		if choice.Category == shared.ChoiceSkills && choice.SkillSelection != nil {
+			for _, skill := range choice.SkillSelection {
+				skills[skill] = shared.Proficient
 			}
 		}
 	}
@@ -302,11 +300,9 @@ func (d *Draft) compileLanguages(raceData *race.Data, backgroundData *shared.Bac
 
 	// Extract chosen languages from Choices
 	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceLanguages {
-			if languages, ok := choice.Selection.([]constants.Language); ok {
-				for _, lang := range languages {
-					languageSet[string(lang)] = true
-				}
+		if choice.Category == shared.ChoiceLanguages && choice.LanguageSelection != nil {
+			for _, lang := range choice.LanguageSelection {
+				languageSet[string(lang)] = true
 			}
 		}
 	}
@@ -329,46 +325,46 @@ func (d *Draft) compileChoices() []ChoiceData {
 	// Add fundamental choices that should always be tracked
 	if d.Name != "" {
 		choices = append(choices, ChoiceData{
-			Category:  shared.ChoiceName,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "character_name",
-			Selection: d.Name,
+			Category:      shared.ChoiceName,
+			Source:        shared.SourcePlayer,
+			ChoiceID:      "character_name",
+			NameSelection: &d.Name,
 		})
 	}
 
 	if d.RaceChoice.RaceID != "" {
 		choices = append(choices, ChoiceData{
-			Category:  shared.ChoiceRace,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "race_selection",
-			Selection: d.RaceChoice,
+			Category:      shared.ChoiceRace,
+			Source:        shared.SourcePlayer,
+			ChoiceID:      "race_selection",
+			RaceSelection: &d.RaceChoice,
 		})
 	}
 
 	if d.ClassChoice.ClassID != "" {
 		choices = append(choices, ChoiceData{
-			Category:  shared.ChoiceClass,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "class_selection",
-			Selection: d.ClassChoice,
+			Category:       shared.ChoiceClass,
+			Source:         shared.SourcePlayer,
+			ChoiceID:       "class_selection",
+			ClassSelection: &d.ClassChoice,
 		})
 	}
 
 	if d.BackgroundChoice != "" {
 		choices = append(choices, ChoiceData{
-			Category:  shared.ChoiceBackground,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "background_selection",
-			Selection: d.BackgroundChoice,
+			Category:            shared.ChoiceBackground,
+			Source:              shared.SourcePlayer,
+			ChoiceID:            "background_selection",
+			BackgroundSelection: &d.BackgroundChoice,
 		})
 	}
 
-	if len(d.AbilityScoreChoice) > 0 {
+	if len(d.AbilityScoreChoice) > 0 { // Check if ability scores are set
 		choices = append(choices, ChoiceData{
-			Category:  shared.ChoiceAbilityScores,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "ability_scores",
-			Selection: d.AbilityScoreChoice,
+			Category:              shared.ChoiceAbilityScores,
+			Source:                shared.SourcePlayer,
+			ChoiceID:              "ability_scores",
+			AbilityScoreSelection: &d.AbilityScoreChoice,
 		})
 	}
 
@@ -392,11 +388,9 @@ func (d *Draft) compileEquipment(classData *class.Data, backgroundData *shared.B
 
 	// Extract equipment choices from Choices
 	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceEquipment {
-			if equipmentChoices, ok := choice.Selection.([]string); ok {
-				chosenEquipment := processEquipmentChoices(equipmentChoices)
-				equipment = append(equipment, chosenEquipment...)
-			}
+		if choice.Category == shared.ChoiceEquipment && choice.EquipmentSelection != nil {
+			chosenEquipment := processEquipmentChoices(choice.EquipmentSelection)
+			equipment = append(equipment, chosenEquipment...)
 		}
 	}
 
