@@ -267,7 +267,7 @@ func (b *Builder) SelectLanguages(languages []string) error {
 	}
 
 	// Language choices could come from race or background
-	// TODO: Builder should track which source is requesting the choice
+	// TODO(#159): Builder should track which source is requesting the choice
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
 		Category:  shared.ChoiceLanguages,
 		Source:    shared.SourceRace, // Default to race, but this should be contextual

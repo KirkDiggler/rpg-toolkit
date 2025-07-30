@@ -72,111 +72,22 @@ func (d *Draft) isComplete() bool {
 func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	backgroundData *shared.Background) (*Character, error) {
 	// Start with base character data
-	charData := Data{
-		ID:           d.ID,
-		PlayerID:     d.PlayerID,
-		Name:         d.Name,
-		Level:        1, // Starting level
-		RaceID:       d.RaceChoice.RaceID,
-		ClassID:      d.ClassChoice.ClassID,
-		BackgroundID: d.BackgroundChoice,
-	}
+	charData := d.buildBaseCharacterData()
 
-	// Set subrace ID if present
-	if d.RaceChoice.SubraceID != "" {
-		charData.SubraceID = d.RaceChoice.SubraceID
-	}
+	// Apply ability score improvements
+	d.applyAbilityScoreImprovements(&charData, raceData)
 
-	// Set subclass ID if present
-	if d.ClassChoice.SubclassID != "" {
-		charData.SubclassID = d.ClassChoice.SubclassID
-	}
-
-	// Set ability scores from explicit field
-	charData.AbilityScores = d.AbilityScoreChoice
-
-	// Apply racial ability score improvements
-	applyAbilityScoreIncreases(charData.AbilityScores, raceData.AbilityScoreIncreases)
-
-	// Apply subrace ability score improvements if applicable
-	if d.RaceChoice.SubraceID != "" {
-		// Find the subrace data
-		for _, subrace := range raceData.Subraces {
-			if subrace.ID == d.RaceChoice.SubraceID {
-				applyAbilityScoreIncreases(charData.AbilityScores, subrace.AbilityScoreIncreases)
-				break
-			}
-		}
-	}
-
-	// Calculate HP
+	// Calculate derived stats
 	charData.MaxHitPoints = classData.HitDice + charData.AbilityScores.Modifier(constants.CON)
 	charData.HitPoints = charData.MaxHitPoints
-
-	// Physical characteristics from race
 	charData.Speed = raceData.Speed
 	charData.Size = raceData.Size
 
-	// Skills
-	charData.Skills = make(map[constants.Skill]shared.ProficiencyLevel)
+	// Compile skills
+	charData.Skills = d.compileSkills(raceData, backgroundData)
 
-	// Extract chosen skills from Choices
-	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceSkills {
-			if skills, ok := choice.Selection.([]constants.Skill); ok {
-				for _, skill := range skills {
-					charData.Skills[skill] = shared.Proficient
-				}
-			}
-		}
-	}
-
-	// Add background skills (automatic grants)
-	// Note: If a skill is already proficient (e.g., Half-Orc gets Intimidation,
-	// player chooses Intimidation from Fighter), this is fine - you just don't
-	// get double proficiency. The map structure naturally handles this.
-	for _, skill := range backgroundData.SkillProficiencies {
-		charData.Skills[skill] = shared.Proficient
-	}
-
-	// Add any racial skill proficiencies
-	if raceData.SkillProficiencies != nil {
-		for _, skill := range raceData.SkillProficiencies {
-			charData.Skills[skill] = shared.Proficient
-		}
-	}
-
-	// Languages
-	// Start with ensuring Common is always included
-	languageSet := make(map[string]bool)
-	languageSet[string(constants.LanguageCommon)] = true
-
-	// Add race languages (automatic grants)
-	for _, lang := range raceData.Languages {
-		languageSet[string(lang)] = true
-	}
-
-	// Add background languages (automatic grants)
-	for _, lang := range backgroundData.Languages {
-		languageSet[string(lang)] = true
-	}
-
-	// Extract chosen languages from Choices
-	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceLanguages {
-			if languages, ok := choice.Selection.([]constants.Language); ok {
-				for _, lang := range languages {
-					languageSet[string(lang)] = true
-				}
-			}
-		}
-	}
-
-	// Convert set to slice
-	charData.Languages = make([]string, 0, len(languageSet))
-	for lang := range languageSet {
-		charData.Languages = append(charData.Languages, lang)
-	}
+	// Compile languages
+	charData.Languages = d.compileLanguages(raceData, backgroundData)
 
 	// Proficiencies
 	charData.Proficiencies = shared.Proficiencies{
@@ -191,80 +102,11 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 		charData.SavingThrows[save] = shared.Proficient
 	}
 
-	// Start with draft choices
-	charData.Choices = make([]ChoiceData, 0, len(d.Choices)+5)
+	// Compile all choices (fundamental and player-made)
+	charData.Choices = d.compileChoices()
 
-	// Add fundamental choices that should always be tracked
-	if d.Name != "" {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  shared.ChoiceName,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "character_name",
-			Selection: d.Name,
-		})
-	}
-
-	if d.RaceChoice.RaceID != "" {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  shared.ChoiceRace,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "race_selection",
-			Selection: d.RaceChoice,
-		})
-	}
-
-	if d.ClassChoice.ClassID != "" {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  shared.ChoiceClass,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "class_selection",
-			Selection: d.ClassChoice,
-		})
-	}
-
-	if d.BackgroundChoice != "" {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  shared.ChoiceBackground,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "background_selection",
-			Selection: d.BackgroundChoice,
-		})
-	}
-
-	if len(d.AbilityScoreChoice) > 0 {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  shared.ChoiceAbilityScores,
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "ability_scores",
-			Selection: d.AbilityScoreChoice,
-		})
-	}
-
-	// Add remaining choices from draft
-	charData.Choices = append(charData.Choices, d.Choices...)
-
-	// Process equipment choices
-	equipment := make([]string, 0)
-
-	// Add starting equipment from class
-	for _, eq := range classData.StartingEquipment {
-		equipment = append(equipment, formatEquipmentWithQuantity(eq.ItemID, eq.Quantity))
-	}
-
-	// Add equipment from background
-	equipment = append(equipment, backgroundData.Equipment...)
-
-	// Extract equipment choices from Choices
-	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceEquipment {
-			if equipmentChoices, ok := choice.Selection.([]string); ok {
-				chosenEquipment := processEquipmentChoices(equipmentChoices)
-				equipment = append(equipment, chosenEquipment...)
-			}
-		}
-	}
-
-	charData.Equipment = equipment
+	// Compile equipment
+	charData.Equipment = d.compileEquipment(classData, backgroundData)
 
 	// Initialize class resources
 	classResources := initializeClassResources(classData, 1, charData.AbilityScores)
@@ -362,4 +204,199 @@ func (p *DraftProgress) hasFlag(flag uint32) bool {
 func applyAbilityScoreIncreases(scores shared.AbilityScores, increases map[constants.Ability]int) {
 	// Apply the increases directly - no conversion needed!
 	_ = scores.ApplyIncreases(increases) // Ignore errors about exceeding 20 during creation
+}
+
+// buildBaseCharacterData creates the base character data structure from draft
+func (d *Draft) buildBaseCharacterData() Data {
+	data := Data{
+		ID:            d.ID,
+		PlayerID:      d.PlayerID,
+		Name:          d.Name,
+		Level:         1, // Starting level
+		RaceID:        d.RaceChoice.RaceID,
+		ClassID:       d.ClassChoice.ClassID,
+		BackgroundID:  d.BackgroundChoice,
+		AbilityScores: d.AbilityScoreChoice,
+	}
+
+	// Set subrace ID if present
+	if d.RaceChoice.SubraceID != "" {
+		data.SubraceID = d.RaceChoice.SubraceID
+	}
+
+	// Set subclass ID if present
+	if d.ClassChoice.SubclassID != "" {
+		data.SubclassID = d.ClassChoice.SubclassID
+	}
+
+	return data
+}
+
+// applyAbilityScoreImprovements applies racial and subracial ability score improvements
+func (d *Draft) applyAbilityScoreImprovements(charData *Data, raceData *race.Data) {
+	// Apply racial ability score improvements
+	applyAbilityScoreIncreases(charData.AbilityScores, raceData.AbilityScoreIncreases)
+
+	// Apply subrace ability score improvements if applicable
+	if d.RaceChoice.SubraceID != "" {
+		// Find the subrace data
+		for _, subrace := range raceData.Subraces {
+			if subrace.ID == d.RaceChoice.SubraceID {
+				applyAbilityScoreIncreases(charData.AbilityScores, subrace.AbilityScoreIncreases)
+				break
+			}
+		}
+	}
+}
+
+// compileSkills combines chosen skills with automatic grants from race and background
+func (d *Draft) compileSkills(raceData *race.Data, backgroundData *shared.Background) map[constants.Skill]shared.ProficiencyLevel {
+	skills := make(map[constants.Skill]shared.ProficiencyLevel)
+
+	// Extract chosen skills from Choices
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceSkills {
+			if chosenSkills, ok := choice.Selection.([]constants.Skill); ok {
+				for _, skill := range chosenSkills {
+					skills[skill] = shared.Proficient
+				}
+			}
+		}
+	}
+
+	// Add background skills (automatic grants)
+	// Note: If a skill is already proficient (e.g., Half-Orc gets Intimidation,
+	// player chooses Intimidation from Fighter), this is fine - you just don't
+	// get double proficiency. The map structure naturally handles this.
+	for _, skill := range backgroundData.SkillProficiencies {
+		skills[skill] = shared.Proficient
+	}
+
+	// Add any racial skill proficiencies
+	if raceData.SkillProficiencies != nil {
+		for _, skill := range raceData.SkillProficiencies {
+			skills[skill] = shared.Proficient
+		}
+	}
+
+	return skills
+}
+
+// compileLanguages combines chosen languages with automatic grants from race and background
+func (d *Draft) compileLanguages(raceData *race.Data, backgroundData *shared.Background) []string {
+	// Start with ensuring Common is always included
+	languageSet := make(map[string]bool)
+	languageSet[string(constants.LanguageCommon)] = true
+
+	// Add race languages (automatic grants)
+	for _, lang := range raceData.Languages {
+		languageSet[string(lang)] = true
+	}
+
+	// Add background languages (automatic grants)
+	for _, lang := range backgroundData.Languages {
+		languageSet[string(lang)] = true
+	}
+
+	// Extract chosen languages from Choices
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceLanguages {
+			if languages, ok := choice.Selection.([]constants.Language); ok {
+				for _, lang := range languages {
+					languageSet[string(lang)] = true
+				}
+			}
+		}
+	}
+
+	// Convert set to slice
+	languages := make([]string, 0, len(languageSet))
+	for lang := range languageSet {
+		languages = append(languages, lang)
+	}
+
+	return languages
+}
+
+// compileChoices creates the complete list of choices including fundamental choices
+func (d *Draft) compileChoices() []ChoiceData {
+	// Reserve capacity for fundamental choices (name, race, class, background, ability scores)
+	const fundamentalChoiceCount = 5
+	choices := make([]ChoiceData, 0, len(d.Choices)+fundamentalChoiceCount)
+
+	// Add fundamental choices that should always be tracked
+	if d.Name != "" {
+		choices = append(choices, ChoiceData{
+			Category:  shared.ChoiceName,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "character_name",
+			Selection: d.Name,
+		})
+	}
+
+	if d.RaceChoice.RaceID != "" {
+		choices = append(choices, ChoiceData{
+			Category:  shared.ChoiceRace,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "race_selection",
+			Selection: d.RaceChoice,
+		})
+	}
+
+	if d.ClassChoice.ClassID != "" {
+		choices = append(choices, ChoiceData{
+			Category:  shared.ChoiceClass,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "class_selection",
+			Selection: d.ClassChoice,
+		})
+	}
+
+	if d.BackgroundChoice != "" {
+		choices = append(choices, ChoiceData{
+			Category:  shared.ChoiceBackground,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "background_selection",
+			Selection: d.BackgroundChoice,
+		})
+	}
+
+	if len(d.AbilityScoreChoice) > 0 {
+		choices = append(choices, ChoiceData{
+			Category:  shared.ChoiceAbilityScores,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "ability_scores",
+			Selection: d.AbilityScoreChoice,
+		})
+	}
+
+	// Add remaining choices from draft
+	choices = append(choices, d.Choices...)
+
+	return choices
+}
+
+// compileEquipment combines starting equipment with player choices
+func (d *Draft) compileEquipment(classData *class.Data, backgroundData *shared.Background) []string {
+	equipment := make([]string, 0)
+
+	// Add starting equipment from class
+	for _, eq := range classData.StartingEquipment {
+		equipment = append(equipment, formatEquipmentWithQuantity(eq.ItemID, eq.Quantity))
+	}
+
+	// Add equipment from background
+	equipment = append(equipment, backgroundData.Equipment...)
+
+	// Extract equipment choices from Choices
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceEquipment {
+			if equipmentChoices, ok := choice.Selection.([]string); ok {
+				chosenEquipment := processEquipmentChoices(equipmentChoices)
+				equipment = append(equipment, chosenEquipment...)
+			}
+		}
+	}
+
+	return equipment
 }
