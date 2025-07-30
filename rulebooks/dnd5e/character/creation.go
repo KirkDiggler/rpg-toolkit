@@ -154,8 +154,8 @@ func buildChoiceData(data CreationData) []ChoiceData {
 	// Record all choices made
 	for category, selection := range data.Choices {
 		choiceData := ChoiceData{
-			Category:  category,
-			Source:    "creation",
+			Category:  shared.ChoiceCategory(category),
+			Source:    shared.SourcePlayer,
 			ChoiceID:  "", // No specific choice ID for legacy creation data
 			Selection: selection,
 		}

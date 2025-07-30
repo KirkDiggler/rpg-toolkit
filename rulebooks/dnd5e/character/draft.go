@@ -19,18 +19,14 @@ type Draft struct {
 	Name     string
 	Progress DraftProgress
 
-	// Explicit typed choices - compile-time safe!
-	RaceChoice          RaceChoice           `json:"race_choice"`
-	ClassChoice         ClassChoice          `json:"class_choice"`
-	BackgroundChoice    constants.Background `json:"background_choice"`
-	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
-	SkillChoices        []constants.Skill    `json:"skill_choices"`
-	LanguageChoices     []constants.Language `json:"language_choices"`
-	FightingStyleChoice string               `json:"fighting_style_choice,omitempty"`
-	SpellChoices        []string             `json:"spell_choices,omitempty"`
-	CantripChoices      []string             `json:"cantrip_choices,omitempty"`
-	EquipmentChoices    []string             `json:"equipment_choices,omitempty"`
-	FeatChoices         []string             `json:"feat_choices,omitempty"` // For future feat system
+	// Core identity choices that need special handling
+	RaceChoice         RaceChoice           `json:"race_choice"`
+	ClassChoice        ClassChoice          `json:"class_choice"`
+	BackgroundChoice   constants.Background `json:"background_choice"`
+	AbilityScoreChoice shared.AbilityScores `json:"ability_score_choice"`
+
+	// All choices with source tracking
+	Choices []ChoiceData `json:"choices"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -122,17 +118,32 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	charData.Size = raceData.Size
 
 	// Skills
-	charData.Skills = make(map[string]shared.ProficiencyLevel)
-	// Add chosen skills
-	for _, skill := range d.SkillChoices {
-		charData.Skills[string(skill)] = shared.Proficient
+	charData.Skills = make(map[constants.Skill]shared.ProficiencyLevel)
+
+	// Extract chosen skills from Choices
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceSkills {
+			if skills, ok := choice.Selection.([]constants.Skill); ok {
+				for _, skill := range skills {
+					charData.Skills[skill] = shared.Proficient
+				}
+			}
+		}
 	}
-	// Add background skills
+
+	// Add background skills (automatic grants)
 	// Note: If a skill is already proficient (e.g., Half-Orc gets Intimidation,
 	// player chooses Intimidation from Fighter), this is fine - you just don't
 	// get double proficiency. The map structure naturally handles this.
 	for _, skill := range backgroundData.SkillProficiencies {
-		charData.Skills[string(skill)] = shared.Proficient
+		charData.Skills[skill] = shared.Proficient
+	}
+
+	// Add any racial skill proficiencies
+	if raceData.SkillProficiencies != nil {
+		for _, skill := range raceData.SkillProficiencies {
+			charData.Skills[skill] = shared.Proficient
+		}
 	}
 
 	// Languages
@@ -140,19 +151,25 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	languageSet := make(map[string]bool)
 	languageSet[string(constants.LanguageCommon)] = true
 
-	// Add race languages
+	// Add race languages (automatic grants)
 	for _, lang := range raceData.Languages {
 		languageSet[string(lang)] = true
 	}
 
-	// Add background languages
+	// Add background languages (automatic grants)
 	for _, lang := range backgroundData.Languages {
 		languageSet[string(lang)] = true
 	}
 
-	// Add language choices
-	for _, lang := range d.LanguageChoices {
-		languageSet[string(lang)] = true
+	// Extract chosen languages from Choices
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceLanguages {
+			if languages, ok := choice.Selection.([]constants.Language); ok {
+				for _, lang := range languages {
+					languageSet[string(lang)] = true
+				}
+			}
+		}
 	}
 
 	// Convert set to slice
@@ -169,111 +186,62 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Saving throws
-	charData.SavingThrows = make(map[string]shared.ProficiencyLevel)
+	charData.SavingThrows = make(map[constants.Ability]shared.ProficiencyLevel)
 	for _, save := range classData.SavingThrows {
-		charData.SavingThrows[string(save)] = shared.Proficient
+		charData.SavingThrows[save] = shared.Proficient
 	}
 
-	// Store choices made - now using explicit typed fields!
-	charData.Choices = []ChoiceData{}
+	// Start with draft choices
+	charData.Choices = make([]ChoiceData, 0, len(d.Choices)+5)
 
-	// Store name choice
-	charData.Choices = append(charData.Choices, ChoiceData{
-		Category:  string(shared.ChoiceName),
-		Source:    "player",
-		Selection: d.Name,
-	})
-
-	// Store race choice
-	charData.Choices = append(charData.Choices, ChoiceData{
-		Category:  string(shared.ChoiceRace),
-		Source:    "race",
-		Selection: d.RaceChoice,
-	})
-
-	// Store class choice
-	charData.Choices = append(charData.Choices, ChoiceData{
-		Category:  string(shared.ChoiceClass),
-		Source:    "class",
-		Selection: d.ClassChoice,
-	})
-
-	// Store background choice
-	charData.Choices = append(charData.Choices, ChoiceData{
-		Category:  string(shared.ChoiceBackground),
-		Source:    "background",
-		Selection: d.BackgroundChoice,
-	})
-
-	// Store ability scores
-	charData.Choices = append(charData.Choices, ChoiceData{
-		Category:  string(shared.ChoiceAbilityScores),
-		Source:    "player",
-		Selection: d.AbilityScoreChoice,
-	})
-
-	// Store skill choices (if any)
-	if len(d.SkillChoices) > 0 {
+	// Add fundamental choices that should always be tracked
+	if d.Name != "" {
 		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  string(shared.ChoiceSkills),
-			Source:    "class",
-			Selection: d.SkillChoices,
+			Category:  shared.ChoiceName,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "character_name",
+			Selection: d.Name,
 		})
 	}
 
-	// Store language choices (if any)
-	if len(d.LanguageChoices) > 0 {
+	if d.RaceChoice.RaceID != "" {
 		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  string(shared.ChoiceLanguages),
-			Source:    "race",
-			Selection: d.LanguageChoices,
+			Category:  shared.ChoiceRace,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "race_selection",
+			Selection: d.RaceChoice,
 		})
 	}
 
-	// Store fighting style choice (if any)
-	if d.FightingStyleChoice != "" {
+	if d.ClassChoice.ClassID != "" {
 		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  string(shared.ChoiceFightingStyle),
-			Source:    "class",
-			Selection: d.FightingStyleChoice,
+			Category:  shared.ChoiceClass,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "class_selection",
+			Selection: d.ClassChoice,
 		})
 	}
 
-	// Store spell choices (if any)
-	if len(d.SpellChoices) > 0 {
+	if d.BackgroundChoice != "" {
 		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  string(shared.ChoiceSpells),
-			Source:    "class",
-			Selection: d.SpellChoices,
+			Category:  shared.ChoiceBackground,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "background_selection",
+			Selection: d.BackgroundChoice,
 		})
 	}
 
-	// Store cantrip choices (if any)
-	if len(d.CantripChoices) > 0 {
+	if len(d.AbilityScoreChoice) > 0 {
 		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  string(shared.ChoiceCantrips),
-			Source:    "class",
-			Selection: d.CantripChoices,
+			Category:  shared.ChoiceAbilityScores,
+			Source:    shared.SourcePlayer,
+			ChoiceID:  "ability_scores",
+			Selection: d.AbilityScoreChoice,
 		})
 	}
 
-	// Store equipment choices (if any)
-	if len(d.EquipmentChoices) > 0 {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  string(shared.ChoiceEquipment),
-			Source:    "class",
-			Selection: d.EquipmentChoices,
-		})
-	}
-
-	// Store feat choices (if any) - for future use
-	if len(d.FeatChoices) > 0 {
-		charData.Choices = append(charData.Choices, ChoiceData{
-			Category:  "feats", // New category for feats
-			Source:    "player",
-			Selection: d.FeatChoices,
-		})
-	}
+	// Add remaining choices from draft
+	charData.Choices = append(charData.Choices, d.Choices...)
 
 	// Process equipment choices
 	equipment := make([]string, 0)
@@ -286,10 +254,14 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	// Add equipment from background
 	equipment = append(equipment, backgroundData.Equipment...)
 
-	// Process equipment choices (expanding bundles)
-	if len(d.EquipmentChoices) > 0 {
-		chosenEquipment := processEquipmentChoices(d.EquipmentChoices)
-		equipment = append(equipment, chosenEquipment...)
+	// Extract equipment choices from Choices
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceEquipment {
+			if equipmentChoices, ok := choice.Selection.([]string); ok {
+				chosenEquipment := processEquipmentChoices(equipmentChoices)
+				equipment = append(equipment, chosenEquipment...)
+			}
+		}
 	}
 
 	charData.Equipment = equipment
@@ -330,18 +302,14 @@ func LoadDraftFromData(data DraftData) (*Draft, error) {
 		Name:     data.Name,
 		Progress: DraftProgress{flags: data.ProgressFlags},
 
-		// Load explicit choice fields
-		RaceChoice:          data.RaceChoice,
-		ClassChoice:         data.ClassChoice,
-		BackgroundChoice:    data.BackgroundChoice,
-		AbilityScoreChoice:  data.AbilityScoreChoice,
-		SkillChoices:        data.SkillChoices,
-		LanguageChoices:     data.LanguageChoices,
-		FightingStyleChoice: data.FightingStyleChoice,
-		SpellChoices:        data.SpellChoices,
-		CantripChoices:      data.CantripChoices,
-		EquipmentChoices:    data.EquipmentChoices,
-		FeatChoices:         data.FeatChoices,
+		// Load core identity choices
+		RaceChoice:         data.RaceChoice,
+		ClassChoice:        data.ClassChoice,
+		BackgroundChoice:   data.BackgroundChoice,
+		AbilityScoreChoice: data.AbilityScoreChoice,
+
+		// Load choices with source tracking
+		Choices: data.Choices,
 
 		CreatedAt: data.CreatedAt,
 		UpdatedAt: data.UpdatedAt,
@@ -356,18 +324,14 @@ func (d *Draft) ToData() DraftData {
 		Name:          d.Name,
 		ProgressFlags: d.Progress.flags,
 
-		// Save explicit choice fields
-		RaceChoice:          d.RaceChoice,
-		ClassChoice:         d.ClassChoice,
-		BackgroundChoice:    d.BackgroundChoice,
-		AbilityScoreChoice:  d.AbilityScoreChoice,
-		SkillChoices:        d.SkillChoices,
-		LanguageChoices:     d.LanguageChoices,
-		FightingStyleChoice: d.FightingStyleChoice,
-		SpellChoices:        d.SpellChoices,
-		CantripChoices:      d.CantripChoices,
-		EquipmentChoices:    d.EquipmentChoices,
-		FeatChoices:         d.FeatChoices,
+		// Save core identity choices
+		RaceChoice:         d.RaceChoice,
+		ClassChoice:        d.ClassChoice,
+		BackgroundChoice:   d.BackgroundChoice,
+		AbilityScoreChoice: d.AbilityScoreChoice,
+
+		// Save choices with source tracking
+		Choices: d.Choices,
 
 		CreatedAt: d.CreatedAt,
 		UpdatedAt: d.UpdatedAt,

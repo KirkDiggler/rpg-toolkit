@@ -83,7 +83,14 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+		Choices: []ChoiceData{
+			{
+				Category:  shared.ChoiceSkills,
+				Source:    shared.SourceClass,
+				ChoiceID:  "fighter_skill_proficiencies",
+				Selection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+			},
+		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -300,10 +307,17 @@ func (s *DraftTestSuite) TestDraftToData() {
 		ClassChoice: ClassChoice{
 			ClassID: constants.ClassFighter,
 		},
-		SkillChoices: []constants.Skill{constants.SkillAthletics, constants.SkillPerception},
-		Progress:     DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
-		CreatedAt:    time.Now().Add(-1 * time.Hour),
-		UpdatedAt:    time.Now(),
+		Choices: []ChoiceData{
+			{
+				Category:  shared.ChoiceSkills,
+				Source:    shared.SourceClass,
+				ChoiceID:  "fighter_skill_proficiencies",
+				Selection: []constants.Skill{constants.SkillAthletics, constants.SkillPerception},
+			},
+		},
+		Progress:  DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now(),
 	}
 
 	data := draft.ToData()
@@ -313,7 +327,7 @@ func (s *DraftTestSuite) TestDraftToData() {
 	s.Assert().Equal(draft.Name, data.Name)
 	s.Assert().Equal(draft.RaceChoice, data.RaceChoice)
 	s.Assert().Equal(draft.ClassChoice, data.ClassChoice)
-	s.Assert().Equal(draft.SkillChoices, data.SkillChoices)
+	s.Assert().Equal(draft.Choices, data.Choices)
 	s.Assert().Equal(draft.Progress.flags, data.ProgressFlags)
 	s.Assert().Equal(draft.CreatedAt, data.CreatedAt)
 	s.Assert().Equal(draft.UpdatedAt, data.UpdatedAt)
@@ -379,7 +393,14 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		LanguageChoices: []constants.Language{constants.LanguageElvish, constants.LanguageGoblin, constants.LanguageDraconic},
+		Choices: []ChoiceData{
+			{
+				Category:  shared.ChoiceLanguages,
+				Source:    shared.SourceRace,
+				ChoiceID:  "human_languages",
+				Selection: []constants.Language{constants.LanguageElvish, constants.LanguageGoblin, constants.LanguageDraconic},
+			},
+		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},

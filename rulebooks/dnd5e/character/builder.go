@@ -71,6 +71,19 @@ func (b *Builder) SetName(name string) error {
 	}
 
 	b.draft.Name = name
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceName,
+		Source:    shared.SourcePlayer,
+		ChoiceID:  "character_name",
+		Selection: name,
+	})
+
 	b.draft.Progress.setFlag(ProgressName)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -95,6 +108,19 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 	}
 
 	b.draft.RaceChoice = choice
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceRace,
+		Source:    shared.SourcePlayer,
+		ChoiceID:  "race_selection",
+		Selection: choice,
+	})
+
 	b.draft.Progress.setFlag(ProgressRace)
 	b.draft.UpdatedAt = time.Now()
 
@@ -117,6 +143,19 @@ func (b *Builder) SetClassData(classData class.Data, subclassID constants.Subcla
 		ClassID:    classData.ID,
 		SubclassID: subclassID,
 	}
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceClass,
+		Source:    shared.SourcePlayer,
+		ChoiceID:  "class_selection",
+		Selection: b.draft.ClassChoice,
+	})
+
 	b.draft.Progress.setFlag(ProgressClass)
 	b.draft.UpdatedAt = time.Now()
 
@@ -136,6 +175,19 @@ func (b *Builder) SetBackgroundData(backgroundData shared.Background) error {
 	b.backgroundData = &backgroundData
 
 	b.draft.BackgroundChoice = backgroundData.ID
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceBackground,
+		Source:    shared.SourcePlayer,
+		ChoiceID:  "background_selection",
+		Selection: backgroundData.ID,
+	})
+
 	b.draft.Progress.setFlag(ProgressBackground)
 	b.draft.UpdatedAt = time.Now()
 
@@ -152,6 +204,19 @@ func (b *Builder) SetAbilityScores(scores shared.AbilityScores) error {
 	}
 
 	b.draft.AbilityScoreChoice = scores
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceAbilityScores,
+		Source:    shared.SourcePlayer,
+		ChoiceID:  "ability_scores",
+		Selection: scores,
+	})
+
 	b.draft.Progress.setFlag(ProgressAbilityScores)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -169,7 +234,20 @@ func (b *Builder) SelectSkills(skills []string) error {
 	if err := b.validator.ValidateSkillSelection(b.draft, typedSkills, b.classData, b.backgroundData); err != nil {
 		return err
 	}
-	b.draft.SkillChoices = typedSkills
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	// Add skill choice
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceSkills,
+		Source:    shared.SourceClass, // Skills chosen from class options
+		ChoiceID:  fmt.Sprintf("%s_skill_proficiencies", b.classData.ID),
+		Selection: typedSkills,
+	})
+
 	b.draft.Progress.setFlag(ProgressSkills)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -182,7 +260,21 @@ func (b *Builder) SelectLanguages(languages []string) error {
 	for i, lang := range languages {
 		typedLanguages[i] = constants.Language(lang)
 	}
-	b.draft.LanguageChoices = typedLanguages
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	// Language choices could come from race or background
+	// TODO: Builder should track which source is requesting the choice
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceLanguages,
+		Source:    shared.SourceRace, // Default to race, but this should be contextual
+		ChoiceID:  "additional_languages",
+		Selection: typedLanguages,
+	})
+
 	b.draft.Progress.setFlag(ProgressLanguages)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -191,7 +283,19 @@ func (b *Builder) SelectLanguages(languages []string) error {
 // SelectFightingStyle records fighting style selection (for appropriate classes)
 func (b *Builder) SelectFightingStyle(style string) error {
 	// TODO: Validate fighting style is available to this class
-	b.draft.FightingStyleChoice = style
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceFightingStyle,
+		Source:    shared.SourceClass,
+		ChoiceID:  fmt.Sprintf("%s_fighting_style", b.classData.ID),
+		Selection: style,
+	})
+
 	b.draft.UpdatedAt = time.Now()
 	return nil
 }
@@ -199,7 +303,19 @@ func (b *Builder) SelectFightingStyle(style string) error {
 // SelectSpells records spell selections (for spellcasting classes)
 func (b *Builder) SelectSpells(spells []string) error {
 	// TODO: Validate spells against class spell list
-	b.draft.SpellChoices = spells
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceSpells,
+		Source:    shared.SourceClass,
+		ChoiceID:  fmt.Sprintf("%s_spells_known", b.classData.ID),
+		Selection: spells,
+	})
+
 	b.draft.UpdatedAt = time.Now()
 	return nil
 }
@@ -207,7 +323,19 @@ func (b *Builder) SelectSpells(spells []string) error {
 // SelectCantrips records cantrip selections (for spellcasting classes)
 func (b *Builder) SelectCantrips(cantrips []string) error {
 	// TODO: Validate cantrips against class cantrip list
-	b.draft.CantripChoices = cantrips
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceCantrips,
+		Source:    shared.SourceClass,
+		ChoiceID:  fmt.Sprintf("%s_cantrips", b.classData.ID),
+		Selection: cantrips,
+	})
+
 	b.draft.UpdatedAt = time.Now()
 	return nil
 }
@@ -215,7 +343,19 @@ func (b *Builder) SelectCantrips(cantrips []string) error {
 // SelectEquipment records equipment selections
 func (b *Builder) SelectEquipment(equipment []string) error {
 	// TODO: Validate equipment choices against class/background options
-	b.draft.EquipmentChoices = equipment
+
+	// Add to choices with source tracking
+	if b.draft.Choices == nil {
+		b.draft.Choices = []ChoiceData{}
+	}
+
+	b.draft.Choices = append(b.draft.Choices, ChoiceData{
+		Category:  shared.ChoiceEquipment,
+		Source:    shared.SourceClass,
+		ChoiceID:  fmt.Sprintf("%s_starting_equipment", b.classData.ID),
+		Selection: equipment,
+	})
+
 	b.draft.Progress.setFlag(ProgressEquipment)
 	b.draft.UpdatedAt = time.Now()
 	return nil
@@ -272,18 +412,14 @@ type DraftData struct {
 	Name          string `json:"name"`
 	ProgressFlags uint32 `json:"progress_flags"`
 
-	// Explicit typed choices - matches Draft struct
-	RaceChoice          RaceChoice           `json:"race_choice"`
-	ClassChoice         ClassChoice          `json:"class_choice"`
-	BackgroundChoice    constants.Background `json:"background_choice"`
-	AbilityScoreChoice  shared.AbilityScores `json:"ability_score_choice"`
-	SkillChoices        []constants.Skill    `json:"skill_choices"`
-	LanguageChoices     []constants.Language `json:"language_choices"`
-	FightingStyleChoice string               `json:"fighting_style_choice,omitempty"`
-	SpellChoices        []string             `json:"spell_choices,omitempty"`
-	CantripChoices      []string             `json:"cantrip_choices,omitempty"`
-	EquipmentChoices    []string             `json:"equipment_choices,omitempty"`
-	FeatChoices         []string             `json:"feat_choices,omitempty"`
+	// Core identity choices
+	RaceChoice         RaceChoice           `json:"race_choice"`
+	ClassChoice        ClassChoice          `json:"class_choice"`
+	BackgroundChoice   constants.Background `json:"background_choice"`
+	AbilityScoreChoice shared.AbilityScores `json:"ability_score_choice"`
+
+	// All choices with source tracking
+	Choices []ChoiceData `json:"choices"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

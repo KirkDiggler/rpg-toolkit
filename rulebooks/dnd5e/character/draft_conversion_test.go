@@ -11,6 +11,87 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
+// Helper function to create skill choices for tests
+func makeSkillChoices(className string, skills []constants.Skill) []ChoiceData {
+	return []ChoiceData{
+		{
+			Category:  shared.ChoiceSkills,
+			Source:    shared.SourceClass,
+			ChoiceID:  className + "_skill_proficiencies",
+			Selection: skills,
+		},
+	}
+}
+
+// Helper function to create language choices for tests
+func makeLanguageChoices(source shared.ChoiceSource, languages []constants.Language) []ChoiceData {
+	return []ChoiceData{
+		{
+			Category:  shared.ChoiceLanguages,
+			Source:    source,
+			ChoiceID:  "additional_languages",
+			Selection: languages,
+		},
+	}
+}
+
+// Helper function to combine multiple choice sets
+func combineChoices(choiceSets ...[]ChoiceData) []ChoiceData {
+	var result []ChoiceData
+	for _, choices := range choiceSets {
+		result = append(result, choices...)
+	}
+	return result
+}
+
+// Helper function to create fighting style choice
+func makeFightingStyleChoice(style string) []ChoiceData {
+	return []ChoiceData{
+		{
+			Category:  shared.ChoiceFightingStyle,
+			Source:    shared.SourceClass,
+			ChoiceID:  "fighter_fighting_style",
+			Selection: style,
+		},
+	}
+}
+
+// Helper function to create spell choices
+func makeSpellChoices(spells []string) []ChoiceData {
+	return []ChoiceData{
+		{
+			Category:  shared.ChoiceSpells,
+			Source:    shared.SourceClass,
+			ChoiceID:  "wizard_spells_known",
+			Selection: spells,
+		},
+	}
+}
+
+// Helper function to create cantrip choices
+func makeCantripChoices(cantrips []string) []ChoiceData {
+	return []ChoiceData{
+		{
+			Category:  shared.ChoiceCantrips,
+			Source:    shared.SourceClass,
+			ChoiceID:  "wizard_cantrips",
+			Selection: cantrips,
+		},
+	}
+}
+
+// Helper function to create equipment choices
+func makeEquipmentChoices(equipment []string) []ChoiceData {
+	return []ChoiceData{
+		{
+			Category:  shared.ChoiceEquipment,
+			Source:    shared.SourceClass,
+			ChoiceID:  "starting_equipment",
+			Selection: equipment,
+		},
+	}
+}
+
 // DraftConversionTestSuite comprehensively tests the draft-to-character conversion process
 type DraftConversionTestSuite struct {
 	suite.Suite
@@ -147,8 +228,20 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices:    []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
-		LanguageChoices: []constants.Language{constants.LanguageDwarvish, constants.LanguageGiant},
+		Choices: []ChoiceData{
+			{
+				Category:  shared.ChoiceSkills,
+				Source:    shared.SourceClass,
+				ChoiceID:  "ranger_skill_proficiencies",
+				Selection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+			},
+			{
+				Category:  shared.ChoiceLanguages,
+				Source:    shared.SourceRace,
+				ChoiceID:  "additional_languages",
+				Selection: []constants.Language{constants.LanguageDwarvish, constants.LanguageGiant},
+			},
+		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -218,14 +311,14 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	hasSkillChoice := false
 	hasLanguageChoice := false
 	for _, choice := range character.choices {
-		if choice.Category == string(shared.ChoiceSkills) {
+		if choice.Category == shared.ChoiceSkills {
 			hasSkillChoice = true
 			skills, ok := choice.Selection.([]constants.Skill)
 			s.Assert().True(ok)
 			s.Assert().Contains(skills, constants.SkillPerception)
 			s.Assert().Contains(skills, constants.SkillSurvival)
 		}
-		if choice.Category == string(shared.ChoiceLanguages) {
+		if choice.Category == shared.ChoiceLanguages {
 			hasLanguageChoice = true
 			langs, ok := choice.Selection.([]constants.Language)
 			s.Assert().True(ok)
@@ -259,8 +352,20 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 			constants.WIS: 12,
 			constants.CHA: 10,
 		},
-		SkillChoices:    []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
-		LanguageChoices: []constants.Language{constants.LanguageDraconic, constants.LanguageSylvan},
+		Choices: []ChoiceData{
+			{
+				Category:  shared.ChoiceSkills,
+				Source:    shared.SourceClass,
+				ChoiceID:  "wizard_skill_proficiencies",
+				Selection: []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
+			},
+			{
+				Category:  shared.ChoiceLanguages,
+				Source:    shared.SourceRace,
+				ChoiceID:  "additional_languages",
+				Selection: []constants.Language{constants.LanguageDraconic, constants.LanguageSylvan},
+			},
+		},
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -347,7 +452,7 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 			constants.WIS: 13,
 			constants.CHA: 8,
 		},
-		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+		Choices: makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -384,12 +489,13 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 			constants.WIS: 13,
 			constants.CHA: 8,
 		},
-		SkillChoices: []constants.Skill{constants.SkillArcana, constants.SkillHistory},
-		// Choosing languages that overlap with race/background
-		LanguageChoices: []constants.Language{
-			constants.LanguageCommon, constants.LanguageElvish,
-			constants.LanguageCelestial, constants.LanguageDraconic,
-		},
+		Choices: combineChoices(
+			makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillHistory}),
+			makeLanguageChoices(shared.SourceBackground, []constants.Language{
+				constants.LanguageCommon, constants.LanguageElvish,
+				constants.LanguageCelestial, constants.LanguageDraconic,
+			}),
+		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -437,7 +543,7 @@ func (s *DraftConversionTestSuite) TestAllProficienciesApplied() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+		Choices: makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -487,8 +593,10 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 			constants.WIS: 13,
 			constants.CHA: 10,
 		},
-		SkillChoices:    []constants.Skill{constants.SkillArcana, constants.SkillHistory},
-		LanguageChoices: []constants.Language{constants.LanguageDraconic},
+		Choices: combineChoices(
+			makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillHistory}),
+			makeLanguageChoices(shared.SourceRace, []constants.Language{constants.LanguageDraconic}),
+		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -500,19 +608,19 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 	s.Require().NotNil(character)
 
 	// Check that all choice categories are stored
-	choiceCategories := make(map[string]bool)
+	choiceCategories := make(map[shared.ChoiceCategory]bool)
 	for _, choice := range character.choices {
 		choiceCategories[choice.Category] = true
 	}
 
-	expectedCategories := []string{
-		string(shared.ChoiceName),
-		string(shared.ChoiceRace),
-		string(shared.ChoiceClass),
-		string(shared.ChoiceBackground),
-		string(shared.ChoiceAbilityScores),
-		string(shared.ChoiceSkills),
-		string(shared.ChoiceLanguages),
+	expectedCategories := []shared.ChoiceCategory{
+		shared.ChoiceName,
+		shared.ChoiceRace,
+		shared.ChoiceClass,
+		shared.ChoiceBackground,
+		shared.ChoiceAbilityScores,
+		shared.ChoiceSkills,
+		shared.ChoiceLanguages,
 	}
 
 	for _, cat := range expectedCategories {
@@ -521,18 +629,15 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 
 	// Verify choice sources are set correctly
 	for _, choice := range character.choices {
-		switch shared.ChoiceCategory(choice.Category) {
-		case shared.ChoiceRace, shared.ChoiceSubrace, shared.ChoiceLanguages:
-			if choice.Category == string(shared.ChoiceLanguages) {
-				// Language choices from player selection should be "race" source
-				s.Assert().Equal("race", choice.Source)
-			}
-		case shared.ChoiceClass, shared.ChoiceSkills:
-			s.Assert().Equal("class", choice.Source)
-		case shared.ChoiceBackground:
-			s.Assert().Equal("background", choice.Source)
-		case shared.ChoiceAbilityScores, shared.ChoiceName:
-			s.Assert().Equal("player", choice.Source)
+		switch choice.Category {
+		case shared.ChoiceLanguages:
+			// Language choices from player selection should be race source
+			s.Assert().Equal(shared.SourceRace, choice.Source)
+		case shared.ChoiceSkills:
+			s.Assert().Equal(shared.SourceClass, choice.Source)
+		case shared.ChoiceRace, shared.ChoiceClass, shared.ChoiceBackground, shared.ChoiceAbilityScores, shared.ChoiceName:
+			// These are fundamental player choices
+			s.Assert().Equal(shared.SourcePlayer, choice.Source)
 		}
 	}
 }
@@ -556,8 +661,10 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
-		FightingStyleChoice: "dueling", // Fighting style choice
+		Choices: combineChoices(
+			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+			makeFightingStyleChoice("dueling"),
+		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -570,7 +677,7 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 	// Find and verify fighting style choice
 	var fightingStyleChoice *ChoiceData
 	for _, choice := range character.choices {
-		if choice.Category == string(shared.ChoiceFightingStyle) {
+		if choice.Category == shared.ChoiceFightingStyle {
 			fightingStyleChoice = &choice
 			break
 		}
@@ -578,7 +685,7 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 
 	s.Require().NotNil(fightingStyleChoice, "Fighting style choice should be stored")
 	s.Assert().Equal("dueling", fightingStyleChoice.Selection)
-	s.Assert().Equal("class", fightingStyleChoice.Source)
+	s.Assert().Equal(shared.SourceClass, fightingStyleChoice.Source)
 }
 
 func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
@@ -600,9 +707,11 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 			constants.WIS: 12,
 			constants.CHA: 10,
 		},
-		SkillChoices:   []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
-		CantripChoices: []string{"Mage Hand", "Prestidigitation", "Minor Illusion"},
-		SpellChoices:   []string{"Magic Missile", "Shield", "Identify", "Detect Magic", "Sleep", "Burning Hands"},
+		Choices: combineChoices(
+			makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillInvestigation}),
+			makeCantripChoices([]string{"Mage Hand", "Prestidigitation", "Minor Illusion"}),
+			makeSpellChoices([]string{"Magic Missile", "Shield", "Identify", "Detect Magic", "Sleep", "Burning Hands"}),
+		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -615,7 +724,7 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	// Find and verify cantrip choices
 	var cantripChoice *ChoiceData
 	for _, choice := range character.choices {
-		if choice.Category == string(shared.ChoiceCantrips) {
+		if choice.Category == shared.ChoiceCantrips {
 			cantripChoice = &choice
 			break
 		}
@@ -627,12 +736,12 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	s.Assert().Contains(cantrips, "Mage Hand")
 	s.Assert().Contains(cantrips, "Prestidigitation")
 	s.Assert().Contains(cantrips, "Minor Illusion")
-	s.Assert().Equal("class", cantripChoice.Source)
+	s.Assert().Equal(shared.SourceClass, cantripChoice.Source)
 
 	// Find and verify spell choices
 	var spellChoice *ChoiceData
 	for _, choice := range character.choices {
-		if choice.Category == string(shared.ChoiceSpells) {
+		if choice.Category == shared.ChoiceSpells {
 			spellChoice = &choice
 			break
 		}
@@ -647,7 +756,7 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	s.Assert().Contains(spells, "Detect Magic")
 	s.Assert().Contains(spells, "Sleep")
 	s.Assert().Contains(spells, "Burning Hands")
-	s.Assert().Equal("class", spellChoice.Source)
+	s.Assert().Equal(shared.SourceClass, spellChoice.Source)
 }
 
 func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
@@ -669,11 +778,13 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 			constants.WIS: 12,
 			constants.CHA: 8,
 		},
-		SkillChoices: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
-		EquipmentChoices: []string{
-			"Chain Mail", "Shield", "Longsword", "Javelin (5)",
-			"Dungeoneer's Pack", "Explorer's Pack",
-		},
+		Choices: combineChoices(
+			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+			makeEquipmentChoices([]string{
+				"Chain Mail", "Shield", "Longsword", "Javelin (5)",
+				"Dungeoneer's Pack", "Explorer's Pack",
+			}),
+		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -686,7 +797,7 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 	// Find and verify equipment choices
 	var equipmentChoice *ChoiceData
 	for _, choice := range character.choices {
-		if choice.Category == string(shared.ChoiceEquipment) {
+		if choice.Category == shared.ChoiceEquipment {
 			equipmentChoice = &choice
 			break
 		}
@@ -701,7 +812,7 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 	s.Assert().Contains(equipment, "Javelin (5)")
 	s.Assert().Contains(equipment, "Dungeoneer's Pack")
 	s.Assert().Contains(equipment, "Explorer's Pack")
-	s.Assert().Equal("class", equipmentChoice.Source)
+	s.Assert().Equal(shared.SourceClass, equipmentChoice.Source)
 }
 
 func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
@@ -723,12 +834,14 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 			constants.WIS: 10,
 			constants.CHA: 8,
 		},
-		SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillHistory},
-		LanguageChoices:     []constants.Language{constants.LanguageDraconic, constants.LanguageGiant},
-		FightingStyleChoice: "protection",
-		CantripChoices:      []string{"Mage Hand", "Minor Illusion"},
-		SpellChoices:        []string{"Shield", "Magic Missile"},
-		EquipmentChoices:    []string{"Plate Armor", "Shield", "Longsword", "Shortbow"},
+		Choices: combineChoices(
+			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillHistory}),
+			makeLanguageChoices(shared.SourceRace, []constants.Language{constants.LanguageDraconic, constants.LanguageGiant}),
+			makeFightingStyleChoice("protection"),
+			makeCantripChoices([]string{"Mage Hand", "Minor Illusion"}),
+			makeSpellChoices([]string{"Shield", "Magic Missile"}),
+			makeEquipmentChoices([]string{"Plate Armor", "Shield", "Longsword", "Shortbow"}),
+		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -739,18 +852,18 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 	s.Require().NotNil(character)
 
 	// Verify all choice categories are present
-	expectedCategories := map[string]bool{
-		string(shared.ChoiceName):          false,
-		string(shared.ChoiceRace):          false,
-		string(shared.ChoiceClass):         false,
-		string(shared.ChoiceBackground):    false,
-		string(shared.ChoiceAbilityScores): false,
-		string(shared.ChoiceSkills):        false,
-		string(shared.ChoiceLanguages):     false,
-		string(shared.ChoiceFightingStyle): false,
-		string(shared.ChoiceCantrips):      false,
-		string(shared.ChoiceSpells):        false,
-		string(shared.ChoiceEquipment):     false,
+	expectedCategories := map[shared.ChoiceCategory]bool{
+		shared.ChoiceName:          false,
+		shared.ChoiceRace:          false,
+		shared.ChoiceClass:         false,
+		shared.ChoiceBackground:    false,
+		shared.ChoiceAbilityScores: false,
+		shared.ChoiceSkills:        false,
+		shared.ChoiceLanguages:     false,
+		shared.ChoiceFightingStyle: false,
+		shared.ChoiceCantrips:      false,
+		shared.ChoiceSpells:        false,
+		shared.ChoiceEquipment:     false,
 	}
 
 	for _, choice := range character.choices {
@@ -765,18 +878,18 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 	}
 
 	// Verify sources are correctly assigned
-	sourceMap := map[string]string{
-		string(shared.ChoiceName):          "player",
-		string(shared.ChoiceRace):          "race",
-		string(shared.ChoiceClass):         "class",
-		string(shared.ChoiceBackground):    "background",
-		string(shared.ChoiceAbilityScores): "player",
-		string(shared.ChoiceSkills):        "class",
-		string(shared.ChoiceLanguages):     "race",
-		string(shared.ChoiceFightingStyle): "class",
-		string(shared.ChoiceCantrips):      "class",
-		string(shared.ChoiceSpells):        "class",
-		string(shared.ChoiceEquipment):     "class",
+	sourceMap := map[shared.ChoiceCategory]shared.ChoiceSource{
+		shared.ChoiceName:          shared.SourcePlayer,
+		shared.ChoiceRace:          shared.SourcePlayer, // Player chooses their race
+		shared.ChoiceClass:         shared.SourcePlayer, // Player chooses their class
+		shared.ChoiceBackground:    shared.SourcePlayer, // Player chooses their background
+		shared.ChoiceAbilityScores: shared.SourcePlayer,
+		shared.ChoiceSkills:        shared.SourceClass, // Skills come from class options
+		shared.ChoiceLanguages:     shared.SourceRace,  // Extra languages come from race
+		shared.ChoiceFightingStyle: shared.SourceClass, // Fighting style from class
+		shared.ChoiceCantrips:      shared.SourceClass, // Cantrips from class
+		shared.ChoiceSpells:        shared.SourceClass, // Spells from class
+		shared.ChoiceEquipment:     shared.SourceClass, // Equipment from class
 	}
 
 	for _, choice := range character.choices {
@@ -818,8 +931,10 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 			constants.WIS: 12,
 			constants.CHA: 11,
 		},
-		SkillChoices:     []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
-		EquipmentChoices: []string{"Longsword", "Dungeoneer's Pack"},
+		Choices: combineChoices(
+			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+			makeEquipmentChoices([]string{"Longsword", "Dungeoneer's Pack"}),
+		),
 	}
 	// Set progress flags
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
@@ -860,7 +975,7 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 	// Verify equipment choice was stored
 	var equipmentChoice *ChoiceData
 	for i := range character.choices {
-		if character.choices[i].Category == string(shared.ChoiceEquipment) {
+		if character.choices[i].Category == shared.ChoiceEquipment {
 			equipmentChoice = &character.choices[i]
 			break
 		}
@@ -907,7 +1022,7 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 			constants.WIS: 13,
 			constants.CHA: 12,
 		},
-		SkillChoices: []constants.Skill{constants.SkillHistory, constants.SkillPerception},
+		Choices: makeSkillChoices("fighter", []constants.Skill{constants.SkillHistory, constants.SkillPerception}),
 	}
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
 		ProgressAbilityScores | ProgressSkills
@@ -965,7 +1080,7 @@ func (s *DraftConversionTestSuite) TestSpellSlotsInitialization() {
 			constants.WIS: 12,
 			constants.CHA: 10,
 		},
-		SkillChoices: []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
+		Choices: makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillInvestigation}),
 	}
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
 		ProgressAbilityScores | ProgressSkills

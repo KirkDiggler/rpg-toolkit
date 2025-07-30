@@ -52,13 +52,17 @@ func (v *Validator) ValidateDraft(draft *Draft, raceData *race.Data, classData *
 		}
 	}
 
-	// Skills validation if selected
-	if len(draft.SkillChoices) > 0 {
-		if err := v.ValidateSkillSelection(draft, draft.SkillChoices, classData, backgroundData); err != nil {
-			errors = append(errors, ValidationError{
-				Field:   "skills",
-				Message: err.Error(),
-			})
+	// Skills validation - extract from Choices
+	for _, choice := range draft.Choices {
+		if choice.Category == shared.ChoiceSkills && choice.Source == shared.SourceClass {
+			if skills, ok := choice.Selection.([]constants.Skill); ok {
+				if err := v.ValidateSkillSelection(draft, skills, classData, backgroundData); err != nil {
+					errors = append(errors, ValidationError{
+						Field:   "skills",
+						Message: err.Error(),
+					})
+				}
+			}
 		}
 	}
 

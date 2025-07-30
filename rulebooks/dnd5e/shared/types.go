@@ -142,6 +142,24 @@ const (
 	ChoiceFightingStyle ChoiceCategory = "fighting_style"
 )
 
+// ChoiceSource represents where a choice or grant comes from
+type ChoiceSource string
+
+const (
+	// SourcePlayer represents a direct player choice
+	SourcePlayer ChoiceSource = "player"
+	// SourceRace represents a grant from race selection
+	SourceRace ChoiceSource = "race"
+	// SourceSubrace represents a grant from subrace selection
+	SourceSubrace ChoiceSource = "subrace"
+	// SourceClass represents a grant or choice from class
+	SourceClass ChoiceSource = "class"
+	// SourceSubclass represents a grant or choice from subclass
+	SourceSubclass ChoiceSource = "subclass"
+	// SourceBackground represents a grant from background
+	SourceBackground ChoiceSource = "background"
+)
+
 // Proficiencies tracks what the character is proficient with
 type Proficiencies struct {
 	Armor   []string
