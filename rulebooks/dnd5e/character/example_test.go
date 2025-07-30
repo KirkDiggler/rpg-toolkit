@@ -27,11 +27,11 @@ func Example_createCharacterFromDraft() {
 
 	// Step 3: Set the race (you would load this from your race data source)
 	humanRace := race.Data{
-		ID:                    constants.RaceHuman,
-		Name:                  "Human",
-		Size:                  "Medium",
-		Speed:                 30,
-		Languages:             []constants.Language{constants.LanguageCommon},
+		ID:        constants.RaceHuman,
+		Name:      "Human",
+		Size:      "Medium",
+		Speed:     30,
+		Languages: []constants.Language{constants.LanguageCommon},
 		AbilityScoreIncreases: map[constants.Ability]int{
 			// Variant human gets +1 to two different abilities
 			constants.STR: 1,
@@ -44,9 +44,9 @@ func Example_createCharacterFromDraft() {
 
 	// Step 4: Set the class (you would load this from your class data source)
 	fighterClass := class.Data{
-		ID:      constants.ClassFighter,
-		Name:    "Fighter",
-		HitDice: 10,
+		ID:                    constants.ClassFighter,
+		Name:                  "Fighter",
+		HitDice:               10,
 		SkillProficiencyCount: 2,
 		SkillOptions: []constants.Skill{
 			constants.SkillAcrobatics,
@@ -71,8 +71,8 @@ func Example_createCharacterFromDraft() {
 
 	// Step 5: Set the background (you would load this from your background data source)
 	soldierBackground := shared.Background{
-		ID:                 constants.BackgroundSoldier,
-		Name:               "Soldier",
+		ID:   constants.BackgroundSoldier,
+		Name: "Soldier",
 		SkillProficiencies: []constants.Skill{
 			constants.SkillAthletics,
 			constants.SkillIntimidation,
@@ -140,7 +140,7 @@ func Example_createCharacterFromDraft() {
 	// The character is now ready to play!
 	// Get character data to access properties
 	charData := character.ToData()
-	
+
 	fmt.Printf("Character: %s\n", charData.Name)
 	fmt.Printf("Race: Human\n")
 	fmt.Printf("Class: Fighter (Level %d)\n", charData.Level)
@@ -161,16 +161,21 @@ func Example_createCharacterFromDraft() {
 // all the choices made during character creation for later rebuilding.
 func Example_createCharacterWithChoices() {
 	// The Draft stores all choices with their sources
-	builder, _ := character.NewCharacterBuilder("draft-456")
-	
+	builder, err := character.NewCharacterBuilder("draft-456")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Each method adds a ChoiceData entry internally
-	builder.SetName("Legolas")
-	
+	if err := builder.SetName("Legolas"); err != nil {
+		log.Fatal(err)
+	}
+
 	// Race choice is tracked
 	elfRace := race.Data{
 		ID:    constants.RaceElf,
 		Name:  "Elf",
-		Size:  "Medium", 
+		Size:  "Medium",
 		Speed: 30,
 		Languages: []constants.Language{
 			constants.LanguageCommon,
@@ -181,12 +186,14 @@ func Example_createCharacterWithChoices() {
 			constants.DEX: 2,
 		},
 	}
-	builder.SetRaceData(elfRace, "")
-	
+	if err := builder.SetRaceData(elfRace, ""); err != nil {
+		log.Fatal(err)
+	}
+
 	// The draft now contains:
 	// - NameSelection: "Legolas" (source: player)
 	// - RaceSelection: {RaceID: "elf"} (source: player)
-	
+
 	// When you build, all choices are preserved on the character
 	// This allows the game service to:
 	// 1. Show where each feature came from
