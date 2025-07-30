@@ -395,9 +395,9 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 		},
 		Choices: []ChoiceData{
 			{
-				Category:          shared.ChoiceLanguages,
-				Source:            shared.SourceRace,
-				ChoiceID:          "human_languages",
+				Category: shared.ChoiceLanguages,
+				Source:   shared.SourceRace,
+				ChoiceID: "human_languages",
 				LanguageSelection: []constants.Language{
 					constants.LanguageElvish,
 					constants.LanguageGoblin,

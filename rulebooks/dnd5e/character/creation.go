@@ -161,7 +161,7 @@ func buildChoiceData(data CreationData) []ChoiceData {
 
 		// Convert the selection based on category
 		convertLegacyChoice(&choiceData, selection)
-		
+
 		choices = append(choices, choiceData)
 	}
 
@@ -189,7 +189,7 @@ func convertLegacyChoice(choiceData *ChoiceData, selection any) {
 		choiceData.SpellSelection = convertToStringSlice(selection)
 	case shared.ChoiceCantrips:
 		choiceData.CantripSelection = convertToStringSlice(selection)
-	// Complex types (AbilityScores, Race, Class, Background) are not supported in legacy creation
+		// Complex types (AbilityScores, Race, Class, Background) are not supported in legacy creation
 	}
 }
 
