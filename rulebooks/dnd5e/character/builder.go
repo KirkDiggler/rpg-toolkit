@@ -78,10 +78,10 @@ func (b *Builder) SetName(name string) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceName,
-		Source:    shared.SourcePlayer,
-		ChoiceID:  "character_name",
-		Selection: name,
+		Category:      shared.ChoiceName,
+		Source:        shared.SourcePlayer,
+		ChoiceID:      "character_name",
+		NameSelection: &name,
 	})
 
 	b.draft.Progress.setFlag(ProgressName)
@@ -115,10 +115,10 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceRace,
-		Source:    shared.SourcePlayer,
-		ChoiceID:  "race_selection",
-		Selection: choice,
+		Category:      shared.ChoiceRace,
+		Source:        shared.SourcePlayer,
+		ChoiceID:      "race_selection",
+		RaceSelection: &choice,
 	})
 
 	b.draft.Progress.setFlag(ProgressRace)
@@ -150,10 +150,10 @@ func (b *Builder) SetClassData(classData class.Data, subclassID constants.Subcla
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceClass,
-		Source:    shared.SourcePlayer,
-		ChoiceID:  "class_selection",
-		Selection: b.draft.ClassChoice,
+		Category:       shared.ChoiceClass,
+		Source:         shared.SourcePlayer,
+		ChoiceID:       "class_selection",
+		ClassSelection: &b.draft.ClassChoice,
 	})
 
 	b.draft.Progress.setFlag(ProgressClass)
@@ -182,10 +182,10 @@ func (b *Builder) SetBackgroundData(backgroundData shared.Background) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceBackground,
-		Source:    shared.SourcePlayer,
-		ChoiceID:  "background_selection",
-		Selection: backgroundData.ID,
+		Category:            shared.ChoiceBackground,
+		Source:              shared.SourcePlayer,
+		ChoiceID:            "background_selection",
+		BackgroundSelection: &backgroundData.ID,
 	})
 
 	b.draft.Progress.setFlag(ProgressBackground)
@@ -211,10 +211,10 @@ func (b *Builder) SetAbilityScores(scores shared.AbilityScores) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceAbilityScores,
-		Source:    shared.SourcePlayer,
-		ChoiceID:  "ability_scores",
-		Selection: scores,
+		Category:              shared.ChoiceAbilityScores,
+		Source:                shared.SourcePlayer,
+		ChoiceID:              "ability_scores",
+		AbilityScoreSelection: &scores,
 	})
 
 	b.draft.Progress.setFlag(ProgressAbilityScores)
@@ -242,10 +242,10 @@ func (b *Builder) SelectSkills(skills []string) error {
 
 	// Add skill choice
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceSkills,
-		Source:    shared.SourceClass, // Skills chosen from class options
-		ChoiceID:  fmt.Sprintf("%s_skill_proficiencies", b.classData.ID),
-		Selection: typedSkills,
+		Category:       shared.ChoiceSkills,
+		Source:         shared.SourceClass, // Skills chosen from class options
+		ChoiceID:       fmt.Sprintf("%s_skill_proficiencies", b.classData.ID),
+		SkillSelection: typedSkills,
 	})
 
 	b.draft.Progress.setFlag(ProgressSkills)
@@ -269,10 +269,10 @@ func (b *Builder) SelectLanguages(languages []string) error {
 	// Language choices could come from race or background
 	// TODO(#159): Builder should track which source is requesting the choice
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceLanguages,
-		Source:    shared.SourceRace, // Default to race, but this should be contextual
-		ChoiceID:  "additional_languages",
-		Selection: typedLanguages,
+		Category:          shared.ChoiceLanguages,
+		Source:            shared.SourceRace, // Default to race, but this should be contextual
+		ChoiceID:          "additional_languages",
+		LanguageSelection: typedLanguages,
 	})
 
 	b.draft.Progress.setFlag(ProgressLanguages)
@@ -290,10 +290,10 @@ func (b *Builder) SelectFightingStyle(style string) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceFightingStyle,
-		Source:    shared.SourceClass,
-		ChoiceID:  fmt.Sprintf("%s_fighting_style", b.classData.ID),
-		Selection: style,
+		Category:               shared.ChoiceFightingStyle,
+		Source:                 shared.SourceClass,
+		ChoiceID:               fmt.Sprintf("%s_fighting_style", b.classData.ID),
+		FightingStyleSelection: &style,
 	})
 
 	b.draft.UpdatedAt = time.Now()
@@ -310,10 +310,10 @@ func (b *Builder) SelectSpells(spells []string) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceSpells,
-		Source:    shared.SourceClass,
-		ChoiceID:  fmt.Sprintf("%s_spells_known", b.classData.ID),
-		Selection: spells,
+		Category:       shared.ChoiceSpells,
+		Source:         shared.SourceClass,
+		ChoiceID:       fmt.Sprintf("%s_spells_known", b.classData.ID),
+		SpellSelection: spells,
 	})
 
 	b.draft.UpdatedAt = time.Now()
@@ -330,10 +330,10 @@ func (b *Builder) SelectCantrips(cantrips []string) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceCantrips,
-		Source:    shared.SourceClass,
-		ChoiceID:  fmt.Sprintf("%s_cantrips", b.classData.ID),
-		Selection: cantrips,
+		Category:         shared.ChoiceCantrips,
+		Source:           shared.SourceClass,
+		ChoiceID:         fmt.Sprintf("%s_cantrips", b.classData.ID),
+		CantripSelection: cantrips,
 	})
 
 	b.draft.UpdatedAt = time.Now()
@@ -350,10 +350,10 @@ func (b *Builder) SelectEquipment(equipment []string) error {
 	}
 
 	b.draft.Choices = append(b.draft.Choices, ChoiceData{
-		Category:  shared.ChoiceEquipment,
-		Source:    shared.SourceClass,
-		ChoiceID:  fmt.Sprintf("%s_starting_equipment", b.classData.ID),
-		Selection: equipment,
+		Category:           shared.ChoiceEquipment,
+		Source:             shared.SourceClass,
+		ChoiceID:           fmt.Sprintf("%s_starting_equipment", b.classData.ID),
+		EquipmentSelection: equipment,
 	})
 
 	b.draft.Progress.setFlag(ProgressEquipment)

@@ -15,10 +15,10 @@ import (
 func makeSkillChoices(className string, skills []constants.Skill) []ChoiceData {
 	return []ChoiceData{
 		{
-			Category:  shared.ChoiceSkills,
-			Source:    shared.SourceClass,
-			ChoiceID:  className + "_skill_proficiencies",
-			Selection: skills,
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       className + "_skill_proficiencies",
+			SkillSelection: skills,
 		},
 	}
 }
@@ -27,10 +27,10 @@ func makeSkillChoices(className string, skills []constants.Skill) []ChoiceData {
 func makeLanguageChoices(source shared.ChoiceSource, languages []constants.Language) []ChoiceData {
 	return []ChoiceData{
 		{
-			Category:  shared.ChoiceLanguages,
-			Source:    source,
-			ChoiceID:  "additional_languages",
-			Selection: languages,
+			Category:          shared.ChoiceLanguages,
+			Source:            source,
+			ChoiceID:          "additional_languages",
+			LanguageSelection: languages,
 		},
 	}
 }
@@ -48,10 +48,10 @@ func combineChoices(choiceSets ...[]ChoiceData) []ChoiceData {
 func makeFightingStyleChoice(style string) []ChoiceData {
 	return []ChoiceData{
 		{
-			Category:  shared.ChoiceFightingStyle,
-			Source:    shared.SourceClass,
-			ChoiceID:  "fighter_fighting_style",
-			Selection: style,
+			Category:               shared.ChoiceFightingStyle,
+			Source:                 shared.SourceClass,
+			ChoiceID:               "fighter_fighting_style",
+			FightingStyleSelection: &style,
 		},
 	}
 }
@@ -60,10 +60,10 @@ func makeFightingStyleChoice(style string) []ChoiceData {
 func makeSpellChoices(spells []string) []ChoiceData {
 	return []ChoiceData{
 		{
-			Category:  shared.ChoiceSpells,
-			Source:    shared.SourceClass,
-			ChoiceID:  "wizard_spells_known",
-			Selection: spells,
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "wizard_spells_known",
+			SpellSelection: spells,
 		},
 	}
 }
@@ -72,10 +72,10 @@ func makeSpellChoices(spells []string) []ChoiceData {
 func makeCantripChoices(cantrips []string) []ChoiceData {
 	return []ChoiceData{
 		{
-			Category:  shared.ChoiceCantrips,
-			Source:    shared.SourceClass,
-			ChoiceID:  "wizard_cantrips",
-			Selection: cantrips,
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "wizard_cantrips",
+			CantripSelection: cantrips,
 		},
 	}
 }
@@ -84,10 +84,10 @@ func makeCantripChoices(cantrips []string) []ChoiceData {
 func makeEquipmentChoices(equipment []string) []ChoiceData {
 	return []ChoiceData{
 		{
-			Category:  shared.ChoiceEquipment,
-			Source:    shared.SourceClass,
-			ChoiceID:  "starting_equipment",
-			Selection: equipment,
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "starting_equipment",
+			EquipmentSelection: equipment,
 		},
 	}
 }
@@ -230,16 +230,16 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 		},
 		Choices: []ChoiceData{
 			{
-				Category:  shared.ChoiceSkills,
-				Source:    shared.SourceClass,
-				ChoiceID:  "ranger_skill_proficiencies",
-				Selection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+				Category:       shared.ChoiceSkills,
+				Source:         shared.SourceClass,
+				ChoiceID:       "ranger_skill_proficiencies",
+				SkillSelection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 			},
 			{
-				Category:  shared.ChoiceLanguages,
-				Source:    shared.SourceRace,
-				ChoiceID:  "additional_languages",
-				Selection: []constants.Language{constants.LanguageDwarvish, constants.LanguageGiant},
+				Category:          shared.ChoiceLanguages,
+				Source:            shared.SourceRace,
+				ChoiceID:          "additional_languages",
+				LanguageSelection: []constants.Language{constants.LanguageDwarvish, constants.LanguageGiant},
 			},
 		},
 		Progress: DraftProgress{
@@ -311,19 +311,15 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	hasSkillChoice := false
 	hasLanguageChoice := false
 	for _, choice := range character.choices {
-		if choice.Category == shared.ChoiceSkills {
+		if choice.Category == shared.ChoiceSkills && choice.SkillSelection != nil {
 			hasSkillChoice = true
-			skills, ok := choice.Selection.([]constants.Skill)
-			s.Assert().True(ok)
-			s.Assert().Contains(skills, constants.SkillPerception)
-			s.Assert().Contains(skills, constants.SkillSurvival)
+			s.Assert().Contains(choice.SkillSelection, constants.SkillPerception)
+			s.Assert().Contains(choice.SkillSelection, constants.SkillSurvival)
 		}
-		if choice.Category == shared.ChoiceLanguages {
+		if choice.Category == shared.ChoiceLanguages && choice.LanguageSelection != nil {
 			hasLanguageChoice = true
-			langs, ok := choice.Selection.([]constants.Language)
-			s.Assert().True(ok)
-			s.Assert().Contains(langs, constants.LanguageDwarvish)
-			s.Assert().Contains(langs, constants.LanguageGiant)
+			s.Assert().Contains(choice.LanguageSelection, constants.LanguageDwarvish)
+			s.Assert().Contains(choice.LanguageSelection, constants.LanguageGiant)
 		}
 	}
 	s.Assert().True(hasSkillChoice, "Should have recorded skill choices")
@@ -354,16 +350,16 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 		},
 		Choices: []ChoiceData{
 			{
-				Category:  shared.ChoiceSkills,
-				Source:    shared.SourceClass,
-				ChoiceID:  "wizard_skill_proficiencies",
-				Selection: []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
+				Category:       shared.ChoiceSkills,
+				Source:         shared.SourceClass,
+				ChoiceID:       "wizard_skill_proficiencies",
+				SkillSelection: []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
 			},
 			{
-				Category:  shared.ChoiceLanguages,
-				Source:    shared.SourceRace,
-				ChoiceID:  "additional_languages",
-				Selection: []constants.Language{constants.LanguageDraconic, constants.LanguageSylvan},
+				Category:          shared.ChoiceLanguages,
+				Source:            shared.SourceRace,
+				ChoiceID:          "additional_languages",
+				LanguageSelection: []constants.Language{constants.LanguageDraconic, constants.LanguageSylvan},
 			},
 		},
 		Progress: DraftProgress{
@@ -684,7 +680,8 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 	}
 
 	s.Require().NotNil(fightingStyleChoice, "Fighting style choice should be stored")
-	s.Assert().Equal("dueling", fightingStyleChoice.Selection)
+	s.Require().NotNil(fightingStyleChoice.FightingStyleSelection)
+	s.Assert().Equal("dueling", *fightingStyleChoice.FightingStyleSelection)
 	s.Assert().Equal(shared.SourceClass, fightingStyleChoice.Source)
 }
 
@@ -731,11 +728,10 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	}
 
 	s.Require().NotNil(cantripChoice, "Cantrip choice should be stored")
-	cantrips, ok := cantripChoice.Selection.([]string)
-	s.Require().True(ok, "Cantrip selection should be []string")
-	s.Assert().Contains(cantrips, "Mage Hand")
-	s.Assert().Contains(cantrips, "Prestidigitation")
-	s.Assert().Contains(cantrips, "Minor Illusion")
+	s.Require().NotNil(cantripChoice.CantripSelection)
+	s.Assert().Contains(cantripChoice.CantripSelection, "Mage Hand")
+	s.Assert().Contains(cantripChoice.CantripSelection, "Prestidigitation")
+	s.Assert().Contains(cantripChoice.CantripSelection, "Minor Illusion")
 	s.Assert().Equal(shared.SourceClass, cantripChoice.Source)
 
 	// Find and verify spell choices
@@ -748,14 +744,13 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 	}
 
 	s.Require().NotNil(spellChoice, "Spell choice should be stored")
-	spells, ok := spellChoice.Selection.([]string)
-	s.Require().True(ok, "Spell selection should be []string")
-	s.Assert().Contains(spells, "Magic Missile")
-	s.Assert().Contains(spells, "Shield")
-	s.Assert().Contains(spells, "Identify")
-	s.Assert().Contains(spells, "Detect Magic")
-	s.Assert().Contains(spells, "Sleep")
-	s.Assert().Contains(spells, "Burning Hands")
+	s.Require().NotNil(spellChoice.SpellSelection)
+	s.Assert().Contains(spellChoice.SpellSelection, "Magic Missile")
+	s.Assert().Contains(spellChoice.SpellSelection, "Shield")
+	s.Assert().Contains(spellChoice.SpellSelection, "Identify")
+	s.Assert().Contains(spellChoice.SpellSelection, "Detect Magic")
+	s.Assert().Contains(spellChoice.SpellSelection, "Sleep")
+	s.Assert().Contains(spellChoice.SpellSelection, "Burning Hands")
 	s.Assert().Equal(shared.SourceClass, spellChoice.Source)
 }
 
@@ -804,14 +799,13 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 	}
 
 	s.Require().NotNil(equipmentChoice, "Equipment choice should be stored")
-	equipment, ok := equipmentChoice.Selection.([]string)
-	s.Require().True(ok, "Equipment selection should be []string")
-	s.Assert().Contains(equipment, "Chain Mail")
-	s.Assert().Contains(equipment, "Shield")
-	s.Assert().Contains(equipment, "Longsword")
-	s.Assert().Contains(equipment, "Javelin (5)")
-	s.Assert().Contains(equipment, "Dungeoneer's Pack")
-	s.Assert().Contains(equipment, "Explorer's Pack")
+	s.Require().NotNil(equipmentChoice.EquipmentSelection)
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Chain Mail")
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Shield")
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Longsword")
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Javelin (5)")
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Dungeoneer's Pack")
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Explorer's Pack")
 	s.Assert().Equal(shared.SourceClass, equipmentChoice.Source)
 }
 
@@ -981,10 +975,9 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 		}
 	}
 	s.Require().NotNil(equipmentChoice, "Equipment choice should be stored")
-	equipment, ok := equipmentChoice.Selection.([]string)
-	s.Require().True(ok, "Equipment selection should be []string")
-	s.Assert().Contains(equipment, "Longsword")
-	s.Assert().Contains(equipment, "Dungeoneer's Pack")
+	s.Require().NotNil(equipmentChoice.EquipmentSelection)
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Longsword")
+	s.Assert().Contains(equipmentChoice.EquipmentSelection, "Dungeoneer's Pack")
 }
 
 func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {

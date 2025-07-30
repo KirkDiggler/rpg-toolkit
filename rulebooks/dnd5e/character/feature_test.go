@@ -111,16 +111,16 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			},
 			Choices: []ChoiceData{
 				{
-					Category:  shared.ChoiceSkills,
-					Source:    shared.SourceClass,
-					ChoiceID:  "fighter_skill_proficiencies",
-					Selection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+					Category:       shared.ChoiceSkills,
+					Source:         shared.SourceClass,
+					ChoiceID:       "fighter_skill_proficiencies",
+					SkillSelection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 				},
 				{
-					Category:  shared.ChoiceFightingStyle,
-					Source:    shared.SourceClass,
-					ChoiceID:  "fighter_fighting_style",
-					Selection: "defense",
+					Category:               shared.ChoiceFightingStyle,
+					Source:                 shared.SourceClass,
+					ChoiceID:               "fighter_fighting_style",
+					FightingStyleSelection: func(s string) *string { return &s }("defense"),
 				},
 			},
 			Progress: DraftProgress{
@@ -145,7 +145,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		// Check if fighting style choice is stored
 		hasDefenseChoice := false
 		for _, choice := range character.choices {
-			if choice.Category == shared.ChoiceFightingStyle && choice.Selection == "defense" {
+			if choice.Category == shared.ChoiceFightingStyle &&
+				choice.FightingStyleSelection != nil &&
+				*choice.FightingStyleSelection == "defense" {
 				hasDefenseChoice = true
 				s.Assert().Equal(shared.SourceClass, choice.Source, "Fighting style should come from class")
 				break
@@ -195,9 +197,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			},
 			Choices: []ChoiceData{
 				{
-					Category:  "fighting_style",
-					Source:    "class",
-					Selection: "defense",
+					Category:               shared.ChoiceFightingStyle,
+					Source:                 shared.SourceClass,
+					FightingStyleSelection: func(s string) *string { return &s }("defense"),
 				},
 			},
 		}
@@ -312,22 +314,22 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			},
 			Choices: []ChoiceData{
 				{
-					Category:  shared.ChoiceSkills,
-					Source:    shared.SourceClass,
-					ChoiceID:  "wizard_skill_proficiencies",
-					Selection: []constants.Skill{constants.SkillInvestigation, constants.SkillInsight},
+					Category:       shared.ChoiceSkills,
+					Source:         shared.SourceClass,
+					ChoiceID:       "wizard_skill_proficiencies",
+					SkillSelection: []constants.Skill{constants.SkillInvestigation, constants.SkillInsight},
 				},
 				{
-					Category:  shared.ChoiceCantrips,
-					Source:    shared.SourceClass,
-					ChoiceID:  "wizard_cantrips",
-					Selection: []string{"fire_bolt", "mage_hand", "prestidigitation"},
+					Category:         shared.ChoiceCantrips,
+					Source:           shared.SourceClass,
+					ChoiceID:         "wizard_cantrips",
+					CantripSelection: []string{"fire_bolt", "mage_hand", "prestidigitation"},
 				},
 				{
 					Category: shared.ChoiceSpells,
 					Source:   shared.SourceClass,
 					ChoiceID: "wizard_spells_known",
-					Selection: []string{
+					SpellSelection: []string{
 						"shield", "magic_missile", "detect_magic",
 						"identify", "sleep", "charm_person",
 					},
@@ -351,18 +353,14 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		hasCantripChoice := false
 		hasSpellChoice := false
 		for _, choice := range character.choices {
-			if choice.Category == shared.ChoiceCantrips {
+			if choice.Category == shared.ChoiceCantrips && choice.CantripSelection != nil {
 				hasCantripChoice = true
-				cantrips, ok := choice.Selection.([]string)
-				s.Assert().True(ok)
-				s.Assert().Len(cantrips, 3)
+				s.Assert().Len(choice.CantripSelection, 3)
 				s.Assert().Equal(shared.SourceClass, choice.Source, "Cantrips should come from class")
 			}
-			if choice.Category == shared.ChoiceSpells {
+			if choice.Category == shared.ChoiceSpells && choice.SpellSelection != nil {
 				hasSpellChoice = true
-				spells, ok := choice.Selection.([]string)
-				s.Assert().True(ok)
-				s.Assert().Len(spells, 6)
+				s.Assert().Len(choice.SpellSelection, 6)
 				s.Assert().Equal(shared.SourceClass, choice.Source, "Spells should come from class")
 			}
 		}

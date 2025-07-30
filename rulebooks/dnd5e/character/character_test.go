@@ -66,16 +66,16 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		// Choices as shown in the issue - enhanced with ChoiceID field
 		Choices: []ChoiceData{
 			{
-				Category:  shared.ChoiceSkills,       // Standard category
-				Source:    shared.SourceClass,        // Source is class
-				ChoiceID:  "fighter_proficiencies_1", // Specific choice identifier
-				Selection: []string{"skill-acrobatics", "skill-athletics"},
+				Category:       shared.ChoiceSkills,       // Standard category
+				Source:         shared.SourceClass,        // Source is class
+				ChoiceID:       "fighter_proficiencies_1", // Specific choice identifier
+				SkillSelection: []constants.Skill{constants.SkillAcrobatics, constants.SkillAthletics},
 			},
 			{
-				Category:  shared.ChoiceLanguages, // Standard category
-				Source:    shared.SourceRace,      // Source is race
-				ChoiceID:  "human_language_1",     // Specific choice identifier
-				Selection: []string{"goblin"},
+				Category:          shared.ChoiceLanguages, // Standard category
+				Source:            shared.SourceRace,      // Source is race
+				ChoiceID:          "human_language_1",     // Specific choice identifier
+				LanguageSelection: []constants.Language{constants.LanguageGoblin},
 			},
 		},
 		CreatedAt: time.Now(),
@@ -207,6 +207,10 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 	s.Assert().Contains(character.languages, constants.LanguageElvish)
 }
 
+/*
+// TestLoadCharacterFromData_MixedSelectionTypes is no longer needed with sum type pattern
+// The old test was checking handling of different Selection types (any, []string, string)
+// which is now handled by specific typed fields
 func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 	// Test with various selection formats ([]interface{}, []string, string)
 	charData := Data{
@@ -285,6 +289,7 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 	s.Assert().Contains(character.languages, constants.LanguageElvish)
 	s.Assert().Contains(character.languages, constants.LanguageDraconic)
 }
+*/
 
 func TestCharacterTestSuite(t *testing.T) {
 	suite.Run(t, new(CharacterTestSuite))

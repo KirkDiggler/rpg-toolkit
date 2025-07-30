@@ -85,10 +85,10 @@ func (s *DraftTestSuite) TestToCharacter_Success() {
 		},
 		Choices: []ChoiceData{
 			{
-				Category:  shared.ChoiceSkills,
-				Source:    shared.SourceClass,
-				ChoiceID:  "fighter_skill_proficiencies",
-				Selection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+				Category:       shared.ChoiceSkills,
+				Source:         shared.SourceClass,
+				ChoiceID:       "fighter_skill_proficiencies",
+				SkillSelection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
 			},
 		},
 		Progress: DraftProgress{
@@ -309,10 +309,10 @@ func (s *DraftTestSuite) TestDraftToData() {
 		},
 		Choices: []ChoiceData{
 			{
-				Category:  shared.ChoiceSkills,
-				Source:    shared.SourceClass,
-				ChoiceID:  "fighter_skill_proficiencies",
-				Selection: []constants.Skill{constants.SkillAthletics, constants.SkillPerception},
+				Category:       shared.ChoiceSkills,
+				Source:         shared.SourceClass,
+				ChoiceID:       "fighter_skill_proficiencies",
+				SkillSelection: []constants.Skill{constants.SkillAthletics, constants.SkillPerception},
 			},
 		},
 		Progress:  DraftProgress{flags: ProgressName | ProgressRace | ProgressClass},
@@ -395,10 +395,14 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 		},
 		Choices: []ChoiceData{
 			{
-				Category:  shared.ChoiceLanguages,
-				Source:    shared.SourceRace,
-				ChoiceID:  "human_languages",
-				Selection: []constants.Language{constants.LanguageElvish, constants.LanguageGoblin, constants.LanguageDraconic},
+				Category: shared.ChoiceLanguages,
+				Source:   shared.SourceRace,
+				ChoiceID: "human_languages",
+				LanguageSelection: []constants.Language{
+					constants.LanguageElvish,
+					constants.LanguageGoblin,
+					constants.LanguageDraconic,
+				},
 			},
 		},
 		Progress: DraftProgress{

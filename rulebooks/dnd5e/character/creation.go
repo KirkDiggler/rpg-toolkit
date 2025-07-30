@@ -151,16 +151,103 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 func buildChoiceData(data CreationData) []ChoiceData {
 	choices := make([]ChoiceData, 0, len(data.Choices))
 
-	// Record all choices made
+	// Record all choices made - need to handle the legacy map[string]any format
 	for category, selection := range data.Choices {
 		choiceData := ChoiceData{
-			Category:  shared.ChoiceCategory(category),
-			Source:    shared.SourcePlayer,
-			ChoiceID:  "", // No specific choice ID for legacy creation data
-			Selection: selection,
+			Category: shared.ChoiceCategory(category),
+			Source:   shared.SourcePlayer,
+			ChoiceID: "", // No specific choice ID for legacy creation data
 		}
+
+		// Convert the selection based on category
+		convertLegacyChoice(&choiceData, selection)
+
 		choices = append(choices, choiceData)
 	}
 
 	return choices
+}
+
+// convertLegacyChoice converts legacy selection data to the appropriate typed field
+func convertLegacyChoice(choiceData *ChoiceData, selection any) {
+	switch choiceData.Category {
+	case shared.ChoiceName:
+		if name, ok := selection.(string); ok {
+			choiceData.NameSelection = &name
+		}
+	case shared.ChoiceSkills:
+		choiceData.SkillSelection = convertToSkills(selection)
+	case shared.ChoiceLanguages:
+		choiceData.LanguageSelection = convertToLanguages(selection)
+	case shared.ChoiceEquipment:
+		choiceData.EquipmentSelection = convertToStringSlice(selection)
+	case shared.ChoiceFightingStyle:
+		if style, ok := selection.(string); ok {
+			choiceData.FightingStyleSelection = &style
+		}
+	case shared.ChoiceSpells:
+		choiceData.SpellSelection = convertToStringSlice(selection)
+	case shared.ChoiceCantrips:
+		choiceData.CantripSelection = convertToStringSlice(selection)
+		// Complex types (AbilityScores, Race, Class, Background) are not supported in legacy creation
+	}
+}
+
+// convertToSkills converts various formats to []constants.Skill
+func convertToSkills(selection any) []constants.Skill {
+	switch v := selection.(type) {
+	case []string:
+		skills := make([]constants.Skill, len(v))
+		for i, s := range v {
+			skills[i] = constants.Skill(s)
+		}
+		return skills
+	case []interface{}:
+		skills := make([]constants.Skill, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				skills = append(skills, constants.Skill(s))
+			}
+		}
+		return skills
+	}
+	return nil
+}
+
+// convertToLanguages converts various formats to []constants.Language
+func convertToLanguages(selection any) []constants.Language {
+	switch v := selection.(type) {
+	case []string:
+		langs := make([]constants.Language, len(v))
+		for i, l := range v {
+			langs[i] = constants.Language(l)
+		}
+		return langs
+	case []interface{}:
+		langs := make([]constants.Language, 0, len(v))
+		for _, item := range v {
+			if l, ok := item.(string); ok {
+				langs = append(langs, constants.Language(l))
+			}
+		}
+		return langs
+	}
+	return nil
+}
+
+// convertToStringSlice converts various formats to []string
+func convertToStringSlice(selection any) []string {
+	switch v := selection.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
 }
