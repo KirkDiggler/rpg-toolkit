@@ -189,10 +189,7 @@ func convertLegacyChoice(choiceData *ChoiceData, selection any) {
 		choiceData.SpellSelection = convertToStringSlice(selection)
 	case shared.ChoiceCantrips:
 		choiceData.CantripSelection = convertToStringSlice(selection)
-	// TODO(#160): Implement handling for AbilityScores - requires mapping legacy data to structured format
-	// TODO(#161): Implement handling for Race - requires mapping legacy data to structured format
-	// TODO(#162): Implement handling for Class - requires mapping legacy data to structured format
-	// TODO(#163): Implement handling for Background - requires mapping legacy data to structured format
+	// Complex types (AbilityScores, Race, Class, Background) are not supported in legacy creation
 	}
 }
 
