@@ -161,7 +161,7 @@ func TestCharacterCreationFlow(t *testing.T) {
 
 	// Save draft for later
 	draftData := builder.ToData()
-	assert.NotEmpty(t, draftData.SkillChoices)
+	assert.NotEmpty(t, draftData.Choices)
 
 	// Load draft and continue
 	builder2, err := dnd5e.LoadDraft(draftData)

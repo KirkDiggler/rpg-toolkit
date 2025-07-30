@@ -109,8 +109,20 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				constants.WIS: 12,
 				constants.CHA: 8,
 			},
-			SkillChoices:        []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
-			FightingStyleChoice: "defense", // Fighter-specific choice
+			Choices: []ChoiceData{
+				{
+					Category:  shared.ChoiceSkills,
+					Source:    shared.SourceClass,
+					ChoiceID:  "fighter_skill_proficiencies",
+					Selection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+				},
+				{
+					Category:  shared.ChoiceFightingStyle,
+					Source:    shared.SourceClass,
+					ChoiceID:  "fighter_fighting_style",
+					Selection: "defense",
+				},
+			},
 			Progress: DraftProgress{
 				flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 			},
@@ -133,9 +145,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		// Check if fighting style choice is stored
 		hasDefenseChoice := false
 		for _, choice := range character.choices {
-			if choice.Category == string(shared.ChoiceFightingStyle) && choice.Selection == "defense" {
+			if choice.Category == shared.ChoiceFightingStyle && choice.Selection == "defense" {
 				hasDefenseChoice = true
-				s.Assert().Equal("class", choice.Source, "Fighting style should come from class")
+				s.Assert().Equal(shared.SourceClass, choice.Source, "Fighting style should come from class")
 				break
 			}
 		}
@@ -165,15 +177,15 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			HitPoints:    20,
 			Speed:        30,
 			Size:         "Medium",
-			Skills: map[string]shared.ProficiencyLevel{
-				"perception":   shared.Proficient,
-				"survival":     shared.Proficient,
-				"athletics":    shared.Proficient,
-				"Intimidation": shared.Proficient,
+			Skills: map[constants.Skill]shared.ProficiencyLevel{
+				constants.SkillPerception:   shared.Proficient,
+				constants.SkillSurvival:     shared.Proficient,
+				constants.SkillAthletics:    shared.Proficient,
+				constants.SkillIntimidation: shared.Proficient,
 			},
-			SavingThrows: map[string]shared.ProficiencyLevel{
-				shared.AbilityStrength:     shared.Proficient,
-				shared.AbilityConstitution: shared.Proficient,
+			SavingThrows: map[constants.Ability]shared.ProficiencyLevel{
+				constants.STR: shared.Proficient,
+				constants.CON: shared.Proficient,
 			},
 			Languages: []string{"Common", "dwarvish"},
 			Proficiencies: shared.Proficiencies{
@@ -298,11 +310,28 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				constants.WIS: 12,
 				constants.CHA: 10,
 			},
-			SkillChoices:   []constants.Skill{constants.SkillInvestigation, constants.SkillInsight},
-			CantripChoices: []string{"fire_bolt", "mage_hand", "prestidigitation"},
-			SpellChoices: []string{
-				"shield", "magic_missile", "detect_magic",
-				"identify", "sleep", "charm_person",
+			Choices: []ChoiceData{
+				{
+					Category:  shared.ChoiceSkills,
+					Source:    shared.SourceClass,
+					ChoiceID:  "wizard_skill_proficiencies",
+					Selection: []constants.Skill{constants.SkillInvestigation, constants.SkillInsight},
+				},
+				{
+					Category:  shared.ChoiceCantrips,
+					Source:    shared.SourceClass,
+					ChoiceID:  "wizard_cantrips",
+					Selection: []string{"fire_bolt", "mage_hand", "prestidigitation"},
+				},
+				{
+					Category: shared.ChoiceSpells,
+					Source:   shared.SourceClass,
+					ChoiceID: "wizard_spells_known",
+					Selection: []string{
+						"shield", "magic_missile", "detect_magic",
+						"identify", "sleep", "charm_person",
+					},
+				},
 			},
 			Progress: DraftProgress{
 				flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
@@ -322,19 +351,19 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		hasCantripChoice := false
 		hasSpellChoice := false
 		for _, choice := range character.choices {
-			if choice.Category == string(shared.ChoiceCantrips) {
+			if choice.Category == shared.ChoiceCantrips {
 				hasCantripChoice = true
 				cantrips, ok := choice.Selection.([]string)
 				s.Assert().True(ok)
 				s.Assert().Len(cantrips, 3)
-				s.Assert().Equal("class", choice.Source, "Cantrips should come from class")
+				s.Assert().Equal(shared.SourceClass, choice.Source, "Cantrips should come from class")
 			}
-			if choice.Category == string(shared.ChoiceSpells) {
+			if choice.Category == shared.ChoiceSpells {
 				hasSpellChoice = true
 				spells, ok := choice.Selection.([]string)
 				s.Assert().True(ok)
 				s.Assert().Len(spells, 6)
-				s.Assert().Equal("class", choice.Source, "Spells should come from class")
+				s.Assert().Equal(shared.SourceClass, choice.Source, "Spells should come from class")
 			}
 		}
 		s.Assert().True(hasCantripChoice, "Cantrip choices should be stored")

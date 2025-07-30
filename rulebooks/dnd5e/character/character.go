@@ -224,10 +224,10 @@ type Data struct {
 	Size  string `json:"size"`
 
 	// Proficiencies and skills
-	Skills        map[string]shared.ProficiencyLevel `json:"skills"`        // skill name -> proficiency level
-	SavingThrows  map[string]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
-	Languages     []string                           `json:"languages"`
-	Proficiencies shared.Proficiencies               `json:"proficiencies"`
+	Skills        map[constants.Skill]shared.ProficiencyLevel   `json:"skills"`        // skill -> proficiency level
+	SavingThrows  map[constants.Ability]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
+	Languages     []string                                      `json:"languages"`
+	Proficiencies shared.Proficiencies                          `json:"proficiencies"`
 
 	// Current state
 	Conditions []conditions.Condition `json:"conditions"`
@@ -260,22 +260,17 @@ type ResourceData struct {
 
 // ChoiceData represents a choice made during character creation
 type ChoiceData struct {
-	Category  string `json:"category"`  // Standard: "skills", "languages", etc.
-	Source    string `json:"source"`    // "race", "class", "background"
-	ChoiceID  string `json:"choice_id"` // Specific choice identifier like "fighter_proficiencies_1"
-	Selection any    `json:"selection"` // The actual choice made
+	Category  shared.ChoiceCategory `json:"category"`  // Type-safe category
+	Source    shared.ChoiceSource   `json:"source"`    // Type-safe source
+	ChoiceID  string                `json:"choice_id"` // Specific choice identifier like "fighter_proficiencies_1"
+	Selection any                   `json:"selection"` // The actual choice made
 }
 
 // ToData converts the character to its persistent representation
 func (c *Character) ToData() Data {
-	skillsData := make(map[string]shared.ProficiencyLevel)
-	for skill, prof := range c.skills {
-		skillsData[string(skill)] = prof
-	}
-
-	savesData := make(map[string]shared.ProficiencyLevel)
+	savesData := make(map[constants.Ability]shared.ProficiencyLevel)
 	for save, prof := range c.savingThrows {
-		savesData[string(save)] = prof
+		savesData[save] = prof
 	}
 
 	resourcesData := make(map[string]ResourceData)
@@ -306,7 +301,7 @@ func (c *Character) ToData() Data {
 		MaxHitPoints:   c.maxHitPoints,
 		Speed:          c.speed,
 		Size:           c.size,
-		Skills:         skillsData,
+		Skills:         c.skills,
 		SavingThrows:   savesData,
 		Languages:      languagesData,
 		Proficiencies:  c.proficiencies,
@@ -335,12 +330,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		return nil, errors.New("race, class, and background data are required")
 	}
 
-	// Build skills from persisted data
-	skills := make(map[constants.Skill]shared.ProficiencyLevel)
-	for skillStr, level := range data.Skills {
-		skill := constants.Skill(skillStr)
-		skills[skill] = level
-	}
+	// Skills are already typed correctly
 
 	// Build languages from persisted data
 	languages := make([]constants.Language, len(data.Languages))
@@ -348,12 +338,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		languages[i] = constants.Language(langStr)
 	}
 
-	// Build saving throws from persisted data
-	saves := make(map[constants.Ability]shared.ProficiencyLevel)
-	for saveStr, level := range data.SavingThrows {
-		save := constants.Ability(saveStr)
-		saves[save] = level
-	}
+	// Saving throws are already typed correctly
 
 	resources := make(map[string]Resource)
 	for name, res := range data.ClassResources {
@@ -391,8 +376,8 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		armorClass:       10 + data.AbilityScores.Modifier(constants.DEX), // Base AC, equipment will modify
 		initiative:       data.AbilityScores.Modifier(constants.DEX),
 		hitDice:          classData.HitDice,
-		skills:           skills,
-		savingThrows:     saves,
+		skills:           data.Skills,
+		savingThrows:     data.SavingThrows,
 		languages:        languages,
 		proficiencies:    data.Proficiencies,
 		features:         features,
