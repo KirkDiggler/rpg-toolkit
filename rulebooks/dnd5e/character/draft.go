@@ -359,7 +359,7 @@ func (d *Draft) compileChoices() []ChoiceData {
 		})
 	}
 
-	if len(d.AbilityScoreChoice) > 0 { // Check if ability scores are set
+	if len(d.AbilityScoreChoice) > 0 {
 		choices = append(choices, ChoiceData{
 			Category:              shared.ChoiceAbilityScores,
 			Source:                shared.SourcePlayer,

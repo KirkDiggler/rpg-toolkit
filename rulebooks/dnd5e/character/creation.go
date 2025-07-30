@@ -160,99 +160,97 @@ func buildChoiceData(data CreationData) []ChoiceData {
 		}
 
 		// Convert the selection based on category
-		switch shared.ChoiceCategory(category) {
-		case shared.ChoiceName:
-			if name, ok := selection.(string); ok {
-				choiceData.NameSelection = &name
-			}
-		case shared.ChoiceSkills:
-			// Could be []string or []interface{} from JSON
-			switch v := selection.(type) {
-			case []string:
-				skills := make([]constants.Skill, len(v))
-				for i, s := range v {
-					skills[i] = constants.Skill(s)
-				}
-				choiceData.SkillSelection = skills
-			case []interface{}:
-				skills := make([]constants.Skill, 0, len(v))
-				for _, item := range v {
-					if s, ok := item.(string); ok {
-						skills = append(skills, constants.Skill(s))
-					}
-				}
-				choiceData.SkillSelection = skills
-			}
-		case shared.ChoiceLanguages:
-			// Could be []string or []interface{} from JSON
-			switch v := selection.(type) {
-			case []string:
-				langs := make([]constants.Language, len(v))
-				for i, l := range v {
-					langs[i] = constants.Language(l)
-				}
-				choiceData.LanguageSelection = langs
-			case []interface{}:
-				langs := make([]constants.Language, 0, len(v))
-				for _, item := range v {
-					if l, ok := item.(string); ok {
-						langs = append(langs, constants.Language(l))
-					}
-				}
-				choiceData.LanguageSelection = langs
-			}
-		case shared.ChoiceEquipment:
-			// Could be []string or []interface{} from JSON
-			switch v := selection.(type) {
-			case []string:
-				choiceData.EquipmentSelection = v
-			case []interface{}:
-				equipment := make([]string, 0, len(v))
-				for _, item := range v {
-					if e, ok := item.(string); ok {
-						equipment = append(equipment, e)
-					}
-				}
-				choiceData.EquipmentSelection = equipment
-			}
-		case shared.ChoiceFightingStyle:
-			if style, ok := selection.(string); ok {
-				choiceData.FightingStyleSelection = &style
-			}
-		case shared.ChoiceSpells:
-			// Could be []string or []interface{} from JSON
-			switch v := selection.(type) {
-			case []string:
-				choiceData.SpellSelection = v
-			case []interface{}:
-				spells := make([]string, 0, len(v))
-				for _, item := range v {
-					if s, ok := item.(string); ok {
-						spells = append(spells, s)
-					}
-				}
-				choiceData.SpellSelection = spells
-			}
-		case shared.ChoiceCantrips:
-			// Could be []string or []interface{} from JSON
-			switch v := selection.(type) {
-			case []string:
-				choiceData.CantripSelection = v
-			case []interface{}:
-				cantrips := make([]string, 0, len(v))
-				for _, item := range v {
-					if c, ok := item.(string); ok {
-						cantrips = append(cantrips, c)
-					}
-				}
-				choiceData.CantripSelection = cantrips
-			}
-			// For now, skip complex types that don't have a direct mapping
-			// (AbilityScores, Race, Class, Background would need special handling)
-		}
-
+		convertLegacyChoice(&choiceData, selection)
+		
 		choices = append(choices, choiceData)
 	}
 
 	return choices
+}
+
+// convertLegacyChoice converts legacy selection data to the appropriate typed field
+func convertLegacyChoice(choiceData *ChoiceData, selection any) {
+	switch choiceData.Category {
+	case shared.ChoiceName:
+		if name, ok := selection.(string); ok {
+			choiceData.NameSelection = &name
+		}
+	case shared.ChoiceSkills:
+		choiceData.SkillSelection = convertToSkills(selection)
+	case shared.ChoiceLanguages:
+		choiceData.LanguageSelection = convertToLanguages(selection)
+	case shared.ChoiceEquipment:
+		choiceData.EquipmentSelection = convertToStringSlice(selection)
+	case shared.ChoiceFightingStyle:
+		if style, ok := selection.(string); ok {
+			choiceData.FightingStyleSelection = &style
+		}
+	case shared.ChoiceSpells:
+		choiceData.SpellSelection = convertToStringSlice(selection)
+	case shared.ChoiceCantrips:
+		choiceData.CantripSelection = convertToStringSlice(selection)
+	// TODO(#160): Implement handling for AbilityScores - requires mapping legacy data to structured format
+	// TODO(#161): Implement handling for Race - requires mapping legacy data to structured format
+	// TODO(#162): Implement handling for Class - requires mapping legacy data to structured format
+	// TODO(#163): Implement handling for Background - requires mapping legacy data to structured format
+	}
+}
+
+// convertToSkills converts various formats to []constants.Skill
+func convertToSkills(selection any) []constants.Skill {
+	switch v := selection.(type) {
+	case []string:
+		skills := make([]constants.Skill, len(v))
+		for i, s := range v {
+			skills[i] = constants.Skill(s)
+		}
+		return skills
+	case []interface{}:
+		skills := make([]constants.Skill, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				skills = append(skills, constants.Skill(s))
+			}
+		}
+		return skills
+	}
+	return nil
+}
+
+// convertToLanguages converts various formats to []constants.Language
+func convertToLanguages(selection any) []constants.Language {
+	switch v := selection.(type) {
+	case []string:
+		langs := make([]constants.Language, len(v))
+		for i, l := range v {
+			langs[i] = constants.Language(l)
+		}
+		return langs
+	case []interface{}:
+		langs := make([]constants.Language, 0, len(v))
+		for _, item := range v {
+			if l, ok := item.(string); ok {
+				langs = append(langs, constants.Language(l))
+			}
+		}
+		return langs
+	}
+	return nil
+}
+
+// convertToStringSlice converts various formats to []string
+func convertToStringSlice(selection any) []string {
+	switch v := selection.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
 }

@@ -145,7 +145,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		// Check if fighting style choice is stored
 		hasDefenseChoice := false
 		for _, choice := range character.choices {
-			if choice.Category == shared.ChoiceFightingStyle && choice.FightingStyleSelection != nil && *choice.FightingStyleSelection == "defense" {
+			if choice.Category == shared.ChoiceFightingStyle &&
+				choice.FightingStyleSelection != nil &&
+				*choice.FightingStyleSelection == "defense" {
 				hasDefenseChoice = true
 				s.Assert().Equal(shared.SourceClass, choice.Source, "Fighting style should come from class")
 				break

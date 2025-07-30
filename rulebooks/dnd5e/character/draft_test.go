@@ -398,7 +398,11 @@ func (s *DraftTestSuite) TestToCharacter_WithLanguageChoices() {
 				Category:          shared.ChoiceLanguages,
 				Source:            shared.SourceRace,
 				ChoiceID:          "human_languages",
-				LanguageSelection: []constants.Language{constants.LanguageElvish, constants.LanguageGoblin, constants.LanguageDraconic},
+				LanguageSelection: []constants.Language{
+					constants.LanguageElvish,
+					constants.LanguageGoblin,
+					constants.LanguageDraconic,
+				},
 			},
 		},
 		Progress: DraftProgress{
