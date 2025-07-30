@@ -250,7 +250,9 @@ func (d *Draft) applyAbilityScoreImprovements(charData *Data, raceData *race.Dat
 }
 
 // compileSkills combines chosen skills with automatic grants from race and background
-func (d *Draft) compileSkills(raceData *race.Data, backgroundData *shared.Background) map[constants.Skill]shared.ProficiencyLevel {
+func (d *Draft) compileSkills(
+	raceData *race.Data, backgroundData *shared.Background,
+) map[constants.Skill]shared.ProficiencyLevel {
 	skills := make(map[constants.Skill]shared.ProficiencyLevel)
 
 	// Extract chosen skills from Choices
