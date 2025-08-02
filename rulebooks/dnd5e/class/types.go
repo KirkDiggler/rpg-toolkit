@@ -79,9 +79,10 @@ type EquipmentData struct {
 
 // EquipmentChoiceData for equipment choices
 type EquipmentChoiceData struct {
-	ID      string            `json:"id"`
-	Choose  int               `json:"choose"`
-	Options []EquipmentOption `json:"options"`
+	ID          string            `json:"id"`
+	Description string            `json:"description"`
+	Choose      int               `json:"choose"`
+	Options     []EquipmentOption `json:"options"`
 }
 
 // EquipmentOption represents one choice option
