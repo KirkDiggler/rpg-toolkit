@@ -87,8 +87,15 @@ type EquipmentChoiceData struct {
 
 // EquipmentOption represents one choice option
 type EquipmentOption struct {
-	ID    string          `json:"id"`
-	Items []EquipmentData `json:"items"`
+	ID    string               `json:"id"`
+	Items []EquipmentBundleItem `json:"items"`
+}
+
+// EquipmentBundleItem can be either a concrete item or a nested choice
+type EquipmentBundleItem struct {
+	// Exactly one of these should be set
+	ConcreteItem *EquipmentData       `json:"concrete_item,omitempty"`
+	NestedChoice *EquipmentChoiceData `json:"nested_choice,omitempty"`
 }
 
 // SubclassData represents a class archetype
