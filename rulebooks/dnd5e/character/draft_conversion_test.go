@@ -985,15 +985,17 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 	s.fighterClass.Resources = []class.ResourceData{
 		{
 			ID:         "second_wind",
+			Type:       shared.ClassResourceSecondWind,
 			Name:       "Second Wind",
 			MaxFormula: "1",
-			ResetOn:    "short_rest",
+			Resets:     shared.ShortRest,
 		},
 		{
 			ID:         "action_surge",
+			Type:       shared.ClassResourceActionSurge,
 			Name:       "Action Surge",
 			MaxFormula: "1", // Would increase at higher levels
-			ResetOn:    "short_rest",
+			Resets:     shared.ShortRest,
 		},
 	}
 

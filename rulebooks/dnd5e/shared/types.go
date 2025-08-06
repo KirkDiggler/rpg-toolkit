@@ -112,7 +112,111 @@ const (
 	LongRest ResetType = "long_rest"
 	// Dawn resets at dawn
 	Dawn ResetType = "dawn"
+	// None never recharges (consumable)
+	None ResetType = "none"
 )
+
+// ClassResourceType represents different types of class resources
+type ClassResourceType int
+
+const (
+	// ClassResourceUnspecified is the zero value
+	ClassResourceUnspecified ClassResourceType = iota
+	// ClassResourceRage for barbarian rage
+	ClassResourceRage
+	// ClassResourceBardicInspiration for bard
+	ClassResourceBardicInspiration
+	// ClassResourceChannelDivinity for cleric/paladin
+	ClassResourceChannelDivinity
+	// ClassResourceWildShape for druid
+	ClassResourceWildShape
+	// ClassResourceSecondWind for fighter
+	ClassResourceSecondWind
+	// ClassResourceActionSurge for fighter
+	ClassResourceActionSurge
+	// ClassResourceKiPoints for monk
+	ClassResourceKiPoints
+	// ClassResourceDivineSense for paladin
+	ClassResourceDivineSense
+	// ClassResourceLayOnHands for paladin
+	ClassResourceLayOnHands
+	// ClassResourceSorceryPoints for sorcerer
+	ClassResourceSorceryPoints
+	// ClassResourceArcaneRecovery for wizard
+	ClassResourceArcaneRecovery
+	// ClassResourceIndomitable for fighter
+	ClassResourceIndomitable
+	// ClassResourceSuperiorityDice for battle master
+	ClassResourceSuperiorityDice
+)
+
+// String returns the string representation of ClassResourceType
+func (c ClassResourceType) String() string {
+	switch c {
+	case ClassResourceRage:
+		return "rage"
+	case ClassResourceBardicInspiration:
+		return "bardic_inspiration"
+	case ClassResourceChannelDivinity:
+		return "channel_divinity"
+	case ClassResourceWildShape:
+		return "wild_shape"
+	case ClassResourceSecondWind:
+		return "second_wind"
+	case ClassResourceActionSurge:
+		return "action_surge"
+	case ClassResourceKiPoints:
+		return "ki_points"
+	case ClassResourceDivineSense:
+		return "divine_sense"
+	case ClassResourceLayOnHands:
+		return "lay_on_hands"
+	case ClassResourceSorceryPoints:
+		return "sorcery_points"
+	case ClassResourceArcaneRecovery:
+		return "arcane_recovery"
+	case ClassResourceIndomitable:
+		return "indomitable"
+	case ClassResourceSuperiorityDice:
+		return "superiority_dice"
+	default:
+		return "unspecified"
+	}
+}
+
+// ParseClassResourceType parses a string into a ClassResourceType
+func ParseClassResourceType(s string) ClassResourceType {
+	switch s {
+	case "rage":
+		return ClassResourceRage
+	case "bardic_inspiration":
+		return ClassResourceBardicInspiration
+	case "channel_divinity":
+		return ClassResourceChannelDivinity
+	case "wild_shape":
+		return ClassResourceWildShape
+	case "second_wind":
+		return ClassResourceSecondWind
+	case "action_surge":
+		return ClassResourceActionSurge
+	case "ki_points", "ki":
+		return ClassResourceKiPoints
+	case "divine_sense":
+		return ClassResourceDivineSense
+	case "lay_on_hands":
+		return ClassResourceLayOnHands
+	case "sorcery_points":
+		return ClassResourceSorceryPoints
+	case "arcane_recovery":
+		return ClassResourceArcaneRecovery
+	case "indomitable":
+		return ClassResourceIndomitable
+	case "superiority_dice":
+		return ClassResourceSuperiorityDice
+	default:
+		return ClassResourceUnspecified
+	}
+}
 
 // ChoiceCategory represents different types of choices during creation
 type ChoiceCategory string

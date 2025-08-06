@@ -252,10 +252,11 @@ type Data struct {
 
 // ResourceData represents persistent resource data
 type ResourceData struct {
-	Name    string `json:"name"`
-	Max     int    `json:"max"`
-	Current int    `json:"current"`
-	Resets  string `json:"resets"`
+	Type    shared.ClassResourceType `json:"type"`    // Resource type enum
+	Name    string                   `json:"name"`    // Display name
+	Max     int                      `json:"max"`     // Maximum uses
+	Current int                      `json:"current"` // Current uses
+	Resets  shared.ResetType         `json:"resets"`  // When it resets
 }
 
 // ChoiceData represents a choice made during character creation using a sum type pattern
@@ -288,11 +289,14 @@ func (c *Character) ToData() Data {
 
 	resourcesData := make(map[string]ResourceData)
 	for name, res := range c.classResources {
+		// Parse the resource type from the string key
+		resourceType := shared.ParseClassResourceType(name)
 		resourcesData[name] = ResourceData{
+			Type:    resourceType,
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
-			Resets:  string(res.Resets),
+			Resets:  res.Resets,
 		}
 	}
 
@@ -359,7 +363,7 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
-			Resets:  shared.ResetType(res.Resets),
+			Resets:  res.Resets,
 		}
 	}
 

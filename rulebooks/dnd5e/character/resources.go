@@ -23,7 +23,7 @@ func initializeClassResources(classData *class.Data, level int,
 				Name:    resourceData.Name,
 				Max:     maxValue,
 				Current: maxValue, // Start at full
-				Resets:  shared.ResetType(resourceData.ResetOn),
+				Resets:  resourceData.Resets,
 			}
 		}
 	}

@@ -112,11 +112,14 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	classResources := initializeClassResources(classData, 1, charData.AbilityScores)
 	resourcesData := make(map[string]ResourceData)
 	for name, res := range classResources {
+		// Parse the resource type from the string key
+		resourceType := shared.ParseClassResourceType(name)
 		resourcesData[name] = ResourceData{
+			Type:    resourceType,
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
-			Resets:  string(res.Resets),
+			Resets:  res.Resets,
 		}
 	}
 	charData.ClassResources = resourcesData
