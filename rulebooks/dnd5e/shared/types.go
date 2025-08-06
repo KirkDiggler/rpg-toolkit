@@ -98,6 +98,8 @@ const (
 	Proficient
 	// Expertise indicates double proficiency bonus
 	Expertise
+	// Expert indicates double proficiency bonus (alias for Expertise)
+	Expert ProficiencyLevel = 2
 )
 
 // ResetType defines when a resource resets
@@ -140,6 +142,8 @@ const (
 	ChoiceCantrips ChoiceCategory = "cantrips"
 	// ChoiceFightingStyle represents fighting style selection
 	ChoiceFightingStyle ChoiceCategory = "fighting_style"
+	// ChoiceToolProficiency represents tool proficiency selection
+	ChoiceToolProficiency ChoiceCategory = "tool_proficiency"
 )
 
 // ChoiceSource represents where a choice or grant comes from
@@ -162,9 +166,9 @@ const (
 
 // Proficiencies tracks what the character is proficient with
 type Proficiencies struct {
-	Armor   []string
-	Weapons []string
-	Tools   []string
+	Armor   []string `json:"armor,omitempty"`
+	Weapons []string `json:"weapons,omitempty"`
+	Tools   []string `json:"tools,omitempty"`
 }
 
 // DeathSaves tracks death saving throws
