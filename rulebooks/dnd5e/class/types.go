@@ -1,7 +1,10 @@
 // Package class provides D&D 5e class data structures and functionality
 package class
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+)
 
 // Data contains all the data needed to define a D&D 5e class
 type Data struct {
@@ -64,11 +67,11 @@ type SpellcastingData struct {
 
 // ResourceData for class resources
 type ResourceData struct {
-	ID           string      `json:"id"`
-	Name         string      `json:"name"`
-	MaxFormula   string      `json:"max_formula"` // e.g., "level", "1 + charisma_modifier"
-	UsesPerLevel map[int]int `json:"uses_per_level,omitempty"`
-	ResetOn      string      `json:"reset_on"` // "short_rest", "long_rest"
+	Type         shared.ClassResourceType `json:"type"`        // Resource type IS the identifier
+	Name         string                   `json:"name"`        // Display name
+	MaxFormula   string                   `json:"max_formula"` // e.g., "level", "1 + charisma_modifier"
+	Resets       shared.ResetType         `json:"resets"`      // When it resets
+	UsesPerLevel map[int]int              `json:"uses_per_level,omitempty"`
 }
 
 // EquipmentData for starting equipment

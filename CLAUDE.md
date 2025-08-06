@@ -97,6 +97,14 @@ The repository has comprehensive pre-commit hooks that run:
 
 These run automatically on commit.
 
+## Development Principles
+
+- **Optimize for simplicity, not hypothetical future needs**
+- **Only add what is necessary**
+- **Pick ONE way to represent data and use it directly**
+- **Avoid conversion layers and dual representations**
+- **Delete code that creates unnecessary indirection**
+
 ## Project Philosophy
 
 **IMPORTANT: RPG Toolkit provides infrastructure, NOT implementation**

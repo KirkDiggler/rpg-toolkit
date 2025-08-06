@@ -112,7 +112,46 @@ const (
 	LongRest ResetType = "long_rest"
 	// Dawn resets at dawn
 	Dawn ResetType = "dawn"
+	// None never recharges (consumable)
+	None ResetType = "none"
 )
+
+// ClassResourceType represents different types of class resources
+type ClassResourceType int
+
+const (
+	// ClassResourceUnspecified is the zero value
+	ClassResourceUnspecified ClassResourceType = iota
+	// ClassResourceRage for barbarian rage
+	ClassResourceRage
+	// ClassResourceBardicInspiration for bard
+	ClassResourceBardicInspiration
+	// ClassResourceChannelDivinity for cleric/paladin
+	ClassResourceChannelDivinity
+	// ClassResourceWildShape for druid
+	ClassResourceWildShape
+	// ClassResourceSecondWind for fighter
+	ClassResourceSecondWind
+	// ClassResourceActionSurge for fighter
+	ClassResourceActionSurge
+	// ClassResourceKiPoints for monk
+	ClassResourceKiPoints
+	// ClassResourceDivineSense for paladin
+	ClassResourceDivineSense
+	// ClassResourceLayOnHands for paladin
+	ClassResourceLayOnHands
+	// ClassResourceSorceryPoints for sorcerer
+	ClassResourceSorceryPoints
+	// ClassResourceArcaneRecovery for wizard
+	ClassResourceArcaneRecovery
+	// ClassResourceIndomitable for fighter
+	ClassResourceIndomitable
+	// ClassResourceSuperiorityDice for battle master
+	ClassResourceSuperiorityDice
+)
+
+// Note: No String() or Parse() methods - use the enum directly as the identifier.
+// This keeps the system lean and avoids dual representations.
 
 // ChoiceCategory represents different types of choices during creation
 type ChoiceCategory string

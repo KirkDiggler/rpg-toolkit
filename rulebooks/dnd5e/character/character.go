@@ -58,7 +58,7 @@ type Character struct {
 
 	// Resources
 	spellSlots     SpellSlots
-	classResources map[string]Resource // rage uses, ki points, etc
+	classResources map[shared.ClassResourceType]Resource // rage uses, ki points, etc
 
 	// Equipment
 	equipment []string
@@ -190,7 +190,7 @@ func (c *Character) GetEquipment() []string {
 }
 
 // GetClassResources returns the character's class resources
-func (c *Character) GetClassResources() map[string]Resource {
+func (c *Character) GetClassResources() map[shared.ClassResourceType]Resource {
 	return c.classResources
 }
 
@@ -236,8 +236,8 @@ type Data struct {
 	DeathSaves shared.DeathSaves      `json:"death_saves"`
 
 	// Resources
-	SpellSlots     map[int]SlotInfo        `json:"spell_slots"`
-	ClassResources map[string]ResourceData `json:"class_resources"`
+	SpellSlots     map[int]SlotInfo                          `json:"spell_slots"`
+	ClassResources map[shared.ClassResourceType]ResourceData `json:"class_resources"`
 
 	// Equipment
 	Equipment []string `json:"equipment"`
@@ -252,10 +252,11 @@ type Data struct {
 
 // ResourceData represents persistent resource data
 type ResourceData struct {
-	Name    string `json:"name"`
-	Max     int    `json:"max"`
-	Current int    `json:"current"`
-	Resets  string `json:"resets"`
+	Type    shared.ClassResourceType `json:"type"`    // Resource type enum
+	Name    string                   `json:"name"`    // Display name
+	Max     int                      `json:"max"`     // Maximum uses
+	Current int                      `json:"current"` // Current uses
+	Resets  shared.ResetType         `json:"resets"`  // When it resets
 }
 
 // ChoiceData represents a choice made during character creation using a sum type pattern
@@ -286,13 +287,14 @@ func (c *Character) ToData() Data {
 		savesData[save] = prof
 	}
 
-	resourcesData := make(map[string]ResourceData)
-	for name, res := range c.classResources {
-		resourcesData[name] = ResourceData{
+	resourcesData := make(map[shared.ClassResourceType]ResourceData)
+	for resType, res := range c.classResources {
+		resourcesData[resType] = ResourceData{
+			Type:    resType,
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
-			Resets:  string(res.Resets),
+			Resets:  res.Resets,
 		}
 	}
 
@@ -353,13 +355,13 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 
 	// Saving throws are already typed correctly
 
-	resources := make(map[string]Resource)
-	for name, res := range data.ClassResources {
-		resources[name] = Resource{
+	resources := make(map[shared.ClassResourceType]Resource)
+	for resType, res := range data.ClassResources {
+		resources[resType] = Resource{
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
-			Resets:  shared.ResetType(res.Resets),
+			Resets:  res.Resets,
 		}
 	}
 

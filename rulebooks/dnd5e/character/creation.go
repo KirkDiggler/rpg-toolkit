@@ -141,7 +141,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 		exhaustion:       0,
 		deathSaves:       shared.DeathSaves{},
 		spellSlots:       make(SpellSlots),
-		classResources:   make(map[string]Resource),
+		classResources:   make(map[shared.ClassResourceType]Resource),
 		choices:          buildChoiceData(data),
 	}
 
