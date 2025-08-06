@@ -13,13 +13,13 @@ import (
 
 // initializeClassResources processes class resources based on level and ability scores
 func initializeClassResources(classData *class.Data, level int,
-	abilityScores shared.AbilityScores) map[string]Resource {
-	resources := make(map[string]Resource)
+	abilityScores shared.AbilityScores) map[shared.ClassResourceType]Resource {
+	resources := make(map[shared.ClassResourceType]Resource)
 
 	for _, resourceData := range classData.Resources {
 		maxValue := calculateResourceMax(resourceData, level, abilityScores)
 		if maxValue > 0 {
-			resources[resourceData.ID] = Resource{
+			resources[resourceData.Type] = Resource{
 				Name:    resourceData.Name,
 				Max:     maxValue,
 				Current: maxValue, // Start at full

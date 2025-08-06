@@ -97,6 +97,42 @@ The repository has comprehensive pre-commit hooks that run:
 
 These run automatically on commit.
 
+## Core Development Principles
+
+### Lean and Simple Over "Enterprise"
+**CRITICAL: Optimize for simplicity, not hypothetical future needs**
+
+1. **No Dual Representations**
+   - Pick ONE way to represent data (enum OR string, not both)
+   - Don't create conversion layers between representations
+   - Don't maintain parallel systems
+
+2. **No Premature Abstraction**
+   - Build what you need now, not what you might need
+   - Avoid "legacy compatibility" patterns in new code
+   - Delete code that creates unnecessary indirection
+
+3. **Direct Usage**
+   - If you have an enum, use it as the key
+   - If you have a type, use it directly
+   - Avoid parse/stringify cycles
+
+4. **Evolve Through Simplicity**
+   - Simple systems are easier to change
+   - Less baggage = more evolution paths
+   - Complexity will rise naturally - don't add it prematurely
+
+Example:
+```go
+// ❌ BAD: Dual representation
+resources := map[string]Resource
+resourceType := ParseClassResourceType("rage")
+
+// ✅ GOOD: Direct usage
+resources := map[ClassResourceType]Resource
+resources[ClassResourceRage] = Resource{...}
+```
+
 ## Project Philosophy
 
 **IMPORTANT: RPG Toolkit provides infrastructure, NOT implementation**

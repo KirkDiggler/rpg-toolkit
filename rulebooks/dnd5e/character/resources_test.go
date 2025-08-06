@@ -187,7 +187,6 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		barbarianClass := &class.Data{
 			Resources: []class.ResourceData{
 				{
-					ID:         "rage",
 					Type:       shared.ClassResourceRage,
 					Name:       "Rage",
 					MaxFormula: "", // Uses table
@@ -202,7 +201,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		// Level 1 barbarian
 		resources := initializeClassResources(barbarianClass, 1, abilityScores)
 		s.Len(resources, 1)
-		rage := resources["rage"]
+		rage := resources[shared.ClassResourceRage]
 		s.Equal("Rage", rage.Name)
 		s.Equal(2, rage.Max)
 		s.Equal(2, rage.Current)
@@ -210,7 +209,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 
 		// Level 6 barbarian
 		resources = initializeClassResources(barbarianClass, 6, abilityScores)
-		rage = resources["rage"]
+		rage = resources[shared.ClassResourceRage]
 		s.Equal(4, rage.Max)
 	})
 
@@ -218,7 +217,6 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		monkClass := &class.Data{
 			Resources: []class.ResourceData{
 				{
-					ID:         "ki",
 					Type:       shared.ClassResourceKiPoints,
 					Name:       "Ki Points",
 					MaxFormula: "level",
@@ -230,7 +228,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		// Level 5 monk
 		resources := initializeClassResources(monkClass, 5, abilityScores)
 		s.Len(resources, 1)
-		ki := resources["ki"]
+		ki := resources[shared.ClassResourceKiPoints]
 		s.Equal("Ki Points", ki.Name)
 		s.Equal(5, ki.Max)
 		s.Equal(5, ki.Current)
@@ -241,7 +239,6 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		sorcererClass := &class.Data{
 			Resources: []class.ResourceData{
 				{
-					ID:         "sorcery_points",
 					Type:       shared.ClassResourceSorceryPoints,
 					Name:       "Sorcery Points",
 					MaxFormula: "level",
@@ -253,7 +250,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		// Level 3 sorcerer
 		resources := initializeClassResources(sorcererClass, 3, abilityScores)
 		s.Len(resources, 1)
-		sp := resources["sorcery_points"]
+		sp := resources[shared.ClassResourceSorceryPoints]
 		s.Equal("Sorcery Points", sp.Name)
 		s.Equal(3, sp.Max)
 	})
@@ -262,7 +259,6 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		paladinClass := &class.Data{
 			Resources: []class.ResourceData{
 				{
-					ID:         "channel_divinity",
 					Type:       shared.ClassResourceChannelDivinity,
 					Name:       "Channel Divinity",
 					MaxFormula: "1", // Most classes get 1 use
@@ -273,7 +269,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 
 		resources := initializeClassResources(paladinClass, 3, abilityScores)
 		s.Len(resources, 1)
-		cd := resources["channel_divinity"]
+		cd := resources[shared.ClassResourceChannelDivinity]
 		s.Equal(1, cd.Max)
 	})
 
@@ -281,7 +277,6 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		customClass := &class.Data{
 			Resources: []class.ResourceData{
 				{
-					ID:         "focus_points",
 					Type:       shared.ClassResourceUnspecified, // Custom resource
 					Name:       "Focus Points",
 					MaxFormula: "1 + wisdom_modifier",
@@ -292,7 +287,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 
 		resources := initializeClassResources(customClass, 1, abilityScores)
 		s.Len(resources, 1)
-		fp := resources["focus_points"]
+		fp := resources[shared.ClassResourceUnspecified]
 		s.Equal(2, fp.Max) // 1 + 1 (wisdom modifier)
 	})
 }

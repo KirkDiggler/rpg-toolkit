@@ -58,7 +58,7 @@ type Character struct {
 
 	// Resources
 	spellSlots     SpellSlots
-	classResources map[string]Resource // rage uses, ki points, etc
+	classResources map[shared.ClassResourceType]Resource // rage uses, ki points, etc
 
 	// Equipment
 	equipment []string
@@ -190,7 +190,7 @@ func (c *Character) GetEquipment() []string {
 }
 
 // GetClassResources returns the character's class resources
-func (c *Character) GetClassResources() map[string]Resource {
+func (c *Character) GetClassResources() map[shared.ClassResourceType]Resource {
 	return c.classResources
 }
 
@@ -236,8 +236,8 @@ type Data struct {
 	DeathSaves shared.DeathSaves      `json:"death_saves"`
 
 	// Resources
-	SpellSlots     map[int]SlotInfo        `json:"spell_slots"`
-	ClassResources map[string]ResourceData `json:"class_resources"`
+	SpellSlots     map[int]SlotInfo                          `json:"spell_slots"`
+	ClassResources map[shared.ClassResourceType]ResourceData `json:"class_resources"`
 
 	// Equipment
 	Equipment []string `json:"equipment"`
@@ -287,12 +287,10 @@ func (c *Character) ToData() Data {
 		savesData[save] = prof
 	}
 
-	resourcesData := make(map[string]ResourceData)
-	for name, res := range c.classResources {
-		// Parse the resource type from the string key
-		resourceType := shared.ParseClassResourceType(name)
-		resourcesData[name] = ResourceData{
-			Type:    resourceType,
+	resourcesData := make(map[shared.ClassResourceType]ResourceData)
+	for resType, res := range c.classResources {
+		resourcesData[resType] = ResourceData{
+			Type:    resType,
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,
@@ -357,9 +355,9 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 
 	// Saving throws are already typed correctly
 
-	resources := make(map[string]Resource)
-	for name, res := range data.ClassResources {
-		resources[name] = Resource{
+	resources := make(map[shared.ClassResourceType]Resource)
+	for resType, res := range data.ClassResources {
+		resources[resType] = Resource{
 			Name:    res.Name,
 			Max:     res.Max,
 			Current: res.Current,

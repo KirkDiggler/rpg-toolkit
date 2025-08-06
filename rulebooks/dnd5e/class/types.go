@@ -67,8 +67,7 @@ type SpellcastingData struct {
 
 // ResourceData for class resources
 type ResourceData struct {
-	ID           string                   `json:"id"`
-	Type         shared.ClassResourceType `json:"type"`        // Resource type enum
+	Type         shared.ClassResourceType `json:"type"`        // Resource type IS the identifier
 	Name         string                   `json:"name"`        // Display name
 	MaxFormula   string                   `json:"max_formula"` // e.g., "level", "1 + charisma_modifier"
 	Resets       shared.ResetType         `json:"resets"`      // When it resets

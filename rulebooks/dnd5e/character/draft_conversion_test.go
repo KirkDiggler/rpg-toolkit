@@ -984,14 +984,12 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 	// Set up fighter with resources
 	s.fighterClass.Resources = []class.ResourceData{
 		{
-			ID:         "second_wind",
 			Type:       shared.ClassResourceSecondWind,
 			Name:       "Second Wind",
 			MaxFormula: "1",
 			Resets:     shared.ShortRest,
 		},
 		{
-			ID:         "action_surge",
 			Type:       shared.ClassResourceActionSurge,
 			Name:       "Action Surge",
 			MaxFormula: "1", // Would increase at higher levels
@@ -1031,15 +1029,15 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 	s.Len(resources, 2)
 
 	// Check Second Wind
-	secondWind, ok := resources["second_wind"]
+	secondWind, ok := resources[shared.ClassResourceSecondWind]
 	s.Require().True(ok)
 	s.Equal("Second Wind", secondWind.Name)
 	s.Equal(1, secondWind.Max)
 	s.Equal(1, secondWind.Current)
-	s.Equal(shared.ResetType("short_rest"), secondWind.Resets)
+	s.Equal(shared.ShortRest, secondWind.Resets)
 
 	// Check Action Surge
-	actionSurge, ok := resources["action_surge"]
+	actionSurge, ok := resources[shared.ClassResourceActionSurge]
 	s.Require().True(ok)
 	s.Equal("Action Surge", actionSurge.Name)
 	s.Equal(1, actionSurge.Max)
