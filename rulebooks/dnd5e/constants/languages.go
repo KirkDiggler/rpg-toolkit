@@ -23,6 +23,9 @@ const (
 	LanguagePrimordial  Language = "primordial"
 	LanguageSylvan      Language = "sylvan"
 	LanguageUndercommon Language = "undercommon"
+	// Special class/secret languages
+	LanguageThievesCant Language = "thieves-cant"
+	LanguageDruidic     Language = "druidic"
 )
 
 // Display returns the human-readable name of the language
@@ -60,6 +63,10 @@ func (l Language) Display() string {
 		return "Sylvan"
 	case LanguageUndercommon:
 		return "Undercommon"
+	case LanguageThievesCant:
+		return "Thieves' Cant"
+	case LanguageDruidic:
+		return "Druidic"
 	default:
 		// Capitalize first letter as fallback
 		if len(l) > 1 {
