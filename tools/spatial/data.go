@@ -118,15 +118,10 @@ func (r *BasicRoom) ToData() RoomData {
 		gridType = GridTypeSquare
 	case GridShapeHex:
 		gridType = GridTypeHex
-		// Capture hex orientation if this is a hex grid
-		if hexGrid, ok := r.grid.(*HexGrid); ok {
-			orientation := hexGrid.GetOrientation()
-			hexOrientation = &orientation
-		} else {
-			// Default to pointy-top for D&D 5e
-			defaultOrientation := true
-			hexOrientation = &defaultOrientation
-		}
+		// Hex grid shape will always be *HexGrid
+		hexGrid := r.grid.(*HexGrid)
+		orientation := hexGrid.GetOrientation()
+		hexOrientation = &orientation
 	case GridShapeGridless:
 		gridType = GridTypeGridless
 	default:
