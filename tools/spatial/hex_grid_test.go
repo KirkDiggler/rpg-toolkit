@@ -325,6 +325,65 @@ func (s *HexGridTestSuite) TestSmallHexGrid() {
 	}
 }
 
+// TestGetOrientation tests the GetOrientation method
+func (s *HexGridTestSuite) TestGetOrientation() {
+	s.Run("pointy-top orientation", func() {
+		pointyGrid := spatial.NewHexGrid(spatial.HexGridConfig{
+			Width:     5,
+			Height:    5,
+			PointyTop: true,
+		})
+		s.Assert().True(pointyGrid.GetOrientation())
+	})
+
+	s.Run("flat-top orientation", func() {
+		flatGrid := spatial.NewHexGrid(spatial.HexGridConfig{
+			Width:     5,
+			Height:    5,
+			PointyTop: false,
+		})
+		s.Assert().False(flatGrid.GetOrientation())
+	})
+}
+
+// TestCoordinateConversionMethods tests the new helper methods
+func (s *HexGridTestSuite) TestCoordinateConversionMethods() {
+	center := spatial.Position{X: 5, Y: 5}
+
+	s.Run("OffsetToCube", func() {
+		cube := s.grid.OffsetToCube(center)
+		s.Assert().True(cube.IsValid()) // Should be valid cube coordinate
+	})
+
+	s.Run("CubeToOffset round-trip", func() {
+		cube := s.grid.OffsetToCube(center)
+		converted := s.grid.CubeToOffset(cube)
+		s.Assert().Equal(center, converted)
+	})
+
+	s.Run("GetCubeNeighbors", func() {
+		cubeNeighbors := s.grid.GetCubeNeighbors(center)
+		s.Assert().Len(cubeNeighbors, 6) // Should have 6 cube neighbors
+
+		// All cube neighbors should be valid
+		for _, cube := range cubeNeighbors {
+			s.Assert().True(cube.IsValid())
+		}
+
+		// Convert to positions and verify they match GetNeighbors
+		positionNeighbors := s.grid.GetNeighbors(center)
+		s.Assert().Len(positionNeighbors, 6) // Should match position neighbors count
+
+		// Each cube neighbor should convert to a valid position neighbor
+		for _, cube := range cubeNeighbors {
+			pos := s.grid.CubeToOffset(cube)
+			if s.grid.IsValidPosition(pos) {
+				s.Assert().Contains(positionNeighbors, pos)
+			}
+		}
+	})
+}
+
 // Run the test suite
 func TestHexGridSuite(t *testing.T) {
 	suite.Run(t, new(HexGridTestSuite))

@@ -19,6 +19,7 @@ type HexGridConfig struct {
 }
 
 // NewHexGrid creates a new hex grid with the given dimensions
+// Defaults to pointy-top orientation for D&D 5e compatibility
 func NewHexGrid(config HexGridConfig) *HexGrid {
 	return &HexGrid{
 		dimensions: Dimensions{
@@ -32,6 +33,11 @@ func NewHexGrid(config HexGridConfig) *HexGrid {
 // GetShape returns the grid shape type
 func (hg *HexGrid) GetShape() GridShape {
 	return GridShapeHex
+}
+
+// GetOrientation returns true for pointy-top, false for flat-top orientation
+func (hg *HexGrid) GetOrientation() bool {
+	return hg.pointyTop
 }
 
 // IsValidPosition checks if a position is valid within the grid bounds
@@ -242,6 +248,22 @@ func (hg *HexGrid) GetHexSpiral(center Position, radius int) []Position {
 	}
 
 	return positions
+}
+
+// OffsetToCube converts an offset coordinate to cube coordinate using this grid's settings
+func (hg *HexGrid) OffsetToCube(pos Position) CubeCoordinate {
+	return OffsetCoordinateToCube(pos)
+}
+
+// CubeToOffset converts a cube coordinate to offset coordinate using this grid's settings
+func (hg *HexGrid) CubeToOffset(cube CubeCoordinate) Position {
+	return cube.ToOffsetCoordinate()
+}
+
+// GetCubeNeighbors returns the 6 cube coordinate neighbors of a position
+func (hg *HexGrid) GetCubeNeighbors(pos Position) []CubeCoordinate {
+	cube := OffsetCoordinateToCube(pos)
+	return cube.GetNeighbors()
 }
 
 // lerpCube performs linear interpolation between two cube coordinates

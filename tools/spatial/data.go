@@ -35,6 +35,11 @@ type RoomData struct {
 	// GridType specifies the grid system: "square", "hex", or "gridless"
 	GridType string `json:"grid_type"`
 
+	// HexOrientation specifies hex orientation: true for pointy-top, false for flat-top
+	// Only used when GridType is "hex", defaults to true (pointy-top) for D&D 5e compatibility
+	// Uses pointer to distinguish between explicit false and unset (which defaults to true)
+	HexOrientation *bool `json:"hex_orientation,omitempty"`
+
 	// Entities contains positioned entities within the room
 	// Map of entity ID to their position and data
 	Entities map[string]EntityPlacement `json:"entities,omitempty"`
@@ -105,13 +110,18 @@ func (r *BasicRoom) ToData() RoomData {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	// Determine grid type string
+	// Determine grid type string and capture hex orientation
 	var gridType string
+	var hexOrientation *bool
 	switch r.grid.GetShape() {
 	case GridShapeSquare:
 		gridType = GridTypeSquare
 	case GridShapeHex:
 		gridType = GridTypeHex
+		// Hex grid shape will always be *HexGrid
+		hexGrid := r.grid.(*HexGrid)
+		orientation := hexGrid.GetOrientation()
+		hexOrientation = &orientation
 	case GridShapeGridless:
 		gridType = GridTypeGridless
 	default:
@@ -143,12 +153,13 @@ func (r *BasicRoom) ToData() RoomData {
 	}
 
 	return RoomData{
-		ID:       r.id,
-		Type:     r.roomType,
-		Width:    int(dims.Width),
-		Height:   int(dims.Height),
-		GridType: gridType,
-		Entities: entities,
+		ID:             r.id,
+		Type:           r.roomType,
+		Width:          int(dims.Width),
+		Height:         int(dims.Height),
+		GridType:       gridType,
+		HexOrientation: hexOrientation,
+		Entities:       entities,
 	}
 }
 
@@ -167,9 +178,15 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 			Height: float64(data.Height),
 		})
 	case GridTypeHex:
+		// Default to pointy-top orientation for D&D 5e compatibility
+		hexOrientation := true // Default for D&D 5e
+		if data.HexOrientation != nil {
+			hexOrientation = *data.HexOrientation
+		}
 		grid = NewHexGrid(HexGridConfig{
-			Width:  float64(data.Width),
-			Height: float64(data.Height),
+			Width:     float64(data.Width),
+			Height:    float64(data.Height),
+			PointyTop: hexOrientation,
 		})
 	case GridTypeGridless:
 		grid = NewGridlessRoom(GridlessConfig{
