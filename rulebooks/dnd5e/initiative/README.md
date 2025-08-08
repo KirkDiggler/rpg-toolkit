@@ -31,6 +31,14 @@ func StartEncounter(characters []Character, monsters []Monster) {
     order := initiative.RollForOrder(entities, nil)
     tracker := initiative.New(order)
     
+    // Save to database
+    data := tracker.ToData()
+    db.SaveEncounter(encounterID, data)
+    
+    // Load from database
+    data = db.LoadEncounter(encounterID)
+    tracker = initiative.LoadFromData(data)
+    
     // Now you can ask: whose turn is it?
     current := tracker.Current()
     
