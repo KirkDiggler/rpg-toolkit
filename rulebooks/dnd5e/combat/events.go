@@ -29,15 +29,15 @@ const (
 	EventCombatantUpdated = "dnd5e.combat.combatant.updated"
 )
 
-// CombatStartedData contains data for combat start events
-type CombatStartedData struct {
+// StartedData contains data for combat start events
+type StartedData struct {
 	CombatID        string   `json:"combat_id"`
 	Combatants      []string `json:"combatants"`       // Entity IDs
 	InitiativeOrder []string `json:"initiative_order"` // Ordered by initiative
 }
 
-// CombatEndedData contains data for combat end events
-type CombatEndedData struct {
+// EndedData contains data for combat end events
+type EndedData struct {
 	CombatID string `json:"combat_id"`
 	Winner   string `json:"winner,omitempty"` // Entity ID or faction
 	Duration int    `json:"duration"`         // Total rounds

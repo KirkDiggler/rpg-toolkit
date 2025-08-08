@@ -21,7 +21,7 @@ type CombatTestSuite struct {
 	ctrl       *gomock.Controller
 	mockRoller *mock_dice.MockRoller
 	eventBus   events.EventBus
-	combat     *combat.CombatState
+	combat     *combat.State
 }
 
 func (s *CombatTestSuite) SetupTest() {
@@ -29,12 +29,12 @@ func (s *CombatTestSuite) SetupTest() {
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
 	s.eventBus = events.NewBus()
 
-	s.combat = combat.NewCombatState(combat.CombatStateConfig{
+	s.combat = combat.NewState(combat.StateConfig{
 		ID:       "test-combat-001",
 		Name:     "Test Combat",
 		EventBus: s.eventBus,
 		Roller:   s.mockRoller,
-		Settings: combat.CombatSettings{
+		Settings: combat.Settings{
 			InitiativeRollMode: combat.InitiativeRollModeRoll,
 			TieBreakingMode:    combat.TieBreakingModeDexterity,
 		},
@@ -72,11 +72,11 @@ func (m *mockCombatant) GetMaxHitPoints() int      { return m.maxHP }
 func (m *mockCombatant) IsConscious() bool         { return m.conscious }
 func (m *mockCombatant) IsDefeated() bool          { return m.defeated }
 
-func (s *CombatTestSuite) TestCombatStateCreation() {
+func (s *CombatTestSuite) TestStateCreation() {
 	assert.Equal(s.T(), "test-combat-001", s.combat.GetID())
 	assert.Equal(s.T(), "Test Combat", s.combat.GetName())
 	assert.Equal(s.T(), "combat_encounter", s.combat.GetType())
-	assert.Equal(s.T(), combat.CombatStatusPending, s.combat.GetStatus())
+	assert.Equal(s.T(), combat.StatusPending, s.combat.GetStatus())
 	assert.Equal(s.T(), 0, s.combat.GetRound())
 }
 
@@ -397,7 +397,7 @@ func (s *CombatTestSuite) TestStartCombat() {
 	err = s.combat.StartCombat()
 	require.NoError(s.T(), err)
 
-	assert.Equal(s.T(), combat.CombatStatusActive, s.combat.GetStatus())
+	assert.Equal(s.T(), combat.StatusActive, s.combat.GetStatus())
 	assert.Equal(s.T(), 1, s.combat.GetRound())
 
 	// Should be fighter's turn (17 > 13)
@@ -603,7 +603,7 @@ func (s *CombatTestSuite) TestToDataAndLoadFromContext() {
 	// Verify data
 	assert.Equal(s.T(), "test-combat-001", data.ID)
 	assert.Equal(s.T(), "Test Combat", data.Name)
-	assert.Equal(s.T(), combat.CombatStatusActive, data.Status)
+	assert.Equal(s.T(), combat.StatusActive, data.Status)
 	assert.Equal(s.T(), 1, data.Round)
 	assert.Equal(s.T(), 0, data.TurnIndex)
 	assert.Len(s.T(), data.InitiativeOrder, 1)
@@ -614,7 +614,7 @@ func (s *CombatTestSuite) TestToDataAndLoadFromContext() {
 	gameCtx, err := game.NewContext(newEventBus, data)
 	require.NoError(s.T(), err)
 
-	loadedCombat, err := combat.LoadCombatStateFromContext(context.Background(), gameCtx)
+	loadedCombat, err := combat.LoadStateFromContext(context.Background(), gameCtx)
 	require.NoError(s.T(), err)
 
 	// Verify loaded combat

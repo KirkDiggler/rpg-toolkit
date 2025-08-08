@@ -33,12 +33,12 @@ func (c *ExampleCharacter) IsConscious() bool         { return c.hp > 0 }
 func (c *ExampleCharacter) IsDefeated() bool          { return c.hp <= 0 }
 
 // Example demonstrates the complete D&D 5e initiative system
-func ExampleCombatState() {
+func ExampleState() {
 	// Create event bus for combat events
 	eventBus := events.NewBus()
 
 	// Subscribe to combat events for logging
-	eventBus.SubscribeFunc(combat.EventCombatStarted, 100, func(_ context.Context, e events.Event) error {
+	eventBus.SubscribeFunc(combat.EventCombatStarted, 100, func(_ context.Context, _ events.Event) error {
 		fmt.Println("⚔️  Combat has begun!")
 		return nil
 	})
@@ -64,11 +64,11 @@ func ExampleCombatState() {
 	})
 
 	// Create combat encounter
-	combatState := combat.NewCombatState(combat.CombatStateConfig{
+	combatState := combat.NewState(combat.StateConfig{
 		ID:       "tavern-brawl-001",
 		Name:     "Tavern Brawl",
 		EventBus: eventBus,
-		Settings: combat.CombatSettings{
+		Settings: combat.Settings{
 			InitiativeRollMode: combat.InitiativeRollModeRoll,
 			TieBreakingMode:    combat.TieBreakingModeDexterity,
 		},
@@ -198,7 +198,7 @@ func ExampleCombatState() {
 		log.Fatalf("Failed to create game context: %v", err)
 	}
 
-	loadedCombat, err := combat.LoadCombatStateFromContext(context.Background(), gameCtx)
+	loadedCombat, err := combat.LoadStateFromContext(context.Background(), gameCtx)
 	if err != nil {
 		log.Fatalf("Failed to load combat from context: %v", err)
 	}

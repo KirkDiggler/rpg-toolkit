@@ -11,9 +11,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/game"
 )
 
-// CombatStateData contains all information needed to persist and reconstruct combat state.
+// StateData contains all information needed to persist and reconstruct combat state.
 // This follows the established data pattern for serialization and loading.
-type CombatStateData struct {
+type StateData struct {
 	// ID is the unique identifier for this combat encounter
 	ID string `json:"id"`
 
@@ -21,7 +21,7 @@ type CombatStateData struct {
 	Name string `json:"name,omitempty"`
 
 	// Status indicates the current state of combat
-	Status CombatStatus `json:"status"`
+	Status Status `json:"status"`
 
 	// Round tracks the current round number (1-based)
 	Round int `json:"round"`
@@ -36,7 +36,7 @@ type CombatStateData struct {
 	Combatants map[string]CombatantData `json:"combatants"`
 
 	// Settings contains combat configuration
-	Settings CombatSettings `json:"settings"`
+	Settings Settings `json:"settings"`
 
 	// CreatedAt timestamp when combat was created
 	CreatedAt int64 `json:"created_at"`
@@ -48,15 +48,16 @@ type CombatStateData struct {
 	EndedAt int64 `json:"ended_at,omitempty"`
 }
 
-// CombatStatus represents the current state of combat
-type CombatStatus string
+// Status represents the current state of combat
+type Status string
 
+// Combat status constants
 const (
-	CombatStatusPending   CombatStatus = "pending"   // Created but not started
-	CombatStatusActive    CombatStatus = "active"    // Combat in progress
-	CombatStatusPaused    CombatStatus = "paused"    // Temporarily suspended
-	CombatStatusCompleted CombatStatus = "completed" // Finished normally
-	CombatStatusAbandoned CombatStatus = "abandoned" // Ended abnormally
+	StatusPending   Status = "pending"   // Created but not started
+	StatusActive    Status = "active"    // Combat in progress
+	StatusPaused    Status = "paused"    // Temporarily suspended
+	StatusCompleted Status = "completed" // Finished normally
+	StatusAbandoned Status = "abandoned" // Ended abnormally
 )
 
 // InitiativeEntry represents a single combatant's initiative data
@@ -118,16 +119,17 @@ type CombatantData struct {
 // ActionType represents types of actions that can be taken
 type ActionType string
 
+// Action type constants
 const (
-	ActionTypeAction      ActionType = "action"
-	ActionTypeBonusAction ActionType = "bonus_action"
-	ActionTypeReaction    ActionType = "reaction"
-	ActionTypeMovement    ActionType = "movement"
-	ActionTypeFreeAction  ActionType = "free_action"
+	ActionTypeAction      ActionType = "action"       // Standard action
+	ActionTypeBonusAction ActionType = "bonus_action" // Bonus action
+	ActionTypeReaction    ActionType = "reaction"     // Reaction
+	ActionTypeMovement    ActionType = "movement"     // Movement
+	ActionTypeFreeAction  ActionType = "free_action"  // Free action
 )
 
-// CombatSettings contains configuration for combat behavior
-type CombatSettings struct {
+// Settings contains configuration for combat behavior
+type Settings struct {
 	// AutoAdvanceTurns automatically moves to next turn
 	AutoAdvanceTurns bool `json:"auto_advance_turns"`
 
@@ -147,6 +149,7 @@ type CombatSettings struct {
 // InitiativeRollMode controls how initiative is determined
 type InitiativeRollMode string
 
+// Initiative roll mode constants
 const (
 	InitiativeRollModeRoll   InitiativeRollMode = "roll"   // Roll d20 + modifier
 	InitiativeRollModeStatic InitiativeRollMode = "static" // Use 10 + modifier
@@ -156,6 +159,7 @@ const (
 // TieBreakingMode controls how initiative ties are resolved
 type TieBreakingMode string
 
+// Tie breaking mode constants
 const (
 	TieBreakingModeDexterity TieBreakingMode = "dexterity" // Higher DEX wins
 	TieBreakingModeDM        TieBreakingMode = "dm"        // DM decides
@@ -297,9 +301,9 @@ func FindTiedGroups(entries []InitiativeEntry) [][]string {
 	return tiedGroups
 }
 
-// LoadCombatStateFromContext creates a CombatState from data using the GameContext pattern.
+// LoadStateFromContext creates a State from data using the GameContext pattern.
 // This allows combat to integrate with the event system and other game infrastructure.
-func LoadCombatStateFromContext(ctx context.Context, gameCtx game.Context[CombatStateData]) (*CombatState, error) {
+func LoadStateFromContext(_ context.Context, gameCtx game.Context[StateData]) (*State, error) {
 	data := gameCtx.Data()
 	eventBus := gameCtx.EventBus()
 
@@ -309,7 +313,7 @@ func LoadCombatStateFromContext(ctx context.Context, gameCtx game.Context[Combat
 	}
 
 	// Create the combat state
-	combat := NewCombatState(CombatStateConfig{
+	combat := NewState(StateConfig{
 		ID:       data.ID,
 		Name:     data.Name,
 		EventBus: eventBus,

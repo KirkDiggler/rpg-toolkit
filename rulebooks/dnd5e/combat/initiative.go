@@ -10,21 +10,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
-// CombatState implements rich domain logic for D&D 5e combat encounters.
+// State implements rich domain logic for D&D 5e combat encounters.
 // It follows the toolkit pattern of rich domain objects with methods and behavior.
-type CombatState struct {
+type State struct {
 	// Core identity
 	id       string
 	name     string
 	eventBus events.EventBus
 
 	// Combat state tracking
-	status          CombatStatus
+	status          Status
 	round           int
 	turnIndex       int
 	initiativeOrder []InitiativeEntry
 	combatants      map[string]CombatantData
-	settings        CombatSettings
+	settings        Settings
 
 	// Timing
 	createdAt time.Time
@@ -38,17 +38,17 @@ type CombatState struct {
 	mutex sync.RWMutex
 }
 
-// CombatStateConfig holds configuration for creating combat state
-type CombatStateConfig struct {
+// StateConfig holds configuration for creating combat state
+type StateConfig struct {
 	ID       string
 	Name     string
 	EventBus events.EventBus
-	Settings CombatSettings
+	Settings Settings
 	Roller   dice.Roller
 }
 
-// NewCombatState creates a new combat state with event integration
-func NewCombatState(config CombatStateConfig) *CombatState {
+// NewState creates a new combat state with event integration
+func NewState(config StateConfig) *State {
 	// Use default roller if none provided
 	roller := config.Roller
 	if roller == nil {
@@ -64,11 +64,11 @@ func NewCombatState(config CombatStateConfig) *CombatState {
 		settings.TieBreakingMode = TieBreakingModeDexterity
 	}
 
-	combat := &CombatState{
+	combat := &State{
 		id:              config.ID,
 		name:            config.Name,
 		eventBus:        config.EventBus,
-		status:          CombatStatusPending,
+		status:          StatusPending,
 		round:           0,
 		turnIndex:       0,
 		initiativeOrder: make([]InitiativeEntry, 0),
@@ -82,42 +82,42 @@ func NewCombatState(config CombatStateConfig) *CombatState {
 }
 
 // GetID returns the combat's unique identifier (implements core.Entity)
-func (c *CombatState) GetID() string {
+func (c *State) GetID() string {
 	return c.id
 }
 
 // GetType returns the combat's type (implements core.Entity)
-func (c *CombatState) GetType() string {
+func (c *State) GetType() string {
 	return "combat_encounter"
 }
 
 // GetName returns the combat's name
-func (c *CombatState) GetName() string {
+func (c *State) GetName() string {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.name
 }
 
 // GetStatus returns the current combat status
-func (c *CombatState) GetStatus() CombatStatus {
+func (c *State) GetStatus() Status {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.status
 }
 
 // GetRound returns the current round number
-func (c *CombatState) GetRound() int {
+func (c *State) GetRound() int {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.round
 }
 
 // GetCurrentTurn returns information about whose turn it is
-func (c *CombatState) GetCurrentTurn() (*InitiativeEntry, error) {
+func (c *State) GetCurrentTurn() (*InitiativeEntry, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	if c.status != CombatStatusActive {
+	if c.status != StatusActive {
 		return nil, fmt.Errorf("combat is not active")
 	}
 
@@ -134,7 +134,7 @@ func (c *CombatState) GetCurrentTurn() (*InitiativeEntry, error) {
 }
 
 // AddCombatant adds a combatant to the encounter
-func (c *CombatState) AddCombatant(combatant Combatant) error {
+func (c *State) AddCombatant(combatant Combatant) error {
 	if combatant == nil {
 		return fmt.Errorf("combatant cannot be nil")
 	}
@@ -183,7 +183,7 @@ func (c *CombatState) AddCombatant(combatant Combatant) error {
 }
 
 // RemoveCombatant removes a combatant from the encounter
-func (c *CombatState) RemoveCombatant(entityID string, reason string) error {
+func (c *State) RemoveCombatant(entityID string, reason string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -240,7 +240,7 @@ func (c *CombatState) RemoveCombatant(entityID string, reason string) error {
 }
 
 // RollInitiative rolls initiative for all combatants
-func (c *CombatState) RollInitiative(input *RollInitiativeInput) (*RollInitiativeOutput, error) {
+func (c *State) RollInitiative(input *RollInitiativeInput) (*RollInitiativeOutput, error) {
 	if input == nil {
 		return nil, fmt.Errorf("input cannot be nil")
 	}
@@ -373,7 +373,7 @@ func (c *CombatState) RollInitiative(input *RollInitiativeInput) (*RollInitiativ
 }
 
 // ResolveTies resolves initiative ties using the specified method
-func (c *CombatState) ResolveTies(input *ResolveTiesInput) (*ResolveTiesOutput, error) {
+func (c *State) ResolveTies(input *ResolveTiesInput) (*ResolveTiesOutput, error) {
 	if input == nil {
 		return nil, fmt.Errorf("input cannot be nil")
 	}
@@ -473,7 +473,7 @@ func (c *CombatState) ResolveTies(input *ResolveTiesInput) (*ResolveTiesOutput, 
 }
 
 // stillTied checks if a group of combatants are still tied after sorting
-func (c *CombatState) stillTied(entries []InitiativeEntry, group []string) bool {
+func (c *State) stillTied(entries []InitiativeEntry, group []string) bool {
 	if len(group) <= 1 {
 		return false
 	}
@@ -506,11 +506,11 @@ func (c *CombatState) stillTied(entries []InitiativeEntry, group []string) bool 
 }
 
 // StartCombat begins the combat encounter
-func (c *CombatState) StartCombat() error {
+func (c *State) StartCombat() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	if c.status != CombatStatusPending {
+	if c.status != StatusPending {
 		return fmt.Errorf("combat cannot be started from status: %s", c.status)
 	}
 
@@ -518,7 +518,7 @@ func (c *CombatState) StartCombat() error {
 		return fmt.Errorf("cannot start combat without initiative order")
 	}
 
-	c.status = CombatStatusActive
+	c.status = StatusActive
 	c.round = 1
 	c.turnIndex = 0
 	c.startedAt = time.Now()
@@ -537,7 +537,7 @@ func (c *CombatState) StartCombat() error {
 		}
 
 		event := events.NewGameEvent(EventCombatStarted, nil, nil)
-		eventData := CombatStartedData{
+		eventData := StartedData{
 			CombatID:        c.id,
 			Combatants:      combatantIDs,
 			InitiativeOrder: initiativeOrder,
@@ -551,11 +551,11 @@ func (c *CombatState) StartCombat() error {
 }
 
 // NextTurn advances to the next combatant's turn
-func (c *CombatState) NextTurn() error {
+func (c *State) NextTurn() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	if c.status != CombatStatusActive {
+	if c.status != StatusActive {
 		return fmt.Errorf("combat is not active")
 	}
 
@@ -616,7 +616,7 @@ func (c *CombatState) NextTurn() error {
 }
 
 // startCurrentTurn begins the current combatant's turn
-func (c *CombatState) startCurrentTurn() error {
+func (c *State) startCurrentTurn() error {
 	if len(c.initiativeOrder) == 0 {
 		return fmt.Errorf("no combatants in initiative order")
 	}
@@ -628,10 +628,9 @@ func (c *CombatState) startCurrentTurn() error {
 		if c.turnIndex < len(c.initiativeOrder)-1 {
 			c.turnIndex++
 			return c.startCurrentTurn() // Recursively try next
-		} else {
-			// End of round with no active combatants
-			return fmt.Errorf("no active combatants remaining")
 		}
+		// End of round with no active combatants
+		return fmt.Errorf("no active combatants remaining")
 	}
 
 	// Mark combatant as having started their turn
@@ -664,7 +663,7 @@ func (c *CombatState) startCurrentTurn() error {
 }
 
 // endCurrentTurn ends the current combatant's turn
-func (c *CombatState) endCurrentTurn() error {
+func (c *State) endCurrentTurn() error {
 	if len(c.initiativeOrder) == 0 {
 		return fmt.Errorf("no combatants in initiative order")
 	}
@@ -703,8 +702,8 @@ func (c *CombatState) endCurrentTurn() error {
 	return nil
 }
 
-// ToData converts the CombatState to CombatStateData for persistence
-func (c *CombatState) ToData() CombatStateData {
+// ToData converts the \*State to StateData for persistence
+func (c *State) ToData() StateData {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -718,7 +717,7 @@ func (c *CombatState) ToData() CombatStateData {
 	initiativeOrder := make([]InitiativeEntry, len(c.initiativeOrder))
 	copy(initiativeOrder, c.initiativeOrder)
 
-	return CombatStateData{
+	return StateData{
 		ID:              c.id,
 		Name:            c.name,
 		Status:          c.status,
