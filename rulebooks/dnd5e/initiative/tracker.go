@@ -23,9 +23,14 @@ func New(initiativeOrder []core.Entity) *Tracker {
 	}
 }
 
-// Current returns whose turn it is
+// Current returns whose turn it is.
+// Returns nil if the order is empty or current index is invalid.
 func (t *Tracker) Current() core.Entity {
+	if len(t.order) == 0 {
+		return nil
+	}
 	if t.current >= len(t.order) {
+		// Defensive: should not happen, but return nil if out of bounds
 		return nil
 	}
 	return t.order[t.current]
@@ -73,6 +78,8 @@ func (t *Tracker) Remove(entityID string) error {
 	t.order = newOrder
 
 	// Make sure current is still valid
+	// If we removed someone at or after the current position and we're now
+	// past the end of the order, wrap to the beginning of next round
 	if t.current >= len(t.order) && len(t.order) > 0 {
 		t.current = 0
 		t.round++

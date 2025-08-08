@@ -18,13 +18,19 @@ That's it. No combat logic, no events, no complex patterns.
 func StartEncounter(characters []Character, monsters []Monster) {
     // Collect participants with DEX modifiers
     entities := make(map[core.Entity]int)
+    
+    // If characters/monsters already implement core.Entity:
+    for _, char := range characters {
+        entities[char] = char.DexModifier
+    }
+    for _, monster := range monsters {
+        entities[monster] = monster.DexModifier
+    }
+    
+    // OR if you need to create entities:
     for _, char := range characters {
         participant := initiative.NewParticipant(char.ID, "character")
         entities[participant] = char.DexModifier
-    }
-    for _, monster := range monsters {
-        participant := initiative.NewParticipant(monster.ID, "monster")
-        entities[participant] = monster.DexModifier
     }
     
     // Roll and create tracker (pass nil to use default roller)
