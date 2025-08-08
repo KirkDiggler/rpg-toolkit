@@ -9,9 +9,9 @@ import (
 // Tracker tracks turn order for any encounter (combat, social, exploration, etc.)
 // It doesn't know or care what kind of encounter it is.
 type Tracker struct {
-	order     []core.Entity // Entities in initiative order
-	current   int           // Index of whose turn it is
-	round     int           // What round we're on
+	order   []core.Entity // Entities in initiative order
+	current int           // Index of whose turn it is
+	round   int           // What round we're on
 }
 
 // New creates a tracker with the given turn order
@@ -34,13 +34,13 @@ func (t *Tracker) Current() core.Entity {
 // Next advances to the next turn
 func (t *Tracker) Next() core.Entity {
 	t.current++
-	
+
 	// If we've gone through everyone, start a new round
 	if t.current >= len(t.order) {
 		t.current = 0
 		t.round++
 	}
-	
+
 	return t.Current()
 }
 
@@ -53,7 +53,7 @@ func (t *Tracker) Round() int {
 func (t *Tracker) Remove(entityID string) error {
 	newOrder := make([]core.Entity, 0)
 	removed := false
-	
+
 	for i, entity := range t.order {
 		if entity.GetID() == entityID {
 			removed = true
@@ -65,18 +65,18 @@ func (t *Tracker) Remove(entityID string) error {
 			newOrder = append(newOrder, entity)
 		}
 	}
-	
+
 	if !removed {
 		return fmt.Errorf("entity %s not found", entityID)
 	}
-	
+
 	t.order = newOrder
-	
+
 	// Make sure current is still valid
 	if t.current >= len(t.order) && len(t.order) > 0 {
 		t.current = 0
 		t.round++
 	}
-	
+
 	return nil
 }

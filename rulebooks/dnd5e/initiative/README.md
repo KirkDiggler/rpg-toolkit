@@ -16,24 +16,26 @@ That's it. No combat logic, no events, no complex patterns.
 ```go
 // In your game service
 func StartEncounter(characters []Character, monsters []Monster) {
-    // Collect DEX modifiers
-    entities := make(map[string]int)
+    // Collect participants with DEX modifiers
+    entities := make(map[core.Entity]int)
     for _, char := range characters {
-        entities[char.ID] = char.DexModifier
+        participant := initiative.NewParticipant(char.ID, "character")
+        entities[participant] = char.DexModifier
     }
     for _, monster := range monsters {
-        entities[monster.ID] = monster.DexModifier
+        participant := initiative.NewParticipant(monster.ID, "monster")
+        entities[participant] = monster.DexModifier
     }
     
-    // Roll and create tracker
-    order := initiative.RollForOrder(entities)
+    // Roll and create tracker (pass nil to use default roller)
+    order := initiative.RollForOrder(entities, nil)
     tracker := initiative.New(order)
     
     // Now you can ask: whose turn is it?
-    currentTurn := tracker.Current()
+    current := tracker.Current()
     
     // When turn ends
-    nextTurn := tracker.Next()
+    next := tracker.Next()
     
     // When someone is defeated
     tracker.Remove(defeatedID)

@@ -1,10 +1,10 @@
 package initiative
 
 import (
-	"math/rand"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 )
 
 // Entry represents someone's initiative with their entity
@@ -16,11 +16,16 @@ type Entry struct {
 }
 
 // RollForOrder rolls initiative and returns entities in turn order
-func RollForOrder(entities map[core.Entity]int) []core.Entity {
+func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []core.Entity {
+	// Use default roller if none provided
+	if roller == nil {
+		roller = dice.DefaultRoller
+	}
+
 	// Roll for each entity
 	entries := make([]Entry, 0, len(entities))
 	for entity, modifier := range entities {
-		roll := rand.Intn(20) + 1
+		roll, _ := roller.Roll(20)
 		entries = append(entries, Entry{
 			Entity:   entity,
 			Roll:     roll,
@@ -28,17 +33,17 @@ func RollForOrder(entities map[core.Entity]int) []core.Entity {
 			Total:    roll + modifier,
 		})
 	}
-	
+
 	// Sort by total (highest first)
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Total > entries[j].Total
 	})
-	
+
 	// Extract just the entities in order
 	order := make([]core.Entity, len(entries))
 	for i, entry := range entries {
 		order[i] = entry.Entity
 	}
-	
+
 	return order
 }

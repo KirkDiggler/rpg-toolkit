@@ -1,3 +1,4 @@
+// Package initiative provides turn order tracking for D&D 5e encounters.
 package initiative
 
 import "github.com/KirkDiggler/rpg-toolkit/core"
