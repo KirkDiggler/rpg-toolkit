@@ -34,7 +34,7 @@ func TestRollForOrder(t *testing.T) {
 
 	// Should be sorted by total: ranger (18), goblin (12), wizard (9)
 	assert.Equal(t, 3, len(order))
-	assert.Equal(t, "ranger", order[0].GetID())
-	assert.Equal(t, "goblin", order[1].GetID())
-	assert.Equal(t, "wizard", order[2].GetID())
+	assert.Equal(t, "ranger", order[0].Entity.GetID())
+	assert.Equal(t, "goblin", order[1].Entity.GetID())
+	assert.Equal(t, "wizard", order[2].Entity.GetID())
 }
