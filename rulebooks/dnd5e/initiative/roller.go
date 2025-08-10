@@ -15,7 +15,7 @@ type InitiativeRoll struct {
 	Total    int // Roll + Modifier
 }
 
-// RollForOrder rolls initiative and returns entities in turn order
+// RollForOrder rolls initiative and returns InitiativeRolls in turn order
 func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []InitiativeRoll {
 	// Use default roller if none provided
 	if roller == nil {
