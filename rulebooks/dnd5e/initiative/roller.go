@@ -7,8 +7,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 )
 
-// InitiativeRoll represents a single initiative roll
-type InitiativeRoll struct {
+// Roll represents a single initiative roll
+type Roll struct {
 	Entity   core.Entity
 	Roll     int // d20 result
 	Modifier int // DEX modifier
@@ -16,17 +16,17 @@ type InitiativeRoll struct {
 }
 
 // RollForOrder rolls initiative and returns InitiativeRolls in turn order
-func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []InitiativeRoll {
+func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []Roll {
 	// Use default roller if none provided
 	if roller == nil {
 		roller = dice.DefaultRoller
 	}
 
 	// Roll for each entity
-	entries := make([]InitiativeRoll, 0, len(entities))
+	entries := make([]Roll, 0, len(entities))
 	for entity, modifier := range entities {
 		roll, _ := roller.Roll(20)
-		entries = append(entries, InitiativeRoll{
+		entries = append(entries, Roll{
 			Entity:   entity,
 			Roll:     roll,
 			Modifier: modifier,
