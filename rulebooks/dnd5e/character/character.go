@@ -6,6 +6,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/game"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -84,15 +86,71 @@ type Resource struct {
 	Resets  shared.ResetType
 }
 
+// GetID returns the character's unique identifier (implements core.Entity)
+func (c *Character) GetID() string {
+	return c.id
+}
+
+// GetType returns the character's type (implements core.Entity)
+func (c *Character) GetType() string {
+	return "character"
+}
+
 // Attack performs an attack roll against a target
 // TODO: This is a placeholder implementation. In a complete system, this would:
 // - Calculate attack bonus (ability modifier + proficiency if proficient)
 // - Roll attack using combat.RollAttack
 // - Apply any active effects that modify attacks
 // - Return detailed attack results
-func (c *Character) Attack(_ Weapon, _ Target) AttackResult {
-	// Placeholder implementation - returns empty result
-	return AttackResult{}
+func (c *Character) Attack(ctx context.Context, bus events.EventBus, weapon Weapon, target Target) AttackResult {
+	// Roll d20 for attack
+	attackRoll := dice.D20(1).GetValue()
+	
+	// Calculate attack modifier
+	// TODO: Support DEX for finesse/ranged weapons
+	strMod := c.abilityScores.Modifier(constants.STR)
+	attackMod := strMod + c.proficiencyBonus // Assume proficiency for now
+	
+	// Create and publish attack roll event for modifiers (bless, etc)
+	if bus != nil {
+		// Use character as both source and target for now since Target interface doesn't implement Entity
+		attackEvent := events.NewGameEvent("before_attack_roll", c, c)
+		_ = bus.Publish(ctx, attackEvent)
+		
+		// Apply any modifiers from conditions
+		for _, mod := range attackEvent.Context().Modifiers() {
+			if mod.Type() == events.ModifierAttackBonus {
+				// ModifierValue.Value() returns interface{}, need to handle int values
+				if val, ok := mod.Value().(int); ok {
+					attackMod += val
+				}
+			}
+		}
+	}
+	
+	// Calculate total attack roll
+	totalAttack := attackRoll + attackMod
+	
+	// Check if hit
+	hit := totalAttack >= target.AC()
+	
+	damage := 0
+	if hit {
+		// Roll damage dice
+		// Parse weapon damage string (e.g., "1d8")
+		// For now, use a simple d8 as default
+		damageRoll := dice.D8(1).GetValue()
+		damage = damageRoll + strMod
+		
+		// TODO: Publish damage event for modifiers
+		// TODO: Handle critical hits (nat 20)
+		// TODO: Handle critical misses (nat 1)
+	}
+	
+	return AttackResult{
+		Hit:    hit,
+		Damage: damage,
+	}
 }
 
 // SaveThrow performs a saving throw
