@@ -1,4 +1,4 @@
-.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all
+.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module
 
 # Default target
 help:
@@ -16,6 +16,9 @@ help:
 	@echo "  fix          - Run all auto-fix commands (fmt, mod-tidy)"
 	@echo "  install-tools - Install required development tools"
 	@echo "  install-hooks - Install git hooks"
+	@echo "  check-versions - Check current versions of all modules"
+	@echo "  tag-module   - Tag a specific module with a new version"
+	@echo "  release-module - Create a release for a module (runs tests first)"
 	@echo "  help         - Show this help message"
 
 # Run tests for all modules
@@ -168,3 +171,61 @@ mod-tidy:
 fix: fmt-all mod-tidy
 	@echo "✅ All auto-fixable issues resolved"
 	@echo "Run 'git add -u' to stage the changes"
+
+# Check current versions of all modules
+check-versions:
+	@./scripts/check-versions.sh
+
+# Tag a specific module with a new version
+tag-module:
+	@echo "Tagging module..."
+	@echo "Usage: make tag-module MODULE=tools/spatial VERSION=v0.2.0"
+	@if [ -z "$(MODULE)" ]; then \
+		echo "❌ MODULE is required"; \
+		echo "Example: make tag-module MODULE=tools/spatial VERSION=v0.2.0"; \
+		exit 1; \
+	fi
+	@if [ -z "$(VERSION)" ]; then \
+		echo "❌ VERSION is required"; \
+		echo "Example: make tag-module MODULE=tools/spatial VERSION=v0.2.0"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(MODULE)/go.mod" ]; then \
+		echo "❌ Module $(MODULE) does not exist"; \
+		exit 1; \
+	fi
+	@echo "Creating tag $(MODULE)/$(VERSION)..."
+	@git tag -a "$(MODULE)/$(VERSION)" -m "Release $(MODULE) $(VERSION)"
+	@echo "✅ Tag created. Run 'git push origin $(MODULE)/$(VERSION)' to push"
+
+# Create a release for a module (runs tests first)
+release-module:
+	@echo "Creating module release..."
+	@echo "Usage: make release-module MODULE=tools/spatial VERSION=v0.2.0"
+	@if [ -z "$(MODULE)" ]; then \
+		echo "❌ MODULE is required"; \
+		echo "Example: make release-module MODULE=tools/spatial VERSION=v0.2.0"; \
+		exit 1; \
+	fi
+	@if [ -z "$(VERSION)" ]; then \
+		echo "❌ VERSION is required"; \
+		echo "Example: make release-module MODULE=tools/spatial VERSION=v0.2.0"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(MODULE)/go.mod" ]; then \
+		echo "❌ Module $(MODULE) does not exist"; \
+		exit 1; \
+	fi
+	@echo "🧪 Testing module $(MODULE)..."
+	@cd "$(MODULE)" && go test ./...
+	@echo "✅ Tests passed"
+	@echo "Creating tag $(MODULE)/$(VERSION)..."
+	@git tag -a "$(MODULE)/$(VERSION)" -m "Release $(MODULE) $(VERSION)"
+	@echo "📦 Tag created: $(MODULE)/$(VERSION)"
+	@echo ""
+	@echo "To publish this release:"
+	@echo "  1. Push the tag: git push origin $(MODULE)/$(VERSION)"
+	@echo "  2. Create a GitHub release from the tag"
+	@echo ""
+	@echo "Users can then install with:"
+	@echo "  go get github.com/KirkDiggler/rpg-toolkit/$(MODULE)@$(MODULE)/$(VERSION)"

@@ -1,0 +1,187 @@
+name: Auto Tag Modules
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Analyze commits and tag modules
+      run: |
+        # Function to determine version bump from commit messages
+        # Looks for conventional commit patterns:
+        # - feat: minor bump
+        # - fix: patch bump  
+        # - BREAKING CHANGE: major bump
+        # - chore/docs/style/refactor/test: patch bump
+        determine_bump() {
+          local module=$1
+          local last_tag=$2
+          
+          if [[ -z "$last_tag" ]]; then
+            compare_from="HEAD~10"  # Look at last 10 commits for new modules
+          else
+            compare_from="$last_tag"
+          fi
+          
+          # Check commit messages for this module
+          commits=$(git log --format="%s" "$compare_from..HEAD" -- "$module")
+          
+          # Default to patch
+          bump="patch"
+          
+          # Check for breaking changes (major)
+          if echo "$commits" | grep -q "BREAKING CHANGE\|!:"; then
+            bump="major"
+          # Check for features (minor)
+          elif echo "$commits" | grep -q "^feat"; then
+            bump="minor"
+          fi
+          
+          echo "$bump"
+        }
+        
+        # Function to increment version
+        increment_version() {
+          local version=$1
+          local bump=$2
+          
+          # Remove 'v' prefix
+          version=${version#v}
+          
+          # Split into major.minor.patch
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          case $bump in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+          esac
+          
+          echo "v${major}.${minor}.${patch}"
+        }
+        
+        # Track what we tag for the summary
+        TAGGED_MODULES=()
+        
+        # Process each module
+        for modfile in $(find . -name "go.mod" -type f -not -path "./vendor/*" -not -path "./examples/*"); do
+          module_path=$(dirname "$modfile" | sed 's|^\./||')
+          
+          # Skip root module
+          if [[ "$module_path" == "." ]]; then
+            continue
+          fi
+          
+          # Get last tag for this module
+          last_tag=$(git tag -l "${module_path}/v*" | sort -V | tail -1)
+          
+          # Check if module has changes since last tag
+          if [[ -z "$last_tag" ]]; then
+            has_changes=true  # New module
+          else
+            changes=$(git diff --name-only "$last_tag" HEAD -- "$module_path" | head -1)
+            has_changes=$([[ -n "$changes" ]] && echo true || echo false)
+          fi
+          
+          if [[ "$has_changes" == "true" ]]; then
+            echo "Module $module_path has changes"
+            
+            # Determine version bump type
+            bump=$(determine_bump "$module_path" "$last_tag")
+            echo "Detected bump type: $bump"
+            
+            # Calculate new version
+            if [[ -z "$last_tag" ]]; then
+              new_version="v0.1.0"
+            else
+              current_version=${last_tag#${module_path}/}
+              new_version=$(increment_version "$current_version" "$bump")
+            fi
+            
+            # Create tag
+            tag_name="${module_path}/${new_version}"
+            
+            # Generate release notes
+            release_notes="## ${module_path} ${new_version}\n\n"
+            
+            if [[ -n "$last_tag" ]]; then
+              # Include commit summary
+              release_notes="${release_notes}### Changes\n"
+              git log --format="- %s (%h)" "$last_tag..HEAD" -- "$module_path" | while read -r line; do
+                release_notes="${release_notes}${line}\n"
+              done
+            else
+              release_notes="${release_notes}Initial release\n"
+            fi
+            
+            # Create annotated tag
+            echo -e "$release_notes" | git tag -a "$tag_name" -F -
+            echo "Created tag: $tag_name"
+            
+            TAGGED_MODULES+=("${module_path}:${new_version}")
+          fi
+        done
+        
+        # Push all tags at once
+        if [[ ${#TAGGED_MODULES[@]} -gt 0 ]]; then
+          git push origin --tags
+          echo "✅ Pushed ${#TAGGED_MODULES[@]} tags"
+          
+          # Save for summary
+          printf '%s\n' "${TAGGED_MODULES[@]}" > tagged_modules.txt
+        else
+          echo "No modules needed tagging"
+          touch tagged_modules.txt
+        fi
+    
+    - name: Generate summary
+      run: |
+        if [[ -s tagged_modules.txt ]]; then
+          echo "## 📦 Modules Auto-Tagged" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following modules were automatically versioned based on their commits:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          while IFS=: read -r module version; do
+            echo "### ${module}" >> $GITHUB_STEP_SUMMARY
+            echo "- **New version**: ${version}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Install**: \`go get github.com/KirkDiggler/rpg-toolkit/${module}@${module}/${version}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done < tagged_modules.txt
+          
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Version Bump Rules:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`feat:\` commits trigger **minor** version bump (0.X.0)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`fix:\` commits trigger **patch** version bump (0.0.X)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`BREAKING CHANGE\` triggers **major** version bump (X.0.0)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "## ℹ️ No Module Changes" >> $GITHUB_STEP_SUMMARY
+          echo "No modules had changes that required new version tags." >> $GITHUB_STEP_SUMMARY
+        fi

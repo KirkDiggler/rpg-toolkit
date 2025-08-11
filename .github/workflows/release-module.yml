@@ -1,0 +1,191 @@
+name: Release Module
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module path to release (e.g., tools/spatial)'
+        required: true
+        type: string
+      version:
+        description: 'Version to release (e.g., v0.2.0)'
+        required: true
+        type: string
+        default: 'v0.1.0'
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Validate inputs
+      run: |
+        MODULE="${{ github.event.inputs.module }}"
+        VERSION="${{ github.event.inputs.version }}"
+        
+        # Check module exists
+        if [[ ! -f "${MODULE}/go.mod" ]]; then
+          echo "❌ Module ${MODULE} does not exist (no go.mod found)"
+          exit 1
+        fi
+        
+        # Validate version format
+        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Invalid version format: $VERSION"
+          echo "Expected format: vX.Y.Z (e.g., v0.2.0)"
+          exit 1
+        fi
+        
+        # Check if tag already exists
+        TAG_NAME="${MODULE}/${VERSION}"
+        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          echo "❌ Tag $TAG_NAME already exists"
+          exit 1
+        fi
+        
+        echo "✅ Inputs validated"
+        echo "Module: $MODULE"
+        echo "Version: $VERSION"
+        echo "Tag: $TAG_NAME"
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.x'
+    
+    - name: Test module
+      run: |
+        MODULE="${{ github.event.inputs.module }}"
+        echo "🧪 Testing module $MODULE before release..."
+        
+        cd "$MODULE"
+        go mod download
+        go test ./...
+        
+        echo "✅ Tests passed"
+    
+    - name: Set up Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Generate release notes
+      id: notes
+      run: |
+        MODULE="${{ github.event.inputs.module }}"
+        VERSION="${{ github.event.inputs.version }}"
+        CUSTOM_NOTES="${{ github.event.inputs.release_notes }}"
+        
+        # Get previous tag for this module
+        PREV_TAG=$(git tag -l "${MODULE}/v*" | sort -V | tail -1)
+        
+        # Start release notes
+        NOTES="# ${MODULE} ${VERSION}\n\n"
+        
+        # Add custom notes if provided
+        if [[ -n "$CUSTOM_NOTES" ]]; then
+          NOTES="${NOTES}${CUSTOM_NOTES}\n\n"
+        fi
+        
+        # Add commit history
+        if [[ -n "$PREV_TAG" ]]; then
+          NOTES="${NOTES}## Changes since ${PREV_TAG#${MODULE}/}\n\n"
+          
+          # Group commits by type
+          FEATURES=$(git log --format="- %s (%h)" "$PREV_TAG..HEAD" -- "$MODULE" | grep "^- feat" || true)
+          FIXES=$(git log --format="- %s (%h)" "$PREV_TAG..HEAD" -- "$MODULE" | grep "^- fix" || true)
+          OTHER=$(git log --format="- %s (%h)" "$PREV_TAG..HEAD" -- "$MODULE" | grep -v "^- feat\|^- fix" || true)
+          
+          if [[ -n "$FEATURES" ]]; then
+            NOTES="${NOTES}### Features\n${FEATURES}\n\n"
+          fi
+          
+          if [[ -n "$FIXES" ]]; then
+            NOTES="${NOTES}### Bug Fixes\n${FIXES}\n\n"
+          fi
+          
+          if [[ -n "$OTHER" ]]; then
+            NOTES="${NOTES}### Other Changes\n${OTHER}\n\n"
+          fi
+          
+          # Add contributor summary
+          CONTRIBUTORS=$(git log --format="%an" "$PREV_TAG..HEAD" -- "$MODULE" | sort -u)
+          if [[ -n "$CONTRIBUTORS" ]]; then
+            NOTES="${NOTES}### Contributors\n"
+            echo "$CONTRIBUTORS" | while read -r name; do
+              NOTES="${NOTES}- $name\n"
+            done
+          fi
+        else
+          NOTES="${NOTES}Initial release of ${MODULE}\n"
+        fi
+        
+        # Save notes for tag
+        echo -e "$NOTES" > release_notes.md
+        
+        echo "📝 Release notes generated"
+    
+    - name: Create and push tag
+      run: |
+        MODULE="${{ github.event.inputs.module }}"
+        VERSION="${{ github.event.inputs.version }}"
+        TAG_NAME="${MODULE}/${VERSION}"
+        
+        # Create annotated tag
+        git tag -a "$TAG_NAME" -F release_notes.md
+        
+        # Push tag
+        git push origin "$TAG_NAME"
+        
+        echo "✅ Tag $TAG_NAME created and pushed"
+    
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.event.inputs.module }}/${{ github.event.inputs.version }}
+        release_name: ${{ github.event.inputs.module }} ${{ github.event.inputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+    
+    - name: Generate summary
+      run: |
+        MODULE="${{ github.event.inputs.module }}"
+        VERSION="${{ github.event.inputs.version }}"
+        TAG_NAME="${MODULE}/${VERSION}"
+        
+        echo "## 🎉 Module Released!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ${MODULE} ${VERSION}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The module has been successfully released and is now available for use." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Installation" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "go get github.com/KirkDiggler/rpg-toolkit/${MODULE}@${TAG_NAME}" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Module Information" >> $GITHUB_STEP_SUMMARY
+        echo "- **Module Path**: \`${MODULE}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Git Tag**: \`${TAG_NAME}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Show go.mod snippet
+        echo "### Add to your go.mod" >> $GITHUB_STEP_SUMMARY
+        echo '```go' >> $GITHUB_STEP_SUMMARY
+        echo "require github.com/KirkDiggler/rpg-toolkit/${MODULE} ${VERSION}" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
