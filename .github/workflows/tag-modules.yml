@@ -1,0 +1,187 @@
+name: Tag Modules
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      modules:
+        description: 'Specific modules to tag (comma-separated, leave empty for auto-detect)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag-modules:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Detect changed modules
+      id: detect
+      run: |
+        # If specific modules provided via workflow_dispatch, use those
+        if [[ -n "${{ github.event.inputs.modules }}" ]]; then
+          IFS=',' read -ra MODULES <<< "${{ github.event.inputs.modules }}"
+          CHANGED_MODULES=("${MODULES[@]// /}")  # Trim spaces
+        else
+          # Get the last tag for each module to determine what changed
+          declare -A LAST_TAGS
+          for tag in $(git tag -l); do
+            module=$(echo "$tag" | sed 's|/v[0-9].*||')
+            if [[ -z "${LAST_TAGS[$module]}" ]] || [[ "$tag" > "${LAST_TAGS[$module]}" ]]; then
+              LAST_TAGS[$module]=$tag
+            fi
+          done
+          
+          # Find modules with changes since their last tag
+          CHANGED_MODULES=()
+          for modfile in $(find . -name "go.mod" -type f -not -path "./vendor/*" -not -path "./examples/*"); do
+            module_path=$(dirname "$modfile" | sed 's|^\./||')
+            
+            # Skip root module if it exists
+            if [[ "$module_path" == "." ]]; then
+              continue
+            fi
+            
+            last_tag="${LAST_TAGS[$module_path]}"
+            
+            if [[ -z "$last_tag" ]]; then
+              # Module has never been tagged
+              echo "Module $module_path has never been tagged"
+              CHANGED_MODULES+=("$module_path")
+            else
+              # Check if module has changes since last tag
+              changes=$(git diff --name-only "$last_tag" HEAD -- "$module_path" | head -1)
+              if [[ -n "$changes" ]]; then
+                echo "Module $module_path has changes since $last_tag"
+                CHANGED_MODULES+=("$module_path")
+              fi
+            fi
+          done
+        fi
+        
+        # Output changed modules as JSON array
+        if [[ ${#CHANGED_MODULES[@]} -eq 0 ]]; then
+          echo "No modules need tagging"
+          echo "modules=[]" >> $GITHUB_OUTPUT
+        else
+          modules_json=$(printf '%s\n' "${CHANGED_MODULES[@]}" | jq -R . | jq -s -c .)
+          echo "modules=$modules_json" >> $GITHUB_OUTPUT
+          echo "Modules to tag: ${CHANGED_MODULES[@]}"
+        fi
+    
+    - name: Tag changed modules
+      if: steps.detect.outputs.modules != '[]'
+      run: |
+        MODULES='${{ steps.detect.outputs.modules }}'
+        BUMP_TYPE="${{ github.event.inputs.bump_type || 'patch' }}"
+        
+        # Function to increment version
+        increment_version() {
+          local version=$1
+          local bump=$2
+          
+          # Remove 'v' prefix
+          version=${version#v}
+          
+          # Split into major.minor.patch
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          case $bump in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+          esac
+          
+          echo "v${major}.${minor}.${patch}"
+        }
+        
+        # Tag each module
+        echo "$MODULES" | jq -r '.[]' | while read -r module; do
+          echo "Processing module: $module"
+          
+          # Get current version
+          current_tag=$(git tag -l "${module}/v*" | sort -V | tail -1)
+          
+          if [[ -z "$current_tag" ]]; then
+            # First tag for this module
+            new_version="v0.1.0"
+            echo "Creating first tag for $module: ${module}/${new_version}"
+          else
+            current_version=${current_tag#${module}/}
+            new_version=$(increment_version "$current_version" "$BUMP_TYPE")
+            echo "Bumping $module from $current_version to $new_version"
+          fi
+          
+          # Create and push tag
+          tag_name="${module}/${new_version}"
+          
+          # Create annotated tag with module changes
+          commit_msg="Release ${module} ${new_version}"
+          if [[ -n "$current_tag" ]]; then
+            # Include summary of changes
+            changes=$(git log --oneline "$current_tag..HEAD" -- "$module" | head -10)
+            if [[ -n "$changes" ]]; then
+              commit_msg="${commit_msg}\n\nChanges:\n${changes}"
+            fi
+          fi
+          
+          git tag -a "$tag_name" -m "$commit_msg"
+          echo "Created tag: $tag_name"
+        done
+    
+    - name: Push tags
+      if: steps.detect.outputs.modules != '[]'
+      run: |
+        git push origin --tags
+        echo "✅ Tags pushed successfully"
+    
+    - name: Generate summary
+      if: steps.detect.outputs.modules != '[]'
+      run: |
+        echo "## 📦 Module Tags Created" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        MODULES='${{ steps.detect.outputs.modules }}'
+        echo "$MODULES" | jq -r '.[]' | while read -r module; do
+          latest_tag=$(git tag -l "${module}/v*" | sort -V | tail -1)
+          echo "- **${module}**: ${latest_tag#${module}/}" >> $GITHUB_STEP_SUMMARY
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### How to use these versions:" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "$MODULES" | jq -r '.[]' | while read -r module; do
+          latest_tag=$(git tag -l "${module}/v*" | sort -V | tail -1)
+          echo "go get github.com/KirkDiggler/rpg-toolkit/${module}@${latest_tag}" >> $GITHUB_STEP_SUMMARY
+        done
+        echo '```' >> $GITHUB_STEP_SUMMARY
