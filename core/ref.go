@@ -27,8 +27,9 @@ const (
 	// SourceFeat represents a feat source
 	SourceFeat SourceCategory = "feat"
 	// SourceItem represents an item source
-	SourceItem   SourceCategory = "item"
-	SourceManual SourceCategory = "manual" // DM granted
+	SourceItem SourceCategory = "item"
+	// SourceManual represents a manual source (DM granted)
+	SourceManual SourceCategory = "manual"
 )
 
 // Source represents the source of an identifier
