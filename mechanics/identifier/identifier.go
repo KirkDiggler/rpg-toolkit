@@ -24,19 +24,22 @@ type ID struct {
 }
 
 // String returns the full identifier as module:type:value
-func (id ID) String() string {
+func (id *ID) String() string {
 	return fmt.Sprintf("%s:%s:%s", id.Module, id.Type, id.Value)
 }
 
 // Equals checks if two identifiers are the same
-func (id ID) Equals(other ID) bool {
+func (id *ID) Equals(other *ID) bool {
+	if id == nil || other == nil {
+		return id == other
+	}
 	return id.Module == other.Module &&
 		id.Type == other.Type &&
 		id.Value == other.Value
 }
 
 // IsValid checks if the identifier has all required fields
-func (id ID) IsValid() error {
+func (id *ID) IsValid() error {
 	if id.Value == "" {
 		return fmt.Errorf("identifier value cannot be empty")
 	}
@@ -50,7 +53,7 @@ func (id ID) IsValid() error {
 }
 
 // MarshalJSON implements json.Marshaler
-func (id ID) MarshalJSON() ([]byte, error) {
+func (id *ID) MarshalJSON() ([]byte, error) {
 	// Can be stored as a simple string for more compact JSON
 	return json.Marshal(id.String())
 }
@@ -82,15 +85,15 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 }
 
 // New creates a new identifier with validation
-func New(value, module, idType string) (ID, error) {
-	id := ID{
+func New(value, module, idType string) (*ID, error) {
+	id := &ID{
 		Value:  value,
 		Module: module,
 		Type:   idType,
 	}
 
 	if err := id.IsValid(); err != nil {
-		return ID{}, err
+		return nil, err
 	}
 
 	return id, nil
@@ -98,7 +101,7 @@ func New(value, module, idType string) (ID, error) {
 
 // MustNew creates a new identifier, panicking on validation error.
 // Use this for compile-time constants where you know the values are valid.
-func MustNew(value, module, idType string) ID {
+func MustNew(value, module, idType string) *ID {
 	id, err := New(value, module, idType)
 	if err != nil {
 		panic(fmt.Sprintf("invalid identifier: %v", err))
@@ -108,12 +111,12 @@ func MustNew(value, module, idType string) ID {
 
 // WithSource bundles an identifier with its source (where it came from)
 type WithSource struct {
-	ID     ID     `json:"id"`
+	ID     *ID    `json:"id"`
 	Source string `json:"source"` // "race:elf", "class:fighter", "background:soldier"
 }
 
 // NewWithSource creates an identifier with source information
-func NewWithSource(id ID, source string) WithSource {
+func NewWithSource(id *ID, source string) WithSource {
 	return WithSource{
 		ID:     id,
 		Source: source,

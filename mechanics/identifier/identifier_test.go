@@ -76,6 +76,11 @@ func TestID_Equals(t *testing.T) {
 	assert.True(t, id1.Equals(id2), "identical IDs should be equal")
 	assert.False(t, id1.Equals(id3), "different types should not be equal")
 	assert.False(t, id1.Equals(id4), "different values should not be equal")
+	
+	// Test nil handling
+	var nilID *identifier.ID
+	assert.False(t, id1.Equals(nilID), "non-nil should not equal nil")
+	assert.True(t, nilID.Equals(nilID), "nil should equal nil")
 }
 
 func TestID_JSONMarshaling(t *testing.T) {
@@ -90,7 +95,7 @@ func TestID_JSONMarshaling(t *testing.T) {
 	var unmarshaled identifier.ID
 	err = json.Unmarshal(data, &unmarshaled)
 	require.NoError(t, err)
-	assert.True(t, original.Equals(unmarshaled))
+	assert.True(t, original.Equals(&unmarshaled))
 }
 
 func TestID_JSONUnmarshal_BackwardCompatibility(t *testing.T) {
