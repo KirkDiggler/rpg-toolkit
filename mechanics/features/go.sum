@@ -1,5 +1,5 @@
-github.com/KirkDiggler/rpg-toolkit/core v0.1.1-0.20250705165954-baefa5c079e7 h1:x8K09p541EnNbB/yKxbl9IdeecQm5QCECI5m6uv+Lqs=
-github.com/KirkDiggler/rpg-toolkit/core v0.1.1-0.20250705165954-baefa5c079e7/go.mod h1:N7xIvJGjmrHHNjfWQ3O1LlkalzImcMav3O0fNOg+8No=
+github.com/KirkDiggler/rpg-toolkit/core v0.1.2 h1:KNxTxof8BAR+zpMsoYbbVB1UIRgS1RZ60gmiGV3JoK4=
+github.com/KirkDiggler/rpg-toolkit/core v0.1.2/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
 github.com/KirkDiggler/rpg-toolkit/events v0.1.2-0.20250705165954-baefa5c079e7 h1:ohPHtkxH/AOFHZ5F0PEEAzAwoPmkHSNcKfgANrBqkqM=
 github.com/KirkDiggler/rpg-toolkit/events v0.1.2-0.20250705165954-baefa5c079e7/go.mod h1:UKuqrOjasTIW7bKndUj/mUmG2WyqVOKJjyAuOVClXJE=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.0.0-20250705165954-baefa5c079e7 h1:xcs7su6U6EKzzXzB7T60PdFw+ujPt1LsdzLkCchxH9M=

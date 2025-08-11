@@ -23,10 +23,10 @@ type Proficiency interface {
 	Owner() core.Entity
 
 	// Subject returns what the entity is proficient with (e.g., "longsword", "athletics").
-	Subject() string
+	Subject() *core.Ref
 
 	// Source returns what granted this proficiency (e.g., "fighter-class", "elf-race").
-	Source() string
+	Source() *core.Source
 
 	// IsActive returns whether the proficiency is currently active.
 	IsActive() bool

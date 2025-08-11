@@ -85,7 +85,7 @@ func (p *SimplePool) Add(resource Resource) error {
 		return fmt.Errorf("resource owner mismatch")
 	}
 
-	p.resources[resource.Key()] = resource
+	p.resources[resource.Key().String()] = resource
 	return nil
 }
 
@@ -182,7 +182,7 @@ func (p *SimplePool) ProcessRestoration(trigger string, bus events.EventBus) {
 	for _, resource := range p.resources {
 		restoreAmount := resource.RestoreOnTrigger(trigger)
 		if restoreAmount > 0 {
-			_ = p.Restore(resource.Key(), restoreAmount, trigger, bus)
+			_ = p.Restore(resource.Key().String(), restoreAmount, trigger, bus)
 		}
 	}
 }
@@ -193,7 +193,7 @@ func (p *SimplePool) GetSpellSlots() map[int]Resource {
 
 	// Look for spell slots by standard keys
 	for level := 1; level <= 9; level++ {
-		key := fmt.Sprintf("spell_slots_%d", level)
+		key := fmt.Sprintf("dnd5e:resource:spell_slots_%d", level)
 		if resource, exists := p.resources[key]; exists {
 			slots[level] = resource
 		}
@@ -205,14 +205,14 @@ func (p *SimplePool) GetSpellSlots() map[int]Resource {
 // ConsumeSpellSlot attempts to consume a spell slot of the specified level or higher
 func (p *SimplePool) ConsumeSpellSlot(level int, bus events.EventBus) error {
 	// Try to consume at the exact level first
-	key := fmt.Sprintf("spell_slots_%d", level)
+	key := fmt.Sprintf("dnd5e:resource:spell_slots_%d", level)
 	if err := p.Consume(key, 1, bus); err == nil {
 		return nil
 	}
 
 	// Try higher level slots
 	for higherLevel := level + 1; higherLevel <= 9; higherLevel++ {
-		key = fmt.Sprintf("spell_slots_%d", higherLevel)
+		key = fmt.Sprintf("dnd5e:resource:spell_slots_%d", higherLevel)
 		if resource, exists := p.resources[key]; exists && resource.IsAvailable() {
 			return p.Consume(key, 1, bus)
 		}

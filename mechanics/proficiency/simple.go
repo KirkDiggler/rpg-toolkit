@@ -14,8 +14,8 @@ type SimpleProficiencyConfig struct {
 	ID      string
 	Type    string // e.g., "proficiency.weapon", "proficiency.skill"
 	Owner   core.Entity
-	Subject string // What they're proficient with
-	Source  string // What granted this proficiency
+	Subject *core.Ref    // What they're proficient with
+	Source  *core.Source // What granted this proficiency
 
 	// Optional handlers - receive the proficiency itself for self-reference
 	ApplyFunc  func(p *SimpleProficiency, bus events.EventBus) error
@@ -29,7 +29,8 @@ type SimpleProficiency struct {
 	core *effects.Core
 
 	owner   core.Entity
-	subject string
+	subject *core.Ref
+	source  *core.Source
 
 	// Handler functions
 	applyFunc  func(p *SimpleProficiency, bus events.EventBus) error
@@ -41,6 +42,7 @@ func NewSimpleProficiency(cfg SimpleProficiencyConfig) *SimpleProficiency {
 	p := &SimpleProficiency{
 		owner:      cfg.Owner,
 		subject:    cfg.Subject,
+		source:     cfg.Source,
 		applyFunc:  cfg.ApplyFunc,
 		removeFunc: cfg.RemoveFunc,
 	}
@@ -60,10 +62,16 @@ func NewSimpleProficiency(cfg SimpleProficiencyConfig) *SimpleProficiency {
 		}
 	}
 
+	// Convert core.Source to string for effects.Core compatibility
+	var sourceString string
+	if cfg.Source != nil {
+		sourceString = cfg.Source.String()
+	}
+
 	p.core = effects.NewCore(effects.CoreConfig{
 		ID:         cfg.ID,
 		Type:       cfg.Type,
-		Source:     cfg.Source,
+		Source:     sourceString,
 		ApplyFunc:  coreApplyFunc,
 		RemoveFunc: coreRemoveFunc,
 	})
@@ -81,10 +89,12 @@ func (p *SimpleProficiency) GetType() string { return p.core.GetType() }
 func (p *SimpleProficiency) Owner() core.Entity { return p.owner }
 
 // Subject returns what the entity is proficient with
-func (p *SimpleProficiency) Subject() string { return p.subject }
+func (p *SimpleProficiency) Subject() *core.Ref { return p.subject }
 
 // Source returns what granted this proficiency
-func (p *SimpleProficiency) Source() string { return p.core.Source() }
+func (p *SimpleProficiency) Source() *core.Source { 
+	return p.source
+}
 
 // IsActive returns whether the proficiency is active
 func (p *SimpleProficiency) IsActive() bool { return p.core.IsActive() }

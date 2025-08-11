@@ -30,9 +30,9 @@ func TestSimplePool(t *testing.T) {
 	}
 
 	// Test retrieval
-	slot1, exists := pool.Get("spell_slots_1")
+	slot1, exists := pool.Get("dnd5e:resource:spell_slots_1")
 	if !exists {
-		t.Fatal("Expected to find spell_slots_1")
+		t.Fatal("Expected to find dnd5e:resource:spell_slots_1")
 	}
 	if slot1.Maximum() != 4 {
 		t.Errorf("Expected 4 level 1 spell slots, got %d", slot1.Maximum())
@@ -40,7 +40,7 @@ func TestSimplePool(t *testing.T) {
 
 	// Test consumption with event bus
 	bus := events.NewBus()
-	err := pool.Consume("spell_slots_1", 1, bus)
+	err := pool.Consume("dnd5e:resource:spell_slots_1", 1, bus)
 	if err != nil {
 		t.Fatalf("Failed to consume spell slot: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestSimplePool(t *testing.T) {
 		t.Fatalf("Failed to consume level 2 spell slot: %v", err)
 	}
 
-	slot2, _ := pool.Get("spell_slots_2")
+	slot2, _ := pool.Get("dnd5e:resource:spell_slots_2")
 	if slot2.Current() != 2 {
 		t.Errorf("Expected 2 level 2 slots remaining, got %d", slot2.Current())
 	}
@@ -93,11 +93,11 @@ func TestPoolRests(t *testing.T) {
 	}
 
 	// Use both abilities
-	err = pool.Consume("second_wind_uses", 1, bus)
+	err = pool.Consume("dnd5e:resource:second_wind_uses", 1, bus)
 	if err != nil {
 		t.Fatalf("Failed to consume second_wind: %v", err)
 	}
-	err = pool.Consume("action_surge_uses", 1, bus)
+	err = pool.Consume("dnd5e:resource:action_surge_uses", 1, bus)
 	if err != nil {
 		t.Fatalf("Failed to consume action_surge: %v", err)
 	}

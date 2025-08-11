@@ -118,12 +118,12 @@ func (s *SneakAttackListener) getRogueLevel(_ core.Entity) int {
 
 // CreateSneakAttackFeature creates the Rogue Sneak Attack feature.
 func CreateSneakAttackFeature() features.Feature {
-	return features.NewBasicFeature("sneak_attack", "Sneak Attack").
+	return features.NewBasicFeature(core.MustNewRef("sneak_attack", "dnd5e", "class_feature"), "Sneak Attack").
 		WithDescription("Once per turn, you can deal extra damage to one creature you hit with an attack "+
 			"if you have advantage on the attack roll, or if an ally is within 5 feet of the target.").
 		WithType(features.FeatureClass).
 		WithLevel(1).
-		WithSource("Rogue").
+		WithSource(&core.Source{Category: core.SourceClass, Name: "Rogue"}).
 		WithTiming(features.TimingTriggered).
 		WithEventListeners(&SneakAttackListener{}).
 		WithPrerequisites("class:rogue", "level:1")

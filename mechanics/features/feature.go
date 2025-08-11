@@ -53,7 +53,7 @@ type PrerequisiteChecker func(entity core.Entity, prerequisite string) bool
 // Feature represents a character ability, racial trait, or feat.
 type Feature interface {
 	// Key returns the unique identifier for the feature.
-	Key() string
+	Key() *core.Ref
 
 	// Name returns the display name of the feature.
 	Name() string
@@ -68,7 +68,7 @@ type Feature interface {
 	Level() int
 
 	// Source returns where this feature comes from (e.g., "Barbarian", "Half-Orc").
-	Source() string
+	Source() *core.Source
 
 	// IsPassive returns true if the feature is always active.
 	IsPassive() bool
@@ -80,7 +80,7 @@ type Feature interface {
 	GetModifiers() []events.Modifier
 
 	// GetProficiencies returns any proficiencies this feature grants.
-	GetProficiencies() []string
+	GetProficiencies() []*core.Ref
 
 	// GetResources returns any resources this feature provides or consumes.
 	GetResources() []resources.Resource

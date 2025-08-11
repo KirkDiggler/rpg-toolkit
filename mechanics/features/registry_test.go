@@ -9,13 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/features"
 )
 
 func TestRegistryRegisterFeature(t *testing.T) {
 	registry := features.NewRegistry()
 
-	feature := features.NewBasicFeature("test_feature", "Test Feature")
+	feature := features.NewBasicFeature(core.MustNewRef("test_feature", "test", "feature"), "Test Feature")
 	err := registry.RegisterFeature(feature)
 	require.NoError(t, err)
 
@@ -25,7 +26,7 @@ func TestRegistryRegisterFeature(t *testing.T) {
 	assert.Contains(t, err.Error(), "already registered")
 
 	// Retrieve the feature
-	retrieved, exists := registry.GetFeature("test_feature")
+	retrieved, exists := registry.GetFeature("test:feature:test_feature")
 	assert.True(t, exists)
 	assert.Equal(t, feature, retrieved)
 }
@@ -34,9 +35,9 @@ func TestRegistryGetFeaturesByType(t *testing.T) {
 	registry := features.NewRegistry()
 
 	// Register features of different types
-	classFeature := features.NewBasicFeature("rage", "Rage").
+	classFeature := features.NewBasicFeature(core.MustNewRef("rage", "dnd5e", "class_feature"), "Rage").
 		WithType(features.FeatureClass)
-	racialFeature := features.NewBasicFeature("darkvision", "Darkvision").
+	racialFeature := features.NewBasicFeature(core.MustNewRef("darkvision", "dnd5e", "racial_feature"), "Darkvision").
 		WithType(features.FeatureRacial)
 
 	err := registry.RegisterFeature(classFeature)
@@ -47,24 +48,24 @@ func TestRegistryGetFeaturesByType(t *testing.T) {
 	// Get class features
 	classFeatures := registry.GetFeaturesByType(features.FeatureClass)
 	assert.Len(t, classFeatures, 1)
-	assert.Equal(t, "rage", classFeatures[0].Key())
+	assert.Equal(t, core.MustNewRef("rage", "dnd5e", "class_feature"), classFeatures[0].Key())
 
 	// Get racial features
 	racialFeatures := registry.GetFeaturesByType(features.FeatureRacial)
 	assert.Len(t, racialFeatures, 1)
-	assert.Equal(t, "darkvision", racialFeatures[0].Key())
+	assert.Equal(t, core.MustNewRef("darkvision", "dnd5e", "racial_feature"), racialFeatures[0].Key())
 }
 
 func TestRegistryGetFeaturesForClass(t *testing.T) {
 	registry := features.NewRegistry()
 
 	// Register features for different classes
-	barbarianFeature := features.NewBasicFeature("rage", "Rage").
+	barbarianFeature := features.NewBasicFeature(core.MustNewRef("rage", "dnd5e", "class_feature"), "Rage").
 		WithType(features.FeatureClass).
 		WithLevel(1).
 		WithPrerequisites("class:barbarian")
 
-	rogueFeature := features.NewBasicFeature("sneak_attack", "Sneak Attack").
+	rogueFeature := features.NewBasicFeature(core.MustNewRef("sneak_attack", "dnd5e", "class_feature"), "Sneak Attack").
 		WithType(features.FeatureClass).
 		WithLevel(1).
 		WithPrerequisites("class:rogue")
@@ -77,23 +78,23 @@ func TestRegistryGetFeaturesForClass(t *testing.T) {
 	// Get barbarian features
 	barbFeatures := registry.GetFeaturesForClass("barbarian", 5)
 	assert.Len(t, barbFeatures, 1)
-	assert.Equal(t, "rage", barbFeatures[0].Key())
+	assert.Equal(t, core.MustNewRef("rage", "dnd5e", "class_feature"), barbFeatures[0].Key())
 
 	// Get rogue features
 	rogueFeatures := registry.GetFeaturesForClass("rogue", 5)
 	assert.Len(t, rogueFeatures, 1)
-	assert.Equal(t, "sneak_attack", rogueFeatures[0].Key())
+	assert.Equal(t, core.MustNewRef("sneak_attack", "dnd5e", "class_feature"), rogueFeatures[0].Key())
 }
 
 func TestRegistryGetFeaturesForRace(t *testing.T) {
 	registry := features.NewRegistry()
 
 	// Register racial features
-	halfOrcFeature := features.NewBasicFeature("darkvision", "Darkvision").
+	halfOrcFeature := features.NewBasicFeature(core.MustNewRef("darkvision", "dnd5e", "racial_feature"), "Darkvision").
 		WithType(features.FeatureRacial).
 		WithPrerequisites("race:half-orc")
 
-	drowFeature := features.NewBasicFeature("superior_darkvision", "Superior Darkvision").
+	drowFeature := features.NewBasicFeature(core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature"), "Superior Darkvision").
 		WithType(features.FeatureRacial).
 		WithPrerequisites("race:drow")
 
@@ -105,10 +106,10 @@ func TestRegistryGetFeaturesForRace(t *testing.T) {
 	// Get half-orc features
 	halfOrcFeatures := registry.GetFeaturesForRace("half-orc")
 	assert.Len(t, halfOrcFeatures, 1)
-	assert.Equal(t, "darkvision", halfOrcFeatures[0].Key())
+	assert.Equal(t, core.MustNewRef("darkvision", "dnd5e", "racial_feature"), halfOrcFeatures[0].Key())
 
 	// Get drow features
 	drowFeatures := registry.GetFeaturesForRace("drow")
 	assert.Len(t, drowFeatures, 1)
-	assert.Equal(t, "superior_darkvision", drowFeatures[0].Key())
+	assert.Equal(t, core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature"), drowFeatures[0].Key())
 }

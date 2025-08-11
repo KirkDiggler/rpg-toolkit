@@ -29,7 +29,7 @@ func (r *Registry) RegisterFeature(feature Feature) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := feature.Key()
+	key := feature.Key().String()
 	if _, exists := r.features[key]; exists {
 		return fmt.Errorf("feature %s already registered", key)
 	}

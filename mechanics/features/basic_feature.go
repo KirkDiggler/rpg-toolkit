@@ -14,15 +14,15 @@ import (
 
 // BasicFeature is a standard implementation of the Feature interface.
 type BasicFeature struct {
-	key                 string
+	key                 *core.Ref
 	name                string
 	description         string
 	featureType         FeatureType
 	level               int
-	source              string
+	source              *core.Source
 	timing              FeatureTiming
 	modifiers           []events.Modifier
-	proficiencies       []string
+	proficiencies       []*core.Ref
 	resources           []resources.Resource
 	eventListeners      []EventListener
 	prerequisites       []string
@@ -32,20 +32,20 @@ type BasicFeature struct {
 }
 
 // NewBasicFeature creates a new basic feature.
-func NewBasicFeature(key, name string) *BasicFeature {
+func NewBasicFeature(key *core.Ref, name string) *BasicFeature {
 	return &BasicFeature{
 		key:           key,
 		name:          name,
 		timing:        TimingPassive,
 		modifiers:     []events.Modifier{},
-		proficiencies: []string{},
+		proficiencies: []*core.Ref{},
 		resources:     []resources.Resource{},
 		prerequisites: []string{},
 	}
 }
 
 // Key returns the unique identifier for the feature.
-func (f *BasicFeature) Key() string {
+func (f *BasicFeature) Key() *core.Ref {
 	return f.key
 }
 
@@ -70,7 +70,7 @@ func (f *BasicFeature) Level() int {
 }
 
 // Source returns where this feature comes from.
-func (f *BasicFeature) Source() string {
+func (f *BasicFeature) Source() *core.Source {
 	return f.source
 }
 
@@ -90,7 +90,7 @@ func (f *BasicFeature) GetModifiers() []events.Modifier {
 }
 
 // GetProficiencies returns any proficiencies this feature grants.
-func (f *BasicFeature) GetProficiencies() []string {
+func (f *BasicFeature) GetProficiencies() []*core.Ref {
 	return f.proficiencies
 }
 
@@ -215,7 +215,7 @@ func (f *BasicFeature) Deactivate(_ core.Entity, bus events.EventBus) error {
 	}
 
 	if f.timing != TimingActivated {
-		return fmt.Errorf("feature %s cannot be deactivated", f.key)
+		return fmt.Errorf("feature %s cannot be deactivated", f.key.String())
 	}
 
 	if !f.isActive {
@@ -268,7 +268,7 @@ func (f *BasicFeature) WithLevel(level int) *BasicFeature {
 }
 
 // WithSource sets the feature source.
-func (f *BasicFeature) WithSource(source string) *BasicFeature {
+func (f *BasicFeature) WithSource(source *core.Source) *BasicFeature {
 	f.source = source
 	return f
 }
@@ -286,7 +286,7 @@ func (f *BasicFeature) WithModifiers(modifiers ...events.Modifier) *BasicFeature
 }
 
 // WithProficiencies adds proficiencies to the feature.
-func (f *BasicFeature) WithProficiencies(proficiencies ...string) *BasicFeature {
+func (f *BasicFeature) WithProficiencies(proficiencies ...*core.Ref) *BasicFeature {
 	f.proficiencies = append(f.proficiencies, proficiencies...)
 	return f
 }

@@ -25,19 +25,19 @@ func (m *mockEntity) GetID() string   { return m.id }
 func (m *mockEntity) GetType() string { return m.entityType }
 
 func TestBasicFeature(t *testing.T) {
-	feature := features.NewBasicFeature("test_feature", "Test Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("test_feature", "test", "feature"), "Test Feature").
 		WithDescription("A test feature").
 		WithType(features.FeatureClass).
 		WithLevel(1).
-		WithSource("Test Class").
+		WithSource(&core.Source{Category: core.SourceClass, Name: "Test Class"}).
 		WithTiming(features.TimingPassive)
 
-	assert.Equal(t, "test_feature", feature.Key())
+	assert.Equal(t, core.MustNewRef("test_feature", "test", "feature"), feature.Key())
 	assert.Equal(t, "Test Feature", feature.Name())
 	assert.Equal(t, "A test feature", feature.Description())
 	assert.Equal(t, features.FeatureClass, feature.Type())
 	assert.Equal(t, 1, feature.Level())
-	assert.Equal(t, "Test Class", feature.Source())
+	assert.Equal(t, &core.Source{Category: core.SourceClass, Name: "Test Class"}, feature.Source())
 	assert.True(t, feature.IsPassive())
 	assert.Equal(t, features.TimingPassive, feature.GetTiming())
 }
@@ -50,7 +50,7 @@ func TestFeatureWithModifiers(t *testing.T) {
 		100,
 	)
 
-	feature := features.NewBasicFeature("mod_feature", "Modifier Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("mod_feature", "test", "feature"), "Modifier Feature").
 		WithModifiers(modifier)
 
 	mods := feature.GetModifiers()
@@ -59,14 +59,18 @@ func TestFeatureWithModifiers(t *testing.T) {
 }
 
 func TestFeatureWithProficiencies(t *testing.T) {
-	feature := features.NewBasicFeature("prof_feature", "Proficiency Feature").
-		WithProficiencies("longsword", "shortsword", "shields")
+	feature := features.NewBasicFeature(core.MustNewRef("prof_feature", "test", "feature"), "Proficiency Feature").
+		WithProficiencies(
+			core.MustNewRef("longsword", "dnd5e", "weapon"),
+			core.MustNewRef("shortsword", "dnd5e", "weapon"),
+			core.MustNewRef("shields", "dnd5e", "armor"),
+		)
 
 	profs := feature.GetProficiencies()
 	assert.Len(t, profs, 3)
-	assert.Contains(t, profs, "longsword")
-	assert.Contains(t, profs, "shortsword")
-	assert.Contains(t, profs, "shields")
+	assert.Contains(t, profs, core.MustNewRef("longsword", "dnd5e", "weapon"))
+	assert.Contains(t, profs, core.MustNewRef("shortsword", "dnd5e", "weapon"))
+	assert.Contains(t, profs, core.MustNewRef("shields", "dnd5e", "armor"))
 }
 
 func TestFeatureWithResources(t *testing.T) {
@@ -78,7 +82,7 @@ func TestFeatureWithResources(t *testing.T) {
 		Maximum: 3,
 	})
 
-	feature := features.NewBasicFeature("resource_feature", "Resource Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("resource_feature", "test", "feature"), "Resource Feature").
 		WithResources(resource)
 
 	res := feature.GetResources()
@@ -87,7 +91,7 @@ func TestFeatureWithResources(t *testing.T) {
 }
 
 func TestFeatureWithPrerequisites(t *testing.T) {
-	feature := features.NewBasicFeature("prereq_feature", "Prerequisite Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("prereq_feature", "test", "feature"), "Prerequisite Feature").
 		WithPrerequisites("class:fighter", "level:5", "feat:weapon_master")
 
 	assert.True(t, feature.HasPrerequisites())
@@ -102,7 +106,7 @@ func TestFeatureWithPrerequisites(t *testing.T) {
 
 func TestFeaturePrerequisiteChecker(t *testing.T) {
 	// Create a feature with prerequisites
-	feature := features.NewBasicFeature("prereq_feature", "Prerequisite Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("prereq_feature", "test", "feature"), "Prerequisite Feature").
 		WithPrerequisites("class:fighter", "level:5")
 
 	// Create a mock entity
@@ -150,7 +154,7 @@ func TestTriggeredFeature(t *testing.T) {
 		called:     false,
 	}
 
-	feature := features.NewBasicFeature("triggered_feature", "Triggered Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("triggered_feature", "test", "feature"), "Triggered Feature").
 		WithTiming(features.TimingTriggered).
 		WithEventListeners(listener)
 
@@ -168,7 +172,7 @@ func TestTriggeredFeature(t *testing.T) {
 }
 
 func TestPassiveFeatureIsAlwaysActive(t *testing.T) {
-	feature := features.NewBasicFeature("passive_feature", "Passive Feature").
+	feature := features.NewBasicFeature(core.MustNewRef("passive_feature", "test", "feature"), "Passive Feature").
 		WithTiming(features.TimingPassive)
 
 	entity := &mockEntity{id: "test-1", entityType: "character"}

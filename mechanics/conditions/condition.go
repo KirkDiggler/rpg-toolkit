@@ -22,7 +22,7 @@ type Condition interface {
 	Target() core.Entity
 
 	// Source returns what created this condition (spell name, item, etc).
-	Source() string
+	Source() *core.Source
 
 	// IsActive returns whether the condition is currently active.
 	IsActive() bool

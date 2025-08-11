@@ -6,6 +6,7 @@ package resources_test
 import (
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
@@ -18,7 +19,7 @@ func TestGenericTriggers(t *testing.T) {
 		ID:      "channel-divinity",
 		Type:    resources.ResourceTypeAbilityUse,
 		Owner:   owner,
-		Key:     "channel_divinity",
+		Key:     core.MustNewRef("channel_divinity", "dnd5e", "resource"),
 		Current: 0,
 		Maximum: 2,
 		RestoreTriggers: map[string]int{
@@ -58,7 +59,7 @@ func TestPoolProcessRestoration(t *testing.T) {
 		ID:      "divine-power",
 		Type:    resources.ResourceTypeCustom,
 		Owner:   owner,
-		Key:     "divine_power",
+		Key:     core.MustNewRef("divine_power", "dnd5e", "resource"),
 		Current: 0,
 		Maximum: 3,
 		RestoreTriggers: map[string]int{
@@ -71,7 +72,7 @@ func TestPoolProcessRestoration(t *testing.T) {
 		ID:      "arcane-surge",
 		Type:    resources.ResourceTypeCustom,
 		Owner:   owner,
-		Key:     "arcane_surge",
+		Key:     core.MustNewRef("arcane_surge", "dnd5e", "resource"),
 		Current: 1,
 		Maximum: 2,
 		RestoreTriggers: map[string]int{
@@ -120,7 +121,7 @@ func TestLegacyCompatibility(t *testing.T) {
 		ID:               "legacy-resource",
 		Type:             resources.ResourceTypeAbilityUse,
 		Owner:            owner,
-		Key:              "legacy",
+		Key:              core.MustNewRef("legacy", "dnd5e", "resource"),
 		Current:          0,
 		Maximum:          3,
 		RestoreType:      resources.RestoreShortRest,
@@ -150,7 +151,7 @@ func TestMixedConfiguration(t *testing.T) {
 		ID:              "mixed-resource",
 		Type:            resources.ResourceTypeCustom,
 		Owner:           owner,
-		Key:             "mixed",
+		Key:             core.MustNewRef("mixed", "dnd5e", "resource"),
 		Current:         0,
 		Maximum:         5,
 		RestoreType:     resources.RestoreLongRest,

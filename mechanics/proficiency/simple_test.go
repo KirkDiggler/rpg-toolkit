@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency"
 )
@@ -35,8 +36,8 @@ func TestSimpleProficiency(t *testing.T) {
 		ID:      "prof-longsword",
 		Type:    "proficiency.weapon",
 		Owner:   character,
-		Subject: "longsword",
-		Source:  "fighter-class",
+		Subject: core.MustNewRef("longsword", "dnd5e", "weapon"),
+		Source:  &core.Source{Category: core.SourceClass, Name: "Fighter"},
 		ApplyFunc: func(p *proficiency.SimpleProficiency, bus events.EventBus) error {
 			// Subscribe to attack roll events
 			p.Subscribe(bus, events.EventBeforeAttack, 100, func(_ context.Context, e events.Event) error {
@@ -94,8 +95,8 @@ func TestProficiencyMetadata(t *testing.T) {
 		ID:      "prof-athletics",
 		Type:    "proficiency.skill",
 		Owner:   character,
-		Subject: "athletics",
-		Source:  "barbarian-class",
+		Subject: core.MustNewRef("athletics", "dnd5e", "skill"),
+		Source:  &core.Source{Category: core.SourceClass, Name: "Barbarian"},
 	})
 
 	// Test metadata
@@ -111,11 +112,12 @@ func TestProficiencyMetadata(t *testing.T) {
 		t.Errorf("Expected owner ID %s, got %s", character.GetID(), prof.Owner().GetID())
 	}
 
-	if prof.Subject() != "athletics" {
-		t.Errorf("Expected subject 'athletics', got %s", prof.Subject())
+	if !prof.Subject().Equals(core.MustNewRef("athletics", "dnd5e", "skill")) {
+		t.Errorf("Expected subject athletics reference, got %v", prof.Subject())
 	}
 
-	if prof.Source() != "barbarian-class" {
-		t.Errorf("Expected source 'barbarian-class', got %s", prof.Source())
+	expectedSource := &core.Source{Category: core.SourceClass, Name: "Barbarian"}
+	if prof.Source() == nil || prof.Source().Category != expectedSource.Category || prof.Source().Name != expectedSource.Name {
+		t.Errorf("Expected source %v, got %v", expectedSource, prof.Source())
 	}
 }

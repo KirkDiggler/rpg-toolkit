@@ -96,11 +96,11 @@ func CreateRageFeature() features.Feature {
 		RestoreType:     resources.RestoreLongRest,
 	})
 
-	return features.NewBasicFeature("rage", "Rage").
+	return features.NewBasicFeature(core.MustNewRef("rage", "dnd5e", "class_feature"), "Rage").
 		WithDescription("In battle, you fight with primal ferocity. On your turn, you can enter a rage as a bonus action.").
 		WithType(features.FeatureClass).
 		WithLevel(1).
-		WithSource("Barbarian").
+		WithSource(&core.Source{Category: core.SourceClass, Name: "Barbarian"}).
 		WithTiming(features.TimingActivated).
 		WithResources(rageResource).
 		WithEventListeners(RageListener{}).

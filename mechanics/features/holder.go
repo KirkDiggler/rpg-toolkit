@@ -16,7 +16,7 @@ import (
 // their own FeatureHolder as part of their entity types.
 type SimpleFeatureHolder struct {
 	mu       sync.RWMutex
-	features map[string]Feature
+	features map[string]Feature // Still keyed by string for simpler lookups
 	entity   core.Entity
 }
 
@@ -33,7 +33,7 @@ func (h *SimpleFeatureHolder) AddFeature(feature Feature) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	key := feature.Key()
+	key := feature.Key().String()
 	if _, exists := h.features[key]; exists {
 		return fmt.Errorf("feature %s already exists", key)
 	}

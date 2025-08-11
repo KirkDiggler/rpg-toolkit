@@ -5,6 +5,7 @@
 package examples
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/features"
 )
@@ -70,12 +71,12 @@ func (v *VisionModifier) SourceDetails() *events.ModifierSource {
 
 // CreateDarkvisionFeature creates the Darkvision racial feature.
 func CreateDarkvisionFeature(rangeInFeet int) features.Feature {
-	return features.NewBasicFeature("darkvision", "Darkvision").
+	return features.NewBasicFeature(core.MustNewRef("darkvision", "dnd5e", "racial_feature"), "Darkvision").
 		WithDescription("You can see in dim light within 60 feet of you as if it were bright light, " +
 			"and in darkness as if it were dim light.").
 		WithType(features.FeatureRacial).
 		WithLevel(0). // Available from character creation
-		WithSource("Racial").
+		WithSource(&core.Source{Category: core.SourceRace, Name: "Racial"}).
 		WithTiming(features.TimingPassive).
 		WithModifiers(NewVisionModifier("darkvision", rangeInFeet))
 }
@@ -86,7 +87,7 @@ func CreateHalfOrcDarkvision() features.Feature {
 	// We need to cast to BasicFeature to access builder methods
 	if basic, ok := feature.(*features.BasicFeature); ok {
 		return basic.
-			WithSource("Half-Orc").
+			WithSource(&core.Source{Category: core.SourceRace, Name: "Half-Orc"}).
 			WithPrerequisites("race:half-orc")
 	}
 	return feature
@@ -94,12 +95,12 @@ func CreateHalfOrcDarkvision() features.Feature {
 
 // CreateDrowDarkvision creates the Drow version of Superior Darkvision.
 func CreateDrowDarkvision() features.Feature {
-	return features.NewBasicFeature("superior_darkvision", "Superior Darkvision").
+	return features.NewBasicFeature(core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature"), "Superior Darkvision").
 		WithDescription("You can see in dim light within 120 feet of you as if it were bright light, " +
 			"and in darkness as if it were dim light.").
 		WithType(features.FeatureRacial).
 		WithLevel(0).
-		WithSource("Drow").
+		WithSource(&core.Source{Category: core.SourceRace, Name: "Drow"}).
 		WithTiming(features.TimingPassive).
 		WithModifiers(NewVisionModifier("darkvision", 120)).
 		WithPrerequisites("race:drow")

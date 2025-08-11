@@ -3,7 +3,7 @@ module github.com/KirkDiggler/rpg-toolkit/mechanics/features
 go 1.24.0
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.1.1-0.20250705165954-baefa5c079e7
+	github.com/KirkDiggler/rpg-toolkit/core v0.1.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.2-0.20250705165954-baefa5c079e7
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.0.0-20250705165954-baefa5c079e7
 	github.com/stretchr/testify v1.10.0
