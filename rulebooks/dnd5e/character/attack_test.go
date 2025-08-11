@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
@@ -12,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 )
 
 // MockTarget implements the Target interface for testing
@@ -23,33 +25,11 @@ func (m *MockTarget) AC() int {
 	return m.ac
 }
 
-// MockRoller implements dice.Roller for predictable test results
-type MockRoller struct {
-	results []int
-	index   int
-}
-
-func (m *MockRoller) Roll(size int) (int, error) {
-	if m.index >= len(m.results) {
-		return 1, nil // default
-	}
-	result := m.results[m.index]
-	m.index++
-	return result, nil
-}
-
-func (m *MockRoller) RollN(count, size int) ([]int, error) {
-	results := make([]int, count)
-	for i := 0; i < count; i++ {
-		result, _ := m.Roll(size)
-		results[i] = result
-	}
-	return results, nil
-}
-
 type AttackTestSuite struct {
 	suite.Suite
-	ctx          context.Context
+	ctx            context.Context
+	ctrl           *gomock.Controller
+	mockRoller     *mock_dice.MockRoller
 	originalRoller dice.Roller
 }
 
@@ -59,16 +39,27 @@ func (s *AttackTestSuite) SetupSuite() {
 	s.originalRoller = dice.DefaultRoller
 }
 
+func (s *AttackTestSuite) SetupTest() {
+	// Create new controller for each test
+	s.ctrl = gomock.NewController(s.T())
+	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	dice.SetDefaultRoller(s.mockRoller)
+}
+
+func (s *AttackTestSuite) TearDownTest() {
+	s.ctrl.Finish()
+}
+
 func (s *AttackTestSuite) TearDownSuite() {
 	// Restore original roller
 	dice.SetDefaultRoller(s.originalRoller)
 }
 
 func (s *AttackTestSuite) TestSimpleAttackHit() {
-	// Setup mock roller with predictable results
-	// First roll is attack (15), second is damage (6)
-	mockRoller := &MockRoller{results: []int{15, 6}}
-	dice.SetDefaultRoller(mockRoller)
+	// Setup mock roller expectations
+	// D20() uses RollN(1, 20), D8() uses RollN(1, 8)
+	s.mockRoller.EXPECT().RollN(1, 20).Return([]int{15}, nil)
+	s.mockRoller.EXPECT().RollN(1, 8).Return([]int{6}, nil)
 	
 	// Create test character using creation data
 	abilityScores := shared.AbilityScores{
@@ -127,8 +118,7 @@ func (s *AttackTestSuite) TestSimpleAttackHit() {
 
 func (s *AttackTestSuite) TestAttackMiss() {
 	// Setup mock roller with low attack roll
-	mockRoller := &MockRoller{results: []int{2}} // Low roll
-	dice.SetDefaultRoller(mockRoller)
+	s.mockRoller.EXPECT().RollN(1, 20).Return([]int{2}, nil) // Low roll, no damage roll expected
 	
 	abilityScores := shared.AbilityScores{
 		constants.STR: 10, // +0 modifier
@@ -181,10 +171,10 @@ func (s *AttackTestSuite) TestAttackMiss() {
 }
 
 func (s *AttackTestSuite) TestAttackWithBless() {
-	// Setup mock roller with predictable results
+	// Setup mock roller expectations
 	// Attack roll: 10, Damage: 5
-	mockRoller := &MockRoller{results: []int{10, 5}}
-	dice.SetDefaultRoller(mockRoller)
+	s.mockRoller.EXPECT().RollN(1, 20).Return([]int{10}, nil)
+	s.mockRoller.EXPECT().RollN(1, 8).Return([]int{5}, nil)
 	
 	abilityScores := shared.AbilityScores{
 		constants.STR: 14, // +2 modifier
