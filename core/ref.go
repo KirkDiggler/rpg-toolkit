@@ -14,6 +14,32 @@ const (
 	expectedParts = 3
 )
 
+type SourceCategory string
+
+const (
+	SourceClass      SourceCategory = "class"
+	SourceRace       SourceCategory = "race"
+	SourceBackground SourceCategory = "background"
+	SourceFeat       SourceCategory = "feat"
+	SourceItem       SourceCategory = "item"
+	SourceManual     SourceCategory = "manual" // DM granted
+)
+
+type Source struct {
+	Category SourceCategory
+	Name     string
+}
+
+func (s *Source) String() string {
+	return fmt.Sprintf("%s:%s", s.Category, s.Name)
+}
+
+// Then SourcedRef becomes:
+type SourcedRef struct {
+	Ref    *Ref
+	Source *Source // Not a string anymore!
+}
+
 // Ref represents a unique identifier for a game mechanic.
 // It's designed to be extensible - external modules can create new IDs
 // while core modules provide type-safe constructors for known IDs.
@@ -188,11 +214,11 @@ func MustNewRef(value, module, idType string) *Ref {
 // WithSourcedRef bundles an identifier with its source (where it came from)
 type WithSourcedRef struct {
 	ID     *Ref   `json:"id"`
-	Source string `json:"source"` // "race:elf", "class:fighter", "background:soldier"
+	Source *Source `json:"source"` // "race:elf", "class:fighter", "background:soldier"
 }
 
 // NewWithSourcedRef creates an identifier with source information
-func NewWithSourcedRef(id *Ref, source string) WithSourcedRef {
+func NewWithSourcedRef(id *Ref, source *Source) WithSourcedRef {
 	return WithSourcedRef{
 		ID:     id,
 		Source: source,

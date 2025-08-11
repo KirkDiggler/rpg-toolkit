@@ -116,10 +116,13 @@ func TestID_JSONUnmarshal_BackwardCompatibility(t *testing.T) {
 
 func TestWithSource(t *testing.T) {
 	id := core.MustNewRef("second_wind", "core", "feature")
-	withSource := core.NewWithSourcedRef(id, "class:fighter")
+	withSource := core.NewWithSourcedRef(id, &core.Source{
+		Category: core.SourceClass,
+		Name:     "fighter",
+	})
 
 	assert.Equal(t, id, withSource.ID)
-	assert.Equal(t, "class:fighter", withSource.Source)
+	assert.Equal(t, "class:fighter", withSource.Source.String())
 
 	// Test JSON marshaling
 	data, err := json.Marshal(withSource)
@@ -130,7 +133,7 @@ func TestWithSource(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, withSource.ID.Equals(unmarshaled.ID))
-	assert.Equal(t, withSource.Source, unmarshaled.Source)
+	assert.Equal(t, withSource.Source.String(), unmarshaled.Source.String())
 }
 
 func TestMustNew_Panics(t *testing.T) {
