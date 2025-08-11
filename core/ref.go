@@ -14,27 +14,35 @@ const (
 	expectedParts = 3
 )
 
+// SourceCategory represents the category of an identifier
 type SourceCategory string
 
 const (
-	SourceClass      SourceCategory = "class"
-	SourceRace       SourceCategory = "race"
+	// SourceClass represents a class source
+	SourceClass SourceCategory = "class"
+	// SourceRace represents a race source
+	SourceRace SourceCategory = "race"
+	// SourceBackground represents a background source
 	SourceBackground SourceCategory = "background"
-	SourceFeat       SourceCategory = "feat"
-	SourceItem       SourceCategory = "item"
-	SourceManual     SourceCategory = "manual" // DM granted
+	// SourceFeat represents a feat source
+	SourceFeat SourceCategory = "feat"
+	// SourceItem represents an item source
+	SourceItem   SourceCategory = "item"
+	SourceManual SourceCategory = "manual" // DM granted
 )
 
+// Source represents the source of an identifier
 type Source struct {
 	Category SourceCategory
 	Name     string
 }
 
+// String returns the source as a string in the format "category:name"
 func (s *Source) String() string {
 	return fmt.Sprintf("%s:%s", s.Category, s.Name)
 }
 
-// Then SourcedRef becomes:
+// SourcedRef represents an identifier with its source
 type SourcedRef struct {
 	Ref    *Ref
 	Source *Source // Not a string anymore!
@@ -213,7 +221,7 @@ func MustNewRef(value, module, idType string) *Ref {
 
 // WithSourcedRef bundles an identifier with its source (where it came from)
 type WithSourcedRef struct {
-	ID     *Ref   `json:"id"`
+	ID     *Ref    `json:"id"`
 	Source *Source `json:"source"` // "race:elf", "class:fighter", "background:soldier"
 }
 
