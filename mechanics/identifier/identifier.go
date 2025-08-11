@@ -7,6 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
+)
+
+const (
+	// separatorChar is the character used to separate identifier parts
+	separatorChar = ":"
+	// expectedParts is the number of parts in a valid identifier string
+	expectedParts = 3
 )
 
 // ID represents a unique identifier for a game mechanic.
@@ -28,6 +36,55 @@ func (id *ID) String() string {
 	return fmt.Sprintf("%s:%s:%s", id.Module, id.Type, id.Value)
 }
 
+// ParseString parses the string format with detailed error reporting
+func ParseString(s string) (*ID, error) {
+	if s == "" {
+		return nil, NewParseError(s, "", 0, ErrEmptyString)
+	}
+	
+	segments := strings.Split(s, separatorChar)
+	segmentCount := len(segments)
+	
+	// Validate we have exactly the right number of segments
+	if segmentCount < expectedParts {
+		return nil, NewParseError(s, "", 0, 
+			fmt.Errorf("%w: expected %d segments, got %d", ErrTooFewSegments, expectedParts, segmentCount))
+	}
+	if segmentCount > expectedParts {
+		return nil, NewParseError(s, "", 0,
+			fmt.Errorf("%w: expected %d segments, got %d", ErrTooManySegments, expectedParts, segmentCount))
+	}
+	
+	// Create the ID with segments
+	id := &ID{
+		Module: segments[0],
+		Type:   segments[1],
+		Value:  segments[2],
+	}
+	
+	// Validate the ID
+	if err := id.validate(); err != nil {
+		return nil, err
+	}
+	
+	return id, nil
+}
+
+// isValidIdentifierPart checks if a string contains only valid identifier characters
+func isValidIdentifierPart(s string) bool {
+	if s == "" {
+		return false
+	}
+	
+	for _, r := range s {
+		// Allow letters, digits, underscore, and dash
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 // Equals checks if two identifiers are the same
 func (id *ID) Equals(other *ID) bool {
 	if id == nil || other == nil {
@@ -40,15 +97,39 @@ func (id *ID) Equals(other *ID) bool {
 
 // IsValid checks if the identifier has all required fields
 func (id *ID) IsValid() error {
-	if id.Value == "" {
-		return fmt.Errorf("identifier value cannot be empty")
-	}
+	return id.validate()
+}
+
+// validate performs comprehensive validation of the identifier
+func (id *ID) validate() error {
+	// Check for empty components
 	if id.Module == "" {
-		return fmt.Errorf("identifier module cannot be empty")
+		return NewValidationError("module", id.Module, "cannot be empty", ErrEmptyComponent)
 	}
 	if id.Type == "" {
-		return fmt.Errorf("identifier type cannot be empty")
+		return NewValidationError("type", id.Type, "cannot be empty", ErrEmptyComponent)
 	}
+	if id.Value == "" {
+		return NewValidationError("value", id.Value, "cannot be empty", ErrEmptyComponent)
+	}
+	
+	// Validate characters in each component
+	if !isValidIdentifierPart(id.Module) {
+		return NewValidationError("module", id.Module, 
+			"contains invalid characters (only letters, digits, underscore, and dash allowed)", 
+			ErrInvalidCharacters)
+	}
+	if !isValidIdentifierPart(id.Type) {
+		return NewValidationError("type", id.Type,
+			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
+			ErrInvalidCharacters)
+	}
+	if !isValidIdentifierPart(id.Value) {
+		return NewValidationError("value", id.Value,
+			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
+			ErrInvalidCharacters)
+	}
+	
 	return nil
 }
 
@@ -72,15 +153,13 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// Parse the string format
-	parts := strings.Split(str, ":")
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid identifier format: %s", str)
+	// Parse using the structured parser
+	parsed, err := ParseString(str)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal identifier: %w", err)
 	}
-
-	id.Module = parts[0]
-	id.Type = parts[1]
-	id.Value = parts[2]
+	
+	*id = *parsed
 	return nil
 }
 
