@@ -106,8 +106,8 @@ func (s *AttackTestSuite) TestSimpleAttackHit() {
 		Damage: "1d8",
 	}
 	
-	// Perform attack without event bus (nil)
-	result := char.Attack(s.ctx, nil, weapon, target)
+	// Perform attack (character has no event bus from NewFromCreationData)
+	result := char.Attack(s.ctx, weapon, target)
 	
 	// Attack roll: 15 (roll) + 3 (STR) + 2 (prof) = 20 vs AC 10 = hit
 	s.True(result.Hit, "Attack should hit")
@@ -163,7 +163,7 @@ func (s *AttackTestSuite) TestAttackMiss() {
 		Damage: "1d4",
 	}
 	
-	result := char.Attack(s.ctx, nil, weapon, target)
+	result := char.Attack(s.ctx, weapon, target)
 	
 	// Attack roll: 2 (roll) + 0 (STR) + 2 (prof) = 4 vs AC 15 = miss
 	s.False(result.Hit, "Attack should miss")
@@ -227,13 +227,16 @@ func (s *AttackTestSuite) TestAttackWithBless() {
 		return nil
 	})
 	
+	// Set the event bus on the character (simulating LoadFromContext)
+	char.SetEventBus(bus)
+	
 	target := &MockTarget{ac: 14}
 	weapon := character.Weapon{
 		Name:   "Mace",
 		Damage: "1d6",
 	}
 	
-	result := char.Attack(s.ctx, bus, weapon, target)
+	result := char.Attack(s.ctx, weapon, target)
 	
 	// Attack: 10 (roll) + 2 (STR) + 2 (prof) + 3 (bless) = 17 vs AC 14 = hit
 	s.True(result.Hit, "Attack with bless should hit")

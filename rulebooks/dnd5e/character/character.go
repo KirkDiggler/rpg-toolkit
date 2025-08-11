@@ -29,6 +29,9 @@ type Character struct {
 	raceID       constants.Race
 	classID      constants.Class
 	backgroundID constants.Background
+	
+	// Event bus for game events
+	eventBus events.EventBus
 
 	// Core attributes
 	abilityScores shared.AbilityScores
@@ -96,13 +99,18 @@ func (c *Character) GetType() string {
 	return "character"
 }
 
+// SetEventBus sets the event bus for the character (mainly for testing)
+func (c *Character) SetEventBus(bus events.EventBus) {
+	c.eventBus = bus
+}
+
 // Attack performs an attack roll against a target
 // TODO: This is a placeholder implementation. In a complete system, this would:
 // - Calculate attack bonus (ability modifier + proficiency if proficient)
 // - Roll attack using combat.RollAttack
 // - Apply any active effects that modify attacks
 // - Return detailed attack results
-func (c *Character) Attack(ctx context.Context, bus events.EventBus, weapon Weapon, target Target) AttackResult {
+func (c *Character) Attack(ctx context.Context, weapon Weapon, target Target) AttackResult {
 	// Roll d20 for attack
 	attackRoll := dice.D20(1).GetValue()
 	
@@ -112,10 +120,10 @@ func (c *Character) Attack(ctx context.Context, bus events.EventBus, weapon Weap
 	attackMod := strMod + c.proficiencyBonus // Assume proficiency for now
 	
 	// Create and publish attack roll event for modifiers (bless, etc)
-	if bus != nil {
+	if c.eventBus != nil {
 		// Use character as both source and target for now since Target interface doesn't implement Entity
 		attackEvent := events.NewGameEvent("before_attack_roll", c, c)
-		_ = bus.Publish(ctx, attackEvent)
+		_ = c.eventBus.Publish(ctx, attackEvent)
 		
 		// Apply any modifiers from conditions
 		for _, mod := range attackEvent.Context().Modifiers() {
@@ -469,19 +477,29 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 // This provides a consistent loading interface across all game entities.
 // Note: This still requires external dependencies (race, class, background) for now.
 // A future version will use fully self-contained data as explored in Journey 019.
-func LoadCharacterFromContext(_ context.Context, gameCtx game.Context[Data],
+func LoadCharacterFromContext(ctx context.Context, gameCtx game.Context[Data],
 	raceData *race.Data, classData *class.Data, backgroundData *shared.Background) (*Character, error) {
 	// Use the existing loader with data from context
 	char, err := LoadCharacterFromData(gameCtx.Data(), raceData, classData, backgroundData)
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO(#113): When event types are defined, emit character.loaded event
-	// if gameCtx.EventBus() != nil {
-	//     event := events.NewGameEvent("character.loaded", char, nil)
-	//     gameCtx.EventBus().Publish(ctx, event)
-	// }
+	
+	// Store the event bus
+	char.eventBus = gameCtx.EventBus()
+	
+	// Register conditions on the event bus
+	if char.eventBus != nil {
+		// TODO: Load and apply conditions from data
+		// for _, condData := range gameCtx.Data().Conditions {
+		//     condition := LoadConditionFromData(condData)
+		//     condition.Apply(char.eventBus)
+		// }
+		
+		// TODO(#113): When event types are defined, emit character.loaded event
+		// event := events.NewGameEvent("character.loaded", char, nil)
+		// char.eventBus.Publish(ctx, event)
+	}
 
 	return char, nil
 }
