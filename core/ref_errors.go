@@ -1,4 +1,4 @@
-package identifier
+package core
 
 import (
 	"errors"
@@ -10,19 +10,19 @@ import (
 var (
 	// ErrEmptyString indicates the identifier string is empty
 	ErrEmptyString = errors.New("identifier string cannot be empty")
-	
+
 	// ErrInvalidFormat indicates the string doesn't match expected format
 	ErrInvalidFormat = errors.New("invalid identifier format")
-	
+
 	// ErrEmptyComponent indicates one of the identifier components is empty
 	ErrEmptyComponent = errors.New("identifier component cannot be empty")
-	
+
 	// ErrInvalidCharacters indicates a component contains invalid characters
 	ErrInvalidCharacters = errors.New("identifier contains invalid characters")
-	
+
 	// ErrTooManySegments indicates more segments than expected
 	ErrTooManySegments = errors.New("too many segments in identifier")
-	
+
 	// ErrTooFewSegments indicates fewer segments than expected
 	ErrTooFewSegments = errors.New("too few segments in identifier")
 )
@@ -32,13 +32,13 @@ var (
 type ParseError struct {
 	// Input is the original string that failed to parse
 	Input string
-	
+
 	// Component indicates which part failed (module, type, or value)
 	Component string
-	
+
 	// Position is the character position where the error was detected
 	Position int
-	
+
 	// Err is the underlying error
 	Err error
 }
@@ -61,13 +61,13 @@ func (e *ParseError) Unwrap() error {
 type ValidationError struct {
 	// Field is the identifier field that failed validation (Module, Type, or Value)
 	Field string
-	
+
 	// Value is the invalid value that failed validation
 	Value string
-	
+
 	// Rule describes which validation rule failed
 	Rule string
-	
+
 	// Err is the underlying error
 	Err error
 }

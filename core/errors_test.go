@@ -36,8 +36,8 @@ func TestPredefinedErrors(t *testing.T) {
 			expected: "nil entity",
 		},
 		{
-			name:     "ErrEmptyID",
-			err:      core.ErrEmptyID,
+			name:     "ErrEmptyEntityID",
+			err:      core.ErrEmptyEntityID,
 			expected: "empty entity ID",
 		},
 		{
@@ -82,11 +82,11 @@ func TestEntityError(t *testing.T) {
 				"validate",
 				"item",
 				"",
-				core.ErrEmptyID,
+				core.ErrEmptyEntityID,
 			),
 			expectedMsg:  "validate item: empty entity ID",
 			shouldUnwrap: true,
-			unwrappedErr: core.ErrEmptyID,
+			unwrappedErr: core.ErrEmptyEntityID,
 		},
 		{
 			name: "entity error without type",
@@ -137,7 +137,7 @@ func TestErrorUsagePatterns(t *testing.T) {
 		// Simulate a function that returns an EntityError
 		getEntity := func(id string) error {
 			if id == "" {
-				return core.NewEntityError("get", "character", id, core.ErrEmptyID)
+				return core.NewEntityError("get", "character", id, core.ErrEmptyEntityID)
 			}
 			if id == "not-found" {
 				return core.NewEntityError("get", "character", id, core.ErrEntityNotFound)
@@ -147,8 +147,8 @@ func TestErrorUsagePatterns(t *testing.T) {
 
 		// Test error checking with errors.Is
 		err := getEntity("")
-		if !errors.Is(err, core.ErrEmptyID) {
-			t.Error("Expected error to be ErrEmptyID")
+		if !errors.Is(err, core.ErrEmptyEntityID) {
+			t.Error("Expected error to be ErrEmptyEntityID")
 		}
 
 		err = getEntity("not-found")
@@ -208,7 +208,7 @@ func TestErrorValidation(t *testing.T) {
 				return core.ErrNilEntity
 			}
 			if e.GetID() == "" {
-				return core.NewEntityError("validate", e.GetType(), "", core.ErrEmptyID)
+				return core.NewEntityError("validate", e.GetType(), "", core.ErrEmptyEntityID)
 			}
 			if e.GetType() == "" {
 				return core.NewEntityError("validate", "", e.GetID(), core.ErrInvalidType)
@@ -225,8 +225,8 @@ func TestErrorValidation(t *testing.T) {
 		// Test entity with empty ID
 		entity := &sampleEntity{id: "", entityType: "character"}
 		err = validateEntity(entity)
-		if !errors.Is(err, core.ErrEmptyID) {
-			t.Error("Expected ErrEmptyID for entity with empty ID")
+		if !errors.Is(err, core.ErrEmptyEntityID) {
+			t.Error("Expected ErrEmptyEntityID for entity with empty ID")
 		}
 
 		// Test entity with empty type

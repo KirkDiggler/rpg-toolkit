@@ -19,8 +19,8 @@ var (
 	// ErrNilEntity is returned when a nil entity is provided where a valid entity is expected.
 	ErrNilEntity = errors.New("nil entity")
 
-	// ErrEmptyID is returned when an entity has an empty or invalid ID.
-	ErrEmptyID = errors.New("empty entity ID")
+	// ErrEmptyEntityID is returned when an entity has an empty or invalid ID.
+	ErrEmptyEntityID = errors.New("empty entity ID")
 
 	// ErrInvalidType is returned when an entity has an invalid or unrecognized type.
 	ErrInvalidType = errors.New("invalid entity type")

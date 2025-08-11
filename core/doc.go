@@ -8,6 +8,7 @@
 //
 // Scope:
 //   - Entity interface: Basic identity contract (ID, Type)
+//   - Ref type: Type-safe references to game mechanics (features, skills, etc.)
 //   - Error types: Common errors used across packages
 //   - No game logic, stats, or behaviors
 //   - No persistence or storage concerns
@@ -23,11 +24,11 @@
 //
 // Integration:
 // This package is imported by all other toolkit packages as it defines
-// the fundamental Entity contract. It has no dependencies on other
+// the fundamental Entity contract and Ref system. It has no dependencies on other
 // toolkit packages, maintaining its position at the base of the dependency
 // hierarchy. This ensures the toolkit remains loosely coupled.
 //
-// Example:
+// Entity Example:
 //
 //	// Game implements the Entity interface
 //	type Monster struct {
@@ -36,15 +37,20 @@
 //	    // Game-specific fields like HP, AC, etc.
 //	}
 //
-//	func (m *Monster) ID() string   { return m.id }
-//	func (m *Monster) Type() string { return m.kind }
+//	func (m *Monster) GetID() string   { return m.id }
+//	func (m *Monster) GetType() string { return m.kind }
 //
 //	// The toolkit can work with any Entity
 //	var entity core.Entity = &Monster{id: "goblin-1", kind: "goblin"}
 //
-//	// Spatial system can position it
-//	room.PlaceEntity(entity, position)
+// Ref Example:
 //
-//	// Behavior system can make decisions for it
-//	action := behavior.Execute(entity, context)
+//	// Define compile-time constants for core features
+//	var Rage = core.MustNewRef("rage", "core", "feature")
+//
+//	// Track where features come from
+//	feature := core.NewSourcedRef(Rage, "class:barbarian")
+//
+//	// Store in character data
+//	character.Features = append(character.Features, feature)
 package core
