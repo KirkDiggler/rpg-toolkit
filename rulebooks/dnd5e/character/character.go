@@ -4,6 +4,7 @@ package character
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -110,9 +111,13 @@ func (c *Character) SetEventBus(bus events.EventBus) {
 // - Roll attack using combat.RollAttack
 // - Apply any active effects that modify attacks
 // - Return detailed attack results
-func (c *Character) Attack(ctx context.Context, weapon Weapon, target Target) AttackResult {
+func (c *Character) Attack(ctx context.Context, weapon Weapon, target Target) (AttackResult, error) {
 	// Roll d20 for attack
-	attackRoll := dice.D20(1).GetValue()
+	attackRollDice := dice.D20(1)
+	attackRoll := attackRollDice.GetValue()
+	if err := attackRollDice.Err(); err != nil {
+		return AttackResult{}, fmt.Errorf("attack roll failed: %w", err)
+	}
 	
 	// Calculate attack modifier
 	// TODO: Support DEX for finesse/ranged weapons
@@ -123,7 +128,9 @@ func (c *Character) Attack(ctx context.Context, weapon Weapon, target Target) At
 	if c.eventBus != nil {
 		// Use character as both source and target for now since Target interface doesn't implement Entity
 		attackEvent := events.NewGameEvent("before_attack_roll", c, c)
-		_ = c.eventBus.Publish(ctx, attackEvent)
+		if err := c.eventBus.Publish(ctx, attackEvent); err != nil {
+			return AttackResult{}, fmt.Errorf("failed to publish attack event: %w", err)
+		}
 		
 		// Apply any modifiers from conditions
 		for _, mod := range attackEvent.Context().Modifiers() {
@@ -147,7 +154,11 @@ func (c *Character) Attack(ctx context.Context, weapon Weapon, target Target) At
 		// Roll damage dice
 		// Parse weapon damage string (e.g., "1d8")
 		// For now, use a simple d8 as default
-		damageRoll := dice.D8(1).GetValue()
+		damageRollDice := dice.D8(1)
+		damageRoll := damageRollDice.GetValue()
+		if err := damageRollDice.Err(); err != nil {
+			return AttackResult{}, fmt.Errorf("damage roll failed: %w", err)
+		}
 		damage = damageRoll + strMod
 		
 		// TODO: Publish damage event for modifiers
@@ -158,7 +169,7 @@ func (c *Character) Attack(ctx context.Context, weapon Weapon, target Target) At
 	return AttackResult{
 		Hit:    hit,
 		Damage: damage,
-	}
+	}, nil
 }
 
 // SaveThrow performs a saving throw

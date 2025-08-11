@@ -2,6 +2,7 @@ package character_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -107,7 +108,8 @@ func (s *AttackTestSuite) TestSimpleAttackHit() {
 	}
 	
 	// Perform attack (character has no event bus from NewFromCreationData)
-	result := char.Attack(s.ctx, weapon, target)
+	result, err := char.Attack(s.ctx, weapon, target)
+	s.Require().NoError(err, "Attack should not error")
 	
 	// Attack roll: 15 (roll) + 3 (STR) + 2 (prof) = 20 vs AC 10 = hit
 	s.True(result.Hit, "Attack should hit")
@@ -163,11 +165,64 @@ func (s *AttackTestSuite) TestAttackMiss() {
 		Damage: "1d4",
 	}
 	
-	result := char.Attack(s.ctx, weapon, target)
+	result, err := char.Attack(s.ctx, weapon, target)
+	s.Require().NoError(err, "Attack should not error")
 	
 	// Attack roll: 2 (roll) + 0 (STR) + 2 (prof) = 4 vs AC 15 = miss
 	s.False(result.Hit, "Attack should miss")
 	s.Equal(0, result.Damage, "No damage on miss")
+}
+
+func (s *AttackTestSuite) TestAttackRollError() {
+	// Setup mock roller to return an error on attack roll
+	s.mockRoller.EXPECT().RollN(1, 20).Return(nil, fmt.Errorf("random generator failure"))
+	
+	abilityScores := shared.AbilityScores{
+		constants.STR: 14,
+		constants.DEX: 10,
+		constants.CON: 10,
+		constants.INT: 10,
+		constants.WIS: 10,
+		constants.CHA: 10,
+	}
+	
+	creationData := character.CreationData{
+		ID:       "test-fighter-error",
+		PlayerID: "player1",
+		Name:     "Test Fighter",
+		RaceData: &race.Data{
+			ID:   "human",
+			Name: "Human",
+			Size: "Medium",
+			Speed: 30,
+			AbilityScoreIncreases: map[constants.Ability]int{},
+		},
+		ClassData: &class.Data{
+			ID:      "fighter",
+			Name:    "Fighter",
+			HitDice: 10,
+		},
+		BackgroundData: &shared.Background{
+			ID:   "soldier",
+			Name: "Soldier",
+		},
+		AbilityScores: abilityScores,
+	}
+	
+	char, err := character.NewFromCreationData(creationData)
+	s.Require().NoError(err)
+	
+	target := &MockTarget{ac: 10}
+	weapon := character.Weapon{
+		Name:   "Sword",
+		Damage: "1d8",
+	}
+	
+	result, err := char.Attack(s.ctx, weapon, target)
+	s.Require().Error(err, "Attack should error when dice roll fails")
+	s.Contains(err.Error(), "attack roll failed")
+	s.False(result.Hit)
+	s.Equal(0, result.Damage)
 }
 
 func (s *AttackTestSuite) TestAttackWithBless() {
@@ -236,7 +291,8 @@ func (s *AttackTestSuite) TestAttackWithBless() {
 		Damage: "1d6",
 	}
 	
-	result := char.Attack(s.ctx, weapon, target)
+	result, err := char.Attack(s.ctx, weapon, target)
+	s.Require().NoError(err, "Attack should not error")
 	
 	// Attack: 10 (roll) + 2 (STR) + 2 (prof) + 3 (bless) = 17 vs AC 14 = hit
 	s.True(result.Hit, "Attack with bless should hit")
