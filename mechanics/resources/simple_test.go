@@ -6,6 +6,7 @@ package resources_test
 import (
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
 
@@ -26,7 +27,11 @@ func TestSimpleResource(t *testing.T) {
 		ID:              "spell-slot-3",
 		Type:            resources.ResourceTypeSpellSlot,
 		Owner:           owner,
-		Key:             "spell_slots_3",
+		Key:             core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "spell_slot",
+			Value:  "level_3",
+		}),
 		Current:         2,
 		Maximum:         3,
 		RestoreType:     resources.RestoreLongRest,
@@ -89,7 +94,11 @@ func TestResourceBoundaries(t *testing.T) {
 		ID:      "test-resource",
 		Type:    resources.ResourceTypeCustom,
 		Owner:   owner,
-		Key:     "test",
+		Key:     core.MustNewRef(core.RefInput{
+			Module: "test",
+			Type:   "resource",
+			Value:  "test",
+		}),
 		Current: 5,
 		Maximum: 10,
 	})
@@ -165,8 +174,13 @@ func TestActionEconomy(t *testing.T) {
 
 	// Find the standard action
 	var action resources.Resource
+	actionKey := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "action",
+		Value:  "standard",
+	})
 	for _, a := range actions {
-		if a.Key() == "action" {
+		if a.Key().Equals(actionKey) {
 			action = a
 			break
 		}

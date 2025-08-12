@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
@@ -27,7 +28,11 @@ func Example() {
 		ID:      "lay-on-hands",
 		Type:    resources.ResourceTypeCustom,
 		Owner:   character,
-		Key:     "lay_on_hands_hp",
+		Key:     core.MustNewRef(core.RefInput{
+			Module: "dnd5e",
+			Type:   "ability_use",
+			Value:  "lay_on_hands_hp",
+		}),
 		Current: 25,
 		Maximum: 50, // Level 10 paladin
 		RestoreTriggers: map[string]int{
@@ -41,7 +46,11 @@ func Example() {
 		ID:      "divine-sense",
 		Type:    resources.ResourceTypeAbilityUse,
 		Owner:   character,
-		Key:     "divine_sense_uses",
+		Key:     core.MustNewRef(core.RefInput{
+			Module: "dnd5e",
+			Type:   "ability_use",
+			Value:  "divine_sense_uses",
+		}),
 		Current: 3,
 		Maximum: 6, // 1 + CHA modifier (5)
 		RestoreTriggers: map[string]int{
@@ -56,7 +65,11 @@ func Example() {
 		ID:      "divine-inspiration",
 		Type:    resources.ResourceTypeCustom,
 		Owner:   character,
-		Key:     "inspiration_points",
+		Key:     core.MustNewRef(core.RefInput{
+			Module: "custom",
+			Type:   "resource",
+			Value:  "inspiration_points",
+		}),
 		Current: 0,
 		Maximum: 3,
 		RestoreTriggers: map[string]int{
@@ -76,7 +89,7 @@ func Example() {
 	handler := func(_ context.Context, e events.Event) error {
 		event := e.(*resources.ResourceRestoredEvent)
 		restorations = append(restorations, fmt.Sprintf("  %s restored %d points (trigger: %s)",
-			event.Resource.Key(), event.Amount, event.Reason))
+			event.Resource.Key().Value, event.Amount, event.Reason))
 		return nil
 	}
 	bus.SubscribeFunc(resources.EventResourceRestored, 0, events.HandlerFunc(handler))

@@ -20,7 +20,7 @@ type Resource interface {
 	Owner() core.Entity
 
 	// Key returns the resource identifier (e.g., "spell_slots_1", "rage_uses").
-	Key() string
+	Key() *core.Ref
 
 	// Current returns the current amount of this resource.
 	Current() int
