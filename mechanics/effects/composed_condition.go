@@ -30,7 +30,7 @@ type ComposedCondition struct {
 type ComposedConditionConfig struct {
 	ID     string
 	Type   string
-	Source string
+	Source *core.Source
 	Owner  core.Entity
 
 	// Optional behaviors
@@ -223,7 +223,7 @@ func (c *ComposedCondition) GetTemporary() TemporaryEffect {
 // Example factory functions for common conditions
 
 // CreateBlessCondition creates a Bless condition using composition
-func CreateBlessCondition(owner core.Entity, source string) *ComposedCondition {
+func CreateBlessCondition(owner core.Entity, source *core.Source) *ComposedCondition {
 	return NewComposedCondition(ComposedConditionConfig{
 		ID:     "bless-" + owner.GetID(),
 		Type:   "condition.bless",
@@ -249,7 +249,7 @@ func CreateBlessCondition(owner core.Entity, source string) *ComposedCondition {
 }
 
 // CreatePoisonedCondition creates a Poisoned condition
-func CreatePoisonedCondition(owner core.Entity, source string, poisonDC int) *ComposedCondition {
+func CreatePoisonedCondition(owner core.Entity, source *core.Source, poisonDC int) *ComposedCondition {
 	return NewComposedCondition(ComposedConditionConfig{
 		ID:     "poisoned-" + owner.GetID(),
 		Type:   "condition.poisoned",

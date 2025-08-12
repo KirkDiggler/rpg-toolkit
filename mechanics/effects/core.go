@@ -22,7 +22,7 @@ var _ core.Entity = (*Core)(nil)
 type Core struct {
 	id     string
 	typ    string
-	source string
+	source *core.Source
 	active bool
 
 	// Subscription tracking for cleanup
@@ -37,7 +37,7 @@ type Core struct {
 type CoreConfig struct {
 	ID     string
 	Type   string
-	Source string
+	Source *core.Source
 
 	// Optional lifecycle handlers
 	ApplyFunc  func(bus events.EventBus) error
@@ -64,7 +64,7 @@ func (c *Core) GetID() string { return c.id }
 func (c *Core) GetType() string { return c.typ }
 
 // Source returns what created or granted this effect.
-func (c *Core) Source() string { return c.source }
+func (c *Core) Source() *core.Source { return c.source }
 
 // IsActive returns whether the effect is currently active.
 func (c *Core) IsActive() bool { return c.active }
