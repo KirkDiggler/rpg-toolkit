@@ -4,8 +4,12 @@ github.com/KirkDiggler/rpg-toolkit/core v0.1.2 h1:KNxTxof8BAR+zpMsoYbbVB1UIRgS1R
 github.com/KirkDiggler/rpg-toolkit/core v0.1.2/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
 github.com/KirkDiggler/rpg-toolkit/dice v0.1.0 h1:/tpfvSeV2NeaerItinsd1cc1I680cq3lkBL3EsV5Wz4=
 github.com/KirkDiggler/rpg-toolkit/dice v0.1.0/go.mod h1:JEWKuYBi+h9f8jFAcE2MI2yVDFV6ldOVx36y5fbc6p4=
+github.com/KirkDiggler/rpg-toolkit/dice v0.1.1 h1:CtiKmkq2bRvZSLsY5Xp+AITGT76z5mt5BoCmGfqxgcY=
+github.com/KirkDiggler/rpg-toolkit/dice v0.1.1/go.mod h1:JEWKuYBi+h9f8jFAcE2MI2yVDFV6ldOVx36y5fbc6p4=
 github.com/KirkDiggler/rpg-toolkit/events v0.1.0 h1:ec8t66jaZkuir+FfqNZvK6m2PfLOwmtOY2vjZ64+Bpg=
 github.com/KirkDiggler/rpg-toolkit/events v0.1.0/go.mod h1:mOcykXOhLsCR/mZHO4hzM4dVSyo/imwSix+wobEqIPM=
+github.com/KirkDiggler/rpg-toolkit/events v0.1.2 h1:8y8P6wYEsZTrUlViY7WPv4p+eoIH2PXVtTBtfcXHJpk=
+github.com/KirkDiggler/rpg-toolkit/events v0.1.2/go.mod h1:PcX+wdRJGnI1Xy/XbiMcNsOjjwNhqa4iprWD5+Ryy/Q=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
