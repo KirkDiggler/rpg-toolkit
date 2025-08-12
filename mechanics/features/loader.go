@@ -18,7 +18,7 @@ func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
 	}
 	
 	if err := json.Unmarshal(data, &peek); err != nil {
-		return nil, fmt.Errorf("failed to peek at feature ref: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrUnmarshalFailed, err)
 	}
 	
 	// Simple switch - each game adds their features here
@@ -29,7 +29,7 @@ func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
 	// case "dnd5e:feature:second_wind":
 	//     return fighter.LoadSecondWindFromJSON(data)
 	default:
-		return nil, fmt.Errorf("unknown feature: %s", peek.Ref)
+		return nil, NewLoadError(peek.Ref, ErrFeatureNotFound)
 	}
 }
 

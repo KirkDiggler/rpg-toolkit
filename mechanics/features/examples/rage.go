@@ -72,12 +72,12 @@ func NewRageFeature(level int) (*RageFeature, error) {
 func (r *RageFeature) activate(owner core.Entity, ctx *features.ActivateContext) error {
 	// Check if already active
 	if r.IsActive() {
-		return fmt.Errorf("rage is already active")
+		return features.ErrAlreadyActive
 	}
 	
 	// Check if we have uses remaining
 	if r.rageResource.Current() < 1 {
-		return fmt.Errorf("no rage uses remaining")
+		return features.ErrNoUsesRemaining
 	}
 	
 	// Consume a use

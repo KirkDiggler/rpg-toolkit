@@ -45,7 +45,7 @@ type SimpleFeatureConfig struct {
 // NewSimpleFeature creates a new SimpleFeature with the given configuration.
 func NewSimpleFeature(config SimpleFeatureConfig) (*SimpleFeature, error) {
 	if config.Ref == nil {
-		return nil, fmt.Errorf("feature ref cannot be nil")
+		return nil, ErrInvalidRef
 	}
 	
 	// Create effects.Core for event management
@@ -93,7 +93,7 @@ func (f *SimpleFeature) Activate(owner core.Entity, opts ...ActivateOption) erro
 		
 		// Check if target is required but not provided
 		if f.needsTarget && ctx.Target == nil {
-			return fmt.Errorf("feature %s requires a target", f.ref)
+			return NewActivationError(f.ref.String(), ErrTargetRequired)
 		}
 		
 		err := f.onActivate(owner, ctx)
@@ -149,7 +149,7 @@ func (f *SimpleFeature) ToJSON() (json.RawMessage, error) {
 	
 	bytes, err := json.Marshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal feature state: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrMarshalFailed, err)
 	}
 	return bytes, nil
 }
