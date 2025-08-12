@@ -54,7 +54,7 @@ Now refs can evolve without touching conditions code:
 - `"dnd5e:condition:poisoned"` ✓
 - `"homebrew:condition:affliction:v2"` ✓
 - `"homebrew:condition:affliction:v2:experimental"` ✓
-- `"homebrew:condition:affliction:v2:experimental:kirk-variant"` ✓
+- `"homebrew:condition:affliction:v2:experimental:billy-variant"` ✓
 
 The conditions module doesn't care about the structure!
 
