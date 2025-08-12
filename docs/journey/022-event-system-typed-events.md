@@ -1,4 +1,4 @@
-# Journey 009: Event System and Typed Events
+# Journey 022: Event System and Typed Events
 
 ## Date: 2025-08-12
 
