@@ -4,112 +4,178 @@
 package examples
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/features"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
 
-// RageListener handles events for the Rage feature.
-type RageListener struct{}
+// RageRef is the unique identifier for the Rage feature.
+var RageRef = core.MustNewRef(core.RefInput{
+	Module: "dnd5e",
+	Type:   "feature",
+	Value:  "rage",
+})
 
-// EventTypes returns the event types this listener cares about.
-func (r RageListener) EventTypes() []string {
-	return []string{
-		events.EventOnDamageRoll,
-		events.EventBeforeTakeDamage,
-		events.EventOnTurnEnd,
-	}
+// RageFeature implements the Barbarian's Rage ability.
+type RageFeature struct {
+	*features.SimpleFeature
+	rageResource *resources.SimpleResource
+	turnsActive  int
 }
 
-// Priority returns the priority for event handling.
-func (r RageListener) Priority() int {
-	return 100
+// RageData represents the persistent state of Rage.
+type RageData struct {
+	Ref           string `json:"ref"`
+	UsesRemaining int    `json:"uses_remaining"`
+	IsActive      bool   `json:"is_active"`
+	TurnsActive   int    `json:"turns_active"`
 }
 
-// HandleEvent processes the event for the Rage feature.
-func (r RageListener) HandleEvent(_ features.Feature, _ core.Entity, event events.Event) error {
-	switch event.Type() {
-	case events.EventOnDamageRoll:
-		// Add rage damage bonus to melee STR-based attacks
-		if r.isMeleeStrengthAttack(event) {
-			event.Context().AddModifier(events.NewModifier(
-				"rage",
-				events.ModifierDamageBonus,
-				events.NewRawValue(2, "rage"),
-				150,
-			))
-		}
-
-	case events.EventBeforeTakeDamage:
-		// Add resistance to physical damage
-		if r.isPhysicalDamage(event) {
-			// Add resistance modifier (halve damage)
-			event.Context().AddModifier(events.NewModifier(
-				"rage_resistance",
-				"damage_resistance",
-				events.NewRawValue(50, "rage"), // 50% reduction
-				200,
-			))
-		}
-
-	case events.EventOnTurnEnd:
-		// Check if rage should end (no attack or damage taken)
-		// This would need additional tracking in a real implementation
+// NewRageFeature creates a new Rage feature.
+func NewRageFeature(level int) *RageFeature {
+	// Calculate max uses based on level
+	maxUses := calculateRageUses(level)
+	
+	rage := &RageFeature{
+		rageResource: resources.NewSimpleResource(resources.SimpleResourceConfig{
+			ID:      "rage_uses",
+			Type:    resources.ResourceTypeAbilityUse,
+			Current: maxUses,
+			Maximum: maxUses,
+		}),
+		turnsActive: 0,
 	}
+	
+	// Create the SimpleFeature with our configuration
+	rage.SimpleFeature = features.NewSimpleFeature(features.SimpleFeatureConfig{
+		Ref:         RageRef,
+		Name:        "Rage",
+		Description: "Enter a battle fury that grants damage resistance and bonus damage",
+		NeedsTarget: false, // Rage targets self
+		OnActivate:  rage.activate,
+		OnApply:     rage.apply,
+		OnRemove:    rage.remove,
+	})
+	
+	return rage
+}
 
+// activate handles the activation of Rage.
+func (r *RageFeature) activate(owner core.Entity, ctx *features.ActivateContext) error {
+	// Check if already active
+	if r.IsActive() {
+		return fmt.Errorf("rage is already active")
+	}
+	
+	// Check if we have uses remaining
+	if r.rageResource.Current() < 1 {
+		return fmt.Errorf("no rage uses remaining")
+	}
+	
+	// Consume a use
+	if err := r.rageResource.Consume(1); err != nil {
+		return err
+	}
+	
+	// Reset turn counter
+	r.turnsActive = 0
+	
+	// Fire activation event
+	// In a real implementation, this would trigger through the event bus
+	// to apply damage resistance and other effects
+	
 	return nil
 }
 
-func (r RageListener) isMeleeStrengthAttack(event events.Event) bool {
-	// Check if this is a melee attack using STR
-	weapon, hasWeapon := event.Context().GetString(events.ContextKeyWeapon)
-	if !hasWeapon {
-		return false
+// apply sets up event subscriptions for Rage.
+func (r *RageFeature) apply(bus events.EventBus) error {
+	// Subscribe to damage events to apply resistance
+	// This is simplified - real implementation would use the event system properly
+	
+	// Example of what this might look like with a proper event system:
+	// bus.On("damage.before").
+	//     ToTarget(owner.GetID()).
+	//     Do(func(e events.Event) error {
+	//         if r.IsActive() {
+	//             // Apply damage resistance for physical damage
+	//             if damageType := e.Context().Get("damage_type"); isPhysical(damageType) {
+	//                 currentDamage := e.Context().Get("damage").(int)
+	//                 e.Context().Set("damage", currentDamage/2)
+	//             }
+	//         }
+	//         return nil
+	//     })
+	
+	return nil
+}
+
+// remove cleans up event subscriptions.
+func (r *RageFeature) remove(bus events.EventBus) error {
+	// Clean up subscriptions
+	// The SimpleFeature's embedded Core handles this through the tracker
+	return nil
+}
+
+// ToJSON serializes the Rage state.
+func (r *RageFeature) ToJSON() json.RawMessage {
+	data := RageData{
+		Ref:           RageRef.String(),
+		UsesRemaining: r.rageResource.Current(),
+		IsActive:      r.IsActive(),
+		TurnsActive:   r.turnsActive,
 	}
-
-	// Check if it's a melee weapon (simplified)
-	return weapon != "shortbow" && weapon != "longbow" && weapon != "crossbow"
+	
+	bytes, _ := json.Marshal(data)
+	return bytes
 }
 
-func (r RageListener) isPhysicalDamage(event events.Event) bool {
-	// Check if damage type is physical
-	damageType, hasDamageType := event.Context().GetString(events.ContextKeyDamageType)
-	if !hasDamageType {
-		return false
+// LoadRageFromJSON recreates a Rage feature from saved data.
+func LoadRageFromJSON(data json.RawMessage) (features.Feature, error) {
+	var rageData RageData
+	if err := json.Unmarshal(data, &rageData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal rage data: %w", err)
 	}
-
-	// Physical damage types
-	return damageType == "slashing" || damageType == "piercing" || damageType == "bludgeoning"
+	
+	// Create a new rage feature
+	// In a real implementation, we'd need to know the character's level
+	rage := NewRageFeature(1) // Default to level 1 for example
+	
+	// Restore state
+	rage.rageResource.SetCurrent(rageData.UsesRemaining)
+	rage.SetActive(rageData.IsActive)
+	rage.turnsActive = rageData.TurnsActive
+	
+	return rage, nil
 }
 
-// CreateRageFeature creates the Barbarian Rage feature.
-func CreateRageFeature() features.Feature {
-	// Create the rage resource (2 uses per long rest at level 1)
-	rageResource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:              "rage_uses_barbarian",
-		Type:            resources.ResourceTypeAbilityUse,
-		Key:             "rage_uses",
-		Current:         2,
-		Maximum:         2,
-		LongRestRestore: -1, // Restore to full on long rest
-		RestoreType:     resources.RestoreLongRest,
-	})
-
-	return features.NewBasicFeature("rage", "Rage").
-		WithDescription("In battle, you fight with primal ferocity. On your turn, you can enter a rage as a bonus action.").
-		WithType(features.FeatureClass).
-		WithLevel(1).
-		WithSource("Barbarian").
-		WithTiming(features.TimingActivated).
-		WithResources(rageResource).
-		WithEventListeners(RageListener{}).
-		WithPrerequisites("class:barbarian", "level:1")
+// calculateRageUses returns the number of rage uses based on barbarian level.
+func calculateRageUses(level int) int {
+	switch {
+	case level < 3:
+		return 2
+	case level < 6:
+		return 3
+	case level < 12:
+		return 4
+	case level < 17:
+		return 5
+	case level < 20:
+		return 6
+	default:
+		return -1 // Unlimited at level 20
+	}
 }
 
-// RageActivationExample shows how rage might be activated in a game.
-// This is just an example - actual implementation would be game-specific.
-func RageActivationExample(character features.FeatureHolder, eventBus events.EventBus) error {
-	// When a player uses a bonus action to rage
-	return character.ActivateFeature("rage", eventBus)
+// GetResource returns the rage uses resource for UI display.
+func (r *RageFeature) GetResource() resources.Resource {
+	return r.rageResource
+}
+
+// Register the Rage loader on package init.
+func init() {
+	features.RegisterFeatureLoader(RageRef.String(), LoadRageFromJSON)
 }

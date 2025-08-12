@@ -2,8 +2,12 @@ github.com/KirkDiggler/rpg-toolkit/core v0.1.1-0.20250705165954-baefa5c079e7 h1:
 github.com/KirkDiggler/rpg-toolkit/core v0.1.1-0.20250705165954-baefa5c079e7/go.mod h1:N7xIvJGjmrHHNjfWQ3O1LlkalzImcMav3O0fNOg+8No=
 github.com/KirkDiggler/rpg-toolkit/core v0.2.0 h1:yU/6c/jxRXB0Q7RP/uFK7kCXWanY08wUU+C5m3wSBRM=
 github.com/KirkDiggler/rpg-toolkit/core v0.2.0/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
+github.com/KirkDiggler/rpg-toolkit/dice v0.1.0 h1:/tpfvSeV2NeaerItinsd1cc1I680cq3lkBL3EsV5Wz4=
+github.com/KirkDiggler/rpg-toolkit/dice v0.1.0/go.mod h1:JEWKuYBi+h9f8jFAcE2MI2yVDFV6ldOVx36y5fbc6p4=
 github.com/KirkDiggler/rpg-toolkit/events v0.1.2-0.20250705165954-baefa5c079e7 h1:ohPHtkxH/AOFHZ5F0PEEAzAwoPmkHSNcKfgANrBqkqM=
 github.com/KirkDiggler/rpg-toolkit/events v0.1.2-0.20250705165954-baefa5c079e7/go.mod h1:UKuqrOjasTIW7bKndUj/mUmG2WyqVOKJjyAuOVClXJE=
+github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.2.0 h1:NzJUuImx+zGQWfM3XjsLzAz4OCeh+93lV+Um8mWShiY=
+github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.2.0/go.mod h1:muJ9nqFqKURu7tcX8iQSxOmlV+fiY/s+2+X/xtnxAeA=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.0.0-20250705165954-baefa5c079e7 h1:xcs7su6U6EKzzXzB7T60PdFw+ujPt1LsdzLkCchxH9M=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.0.0-20250705165954-baefa5c079e7/go.mod h1:X4OxEd7n8T2bbN7lO16+wh7XsIbl7a1gVK26vdB4fB8=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
