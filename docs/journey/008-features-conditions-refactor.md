@@ -196,8 +196,7 @@ When we implement Rage, it should look like this:
 // The complete Rage implementation
 type RageFeature struct {
     *features.SimpleFeature  // Embeds effects.Core
-    usesRemaining int
-    maxUses       int
+    rageResource  *resources.CountResource  // Tracks uses
     isActive      bool
 }
 
@@ -205,11 +204,11 @@ func (r *RageFeature) Activate(target core.Entity) error {
     if r.isActive {
         return ErrAlreadyActive  // Can't activate
     }
-    if r.usesRemaining <= 0 {
+    if !r.rageResource.CanConsume(1) {
         return ErrNoUsesRemaining  // Can't activate
     }
     
-    r.usesRemaining--
+    r.rageResource.Consume(1)
     r.isActive = true
     r.dirty = true
     
@@ -222,7 +221,7 @@ func (r *RageFeature) Activate(target core.Entity) error {
 func (r *RageFeature) ToJSON() json.RawMessage {
     data := RageData{
         Ref:           "dnd5e:feature:rage",
-        UsesRemaining: r.usesRemaining,
+        UsesRemaining: r.rageResource.Current(),  // Resource tracks this
         IsActive:      r.isActive,
     }
     return json.Marshal(data)
@@ -337,6 +336,12 @@ type Feature interface {
     // Persistence
     ToJSON() json.RawMessage
     IsDirty() bool
+}
+
+// Optional: Features with limited uses
+type FeatureWithResources interface {
+    Feature
+    GetResource() resources.Resource  // Uses existing resource system
 }
 ```
 

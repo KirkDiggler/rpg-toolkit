@@ -36,7 +36,6 @@ type Feature interface {
     NeedsTarget() bool
     Activate(target core.Entity) error  // Returns ErrCannotActivate if not activatable
     IsActive() bool
-    GetRemainingUses() string  // e.g., "3/3" or "unlimited"
     
     // Events
     Apply(events.EventBus) error
@@ -46,6 +45,12 @@ type Feature interface {
     ToJSON() json.RawMessage
     IsDirty() bool
     MarkClean()
+}
+
+// Features with limited uses implement this
+type FeatureWithResources interface {
+    Feature
+    GetResource() resources.Resource  // Let the resource system handle it
 }
 
 // SimpleFeature embeds effects.Core for common functionality
@@ -58,7 +63,7 @@ type SimpleFeature struct {
 }
 ```
 
-This is ~7 essential methods instead of 14, focused on the core responsibilities.
+This is ~6 essential methods instead of 14, focused on the core responsibilities. Features that have limited uses expose that through the resource system.
 
 ### 2. Replace Builders with Options Pattern
 
@@ -151,7 +156,7 @@ Keeping domain concepts clear makes the code more understandable. We can general
 ## Consequences
 
 ### Positive
-- **Massive code reduction**: From 14 methods to ~7, focus on game logic
+- **Massive code reduction**: From 14 methods to ~6, focus on game logic
 - **Smart filtering**: Event bus filters at subscription level
 - **Simple persistence**: ToJSON/LoadFromJSON pattern is clear
 - **Dirty tracking**: Efficient saves only when needed
@@ -236,8 +241,9 @@ func (r *RageFeature) Activate(target core.Entity) error {
     return r.eventBus.Publish(context.Background(), event)
 }
 
-func (r *RageFeature) GetRemainingUses() string {
-    return fmt.Sprintf("%d/%d", r.usesRemaining, r.maxUses)
+// Rage exposes its uses through the resource system
+func (r *RageFeature) GetResource() resources.Resource {
+    return r.rageResource  // A CountResource with current/max
 }
 
 func (r *RageFeature) ToJSON() json.RawMessage {
