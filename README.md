@@ -6,6 +6,14 @@ A modular Go toolkit for building RPG game mechanics. Build once, use everywhere
 
 RPG Toolkit provides clean, reusable components for RPG mechanics that work across any platform. Our event-driven architecture enables flexible game systems without tight coupling.
 
+## Core Principles
+
+### Data-Driven Runtime Architecture
+
+**Everything in the toolkit operates via data at runtime.** No compile-time knowledge, no type checking for specific features, no hardcoded game rules. Just data, interfaces, and runtime discovery.
+
+See [Journey 024: Data-Driven Runtime Architecture](docs/journey/024-data-driven-runtime-architecture.md) for the complete philosophy.
+
 ## Architecture
 
 ### Hybrid Event-Driven Design
@@ -15,6 +23,7 @@ After evaluating ECS (Entity Component System), Event Sourcing, and traditional 
 - **Traditional module structure** for clarity and familiarity
 - **Event-driven communication** for loose coupling between features
 - **Interface-based design** for extensibility without inheritance
+- **Data-driven behavior** where everything loads from data at runtime
 
 This gives us the flexibility of ECS and the decoupling of Event Sourcing without their complexity overhead - perfect for turn-based RPG mechanics.
 
