@@ -34,6 +34,28 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 - **Lessons** 💡: What we learned after implementing something
 - **Questions** ❓: Open questions we're still pondering
 
+## Technical Examples
+
+The `/examples` directory contains working implementations that prove the architectural concepts explored in these journey documents. These examples demonstrate different perspectives and integration approaches:
+
+### Core Architecture Demonstrations
+- **[Simple Combat](/examples/simple_combat/)** - Shows event-driven architecture flow with attack/damage calculations, modifier system, and handler priorities
+- **[Conditions Demo](/examples/conditions_demo/)** - Demonstrates relationship management, concentration mechanics, and aura effects integration
+
+### D&D 5e Implementation Examples
+- **[Proficiency System](/examples/dnd5e/proficiency/)** - Complete D&D 5e proficiency implementation using event-driven bonuses
+- **[Spells & Conditions](/examples/dnd5e/conditions/)** - D&D 5e specific condition implementations and spell interactions
+
+### Migration & Integration Guides
+- **[DND Bot Integration](/examples/dndbot_integration/)** - Practical migration strategy for existing Discord bot systems
+- **[Event Bus Migration](/examples/dndbot_integration/event_bus_migration_guide.md)** - Step-by-step event system replacement guide
+
+These examples serve as:
+1. **Proof of Concept**: Demonstrating that the architectural decisions work in practice
+2. **Migration References**: Showing how to integrate toolkit into existing systems
+3. **Implementation Patterns**: Providing templates for common RPG mechanics
+4. **Testing Ground**: Real code that validates the design decisions documented in these journey entries
+
 ## Contributing
 
 If you're exploring a design or wrestling with an architectural question, add a document here! Number it sequentially and give it a descriptive name.
