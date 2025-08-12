@@ -51,7 +51,11 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, err := core.NewRef(tt.value, tt.module, tt.idType)
+			id, err := core.NewRef(core.RefInput{
+				Module: tt.module,
+				Type:   tt.idType,
+				Value:  tt.value,
+			})
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -65,15 +69,15 @@ func TestNew(t *testing.T) {
 }
 
 func TestID_String(t *testing.T) {
-	id := core.MustNewRef("darkvision", "core", "feature")
+	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "darkvision"})
 	assert.Equal(t, "core:feature:darkvision", id.String())
 }
 
 func TestID_Equals(t *testing.T) {
-	id1 := core.MustNewRef("darkvision", "core", "feature")
-	id2 := core.MustNewRef("darkvision", "core", "feature")
-	id3 := core.MustNewRef("darkvision", "core", "proficiency")
-	id4 := core.MustNewRef("keen_senses", "core", "feature")
+	id1 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "darkvision"})
+	id2 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "darkvision"})
+	id3 := core.MustNewRef(core.RefInput{Module: "core", Type: "proficiency", Value: "darkvision"})
+	id4 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "keen_senses"})
 
 	assert.True(t, id1.Equals(id2), "identical IDs should be equal")
 	assert.False(t, id1.Equals(id3), "different types should not be equal")
@@ -87,7 +91,7 @@ func TestID_Equals(t *testing.T) {
 }
 
 func TestID_JSONMarshaling(t *testing.T) {
-	original := core.MustNewRef("athletics", "core", "skill")
+	original := core.MustNewRef(core.RefInput{Module: "core", Type: "skill", Value: "athletics"})
 
 	// Marshal to JSON
 	data, err := json.Marshal(original)
@@ -115,7 +119,7 @@ func TestID_JSONUnmarshal_BackwardCompatibility(t *testing.T) {
 }
 
 func TestWithSource(t *testing.T) {
-	id := core.MustNewRef("second_wind", "core", "feature")
+	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "second_wind"})
 	withSource := core.NewWithSourcedRef(id, &core.Source{
 		Category: core.SourceClass,
 		Name:     "fighter",
@@ -138,7 +142,7 @@ func TestWithSource(t *testing.T) {
 
 func TestMustNew_Panics(t *testing.T) {
 	assert.Panics(t, func() {
-		core.MustNewRef("", "core", "feature")
+		core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: ""})
 	}, "MustNewRef should panic with invalid input")
 }
 
@@ -154,17 +158,17 @@ func TestParseString(t *testing.T) {
 		{
 			name:  "valid identifier",
 			input: "core:feature:rage",
-			want:  core.MustNewRef("rage", "core", "feature"),
+			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "rage"}),
 		},
 		{
 			name:  "valid with underscores",
 			input: "core:feature:sneak_attack",
-			want:  core.MustNewRef("sneak_attack", "core", "feature"),
+			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "sneak_attack"}),
 		},
 		{
 			name:  "valid with dashes",
 			input: "third-party:feature:custom-ability",
-			want:  core.MustNewRef("custom-ability", "third-party", "feature"),
+			want:  core.MustNewRef(core.RefInput{Module: "third-party", Type: "feature", Value: "custom-ability"}),
 		},
 		{
 			name:         "empty string",
