@@ -62,13 +62,26 @@ type FeatureWithResources interface {
     GetResource() resources.Resource  // Let the resource system handle it
 }
 
-// SimpleFeature embeds effects.Core for common functionality
+// SimpleFeature provides common feature infrastructure
 type SimpleFeature struct {
-    *effects.Core
+    *effects.Core  // Event subscriptions, activation tracking
     ref         *core.Ref
     name        string
     description string
-    // Feature-specific fields only
+    owner       core.Entity  // Set when added to character
+    eventBus    events.EventBus
+}
+
+// SimpleFeature implements the boilerplate methods
+func (f *SimpleFeature) Ref() *core.Ref { return f.ref }
+func (f *SimpleFeature) Name() string { return f.name }
+func (f *SimpleFeature) Description() string { return f.description }
+func (f *SimpleFeature) Apply(bus events.EventBus) error {
+    f.eventBus = bus
+    return f.Core.Apply(bus)  // Delegate to effects.Core
+}
+func (f *SimpleFeature) Remove(bus events.EventBus) error {
+    return f.Core.Remove(bus)  // Delegate to effects.Core
 }
 ```
 
@@ -225,11 +238,15 @@ type Feature interface {
 ```go
 // Complete Rage implementation in ~50 lines
 type RageFeature struct {
-    *features.SimpleFeature
-    usesRemaining int
-    maxUses       int
+    *features.SimpleFeature  // Provides Ref(), Name(), Apply(), Remove()
+    rageResource  *resources.CountResource
     isActive      bool
     dirty         bool
+}
+
+// Only implement what's unique to Rage
+func (r *RageFeature) NeedsTarget() bool {
+    return false  // Self-targeting
 }
 
 func (r *RageFeature) NeedsTarget() bool {
@@ -240,7 +257,7 @@ func (r *RageFeature) Activate(owner core.Entity, opts ...ActivateOption) error 
     if r.isActive {
         return ErrAlreadyActive
     }
-    if r.usesRemaining <= 0 {
+    if !r.rageResource.CanConsume(1) {
         return ErrNoUsesRemaining
     }
     

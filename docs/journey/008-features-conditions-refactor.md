@@ -200,7 +200,7 @@ type RageFeature struct {
     isActive      bool
 }
 
-func (r *RageFeature) Activate(target core.Entity) error {
+func (r *RageFeature) Activate(owner core.Entity, opts ...ActivateOption) error {
     if r.isActive {
         return ErrAlreadyActive  // Can't activate
     }
@@ -212,8 +212,8 @@ func (r *RageFeature) Activate(target core.Entity) error {
     r.isActive = true
     r.dirty = true
     
-    // Fire event - rage handles itself through subscriptions
-    event := events.NewGameEvent("feature.activate", r.owner, nil)
+    // Fire event - rage affects the owner (self-targeting)
+    event := events.NewGameEvent("feature.activate", owner, owner)
     event.Context().Set("feature_ref", RageRef)
     return r.eventBus.Publish(context.Background(), event)
 }
@@ -249,10 +249,10 @@ func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
 }
 
 // Character activation
-func (c *Character) ActivateFeature(ref string) error {
+func (c *Character) ActivateFeature(ref string, opts ...ActivateOption) error {
     for _, feature := range c.Features {
         if feature.Ref().String() == ref {
-            return feature.Activate(nil)
+            return feature.Activate(c, opts...)  // Pass self as owner
         }
     }
     return ErrFeatureNotFound
@@ -326,16 +326,21 @@ type Feature interface {
     // Identity
     Ref() *core.Ref
     Name() string
+    Description() string
     
-    // Activation  
-    Activate(target core.Entity) error  // Returns error if can't activate
+    // Activation
+    NeedsTarget() bool  // UI: should we ask for a target?
+    Activate(owner core.Entity, opts ...ActivateOption) error
+    IsActive() bool
     
-    // Events
+    // Events  
     Apply(events.EventBus) error
+    Remove(events.EventBus) error
     
     // Persistence
     ToJSON() json.RawMessage
     IsDirty() bool
+    MarkClean()
 }
 
 // Optional: Features with limited uses
@@ -363,14 +368,14 @@ type SecondWindFeature struct {
     used bool
 }
 
-func (s *SecondWindFeature) Activate(target core.Entity) error {
+func (s *SecondWindFeature) Activate(owner core.Entity, opts ...ActivateOption) error {
     if s.used {
         return ErrAlreadyUsed  // Can't activate
     }
     
-    // Heal 1d10 + level
+    // Heal 1d10 + level  
     healing := dice.D10(1).GetValue() + s.level
-    s.owner.Heal(healing)
+    owner.Heal(healing)  // Owner heals themselves
     
     s.used = true
     s.dirty = true
@@ -397,18 +402,22 @@ func (f *FireballSpell) NeedsTarget() bool {
     return true
 }
 
-func (f *FireballSpell) Activate(target core.Entity) error {
-    if !f.owner.HasSpellSlot(3) {
+func (f *FireballSpell) Activate(owner core.Entity, opts ...ActivateOption) error {
+    ctx := parseOptions(opts...)
+    if ctx.Target == nil {
+        return ErrTargetRequired
+    }
+    if !owner.HasSpellSlot(3) {
         return ErrNoSpellSlots  // Can't activate
     }
     
-    f.owner.UseSpellSlot(3)
+    owner.UseSpellSlot(3)
     
     // Fire the spell event
-    event := events.NewGameEvent("spell.cast", f.owner, target)
+    event := events.NewGameEvent("spell.cast", owner, ctx.Target)
     event.Context().Set("spell", "fireball")
     event.Context().Set("damage", "8d6")
-    event.Context().Set("save_dc", f.calculateDC())
+    event.Context().Set("save_dc", calculateDC(owner))
     
     return f.bus.Publish(context.Background(), event)
 }
