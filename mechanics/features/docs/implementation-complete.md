@@ -1,14 +1,54 @@
-# Complete Features Implementation
+# The Problem & Solution - Complete Implementation
 
-This document shows the complete implementation from feature definition through game server usage.
+## The Problem
+
+The current Feature interface has **14 methods** to implement, making even simple features complex. Most methods are boilerplate that obscures the actual game logic.
+
+## The Solution  
+
+Embed `effects.Core` to handle common functionality, leaving features to focus on their unique behavior. Features become simple, event-driven components that know how to save/load themselves.
 
 ## Table of Contents
-1. [Feature Implementation (Rage Example)](#feature-implementation-rage-example)
-2. [Game Server Integration](#game-server-integration)
-3. [Persistence Pattern](#persistence-pattern)
-4. [Key Architecture Decisions](#key-architecture-decisions)
+1. [Simplified Interface](#simplified-interface)
+2. [Complete Rage Example](#complete-rage-example)
+3. [Game Server Integration](#game-server-integration)
+4. [Key Patterns](#key-patterns)
 
-## Feature Implementation (Rage Example)
+## Simplified Interface
+
+```go
+type Feature interface {
+    // Identity
+    core.Entity         // GetID(), GetType()
+    Ref() *core.Ref     // Unique identifier
+    
+    // Display
+    Name() string
+    Description() string
+    
+    // Activation
+    CanActivate() bool
+    NeedsTarget() bool
+    Activate(target core.Entity) error
+    
+    // State
+    IsActive() bool
+    GetRemainingUses() string
+    
+    // Events
+    Apply(events.EventBus) error
+    Remove(events.EventBus) error
+    
+    // Persistence
+    ToJSON() json.RawMessage
+    IsDirty() bool
+    MarkClean()
+}
+```
+
+That's it! No GetModifiers(), GetProficiencies(), GetEventListeners(), etc.
+
+## Complete Rage Example
 
 ### Where Features Live
 
@@ -71,7 +111,8 @@ type RageFeature struct {
     dirty         bool
 }
 
-// NewRage creates a new Rage feature
+// NewRage creates a new Rage feature (used for character creation/level up)
+// The game server doesn't call this - it loads from saved data
 func NewRage(level int) *RageFeature {
     rage := &RageFeature{
         maxUses:       calculateRageUses(level),
@@ -405,7 +446,7 @@ CREATE TABLE character_features (
 );
 ```
 
-## Key Architecture Decisions
+## Key Patterns
 
 ### 1. Features Own Everything
 - Ref constant (RageRef) lives with implementation
