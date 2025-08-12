@@ -14,8 +14,8 @@ import (
 // This allows consumers to identify features and route them to the appropriate
 // loader without the mechanics package knowing about specific game implementations.
 type FeatureData interface {
-	Ref() *core.Ref         // The feature's identifier (e.g., "dnd5e:feature:rage")
-	JSON() json.RawMessage  // The raw JSON data for this feature
+	Ref() *core.Ref        // The feature's identifier (e.g., "dnd5e:feature:rage")
+	JSON() json.RawMessage // The raw JSON data for this feature
 }
 
 // featureData is the internal implementation of FeatureData.
@@ -44,7 +44,7 @@ func (f *featureData) JSON() json.RawMessage {
 //	if err != nil {
 //	    return err
 //	}
-//	
+//
 //	switch data.Ref().Module {
 //	case "dnd5e":
 //	    feat, err = dnd5e.LoadFeature(data.JSON())
@@ -56,25 +56,21 @@ func Load(data json.RawMessage) (FeatureData, error) {
 	var peek struct {
 		Ref string `json:"ref"`
 	}
-	
+
 	if err := json.Unmarshal(data, &peek); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnmarshalFailed, err)
 	}
-	
+
 	if peek.Ref == "" {
 		return nil, ErrInvalidRef
 	}
-	
+
 	// Parse the ref string into a structured Ref
-	ref, err := core.NewRef(core.RefInput{
-		Module: extractModule(peek.Ref),
-		Type:   extractType(peek.Ref),
-		Value:  extractValue(peek.Ref),
-	})
+	ref, err := core.ParseString(peek.Ref)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidRef, peek.Ref)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidRef, err)
 	}
-	
+
 	return &featureData{
 		ref:  ref,
 		json: data,
@@ -89,7 +85,7 @@ func LoadAll(data json.RawMessage) ([]FeatureData, error) {
 	if err := json.Unmarshal(data, &dataArray); err != nil {
 		return nil, fmt.Errorf("%w: expected array", ErrUnmarshalFailed)
 	}
-	
+
 	result := make([]FeatureData, 0, len(dataArray))
 	for i, d := range dataArray {
 		featData, err := Load(d)
@@ -98,52 +94,6 @@ func LoadAll(data json.RawMessage) ([]FeatureData, error) {
 		}
 		result = append(result, featData)
 	}
-	
+
 	return result, nil
-}
-
-// Helper functions to parse ref string format "module:type:value"
-func extractModule(ref string) string {
-	// Simple implementation - should use proper parsing
-	// Expected format: "dnd5e:feature:rage"
-	parts := splitRef(ref)
-	if len(parts) >= 1 {
-		return parts[0]
-	}
-	return ""
-}
-
-func extractType(ref string) string {
-	parts := splitRef(ref)
-	if len(parts) >= 2 {
-		return parts[1]
-	}
-	return ""
-}
-
-func extractValue(ref string) string {
-	parts := splitRef(ref)
-	if len(parts) >= 3 {
-		return parts[2]
-	}
-	return ""
-}
-
-func splitRef(ref string) []string {
-	// Simple colon-based split
-	// In production, might want more robust parsing
-	result := []string{}
-	current := ""
-	for _, ch := range ref {
-		if ch == ':' {
-			result = append(result, current)
-			current = ""
-		} else {
-			current += string(ch)
-		}
-	}
-	if current != "" {
-		result = append(result, current)
-	}
-	return result
 }

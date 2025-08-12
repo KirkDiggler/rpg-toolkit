@@ -17,23 +17,23 @@ import (
 // Features are data-driven - they load from JSON and handle their own behavior.
 type Feature interface {
 	// Identity
-	Ref() *core.Ref         // Unique identifier like "dnd5e:feature:rage"
-	Name() string           // Display name
-	Description() string    // Human-readable description
+	Ref() *core.Ref      // Unique identifier like "dnd5e:feature:rage"
+	Name() string        // Display name
+	Description() string // Human-readable description
 
 	// Activation
-	NeedsTarget() bool                                          // Does UI need to ask for a target?
-	Activate(owner core.Entity, opts ...ActivateOption) error   // Activate the feature
-	IsActive() bool                                             // Is it currently active?
+	NeedsTarget() bool                                        // Does UI need to ask for a target?
+	Activate(owner core.Entity, opts ...ActivateOption) error // Activate the feature
+	IsActive() bool                                           // Is it currently active?
 
 	// Events - features subscribe to and modify game events
-	Apply(bus events.EventBus) error    // Subscribe to events
-	Remove(bus events.EventBus) error   // Unsubscribe from events
+	Apply(bus events.EventBus) error  // Subscribe to events
+	Remove(bus events.EventBus) error // Unsubscribe from events
 
 	// Persistence
-	ToJSON() (json.RawMessage, error)  // Save feature state
-	IsDirty() bool                     // Has state changed since last save?
-	MarkClean()                        // Mark as saved
+	ToJSON() (json.RawMessage, error) // Save feature state
+	IsDirty() bool                    // Has state changed since last save?
+	MarkClean()                       // Mark as saved
 }
 
 // ActivateContext holds options for feature activation.

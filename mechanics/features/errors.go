@@ -12,31 +12,31 @@ import (
 var (
 	// ErrFeatureNotFound indicates the requested feature doesn't exist.
 	ErrFeatureNotFound = errors.New("feature not found")
-	
+
 	// ErrAlreadyActive indicates the feature is already active.
 	ErrAlreadyActive = errors.New("feature is already active")
-	
+
 	// ErrNotActive indicates the feature is not currently active.
 	ErrNotActive = errors.New("feature is not active")
-	
+
 	// ErrNoUsesRemaining indicates the feature has no uses left.
 	ErrNoUsesRemaining = errors.New("no uses remaining")
-	
+
 	// ErrTargetRequired indicates the feature requires a target but none was provided.
 	ErrTargetRequired = errors.New("target required")
-	
+
 	// ErrInvalidTarget indicates the provided target is not valid for this feature.
 	ErrInvalidTarget = errors.New("invalid target")
-	
+
 	// ErrCannotActivate indicates the feature cannot be activated in the current state.
 	ErrCannotActivate = errors.New("cannot activate feature")
-	
+
 	// ErrInvalidRef indicates a feature reference is malformed or missing.
 	ErrInvalidRef = errors.New("invalid feature reference")
-	
+
 	// ErrMarshalFailed indicates JSON marshaling failed.
 	ErrMarshalFailed = errors.New("failed to marshal feature data")
-	
+
 	// ErrUnmarshalFailed indicates JSON unmarshaling failed.
 	ErrUnmarshalFailed = errors.New("failed to unmarshal feature data")
 )
@@ -113,7 +113,7 @@ func IsRetryable(err error) bool {
 		errors.Is(err, ErrInvalidTarget) {
 		return false
 	}
-	
+
 	// ErrNoUsesRemaining might change after a rest
 	// ErrCannotActivate might change based on conditions
 	return true

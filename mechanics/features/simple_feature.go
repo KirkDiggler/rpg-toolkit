@@ -17,14 +17,14 @@ import (
 // implements the boilerplate methods of the Feature interface.
 type SimpleFeature struct {
 	*effects.Core // Event subscriptions, activation tracking
-	
+
 	ref         *core.Ref
 	name        string
 	description string
 	needsTarget bool
 	isActive    bool
 	dirty       bool
-	
+
 	// Hooks for customization
 	onActivate func(owner core.Entity, ctx *ActivateContext) error
 	onApply    func(bus events.EventBus) error
@@ -47,13 +47,13 @@ func NewSimpleFeature(config SimpleFeatureConfig) (*SimpleFeature, error) {
 	if config.Ref == nil {
 		return nil, ErrInvalidRef
 	}
-	
+
 	// Create effects.Core for event management
 	effectsCore := effects.NewCore(effects.CoreConfig{
 		ID:   config.Ref.String(),
 		Type: "feature",
 	})
-	
+
 	return &SimpleFeature{
 		Core:        effectsCore,
 		ref:         config.Ref,
@@ -90,17 +90,17 @@ func (f *SimpleFeature) NeedsTarget() bool {
 func (f *SimpleFeature) Activate(owner core.Entity, opts ...ActivateOption) error {
 	if f.onActivate != nil {
 		ctx := parseOptions(opts...)
-		
+
 		// Check if target is required but not provided
 		if f.needsTarget && ctx.Target == nil {
 			return NewActivationError(f.ref.String(), ErrTargetRequired)
 		}
-		
+
 		err := f.onActivate(owner, ctx)
 		if err != nil {
 			return err
 		}
-		
+
 		f.isActive = true
 		f.dirty = true
 	}
@@ -118,12 +118,12 @@ func (f *SimpleFeature) Apply(bus events.EventBus) error {
 	if err := f.Core.Apply(bus); err != nil {
 		return err
 	}
-	
+
 	// Then apply any custom subscriptions
 	if f.onApply != nil {
 		return f.onApply(bus)
 	}
-	
+
 	return nil
 }
 
@@ -135,7 +135,7 @@ func (f *SimpleFeature) Remove(bus events.EventBus) error {
 			return err
 		}
 	}
-	
+
 	// Then remove effects.Core subscriptions
 	return f.Core.Remove(bus)
 }
@@ -146,7 +146,7 @@ func (f *SimpleFeature) ToJSON() (json.RawMessage, error) {
 		"ref":       f.ref.String(),
 		"is_active": f.isActive,
 	}
-	
+
 	bytes, err := json.Marshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrMarshalFailed, err)
