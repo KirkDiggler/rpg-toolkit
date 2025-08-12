@@ -174,8 +174,3 @@ func calculateRageUses(level int) int {
 func (r *RageFeature) GetResource() resources.Resource {
 	return r.rageResource
 }
-
-// Register the Rage loader on package init.
-func init() {
-	features.RegisterFeatureLoader(RageRef.String(), LoadRageFromJSON)
-}

@@ -8,21 +8,9 @@ import (
 	"fmt"
 )
 
-// FeatureLoader is a function that can load a specific feature type from JSON.
-type FeatureLoader func(data json.RawMessage) (Feature, error)
-
-// featureRegistry maps feature refs to their loaders.
-// In a real implementation, this would be populated by game modules.
-var featureRegistry = make(map[string]FeatureLoader)
-
-// RegisterFeatureLoader registers a loader for a specific feature ref.
-// Game modules call this to register their features.
-func RegisterFeatureLoader(ref string, loader FeatureLoader) {
-	featureRegistry[ref] = loader
-}
-
-// LoadFeatureFromJSON loads a feature from JSON data.
-// It peeks at the ref field to determine which loader to use.
+// LoadFeatureFromJSON loads a feature from JSON data using a simple switch.
+// Each game module adds their features to this switch.
+// This is intentionally simple - no magic registries.
 func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
 	// Peek at the ref to determine feature type
 	var peek struct {
@@ -33,14 +21,16 @@ func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
 		return nil, fmt.Errorf("failed to peek at feature ref: %w", err)
 	}
 	
-	// Look up the loader for this ref
-	loader, exists := featureRegistry[peek.Ref]
-	if !exists {
-		return nil, fmt.Errorf("no loader registered for feature: %s", peek.Ref)
+	// Simple switch - each game adds their features here
+	switch peek.Ref {
+	// Example features would be added here:
+	// case "dnd5e:feature:rage":
+	//     return barbarian.LoadRageFromJSON(data)
+	// case "dnd5e:feature:second_wind":
+	//     return fighter.LoadSecondWindFromJSON(data)
+	default:
+		return nil, fmt.Errorf("unknown feature: %s", peek.Ref)
 	}
-	
-	// Use the specific loader
-	return loader(data)
 }
 
 // LoadFeaturesFromJSON loads multiple features from a JSON array.
