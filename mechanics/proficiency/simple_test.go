@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency"
 )
@@ -32,11 +33,18 @@ func TestSimpleProficiency(t *testing.T) {
 
 	// Create a weapon proficiency that adds bonus to attack rolls
 	weaponProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-		ID:      "prof-longsword",
-		Type:    "proficiency.weapon",
-		Owner:   character,
-		Subject: "longsword",
-		Source:  "fighter-class",
+		ID:    "prof-longsword",
+		Type:  "proficiency.weapon",
+		Owner: character,
+		Subject: core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "weapon",
+			Value:  "longsword",
+		}),
+		Source: &core.Source{
+			Category: core.SourceClass,
+			Name:     "fighter",
+		},
 		ApplyFunc: func(p *proficiency.SimpleProficiency, bus events.EventBus) error {
 			// Subscribe to attack roll events
 			p.Subscribe(bus, events.EventBeforeAttack, 100, func(_ context.Context, e events.Event) error {
@@ -91,11 +99,18 @@ func TestProficiencyMetadata(t *testing.T) {
 	character := &MockEntity{id: "char-1", typ: "character"}
 
 	prof := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-		ID:      "prof-athletics",
-		Type:    "proficiency.skill",
-		Owner:   character,
-		Subject: "athletics",
-		Source:  "barbarian-class",
+		ID:    "prof-athletics",
+		Type:  "proficiency.skill",
+		Owner: character,
+		Subject: core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "skill",
+			Value:  "athletics",
+		}),
+		Source: &core.Source{
+			Category: core.SourceClass,
+			Name:     "barbarian",
+		},
 	})
 
 	// Test metadata
@@ -111,11 +126,16 @@ func TestProficiencyMetadata(t *testing.T) {
 		t.Errorf("Expected owner ID %s, got %s", character.GetID(), prof.Owner().GetID())
 	}
 
-	if prof.Subject() != "athletics" {
-		t.Errorf("Expected subject 'athletics', got %s", prof.Subject())
+	athleticsRef := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "skill",
+		Value:  "athletics",
+	})
+	if !prof.Subject().Equals(athleticsRef) {
+		t.Errorf("Expected subject 'athletics', got %s", prof.Subject().String())
 	}
 
-	if prof.Source() != "barbarian-class" {
-		t.Errorf("Expected source 'barbarian-class', got %s", prof.Source())
+	if prof.Source().Category != core.SourceClass || prof.Source().Name != "barbarian" {
+		t.Errorf("Expected source class:barbarian, got %s", prof.Source().String())
 	}
 }
