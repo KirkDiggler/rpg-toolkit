@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 )
@@ -16,10 +17,10 @@ func TestCore(t *testing.T) {
 	bus := events.NewBus()
 
 	// Create a core effect with custom apply logic
-	core := effects.NewCore(effects.CoreConfig{
+	effectCore := effects.NewCore(effects.CoreConfig{
 		ID:     "test-effect",
 		Type:   "test.effect",
-		Source: "test",
+		Source: &core.Source{Category: core.SourceManual, Name: "test"},
 		ApplyFunc: func(_ events.EventBus) error {
 			// This would normally set up subscriptions
 			return nil
@@ -27,37 +28,37 @@ func TestCore(t *testing.T) {
 	})
 
 	// Test initial state
-	if core.GetID() != "test-effect" {
-		t.Errorf("Expected ID 'test-effect', got %s", core.GetID())
+	if effectCore.GetID() != "test-effect" {
+		t.Errorf("Expected ID 'test-effect', got %s", effectCore.GetID())
 	}
-	if core.GetType() != "test.effect" {
-		t.Errorf("Expected type 'test.effect', got %s", core.GetType())
+	if effectCore.GetType() != "test.effect" {
+		t.Errorf("Expected type 'test.effect', got %s", effectCore.GetType())
 	}
-	if core.Source() != "test" {
-		t.Errorf("Expected source 'test', got %s", core.Source())
+	if effectCore.Source() == nil || effectCore.Source().Name != "test" {
+		t.Errorf("Expected source name 'test', got %v", effectCore.Source())
 	}
-	if core.IsActive() {
+	if effectCore.IsActive() {
 		t.Error("Expected effect to be inactive initially")
 	}
 
 	// Apply the effect
-	if err := core.Apply(bus); err != nil {
+	if err := effectCore.Apply(bus); err != nil {
 		t.Fatalf("Failed to apply effect: %v", err)
 	}
-	if !core.IsActive() {
+	if !effectCore.IsActive() {
 		t.Error("Expected effect to be active after apply")
 	}
 
 	// Apply again should be idempotent
-	if err := core.Apply(bus); err != nil {
+	if err := effectCore.Apply(bus); err != nil {
 		t.Fatalf("Failed to apply effect twice: %v", err)
 	}
 
 	// Remove the effect
-	if err := core.Remove(bus); err != nil {
+	if err := effectCore.Remove(bus); err != nil {
 		t.Fatalf("Failed to remove effect: %v", err)
 	}
-	if core.IsActive() {
+	if effectCore.IsActive() {
 		t.Error("Expected effect to be inactive after remove")
 	}
 }
@@ -67,25 +68,25 @@ func TestCoreSubscriptionTracking(t *testing.T) {
 	handlerCallCount := 0
 
 	// Create core that subscribes to events
-	core := effects.NewCore(effects.CoreConfig{
+	effectCore := effects.NewCore(effects.CoreConfig{
 		ID:   "subscriber",
 		Type: "test.subscriber",
 	})
 
 	// Apply should allow subscriptions
-	if err := core.Apply(bus); err != nil {
+	if err := effectCore.Apply(bus); err != nil {
 		t.Fatalf("Failed to apply: %v", err)
 	}
 
 	// Subscribe to an event using the core's method
-	core.Subscribe(bus, "test.event", 100, func(_ context.Context, _ events.Event) error {
+	effectCore.Subscribe(bus, "test.event", 100, func(_ context.Context, _ events.Event) error {
 		handlerCallCount++
 		return nil
 	})
 
 	// Verify subscription count
-	if core.SubscriptionCount() != 1 {
-		t.Errorf("Expected 1 subscription, got %d", core.SubscriptionCount())
+	if effectCore.SubscriptionCount() != 1 {
+		t.Errorf("Expected 1 subscription, got %d", effectCore.SubscriptionCount())
 	}
 
 	// Publish event - handler should be called
@@ -99,7 +100,7 @@ func TestCoreSubscriptionTracking(t *testing.T) {
 	}
 
 	// Remove should unsubscribe
-	if err := core.Remove(bus); err != nil {
+	if err := effectCore.Remove(bus); err != nil {
 		t.Fatalf("Failed to remove: %v", err)
 	}
 
@@ -118,10 +119,10 @@ func TestCoreLifecycleHandlers(t *testing.T) {
 	applyCount := 0
 	removeCount := 0
 
-	core := effects.NewCore(effects.CoreConfig{
+	effectCore := effects.NewCore(effects.CoreConfig{
 		ID:     "lifecycle-test",
 		Type:   "test.lifecycle",
-		Source: "test",
+		Source: &core.Source{Category: core.SourceManual, Name: "test"},
 		ApplyFunc: func(_ events.EventBus) error {
 			applyCount++
 			return nil
@@ -133,7 +134,7 @@ func TestCoreLifecycleHandlers(t *testing.T) {
 	})
 
 	// Apply should call ApplyFunc
-	if err := core.Apply(bus); err != nil {
+	if err := effectCore.Apply(bus); err != nil {
 		t.Fatalf("Failed to apply: %v", err)
 	}
 	if applyCount != 1 {
@@ -141,7 +142,7 @@ func TestCoreLifecycleHandlers(t *testing.T) {
 	}
 
 	// Apply again should not call ApplyFunc (already active)
-	if err := core.Apply(bus); err != nil {
+	if err := effectCore.Apply(bus); err != nil {
 		t.Fatalf("Failed to apply: %v", err)
 	}
 	if applyCount != 1 {
@@ -149,7 +150,7 @@ func TestCoreLifecycleHandlers(t *testing.T) {
 	}
 
 	// Remove should call RemoveFunc
-	if err := core.Remove(bus); err != nil {
+	if err := effectCore.Remove(bus); err != nil {
 		t.Fatalf("Failed to remove: %v", err)
 	}
 	if removeCount != 1 {
@@ -157,7 +158,7 @@ func TestCoreLifecycleHandlers(t *testing.T) {
 	}
 
 	// Remove again should not call RemoveFunc (already inactive)
-	if err := core.Remove(bus); err != nil {
+	if err := effectCore.Remove(bus); err != nil {
 		t.Fatalf("Failed to remove: %v", err)
 	}
 	if removeCount != 1 {

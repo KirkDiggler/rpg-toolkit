@@ -22,7 +22,7 @@ func TestBehaviorComposition(t *testing.T) {
 	bus := events.NewBus()
 
 	// Create a Bless condition using composition
-	bless := effects.CreateBlessCondition(character, "cleric-spell")
+	bless := effects.CreateBlessCondition(character, &core.Source{Category: core.SourceManual, Name: "cleric-spell"})
 
 	// Apply the condition
 	err := bless.Apply(bus)
@@ -191,7 +191,7 @@ func TestStackingBehavior(t *testing.T) {
 	assert.Equal(t, effects.StackingAdd, strDamage1.GetStackingRule())
 
 	// Create a non-stackable effect
-	bless := effects.CreateBlessCondition(owner, "spell")
+	bless := effects.CreateBlessCondition(owner, &core.Source{Category: core.SourceManual, Name: "spell"})
 	noStack := &effects.NoStacking{}
 
 	// Bless shouldn't stack
@@ -236,7 +236,7 @@ func TestBlessConditionStartTime(t *testing.T) {
 
 	// Create bless condition
 	before := time.Now()
-	bless := effects.CreateBlessCondition(owner, "divine-favor")
+	bless := effects.CreateBlessCondition(owner, &core.Source{Category: core.SourceManual, Name: "divine-favor"})
 	after := time.Now()
 
 	// Get the temporary behavior
@@ -263,7 +263,7 @@ func TestFreshDiceRollsEachTime(t *testing.T) {
 	bus := events.NewBus()
 
 	// Create a Bless condition
-	bless := effects.CreateBlessCondition(character, "cleric-spell")
+	bless := effects.CreateBlessCondition(character, &core.Source{Category: core.SourceManual, Name: "cleric-spell"})
 	err := bless.Apply(bus)
 	require.NoError(t, err)
 
