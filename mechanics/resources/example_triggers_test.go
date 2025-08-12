@@ -25,10 +25,10 @@ func Example() {
 
 	// Divine resources that restore at dawn
 	layOnHands := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "lay-on-hands",
-		Type:    resources.ResourceTypeCustom,
-		Owner:   character,
-		Key:     core.MustNewRef(core.RefInput{
+		ID:    "lay-on-hands",
+		Type:  resources.ResourceTypeCustom,
+		Owner: character,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "dnd5e",
 			Type:   "ability_use",
 			Value:  "lay_on_hands_hp",
@@ -43,10 +43,10 @@ func Example() {
 
 	// Ability that restores on any rest
 	divineSense := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "divine-sense",
-		Type:    resources.ResourceTypeAbilityUse,
-		Owner:   character,
-		Key:     core.MustNewRef(core.RefInput{
+		ID:    "divine-sense",
+		Type:  resources.ResourceTypeAbilityUse,
+		Owner: character,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "dnd5e",
 			Type:   "ability_use",
 			Value:  "divine_sense_uses",
@@ -62,10 +62,10 @@ func Example() {
 
 	// Custom restoration from game events
 	inspiration := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "divine-inspiration",
-		Type:    resources.ResourceTypeCustom,
-		Owner:   character,
-		Key:     core.MustNewRef(core.RefInput{
+		ID:    "divine-inspiration",
+		Type:  resources.ResourceTypeCustom,
+		Owner: character,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "custom",
 			Type:   "resource",
 			Value:  "inspiration_points",

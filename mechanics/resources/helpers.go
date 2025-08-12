@@ -17,10 +17,10 @@ func CreateSpellSlots(owner core.Entity, slots map[int]int) []Resource {
 	for level := 1; level <= 9; level++ {
 		if maxSlots, exists := slots[level]; exists && maxSlots > 0 {
 			resource := NewSimpleResource(SimpleResourceConfig{
-				ID:              fmt.Sprintf("%s-spell-slots-%d", owner.GetID(), level),
-				Type:            ResourceTypeSpellSlot,
-				Owner:           owner,
-				Key:             core.MustNewRef(core.RefInput{
+				ID:    fmt.Sprintf("%s-spell-slots-%d", owner.GetID(), level),
+				Type:  ResourceTypeSpellSlot,
+				Owner: owner,
+				Key: core.MustNewRef(core.RefInput{
 					Module: "core",
 					Type:   "spell_slot",
 					Value:  fmt.Sprintf("level_%d", level),
@@ -52,10 +52,10 @@ func CreateAbilityUse(owner core.Entity, abilityName string, maxUses int, restor
 	}
 
 	return NewSimpleResource(SimpleResourceConfig{
-		ID:               fmt.Sprintf("%s-%s-uses", owner.GetID(), abilityName),
-		Type:             ResourceTypeAbilityUse,
-		Owner:            owner,
-		Key:              core.MustNewRef(core.RefInput{
+		ID:    fmt.Sprintf("%s-%s-uses", owner.GetID(), abilityName),
+		Type:  ResourceTypeAbilityUse,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "ability_use",
 			Value:  fmt.Sprintf("%s_uses", abilityName),
@@ -71,10 +71,10 @@ func CreateAbilityUse(owner core.Entity, abilityName string, maxUses int, restor
 // CreateHitDice creates hit dice resources for a character.
 func CreateHitDice(owner core.Entity, hitDieType string, level int) Resource {
 	return NewSimpleResource(SimpleResourceConfig{
-		ID:              fmt.Sprintf("%s-hit-dice-%s", owner.GetID(), hitDieType),
-		Type:            ResourceTypeHitDice,
-		Owner:           owner,
-		Key:             core.MustNewRef(core.RefInput{
+		ID:    fmt.Sprintf("%s-hit-dice-%s", owner.GetID(), hitDieType),
+		Type:  ResourceTypeHitDice,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "hit_dice",
 			Value:  hitDieType,
@@ -91,10 +91,10 @@ func CreateActionEconomy(owner core.Entity) []Resource {
 	resources := []Resource{
 		// Standard action
 		NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-action", owner.GetID()),
-			Type:        ResourceTypeAction,
-			Owner:       owner,
-			Key:         core.MustNewRef(core.RefInput{
+			ID:    fmt.Sprintf("%s-action", owner.GetID()),
+			Type:  ResourceTypeAction,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
 				Module: "core",
 				Type:   "action",
 				Value:  "standard",
@@ -105,10 +105,10 @@ func CreateActionEconomy(owner core.Entity) []Resource {
 		}),
 		// Bonus action
 		NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-bonus-action", owner.GetID()),
-			Type:        ResourceTypeBonusAction,
-			Owner:       owner,
-			Key:         core.MustNewRef(core.RefInput{
+			ID:    fmt.Sprintf("%s-bonus-action", owner.GetID()),
+			Type:  ResourceTypeBonusAction,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
 				Module: "core",
 				Type:   "action",
 				Value:  "bonus",
@@ -119,10 +119,10 @@ func CreateActionEconomy(owner core.Entity) []Resource {
 		}),
 		// Reaction
 		NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-reaction", owner.GetID()),
-			Type:        ResourceTypeReaction,
-			Owner:       owner,
-			Key:         core.MustNewRef(core.RefInput{
+			ID:    fmt.Sprintf("%s-reaction", owner.GetID()),
+			Type:  ResourceTypeReaction,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
 				Module: "core",
 				Type:   "action",
 				Value:  "reaction",
@@ -158,10 +158,10 @@ func CreateRageUses(owner core.Entity, level int) Resource {
 	// At level 20, barbarians have unlimited rages
 	if uses == -1 {
 		return NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-rage-uses", owner.GetID()),
-			Type:        ResourceTypeAbilityUse,
-			Owner:       owner,
-			Key:         core.MustNewRef(core.RefInput{
+			ID:    fmt.Sprintf("%s-rage-uses", owner.GetID()),
+			Type:  ResourceTypeAbilityUse,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
 				Module: "core",
 				Type:   "ability_use",
 				Value:  "rage_uses",
@@ -182,10 +182,10 @@ func CreateKiPoints(owner core.Entity, level int) Resource {
 	}
 
 	return NewSimpleResource(SimpleResourceConfig{
-		ID:               fmt.Sprintf("%s-ki-points", owner.GetID()),
-		Type:             ResourceTypeAbilityUse,
-		Owner:            owner,
-		Key:              core.MustNewRef(core.RefInput{
+		ID:    fmt.Sprintf("%s-ki-points", owner.GetID()),
+		Type:  ResourceTypeAbilityUse,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "ability_use",
 			Value:  "ki_points",

@@ -24,10 +24,10 @@ func TestSimpleResource(t *testing.T) {
 
 	// Create a spell slot resource
 	spellSlot := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:              "spell-slot-3",
-		Type:            resources.ResourceTypeSpellSlot,
-		Owner:           owner,
-		Key:             core.MustNewRef(core.RefInput{
+		ID:    "spell-slot-3",
+		Type:  resources.ResourceTypeSpellSlot,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "spell_slot",
 			Value:  "level_3",
@@ -91,10 +91,10 @@ func TestResourceBoundaries(t *testing.T) {
 	owner := &MockEntity{id: "char-1", typ: "character"}
 
 	resource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "test-resource",
-		Type:    resources.ResourceTypeCustom,
-		Owner:   owner,
-		Key:     core.MustNewRef(core.RefInput{
+		ID:    "test-resource",
+		Type:  resources.ResourceTypeCustom,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
 			Module: "test",
 			Type:   "resource",
 			Value:  "test",
