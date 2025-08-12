@@ -204,7 +204,7 @@ func (c *Character) TakeDamage(damage int, damageType string) {
     c.eventBus.Publish(context.Background(), dmgEvent)
     
     // Get final damage after all modifications
-    finalDamage := dmgEvent.Context().Get("damage").(int)
+    finalDamage := dmgEvent.Context().Get("damage").(int) // we should find a better way to communicate damage on a damage event
     c.HP -= finalDamage
 }
 
