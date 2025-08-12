@@ -6,13 +6,53 @@ package features
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// LoadFeatureFromJSON loads a feature from JSON data using a simple switch.
-// Each game module adds their features to this switch.
-// This is intentionally simple - no magic registries.
-func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
-	// Peek at the ref to determine feature type
+// FeatureData provides access to a feature's ref and raw JSON data.
+// This allows consumers to identify features and route them to the appropriate
+// loader without the mechanics package knowing about specific game implementations.
+type FeatureData interface {
+	Ref() *core.Ref         // The feature's identifier (e.g., "dnd5e:feature:rage")
+	JSON() json.RawMessage  // The raw JSON data for this feature
+}
+
+// featureData is the internal implementation of FeatureData.
+type featureData struct {
+	ref  *core.Ref
+	json json.RawMessage
+}
+
+// Ref returns the feature's reference.
+func (f *featureData) Ref() *core.Ref {
+	return f.ref
+}
+
+// JSON returns the raw JSON data.
+func (f *featureData) JSON() json.RawMessage {
+	return f.json
+}
+
+// Load extracts feature data (ref + JSON) from raw JSON.
+// This is the primary way to identify what type of feature you're dealing with
+// before routing it to the appropriate game-specific loader.
+//
+// Example usage:
+//
+//	data, err := features.Load(jsonFromDB)
+//	if err != nil {
+//	    return err
+//	}
+//	
+//	switch data.Ref().Module {
+//	case "dnd5e":
+//	    feat, err = dnd5e.LoadFeature(data.JSON())
+//	case "pathfinder":
+//	    feat, err = pathfinder.LoadFeature(data.JSON())
+//	}
+func Load(data json.RawMessage) (FeatureData, error) {
+	// Peek at just the ref field
 	var peek struct {
 		Ref string `json:"ref"`
 	}
@@ -21,33 +61,89 @@ func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
 		return nil, fmt.Errorf("%w: %v", ErrUnmarshalFailed, err)
 	}
 	
-	// Simple switch - each game adds their features here
-	switch peek.Ref {
-	// Example features would be added here:
-	// case "dnd5e:feature:rage":
-	//     return barbarian.LoadRageFromJSON(data)
-	// case "dnd5e:feature:second_wind":
-	//     return fighter.LoadSecondWindFromJSON(data)
-	default:
-		return nil, NewLoadError(peek.Ref, ErrFeatureNotFound)
-	}
-}
-
-// LoadFeaturesFromJSON loads multiple features from a JSON array.
-func LoadFeaturesFromJSON(data json.RawMessage) ([]Feature, error) {
-	var featuresData []json.RawMessage
-	if err := json.Unmarshal(data, &featuresData); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal features array: %w", err)
+	if peek.Ref == "" {
+		return nil, ErrInvalidRef
 	}
 	
-	features := make([]Feature, 0, len(featuresData))
-	for i, featureData := range featuresData {
-		feature, err := LoadFeatureFromJSON(featureData)
+	// Parse the ref string into a structured Ref
+	ref, err := core.NewRef(core.RefInput{
+		Module: extractModule(peek.Ref),
+		Type:   extractType(peek.Ref),
+		Value:  extractValue(peek.Ref),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidRef, peek.Ref)
+	}
+	
+	return &featureData{
+		ref:  ref,
+		json: data,
+	}, nil
+}
+
+// LoadAll extracts feature data for multiple features from a JSON array.
+// Returns a slice of FeatureData that can be used to route each feature
+// to its appropriate loader.
+func LoadAll(data json.RawMessage) ([]FeatureData, error) {
+	var dataArray []json.RawMessage
+	if err := json.Unmarshal(data, &dataArray); err != nil {
+		return nil, fmt.Errorf("%w: expected array", ErrUnmarshalFailed)
+	}
+	
+	result := make([]FeatureData, 0, len(dataArray))
+	for i, d := range dataArray {
+		featData, err := Load(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load feature %d: %w", i, err)
 		}
-		features = append(features, feature)
+		result = append(result, featData)
 	}
 	
-	return features, nil
+	return result, nil
+}
+
+// Helper functions to parse ref string format "module:type:value"
+func extractModule(ref string) string {
+	// Simple implementation - should use proper parsing
+	// Expected format: "dnd5e:feature:rage"
+	parts := splitRef(ref)
+	if len(parts) >= 1 {
+		return parts[0]
+	}
+	return ""
+}
+
+func extractType(ref string) string {
+	parts := splitRef(ref)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return ""
+}
+
+func extractValue(ref string) string {
+	parts := splitRef(ref)
+	if len(parts) >= 3 {
+		return parts[2]
+	}
+	return ""
+}
+
+func splitRef(ref string) []string {
+	// Simple colon-based split
+	// In production, might want more robust parsing
+	result := []string{}
+	current := ""
+	for _, ch := range ref {
+		if ch == ':' {
+			result = append(result, current)
+			current = ""
+		} else {
+			current += string(ch)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
 }

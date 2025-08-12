@@ -1,160 +1,75 @@
-# Features Module
+# Features Package
 
-The features module provides a comprehensive system for implementing character abilities, racial traits, and feats in tabletop RPGs.
+This package provides the infrastructure for game features (abilities, traits, feats, etc).
 
-## Overview
+## What This Package Provides
 
-Features represent special abilities that characters can have:
-- **Racial Features**: Abilities from a character's race (e.g., Darkvision)
-- **Class Features**: Abilities from a character's class (e.g., Rage, Sneak Attack)
-- **Subclass Features**: Specialized abilities from subclasses
-- **Feats**: Optional abilities characters can learn
-- **Item Features**: Abilities granted by magical items
+- **Feature Interface**: The contract all features must implement
+- **SimpleFeature**: Base implementation with common functionality
+- **Error Types**: Well-defined errors for better developer communication
+- **FeatureData Loader**: Extract feature refs and JSON for routing
 
-## Feature Types
+## What This Package Does NOT Provide
 
-### By Timing
+- Specific feature implementations (those belong in rulebooks)
+- Feature registration or routing (handled at application level)
+- Game-specific logic
 
-Features are categorized by when they take effect:
+## Usage Pattern
 
-1. **Passive**: Always active (e.g., Darkvision)
-2. **Triggered**: React to game events (e.g., Sneak Attack)
-3. **Activated**: Must be activated by the player (e.g., Rage)
-
-## Usage
-
-### Creating a Feature
+The typical flow for loading features:
 
 ```go
-// Passive feature
-darkvision := features.NewBasicFeature("darkvision", "Darkvision").
-    WithDescription("You can see in darkness").
-    WithType(features.FeatureRacial).
-    WithTiming(features.TimingPassive).
-    WithModifiers(visionModifier)
+// 1. Load feature data from your database
+jsonData := loadFromDatabase()
 
-// Activated feature with resources
-rage := features.NewBasicFeature("rage", "Rage").
-    WithType(features.FeatureClass).
-    WithTiming(features.TimingActivated).
-    WithResources(rageUsesResource).
-    WithEventListeners(RageListener{})
+// 2. Use features.Load to extract ref and JSON
+data, err := features.Load(jsonData)
+if err != nil {
+    return err
+}
 
-// Triggered feature
-sneakAttack := features.NewBasicFeature("sneak_attack", "Sneak Attack").
-    WithType(features.FeatureClass).
-    WithTiming(features.TimingTriggered).
-    WithEventListeners(SneakAttackListener{})
+// 3. Route based on the ref to the appropriate rulebook
+var feat features.Feature
+switch data.Ref().Module {
+case "dnd5e":
+    feat, err = dnd5e.LoadFeature(data.JSON())
+case "pathfinder":
+    feat, err = pathfinder.LoadFeature(data.JSON())
+case "homebrew":
+    feat, err = homebrew.LoadFeature(data.JSON())
+default:
+    return fmt.Errorf("unknown module: %s", data.Ref().Module)
+}
+
+// 4. Use the feature through the interface
+feat.Apply(eventBus)
 ```
 
-### Managing Features
+## Creating Features
 
-The feature system uses a hybrid approach:
+Features should:
+1. Embed `*SimpleFeature` for common functionality
+2. Implement feature-specific logic
+3. Live in their appropriate rulebook package
 
-1. **FeatureRegistry** - For feature definitions and discovery
-2. **FeatureHolder** - Entities store and manage their own features
-
-```go
-// Registry for feature definitions
-registry := features.NewRegistry()
-registry.RegisterFeature(rageFeature)
-registry.RegisterFeature(sneakAttackFeature)
-
-// Entities implement FeatureHolder
-type Character struct {
-    features.FeatureHolder
-    // other fields...
-}
-
-// Add features to entities
-character.AddFeature(rageFeature)
-
-// Activate features
-character.ActivateFeature("rage", eventBus)
-
-// Query available features
-available := registry.GetFeaturesForClass("barbarian", 5)
+Example structure:
+```
+rulebooks/
+  dnd5e/
+    features/
+      rage.go         # Implements Rage using SimpleFeature
+      second_wind.go  # Implements Second Wind
+      loader.go       # D&D 5e specific loading logic
 ```
 
-### Prerequisites
+## Error Handling
 
-Features can have prerequisites that must be met:
+The package provides typed errors for clear communication:
 
-```go
-// Define a feature with prerequisites
-feature := features.NewBasicFeature("power_attack", "Power Attack").
-    WithPrerequisites("class:fighter", "level:5", "feat:weapon_focus")
+- `ErrAlreadyActive`: Feature is already active
+- `ErrNoUsesRemaining`: No uses left
+- `ErrTargetRequired`: Feature needs a target
+- `ErrInvalidRef`: Malformed feature reference
 
-// Games must provide a prerequisite checker
-checker := func(entity core.Entity, prereq string) bool {
-    // Parse prerequisite and check against entity
-    // This is game-specific logic
-    parts := strings.Split(prereq, ":")
-    switch parts[0] {
-    case "class":
-        return checkEntityClass(entity, parts[1])
-    case "level":
-        return checkEntityLevel(entity, parts[1])
-    case "feat":
-        return checkEntityHasFeat(entity, parts[1])
-    }
-    return false
-}
-
-feature.WithPrerequisiteChecker(checker)
-
-// Now the feature can verify prerequisites
-if feature.MeetsPrerequisites(character) {
-    character.AddFeature(feature)
-}
-```
-
-### Event Integration
-
-Features can listen to and modify game events:
-
-```go
-type RageListener struct{}
-
-func (r RageListener) EventTypes() []string {
-    return []string{
-        events.EventOnDamageRoll,
-        events.EventBeforeTakeDamage,
-    }
-}
-
-func (r RageListener) HandleEvent(feature Feature, entity Entity, event Event) error {
-    switch event.Type() {
-    case events.EventOnDamageRoll:
-        // Add rage damage bonus
-        event.Context().AddModifier(rageDamageModifier)
-    case events.EventBeforeTakeDamage:
-        // Add damage resistance
-        event.Context().AddModifier(rageResistanceModifier)
-    }
-    return nil
-}
-```
-
-## Examples
-
-See the `examples` directory for complete implementations of:
-- **Rage**: Barbarian's signature ability with damage bonus and resistance
-- **Sneak Attack**: Rogue's precision damage ability
-- **Darkvision**: Racial ability to see in darkness
-
-## Integration with Other Modules
-
-- **Events**: Features use event listeners to react to game events
-- **Resources**: Features can provide or consume resources
-- **Proficiency**: Features can grant proficiencies
-- **Conditions**: Features can apply or react to conditions
-
-## Design Philosophy
-
-The feature system follows these principles:
-
-1. **Flexibility**: Support any game system, not just D&D
-2. **Composition**: Features can combine multiple behaviors
-3. **Event-Driven**: Features interact through the event system
-4. **Type Safety**: Use Go's type system for compile-time checks
+Use `errors.Is()` to check for specific conditions.
