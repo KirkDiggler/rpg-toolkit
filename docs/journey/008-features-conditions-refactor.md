@@ -205,6 +205,18 @@ func NewRage() *SimpleFeature {
 }
 ```
 
+## Assumptions Becoming Clearer
+
+Through this journey, our assumptions are crystallizing:
+
+1. **Features are just effects with metadata** - They subscribe to events and modify game state
+2. **Identity, implementation, and loading live together** - The barbarian package knows everything about barbarian features
+3. **The toolkit provides infrastructure, games provide features** - We give them SimpleFeature, they give us Rage
+4. **Event bus is the nervous system** - Features don't call each other, they react to events
+5. **Data loading is feature-specific** - Each feature knows how to reconstruct itself from saved data
+
+The add-on module question (like Artificer) is interesting but can wait. For now, we're seeing that if each module owns its features completely, extension becomes natural - just import another package that exports its own features with their own loaders.
+
 When we implement Fireball, it should be equally obvious:
 ```go
 func NewFireball() *SimpleSpell {
