@@ -33,11 +33,11 @@ type Feature interface {
     Description() string
     
     // Activation
-    NeedsTarget() bool
-    Activate(target core.Entity) error  // Returns ErrCannotActivate if not activatable
+    NeedsTarget() bool  // UI: should we ask for a target?
+    Activate(owner core.Entity, opts ...ActivateOption) error
     IsActive() bool
     
-    // Events
+    // Events  
     Apply(events.EventBus) error
     Remove(events.EventBus) error
     
@@ -45,6 +45,15 @@ type Feature interface {
     ToJSON() json.RawMessage
     IsDirty() bool
     MarkClean()
+}
+
+// Activation options
+type ActivateOption func(*ActivateContext)
+
+func WithTarget(target core.Entity) ActivateOption {
+    return func(ctx *ActivateContext) {
+        ctx.Target = target
+    }
 }
 
 // Features with limited uses implement this
@@ -63,7 +72,7 @@ type SimpleFeature struct {
 }
 ```
 
-This is ~6 essential methods instead of 14, focused on the core responsibilities. Features that have limited uses expose that through the resource system.
+This is 6 essential methods instead of 14, focused on the core responsibilities. Features that have limited uses expose that through the resource system.
 
 ### 2. Replace Builders with Options Pattern
 
@@ -156,7 +165,7 @@ Keeping domain concepts clear makes the code more understandable. We can general
 ## Consequences
 
 ### Positive
-- **Massive code reduction**: From 14 methods to ~6, focus on game logic
+- **Massive code reduction**: From 14 methods to 6, focus on game logic
 - **Smart filtering**: Event bus filters at subscription level
 - **Simple persistence**: ToJSON/LoadFromJSON pattern is clear
 - **Dirty tracking**: Efficient saves only when needed
@@ -223,7 +232,11 @@ type RageFeature struct {
     dirty         bool
 }
 
-func (r *RageFeature) Activate(target core.Entity) error {
+func (r *RageFeature) NeedsTarget() bool {
+    return false  // Rage targets self
+}
+
+func (r *RageFeature) Activate(owner core.Entity, opts ...ActivateOption) error {
     if r.isActive {
         return ErrAlreadyActive
     }
@@ -235,10 +248,27 @@ func (r *RageFeature) Activate(target core.Entity) error {
     r.isActive = true
     r.dirty = true
     
-    // Rage handles itself through smart subscriptions
-    event := events.NewGameEvent("feature.activate", r.owner, nil)
+    // Rage affects the owner (self-targeting)
+    event := events.NewGameEvent("feature.activate", owner, owner)
     event.Context().Set("feature_ref", RageRef)
     return r.eventBus.Publish(context.Background(), event)
+}
+
+// Fireball needs a target
+func (f *FireballSpell) NeedsTarget() bool {
+    return true
+}
+
+func (f *FireballSpell) Activate(owner core.Entity, opts ...ActivateOption) error {
+    ctx := parseOptions(opts...)
+    if ctx.Target == nil {
+        return ErrTargetRequired
+    }
+    
+    // Cast fireball at the target
+    event := events.NewGameEvent("spell.cast", owner, ctx.Target)
+    event.Context().Set("spell", "fireball")
+    return f.bus.Publish(context.Background(), event)
 }
 
 // Rage exposes its uses through the resource system
