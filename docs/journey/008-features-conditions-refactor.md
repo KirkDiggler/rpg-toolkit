@@ -203,10 +203,10 @@ type RageFeature struct {
 
 func (r *RageFeature) Activate(target core.Entity) error {
     if r.isActive {
-        return AlreadyActiveError()
+        return ErrAlreadyActive  // Can't activate
     }
     if r.usesRemaining <= 0 {
-        return NoUsesError()
+        return ErrNoUsesRemaining  // Can't activate
     }
     
     r.usesRemaining--
@@ -328,9 +328,8 @@ type Feature interface {
     Ref() *core.Ref
     Name() string
     
-    // Activation
-    CanActivate() bool
-    Activate(target core.Entity) error
+    // Activation  
+    Activate(target core.Entity) error  // Returns error if can't activate
     
     // Events
     Apply(events.EventBus) error
@@ -361,7 +360,7 @@ type SecondWindFeature struct {
 
 func (s *SecondWindFeature) Activate(target core.Entity) error {
     if s.used {
-        return AlreadyUsedError()
+        return ErrAlreadyUsed  // Can't activate
     }
     
     // Heal 1d10 + level
@@ -395,7 +394,7 @@ func (f *FireballSpell) NeedsTarget() bool {
 
 func (f *FireballSpell) Activate(target core.Entity) error {
     if !f.owner.HasSpellSlot(3) {
-        return NoSpellSlotsError()
+        return ErrNoSpellSlots  // Can't activate
     }
     
     f.owner.UseSpellSlot(3)

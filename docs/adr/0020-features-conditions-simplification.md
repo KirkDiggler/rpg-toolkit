@@ -1,11 +1,11 @@
 # ADR-0020: Features and Conditions Simplification
 
 ## Status
-Proposed
+Accepted
 
 ## The Problem in One Sentence
 
-Implementing a simple feature like Rage requires understanding 14 interface methods, while it should just be a function that subscribes to events.
+Implementing a simple feature like Rage requires understanding 14 interface methods, while it should just be ~50 lines of actual game logic.
 
 ## Context
 
@@ -15,46 +15,50 @@ After implementing core.Ref and core.Source across several modules, we've identi
 2. **Builder Pattern Issues**: Conditions use builders that accumulate errors instead of failing fast
 3. **Duplicate Infrastructure**: Both modules reimplement what effects.Core already provides
 4. **String Proliferation**: String identifiers everywhere instead of typed references
+5. **Event Filtering**: Every feature hears ALL events and checks relevance manually
 
-Additionally, we're seeing patterns emerge where we need standard references (like "core:class:barbarian") used consistently across the codebase.
+Additionally, we explored abstracting everything to "actions" but pulled back - keeping domain concepts clear is more important than premature abstraction.
 
 ## Decision
 
-### 1. Simplify Feature to Its Essence
+### 1. Simplify Feature to Essential Methods
 
-Features ARE effects with metadata. They should embed effects.Core directly:
+The Feature interface should focus on what features actually do:
 
 ```go
-// Feature is just the core contract
 type Feature interface {
-    core.Entity         // GetID(), GetType()  
-    Ref() *core.Ref     // What feature is this?
-    Source() *core.Source // What granted this?
-    Apply(bus events.EventBus) error
-    Remove(bus events.EventBus) error
+    // Identity
+    Ref() *core.Ref
+    Name() string
+    Description() string
+    
+    // Activation
+    NeedsTarget() bool
+    Activate(target core.Entity) error  // Returns ErrCannotActivate if not activatable
+    IsActive() bool
+    GetRemainingUses() string  // e.g., "3/3" or "unlimited"
+    
+    // Events
+    Apply(events.EventBus) error
+    Remove(events.EventBus) error
+    
+    // Persistence
+    ToJSON() json.RawMessage
+    IsDirty() bool
+    MarkClean()
 }
 
-// SimpleFeature embeds effects.Core for all the heavy lifting
+// SimpleFeature embeds effects.Core for common functionality
 type SimpleFeature struct {
     *effects.Core
-    ref   *core.Ref
-    level int
+    ref         *core.Ref
+    name        string
+    description string
     // Feature-specific fields only
 }
 ```
 
-Optional behaviors through interface composition:
-```go
-type FeatureWithPrerequisites interface {
-    Feature
-    MeetsPrerequisites(entity core.Entity) bool
-}
-
-type FeatureWithResources interface {
-    Feature
-    GetResources() []resources.Resource
-}
-```
+This is ~7 essential methods instead of 14, focused on the core responsibilities.
 
 ### 2. Replace Builders with Options Pattern
 
@@ -80,107 +84,98 @@ condition, err := NewCondition(
 )
 ```
 
-### 3. Provide Standard Ref Constants
+### 3. Persistence Pattern: ToJSON/LoadFromJSON
 
-Create packages that export common Refs as constants:
+Features handle their own persistence with simple JSON serialization:
 
 ```go
-// Package: mechanics/features/standard
-package standard
-
-var (
-    // Class features
-    Rage = core.MustNewRef(core.RefInput{
-        Module: "dnd5e",
-        Type:   "feature", 
-        Value:  "rage",
-    })
-    
-    SneakAttack = core.MustNewRef(core.RefInput{
-        Module: "dnd5e",
-        Type:   "feature",
-        Value:  "sneak_attack",
-    })
-)
-
-// Package: mechanics/conditions/standard  
-package standard
-
-var (
-    // Conditions
-    Poisoned = core.MustNewRef(core.RefInput{
-        Module: "dnd5e",
-        Type:   "condition",
-        Value:  "poisoned",
-    })
-    
-    Stunned = core.MustNewRef(core.RefInput{
-        Module: "dnd5e",
-        Type:   "condition",
-        Value:  "stunned",
-    })
-)
-
-// Package: core/classes
-package classes
-
-var (
-    Barbarian = &core.Source{
-        Category: core.SourceClass,
-        Name:     "barbarian",
+// Each feature type knows how to save itself
+func (r *RageFeature) ToJSON() json.RawMessage {
+    data := RageData{
+        Ref:           "dnd5e:feature:rage",
+        UsesRemaining: r.usesRemaining,
+        IsActive:      r.isActive,
     }
-    
-    Fighter = &core.Source{
-        Category: core.SourceClass,
-        Name:     "fighter",
+    return json.Marshal(data)
+}
+
+// Loading uses a simple switch - no magic registries
+func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
+    var peek struct {
+        Ref string `json:"ref"`
     }
-)
+    json.Unmarshal(data, &peek)
+    
+    switch peek.Ref {
+    case "dnd5e:feature:rage":
+        return barbarian.LoadRageFromJSON(data)
+    case "dnd5e:feature:second_wind":
+        return fighter.LoadSecondWindFromJSON(data)
+    default:
+        return nil, fmt.Errorf("unknown feature: %s", peek.Ref)
+    }
+}
 ```
 
-Usage becomes type-safe and clean:
+### 4. Smart Event Subscriptions
+
+Instead of every feature checking every event:
+
 ```go
-feat := features.NewSimple(
-    features.WithRef(standard.Rage),
-    features.FromSource(classes.Barbarian),
-    features.AtLevel(1),
-)
+// Old way - manual filtering in every handler
+func handleDamage(e Event) {
+    if e.Target() != me {
+        return  // Not my damage, ignore
+    }
+    // ...
+}
+
+// New way - filter at subscription
+bus.On(events.EventBeforeTakeDamage).
+    ToTarget(myID).  // Only MY damage events!
+    Do(func(e Event) {
+        // I know this is my damage
+        applyResistance(e)
+    })
 ```
 
-### 4. Unify Through effects.Core
+### 5. Keep Domain Concepts Clear
 
-Both SimpleFeature and SimpleCondition embed effects.Core:
-- Automatic subscription tracking
-- Consistent activation/deactivation
-- Source tracking built-in
-- Event handling infrastructure
+We explored "everything is actions" but decided against it:
+- Features are features
+- Spells are spells  
+- Conditions are conditions
+
+Keeping domain concepts clear makes the code more understandable. We can generalize later if patterns emerge.
 
 ## Consequences
 
 ### Positive
-- **Massive code reduction**: Remove duplicate infrastructure
-- **Type safety**: Constants prevent typos in strings
+- **Massive code reduction**: From 14 methods to ~7, focus on game logic
+- **Smart filtering**: Event bus filters at subscription level
+- **Simple persistence**: ToJSON/LoadFromJSON pattern is clear
+- **Dirty tracking**: Efficient saves only when needed
 - **Fail-fast**: Options validate immediately, not at build time
-- **Consistency**: All effects-based mechanics work the same way
-- **Discoverability**: IDEs can autocomplete standard refs
 - **Breaking changes are explicit**: No silent failures from legacy paths
+- **Clear domain concepts**: Features are features, not generic actions
 
 ### Negative  
 - **Breaking changes**: All existing feature/condition code must be updated
 - **Migration effort**: Need to update all consuming code
-- **New packages**: Need to maintain standard ref constants
+- **No registry magic**: Simple switch statements might seem primitive
 
 ### Neutral
-- **More packages**: standard refs live in separate packages, but provide clear organization
-- **Explicit imports**: Must import ref packages, but makes dependencies clear
+- **Embedded effects.Core**: Composition provides shared functionality
+- **Feature owns everything**: Ref, implementation, and loader live together
 
 ## Implementation Order
 
-1. Create standard ref packages with common constants
-2. Refactor Feature interface to minimal core
-3. Implement SimpleFeature with effects.Core
+1. Update Feature interface to ~8 essential methods
+2. Implement SimpleFeature with effects.Core embedding
+3. Add ToJSON/LoadFromJSON pattern for persistence
 4. Replace condition builder with options
-5. Update SimpleCondition to use effects.Core
-6. Migrate existing implementations
+5. Update event bus to support smart subscriptions
+6. Migrate existing features to new pattern
 
 ## Success Metric
 
@@ -190,43 +185,65 @@ The true test isn't whether we can implement Rage - it's whether implementing Ra
 
 ## Examples
 
-### Before (Current)
+### Before (Current - 14 methods)
 ```go
-// Strings everywhere, no validation
-feat := &SomeFeature{
-    key:    "rage",        // Could be typo
-    source: "barbarian",   // What kind of source?
+type Feature interface {
+    GetID() string
+    GetType() string
+    Key() string
+    Name() string
+    Description() string
+    Type() string
+    Level() int
+    Source() string
+    IsActive() bool
+    CanTrigger(event events.GameEvent) bool
+    TriggerFeature(event events.GameEvent) error
+    GetEventListeners() []events.Listener
+    GetResources() []resources.Resource
+    GetModifiers() []events.Modifier
+    GetProficiencies() []proficiency.Proficiency
+    // ... and more
 }
-
-// Builder accumulates errors
-builder := NewConditionBuilder("poisoned")
-builder.WithTarget(entity)
-condition, err := builder.Build() // Fails here
 ```
 
-### After (Proposed)
+### After (Proposed - ~8 methods)
 ```go
-// Type-safe constants
-feat := features.NewSimple(
-    features.WithRef(standard.Rage),      // Compile-time checked
-    features.FromSource(classes.Barbarian), // Clear source type
-)
+// Complete Rage implementation in ~50 lines
+type RageFeature struct {
+    *features.SimpleFeature
+    usesRemaining int
+    maxUses       int
+    isActive      bool
+    dirty         bool
+}
 
-// Options fail immediately
-condition, err := conditions.NewSimple(
-    conditions.WithRef(standard.Poisoned), // Type-safe constant
-    conditions.WithTarget(entity),         // Validates immediately
-)
+func (r *RageFeature) Activate(target core.Entity) error {
+    if r.isActive {
+        return ErrAlreadyActive
+    }
+    if r.usesRemaining <= 0 {
+        return ErrNoUsesRemaining
+    }
+    
+    r.usesRemaining--
+    r.isActive = true
+    r.dirty = true
+    
+    // Rage handles itself through smart subscriptions
+    event := events.NewGameEvent("feature.activate", r.owner, nil)
+    event.Context().Set("feature_ref", RageRef)
+    return r.eventBus.Publish(context.Background(), event)
+}
 
-// The real test - implementing complex features simply
-func NewRage() *SimpleFeature {
-    return NewSimple(
-        WithRef(refs.Rage),
-        FromSource(sources.ClassBarbarian),
-        OnApply(func(f *SimpleFeature, bus events.EventBus) error {
-            // Focus on WHAT rage does, not HOW to wire it up
-            // This is the complexity we care about
-            return nil
-        }),
-    )
+func (r *RageFeature) GetRemainingUses() string {
+    return fmt.Sprintf("%d/%d", r.usesRemaining, r.maxUses)
+}
+
+func (r *RageFeature) ToJSON() json.RawMessage {
+    return json.Marshal(map[string]interface{}{
+        "ref":            "dnd5e:feature:rage",
+        "uses_remaining": r.usesRemaining,
+        "is_active":      r.isActive,
+    })
 }
