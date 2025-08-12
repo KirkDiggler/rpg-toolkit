@@ -69,24 +69,29 @@ type RageData struct {
     TurnsActive   int    `json:"turns_active"`
 }
 
-// LoadRageFromData recreates Rage from saved state
-func LoadRageFromData(data RageData) *RageFeature {
+// LoadRageFromJSON recreates Rage from saved state
+func LoadRageFromJSON(data json.RawMessage) (*RageFeature, error) {
+    var rageData RageData
+    if err := json.Unmarshal(data, &rageData); err != nil {
+        return nil, err
+    }
+    
     rage := &RageFeature{
-        usesRemaining: data.UsesRemaining,
-        maxUses:       data.MaxUses,
-        isActive:      data.IsActive,
-        turnsActive:   data.TurnsActive,
+        usesRemaining: rageData.UsesRemaining,
+        maxUses:       rageData.MaxUses,
+        isActive:      rageData.IsActive,
+        turnsActive:   rageData.TurnsActive,
     }
     
     rage.SimpleFeature = features.NewSimple(
         features.WithRef(RageRef),
         features.FromSource(Class),
-        features.AtLevel(data.Level),
+        features.AtLevel(rageData.Level),
         features.OnApply(rage.apply),
         features.OnRemove(rage.remove),
     )
     
-    return rage
+    return rage, nil
 }
 
 // apply sets up all the event subscriptions for rage
@@ -339,9 +344,12 @@ rageData := rage.ToData()  // Returns RageData struct
 SaveToDatabase(rageData)
 
 // Loading the character
-var savedData RageData
-LoadFromDatabase(&savedData)
-rage := LoadRageFromData(savedData)  // Returns *RageFeature
+var savedJSON json.RawMessage
+LoadFromDatabase(&savedJSON)
+rage, err := LoadRageFromJSON(savedJSON)  // Returns (*RageFeature, error)
+if err != nil {
+    return err
+}
 barbarian.AddFeature(rage)
 ```
 
