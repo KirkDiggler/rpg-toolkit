@@ -191,44 +191,239 @@ Remember: We're building for real complex behaviors. Every simplification now pa
 ## The Measure of Success
 
 When we implement Rage, it should look like this:
+
 ```go
-func NewRage() *SimpleFeature {
-    return NewSimple(
-        WithRef(refs.Rage),
-        FromSource(sources.ClassBarbarian),
-        AtLevel(1),
-        OnApply(func(f *SimpleFeature, bus events.EventBus) error {
-            // Just the rage logic, nothing else
-            return nil
-        }),
-    )
+// The complete Rage implementation
+type RageFeature struct {
+    *features.SimpleFeature  // Embeds effects.Core
+    usesRemaining int
+    maxUses       int
+    isActive      bool
+}
+
+func (r *RageFeature) Activate(target core.Entity) error {
+    if r.isActive {
+        return AlreadyActiveError()
+    }
+    if r.usesRemaining <= 0 {
+        return NoUsesError()
+    }
+    
+    r.usesRemaining--
+    r.isActive = true
+    r.dirty = true
+    
+    // Fire event - rage handles itself through subscriptions
+    event := events.NewGameEvent("feature.activate", r.owner, nil)
+    event.Context().Set("feature_ref", RageRef)
+    return r.eventBus.Publish(context.Background(), event)
+}
+
+func (r *RageFeature) ToJSON() json.RawMessage {
+    data := RageData{
+        Ref:           "dnd5e:feature:rage",
+        UsesRemaining: r.usesRemaining,
+        IsActive:      r.isActive,
+    }
+    return json.Marshal(data)
+}
+```
+
+## How It Works in Practice
+
+```go
+// Loading from database - simple switch on ref
+func LoadFeatureFromJSON(data json.RawMessage) (Feature, error) {
+    var peek struct {
+        Ref string `json:"ref"`
+    }
+    json.Unmarshal(data, &peek)
+    
+    switch peek.Ref {
+    case "dnd5e:feature:rage":
+        return barbarian.LoadRageFromJSON(data)
+    case "dnd5e:feature:second_wind":
+        return fighter.LoadSecondWindFromJSON(data)
+    default:
+        return nil, fmt.Errorf("unknown feature: %s", peek.Ref)
+    }
+}
+
+// Character activation
+func (c *Character) ActivateFeature(ref string) error {
+    for _, feature := range c.Features {
+        if feature.Ref().String() == ref {
+            return feature.Activate(nil)
+        }
+    }
+    return ErrFeatureNotFound
+}
+
+// End of turn - save dirty features
+func (c *Character) EndTurn() error {
+    for _, feat := range c.features {
+        if feat.IsDirty() {
+            database.Save(feat.ToJSON())
+            feat.MarkClean()
+        }
+    }
+}
+```
+
+## Chapter 4: Smart Event Subscriptions
+
+One more problem emerged - features were hearing ALL events and checking relevance:
+
+```go
+// Every handler was doing this
+func handleDamage(e Event) {
+    if e.Target() != me {
+        return  // Not my damage, ignore
+    }
+    // ...
+}
+```
+
+The solution? Make the event bus smart:
+
+```go
+// Subscribe with filters
+bus.On(events.EventBeforeTakeDamage).
+    ToTarget(myID).  // Only MY damage!
+    Do(func(e Event) {
+        // I know this is my damage
+        applyResistance(e)
+    })
+```
+
+## Chapter 5: Features vs Actions vs Effects
+
+Late one night, we had a revelation - "Everything is just Actions!" But then reality hit:
+
+```go
+// Too abstract!
+type Character struct {
+    actions map[string]Action  // What even is anything?
+}
+```
+
+We pulled back. Features are features, spells are spells. Keep the domain clear:
+
+```go
+type Character struct {
+    Features   []Feature    // Clear
+    Spells     []Spell      // Organized  
+    Conditions []Condition  // Understandable
+}
+```
+
+The lesson: Don't over-abstract too early. Ship something that works, learn, then maybe generalize.
+
+## Chapter 6: The Final Design
+
+### The Interface
+```go
+type Feature interface {
+    // Identity
+    Ref() *core.Ref
+    Name() string
+    
+    // Activation
+    CanActivate() bool
+    Activate(target core.Entity) error
+    
+    // Events
+    Apply(events.EventBus) error
+    
+    // Persistence
+    ToJSON() json.RawMessage
+    IsDirty() bool
+}
+```
+
+### Key Patterns We Settled On
+
+1. **Features own everything** - Ref, implementation, and loader live together
+2. **Simple switch for loading** - No magic registries
+3. **ToJSON for storage, ToData for internals** - Clear separation
+4. **Smart event subscriptions** - Filter at the bus level
+5. **Keep domain concepts clear** - Don't abstract to "actions" yet
+
+## The Final Test: Implementing Complex Features
+
+Here's what Second Wind looks like:
+
+```go
+type SecondWindFeature struct {
+    *features.SimpleFeature
+    used bool
+}
+
+func (s *SecondWindFeature) Activate(target core.Entity) error {
+    if s.used {
+        return AlreadyUsedError()
+    }
+    
+    // Heal 1d10 + level
+    healing := dice.D10(1).GetValue() + s.level
+    s.owner.Heal(healing)
+    
+    s.used = true
+    s.dirty = true
+    
+    return nil
+}
+
+func (s *SecondWindFeature) ToJSON() json.RawMessage {
+    return json.Marshal(map[string]interface{}{
+        "ref":  "dnd5e:feature:second_wind",
+        "used": s.used,
+    })
+}
+```
+
+And here's a spell with targeting:
+
+```go
+type FireballSpell struct {
+    *spells.SimpleSpell
+}
+
+func (f *FireballSpell) NeedsTarget() bool {
+    return true
+}
+
+func (f *FireballSpell) Activate(target core.Entity) error {
+    if !f.owner.HasSpellSlot(3) {
+        return NoSpellSlotsError()
+    }
+    
+    f.owner.UseSpellSlot(3)
+    
+    // Fire the spell event
+    event := events.NewGameEvent("spell.cast", f.owner, target)
+    event.Context().Set("spell", "fireball")
+    event.Context().Set("damage", "8d6")
+    event.Context().Set("save_dc", f.calculateDC())
+    
+    return f.bus.Publish(context.Background(), event)
 }
 ```
 
 ## Assumptions Becoming Clearer
 
-Through this journey, our assumptions are crystallizing:
+Through this journey, our assumptions crystallized:
 
 1. **Features are just effects with metadata** - They subscribe to events and modify game state
 2. **Identity, implementation, and loading live together** - The barbarian package knows everything about barbarian features
 3. **The toolkit provides infrastructure, games provide features** - We give them SimpleFeature, they give us Rage
 4. **Event bus is the nervous system** - Features don't call each other, they react to events
-5. **Data loading is feature-specific** - Each feature knows how to reconstruct itself from saved data
+5. **Keep it simple for alpha** - Ship features as features, learn, then maybe generalize
 
-The add-on module question (like Artificer) is interesting but can wait. For now, we're seeing that if each module owns its features completely, extension becomes natural - just import another package that exports its own features with their own loaders.
+## The Measure of Success
 
-When we implement Fireball, it should be equally obvious:
-```go
-func NewFireball() *SimpleSpell {
-    return NewSimple(
-        WithRef(refs.Fireball),
-        AtLevel(3),
-        OnCast(func(s *SimpleSpell, targets []Entity) error {
-            // Just the fireball logic
-            return nil
-        }),
-    )
-}
-```
+**How simple is it to implement complex features?**
 
-If we achieve this level of simplicity while maintaining extensibility, we've succeeded. The toolkit should make the hard things possible and the simple things trivial.
+With our final design, Rage is ~50 lines of actual logic. No boilerplate, no 14-method interface. Just the game mechanics.
+
+The toolkit makes the hard things possible and the simple things trivial. Mission accomplished.
