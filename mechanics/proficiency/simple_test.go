@@ -33,15 +33,15 @@ func TestSimpleProficiency(t *testing.T) {
 
 	// Create a weapon proficiency that adds bonus to attack rolls
 	weaponProf := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-		ID:      "prof-longsword",
-		Type:    "proficiency.weapon",
-		Owner:   character,
+		ID:    "prof-longsword",
+		Type:  "proficiency.weapon",
+		Owner: character,
 		Subject: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "weapon",
 			Value:  "longsword",
 		}),
-		Source:  &core.Source{
+		Source: &core.Source{
 			Category: core.SourceClass,
 			Name:     "fighter",
 		},
@@ -99,15 +99,15 @@ func TestProficiencyMetadata(t *testing.T) {
 	character := &MockEntity{id: "char-1", typ: "character"}
 
 	prof := proficiency.NewSimpleProficiency(proficiency.SimpleProficiencyConfig{
-		ID:      "prof-athletics",
-		Type:    "proficiency.skill",
-		Owner:   character,
+		ID:    "prof-athletics",
+		Type:  "proficiency.skill",
+		Owner: character,
 		Subject: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "skill",
 			Value:  "athletics",
 		}),
-		Source:  &core.Source{
+		Source: &core.Source{
 			Category: core.SourceClass,
 			Name:     "barbarian",
 		},
