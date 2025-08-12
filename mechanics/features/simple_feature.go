@@ -43,9 +43,9 @@ type SimpleFeatureConfig struct {
 }
 
 // NewSimpleFeature creates a new SimpleFeature with the given configuration.
-func NewSimpleFeature(config SimpleFeatureConfig) *SimpleFeature {
+func NewSimpleFeature(config SimpleFeatureConfig) (*SimpleFeature, error) {
 	if config.Ref == nil {
-		panic("feature ref cannot be nil")
+		return nil, fmt.Errorf("feature ref cannot be nil")
 	}
 	
 	// Create effects.Core for event management
@@ -63,7 +63,7 @@ func NewSimpleFeature(config SimpleFeatureConfig) *SimpleFeature {
 		onActivate:  config.OnActivate,
 		onApply:     config.OnApply,
 		onRemove:    config.OnRemove,
-	}
+	}, nil
 }
 
 // Ref returns the feature's unique identifier.
@@ -141,14 +141,17 @@ func (f *SimpleFeature) Remove(bus events.EventBus) error {
 }
 
 // ToJSON serializes the feature state.
-func (f *SimpleFeature) ToJSON() json.RawMessage {
+func (f *SimpleFeature) ToJSON() (json.RawMessage, error) {
 	data := map[string]interface{}{
 		"ref":       f.ref.String(),
 		"is_active": f.isActive,
 	}
 	
-	bytes, _ := json.Marshal(data)
-	return bytes
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal feature state: %w", err)
+	}
+	return bytes, nil
 }
 
 // IsDirty returns whether the feature has unsaved changes.

@@ -31,9 +31,9 @@ type Feature interface {
 	Remove(bus events.EventBus) error   // Unsubscribe from events
 
 	// Persistence
-	ToJSON() json.RawMessage  // Save feature state
-	IsDirty() bool            // Has state changed since last save?
-	MarkClean()               // Mark as saved
+	ToJSON() (json.RawMessage, error)  // Save feature state
+	IsDirty() bool                     // Has state changed since last save?
+	MarkClean()                        // Mark as saved
 }
 
 // ActivateContext holds options for feature activation.

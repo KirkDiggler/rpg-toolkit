@@ -36,7 +36,7 @@ type RageData struct {
 }
 
 // NewRageFeature creates a new Rage feature.
-func NewRageFeature(level int) *RageFeature {
+func NewRageFeature(level int) (*RageFeature, error) {
 	// Calculate max uses based on level
 	maxUses := calculateRageUses(level)
 	
@@ -51,7 +51,7 @@ func NewRageFeature(level int) *RageFeature {
 	}
 	
 	// Create the SimpleFeature with our configuration
-	rage.SimpleFeature = features.NewSimpleFeature(features.SimpleFeatureConfig{
+	simpleFeature, err := features.NewSimpleFeature(features.SimpleFeatureConfig{
 		Ref:         RageRef,
 		Name:        "Rage",
 		Description: "Enter a battle fury that grants damage resistance and bonus damage",
@@ -60,8 +60,12 @@ func NewRageFeature(level int) *RageFeature {
 		OnApply:     rage.apply,
 		OnRemove:    rage.remove,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rage feature: %w", err)
+	}
 	
-	return rage
+	rage.SimpleFeature = simpleFeature
+	return rage, nil
 }
 
 // activate handles the activation of Rage.
@@ -121,7 +125,7 @@ func (r *RageFeature) remove(bus events.EventBus) error {
 }
 
 // ToJSON serializes the Rage state.
-func (r *RageFeature) ToJSON() json.RawMessage {
+func (r *RageFeature) ToJSON() (json.RawMessage, error) {
 	data := RageData{
 		Ref:           RageRef.String(),
 		UsesRemaining: r.rageResource.Current(),
@@ -129,8 +133,11 @@ func (r *RageFeature) ToJSON() json.RawMessage {
 		TurnsActive:   r.turnsActive,
 	}
 	
-	bytes, _ := json.Marshal(data)
-	return bytes
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal rage state: %w", err)
+	}
+	return bytes, nil
 }
 
 // LoadRageFromJSON recreates a Rage feature from saved data.
@@ -142,7 +149,10 @@ func LoadRageFromJSON(data json.RawMessage) (features.Feature, error) {
 	
 	// Create a new rage feature
 	// In a real implementation, we'd need to know the character's level
-	rage := NewRageFeature(1) // Default to level 1 for example
+	rage, err := NewRageFeature(1) // Default to level 1 for example
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rage feature: %w", err)
+	}
 	
 	// Restore state
 	rage.rageResource.SetCurrent(rageData.UsesRemaining)
