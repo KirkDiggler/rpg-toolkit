@@ -46,7 +46,11 @@
 // Ref Example:
 //
 //	// Define compile-time constants for core features
-//	var Rage = core.MustNewRef("rage", "core", "feature")
+//	var Rage = core.MustNewRef(core.RefInput{
+//		Module: "core",
+//		Type:   "feature",
+//		Value:  "rage",
+//	})
 //
 //	// Track where features come from
 //	feature := core.NewSourcedRef(Rage, "class:barbarian")

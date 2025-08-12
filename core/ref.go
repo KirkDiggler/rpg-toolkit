@@ -195,12 +195,30 @@ func (id *Ref) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// NewRef creates a new identifier with validation
-func NewRef(value, module, idType string) (*Ref, error) {
+// RefInput provides a structured way to create a Ref with clear field names
+type RefInput struct {
+	Module string // e.g., "dnd5e", "core"
+	Type   string // e.g., "spell", "feature", "skill"
+	Value  string // e.g., "charm_person", "rage", "acrobatics"
+}
+
+// NewRef creates a new identifier with validation using RefInput
+func NewRef(input RefInput) (*Ref, error) {
+	// Validate all fields are provided
+	if input.Module == "" {
+		return nil, fmt.Errorf("module cannot be empty")
+	}
+	if input.Type == "" {
+		return nil, fmt.Errorf("type cannot be empty")
+	}
+	if input.Value == "" {
+		return nil, fmt.Errorf("value cannot be empty")
+	}
+
 	id := &Ref{
-		Value:  value,
-		Module: module,
-		Type:   idType,
+		Module: input.Module,
+		Type:   input.Type,
+		Value:  input.Value,
 	}
 
 	if err := id.IsValid(); err != nil {
@@ -212,8 +230,8 @@ func NewRef(value, module, idType string) (*Ref, error) {
 
 // MustNewRef creates a new identifier, panicking on validation error.
 // Use this for compile-time constants where you know the values are valid.
-func MustNewRef(value, module, idType string) *Ref {
-	id, err := NewRef(value, module, idType)
+func MustNewRef(input RefInput) *Ref {
+	id, err := NewRef(input)
 	if err != nil {
 		panic(fmt.Sprintf("invalid identifier: %v", err))
 	}
