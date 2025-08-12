@@ -78,7 +78,7 @@ func (c *SimpleCondition) GetType() string { return c.core.GetType() }
 func (c *SimpleCondition) Target() core.Entity { return c.target }
 
 // Source returns what created this condition
-func (c *SimpleCondition) Source() *core.Source { 
+func (c *SimpleCondition) Source() *core.Source {
 	// TODO: Update effects.Core to support core.Source
 	// For now, return nil - this needs to be properly integrated with effects.Core
 	return nil

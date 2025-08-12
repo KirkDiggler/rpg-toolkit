@@ -95,7 +95,8 @@ func CreateHalfOrcDarkvision() features.Feature {
 
 // CreateDrowDarkvision creates the Drow version of Superior Darkvision.
 func CreateDrowDarkvision() features.Feature {
-	return features.NewBasicFeature(core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature"), "Superior Darkvision").
+	ref := core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature")
+	return features.NewBasicFeature(ref, "Superior Darkvision").
 		WithDescription("You can see in dim light within 120 feet of you as if it were bright light, " +
 			"and in darkness as if it were dim light.").
 		WithType(features.FeatureRacial).

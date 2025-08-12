@@ -117,7 +117,9 @@ func TestProficiencyMetadata(t *testing.T) {
 	}
 
 	expectedSource := &core.Source{Category: core.SourceClass, Name: "Barbarian"}
-	if prof.Source() == nil || prof.Source().Category != expectedSource.Category || prof.Source().Name != expectedSource.Name {
-		t.Errorf("Expected source %v, got %v", expectedSource, prof.Source())
+	actualSource := prof.Source()
+	if actualSource == nil || actualSource.Category != expectedSource.Category ||
+		actualSource.Name != expectedSource.Name {
+		t.Errorf("Expected source %v, got %v", expectedSource, actualSource)
 	}
 }

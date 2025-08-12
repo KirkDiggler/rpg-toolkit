@@ -92,7 +92,7 @@ func (p *SimpleProficiency) Owner() core.Entity { return p.owner }
 func (p *SimpleProficiency) Subject() *core.Ref { return p.subject }
 
 // Source returns what granted this proficiency
-func (p *SimpleProficiency) Source() *core.Source { 
+func (p *SimpleProficiency) Source() *core.Source {
 	return p.source
 }
 

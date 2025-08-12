@@ -94,7 +94,8 @@ func TestRegistryGetFeaturesForRace(t *testing.T) {
 		WithType(features.FeatureRacial).
 		WithPrerequisites("race:half-orc")
 
-	drowFeature := features.NewBasicFeature(core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature"), "Superior Darkvision").
+	ref := core.MustNewRef("superior_darkvision", "dnd5e", "racial_feature")
+	drowFeature := features.NewBasicFeature(ref, "Superior Darkvision").
 		WithType(features.FeatureRacial).
 		WithPrerequisites("race:drow")
 

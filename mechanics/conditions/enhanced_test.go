@@ -103,7 +103,7 @@ func TestSimpleCondition(t *testing.T) {
 	assert.Equal(t, "test-condition", cond.GetID())
 	assert.Equal(t, "burning", cond.GetType())
 	assert.Equal(t, target, cond.Target())
-	// TODO: Source() should return *core.Source with proper value once effects.Core supports it  
+	// TODO: Source() should return *core.Source with proper value once effects.Core supports it
 	assert.Nil(t, cond.Source()) // Currently returns nil until core.Source is fully implemented
 }
 
