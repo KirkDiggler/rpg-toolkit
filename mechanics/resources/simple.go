@@ -14,7 +14,7 @@ type SimpleResourceConfig struct {
 	ID      string
 	Type    ResourceType
 	Owner   core.Entity
-	Key     string
+	Key     *core.Ref
 	Current int
 	Maximum int
 
@@ -36,7 +36,7 @@ type SimpleResource struct {
 	id      string
 	typ     ResourceType
 	owner   core.Entity
-	key     string
+	key     *core.Ref
 	current int
 	maximum int
 
@@ -112,7 +112,7 @@ func (r *SimpleResource) GetType() string { return string(r.typ) }
 func (r *SimpleResource) Owner() core.Entity { return r.owner }
 
 // Key returns the resource identifier
-func (r *SimpleResource) Key() string { return r.key }
+func (r *SimpleResource) Key() *core.Ref { return r.key }
 
 // Current returns the current amount
 func (r *SimpleResource) Current() int { return r.current }
@@ -127,7 +127,7 @@ func (r *SimpleResource) Consume(amount int) error {
 	}
 
 	if amount > r.current {
-		return fmt.Errorf("insufficient %s: have %d, need %d", r.key, r.current, amount)
+		return fmt.Errorf("insufficient %s: have %d, need %d", r.key.String(), r.current, amount)
 	}
 
 	r.current -= amount

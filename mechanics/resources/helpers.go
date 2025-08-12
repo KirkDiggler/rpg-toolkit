@@ -17,10 +17,14 @@ func CreateSpellSlots(owner core.Entity, slots map[int]int) []Resource {
 	for level := 1; level <= 9; level++ {
 		if maxSlots, exists := slots[level]; exists && maxSlots > 0 {
 			resource := NewSimpleResource(SimpleResourceConfig{
-				ID:              fmt.Sprintf("%s-spell-slots-%d", owner.GetID(), level),
-				Type:            ResourceTypeSpellSlot,
-				Owner:           owner,
-				Key:             fmt.Sprintf("spell_slots_%d", level),
+				ID:    fmt.Sprintf("%s-spell-slots-%d", owner.GetID(), level),
+				Type:  ResourceTypeSpellSlot,
+				Owner: owner,
+				Key: core.MustNewRef(core.RefInput{
+					Module: "core",
+					Type:   "spell_slot",
+					Value:  fmt.Sprintf("level_%d", level),
+				}),
 				Current:         maxSlots,
 				Maximum:         maxSlots,
 				RestoreType:     RestoreLongRest,
@@ -48,10 +52,14 @@ func CreateAbilityUse(owner core.Entity, abilityName string, maxUses int, restor
 	}
 
 	return NewSimpleResource(SimpleResourceConfig{
-		ID:               fmt.Sprintf("%s-%s-uses", owner.GetID(), abilityName),
-		Type:             ResourceTypeAbilityUse,
-		Owner:            owner,
-		Key:              fmt.Sprintf("%s_uses", abilityName),
+		ID:    fmt.Sprintf("%s-%s-uses", owner.GetID(), abilityName),
+		Type:  ResourceTypeAbilityUse,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "ability_use",
+			Value:  fmt.Sprintf("%s_uses", abilityName),
+		}),
 		Current:          maxUses,
 		Maximum:          maxUses,
 		RestoreType:      restoreType,
@@ -63,10 +71,14 @@ func CreateAbilityUse(owner core.Entity, abilityName string, maxUses int, restor
 // CreateHitDice creates hit dice resources for a character.
 func CreateHitDice(owner core.Entity, hitDieType string, level int) Resource {
 	return NewSimpleResource(SimpleResourceConfig{
-		ID:              fmt.Sprintf("%s-hit-dice-%s", owner.GetID(), hitDieType),
-		Type:            ResourceTypeHitDice,
-		Owner:           owner,
-		Key:             fmt.Sprintf("hit_dice_%s", hitDieType),
+		ID:    fmt.Sprintf("%s-hit-dice-%s", owner.GetID(), hitDieType),
+		Type:  ResourceTypeHitDice,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "hit_dice",
+			Value:  hitDieType,
+		}),
 		Current:         level,
 		Maximum:         level,
 		RestoreType:     RestoreLongRest,
@@ -79,30 +91,42 @@ func CreateActionEconomy(owner core.Entity) []Resource {
 	resources := []Resource{
 		// Standard action
 		NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-action", owner.GetID()),
-			Type:        ResourceTypeAction,
-			Owner:       owner,
-			Key:         "action",
+			ID:    fmt.Sprintf("%s-action", owner.GetID()),
+			Type:  ResourceTypeAction,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
+				Module: "core",
+				Type:   "action",
+				Value:  "standard",
+			}),
 			Current:     1,
 			Maximum:     1,
 			RestoreType: RestoreTurn,
 		}),
 		// Bonus action
 		NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-bonus-action", owner.GetID()),
-			Type:        ResourceTypeBonusAction,
-			Owner:       owner,
-			Key:         "bonus_action",
+			ID:    fmt.Sprintf("%s-bonus-action", owner.GetID()),
+			Type:  ResourceTypeBonusAction,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
+				Module: "core",
+				Type:   "action",
+				Value:  "bonus",
+			}),
 			Current:     1,
 			Maximum:     1,
 			RestoreType: RestoreTurn,
 		}),
 		// Reaction
 		NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-reaction", owner.GetID()),
-			Type:        ResourceTypeReaction,
-			Owner:       owner,
-			Key:         "reaction",
+			ID:    fmt.Sprintf("%s-reaction", owner.GetID()),
+			Type:  ResourceTypeReaction,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
+				Module: "core",
+				Type:   "action",
+				Value:  "reaction",
+			}),
 			Current:     1,
 			Maximum:     1,
 			RestoreType: RestoreTurn,
@@ -134,10 +158,14 @@ func CreateRageUses(owner core.Entity, level int) Resource {
 	// At level 20, barbarians have unlimited rages
 	if uses == -1 {
 		return NewSimpleResource(SimpleResourceConfig{
-			ID:          fmt.Sprintf("%s-rage-uses", owner.GetID()),
-			Type:        ResourceTypeAbilityUse,
-			Owner:       owner,
-			Key:         "rage_uses",
+			ID:    fmt.Sprintf("%s-rage-uses", owner.GetID()),
+			Type:  ResourceTypeAbilityUse,
+			Owner: owner,
+			Key: core.MustNewRef(core.RefInput{
+				Module: "core",
+				Type:   "ability_use",
+				Value:  "rage_uses",
+			}),
 			Current:     999, // Effectively unlimited
 			Maximum:     999,
 			RestoreType: RestoreNever, // Doesn't need restoration
@@ -154,10 +182,14 @@ func CreateKiPoints(owner core.Entity, level int) Resource {
 	}
 
 	return NewSimpleResource(SimpleResourceConfig{
-		ID:               fmt.Sprintf("%s-ki-points", owner.GetID()),
-		Type:             ResourceTypeAbilityUse,
-		Owner:            owner,
-		Key:              "ki_points",
+		ID:    fmt.Sprintf("%s-ki-points", owner.GetID()),
+		Type:  ResourceTypeAbilityUse,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "ability_use",
+			Value:  "ki_points",
+		}),
 		Current:          level,
 		Maximum:          level,
 		RestoreType:      RestoreShortRest,

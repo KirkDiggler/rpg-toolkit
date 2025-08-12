@@ -22,19 +22,19 @@ type Pool interface {
 	Add(resource Resource) error
 
 	// Remove removes a resource from the pool by key.
-	Remove(key string) error
+	Remove(key *core.Ref) error
 
 	// Get retrieves a resource by key.
-	Get(key string) (Resource, bool)
+	Get(key *core.Ref) (Resource, bool)
 
 	// GetByType retrieves all resources of a specific type.
 	GetByType(resourceType ResourceType) []Resource
 
 	// Consume attempts to consume from a specific resource.
-	Consume(key string, amount int, bus events.EventBus) error
+	Consume(key *core.Ref, amount int, bus events.EventBus) error
 
 	// Restore restores a specific resource.
-	Restore(key string, amount int, reason string, bus events.EventBus) error
+	Restore(key *core.Ref, amount int, reason string, bus events.EventBus) error
 
 	// ProcessShortRest processes a short rest for all resources.
 	// Deprecated: Use ProcessRestoration("short_rest", bus) instead
@@ -85,23 +85,24 @@ func (p *SimplePool) Add(resource Resource) error {
 		return fmt.Errorf("resource owner mismatch")
 	}
 
-	p.resources[resource.Key()] = resource
+	p.resources[resource.Key().String()] = resource
 	return nil
 }
 
 // Remove removes a resource from the pool
-func (p *SimplePool) Remove(key string) error {
-	if _, exists := p.resources[key]; !exists {
-		return fmt.Errorf("resource not found: %s", key)
+func (p *SimplePool) Remove(key *core.Ref) error {
+	keyStr := key.String()
+	if _, exists := p.resources[keyStr]; !exists {
+		return fmt.Errorf("resource not found: %s", keyStr)
 	}
 
-	delete(p.resources, key)
+	delete(p.resources, keyStr)
 	return nil
 }
 
 // Get retrieves a resource by key
-func (p *SimplePool) Get(key string) (Resource, bool) {
-	resource, exists := p.resources[key]
+func (p *SimplePool) Get(key *core.Ref) (Resource, bool) {
+	resource, exists := p.resources[key.String()]
 	return resource, exists
 }
 
@@ -117,10 +118,11 @@ func (p *SimplePool) GetByType(resourceType ResourceType) []Resource {
 }
 
 // Consume attempts to consume from a specific resource
-func (p *SimplePool) Consume(key string, amount int, bus events.EventBus) error {
-	resource, exists := p.resources[key]
+func (p *SimplePool) Consume(key *core.Ref, amount int, bus events.EventBus) error {
+	keyStr := key.String()
+	resource, exists := p.resources[keyStr]
 	if !exists {
-		return fmt.Errorf("resource not found: %s", key)
+		return fmt.Errorf("resource not found: %s", keyStr)
 	}
 
 	if err := resource.Consume(amount); err != nil {
@@ -141,10 +143,11 @@ func (p *SimplePool) Consume(key string, amount int, bus events.EventBus) error 
 }
 
 // Restore restores a specific resource
-func (p *SimplePool) Restore(key string, amount int, reason string, bus events.EventBus) error {
-	resource, exists := p.resources[key]
+func (p *SimplePool) Restore(key *core.Ref, amount int, reason string, bus events.EventBus) error {
+	keyStr := key.String()
+	resource, exists := p.resources[keyStr]
 	if !exists {
-		return fmt.Errorf("resource not found: %s", key)
+		return fmt.Errorf("resource not found: %s", keyStr)
 	}
 
 	oldCurrent := resource.Current()
@@ -193,8 +196,12 @@ func (p *SimplePool) GetSpellSlots() map[int]Resource {
 
 	// Look for spell slots by standard keys
 	for level := 1; level <= 9; level++ {
-		key := fmt.Sprintf("spell_slots_%d", level)
-		if resource, exists := p.resources[key]; exists {
+		key := core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "spell_slot",
+			Value:  fmt.Sprintf("level_%d", level),
+		})
+		if resource, exists := p.resources[key.String()]; exists {
 			slots[level] = resource
 		}
 	}
@@ -205,16 +212,25 @@ func (p *SimplePool) GetSpellSlots() map[int]Resource {
 // ConsumeSpellSlot attempts to consume a spell slot of the specified level or higher
 func (p *SimplePool) ConsumeSpellSlot(level int, bus events.EventBus) error {
 	// Try to consume at the exact level first
-	key := fmt.Sprintf("spell_slots_%d", level)
+	key := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "spell_slot",
+		Value:  fmt.Sprintf("level_%d", level),
+	})
 	if err := p.Consume(key, 1, bus); err == nil {
 		return nil
 	}
 
 	// Try higher level slots
 	for higherLevel := level + 1; higherLevel <= 9; higherLevel++ {
-		key = fmt.Sprintf("spell_slots_%d", higherLevel)
-		if resource, exists := p.resources[key]; exists && resource.IsAvailable() {
-			return p.Consume(key, 1, bus)
+		higherKey := core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "spell_slot",
+			Value:  fmt.Sprintf("level_%d", higherLevel),
+		})
+		keyStr := higherKey.String()
+		if resource, exists := p.resources[keyStr]; exists && resource.IsAvailable() {
+			return p.Consume(higherKey, 1, bus)
 		}
 	}
 

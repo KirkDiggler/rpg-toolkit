@@ -6,6 +6,7 @@ package resources_test
 import (
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
@@ -30,7 +31,12 @@ func TestSimplePool(t *testing.T) {
 	}
 
 	// Test retrieval
-	slot1, exists := pool.Get("spell_slots_1")
+	slot1Key := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "spell_slot",
+		Value:  "level_1",
+	})
+	slot1, exists := pool.Get(slot1Key)
 	if !exists {
 		t.Fatal("Expected to find spell_slots_1")
 	}
@@ -40,7 +46,7 @@ func TestSimplePool(t *testing.T) {
 
 	// Test consumption with event bus
 	bus := events.NewBus()
-	err := pool.Consume("spell_slots_1", 1, bus)
+	err := pool.Consume(slot1Key, 1, bus)
 	if err != nil {
 		t.Fatalf("Failed to consume spell slot: %v", err)
 	}
@@ -55,7 +61,12 @@ func TestSimplePool(t *testing.T) {
 		t.Fatalf("Failed to consume level 2 spell slot: %v", err)
 	}
 
-	slot2, _ := pool.Get("spell_slots_2")
+	slot2Key := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "spell_slot",
+		Value:  "level_2",
+	})
+	slot2, _ := pool.Get(slot2Key)
 	if slot2.Current() != 2 {
 		t.Errorf("Expected 2 level 2 slots remaining, got %d", slot2.Current())
 	}
@@ -93,11 +104,21 @@ func TestPoolRests(t *testing.T) {
 	}
 
 	// Use both abilities
-	err = pool.Consume("second_wind_uses", 1, bus)
+	secondWindKey := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "ability_use",
+		Value:  "second_wind_uses",
+	})
+	err = pool.Consume(secondWindKey, 1, bus)
 	if err != nil {
 		t.Fatalf("Failed to consume second_wind: %v", err)
 	}
-	err = pool.Consume("action_surge_uses", 1, bus)
+	actionSurgeKey := core.MustNewRef(core.RefInput{
+		Module: "core",
+		Type:   "ability_use",
+		Value:  "action_surge_uses",
+	})
+	err = pool.Consume(actionSurgeKey, 1, bus)
 	if err != nil {
 		t.Fatalf("Failed to consume action_surge: %v", err)
 	}

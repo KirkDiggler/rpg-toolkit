@@ -3,11 +3,12 @@ package initiative_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
 )
 
 func TestRollForOrder(t *testing.T) {

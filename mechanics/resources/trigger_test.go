@@ -6,6 +6,7 @@ package resources_test
 import (
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
@@ -15,10 +16,14 @@ func TestGenericTriggers(t *testing.T) {
 
 	// Create a resource with custom triggers
 	channelDivinity := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "channel-divinity",
-		Type:    resources.ResourceTypeAbilityUse,
-		Owner:   owner,
-		Key:     "channel_divinity",
+		ID:    "channel-divinity",
+		Type:  resources.ResourceTypeAbilityUse,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "core",
+			Type:   "ability_use",
+			Value:  "channel_divinity",
+		}),
 		Current: 0,
 		Maximum: 2,
 		RestoreTriggers: map[string]int{
@@ -55,10 +60,14 @@ func TestPoolProcessRestoration(t *testing.T) {
 
 	// Create resources with different triggers
 	divineResource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "divine-power",
-		Type:    resources.ResourceTypeCustom,
-		Owner:   owner,
-		Key:     "divine_power",
+		ID:    "divine-power",
+		Type:  resources.ResourceTypeCustom,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "test",
+			Type:   "resource",
+			Value:  "divine_power",
+		}),
 		Current: 0,
 		Maximum: 3,
 		RestoreTriggers: map[string]int{
@@ -68,10 +77,14 @@ func TestPoolProcessRestoration(t *testing.T) {
 	})
 
 	arcaneResource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:      "arcane-surge",
-		Type:    resources.ResourceTypeCustom,
-		Owner:   owner,
-		Key:     "arcane_surge",
+		ID:    "arcane-surge",
+		Type:  resources.ResourceTypeCustom,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "test",
+			Type:   "resource",
+			Value:  "arcane_surge",
+		}),
 		Current: 1,
 		Maximum: 2,
 		RestoreTriggers: map[string]int{
@@ -117,10 +130,14 @@ func TestLegacyCompatibility(t *testing.T) {
 
 	// Create resource with legacy configuration
 	resource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:               "legacy-resource",
-		Type:             resources.ResourceTypeAbilityUse,
-		Owner:            owner,
-		Key:              "legacy",
+		ID:    "legacy-resource",
+		Type:  resources.ResourceTypeAbilityUse,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "test",
+			Type:   "resource",
+			Value:  "legacy",
+		}),
 		Current:          0,
 		Maximum:          3,
 		RestoreType:      resources.RestoreShortRest,
@@ -147,10 +164,14 @@ func TestMixedConfiguration(t *testing.T) {
 	// Create resource with both legacy and trigger configuration
 	// Triggers should take precedence
 	resource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-		ID:              "mixed-resource",
-		Type:            resources.ResourceTypeCustom,
-		Owner:           owner,
-		Key:             "mixed",
+		ID:    "mixed-resource",
+		Type:  resources.ResourceTypeCustom,
+		Owner: owner,
+		Key: core.MustNewRef(core.RefInput{
+			Module: "test",
+			Type:   "resource",
+			Value:  "mixed",
+		}),
 		Current:         0,
 		Maximum:         5,
 		RestoreType:     resources.RestoreLongRest,
