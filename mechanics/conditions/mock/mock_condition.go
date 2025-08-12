@@ -10,12 +10,13 @@
 package mock
 
 import (
+	json "encoding/json"
 	reflect "reflect"
-
-	gomock "go.uber.org/mock/gomock"
 
 	core "github.com/KirkDiggler/rpg-toolkit/core"
 	events "github.com/KirkDiggler/rpg-toolkit/events"
+	conditions "github.com/KirkDiggler/rpg-toolkit/mechanics/conditions"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockCondition is a mock of Condition interface.
@@ -43,45 +44,36 @@ func (m *MockCondition) EXPECT() *MockConditionMockRecorder {
 }
 
 // Apply mocks base method.
-func (m *MockCondition) Apply(bus events.EventBus) error {
+func (m *MockCondition) Apply(target core.Entity, bus events.EventBus, opts ...conditions.ApplyOption) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Apply", bus)
+	varargs := []any{target, bus}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Apply", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Apply indicates an expected call of Apply.
-func (mr *MockConditionMockRecorder) Apply(bus any) *gomock.Call {
+func (mr *MockConditionMockRecorder) Apply(target, bus any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockCondition)(nil).Apply), bus)
+	varargs := append([]any{target, bus}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockCondition)(nil).Apply), varargs...)
 }
 
-// GetID mocks base method.
-func (m *MockCondition) GetID() string {
+// Description mocks base method.
+func (m *MockCondition) Description() string {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetID")
+	ret := m.ctrl.Call(m, "Description")
 	ret0, _ := ret[0].(string)
 	return ret0
 }
 
-// GetID indicates an expected call of GetID.
-func (mr *MockConditionMockRecorder) GetID() *gomock.Call {
+// Description indicates an expected call of Description.
+func (mr *MockConditionMockRecorder) Description() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetID", reflect.TypeOf((*MockCondition)(nil).GetID))
-}
-
-// GetType mocks base method.
-func (m *MockCondition) GetType() string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetType")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// GetType indicates an expected call of GetType.
-func (mr *MockConditionMockRecorder) GetType() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetType", reflect.TypeOf((*MockCondition)(nil).GetType))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Description", reflect.TypeOf((*MockCondition)(nil).Description))
 }
 
 // IsActive mocks base method.
@@ -96,6 +88,60 @@ func (m *MockCondition) IsActive() bool {
 func (mr *MockConditionMockRecorder) IsActive() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsActive", reflect.TypeOf((*MockCondition)(nil).IsActive))
+}
+
+// IsDirty mocks base method.
+func (m *MockCondition) IsDirty() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsDirty")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsDirty indicates an expected call of IsDirty.
+func (mr *MockConditionMockRecorder) IsDirty() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDirty", reflect.TypeOf((*MockCondition)(nil).IsDirty))
+}
+
+// MarkClean mocks base method.
+func (m *MockCondition) MarkClean() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "MarkClean")
+}
+
+// MarkClean indicates an expected call of MarkClean.
+func (mr *MockConditionMockRecorder) MarkClean() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkClean", reflect.TypeOf((*MockCondition)(nil).MarkClean))
+}
+
+// Name mocks base method.
+func (m *MockCondition) Name() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Name")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// Name indicates an expected call of Name.
+func (mr *MockConditionMockRecorder) Name() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Name", reflect.TypeOf((*MockCondition)(nil).Name))
+}
+
+// Ref mocks base method.
+func (m *MockCondition) Ref() *core.Ref {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Ref")
+	ret0, _ := ret[0].(*core.Ref)
+	return ret0
+}
+
+// Ref indicates an expected call of Ref.
+func (mr *MockConditionMockRecorder) Ref() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ref", reflect.TypeOf((*MockCondition)(nil).Ref))
 }
 
 // Remove mocks base method.
@@ -138,4 +184,19 @@ func (m *MockCondition) Target() core.Entity {
 func (mr *MockConditionMockRecorder) Target() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Target", reflect.TypeOf((*MockCondition)(nil).Target))
+}
+
+// ToJSON mocks base method.
+func (m *MockCondition) ToJSON() (json.RawMessage, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ToJSON")
+	ret0, _ := ret[0].(json.RawMessage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ToJSON indicates an expected call of ToJSON.
+func (mr *MockConditionMockRecorder) ToJSON() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToJSON", reflect.TypeOf((*MockCondition)(nil).ToJSON))
 }

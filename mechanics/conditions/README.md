@@ -1,95 +1,166 @@
 # Conditions System
 
-The conditions system provides generic infrastructure for implementing status effects in tabletop RPGs. Games define their own condition types and effects using the provided building blocks.
+The conditions system provides infrastructure for status effects and conditions in RPG games. Following our data-driven architecture, conditions are loaded from data at runtime and modify game behavior through event handlers.
 
 ## Design Philosophy
 
-This is **infrastructure, not implementation**. The toolkit provides:
-- Generic condition types and effect frameworks
-- Builder patterns for easy condition creation
-- Event-driven effect application
-- Condition management with immunity/suppression
-- Relationship tracking (concentration, auras, etc.)
+**Everything is data-driven at runtime.** The toolkit provides:
+- Simple `Condition` interface with essential methods
+- `SimpleCondition` that embeds `effects.Core` for common functionality
+- Options pattern for flexible condition application
+- `ConditionData` loader for extracting ref + JSON for routing
+- Well-defined error types for clear communication
 
-Games implement their specific rules using these tools.
+Games implement their specific conditions using these building blocks.
 
 ## Basic Usage
 
-### 1. Define Your Game's Conditions
+### 1. Implement Your Condition
 
 ```go
-// Register your game's condition types
-conditions.RegisterConditionDefinition(&conditions.ConditionDefinition{
-    Type:        conditions.ConditionType("poisoned"),
-    Name:        "Poisoned",
-    Description: "A poisoned creature has disadvantage on attack rolls and ability checks.",
-    Effects: []conditions.ConditionEffect{
-        {Type: conditions.EffectDisadvantage, Target: conditions.TargetAttackRolls},
-        {Type: conditions.EffectDisadvantage, Target: conditions.TargetAbilityChecks},
-    },
-})
+// Embed SimpleCondition for common functionality
+type PoisonedCondition struct {
+    *conditions.SimpleCondition
+}
 
-conditions.RegisterConditionDefinition(&conditions.ConditionDefinition{
-    Type:        conditions.ConditionType("unconscious"),
-    Name:        "Unconscious", 
-    Description: "An unconscious creature is incapacitated and prone.",
-    Effects: []conditions.ConditionEffect{
-        {Type: conditions.EffectIncapacitated, Target: conditions.TargetActions},
-    },
-    Includes: []conditions.ConditionType{
-        conditions.ConditionType("incapacitated"),
-        conditions.ConditionType("prone"),
-    },
-})
+func NewPoisonedCondition() (*PoisonedCondition, error) {
+    ref := &core.Ref{
+        Category: "dnd5e",
+        Type:     "condition",
+        ID:       "poisoned",
+    }
+    
+    simple, err := conditions.NewSimpleCondition(ref)
+    if err != nil {
+        return nil, err
+    }
+    
+    simple.SetName("Poisoned")
+    simple.SetDescription("Disadvantage on attack rolls and ability checks")
+    
+    return &PoisonedCondition{
+        SimpleCondition: simple,
+    }, nil
+}
+
+// Override Apply to register event handlers
+func (p *PoisonedCondition) Apply(target core.Entity, bus events.EventBus, opts ...conditions.ApplyOption) error {
+    // First apply using SimpleCondition
+    if err := p.SimpleCondition.Apply(target, bus, opts...); err != nil {
+        return err
+    }
+    
+    // Register our handlers for disadvantage
+    p.Subscribe(bus, events.EventOnAttackRoll, 100, func(ctx context.Context, e events.Event) error {
+        if e.Source() == p.Target() {
+            e.Context().AddModifier(events.NewModifier(
+                "poisoned_disadvantage",
+                events.ModifierDisadvantage,
+                events.IntValue(1),
+                100,
+            ))
+        }
+        return nil
+    })
+    
+    return nil
+}
 ```
 
-### 2. Create Condition Builder Helpers
+### 2. Load Conditions from Data
 
 ```go
-// Your game can create convenient builder functions
-func Poisoned() *conditions.ConditionBuilder {
-    return conditions.NewConditionBuilder(conditions.ConditionType("poisoned"))
+// Load condition data (from database, file, etc)
+jsonData := []byte(`{
+    "ref": {"category": "dnd5e", "type": "condition", "id": "poisoned"},
+    "name": "Poisoned",
+    "description": "Disadvantage on attacks and checks",
+    "metadata": {"save_dc": 13}
+}`)
+
+// Extract ref and JSON for routing
+condData, err := conditions.Load(jsonData)
+if err != nil {
+    log.Fatal(err)
 }
 
-func Unconscious() *conditions.ConditionBuilder {
-    return conditions.NewConditionBuilder(conditions.ConditionType("unconscious"))
+// Route to the right implementation based on ref
+var cond conditions.Condition
+switch condData.Ref().ID {
+case "poisoned":
+    cond, err = NewPoisonedCondition()
+    // Load any saved state if needed
+case "stunned":
+    cond, err = NewStunnedCondition()
+default:
+    return fmt.Errorf("unknown condition: %s", condData.Ref())
 }
 ```
 
-### 3. Apply Conditions
+### 3. Apply Conditions with Options
 
 ```go
 bus := events.NewBus()
-manager := conditions.NewConditionManager(bus)
 
-// Apply a condition
-poisoned, err := Poisoned().
-    WithTarget(character).
-    WithSource("spider_bite").
-    WithSaveDC(13).
-    WithMinutesDuration(10).
-    Build()
+// Create and apply a condition
+poisoned, _ := NewPoisonedCondition()
 
-if err := manager.ApplyCondition(poisoned); err != nil {
-    log.Fatal(err)
+err := poisoned.Apply(character, bus,
+    conditions.WithSource("spider_bite"),
+    conditions.WithSaveDC(13),
+    conditions.WithDuration(10 * time.Minute),
+    conditions.WithMetadata("poison_type", "venom"),
+)
+
+if err != nil {
+    // Handle errors appropriately
+    switch {
+    case errors.Is(err, conditions.ErrAlreadyActive):
+        fmt.Println("Already poisoned")
+    case errors.Is(err, conditions.ErrConditionImmune):
+        fmt.Println("Target is immune to poison")
+    default:
+        log.Fatal(err)
+    }
 }
 ```
 
-### 4. Handle Game-Specific Logic
+### 4. Manage Multiple Conditions
 
 ```go
-// Your game can add immunity
-manager.AddImmunity(paladin, conditions.ConditionType("frightened"))
-
-// Check conditions
-if manager.HasCondition(character, conditions.ConditionType("poisoned")) {
-    fmt.Println("Character is poisoned!")
+// Track conditions on an entity
+type Character struct {
+    conditions []conditions.Condition
 }
 
-// Get all conditions for display
-activeConditions := manager.GetConditions(character)
-for _, cond := range activeConditions {
-    fmt.Printf("- %s (from %s)\n", cond.GetType(), cond.Source())
+func (c *Character) AddCondition(cond conditions.Condition, bus events.EventBus) error {
+    // Check for duplicates
+    for _, existing := range c.conditions {
+        if existing.Ref().Equals(cond.Ref()) {
+            return conditions.ErrAlreadyActive
+        }
+    }
+    
+    // Apply the condition
+    if err := cond.Apply(c, bus); err != nil {
+        return err
+    }
+    
+    c.conditions = append(c.conditions, cond)
+    return nil
+}
+
+func (c *Character) RemoveCondition(ref *core.Ref, bus events.EventBus) error {
+    for i, cond := range c.conditions {
+        if cond.Ref().Equals(ref) {
+            if err := cond.Remove(bus); err != nil {
+                return err
+            }
+            c.conditions = append(c.conditions[:i], c.conditions[i+1:]...)
+            return nil
+        }
+    }
+    return conditions.ErrNotActive
 }
 ```
 
@@ -160,13 +231,41 @@ For complete examples of how to implement specific game systems:
 - **D&D 5e**: See `/examples/dnd5e/conditions/`
 - **Custom Systems**: The tests show various usage patterns
 
-## Architecture
+## Simplified Architecture
 
-The conditions system follows our core principles:
+The conditions system follows our simplified patterns:
 
-1. **Generic Infrastructure**: Provides building blocks, not rules
-2. **Event-Driven**: Integrates seamlessly with the event bus
-3. **Entity-Based**: Conditions are entities with full lifecycle management
-4. **Composable**: Mix and match effects to create complex conditions
+### Core Interface
+```go
+type Condition interface {
+    Ref() *core.Ref
+    Name() string
+    Description() string
+    Target() core.Entity
+    Source() string
+    Apply(target core.Entity, bus events.EventBus, opts ...ApplyOption) error
+    IsActive() bool
+    Remove(bus events.EventBus) error
+    ToJSON() (json.RawMessage, error)
+    IsDirty() bool
+    MarkClean()
+}
+```
 
-This allows the same infrastructure to support D&D 5e, Pathfinder, custom homebrew systems, or any other RPG ruleset.
+### Key Patterns
+
+1. **SimpleCondition with effects.Core**: Common functionality for all conditions
+2. **Options Pattern**: Flexible condition application without builder accumulation
+3. **Data-Driven Loading**: Extract ref + JSON for routing to implementations
+4. **Well-Defined Errors**: Clear communication for different failure modes
+5. **Event-Driven Effects**: Conditions modify behavior through event subscriptions
+
+### Benefits
+
+- **Simpler Interface**: Only 11 essential methods (was more complex)
+- **No Builder Accumulation**: Options pattern with immediate validation
+- **Clear Error Handling**: Typed errors for different scenarios
+- **Consistent with Features**: Same patterns across the toolkit
+- **Runtime Flexibility**: Everything loads from data, no compile-time coupling
+
+This infrastructure supports any RPG system while keeping implementations simple and maintainable.

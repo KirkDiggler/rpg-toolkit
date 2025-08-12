@@ -6,32 +6,48 @@
 package conditions
 
 import (
+	"encoding/json"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 // Condition represents a status effect that affects an entity.
-// Conditions are entities themselves, allowing them to be persisted,
-// queried, and managed like other game objects.
+// Conditions modify game behavior through event handlers and can be
+// persisted/loaded as data.
 //
 //go:generate mockgen -destination=mock/mock_condition.go -package=mock github.com/KirkDiggler/rpg-toolkit/mechanics/conditions Condition
 type Condition interface {
-	core.Entity // Conditions are entities with ID and Type
+	// Ref returns the condition's reference for identification
+	Ref() *core.Ref
 
-	// Target returns the entity this condition affects.
+	// Name returns the display name of the condition
+	Name() string
+
+	// Description returns what this condition does
+	Description() string
+
+	// Target returns the entity this condition affects
 	Target() core.Entity
 
-	// Source returns what created this condition (spell name, item, etc).
+	// Source returns what created this condition (spell, ability, etc)
 	Source() string
 
-	// IsActive returns whether the condition is currently active.
+	// Apply activates the condition's effects
+	Apply(target core.Entity, bus events.EventBus, opts ...ApplyOption) error
+
+	// IsActive returns whether the condition is currently applied
 	IsActive() bool
 
-	// Apply registers the condition's effects with the event system.
-	// Called when the condition is first added to an entity.
-	Apply(bus events.EventBus) error
-
-	// Remove unregisters the condition's effects from the event system.
-	// Called when the condition is removed from an entity.
+	// Remove deactivates the condition's effects
 	Remove(bus events.EventBus) error
+
+	// ToJSON serializes the condition state
+	ToJSON() (json.RawMessage, error)
+
+	// IsDirty returns true if the condition has unsaved changes
+	IsDirty() bool
+
+	// MarkClean marks the condition as having no unsaved changes
+	MarkClean()
 }
