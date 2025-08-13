@@ -1,162 +1,158 @@
-// Package events provides an event bus for handling game events.
+// Copyright (C) 2024 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Package events provides a simple, type-safe event bus for game systems.
+// Events are defined in their domain packages and the bus is just plumbing.
 package events
 
 import (
-	"context"
 	"fmt"
-	"sort"
+	"reflect"
 	"sync"
 )
 
-// Handler processes events.
-type Handler interface {
-	// Handle processes the event.
-	Handle(ctx context.Context, event Event) error
-
-	// Priority determines handler execution order (higher = later).
-	Priority() int
+// Event is the minimal interface for all events.
+// Events are defined in their domain packages.
+type Event interface {
+	Type() string // Returns the event type identifier
 }
 
-// EventBus manages event publishing and subscriptions.
-//
-//go:generate mockgen -destination=mock/mock_eventbus.go -package=mock github.com/KirkDiggler/rpg-toolkit/events EventBus
+// Filter determines if a handler should receive an event.
+// Return true to receive the event, false to skip it.
+type Filter func(event Event) bool
+
+// EventBus handles event publishing and subscriptions.
 type EventBus interface {
-	// Publish sends an event to all subscribers.
-	Publish(ctx context.Context, event Event) error
-
-	// Subscribe registers a handler for specific event types.
-	Subscribe(eventType string, handler Handler) (subscriptionID string)
-
-	// SubscribeFunc is a convenience method for function handlers.
-	SubscribeFunc(eventType string, priority int, fn HandlerFunc) (subscriptionID string)
-
-	// Unsubscribe removes a subscription.
-	Unsubscribe(subscriptionID string) error
-
-	// Clear removes all subscriptions for an event type.
-	Clear(eventType string)
-
-	// ClearAll removes all subscriptions.
-	ClearAll()
+	// Publish sends an event to all subscribers
+	Publish(event Event) error
+	
+	// Subscribe registers a handler for events of the given type
+	// Handler should be func(T) error where T is the event type
+	Subscribe(eventType string, handler any) (string, error)
+	
+	// SubscribeWithFilter registers a handler with a filter
+	SubscribeWithFilter(eventType string, handler any, filter Filter) (string, error)
+	
+	// Unsubscribe removes a subscription by ID
+	Unsubscribe(id string) error
+	
+	// Clear removes all subscriptions (useful for tests)
+	Clear()
 }
 
-// subscription holds handler information.
-type subscription struct {
-	id        string
-	handler   Handler
-	eventType string
-}
-
-// funcHandler wraps a HandlerFunc to implement Handler.
-type funcHandler struct {
-	fn       HandlerFunc
-	priority int
-}
-
-func (h *funcHandler) Handle(ctx context.Context, event Event) error {
-	return h.fn(ctx, event)
-}
-
-func (h *funcHandler) Priority() int {
-	return h.priority
-}
-
-// Bus is the default EventBus implementation.
+// Bus is the simple, synchronous event bus implementation.
 type Bus struct {
-	mu            sync.RWMutex
-	subscriptions map[string][]*subscription
-	idCounter     int
+	mu       sync.RWMutex
+	handlers map[string][]handlerEntry
+	nextID   int
+}
+
+type handlerEntry struct {
+	id      string
+	handler reflect.Value
+	filter  Filter // nil means no filter
 }
 
 // NewBus creates a new event bus.
 func NewBus() *Bus {
 	return &Bus{
-		subscriptions: make(map[string][]*subscription),
+		handlers: make(map[string][]handlerEntry),
 	}
 }
 
-// Publish sends an event to all subscribers.
-func (b *Bus) Publish(ctx context.Context, event Event) error {
+// Publish sends an event to all registered handlers.
+func (b *Bus) Publish(event Event) error {
 	b.mu.RLock()
-	subs := b.subscriptions[event.Type()]
-	// Create a copy to avoid holding the lock during handler execution
-	handlers := make([]*subscription, len(subs))
-	copy(handlers, subs)
-	b.mu.RUnlock()
-
-	// Sort handlers by priority
-	// TODO: Consider maintaining sorted order on subscribe to avoid sorting on every publish
-	sort.Slice(handlers, func(i, j int) bool {
-		return handlers[i].handler.Priority() < handlers[j].handler.Priority()
-	})
-
-	// Execute handlers
-	for _, sub := range handlers {
-		// Skip if event has been cancelled
-		if event.IsCancelled() {
-			break
+	defer b.mu.RUnlock()
+	
+	eventType := event.Type()
+	handlers := b.handlers[eventType]
+	
+	// Call each handler that passes its filter
+	eventValue := reflect.ValueOf(event)
+	for _, entry := range handlers {
+		// Check filter
+		if entry.filter != nil && !entry.filter(event) {
+			continue // Skip this handler
 		}
-
-		if err := sub.handler.Handle(ctx, event); err != nil {
-			return fmt.Errorf("handler %s failed: %w", sub.id, err)
+		
+		// Call handler
+		results := entry.handler.Call([]reflect.Value{eventValue})
+		
+		// Check for error return
+		if len(results) > 0 && !results[0].IsNil() {
+			if err, ok := results[0].Interface().(error); ok {
+				return fmt.Errorf("handler %s failed: %w", entry.id, err)
+			}
 		}
 	}
-
+	
 	return nil
 }
 
-// Subscribe registers a handler for specific event types.
-func (b *Bus) Subscribe(eventType string, handler Handler) string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+// Subscribe registers a handler for events of the given type.
+func (b *Bus) Subscribe(eventType string, handler any) (string, error) {
+	return b.SubscribeWithFilter(eventType, handler, nil)
+}
 
-	b.idCounter++
-	id := fmt.Sprintf("%s-%d", eventType, b.idCounter)
-
-	sub := &subscription{
-		id:        id,
-		handler:   handler,
-		eventType: eventType,
+// SubscribeWithFilter registers a handler with a filter.
+func (b *Bus) SubscribeWithFilter(eventType string, handler any, filter Filter) (string, error) {
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+	
+	// Validate handler signature
+	if handlerType.Kind() != reflect.Func {
+		return "", fmt.Errorf("handler must be a function")
 	}
-
-	b.subscriptions[eventType] = append(b.subscriptions[eventType], sub)
-	return id
-}
-
-// SubscribeFunc is a convenience method for function handlers.
-func (b *Bus) SubscribeFunc(eventType string, priority int, fn HandlerFunc) string {
-	return b.Subscribe(eventType, &funcHandler{fn: fn, priority: priority})
-}
-
-// Unsubscribe removes a subscription.
-func (b *Bus) Unsubscribe(subscriptionID string) error {
+	
+	if handlerType.NumIn() != 1 {
+		return "", fmt.Errorf("handler must take exactly one parameter")
+	}
+	
+	if handlerType.NumOut() != 1 || handlerType.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
+		return "", fmt.Errorf("handler must return error")
+	}
+	
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	
+	// Generate subscription ID
+	b.nextID++
+	id := fmt.Sprintf("sub-%d", b.nextID)
+	
+	// Add handler
+	b.handlers[eventType] = append(b.handlers[eventType], handlerEntry{
+		id:      id,
+		handler: handlerValue,
+		filter:  filter,
+	})
+	
+	return id, nil
+}
 
-	// Find and remove the subscription
-	for eventType, subs := range b.subscriptions {
-		for i, sub := range subs {
-			if sub.id == subscriptionID {
-				// Remove the subscription
-				b.subscriptions[eventType] = append(subs[:i], subs[i+1:]...)
+// Unsubscribe removes a subscription by ID.
+func (b *Bus) Unsubscribe(id string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	
+	// Find and remove the handler
+	for eventType, handlers := range b.handlers {
+		for i, entry := range handlers {
+			if entry.id == id {
+				// Remove this handler
+				b.handlers[eventType] = append(handlers[:i], handlers[i+1:]...)
 				return nil
 			}
 		}
 	}
-
-	return fmt.Errorf("subscription %s not found", subscriptionID)
+	
+	return fmt.Errorf("subscription %s not found", id)
 }
 
-// Clear removes all subscriptions for an event type.
-func (b *Bus) Clear(eventType string) {
+// Clear removes all subscriptions.
+func (b *Bus) Clear() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	delete(b.subscriptions, eventType)
-}
-
-// ClearAll removes all subscriptions.
-func (b *Bus) ClearAll() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.subscriptions = make(map[string][]*subscription)
+	
+	b.handlers = make(map[string][]handlerEntry)
 }

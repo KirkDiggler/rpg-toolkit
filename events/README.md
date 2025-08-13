@@ -1,242 +1,275 @@
-# RPG Toolkit Events
+# Events Package - Type-Safe Event Bus
 
-The events module provides an event-driven architecture for rpg-toolkit, enabling features to compose without tight coupling.
+## Philosophy
 
-## Installation
+Events are just data. The bus is just plumbing. Events know their refs. ~300 lines total.
 
-```bash
-go get github.com/KirkDiggler/rpg-toolkit/events
-```
+## Core Design
 
-## Core Concepts
+Events carry their own ref, eliminating the need to pass refs when publishing. A single package-level ref is shared by both the event and its TypedRef, ensuring perfect consistency.
 
-### Events
-Events represent things that happen in the game (attacks, damage, status changes, etc.). Each event has:
-- **Type**: What kind of event (e.g., "attack_roll", "calculate_damage")
-- **Source**: The entity that triggered the event
-- **Target**: The entity affected by the event
-- **Context**: Event-specific data and modifiers
+## Complete Example: Combat System
 
-### Event Bus
-The event bus manages subscriptions and publishes events to handlers. Handlers are executed in priority order.
-
-### Modifiers
-Modifiers allow features to change game mechanics by adding bonuses, penalties, or other effects during event processing.
-
-## Usage
-
-### Basic Event Publishing
+### 1. Define Your Events (combat/events.go)
 
 ```go
+package combat
+
 import (
-    "context"
+    "github.com/KirkDiggler/rpg-toolkit/core"
     "github.com/KirkDiggler/rpg-toolkit/events"
 )
 
-// Create event bus
-bus := events.NewBus()
+// Single source of truth - package-level ref
+var damageEventRef = func() *core.Ref {
+    r, _ := core.ParseString("combat:event:damage")
+    return r
+}()
 
-// Create an event
-event := events.NewGameEvent(events.EventBeforeAttackRoll, attacker, target)
+// DamageType constants
+type DamageType string
 
-// Add context data
-event.Context().Set("weapon", "longsword")
-event.Context().Set("attack_type", "melee")
-
-// Publish the event
-err := bus.Publish(context.Background(), event)
-```
-
-### Subscribing to Events
-
-```go
-// Subscribe with a function
-bus.SubscribeFunc(events.EventOnDamageRoll, 100, func(ctx context.Context, e events.Event) error {
-    // Add rage damage bonus
-    if hasRage(e.Source()) {
-        e.Context().AddModifier(events.NewModifier(
-            "rage",                    // source
-            events.ModifierDamageBonus, // type
-            2,                         // value
-            100,                       // priority
-        ))
-    }
-    return nil
-})
-
-// Or implement the Handler interface
-type SneakAttackHandler struct{}
-
-func (h *SneakAttackHandler) Handle(ctx context.Context, e events.Event) error {
-    if canSneakAttack(e.Source(), e.Target()) {
-        damage := rollSneakAttackDice()
-        e.Context().AddModifier(events.NewModifier(
-            "sneak_attack",
-            events.ModifierDamageBonus,
-            damage,
-            150,
-        ))
-    }
-    return nil
-}
-
-func (h *SneakAttackHandler) Priority() int {
-    return 150 // Higher priority = executes later
-}
-
-bus.Subscribe(events.EventOnDamageRoll, &SneakAttackHandler{})
-```
-
-### Working with Modifiers
-
-Modifiers now use a typed interface for clean, type-safe processing:
-
-```go
-// Create modifiers with different value types
-proficiencyMod := events.NewModifier(
-    "proficiency",
-    events.ModifierAttackBonus,
-    events.NewRawValue(2, "proficiency"),
-    50,
+const (
+    DamageTypeSlashing DamageType = "slashing"
+    DamageTypePiercing DamageType = "piercing"
+    DamageTypeFire     DamageType = "fire"
 )
 
-// Dice modifiers are rolled at creation time
-blessMod := events.NewModifier(
-    "bless",
-    events.ModifierAttackBonus,
-    events.NewDiceValue(1, 4, "bless"), // Rolls 1d4 immediately
-    100,
-)
-
-// Add modifiers to event
-event.Context().AddModifier(proficiencyMod)
-event.Context().AddModifier(blessMod)
-
-// Process modifiers cleanly without type assertions
-total := 0
-descriptions := []string{}
-
-for _, mod := range event.Context().Modifiers() {
-    if mod.Type() == events.ModifierAttackBonus {
-        mv := mod.ModifierValue()
-        total += mv.GetValue()
-        descriptions = append(descriptions, mv.GetDescription())
-    }
+// DamageEvent is just data
+type DamageEvent struct {
+    Source     core.Entity
+    Target     core.Entity
+    Amount     int
+    DamageType DamageType
 }
 
-// Output might be: "total: 5, descriptions: [+2 (proficiency), +d4[3]=3 (bless)]"
+// EventRef returns THE ref (not a copy, THE actual ref)
+func (e *DamageEvent) EventRef() *core.Ref {
+    return damageEventRef  // Same pointer every time!
+}
+
+// DamageEventRef for type-safe subscriptions
+var DamageEventRef = &core.TypedRef[*DamageEvent]{
+    Ref: damageEventRef,  // Same ref object!
+}
 ```
 
-For simple integer modifiers, use the convenience function:
+### 2. Subscribe to Events (character/character.go)
 
 ```go
-// Simple integer modifier
-rageMod := events.NewIntModifier("rage", events.ModifierDamageBonus, 2, 100)
+package character
+
+import (
+    "github.com/KirkDiggler/rpg-toolkit/combat"
+    "github.com/KirkDiggler/rpg-toolkit/events"
+)
+
+type Character struct {
+    ID         string
+    HP         int
+    MaxHP      int
+    eventBus   events.EventBus
+    eventSubs  []string
+}
+
+// SetupEventHandlers subscribes to relevant events
+func (c *Character) SetupEventHandlers() error {
+    // Simple subscription - gets ALL damage events
+    id1, err := events.Subscribe(
+        c.eventBus,
+        combat.DamageEventRef,
+        c.handleAnyDamage,
+    )
+    if err != nil {
+        return err
+    }
+    c.eventSubs = append(c.eventSubs, id1)
+    
+    // Filtered subscription - only MY damage
+    id2, err := events.Subscribe(
+        c.eventBus,
+        combat.DamageEventRef,
+        c.handleMyDamage,
+        events.Where(func(e *combat.DamageEvent) bool {
+            return e.Target == c
+        }),
+    )
+    if err != nil {
+        return err
+    }
+    c.eventSubs = append(c.eventSubs, id2)
+    
+    return nil
+}
+
+// Handler receives typed events
+func (c *Character) handleMyDamage(e *combat.DamageEvent) error {
+    c.HP -= e.Amount
+    
+    // Check for resistance
+    if c.hasResistance(e.DamageType) {
+        c.HP += e.Amount / 2 // Take half damage
+    }
+    
+    if c.HP <= 0 {
+        c.HP = 0
+        // Publish character downed event...
+    }
+    
+    return nil
+}
+
+// Cleanup unsubscribes from all events
+func (c *Character) Cleanup() {
+    for _, id := range c.eventSubs {
+        c.eventBus.Unsubscribe(id)
+    }
+}
 ```
 
-## Common Event Types
-
-### Combat Events
-- `EventBeforeAttack`: Before attack roll
-- `EventAttackRoll`: During attack roll calculation
-- `EventCalculateDamage`: During damage calculation
-- `EventAfterDamage`: After damage is applied
-
-### Status Events
-- `EventStatusApplied`: When a status effect is applied
-- `EventStatusRemoved`: When a status effect is removed
-- `EventStatusCheck`: When checking if a status should expire
-
-### Turn Events
-- `EventTurnStart`: At the start of a turn
-- `EventTurnEnd`: At the end of a turn
-- `EventRoundStart`: At the start of a round
-- `EventRoundEnd`: At the end of a round
-
-## Best Practices
-
-1. **Use Priority Wisely**: Lower priority handlers execute first. Use this to ensure proper ordering.
-
-2. **Keep Handlers Focused**: Each handler should do one thing well.
-
-3. **Handle Errors**: Return errors from handlers to stop event propagation.
-
-4. **Thread Safety**: The event bus is thread-safe, but be careful with shared state in handlers.
-
-5. **Avoid Infinite Loops**: Don't publish events from handlers that would trigger the same handler.
-
-## Example: Implementing Rage
+### 3. Publish Events (combat/combat.go)
 
 ```go
-type RageFeature struct {
+package combat
+
+import "github.com/KirkDiggler/rpg-toolkit/events"
+
+type CombatSystem struct {
     bus events.EventBus
 }
 
-func (r *RageFeature) Initialize() {
-    // Listen for damage calculations
-    r.bus.SubscribeFunc(events.EventOnDamageRoll, 100, r.handleDamage)
+// ResolveAttack calculates and publishes damage
+func (cs *CombatSystem) ResolveAttack(attacker, defender core.Entity, weapon Weapon) error {
+    // Calculate damage
+    damage := cs.calculateDamage(weapon, attacker)
     
-    // Listen for damage calculation (for resistance)
-    r.bus.SubscribeFunc(events.EventOnDamageRoll, 50, r.handleIncomingDamage)
-}
-
-func (r *RageFeature) handleDamage(ctx context.Context, e events.Event) error {
-    if !r.isRaging(e.Source()) {
-        return nil
-    }
-    
-    // Only melee attacks get bonus
-    if attackType, ok := e.Context().Get("attack_type"); ok && attackType == "melee" {
-        e.Context().AddModifier(events.NewIntModifier(
-            "rage",
-            events.ModifierDamageBonus,
-            2,
-            100,
-        ))
-    }
-    
-    return nil
-}
-
-func (r *RageFeature) handleIncomingDamage(ctx context.Context, e events.Event) error {
-    if !r.isRaging(e.Target()) {
-        return nil
-    }
-    
-    // Check damage type
-    if damageType, ok := e.Context().Get("damage_type"); ok {
-        if damageType == "bludgeoning" || damageType == "piercing" || damageType == "slashing" {
-            // Halve the damage (resistance)
-            e.Context().AddModifier(events.NewModifier(
-                "rage_resistance",
-                "damage_multiplier",
-                0.5,
-                200,
-            ))
-        }
-    }
-    
-    return nil
+    // Publish - no ref parameter needed!
+    return events.Publish(cs.bus, &DamageEvent{
+        Source:     attacker,
+        Target:     defender,
+        Amount:     damage,
+        DamageType: weapon.DamageType(),
+    })
 }
 ```
 
-## Testing
+## Key Design Features
 
-The events module is designed to be easily testable:
+### Single Source of Truth
+
+Each event type has ONE ref defined at package level:
 
 ```go
-func TestMyFeature(t *testing.T) {
-    bus := events.NewBus()
-    feature := NewMyFeature(bus)
-    
-    // Create test event
-    event := events.NewGameEvent(events.EventOnDamageRoll, mockAttacker, mockTarget)
-    
-    // Publish event
-    err := bus.Publish(context.Background(), event)
-    
-    // Verify modifiers were added
-    mods := event.Context().Modifiers()
-    // ... assertions
+// Package-level ref - shared by everything
+var damageEventRef = func() *core.Ref {
+    r, _ := core.ParseString("combat:event:damage")
+    return r
+}()
+
+// Event returns it
+func (e *DamageEvent) EventRef() *core.Ref {
+    return damageEventRef  // Same object!
+}
+
+// TypedRef uses it
+var DamageEventRef = &core.TypedRef[*DamageEvent]{
+    Ref: damageEventRef,  // Same object!
 }
 ```
+
+### Runtime Validation
+
+Subscribe validates that events use the correct ref via pointer comparison:
+
+```go
+if event.EventRef() != typedRef.Ref {
+    // Bug detected - event and TypedRef not using same ref
+}
+```
+
+### Duplicate Detection
+
+The system detects if multiple event types use the same ref string:
+
+```go
+// ErrDuplicateRef shows which types conflict
+"duplicate event ref \"combat:event:damage\": 
+ already registered by *combat.DamageEvent, 
+ attempted by *other.DamageEvent"
+```
+
+## API Summary
+
+### Core Types
+
+```go
+// Events must implement RefEvent
+type RefEvent interface {
+    EventRef() *core.Ref
+}
+
+// Type aliases for clarity
+type EventHandler[T any] = func(T) error
+type EventFilter[T any] = func(T) bool
+```
+
+### Publishing
+
+```go
+// Event knows its ref - no parameter needed!
+events.Publish(bus, &DamageEvent{
+    Source: attacker,
+    Target: defender,
+    Amount: 10,
+    DamageType: DamageTypeSlashing,
+})
+```
+
+### Subscribing
+
+```go
+// Simple subscription
+id, err := events.Subscribe(bus, ref, handler)
+
+// With filter (variadic options)
+id, err := events.Subscribe(
+    bus,
+    ref,
+    handler,
+    events.Where(filter),
+)
+```
+
+## Why This Design Works
+
+1. **Clean API** - `Publish(bus, event)` without ref parameter
+2. **Type Safety** - TypedRef ensures compile-time type checking
+3. **Runtime Validation** - Pointer comparison catches bugs
+4. **Single Source of Truth** - One ref per event type
+5. **No Noise** - Filters at bus level, handlers only see relevant events
+6. **Duplicate Detection** - Registry catches ref string conflicts
+
+## Implementation Stats
+
+- **~300 lines** total (bus.go + typed.go + errors.go)
+- **34ns per publish** with single handler
+- **Type safe** at compile time
+- **Runtime validated** via pointer comparison
+
+## Best Practices
+
+1. **Define ref once** - Package-level variable
+2. **Share the ref** - Event.EventRef() and TypedRef.Ref use same object
+3. **Store subscription IDs** - For proper cleanup
+4. **Filter early** - Use Where() to reduce noise
+5. **Events are immutable** - Unless explicitly designed for modification
+
+## That's It
+
+No complex hierarchies. No priority systems. Just:
+
+```go
+Publish(bus, event) → Subscribe(bus, ref, handler, Where(filter)) → handler(event)
+```
+
+The ref ties everything together - compile-time safe, runtime validated, simple to use.

@@ -6,7 +6,7 @@ go 1.24
 // Licensed under GPL-3.0-or-later
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/core v0.3.0
 	go.uber.org/mock v0.5.2
 )
 

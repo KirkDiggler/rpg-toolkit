@@ -3,7 +3,7 @@ module github.com/KirkDiggler/rpg-toolkit/examples/dndbot_integration
 go 1.24.1
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/core v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency v0.0.0
 	github.com/stretchr/testify v1.10.0
