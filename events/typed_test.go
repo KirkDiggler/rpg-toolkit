@@ -5,7 +5,7 @@ package events_test
 
 import (
 	"testing"
-	
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
@@ -22,20 +22,20 @@ type TestDamageEvent struct {
 }
 
 func (e *TestDamageEvent) EventRef() *core.Ref {
-	return testDamageRef  // Returns THE ref
+	return testDamageRef // Returns THE ref
 }
 
 var TestDamageEventRef = &core.TypedRef[*TestDamageEvent]{
-	Ref: testDamageRef,  // Uses THE ref
+	Ref: testDamageRef, // Uses THE ref
 }
 
 func TestTypedPublishSubscribe(t *testing.T) {
 	bus := events.NewBus()
-	
+
 	received := false
-	
+
 	// Subscribe with TypedRef
-	id, err := events.Subscribe(bus, TestDamageEventRef, 
+	id, err := events.Subscribe(bus, TestDamageEventRef,
 		func(e *TestDamageEvent) error {
 			received = true
 			if e.Amount != 10 {
@@ -47,7 +47,7 @@ func TestTypedPublishSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Subscribe failed: %v", err)
 	}
-	
+
 	// Publish - event knows its ref
 	err = events.Publish(bus, &TestDamageEvent{
 		Target: "player",
@@ -56,22 +56,24 @@ func TestTypedPublishSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	
+
 	if !received {
 		t.Error("handler not called")
 	}
-	
-	bus.Unsubscribe(id)
+
+	if err := bus.Unsubscribe(id); err != nil {
+		t.Fatalf("Unsubscribe failed: %v", err)
+	}
 }
 
 func TestTypedFilter(t *testing.T) {
 	bus := events.NewBus()
-	
+
 	highDamageCount := 0
-	
+
 	// Subscribe with filter
-	events.Subscribe(bus, TestDamageEventRef,
-		func(e *TestDamageEvent) error {
+	_, err := events.Subscribe(bus, TestDamageEventRef,
+		func(_ *TestDamageEvent) error {
 			highDamageCount++
 			return nil
 		},
@@ -79,12 +81,21 @@ func TestTypedFilter(t *testing.T) {
 			return e.Amount > 5
 		}),
 	)
-	
+	if err != nil {
+		t.Fatalf("Subscribe failed: %v", err)
+	}
+
 	// Publish events
-	events.Publish(bus, &TestDamageEvent{Target: "a", Amount: 3})  // Filtered
-	events.Publish(bus, &TestDamageEvent{Target: "b", Amount: 10}) // Passes
-	events.Publish(bus, &TestDamageEvent{Target: "c", Amount: 7})  // Passes
-	
+	if err := events.Publish(bus, &TestDamageEvent{Target: "a", Amount: 3}); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+	if err := events.Publish(bus, &TestDamageEvent{Target: "b", Amount: 10}); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+	if err := events.Publish(bus, &TestDamageEvent{Target: "c", Amount: 7}); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+
 	if highDamageCount != 2 {
 		t.Errorf("expected highDamageCount=2, got %d", highDamageCount)
 	}

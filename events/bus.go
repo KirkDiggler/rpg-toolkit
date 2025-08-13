@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// Event is the minimal interface for all events.
-// Events are defined in their domain packages.
+// Event is the interface for all events.
+// Events must return their ref for type-safe routing.
 type Event interface {
-	Type() string // Returns the event type identifier
+	EventRef() *core.Ref
 }
 
 // Filter determines if a handler should receive an event.
@@ -25,17 +27,17 @@ type Filter func(event Event) bool
 type EventBus interface {
 	// Publish sends an event to all subscribers
 	Publish(event Event) error
-	
-	// Subscribe registers a handler for events of the given type
+
+	// Subscribe registers a handler for events with the given ref
 	// Handler should be func(T) error where T is the event type
-	Subscribe(eventType string, handler any) (string, error)
-	
+	Subscribe(ref *core.Ref, handler any) (string, error)
+
 	// SubscribeWithFilter registers a handler with a filter
-	SubscribeWithFilter(eventType string, handler any, filter Filter) (string, error)
-	
+	SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (string, error)
+
 	// Unsubscribe removes a subscription by ID
 	Unsubscribe(id string) error
-	
+
 	// Clear removes all subscriptions (useful for tests)
 	Clear()
 }
@@ -49,6 +51,7 @@ type Bus struct {
 
 type handlerEntry struct {
 	id      string
+	ref     *core.Ref // The ref this handler is subscribed to
 	handler reflect.Value
 	filter  Filter // nil means no filter
 }
@@ -64,69 +67,75 @@ func NewBus() *Bus {
 func (b *Bus) Publish(event Event) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	
-	eventType := event.Type()
-	handlers := b.handlers[eventType]
-	
-	// Call each handler that passes its filter
-	eventValue := reflect.ValueOf(event)
-	for _, entry := range handlers {
-		// Check filter
-		if entry.filter != nil && !entry.filter(event) {
-			continue // Skip this handler
-		}
-		
-		// Call handler
-		results := entry.handler.Call([]reflect.Value{eventValue})
-		
-		// Check for error return
-		if len(results) > 0 && !results[0].IsNil() {
-			if err, ok := results[0].Interface().(error); ok {
-				return fmt.Errorf("handler %s failed: %w", entry.id, err)
+
+	// Find handlers by comparing ref pointers
+	for _, entries := range b.handlers {
+		for _, entry := range entries {
+			// Check if this handler wants this event (pointer comparison!)
+			if entry.ref != event.EventRef() {
+				continue
+			}
+
+			// Check filter
+			if entry.filter != nil && !entry.filter(event) {
+				continue
+			}
+
+			// Call handler
+			eventValue := reflect.ValueOf(event)
+			results := entry.handler.Call([]reflect.Value{eventValue})
+
+			// Check for error return
+			if len(results) > 0 && !results[0].IsNil() {
+				if err, ok := results[0].Interface().(error); ok {
+					return fmt.Errorf("handler %s failed: %w", entry.id, err)
+				}
 			}
 		}
 	}
-	
+
 	return nil
 }
 
-// Subscribe registers a handler for events of the given type.
-func (b *Bus) Subscribe(eventType string, handler any) (string, error) {
-	return b.SubscribeWithFilter(eventType, handler, nil)
+// Subscribe registers a handler for events with the given ref.
+func (b *Bus) Subscribe(ref *core.Ref, handler any) (string, error) {
+	return b.SubscribeWithFilter(ref, handler, nil)
 }
 
 // SubscribeWithFilter registers a handler with a filter.
-func (b *Bus) SubscribeWithFilter(eventType string, handler any, filter Filter) (string, error) {
+func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (string, error) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
-	
+
 	// Validate handler signature
 	if handlerType.Kind() != reflect.Func {
 		return "", fmt.Errorf("handler must be a function")
 	}
-	
+
 	if handlerType.NumIn() != 1 {
 		return "", fmt.Errorf("handler must take exactly one parameter")
 	}
-	
+
 	if handlerType.NumOut() != 1 || handlerType.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
 		return "", fmt.Errorf("handler must return error")
 	}
-	
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	// Generate subscription ID
 	b.nextID++
 	id := fmt.Sprintf("sub-%d", b.nextID)
-	
-	// Add handler
-	b.handlers[eventType] = append(b.handlers[eventType], handlerEntry{
+
+	// Add handler - use ref string just for grouping in map
+	refStr := ref.String()
+	b.handlers[refStr] = append(b.handlers[refStr], handlerEntry{
 		id:      id,
+		ref:     ref,
 		handler: handlerValue,
 		filter:  filter,
 	})
-	
+
 	return id, nil
 }
 
@@ -134,7 +143,7 @@ func (b *Bus) SubscribeWithFilter(eventType string, handler any, filter Filter) 
 func (b *Bus) Unsubscribe(id string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	// Find and remove the handler
 	for eventType, handlers := range b.handlers {
 		for i, entry := range handlers {
@@ -145,7 +154,7 @@ func (b *Bus) Unsubscribe(id string) error {
 			}
 		}
 	}
-	
+
 	return fmt.Errorf("subscription %s not found", id)
 }
 
@@ -153,6 +162,6 @@ func (b *Bus) Unsubscribe(id string) error {
 func (b *Bus) Clear() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	b.handlers = make(map[string][]handlerEntry)
 }
