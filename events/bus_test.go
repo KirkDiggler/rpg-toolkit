@@ -20,10 +20,18 @@ var testEventRef = func() *core.Ref {
 type TestEvent struct {
 	Target string
 	Value  int
+	ctx    *events.EventContext
 }
 
 func (e TestEvent) EventRef() *core.Ref {
 	return testEventRef
+}
+
+func (e TestEvent) Context() *events.EventContext {
+	if e.ctx == nil {
+		return events.NewEventContext()
+	}
+	return e.ctx
 }
 
 func TestBusPublishSubscribe(t *testing.T) {

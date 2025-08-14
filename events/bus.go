@@ -14,9 +14,10 @@ import (
 )
 
 // Event is the interface for all events.
-// Events must return their ref for type-safe routing.
+// Events must return their ref for type-safe routing and provide a context for modifications.
 type Event interface {
 	EventRef() *core.Ref
+	Context() *EventContext
 }
 
 // Filter determines if a handler should receive an event.

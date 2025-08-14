@@ -16,16 +16,21 @@ var testDamageRef = func() *core.Ref {
 	return r
 }()
 
-type TestDamageEvent struct {
+type TypedDamageEvent struct {
 	Target string
 	Amount int
 }
 
-func (e *TestDamageEvent) EventRef() *core.Ref {
+func (e *TypedDamageEvent) EventRef() *core.Ref {
 	return testDamageRef // Returns THE ref
 }
 
-var TestDamageEventRef = &core.TypedRef[*TestDamageEvent]{
+// Context implements the Event interface
+func (e *TypedDamageEvent) Context() *events.EventContext {
+	return events.NewEventContext() // For tests, just return a new context
+}
+
+var TypedDamageEventRef = &core.TypedRef[*TypedDamageEvent]{
 	Ref: testDamageRef, // Uses THE ref
 }
 
@@ -35,8 +40,8 @@ func TestTypedPublishSubscribe(t *testing.T) {
 	received := false
 
 	// Subscribe with TypedRef
-	id, err := events.Subscribe(bus, TestDamageEventRef,
-		func(e *TestDamageEvent) error {
+	id, err := events.Subscribe(bus, TypedDamageEventRef,
+		func(e *TypedDamageEvent) error {
 			received = true
 			if e.Amount != 10 {
 				t.Errorf("expected Amount=10, got %d", e.Amount)
@@ -49,7 +54,7 @@ func TestTypedPublishSubscribe(t *testing.T) {
 	}
 
 	// Publish - event knows its ref
-	err = events.Publish(bus, &TestDamageEvent{
+	err = events.Publish(bus, &TypedDamageEvent{
 		Target: "player",
 		Amount: 10,
 	})
@@ -72,12 +77,12 @@ func TestTypedFilter(t *testing.T) {
 	highDamageCount := 0
 
 	// Subscribe with filter
-	_, err := events.Subscribe(bus, TestDamageEventRef,
-		func(_ *TestDamageEvent) error {
+	_, err := events.Subscribe(bus, TypedDamageEventRef,
+		func(_ *TypedDamageEvent) error {
 			highDamageCount++
 			return nil
 		},
-		events.Where(func(e *TestDamageEvent) bool {
+		events.Where(func(e *TypedDamageEvent) bool {
 			return e.Amount > 5
 		}),
 	)
@@ -86,13 +91,13 @@ func TestTypedFilter(t *testing.T) {
 	}
 
 	// Publish events
-	if err := events.Publish(bus, &TestDamageEvent{Target: "a", Amount: 3}); err != nil {
+	if err := events.Publish(bus, &TypedDamageEvent{Target: "a", Amount: 3}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := events.Publish(bus, &TestDamageEvent{Target: "b", Amount: 10}); err != nil {
+	if err := events.Publish(bus, &TypedDamageEvent{Target: "b", Amount: 10}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := events.Publish(bus, &TestDamageEvent{Target: "c", Amount: 7}); err != nil {
+	if err := events.Publish(bus, &TypedDamageEvent{Target: "c", Amount: 7}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
 
