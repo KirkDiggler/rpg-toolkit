@@ -77,19 +77,3 @@ func (r *Resource) IsEmpty() bool {
 func (r *Resource) IsFull() bool {
 	return r.Current == r.Maximum
 }
-
-// min returns the smaller of two integers.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// max returns the larger of two integers.
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

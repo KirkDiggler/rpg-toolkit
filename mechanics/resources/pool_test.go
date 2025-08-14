@@ -33,7 +33,7 @@ func (s *PoolTestSuite) TestAddGetResource() {
 	// Add resources
 	spell := resources.NewResource("spell_slots", 3)
 	rage := resources.NewResource("rage", 2)
-	
+
 	pool.AddResource(spell)
 	pool.AddResource(rage)
 
@@ -62,7 +62,7 @@ func (s *PoolTestSuite) TestAddGetCounter() {
 	// Add counters
 	death := resources.NewCounter("death_saves", 3)
 	attacks := resources.NewCounter("attacks", 0)
-	
+
 	pool.AddCounter(death)
 	pool.AddCounter(attacks)
 
@@ -87,10 +87,10 @@ func (s *PoolTestSuite) TestAddGetCounter() {
 
 func (s *PoolTestSuite) TestRemoveResource() {
 	pool := resources.NewPool()
-	
+
 	r1 := resources.NewResource("resource1", 5)
 	r2 := resources.NewResource("resource2", 10)
-	
+
 	pool.AddResource(r1)
 	pool.AddResource(r2)
 	s.Len(pool.Resources, 2)
@@ -98,10 +98,10 @@ func (s *PoolTestSuite) TestRemoveResource() {
 	// Remove existing
 	pool.RemoveResource("resource1")
 	s.Len(pool.Resources, 1)
-	
+
 	_, ok := pool.GetResource("resource1")
 	s.False(ok)
-	
+
 	_, ok = pool.GetResource("resource2")
 	s.True(ok)
 
@@ -112,10 +112,10 @@ func (s *PoolTestSuite) TestRemoveResource() {
 
 func (s *PoolTestSuite) TestRemoveCounter() {
 	pool := resources.NewPool()
-	
+
 	c1 := resources.NewCounter("counter1", 3)
 	c2 := resources.NewCounter("counter2", 0)
-	
+
 	pool.AddCounter(c1)
 	pool.AddCounter(c2)
 	s.Len(pool.Counters, 2)
@@ -123,10 +123,10 @@ func (s *PoolTestSuite) TestRemoveCounter() {
 	// Remove existing
 	pool.RemoveCounter("counter1")
 	s.Len(pool.Counters, 1)
-	
+
 	_, ok := pool.GetCounter("counter1")
 	s.False(ok)
-	
+
 	_, ok = pool.GetCounter("counter2")
 	s.True(ok)
 
@@ -137,19 +137,19 @@ func (s *PoolTestSuite) TestRemoveCounter() {
 
 func (s *PoolTestSuite) TestClear() {
 	pool := resources.NewPool()
-	
+
 	// Add some items
 	pool.AddResource(resources.NewResource("res1", 5))
 	pool.AddResource(resources.NewResource("res2", 10))
 	pool.AddCounter(resources.NewCounter("cnt1", 3))
 	pool.AddCounter(resources.NewCounter("cnt2", 0))
-	
+
 	s.Len(pool.Resources, 2)
 	s.Len(pool.Counters, 2)
 
 	// Clear all
 	pool.Clear()
-	
+
 	s.Empty(pool.Resources)
 	s.Empty(pool.Counters)
 	s.NotNil(pool.Resources) // Maps should still exist
@@ -158,17 +158,17 @@ func (s *PoolTestSuite) TestClear() {
 
 func (s *PoolTestSuite) TestRestoreAllResources() {
 	pool := resources.NewPool()
-	
+
 	// Add resources with depleted values
 	spell := resources.NewResource("spell_slots", 3)
 	spell.SetCurrent(1)
-	
+
 	rage := resources.NewResource("rage", 2)
 	rage.SetCurrent(0)
-	
+
 	ki := resources.NewResource("ki", 5)
 	// ki is already full
-	
+
 	pool.AddResource(spell)
 	pool.AddResource(rage)
 	pool.AddResource(ki)
@@ -192,17 +192,17 @@ func (s *PoolTestSuite) TestRestoreAllResources() {
 
 func (s *PoolTestSuite) TestResetAllCounters() {
 	pool := resources.NewPool()
-	
+
 	// Add counters with various counts
 	death := resources.NewCounter("death_saves", 3)
 	death.Count = 2
-	
+
 	attacks := resources.NewCounter("attacks", 0)
 	attacks.Count = 10
-	
+
 	conc := resources.NewCounter("concentration_fails", 2)
 	// conc is already at 0
-	
+
 	pool.AddCounter(death)
 	pool.AddCounter(attacks)
 	pool.AddCounter(conc)
