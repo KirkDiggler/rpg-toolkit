@@ -1,70 +1,52 @@
-// Package resources provides infrastructure for managing consumable and
-// regenerating resources without defining what those resources represent.
+// Package resources provides simple resource tracking for games.
+// Resources track current/maximum values, counters track simple counts.
 //
 // Purpose:
-// This package handles resource pools that can be consumed, restored, and
-// regenerated over time, supporting game mechanics like health, mana,
-// stamina, or any other depleting/restoring values.
+// This package provides basic numerical tracking for game resources and
+// counters without defining what those values represent.
 //
 // Scope:
-//   - Resource pool management with current/maximum values
-//   - Consumption and restoration operations
-//   - Regeneration over time with configurable rates
-//   - Resource modification triggers and events
-//   - Overflow and underflow handling
-//   - Resource dependencies and relationships
-//   - Temporary maximum adjustments
+//   - Resource tracking with current/maximum values
+//   - Counter tracking with optional limits
+//   - Simple consumption and restoration
+//   - Pool management for organizing resources
 //
 // Non-Goals:
 //   - Specific resource types: HP, MP, stamina are game-specific
+//   - Recovery rules: When/how resources restore is game-specific
 //   - Resource costs: What actions cost resources is game logic
-//   - Recovery rules: When/how resources regenerate is game-specific
-//   - Resource UI: Bars and displays are presentation layer
-//   - Balance values: Resource amounts and rates are game design
-//   - Death/exhaustion: What happens at zero is game-specific
-//
-// Integration:
-// This package integrates with:
-//   - events: Publishes resource change events
-//   - effects: Effects may consume or restore resources
-//   - conditions: Conditions may affect resource regeneration
+//   - Events or triggers: Use the event bus separately if needed
+//   - Complex restoration: Games define their own rest mechanics
 //
 // Games define what resources mean and how they're used, while this
 // package provides the numerical tracking infrastructure.
 //
 // Example:
 //
-//	// Create a resource pool
-//	health := resources.NewPool(resources.PoolConfig{
-//	    Name:     "health",
-//	    Current:  50,
-//	    Maximum:  50,
-//	    Minimum:  0,
-//	    RegenRate: 1, // per interval
-//	})
+//	// Create a pool for a character
+//	pool := resources.NewPool()
 //
-//	// Consume resources
-//	err := health.Consume(10) // Take 10 damage
-//	if err == resources.ErrInsufficientResources {
-//	    // Not enough health
+//	// Add resources
+//	hp := resources.NewResource("hit_points", 45)
+//	pool.AddResource(hp)
+//	pool.AddResource(resources.NewResource("spell_slots_1", 4))
+//	pool.AddResource(resources.NewResource("rage", 3))
+//
+//	// Add counters
+//	pool.AddCounter(resources.NewCounter("death_saves", 3))
+//	pool.AddCounter(resources.NewCounter("attacks", 0)) // No limit
+//
+//	// Use resources
+//	err := hp.Use(10) // Take damage
+//	if err != nil {
+//	    // Not enough HP
 //	}
 //
-//	// Restore resources
-//	restored := health.Restore(20) // Heal 20 HP
-//	// restored = actual amount restored (capped by maximum)
+//	// Track counts
+//	saves, _ := pool.GetCounter("death_saves")
+//	saves.Increment() // Death save success
 //
-//	// Check if depleted
-//	if health.IsDepleted() {
-//	    // Game-specific death/unconscious logic
-//	}
-//
-//	// Regeneration (called by game loop)
-//	health.Regenerate(deltaTime)
-//
-//	// Listen for changes
-//	bus.Subscribe("resource.consumed", func(e events.Event) {
-//	    data := e.Data.(ResourceEventData)
-//	    fmt.Printf("%s consumed %d %s\n",
-//	        data.EntityID, data.Amount, data.ResourceName)
-//	})
+//	// Rest operations
+//	pool.RestoreAllResources() // Long rest
+//	pool.ResetAllCounters()
 package resources

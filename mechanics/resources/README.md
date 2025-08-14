@@ -1,186 +1,209 @@
 # Resources System
 
-The `resources` package provides infrastructure for managing consumable game resources such as spell slots, ability uses, hit dice, and action economy.
+The `resources` package provides simple resource tracking for games. Resources track current/maximum values, counters track simple counts.
 
 ## Overview
 
-Resources are consumable values that track current and maximum amounts, with rules for consumption and restoration. This package provides generic infrastructure that game systems can use to implement their specific resource mechanics.
+This package provides two main types:
+- **Resource**: Tracks depletable resources with current and maximum values (spell slots, hit points, rage uses)
+- **Counter**: Tracks simple counts with optional limits (death saves, attacks made, concentration checks)
+
+Both are managed through a **Pool** for organized storage.
 
 ## Core Components
 
-### Resource Interface
+### Resource
 
-The base interface for all resources:
+Tracks values that can be consumed and restored:
 
 ```go
-type Resource interface {
-    core.Entity
-    Owner() core.Entity
-    Key() string
-    Current() int
-    Maximum() int
-    Consume(amount int) error
-    Restore(amount int)
-    RestoreOnShortRest() int
-    RestoreOnLongRest() int
-    IsAvailable() bool
+// Create a resource at full capacity
+rage := resources.NewResource("rage", 3)
+
+// Use the resource
+err := rage.Use(1)  // Returns error if insufficient
+
+// Restore partially or fully
+rage.Restore(1)      // Add 1 (capped at maximum)
+rage.RestoreToFull() // Back to maximum
+
+// Check state
+if rage.IsAvailable() { // Has any remaining?
+    // Can use the resource
 }
 ```
 
-### SimpleResource
+### Counter
 
-Basic implementation with configurable restoration:
+Tracks simple counts with optional limits:
 
 ```go
-resource := resources.NewSimpleResource(resources.SimpleResourceConfig{
-    ID:       "rage-uses",
-    Type:     resources.ResourceTypeAbilityUse,
-    Owner:    barbarian,
-    Key:      "rage_uses",
-    Current:  3,
-    Maximum:  3,
-    RestoreType: resources.RestoreLongRest,
-    LongRestRestore: -1, // Full restore
-})
+// Create a counter with a limit
+deathSaves := resources.NewCounter("death_saves", 3)
+
+// Increment the count
+err := deathSaves.Increment() // Returns error if at limit
+
+// Create unlimited counter
+attacks := resources.NewCounter("attacks", 0) // 0 = no limit
+attacks.IncrementBy(3) // Can increment indefinitely
+
+// Reset when needed
+deathSaves.Reset() // Back to 0
 ```
 
-### Resource Pool
+### Pool
 
-Manages collections of resources for an entity:
+Manages collections of resources and counters:
 
 ```go
-pool := resources.NewSimplePool(character)
+pool := resources.NewPool()
 
 // Add resources
-pool.Add(resources.CreateSpellSlots(character, map[int]int{
-    1: 4,  // 4 first level slots
-    2: 3,  // 3 second level slots
-    3: 2,  // 2 third level slots
-}))
+pool.AddResource(resources.NewResource("hit_points", 45))
+pool.AddResource(resources.NewResource("spell_slots_1", 4))
+pool.AddResource(resources.NewResource("rage", 3))
 
-// Consume resources
-err := pool.Consume("spell_slots_1", 1, eventBus)
+// Add counters
+pool.AddCounter(resources.NewCounter("death_saves", 3))
+pool.AddCounter(resources.NewCounter("attacks_this_turn", 0))
 
-// Process rests
-pool.ProcessShortRest(eventBus)
-pool.ProcessLongRest(eventBus)
-```
+// Use resources
+hp, _ := pool.GetResource("hit_points")
+hp.Use(10) // Take damage
 
-## Resource Types
+// Track counts
+attacks, _ := pool.GetCounter("attacks_this_turn")
+attacks.Increment()
 
-- **Spell Slots**: Level-based spell casting resources
-- **Ability Uses**: Limited-use class features
-- **Hit Dice**: Rest and recovery resources
-- **Action Economy**: Actions, bonus actions, reactions
-- **Custom**: Any game-specific resource
-
-## Restoration Types
-
-- **Never**: Resource doesn't automatically restore
-- **Turn**: Restores at start of turn
-- **Short Rest**: Restores on short rest
-- **Long Rest**: Restores on long rest
-- **Custom**: Game-specific restoration rules
-
-## Helper Functions
-
-### Spell Slots
-```go
-slots := resources.CreateSpellSlots(wizard, map[int]int{
-    1: 4,
-    2: 3,
-    3: 2,
-})
-```
-
-### Ability Uses
-```go
-rage := resources.CreateAbilityUse(barbarian, "rage", 3, resources.RestoreLongRest)
-secondWind := resources.CreateAbilityUse(fighter, "second_wind", 1, resources.RestoreShortRest)
-```
-
-### Hit Dice
-```go
-hitDice := resources.CreateHitDice(fighter, "d10", 10) // 10d10 hit dice
-```
-
-### Action Economy
-```go
-actions := resources.CreateActionEconomy(character)
-// Creates action, bonus_action, and reaction resources
-```
-
-## Event Integration
-
-Resources publish events when consumed or restored:
-
-```go
-// Listen for resource consumption
-bus.Subscribe(resources.EventResourceConsumed, func(e events.Event) error {
-    event := e.(*resources.ResourceConsumedEvent)
-    fmt.Printf("%s consumed %d %s\n", 
-        event.Source().GetID(), 
-        event.Amount, 
-        event.Resource.Key())
-    return nil
-})
+// Rest operations
+pool.RestoreAllResources() // Full restore all resources
+pool.ResetAllCounters()     // Reset all counters to 0
 ```
 
 ## Usage Examples
 
-### Wizard Spell Management
+### Character Resources
 ```go
-wizard := &Character{id: "wizard-1"}
-pool := resources.NewSimplePool(wizard)
+pool := resources.NewPool()
 
-// Add spell slots
-for _, slot := range resources.CreateSpellSlots(wizard, map[int]int{
-    1: 4, 2: 3, 3: 2,
-}) {
-    pool.Add(slot)
-}
+// Hit points
+hp := resources.NewResource("hit_points", 45)
+pool.AddResource(hp)
 
-// Cast a spell
-err := pool.ConsumeSpellSlot(2, bus) // Cast 2nd level spell
+// Spell slots by level
+pool.AddResource(resources.NewResource("spell_slots_1", 4))
+pool.AddResource(resources.NewResource("spell_slots_2", 3))
+pool.AddResource(resources.NewResource("spell_slots_3", 2))
 
-// Long rest restores all slots
-pool.ProcessLongRest(bus)
+// Class abilities
+pool.AddResource(resources.NewResource("rage", 3))
+pool.AddResource(resources.NewResource("ki", 5))
+
+// Combat
+hp.Use(15) // Take damage
+spell1, _ := pool.GetResource("spell_slots_1")
+spell1.Use(1) // Cast a spell
+
+// Long rest
+pool.RestoreAllResources()
 ```
 
-### Fighter Abilities
+### Combat Tracking
 ```go
-fighter := &Character{id: "fighter-1"}
-pool := resources.NewSimplePool(fighter)
+pool := resources.NewPool()
 
-// Add abilities
-pool.Add(resources.CreateAbilityUse(fighter, "second_wind", 1, resources.RestoreShortRest))
-pool.Add(resources.CreateAbilityUse(fighter, "action_surge", 1, resources.RestoreLongRest))
-pool.Add(resources.CreateHitDice(fighter, "d10", 10))
+// Death saving throws
+deathSaves := resources.NewCounter("death_saves", 3)
+deathFails := resources.NewCounter("death_fails", 3)
+pool.AddCounter(deathSaves)
+pool.AddCounter(deathFails)
 
-// Use Second Wind
-pool.Consume("second_wind_uses", 1, bus)
+// Combat stats
+attacksThisTurn := resources.NewCounter("attacks_this_turn", 0)
+pool.AddCounter(attacksThisTurn)
 
-// Short rest restores Second Wind
-pool.ProcessShortRest(bus)
-```
+// Track death saves
+deathSaves.Increment() // Success
+deathFails.Increment() // Failure
 
-### Combat Action Economy
-```go
-// At start of combat, create action resources
-for _, action := range resources.CreateActionEconomy(character) {
-    pool.Add(action)
+if deathSaves.Count >= 3 {
+    // Stabilized!
+}
+if deathFails.AtLimit() {
+    // Character dies
 }
 
-// Use action
-pool.Consume("action", 1, bus)
+// End of turn
+attacksThisTurn.Reset()
+```
 
-// Actions restore at start of turn (handled by combat system)
+### Ability Cooldowns
+```go
+// Track ability uses with counters
+pool := resources.NewPool()
+
+// Abilities that reset on rest
+secondWindUsed := resources.NewCounter("second_wind_used", 1)
+actionSurgeUsed := resources.NewCounter("action_surge_used", 1)
+
+pool.AddCounter(secondWindUsed)
+pool.AddCounter(actionSurgeUsed)
+
+// Use abilities
+if !secondWindUsed.AtLimit() {
+    secondWindUsed.Increment()
+    // Apply Second Wind healing
+}
+
+// Short rest
+secondWindUsed.Reset()
+
+// Long rest
+pool.ResetAllCounters()
 ```
 
 ## Design Philosophy
 
 This package follows rpg-toolkit principles:
-- **Infrastructure, not rules**: We provide resource tracking, games define what resources mean
-- **Event-driven**: Resources interact through events
-- **Entity-based**: Resources are entities for persistence
-- **Flexible restoration**: Games define when and how resources restore
+- **Simple and direct**: Just tracks numbers, no complex logic
+- **Game-agnostic**: Works for any game system
+- **Clear separation**: Resources (current/max) vs Counters (simple counts)
+- **No hidden complexity**: What you see is what you get
+
+## API Reference
+
+### Resource
+- `NewResource(id string, maximum int) *Resource` - Create at full capacity
+- `Use(amount int) error` - Consume resource, error if insufficient
+- `Restore(amount int)` - Add to current (capped at maximum)
+- `RestoreToFull()` - Set to maximum
+- `SetCurrent(value int)` - Set directly (clamped to valid range)
+- `SetMaximum(value int)` - Change maximum (adjusts current if needed)
+- `IsAvailable() bool` - Has any remaining?
+- `IsEmpty() bool` - Completely depleted?
+- `IsFull() bool` - At maximum?
+
+### Counter
+- `NewCounter(id string, limit int) *Counter` - Create counter (0 = no limit)
+- `Increment() error` - Add 1, error if at limit
+- `IncrementBy(amount int) error` - Add amount, error if would exceed limit
+- `Decrement()` - Subtract 1 (minimum 0)
+- `DecrementBy(amount int)` - Subtract amount (minimum 0)
+- `Reset()` - Set to 0
+- `SetCount(value int) error` - Set directly, error if exceeds limit
+- `AtLimit() bool` - At maximum count?
+- `IsZero() bool` - Count is 0?
+- `HasLimit() bool` - Has a maximum limit?
+
+### Pool
+- `NewPool() *Pool` - Create empty pool
+- `AddResource(r *Resource)` - Add resource to pool
+- `AddCounter(c *Counter)` - Add counter to pool
+- `GetResource(id string) (*Resource, bool)` - Retrieve resource by ID
+- `GetCounter(id string) (*Counter, bool)` - Retrieve counter by ID
+- `RemoveResource(id string)` - Remove resource from pool
+- `RemoveCounter(id string)` - Remove counter from pool
+- `Clear()` - Remove all resources and counters
+- `RestoreAllResources()` - Restore all resources to full
+- `ResetAllCounters()` - Reset all counters to zero
