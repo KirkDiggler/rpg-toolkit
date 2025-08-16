@@ -20,6 +20,10 @@ type ModifierType string
 // Example: const SourceRage ModifierSource = "rage"
 type ModifierSource string
 
+// ModifierTarget identifies what aspect of the game is being modified.
+// Example: const TargetDamage ModifierTarget = "damage"
+type ModifierTarget string
+
 // Priority represents the order in which handlers or modifiers are applied.
 // Lower values are processed first.
 type Priority int
