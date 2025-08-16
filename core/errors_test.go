@@ -208,10 +208,10 @@ func TestErrorValidation(t *testing.T) {
 				return core.ErrNilEntity
 			}
 			if e.GetID() == "" {
-				return core.NewEntityError("validate", e.GetType(), "", core.ErrEmptyEntityID)
+				return core.NewEntityError("validate", string(e.GetType()), "", core.ErrEmptyEntityID)
 			}
-			if e.GetType() == "" {
-				return core.NewEntityError("validate", "", e.GetID(), core.ErrInvalidType)
+			if e.GetType() == core.EntityType("") {
+				return core.NewEntityError("validate", string(core.EntityType("")), e.GetID(), core.ErrInvalidType)
 			}
 			return nil
 		}
@@ -223,21 +223,21 @@ func TestErrorValidation(t *testing.T) {
 		}
 
 		// Test entity with empty ID
-		entity := &sampleEntity{id: "", entityType: "character"}
+		entity := &sampleEntity{id: "", entityType: core.EntityType("character")}
 		err = validateEntity(entity)
 		if !errors.Is(err, core.ErrEmptyEntityID) {
 			t.Error("Expected ErrEmptyEntityID for entity with empty ID")
 		}
 
 		// Test entity with empty type
-		entity = &sampleEntity{id: "test-123", entityType: ""}
+		entity = &sampleEntity{id: "test-123", entityType: core.EntityType("")}
 		err = validateEntity(entity)
 		if !errors.Is(err, core.ErrInvalidType) {
 			t.Error("Expected ErrInvalidType for entity with empty type")
 		}
 
 		// Test valid entity
-		entity = &sampleEntity{id: "test-123", entityType: "character"}
+		entity = &sampleEntity{id: "test-123", entityType: core.EntityType("character")}
 		err = validateEntity(entity)
 		if err != nil {
 			t.Errorf("Expected no error for valid entity, got %v", err)
