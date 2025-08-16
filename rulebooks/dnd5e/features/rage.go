@@ -119,9 +119,9 @@ func (r *Rage) onAttack(e interface{}) error {
 		// Add damage bonus as a modifier
 		ctx := attack.Context()
 		ctx.AddModifier(events.NewSimpleModifier(
-			"rage",         // source
-			"additive",     // type
-			"damage",       // target
+			string(dnd5e.ModifierSourceRage),
+			string(dnd5e.ModifierTypeAdditive),
+			string(dnd5e.ModifierTargetDamage),
 			200,            // priority (after base damage)
 			r.getDamageBonus(),
 		))
@@ -141,9 +141,9 @@ func (r *Rage) onDamageReceived(e interface{}) error {
 		// Add resistance modifier (halves damage)
 		ctx := damage.Context()
 		ctx.AddModifier(events.NewSimpleModifier(
-			"rage",         // source
-			"resistance",   // type
-			"damage",       // target
+			string(dnd5e.ModifierSourceRage),
+			string(dnd5e.ModifierTypeResistance),
+			string(dnd5e.ModifierTargetDamage),
 			100,            // priority (apply early)
 			0.5,            // multiplier for half damage
 		))
