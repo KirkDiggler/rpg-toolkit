@@ -1,6 +1,9 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package resources provides type definitions for resource-related constants.
+// These types are used by rulebooks to define resource keys and reset types
+// for managing limited-use abilities, spell slots, and other consumable game resources.
 package resources
 
 // ResourceKey identifies a specific resource type.

@@ -1,6 +1,9 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package spells provides type definitions for spell-related constants.
+// These types are used by rulebooks to define spell identifiers, schools,
+// components, and range types for magical abilities.
 package spells
 
 // ID identifies a specific spell.

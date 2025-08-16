@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package damage provides type definitions for damage-related constants.
-// These types are used by rulebooks to define their damage types.
+// These types are used by rulebooks to define their damage types, resistances,
+// immunities, and vulnerabilities without the toolkit knowing specific damage types.
 package damage
 
 // Type identifies a specific damage type.

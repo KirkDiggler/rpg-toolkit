@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package combat provides type definitions for combat-related constants.
-// These types are used by rulebooks to define their combat mechanics.
+// These types are used by rulebooks to define attack types, weapon properties,
+// armor categories, and action types without the toolkit knowing specifics.
 package combat
 
 // AttackType identifies the type of attack being made.

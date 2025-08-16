@@ -1,6 +1,9 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package events provides type definitions for event-related constants.
+// These types are used by rulebooks to define event types, modifier types,
+// modifier sources, and priorities for the event-driven architecture.
 package events
 
 // EventType identifies a specific type of event.
