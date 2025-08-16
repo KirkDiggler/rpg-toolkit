@@ -1,7 +1,3 @@
-github.com/KirkDiggler/rpg-toolkit/core v0.3.0 h1:D1TS6TKC1+NLLFmMuEM4UStkluDs2Kwj6TV0/0i7304=
-github.com/KirkDiggler/rpg-toolkit/core v0.3.0/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
-github.com/KirkDiggler/rpg-toolkit/core v0.6.0 h1:PfY2fMoIcG5O7qANL8wj6Y9nsgX6SkQQHqfr7326gO0=
-github.com/KirkDiggler/rpg-toolkit/core v0.6.0/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
 github.com/KirkDiggler/rpg-toolkit/core v0.6.1-0.20250816230611-b1942612a935 h1:xck7jJ0BYqjF1JPi7khSE98RvAtG2WbfsILH/34NIA4=
 github.com/KirkDiggler/rpg-toolkit/core v0.6.1-0.20250816230611-b1942612a935/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

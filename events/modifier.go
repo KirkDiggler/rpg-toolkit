@@ -35,7 +35,13 @@ type SimpleModifier struct {
 }
 
 // NewSimpleModifier creates a new modifier
-func NewSimpleModifier(source events.ModifierSource, modType events.ModifierType, target events.ModifierTarget, priority int, value any) *SimpleModifier {
+func NewSimpleModifier(
+	source events.ModifierSource,
+	modType events.ModifierType,
+	target events.ModifierTarget,
+	priority int,
+	value any,
+) *SimpleModifier {
 	return &SimpleModifier{
 		source:   source,
 		modType:  modType,

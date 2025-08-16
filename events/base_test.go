@@ -71,8 +71,16 @@ func (s *BaseEventTestSuite) TestBaseEventModifiers() {
 
 	// Add modifiers through context
 	ctx := baseEvent.Context()
-	ctx.AddModifier(events.NewSimpleModifier(events.TestModifierSourceTest, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 10, 5))
-	ctx.AddModifier(events.NewSimpleModifier(events.TestModifierSourceTest2, events.TestModifierTypeMultiplicative, events.TestModifierTargetDamage, 20, 2.0))
+	ctx.AddModifier(events.NewSimpleModifier(
+		events.TestModifierSourceTest,
+		events.TestModifierTypeAdditive,
+		events.TestModifierTargetDamage,
+		10, 5))
+	ctx.AddModifier(events.NewSimpleModifier(
+		events.TestModifierSourceTest2,
+		events.TestModifierTypeMultiplicative,
+		events.TestModifierTargetDamage,
+		20, 2.0))
 
 	// Verify modifiers
 	mods := ctx.GetModifiers()
