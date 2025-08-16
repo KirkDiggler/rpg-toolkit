@@ -6,6 +6,7 @@ package features
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -19,12 +20,15 @@ type Rage struct {
 	level int
 	bus   *events.Bus
 
-	// Track current state
+	// Protect concurrent access to state
+	mu sync.RWMutex
+
+	// Track current state (protected by mu)
 	currentUses int
 	active      bool
 	owner       core.Entity // Who is raging
 
-	// Track subscriptions for cleanup
+	// Track subscriptions for cleanup (protected by mu)
 	subscriptions []string
 }
 
@@ -42,6 +46,9 @@ func (r *Rage) ResetsOn() ResetType { return ResetTypeLongRest }
 
 // CanActivate checks if rage can be activated
 func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if r.currentUses <= 0 {
 		return errors.New("no rage uses remaining")
 	}
@@ -57,9 +64,11 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		return err
 	}
 
+	r.mu.Lock()
 	r.currentUses--
 	r.active = true
 	r.owner = owner // Store who is raging
+	r.mu.Unlock()
 
 	// Subscribe to attack events (for damage bonus)
 	attackSub, err := r.bus.SubscribeWithFilter(
@@ -67,13 +76,17 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		r.onAttack,
 		func(e events.Event) bool {
 			if attack, ok := e.(*dnd5e.AttackEvent); ok {
+				r.mu.RLock()
+				defer r.mu.RUnlock()
 				return attack.Attacker == r.owner
 			}
 			return false
 		},
 	)
 	if err == nil {
+		r.mu.Lock()
 		r.subscriptions = append(r.subscriptions, attackSub)
+		r.mu.Unlock()
 	}
 
 	// Subscribe to damage events (for resistance)
@@ -82,13 +95,17 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		r.onDamageReceived,
 		func(e events.Event) bool {
 			if damage, ok := e.(*dnd5e.DamageReceivedEvent); ok {
+				r.mu.RLock()
+				defer r.mu.RUnlock()
 				return damage.Target == r.owner
 			}
 			return false
 		},
 	)
 	if err == nil {
+		r.mu.Lock()
 		r.subscriptions = append(r.subscriptions, damageSub)
+		r.mu.Unlock()
 	}
 
 	// Publish rage started event
