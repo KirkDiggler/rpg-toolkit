@@ -49,4 +49,3 @@ type Action[T any] interface {
 	// The owner is the entity performing the action.
 	Activate(ctx context.Context, owner Entity, input T) error
 }
-

@@ -174,4 +174,3 @@ func TestActionInterface(t *testing.T) {
 		// targeted.Activate(context.Background(), owner, EmptyInput{}) // Wrong input type
 	})
 }
-
