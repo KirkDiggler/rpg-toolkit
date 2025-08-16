@@ -24,14 +24,11 @@ const (
 	ModifierTypeDisadvantage   events.ModifierType = "disadvantage"
 )
 
-// ModifierTarget identifies what is being modified
-// Note: This doesn't exist in core/events yet, so we define our own
-type ModifierTarget string
-
+// D&D 5e specific modifier targets
 const (
-	ModifierTargetDamage       ModifierTarget = "damage"
-	ModifierTargetAttackRoll   ModifierTarget = "attack_roll"
-	ModifierTargetArmorClass   ModifierTarget = "armor_class"
-	ModifierTargetSavingThrow  ModifierTarget = "saving_throw"
-	ModifierTargetAbilityCheck ModifierTarget = "ability_check"
+	ModifierTargetDamage       events.ModifierTarget = "damage"
+	ModifierTargetAttackRoll   events.ModifierTarget = "attack_roll"
+	ModifierTargetArmorClass   events.ModifierTarget = "armor_class"
+	ModifierTargetSavingThrow  events.ModifierTarget = "saving_throw"
+	ModifierTargetAbilityCheck events.ModifierTarget = "ability_check"
 )

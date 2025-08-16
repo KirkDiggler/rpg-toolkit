@@ -58,9 +58,9 @@ func TestRage_EventSubscriptions(t *testing.T) {
 		require.Len(t, modifiers, 1, "rage should add one modifier")
 		
 		mod := modifiers[0]
-		assert.Equal(t, string(dnd5e.ModifierSourceRage), mod.Source())
-		assert.Equal(t, string(dnd5e.ModifierTypeAdditive), mod.Type())
-		assert.Equal(t, string(dnd5e.ModifierTargetDamage), mod.Target())
+		assert.Equal(t, dnd5e.ModifierSourceRage, mod.Source())
+		assert.Equal(t, dnd5e.ModifierTypeAdditive, mod.Type())
+		assert.Equal(t, dnd5e.ModifierTargetDamage, mod.Target())
 		assert.Equal(t, 2, mod.Value()) // Level 1-8 = +2 damage
 	})
 	
@@ -118,8 +118,8 @@ func TestRage_EventSubscriptions(t *testing.T) {
 		require.Len(t, modifiers, 1, "rage should add resistance")
 		
 		mod := modifiers[0]
-		assert.Equal(t, string(dnd5e.ModifierSourceRage), mod.Source())
-		assert.Equal(t, string(dnd5e.ModifierTypeResistance), mod.Type())
+		assert.Equal(t, dnd5e.ModifierSourceRage, mod.Source())
+		assert.Equal(t, dnd5e.ModifierTypeResistance, mod.Type())
 		assert.Equal(t, 0.5, mod.Value()) // Half damage
 	})
 	
