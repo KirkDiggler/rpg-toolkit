@@ -29,7 +29,7 @@ The toolkit provides TYPE definitions, but rulebooks define the CONSTANT values:
 ### Toolkit Layer (What We Just Implemented in Phase 0)
 
 ```go
-// github.com/KirkDiggler/rpg-toolkit/events/types.go
+// github.com/KirkDiggler/rpg-toolkit/core/events/types.go
 package events
 
 type EventType string
@@ -37,7 +37,7 @@ type ModifierType string
 type ModifierSource string
 type Priority string
 
-// github.com/KirkDiggler/rpg-toolkit/mechanics/combat/types.go
+// github.com/KirkDiggler/rpg-toolkit/core/combat/types.go
 package combat
 
 type AttackType string
@@ -51,7 +51,7 @@ const (
     AttackRangedWeapon AttackType = "ranged_weapon"
 )
 
-// github.com/KirkDiggler/rpg-toolkit/mechanics/damage/types.go
+// github.com/KirkDiggler/rpg-toolkit/core/damage/types.go
 package damage
 
 type Type string
@@ -65,7 +65,7 @@ type ImmunityType string
 // github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants/events.go
 package constants
 
-import "github.com/KirkDiggler/rpg-toolkit/events"
+import "github.com/KirkDiggler/rpg-toolkit/core/events"
 
 // D&D 5e specific event types
 const (
@@ -88,7 +88,7 @@ const (
 // github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants/damage.go
 package constants
 
-import "github.com/KirkDiggler/rpg-toolkit/mechanics/damage"
+import "github.com/KirkDiggler/rpg-toolkit/core/damage"
 
 // D&D 5e damage types
 const (
@@ -118,7 +118,9 @@ package features
 
 import (
     "context"
+    "errors"
     "github.com/KirkDiggler/rpg-toolkit/core"
+    "github.com/KirkDiggler/rpg-toolkit/core/damage"
     "github.com/KirkDiggler/rpg-toolkit/events"
     "github.com/KirkDiggler/rpg-toolkit/mechanics/actions"
     "github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
