@@ -8,15 +8,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
 )
 
 func TestTrackerDataPersistence(t *testing.T) {
 	// Create a tracker
 	order := []core.Entity{
-		initiative.NewParticipant("ranger-123", "character"),
-		initiative.NewParticipant("goblin-001", "monster"),
-		initiative.NewParticipant("wizard-456", "character"),
+		initiative.NewParticipant("ranger-123", dnd5e.EntityTypeCharacter),
+		initiative.NewParticipant("goblin-001", dnd5e.EntityTypeMonster),
+		initiative.NewParticipant("wizard-456", dnd5e.EntityTypeCharacter),
 	}
 	tracker := initiative.New(order)
 
@@ -47,7 +48,7 @@ func TestTrackerDataPersistence(t *testing.T) {
 	// Verify state was preserved
 	current := newTracker.Current()
 	assert.Equal(t, "wizard-456", current.GetID())
-	assert.Equal(t, "character", current.GetType())
+	assert.Equal(t, dnd5e.EntityTypeCharacter, current.GetType())
 	assert.Equal(t, 1, newTracker.Round())
 
 	// Next turn should wrap to round 2
@@ -59,9 +60,9 @@ func TestTrackerDataPersistence(t *testing.T) {
 func TestTrackerDataWithRemovals(t *testing.T) {
 	// Create tracker
 	order := []core.Entity{
-		initiative.NewParticipant("fighter", "character"),
-		initiative.NewParticipant("orc", "monster"),
-		initiative.NewParticipant("cleric", "character"),
+		initiative.NewParticipant("fighter", dnd5e.EntityTypeCharacter),
+		initiative.NewParticipant("orc", dnd5e.EntityTypeMonster),
+		initiative.NewParticipant("cleric", dnd5e.EntityTypeCharacter),
 	}
 	tracker := initiative.New(order)
 

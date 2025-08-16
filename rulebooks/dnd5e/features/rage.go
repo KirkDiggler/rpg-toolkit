@@ -12,11 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 )
 
-// EntityType constants for features
-const (
-	EntityTypeFeature core.EntityType = "feature"
-)
-
 // Rage implements a barbarian's rage feature
 type Rage struct {
 	id    string
@@ -35,7 +30,7 @@ type Rage struct {
 
 // Entity interface
 func (r *Rage) GetID() string            { return r.id }
-func (r *Rage) GetType() core.EntityType { return EntityTypeFeature }
+func (r *Rage) GetType() core.EntityType { return dnd5e.EntityTypeFeature }
 
 // Feature interface methods
 func (r *Rage) GetResourceType() ResourceType { return ResourceTypeRageUses }

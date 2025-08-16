@@ -7,7 +7,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -33,7 +32,7 @@ func TestRage_EventSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Create barbarian
-	barbarian := &mockEntity{id: "conan", entityType: core.EntityType("character")}
+	barbarian := &mockEntity{id: "conan", entityType: dnd5e.EntityTypeCharacter}
 	
 	// Activate rage
 	err = rage.Activate(context.Background(), barbarian, features.FeatureInput{})
@@ -43,7 +42,7 @@ func TestRage_EventSubscriptions(t *testing.T) {
 		// Create an attack event from the barbarian
 		attackEvent := dnd5e.NewAttackEvent(
 			barbarian,                    // attacker
-			&mockEntity{id: "goblin", entityType: core.EntityType("monster")}, // target
+			&mockEntity{id: "goblin", entityType: dnd5e.EntityTypeMonster}, // target
 			true,                         // is melee
 			dnd5e.AbilityStrength,       // using STR
 			8,                           // base damage
@@ -68,7 +67,7 @@ func TestRage_EventSubscriptions(t *testing.T) {
 		// Create a DEX-based attack
 		attackEvent := dnd5e.NewAttackEvent(
 			barbarian,
-			&mockEntity{id: "goblin", entityType: core.EntityType("monster")},
+			&mockEntity{id: "goblin", entityType: dnd5e.EntityTypeMonster},
 			true,                         // is melee (finesse weapon)
 			dnd5e.AbilityDexterity,      // using DEX
 			6,
@@ -84,10 +83,10 @@ func TestRage_EventSubscriptions(t *testing.T) {
 	
 	t.Run("rage doesn't add bonus to other attacker's attacks", func(t *testing.T) {
 		// Create an attack from someone else
-		wizard := &mockEntity{id: "gandalf", entityType: core.EntityType("character")}
+		wizard := &mockEntity{id: "gandalf", entityType: dnd5e.EntityTypeCharacter}
 		attackEvent := dnd5e.NewAttackEvent(
 			wizard,                       // different attacker
-			&mockEntity{id: "goblin", entityType: core.EntityType("monster")},
+			&mockEntity{id: "goblin", entityType: dnd5e.EntityTypeMonster},
 			true,
 			dnd5e.AbilityStrength,
 			10,
@@ -105,7 +104,7 @@ func TestRage_EventSubscriptions(t *testing.T) {
 		// Barbarian takes slashing damage
 		damageEvent := dnd5e.NewDamageReceivedEvent(
 			barbarian,                    // target
-			&mockEntity{id: "orc", entityType: core.EntityType("monster")}, // source
+			&mockEntity{id: "orc", entityType: dnd5e.EntityTypeMonster}, // source
 			10,                          // amount
 			dnd5e.DamageTypeSlashing,    // damage type
 		)
@@ -127,7 +126,7 @@ func TestRage_EventSubscriptions(t *testing.T) {
 		// Barbarian takes fire damage
 		damageEvent := dnd5e.NewDamageReceivedEvent(
 			barbarian,
-			&mockEntity{id: "dragon", entityType: core.EntityType("monster")},
+			&mockEntity{id: "dragon", entityType: dnd5e.EntityTypeMonster},
 			20,
 			dnd5e.DamageTypeFire, // Not physical
 		)

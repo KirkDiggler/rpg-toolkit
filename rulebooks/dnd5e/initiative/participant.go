@@ -6,11 +6,11 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 // Participant wraps any entity to participate in initiative
 type Participant struct {
 	id         string
-	entityType string
+	entityType core.EntityType
 }
 
 // NewParticipant creates a participant from ID and type
-func NewParticipant(id, entityType string) *Participant {
+func NewParticipant(id string, entityType core.EntityType) *Participant {
 	return &Participant{
 		id:         id,
 		entityType: entityType,
@@ -23,7 +23,7 @@ func (p *Participant) GetID() string {
 }
 
 // GetType returns the entity's type
-func (p *Participant) GetType() string {
+func (p *Participant) GetType() core.EntityType {
 	return p.entityType
 }
 

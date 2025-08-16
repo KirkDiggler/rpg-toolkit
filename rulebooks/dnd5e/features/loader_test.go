@@ -75,12 +75,3 @@ func TestLoadJSON_InvalidJSON(t *testing.T) {
 	assert.Nil(t, action)
 	assert.Error(t, err)
 }
-
-// mockEntity for testing
-type mockEntity struct {
-	id         string
-	entityType core.EntityType
-}
-
-func (m *mockEntity) GetID() string            { return m.id }
-func (m *mockEntity) GetType() core.EntityType { return m.entityType }
