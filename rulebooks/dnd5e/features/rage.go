@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 // EntityType constants for features
@@ -20,6 +21,7 @@ type Rage struct {
 	id    string
 	uses  int
 	level int
+	bus   *events.Bus
 
 	// Track current state
 	currentUses int
@@ -53,11 +55,16 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	r.currentUses--
 	r.active = true
 
-	// TODO: When we have event bus access:
-	// 1. Subscribe to attack events to add damage bonus
-	// 2. Subscribe to damage received events for resistance
-	// 3. Publish RageStartedEvent
-	// The subscriptions ARE the rage effect - they persist until rage ends
+	// Now we have bus access! But we need:
+	// 1. Combat event types defined (EventTypeAttack, EventTypeDamageReceived)
+	// 2. Event handler methods (r.onAttack, r.onDamageReceived)
+	// 3. RageStartedEvent type defined
+	// For now, just showing we can access the bus:
+	if r.bus != nil {
+		// TODO: r.bus.Subscribe(combat.EventTypeAttack, r.onAttack)
+		// TODO: r.bus.Subscribe(combat.EventTypeDamageReceived, r.onDamageReceived)
+		// TODO: r.bus.Publish(&RageStartedEvent{Owner: owner})
+	}
 
 	return nil
 }

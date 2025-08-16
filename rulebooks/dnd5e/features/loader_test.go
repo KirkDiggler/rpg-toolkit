@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,8 +25,11 @@ func TestLoadJSON_Rage(t *testing.T) {
 		}
 	}`
 
+	// Create a mock event bus
+	bus := events.NewBus()
+	
 	// Load the feature
-	action, err := features.LoadJSON([]byte(featureJSON))
+	action, err := features.LoadJSON([]byte(featureJSON), bus)
 	require.NoError(t, err)
 	require.NotNil(t, action)
 
@@ -59,13 +63,15 @@ func TestLoadJSON_UnknownFeature(t *testing.T) {
 		"data": {}
 	}`
 
-	action, err := features.LoadJSON([]byte(featureJSON))
+	bus := events.NewBus()
+	action, err := features.LoadJSON([]byte(featureJSON), bus)
 	assert.Nil(t, action)
 	assert.EqualError(t, err, "unknown feature: unknown")
 }
 
 func TestLoadJSON_InvalidJSON(t *testing.T) {
-	action, err := features.LoadJSON([]byte("not json"))
+	bus := events.NewBus()
+	action, err := features.LoadJSON([]byte("not json"), bus)
 	assert.Nil(t, action)
 	assert.Error(t, err)
 }

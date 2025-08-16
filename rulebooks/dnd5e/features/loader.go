@@ -9,23 +9,11 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 )
-
-// FeatureKey identifies specific feature types
-type FeatureKey string
-
-const (
-	FeatureKeyRage FeatureKey = "rage"
-)
-
-// FeatureInput is the standard input for all D&D 5e features
-type FeatureInput struct {
-	Target core.Entity `json:"target,omitempty"`
-	// When we have actual use cases for other fields, we'll add them
-}
 
 // LoadJSON creates a feature from JSON data
-func LoadJSON(data []byte) (Feature, error) {
+func LoadJSON(data []byte, bus *events.Bus) (Feature, error) {
 	var input struct {
 		Ref  string          `json:"ref"`
 		ID   string          `json:"id"`
@@ -60,6 +48,7 @@ func LoadJSON(data []byte) (Feature, error) {
 			uses:        rageData.Uses,
 			level:       rageData.Level,
 			currentUses: rageData.Uses, // Start with max uses
+			bus:         bus,
 		}, nil
 
 	default:

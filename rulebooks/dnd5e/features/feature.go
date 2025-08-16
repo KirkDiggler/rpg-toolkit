@@ -7,6 +7,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
+// FeatureKey identifies specific feature types
+type FeatureKey string
+
+const (
+	FeatureKeyRage FeatureKey = "rage"
+)
+
+// FeatureInput is the standard input for all D&D 5e features
+type FeatureInput struct {
+	Target core.Entity `json:"target,omitempty"`
+	// When we have actual use cases for other fields, we'll add them
+}
+
 // ResourceType identifies what resource a feature consumes
 type ResourceType string
 
