@@ -101,9 +101,9 @@ func (s *EventContextTestSuite) TestModifiers() {
 	ctx := events.NewEventContext()
 
 	// Add modifiers
-	mod1 := events.NewSimpleModifier("rage", "additive", "damage", 10, 2)
-	mod2 := events.NewSimpleModifier("resistance", "multiplicative", "damage", 20, 0.5)
-	mod3 := events.NewSimpleModifier("blessed", "flag", "advantage", 5, true)
+	mod1 := events.NewSimpleModifier(events.TestModifierSourceRage, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 10, 2)
+	mod2 := events.NewSimpleModifier(events.TestModifierSourceResistance, events.TestModifierTypeMultiplicative, events.TestModifierTargetDamage, 20, 0.5)
+	mod3 := events.NewSimpleModifier(events.TestModifierSourceBlessed, events.TestModifierTypeFlag, events.TestModifierTargetAdvantage, 5, true)
 
 	ctx.AddModifier(mod1)
 	ctx.AddModifier(mod2)
@@ -114,18 +114,18 @@ func (s *EventContextTestSuite) TestModifiers() {
 	s.Len(mods, 3)
 
 	// Verify they're in order added
-	s.Equal("rage", mods[0].Source())
-	s.Equal("resistance", mods[1].Source())
-	s.Equal("blessed", mods[2].Source())
+	s.Equal(events.TestModifierSourceRage, mods[0].Source())
+	s.Equal(events.TestModifierSourceResistance, mods[1].Source())
+	s.Equal(events.TestModifierSourceBlessed, mods[2].Source())
 }
 
 func (s *EventContextTestSuite) TestModifiersSorted() {
 	ctx := events.NewEventContext()
 
 	// Add modifiers with different priorities
-	mod1 := events.NewSimpleModifier("low", "additive", "damage", 30, 5)
-	mod2 := events.NewSimpleModifier("high", "additive", "damage", 10, 3)
-	mod3 := events.NewSimpleModifier("mid", "additive", "damage", 20, 4)
+	mod1 := events.NewSimpleModifier(events.TestModifierSourceTest, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 30, 5)
+	mod2 := events.NewSimpleModifier(events.TestModifierSourceTest2, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 10, 3)
+	mod3 := events.NewSimpleModifier(events.TestModifierSourceRage, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 20, 4)
 
 	ctx.AddModifier(mod1)
 	ctx.AddModifier(mod2)
@@ -143,7 +143,7 @@ func (s *EventContextTestSuite) TestModifiersSorted() {
 func (s *EventContextTestSuite) TestClearModifiers() {
 	ctx := events.NewEventContext()
 
-	ctx.AddModifier(events.NewSimpleModifier("test", "additive", "damage", 10, 5))
+	ctx.AddModifier(events.NewSimpleModifier(events.TestModifierSourceTest, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 10, 5))
 	s.Len(ctx.GetModifiers(), 1)
 
 	ctx.ClearModifiers()
@@ -223,7 +223,7 @@ func (s *EventContextTestSuite) TestConcurrentAccess() {
 func (s *EventContextTestSuite) TestGetModifiersReturnsCopy() {
 	ctx := events.NewEventContext()
 
-	mod := events.NewSimpleModifier("test", "additive", "damage", 10, 5)
+	mod := events.NewSimpleModifier(events.TestModifierSourceTest, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 10, 5)
 	ctx.AddModifier(mod)
 
 	// Get modifiers and modify the returned slice
@@ -231,10 +231,10 @@ func (s *EventContextTestSuite) TestGetModifiersReturnsCopy() {
 	s.Len(getMods, 1)
 
 	// Try to modify the returned slice
-	_ = append(getMods, events.NewSimpleModifier("hacker", "additive", "damage", 0, 100))
+	_ = append(getMods, events.NewSimpleModifier(events.TestModifierSourceTest2, events.TestModifierTypeAdditive, events.TestModifierTargetDamage, 0, 100))
 
 	// Original should be unchanged
 	originalMods := ctx.GetModifiers()
 	s.Len(originalMods, 1)
-	s.Equal("test", originalMods[0].Source())
+	s.Equal(events.TestModifierSourceTest, originalMods[0].Source())
 }
