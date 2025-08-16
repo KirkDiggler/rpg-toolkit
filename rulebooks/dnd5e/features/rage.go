@@ -26,6 +26,10 @@ type Rage struct {
 	// Track current state
 	currentUses int
 	active      bool
+	owner       core.Entity // Who is raging
+	
+	// Track subscriptions for cleanup
+	subscriptions []string
 }
 
 // Entity interface
@@ -54,17 +58,36 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 
 	r.currentUses--
 	r.active = true
+	r.owner = owner // Store who is raging
 
-	// Now we have bus access! But we need:
-	// 1. Combat event types defined (EventTypeAttack, EventTypeDamageReceived)
-	// 2. Event handler methods (r.onAttack, r.onDamageReceived)
-	// 3. RageStartedEvent type defined
-	// For now, just showing we can access the bus:
-	if r.bus != nil {
-		// TODO: r.bus.Subscribe(combat.EventTypeAttack, r.onAttack)
-		// TODO: r.bus.Subscribe(combat.EventTypeDamageReceived, r.onDamageReceived)
-		// TODO: r.bus.Publish(&RageStartedEvent{Owner: owner})
-	}
+	// Event types will be defined in the rulebook (dnd5e package)
+	// For now, documenting what we need:
+	
+	// TODO: Define in dnd5e package:
+	// - EventTypeAttack (check if attacker == r.owner, add damage bonus)
+	// - EventTypeDamageReceived (check if target == r.owner, apply resistance)
+	// - EventTypeTurnEnd (check if entity == r.owner, track rage ending)
+	// - RageStartedEvent, RageEndedEvent types
+	
+	// The pattern will be:
+	// subID, _ := r.bus.SubscribeWithFilter(dnd5e.EventTypeAttack, r.onAttack, filterFunc)
+	// r.subscriptions = append(r.subscriptions, subID)
 
 	return nil
+}
+
+// endRage handles cleanup when rage ends
+func (r *Rage) endRage() {
+	r.active = false
+	
+	// Unsubscribe from all events
+	for _, subID := range r.subscriptions {
+		r.bus.Unsubscribe(subID)
+	}
+	r.subscriptions = nil
+	
+	// TODO: Publish RageEndedEvent
+	// r.bus.Publish(&RageEndedEvent{Owner: r.owner})
+	
+	r.owner = nil
 }
