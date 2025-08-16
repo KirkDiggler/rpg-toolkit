@@ -10,8 +10,9 @@ import (
 // FeatureKey identifies specific feature types
 type FeatureKey string
 
+// Feature key constants
 const (
-	FeatureKeyRage FeatureKey = "rage"
+	FeatureKeyRage FeatureKey = "rage" // Barbarian rage feature
 )
 
 // FeatureInput is the standard input for all D&D 5e features
@@ -23,19 +24,21 @@ type FeatureInput struct {
 // ResourceType identifies what resource a feature consumes
 type ResourceType string
 
+// Resource type constants for features
 const (
-	ResourceTypeRageUses    ResourceType = "rage_uses"
-	ResourceTypeKiPoints    ResourceType = "ki_points"
-	ResourceTypeSuperiority ResourceType = "superiority_dice"
+	ResourceTypeRageUses    ResourceType = "rage_uses"        // Barbarian rage uses
+	ResourceTypeKiPoints    ResourceType = "ki_points"        // Monk ki points
+	ResourceTypeSuperiority ResourceType = "superiority_dice" // Fighter superiority dice
 )
 
 // ResetType identifies when a feature's uses reset
 type ResetType string
 
+// Reset type constants for when features refresh
 const (
-	ResetTypeShortRest ResetType = "short_rest"
-	ResetTypeLongRest  ResetType = "long_rest"
-	ResetTypeDawn      ResetType = "dawn"
+	ResetTypeShortRest ResetType = "short_rest" // Resets on short rest
+	ResetTypeLongRest  ResetType = "long_rest"  // Resets on long rest
+	ResetTypeDawn      ResetType = "dawn"       // Resets at dawn
 )
 
 // Feature is the D&D 5e specific interface for character features.

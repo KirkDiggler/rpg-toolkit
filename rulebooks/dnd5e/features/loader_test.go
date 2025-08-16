@@ -27,7 +27,7 @@ func TestLoadJSON_Rage(t *testing.T) {
 
 	// Create a mock event bus
 	bus := events.NewBus()
-	
+
 	// Load the feature
 	action, err := features.LoadJSON([]byte(featureJSON), bus)
 	require.NoError(t, err)

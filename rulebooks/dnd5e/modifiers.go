@@ -9,10 +9,10 @@ import (
 
 // D&D 5e specific modifier sources
 const (
-	ModifierSourceRage        events.ModifierSource = "rage"
-	ModifierSourceBless       events.ModifierSource = "bless"
-	ModifierSourceHaste       events.ModifierSource = "haste"
-	ModifierSourceExhaustion  events.ModifierSource = "exhaustion"
+	ModifierSourceRage       events.ModifierSource = "rage"
+	ModifierSourceBless      events.ModifierSource = "bless"
+	ModifierSourceHaste      events.ModifierSource = "haste"
+	ModifierSourceExhaustion events.ModifierSource = "exhaustion"
 )
 
 // D&D 5e specific modifier types

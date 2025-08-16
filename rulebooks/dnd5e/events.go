@@ -22,13 +22,14 @@ var (
 // AbilityType identifies which ability is used
 type AbilityType string
 
+// Ability type constants for D&D 5e
 const (
-	AbilityStrength     AbilityType = "strength"
-	AbilityDexterity    AbilityType = "dexterity"
-	AbilityConstitution AbilityType = "constitution"
-	AbilityIntelligence AbilityType = "intelligence"
-	AbilityWisdom       AbilityType = "wisdom"
-	AbilityCharisma     AbilityType = "charisma"
+	AbilityStrength     AbilityType = "strength"     // Strength ability score
+	AbilityDexterity    AbilityType = "dexterity"    // Dexterity ability score
+	AbilityConstitution AbilityType = "constitution" // Constitution ability score
+	AbilityIntelligence AbilityType = "intelligence" // Intelligence ability score
+	AbilityWisdom       AbilityType = "wisdom"       // Wisdom ability score
+	AbilityCharisma     AbilityType = "charisma"     // Charisma ability score
 )
 
 // AttackEvent is published when an entity makes an attack
@@ -41,7 +42,10 @@ type AttackEvent struct {
 	Damage   int // Base damage before modifiers
 }
 
-func (e *AttackEvent) EventRef() *core.Ref        { return EventRefAttack }
+// EventRef returns the event reference for attack events
+func (e *AttackEvent) EventRef() *core.Ref { return EventRefAttack }
+
+// Context returns the event context for modifiers
 func (e *AttackEvent) Context() *events.EventContext { return e.ctx }
 
 // DamageReceivedEvent is published when an entity takes damage
@@ -53,7 +57,10 @@ type DamageReceivedEvent struct {
 	DamageType damage.Type
 }
 
-func (e *DamageReceivedEvent) EventRef() *core.Ref        { return EventRefDamageReceived }
+// EventRef returns the event reference for damage received events
+func (e *DamageReceivedEvent) EventRef() *core.Ref { return EventRefDamageReceived }
+
+// Context returns the event context for modifiers
 func (e *DamageReceivedEvent) Context() *events.EventContext { return e.ctx }
 
 // TurnEndEvent is published when an entity's turn ends
@@ -62,7 +69,10 @@ type TurnEndEvent struct {
 	Entity core.Entity
 }
 
-func (e *TurnEndEvent) EventRef() *core.Ref        { return EventRefTurnEnd }
+// EventRef returns the event reference for turn end events
+func (e *TurnEndEvent) EventRef() *core.Ref { return EventRefTurnEnd }
+
+// Context returns the event context for modifiers
 func (e *TurnEndEvent) Context() *events.EventContext { return e.ctx }
 
 // RoundEndEvent is published when a combat round ends
@@ -71,7 +81,10 @@ type RoundEndEvent struct {
 	Round int
 }
 
-func (e *RoundEndEvent) EventRef() *core.Ref        { return EventRefRoundEnd }
+// EventRef returns the event reference for round end events
+func (e *RoundEndEvent) EventRef() *core.Ref { return EventRefRoundEnd }
+
+// Context returns the event context for modifiers
 func (e *RoundEndEvent) Context() *events.EventContext { return e.ctx }
 
 // RageStartedEvent is published when rage begins
@@ -81,7 +94,10 @@ type RageStartedEvent struct {
 	DamageBonus int
 }
 
-func (e *RageStartedEvent) EventRef() *core.Ref        { return EventRefRageStarted }
+// EventRef returns the event reference for rage started events
+func (e *RageStartedEvent) EventRef() *core.Ref { return EventRefRageStarted }
+
+// Context returns the event context for modifiers
 func (e *RageStartedEvent) Context() *events.EventContext { return e.ctx }
 
 // RageEndedEvent is published when rage ends
@@ -90,10 +106,13 @@ type RageEndedEvent struct {
 	Owner core.Entity
 }
 
-func (e *RageEndedEvent) EventRef() *core.Ref        { return EventRefRageEnded }
+// EventRef returns the event reference for rage ended events
+func (e *RageEndedEvent) EventRef() *core.Ref { return EventRefRageEnded }
+
+// Context returns the event context for modifiers
 func (e *RageEndedEvent) Context() *events.EventContext { return e.ctx }
 
-// Helper constructors
+// NewAttackEvent creates a new attack event with the given parameters
 func NewAttackEvent(attacker, target core.Entity, isMelee bool, ability AbilityType, damage int) *AttackEvent {
 	return &AttackEvent{
 		ctx:      events.NewEventContext(),
@@ -105,6 +124,7 @@ func NewAttackEvent(attacker, target core.Entity, isMelee bool, ability AbilityT
 	}
 }
 
+// NewDamageReceivedEvent creates a new damage received event with the given parameters
 func NewDamageReceivedEvent(target, source core.Entity, amount int, damageType damage.Type) *DamageReceivedEvent {
 	return &DamageReceivedEvent{
 		ctx:        events.NewEventContext(),

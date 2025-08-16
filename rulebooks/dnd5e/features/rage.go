@@ -23,21 +23,25 @@ type Rage struct {
 	currentUses int
 	active      bool
 	owner       core.Entity // Who is raging
-	
+
 	// Track subscriptions for cleanup
 	subscriptions []string
 }
 
-// Entity interface
-func (r *Rage) GetID() string            { return r.id }
+// GetID returns the entity's unique identifier
+func (r *Rage) GetID() string { return r.id }
+
+// GetType returns the entity type (feature)
 func (r *Rage) GetType() core.EntityType { return dnd5e.EntityTypeFeature }
 
-// Feature interface methods
+// GetResourceType returns what resource this feature consumes
 func (r *Rage) GetResourceType() ResourceType { return ResourceTypeRageUses }
-func (r *Rage) ResetsOn() ResetType           { return ResetTypeLongRest }
 
-// Action interface
-func (r *Rage) CanActivate(ctx context.Context, owner core.Entity, input FeatureInput) error {
+// ResetsOn returns when this feature's uses reset
+func (r *Rage) ResetsOn() ResetType { return ResetTypeLongRest }
+
+// CanActivate checks if rage can be activated
+func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
 	if r.currentUses <= 0 {
 		return errors.New("no rage uses remaining")
 	}
@@ -47,6 +51,7 @@ func (r *Rage) CanActivate(ctx context.Context, owner core.Entity, input Feature
 	return nil
 }
 
+// Activate enters rage mode and subscribes to combat events
 func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
 	if err := r.CanActivate(ctx, owner, input); err != nil {
 		return err
@@ -87,7 +92,7 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	}
 
 	// Publish rage started event
-	r.bus.Publish(&dnd5e.RageStartedEvent{
+	_ = r.bus.Publish(&dnd5e.RageStartedEvent{
 		Owner:       owner,
 		DamageBonus: r.getDamageBonus(),
 	})
@@ -108,7 +113,7 @@ func (r *Rage) getDamageBonus() int {
 // onAttack handles attack events to add damage bonus
 func (r *Rage) onAttack(e interface{}) error {
 	attack := e.(*dnd5e.AttackEvent)
-	
+
 	// Only add bonus to Strength-based melee attacks
 	if attack.IsMelee && attack.Ability == dnd5e.AbilityStrength {
 		// Add damage bonus as a modifier
@@ -121,14 +126,14 @@ func (r *Rage) onAttack(e interface{}) error {
 			r.getDamageBonus(),
 		))
 	}
-	
+
 	return nil
 }
 
 // onDamageReceived handles damage events to apply resistance
 func (r *Rage) onDamageReceived(e interface{}) error {
 	damage := e.(*dnd5e.DamageReceivedEvent)
-	
+
 	// Apply resistance to physical damage
 	if damage.DamageType == dnd5e.DamageTypeBludgeoning ||
 		damage.DamageType == dnd5e.DamageTypePiercing ||
@@ -143,24 +148,6 @@ func (r *Rage) onDamageReceived(e interface{}) error {
 			0.5, // multiplier for half damage
 		))
 	}
-	
-	return nil
-}
 
-// endRage handles cleanup when rage ends
-func (r *Rage) endRage() {
-	r.active = false
-	
-	// Unsubscribe from all events
-	for _, subID := range r.subscriptions {
-		r.bus.Unsubscribe(subID)
-	}
-	r.subscriptions = nil
-	
-	// Publish rage ended event
-	r.bus.Publish(&dnd5e.RageEndedEvent{
-		Owner: r.owner,
-	})
-	
-	r.owner = nil
+	return nil
 }
