@@ -119,9 +119,9 @@ func (r *Rage) onAttack(e interface{}) error {
 		// Add damage bonus as a modifier
 		ctx := attack.Context()
 		ctx.AddModifier(events.NewSimpleModifier(
-			string(dnd5e.ModifierSourceRage),
-			string(dnd5e.ModifierTypeAdditive),
-			string(dnd5e.ModifierTargetDamage),
+			string(dnd5e.ModifierSourceRage),      // Source is events.ModifierSource
+			string(dnd5e.ModifierTypeAdditive),     // Type is events.ModifierType
+			string(dnd5e.ModifierTargetDamage),     // Target is our own type (not in core yet)
 			200,            // priority (after base damage)
 			r.getDamageBonus(),
 		))
