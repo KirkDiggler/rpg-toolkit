@@ -20,12 +20,12 @@ const (
 
 // FeatureInput is the standard input for all D&D 5e features
 type FeatureInput struct {
-	Target core.Entity    `json:"target,omitempty"`
-	Data   map[string]any `json:"data,omitempty"`
+	Target core.Entity `json:"target,omitempty"`
+	// When we have actual use cases for other fields, we'll add them
 }
 
 // LoadJSON creates a feature from JSON data
-func LoadJSON(data []byte) (core.Action[FeatureInput], error) {
+func LoadJSON(data []byte) (Feature, error) {
 	var input struct {
 		Ref  string          `json:"ref"`
 		ID   string          `json:"id"`

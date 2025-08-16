@@ -27,8 +27,12 @@ type Rage struct {
 }
 
 // Entity interface
-func (r *Rage) GetID() string              { return r.id }
-func (r *Rage) GetType() core.EntityType   { return EntityTypeFeature }
+func (r *Rage) GetID() string            { return r.id }
+func (r *Rage) GetType() core.EntityType { return EntityTypeFeature }
+
+// Feature interface methods
+func (r *Rage) GetResourceType() ResourceType { return ResourceTypeRageUses }
+func (r *Rage) ResetsOn() ResetType           { return ResetTypeLongRest }
 
 // Action interface
 func (r *Rage) CanActivate(ctx context.Context, owner core.Entity, input FeatureInput) error {
@@ -49,9 +53,11 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	r.currentUses--
 	r.active = true
 
-	// TODO: Publish rage started event
-	// TODO: Subscribe to combat events for damage bonus
-	// TODO: Subscribe to damage events for resistance
+	// TODO: When we have event bus access:
+	// 1. Subscribe to attack events to add damage bonus
+	// 2. Subscribe to damage received events for resistance
+	// 3. Publish RageStartedEvent
+	// The subscriptions ARE the rage effect - they persist until rage ends
 
 	return nil
 }
