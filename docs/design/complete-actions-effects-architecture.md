@@ -207,7 +207,77 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input RageInput)
 }
 ```
 
-### 2. Character Loading (API Layer)
+### 2. Rulebook Provides Data-Driven Interface
+
+```go
+// github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/rulebook.go
+package dnd5e
+
+// The rulebook provides a way to create and activate actions from data
+type Rulebook struct {
+    // Registry of action creators
+    actionCreators map[string]ActionCreator
+}
+
+type ActionCreator func(data map[string]any) (any, ActivatorFunc)
+type ActivatorFunc func(ctx context.Context, owner Entity, action any, input map[string]any) error
+
+func NewRulebook() *Rulebook {
+    r := &Rulebook{
+        actionCreators: make(map[string]ActionCreator),
+    }
+    
+    // Register all D&D 5e actions
+    r.actionCreators["rage"] = func(data map[string]any) (any, ActivatorFunc) {
+        rage := &features.Rage{
+            id:   data["id"].(string),
+            uses: data["uses"].(int),
+        }
+        
+        // Return the action and its activator
+        activator := func(ctx context.Context, owner Entity, action any, input map[string]any) error {
+            // Convert data to RageInput and call the typed method
+            return action.(*features.Rage).Activate(ctx, owner, features.RageInput{})
+        }
+        
+        return rage, activator
+    }
+    
+    r.actionCreators["fireball"] = func(data map[string]any) (any, ActivatorFunc) {
+        fireball := &spells.Fireball{
+            id:     data["id"].(string),
+            level:  data["level"].(int),
+            damage: data["damage"].(string),
+        }
+        
+        activator := func(ctx context.Context, owner Entity, action any, input map[string]any) error {
+            // Convert input data to typed input
+            targetInput := spells.TargetingInput{
+                TargetID: input["target"].(string),
+                Point:    input["point"].(Position),
+            }
+            return action.(*spells.Fireball).Activate(ctx, owner, targetInput)
+        }
+        
+        return fireball, activator
+    }
+    
+    return r
+}
+
+// CreateAction creates an action from data and returns it with its activator
+func (r *Rulebook) CreateAction(actionType string, data map[string]any) (any, ActivatorFunc, error) {
+    creator, exists := r.actionCreators[actionType]
+    if !exists {
+        return nil, nil, fmt.Errorf("unknown action type: %s", actionType)
+    }
+    
+    action, activator := creator(data)
+    return action, activator, nil
+}
+```
+
+### 3. Character Loading (API Layer)
 
 ```go
 // github.com/KirkDiggler/rpg-api/internal/loaders/character_loader.go
@@ -241,26 +311,32 @@ func (l *CharacterLoader) Load(ctx context.Context, id string) (*Character, erro
         // ... etc
     }
     
-    // Load features as Actions
+    // Load features as Actions using data-driven approach
     for _, featureData := range data.Features {
-        switch featureData.Type {
-        case "rage":
-            // We know it's D&D 5e, so we can create Rage
-            rage := l.rulebook.CreateRage(featureData)
-            char.AddAction(rage)
-            
-        case "second_wind":
-            secondWind := l.rulebook.CreateSecondWind(featureData)
-            char.AddAction(secondWind)
-            
-        // ... other D&D 5e features
+        action, activator, err := l.rulebook.CreateAction(
+            featureData.Type,
+            featureData.Data,
+        )
+        if err != nil {
+            continue // Skip unknown features
         }
+        
+        ref := featureData.Ref // e.g., "barbarian:rage"
+        char.AddAction(ref, action, activator)
     }
     
     // Load spells as Actions
     for _, spellData := range data.KnownSpells {
-        spell := l.rulebook.CreateSpell(spellData)
-        char.AddAction(spell)
+        action, activator, err := l.rulebook.CreateAction(
+            "spell:" + spellData.Name,
+            spellData.Data,
+        )
+        if err != nil {
+            continue
+        }
+        
+        ref := spellData.Ref // e.g., "spell:fireball"
+        char.AddAction(ref, action, activator)
     }
     
     return char, nil
@@ -287,7 +363,14 @@ type Character struct {
     
     // Actions can be features, spells, items, etc.
     // Character doesn't know the types, just stores them
-    actions map[string]any // Actually Action[T] but stored as any
+    actions    map[string]any         // The action objects
+    activators map[string]ActivatorFunc // Functions to activate them
+}
+
+// AddAction stores an action with its activator
+func (c *Character) AddAction(ref string, action any, activator ActivatorFunc) {
+    c.actions[ref] = action
+    c.activators[ref] = activator
 }
 
 // ActivateAction is the generic activation method
@@ -302,23 +385,23 @@ func (c *Character) ActivateAction(ctx context.Context, ref string, input any) e
     return activateGeneric(ctx, c, action, input)
 }
 
-// Helper to handle the generic dispatch
-func activateGeneric(ctx context.Context, owner Entity, action any, input any) error {
-    // Each action type handles its own input
-    // This is internal to the implementation
-    switch a := action.(type) {
-    case *features.Rage:
-        // Rage expects RageInput (empty struct)
-        return a.Activate(ctx, owner, input.(features.RageInput))
-        
-    case *spells.Fireball:
-        // Fireball expects targeting info
-        return a.Activate(ctx, owner, input.(spells.TargetingInput))
-        
-    // ... other action types
+// The character stores actions but doesn't know their types
+// The rulebook provides a way to activate them with just strings/data
+func (c *Character) ActivateActionByRef(ctx context.Context, ref string, inputData map[string]any) error {
+    action, exists := c.actions[ref]
+    if !exists {
+        return ErrActionNotFound
     }
     
-    return errors.New("unknown action type")
+    // The rulebook registered an activator function when creating the action
+    activator, exists := c.activators[ref]
+    if !exists {
+        return errors.New("no activator for action")
+    }
+    
+    // The activator knows how to convert inputData to the right type
+    // and call the action's Activate method
+    return activator(ctx, c, action, inputData)
 }
 ```
 
@@ -333,9 +416,14 @@ func HandleRageCommand(ctx context.Context, playerID string) error {
         return err
     }
     
-    // 2. Activate the rage action
-    // The character has rage because the loader saw it in the database
-    err = char.ActivateAction(ctx, "barbarian:rage", features.RageInput{})
+    // 2. Activate the rage action using data-driven approach
+    // Game server doesn't know what rage is, just passes data
+    err = char.ActivateActionByRef(ctx, "barbarian:rage", map[string]any{
+        // Rage needs no input, but other actions might need:
+        // "target": targetID,
+        // "level": 3,
+        // etc.
+    })
     if err != nil {
         return err  // "no uses remaining" or "already raging"
     }

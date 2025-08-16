@@ -15,22 +15,22 @@ import "context"
 // Example usage in a rulebook:
 //
 //	type RageInput struct{}  // No input needed for rage
-//	
+//
 //	type Rage struct {
 //	    id   string
 //	    uses int
 //	}
-//	
+//
 //	func (r *Rage) GetID() string { return r.id }
 //	func (r *Rage) GetType() string { return "feature" }
-//	
+//
 //	func (r *Rage) CanActivate(ctx context.Context, owner Entity, input RageInput) error {
 //	    if r.uses <= 0 {
 //	        return errors.New("no rage uses remaining")
 //	    }
 //	    return nil
 //	}
-//	
+//
 //	func (r *Rage) Activate(ctx context.Context, owner Entity, input RageInput) error {
 //	    r.uses--
 //	    // Apply rage effects via event bus
@@ -49,3 +49,4 @@ type Action[T any] interface {
 	// The owner is the entity performing the action.
 	Activate(ctx context.Context, owner Entity, input T) error
 }
+
