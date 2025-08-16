@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 )
 
 // EntityType constants for features
@@ -60,19 +61,94 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	r.active = true
 	r.owner = owner // Store who is raging
 
-	// Event types will be defined in the rulebook (dnd5e package)
-	// For now, documenting what we need:
-	
-	// TODO: Define in dnd5e package:
-	// - EventTypeAttack (check if attacker == r.owner, add damage bonus)
-	// - EventTypeDamageReceived (check if target == r.owner, apply resistance)
-	// - EventTypeTurnEnd (check if entity == r.owner, track rage ending)
-	// - RageStartedEvent, RageEndedEvent types
-	
-	// The pattern will be:
-	// subID, _ := r.bus.SubscribeWithFilter(dnd5e.EventTypeAttack, r.onAttack, filterFunc)
-	// r.subscriptions = append(r.subscriptions, subID)
+	// Subscribe to attack events (for damage bonus)
+	attackSub, err := r.bus.SubscribeWithFilter(
+		dnd5e.EventRefAttack,
+		r.onAttack,
+		func(e events.Event) bool {
+			if attack, ok := e.(*dnd5e.AttackEvent); ok {
+				return attack.Attacker == r.owner
+			}
+			return false
+		},
+	)
+	if err == nil {
+		r.subscriptions = append(r.subscriptions, attackSub)
+	}
 
+	// Subscribe to damage events (for resistance)
+	damageSub, err := r.bus.SubscribeWithFilter(
+		dnd5e.EventRefDamageReceived,
+		r.onDamageReceived,
+		func(e events.Event) bool {
+			if damage, ok := e.(*dnd5e.DamageReceivedEvent); ok {
+				return damage.Target == r.owner
+			}
+			return false
+		},
+	)
+	if err == nil {
+		r.subscriptions = append(r.subscriptions, damageSub)
+	}
+
+	// Publish rage started event
+	r.bus.Publish(&dnd5e.RageStartedEvent{
+		Owner:       owner,
+		DamageBonus: r.getDamageBonus(),
+	})
+
+	return nil
+}
+
+// getDamageBonus returns the rage damage bonus based on barbarian level
+func (r *Rage) getDamageBonus() int {
+	if r.level >= 16 {
+		return 4
+	} else if r.level >= 9 {
+		return 3
+	}
+	return 2
+}
+
+// onAttack handles attack events to add damage bonus
+func (r *Rage) onAttack(e interface{}) error {
+	attack := e.(*dnd5e.AttackEvent)
+	
+	// Only add bonus to Strength-based melee attacks
+	if attack.IsMelee && attack.Ability == dnd5e.AbilityStrength {
+		// Add damage bonus as a modifier
+		ctx := attack.Context()
+		ctx.AddModifier(events.NewSimpleModifier(
+			"rage",         // source
+			"additive",     // type
+			"damage",       // target
+			200,            // priority (after base damage)
+			r.getDamageBonus(),
+		))
+	}
+	
+	return nil
+}
+
+// onDamageReceived handles damage events to apply resistance
+func (r *Rage) onDamageReceived(e interface{}) error {
+	damage := e.(*dnd5e.DamageReceivedEvent)
+	
+	// Apply resistance to physical damage
+	if damage.DamageType == dnd5e.DamageTypeBludgeoning ||
+		damage.DamageType == dnd5e.DamageTypePiercing ||
+		damage.DamageType == dnd5e.DamageTypeSlashing {
+		// Add resistance modifier (halves damage)
+		ctx := damage.Context()
+		ctx.AddModifier(events.NewSimpleModifier(
+			"rage",         // source
+			"resistance",   // type
+			"damage",       // target
+			100,            // priority (apply early)
+			0.5,            // multiplier for half damage
+		))
+	}
+	
 	return nil
 }
 
@@ -86,8 +162,10 @@ func (r *Rage) endRage() {
 	}
 	r.subscriptions = nil
 	
-	// TODO: Publish RageEndedEvent
-	// r.bus.Publish(&RageEndedEvent{Owner: r.owner})
+	// Publish rage ended event
+	r.bus.Publish(&dnd5e.RageEndedEvent{
+		Owner: r.owner,
+	})
 	
 	r.owner = nil
 }
