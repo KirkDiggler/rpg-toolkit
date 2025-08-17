@@ -58,7 +58,7 @@ func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) err
 	return nil
 }
 
-// Activate enters rage mode and subscribes to combat events
+// Activate enters rage mode and creates a rage condition
 func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
 	if err := r.CanActivate(ctx, owner, input); err != nil {
 		return err
@@ -70,45 +70,20 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	r.owner = owner // Store who is raging
 	r.mu.Unlock()
 
-	// Subscribe to attack events (for damage bonus)
-	attackSub, err := r.bus.SubscribeWithFilter(
-		dnd5e.EventRefAttack,
-		r.onAttack,
-		func(e events.Event) bool {
-			if attack, ok := e.(*dnd5e.AttackEvent); ok {
-				r.mu.RLock()
-				defer r.mu.RUnlock()
-				return attack.Attacker == r.owner
-			}
-			return false
-		},
-	)
-	if err == nil {
-		r.mu.Lock()
-		r.subscriptions = append(r.subscriptions, attackSub)
-		r.mu.Unlock()
+	// Create and apply the rage condition
+	rageCondition := NewRagingCondition(owner.GetID(), r.level, r.bus)
+
+	// Initialize the condition (sets up event subscriptions)
+	if err := rageCondition.OnApply(); err != nil {
+		return err
 	}
 
-	// Subscribe to damage events (for resistance)
-	damageSub, err := r.bus.SubscribeWithFilter(
-		dnd5e.EventRefDamageReceived,
-		r.onDamageReceived,
-		func(e events.Event) bool {
-			if damage, ok := e.(*dnd5e.DamageReceivedEvent); ok {
-				r.mu.RLock()
-				defer r.mu.RUnlock()
-				return damage.Target == r.owner
-			}
-			return false
-		},
-	)
-	if err == nil {
-		r.mu.Lock()
-		r.subscriptions = append(r.subscriptions, damageSub)
-		r.mu.Unlock()
-	}
+	// Store the rage condition reference
+	r.mu.Lock()
+	r.subscriptions = append(r.subscriptions, rageCondition.GetID())
+	r.mu.Unlock()
 
-	// Publish rage started event
+	// Publish rage started event for backwards compatibility
 	_ = r.bus.Publish(&dnd5e.RageStartedEvent{
 		Owner:       owner,
 		DamageBonus: r.getDamageBonus(),
@@ -127,44 +102,19 @@ func (r *Rage) getDamageBonus() int {
 	return 2
 }
 
-// onAttack handles attack events to add damage bonus
-func (r *Rage) onAttack(e any) error {
-	attack := e.(*dnd5e.AttackEvent)
+// Deactivate ends rage mode
+func (r *Rage) Deactivate() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	// Only add bonus to Strength-based melee attacks
-	if attack.IsMelee && attack.Ability == dnd5e.AbilityStrength {
-		// Add damage bonus as a modifier
-		ctx := attack.Context()
-		ctx.AddModifier(events.NewSimpleModifier(
-			dnd5e.ModifierSourceRage,
-			dnd5e.ModifierTypeAdditive,
-			dnd5e.ModifierTargetDamage,
-			200, // priority (after base damage)
-			r.getDamageBonus(),
-		))
+	if !r.active {
+		return errors.New("not currently raging")
 	}
 
-	return nil
-}
+	r.active = false
 
-// onDamageReceived handles damage events to apply resistance
-func (r *Rage) onDamageReceived(e any) error {
-	damage := e.(*dnd5e.DamageReceivedEvent)
-
-	// Apply resistance to physical damage
-	if damage.DamageType == dnd5e.DamageTypeBludgeoning ||
-		damage.DamageType == dnd5e.DamageTypePiercing ||
-		damage.DamageType == dnd5e.DamageTypeSlashing {
-		// Add resistance modifier (halves damage)
-		ctx := damage.Context()
-		ctx.AddModifier(events.NewSimpleModifier(
-			dnd5e.ModifierSourceRage,
-			dnd5e.ModifierTypeResistance,
-			dnd5e.ModifierTargetDamage,
-			100, // priority (apply early)
-			0.5, // multiplier for half damage
-		))
-	}
+	// The RagingCondition will handle its own cleanup via deferred operations
+	// when it receives the appropriate events or times out
 
 	return nil
 }
