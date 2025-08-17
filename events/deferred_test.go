@@ -48,7 +48,7 @@ func TestDeferredOperations_BackwardsCompatibility(t *testing.T) {
 
 	// Old-style handler that returns error
 	called := false
-	oldHandler := func(e any) error {
+	oldHandler := func(_ any) error {
 		called = true
 		return nil
 	}
@@ -171,7 +171,7 @@ func TestDeferredOperations_ErrorHandling(t *testing.T) {
 	testErr := errors.New("test error")
 
 	// Handler that returns deferred error
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ any) *events.DeferredAction {
 		return events.NewDeferredAction().WithError(testErr)
 	}
 
@@ -242,7 +242,7 @@ func TestDeferredOperations_NoDeadlock(t *testing.T) {
 
 	// Handler that tries to unsubscribe during event processing
 	// This would deadlock in the old implementation
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ any) *events.DeferredAction {
 		// With deferred operations, this is safe
 		return events.NewDeferredAction().
 			Unsubscribe(subID).

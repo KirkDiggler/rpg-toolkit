@@ -96,7 +96,7 @@ func TestDepthProtection_DefaultLimit(t *testing.T) {
 	cascadeCount := 0
 
 	// Handler that counts cascades
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ any) *events.DeferredAction {
 		cascadeCount++
 		if cascadeCount < 15 { // Try to go beyond default
 			return events.NewDeferredAction().Publish(NewTestDepthEvent(cascadeCount))

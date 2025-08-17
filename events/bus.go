@@ -138,7 +138,6 @@ func (b *Bus) Publish(event Event) error {
 				case error:
 					// Handler returned an error (backwards compatibility)
 					immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
-					break
 				}
 			}
 		}
