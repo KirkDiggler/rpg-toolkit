@@ -7,7 +7,6 @@ package events
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -63,8 +62,7 @@ type handlerEntry struct {
 
 // Default limits for event cascading protection
 const (
-	DefaultMaxDepth  = 10 // Maximum recursion depth
-	WarnDepthPercent = 70 // Warn at 70% of max depth (7 levels)
+	DefaultMaxDepth = 10 // Maximum recursion depth
 )
 
 // NewBus creates a new event bus with default settings.
@@ -98,13 +96,8 @@ func (b *Bus) Publish(event Event) error {
 			depth, b.maxDepth, event.EventRef())
 	}
 
-	// Warn if we're getting close to the limit
-	warnThreshold := (b.maxDepth * WarnDepthPercent) / 100
-	if depth > warnThreshold && depth <= warnThreshold+1 {
-		// Only warn once when crossing threshold
-		log.Printf("WARNING: Event cascade depth %d approaching limit %d for event %s",
-			depth, b.maxDepth, event.EventRef())
-	}
+	// Note: Consumers can monitor depth via GetDepth() if they want warnings
+	// We don't log here to avoid forcing logging behavior on library users
 
 	// Phase 1: Collect handlers and call them (with read lock)
 	var deferred []*DeferredAction
@@ -157,7 +150,7 @@ func (b *Bus) Publish(event Event) error {
 		// Process unsubscribes
 		for _, id := range action.Unsubscribes {
 			if err := b.Unsubscribe(id); err != nil {
-				// Log but don't fail - subscription might already be gone
+				// Ignore error - subscription might already be gone
 				continue
 			}
 		}
