@@ -47,9 +47,9 @@ func TestRage_ConcurrentEventHandling(t *testing.T) {
 	// Concurrently publish attack events
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
+		go func() {
 			defer wg.Done()
-			
+
 			for j := 0; j < numEventsPerGoroutine; j++ {
 				// Mix of different attack types
 				if j%2 == 0 {
@@ -74,15 +74,15 @@ func TestRage_ConcurrentEventHandling(t *testing.T) {
 					_ = bus.Publish(attackEvent)
 				}
 			}
-		}(i)
+		}()
 	}
 
 	// Concurrently publish damage events
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
+		go func() {
 			defer wg.Done()
-			
+
 			for j := 0; j < numEventsPerGoroutine; j++ {
 				// Mix of physical and magical damage
 				var damageType damage.Type
@@ -91,7 +91,7 @@ func TestRage_ConcurrentEventHandling(t *testing.T) {
 				} else {
 					damageType = dnd5e.DamageTypeFire
 				}
-				
+
 				damageEvent := dnd5e.NewDamageReceivedEvent(
 					barbarian,
 					&mockEntity{id: "orc", entityType: dnd5e.EntityTypeMonster},
@@ -100,11 +100,11 @@ func TestRage_ConcurrentEventHandling(t *testing.T) {
 				)
 				_ = bus.Publish(damageEvent)
 			}
-		}(i)
+		}()
 	}
 
 	// Concurrently try to activate rage (should fail - already active)
-	wg.Add(numGoroutines/10)
+	wg.Add(numGoroutines / 10)
 	for i := 0; i < numGoroutines/10; i++ {
 		go func() {
 			defer wg.Done()
