@@ -91,25 +91,25 @@ func (b *Bus) Publish(event Event) error {
 	// Check recursion depth
 	depth := atomic.AddInt32(&b.publishDepth, 1)
 	defer atomic.AddInt32(&b.publishDepth, -1)
-	
+
 	// Check if we've hit max depth
 	if depth > b.maxDepth {
-		return fmt.Errorf("event cascade depth exceeded: current=%d, max=%d, event=%s", 
+		return fmt.Errorf("event cascade depth exceeded: current=%d, max=%d, event=%s",
 			depth, b.maxDepth, event.EventRef())
 	}
-	
+
 	// Warn if we're getting close to the limit
 	warnThreshold := (b.maxDepth * WarnDepthPercent) / 100
 	if depth > warnThreshold && depth <= warnThreshold+1 {
 		// Only warn once when crossing threshold
-		log.Printf("WARNING: Event cascade depth %d approaching limit %d for event %s", 
+		log.Printf("WARNING: Event cascade depth %d approaching limit %d for event %s",
 			depth, b.maxDepth, event.EventRef())
 	}
-	
+
 	// Phase 1: Collect handlers and call them (with read lock)
 	var deferred []*DeferredAction
 	var immediateError error
-	
+
 	b.mu.RLock()
 	// Find handlers by comparing ref pointers
 	for _, entries := range b.handlers {
@@ -147,12 +147,12 @@ func (b *Bus) Publish(event Event) error {
 		}
 	}
 	b.mu.RUnlock()
-	
+
 	// Return immediate errors
 	if immediateError != nil {
 		return immediateError
 	}
-	
+
 	// Phase 2: Process deferred actions (no lock held)
 	for _, action := range deferred {
 		// Process unsubscribes
@@ -162,14 +162,14 @@ func (b *Bus) Publish(event Event) error {
 				continue
 			}
 		}
-		
+
 		// Process publishes
 		for _, evt := range action.Publishes {
 			if err := b.Publish(evt); err != nil {
 				return err
 			}
 		}
-		
+
 		// Check for deferred errors
 		if action.Error != nil {
 			return action.Error
@@ -202,11 +202,11 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 	if handlerType.NumOut() != 1 {
 		return "", fmt.Errorf("handler must return exactly one value")
 	}
-	
+
 	returnType := handlerType.Out(0)
 	errorType := reflect.TypeOf((*error)(nil)).Elem()
 	deferredType := reflect.TypeOf((*DeferredAction)(nil))
-	
+
 	if returnType != errorType && returnType != deferredType {
 		return "", fmt.Errorf("handler must return either error or *DeferredAction")
 	}

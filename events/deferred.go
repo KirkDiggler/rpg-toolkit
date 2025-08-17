@@ -8,10 +8,10 @@ package events
 type DeferredAction struct {
 	// Subscriptions to remove after handlers complete
 	Unsubscribes []string
-	
+
 	// Events to publish after handlers complete
 	Publishes []Event
-	
+
 	// Error to return (if any)
 	Error error
 }
@@ -44,3 +44,4 @@ type HandlerFunc func(event any) error
 
 // DeferredHandlerFunc is the new handler signature that can return deferred actions.
 type DeferredHandlerFunc func(event any) *DeferredAction
+
