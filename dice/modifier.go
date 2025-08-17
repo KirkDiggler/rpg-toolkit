@@ -6,6 +6,7 @@
 package dice
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -127,7 +128,10 @@ func (r *Roll) roll() {
 		absCount = -absCount
 	}
 
-	rolls, err := r.roller.RollN(absCount, r.size)
+	// TODO: This should receive context from the caller
+	// For now using Background context to maintain compatibility
+	ctx := context.Background()
+	rolls, err := r.roller.RollN(ctx, absCount, r.size)
 	if err != nil {
 		r.err = err
 		r.rolled = true
