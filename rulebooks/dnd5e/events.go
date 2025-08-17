@@ -11,12 +11,14 @@ import (
 
 // Event type refs for D&D 5e combat
 var (
-	EventRefAttack         = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "attack"})
-	EventRefDamageReceived = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "damage_received"})
-	EventRefTurnEnd        = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "turn_end"})
-	EventRefRoundEnd       = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "round_end"})
-	EventRefRageStarted    = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "rage_started"})
-	EventRefRageEnded      = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "rage_ended"})
+	EventRefAttack           = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "attack"})
+	EventRefDamageReceived   = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "damage_received"})
+	EventRefTurnEnd          = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "turn_end"})
+	EventRefRoundEnd         = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "round_end"})
+	EventRefRageStarted      = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "rage_started"})
+	EventRefRageEnded        = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "rage_ended"})
+	EventRefConditionApplied = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "condition_applied"})
+	EventRefConditionRemoved = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "events", Value: "condition_removed"})
 )
 
 // AbilityType identifies which ability is used
@@ -132,5 +134,55 @@ func NewDamageReceivedEvent(target, source core.Entity, amount int, damageType d
 		Source:     source,
 		Amount:     amount,
 		DamageType: damageType,
+	}
+}
+
+// ConditionAppliedEvent is published when a condition should be applied to an entity
+type ConditionAppliedEvent struct {
+	ctx       *events.EventContext
+	Target    string         // Entity ID to apply condition to
+	Condition string         // Condition ref like "dnd5e:conditions:raging"
+	Source    string         // What applied this condition
+	Data      map[string]any // Condition-specific data
+}
+
+// EventRef returns the event reference for condition applied events
+func (e *ConditionAppliedEvent) EventRef() *core.Ref { return EventRefConditionApplied }
+
+// Context returns the event context
+func (e *ConditionAppliedEvent) Context() *events.EventContext { return e.ctx }
+
+// ConditionRemovedEvent is published when a condition is removed from an entity
+type ConditionRemovedEvent struct {
+	ctx       *events.EventContext
+	Target    string // Entity ID to remove condition from
+	Condition string // Condition ref like "dnd5e:conditions:raging"
+	Reason    string // Why it was removed
+}
+
+// EventRef returns the event reference for condition removed events
+func (e *ConditionRemovedEvent) EventRef() *core.Ref { return EventRefConditionRemoved }
+
+// Context returns the event context
+func (e *ConditionRemovedEvent) Context() *events.EventContext { return e.ctx }
+
+// NewConditionAppliedEvent creates a new condition applied event
+func NewConditionAppliedEvent(target, condition, source string, data map[string]any) *ConditionAppliedEvent {
+	return &ConditionAppliedEvent{
+		ctx:       events.NewEventContext(),
+		Target:    target,
+		Condition: condition,
+		Source:    source,
+		Data:      data,
+	}
+}
+
+// NewConditionRemovedEvent creates a new condition removed event
+func NewConditionRemovedEvent(target, condition, reason string) *ConditionRemovedEvent {
+	return &ConditionRemovedEvent{
+		ctx:       events.NewEventContext(),
+		Target:    target,
+		Condition: condition,
+		Reason:    reason,
 	}
 }

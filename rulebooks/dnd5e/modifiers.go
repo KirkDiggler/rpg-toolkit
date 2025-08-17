@@ -4,6 +4,7 @@
 package dnd5e
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/events"
 )
 
@@ -31,4 +32,9 @@ const (
 	ModifierTargetArmorClass   events.ModifierTarget = "armor_class"
 	ModifierTargetSavingThrow  events.ModifierTarget = "saving_throw"
 	ModifierTargetAbilityCheck events.ModifierTarget = "ability_check"
+)
+
+// Condition refs
+var (
+	ConditionRefRaging = core.MustNewRef(core.RefInput{Module: "dnd5e", Type: "conditions", Value: "raging"})
 )
