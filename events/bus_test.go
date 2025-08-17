@@ -4,6 +4,7 @@
 package events_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -12,7 +13,10 @@ import (
 
 // Package-level ref for test events
 var testEventRef = func() *core.Ref {
-	r, _ := core.ParseString("test:event:basic")
+	r, err := core.ParseString("test:event:basic")
+	if err != nil {
+		panic(err)
+	}
 	return r
 }()
 
@@ -36,9 +40,10 @@ func (e TestEvent) Context() *events.EventContext {
 
 func TestBusPublishSubscribe(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	received := false
-	id, err := bus.Subscribe(testEventRef, func(e TestEvent) error {
+	id, err := bus.Subscribe(ctx, testEventRef, func(_ context.Context, e TestEvent) error {
 		received = true
 		if e.Value != 42 {
 			t.Errorf("expected Value=42, got %d", e.Value)
@@ -50,7 +55,7 @@ func TestBusPublishSubscribe(t *testing.T) {
 	}
 
 	// Publish event
-	err = bus.Publish(TestEvent{Target: "player", Value: 42})
+	err = bus.Publish(ctx, TestEvent{Target: "player", Value: 42})
 	if err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -60,7 +65,7 @@ func TestBusPublishSubscribe(t *testing.T) {
 	}
 
 	// Unsubscribe
-	err = bus.Unsubscribe(id)
+	err = bus.Unsubscribe(ctx, id)
 	if err != nil {
 		t.Fatalf("Unsubscribe failed: %v", err)
 	}
@@ -68,13 +73,14 @@ func TestBusPublishSubscribe(t *testing.T) {
 
 func TestBusFilter(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	player1Count := 0
 	player2Count := 0
 
 	// Player1 only wants events targeting them
-	_, err := bus.SubscribeWithFilter(testEventRef,
-		func(_ TestEvent) error {
+	_, err := bus.SubscribeWithFilter(ctx, testEventRef,
+		func(_ context.Context, _ TestEvent) error {
 			player1Count++
 			return nil
 		},
@@ -90,8 +96,8 @@ func TestBusFilter(t *testing.T) {
 	}
 
 	// Player2 only wants events targeting them
-	_, err = bus.SubscribeWithFilter(testEventRef,
-		func(_ TestEvent) error {
+	_, err = bus.SubscribeWithFilter(ctx, testEventRef,
+		func(_ context.Context, _ TestEvent) error {
 			player2Count++
 			return nil
 		},
@@ -107,16 +113,16 @@ func TestBusFilter(t *testing.T) {
 	}
 
 	// Publish events
-	if err := bus.Publish(TestEvent{Target: "player1", Value: 1}); err != nil {
+	if err := bus.Publish(ctx, TestEvent{Target: "player1", Value: 1}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := bus.Publish(TestEvent{Target: "player2", Value: 2}); err != nil {
+	if err := bus.Publish(ctx, TestEvent{Target: "player2", Value: 2}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := bus.Publish(TestEvent{Target: "player1", Value: 3}); err != nil {
+	if err := bus.Publish(ctx, TestEvent{Target: "player1", Value: 3}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := bus.Publish(TestEvent{Target: "npc", Value: 4}); err != nil {
+	if err := bus.Publish(ctx, TestEvent{Target: "npc", Value: 4}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
 
@@ -131,12 +137,13 @@ func TestBusFilter(t *testing.T) {
 
 func TestBusMultipleHandlers(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	count := 0
 
 	// Register 3 handlers
 	for i := 0; i < 3; i++ {
-		_, err := bus.Subscribe(testEventRef, func(_ TestEvent) error {
+		_, err := bus.Subscribe(ctx, testEventRef, func(_ context.Context, _ TestEvent) error {
 			count++
 			return nil
 		})
@@ -146,7 +153,7 @@ func TestBusMultipleHandlers(t *testing.T) {
 	}
 
 	// One event should trigger all 3
-	if err := bus.Publish(TestEvent{Target: "all", Value: 1}); err != nil {
+	if err := bus.Publish(ctx, TestEvent{Target: "all", Value: 1}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
 

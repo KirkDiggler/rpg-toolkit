@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/stretchr/testify/require"
 )
 
 // TestContextEvent is a test event that supports context
@@ -22,7 +23,11 @@ type TestContextEvent struct {
 
 func (e *TestContextEvent) EventRef() *core.Ref {
 	if e.ref == nil {
-		e.ref, _ = core.ParseString("test:context:event")
+		var err error
+		e.ref, err = core.ParseString("test:context:event")
+		if err != nil {
+			panic(err)
+		}
 	}
 	return e.ref
 }
@@ -39,7 +44,8 @@ func TestContextHandler(t *testing.T) {
 	bus := events.NewBus()
 
 	// Test event ref
-	ref, _ := core.ParseString("test:context:event")
+	ref, err := core.ParseString("test:context:event")
+	require.NoError(t, err)
 
 	// Define context key type for tests
 	type contextKey string
@@ -50,7 +56,8 @@ func TestContextHandler(t *testing.T) {
 		ctxValue := ""
 
 		// Subscribe with context-aware handler
-		id, err := bus.Subscribe(ref, func(ctx context.Context, _ *TestContextEvent) error {
+		ctx := context.Background()
+		id, err := bus.Subscribe(ctx, ref, func(ctx context.Context, _ *TestContextEvent) error {
 			called = true
 			// Check if we can get values from context
 			if val := ctx.Value(testKey); val != nil {
@@ -61,14 +68,14 @@ func TestContextHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Subscribe failed: %v", err)
 		}
-		defer func() { _ = bus.Unsubscribe(id) }()
+		defer func() { _ = bus.Unsubscribe(ctx, id) }()
 
 		// Publish with context
-		ctx := context.WithValue(context.Background(), testKey, "test-value")
+		ctx = context.WithValue(context.Background(), testKey, "test-value")
 		event := &TestContextEvent{Target: "player", Value: 42, ref: ref}
 		event.ctx = events.NewEventContext()
 
-		err = bus.PublishWithContext(ctx, event)
+		err = bus.Publish(ctx, event)
 		if err != nil {
 			t.Fatalf("PublishWithContext failed: %v", err)
 		}
@@ -81,39 +88,13 @@ func TestContextHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("handler without context still works", func(t *testing.T) {
-		called := false
-
-		// Subscribe with legacy handler (no context)
-		id, err := bus.Subscribe(ref, func(_ *TestContextEvent) error {
-			called = true
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("Subscribe failed: %v", err)
-		}
-		defer func() { _ = bus.Unsubscribe(id) }()
-
-		// Publish normally
-		event := &TestContextEvent{Target: "player", Value: 42, ref: ref}
-		event.ctx = events.NewEventContext()
-
-		err = bus.Publish(event)
-		if err != nil {
-			t.Fatalf("Publish failed: %v", err)
-		}
-
-		if !called {
-			t.Error("handler was not called")
-		}
-	})
-
 	t.Run("context cancellation", func(t *testing.T) {
 		handlerStarted := make(chan bool)
 		handlerDone := make(chan bool)
+		ctx := context.Background()
 
 		// Subscribe with handler that checks context
-		id, err := bus.Subscribe(ref, func(ctx context.Context, _ *TestContextEvent) error {
+		id, err := bus.Subscribe(ctx, ref, func(ctx context.Context, _ *TestContextEvent) error {
 			handlerStarted <- true
 
 			// Check if context is cancelled
@@ -130,7 +111,7 @@ func TestContextHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Subscribe failed: %v", err)
 		}
-		defer func() { _ = bus.Unsubscribe(id) }()
+		defer func() { _ = bus.Unsubscribe(ctx, id) }()
 
 		// Create cancellable context
 		ctx, cancel := context.WithCancel(context.Background())
@@ -140,7 +121,7 @@ func TestContextHandler(t *testing.T) {
 		go func() {
 			event := &TestContextEvent{Target: "player", Value: 42, ref: ref}
 			event.ctx = events.NewEventContext()
-			publishErr <- bus.PublishWithContext(ctx, event)
+			publishErr <- bus.Publish(ctx, event)
 		}()
 
 		// Wait for handler to start
@@ -162,97 +143,61 @@ func TestContextHandler(t *testing.T) {
 		}
 	})
 
-	// Note: SubscribeFunc has a limitation - it creates its own ref which won't match
-	// events by pointer comparison. This is a known issue with the compatibility method.
-	// For proper event handling, use Subscribe with a proper ref instead.
-	t.Run("SubscribeFunc compatibility", func(t *testing.T) {
-		t.Skip("SubscribeFunc has ref matching issues - use Subscribe instead")
-
-		// The test below demonstrates the issue - the handler won't be called
-		// because the ref created by SubscribeFunc won't match the event's ref
-		// by pointer comparison.
-		/*
-			called := false
-
-			// Use the compatibility SubscribeFunc method
-			id, err := bus.SubscribeFunc("test:context:event", 100, func(ctx context.Context, e events.Event) error {
-				called = true
-				// Verify we got the right event
-				if _, ok := e.(*TestContextEvent); !ok {
-					t.Error("wrong event type")
-				}
-				return nil
-			})
-			if err != nil {
-				t.Fatalf("SubscribeFunc failed: %v", err)
-			}
-			defer func() { _ = bus.Unsubscribe(id) }()
-
-			// Publish event
-			event := &TestContextEvent{Target: "player", Value: 42, ref: ref}
-			event.ctx = events.NewEventContext()
-
-			err = bus.Publish(event)
-			if err != nil {
-				t.Fatalf("Publish failed: %v", err)
-			}
-
-			if !called {
-				t.Error("handler was not called")
-			}
-		*/
-	})
 }
 
-// TestMixedHandlers verifies that context and non-context handlers can coexist
-func TestMixedHandlers(t *testing.T) {
+// TestMultipleHandlers verifies that multiple handlers can coexist
+func TestMultipleHandlers(t *testing.T) {
 	bus := events.NewBus()
-	ref, _ := core.ParseString("test:mixed:event")
+	ctx := context.Background()
+	ref, err := core.ParseString("test:mixed:event")
+	require.NoError(t, err)
 
-	legacyCalled := false
-	contextCalled := false
+	handler1Called := false
+	handler2Called := false
 
-	// Subscribe legacy handler
-	id1, err := bus.Subscribe(ref, func(_ *TestContextEvent) error {
-		legacyCalled = true
+	// Subscribe first handler
+	id1, err := bus.Subscribe(ctx, ref, func(_ context.Context, _ *TestContextEvent) error {
+		handler1Called = true
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("Subscribe legacy failed: %v", err)
+		t.Fatalf("Subscribe handler1 failed: %v", err)
 	}
-	defer func() { _ = bus.Unsubscribe(id1) }()
+	defer func() { _ = bus.Unsubscribe(ctx, id1) }()
 
-	// Subscribe context handler
-	id2, err := bus.Subscribe(ref, func(_ context.Context, _ *TestContextEvent) error {
-		contextCalled = true
+	// Subscribe second handler
+	id2, err := bus.Subscribe(ctx, ref, func(_ context.Context, _ *TestContextEvent) error {
+		handler2Called = true
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("Subscribe context failed: %v", err)
+		t.Fatalf("Subscribe handler2 failed: %v", err)
 	}
-	defer func() { _ = bus.Unsubscribe(id2) }()
+	defer func() { _ = bus.Unsubscribe(ctx, id2) }()
 
 	// Publish event
 	event := &TestContextEvent{Target: "player", Value: 42, ref: ref}
 	event.ctx = events.NewEventContext()
 
-	err = bus.Publish(event)
+	err = bus.Publish(ctx, event)
 	if err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
 
-	if !legacyCalled {
-		t.Error("legacy handler was not called")
+	if !handler1Called {
+		t.Error("handler 1 was not called")
 	}
-	if !contextCalled {
-		t.Error("context handler was not called")
+	if !handler2Called {
+		t.Error("handler 2 was not called")
 	}
 }
 
 // TestInvalidHandlerSignatures verifies that invalid handlers are rejected
 func TestInvalidHandlerSignatures(t *testing.T) {
 	bus := events.NewBus()
-	ref, _ := core.ParseString("test:invalid:event")
+	ctx := context.Background()
+	ref, err := core.ParseString("test:invalid:event")
+	require.NoError(t, err)
 
 	tests := []struct {
 		name    string
@@ -264,51 +209,52 @@ func TestInvalidHandlerSignatures(t *testing.T) {
 			name:    "wrong first param type",
 			handler: func(_ string, _ *TestContextEvent) error { return nil },
 			wantErr: true,
-			errMsg:  "must have context.Context as first parameter",
+			errMsg:  "must be context.Context",
 		},
 		{
 			name:    "too many params",
 			handler: func(_ context.Context, _ *TestContextEvent, _ int) error { return nil },
 			wantErr: true,
-			errMsg:  "must take either 1 parameter",
+			errMsg:  "must take exactly 2 parameters",
 		},
 		{
 			name:    "no params",
 			handler: func() error { return nil },
 			wantErr: true,
-			errMsg:  "must take either 1 parameter",
+			errMsg:  "must take exactly 2 parameters",
+		},
+		{
+			name:    "one param only",
+			handler: func(_ *TestContextEvent) error { return nil },
+			wantErr: true,
+			errMsg:  "must take exactly 2 parameters",
 		},
 		{
 			name:    "wrong return type",
-			handler: func(_ *TestContextEvent) string { return "" },
+			handler: func(_ context.Context, _ *TestContextEvent) string { return "" },
 			wantErr: true,
 			errMsg:  "must return either error",
 		},
 		{
-			name:    "valid legacy",
-			handler: func(_ *TestContextEvent) error { return nil },
-			wantErr: false,
-		},
-		{
-			name:    "valid context",
+			name:    "valid with context",
 			handler: func(_ context.Context, _ *TestContextEvent) error { return nil },
 			wantErr: false,
 		},
 		{
 			name:    "valid deferred",
-			handler: func(_ *TestContextEvent) *events.DeferredAction { return nil },
+			handler: func(_ context.Context, _ *TestContextEvent) *events.DeferredAction { return nil },
 			wantErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, err := bus.Subscribe(ref, tt.handler)
+			id, err := bus.Subscribe(ctx, ref, tt.handler)
 
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error but got none")
-					_ = bus.Unsubscribe(id)
+					_ = bus.Unsubscribe(ctx, id)
 				} else if tt.errMsg != "" {
 					// Check error message contains expected text
 					errStr := err.Error()
@@ -321,7 +267,7 @@ func TestInvalidHandlerSignatures(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				} else {
-					_ = bus.Unsubscribe(id)
+					_ = bus.Unsubscribe(ctx, id)
 				}
 			}
 		})

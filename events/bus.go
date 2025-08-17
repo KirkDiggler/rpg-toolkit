@@ -28,24 +28,18 @@ type Filter func(event Event) bool
 
 // EventBus handles event publishing and subscriptions.
 type EventBus interface {
-	// Publish sends an event to all subscribers
-	Publish(event Event) error
-
-	// PublishWithContext sends an event with a context for cancellation and values
-	PublishWithContext(ctx context.Context, event Event) error
+	// Publish sends an event with a context to all subscribers
+	Publish(ctx context.Context, event Event) error
 
 	// Subscribe registers a handler for events with the given ref
-	// Handler can be either func(T) error or func(context.Context, T) error where T is the event type
-	Subscribe(ref *core.Ref, handler any) (string, error)
+	// Handler must be func(context.Context, T) error where T is the event type
+	Subscribe(ctx context.Context, ref *core.Ref, handler any) (string, error)
 
 	// SubscribeWithFilter registers a handler with a filter
-	SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (string, error)
-
-	// SubscribeFunc registers a handler function with priority (for compatibility)
-	SubscribeFunc(eventType string, priority int, handler func(context.Context, Event) error) (string, error)
+	SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler any, filter Filter) (string, error)
 
 	// Unsubscribe removes a subscription by ID
-	Unsubscribe(id string) error
+	Unsubscribe(ctx context.Context, id string) error
 
 	// Clear removes all subscriptions (useful for tests)
 	Clear()
@@ -61,11 +55,10 @@ type Bus struct {
 }
 
 type handlerEntry struct {
-	id             string
-	ref            *core.Ref // The ref this handler is subscribed to
-	handler        reflect.Value
-	filter         Filter // nil means no filter
-	acceptsContext bool   // true if handler takes context as first parameter
+	id      string
+	ref     *core.Ref // The ref this handler is subscribed to
+	handler reflect.Value
+	filter  Filter // nil means no filter
 }
 
 // Default limits for event cascading protection
@@ -92,13 +85,8 @@ func NewBusWithMaxDepth(maxDepth int32) *Bus {
 	}
 }
 
-// Publish sends an event to all registered handlers using context.Background().
-func (b *Bus) Publish(event Event) error {
-	return b.PublishWithContext(context.Background(), event)
-}
-
-// PublishWithContext sends an event to all registered handlers with the given context.
-func (b *Bus) PublishWithContext(ctx context.Context, event Event) error {
+// Publish sends an event to all registered handlers with the given context.
+func (b *Bus) Publish(ctx context.Context, event Event) error {
 	// Check recursion depth
 	depth := atomic.AddInt32(&b.publishDepth, 1)
 	defer atomic.AddInt32(&b.publishDepth, -1)
@@ -112,68 +100,64 @@ func (b *Bus) PublishWithContext(ctx context.Context, event Event) error {
 	// Note: Consumers can monitor depth via GetDepth() if they want warnings
 	// We don't log here to avoid forcing logging behavior on library users
 
-	// Phase 1: Collect handlers and call them (with read lock)
-	var deferred []*DeferredAction
-	var immediateError error
+	// Phase 1: Collect handlers that match this event's ref
+	var handlersToCall []handlerEntry
 
 	b.mu.RLock()
-	// Find handlers by comparing ref pointers
-	for _, entries := range b.handlers {
+	// Get handlers registered for this event's ref
+	// Use ref value comparison, not pointer
+	refStr := event.EventRef().String()
+	if entries, ok := b.handlers[refStr]; ok {
+		// Copy handlers to call (avoid holding lock during execution)
+		handlersToCall = make([]handlerEntry, 0, len(entries))
 		for _, entry := range entries {
-			// Check if this handler wants this event (pointer comparison!)
-			if entry.ref != event.EventRef() {
-				continue
-			}
 
 			// Check filter
 			if entry.filter != nil && !entry.filter(event) {
 				continue
 			}
-
-			// Call handler with or without context
-			var results []reflect.Value
-			if entry.acceptsContext {
-				// Handler expects context as first parameter
-				results = entry.handler.Call([]reflect.Value{
-					reflect.ValueOf(ctx),
-					reflect.ValueOf(event),
-				})
-			} else {
-				// Legacy handler without context
-				results = entry.handler.Call([]reflect.Value{
-					reflect.ValueOf(event),
-				})
-			}
-
-			// Check what the handler returned
-			if len(results) > 0 && !results[0].IsNil() {
-				// Check if it's a DeferredAction or an error
-				switch v := results[0].Interface().(type) {
-				case *DeferredAction:
-					// Handler returned deferred actions
-					deferred = append(deferred, v)
-				case error:
-					// Handler returned an error (backwards compatibility)
-					immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
-				}
-			}
-		}
-		if immediateError != nil {
-			break
+			// Add to handlers to call
+			handlersToCall = append(handlersToCall, entry)
 		}
 	}
 	b.mu.RUnlock()
+
+	// Phase 2: Call handlers without holding lock
+	var deferred []*DeferredAction
+	var immediateError error
+
+	for _, entry := range handlersToCall {
+		// Call handler with context
+		results := entry.handler.Call([]reflect.Value{
+			reflect.ValueOf(ctx),
+			reflect.ValueOf(event),
+		})
+
+		// Check what the handler returned
+		if len(results) > 0 && !results[0].IsNil() {
+			// Check if it's a DeferredAction or an error
+			switch v := results[0].Interface().(type) {
+			case *DeferredAction:
+				// Handler returned deferred actions
+				deferred = append(deferred, v)
+			case error:
+				// Handler returned an error
+				immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
+				break
+			}
+		}
+	}
 
 	// Return immediate errors
 	if immediateError != nil {
 		return immediateError
 	}
 
-	// Phase 2: Process deferred actions (no lock held)
+	// Phase 3: Process deferred actions (no lock held)
 	for _, action := range deferred {
 		// Process unsubscribes
 		for _, id := range action.Unsubscribes {
-			if err := b.Unsubscribe(id); err != nil {
+			if err := b.Unsubscribe(ctx, id); err != nil {
 				// Ignore error - subscription might already be gone
 				continue
 			}
@@ -181,7 +165,7 @@ func (b *Bus) PublishWithContext(ctx context.Context, event Event) error {
 
 		// Process publishes
 		for _, evt := range action.Publishes {
-			if err := b.Publish(evt); err != nil {
+			if err := b.Publish(ctx, evt); err != nil {
 				return err
 			}
 		}
@@ -196,12 +180,12 @@ func (b *Bus) PublishWithContext(ctx context.Context, event Event) error {
 }
 
 // Subscribe registers a handler for events with the given ref.
-func (b *Bus) Subscribe(ref *core.Ref, handler any) (string, error) {
-	return b.SubscribeWithFilter(ref, handler, nil)
+func (b *Bus) Subscribe(ctx context.Context, ref *core.Ref, handler any) (string, error) {
+	return b.SubscribeWithFilter(ctx, ref, handler, nil)
 }
 
 // SubscribeWithFilter registers a handler with a filter.
-func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (string, error) {
+func (b *Bus) SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler any, filter Filter) (string, error) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -210,19 +194,15 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 		return "", fmt.Errorf("handler must be a function")
 	}
 
-	// Check if handler accepts context as first parameter
-	acceptsContext := false
-	contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
+	// Handler must take exactly 2 parameters: context and event
+	if handlerType.NumIn() != 2 {
+		return "", fmt.Errorf("handler must take exactly 2 parameters (context.Context, event)")
+	}
 
-	if handlerType.NumIn() == 2 {
-		// Check if first parameter is context.Context
-		if handlerType.In(0) == contextType {
-			acceptsContext = true
-		} else {
-			return "", fmt.Errorf("handler with 2 parameters must have context.Context as first parameter")
-		}
-	} else if handlerType.NumIn() != 1 {
-		return "", fmt.Errorf("handler must take either 1 parameter (event) or 2 parameters (context, event)")
+	// First parameter must be context.Context
+	contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
+	if handlerType.In(0) != contextType {
+		return "", fmt.Errorf("handler first parameter must be context.Context")
 	}
 
 	// Handler must return either error or *DeferredAction
@@ -245,21 +225,20 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 	b.nextID++
 	id := fmt.Sprintf("sub-%d", b.nextID)
 
-	// Add handler - use ref string just for grouping in map
+	// Add handler - group by ref string value
 	refStr := ref.String()
 	b.handlers[refStr] = append(b.handlers[refStr], handlerEntry{
-		id:             id,
-		ref:            ref,
-		handler:        handlerValue,
-		filter:         filter,
-		acceptsContext: acceptsContext,
+		id:      id,
+		ref:     ref, // Store ref for reference, but not used for matching
+		handler: handlerValue,
+		filter:  filter,
 	})
 
 	return id, nil
 }
 
 // Unsubscribe removes a subscription by ID.
-func (b *Bus) Unsubscribe(id string) error {
+func (b *Bus) Unsubscribe(ctx context.Context, id string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -275,33 +254,6 @@ func (b *Bus) Unsubscribe(id string) error {
 	}
 
 	return fmt.Errorf("subscription %s not found", id)
-}
-
-// SubscribeFunc registers a handler function with priority (for compatibility).
-// This method exists for backward compatibility with code that expects it.
-// The priority parameter is currently ignored as the bus processes handlers in registration order.
-func (b *Bus) SubscribeFunc(eventType string, _ int, handler func(context.Context, Event) error) (string, error) {
-	// Parse the event type string to get a ref
-	ref, err := core.ParseString(eventType)
-	if err != nil {
-		// If parsing fails, create a simple ref
-		ref = &core.Ref{
-			Module: "legacy",
-			Type:   "event",
-			Value:  eventType,
-		}
-	}
-
-	// Wrap the handler to match our expected signature
-	wrappedHandler := func(ctx context.Context, e any) error {
-		event, ok := e.(Event)
-		if !ok {
-			return nil // Skip if not an Event
-		}
-		return handler(ctx, event)
-	}
-
-	return b.Subscribe(ref, wrappedHandler)
 }
 
 // Clear removes all subscriptions.

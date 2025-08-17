@@ -4,6 +4,7 @@
 package events_test
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -18,7 +19,10 @@ import (
 
 // Test ref for deferred operations
 var testDeferredEventRef = func() *core.Ref {
-	r, _ := core.ParseString("test:event:deferred")
+	r, err := core.ParseString("test:event:deferred")
+	if err != nil {
+		panic(err)
+	}
 	return r
 }()
 
@@ -45,31 +49,33 @@ func NewTestDeferredEvent(id string) *TestDeferredEvent {
 
 func TestDeferredOperations_BackwardsCompatibility(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	// Old-style handler that returns error
 	called := false
-	oldHandler := func(_ any) error {
+	oldHandler := func(_ context.Context, _ any) error {
 		called = true
 		return nil
 	}
 
-	sub, err := bus.Subscribe(testDeferredEventRef, oldHandler)
+	sub, err := bus.Subscribe(ctx, testDeferredEventRef, oldHandler)
 	require.NoError(t, err)
 	require.NotEmpty(t, sub)
 
 	// Publish event
-	err = bus.Publish(NewTestDeferredEvent("test"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("test"))
 	require.NoError(t, err)
 	assert.True(t, called)
 }
 
 func TestDeferredOperations_Unsubscribe(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	var subID string
 
 	// Handler that unsubscribes itself
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "trigger-unsub" {
 			// Return deferred unsubscribe
@@ -80,38 +86,39 @@ func TestDeferredOperations_Unsubscribe(t *testing.T) {
 
 	// Track if handler is called after unsubscribe
 	var callCount int32
-	trackingHandler := func(e any) *events.DeferredAction {
+	trackingHandler := func(ctx context.Context, e any) *events.DeferredAction {
 		atomic.AddInt32(&callCount, 1)
-		return handler(e)
+		return handler(ctx, e)
 	}
 
-	subID, err := bus.Subscribe(testDeferredEventRef, trackingHandler)
+	subID, err := bus.Subscribe(ctx, testDeferredEventRef, trackingHandler)
 	require.NoError(t, err)
 
 	// First event - handler should be called
-	err = bus.Publish(NewTestDeferredEvent("first"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("first"))
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&callCount))
 
 	// Second event triggers unsubscribe
-	err = bus.Publish(NewTestDeferredEvent("trigger-unsub"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("trigger-unsub"))
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&callCount))
 
 	// Third event - handler should NOT be called (unsubscribed)
-	err = bus.Publish(NewTestDeferredEvent("third"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("third"))
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&callCount), "handler should not be called after unsubscribe")
 }
 
 func TestDeferredOperations_CascadingEvents(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	var sequence []string
 	mu := sync.Mutex{}
 
 	// Handler A triggers event B only for event A
-	handlerA := func(e any) *events.DeferredAction {
+	handlerA := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "A" {
 			mu.Lock()
@@ -125,7 +132,7 @@ func TestDeferredOperations_CascadingEvents(t *testing.T) {
 	}
 
 	// Handler B triggers event C only for event B
-	handlerB := func(e any) *events.DeferredAction {
+	handlerB := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "B" {
 			mu.Lock()
@@ -139,7 +146,7 @@ func TestDeferredOperations_CascadingEvents(t *testing.T) {
 	}
 
 	// Handler C is final, only processes event C
-	handlerC := func(e any) *events.DeferredAction {
+	handlerC := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "C" {
 			mu.Lock()
@@ -150,15 +157,15 @@ func TestDeferredOperations_CascadingEvents(t *testing.T) {
 	}
 
 	// Subscribe all handlers
-	_, err := bus.Subscribe(testDeferredEventRef, handlerA)
+	_, err := bus.Subscribe(ctx, testDeferredEventRef, handlerA)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDeferredEventRef, handlerB)
+	_, err = bus.Subscribe(ctx, testDeferredEventRef, handlerB)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDeferredEventRef, handlerC)
+	_, err = bus.Subscribe(ctx, testDeferredEventRef, handlerC)
 	require.NoError(t, err)
 
 	// Start cascade with event A
-	err = bus.Publish(NewTestDeferredEvent("A"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("A"))
 	require.NoError(t, err)
 
 	// Check sequence
@@ -167,30 +174,32 @@ func TestDeferredOperations_CascadingEvents(t *testing.T) {
 
 func TestDeferredOperations_ErrorHandling(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	testErr := errors.New("test error")
 
 	// Handler that returns deferred error
-	handler := func(_ any) *events.DeferredAction {
+	handler := func(_ context.Context, _ any) *events.DeferredAction {
 		return events.NewDeferredAction().WithError(testErr)
 	}
 
-	_, err := bus.Subscribe(testDeferredEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDeferredEventRef, handler)
 	require.NoError(t, err)
 
 	// Publish should return the deferred error
-	err = bus.Publish(NewTestDeferredEvent("test"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("test"))
 	assert.Equal(t, testErr, err)
 }
 
 func TestDeferredOperations_MultipleDeferred(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	var eventList []string
 	mu := sync.Mutex{}
 
 	// Handler 1 publishes event X (only for initial)
-	handler1 := func(e any) *events.DeferredAction {
+	handler1 := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "initial" {
 			return events.NewDeferredAction().Publish(NewTestDeferredEvent("X"))
@@ -199,7 +208,7 @@ func TestDeferredOperations_MultipleDeferred(t *testing.T) {
 	}
 
 	// Handler 2 publishes event Y (only for initial)
-	handler2 := func(e any) *events.DeferredAction {
+	handler2 := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "initial" {
 			return events.NewDeferredAction().Publish(NewTestDeferredEvent("Y"))
@@ -208,7 +217,7 @@ func TestDeferredOperations_MultipleDeferred(t *testing.T) {
 	}
 
 	// Track all events
-	tracker := func(e any) error {
+	tracker := func(_ context.Context, e any) error {
 		event := e.(*TestDeferredEvent)
 		mu.Lock()
 		eventList = append(eventList, event.ID)
@@ -217,15 +226,15 @@ func TestDeferredOperations_MultipleDeferred(t *testing.T) {
 	}
 
 	// Subscribe handlers
-	_, err := bus.Subscribe(testDeferredEventRef, handler1)
+	_, err := bus.Subscribe(ctx, testDeferredEventRef, handler1)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDeferredEventRef, handler2)
+	_, err = bus.Subscribe(ctx, testDeferredEventRef, handler2)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDeferredEventRef, tracker)
+	_, err = bus.Subscribe(ctx, testDeferredEventRef, tracker)
 	require.NoError(t, err)
 
 	// Publish initial event
-	err = bus.Publish(NewTestDeferredEvent("initial"))
+	err = bus.Publish(ctx, NewTestDeferredEvent("initial"))
 	require.NoError(t, err)
 
 	// Should have: initial, X, Y (order of X and Y may vary)
@@ -237,24 +246,25 @@ func TestDeferredOperations_MultipleDeferred(t *testing.T) {
 func TestDeferredOperations_NoDeadlock(t *testing.T) {
 	// This test verifies the original deadlock scenario is fixed
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	var subID string
 
 	// Handler that tries to unsubscribe during event processing
 	// This would deadlock in the old implementation
-	handler := func(_ any) *events.DeferredAction {
+	handler := func(_ context.Context, _ any) *events.DeferredAction {
 		// With deferred operations, this is safe
 		return events.NewDeferredAction().
 			Unsubscribe(subID).
 			Publish(NewTestDeferredEvent("removal-complete"))
 	}
 
-	subID, err := bus.Subscribe(testDeferredEventRef, handler)
+	subID, err := bus.Subscribe(ctx, testDeferredEventRef, handler)
 	require.NoError(t, err)
 
 	// Track removal event
 	removalReceived := false
-	removalHandler := func(e any) error {
+	removalHandler := func(_ context.Context, e any) error {
 		event := e.(*TestDeferredEvent)
 		if event.ID == "removal-complete" {
 			removalReceived = true
@@ -262,13 +272,13 @@ func TestDeferredOperations_NoDeadlock(t *testing.T) {
 		return nil
 	}
 
-	_, err = bus.Subscribe(testDeferredEventRef, removalHandler)
+	_, err = bus.Subscribe(ctx, testDeferredEventRef, removalHandler)
 	require.NoError(t, err)
 
 	// This should not deadlock
 	done := make(chan bool)
 	go func() {
-		err = bus.Publish(NewTestDeferredEvent("trigger"))
+		err = bus.Publish(ctx, NewTestDeferredEvent("trigger"))
 		done <- true
 	}()
 

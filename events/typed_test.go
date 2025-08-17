@@ -4,6 +4,7 @@
 package events_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -12,7 +13,10 @@ import (
 
 // Test event following the recommended pattern
 var testDamageRef = func() *core.Ref {
-	r, _ := core.ParseString("test:event:damage")
+	r, err := core.ParseString("test:event:damage")
+	if err != nil {
+		panic(err)
+	}
 	return r
 }()
 
@@ -36,12 +40,13 @@ var TypedDamageEventRef = &core.TypedRef[*TypedDamageEvent]{
 
 func TestTypedPublishSubscribe(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	received := false
 
-	// Subscribe with TypedRef
-	id, err := events.Subscribe(bus, TypedDamageEventRef,
-		func(e *TypedDamageEvent) error {
+	// Subscribe with TypedRef and context
+	id, err := events.Subscribe(ctx, bus, TypedDamageEventRef,
+		func(_ context.Context, e *TypedDamageEvent) error {
 			received = true
 			if e.Amount != 10 {
 				t.Errorf("expected Amount=10, got %d", e.Amount)
@@ -53,8 +58,8 @@ func TestTypedPublishSubscribe(t *testing.T) {
 		t.Fatalf("Subscribe failed: %v", err)
 	}
 
-	// Publish - event knows its ref
-	err = events.Publish(bus, &TypedDamageEvent{
+	// Publish with context - event knows its ref
+	err = events.Publish(ctx, bus, &TypedDamageEvent{
 		Target: "player",
 		Amount: 10,
 	})
@@ -66,19 +71,20 @@ func TestTypedPublishSubscribe(t *testing.T) {
 		t.Error("handler not called")
 	}
 
-	if err := bus.Unsubscribe(id); err != nil {
+	if err := bus.Unsubscribe(ctx, id); err != nil {
 		t.Fatalf("Unsubscribe failed: %v", err)
 	}
 }
 
 func TestTypedFilter(t *testing.T) {
 	bus := events.NewBus()
+	ctx := context.Background()
 
 	highDamageCount := 0
 
-	// Subscribe with filter
-	_, err := events.Subscribe(bus, TypedDamageEventRef,
-		func(_ *TypedDamageEvent) error {
+	// Subscribe with filter and context
+	_, err := events.Subscribe(ctx, bus, TypedDamageEventRef,
+		func(_ context.Context, _ *TypedDamageEvent) error {
 			highDamageCount++
 			return nil
 		},
@@ -90,14 +96,14 @@ func TestTypedFilter(t *testing.T) {
 		t.Fatalf("Subscribe failed: %v", err)
 	}
 
-	// Publish events
-	if err := events.Publish(bus, &TypedDamageEvent{Target: "a", Amount: 3}); err != nil {
+	// Publish events with context
+	if err := events.Publish(ctx, bus, &TypedDamageEvent{Target: "a", Amount: 3}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := events.Publish(bus, &TypedDamageEvent{Target: "b", Amount: 10}); err != nil {
+	if err := events.Publish(ctx, bus, &TypedDamageEvent{Target: "b", Amount: 10}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
-	if err := events.Publish(bus, &TypedDamageEvent{Target: "c", Amount: 7}); err != nil {
+	if err := events.Publish(ctx, bus, &TypedDamageEvent{Target: "c", Amount: 7}); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
 
