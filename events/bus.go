@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
@@ -45,9 +46,11 @@ type EventBus interface {
 
 // Bus is the simple, synchronous event bus implementation.
 type Bus struct {
-	mu       sync.RWMutex
-	handlers map[string][]handlerEntry
-	nextID   int
+	mu           sync.RWMutex
+	handlers     map[string][]handlerEntry
+	nextID       int
+	publishDepth int32 // Current recursion depth (atomic)
+	maxDepth     int32 // Maximum allowed depth
 }
 
 type handlerEntry struct {
@@ -57,18 +60,50 @@ type handlerEntry struct {
 	filter  Filter // nil means no filter
 }
 
-// NewBus creates a new event bus.
+// Default limits for event cascading protection
+const (
+	DefaultMaxDepth = 10 // Maximum recursion depth
+)
+
+// NewBus creates a new event bus with default settings.
 func NewBus() *Bus {
 	return &Bus{
 		handlers: make(map[string][]handlerEntry),
+		maxDepth: DefaultMaxDepth,
+	}
+}
+
+// NewBusWithMaxDepth creates a new event bus with custom max depth.
+func NewBusWithMaxDepth(maxDepth int32) *Bus {
+	if maxDepth <= 0 {
+		maxDepth = DefaultMaxDepth
+	}
+	return &Bus{
+		handlers: make(map[string][]handlerEntry),
+		maxDepth: maxDepth,
 	}
 }
 
 // Publish sends an event to all registered handlers.
 func (b *Bus) Publish(event Event) error {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	// Check recursion depth
+	depth := atomic.AddInt32(&b.publishDepth, 1)
+	defer atomic.AddInt32(&b.publishDepth, -1)
 
+	// Check if we've hit max depth
+	if depth > b.maxDepth {
+		return fmt.Errorf("event cascade depth exceeded: current=%d, max=%d, event=%s",
+			depth, b.maxDepth, event.EventRef())
+	}
+
+	// Note: Consumers can monitor depth via GetDepth() if they want warnings
+	// We don't log here to avoid forcing logging behavior on library users
+
+	// Phase 1: Collect handlers and call them (with read lock)
+	var deferred []*DeferredAction
+	var immediateError error
+
+	b.mu.RLock()
 	// Find handlers by comparing ref pointers
 	for _, entries := range b.handlers {
 		for _, entry := range entries {
@@ -86,12 +121,50 @@ func (b *Bus) Publish(event Event) error {
 			eventValue := reflect.ValueOf(event)
 			results := entry.handler.Call([]reflect.Value{eventValue})
 
-			// Check for error return
+			// Check what the handler returned
 			if len(results) > 0 && !results[0].IsNil() {
-				if err, ok := results[0].Interface().(error); ok {
-					return fmt.Errorf("handler %s failed: %w", entry.id, err)
+				// Check if it's a DeferredAction or an error
+				switch v := results[0].Interface().(type) {
+				case *DeferredAction:
+					// Handler returned deferred actions
+					deferred = append(deferred, v)
+				case error:
+					// Handler returned an error (backwards compatibility)
+					immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
 				}
 			}
+		}
+		if immediateError != nil {
+			break
+		}
+	}
+	b.mu.RUnlock()
+
+	// Return immediate errors
+	if immediateError != nil {
+		return immediateError
+	}
+
+	// Phase 2: Process deferred actions (no lock held)
+	for _, action := range deferred {
+		// Process unsubscribes
+		for _, id := range action.Unsubscribes {
+			if err := b.Unsubscribe(id); err != nil {
+				// Ignore error - subscription might already be gone
+				continue
+			}
+		}
+
+		// Process publishes
+		for _, evt := range action.Publishes {
+			if err := b.Publish(evt); err != nil {
+				return err
+			}
+		}
+
+		// Check for deferred errors
+		if action.Error != nil {
+			return action.Error
 		}
 	}
 
@@ -117,8 +190,17 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 		return "", fmt.Errorf("handler must take exactly one parameter")
 	}
 
-	if handlerType.NumOut() != 1 || handlerType.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
-		return "", fmt.Errorf("handler must return error")
+	// Handler must return either error or *DeferredAction
+	if handlerType.NumOut() != 1 {
+		return "", fmt.Errorf("handler must return exactly one value")
+	}
+
+	returnType := handlerType.Out(0)
+	errorType := reflect.TypeOf((*error)(nil)).Elem()
+	deferredType := reflect.TypeOf((*DeferredAction)(nil))
+
+	if returnType != errorType && returnType != deferredType {
+		return "", fmt.Errorf("handler must return either error or *DeferredAction")
 	}
 
 	b.mu.Lock()
@@ -165,4 +247,14 @@ func (b *Bus) Clear() {
 	defer b.mu.Unlock()
 
 	b.handlers = make(map[string][]handlerEntry)
+}
+
+// GetDepth returns the current event publishing depth (for monitoring).
+func (b *Bus) GetDepth() int32 {
+	return atomic.LoadInt32(&b.publishDepth)
+}
+
+// GetMaxDepth returns the maximum allowed depth.
+func (b *Bus) GetMaxDepth() int32 {
+	return b.maxDepth
 }
