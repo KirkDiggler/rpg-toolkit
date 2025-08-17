@@ -7,52 +7,54 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core/events"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestTypedConstants(t *testing.T) {
-	// This test demonstrates how rulebooks will use these types
+// Example event data keys that a rulebook might define
+const (
+	DataKeyLevel    events.EventDataKey = "level"
+	DataKeyDuration events.EventDataKey = "duration"
+	DataKeyTarget   events.EventDataKey = "target"
+	DataKeyAmount   events.EventDataKey = "amount"
+)
 
-	// Event types
-	const (
-		AttackRoll  events.EventType = "combat.attack.roll"
-		DamageRoll  events.EventType = "combat.damage.roll"
-		SavingThrow events.EventType = "save.throw"
-	)
+func TestEventDataKey_TypeSafety(t *testing.T) {
+	// Create a typed event data map
+	data := make(map[events.EventDataKey]any)
 
-	// Modifier types
-	const (
-		ModifierAttackBonus events.ModifierType = "attack_bonus"
-		ModifierDamageBonus events.ModifierType = "damage_bonus"
-		ModifierAdvantage   events.ModifierType = "advantage"
-	)
+	// Add data with typed keys
+	data[DataKeyLevel] = 5
+	data[DataKeyDuration] = 10
+	data[DataKeyTarget] = "player-123"
+	data[DataKeyAmount] = 25.5
 
-	// Modifier sources
-	const (
-		SourceRage        events.ModifierSource = "rage"
-		SourceBless       events.ModifierSource = "bless"
-		SourceProficiency events.ModifierSource = "proficiency"
-	)
+	// Access data with typed keys
+	level, ok := data[DataKeyLevel].(int)
+	assert.True(t, ok)
+	assert.Equal(t, 5, level)
 
-	// Verify they work as expected
-	if AttackRoll != "combat.attack.roll" {
-		t.Error("EventType constant not working correctly")
-	}
+	duration, ok := data[DataKeyDuration].(int)
+	assert.True(t, ok)
+	assert.Equal(t, 10, duration)
 
-	if ModifierAttackBonus != "attack_bonus" {
-		t.Error("ModifierType constant not working correctly")
-	}
+	target, ok := data[DataKeyTarget].(string)
+	assert.True(t, ok)
+	assert.Equal(t, "player-123", target)
 
-	if SourceRage != "rage" {
-		t.Error("ModifierSource constant not working correctly")
-	}
+	amount, ok := data[DataKeyAmount].(float64)
+	assert.True(t, ok)
+	assert.Equal(t, 25.5, amount)
+}
 
-	// Verify type safety - these should be different types
-	eventType := AttackRoll
-	modType := ModifierAttackBonus
-	modSource := SourceRage
+func TestEventDataKey_StringConversion(t *testing.T) {
+	// EventDataKey can be converted to string when needed
+	key := DataKeyLevel
+	assert.Equal(t, "level", string(key))
 
-	// These should work
-	_ = eventType
-	_ = modType
-	_ = modSource
+	// Can be used in string contexts if necessary
+	stringMap := make(map[string]any)
+	stringMap[string(DataKeyLevel)] = 5
+
+	value := stringMap["level"]
+	assert.Equal(t, 5, value)
 }
