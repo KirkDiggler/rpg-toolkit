@@ -8,34 +8,36 @@ import (
 )
 
 // Registry manages pipeline factories.
+// Since pipelines can have different input/output types, we store them as interface{}
+// and require type assertions when retrieving.
 type Registry struct {
 	mu        sync.RWMutex
-	factories map[string]Factory
+	factories map[string]any // Stores Factory[I,O] as any
 }
 
 // NewRegistry creates a new pipeline registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		factories: make(map[string]Factory),
+		factories: make(map[string]any),
 	}
 }
 
 // Factory creates pipeline instances.
-type Factory interface {
+type Factory[I, O any] interface {
 	// Create creates a new pipeline instance
-	Create() Pipeline
+	Create() Pipeline[I, O]
 }
 
 // Register registers a pipeline factory with a ref.
-func (r *Registry) Register(ref *core.Ref, factory Factory) {
+func (r *Registry) Register(ref *core.Ref, factory any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.factories[ref.String()] = factory
 }
 
-// Get returns a pipeline by ref.
-func (r *Registry) Get(ref *core.Ref) (Pipeline, error) {
+// Get returns a pipeline by ref with type assertion.
+func Get[I, O any](r *Registry, ref *core.Ref) (Pipeline[I, O], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -44,11 +46,17 @@ func (r *Registry) Get(ref *core.Ref) (Pipeline, error) {
 		return nil, fmt.Errorf("pipeline not found: %s", ref.String())
 	}
 
-	return factory.Create(), nil
+	// Type assert to the expected factory type
+	typedFactory, ok := factory.(Factory[I, O])
+	if !ok {
+		return nil, fmt.Errorf("pipeline factory type mismatch for: %s", ref.String())
+	}
+
+	return typedFactory.Create(), nil
 }
 
-// GetByString returns a pipeline by ref string.
-func (r *Registry) GetByString(refStr string) (Pipeline, error) {
+// GetByString returns a pipeline by ref string with type assertion.
+func GetByString[I, O any](r *Registry, refStr string) (Pipeline[I, O], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -57,5 +65,11 @@ func (r *Registry) GetByString(refStr string) (Pipeline, error) {
 		return nil, fmt.Errorf("pipeline not found: %s", refStr)
 	}
 
-	return factory.Create(), nil
+	// Type assert to the expected factory type
+	typedFactory, ok := factory.(Factory[I, O])
+	if !ok {
+		return nil, fmt.Errorf("pipeline factory type mismatch for: %s", refStr)
+	}
+
+	return typedFactory.Create(), nil
 }

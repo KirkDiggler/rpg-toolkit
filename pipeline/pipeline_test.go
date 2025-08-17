@@ -27,8 +27,8 @@ func TestSimplePipeline(t *testing.T) {
 		return value * 2, nil
 	})
 
-	// Create sequential pipeline
-	p := pipeline.Sequential(ref, addFive, double)
+	// Create sequential pipeline with int input and int output
+	p := pipeline.Sequential[int, int](ref, addFive, double)
 
 	// Execute pipeline: (10 + 5) * 2 = 30
 	result := p.Process(context.Background(), 10)
@@ -38,7 +38,7 @@ func TestSimplePipeline(t *testing.T) {
 		t.Fatal("expected pipeline to complete")
 	}
 
-	output := result.GetOutput().(int)
+	output := result.GetOutput()
 	if output != 30 {
 		t.Errorf("expected 30, got %d", output)
 	}
@@ -70,8 +70,8 @@ func TestPipelineWithData(t *testing.T) {
 		}, nil
 	})
 
-	// Create pipeline
-	p := pipeline.Sequential(ref, damageStage)
+	// Create pipeline with int input and int output
+	p := pipeline.Sequential[int, int](ref, damageStage)
 
 	// Execute pipeline
 	result := p.Process(context.Background(), 10)
@@ -109,7 +109,69 @@ func TestPipelineWithData(t *testing.T) {
 	}
 }
 
-// TestPipelineRegistry verifies the registry pattern.
+// Define typed input/output for attack pipeline
+type AttackInput struct {
+	Attacker string
+	Target   string
+	Bonus    int
+}
+
+type AttackOutput struct {
+	Hit    bool
+	Damage int
+}
+
+// TestTypedPipeline verifies typed pipeline execution.
+func TestTypedPipeline(t *testing.T) {
+	ref, err := core.ParseString("test:pipeline:attack")
+	if err != nil {
+		t.Fatalf("failed to parse ref: %v", err)
+	}
+
+	// Create an attack stage with typed transformation
+	attackStage := pipeline.NewStage("attack", func(_ context.Context, input any) (any, error) {
+		attack := input.(AttackInput)
+
+		// Simulate attack roll (fixed for test)
+		roll := 15 + attack.Bonus
+		hit := roll >= 10 // AC 10
+
+		var damage int
+		if hit {
+			damage = 8 // Fixed damage for test
+		}
+
+		return AttackOutput{
+			Hit:    hit,
+			Damage: damage,
+		}, nil
+	})
+
+	// Create typed pipeline
+	p := pipeline.Sequential[AttackInput, AttackOutput](ref, attackStage)
+
+	// Execute pipeline
+	result := p.Process(context.Background(), AttackInput{
+		Attacker: "fighter",
+		Target:   "goblin",
+		Bonus:    5,
+	})
+
+	// Verify result
+	if !result.IsComplete() {
+		t.Fatal("expected pipeline to complete")
+	}
+
+	output := result.GetOutput()
+	if !output.Hit {
+		t.Error("expected attack to hit")
+	}
+	if output.Damage != 8 {
+		t.Errorf("expected 8 damage, got %d", output.Damage)
+	}
+}
+
+// TestPipelineRegistry verifies the registry pattern with typed pipelines.
 func TestPipelineRegistry(t *testing.T) {
 	registry := pipeline.NewRegistry()
 
@@ -119,32 +181,42 @@ func TestPipelineRegistry(t *testing.T) {
 		t.Fatalf("failed to parse ref: %v", err)
 	}
 
-	// Register a pipeline factory
-	registry.Register(attackRef, pipeline.Func(func() pipeline.Pipeline {
-		return pipeline.Sequential(attackRef,
+	// Register a typed pipeline factory
+	registry.Register(attackRef, pipeline.Func[AttackInput, AttackOutput](func() pipeline.Pipeline[AttackInput, AttackOutput] {
+		return pipeline.Sequential[AttackInput, AttackOutput](attackRef,
 			pipeline.NewStage("roll", func(_ context.Context, _ any) (any, error) {
-				return 20, nil // Natural 20!
+				return AttackOutput{
+					Hit:    true, // Always hits for test
+					Damage: 20,   // Natural 20!
+				}, nil
 			}),
 		)
 	}))
 
-	// Get pipeline from registry
-	p, err := registry.Get(attackRef)
+	// Get pipeline from registry with proper types
+	p, err := pipeline.Get[AttackInput, AttackOutput](registry, attackRef)
 	if err != nil {
 		t.Fatalf("failed to get pipeline: %v", err)
 	}
 
 	// Execute pipeline
-	result := p.Process(context.Background(), nil)
+	result := p.Process(context.Background(), AttackInput{
+		Attacker: "barbarian",
+		Target:   "orc",
+		Bonus:    7,
+	})
 
 	// Verify result
 	if !result.IsComplete() {
 		t.Fatal("expected pipeline to complete")
 	}
 
-	output := result.GetOutput().(int)
-	if output != 20 {
-		t.Errorf("expected 20, got %d", output)
+	output := result.GetOutput()
+	if !output.Hit {
+		t.Error("expected hit")
+	}
+	if output.Damage != 20 {
+		t.Errorf("expected 20 damage, got %d", output.Damage)
 	}
 }
 

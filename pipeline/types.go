@@ -10,20 +10,20 @@ import (
 
 // Pipeline represents a game mechanic transformation.
 // Pipelines are pure functions that return data, not side effects.
-type Pipeline interface {
+type Pipeline[I, O any] interface {
 	// GetRef returns the pipeline's unique reference
 	GetRef() *core.Ref
 
 	// Process executes the pipeline with the given input
-	Process(ctx context.Context, input any) Result
+	Process(ctx context.Context, input I) Result[O]
 
 	// Resume continues a suspended pipeline with a decision
-	Resume(continuation ContinuationData, decision any) Result
+	Resume(continuation ContinuationData, decision any) Result[O]
 }
 
 // Result represents the output of a pipeline execution.
 // Can be either completed or suspended awaiting a decision.
-type Result interface {
+type Result[O any] interface {
 	// IsComplete returns true if the pipeline finished
 	IsComplete() bool
 
@@ -31,7 +31,7 @@ type Result interface {
 	GetData() []Data
 
 	// GetOutput returns the pipeline's output (if complete)
-	GetOutput() any
+	GetOutput() O
 
 	// GetContinuation returns suspension data (if suspended)
 	GetContinuation() *ContinuationData

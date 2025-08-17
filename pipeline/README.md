@@ -4,13 +4,20 @@ The pipeline module provides the core infrastructure for expressing game mechani
 
 ## Overview
 
-Pipelines replace complex event-driven systems with simple, testable functions that transform input to output and return data for the game server to persist.
+Pipelines replace complex event-driven systems with simple, testable functions that transform typed input to typed output and return data for the game server to persist.
 
 ## Core Concepts
 
 ### Pipeline
-A game mechanic expressed as a transformation:
-- Takes input, produces output
+A game mechanic expressed as a type-safe transformation:
+```go
+type Pipeline[I, O any] interface {
+    GetRef() *core.Ref
+    Process(ctx context.Context, input I) Result[O]
+    Resume(continuation ContinuationData, decision any) Result[O]
+}
+```
+- Takes typed input, produces typed output
 - Returns data (state changes) to apply
 - No side effects - pure functions
 
@@ -29,7 +36,7 @@ Pipelines don't mutate state directly. They return data describing what changed:
 
 ## Usage
 
-### Simple Pipeline
+### Simple Typed Pipeline
 
 ```go
 // Create stages
@@ -43,12 +50,59 @@ double := pipeline.NewStage("double", func(ctx context.Context, input any) (any,
     return value * 2, nil
 })
 
-// Chain stages into a pipeline
-p := pipeline.Sequential(ref, addFive, double)
+// Chain stages into a typed pipeline
+p := pipeline.Sequential[int, int](ref, addFive, double)
 
 // Execute: (10 + 5) * 2 = 30
 result := p.Process(context.Background(), 10)
-fmt.Println(result.GetOutput()) // 30
+fmt.Println(result.GetOutput()) // 30 (type-safe int)
+```
+
+### Typed Attack Pipeline
+
+```go
+// Define typed input/output
+type AttackInput struct {
+    Attacker string
+    Target   string
+    Bonus    int
+}
+
+type AttackOutput struct {
+    Hit    bool
+    Damage int
+}
+
+// Create attack pipeline
+attackPipeline := pipeline.Sequential[AttackInput, AttackOutput](ref,
+    pipeline.NewStage("roll", func(ctx context.Context, input any) (any, error) {
+        attack := input.(AttackInput)
+        roll := dice.Roll("1d20") + attack.Bonus
+        hit := roll >= targetAC
+        
+        var damage int
+        if hit {
+            damage = dice.Roll("1d8") + attack.Bonus
+        }
+        
+        return AttackOutput{
+            Hit:    hit,
+            Damage: damage,
+        }, nil
+    }),
+)
+
+// Type-safe execution
+result := attackPipeline.Process(ctx, AttackInput{
+    Attacker: "fighter",
+    Target:   "goblin",
+    Bonus:    5,
+})
+
+output := result.GetOutput() // AttackOutput, not any!
+if output.Hit {
+    fmt.Printf("Hit for %d damage!\n", output.Damage)
+}
 ```
 
 ### Pipeline with Data
@@ -73,27 +127,34 @@ damageStage := pipeline.NewStage("damage", func(ctx context.Context, input any) 
 })
 
 // Execute and get data
-result := pipeline.Sequential(ref, damageStage).Process(ctx, 10)
+result := pipeline.Sequential[int, int](ref, damageStage).Process(ctx, 10)
 
 // Apply returned data
 for _, data := range result.GetData() {
-    fmt.Println(data) // "goblin takes 10 damage"
+    store.Apply(data)
 }
 ```
 
-### Registry Pattern
+### Registry Pattern with Type Safety
 
 ```go
 // Create registry
 registry := pipeline.NewRegistry()
 
-// Register pipelines
-registry.Register(attackRef, &AttackPipelineFactory{})
-registry.Register(damageRef, &DamagePipelineFactory{})
+// Register typed pipeline factories
+registry.Register(attackRef, pipeline.Func[AttackInput, AttackOutput](func() pipeline.Pipeline[AttackInput, AttackOutput] {
+    return createAttackPipeline()
+}))
 
-// Get and execute
-pipeline, _ := registry.Get(attackRef)
-result := pipeline.Process(ctx, input)
+// Get pipeline with proper types
+attackPipeline, err := pipeline.Get[AttackInput, AttackOutput](registry, attackRef)
+if err != nil {
+    return err
+}
+
+// Type-safe execution
+result := attackPipeline.Process(ctx, AttackInput{...})
+output := result.GetOutput() // AttackOutput, compile-time checked!
 ```
 
 ## Why Pipelines?
@@ -105,31 +166,39 @@ bus.Publish(AttackEvent{...})
 // Triggers DamageEvent, ConcentrationEvent, SaveEvent...
 // State changes happen in various handlers
 // Hard to trace execution flow
+// No type safety - everything is interface{}
 ```
 
-### After (Pipelines)
+### After (Typed Pipelines)
 ```go
-// Simple, testable, traceable
-result := attackPipeline.Process(ctx, input)
-for _, data := range result.GetData() {
-    store.Apply(data)
+// Simple, testable, traceable, type-safe
+result := attackPipeline.Process(ctx, AttackInput{
+    Attacker: "fighter",
+    Target:   "goblin",
+    Bonus:    5,
+})
+// Compile-time type checking!
+if result.GetOutput().Hit {
+    for _, data := range result.GetData() {
+        store.Apply(data)
+    }
 }
 ```
 
 ## Benefits
 
-1. **Pure Functions** - No side effects, easy to test
-2. **Composable** - Build complex mechanics from simple stages
-3. **Traceable** - Clear execution path
-4. **Type-Safe** - Compile-time checking
+1. **Type Safety** - Compile-time checking of inputs and outputs
+2. **Pure Functions** - No side effects, easy to test
+3. **Composable** - Build complex mechanics from simple stages
+4. **Traceable** - Clear execution path
 5. **Game Agnostic** - Infrastructure doesn't know game rules
 
 ## Future Features
 
 - **Suspension/Resumption** - Pause for player decisions
-- **Nested Pipelines** - Pipelines triggering other pipelines
+- **Nested Pipelines** - Type-safe pipeline composition
 - **Interrupt Points** - Reactions and timing windows
 
 ## Design Philosophy
 
-Pipelines provide the infrastructure. Rulebooks define the game mechanics. The toolkit doesn't know about D&D, Pathfinder, or any specific game - it just knows how to execute pipelines.
+Pipelines provide type-safe infrastructure. Rulebooks define the game mechanics with proper types. The toolkit doesn't know about D&D, Pathfinder, or any specific game - it just knows how to execute typed pipelines.

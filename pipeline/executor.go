@@ -2,42 +2,41 @@ package pipeline
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
 // Sequential creates a pipeline that executes stages in order.
-func Sequential(ref *core.Ref, stages ...Stage) Pipeline {
-	return &sequentialPipeline{
+func Sequential[I, O any](ref *core.Ref, stages ...Stage) Pipeline[I, O] {
+	return &sequentialPipeline[I, O]{
 		ref:    ref,
 		stages: stages,
 	}
 }
 
-type sequentialPipeline struct {
+type sequentialPipeline[I, O any] struct {
 	ref    *core.Ref
 	stages []Stage
 }
 
 // GetRef returns the pipeline's reference.
-func (p *sequentialPipeline) GetRef() *core.Ref {
+func (p *sequentialPipeline[I, O]) GetRef() *core.Ref {
 	return p.ref
 }
 
 // Process executes all stages in sequence.
-func (p *sequentialPipeline) Process(ctx context.Context, input any) Result {
-	value := input
+func (p *sequentialPipeline[I, O]) Process(ctx context.Context, input I) Result[O] {
+	var value any = input
 	data := []Data{}
 
 	// Execute each stage
 	for i, stage := range p.stages {
 		output, err := stage.Process(ctx, value)
 		if err != nil {
-			// For now, return error as completed with no output
-			// In future, could handle errors differently
-			return CompletedResult{
-				Output: nil,
+			// For now, return error as completed with zero output
+			var zero O
+			return CompletedResult[O]{
+				Output: zero,
 				Data:   data,
 			}
 		}
@@ -55,17 +54,28 @@ func (p *sequentialPipeline) Process(ctx context.Context, input any) Result {
 		_ = i
 	}
 
-	return CompletedResult{
-		Output: value,
+	// Type assert the final value to output type
+	finalOutput, ok := value.(O)
+	if !ok {
+		var zero O
+		return CompletedResult[O]{
+			Output: zero,
+			Data:   data,
+		}
+	}
+
+	return CompletedResult[O]{
+		Output: finalOutput,
 		Data:   data,
 	}
 }
 
 // Resume is not yet implemented for sequential pipelines.
-func (p *sequentialPipeline) Resume(_ ContinuationData, _ any) Result {
+func (p *sequentialPipeline[I, O]) Resume(_ ContinuationData, _ any) Result[O] {
 	// TODO: Implement resumption
-	return CompletedResult{
-		Output: nil,
+	var zero O
+	return CompletedResult[O]{
+		Output: zero,
 		Data:   []Data{},
 	}
 }
@@ -100,33 +110,34 @@ func (s *SimpleStage) Process(ctx context.Context, value any) (any, error) {
 	return s.fn(ctx, value)
 }
 
-// Func adapts a function to the PipelineFactory interface.
-type Func func() Pipeline
+// Func adapts a function to the Factory interface.
+type Func[I, O any] func() Pipeline[I, O]
 
 // Create calls the function to create a pipeline.
-func (f Func) Create() Pipeline {
+func (f Func[I, O]) Create() Pipeline[I, O] {
 	return f()
 }
 
 // StaticFactory always returns the same pipeline instance.
-type StaticFactory struct {
-	pipeline Pipeline
+type StaticFactory[I, O any] struct {
+	pipeline Pipeline[I, O]
 }
 
 // NewStaticFactory creates a factory that returns a pre-created pipeline.
-func NewStaticFactory(p Pipeline) Factory {
-	return &StaticFactory{pipeline: p}
+func NewStaticFactory[I, O any](p Pipeline[I, O]) Factory[I, O] {
+	return &StaticFactory[I, O]{pipeline: p}
 }
 
 // Create returns the static pipeline.
-func (f *StaticFactory) Create() Pipeline {
+func (f *StaticFactory[I, O]) Create() Pipeline[I, O] {
 	return f.pipeline
 }
 
 // Error creates a result representing an error.
-func Error(err error, data []Data) Result {
-	return CompletedResult{
-		Output: fmt.Errorf("pipeline error: %w", err),
+func Error[O any](err error, data []Data) Result[O] {
+	var zero O
+	return CompletedResult[O]{
+		Output: zero,
 		Data:   data,
 	}
 }

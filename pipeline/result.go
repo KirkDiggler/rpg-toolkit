@@ -1,55 +1,56 @@
 package pipeline
 
 // CompletedResult represents a pipeline that finished execution.
-type CompletedResult struct {
-	Output any    // The pipeline's output
+type CompletedResult[O any] struct {
+	Output O      // The pipeline's output
 	Data   []Data // State changes to apply
 }
 
 // IsComplete returns true for completed results.
-func (r CompletedResult) IsComplete() bool {
+func (r CompletedResult[O]) IsComplete() bool {
 	return true
 }
 
 // GetData returns the state changes.
-func (r CompletedResult) GetData() []Data {
+func (r CompletedResult[O]) GetData() []Data {
 	return r.Data
 }
 
 // GetOutput returns the pipeline output.
-func (r CompletedResult) GetOutput() any {
+func (r CompletedResult[O]) GetOutput() O {
 	return r.Output
 }
 
 // GetContinuation returns nil for completed results.
-func (r CompletedResult) GetContinuation() *ContinuationData {
+func (r CompletedResult[O]) GetContinuation() *ContinuationData {
 	return nil
 }
 
 // SuspendedResult represents a pipeline awaiting a decision.
-type SuspendedResult struct {
+type SuspendedResult[O any] struct {
 	Continuation ContinuationData // State to resume from
 	Decision     DecisionRequest  // What decision is needed
 	Data         []Data           // Partial data to apply
 }
 
 // IsComplete returns false for suspended results.
-func (r SuspendedResult) IsComplete() bool {
+func (r SuspendedResult[O]) IsComplete() bool {
 	return false
 }
 
 // GetData returns any partial data.
-func (r SuspendedResult) GetData() []Data {
+func (r SuspendedResult[O]) GetData() []Data {
 	return r.Data
 }
 
-// GetOutput returns nil for suspended results.
-func (r SuspendedResult) GetOutput() any {
-	return nil
+// GetOutput returns the zero value for suspended results.
+func (r SuspendedResult[O]) GetOutput() O {
+	var zero O
+	return zero
 }
 
 // GetContinuation returns the continuation data.
-func (r SuspendedResult) GetContinuation() *ContinuationData {
+func (r SuspendedResult[O]) GetContinuation() *ContinuationData {
 	return &r.Continuation
 }
 
