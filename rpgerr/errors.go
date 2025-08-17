@@ -19,6 +19,8 @@ const (
 	CodeInternal Code = "internal"
 	// CodeCanceled indicates the operation was canceled
 	CodeCanceled Code = "canceled"
+	// CodeNil indicates an attempt to wrap a nil error (programming error)
+	CodeNil Code = "nil"
 
 	// CodeNotAllowed indicates action not permitted by game rules
 	CodeNotAllowed Code = "not_allowed"
@@ -159,7 +161,7 @@ func NewfWithOpts(code Code, opts []Option, format string, args ...any) *Error {
 // Wrap wraps an error with additional context
 func Wrap(err error, message string, opts ...Option) *Error {
 	if err == nil {
-		return New(CodeInternal, fmt.Sprintf("rpgerr.Wrap called with nil: %s", message))
+		return New(CodeNil, fmt.Sprintf("rpgerr.Wrap called with nil: %s", message))
 	}
 
 	var wrapped *Error
@@ -197,7 +199,7 @@ func Wrapf(err error, format string, args ...any) *Error {
 // WrapWithCode wraps an error with a specific code
 func WrapWithCode(err error, code Code, message string, opts ...Option) *Error {
 	if err == nil {
-		return New(CodeInternal, fmt.Sprintf("rpgerr.WrapWithCode called with nil: %s", message))
+		return New(CodeNil, fmt.Sprintf("rpgerr.WrapWithCode called with nil: %s", message))
 	}
 
 	var meta map[string]any
@@ -461,4 +463,9 @@ func IsBlocked(err error) bool {
 // IsInterrupted checks if error is CodeInterrupted
 func IsInterrupted(err error) bool {
 	return GetCode(err) == CodeInterrupted
+}
+
+// IsNil checks if error is CodeNil (indicates nil error was wrapped)
+func IsNil(err error) bool {
+	return GetCode(err) == CodeNil
 }

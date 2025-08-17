@@ -181,14 +181,16 @@ func (s *ErrorsTestSuite) TestMetadataPreservation() {
 }
 
 func (s *ErrorsTestSuite) TestNilErrorHandling() {
-	// Wrapping nil should create an internal error
+	// Wrapping nil should create a CodeNil error
 	err := rpgerr.Wrap(nil, "something went wrong")
-	s.Equal(rpgerr.CodeInternal, rpgerr.GetCode(err))
+	s.Equal(rpgerr.CodeNil, rpgerr.GetCode(err))
 	s.Contains(err.Error(), "nil")
+	s.True(rpgerr.IsNil(err))
 
 	// WrapWithCode with nil
 	err2 := rpgerr.WrapWithCode(nil, rpgerr.CodeNotFound, "not found")
-	s.Equal(rpgerr.CodeInternal, rpgerr.GetCode(err2))
+	s.Equal(rpgerr.CodeNil, rpgerr.GetCode(err2))
+	s.True(rpgerr.IsNil(err2))
 }
 
 func (s *ErrorsTestSuite) TestFormattedErrors() {
