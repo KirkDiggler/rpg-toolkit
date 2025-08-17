@@ -26,7 +26,7 @@ func (t *Tracker) ToData() TrackerData {
 	for i, entity := range t.order {
 		order[i] = EntityData{
 			ID:   entity.GetID(),
-			Type: entity.GetType(),
+			Type: string(entity.GetType()),
 		}
 	}
 
@@ -42,7 +42,7 @@ func LoadFromData(data TrackerData) *Tracker {
 	// Convert data back to entities
 	order := make([]core.Entity, len(data.Order))
 	for i, entityData := range data.Order {
-		order[i] = NewParticipant(entityData.ID, entityData.Type)
+		order[i] = NewParticipant(entityData.ID, core.EntityType(entityData.Type))
 	}
 
 	return &Tracker{

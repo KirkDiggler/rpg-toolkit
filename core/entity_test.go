@@ -9,14 +9,14 @@ import (
 // sampleEntity is a test implementation of the Entity interface.
 type sampleEntity struct {
 	id         string
-	entityType string
+	entityType core.EntityType
 }
 
 func (s *sampleEntity) GetID() string {
 	return s.id
 }
 
-func (s *sampleEntity) GetType() string {
+func (s *sampleEntity) GetType() core.EntityType {
 	return s.entityType
 }
 
@@ -25,43 +25,43 @@ func TestEntity_Implementation(t *testing.T) {
 		name         string
 		entity       *sampleEntity
 		expectedID   string
-		expectedType string
+		expectedType core.EntityType
 	}{
 		{
 			name: "character entity",
 			entity: &sampleEntity{
 				id:         "char-001",
-				entityType: "character",
+				entityType: core.EntityType("character"),
 			},
 			expectedID:   "char-001",
-			expectedType: "character",
+			expectedType: core.EntityType("character"),
 		},
 		{
 			name: "item entity",
 			entity: &sampleEntity{
 				id:         "item-sword-01",
-				entityType: "item",
+				entityType: core.EntityType("item"),
 			},
 			expectedID:   "item-sword-01",
-			expectedType: "item",
+			expectedType: core.EntityType("item"),
 		},
 		{
 			name: "location entity",
 			entity: &sampleEntity{
 				id:         "loc-tavern",
-				entityType: "location",
+				entityType: core.EntityType("location"),
 			},
 			expectedID:   "loc-tavern",
-			expectedType: "location",
+			expectedType: core.EntityType("location"),
 		},
 		{
 			name: "empty values",
 			entity: &sampleEntity{
 				id:         "",
-				entityType: "",
+				entityType: core.EntityType(""),
 			},
 			expectedID:   "",
-			expectedType: "",
+			expectedType: core.EntityType(""),
 		},
 	}
 
@@ -106,19 +106,19 @@ func TestEntity_InterfaceCompliance(t *testing.T) {
 
 	// Create instances
 	char := &character{
-		sampleEntity: sampleEntity{id: "char-123", entityType: "character"},
+		sampleEntity: sampleEntity{id: "char-123", entityType: core.EntityType("character")},
 		name:         "Hero",
 		level:        10,
 	}
 
 	itm := &item{
-		sampleEntity: sampleEntity{id: "item-456", entityType: "item"},
+		sampleEntity: sampleEntity{id: "item-456", entityType: core.EntityType("item")},
 		name:         "Sword of Truth",
 		weight:       5.5,
 	}
 
 	loc := &location{
-		sampleEntity: sampleEntity{id: "loc-789", entityType: "location"},
+		sampleEntity: sampleEntity{id: "loc-789", entityType: core.EntityType("location")},
 		name:         "Dragon's Lair",
 		description:  "A dark and dangerous cave",
 	}
@@ -130,7 +130,7 @@ func TestEntity_InterfaceCompliance(t *testing.T) {
 		if entity.GetID() == "" {
 			t.Errorf("Entity %d has empty ID", i)
 		}
-		if entity.GetType() == "" {
+		if entity.GetType() == core.EntityType("") {
 			t.Errorf("Entity %d has empty type", i)
 		}
 	}

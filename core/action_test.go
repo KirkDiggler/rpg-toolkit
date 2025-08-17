@@ -22,8 +22,8 @@ type SimpleAction struct {
 	activated bool
 }
 
-func (s *SimpleAction) GetID() string   { return s.id }
-func (s *SimpleAction) GetType() string { return "simple" }
+func (s *SimpleAction) GetID() string            { return s.id }
+func (s *SimpleAction) GetType() core.EntityType { return core.EntityType("simple") }
 
 func (s *SimpleAction) CanActivate(_ context.Context, _ core.Entity, _ EmptyInput) error {
 	if s.uses <= 0 {
@@ -50,8 +50,8 @@ type TargetedAction struct {
 	lastTarget core.Entity
 }
 
-func (t *TargetedAction) GetID() string   { return t.id }
-func (t *TargetedAction) GetType() string { return "targeted" }
+func (t *TargetedAction) GetID() string            { return t.id }
+func (t *TargetedAction) GetType() core.EntityType { return core.EntityType("targeted") }
 
 func (t *TargetedAction) CanActivate(_ context.Context, _ core.Entity, input TargetInput) error {
 	if input.Distance > t.maxRange {
@@ -72,11 +72,11 @@ func (t *TargetedAction) Activate(_ context.Context, _ core.Entity, input Target
 // MockEntity for testing
 type MockEntity struct {
 	id    string
-	eType string
+	eType core.EntityType
 }
 
-func (m *MockEntity) GetID() string   { return m.id }
-func (m *MockEntity) GetType() string { return m.eType }
+func (m *MockEntity) GetID() string            { return m.id }
+func (m *MockEntity) GetType() core.EntityType { return m.eType }
 
 func TestActionInterface(t *testing.T) {
 	t.Run("SimpleAction", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestActionInterface(t *testing.T) {
 			id:   "rage",
 			uses: 3,
 		}
-		owner := &MockEntity{id: "barbarian", eType: "character"}
+		owner := &MockEntity{id: "barbarian", eType: core.EntityType("character")}
 
 		// Verify it implements the interface
 		var _ core.Action[EmptyInput] = action
@@ -115,8 +115,8 @@ func TestActionInterface(t *testing.T) {
 			id:       "fireball",
 			maxRange: 150.0,
 		}
-		owner := &MockEntity{id: "wizard", eType: "character"}
-		target := &MockEntity{id: "goblin", eType: "monster"}
+		owner := &MockEntity{id: "wizard", eType: core.EntityType("character")}
+		target := &MockEntity{id: "goblin", eType: core.EntityType("monster")}
 
 		// Verify it implements the interface
 		var _ core.Action[TargetInput] = action
@@ -157,14 +157,14 @@ func TestActionInterface(t *testing.T) {
 		simple := &SimpleAction{id: "rage", uses: 1}
 		targeted := &TargetedAction{id: "fireball", maxRange: 150}
 
-		owner := &MockEntity{id: "player", eType: "character"}
+		owner := &MockEntity{id: "player", eType: core.EntityType("character")}
 
 		// Each action only accepts its specific input type
 		err := simple.Activate(context.Background(), owner, EmptyInput{})
 		require.NoError(t, err)
 
 		err = targeted.Activate(context.Background(), owner, TargetInput{
-			Target:   &MockEntity{id: "enemy", eType: "monster"},
+			Target:   &MockEntity{id: "enemy", eType: core.EntityType("monster")},
 			Distance: 50.0,
 		})
 		require.NoError(t, err)

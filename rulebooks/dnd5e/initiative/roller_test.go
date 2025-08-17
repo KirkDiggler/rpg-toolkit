@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
 )
 
@@ -26,9 +27,9 @@ func TestRollForOrder(t *testing.T) {
 	mockRoller.EXPECT().Roll(20).Return(8, nil)  // Wizard
 
 	participants := map[core.Entity]int{
-		initiative.NewParticipant("ranger", "character"): +3,
-		initiative.NewParticipant("goblin", "monster"):   +2,
-		initiative.NewParticipant("wizard", "character"): +1,
+		initiative.NewParticipant("ranger", dnd5e.EntityTypeCharacter): +3,
+		initiative.NewParticipant("goblin", dnd5e.EntityTypeMonster):   +2,
+		initiative.NewParticipant("wizard", dnd5e.EntityTypeCharacter): +1,
 	}
 
 	order := initiative.RollForOrder(participants, mockRoller)

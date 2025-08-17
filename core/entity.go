@@ -4,6 +4,10 @@
 // Package core provides the fundamental interfaces and types for the RPG toolkit.
 package core
 
+// EntityType identifies the category of an entity.
+// Rulebooks and modules define constants of this type for their entities.
+type EntityType string
+
 // Entity represents a fundamental game object in the RPG system.
 // All game entities (characters, items, locations, etc.) must implement this interface.
 type Entity interface {
@@ -12,6 +16,7 @@ type Entity interface {
 	GetID() string
 
 	// GetType returns the type of this entity.
-	// This helps categorize entities (e.g., "character", "item", "location").
-	GetType() string
+	// This helps categorize entities (e.g., EntityTypeCharacter, EntityTypeItem).
+	// Returns an EntityType constant, not a raw string.
+	GetType() EntityType
 }
