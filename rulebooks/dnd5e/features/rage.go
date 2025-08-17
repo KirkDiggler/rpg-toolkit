@@ -128,7 +128,7 @@ func (r *Rage) getDamageBonus() int {
 }
 
 // onAttack handles attack events to add damage bonus
-func (r *Rage) onAttack(e interface{}) error {
+func (r *Rage) onAttack(e any) error {
 	attack := e.(*dnd5e.AttackEvent)
 
 	// Only add bonus to Strength-based melee attacks
@@ -148,7 +148,7 @@ func (r *Rage) onAttack(e interface{}) error {
 }
 
 // onDamageReceived handles damage events to apply resistance
-func (r *Rage) onDamageReceived(e interface{}) error {
+func (r *Rage) onDamageReceived(e any) error {
 	damage := e.(*dnd5e.DamageReceivedEvent)
 
 	// Apply resistance to physical damage

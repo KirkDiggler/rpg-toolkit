@@ -75,5 +75,5 @@ type Condition struct {
 	Duration     string                 `json:"duration,omitempty"`       // "1_hour", "until_rest", etc
 	DurationType DurationType           `json:"duration_type,omitempty"`  // How duration is tracked
 	Remaining    int                    `json:"remaining,omitempty"`      // Remaining duration units
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`       // Condition-specific data
+	Metadata     map[string]any `json:"metadata,omitempty"`       // Condition-specific data
 }

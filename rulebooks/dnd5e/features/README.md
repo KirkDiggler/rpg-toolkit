@@ -175,7 +175,7 @@ func (rc *RagingCondition) Apply(bus *events.Bus, owner core.Entity) error {
     return nil
 }
 
-func (rc *RagingCondition) onAttack(e interface{}) error {
+func (rc *RagingCondition) onAttack(e any) error {
     // Single type assertion at the boundary  
     attack, ok := e.(*dnd5e.AttackEvent)
     if !ok {
@@ -201,7 +201,7 @@ func (rc *RagingCondition) onAttack(e interface{}) error {
     return nil
 }
 
-func (rc *RagingCondition) onDamageReceived(e interface{}) error {
+func (rc *RagingCondition) onDamageReceived(e any) error {
     // Single type assertion at the boundary
     damage, ok := e.(*dnd5e.DamageReceivedEvent)
     if !ok {
@@ -226,7 +226,7 @@ func (rc *RagingCondition) onDamageReceived(e interface{}) error {
     return nil
 }
 
-func (rc *RagingCondition) onRoundEnd(e interface{}) error {
+func (rc *RagingCondition) onRoundEnd(e any) error {
     // Single type assertion at the boundary
     _, ok := e.(*dnd5e.RoundEndEvent)
     if !ok {
@@ -301,7 +301,7 @@ func LoadConditionByRef(ref core.Ref, data map[events.EventDataKey]any, bus *eve
 }
 
 // Character subscribes to condition events
-func (c *Character) OnConditionApplied(e interface{}) error {
+func (c *Character) OnConditionApplied(e any) error {
     event := e.(*ConditionAppliedEvent)
     
     // Only handle conditions targeting this character
@@ -325,7 +325,7 @@ func (c *Character) OnConditionApplied(e interface{}) error {
     return nil
 }
 
-func (c *Character) OnConditionRemoved(e interface{}) error {
+func (c *Character) OnConditionRemoved(e any) error {
     event := e.(*ConditionRemovedEvent)
     
     if event.Target != c.GetID() {
@@ -397,7 +397,7 @@ func TestRage_PublishesCondition(t *testing.T) {
     
     // Subscribe to condition events
     var appliedEvent *ConditionAppliedEvent
-    bus.Subscribe("dnd5e:events:condition_applied", func(e interface{}) error {
+    bus.Subscribe("dnd5e:events:condition_applied", func(e any) error {
         appliedEvent = e.(*ConditionAppliedEvent)
         return nil
     })
@@ -425,7 +425,7 @@ func TestRagingCondition_EndsWithoutCombat(t *testing.T) {
     
     // Subscribe to removal events
     var removedEvent *ConditionRemovedEvent
-    bus.Subscribe("dnd5e:events:condition_removed", func(e interface{}) error {
+    bus.Subscribe("dnd5e:events:condition_removed", func(e any) error {
         removedEvent = e.(*ConditionRemovedEvent)
         return nil
     })
