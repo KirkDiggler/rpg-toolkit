@@ -57,6 +57,32 @@ Character.OnConditionRemoved()
 
 ## Implementation Structure
 
+### Constants and Types
+
+```go
+// features/constants.go
+
+// Event refs - typed constants for all events
+var (
+    EventRefConditionApplied  = core.MustParseRef("dnd5e:events:condition_applied")
+    EventRefConditionRemoved  = core.MustParseRef("dnd5e:events:condition_removed")
+    EventRefRoundEnd         = core.MustParseRef("dnd5e:events:round_end")
+)
+
+// Condition refs - typed constants for all conditions
+var (
+    ConditionRefRaging       = core.MustParseRef("dnd5e:conditions:raging")
+    ConditionRefSecondWind   = core.MustParseRef("dnd5e:conditions:second_wind")
+    ConditionRefActionSurge  = core.MustParseRef("dnd5e:conditions:action_surge")
+)
+
+// Typed errors for better error handling
+var (
+    ErrNoUsesRemaining = errors.New("no rage uses remaining")
+    ErrAlreadyRaging   = errors.New("already raging")
+)
+```
+
 ### Feature Definition
 
 ```go
@@ -72,36 +98,33 @@ type Rage struct {
     currentUses int
 }
 
-func (r *Rage) CanActivate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
-    
-    // Check uses remaining
-    if r.currentUses <= 0 {
-        return errors.New("no rage uses remaining")
-    }
-    
-    // Check if already raging (character has the condition)
-    if owner.HasCondition("raging") {
-        return errors.New("already raging")
-    }
-    
-    return nil
+// CanActivate just returns nil - all validation happens in Activate
+// This satisfies the core.Action interface but we don't use it
+func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+    return nil  // All validation in Activate for simpler flow
 }
 
 func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-    if err := r.CanActivate(ctx, owner, input); err != nil {
-        return err
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    
+    // All validation here - single place for all checks
+    if r.currentUses <= 0 {
+        return ErrNoUsesRemaining
     }
     
-    r.mu.Lock()
-    r.currentUses--
-    r.mu.Unlock()
+    // Check if already has raging condition
+    if owner.HasCondition(ConditionRefRaging.String()) {
+        return ErrAlreadyRaging
+    }
     
-    // Just publish the condition event!
+    // Consume use
+    r.currentUses--
+    
+    // Publish typed condition event
     return r.bus.Publish(&ConditionAppliedEvent{
         Target:    owner.GetID(),
-        Condition: "dnd5e:conditions:raging",
+        Condition: ConditionRefRaging.String(),
         Source:    r.GetID(),
         Data: map[string]any{
             "level": r.level,  // For damage bonus calculation
@@ -133,10 +156,10 @@ func (rc *RagingCondition) Apply(bus *events.Bus, owner core.Entity) error {
     rc.owner = owner.GetID()
     rc.ticksRemaining = 10
     
-    // Subscribe to combat events
+    // Subscribe to combat events using typed refs
     rc.subscriptions = []string{
-        bus.SubscribeWithFilter(EventRefAttack, rc.onAttack, rc.filterMyAttacks),
-        bus.SubscribeWithFilter(EventRefDamageReceived, rc.onDamageReceived, rc.filterMyDamage),
+        bus.SubscribeWithFilter(dnd5e.EventRefAttack, rc.onAttack, rc.filterMyAttacks),
+        bus.SubscribeWithFilter(dnd5e.EventRefDamageReceived, rc.onDamageReceived, rc.filterMyDamage),
         bus.Subscribe(EventRefRoundEnd, rc.onRoundEnd),
     }
     
@@ -210,10 +233,10 @@ func (rc *RagingCondition) remove(reason string) error {
         rc.bus.Unsubscribe(sub)
     }
     
-    // Publish removal event
+    // Publish typed removal event
     return rc.bus.Publish(&ConditionRemovedEvent{
         Target:    rc.owner,
-        Condition: "dnd5e:conditions:raging",
+        Condition: ConditionRefRaging.String(),
         Reason:    reason,
     })
 }
@@ -225,28 +248,28 @@ The character package provides the routing to load conditions from various packa
 
 ```go
 // character/conditions.go
-func LoadConditionByRef(ref string, data map[string]any, bus *events.Bus) (Condition, error) {
+func LoadConditionByRef(ref core.Ref, data map[string]any, bus *events.Bus) (Condition, error) {
     switch ref {
     // Feature-specific conditions (from features package)
-    case "dnd5e:conditions:raging":
+    case features.ConditionRefRaging:
         return features.NewRagingCondition(data, bus)
-    case "dnd5e:conditions:second_wind":
+    case features.ConditionRefSecondWind:
         return features.NewSecondWindCondition(data, bus)
-    case "dnd5e:conditions:action_surge":
+    case features.ConditionRefActionSurge:
         return features.NewActionSurgeCondition(data, bus)
     
     // Standard D&D conditions (from conditions package)
-    case "dnd5e:conditions:poisoned":
+    case conditions.ConditionRefPoisoned:
         return conditions.NewPoisonedCondition(data, bus)
-    case "dnd5e:conditions:grappled":
+    case conditions.ConditionRefGrappled:
         return conditions.NewGrappledCondition(data, bus)
-    case "dnd5e:conditions:stunned":
+    case conditions.ConditionRefStunned:
         return conditions.NewStunnedCondition(data, bus)
     
     // Spell conditions (from spells package)
-    case "dnd5e:conditions:blessed":
+    case spells.ConditionRefBlessed:
         return spells.NewBlessedCondition(data, bus)
-    case "dnd5e:conditions:hexed":
+    case spells.ConditionRefHexed:
         return spells.NewHexedCondition(data, bus)
     
     default:
@@ -337,6 +360,8 @@ Adding new features/conditions is straightforward:
 3. **Event-driven application** - no direct manipulation
 4. **Single responsibility** - each part does one thing well
 5. **Package cohesion** - related conditions live with their features
+6. **Constants everywhere** - typed refs for events and conditions, no strings
+7. **Single validation point** - CanActivate returns nil, all checks in Activate
 
 ## Testing Patterns
 
