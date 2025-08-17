@@ -6,6 +6,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -27,18 +28,18 @@ type Filter func(event Event) bool
 
 // EventBus handles event publishing and subscriptions.
 type EventBus interface {
-	// Publish sends an event to all subscribers
-	Publish(event Event) error
+	// Publish sends an event with a context to all subscribers
+	Publish(ctx context.Context, event Event) error
 
 	// Subscribe registers a handler for events with the given ref
-	// Handler should be func(T) error where T is the event type
-	Subscribe(ref *core.Ref, handler any) (string, error)
+	// Handler must be func(context.Context, T) error where T is the event type
+	Subscribe(ctx context.Context, ref *core.Ref, handler any) (string, error)
 
 	// SubscribeWithFilter registers a handler with a filter
-	SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (string, error)
+	SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler any, filter Filter) (string, error)
 
 	// Unsubscribe removes a subscription by ID
-	Unsubscribe(id string) error
+	Unsubscribe(ctx context.Context, id string) error
 
 	// Clear removes all subscriptions (useful for tests)
 	Clear()
@@ -84,8 +85,8 @@ func NewBusWithMaxDepth(maxDepth int32) *Bus {
 	}
 }
 
-// Publish sends an event to all registered handlers.
-func (b *Bus) Publish(event Event) error {
+// Publish sends an event to all registered handlers with the given context.
+func (b *Bus) Publish(ctx context.Context, event Event) error {
 	// Check recursion depth
 	depth := atomic.AddInt32(&b.publishDepth, 1)
 	defer atomic.AddInt32(&b.publishDepth, -1)
@@ -99,57 +100,62 @@ func (b *Bus) Publish(event Event) error {
 	// Note: Consumers can monitor depth via GetDepth() if they want warnings
 	// We don't log here to avoid forcing logging behavior on library users
 
-	// Phase 1: Collect handlers and call them (with read lock)
-	var deferred []*DeferredAction
-	var immediateError error
+	// Phase 1: Collect handlers that match this event's ref
+	var handlersToCall []handlerEntry
 
 	b.mu.RLock()
-	// Find handlers by comparing ref pointers
-	for _, entries := range b.handlers {
+	// Get handlers registered for this event's ref
+	// Use ref value comparison, not pointer
+	refStr := event.EventRef().String()
+	if entries, ok := b.handlers[refStr]; ok {
+		// Copy handlers to call (avoid holding lock during execution)
+		handlersToCall = make([]handlerEntry, 0, len(entries))
 		for _, entry := range entries {
-			// Check if this handler wants this event (pointer comparison!)
-			if entry.ref != event.EventRef() {
-				continue
-			}
-
 			// Check filter
 			if entry.filter != nil && !entry.filter(event) {
 				continue
 			}
-
-			// Call handler
-			eventValue := reflect.ValueOf(event)
-			results := entry.handler.Call([]reflect.Value{eventValue})
-
-			// Check what the handler returned
-			if len(results) > 0 && !results[0].IsNil() {
-				// Check if it's a DeferredAction or an error
-				switch v := results[0].Interface().(type) {
-				case *DeferredAction:
-					// Handler returned deferred actions
-					deferred = append(deferred, v)
-				case error:
-					// Handler returned an error (backwards compatibility)
-					immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
-				}
-			}
-		}
-		if immediateError != nil {
-			break
+			// Add to handlers to call
+			handlersToCall = append(handlersToCall, entry)
 		}
 	}
 	b.mu.RUnlock()
+
+	// Phase 2: Call handlers without holding lock
+	var deferred []*DeferredAction
+	var immediateError error
+
+	for _, entry := range handlersToCall {
+		// Call handler with context
+		results := entry.handler.Call([]reflect.Value{
+			reflect.ValueOf(ctx),
+			reflect.ValueOf(event),
+		})
+
+		// Check what the handler returned
+		if len(results) > 0 && !results[0].IsNil() {
+			// Check if it's a DeferredAction or an error
+			switch v := results[0].Interface().(type) {
+			case *DeferredAction:
+				// Handler returned deferred actions
+				deferred = append(deferred, v)
+			case error:
+				// Handler returned an error
+				immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
+			}
+		}
+	}
 
 	// Return immediate errors
 	if immediateError != nil {
 		return immediateError
 	}
 
-	// Phase 2: Process deferred actions (no lock held)
+	// Phase 3: Process deferred actions (no lock held)
 	for _, action := range deferred {
 		// Process unsubscribes
 		for _, id := range action.Unsubscribes {
-			if err := b.Unsubscribe(id); err != nil {
+			if err := b.Unsubscribe(ctx, id); err != nil {
 				// Ignore error - subscription might already be gone
 				continue
 			}
@@ -157,7 +163,7 @@ func (b *Bus) Publish(event Event) error {
 
 		// Process publishes
 		for _, evt := range action.Publishes {
-			if err := b.Publish(evt); err != nil {
+			if err := b.Publish(ctx, evt); err != nil {
 				return err
 			}
 		}
@@ -172,12 +178,21 @@ func (b *Bus) Publish(event Event) error {
 }
 
 // Subscribe registers a handler for events with the given ref.
-func (b *Bus) Subscribe(ref *core.Ref, handler any) (string, error) {
-	return b.SubscribeWithFilter(ref, handler, nil)
+func (b *Bus) Subscribe(ctx context.Context, ref *core.Ref, handler any) (string, error) {
+	// Check if context is already cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("subscribe cancelled: %w", err)
+	}
+	return b.SubscribeWithFilter(ctx, ref, handler, nil)
 }
 
 // SubscribeWithFilter registers a handler with a filter.
-func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (string, error) {
+func (b *Bus) SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler any, filter Filter) (string, error) {
+	// Check if context is already cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("subscribe cancelled: %w", err)
+	}
+
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -186,8 +201,15 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 		return "", fmt.Errorf("handler must be a function")
 	}
 
-	if handlerType.NumIn() != 1 {
-		return "", fmt.Errorf("handler must take exactly one parameter")
+	// Handler must take exactly 2 parameters: context and event
+	if handlerType.NumIn() != 2 {
+		return "", fmt.Errorf("handler must take exactly 2 parameters (context.Context, event)")
+	}
+
+	// First parameter must be context.Context
+	contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
+	if handlerType.In(0) != contextType {
+		return "", fmt.Errorf("handler first parameter must be context.Context")
 	}
 
 	// Handler must return either error or *DeferredAction
@@ -206,15 +228,20 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// Check again after acquiring lock in case we waited
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("subscribe cancelled while waiting for lock: %w", err)
+	}
+
 	// Generate subscription ID
 	b.nextID++
 	id := fmt.Sprintf("sub-%d", b.nextID)
 
-	// Add handler - use ref string just for grouping in map
+	// Add handler - group by ref string value
 	refStr := ref.String()
 	b.handlers[refStr] = append(b.handlers[refStr], handlerEntry{
 		id:      id,
-		ref:     ref,
+		ref:     ref, // Store ref for reference, but not used for matching
 		handler: handlerValue,
 		filter:  filter,
 	})
@@ -223,9 +250,19 @@ func (b *Bus) SubscribeWithFilter(ref *core.Ref, handler any, filter Filter) (st
 }
 
 // Unsubscribe removes a subscription by ID.
-func (b *Bus) Unsubscribe(id string) error {
+func (b *Bus) Unsubscribe(ctx context.Context, id string) error {
+	// Check if context is already cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("unsubscribe cancelled: %w", err)
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Check again after acquiring lock in case we waited
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("unsubscribe cancelled while waiting for lock: %w", err)
+	}
 
 	// Find and remove the handler
 	for eventType, handlers := range b.handlers {

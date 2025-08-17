@@ -4,6 +4,7 @@
 package events_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -15,7 +16,10 @@ import (
 
 // Test ref for depth testing
 var testDepthEventRef = func() *core.Ref {
-	r, _ := core.ParseString("test:event:depth")
+	r, err := core.ParseString("test:event:depth")
+	if err != nil {
+		panic(err)
+	}
 	return r
 }()
 
@@ -42,19 +46,20 @@ func NewTestDepthEvent(level int) *TestDepthEvent {
 
 func TestDepthProtection_MaxDepthExceeded(t *testing.T) {
 	bus := events.NewBusWithMaxDepth(5)
+	ctx := context.Background()
 
 	// Handler that always triggers another event
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		// Each handler triggers the next level
 		return events.NewDeferredAction().Publish(NewTestDepthEvent(event.Level + 1))
 	}
 
-	_, err := bus.Subscribe(testDepthEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handler)
 	require.NoError(t, err)
 
 	// Start cascade - should fail when depth exceeds 5
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "event cascade depth exceeded")
 	assert.Contains(t, err.Error(), "max=5")
@@ -62,11 +67,12 @@ func TestDepthProtection_MaxDepthExceeded(t *testing.T) {
 
 func TestDepthProtection_ExactLimit(t *testing.T) {
 	bus := events.NewBusWithMaxDepth(3)
+	ctx := context.Background()
 
 	var reached []int
 
 	// Handler that triggers next level only if below limit
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		reached = append(reached, event.Level)
 
@@ -76,11 +82,11 @@ func TestDepthProtection_ExactLimit(t *testing.T) {
 		return nil
 	}
 
-	_, err := bus.Subscribe(testDepthEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handler)
 	require.NoError(t, err)
 
 	// Should succeed - stays within limit
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.NoError(t, err)
 
 	// Should have processed levels 1, 2, 3
@@ -89,6 +95,7 @@ func TestDepthProtection_ExactLimit(t *testing.T) {
 
 func TestDepthProtection_DefaultLimit(t *testing.T) {
 	bus := events.NewBus() // Uses default limit (10)
+	ctx := context.Background()
 
 	// Verify default is 10
 	assert.Equal(t, int32(10), bus.GetMaxDepth())
@@ -96,7 +103,7 @@ func TestDepthProtection_DefaultLimit(t *testing.T) {
 	cascadeCount := 0
 
 	// Handler that counts cascades
-	handler := func(_ any) *events.DeferredAction {
+	handler := func(_ context.Context, _ any) *events.DeferredAction {
 		cascadeCount++
 		if cascadeCount < 15 { // Try to go beyond default
 			return events.NewDeferredAction().Publish(NewTestDepthEvent(cascadeCount))
@@ -104,11 +111,11 @@ func TestDepthProtection_DefaultLimit(t *testing.T) {
 		return nil
 	}
 
-	_, err := bus.Subscribe(testDepthEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handler)
 	require.NoError(t, err)
 
 	// Should fail at depth 11
-	err = bus.Publish(NewTestDepthEvent(0))
+	err = bus.Publish(ctx, NewTestDepthEvent(0))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "depth exceeded")
 
@@ -118,9 +125,10 @@ func TestDepthProtection_DefaultLimit(t *testing.T) {
 
 func TestDepthProtection_MultipleHandlers(t *testing.T) {
 	bus := events.NewBusWithMaxDepth(4)
+	ctx := context.Background()
 
 	// Handler A triggers B
-	handlerA := func(e any) *events.DeferredAction {
+	handlerA := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		if event.Level == 1 {
 			return events.NewDeferredAction().Publish(NewTestDepthEvent(2))
@@ -129,7 +137,7 @@ func TestDepthProtection_MultipleHandlers(t *testing.T) {
 	}
 
 	// Handler B triggers C
-	handlerB := func(e any) *events.DeferredAction {
+	handlerB := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		if event.Level == 2 {
 			return events.NewDeferredAction().Publish(NewTestDepthEvent(3))
@@ -138,7 +146,7 @@ func TestDepthProtection_MultipleHandlers(t *testing.T) {
 	}
 
 	// Handler C triggers D
-	handlerC := func(e any) *events.DeferredAction {
+	handlerC := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		if event.Level == 3 {
 			return events.NewDeferredAction().Publish(NewTestDepthEvent(4))
@@ -147,7 +155,7 @@ func TestDepthProtection_MultipleHandlers(t *testing.T) {
 	}
 
 	// Handler D tries to go further
-	handlerD := func(e any) *events.DeferredAction {
+	handlerD := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		if event.Level == 4 {
 			// This should fail - exceeds depth
@@ -157,25 +165,26 @@ func TestDepthProtection_MultipleHandlers(t *testing.T) {
 	}
 
 	// Subscribe all handlers
-	_, err := bus.Subscribe(testDepthEventRef, handlerA)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handlerA)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDepthEventRef, handlerB)
+	_, err = bus.Subscribe(ctx, testDepthEventRef, handlerB)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDepthEventRef, handlerC)
+	_, err = bus.Subscribe(ctx, testDepthEventRef, handlerC)
 	require.NoError(t, err)
-	_, err = bus.Subscribe(testDepthEventRef, handlerD)
+	_, err = bus.Subscribe(ctx, testDepthEventRef, handlerD)
 	require.NoError(t, err)
 
 	// Start cascade
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "depth exceeded")
 }
 
 func TestDepthProtection_ResetsBetweenCalls(t *testing.T) {
 	bus := events.NewBusWithMaxDepth(2)
+	ctx := context.Background()
 
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		if event.Level == 1 {
 			// One level of cascade
@@ -184,26 +193,27 @@ func TestDepthProtection_ResetsBetweenCalls(t *testing.T) {
 		return nil
 	}
 
-	_, err := bus.Subscribe(testDepthEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handler)
 	require.NoError(t, err)
 
 	// First call - should work
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.NoError(t, err)
 	assert.Equal(t, int32(0), bus.GetDepth()) // Depth reset to 0
 
 	// Second call - should also work (depth was reset)
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.NoError(t, err)
 	assert.Equal(t, int32(0), bus.GetDepth()) // Depth reset to 0 again
 }
 
 func TestDepthProtection_GetDepthDuringExecution(t *testing.T) {
 	bus := events.NewBusWithMaxDepth(5)
+	ctx := context.Background()
 
 	depths := []int32{}
 
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		// Capture current depth during execution
 		depths = append(depths, bus.GetDepth())
@@ -214,10 +224,10 @@ func TestDepthProtection_GetDepthDuringExecution(t *testing.T) {
 		return nil
 	}
 
-	_, err := bus.Subscribe(testDepthEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handler)
 	require.NoError(t, err)
 
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.NoError(t, err)
 
 	// Should see increasing depths: 1, 2, 3
@@ -238,19 +248,20 @@ func TestDepthProtection_InvalidMaxDepth(t *testing.T) {
 
 func TestDepthProtection_ErrorPropagation(t *testing.T) {
 	bus := events.NewBusWithMaxDepth(3)
+	ctx := context.Background()
 
 	// Handler that triggers cascade
-	handler := func(e any) *events.DeferredAction {
+	handler := func(_ context.Context, e any) *events.DeferredAction {
 		event := e.(*TestDepthEvent)
 		// Always cascade (will hit limit)
 		return events.NewDeferredAction().Publish(NewTestDepthEvent(event.Level + 1))
 	}
 
-	_, err := bus.Subscribe(testDepthEventRef, handler)
+	_, err := bus.Subscribe(ctx, testDepthEventRef, handler)
 	require.NoError(t, err)
 
 	// The error should bubble up through the cascade
-	err = bus.Publish(NewTestDepthEvent(1))
+	err = bus.Publish(ctx, NewTestDepthEvent(1))
 	require.Error(t, err)
 
 	// Error message should be informative

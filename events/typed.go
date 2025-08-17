@@ -4,11 +4,14 @@
 package events
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// EventHandler is a typed event handler function.
-type EventHandler[T any] = func(T) error
+// EventHandler is a typed event handler function that accepts context.
+type EventHandler[T any] = func(context.Context, T) error
 
 // EventFilter is a typed event filter function.
 type EventFilter[T any] = func(T) bool
@@ -38,14 +41,15 @@ func Where[T any](filter EventFilter[T]) Option[T] {
 	return filterOption[T]{filter: filter}
 }
 
-// Publish sends an event using its ref for routing.
-func Publish[T Event](bus EventBus, event T) error {
-	return bus.Publish(event)
+// Publish sends an event using its ref for routing with context.
+func Publish[T Event](ctx context.Context, bus EventBus, event T) error {
+	return bus.Publish(ctx, event)
 }
 
 // Subscribe provides type-safe subscription with ref validation.
 // The TypedRef ensures compile-time type safety and runtime validation.
 func Subscribe[T Event](
+	ctx context.Context,
 	bus EventBus,
 	ref *core.TypedRef[T],
 	handler EventHandler[T],
@@ -57,13 +61,13 @@ func Subscribe[T Event](
 		opt.apply(sub)
 	}
 
-	// Simple wrapper - the bus will handle ref matching via pointer comparison
-	wrappedHandler := func(e any) error {
+	// Wrapper that provides context to the handler
+	wrappedHandler := func(ctx context.Context, e any) error {
 		typed, ok := e.(T)
 		if !ok {
 			return nil // Wrong type, skip
 		}
-		return handler(typed)
+		return handler(ctx, typed)
 	}
 
 	// Convert typed filter if present
@@ -78,9 +82,31 @@ func Subscribe[T Event](
 		}
 	}
 
-	// Subscribe using the ref pointer
+	// Subscribe using the ref from TypedRef
+	// The ref value will be used for matching (not pointer)
 	if busFilter != nil {
-		return bus.SubscribeWithFilter(ref.Ref, wrappedHandler, busFilter)
+		return bus.SubscribeWithFilter(ctx, ref.Ref, wrappedHandler, busFilter)
 	}
-	return bus.Subscribe(ref.Ref, wrappedHandler)
+	return bus.Subscribe(ctx, ref.Ref, wrappedHandler)
+}
+
+// Unsubscribe removes a subscription by ID.
+func Unsubscribe(ctx context.Context, bus EventBus, id string) error {
+	return bus.Unsubscribe(ctx, id)
+}
+
+// PublishWithTypedRef sends an event and verifies it matches the TypedRef.
+// This provides an extra type-safety check at publish time.
+func PublishWithTypedRef[T Event](
+	ctx context.Context,
+	bus EventBus,
+	ref *core.TypedRef[T],
+	event T,
+) error {
+	// Verify the event's ref matches the TypedRef
+	if event.EventRef().String() != ref.Ref.String() {
+		return fmt.Errorf("event ref mismatch: expected %s, got %s",
+			ref.Ref, event.EventRef())
+	}
+	return bus.Publish(ctx, event)
 }
