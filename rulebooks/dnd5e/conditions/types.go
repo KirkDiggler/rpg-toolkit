@@ -46,11 +46,34 @@ const (
 	Exhaustion5 ConditionType = "exhaustion_5"
 	// Exhaustion6 represents exhaustion level 6 - death
 	Exhaustion6 ConditionType = "exhaustion_6"
+
+	// Raging represents the barbarian rage state - damage bonus and resistance
+	Raging ConditionType = "raging"
+)
+
+// DurationType defines how a condition's duration is tracked
+type DurationType string
+
+const (
+	// DurationRounds tracks duration in combat rounds
+	DurationRounds DurationType = "rounds"
+	// DurationMinutes tracks duration in minutes
+	DurationMinutes DurationType = "minutes"
+	// DurationHours tracks duration in hours
+	DurationHours DurationType = "hours"
+	// DurationUntilRest lasts until a short or long rest
+	DurationUntilRest DurationType = "until_rest"
+	// DurationPermanent has no expiration
+	DurationPermanent DurationType = "permanent"
 )
 
 // Condition represents an active condition on a character
 type Condition struct {
-	Type     ConditionType `json:"type"`
-	Source   string        `json:"source,omitempty"`   // What caused this
-	Duration string        `json:"duration,omitempty"` // "1_hour", "until_rest", etc
+	Type         ConditionType          `json:"type"`
+	Source       string                 `json:"source,omitempty"`         // What caused this
+	SourceEntity string                 `json:"source_entity,omitempty"`  // Entity ID that applied it
+	Duration     string                 `json:"duration,omitempty"`       // "1_hour", "until_rest", etc
+	DurationType DurationType           `json:"duration_type,omitempty"`  // How duration is tracked
+	Remaining    int                    `json:"remaining,omitempty"`      // Remaining duration units
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`       // Condition-specific data
 }

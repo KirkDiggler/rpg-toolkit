@@ -1,382 +1,423 @@
 # D&D 5e Features Package
 
-This package implements D&D 5e character features (rage, second wind, action surge, etc.) as self-contained Actions with event-driven effects.
+This package implements D&D 5e character features (rage, second wind, action surge, etc.) as Actions that apply self-contained Conditions through events.
 
 ## Core Architecture
 
-Features are self-contained entities that:
-- Implement `core.Action[FeatureInput]` for activation
-- Manage their own event subscriptions
-- Apply effects through the event system
-- Track their own state and resources
+### The Event-Driven Condition Pattern
 
-## The LoadJSON Pattern
+Features don't directly modify characters or track active state. Instead:
 
-Features are loaded from JSON configuration, allowing dynamic feature creation without hardcoding:
+1. **Features publish condition events** when activated
+2. **Characters subscribe** to condition events targeting them  
+3. **Conditions are self-contained** - they manage their own lifecycle
+4. **Conditions handle all mechanics** - duration, modifiers, removal
 
-```go
-featureJSON := `{
-    "ref": "dnd5e:features:rage",
-    "id": "barbarian-rage",
-    "data": {
-        "uses": 3,
-        "level": 5
-    }
-}`
+This creates beautiful separation:
+- Features only know about activation rules and resource consumption
+- Conditions encapsulate all the ongoing effects and rules
+- Characters just host conditions without knowing their mechanics
 
-// Event bus is passed for dependency injection
-rage, err := features.LoadJSON([]byte(featureJSON), eventBus)
+## The Flow
+
+```
+Player: "I rage!"
+  ↓
+Feature.Activate()
+  → Consumes rage use
+  → Publishes ConditionAppliedEvent{Target: barbarian, Type: "raging", Data: {level: 5}}
+  → Done! Feature doesn't track anything else
+  ↓
+Character.OnConditionApplied()
+  → Loads condition: LoadConditionByRef("dnd5e:conditions:raging")
+  → Calls: condition.Apply(eventBus, character)
+  → Adds to condition list
+  ↓
+RagingCondition.Apply()
+  → Subscribes to AttackEvent (track if I attacked)
+  → Subscribes to DamageReceivedEvent (track if I was hit)
+  → Subscribes to RoundEndEvent (check if rage continues)
+  → Subscribes to combat events (apply modifiers)
+  ↓
+[During combat...]
+  → Attack happens: RagingCondition adds damage bonus
+  → Damage received: RagingCondition applies resistance
+  → Round ends: RagingCondition checks if it should continue
+  ↓
+[When rage ends...]
+RagingCondition.OnRoundEnd()
+  → Didn't attack or get hit? Rage ends
+  → 10 rounds passed? Rage ends
+  → Publishes: ConditionRemovedEvent{Target: barbarian, Type: "raging"}
+  ↓
+Character.OnConditionRemoved()
+  → Removes from condition list
+  → Condition cleans up its subscriptions
 ```
 
-### Why Pass the Event Bus?
+## Implementation Structure
 
-Features need the event bus to:
-- Subscribe to combat events (attacks, damage, etc.)
-- Publish feature events (rage started/ended)
-- Apply modifiers through the event system
-- Clean up subscriptions when done
-
-The bus is passed at creation time so features can manage their own subscriptions.
-
-## Feature Interface
+### Feature Definition
 
 ```go
-// Feature is the D&D 5e specific interface for character features
-type Feature interface {
-    core.Action[FeatureInput]
-    
-    // D&D 5e specific methods
-    GetResourceType() ResourceType  // rage uses, ki points, etc.
-    ResetsOn() ResetType            // short rest, long rest, dawn
-}
-```
-
-## Example: Rage Implementation
-
-Rage is our first complete feature implementation showing the pattern:
-
-### 1. Feature Structure
-
-```go
+// features/rage.go
 type Rage struct {
     id    string
     uses  int
     level int
     bus   *events.Bus
     
-    // Thread-safe state management
-    mu sync.RWMutex
-    
-    // Current state (protected by mutex)
-    currentUses   int
-    active        bool
-    owner         core.Entity
-    subscriptions []string  // For cleanup
+    // State management
+    mu          sync.RWMutex
+    currentUses int
 }
-```
 
-### 2. Activation Flow
+func (r *Rage) CanActivate(ctx context.Context, owner core.Entity, input FeatureInput) error {
+    r.mu.RLock()
+    defer r.mu.RUnlock()
+    
+    // Check uses remaining
+    if r.currentUses <= 0 {
+        return errors.New("no rage uses remaining")
+    }
+    
+    // Check if already raging (character has the condition)
+    if owner.HasCondition("raging") {
+        return errors.New("already raging")
+    }
+    
+    return nil
+}
 
-When rage is activated:
-
-```go
 func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-    // 1. Check if can activate
     if err := r.CanActivate(ctx, owner, input); err != nil {
         return err
     }
     
-    // 2. Update state
+    r.mu.Lock()
     r.currentUses--
-    r.active = true
-    r.owner = owner
+    r.mu.Unlock()
     
-    // 3. Subscribe to relevant events
-    attackSub, _ := r.bus.SubscribeWithFilter(
-        dnd5e.EventRefAttack,
-        r.onAttack,
-        func(e events.Event) bool {
-            // Only handle attacks from the raging barbarian
-            attack := e.(*dnd5e.AttackEvent)
-            return attack.Attacker == r.owner
+    // Just publish the condition event!
+    return r.bus.Publish(&ConditionAppliedEvent{
+        Target:    owner.GetID(),
+        Condition: "dnd5e:conditions:raging",
+        Source:    r.GetID(),
+        Data: map[string]any{
+            "level": r.level,  // For damage bonus calculation
         },
-    )
-    
-    damageSub, _ := r.bus.SubscribeWithFilter(
-        dnd5e.EventRefDamageReceived,
-        r.onDamageReceived,
-        func(e events.Event) bool {
-            // Only handle damage to the raging barbarian
-            damage := e.(*dnd5e.DamageReceivedEvent)
-            return damage.Target == r.owner
-        },
-    )
-    
-    // 4. Track subscriptions for cleanup
-    r.subscriptions = []string{attackSub, damageSub}
-    
-    // 5. Publish rage started event
-    r.bus.Publish(&dnd5e.RageStartedEvent{
-        Owner:       owner,
-        DamageBonus: r.getDamageBonus(),
     })
-    
-    return nil
 }
 ```
 
-### 3. Event Handlers
-
-Features modify combat through event handlers:
+### Condition Definition
 
 ```go
-func (r *Rage) onAttack(e interface{}) error {
-    attack := e.(*dnd5e.AttackEvent)
+// features/rage_condition.go (same package as feature)
+type RagingCondition struct {
+    owner        string
+    level        int
+    ticksRemaining int
+    bus          *events.Bus
     
-    // Add damage bonus to STR-based melee attacks
-    if attack.IsMelee && attack.Ability == dnd5e.AbilityStrength {
-        ctx := attack.Context()
-        ctx.AddModifier(events.NewSimpleModifier(
-            dnd5e.ModifierSourceRage,
-            dnd5e.ModifierTypeAdditive,
-            dnd5e.ModifierTargetDamage,
-            200,  // priority
-            r.getDamageBonus(),
-        ))
-    }
+    // Track state for rage rules
+    attackedThisRound bool
+    wasHitThisRound   bool
     
-    return nil
-}
-
-func (r *Rage) onDamageReceived(e interface{}) error {
-    damage := e.(*dnd5e.DamageReceivedEvent)
-    
-    // Apply resistance to physical damage
-    if damage.DamageType == dnd5e.DamageTypeBludgeoning ||
-       damage.DamageType == dnd5e.DamageTypePiercing ||
-       damage.DamageType == dnd5e.DamageTypeSlashing {
-        
-        ctx := damage.Context()
-        ctx.AddModifier(events.NewSimpleModifier(
-            dnd5e.ModifierSourceRage,
-            dnd5e.ModifierTypeResistance,
-            dnd5e.ModifierTargetDamage,
-            100,  // priority (apply early)
-            0.5,  // multiplier for half damage
-        ))
-    }
-    
-    return nil
-}
-```
-
-## Type Safety Through Constants
-
-All strings are typed constants for compile-time safety:
-
-```go
-// Feature keys
-const FeatureKeyRage FeatureKey = "rage"
-
-// Resource types
-const ResourceTypeRageUses ResourceType = "rage_uses"
-
-// Reset types
-const ResetTypeLongRest ResetType = "long_rest"
-
-// Modifier sources (in dnd5e package)
-const ModifierSourceRage events.ModifierSource = "rage"
-
-// Modifier types (in dnd5e package)
-const (
-    ModifierTypeAdditive   events.ModifierType = "additive"
-    ModifierTypeResistance events.ModifierType = "resistance"
-)
-
-// Modifier targets (in dnd5e package)
-const ModifierTargetDamage events.ModifierTarget = "damage"
-
-// Damage types
-const (
-    DamageTypeBludgeoning damage.Type = "bludgeoning"
-    DamageTypePiercing    damage.Type = "piercing"
-    DamageTypeSlashing    damage.Type = "slashing"
-)
-```
-
-## Thread Safety
-
-Features are designed to be thread-safe for future async event buses:
-
-```go
-type Rage struct {
-    mu sync.RWMutex  // Protects all state below
-    
-    currentUses   int
-    active        bool
-    owner         core.Entity
+    // Subscriptions for cleanup
     subscriptions []string
 }
 
-// All state access is protected
-func (r *Rage) CanActivate(...) error {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+func (rc *RagingCondition) Apply(bus *events.Bus, owner core.Entity) error {
+    rc.bus = bus
+    rc.owner = owner.GetID()
+    rc.ticksRemaining = 10
     
-    if r.currentUses <= 0 {
-        return errors.New("no rage uses remaining")
-    }
-    // ...
-}
-```
-
-## Testing
-
-### Unit Tests
-
-```go
-func TestRage_AddsSTRDamageBonus(t *testing.T) {
-    bus := events.NewBus()
-    
-    // Load rage from JSON
-    featureJSON := `{
-        "ref": "dnd5e:features:rage",
-        "id": "test-rage",
-        "data": {"uses": 3, "level": 5}
-    }`
-    
-    rage, err := features.LoadJSON([]byte(featureJSON), bus)
-    require.NoError(t, err)
-    
-    // Create barbarian
-    barbarian := &mockEntity{id: "conan", entityType: dnd5e.EntityTypeCharacter}
-    
-    // Activate rage
-    err = rage.Activate(context.Background(), barbarian, features.FeatureInput{})
-    require.NoError(t, err)
-    
-    // Create STR melee attack event
-    attackEvent := dnd5e.NewAttackEvent(
-        barbarian,
-        &mockEntity{id: "goblin", entityType: dnd5e.EntityTypeMonster},
-        true,  // isMelee
-        dnd5e.AbilityStrength,
-        8,  // base damage
-    )
-    
-    // Publish and check modifier was added
-    err = bus.Publish(attackEvent)
-    require.NoError(t, err)
-    
-    // Verify damage bonus was applied
-    modifiers := attackEvent.Context().GetModifiers()
-    require.Len(t, modifiers, 1)
-    
-    mod := modifiers[0].(*events.SimpleModifier)
-    assert.Equal(t, dnd5e.ModifierSourceRage, mod.Source)
-    assert.Equal(t, 3, mod.Value)  // Level 5 = +3 damage
-}
-```
-
-### Concurrent Stress Testing
-
-```go
-func TestRage_ConcurrentEventHandling(t *testing.T) {
-    bus := events.NewBus()
-    rage, _ := features.LoadJSON([]byte(featureJSON), bus)
-    rage.Activate(ctx, barbarian, features.FeatureInput{})
-    
-    var wg sync.WaitGroup
-    numGoroutines := 100
-    numEventsPerGoroutine := 10
-    
-    // Concurrently publish attack events
-    wg.Add(numGoroutines)
-    for i := 0; i < numGoroutines; i++ {
-        go func() {
-            defer wg.Done()
-            for j := 0; j < numEventsPerGoroutine; j++ {
-                attackEvent := dnd5e.NewAttackEvent(...)
-                bus.Publish(attackEvent)
-            }
-        }()
+    // Subscribe to combat events
+    rc.subscriptions = []string{
+        bus.SubscribeWithFilter(EventRefAttack, rc.onAttack, rc.filterMyAttacks),
+        bus.SubscribeWithFilter(EventRefDamageReceived, rc.onDamageReceived, rc.filterMyDamage),
+        bus.Subscribe(EventRefRoundEnd, rc.onRoundEnd),
     }
     
-    // Wait for completion - no deadlocks or races!
-    wg.Wait()
+    return nil
 }
-```
 
-Run tests with race detection:
-```bash
-go test -race ./features
-```
-
-## Adding New Features
-
-To add a new feature (e.g., Second Wind):
-
-1. **Define the feature struct**:
-```go
-type SecondWind struct {
-    id          string
-    uses        int
-    fighterLevel int
-    bus         *events.Bus
-    mu          sync.RWMutex
-}
-```
-
-2. **Implement core.Action[FeatureInput]**:
-```go
-func (sw *SecondWind) CanActivate(...) error
-func (sw *SecondWind) Activate(...) error
-```
-
-3. **Implement Feature interface**:
-```go
-func (sw *SecondWind) GetResourceType() ResourceType
-func (sw *SecondWind) ResetsOn() ResetType
-```
-
-4. **Add to LoadJSON**:
-```go
-case FeatureKeySecondWind:
-    var data struct {
-        Uses  int `json:"uses"`
-        Level int `json:"level"`
+func (rc *RagingCondition) onAttack(e interface{}) error {
+    attack := e.(*AttackEvent)
+    
+    // Track that we attacked
+    rc.attackedThisRound = true
+    
+    // Add damage bonus to STR melee attacks
+    if attack.IsMelee && attack.Ability == AbilityStrength {
+        ctx := attack.Context()
+        damageBonus := rc.calculateDamageBonus()
+        ctx.AddModifier(events.NewSimpleModifier(
+            ModifierSourceRage,
+            ModifierTypeAdditive,
+            ModifierTargetDamage,
+            200,
+            damageBonus,
+        ))
     }
-    json.Unmarshal(input.Data, &data)
-    return &SecondWind{...}, nil
+    
+    return nil
+}
+
+func (rc *RagingCondition) onDamageReceived(e interface{}) error {
+    damage := e.(*DamageReceivedEvent)
+    
+    // Track that we were hit
+    rc.wasHitThisRound = true
+    
+    // Apply resistance to physical damage
+    if isPhysicalDamage(damage.DamageType) {
+        ctx := damage.Context()
+        ctx.AddModifier(events.NewSimpleModifier(
+            ModifierSourceRage,
+            ModifierTypeResistance,
+            ModifierTargetDamage,
+            100,
+            0.5,
+        ))
+    }
+    
+    return nil
+}
+
+func (rc *RagingCondition) onRoundEnd(e interface{}) error {
+    // Check if rage continues
+    if !rc.attackedThisRound && !rc.wasHitThisRound {
+        return rc.remove("You didn't attack or take damage")
+    }
+    
+    rc.ticksRemaining--
+    if rc.ticksRemaining <= 0 {
+        return rc.remove("Rage duration expired")
+    }
+    
+    // Reset for next round
+    rc.attackedThisRound = false
+    rc.wasHitThisRound = false
+    
+    return nil
+}
+
+func (rc *RagingCondition) remove(reason string) error {
+    // Unsubscribe from all events
+    for _, sub := range rc.subscriptions {
+        rc.bus.Unsubscribe(sub)
+    }
+    
+    // Publish removal event
+    return rc.bus.Publish(&ConditionRemovedEvent{
+        Target:    rc.owner,
+        Condition: "dnd5e:conditions:raging",
+        Reason:    reason,
+    })
+}
 ```
 
-5. **Write tests** covering:
-   - Activation conditions
-   - Effect application
-   - Resource consumption
-   - Thread safety
+## Character Integration
+
+The character package provides the routing to load conditions from various packages:
+
+```go
+// character/conditions.go
+func LoadConditionByRef(ref string, data map[string]any, bus *events.Bus) (Condition, error) {
+    switch ref {
+    // Feature-specific conditions (from features package)
+    case "dnd5e:conditions:raging":
+        return features.NewRagingCondition(data, bus)
+    case "dnd5e:conditions:second_wind":
+        return features.NewSecondWindCondition(data, bus)
+    case "dnd5e:conditions:action_surge":
+        return features.NewActionSurgeCondition(data, bus)
+    
+    // Standard D&D conditions (from conditions package)
+    case "dnd5e:conditions:poisoned":
+        return conditions.NewPoisonedCondition(data, bus)
+    case "dnd5e:conditions:grappled":
+        return conditions.NewGrappledCondition(data, bus)
+    case "dnd5e:conditions:stunned":
+        return conditions.NewStunnedCondition(data, bus)
+    
+    // Spell conditions (from spells package)
+    case "dnd5e:conditions:blessed":
+        return spells.NewBlessedCondition(data, bus)
+    case "dnd5e:conditions:hexed":
+        return spells.NewHexedCondition(data, bus)
+    
+    default:
+        return nil, fmt.Errorf("unknown condition: %s", ref)
+    }
+}
+
+// Character subscribes to condition events
+func (c *Character) OnConditionApplied(e interface{}) error {
+    event := e.(*ConditionAppliedEvent)
+    
+    // Only handle conditions targeting this character
+    if event.Target != c.GetID() {
+        return nil
+    }
+    
+    // Load and apply the condition
+    condition, err := LoadConditionByRef(event.Condition, event.Data, c.bus)
+    if err != nil {
+        return err
+    }
+    
+    if err := condition.Apply(c.bus, c); err != nil {
+        return err
+    }
+    
+    // Add to our condition list
+    c.conditions[event.Condition] = condition
+    
+    return nil
+}
+
+func (c *Character) OnConditionRemoved(e interface{}) error {
+    event := e.(*ConditionRemovedEvent)
+    
+    if event.Target != c.GetID() {
+        return nil
+    }
+    
+    // Remove from our list
+    delete(c.conditions, event.Condition)
+    
+    return nil
+}
+```
+
+## Key Benefits
+
+### 1. Clean Separation of Concerns
+- **Features**: Handle activation, resource consumption
+- **Conditions**: Handle ongoing effects, duration, modifiers
+- **Characters**: Just host conditions, don't know mechanics
+
+### 2. Self-Contained Logic
+Each condition knows its complete ruleset:
+- When it ends (duration, triggers)
+- What modifiers it provides
+- What events it cares about
+- How to clean itself up
+
+### 3. Persistence-Friendly
+```go
+// Save: Character just saves its condition list
+characterData.Conditions = []ConditionData{
+    {Ref: "dnd5e:conditions:raging", TicksRemaining: 7, Data: {level: 5}},
+    {Ref: "dnd5e:conditions:blessed", TicksRemaining: 3},
+}
+
+// Load: Character reapplies conditions
+for _, cond := range characterData.Conditions {
+    condition := LoadConditionByRef(cond.Ref, cond.Data, bus)
+    condition.Apply(bus, character)
+    character.conditions[cond.Ref] = condition
+}
+```
+
+### 4. Extensible
+Adding new features/conditions is straightforward:
+1. Create the feature (handles activation)
+2. Create its condition (handles effects)
+3. Register in LoadConditionByRef
+4. Done!
 
 ## Design Principles
 
-1. **Self-Contained Features**: Each feature manages its own subscriptions and state
-2. **Event-Driven Effects**: Features modify combat through events, not direct state changes
-3. **Type Safety**: Constants everywhere, never raw strings
-4. **Thread Safety**: Mutex protection for future async event buses
-5. **Clean Separation**: Features don't know about each other or the game server
-6. **Testability**: Easy to test in isolation with mock event buses
+1. **Features don't track active state** - they publish conditions
+2. **Conditions are self-contained** - complete lifecycle management
+3. **Event-driven application** - no direct manipulation
+4. **Single responsibility** - each part does one thing well
+5. **Package cohesion** - related conditions live with their features
+
+## Testing Patterns
+
+### Testing Features
+```go
+func TestRage_PublishesCondition(t *testing.T) {
+    bus := events.NewBus()
+    rage := NewRage(3, 5, bus)
+    barbarian := &mockCharacter{id: "conan"}
+    
+    // Subscribe to condition events
+    var appliedEvent *ConditionAppliedEvent
+    bus.Subscribe("dnd5e:events:condition_applied", func(e interface{}) error {
+        appliedEvent = e.(*ConditionAppliedEvent)
+        return nil
+    })
+    
+    // Activate rage
+    err := rage.Activate(ctx, barbarian, FeatureInput{})
+    require.NoError(t, err)
+    
+    // Verify condition event was published
+    assert.NotNil(t, appliedEvent)
+    assert.Equal(t, "dnd5e:conditions:raging", appliedEvent.Condition)
+    assert.Equal(t, "conan", appliedEvent.Target)
+}
+```
+
+### Testing Conditions
+```go
+func TestRagingCondition_EndsWithoutCombat(t *testing.T) {
+    bus := events.NewBus()
+    condition := NewRagingCondition(map[string]any{"level": 5}, bus)
+    barbarian := &mockCharacter{id: "conan"}
+    
+    // Apply condition
+    condition.Apply(bus, barbarian)
+    
+    // Subscribe to removal events
+    var removedEvent *ConditionRemovedEvent
+    bus.Subscribe("dnd5e:events:condition_removed", func(e interface{}) error {
+        removedEvent = e.(*ConditionRemovedEvent)
+        return nil
+    })
+    
+    // Publish round end without any attacks
+    bus.Publish(&RoundEndEvent{})
+    
+    // Verify rage ended
+    assert.NotNil(t, removedEvent)
+    assert.Equal(t, "You didn't attack or take damage", removedEvent.Reason)
+}
+```
 
 ## Current Implementation Status
 
-✅ **Completed**:
-- LoadJSON pattern for dynamic feature loading
-- Rage feature with full event integration
-- Thread-safe state management
-- Comprehensive test coverage
-- Type-safe modifiers using core/events types
+✅ **Architecture Designed**:
+- Event-driven condition application
+- Self-contained condition lifecycle
+- Character routing pattern
 
 🚧 **Next Steps**:
-- Add turn/round tracking for rage duration
-- Implement Second Wind (healing feature)
-- Implement Action Surge (extra action)
-- Add more barbarian features (Reckless Attack, Danger Sense)
-- Support for feature prerequisites and validation
+- Implement ConditionAppliedEvent and ConditionRemovedEvent
+- Refactor Rage to publish conditions instead of tracking state
+- Create RagingCondition with full rage mechanics
+- Update Character to subscribe to condition events
+- Add LoadConditionByRef routing
+
+## FAQ
+
+**Q: Why separate features and conditions?**
+A: Features handle the "can I do this?" question. Conditions handle "what happens while it's active?"
+
+**Q: Where do spell conditions go?**
+A: With their spells! A Bless spell would have a BlessedCondition in the spells package.
+
+**Q: How do conditions from items work?**
+A: Same pattern - items publish condition events, characters apply them.
+
+**Q: Can conditions interact with each other?**
+A: Yes, through events. A condition can subscribe to other condition events if needed.
+
+**Q: What about conditions that don't come from features?**
+A: Standard conditions (poisoned, grappled) live in the conditions package and work the same way.

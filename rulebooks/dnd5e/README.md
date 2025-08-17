@@ -48,34 +48,52 @@ import (
 
 ## Key Concepts
 
-### Features System
+### Features & Conditions System
 
-Character features (rage, second wind, action surge) are self-contained Actions that:
+Character features and conditions use an event-driven architecture for clean separation:
+
+#### Features
+Features (rage, second wind, action surge) handle activation and resource consumption:
 - Load from JSON configuration for flexibility
-- Manage their own event subscriptions
-- Apply effects through the event system
-- Maintain thread-safe state
+- Check activation requirements (uses remaining, prerequisites)
+- Publish condition events when activated
+- Don't track ongoing state - that's the condition's job
 
+#### Conditions
+Conditions are self-contained effects that manage their own lifecycle:
+- Applied via events (from features, spells, items, environment)
+- Subscribe to relevant game events (attacks, damage, round end)
+- Apply modifiers and effects during their lifetime
+- Remove themselves when their duration ends or conditions are met
+
+#### The Flow
 ```go
-// Load a feature from JSON
+// 1. Load and activate a feature
 featureJSON := `{
     "ref": "dnd5e:features:rage",
     "id": "barbarian-rage",
     "data": {"uses": 3, "level": 5}
 }`
+rage, _ := features.LoadJSON([]byte(featureJSON), eventBus)
 
-rage, err := features.LoadJSON([]byte(featureJSON), eventBus)
+// 2. Feature publishes condition event
+rage.Activate(ctx, barbarian, features.FeatureInput{})
+// → Publishes: ConditionAppliedEvent{Target: "barbarian", Type: "raging"}
 
-// Activate the feature
-err = rage.Activate(ctx, barbarian, features.FeatureInput{})
+// 3. Character receives and applies condition
+// Character.OnConditionApplied() → loads RagingCondition → calls Apply()
 
-// Feature automatically subscribes to relevant events and applies effects
+// 4. Condition manages everything
+// RagingCondition subscribes to attacks, damage, rounds
+// Adds damage bonus, applies resistance, tracks duration
+// Removes itself when rage ends
 ```
 
-Features modify combat through typed events and modifiers:
-- Attack events get damage bonuses
-- Damage events get resistance modifiers
-- All type-safe with constants, no strings
+Key benefits:
+- **Clean separation**: Features, conditions, and characters each have one job
+- **Event-driven**: No direct coupling between components
+- **Self-contained**: Each condition knows its complete ruleset
+- **Persistence-friendly**: Conditions save/load with character data
 
 See [features/README.md](features/README.md) for detailed documentation.
 
