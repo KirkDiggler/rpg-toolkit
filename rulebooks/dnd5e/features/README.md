@@ -76,6 +76,15 @@ var (
     ConditionRefActionSurge  = core.MustParseRef("dnd5e:conditions:action_surge")
 )
 
+// Event data keys - typed for compile-time safety (requires core PR #218)
+const (
+    DataKeyLevel      events.EventDataKey = "level"
+    DataKeyDuration   events.EventDataKey = "duration"
+    DataKeySource     events.EventDataKey = "source"
+    DataKeyTarget     events.EventDataKey = "target"
+    DataKeyDamageType events.EventDataKey = "damage_type"
+)
+
 // Typed errors for better error handling
 var (
     ErrNoUsesRemaining = errors.New("no rage uses remaining")
@@ -121,13 +130,13 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
     // Consume use
     r.currentUses--
     
-    // Publish typed condition event
+    // Publish typed condition event with typed data keys
     return r.bus.Publish(&ConditionAppliedEvent{
         Target:    owner.GetID(),
         Condition: ConditionRefRaging.String(),
         Source:    r.GetID(),
-        Data: map[string]any{
-            "level": r.level,  // For damage bonus calculation
+        Data: map[events.EventDataKey]any{
+            DataKeyLevel: r.level,  // Typed key, not string!
         },
     })
 }
@@ -262,7 +271,7 @@ The character package provides the routing to load conditions from various packa
 
 ```go
 // character/conditions.go
-func LoadConditionByRef(ref core.Ref, data map[string]any, bus *events.Bus) (Condition, error) {
+func LoadConditionByRef(ref core.Ref, data map[events.EventDataKey]any, bus *events.Bus) (Condition, error) {
     switch ref {
     // Feature-specific conditions (from features package)
     case features.ConditionRefRaging:
