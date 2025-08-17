@@ -20,7 +20,7 @@ const (
 
 func TestEventDataKey_TypeSafety(t *testing.T) {
 	// Create a typed event data map
-	data := make(map[events.EventDataKey]interface{})
+	data := make(map[events.EventDataKey]any)
 	
 	// Add data with typed keys
 	data[DataKeyLevel] = 5
