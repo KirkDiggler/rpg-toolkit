@@ -4,16 +4,17 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
 )
 
 func Example() {
 	// For deterministic example output, create tracker with known order
 	order := []core.Entity{
-		initiative.NewParticipant("ranger-123", "character"),
-		initiative.NewParticipant("goblin-002", "monster"),
-		initiative.NewParticipant("goblin-001", "monster"),
-		initiative.NewParticipant("wizard-456", "character"),
+		initiative.NewParticipant("ranger-123", dnd5e.EntityTypeCharacter),
+		initiative.NewParticipant("goblin-002", dnd5e.EntityTypeMonster),
+		initiative.NewParticipant("goblin-001", dnd5e.EntityTypeMonster),
+		initiative.NewParticipant("wizard-456", dnd5e.EntityTypeCharacter),
 	}
 
 	// Create tracker with that order
@@ -43,8 +44,8 @@ func Example_gameService() {
 
 	// For deterministic example, create tracker with known order
 	order := []core.Entity{
-		initiative.NewParticipant("ranger-123", "character"),
-		initiative.NewParticipant("goblin-001", "monster"),
+		initiative.NewParticipant("ranger-123", dnd5e.EntityTypeCharacter),
+		initiative.NewParticipant("goblin-001", dnd5e.EntityTypeMonster),
 	}
 	tracker := initiative.New(order)
 
