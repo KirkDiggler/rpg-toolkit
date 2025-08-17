@@ -42,7 +42,7 @@ func TestConcurrentSubscription(t *testing.T) {
 	// Subscribe the first handler
 	id, err := bus.Subscribe(ctx, ref, firstHandler)
 	require.NoError(t, err)
-	defer bus.Unsubscribe(ctx, id)
+	defer func() { err := bus.Unsubscribe(ctx, id); require.NoError(t, err) }()
 
 	// Create test event
 	event := &TestEvent{
@@ -113,7 +113,7 @@ func TestConcurrentUnsubscribe(t *testing.T) {
 	// Subscribe both handlers
 	id1, err := bus.Subscribe(ctx, ref, firstHandler)
 	require.NoError(t, err)
-	defer bus.Unsubscribe(ctx, id1)
+	defer func() { err := bus.Unsubscribe(ctx, id1); require.NoError(t, err) }()
 
 	handler2ID, err = bus.Subscribe(ctx, ref, secondHandler)
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestConcurrentPublish(t *testing.T) {
 	var mu sync.Mutex
 
 	// Handler that counts calls
-	handler := func(_ context.Context, e any) error {
+	handler := func(_ context.Context, _ any) error {
 		mu.Lock()
 		defer mu.Unlock()
 		callCount++
@@ -173,7 +173,7 @@ func TestConcurrentPublish(t *testing.T) {
 	// Subscribe handler
 	id, err := bus.Subscribe(ctx, ref, handler)
 	require.NoError(t, err)
-	defer bus.Unsubscribe(ctx, id)
+	defer func() { err := bus.Unsubscribe(ctx, id); require.NoError(t, err) }()
 
 	// Create test event
 	event := &TestEvent{

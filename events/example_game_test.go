@@ -104,12 +104,12 @@ func TestGameEventFlow(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	defer events.Unsubscribe(ctx, bus, subID1)
+	defer func() { err := events.Unsubscribe(ctx, bus, subID1); require.NoError(t, err) }()
 
 	// Subscribe to damage events
 	// This would be a damage pipeline in real usage
 	subID2, err := events.Subscribe(ctx, bus, DamageIntentRef,
-		func(ctx context.Context, e *DamageIntentEvent) error {
+		func(_ context.Context, e *DamageIntentEvent) error {
 			damageDealt = append(damageDealt, e.Amount)
 			// In real usage, this would run through damage pipeline:
 			// - Calculate resistances
@@ -120,7 +120,7 @@ func TestGameEventFlow(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	defer events.Unsubscribe(ctx, bus, subID2)
+	defer func() { err := events.Unsubscribe(ctx, bus, subID2); require.NoError(t, err) }()
 
 	// Game action: Apply burning condition
 	err = events.Publish(ctx, bus, &ConditionAppliedEvent{
@@ -158,21 +158,19 @@ func TestEventToPipelineTrigger(t *testing.T) {
 	pipelineStagesRun := []string{}
 
 	// Simulate a damage pipeline
-	damagePipeline := func(ctx context.Context, e *DamageIntentEvent) error {
+	damagePipeline := func(_ context.Context, _ *DamageIntentEvent) error {
 		// Each stage would process the event
 		stages := []string{"validate", "calculate", "resistance", "apply"}
-		for _, stage := range stages {
-			pipelineStagesRun = append(pipelineStagesRun, stage)
-			// In real implementation, each stage might modify the event context
-			// or produce new events
-		}
+		pipelineStagesRun = append(pipelineStagesRun, stages...)
+		// In real implementation, each stage might modify the event context
+		// or produce new events
 		return nil
 	}
 
 	// Connect event to pipeline
 	subID, err := events.Subscribe(ctx, bus, DamageIntentRef, damagePipeline)
 	require.NoError(t, err)
-	defer events.Unsubscribe(ctx, bus, subID)
+	defer func() { err := events.Unsubscribe(ctx, bus, subID); require.NoError(t, err) }()
 
 	// Trigger the pipeline via event
 	err = events.Publish(ctx, bus, &DamageIntentEvent{
@@ -195,7 +193,7 @@ func TestTypedRefSafety(t *testing.T) {
 
 	// This gives compile-time type safety
 	subID, err := events.Subscribe(ctx, bus, ConditionAppliedRef,
-		func(ctx context.Context, e *ConditionAppliedEvent) error {
+		func(_ context.Context, e *ConditionAppliedEvent) error {
 			// e is guaranteed to be *ConditionAppliedEvent
 			// No type assertion needed!
 			_ = e.Condition // Can access fields directly
@@ -205,7 +203,7 @@ func TestTypedRefSafety(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	defer events.Unsubscribe(ctx, bus, subID)
+	defer func() { err := events.Unsubscribe(ctx, bus, subID); require.NoError(t, err) }()
 
 	// PublishWithTypedRef adds extra safety
 	event := &ConditionAppliedEvent{

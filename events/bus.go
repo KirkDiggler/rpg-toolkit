@@ -111,7 +111,6 @@ func (b *Bus) Publish(ctx context.Context, event Event) error {
 		// Copy handlers to call (avoid holding lock during execution)
 		handlersToCall = make([]handlerEntry, 0, len(entries))
 		for _, entry := range entries {
-
 			// Check filter
 			if entry.filter != nil && !entry.filter(event) {
 				continue
@@ -143,7 +142,6 @@ func (b *Bus) Publish(ctx context.Context, event Event) error {
 			case error:
 				// Handler returned an error
 				immediateError = fmt.Errorf("handler %s failed: %w", entry.id, v)
-				break
 			}
 		}
 	}
@@ -181,11 +179,20 @@ func (b *Bus) Publish(ctx context.Context, event Event) error {
 
 // Subscribe registers a handler for events with the given ref.
 func (b *Bus) Subscribe(ctx context.Context, ref *core.Ref, handler any) (string, error) {
+	// Check if context is already cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("subscribe cancelled: %w", err)
+	}
 	return b.SubscribeWithFilter(ctx, ref, handler, nil)
 }
 
 // SubscribeWithFilter registers a handler with a filter.
 func (b *Bus) SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler any, filter Filter) (string, error) {
+	// Check if context is already cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("subscribe cancelled: %w", err)
+	}
+
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -221,6 +228,11 @@ func (b *Bus) SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler an
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// Check again after acquiring lock in case we waited
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("subscribe cancelled while waiting for lock: %w", err)
+	}
+
 	// Generate subscription ID
 	b.nextID++
 	id := fmt.Sprintf("sub-%d", b.nextID)
@@ -239,8 +251,18 @@ func (b *Bus) SubscribeWithFilter(ctx context.Context, ref *core.Ref, handler an
 
 // Unsubscribe removes a subscription by ID.
 func (b *Bus) Unsubscribe(ctx context.Context, id string) error {
+	// Check if context is already cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("unsubscribe cancelled: %w", err)
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Check again after acquiring lock in case we waited
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("unsubscribe cancelled while waiting for lock: %w", err)
+	}
 
 	// Find and remove the handler
 	for eventType, handlers := range b.handlers {

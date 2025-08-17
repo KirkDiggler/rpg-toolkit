@@ -142,7 +142,6 @@ func TestContextHandler(t *testing.T) {
 			t.Error("Publish did not complete")
 		}
 	})
-
 }
 
 // TestMultipleHandlers verifies that multiple handlers can coexist
