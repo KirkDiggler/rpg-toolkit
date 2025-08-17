@@ -1,6 +1,14 @@
-# Proto-Informed Event Bus Design for RPG Toolkit
+# Journey 046: Proto Event Bus Inspiration
 
-## Learning from Your Work Event Service
+*Date: August 2024*  
+*Context: Explored proto patterns from work event service*  
+*Outcome: Rejected as "pretty extreme" - kept simpler TypedRef approach*
+
+## Original Exploration
+
+This exploration was inspired by work event service patterns using protobuf. While interesting, we decided it was too extreme for our needs.
+
+## Learning from Work Event Service
 
 Your work event service has some brilliant patterns:
 

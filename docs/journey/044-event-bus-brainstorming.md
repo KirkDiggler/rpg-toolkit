@@ -1,4 +1,12 @@
-# Event Bus Architecture Brainstorm
+# Journey 044: Event Bus Architecture Brainstorming
+
+*Date: August 2024*  
+*Context: Exploring different event bus patterns before implementing TypedRef-based solution*  
+*Outcome: Led to TypedRef pattern with context everywhere, rejected reflection*
+
+## Original Exploration
+
+This document captures our initial brainstorming on event bus patterns. We explored industry patterns to understand what works well before designing our own approach.
 
 ## How It's Normally Done (Industry Patterns)
 

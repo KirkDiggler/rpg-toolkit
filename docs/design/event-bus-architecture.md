@@ -1,4 +1,8 @@
-# Event Bus Detailed Design
+# Event Bus Architecture
+
+**Status: IMPLEMENTED - This is the authoritative design for the RPG Toolkit event bus**
+
+*See also: [typed-bus-architecture.md](typed-bus-architecture.md) for infrastructure/rulebook split*
 
 ## Core Concept
 An internal event bus that uses TypedRefs for type-safe subscriptions and triggers pipelines for game mechanics.
