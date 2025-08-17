@@ -282,4 +282,3 @@ func TestDeferredOperations_NoDeadlock(t *testing.T) {
 		t.Fatal("Deadlock detected - operation timed out")
 	}
 }
-

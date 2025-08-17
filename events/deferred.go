@@ -44,4 +44,3 @@ type HandlerFunc func(event any) error
 
 // DeferredHandlerFunc is the new handler signature that can return deferred actions.
 type DeferredHandlerFunc func(event any) *DeferredAction
-

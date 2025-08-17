@@ -259,4 +259,3 @@ func TestDepthProtection_ErrorPropagation(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "3") ||
 		strings.Contains(err.Error(), "4")) // Should mention the limit or current depth
 }
-
