@@ -167,19 +167,23 @@ func (rc *RagingCondition) Apply(bus *events.Bus, owner core.Entity) error {
 }
 
 func (rc *RagingCondition) onAttack(e interface{}) error {
-    attack := e.(*AttackEvent)
+    // Single type assertion at the boundary  
+    attack, ok := e.(*dnd5e.AttackEvent)
+    if !ok {
+        return nil  // Not our event type
+    }
     
     // Track that we attacked
     rc.attackedThisRound = true
     
     // Add damage bonus to STR melee attacks
-    if attack.IsMelee && attack.Ability == AbilityStrength {
+    if attack.IsMelee && attack.Ability == dnd5e.AbilityStrength {
         ctx := attack.Context()
         damageBonus := rc.calculateDamageBonus()
         ctx.AddModifier(events.NewSimpleModifier(
-            ModifierSourceRage,
-            ModifierTypeAdditive,
-            ModifierTargetDamage,
+            dnd5e.ModifierSourceRage,
+            dnd5e.ModifierTypeAdditive,
+            dnd5e.ModifierTargetDamage,
             200,
             damageBonus,
         ))
@@ -189,7 +193,11 @@ func (rc *RagingCondition) onAttack(e interface{}) error {
 }
 
 func (rc *RagingCondition) onDamageReceived(e interface{}) error {
-    damage := e.(*DamageReceivedEvent)
+    // Single type assertion at the boundary
+    damage, ok := e.(*dnd5e.DamageReceivedEvent)
+    if !ok {
+        return nil  // Not our event type
+    }
     
     // Track that we were hit
     rc.wasHitThisRound = true
@@ -198,9 +206,9 @@ func (rc *RagingCondition) onDamageReceived(e interface{}) error {
     if isPhysicalDamage(damage.DamageType) {
         ctx := damage.Context()
         ctx.AddModifier(events.NewSimpleModifier(
-            ModifierSourceRage,
-            ModifierTypeResistance,
-            ModifierTargetDamage,
+            dnd5e.ModifierSourceRage,
+            dnd5e.ModifierTypeResistance,
+            dnd5e.ModifierTargetDamage,
             100,
             0.5,
         ))
@@ -210,6 +218,12 @@ func (rc *RagingCondition) onDamageReceived(e interface{}) error {
 }
 
 func (rc *RagingCondition) onRoundEnd(e interface{}) error {
+    // Single type assertion at the boundary
+    _, ok := e.(*dnd5e.RoundEndEvent)
+    if !ok {
+        return nil  // Not our event type
+    }
+    
     // Check if rage continues
     if !rc.attackedThisRound && !rc.wasHitThisRound {
         return rc.remove("You didn't attack or take damage")
