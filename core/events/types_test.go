@@ -52,7 +52,7 @@ func TestEventDataKey_StringConversion(t *testing.T) {
 	assert.Equal(t, "level", string(key))
 	
 	// Can be used in string contexts if necessary
-	stringMap := make(map[string]interface{})
+	stringMap := make(map[string]any)
 	stringMap[string(DataKeyLevel)] = 5
 	
 	value := stringMap["level"]
