@@ -163,9 +163,9 @@ func TestRoll_GetValue(t *testing.T) {
 			mockRoller := mock_dice.NewMockRoller(ctrl)
 
 			if tt.rollError != nil {
-				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(nil, tt.rollError)
+				mockRoller.EXPECT().RollN(gomock.Any(), gomock.Any(), tt.size).Return(nil, tt.rollError)
 			} else if len(tt.rolls) > 0 {
-				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls, nil)
+				mockRoller.EXPECT().RollN(gomock.Any(), gomock.Any(), tt.size).Return(tt.rolls, nil)
 			}
 
 			roll, err := NewRollWithRoller(tt.count, tt.size, mockRoller)
@@ -254,9 +254,9 @@ func TestRoll_GetDescription(t *testing.T) {
 			mockRoller := mock_dice.NewMockRoller(ctrl)
 
 			if tt.rollError != nil {
-				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(nil, tt.rollError)
+				mockRoller.EXPECT().RollN(gomock.Any(), gomock.Any(), tt.size).Return(nil, tt.rollError)
 			} else if len(tt.rolls) > 0 {
-				mockRoller.EXPECT().RollN(gomock.Any(), tt.size).Return(tt.rolls, nil)
+				mockRoller.EXPECT().RollN(gomock.Any(), gomock.Any(), tt.size).Return(tt.rolls, nil)
 			}
 
 			roll, err := NewRollWithRoller(tt.count, tt.size, mockRoller)
@@ -278,7 +278,7 @@ func TestRoll_CachedBehavior(t *testing.T) {
 
 	mockRoller := mock_dice.NewMockRoller(ctrl)
 	// Expect only one call to RollN, proving caching works
-	mockRoller.EXPECT().RollN(2, 6).Return([]int{1, 2}, nil).Times(1)
+	mockRoller.EXPECT().RollN(gomock.Any(), 2, 6).Return([]int{1, 2}, nil).Times(1)
 
 	roll, err := NewRollWithRoller(2, 6, mockRoller)
 	if err != nil {
@@ -368,7 +368,7 @@ func TestRoll_ErrorPropagation(t *testing.T) {
 
 	mockRoller := mock_dice.NewMockRoller(ctrl)
 	expectedErr := errors.New("crypto/rand: test error")
-	mockRoller.EXPECT().RollN(1, 20).Return(nil, expectedErr)
+	mockRoller.EXPECT().RollN(gomock.Any(), 1, 20).Return(nil, expectedErr)
 
 	roll, err := NewRollWithRoller(1, 20, mockRoller)
 	if err != nil {
@@ -399,7 +399,7 @@ func TestRoll_Err_BeforeRoll(t *testing.T) {
 
 	mockRoller := mock_dice.NewMockRoller(ctrl)
 	// Expect RollN to be called when Err() is called before any roll
-	mockRoller.EXPECT().RollN(1, 6).Return([]int{4}, nil)
+	mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
 
 	roll, err := NewRollWithRoller(1, 6, mockRoller)
 	if err != nil {

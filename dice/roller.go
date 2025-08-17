@@ -4,6 +4,7 @@
 package dice
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"math/big"
@@ -16,19 +17,20 @@ import (
 type Roller interface {
 	// Roll returns a random number from 1 to size (inclusive).
 	// Returns an error if size <= 0.
-	Roll(size int) (int, error)
+	Roll(ctx context.Context, size int) (int, error)
 
 	// RollN rolls count dice of the given size.
 	// Returns a slice containing each individual roll result.
 	// Returns an error if size <= 0 or count < 0.
-	RollN(count, size int) ([]int, error)
+	RollN(ctx context.Context, count, size int) ([]int, error)
 }
 
 // CryptoRoller implements Roller using crypto/rand for cryptographically secure randomness.
 type CryptoRoller struct{}
 
 // Roll returns a cryptographically secure random number from 1 to size.
-func (c *CryptoRoller) Roll(size int) (int, error) {
+// The context parameter allows for future cancellation support.
+func (c *CryptoRoller) Roll(_ context.Context, size int) (int, error) {
 	if size <= 0 {
 		return 0, fmt.Errorf("dice: invalid die size %d", size)
 	}
@@ -44,7 +46,7 @@ func (c *CryptoRoller) Roll(size int) (int, error) {
 }
 
 // RollN rolls multiple dice using crypto/rand.
-func (c *CryptoRoller) RollN(count, size int) ([]int, error) {
+func (c *CryptoRoller) RollN(ctx context.Context, count, size int) ([]int, error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("dice: invalid die size %d", size)
 	}
@@ -54,7 +56,11 @@ func (c *CryptoRoller) RollN(count, size int) ([]int, error) {
 
 	results := make([]int, count)
 	for i := 0; i < count; i++ {
-		roll, err := c.Roll(size)
+		// Check for cancellation
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("dice: rolling cancelled: %w", err)
+		}
+		roll, err := c.Roll(ctx, size)
 		if err != nil {
 			return nil, err
 		}

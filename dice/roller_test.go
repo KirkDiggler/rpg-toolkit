@@ -4,6 +4,7 @@
 package dice
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 
 func TestCryptoRoller_Roll(t *testing.T) {
 	roller := &CryptoRoller{}
+	ctx := context.Background()
 
 	// Test various die sizes
 	sizes := []int{4, 6, 8, 10, 12, 20, 100}
@@ -25,7 +27,7 @@ func TestCryptoRoller_Roll(t *testing.T) {
 			iterations := size * 100
 
 			for i := 0; i < iterations; i++ {
-				result, err := roller.Roll(size)
+				result, err := roller.Roll(ctx, size)
 				if err != nil {
 					t.Fatalf("Roll(%d) error = %v", size, err)
 				}
@@ -54,6 +56,7 @@ func TestCryptoRoller_Roll(t *testing.T) {
 
 func TestCryptoRoller_RollN(t *testing.T) {
 	roller := &CryptoRoller{}
+	ctx := context.Background()
 
 	tests := []struct {
 		name  string
@@ -68,7 +71,7 @@ func TestCryptoRoller_RollN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := roller.RollN(tt.count, tt.size)
+			results, err := roller.RollN(ctx, tt.count, tt.size)
 			if err != nil {
 				t.Fatalf("RollN(%d, %d) error = %v", tt.count, tt.size, err)
 			}
@@ -90,6 +93,7 @@ func TestCryptoRoller_RollN(t *testing.T) {
 
 func TestCryptoRoller_Errors(t *testing.T) {
 	roller := &CryptoRoller{}
+	ctx := context.Background()
 
 	tests := []struct {
 		name    string
@@ -99,7 +103,7 @@ func TestCryptoRoller_Errors(t *testing.T) {
 		{
 			name: "Roll with zero size",
 			fn: func() error {
-				_, err := roller.Roll(0)
+				_, err := roller.Roll(ctx, 0)
 				return err
 			},
 			wantErr: "dice: invalid die size 0",
@@ -107,7 +111,7 @@ func TestCryptoRoller_Errors(t *testing.T) {
 		{
 			name: "Roll with negative size",
 			fn: func() error {
-				_, err := roller.Roll(-1)
+				_, err := roller.Roll(ctx, -1)
 				return err
 			},
 			wantErr: "dice: invalid die size -1",
@@ -115,7 +119,7 @@ func TestCryptoRoller_Errors(t *testing.T) {
 		{
 			name: "RollN with zero size",
 			fn: func() error {
-				_, err := roller.RollN(1, 0)
+				_, err := roller.RollN(ctx, 1, 0)
 				return err
 			},
 			wantErr: "dice: invalid die size 0",
@@ -123,7 +127,7 @@ func TestCryptoRoller_Errors(t *testing.T) {
 		{
 			name: "RollN with negative count",
 			fn: func() error {
-				_, err := roller.RollN(-1, 6)
+				_, err := roller.RollN(ctx, -1, 6)
 				return err
 			},
 			wantErr: "dice: invalid die count -1",
@@ -143,13 +147,14 @@ func TestCryptoRoller_Errors(t *testing.T) {
 }
 
 func TestDefaultRoller(t *testing.T) {
+	ctx := context.Background()
 	// Ensure DefaultRoller is set
 	if DefaultRoller == nil {
 		t.Fatal("DefaultRoller is nil")
 	}
 
 	// Test it works
-	result, err := DefaultRoller.Roll(6)
+	result, err := DefaultRoller.Roll(ctx, 6)
 	if err != nil {
 		t.Fatalf("DefaultRoller.Roll(6) error = %v", err)
 	}
@@ -159,6 +164,7 @@ func TestDefaultRoller(t *testing.T) {
 }
 
 func TestSetDefaultRoller(t *testing.T) {
+	ctx := context.Background()
 	// Save original
 	original := DefaultRoller
 	defer func() { DefaultRoller = original }()
@@ -168,12 +174,12 @@ func TestSetDefaultRoller(t *testing.T) {
 
 	// Set mock roller
 	mockRoller := mock_dice.NewMockRoller(ctrl)
-	mockRoller.EXPECT().Roll(6).Return(4, nil)
+	mockRoller.EXPECT().Roll(ctx, 6).Return(4, nil)
 
 	SetDefaultRoller(mockRoller)
 
 	// Verify it was set
-	result, err := DefaultRoller.Roll(6)
+	result, err := DefaultRoller.Roll(ctx, 6)
 	if err != nil {
 		t.Fatalf("DefaultRoller.Roll(6) error = %v", err)
 	}

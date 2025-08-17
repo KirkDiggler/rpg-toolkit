@@ -4,6 +4,7 @@
 package dice_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -60,9 +61,10 @@ func TestWithMockRoller(t *testing.T) {
 	defer ctrl.Finish()
 
 	// Create mock roller with predictable results
+	ctx := context.Background()
 	mockRoller := mock_dice.NewMockRoller(ctrl)
-	mockRoller.EXPECT().RollN(1, 20).Return([]int{20}, nil) // Natural 20!
-	mockRoller.EXPECT().RollN(2, 6).Return([]int{6, 5}, nil)
+	mockRoller.EXPECT().RollN(ctx, 1, 20).Return([]int{20}, nil) // Natural 20!
+	mockRoller.EXPECT().RollN(ctx, 2, 6).Return([]int{6, 5}, nil)
 
 	// Set the mock as the default
 	dice.SetDefaultRoller(mockRoller)
@@ -88,8 +90,9 @@ func TestParallelSafety(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
+		ctx := context.Background()
 		mockRoller := mock_dice.NewMockRoller(ctrl)
-		mockRoller.EXPECT().RollN(1, 6).Return([]int{4}, nil)
+		mockRoller.EXPECT().RollN(ctx, 1, 6).Return([]int{4}, nil)
 
 		roll, err := dice.NewRollWithRoller(1, 6, mockRoller)
 		if err != nil {
@@ -107,8 +110,9 @@ func TestParallelSafety(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
+		ctx := context.Background()
 		mockRoller := mock_dice.NewMockRoller(ctrl)
-		mockRoller.EXPECT().RollN(1, 6).Return([]int{2}, nil)
+		mockRoller.EXPECT().RollN(ctx, 1, 6).Return([]int{2}, nil)
 
 		roll, err := dice.NewRollWithRoller(1, 6, mockRoller)
 		if err != nil {

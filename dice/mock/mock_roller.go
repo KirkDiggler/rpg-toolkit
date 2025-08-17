@@ -10,6 +10,7 @@
 package mock_dice
 
 import (
+	context "context"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -40,31 +41,31 @@ func (m *MockRoller) EXPECT() *MockRollerMockRecorder {
 }
 
 // Roll mocks base method.
-func (m *MockRoller) Roll(size int) (int, error) {
+func (m *MockRoller) Roll(ctx context.Context, size int) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Roll", size)
+	ret := m.ctrl.Call(m, "Roll", ctx, size)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Roll indicates an expected call of Roll.
-func (mr *MockRollerMockRecorder) Roll(size any) *gomock.Call {
+func (mr *MockRollerMockRecorder) Roll(ctx, size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Roll", reflect.TypeOf((*MockRoller)(nil).Roll), size)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Roll", reflect.TypeOf((*MockRoller)(nil).Roll), ctx, size)
 }
 
 // RollN mocks base method.
-func (m *MockRoller) RollN(count, size int) ([]int, error) {
+func (m *MockRoller) RollN(ctx context.Context, count, size int) ([]int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RollN", count, size)
+	ret := m.ctrl.Call(m, "RollN", ctx, count, size)
 	ret0, _ := ret[0].([]int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RollN indicates an expected call of RollN.
-func (mr *MockRollerMockRecorder) RollN(count, size any) *gomock.Call {
+func (mr *MockRollerMockRecorder) RollN(ctx, count, size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RollN", reflect.TypeOf((*MockRoller)(nil).RollN), count, size)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RollN", reflect.TypeOf((*MockRoller)(nil).RollN), ctx, count, size)
 }
