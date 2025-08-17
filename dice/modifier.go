@@ -59,8 +59,16 @@ func NewRollWithRoller(count, size int, roller Roller) (*Roll, error) {
 // Subsequent calls return the same value.
 // If an error occurred during rolling, returns 0.
 func (r *Roll) GetValue() int {
+	return r.GetValueWithContext(context.Background())
+}
+
+// GetValueWithContext rolls the dice (if not already rolled) and returns the total.
+// Subsequent calls return the same value.
+// If an error occurred during rolling, returns 0.
+// The context parameter allows for cancellation during the rolling process.
+func (r *Roll) GetValueWithContext(ctx context.Context) int {
 	if !r.rolled {
-		r.roll()
+		r.roll(ctx)
 	}
 	if r.err != nil {
 		return 0
@@ -71,8 +79,15 @@ func (r *Roll) GetValue() int {
 // Err returns any error that occurred during rolling.
 // This should be checked after calling GetValue() or GetDescription().
 func (r *Roll) Err() error {
+	return r.ErrWithContext(context.Background())
+}
+
+// ErrWithContext returns any error that occurred during rolling.
+// This should be checked after calling GetValue() or GetDescription().
+// The context parameter allows for cancellation during the rolling process.
+func (r *Roll) ErrWithContext(ctx context.Context) error {
 	if !r.rolled {
-		r.roll()
+		r.roll(ctx)
 	}
 	return r.err
 }
@@ -81,8 +96,16 @@ func (r *Roll) Err() error {
 // "+2d6[4,2]=6" for positive counts or "-2d6[4,2]=-6" for negative counts.
 // If an error occurred during rolling, returns an error description.
 func (r *Roll) GetDescription() string {
+	return r.GetDescriptionWithContext(context.Background())
+}
+
+// GetDescriptionWithContext returns a description of the roll in the format:
+// "+2d6[4,2]=6" for positive counts or "-2d6[4,2]=-6" for negative counts.
+// If an error occurred during rolling, returns an error description.
+// The context parameter allows for cancellation during the rolling process.
+func (r *Roll) GetDescriptionWithContext(ctx context.Context) string {
 	if !r.rolled {
-		r.roll()
+		r.roll(ctx)
 	}
 
 	if r.err != nil {
@@ -114,7 +137,7 @@ func (r *Roll) GetDescription() string {
 }
 
 // roll performs the actual dice rolling.
-func (r *Roll) roll() {
+func (r *Roll) roll(ctx context.Context) {
 	if r.count == 0 {
 		r.rolled = true
 		r.result = 0
@@ -128,9 +151,6 @@ func (r *Roll) roll() {
 		absCount = -absCount
 	}
 
-	// TODO: This should receive context from the caller
-	// For now using Background context to maintain compatibility
-	ctx := context.Background()
 	rolls, err := r.roller.RollN(ctx, absCount, r.size)
 	if err != nil {
 		r.err = err
