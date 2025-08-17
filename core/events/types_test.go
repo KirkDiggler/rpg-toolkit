@@ -20,7 +20,7 @@ const (
 
 func TestEventDataKey_TypeSafety(t *testing.T) {
 	// Create a typed event data map
-	data := make(map[events.EventDataKey]interface{})
+	data := make(map[events.EventDataKey]any)
 
 	// Add data with typed keys
 	data[DataKeyLevel] = 5
@@ -52,7 +52,7 @@ func TestEventDataKey_StringConversion(t *testing.T) {
 	assert.Equal(t, "level", string(key))
 
 	// Can be used in string contexts if necessary
-	stringMap := make(map[string]interface{})
+	stringMap := make(map[string]any)
 	stringMap[string(DataKeyLevel)] = 5
 
 	value := stringMap["level"]
