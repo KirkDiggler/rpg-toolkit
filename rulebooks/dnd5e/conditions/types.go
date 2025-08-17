@@ -69,11 +69,11 @@ const (
 
 // Condition represents an active condition on a character
 type Condition struct {
-	Type         ConditionType          `json:"type"`
-	Source       string                 `json:"source,omitempty"`         // What caused this
-	SourceEntity string                 `json:"source_entity,omitempty"`  // Entity ID that applied it
-	Duration     string                 `json:"duration,omitempty"`       // "1_hour", "until_rest", etc
-	DurationType DurationType           `json:"duration_type,omitempty"`  // How duration is tracked
-	Remaining    int                    `json:"remaining,omitempty"`      // Remaining duration units
-	Metadata     map[string]any `json:"metadata,omitempty"`       // Condition-specific data
+	Type         ConditionType  `json:"type"`
+	Source       string         `json:"source,omitempty"`        // What caused this
+	SourceEntity string         `json:"source_entity,omitempty"` // Entity ID that applied it
+	Duration     string         `json:"duration,omitempty"`      // "1_hour", "until_rest", etc
+	DurationType DurationType   `json:"duration_type,omitempty"` // How duration is tracked
+	Remaining    int            `json:"remaining,omitempty"`     // Remaining duration units
+	Metadata     map[string]any `json:"metadata,omitempty"`      // Condition-specific data
 }
