@@ -18,6 +18,7 @@ The D&D 5e rulebook is organized into bounded contexts:
 ```
 dnd5e/
 ├── character/     # Character creation, persistence, validation
+├── features/      # Character features (rage, second wind, etc.)
 ├── combat/        # Attack rolls, damage, initiative
 ├── magic/         # Spells, spell slots, casting mechanics
 ├── equipment/     # Items, inventory, attunement
@@ -46,6 +47,55 @@ import (
 ```
 
 ## Key Concepts
+
+### Features & Conditions System
+
+Character features and conditions use an event-driven architecture for clean separation:
+
+#### Features
+Features (rage, second wind, action surge) handle activation and resource consumption:
+- Load from JSON configuration for flexibility
+- Check activation requirements (uses remaining, prerequisites)
+- Publish condition events when activated
+- Don't track ongoing state - that's the condition's job
+
+#### Conditions
+Conditions are self-contained effects that manage their own lifecycle:
+- Applied via events (from features, spells, items, environment)
+- Subscribe to relevant game events (attacks, damage, round end)
+- Apply modifiers and effects during their lifetime
+- Remove themselves when their duration ends or conditions are met
+
+#### The Flow
+```go
+// 1. Load and activate a feature
+featureJSON := `{
+    "ref": "dnd5e:features:rage",
+    "id": "barbarian-rage",
+    "data": {"uses": 3, "level": 5}
+}`
+rage, _ := features.LoadJSON([]byte(featureJSON), eventBus)
+
+// 2. Feature publishes condition event
+rage.Activate(ctx, barbarian, features.FeatureInput{})
+// → Publishes: ConditionAppliedEvent{Target: "barbarian", Type: "raging"}
+
+// 3. Character receives and applies condition
+// Character.OnConditionApplied() → loads RagingCondition → calls Apply()
+
+// 4. Condition manages everything
+// RagingCondition subscribes to attacks, damage, rounds
+// Adds damage bonus, applies resistance, tracks duration
+// Removes itself when rage ends
+```
+
+Key benefits:
+- **Clean separation**: Features, conditions, and characters each have one job
+- **Event-driven**: No direct coupling between components
+- **Self-contained**: Each condition knows its complete ruleset
+- **Persistence-friendly**: Conditions save/load with character data
+
+See [features/README.md](features/README.md) for detailed documentation.
 
 ### Character Data vs Game Data
 
@@ -227,12 +277,25 @@ func (r *Repository) LoadCharacter(ctx context.Context, id string) (*dnd5e.Chara
 }
 ```
 
-## Future Enhancements
+## Current Status
 
+### Completed
+- ✅ Character creation with builder pattern
+- ✅ Features system with LoadJSON pattern
+- ✅ Rage feature with event-driven effects
+- ✅ Type-safe modifiers and events
+- ✅ Thread-safe feature implementation
+- ✅ Initiative tracking system
+
+### In Progress
+- 🚧 Additional features (second wind, action surge)
+- 🚧 Turn/round tracking for durations
+
+### Future Enhancements
 - [ ] Complete choice compilation logic
 - [ ] Add spell casting mechanics
-- [ ] Implement combat actions
-- [ ] Add conditions and effects system
+- [ ] Implement remaining combat actions
+- [ ] Expand conditions and effects system
 - [ ] Support for multiclassing
 - [ ] Magic item attunement
 - [ ] Feat selection
