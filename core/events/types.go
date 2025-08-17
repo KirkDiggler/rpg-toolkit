@@ -24,6 +24,12 @@ type ModifierSource string
 // Example: const TargetDamage ModifierTarget = "damage"
 type ModifierTarget string
 
+// EventDataKey is a typed key for event data maps.
+// Using typed keys instead of raw strings provides compile-time safety
+// and prevents typos in event data access.
+// Example: const DataKeyLevel EventDataKey = "level"
+type EventDataKey string
+
 // Priority represents the order in which handlers or modifiers are applied.
 // Lower values are processed first.
 type Priority int
