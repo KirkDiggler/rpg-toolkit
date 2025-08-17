@@ -18,6 +18,7 @@ The D&D 5e rulebook is organized into bounded contexts:
 ```
 dnd5e/
 ├── character/     # Character creation, persistence, validation
+├── features/      # Character features (rage, second wind, etc.)
 ├── combat/        # Attack rolls, damage, initiative
 ├── magic/         # Spells, spell slots, casting mechanics
 ├── equipment/     # Items, inventory, attunement
@@ -46,6 +47,37 @@ import (
 ```
 
 ## Key Concepts
+
+### Features System
+
+Character features (rage, second wind, action surge) are self-contained Actions that:
+- Load from JSON configuration for flexibility
+- Manage their own event subscriptions
+- Apply effects through the event system
+- Maintain thread-safe state
+
+```go
+// Load a feature from JSON
+featureJSON := `{
+    "ref": "dnd5e:features:rage",
+    "id": "barbarian-rage",
+    "data": {"uses": 3, "level": 5}
+}`
+
+rage, err := features.LoadJSON([]byte(featureJSON), eventBus)
+
+// Activate the feature
+err = rage.Activate(ctx, barbarian, features.FeatureInput{})
+
+// Feature automatically subscribes to relevant events and applies effects
+```
+
+Features modify combat through typed events and modifiers:
+- Attack events get damage bonuses
+- Damage events get resistance modifiers
+- All type-safe with constants, no strings
+
+See [features/README.md](features/README.md) for detailed documentation.
 
 ### Character Data vs Game Data
 
@@ -227,12 +259,25 @@ func (r *Repository) LoadCharacter(ctx context.Context, id string) (*dnd5e.Chara
 }
 ```
 
-## Future Enhancements
+## Current Status
 
+### Completed
+- ✅ Character creation with builder pattern
+- ✅ Features system with LoadJSON pattern
+- ✅ Rage feature with event-driven effects
+- ✅ Type-safe modifiers and events
+- ✅ Thread-safe feature implementation
+- ✅ Initiative tracking system
+
+### In Progress
+- 🚧 Additional features (second wind, action surge)
+- 🚧 Turn/round tracking for durations
+
+### Future Enhancements
 - [ ] Complete choice compilation logic
 - [ ] Add spell casting mechanics
-- [ ] Implement combat actions
-- [ ] Add conditions and effects system
+- [ ] Implement remaining combat actions
+- [ ] Expand conditions and effects system
 - [ ] Support for multiclassing
 - [ ] Magic item attunement
 - [ ] Feat selection

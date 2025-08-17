@@ -1,322 +1,382 @@
 # D&D 5e Features Package
 
-This package implements D&D 5e character features (rage, second wind, action surge, etc.) as Actions.
+This package implements D&D 5e character features (rage, second wind, action surge, etc.) as self-contained Actions with event-driven effects.
 
 ## Core Architecture
 
-The game server knows:
-- It's running D&D 5e (not generic)
-- Features use `FeatureInput` 
-- How to route refs like `"dnd5e.features.rage"` to this package
-- Characters either have an action or they don't
+Features are self-contained entities that:
+- Implement `core.Action[FeatureInput]` for activation
+- Manage their own event subscriptions
+- Apply effects through the event system
+- Track their own state and resources
 
-The game server DOESN'T know:
-- What rage is
-- What features exist
-- What each feature does
+## The LoadJSON Pattern
 
-## Input Contract
-
-All D&D 5e features use the same input structure for consistency:
+Features are loaded from JSON configuration, allowing dynamic feature creation without hardcoding:
 
 ```go
-// rulebooks/dnd5e/types.go
-package dnd5e
+featureJSON := `{
+    "ref": "dnd5e:features:rage",
+    "id": "barbarian-rage",
+    "data": {
+        "uses": 3,
+        "level": 5
+    }
+}`
 
-type FeatureInput struct {
-    Target   core.Entity    `json:"target,omitempty"`   // For targeted features
-    Choice   string         `json:"choice,omitempty"`   // For features with options
-    Data     map[string]any `json:"data,omitempty"`     // Feature-specific data
-}
+// Event bus is passed for dependency injection
+rage, err := features.LoadJSON([]byte(featureJSON), eventBus)
 ```
 
-Most features ignore most fields, but having a consistent structure means the game server can handle all features the same way.
+### Why Pass the Event Bus?
 
-## D&D 5e Feature Interface
+Features need the event bus to:
+- Subscribe to combat events (attacks, damage, etc.)
+- Publish feature events (rage started/ended)
+- Apply modifiers through the event system
+- Clean up subscriptions when done
+
+The bus is passed at creation time so features can manage their own subscriptions.
+
+## Feature Interface
 
 ```go
-// rulebooks/dnd5e/feature.go
-package dnd5e
-
-import (
-    "context"
-    "github.com/KirkDiggler/rpg-toolkit/core"
-)
-
 // Feature is the D&D 5e specific interface for character features
-// It extends core.Action but can add D&D 5e specific methods
 type Feature interface {
     core.Action[FeatureInput]
     
     // D&D 5e specific methods
     GetResourceType() ResourceType  // rage uses, ki points, etc.
     ResetsOn() ResetType            // short rest, long rest, dawn
-    GetPrerequisites() []string     // level requirements, etc.
-}
-```
-
-## Loading Features
-
-```go
-// features/loader.go
-package features
-
-import (
-    "encoding/json"
-    "github.com/KirkDiggler/rpg-toolkit/core"
-    "github.com/KirkDiggler/rpg-toolkit/core/events"
-    dnd5e "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
-)
-
-// Feature type constants
-const (
-    RageKey        = "rage"
-    SecondWindKey  = "second_wind"
-    ActionSurgeKey = "action_surge"
-)
-
-// Event refs for rage events
-var (
-    RageStartedRef = core.MustParseRef("dnd5e.events.rage_started")
-    RageEndedRef   = core.MustParseRef("dnd5e.events.rage_ended")
-)
-
-// LoadJSON creates a feature from JSON data
-// Returns D&D 5e Feature interface, not generic Action
-func LoadJSON(data []byte) (dnd5e.Feature, error) {
-    var input struct {
-        Ref  string          `json:"ref"`  // "dnd5e.features.rage"
-        ID   string          `json:"id"`   // "barbarian-1:rage"
-        Data json.RawMessage `json:"data"` // Feature-specific config
-    }
-    
-    if err := json.Unmarshal(data, &input); err != nil {
-        return nil, err
-    }
-    
-    // Parse ref to get feature type
-    ref, err := core.ParseString(input.Ref)
-    if err != nil {
-        return nil, err
-    }
-    
-    // ref.Module() = "dnd5e"
-    // ref.Type() = "features"  
-    // ref.Value() = "rage"
-    
-    switch ref.Value() {
-    case RageKey:
-        var rageData struct {
-            Uses  int `json:"uses"`  // 3 at level 1
-            Level int `json:"level"` // barbarian level
-        }
-        json.Unmarshal(input.Data, &rageData)
-        
-        return &Rage{
-            id:    input.ID,
-            uses:  rageData.Uses,
-            level: rageData.Level,
-        }, nil
-        
-    case SecondWindKey:
-        // Similar pattern...
-        
-    default:
-        return nil, fmt.Errorf("unknown feature: %s", ref.Value())
-    }
 }
 ```
 
 ## Example: Rage Implementation
 
+Rage is our first complete feature implementation showing the pattern:
+
+### 1. Feature Structure
+
 ```go
-// features/rage.go
-package features
-
-// RageStartedEvent is published when rage begins
-type RageStartedEvent struct {
-    *events.BaseEvent
-    Owner       core.Entity
-    DamageBonus int
-    Duration    int // rounds
-}
-
 type Rage struct {
     id    string
     uses  int
     level int
+    bus   *events.Bus
     
-    // State tracked locally for now
-    // Real implementation would use event bus
-    active bool
-}
-
-// Implements core.Entity
-func (r *Rage) GetID() string   { return r.id }
-func (r *Rage) GetType() string { return "feature" }
-
-// Implements dnd5e.Feature specific methods
-func (r *Rage) GetResourceType() dnd5e.ResourceType { 
-    return dnd5e.ResourceRageUses 
-}
-
-func (r *Rage) ResetsOn() dnd5e.ResetType { 
-    return dnd5e.ResetLongRest 
-}
-
-func (r *Rage) GetPrerequisites() []string {
-    return []string{"class:barbarian", "level:1"}
-}
-
-// Implements core.Action[FeatureInput]
-func (r *Rage) CanActivate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-    // Rage doesn't use input, but takes FeatureInput for consistency
+    // Thread-safe state management
+    mu sync.RWMutex
     
-    if r.uses <= 0 {
-        return errors.New("no rage uses remaining")
-    }
-    
-    if r.active {
-        return errors.New("already raging")
-    }
-    
-    // Could check other conditions via event bus
-    return nil
+    // Current state (protected by mutex)
+    currentUses   int
+    active        bool
+    owner         core.Entity
+    subscriptions []string  // For cleanup
 }
+```
 
+### 2. Activation Flow
+
+When rage is activated:
+
+```go
 func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
+    // 1. Check if can activate
     if err := r.CanActivate(ctx, owner, input); err != nil {
         return err
     }
     
-    r.uses--
+    // 2. Update state
+    r.currentUses--
     r.active = true
+    r.owner = owner
     
-    // Publish events for effects
-    bus := events.FromContext(ctx)
+    // 3. Subscribe to relevant events
+    attackSub, _ := r.bus.SubscribeWithFilter(
+        dnd5e.EventRefAttack,
+        r.onAttack,
+        func(e events.Event) bool {
+            // Only handle attacks from the raging barbarian
+            attack := e.(*dnd5e.AttackEvent)
+            return attack.Attacker == r.owner
+        },
+    )
     
-    // Damage bonus
-    damageBonus := 2
-    if r.level >= 16 {
-        damageBonus = 4
-    } else if r.level >= 9 {
-        damageBonus = 3
-    }
+    damageSub, _ := r.bus.SubscribeWithFilter(
+        dnd5e.EventRefDamageReceived,
+        r.onDamageReceived,
+        func(e events.Event) bool {
+            // Only handle damage to the raging barbarian
+            damage := e.(*dnd5e.DamageReceivedEvent)
+            return damage.Target == r.owner
+        },
+    )
     
-    // Create a rage started event
-    rageEvent := &RageStartedEvent{
-        BaseEvent: events.NewBaseEvent(RageStartedRef),
-        Owner: owner,
-        DamageBonus: damageBonus,
-        Duration: 10, // rounds
-    }
+    // 4. Track subscriptions for cleanup
+    r.subscriptions = []string{attackSub, damageSub}
     
-    bus.Publish(rageEvent)
-    
-    // The event system handles applying modifiers, resistances, etc.
+    // 5. Publish rage started event
+    r.bus.Publish(&dnd5e.RageStartedEvent{
+        Owner:       owner,
+        DamageBonus: r.getDamageBonus(),
+    })
     
     return nil
 }
 ```
 
-## Game Server Integration
+### 3. Event Handlers
+
+Features modify combat through event handlers:
 
 ```go
-// The game server handles feature activation generically
-func (gs *GameServer) HandleFeatureActivation(
-    player core.Entity, 
-    featureRef string,
-    inputData map[string]any,
-) error {
-    // Get the character's action
-    char := player.(*Character)
-    action := char.GetAction(featureRef)
-    if action == nil {
-        return fmt.Errorf("you don't have %s", featureRef)
+func (r *Rage) onAttack(e interface{}) error {
+    attack := e.(*dnd5e.AttackEvent)
+    
+    // Add damage bonus to STR-based melee attacks
+    if attack.IsMelee && attack.Ability == dnd5e.AbilityStrength {
+        ctx := attack.Context()
+        ctx.AddModifier(events.NewSimpleModifier(
+            dnd5e.ModifierSourceRage,
+            dnd5e.ModifierTypeAdditive,
+            dnd5e.ModifierTargetDamage,
+            200,  // priority
+            r.getDamageBonus(),
+        ))
     }
     
-    // Build standard FeatureInput
-    input := dnd5e.FeatureInput{
-        Target: gs.ParseTarget(inputData["target"]),
-        Choice: inputData["choice"].(string),
-        Data:   inputData["data"].(map[string]any),
-    }
-    
-    // Activate - game server doesn't know what happens
-    return action.Activate(ctx, player, input)
+    return nil
 }
 
-// Player clicks Rage button in UI
-// UI sends: {"action": "feature", "ref": "dnd5e.features.rage", "input": {}}
-// Game server routes to HandleFeatureActivation
-```
-
-## Command Handling
-
-The rulebook provides command parsing since it knows D&D 5e commands:
-
-```go
-// rulebooks/dnd5e/commands.go
-package dnd5e
-
-func (rb *Rulebook) HandleCommand(ctx context.Context, player core.Entity, cmd string) error {
-    switch cmd {
-    case "/rage":
-        return rb.gameServer.HandleFeatureActivation(
-            player, 
-            "dnd5e.features.rage",
-            map[string]any{},
-        )
+func (r *Rage) onDamageReceived(e interface{}) error {
+    damage := e.(*dnd5e.DamageReceivedEvent)
+    
+    // Apply resistance to physical damage
+    if damage.DamageType == dnd5e.DamageTypeBludgeoning ||
+       damage.DamageType == dnd5e.DamageTypePiercing ||
+       damage.DamageType == dnd5e.DamageTypeSlashing {
         
-    case "/second_wind":
-        return rb.gameServer.HandleFeatureActivation(
-            player,
-            "dnd5e.features.second_wind", 
-            map[string]any{},
-        )
-        
-    default:
-        return fmt.Errorf("unknown command: %s", cmd)
+        ctx := damage.Context()
+        ctx.AddModifier(events.NewSimpleModifier(
+            dnd5e.ModifierSourceRage,
+            dnd5e.ModifierTypeResistance,
+            dnd5e.ModifierTargetDamage,
+            100,  // priority (apply early)
+            0.5,  // multiplier for half damage
+        ))
     }
+    
+    return nil
 }
 ```
 
-## Key Design Points
+## Type Safety Through Constants
 
-1. **Consistent Input Type**: All features use `FeatureInput` even if they ignore fields
-2. **No Type Leakage**: Game server never imports feature types, just uses `core.Action[FeatureInput]`
-3. **Event-Driven Effects**: Features publish events, don't directly modify state
-4. **Rulebook Owns Commands**: The rulebook knows "/rage" means activate rage feature
-5. **Simple Validation**: Game server just checks if character has the action
+All strings are typed constants for compile-time safety:
+
+```go
+// Feature keys
+const FeatureKeyRage FeatureKey = "rage"
+
+// Resource types
+const ResourceTypeRageUses ResourceType = "rage_uses"
+
+// Reset types
+const ResetTypeLongRest ResetType = "long_rest"
+
+// Modifier sources (in dnd5e package)
+const ModifierSourceRage events.ModifierSource = "rage"
+
+// Modifier types (in dnd5e package)
+const (
+    ModifierTypeAdditive   events.ModifierType = "additive"
+    ModifierTypeResistance events.ModifierType = "resistance"
+)
+
+// Modifier targets (in dnd5e package)
+const ModifierTargetDamage events.ModifierTarget = "damage"
+
+// Damage types
+const (
+    DamageTypeBludgeoning damage.Type = "bludgeoning"
+    DamageTypePiercing    damage.Type = "piercing"
+    DamageTypeSlashing    damage.Type = "slashing"
+)
+```
+
+## Thread Safety
+
+Features are designed to be thread-safe for future async event buses:
+
+```go
+type Rage struct {
+    mu sync.RWMutex  // Protects all state below
+    
+    currentUses   int
+    active        bool
+    owner         core.Entity
+    subscriptions []string
+}
+
+// All state access is protected
+func (r *Rage) CanActivate(...) error {
+    r.mu.RLock()
+    defer r.mu.RUnlock()
+    
+    if r.currentUses <= 0 {
+        return errors.New("no rage uses remaining")
+    }
+    // ...
+}
+```
 
 ## Testing
 
+### Unit Tests
+
 ```go
-func TestRageFeature(t *testing.T) {
-    // Create rage from JSON
+func TestRage_AddsSTRDamageBonus(t *testing.T) {
+    bus := events.NewBus()
+    
+    // Load rage from JSON
     featureJSON := `{
-        "ref": "dnd5e.features.rage",
+        "ref": "dnd5e:features:rage",
         "id": "test-rage",
         "data": {"uses": 3, "level": 5}
     }`
     
-    action, err := features.LoadJSON([]byte(featureJSON))
+    rage, err := features.LoadJSON([]byte(featureJSON), bus)
     require.NoError(t, err)
     
-    // Create mock character
-    barbarian := &MockCharacter{id: "conan"}
+    // Create barbarian
+    barbarian := &mockEntity{id: "conan", entityType: dnd5e.EntityTypeCharacter}
     
-    // Can activate with uses remaining
-    input := dnd5e.FeatureInput{} // rage needs no input
-    err = action.CanActivate(ctx, barbarian, input)
-    assert.NoError(t, err)
+    // Activate rage
+    err = rage.Activate(context.Background(), barbarian, features.FeatureInput{})
+    require.NoError(t, err)
     
-    // Activate and verify uses consumed
-    err = action.Activate(ctx, barbarian, input)
-    assert.NoError(t, err)
+    // Create STR melee attack event
+    attackEvent := dnd5e.NewAttackEvent(
+        barbarian,
+        &mockEntity{id: "goblin", entityType: dnd5e.EntityTypeMonster},
+        true,  // isMelee
+        dnd5e.AbilityStrength,
+        8,  // base damage
+    )
     
-    // Verify events were published
-    // Check damage bonus event
-    // Check resistance event
+    // Publish and check modifier was added
+    err = bus.Publish(attackEvent)
+    require.NoError(t, err)
+    
+    // Verify damage bonus was applied
+    modifiers := attackEvent.Context().GetModifiers()
+    require.Len(t, modifiers, 1)
+    
+    mod := modifiers[0].(*events.SimpleModifier)
+    assert.Equal(t, dnd5e.ModifierSourceRage, mod.Source)
+    assert.Equal(t, 3, mod.Value)  // Level 5 = +3 damage
 }
 ```
+
+### Concurrent Stress Testing
+
+```go
+func TestRage_ConcurrentEventHandling(t *testing.T) {
+    bus := events.NewBus()
+    rage, _ := features.LoadJSON([]byte(featureJSON), bus)
+    rage.Activate(ctx, barbarian, features.FeatureInput{})
+    
+    var wg sync.WaitGroup
+    numGoroutines := 100
+    numEventsPerGoroutine := 10
+    
+    // Concurrently publish attack events
+    wg.Add(numGoroutines)
+    for i := 0; i < numGoroutines; i++ {
+        go func() {
+            defer wg.Done()
+            for j := 0; j < numEventsPerGoroutine; j++ {
+                attackEvent := dnd5e.NewAttackEvent(...)
+                bus.Publish(attackEvent)
+            }
+        }()
+    }
+    
+    // Wait for completion - no deadlocks or races!
+    wg.Wait()
+}
+```
+
+Run tests with race detection:
+```bash
+go test -race ./features
+```
+
+## Adding New Features
+
+To add a new feature (e.g., Second Wind):
+
+1. **Define the feature struct**:
+```go
+type SecondWind struct {
+    id          string
+    uses        int
+    fighterLevel int
+    bus         *events.Bus
+    mu          sync.RWMutex
+}
+```
+
+2. **Implement core.Action[FeatureInput]**:
+```go
+func (sw *SecondWind) CanActivate(...) error
+func (sw *SecondWind) Activate(...) error
+```
+
+3. **Implement Feature interface**:
+```go
+func (sw *SecondWind) GetResourceType() ResourceType
+func (sw *SecondWind) ResetsOn() ResetType
+```
+
+4. **Add to LoadJSON**:
+```go
+case FeatureKeySecondWind:
+    var data struct {
+        Uses  int `json:"uses"`
+        Level int `json:"level"`
+    }
+    json.Unmarshal(input.Data, &data)
+    return &SecondWind{...}, nil
+```
+
+5. **Write tests** covering:
+   - Activation conditions
+   - Effect application
+   - Resource consumption
+   - Thread safety
+
+## Design Principles
+
+1. **Self-Contained Features**: Each feature manages its own subscriptions and state
+2. **Event-Driven Effects**: Features modify combat through events, not direct state changes
+3. **Type Safety**: Constants everywhere, never raw strings
+4. **Thread Safety**: Mutex protection for future async event buses
+5. **Clean Separation**: Features don't know about each other or the game server
+6. **Testability**: Easy to test in isolation with mock event buses
+
+## Current Implementation Status
+
+✅ **Completed**:
+- LoadJSON pattern for dynamic feature loading
+- Rage feature with full event integration
+- Thread-safe state management
+- Comprehensive test coverage
+- Type-safe modifiers using core/events types
+
+🚧 **Next Steps**:
+- Add turn/round tracking for rage duration
+- Implement Second Wind (healing feature)
+- Implement Action Surge (extra action)
+- Add more barbarian features (Reckless Attack, Danger Sense)
+- Support for feature prerequisites and validation
