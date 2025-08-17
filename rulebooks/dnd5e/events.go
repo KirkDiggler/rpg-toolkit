@@ -186,3 +186,19 @@ func NewConditionRemovedEvent(target, condition, reason string) *ConditionRemove
 		Reason:    reason,
 	}
 }
+
+// NewRoundEndEvent creates a new round end event
+func NewRoundEndEvent(round int) *RoundEndEvent {
+	return &RoundEndEvent{
+		ctx:   events.NewEventContext(),
+		Round: round,
+	}
+}
+
+// NewTurnEndEvent creates a new turn end event
+func NewTurnEndEvent(entity core.Entity) *TurnEndEvent {
+	return &TurnEndEvent{
+		ctx:    events.NewEventContext(),
+		Entity: entity,
+	}
+}

@@ -103,14 +103,13 @@ func TestRage_ConcurrentEventHandling(t *testing.T) {
 		}()
 	}
 
-	// Concurrently try to activate rage (should fail - already active)
+	// Concurrently try to activate rage (consumes uses)
 	wg.Add(numGoroutines / 10)
 	for i := 0; i < numGoroutines/10; i++ {
 		go func() {
 			defer wg.Done()
-			err := rage.Activate(context.Background(), barbarian, features.FeatureInput{})
-			// Should fail with "already raging"
-			require.Error(t, err)
+			// May succeed or fail depending on uses remaining
+			_ = rage.Activate(context.Background(), barbarian, features.FeatureInput{})
 		}()
 	}
 

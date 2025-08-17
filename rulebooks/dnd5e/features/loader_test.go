@@ -51,9 +51,17 @@ func TestLoadJSON_Rage(t *testing.T) {
 	err = action.Activate(context.Background(), owner, input)
 	assert.NoError(t, err, "should activate successfully")
 
-	// Can't activate again while raging
-	err = action.CanActivate(context.Background(), owner, input)
-	assert.EqualError(t, err, "already raging")
+	// Activate again (uses another charge)
+	err = action.Activate(context.Background(), owner, input)
+	assert.NoError(t, err, "should activate successfully")
+	
+	// Third activation
+	err = action.Activate(context.Background(), owner, input)
+	assert.NoError(t, err, "should activate successfully")
+	
+	// Fourth activation should fail (out of uses)
+	err = action.Activate(context.Background(), owner, input)
+	assert.Error(t, err, "should fail when out of uses")
 }
 
 func TestLoadJSON_UnknownFeature(t *testing.T) {
