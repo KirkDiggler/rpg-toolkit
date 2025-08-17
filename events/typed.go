@@ -4,11 +4,16 @@
 package events
 
 import (
+	"context"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
 // EventHandler is a typed event handler function.
 type EventHandler[T any] = func(T) error
+
+// ContextEventHandler is a typed event handler function that accepts context.
+type ContextEventHandler[T any] = func(context.Context, T) error
 
 // EventFilter is a typed event filter function.
 type EventFilter[T any] = func(T) bool
@@ -64,6 +69,48 @@ func Subscribe[T Event](
 			return nil // Wrong type, skip
 		}
 		return handler(typed)
+	}
+
+	// Convert typed filter if present
+	var busFilter Filter
+	if sub.filter != nil {
+		busFilter = func(e Event) bool {
+			typed, ok := e.(T)
+			if !ok {
+				return false
+			}
+			return sub.filter(typed)
+		}
+	}
+
+	// Subscribe using the ref pointer
+	if busFilter != nil {
+		return bus.SubscribeWithFilter(ref.Ref, wrappedHandler, busFilter)
+	}
+	return bus.Subscribe(ref.Ref, wrappedHandler)
+}
+
+// SubscribeWithContext provides type-safe subscription with context support.
+// The handler receives a context for cancellation and request-scoped values.
+func SubscribeWithContext[T Event](
+	bus EventBus,
+	ref *core.TypedRef[T],
+	handler ContextEventHandler[T],
+	opts ...Option[T],
+) (string, error) {
+	// Apply options
+	sub := &subscription[T]{}
+	for _, opt := range opts {
+		opt.apply(sub)
+	}
+
+	// Wrapper that accepts context - the bus will provide context.Background() if needed
+	wrappedHandler := func(ctx context.Context, e any) error {
+		typed, ok := e.(T)
+		if !ok {
+			return nil // Wrong type, skip
+		}
+		return handler(ctx, typed)
 	}
 
 	// Convert typed filter if present
