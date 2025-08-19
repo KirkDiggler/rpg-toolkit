@@ -16,11 +16,11 @@ type TypedTopic[T Event] interface {
 	// Subscribe registers a handler for events of type T.
 	// The handler can modify the event for chain-style processing.
 	// Returns a subscription ID that can be used to unsubscribe.
-	Subscribe(handler func(context.Context, T) (T, error)) (string, error)
+	Subscribe(ctx context.Context, handler func(context.Context, T) (T, error)) (string, error)
 
 	// Unsubscribe removes a handler using its subscription ID.
 	// Returns an error if the ID is not found.
-	Unsubscribe(id string) error
+	Unsubscribe(ctx context.Context, id string) error
 
 	// Publish sends an event to all subscribers.
 	// Note: Current bus doesn't support returning modified events,
@@ -44,8 +44,7 @@ type typedTopic[T Event] struct {
 }
 
 // Subscribe implements TypedTopic[T]
-func (t *typedTopic[T]) Subscribe(handler func(context.Context, T) (T, error)) (string, error) {
-	ctx := context.Background()
+func (t *typedTopic[T]) Subscribe(ctx context.Context, handler func(context.Context, T) (T, error)) (string, error) {
 
 	// Create ref for this topic
 	ref, err := core.NewRef(core.RefInput{
@@ -70,6 +69,8 @@ func (t *typedTopic[T]) Subscribe(handler func(context.Context, T) (T, error)) (
 
 		// If event has a chain, modifications happen there
 		// Otherwise, we can't modify in-place with current bus
+		// TODO: When the event bus supports propagating modified events,
+		//       update this code to handle the modified event properly
 		_ = modified
 		return nil
 	}
@@ -79,8 +80,7 @@ func (t *typedTopic[T]) Subscribe(handler func(context.Context, T) (T, error)) (
 }
 
 // Unsubscribe implements TypedTopic[T]
-func (t *typedTopic[T]) Unsubscribe(id string) error {
-	ctx := context.Background()
+func (t *typedTopic[T]) Unsubscribe(ctx context.Context, id string) error {
 	return Unsubscribe(ctx, t.bus, id)
 }
 
