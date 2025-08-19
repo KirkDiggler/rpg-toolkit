@@ -4,7 +4,6 @@ package dnd5e
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -59,15 +58,6 @@ var (
 	NewFromCreationData   = character.NewFromCreationData
 	LoadCharacterFromData = character.LoadCharacterFromData
 	LoadDraft             = character.LoadDraft
-)
-
-// Condition types and constructors
-type (
-	RagingConditionInput = conditions.RagingConditionInput
-)
-
-var (
-	NewRagingCondition = conditions.NewRagingCondition
 )
 
 // Choice category constants for character creation

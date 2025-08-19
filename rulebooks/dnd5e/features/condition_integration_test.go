@@ -149,7 +149,5 @@ type testEntity struct {
 	id string
 }
 
-func (e *testEntity) GetID() string                      { return e.id }
-func (e *testEntity) GetType() core.EntityType           { return "character" }
-func (e *testEntity) SetID(id string)                    { e.id = id }
-func (e *testEntity) SetType(entityType core.EntityType) {}
+func (e *testEntity) GetID() string            { return e.id }
+func (e *testEntity) GetType() core.EntityType { return "character" }
