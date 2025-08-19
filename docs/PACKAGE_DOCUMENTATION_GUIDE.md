@@ -1,8 +1,175 @@
-# Package Documentation Guide
+# RPG Toolkit Package Documentation Guide
 
-Every package in the RPG Toolkit must have a clear `doc.go` file that defines its purpose, scope, and boundaries. This ensures the toolkit remains focused and prevents scope creep.
+## The Pattern: Lead With Uniqueness
 
-## Required Documentation Structure
+Every package in rpg-toolkit should highlight what makes it SPECIAL within 3 seconds. Not what it does, but what makes it unique.
+
+## Package Documentation Template
+
+### 1. Package Doc Comment (doc.go or main file)
+
+```go
+// Package [name] provides [infrastructure capability].
+//
+// THE MAGIC: [One-line description of what makes this unique]
+//
+// Example:
+//   [2-3 lines showing the key pattern in action]
+//
+// KEY INSIGHT: [Why this pattern matters for game systems]
+//
+// This is infrastructure, not implementation. Rulebooks use this to [purpose].
+package [name]
+```
+
+### 2. README.md Structure
+
+```markdown
+# [Package] - [Tagline that captures the magic]
+
+## The Magic: [Pattern name]
+
+[Description of what makes this special - 1-2 sentences]
+
+```go
+// Show the beautiful pattern immediately with code
+// Use real game examples, not foo/bar
+```
+
+## Why This Matters
+
+[2-3 sentences on how this enables game systems without implementing rules]
+
+## The Journey of [Core Concept]
+
+[Show how data flows through the system with real examples]
+
+### [Specific Use Case 1]
+```go
+// Real game scenario showing the pattern
+```
+
+### [Specific Use Case 2]
+```go
+// Another scenario highlighting unique aspects
+```
+
+## What You DON'T Have To Do
+
+[List things this package handles automatically that developers would otherwise need to manage]
+
+## Design Philosophy
+
+[Brief explanation of architectural decisions and trade-offs]
+
+## Testing
+
+[How to test with this package, especially mocking/predictability]
+```
+
+### 3. Example Test Structure
+
+```go
+// example_[concept]_test.go
+
+// Example_[concept] demonstrates [the unique pattern].
+// 
+// THE JOURNEY: [Describe the flow]
+func Example_[concept]() {
+    // Use real game scenarios
+    // Show accumulation/flow when relevant
+    // Demonstrate the magic pattern clearly
+}
+```
+
+## Examples of Good Patterns We've Discovered
+
+### events package: '.On(bus)' pattern
+**THE MAGIC**: Explicit topic-to-bus connection that makes event flow visible
+```go
+attacks := combat.AttackTopic.On(bus)  // Beautiful, explicit connection
+```
+
+### rpgerr package: WrapCtx accumulation
+**THE MAGIC**: Errors that tell the whole story automatically
+```go
+return rpgerr.WrapCtx(ctx, err, "attack failed")
+// Has: attacker, round, stage, weapon, etc. automatically
+```
+
+### dice package: Lazy evaluation
+**THE MAGIC**: Dice don't roll until needed, then remember forever
+```go
+damage := dice.New("3d6+5")  // Created but not rolled
+// ... travels through systems ...
+actual := damage.GetValue()  // NOW it rolls, remembers forever
+```
+
+## Critical Principles
+
+### 1. Lead with what's unique
+- First line should make developers say "oh THAT'S cool!"
+- Don't bury the magic in paragraph 3
+- The pattern should be visible in tooltips
+
+### 2. Show, don't tell
+- Code examples in the first screen
+- Real game scenarios (attacks, saves, spells)
+- Never use foo/bar/baz
+
+### 3. Infrastructure, not implementation
+- We provide tools, rulebooks provide rules
+- Show how rulebooks USE the infrastructure
+- Never implement game mechanics
+
+### 4. IDE-first documentation
+- Package comments appear in tooltips
+- Make the magic visible in autocomplete
+- Function docs should help without leaving the editor
+
+### 5. Journey/accumulation patterns
+- Show how data flows through systems
+- Emphasize what accumulates automatically
+- Highlight the path from creation to resolution
+
+## What This Is NOT
+
+❌ Generic descriptions ("provides dice rolling functionality")
+❌ Implementation details that don't matter to users
+❌ Game mechanics (that's rulebook territory)
+❌ What it CAN do (focus on what makes it SPECIAL)
+❌ Academic explanations before showing the magic
+
+## Success Metrics
+
+Your documentation succeeds when:
+
+1. **3-Second Test**: Developers understand the magic within 3 seconds
+2. **"Oh THAT'S cool!" moment**: The unique pattern creates delight
+3. **Copy-Paste Ready**: Examples can be used immediately
+4. **Journey Clear**: The flow through systems is obvious
+5. **No Implementation**: Zero game rules, pure infrastructure
+
+## Review Checklist
+
+- [ ] Does the first line make you say "oh THAT'S cool!"?
+- [ ] Can you understand the magic in 3 seconds?
+- [ ] Are all examples real game scenarios?
+- [ ] Is the journey/flow clear?
+- [ ] Does it avoid implementing game rules?
+- [ ] Would you want to use this after reading the first paragraph?
+
+## Remember
+
+The toolkit is evolving to be **pure infrastructure with type contracts**, not implementations. Every package should make its unique contribution to this infrastructure crystal clear from the first glance.
+
+Features are dynamic, topics are static. Accumulation happens automatically. The journey tells the story. These insights should be prominent, not hidden.
+
+---
+
+## Legacy Documentation (For Reference)
+
+### Original Required Structure
 
 Each package's `doc.go` must include:
 
@@ -11,39 +178,6 @@ Each package's `doc.go` must include:
 3. **Non-Goals**: What explicitly does NOT belong here?
 4. **Integration Points**: How does it connect with other packages?
 5. **Usage Examples**: Basic code examples
-
-## Template
-
-```go
-// Package [name] provides [infrastructure/tools] for [specific purpose].
-//
-// Purpose:
-// This package [solves X problem] by providing [Y infrastructure]. It is designed
-// to be [game-agnostic/system-neutral] and provides only the [tools/interfaces]
-// needed for [specific functionality].
-//
-// Scope:
-// - [Included functionality 1]
-// - [Included functionality 2]
-// - [Included functionality 3]
-//
-// Non-Goals:
-// - [Explicitly excluded 1]: This belongs in [where it belongs]
-// - [Explicitly excluded 2]: This is game-specific logic
-// - [Explicitly excluded 3]: This would couple the toolkit to [specific system]
-//
-// Integration:
-// This package integrates with:
-// - [package1]: For [purpose]
-// - [package2]: For [purpose]
-//
-// Example:
-//
-//	// Basic usage example
-//	[code example]
-//
-package [name]
-```
 
 ## Package-Specific Documentation
 

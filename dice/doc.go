@@ -1,59 +1,52 @@
-// Package dice provides cryptographically secure random number generation
-// for RPG mechanics without implementing any game-specific rules.
+// Package dice provides lazy-evaluated, cryptographically secure dice rolls that show their work.
 //
-// Purpose:
-// This package offers deterministic and non-deterministic dice rolling
-// capabilities with modifier support, ensuring fair and unpredictable
-// game outcomes when needed while supporting testing scenarios.
-//
-// Scope:
-//   - Dice notation parsing (e.g., "3d6+2", "1d20-1")
-//   - Cryptographically secure random generation
-//   - Modifier system for bonuses and penalties
-//   - Roll history and individual die results
-//   - Deterministic rolling for testing
-//   - Support for standard polyhedral dice (d4, d6, d8, d10, d12, d20, d100)
-//   - Mathematical operations on roll results
-//
-// Non-Goals:
-//   - Game-specific roll types: Advantage/disadvantage belong in games
-//   - Roll result interpretation: Critical hits/failures are game rules
-//   - Dice pool mechanics: Counting successes is game-specific
-//   - Reroll mechanics: When to reroll is game logic
-//   - Probability calculations: Use external statistics packages
-//   - Dice UI/visualization: This is pure logic
-//   - Custom dice faces: Non-numeric dice are game-specific
-//
-// Integration:
-// This package is used by:
-//   - Combat systems for attack and damage rolls
-//   - Skill systems for ability checks
-//   - Loot systems for random generation
-//   - Any game mechanic requiring random numbers
-//
-// The dice package provides the randomness foundation but makes no
-// assumptions about how rolls are used or interpreted.
+// THE MAGIC: Dice don't roll until needed, then remember what they rolled forever.
 //
 // Example:
 //
-//	// Create a crypto-secure roller
-//	roller := dice.NewCryptoRoller()
+//	damage := dice.D6(3)                    // No rolls yet - just potential
+//	total := damage.GetValue()              // NOW it rolls: 14
+//	desc := damage.GetDescription()         // Shows the journey: "+3d6[6,4,4]=14"
+//	again := damage.GetValue()              // Still 14 - dice remember their fate
 //
-//	// Roll 3d6+2
-//	result, err := roller.Roll("3d6+2")
-//	if err != nil {
-//	    log.Fatal(err)
+// KEY INSIGHT: Lazy evaluation means dice can travel through your event system
+// as potential energy, rolling only when observed - perfect for modifiers that
+// might never be needed.
+//
+// SHOWS ITS WORK: Every roll preserves its history. When a player asks "how did
+// I take 47 damage?", the dice remember: "+2d6[5,3]=8" from the sword,
+// "+8d6[6,6,5,4,3,2,1,1]=28" from the fireball, "+11" from strength.
+//
+// CRYPTOGRAPHICALLY SECURE: Uses crypto/rand for true randomness - essential
+// for online play where predictability equals cheating.
+//
+// NEGATIVE DICE: Supports penalties as negative dice: dice.D4(-1) creates
+// "-1d4" which might roll "-d4[3]=-3" for damage reduction.
+//
+// Example - Attack with Sneak Attack:
+//
+//	// Create dice that haven't rolled yet
+//	attack := dice.D20(1)
+//	weaponDamage := dice.D8(1)
+//	sneakAttack := dice.D6(3)
+//
+//	// Pass them through your event system - still no rolls!
+//	event.AddModifier("weapon", weaponDamage)
+//	if isSneak {
+//	    event.AddModifier("sneak_attack", sneakAttack)
 //	}
-//	fmt.Printf("Rolled %d (dice: %v, modifier: %d)\n",
-//	    result.Total, result.Rolls, result.Modifier)
 //
-//	// For testing, use deterministic roller
-//	testRoller := dice.NewFixedRoller([]int{6, 5, 4}) // Always rolls 6, 5, 4
-//	result, _ = testRoller.Roll("3d6")
-//	// result.Total = 15, result.Rolls = [6, 5, 4]
+//	// Later, when damage is calculated:
+//	fmt.Println(weaponDamage.GetDescription())   // NOW it rolls: "+d8[6]=6"
+//	fmt.Println(sneakAttack.GetDescription())    // "+3d6[5,3,1]=9"
+//	// Total damage: 15, with perfect history of how we got there
 //
-//	// Games implement their own mechanics
-//	if gameRules.IsCriticalHit(result.Rolls[0]) {
-//	    // Game-specific critical logic
-//	}
+// Example - Testing with Predictable Dice:
+//
+//	// For tests, inject a mock roller
+//	mockRoller := mock_dice.NewMockRoller(ctrl)
+//	mockRoller.EXPECT().RollN(ctx, 1, 20).Return([]int{20}, nil)  // Crit!
+//
+//	roll := dice.NewRollWithRoller(1, 20, mockRoller)
+//	attack := roll.GetValue()  // Always 20 for this test
 package dice

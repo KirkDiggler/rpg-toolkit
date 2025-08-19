@@ -1,8 +1,22 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package events provides a type-safe pub/sub system with support for
-// pure notifications and events with modifier chains.
+// Package events provides type-safe event infrastructure with explicit topic-to-bus connections.
+//
+// THE MAGIC: The '.On(bus)' pattern makes event connections beautifully explicit:
+//
+//	attacks := combat.AttackTopic.On(bus)  // Crystal clear connection
+//	attacks.Subscribe(ctx, handleAttack)   // Type-safe handler
+//	attacks.Publish(ctx, attackEvent)      // Compile-time safety
+//
+// KEY INSIGHT: Topics are defined once at compile-time, then connected to buses at runtime.
+// This separation enables features to be dynamically applied while maintaining type safety.
+//
+// Two patterns for different journeys:
+//   - TypedTopic: Pure notifications that flow through systems
+//   - ChainedTopic: Events that accumulate modifiers as they journey through features
+//
+// This is infrastructure for game systems to route events - not game implementation.
 package events
 
 import (

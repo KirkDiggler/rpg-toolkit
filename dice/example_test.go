@@ -14,40 +14,131 @@ import (
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 )
 
-// Example demonstrates basic dice rolling
+// Example demonstrates dice that don't roll until observed.
 func Example() {
-	// Roll a d20
+	// Create dice - they haven't rolled yet!
 	attack := dice.D20(1)
-	fmt.Printf("Attack roll: %s\n", attack.GetDescription())
+	weaponDamage := dice.D8(1)
+	sneakAttack := dice.D6(3)
 
-	// Roll 3d6 for damage
-	damage := dice.D6(3)
-	fmt.Printf("Damage: %d\n", damage.GetValue())
+	// Dice can travel through your system as potential...
+	// Imagine passing these through an event bus here
+
+	// When we observe them, they roll and remember
+	if attack.GetValue() >= 15 { // NOW the d20 rolls
+		total := weaponDamage.GetValue() + sneakAttack.GetValue()
+		fmt.Printf("Hit! Damage: %d\n", total)
+
+		// The dice can explain what happened
+		fmt.Printf("  Attack: %s\n", attack.GetDescription())
+		fmt.Printf("  Weapon: %s\n", weaponDamage.GetDescription())
+		fmt.Printf("  Sneak: %s\n", sneakAttack.GetDescription())
+	} else {
+		fmt.Printf("Miss with %s\n", attack.GetDescription())
+		// Note: weaponDamage and sneakAttack never rolled!
+	}
 
 	// The output will vary due to randomness
 }
 
-// Example_customDice shows rolling non-standard dice
-func Example_customDice() {
-	// Create a d13 (non-standard die size)
-	roll, err := dice.NewRoll(1, 13)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
+// Example_lazyEvaluation shows how dice delay rolling until needed.
+func Example_lazyEvaluation() {
+	// Create three sources of damage
+	sword := dice.D8(1)
+	fireball := dice.D6(8)
+	strengthBonus := 3
 
-	// The output will vary, but will be between 1 and 13
-	fmt.Printf("d13 result: %d\n", roll.GetValue())
+	// Build up total damage - dice still haven't rolled
+	// Imagine these traveling through an event system:
+	//   - sword damage modifier
+	//   - fireball spell modifier
+	//   - strength bonus modifier
+	// Through damage reduction handlers...
+	// Through resistance checks...
+
+	// Finally, calculate actual damage
+	total := sword.GetValue() + fireball.GetValue() + strengthBonus
+
+	// Show the complete history
+	fmt.Printf("Total damage: %d\n", total)
+	fmt.Printf("  Sword: %s\n", sword.GetDescription())
+	fmt.Printf("  Fireball: %s\n", fireball.GetDescription())
+	fmt.Printf("  Strength: +%d\n", strengthBonus)
+
+	// Second call returns same values - dice remember their fate
+	sameTotal := sword.GetValue() + fireball.GetValue() + strengthBonus
+	fmt.Printf("Still: %d (dice don't reroll)\n", sameTotal)
+
+	// The output will vary due to randomness
 }
 
-// Example_negativeModifier demonstrates penalty rolls
-func Example_negativeModifier() {
-	// A penalty represented as negative dice
-	penalty := dice.D4(-1)
+// Example_damageWithReduction shows the complete journey of damage calculation.
+func Example_damageWithReduction() {
+	// Attacker rolls damage
+	weaponDamage := dice.D10(1)
+	flameDamage := dice.D6(2)
 
-	// GetDescription shows the full notation
-	fmt.Printf("Penalty: %s\n", penalty.GetDescription())
-	// Will print something like: "-d4[3]=-3"
+	// Defender has armor
+	armorReduction := dice.D4(-1) // Negative dice!
+
+	// Calculate final damage
+	baseDamage := weaponDamage.GetValue() + flameDamage.GetValue()
+	finalDamage := baseDamage + armorReduction.GetValue() // Subtracts!
+
+	// Show the complete story
+	fmt.Printf("Base damage: %d\n", baseDamage)
+	fmt.Printf("  Weapon: %s\n", weaponDamage.GetDescription())
+	fmt.Printf("  Flame: %s\n", flameDamage.GetDescription())
+	fmt.Printf("  Armor: %s\n", armorReduction.GetDescription())
+	fmt.Printf("Final damage: %d\n", finalDamage)
+
+	// Will print something like:
+	// Base damage: 14
+	//   Weapon: +d10[8]=8
+	//   Flame: +2d6[4,2]=6
+	//   Armor: -d4[3]=-3
+	// Final damage: 11
+}
+
+// Example_roguesSneakAttack shows the complete journey of a rogue's attack.
+func Example_roguesSneakAttack() {
+	// Morning: Rogue prepares their attack
+	attackRoll := dice.D20(1)
+	rapierDamage := dice.D8(1)
+	dexterityBonus := 4
+	sneakAttack := dice.D6(5) // 5d6 at level 9
+
+	// These dice travel through the event system...
+	// Through advantage/disadvantage handlers...
+	// Through bless/bane modifiers...
+	// But they still haven't rolled!
+
+	// Combat resolution time - does the attack hit?
+	targetAC := 16
+	attackTotal := attackRoll.GetValue() + dexterityBonus // NOW it rolls!
+
+	if attackTotal >= targetAC {
+		// Hit! Calculate damage
+		damage := rapierDamage.GetValue() + dexterityBonus
+		damage += sneakAttack.GetValue() // Cascade of d6s!
+
+		fmt.Printf("Hit! (rolled %d vs AC %d)\n", attackTotal, targetAC)
+		fmt.Printf("Total damage: %d\n", damage)
+		fmt.Printf("  Attack roll: %s +%d\n", attackRoll.GetDescription(), dexterityBonus)
+		fmt.Printf("  Rapier: %s +%d\n", rapierDamage.GetDescription(), dexterityBonus)
+		fmt.Printf("  Sneak Attack: %s\n", sneakAttack.GetDescription())
+	} else {
+		fmt.Printf("Miss! %s +%d = %d vs AC %d\n",
+			attackRoll.GetDescription(), dexterityBonus, attackTotal, targetAC)
+		// Notice: damage dice never rolled because we missed!
+	}
+
+	// The output will vary, but might look like:
+	// Hit! (rolled 19 vs AC 16)
+	// Total damage: 28
+	//   Attack roll: +d20[15]=15 +4
+	//   Rapier: +d8[5]=5 +4
+	//   Sneak Attack: +5d6[6,4,3,3,3]=19
 }
 
 // TestWithMockRoller demonstrates how to test code that uses dice

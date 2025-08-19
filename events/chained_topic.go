@@ -9,13 +9,18 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 )
 
-// ChainedTopic provides pub/sub for events that need modifier collection and processing.
-// Unlike pure notifications, these events collect modifiers into a chain that transforms the data.
+// ChainedTopic provides pub/sub for events that accumulate modifiers on their journey.
 //
-// The pattern:
-// 1. Create event (immutable data) and chain (modifier collector)
-// 2. PublishWithChain to let subscribers add modifiers to the chain
-// 3. Execute the chain to transform the event
+// THE ACCUMULATION JOURNEY: Events travel through features, each adding its contribution.
+// The chain collects all modifiers, then applies them in staged order.
+//
+// Connect with: attacks := AttackChain.On(bus)
+//
+// The journey pattern:
+// 1. Event starts its journey (base values)
+// 2. Features add modifiers as it passes through
+// 3. Chain accumulates all contributions
+// 4. Execute applies them in proper order
 //
 // Example:
 //

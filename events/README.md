@@ -1,274 +1,241 @@
-# Events Package - Beautiful Type-Safe Topics
+# Events - The '.On(bus)' Pattern
 
-## Philosophy
-
-Events are just data. Topics route them. The `.On(bus)` pattern connects them. ~500 lines total.
-
-## The Magic: `.On(bus)` Pattern
+THE MAGIC: Explicit topic-to-bus connections that make event flow beautiful.
 
 ```go
-// Define topic constants - explicit and reusable
-const TopicAttack events.Topic = "combat.attack"
-
-// Define typed topic using the constant
-var AttackTopic = events.DefineTypedTopic[AttackEvent](TopicAttack)
-
-// Connect and use - beautiful!
-attacks := AttackTopic.On(bus)
+// The pattern that changes everything
+attacks := combat.AttackTopic.On(bus)  // SEE the connection happen
+attacks.Subscribe(ctx, handleAttack)   // Type-safe from here
 ```
 
-This pattern is everything:
-- **Explicit** - You see the connection happening
-- **Type-safe** - Can't mix types
-- **Discoverable** - IDE shows all available topics
-- **Clean** - No strings in user code
+## The Journey Pattern
 
-## Two Patterns for Different Needs
-
-### 1. TypedTopic - Pure Notifications
-
-For events that notify without transformation:
+Watch how an attack flows through your game, accumulating modifications:
 
 ```go
-// Define topic constants
-const TopicLevelUp events.Topic = "player.levelup"
+// 1. Attack begins its journey
+attack := AttackEvent{AttackerID: "barbarian", Damage: 10}
+chain := NewStagedChain[AttackEvent](stages)
 
-// Define typed topic using the constant
-var LevelUpTopic = events.DefineTypedTopic[LevelUpEvent](TopicLevelUp)
+// 2. Connect to the bus - explicit and beautiful
+attacks := combat.AttackChain.On(bus)
 
-// Event is just data - no interface!
-type LevelUpEvent struct {
-    PlayerID string
-    NewLevel int
-}
+// 3. Journey through all features (rage adds +2, bless adds +4)
+modifiedChain, _ := attacks.PublishWithChain(ctx, attack, chain)
 
-// Use in features
-func OnLevelUp(bus events.EventBus) {
-    levelups := LevelUpTopic.On(bus)
-    
-    levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
-        fmt.Printf("Player %s reached level %d!\n", e.PlayerID, e.NewLevel)
-        return nil
-    })
-}
+// 4. Execute accumulated modifications
+result, _ := modifiedChain.Execute(ctx, attack)
+// Base: 10 → Rage: 12 → Bless: 16
 ```
 
-### 2. ChainedTopic - Events with Modifier Chains
+Every feature along the journey sees the attack and can add its modifier. The chain accumulates them all, then applies them in order. This is the infrastructure that makes modifier stacking work.
 
-For events that need staged modifier processing:
+## Why '.On(bus)' Is Special
+
+Traditional event systems hide the connection:
+```go
+// Where does this go? Who knows?
+bus.Publish("attack", event)  // String-based, error-prone
+```
+
+Our pattern makes it explicit:
+```go
+// Crystal clear where this connects
+attacks := AttackTopic.On(bus)  // See it, understand it
+attacks.Publish(ctx, event)     // Type-safe, IDE-friendly
+```
+
+## Two Patterns, Two Journeys
+
+### Pure Notifications - One-Way Journey
+
+Events that notify systems without modification:
 
 ```go
-// Define topic constant
-const TopicAttack events.Topic = "combat.attack"
+// Define once at compile-time
+var LevelUpTopic = DefineTypedTopic[LevelUpEvent]("player.levelup")
 
-// Define chained topic using the constant
-var AttackChain = events.DefineChainedTopic[AttackEvent](TopicAttack)
+// Connect at runtime
+levelups := LevelUpTopic.On(bus)
 
-// Event is still just data
-type AttackEvent struct {
-    AttackerID string
-    TargetID   string
-    Damage     int
-}
+// Achievement system listens
+levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
+    if e.NewLevel == 10 {
+        UnlockAchievement(e.PlayerID, "Decimator")
+    }
+    return nil
+})
 
-// Features add modifiers
-func (r *Rage) Apply(bus events.EventBus) error {
-    attacks := AttackChain.On(bus)
+// UI system listens
+levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
+    ShowLevelUpAnimation(e.PlayerID, e.NewLevel)
+    return nil
+})
+
+// Publish once, flows everywhere
+levelups.Publish(ctx, LevelUpEvent{PlayerID: "hero", NewLevel: 10})
+```
+
+### Chained Events - Accumulation Journey
+
+Events that gather modifications as they travel:
+
+```go
+// Define the journey stages
+const (
+    StageBase       = "base"       // Starting values
+    StageFeatures   = "features"   // Class features apply
+    StageConditions = "conditions" // Status effects apply
+    StageEquipment  = "equipment"  // Gear bonuses apply
+    StageFinal      = "final"      // Last-minute adjustments
+)
+
+// Rage feature adds to the journey
+func (r *Rage) Apply(bus EventBus) error {
+    attacks := AttackChain.On(bus)  // Connect to journey
     
-    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, chain chain.Chain[AttackEvent]) (chain.Chain[AttackEvent], error) {
+    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, c Chain[AttackEvent]) (Chain[AttackEvent], error) {
         if e.AttackerID == r.ownerID {
-            chain.Add(combat.StageConditions, "rage", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
+            // Add our modifier to the conditions stage
+            c.Add(StageConditions, "rage", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
                 e.Damage += 2
                 return e, nil
             })
         }
-        return chain, nil
+        return c, nil
     })
 }
 
-// Combat system uses it
-attack := AttackEvent{AttackerID: "barbarian", Damage: 10}
-chain := events.NewStagedChain[AttackEvent](stages)
-
-attacks := AttackChain.On(bus)
-modifiedChain, _ := attacks.PublishWithChain(ctx, attack, chain)
-result, _ := modifiedChain.Execute(ctx, attack)
-// result.Damage is now 12
+// Bless spell adds to the journey
+func (b *Bless) Apply(bus EventBus) error {
+    attacks := AttackChain.On(bus)  // Same journey, different feature
+    
+    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, c Chain[AttackEvent]) (Chain[AttackEvent], error) {
+        if b.affects(e.AttackerID) {
+            c.Add(StageConditions, "bless", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
+                e.Damage += 4
+                return e, nil
+            })
+        }
+        return c, nil
+    })
+}
 ```
 
-## Key Design Wins
+## Complete Journey Example
 
-1. **No Event Interface** - Events are pure data structs
-2. **No Strings in User Code** - Topics defined once with explicit IDs
-3. **The `.On(bus)` Pattern** - Makes connections explicit and beautiful
-4. **Type Safety Without Ceremony** - Generics do the work
-5. **Features Are Dynamic, Topics Are Static** - Perfect separation
-
-## Complete Example: Rulebook Events
+Here's how damage flows through an entire combat system:
 
 ```go
-package combat
+package example
 
 import (
     "context"
-    "github.com/KirkDiggler/rpg-toolkit/core/chain"
     "github.com/KirkDiggler/rpg-toolkit/events"
+    "github.com/KirkDiggler/rpg-toolkit/core/chain"
 )
 
-// Define topic constants - explicit and reusable
-const (
-    TopicCombatStart events.Topic = "combat.start"
-    TopicCombatEnd   events.Topic = "combat.end"
-    TopicAttack      events.Topic = "combat.attack"
-    TopicDamage      events.Topic = "combat.damage"
-    TopicSave        events.Topic = "combat.save"
-)
-
-// Define stage constants - explicit processing order
-const (
-    StageBase       chain.Stage = "base"
-    StageFeatures   chain.Stage = "features"
-    StageConditions chain.Stage = "conditions"
-    StageEquipment  chain.Stage = "equipment"
-    StageFinal      chain.Stage = "final"
-)
-
-// Define typed topics using the constants
+// Topic definitions - compile-time constants
 var (
-    // Pure notifications
-    CombatStartTopic = events.DefineTypedTopic[CombatStartEvent](TopicCombatStart)
-    CombatEndTopic   = events.DefineTypedTopic[CombatEndEvent](TopicCombatEnd)
-    
-    // Chained events for modifiers
-    AttackChain = events.DefineChainedTopic[AttackEvent](TopicAttack)
-    DamageChain = events.DefineChainedTopic[DamageEvent](TopicDamage)
-    SaveChain   = events.DefineChainedTopic[SaveEvent](TopicSave)
+    AttackChain = events.DefineChainedTopic[AttackEvent]("combat.attack")
+    DamageChain = events.DefineChainedTopic[DamageEvent]("combat.damage")
+    SaveChain   = events.DefineChainedTopic[SaveEvent]("combat.save")
 )
 
-// Events are just data
-type AttackEvent struct {
-    AttackerID string
-    TargetID   string
-    Damage     int
-    Critical   bool
-}
-
-type DamageEvent struct {
-    SourceID   string
-    TargetID   string
-    Amount     int
-    DamageType string
-}
-
-// Shared structs for common data
-type Damage struct {
-    Amount int
-    Type   string
-}
-
-// Features use the topics
-type BlessFeature struct {
-    targetID string
-    bonus    int
-}
-
-func (b *BlessFeature) Apply(bus events.EventBus) error {
-    // Beautiful connection pattern
+// The attack journey through the system
+func ResolveAttack(bus events.EventBus, attacker, target Entity) {
+    ctx := context.Background()
+    
+    // 1. Attack Roll Journey
+    attack := AttackEvent{
+        AttackerID: attacker.ID,
+        TargetID:   target.ID,
+        BaseRoll:   roll(20),
+    }
+    
+    attackChain := events.NewStagedChain[AttackEvent](stages)
     attacks := AttackChain.On(bus)
-    saves := SaveChain.On(bus)
     
-    // Type-safe subscriptions
-    attacks.SubscribeWithChain(ctx, b.modifyAttack)
-    saves.SubscribeWithChain(ctx, b.modifySave)
+    // Journey through all attack modifiers
+    modifiedChain, _ := attacks.PublishWithChain(ctx, attack, attackChain)
+    attack, _ = modifiedChain.Execute(ctx, attack)
     
-    return nil
+    if attack.TotalRoll < target.AC {
+        return // Miss - journey ends
+    }
+    
+    // 2. Damage Calculation Journey
+    damage := DamageEvent{
+        SourceID: attacker.ID,
+        TargetID: target.ID,
+        Amount:   roll(8) + attacker.StrMod,
+        Type:     "slashing",
+    }
+    
+    damageChain := events.NewStagedChain[DamageEvent](stages)
+    damages := DamageChain.On(bus)
+    
+    // Journey through all damage modifiers
+    modifiedChain, _ = damages.PublishWithChain(ctx, damage, damageChain)
+    damage, _ = modifiedChain.Execute(ctx, damage)
+    
+    // 3. Saving Throw Journey (if applicable)
+    if damage.RequiresSave {
+        save := SaveEvent{
+            TargetID:   target.ID,
+            SaveType:   damage.SaveType,
+            DC:         damage.SaveDC,
+            BaseRoll:   roll(20),
+        }
+        
+        saveChain := events.NewStagedChain[SaveEvent](stages)
+        saves := SaveChain.On(bus)
+        
+        // Journey through all save modifiers
+        modifiedChain, _ = saves.PublishWithChain(ctx, save, saveChain)
+        save, _ = modifiedChain.Execute(ctx, save)
+        
+        if save.Success {
+            damage.Amount /= 2  // Half damage on save
+        }
+    }
+    
+    // Apply final damage
+    target.HP -= damage.Amount
 }
 ```
 
-## API Reference
+See how each event has its own journey through the system? Features can hook into any point, adding their modifiers. The infrastructure handles the accumulation and ordering.
 
-### Defining Topics
+## Key Insights
 
-```go
-// Define constants first - explicit and reusable
-const (
-    TopicMyEvent  events.Topic = "my.event"
-    TopicMyAction events.Topic = "my.action"
-)
+1. **The '.On(bus)' pattern** - Makes connections explicit and discoverable
+2. **Journey-driven design** - Events flow through systems, accumulating changes
+3. **Compile-time topics, runtime connections** - Static safety with dynamic flexibility
+4. **Infrastructure, not implementation** - We provide the roads, games provide the cars
 
-// For pure notifications
-var MyTopic = events.DefineTypedTopic[MyEvent](TopicMyEvent)
-
-// For events with chains
-var MyChain = events.DefineChainedTopic[MyAction](TopicMyAction)
-```
-
-### Using Topics
+## API at a Glance
 
 ```go
-// Connect to bus
-topic := MyTopic.On(bus)
+// Define topics (compile-time)
+var AttackTopic = DefineTypedTopic[AttackEvent]("combat.attack")
+var AttackChain = DefineChainedTopic[AttackEvent]("combat.attack")
 
-// Subscribe
-id, err := topic.Subscribe(ctx, handler)
+// Connect to bus (runtime)
+attacks := AttackTopic.On(bus)  // THE MAGIC MOMENT
 
-// Publish
-err := topic.Publish(ctx, event)
+// Use with type safety
+attacks.Subscribe(ctx, handler)
+attacks.Publish(ctx, event)
 
-// Unsubscribe
-err := topic.Unsubscribe(ctx, id)
+// For chains
+chain := NewStagedChain[AttackEvent](stages)
+modifiedChain, _ := attacks.PublishWithChain(ctx, event, chain)
+result, _ := modifiedChain.Execute(ctx, event)
 ```
 
-### Using Chains
+## This Is Infrastructure
 
-```go
-// Connect to bus
-chain := MyChain.On(bus)
+We don't implement game rules. We provide the infrastructure for events to journey through your game systems. The '.On(bus)' pattern makes these journeys explicit, type-safe, and beautiful.
 
-// Subscribe with chain
-id, err := chain.SubscribeWithChain(ctx, handler)
-
-// Publish with chain
-modifiedChain, err := chain.PublishWithChain(ctx, event, chain)
-
-// Execute chain
-result, err := modifiedChain.Execute(ctx, event)
-```
-
-## File Structure
-
-```
-events/
-├── bus.go           # Simple EventBus implementation (~100 lines)
-├── topic.go         # Topic type definition (9 lines)
-├── topic_def.go     # Topic definitions with .On(bus) (~50 lines)
-├── typed_topic.go   # TypedTopic implementation (~70 lines)
-├── chained_topic.go # ChainedTopic implementation (~130 lines)
-├── chain.go         # StagedChain implementation (~120 lines)
-├── errors.go        # Error definitions (~25 lines)
-└── README.md        # This file
-```
-
-## Design Philosophy
-
-This package embodies the toolkit principles:
-
-1. **Pick ONE Way** - Two clear patterns, each for specific needs
-2. **Optimize for Simplicity** - No unnecessary abstractions
-3. **Make It Impossible to Use Wrong** - Type safety prevents errors
-4. **Explicit Over Implicit** - The `.On(bus)` pattern shows intent
-5. **Data Over Behavior** - Events are just structs
-
-## For Rulebook Authors
-
-Your workflow is simple:
-
-1. **Define your topics** with explicit IDs
-2. **Define your events** as plain structs
-3. **Connect with `.On(bus)`** in your features
-4. **Subscribe with type safety**
-5. **Publish without fear**
-
-No strings to typo. No interfaces to implement. No runtime type assertions.
-
-Just beautiful, type-safe event routing.
+Your features define what happens. Our infrastructure ensures it happens in the right order, with the right types, accumulating properly along the way.

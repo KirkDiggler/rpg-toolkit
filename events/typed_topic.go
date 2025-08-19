@@ -8,8 +8,11 @@ import (
 )
 
 // TypedTopic provides type-safe publish/subscribe for events of type T.
-// It wraps the event bus to ensure compile-time type safety.
-// Use this for pure notifications. For events needing chain processing, use ChainedTopic.
+//
+// THE ONE-WAY JOURNEY: Events flow through the system notifying interested parties.
+// No modification, just notification. Perfect for "something happened" events.
+//
+// Connect with: levelups := LevelUpTopic.On(bus)
 type TypedTopic[T any] interface {
 	// Subscribe registers a handler for events of type T.
 	// This is for pure notifications - the handler processes but doesn't transform the event.

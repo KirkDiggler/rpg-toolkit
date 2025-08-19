@@ -5,12 +5,21 @@ package events
 
 // TypedTopicDef defines a typed topic that can be connected to a bus.
 // This is created once at package level and used to get typed topics.
+//
+// THE MAGIC: Topics are defined at compile-time but connected at runtime via '.On(bus)'.
+// This separation enables dynamic feature application with complete type safety.
 type TypedTopicDef[T any] struct {
 	topic Topic
 }
 
 // On connects this topic definition to a bus, returning a typed topic for pub/sub.
-// This is the key pattern: `attacks := combat.AttackTopic.On(bus)`
+//
+// THIS IS THE MAGIC PATTERN that makes events beautiful:
+//
+//	attacks := combat.AttackTopic.On(bus)  // SEE the connection
+//	attacks.Subscribe(ctx, handleAttack)   // Type-safe from here
+//
+// The explicit connection makes it crystal clear where events flow.
 func (d *TypedTopicDef[T]) On(bus EventBus) TypedTopic[T] {
 	return &typedTopic[T]{
 		bus:   bus,
@@ -20,12 +29,22 @@ func (d *TypedTopicDef[T]) On(bus EventBus) TypedTopic[T] {
 
 // ChainedTopicDef defines a typed topic that supports chain processing.
 // This is created once at package level and used to get chained topics.
+//
+// THE JOURNEY: Events accumulate modifiers as they flow through features.
+// Each feature can add its contribution to the chain.
 type ChainedTopicDef[T any] struct {
 	topic Topic
 }
 
 // On connects this topic definition to a bus, returning a chained topic for pub/sub with chains.
-// This enables: `attacks := combat.AttackChain.On(bus)`
+//
+// THE ACCUMULATION PATTERN in action:
+//
+//	attacks := combat.AttackChain.On(bus)           // Connect to journey
+//	chain, _ := attacks.PublishWithChain(ctx, e, c) // Gather modifiers
+//	result, _ := chain.Execute(ctx, e)              // Apply all at once
+//
+// This enables events to journey through systems, accumulating changes.
 func (d *ChainedTopicDef[T]) On(bus EventBus) ChainedTopic[T] {
 	return &chainedTopic[T]{
 		bus:   bus,
