@@ -228,6 +228,26 @@ func (c *Character) AddFeature(feature interface{}) {
 	c.features = append(c.features, nil)
 }
 
+// GetFeatures returns the character's features as JSON
+func (c *Character) GetFeatures() []json.RawMessage {
+	return c.features
+}
+
+// HasFeatureID checks if the character has a feature with the given ID
+func (c *Character) HasFeatureID(featureID string) bool {
+	for _, featureData := range c.features {
+		var peek struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(featureData, &peek); err == nil {
+			if peek.ID == featureID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // SaveThrow performs a saving throw
 // TODO: This is a placeholder implementation. In a complete system, this would:
 // - Calculate ability modifier for the given ability

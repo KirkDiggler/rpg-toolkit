@@ -138,9 +138,9 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().Equal(10, character.hitDice)
 
 		// Check features - should have fighting_style and second_wind
-		s.Assert().Contains(character.features, "fighting_style")
-		s.Assert().Contains(character.features, "second_wind")
-		s.Assert().Len(character.features, 2, "Level 1 fighter should have 2 features")
+		s.Assert().True(character.HasFeatureID("fighting_style"), "Should have fighting_style feature")
+		s.Assert().True(character.HasFeatureID("second_wind"), "Should have second_wind feature")
+		s.Assert().Len(character.GetFeatures(), 2, "Level 1 fighter should have 2 features")
 
 		// Check if fighting style choice is stored
 		hasDefenseChoice := false
@@ -213,10 +213,10 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().Equal(2, character.level)
 
 		// Check features - should have all level 1 and level 2 features
-		s.Assert().Contains(character.features, "fighting_style")
-		s.Assert().Contains(character.features, "second_wind")
-		s.Assert().Contains(character.features, "action_surge")
-		s.Assert().Len(character.features, 3, "Level 2 fighter should have 3 features")
+		s.Assert().True(character.HasFeatureID("fighting_style"), "Should have fighting_style feature")
+		s.Assert().True(character.HasFeatureID("second_wind"), "Should have second_wind feature")
+		s.Assert().True(character.HasFeatureID("action_surge"), "Should have action_surge feature")
+		s.Assert().Len(character.GetFeatures(), 3, "Level 2 fighter should have 3 features")
 	})
 
 	// Test that all classes and races preserve their choices
@@ -346,8 +346,8 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().NotNil(character)
 
 		// Check wizard features
-		s.Assert().Contains(character.features, "spellcasting")
-		s.Assert().Contains(character.features, "arcane_recovery")
+		s.Assert().True(character.HasFeatureID("spellcasting"), "Should have spellcasting feature")
+		s.Assert().True(character.HasFeatureID("arcane_recovery"), "Should have arcane_recovery feature")
 
 		// Check if spell choices are preserved with correct sources
 		hasCantripChoice := false
