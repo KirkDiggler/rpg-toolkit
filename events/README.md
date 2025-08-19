@@ -7,8 +7,11 @@ Events are just data. Topics route them. The `.On(bus)` pattern connects them. ~
 ## The Magic: `.On(bus)` Pattern
 
 ```go
-// Define topics at package level - rulebook ensures uniqueness
-var AttackTopic = events.DefineTypedTopic[AttackEvent](events.Topic("combat.attack"))
+// Define topic constants - explicit and reusable
+const TopicAttack events.Topic = "combat.attack"
+
+// Define typed topic using the constant
+var AttackTopic = events.DefineTypedTopic[AttackEvent](TopicAttack)
 
 // Connect and use - beautiful!
 attacks := AttackTopic.On(bus)
@@ -108,6 +111,7 @@ package combat
 
 import (
     "context"
+    "github.com/KirkDiggler/rpg-toolkit/core/chain"
     "github.com/KirkDiggler/rpg-toolkit/events"
 )
 
