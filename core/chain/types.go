@@ -16,10 +16,12 @@ type Stage string
 // Each modification transforms the data and passes it to the next.
 type Chain[T any] interface {
 	// Add registers a modifier at the specified stage with a unique ID.
-	Add(stage Stage, id string, modifier func(context.Context, T) (T, error))
+	// Returns an error if the ID already exists.
+	Add(stage Stage, id string, modifier func(context.Context, T) (T, error)) error
 
 	// Remove unregisters a modifier by its ID.
-	Remove(id string)
+	// Returns an error if the ID does not exist.
+	Remove(id string) error
 
 	// Execute runs all modifiers in stage order, transforming the data.
 	Execute(ctx context.Context, data T) (T, error)
