@@ -1,275 +1,270 @@
-# Events Package - Type-Safe Event Bus
+# Events Package - Beautiful Type-Safe Topics
 
 ## Philosophy
 
-Events are just data. The bus is just plumbing. Events know their refs. ~300 lines total.
+Events are just data. Topics route them. The `.On(bus)` pattern connects them. ~500 lines total.
 
-## Core Design
-
-Events carry their own ref, eliminating the need to pass refs when publishing. A single package-level ref is shared by both the event and its TypedRef, ensuring perfect consistency.
-
-## Complete Example: Combat System
-
-### 1. Define Your Events (combat/events.go)
+## The Magic: `.On(bus)` Pattern
 
 ```go
-package combat
+// Define topics at package level - rulebook ensures uniqueness
+var AttackTopic = events.DefineTypedTopic[AttackEvent](events.Topic("combat.attack"))
 
-import (
-    "github.com/KirkDiggler/rpg-toolkit/core"
-    "github.com/KirkDiggler/rpg-toolkit/events"
-)
-
-// Single source of truth - package-level ref
-var damageEventRef = func() *core.Ref {
-    r, _ := core.ParseString("combat:event:damage")
-    return r
-}()
-
-// DamageType constants
-type DamageType string
-
-const (
-    DamageTypeSlashing DamageType = "slashing"
-    DamageTypePiercing DamageType = "piercing"
-    DamageTypeFire     DamageType = "fire"
-)
-
-// DamageEvent is just data
-type DamageEvent struct {
-    Source     core.Entity
-    Target     core.Entity
-    Amount     int
-    DamageType DamageType
-}
-
-// EventRef returns THE ref (not a copy, THE actual ref)
-func (e *DamageEvent) EventRef() *core.Ref {
-    return damageEventRef  // Same pointer every time!
-}
-
-// DamageEventRef for type-safe subscriptions
-var DamageEventRef = &core.TypedRef[*DamageEvent]{
-    Ref: damageEventRef,  // Same ref object!
-}
+// Connect and use - beautiful!
+attacks := AttackTopic.On(bus)
 ```
 
-### 2. Subscribe to Events (character/character.go)
+This pattern is everything:
+- **Explicit** - You see the connection happening
+- **Type-safe** - Can't mix types
+- **Discoverable** - IDE shows all available topics
+- **Clean** - No strings in user code
+
+## Two Patterns for Different Needs
+
+### 1. TypedTopic - Pure Notifications
+
+For events that notify without transformation:
 
 ```go
-package character
+// Define topic constants
+const TopicLevelUp events.Topic = "player.levelup"
 
-import (
-    "github.com/KirkDiggler/rpg-toolkit/combat"
-    "github.com/KirkDiggler/rpg-toolkit/events"
-)
+// Define typed topic using the constant
+var LevelUpTopic = events.DefineTypedTopic[LevelUpEvent](TopicLevelUp)
 
-type Character struct {
-    ID         string
-    HP         int
-    MaxHP      int
-    eventBus   events.EventBus
-    eventSubs  []string
+// Event is just data - no interface!
+type LevelUpEvent struct {
+    PlayerID string
+    NewLevel int
 }
 
-// SetupEventHandlers subscribes to relevant events
-func (c *Character) SetupEventHandlers() error {
-    // Simple subscription - gets ALL damage events
-    id1, err := events.Subscribe(
-        c.eventBus,
-        combat.DamageEventRef,
-        c.handleAnyDamage,
-    )
-    if err != nil {
-        return err
-    }
-    c.eventSubs = append(c.eventSubs, id1)
+// Use in features
+func OnLevelUp(bus events.EventBus) {
+    levelups := LevelUpTopic.On(bus)
     
-    // Filtered subscription - only MY damage
-    id2, err := events.Subscribe(
-        c.eventBus,
-        combat.DamageEventRef,
-        c.handleMyDamage,
-        events.Where(func(e *combat.DamageEvent) bool {
-            return e.Target == c
-        }),
-    )
-    if err != nil {
-        return err
-    }
-    c.eventSubs = append(c.eventSubs, id2)
-    
-    return nil
-}
-
-// Handler receives typed events
-func (c *Character) handleMyDamage(e *combat.DamageEvent) error {
-    c.HP -= e.Amount
-    
-    // Check for resistance
-    if c.hasResistance(e.DamageType) {
-        c.HP += e.Amount / 2 // Take half damage
-    }
-    
-    if c.HP <= 0 {
-        c.HP = 0
-        // Publish character downed event...
-    }
-    
-    return nil
-}
-
-// Cleanup unsubscribes from all events
-func (c *Character) Cleanup() {
-    for _, id := range c.eventSubs {
-        c.eventBus.Unsubscribe(id)
-    }
-}
-```
-
-### 3. Publish Events (combat/combat.go)
-
-```go
-package combat
-
-import "github.com/KirkDiggler/rpg-toolkit/events"
-
-type CombatSystem struct {
-    bus events.EventBus
-}
-
-// ResolveAttack calculates and publishes damage
-func (cs *CombatSystem) ResolveAttack(attacker, defender core.Entity, weapon Weapon) error {
-    // Calculate damage
-    damage := cs.calculateDamage(weapon, attacker)
-    
-    // Publish - no ref parameter needed!
-    return events.Publish(cs.bus, &DamageEvent{
-        Source:     attacker,
-        Target:     defender,
-        Amount:     damage,
-        DamageType: weapon.DamageType(),
+    levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
+        fmt.Printf("Player %s reached level %d!\n", e.PlayerID, e.NewLevel)
+        return nil
     })
 }
 ```
 
-## Key Design Features
+### 2. ChainedTopic - Events with Modifier Chains
 
-### Single Source of Truth
-
-Each event type has ONE ref defined at package level:
+For events that need staged modifier processing:
 
 ```go
-// Package-level ref - shared by everything
-var damageEventRef = func() *core.Ref {
-    r, _ := core.ParseString("combat:event:damage")
-    return r
-}()
+// Define topic constant
+const TopicAttack events.Topic = "combat.attack"
 
-// Event returns it
-func (e *DamageEvent) EventRef() *core.Ref {
-    return damageEventRef  // Same object!
+// Define chained topic using the constant
+var AttackChain = events.DefineChainedTopic[AttackEvent](TopicAttack)
+
+// Event is still just data
+type AttackEvent struct {
+    AttackerID string
+    TargetID   string
+    Damage     int
 }
 
-// TypedRef uses it
-var DamageEventRef = &core.TypedRef[*DamageEvent]{
-    Ref: damageEventRef,  // Same object!
-}
-```
-
-### Runtime Validation
-
-Subscribe validates that events use the correct ref via pointer comparison:
-
-```go
-if event.EventRef() != typedRef.Ref {
-    // Bug detected - event and TypedRef not using same ref
-}
-```
-
-### Duplicate Detection
-
-The system detects if multiple event types use the same ref string:
-
-```go
-// ErrDuplicateRef shows which types conflict
-"duplicate event ref \"combat:event:damage\": 
- already registered by *combat.DamageEvent, 
- attempted by *other.DamageEvent"
-```
-
-## API Summary
-
-### Core Types
-
-```go
-// Events must implement RefEvent
-type RefEvent interface {
-    EventRef() *core.Ref
+// Features add modifiers
+func (r *Rage) Apply(bus events.EventBus) error {
+    attacks := AttackChain.On(bus)
+    
+    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, chain chain.Chain[AttackEvent]) (chain.Chain[AttackEvent], error) {
+        if e.AttackerID == r.ownerID {
+            chain.Add(combat.StageConditions, "rage", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
+                e.Damage += 2
+                return e, nil
+            })
+        }
+        return chain, nil
+    })
 }
 
-// Type aliases for clarity
-type EventHandler[T any] = func(T) error
-type EventFilter[T any] = func(T) bool
+// Combat system uses it
+attack := AttackEvent{AttackerID: "barbarian", Damage: 10}
+chain := events.NewStagedChain[AttackEvent](stages)
+
+attacks := AttackChain.On(bus)
+modifiedChain, _ := attacks.PublishWithChain(ctx, attack, chain)
+result, _ := modifiedChain.Execute(ctx, attack)
+// result.Damage is now 12
 ```
 
-### Publishing
+## Key Design Wins
+
+1. **No Event Interface** - Events are pure data structs
+2. **No Strings in User Code** - Topics defined once with explicit IDs
+3. **The `.On(bus)` Pattern** - Makes connections explicit and beautiful
+4. **Type Safety Without Ceremony** - Generics do the work
+5. **Features Are Dynamic, Topics Are Static** - Perfect separation
+
+## Complete Example: Rulebook Events
 
 ```go
-// Event knows its ref - no parameter needed!
-events.Publish(bus, &DamageEvent{
-    Source: attacker,
-    Target: defender,
-    Amount: 10,
-    DamageType: DamageTypeSlashing,
-})
-```
+package combat
 
-### Subscribing
-
-```go
-// Simple subscription
-id, err := events.Subscribe(bus, ref, handler)
-
-// With filter (variadic options)
-id, err := events.Subscribe(
-    bus,
-    ref,
-    handler,
-    events.Where(filter),
+import (
+    "context"
+    "github.com/KirkDiggler/rpg-toolkit/events"
 )
+
+// Define topic constants - explicit and reusable
+const (
+    TopicCombatStart events.Topic = "combat.start"
+    TopicCombatEnd   events.Topic = "combat.end"
+    TopicAttack      events.Topic = "combat.attack"
+    TopicDamage      events.Topic = "combat.damage"
+    TopicSave        events.Topic = "combat.save"
+)
+
+// Define stage constants - explicit processing order
+const (
+    StageBase       chain.Stage = "base"
+    StageFeatures   chain.Stage = "features"
+    StageConditions chain.Stage = "conditions"
+    StageEquipment  chain.Stage = "equipment"
+    StageFinal      chain.Stage = "final"
+)
+
+// Define typed topics using the constants
+var (
+    // Pure notifications
+    CombatStartTopic = events.DefineTypedTopic[CombatStartEvent](TopicCombatStart)
+    CombatEndTopic   = events.DefineTypedTopic[CombatEndEvent](TopicCombatEnd)
+    
+    // Chained events for modifiers
+    AttackChain = events.DefineChainedTopic[AttackEvent](TopicAttack)
+    DamageChain = events.DefineChainedTopic[DamageEvent](TopicDamage)
+    SaveChain   = events.DefineChainedTopic[SaveEvent](TopicSave)
+)
+
+// Events are just data
+type AttackEvent struct {
+    AttackerID string
+    TargetID   string
+    Damage     int
+    Critical   bool
+}
+
+type DamageEvent struct {
+    SourceID   string
+    TargetID   string
+    Amount     int
+    DamageType string
+}
+
+// Shared structs for common data
+type Damage struct {
+    Amount int
+    Type   string
+}
+
+// Features use the topics
+type BlessFeature struct {
+    targetID string
+    bonus    int
+}
+
+func (b *BlessFeature) Apply(bus events.EventBus) error {
+    // Beautiful connection pattern
+    attacks := AttackChain.On(bus)
+    saves := SaveChain.On(bus)
+    
+    // Type-safe subscriptions
+    attacks.SubscribeWithChain(ctx, b.modifyAttack)
+    saves.SubscribeWithChain(ctx, b.modifySave)
+    
+    return nil
+}
 ```
 
-## Why This Design Works
+## API Reference
 
-1. **Clean API** - `Publish(bus, event)` without ref parameter
-2. **Type Safety** - TypedRef ensures compile-time type checking
-3. **Runtime Validation** - Pointer comparison catches bugs
-4. **Single Source of Truth** - One ref per event type
-5. **No Noise** - Filters at bus level, handlers only see relevant events
-6. **Duplicate Detection** - Registry catches ref string conflicts
-
-## Implementation Stats
-
-- **~300 lines** total (bus.go + typed.go + errors.go)
-- **34ns per publish** with single handler
-- **Type safe** at compile time
-- **Runtime validated** via pointer comparison
-
-## Best Practices
-
-1. **Define ref once** - Package-level variable
-2. **Share the ref** - Event.EventRef() and TypedRef.Ref use same object
-3. **Store subscription IDs** - For proper cleanup
-4. **Filter early** - Use Where() to reduce noise
-5. **Events are immutable** - Unless explicitly designed for modification
-
-## That's It
-
-No complex hierarchies. No priority systems. Just:
+### Defining Topics
 
 ```go
-Publish(bus, event) → Subscribe(bus, ref, handler, Where(filter)) → handler(event)
+// Define constants first - explicit and reusable
+const (
+    TopicMyEvent  events.Topic = "my.event"
+    TopicMyAction events.Topic = "my.action"
+)
+
+// For pure notifications
+var MyTopic = events.DefineTypedTopic[MyEvent](TopicMyEvent)
+
+// For events with chains
+var MyChain = events.DefineChainedTopic[MyAction](TopicMyAction)
 ```
 
-The ref ties everything together - compile-time safe, runtime validated, simple to use.
+### Using Topics
+
+```go
+// Connect to bus
+topic := MyTopic.On(bus)
+
+// Subscribe
+id, err := topic.Subscribe(ctx, handler)
+
+// Publish
+err := topic.Publish(ctx, event)
+
+// Unsubscribe
+err := topic.Unsubscribe(ctx, id)
+```
+
+### Using Chains
+
+```go
+// Connect to bus
+chain := MyChain.On(bus)
+
+// Subscribe with chain
+id, err := chain.SubscribeWithChain(ctx, handler)
+
+// Publish with chain
+modifiedChain, err := chain.PublishWithChain(ctx, event, chain)
+
+// Execute chain
+result, err := modifiedChain.Execute(ctx, event)
+```
+
+## File Structure
+
+```
+events/
+├── bus.go           # Simple EventBus implementation (~100 lines)
+├── topic.go         # Topic type definition (9 lines)
+├── topic_def.go     # Topic definitions with .On(bus) (~50 lines)
+├── typed_topic.go   # TypedTopic implementation (~70 lines)
+├── chained_topic.go # ChainedTopic implementation (~130 lines)
+├── chain.go         # StagedChain implementation (~120 lines)
+├── errors.go        # Error definitions (~25 lines)
+└── README.md        # This file
+```
+
+## Design Philosophy
+
+This package embodies the toolkit principles:
+
+1. **Pick ONE Way** - Two clear patterns, each for specific needs
+2. **Optimize for Simplicity** - No unnecessary abstractions
+3. **Make It Impossible to Use Wrong** - Type safety prevents errors
+4. **Explicit Over Implicit** - The `.On(bus)` pattern shows intent
+5. **Data Over Behavior** - Events are just structs
+
+## For Rulebook Authors
+
+Your workflow is simple:
+
+1. **Define your topics** with explicit IDs
+2. **Define your events** as plain structs
+3. **Connect with `.On(bus)`** in your features
+4. **Subscribe with type safety**
+5. **Publish without fear**
+
+No strings to typo. No interfaces to implement. No runtime type assertions.
+
+Just beautiful, type-safe event routing.

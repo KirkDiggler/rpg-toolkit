@@ -5,18 +5,16 @@ package events
 
 import (
 	"context"
-
-	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
 // TypedTopic provides type-safe publish/subscribe for events of type T.
 // It wraps the event bus to ensure compile-time type safety.
-// Note: T must implement the Event interface.
-type TypedTopic[T Event] interface {
+// Use this for pure notifications. For events needing chain processing, use ChainedTopic.
+type TypedTopic[T any] interface {
 	// Subscribe registers a handler for events of type T.
-	// The handler can modify the event for chain-style processing.
+	// This is for pure notifications - the handler processes but doesn't transform the event.
 	// Returns a subscription ID that can be used to unsubscribe.
-	Subscribe(ctx context.Context, handler func(context.Context, T) (T, error)) (string, error)
+	Subscribe(ctx context.Context, handler func(context.Context, T) error) (string, error)
 
 	// Unsubscribe removes a handler using its subscription ID.
 	// Returns an error if the ID is not found.
@@ -28,63 +26,32 @@ type TypedTopic[T Event] interface {
 	Publish(ctx context.Context, event T) error
 }
 
-// GetTopic returns a typed topic for the specified event type.
-// This provides type-safe access to the event bus for a specific topic.
-func GetTopic[T Event](bus EventBus, topic Topic) TypedTopic[T] {
-	return &typedTopic[T]{
-		bus:   bus,
-		topic: string(topic),
-	}
-}
-
 // typedTopic is the implementation of TypedTopic[T]
-type typedTopic[T Event] struct {
+type typedTopic[T any] struct {
 	bus   EventBus
-	topic string
+	topic Topic
 }
 
 // Subscribe implements TypedTopic[T]
-func (t *typedTopic[T]) Subscribe(ctx context.Context, handler func(context.Context, T) (T, error)) (string, error) {
-
-	// Create ref for this topic
-	ref, err := core.NewRef(core.RefInput{
-		Module: "topic",
-		Type:   "event",
-		Value:  t.topic,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	// Create TypedRef for type-safe subscription
-	typedRef := &core.TypedRef[T]{Ref: ref}
-
-	// Wrap handler to match EventHandler[T] signature
-	wrappedHandler := func(ctx context.Context, event T) error {
-		// Call the handler that can modify the event
-		modified, err := handler(ctx, event)
-		if err != nil {
-			return err
+func (t *typedTopic[T]) Subscribe(ctx context.Context, handler func(context.Context, T) error) (string, error) {
+	// Wrap handler to match bus signature
+	wrappedHandler := func(event any) error {
+		typedEvent, ok := event.(T)
+		if !ok {
+			return nil // Ignore events of wrong type
 		}
-
-		// If event has a chain, modifications happen there
-		// Otherwise, we can't modify in-place with current bus
-		// TODO: When the event bus supports propagating modified events,
-		//       update this code to handle the modified event properly
-		_ = modified
-		return nil
+		return handler(ctx, typedEvent)
 	}
 
-	// Use the existing typed Subscribe function
-	return Subscribe(ctx, t.bus, typedRef, wrappedHandler)
+	return t.bus.Subscribe(t.topic, wrappedHandler)
 }
 
 // Unsubscribe implements TypedTopic[T]
 func (t *typedTopic[T]) Unsubscribe(ctx context.Context, id string) error {
-	return Unsubscribe(ctx, t.bus, id)
+	return t.bus.Unsubscribe(id)
 }
 
 // Publish implements TypedTopic[T]
 func (t *typedTopic[T]) Publish(ctx context.Context, event T) error {
-	return Publish(ctx, t.bus, event)
+	return t.bus.Publish(t.topic, event)
 }
