@@ -46,7 +46,7 @@ type typedTopic[T Event] struct {
 // Subscribe implements TypedTopic[T]
 func (t *typedTopic[T]) Subscribe(handler func(context.Context, T) (T, error)) (string, error) {
 	ctx := context.Background()
-	
+
 	// Create ref for this topic
 	ref, err := core.NewRef(core.RefInput{
 		Module: "topic",
@@ -56,10 +56,10 @@ func (t *typedTopic[T]) Subscribe(handler func(context.Context, T) (T, error)) (
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Create TypedRef for type-safe subscription
 	typedRef := &core.TypedRef[T]{Ref: ref}
-	
+
 	// Wrap handler to match EventHandler[T] signature
 	wrappedHandler := func(ctx context.Context, event T) error {
 		// Call the handler that can modify the event
@@ -67,13 +67,13 @@ func (t *typedTopic[T]) Subscribe(handler func(context.Context, T) (T, error)) (
 		if err != nil {
 			return err
 		}
-		
+
 		// If event has a chain, modifications happen there
 		// Otherwise, we can't modify in-place with current bus
 		_ = modified
 		return nil
 	}
-	
+
 	// Use the existing typed Subscribe function
 	return Subscribe(ctx, t.bus, typedRef, wrappedHandler)
 }

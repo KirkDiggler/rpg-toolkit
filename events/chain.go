@@ -40,7 +40,7 @@ func NewStagedChain[T any](stages []chain.Stage) *StagedChain[T] {
 	for _, stage := range stages {
 		modifiers[stage] = make([]modifier[T], 0)
 	}
-	
+
 	return &StagedChain[T]{
 		stages:    stages,
 		modifiers: modifiers,
@@ -52,21 +52,21 @@ func NewStagedChain[T any](stages []chain.Stage) *StagedChain[T] {
 func (c *StagedChain[T]) Add(stage chain.Stage, id string, handler func(context.Context, T) (T, error)) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	// Check for duplicate ID
 	if _, exists := c.idToStage[id]; exists {
 		return ErrDuplicateID
 	}
-	
+
 	// Add modifier to stage
 	c.modifiers[stage] = append(c.modifiers[stage], modifier[T]{
 		id:      id,
 		handler: handler,
 	})
-	
+
 	// Track ID to stage mapping
 	c.idToStage[id] = stage
-	
+
 	return nil
 }
 
@@ -74,13 +74,13 @@ func (c *StagedChain[T]) Add(stage chain.Stage, id string, handler func(context.
 func (c *StagedChain[T]) Remove(id string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	// Find which stage contains this ID
 	stage, exists := c.idToStage[id]
 	if !exists {
 		return ErrIDNotFound
 	}
-	
+
 	// Remove from stage's modifiers
 	mods := c.modifiers[stage]
 	for i, mod := range mods {
@@ -90,7 +90,7 @@ func (c *StagedChain[T]) Remove(id string) error {
 			return nil
 		}
 	}
-	
+
 	// Should not reach here if idToStage is consistent
 	return ErrIDNotFound
 }
@@ -99,13 +99,13 @@ func (c *StagedChain[T]) Remove(id string) error {
 func (c *StagedChain[T]) Execute(ctx context.Context, data T) (T, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	result := data
-	
+
 	// Process each stage in order
 	for _, stage := range c.stages {
 		mods := c.modifiers[stage]
-		
+
 		// Execute all modifiers in this stage
 		for _, mod := range mods {
 			var err error
@@ -115,6 +115,6 @@ func (c *StagedChain[T]) Execute(ctx context.Context, data T) (T, error) {
 			}
 		}
 	}
-	
+
 	return result, nil
 }
