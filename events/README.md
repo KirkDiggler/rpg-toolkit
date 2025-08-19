@@ -1,275 +1,241 @@
-# Events Package - Type-Safe Event Bus
+# Events - The '.On(bus)' Pattern
 
-## Philosophy
-
-Events are just data. The bus is just plumbing. Events know their refs. ~300 lines total.
-
-## Core Design
-
-Events carry their own ref, eliminating the need to pass refs when publishing. A single package-level ref is shared by both the event and its TypedRef, ensuring perfect consistency.
-
-## Complete Example: Combat System
-
-### 1. Define Your Events (combat/events.go)
+THE MAGIC: Explicit topic-to-bus connections that make event flow beautiful.
 
 ```go
-package combat
+// The pattern that changes everything
+attacks := combat.AttackTopic.On(bus)  // SEE the connection happen
+attacks.Subscribe(ctx, handleAttack)   // Type-safe from here
+```
 
-import (
-    "github.com/KirkDiggler/rpg-toolkit/core"
-    "github.com/KirkDiggler/rpg-toolkit/events"
-)
+## The Journey Pattern
 
-// Single source of truth - package-level ref
-var damageEventRef = func() *core.Ref {
-    r, _ := core.ParseString("combat:event:damage")
-    return r
-}()
+Watch how an attack flows through your game, accumulating modifications:
 
-// DamageType constants
-type DamageType string
+```go
+// 1. Attack begins its journey
+attack := AttackEvent{AttackerID: "barbarian", Damage: 10}
+chain := NewStagedChain[AttackEvent](stages)
 
+// 2. Connect to the bus - explicit and beautiful
+attacks := combat.AttackChain.On(bus)
+
+// 3. Journey through all features (rage adds +2, bless adds +4)
+modifiedChain, _ := attacks.PublishWithChain(ctx, attack, chain)
+
+// 4. Execute accumulated modifications
+result, _ := modifiedChain.Execute(ctx, attack)
+// Base: 10 → Rage: 12 → Bless: 16
+```
+
+Every feature along the journey sees the attack and can add its modifier. The chain accumulates them all, then applies them in order. This is the infrastructure that makes modifier stacking work.
+
+## Why '.On(bus)' Is Special
+
+Traditional event systems hide the connection:
+```go
+// Where does this go? Who knows?
+bus.Publish("attack", event)  // String-based, error-prone
+```
+
+Our pattern makes it explicit:
+```go
+// Crystal clear where this connects
+attacks := AttackTopic.On(bus)  // See it, understand it
+attacks.Publish(ctx, event)     // Type-safe, IDE-friendly
+```
+
+## Two Patterns, Two Journeys
+
+### Pure Notifications - One-Way Journey
+
+Events that notify systems without modification:
+
+```go
+// Define once at compile-time
+var LevelUpTopic = DefineTypedTopic[LevelUpEvent]("player.levelup")
+
+// Connect at runtime
+levelups := LevelUpTopic.On(bus)
+
+// Achievement system listens
+levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
+    if e.NewLevel == 10 {
+        UnlockAchievement(e.PlayerID, "Decimator")
+    }
+    return nil
+})
+
+// UI system listens
+levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
+    ShowLevelUpAnimation(e.PlayerID, e.NewLevel)
+    return nil
+})
+
+// Publish once, flows everywhere
+levelups.Publish(ctx, LevelUpEvent{PlayerID: "hero", NewLevel: 10})
+```
+
+### Chained Events - Accumulation Journey
+
+Events that gather modifications as they travel:
+
+```go
+// Define the journey stages
 const (
-    DamageTypeSlashing DamageType = "slashing"
-    DamageTypePiercing DamageType = "piercing"
-    DamageTypeFire     DamageType = "fire"
+    StageBase       = "base"       // Starting values
+    StageFeatures   = "features"   // Class features apply
+    StageConditions = "conditions" // Status effects apply
+    StageEquipment  = "equipment"  // Gear bonuses apply
+    StageFinal      = "final"      // Last-minute adjustments
 )
 
-// DamageEvent is just data
-type DamageEvent struct {
-    Source     core.Entity
-    Target     core.Entity
-    Amount     int
-    DamageType DamageType
-}
-
-// EventRef returns THE ref (not a copy, THE actual ref)
-func (e *DamageEvent) EventRef() *core.Ref {
-    return damageEventRef  // Same pointer every time!
-}
-
-// DamageEventRef for type-safe subscriptions
-var DamageEventRef = &core.TypedRef[*DamageEvent]{
-    Ref: damageEventRef,  // Same ref object!
-}
-```
-
-### 2. Subscribe to Events (character/character.go)
-
-```go
-package character
-
-import (
-    "github.com/KirkDiggler/rpg-toolkit/combat"
-    "github.com/KirkDiggler/rpg-toolkit/events"
-)
-
-type Character struct {
-    ID         string
-    HP         int
-    MaxHP      int
-    eventBus   events.EventBus
-    eventSubs  []string
-}
-
-// SetupEventHandlers subscribes to relevant events
-func (c *Character) SetupEventHandlers() error {
-    // Simple subscription - gets ALL damage events
-    id1, err := events.Subscribe(
-        c.eventBus,
-        combat.DamageEventRef,
-        c.handleAnyDamage,
-    )
-    if err != nil {
-        return err
-    }
-    c.eventSubs = append(c.eventSubs, id1)
+// Rage feature adds to the journey
+func (r *Rage) Apply(bus EventBus) error {
+    attacks := AttackChain.On(bus)  // Connect to journey
     
-    // Filtered subscription - only MY damage
-    id2, err := events.Subscribe(
-        c.eventBus,
-        combat.DamageEventRef,
-        c.handleMyDamage,
-        events.Where(func(e *combat.DamageEvent) bool {
-            return e.Target == c
-        }),
-    )
-    if err != nil {
-        return err
-    }
-    c.eventSubs = append(c.eventSubs, id2)
-    
-    return nil
+    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, c Chain[AttackEvent]) (Chain[AttackEvent], error) {
+        if e.AttackerID == r.ownerID {
+            // Add our modifier to the conditions stage
+            c.Add(StageConditions, "rage", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
+                e.Damage += 2
+                return e, nil
+            })
+        }
+        return c, nil
+    })
 }
 
-// Handler receives typed events
-func (c *Character) handleMyDamage(e *combat.DamageEvent) error {
-    c.HP -= e.Amount
+// Bless spell adds to the journey
+func (b *Bless) Apply(bus EventBus) error {
+    attacks := AttackChain.On(bus)  // Same journey, different feature
     
-    // Check for resistance
-    if c.hasResistance(e.DamageType) {
-        c.HP += e.Amount / 2 // Take half damage
-    }
-    
-    if c.HP <= 0 {
-        c.HP = 0
-        // Publish character downed event...
-    }
-    
-    return nil
-}
-
-// Cleanup unsubscribes from all events
-func (c *Character) Cleanup() {
-    for _, id := range c.eventSubs {
-        c.eventBus.Unsubscribe(id)
-    }
-}
-```
-
-### 3. Publish Events (combat/combat.go)
-
-```go
-package combat
-
-import "github.com/KirkDiggler/rpg-toolkit/events"
-
-type CombatSystem struct {
-    bus events.EventBus
-}
-
-// ResolveAttack calculates and publishes damage
-func (cs *CombatSystem) ResolveAttack(attacker, defender core.Entity, weapon Weapon) error {
-    // Calculate damage
-    damage := cs.calculateDamage(weapon, attacker)
-    
-    // Publish - no ref parameter needed!
-    return events.Publish(cs.bus, &DamageEvent{
-        Source:     attacker,
-        Target:     defender,
-        Amount:     damage,
-        DamageType: weapon.DamageType(),
+    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, c Chain[AttackEvent]) (Chain[AttackEvent], error) {
+        if b.affects(e.AttackerID) {
+            c.Add(StageConditions, "bless", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
+                e.Damage += 4
+                return e, nil
+            })
+        }
+        return c, nil
     })
 }
 ```
 
-## Key Design Features
+## Complete Journey Example
 
-### Single Source of Truth
-
-Each event type has ONE ref defined at package level:
+Here's how damage flows through an entire combat system:
 
 ```go
-// Package-level ref - shared by everything
-var damageEventRef = func() *core.Ref {
-    r, _ := core.ParseString("combat:event:damage")
-    return r
-}()
+package example
 
-// Event returns it
-func (e *DamageEvent) EventRef() *core.Ref {
-    return damageEventRef  // Same object!
-}
-
-// TypedRef uses it
-var DamageEventRef = &core.TypedRef[*DamageEvent]{
-    Ref: damageEventRef,  // Same object!
-}
-```
-
-### Runtime Validation
-
-Subscribe validates that events use the correct ref via pointer comparison:
-
-```go
-if event.EventRef() != typedRef.Ref {
-    // Bug detected - event and TypedRef not using same ref
-}
-```
-
-### Duplicate Detection
-
-The system detects if multiple event types use the same ref string:
-
-```go
-// ErrDuplicateRef shows which types conflict
-"duplicate event ref \"combat:event:damage\": 
- already registered by *combat.DamageEvent, 
- attempted by *other.DamageEvent"
-```
-
-## API Summary
-
-### Core Types
-
-```go
-// Events must implement RefEvent
-type RefEvent interface {
-    EventRef() *core.Ref
-}
-
-// Type aliases for clarity
-type EventHandler[T any] = func(T) error
-type EventFilter[T any] = func(T) bool
-```
-
-### Publishing
-
-```go
-// Event knows its ref - no parameter needed!
-events.Publish(bus, &DamageEvent{
-    Source: attacker,
-    Target: defender,
-    Amount: 10,
-    DamageType: DamageTypeSlashing,
-})
-```
-
-### Subscribing
-
-```go
-// Simple subscription
-id, err := events.Subscribe(bus, ref, handler)
-
-// With filter (variadic options)
-id, err := events.Subscribe(
-    bus,
-    ref,
-    handler,
-    events.Where(filter),
+import (
+    "context"
+    "github.com/KirkDiggler/rpg-toolkit/events"
+    "github.com/KirkDiggler/rpg-toolkit/core/chain"
 )
+
+// Topic definitions - compile-time constants
+var (
+    AttackChain = events.DefineChainedTopic[AttackEvent]("combat.attack")
+    DamageChain = events.DefineChainedTopic[DamageEvent]("combat.damage")
+    SaveChain   = events.DefineChainedTopic[SaveEvent]("combat.save")
+)
+
+// The attack journey through the system
+func ResolveAttack(bus events.EventBus, attacker, target Entity) {
+    ctx := context.Background()
+    
+    // 1. Attack Roll Journey
+    attack := AttackEvent{
+        AttackerID: attacker.ID,
+        TargetID:   target.ID,
+        BaseRoll:   roll(20),
+    }
+    
+    attackChain := events.NewStagedChain[AttackEvent](stages)
+    attacks := AttackChain.On(bus)
+    
+    // Journey through all attack modifiers
+    modifiedChain, _ := attacks.PublishWithChain(ctx, attack, attackChain)
+    attack, _ = modifiedChain.Execute(ctx, attack)
+    
+    if attack.TotalRoll < target.AC {
+        return // Miss - journey ends
+    }
+    
+    // 2. Damage Calculation Journey
+    damage := DamageEvent{
+        SourceID: attacker.ID,
+        TargetID: target.ID,
+        Amount:   roll(8) + attacker.StrMod,
+        Type:     "slashing",
+    }
+    
+    damageChain := events.NewStagedChain[DamageEvent](stages)
+    damages := DamageChain.On(bus)
+    
+    // Journey through all damage modifiers
+    modifiedChain, _ = damages.PublishWithChain(ctx, damage, damageChain)
+    damage, _ = modifiedChain.Execute(ctx, damage)
+    
+    // 3. Saving Throw Journey (if applicable)
+    if damage.RequiresSave {
+        save := SaveEvent{
+            TargetID:   target.ID,
+            SaveType:   damage.SaveType,
+            DC:         damage.SaveDC,
+            BaseRoll:   roll(20),
+        }
+        
+        saveChain := events.NewStagedChain[SaveEvent](stages)
+        saves := SaveChain.On(bus)
+        
+        // Journey through all save modifiers
+        modifiedChain, _ = saves.PublishWithChain(ctx, save, saveChain)
+        save, _ = modifiedChain.Execute(ctx, save)
+        
+        if save.Success {
+            damage.Amount /= 2  // Half damage on save
+        }
+    }
+    
+    // Apply final damage
+    target.HP -= damage.Amount
+}
 ```
 
-## Why This Design Works
+See how each event has its own journey through the system? Features can hook into any point, adding their modifiers. The infrastructure handles the accumulation and ordering.
 
-1. **Clean API** - `Publish(bus, event)` without ref parameter
-2. **Type Safety** - TypedRef ensures compile-time type checking
-3. **Runtime Validation** - Pointer comparison catches bugs
-4. **Single Source of Truth** - One ref per event type
-5. **No Noise** - Filters at bus level, handlers only see relevant events
-6. **Duplicate Detection** - Registry catches ref string conflicts
+## Key Insights
 
-## Implementation Stats
+1. **The '.On(bus)' pattern** - Makes connections explicit and discoverable
+2. **Journey-driven design** - Events flow through systems, accumulating changes
+3. **Compile-time topics, runtime connections** - Static safety with dynamic flexibility
+4. **Infrastructure, not implementation** - We provide the roads, games provide the cars
 
-- **~300 lines** total (bus.go + typed.go + errors.go)
-- **34ns per publish** with single handler
-- **Type safe** at compile time
-- **Runtime validated** via pointer comparison
-
-## Best Practices
-
-1. **Define ref once** - Package-level variable
-2. **Share the ref** - Event.EventRef() and TypedRef.Ref use same object
-3. **Store subscription IDs** - For proper cleanup
-4. **Filter early** - Use Where() to reduce noise
-5. **Events are immutable** - Unless explicitly designed for modification
-
-## That's It
-
-No complex hierarchies. No priority systems. Just:
+## API at a Glance
 
 ```go
-Publish(bus, event) → Subscribe(bus, ref, handler, Where(filter)) → handler(event)
+// Define topics (compile-time)
+var AttackTopic = DefineTypedTopic[AttackEvent]("combat.attack")
+var AttackChain = DefineChainedTopic[AttackEvent]("combat.attack")
+
+// Connect to bus (runtime)
+attacks := AttackTopic.On(bus)  // THE MAGIC MOMENT
+
+// Use with type safety
+attacks.Subscribe(ctx, handler)
+attacks.Publish(ctx, event)
+
+// For chains
+chain := NewStagedChain[AttackEvent](stages)
+modifiedChain, _ := attacks.PublishWithChain(ctx, event, chain)
+result, _ := modifiedChain.Execute(ctx, event)
 ```
 
-The ref ties everything together - compile-time safe, runtime validated, simple to use.
+## This Is Infrastructure
+
+We don't implement game rules. We provide the infrastructure for events to journey through your game systems. The '.On(bus)' pattern makes these journeys explicit, type-safe, and beautiful.
+
+Your features define what happens. Our infrastructure ensures it happens in the right order, with the right types, accumulating properly along the way.

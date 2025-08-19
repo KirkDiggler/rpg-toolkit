@@ -1,6 +1,15 @@
-// Package rpgerr provides structured error handling for RPG game mechanics.
-// It enables clear communication of why game actions cannot proceed, with full
-// context about the game state when rules are evaluated.
+// Package rpgerr provides errors that tell the whole story automatically.
+//
+// THE MAGIC: Errors accumulate context as they flow through your systems - no manual tracking needed.
+//
+// Example:
+//
+//	ctx = rpgerr.WithMetadata(ctx, rpgerr.Meta("attacker", "barbarian"), rpgerr.Meta("round", 3))
+//	ctx = rpgerr.WithMetadata(ctx, rpgerr.Meta("weapon", "greataxe"), rpgerr.Meta("target", "dragon"))
+//	return rpgerr.WrapCtx(ctx, err, "attack failed") // Error now contains the complete journey
+//
+// KEY INSIGHT: Context values become part of the error automatically. Each system layer
+// adds its piece of the story, and WrapCtx captures it all without explicit passing.
 package rpgerr
 
 import (
