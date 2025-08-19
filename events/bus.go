@@ -4,6 +4,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -11,13 +12,13 @@ import (
 // EventBus provides a simple pub/sub mechanism for typed topics
 type EventBus interface {
 	// Subscribe registers a handler for a specific topic
-	Subscribe(topic Topic, handler any) (string, error)
+	Subscribe(ctx context.Context, topic Topic, handler any) (string, error)
 
 	// Unsubscribe removes a subscription by ID
-	Unsubscribe(id string) error
+	Unsubscribe(ctx context.Context, id string) error
 
 	// Publish sends an event to all subscribers of its topic
-	Publish(topic Topic, event any) error
+	Publish(ctx context.Context, topic Topic, event any) error
 }
 
 // NewEventBus creates a new event bus instance
@@ -40,7 +41,7 @@ type simpleEventBus struct {
 	nextID      int
 }
 
-func (b *simpleEventBus) Subscribe(topic Topic, handler any) (string, error) {
+func (b *simpleEventBus) Subscribe(ctx context.Context, topic Topic, handler any) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -58,7 +59,7 @@ func (b *simpleEventBus) Subscribe(topic Topic, handler any) (string, error) {
 	return id, nil
 }
 
-func (b *simpleEventBus) Unsubscribe(id string) error {
+func (b *simpleEventBus) Unsubscribe(ctx context.Context, id string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -79,7 +80,7 @@ func (b *simpleEventBus) Unsubscribe(id string) error {
 	return nil
 }
 
-func (b *simpleEventBus) Publish(topic Topic, event any) error {
+func (b *simpleEventBus) Publish(ctx context.Context, topic Topic, event any) error {
 	b.mu.RLock()
 	subs := b.subscribers[topic]
 	handlers := make([]any, len(subs))

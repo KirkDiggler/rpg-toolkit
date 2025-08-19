@@ -104,7 +104,7 @@ func (t *chainedTopic[T]) SubscribeWithChain(ctx context.Context, handler func(c
 		return nil
 	}
 
-	return t.bus.Subscribe(t.topic, wrappedHandler)
+	return t.bus.Subscribe(ctx, t.topic, wrappedHandler)
 }
 
 // PublishWithChain implements ChainedTopic[T]
@@ -117,7 +117,7 @@ func (t *chainedTopic[T]) PublishWithChain(ctx context.Context, event T, chain c
 	}
 
 	// Publish through bus - handlers will modify ce.chain
-	err := t.bus.Publish(t.topic, ce)
+	err := t.bus.Publish(ctx, t.topic, ce)
 	if err != nil {
 		return chain, err
 	}
@@ -128,5 +128,5 @@ func (t *chainedTopic[T]) PublishWithChain(ctx context.Context, event T, chain c
 
 // Unsubscribe implements ChainedTopic[T]
 func (t *chainedTopic[T]) Unsubscribe(ctx context.Context, id string) error {
-	return t.bus.Unsubscribe(id)
+	return t.bus.Unsubscribe(ctx, id)
 }

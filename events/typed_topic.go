@@ -43,15 +43,15 @@ func (t *typedTopic[T]) Subscribe(ctx context.Context, handler func(context.Cont
 		return handler(ctx, typedEvent)
 	}
 
-	return t.bus.Subscribe(t.topic, wrappedHandler)
+	return t.bus.Subscribe(ctx, t.topic, wrappedHandler)
 }
 
 // Unsubscribe implements TypedTopic[T]
 func (t *typedTopic[T]) Unsubscribe(ctx context.Context, id string) error {
-	return t.bus.Unsubscribe(id)
+	return t.bus.Unsubscribe(ctx, id)
 }
 
 // Publish implements TypedTopic[T]
 func (t *typedTopic[T]) Publish(ctx context.Context, event T) error {
-	return t.bus.Publish(t.topic, event)
+	return t.bus.Publish(ctx, t.topic, event)
 }
