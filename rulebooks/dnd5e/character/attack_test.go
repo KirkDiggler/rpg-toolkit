@@ -82,7 +82,7 @@ func (s *AttackTestSuite) TestCharacterAttackWithRageBonus() {
 	// Track attack events
 	var attackEvent *character.AttackEvent
 	attackTopic := character.AttackTopic.On(s.bus)
-	_, err = attackTopic.Subscribe(s.ctx, func(ctx context.Context, event character.AttackEvent) error {
+	_, err = attackTopic.Subscribe(s.ctx, func(_ context.Context, event character.AttackEvent) error {
 		attackEvent = &event
 		return nil
 	})

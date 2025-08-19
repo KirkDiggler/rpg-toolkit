@@ -222,7 +222,7 @@ func (c *Character) GetType() core.EntityType {
 }
 
 // AddFeature adds a feature to the character
-func (c *Character) AddFeature(feature interface{}) {
+func (c *Character) AddFeature(_ interface{}) {
 	// For now, keep as interface{} parameter for compatibility
 	// Would convert to JSON here if needed
 	c.features = append(c.features, nil)
@@ -320,7 +320,7 @@ func (c *Character) OnConditionApplied(ctx context.Context, event ConditionAppli
 }
 
 // OnConditionRemoved handles condition removed events targeting this character
-func (c *Character) OnConditionRemoved(ctx context.Context, event ConditionRemovedEvent) error {
+func (c *Character) OnConditionRemoved(_ context.Context, event ConditionRemovedEvent) error {
 	// Only handle conditions for this character
 	if event.CharacterID != c.id {
 		return nil
