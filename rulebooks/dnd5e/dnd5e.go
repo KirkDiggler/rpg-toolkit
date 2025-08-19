@@ -4,24 +4,9 @@ package dnd5e
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-)
-
-// Character types from the character package
-type (
-	// Character represents a D&D 5e character
-	Character = character.Character
-	// CharacterData is the persistent character data structure
-	CharacterData = character.Data
-	// CharacterBuilder provides a step-by-step character creation process
-	CharacterBuilder = character.Builder
-	// CharacterDraft represents an in-progress character
-	CharacterDraft = character.Draft
-	// CharacterDraftData is the persistent draft data structure
-	CharacterDraftData = character.DraftData
-	// CreationData contains data for direct character creation
-	CreationData = character.CreationData
 )
 
 // Race types from the race package
@@ -52,12 +37,37 @@ type (
 	Background = shared.Background
 )
 
+// Character types from the character package
+type (
+	// Character represents a D&D 5e character
+	Character = character.Character
+	// CharacterData is the persistent character data structure
+	CharacterData = character.Data
+	// CharacterBuilder provides a step-by-step character creation process
+	CharacterBuilder = character.Builder
+	// CharacterDraft represents an in-progress character
+	CharacterDraft = character.Draft
+	// CharacterDraftData is the persistent draft data structure
+	CharacterDraftData = character.DraftData
+	// CreationData contains data for direct character creation
+	CreationData = character.CreationData
+)
+
 // Re-export key functions
 var (
 	NewCharacterBuilder   = character.NewCharacterBuilder
 	NewFromCreationData   = character.NewFromCreationData
 	LoadCharacterFromData = character.LoadCharacterFromData
 	LoadDraft             = character.LoadDraft
+)
+
+// Condition types and constructors
+type (
+	RagingConditionInput = conditions.RagingConditionInput
+)
+
+var (
+	NewRagingCondition = conditions.NewRagingCondition
 )
 
 // Choice category constants for character creation

@@ -3,9 +3,12 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/game"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -15,6 +18,38 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
+// Event types for character-related events
+
+// ConditionAppliedEvent is published when a condition is applied to an entity.
+type ConditionAppliedEvent struct {
+	CharacterID string                       // ID of the character receiving the condition
+	Condition   conditions.ConditionBehavior // The actual condition to apply
+	Source      string                       // What caused this condition
+}
+
+// ConditionRemovedEvent is published when a condition is removed from an entity
+type ConditionRemovedEvent struct {
+	CharacterID  string // ID of the character losing the condition
+	ConditionRef string // Ref of the condition being removed
+	Reason       string // Why it was removed
+}
+
+// AttackEvent is published when a character makes an attack
+type AttackEvent struct {
+	AttackerID string // ID of the attacking character
+	TargetID   string // ID of the target
+	WeaponRef  string // Reference to the weapon used
+	IsMelee    bool   // True for melee attacks
+	Damage     int    // Base damage before modifiers
+}
+
+// Topic definitions for typed event system
+var (
+	ConditionAppliedTopic = events.DefineTypedTopic[ConditionAppliedEvent]("dnd5e.condition.applied")
+	ConditionRemovedTopic = events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed")
+	AttackTopic           = events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack")
+)
+
 // Character represents a D&D 5e character with full game mechanics
 type Character struct {
 	id               string
@@ -22,6 +57,9 @@ type Character struct {
 	name             string
 	level            int
 	proficiencyBonus int
+
+	// Event bus for condition management
+	eventBus events.EventBus
 
 	// Character creation info (IDs only for reference)
 	raceID       constants.Race
@@ -47,10 +85,10 @@ type Character struct {
 	savingThrows  map[constants.Ability]shared.ProficiencyLevel
 	languages     []constants.Language
 	proficiencies shared.Proficiencies
-	features      []string // Feature IDs they have
+	features      []json.RawMessage // Feature data stored as JSON
 
 	// Current state - changes during play
-	conditions    []conditions.Condition
+	conditions    []json.RawMessage // Store condition data as JSON
 	effects       []effects.Effect
 	exhaustion    int
 	deathSaves    shared.DeathSaves
@@ -84,15 +122,110 @@ type Resource struct {
 	Resets  shared.ResetType
 }
 
-// Attack performs an attack roll against a target
-// TODO: This is a placeholder implementation. In a complete system, this would:
-// - Calculate attack bonus (ability modifier + proficiency if proficient)
-// - Roll attack using combat.RollAttack
-// - Apply any active effects that modify attacks
-// - Return detailed attack results
-func (c *Character) Attack(_ Weapon, _ Target) AttackResult {
-	// Placeholder implementation - returns empty result
-	return AttackResult{}
+// Attack performs an attack with the given weapon
+func (c *Character) Attack(ctx context.Context, weapon Weapon) *AttackResult {
+	if weapon == nil {
+		return nil
+	}
+
+	// Determine ability modifier (STR for melee, could be DEX for finesse)
+	var abilityMod int
+	if weapon.IsMelee() {
+		abilityMod = c.getAbilityModifier(constants.STR)
+	} else {
+		abilityMod = c.getAbilityModifier(constants.DEX)
+	}
+
+	// Check proficiency with weapon
+	// For now, simple check: barbarians are proficient with martial weapons
+	// Wizards are not proficient with martial weapons
+	profBonus := 0
+	if c.classID == "barbarian" || !hasProperty(weapon.GetProperties(), "martial") {
+		profBonus = c.proficiencyBonus
+	}
+
+	// Calculate attack bonus
+	attackBonus := profBonus + abilityMod
+
+	// Calculate damage bonus (ability modifier + any condition bonuses)
+	damageBonus := abilityMod
+
+	// Check for rage damage bonus
+	if c.HasCondition("dnd5e:conditions:raging") && weapon.IsMelee() {
+		// Find the rage condition to get damage bonus
+		for _, condData := range c.conditions {
+			var peek struct {
+				Ref         string `json:"ref"`
+				DamageBonus int    `json:"damage_bonus"`
+			}
+			if err := json.Unmarshal(condData, &peek); err == nil {
+				if peek.Ref == "dnd5e:conditions:raging" {
+					damageBonus += peek.DamageBonus
+					break
+				}
+			}
+		}
+	}
+
+	// For now, we'll use placeholder rolls
+	// In a real system, would use dice roller
+	attackRoll := 10 // Would be 1d20
+	damageRoll := 5  // Would be weapon damage dice
+
+	// Publish attack event
+	if c.eventBus != nil {
+		attacks := AttackTopic.On(c.eventBus)
+		_ = attacks.Publish(ctx, AttackEvent{
+			AttackerID: c.id,
+			TargetID:   "", // No target for now
+			WeaponRef:  weapon.GetRef(),
+			IsMelee:    weapon.IsMelee(),
+			Damage:     damageRoll + damageBonus,
+		})
+	}
+
+	return &AttackResult{
+		AttackRoll:       attackRoll,
+		AttackBonus:      attackBonus,
+		ProficiencyBonus: profBonus,
+		AbilityModifier:  abilityMod,
+		DamageRoll:       damageRoll,
+		DamageBonus:      damageBonus,
+		WeaponRef:        weapon.GetRef(),
+	}
+}
+
+// getAbilityModifier calculates the modifier for an ability score
+func (c *Character) getAbilityModifier(ability constants.Ability) int {
+	score := c.abilityScores[ability]
+	return (score - 10) / 2
+}
+
+// hasProperty checks if a weapon has a specific property
+func hasProperty(properties []string, property string) bool {
+	for _, p := range properties {
+		if p == property {
+			return true
+		}
+	}
+	return false
+}
+
+// GetID returns the character's unique identifier
+func (c *Character) GetID() string {
+	return c.id
+}
+
+// GetType returns the entity type (character)
+func (c *Character) GetType() core.EntityType {
+	return "character"
+}
+
+// AddFeature adds a feature to the character
+func (c *Character) AddFeature(feature interface{}) {
+	// For now, keep as interface{} parameter for compatibility
+	// Would convert to JSON here if needed
+	c.features = append(c.features, nil)
 }
 
 // SaveThrow performs a saving throw
@@ -137,30 +270,77 @@ func (c *Character) Initiative() int {
 	return c.initiative
 }
 
-// AddCondition adds a condition to the character
-func (c *Character) AddCondition(condition conditions.Condition) {
-	c.conditions = append(c.conditions, condition)
+// OnConditionApplied handles condition applied events targeting this character.
+// It applies the condition and stores its JSON data for persistence.
+func (c *Character) OnConditionApplied(ctx context.Context, event ConditionAppliedEvent) error {
+	// Only handle conditions for this character
+	if event.CharacterID != c.id {
+		return nil
+	}
+
+	// Check if we have a condition to apply
+	if event.Condition == nil {
+		return nil
+	}
+
+	// Apply the condition - it will subscribe to relevant events
+	if err := event.Condition.Apply(ctx, c.eventBus); err != nil {
+		return err
+	}
+
+	// Convert to JSON for persistence
+	conditionJSON, err := event.Condition.ToJSON()
+	if err != nil {
+		return err
+	}
+
+	// Store the condition data as JSON
+	c.conditions = append(c.conditions, conditionJSON)
+	return nil
 }
 
-// RemoveCondition removes a condition by type
-func (c *Character) RemoveCondition(conditionType conditions.ConditionType) {
-	var filtered []conditions.Condition
-	for _, c := range c.conditions {
-		if c.Type != conditionType {
-			filtered = append(filtered, c)
+// OnConditionRemoved handles condition removed events targeting this character
+func (c *Character) OnConditionRemoved(ctx context.Context, event ConditionRemovedEvent) error {
+	// Only handle conditions for this character
+	if event.CharacterID != c.id {
+		return nil
+	}
+
+	// Remove the condition by ref
+	var filtered []json.RawMessage
+	for _, condData := range c.conditions {
+		// Peek at the ref to see if this is the one to remove
+		var peek struct {
+			Ref string `json:"ref"`
+		}
+		if err := json.Unmarshal(condData, &peek); err == nil {
+			if peek.Ref != event.ConditionRef {
+				filtered = append(filtered, condData)
+			}
 		}
 	}
 	c.conditions = filtered
+	return nil
 }
 
-// HasCondition checks if character has a specific condition
-func (c *Character) HasCondition(conditionType conditions.ConditionType) bool {
-	for _, c := range c.conditions {
-		if c.Type == conditionType {
-			return true
+// HasCondition checks if character has a specific condition by ref
+func (c *Character) HasCondition(conditionRef string) bool {
+	for _, condData := range c.conditions {
+		var peek struct {
+			Ref string `json:"ref"`
+		}
+		if err := json.Unmarshal(condData, &peek); err == nil {
+			if peek.Ref == conditionRef {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// GetConditions returns all active condition data as JSON
+func (c *Character) GetConditions() []json.RawMessage {
+	return c.conditions
 }
 
 // AddEffect adds an effect to the character
@@ -199,6 +379,29 @@ func (c *Character) GetSpellSlots() SpellSlots {
 	return c.spellSlots
 }
 
+// ApplyToEventBus subscribes the character to relevant events on the bus.
+// This should be called after loading the character to enable event handling.
+func (c *Character) ApplyToEventBus(ctx context.Context, bus events.EventBus) error {
+	// Store the bus for condition Apply() calls
+	c.eventBus = bus
+
+	// Subscribe to condition applied events
+	conditions := ConditionAppliedTopic.On(bus)
+	_, err := conditions.Subscribe(ctx, c.OnConditionApplied)
+	if err != nil {
+		return err
+	}
+
+	// Subscribe to condition removed events
+	removals := ConditionRemovedTopic.On(bus)
+	_, err = removals.Subscribe(ctx, c.OnConditionRemoved)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Data represents the persistent state of a character
 type Data struct {
 	ID         string `json:"id"`
@@ -230,10 +433,10 @@ type Data struct {
 	Proficiencies shared.Proficiencies                          `json:"proficiencies"`
 
 	// Current state
-	Conditions []conditions.Condition `json:"conditions"`
-	Effects    []effects.Effect       `json:"effects"`
-	Exhaustion int                    `json:"exhaustion"`
-	DeathSaves shared.DeathSaves      `json:"death_saves"`
+	Conditions []json.RawMessage `json:"conditions"` // Store as JSON for direct persistence
+	Effects    []effects.Effect  `json:"effects"`
+	Exhaustion int               `json:"exhaustion"`
+	DeathSaves shared.DeathSaves `json:"death_saves"`
 
 	// Resources
 	SpellSlots     map[int]SlotInfo                          `json:"spell_slots"`
@@ -365,11 +568,13 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		}
 	}
 
-	// Extract features from class data
-	var features []string
+	// Extract features from class data (store as JSON for persistence)
+	var features []json.RawMessage
 	for lvl := 1; lvl <= data.Level; lvl++ {
 		for _, feature := range classData.Features[lvl] {
-			features = append(features, feature.ID)
+			// For now, store feature ID as simple JSON
+			featureJSON, _ := json.Marshal(map[string]string{"id": feature.ID})
+			features = append(features, featureJSON)
 		}
 	}
 
@@ -428,21 +633,23 @@ func LoadCharacterFromContext(_ context.Context, gameCtx game.Context[Data],
 	return char, nil
 }
 
-// Weapon represents a weapon for attacks
-type Weapon struct {
-	Name   string
-	Damage string
-}
-
-// Target is an interface for attack targets
-type Target interface {
-	AC() int
+// Weapon interface represents any weapon that can be used for attacks
+type Weapon interface {
+	GetRef() string          // Unique reference ID
+	GetDamage() string       // Damage dice notation (e.g., "1d8")
+	IsMelee() bool           // True for melee weapons
+	GetProperties() []string // Weapon properties (heavy, finesse, etc.)
 }
 
 // AttackResult represents the result of an attack
 type AttackResult struct {
-	Hit    bool
-	Damage int
+	AttackRoll       int    // The d20 roll result
+	AttackBonus      int    // Total attack bonus (proficiency + ability)
+	ProficiencyBonus int    // Proficiency bonus if proficient
+	AbilityModifier  int    // STR or DEX modifier
+	DamageRoll       int    // Damage dice result
+	DamageBonus      int    // Total damage bonus (ability + rage, etc.)
+	WeaponRef        string // Reference to weapon used
 }
 
 // SaveResult represents the result of a saving throw

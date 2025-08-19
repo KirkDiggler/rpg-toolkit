@@ -1,6 +1,26 @@
 // Package conditions provides D&D 5e condition types and effects
 package conditions
 
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/KirkDiggler/rpg-toolkit/events"
+)
+
+// ConditionBehavior represents the behavior of an active condition.
+// Conditions subscribe to events to modify game mechanics.
+type ConditionBehavior interface {
+	// Apply subscribes this condition to relevant events on the bus
+	Apply(ctx context.Context, bus events.EventBus) error
+
+	// Remove unsubscribes this condition from events
+	Remove(ctx context.Context, bus events.EventBus) error
+
+	// ToJSON converts the condition to JSON for persistence
+	ToJSON() (json.RawMessage, error)
+}
+
 // ConditionType represents D&D 5e conditions
 type ConditionType string
 

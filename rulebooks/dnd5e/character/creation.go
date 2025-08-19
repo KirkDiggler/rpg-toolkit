@@ -2,10 +2,10 @@
 package character
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
@@ -105,11 +105,13 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 		Tools:   append(data.ClassData.ToolProficiencies, data.BackgroundData.ToolProficiencies...),
 	}
 
-	// Extract features
+	// Extract features (store as JSON for persistence)
 	level1Features := data.ClassData.Features[1]
-	features := make([]string, 0, len(level1Features))
+	features := make([]json.RawMessage, 0, len(level1Features))
 	for _, feature := range level1Features { // Level 1 features
-		features = append(features, feature.ID)
+		// For now, store feature ID as simple JSON
+		featureJSON, _ := json.Marshal(map[string]string{"id": feature.ID})
+		features = append(features, featureJSON)
 	}
 
 	// Build character
@@ -136,7 +138,7 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 		languages:        languages,
 		proficiencies:    proficiencies,
 		features:         features,
-		conditions:       []conditions.Condition{},
+		conditions:       []json.RawMessage{},
 		effects:          []effects.Effect{},
 		exhaustion:       0,
 		deathSaves:       shared.DeathSaves{},
