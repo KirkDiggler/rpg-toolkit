@@ -72,13 +72,16 @@ func (r *RageFeature) Apply(bus events.EventBus) error {
 	// Subscribe with type safety
 	_, err := attacks.SubscribeWithChain(
 		context.Background(),
-		func(ctx context.Context, e AttackEvent, c chain.Chain[AttackEvent]) (chain.Chain[AttackEvent], error) {
+		func(_ context.Context, e AttackEvent, c chain.Chain[AttackEvent]) (chain.Chain[AttackEvent], error) {
 			// Only modify our attacks
 			if e.AttackerID == r.ownerID {
-				c.Add(StageConditions, "rage-"+r.ownerID, func(ctx context.Context, event AttackEvent) (AttackEvent, error) {
+				err := c.Add(StageConditions, "rage-"+r.ownerID, func(_ context.Context, event AttackEvent) (AttackEvent, error) {
 					event.Damage += r.bonus
 					return event, nil
 				})
+				if err != nil {
+					return c, err
+				}
 			}
 			return c, nil
 		},
@@ -95,17 +98,23 @@ func ExampleTypedTopic() {
 	levelups := LevelUpTopic.On(bus)
 
 	// Subscribe with type safety
-	levelups.Subscribe(ctx, func(ctx context.Context, e LevelUpEvent) error {
+	_, err := levelups.Subscribe(ctx, func(_ context.Context, e LevelUpEvent) error {
 		fmt.Printf("Player %s reached level %d (HP: %d)\n", e.PlayerID, e.NewLevel, e.HP)
 		return nil
 	})
+	if err != nil {
+		fmt.Printf("Subscribe error: %v\n", err)
+	}
 
 	// Publish - compile-time type safe
-	levelups.Publish(ctx, LevelUpEvent{
+	err = levelups.Publish(ctx, LevelUpEvent{
 		PlayerID: "hero-123",
 		NewLevel: 5,
 		HP:       45,
 	})
+	if err != nil {
+		fmt.Printf("Publish error: %v\n", err)
+	}
 
 	// Output: Player hero-123 reached level 5 (HP: 45)
 }
@@ -119,7 +128,10 @@ func ExampleChainedTopic() {
 		ownerID: "barbarian",
 		bonus:   2,
 	}
-	rage.Apply(bus)
+	err := rage.Apply(bus)
+	if err != nil {
+		fmt.Printf("Apply error: %v\n", err)
+	}
 
 	// Define stages for processing
 	stages := []chain.Stage{
@@ -150,7 +162,7 @@ func ExampleChainedTopic() {
 	// Output: Base damage: 10, Final damage: 12
 }
 
-func TestBeautifulAPI(t *testing.T) {
+func TestBeautifulAPI(_ *testing.T) {
 	// This test shows how clean the API is
 	bus := events.NewEventBus()
 

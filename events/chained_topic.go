@@ -48,7 +48,8 @@ type ChainedTopic[T any] interface {
 	//	    }
 	//	    return chain, nil
 	//	}
-	SubscribeWithChain(ctx context.Context, handler func(context.Context, T, chain.Chain[T]) (chain.Chain[T], error)) (string, error)
+	SubscribeWithChain(ctx context.Context,
+		handler func(context.Context, T, chain.Chain[T]) (chain.Chain[T], error)) (string, error)
 
 	// PublishWithChain sends the event to all subscribers who may add modifiers to the chain.
 	//
@@ -89,7 +90,8 @@ type chainedEvent[T any] struct {
 }
 
 // SubscribeWithChain implements ChainedTopic[T]
-func (t *chainedTopic[T]) SubscribeWithChain(ctx context.Context, handler func(context.Context, T, chain.Chain[T]) (chain.Chain[T], error)) (string, error) {
+func (t *chainedTopic[T]) SubscribeWithChain(ctx context.Context,
+	handler func(context.Context, T, chain.Chain[T]) (chain.Chain[T], error)) (string, error) {
 	// Wrap the handler to work with our chainedEvent wrapper
 	wrappedHandler := func(payload any) error {
 		if ce, ok := payload.(*chainedEvent[T]); ok {

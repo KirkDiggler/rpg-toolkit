@@ -1,6 +1,8 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package events provides a type-safe pub/sub system with support for
+// pure notifications and events with modifier chains.
 package events
 
 import (
@@ -41,7 +43,7 @@ type simpleEventBus struct {
 	nextID      int
 }
 
-func (b *simpleEventBus) Subscribe(ctx context.Context, topic Topic, handler any) (string, error) {
+func (b *simpleEventBus) Subscribe(_ context.Context, topic Topic, handler any) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -59,7 +61,7 @@ func (b *simpleEventBus) Subscribe(ctx context.Context, topic Topic, handler any
 	return id, nil
 }
 
-func (b *simpleEventBus) Unsubscribe(ctx context.Context, id string) error {
+func (b *simpleEventBus) Unsubscribe(_ context.Context, id string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -80,7 +82,7 @@ func (b *simpleEventBus) Unsubscribe(ctx context.Context, id string) error {
 	return nil
 }
 
-func (b *simpleEventBus) Publish(ctx context.Context, topic Topic, event any) error {
+func (b *simpleEventBus) Publish(_ context.Context, topic Topic, event any) error {
 	b.mu.RLock()
 	subs := b.subscribers[topic]
 	handlers := make([]any, len(subs))

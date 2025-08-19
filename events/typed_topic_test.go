@@ -56,7 +56,7 @@ func (s *TypedTopicTestSuite) TestSubscribeAndPublish() {
 	var received []TestNotificationEvent
 
 	// Subscribe
-	id, err := s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	id, err := s.topic.Subscribe(s.ctx, func(_ context.Context, e TestNotificationEvent) error {
 		received = append(received, e)
 		return nil
 	})
@@ -74,7 +74,7 @@ func (s *TypedTopicTestSuite) TestSubscribeAndPublish() {
 
 	// Verify received
 	s.Require().Len(received, 1)
-	s.Assert().Equal(event, received[0])
+	s.Equal(event, received[0])
 }
 
 func (s *TypedTopicTestSuite) TestMultipleSubscribers() {
@@ -82,19 +82,19 @@ func (s *TypedTopicTestSuite) TestMultipleSubscribers() {
 	var calls1, calls2, calls3 int
 
 	// Subscribe multiple handlers
-	_, err := s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err := s.topic.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		calls1++
 		return nil
 	})
 	s.Require().NoError(err)
 
-	_, err = s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err = s.topic.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		calls2++
 		return nil
 	})
 	s.Require().NoError(err)
 
-	_, err = s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err = s.topic.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		calls3++
 		return nil
 	})
@@ -105,16 +105,16 @@ func (s *TypedTopicTestSuite) TestMultipleSubscribers() {
 	s.Require().NoError(err)
 
 	// All subscribers should be called
-	s.Assert().Equal(1, calls1)
-	s.Assert().Equal(1, calls2)
-	s.Assert().Equal(1, calls3)
+	s.Equal(1, calls1)
+	s.Equal(1, calls2)
+	s.Equal(1, calls3)
 }
 
 func (s *TypedTopicTestSuite) TestUnsubscribe() {
 	var callCount int
 
 	// Subscribe
-	id, err := s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	id, err := s.topic.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		callCount++
 		return nil
 	})
@@ -123,7 +123,7 @@ func (s *TypedTopicTestSuite) TestUnsubscribe() {
 	// First publish - should receive
 	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: "1"})
 	s.Require().NoError(err)
-	s.Assert().Equal(1, callCount)
+	s.Equal(1, callCount)
 
 	// Unsubscribe
 	err = s.topic.Unsubscribe(s.ctx, id)
@@ -132,13 +132,13 @@ func (s *TypedTopicTestSuite) TestUnsubscribe() {
 	// Second publish - should NOT receive
 	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: "2"})
 	s.Require().NoError(err)
-	s.Assert().Equal(1, callCount) // Still 1, not incremented
+	s.Equal(1, callCount) // Still 1, not incremented
 }
 
 func (s *TypedTopicTestSuite) TestDifferentTopicsAreIsolated() {
 	// Set up notification topic
 	var notificationReceived bool
-	_, err := s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err := s.topic.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		notificationReceived = true
 		return nil
 	})
@@ -147,7 +147,7 @@ func (s *TypedTopicTestSuite) TestDifferentTopicsAreIsolated() {
 	// Set up action topic
 	actionTopic := ActionTopic.On(s.bus)
 	var actionReceived bool
-	_, err = actionTopic.Subscribe(s.ctx, func(ctx context.Context, e TestActionEvent) error {
+	_, err = actionTopic.Subscribe(s.ctx, func(_ context.Context, _ TestActionEvent) error {
 		actionReceived = true
 		return nil
 	})
@@ -158,8 +158,8 @@ func (s *TypedTopicTestSuite) TestDifferentTopicsAreIsolated() {
 	s.Require().NoError(err)
 
 	// Only notification should receive
-	s.Assert().True(notificationReceived)
-	s.Assert().False(actionReceived)
+	s.True(notificationReceived)
+	s.False(actionReceived)
 
 	// Reset
 	notificationReceived = false
@@ -170,8 +170,8 @@ func (s *TypedTopicTestSuite) TestDifferentTopicsAreIsolated() {
 	s.Require().NoError(err)
 
 	// Only action should receive
-	s.Assert().False(notificationReceived)
-	s.Assert().True(actionReceived)
+	s.False(notificationReceived)
+	s.True(actionReceived)
 }
 
 func (s *TypedTopicTestSuite) TestSameTopicDifferentInstances() {
@@ -182,14 +182,14 @@ func (s *TypedTopicTestSuite) TestSameTopicDifferentInstances() {
 	var received1, received2 bool
 
 	// Subscribe on first instance
-	_, err := topic1.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err := topic1.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		received1 = true
 		return nil
 	})
 	s.Require().NoError(err)
 
 	// Subscribe on second instance
-	_, err = topic2.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err = topic2.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		received2 = true
 		return nil
 	})
@@ -200,23 +200,23 @@ func (s *TypedTopicTestSuite) TestSameTopicDifferentInstances() {
 	s.Require().NoError(err)
 
 	// Both should receive (same bus, same topic ID)
-	s.Assert().True(received1)
-	s.Assert().True(received2)
+	s.True(received1)
+	s.True(received2)
 }
 
 func (s *TypedTopicTestSuite) TestHandlerError() {
 	testError := errors.New("handler error")
 
 	// Subscribe handler that returns error
-	_, err := s.topic.Subscribe(s.ctx, func(ctx context.Context, e TestNotificationEvent) error {
+	_, err := s.topic.Subscribe(s.ctx, func(_ context.Context, _ TestNotificationEvent) error {
 		return testError
 	})
 	s.Require().NoError(err)
 
 	// Publish should propagate the error
 	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: "test"})
-	s.Assert().Error(err)
-	s.Assert().Equal(testError, err)
+	s.Error(err)
+	s.Equal(testError, err)
 }
 
 func TestTypedTopicSuite(t *testing.T) {
