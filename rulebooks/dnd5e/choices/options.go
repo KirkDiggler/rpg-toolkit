@@ -5,6 +5,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // SingleOption represents a single selectable item
@@ -128,10 +129,9 @@ func (o LanguageListOption) Validate() error {
 }
 
 // WeaponCategoryOption represents choosing from a weapon category
-// This will be expanded when we add weapons
 type WeaponCategoryOption struct {
-	Category string // "simple", "martial", etc.
-	Count    int    // How many to choose
+	Category weapons.WeaponCategory // simple, martial, etc.
+	Count    int                    // How many to choose (default 1)
 }
 
 // GetID returns the option's ID
@@ -149,8 +149,6 @@ func (o WeaponCategoryOption) Validate() error {
 	if o.Category == "" {
 		return fmt.Errorf("weapon category is required")
 	}
-	if o.Count < 1 {
-		return fmt.Errorf("count must be at least 1")
-	}
+	// Count defaults to 1 if not set
 	return nil
 }

@@ -1,7 +1,10 @@
 // Package skills provides D&D 5e skill constants and utilities
 package skills
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+)
 
 // Skill represents a D&D 5e skill
 type Skill string
@@ -51,9 +54,18 @@ var All = map[string]Skill{
 }
 
 // GetByID returns a skill by its ID
-func GetByID(id string) (Skill, bool) {
+func GetByID(id string) (Skill, error) {
 	skill, ok := All[id]
-	return skill, ok
+	if !ok {
+		validSkills := make([]string, 0, len(All))
+		for k := range All {
+			validSkills = append(validSkills, k)
+		}
+		return "", rpgerr.New(rpgerr.CodeInvalidArgument, "invalid skill",
+			rpgerr.WithMeta("provided", id),
+			rpgerr.WithMeta("valid_options", validSkills))
+	}
+	return skill, nil
 }
 
 // List returns all skills in alphabetical order

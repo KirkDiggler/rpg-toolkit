@@ -13,21 +13,21 @@ import (
 
 func TestFighterSkillChoices(t *testing.T) {
 	choice := fighter.SkillChoices()
-	
-	assert.Equal(t, "fighter-skills", choice.ID)
+
+	assert.Equal(t, choices.FighterSkills, choice.ID)
 	assert.Equal(t, choices.CategorySkill, choice.Category)
 	assert.Equal(t, 2, choice.Choose)
 	assert.Equal(t, choices.SourceClass, choice.Source)
-	
+
 	require.Len(t, choice.Options, 1)
-	
+
 	// Check it's a skill list option
 	option := choice.Options[0]
 	assert.Equal(t, choices.OptionTypeCategory, option.GetType())
-	
+
 	skillOption, ok := option.(choices.SkillListOption)
 	require.True(t, ok)
-	
+
 	// Fighter should have 8 skills to choose from
 	assert.Len(t, skillOption.Skills, 8)
 	assert.Contains(t, skillOption.Skills, skills.Athletics)
@@ -37,17 +37,17 @@ func TestFighterSkillChoices(t *testing.T) {
 
 func TestRogueSkillChoices(t *testing.T) {
 	choice := rogue.SkillChoices()
-	
-	assert.Equal(t, "rogue-skills", choice.ID)
+
+	assert.Equal(t, choices.RogueSkills, choice.ID)
 	assert.Equal(t, choices.CategorySkill, choice.Category)
 	assert.Equal(t, 4, choice.Choose) // Rogues get 4 skills!
 	assert.Equal(t, choices.SourceClass, choice.Source)
-	
+
 	require.Len(t, choice.Options, 1)
-	
+
 	skillOption, ok := choice.Options[0].(choices.SkillListOption)
 	require.True(t, ok)
-	
+
 	// Rogue should have 11 skills to choose from
 	assert.Len(t, skillOption.Skills, 11)
 	assert.Contains(t, skillOption.Skills, skills.SleightOfHand)
@@ -86,7 +86,7 @@ func TestSingleOptionValidation(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.option.Validate()
@@ -144,7 +144,7 @@ func TestBundleOptionValidation(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.option.Validate()

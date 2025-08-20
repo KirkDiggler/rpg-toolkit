@@ -1,6 +1,10 @@
 // Package languages provides D&D 5e language constants and utilities
 package languages
 
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+)
+
 // Language represents a D&D 5e language
 type Language string
 
@@ -77,9 +81,18 @@ func ExoticLanguages() []Language {
 }
 
 // GetByID returns a language by its ID
-func GetByID(id string) (Language, bool) {
+func GetByID(id string) (Language, error) {
 	lang, ok := All[id]
-	return lang, ok
+	if !ok {
+		validLanguages := make([]string, 0, len(All))
+		for k := range All {
+			validLanguages = append(validLanguages, k)
+		}
+		return "", rpgerr.New(rpgerr.CodeInvalidArgument, "invalid language",
+			rpgerr.WithMeta("provided", id),
+			rpgerr.WithMeta("valid_options", validLanguages))
+	}
+	return lang, nil
 }
 
 // IsStandard returns true if the language is a standard language

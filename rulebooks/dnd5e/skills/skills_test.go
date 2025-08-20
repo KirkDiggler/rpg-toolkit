@@ -14,33 +14,35 @@ func TestGetByID(t *testing.T) {
 		name     string
 		id       string
 		expected skills.Skill
-		found    bool
+		wantErr  bool
 	}{
 		{
 			name:     "valid skill",
 			id:       "athletics",
 			expected: skills.Athletics,
-			found:    true,
+			wantErr:  false,
 		},
 		{
 			name:     "hyphenated skill",
 			id:       "animal-handling",
 			expected: skills.AnimalHandling,
-			found:    true,
+			wantErr:  false,
 		},
 		{
 			name:     "invalid skill",
 			id:       "flying",
 			expected: "",
-			found:    false,
+			wantErr:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			skill, found := skills.GetByID(tt.id)
-			assert.Equal(t, tt.found, found)
-			if tt.found {
+			skill, err := skills.GetByID(tt.id)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 				assert.Equal(t, tt.expected, skill)
 			}
 		})
@@ -98,10 +100,10 @@ func TestSkillDisplay(t *testing.T) {
 
 func TestList(t *testing.T) {
 	allSkills := skills.List()
-	
+
 	// Should have all 18 skills
 	require.Len(t, allSkills, 18)
-	
+
 	// Check first and last
 	assert.Equal(t, skills.Acrobatics, allSkills[0])
 	assert.Equal(t, skills.Survival, allSkills[17])
@@ -112,14 +114,14 @@ func TestByAbility(t *testing.T) {
 	strSkills := skills.ByAbility(abilities.STR)
 	require.Len(t, strSkills, 1)
 	assert.Contains(t, strSkills, skills.Athletics)
-	
+
 	// DEX skills
 	dexSkills := skills.ByAbility(abilities.DEX)
 	require.Len(t, dexSkills, 3)
 	assert.Contains(t, dexSkills, skills.Acrobatics)
 	assert.Contains(t, dexSkills, skills.SleightOfHand)
 	assert.Contains(t, dexSkills, skills.Stealth)
-	
+
 	// INT skills
 	intSkills := skills.ByAbility(abilities.INT)
 	require.Len(t, intSkills, 5)

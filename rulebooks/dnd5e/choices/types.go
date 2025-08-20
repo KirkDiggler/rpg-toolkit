@@ -3,7 +3,7 @@ package choices
 
 // Choice represents any character creation choice
 type Choice struct {
-	ID          string
+	ID          ChoiceID
 	Category    Category
 	Description string
 	Choose      int      // How many to choose
@@ -15,14 +15,14 @@ type Choice struct {
 type Category string
 
 const (
-	CategorySkill      Category = "skill"
-	CategoryLanguage   Category = "language"
-	CategoryTool       Category = "tool"
-	CategoryEquipment  Category = "equipment"
-	CategoryAbility    Category = "ability"
-	CategorySpell      Category = "spell"
-	CategoryCantrip    Category = "cantrip"
-	CategoryFeat       Category = "feat"
+	CategorySkill     Category = "skill"
+	CategoryLanguage  Category = "language"
+	CategoryTool      Category = "tool"
+	CategoryEquipment Category = "equipment"
+	CategoryAbility   Category = "ability"
+	CategorySpell     Category = "spell"
+	CategoryCantrip   Category = "cantrip"
+	CategoryFeat      Category = "feat"
 )
 
 // Source of the choice

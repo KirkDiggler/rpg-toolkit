@@ -1,6 +1,10 @@
 // Package abilities provides D&D 5e ability score constants and utilities
 package abilities
 
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+)
+
 // Ability represents a D&D 5e ability score
 type Ability string
 
@@ -16,24 +20,33 @@ const (
 
 // All contains all abilities mapped by ID for O(1) lookup
 var All = map[string]Ability{
-	"str":      STR,
-	"dex":      DEX,
-	"con":      CON,
-	"int":      INT,
-	"wis":      WIS,
-	"cha":      CHA,
-	"strength": STR,     // Allow full names too
-	"dexterity": DEX,
+	"str":          STR,
+	"dex":          DEX,
+	"con":          CON,
+	"int":          INT,
+	"wis":          WIS,
+	"cha":          CHA,
+	"strength":     STR, // Allow full names too
+	"dexterity":    DEX,
 	"constitution": CON,
 	"intelligence": INT,
-	"wisdom": WIS,
-	"charisma": CHA,
+	"wisdom":       WIS,
+	"charisma":     CHA,
 }
 
 // GetByID returns an ability by its ID (accepts abbreviations and full names)
-func GetByID(id string) (Ability, bool) {
+func GetByID(id string) (Ability, error) {
 	ability, ok := All[id]
-	return ability, ok
+	if !ok {
+		validAbilities := make([]string, 0, len(All))
+		for k := range All {
+			validAbilities = append(validAbilities, k)
+		}
+		return "", rpgerr.New(rpgerr.CodeInvalidArgument, "invalid ability",
+			rpgerr.WithMeta("provided", id),
+			rpgerr.WithMeta("valid_options", validAbilities))
+	}
+	return ability, nil
 }
 
 // List returns all abilities in standard order
