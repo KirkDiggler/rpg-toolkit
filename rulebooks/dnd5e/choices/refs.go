@@ -41,20 +41,20 @@ var (
 	RangerFightingStyle  = Ref("ranger_fighting_style")
 
 	// Spells and cantrips
-	ClericCantrips  = Ref("cleric_cantrips")
-	DruidCantrips   = Ref("druid_cantrips")
+	ClericCantrips   = Ref("cleric_cantrips")
+	DruidCantrips    = Ref("druid_cantrips")
 	SorcererCantrips = Ref("sorcerer_cantrips")
-	WarlockCantrips = Ref("warlock_cantrips")
-	WizardCantrips  = Ref("wizard_cantrips")
-	
-	WizardSpells    = Ref("wizard_spells")
-	ClericSpells    = Ref("cleric_spells")
-	
+	WarlockCantrips  = Ref("warlock_cantrips")
+	WizardCantrips   = Ref("wizard_cantrips")
+
+	WizardSpells = Ref("wizard_spells")
+	ClericSpells = Ref("cleric_spells")
+
 	// Equipment choices
 	FighterEquipment = Ref("fighter_equipment")
 	WizardEquipment  = Ref("wizard_equipment")
-	
+
 	// Language choices
-	HumanLanguage     = Ref("human_language")
-	HalfElfLanguages  = Ref("half_elf_languages")
+	HumanLanguage    = Ref("human_language")
+	HalfElfLanguages = Ref("half_elf_languages")
 )

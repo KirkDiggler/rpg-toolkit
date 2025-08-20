@@ -37,13 +37,13 @@ var (
 	ConcentratingRef = Ref("concentrating")
 	DodgingRef       = Ref("dodging")
 	HidingRef        = Ref("hiding")
-	
+
 	// Spell effect conditions
-	HasteRef     = Ref("hasted")
-	SlowRef      = Ref("slowed")
-	EnlargeRef   = Ref("enlarged")
-	ReduceRef    = Ref("reduced")
-	
+	HasteRef   = Ref("hasted")
+	SlowRef    = Ref("slowed")
+	EnlargeRef = Ref("enlarged")
+	ReduceRef  = Ref("reduced")
+
 	// Custom/temporary conditions
 	SecondWindUsedRef  = Ref("second_wind_used")
 	ActionSurgeUsedRef = Ref("action_surge_used")

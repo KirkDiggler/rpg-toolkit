@@ -23,11 +23,11 @@ var (
 	Stealth       = Ref("stealth")
 
 	// Intelligence
-	Arcana       = Ref("arcana")
-	History      = Ref("history")
+	Arcana        = Ref("arcana")
+	History       = Ref("history")
 	Investigation = Ref("investigation")
-	Nature       = Ref("nature")
-	Religion     = Ref("religion")
+	Nature        = Ref("nature")
+	Religion      = Ref("religion")
 
 	// Wisdom
 	AnimalHandling = Ref("animal-handling")
