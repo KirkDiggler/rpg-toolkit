@@ -60,15 +60,21 @@ func (r *Rage) GetResourceType() ResourceType { return ResourceTypeRageUses }
 func (r *Rage) ResetsOn() ResetType { return ResetTypeLongRest }
 
 // CanActivate checks if rage can be activated
-func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if r.currentUses <= 0 {
 		return errors.New("no rage uses remaining")
 	}
-	// Note: "already raging" check would need to query character's conditions
-	// For now, we allow it and let the character handle duplicate conditions
+
+	// Check if already raging by querying the character's conditions
+	if char, ok := owner.(interface{ HasCondition(string) bool }); ok {
+		if char.HasCondition("dnd5e:conditions:raging") {
+			return errors.New("already raging")
+		}
+	}
+
 	return nil
 }
 

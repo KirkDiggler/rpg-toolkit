@@ -222,10 +222,11 @@ func (c *Character) GetType() core.EntityType {
 }
 
 // AddFeature adds a feature to the character
+// TODO: This needs proper implementation when we modernize character creation
+// See issue: https://github.com/KirkDiggler/rpg-toolkit/issues/XXX
 func (c *Character) AddFeature(_ interface{}) {
-	// For now, keep as interface{} parameter for compatibility
-	// Would convert to JSON here if needed
-	c.features = append(c.features, nil)
+	// FIXME: This is a stub - should convert feature to JSON and store properly
+	// For now, do nothing rather than inject nil which causes panics
 }
 
 // GetFeatures returns the character's features as JSON

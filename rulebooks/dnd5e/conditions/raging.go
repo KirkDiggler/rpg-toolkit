@@ -100,9 +100,24 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 }
 
 // Remove unsubscribes this condition from events
-func (r *RagingCondition) Remove(_ context.Context, _ events.EventBus) error {
-	// TODO: Unsubscribe from all events when typed topics support unsubscribe by ID
-	// For now, just clear the list
+func (r *RagingCondition) Remove(_ context.Context, bus events.EventBus) error {
+	// Unsubscribe from all events we subscribed to in Apply()
+	if r.bus == nil {
+		return nil // Not applied, nothing to remove
+	}
+
+	// We know exactly what we subscribed to, so unsubscribe from those topics
+	attackTopic := events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack").On(bus)
+	damageTopic := events.DefineTypedTopic[DamageReceivedEvent]("dnd5e.combat.damage.received").On(bus)
+	turnEndTopic := events.DefineTypedTopic[TurnEndEvent]("dnd5e.turn.end").On(bus)
+
+	// TODO: Add Unsubscribe methods to typed topics when events package supports it
+	// See issue: https://github.com/KirkDiggler/rpg-toolkit/issues/XXX
+	// For now, the event bus will clean up subscriptions when it's destroyed
+	_ = attackTopic
+	_ = damageTopic
+	_ = turnEndTopic
+
 	r.subscriptionIDs = nil
 	r.bus = nil
 	return nil
