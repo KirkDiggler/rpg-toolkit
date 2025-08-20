@@ -100,7 +100,7 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 }
 
 // Remove unsubscribes this condition from events
-func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error {
+func (r *RagingCondition) Remove(_ context.Context, _ events.EventBus) error {
 	// TODO: Unsubscribe from all events when typed topics support unsubscribe by ID
 	// For now, just clear the list
 	r.subscriptionIDs = nil
@@ -122,7 +122,7 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 }
 
 // onAttack handles attack events to track if we attacked this turn
-func (r *RagingCondition) onAttack(ctx context.Context, event AttackEvent) error {
+func (r *RagingCondition) onAttack(_ context.Context, event AttackEvent) error {
 	if event.AttackerID != r.CharacterID {
 		return nil
 	}
@@ -131,7 +131,7 @@ func (r *RagingCondition) onAttack(ctx context.Context, event AttackEvent) error
 }
 
 // onDamageReceived handles damage events to track if we were hit this turn
-func (r *RagingCondition) onDamageReceived(ctx context.Context, event DamageReceivedEvent) error {
+func (r *RagingCondition) onDamageReceived(_ context.Context, event DamageReceivedEvent) error {
 	if event.TargetID != r.CharacterID {
 		return nil
 	}

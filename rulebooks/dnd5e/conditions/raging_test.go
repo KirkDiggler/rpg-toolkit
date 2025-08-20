@@ -105,7 +105,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 	// Track if condition removed event is published
 	var removedEvent *conditions.ConditionRemovedEvent
 	removalTopic := events.DefineTypedTopic[conditions.ConditionRemovedEvent]("dnd5e.condition.removed").On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(ctx context.Context, event conditions.ConditionRemovedEvent) error {
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event conditions.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
@@ -142,7 +142,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	// Track if condition removed event is published
 	var removedEvent *conditions.ConditionRemovedEvent
 	removalTopic := events.DefineTypedTopic[conditions.ConditionRemovedEvent]("dnd5e.condition.removed").On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(ctx context.Context, event conditions.ConditionRemovedEvent) error {
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event conditions.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
@@ -192,7 +192,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	// Track if condition removed event is published
 	var removedEvent *conditions.ConditionRemovedEvent
 	removalTopic := events.DefineTypedTopic[conditions.ConditionRemovedEvent]("dnd5e.condition.removed").On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(ctx context.Context, event conditions.ConditionRemovedEvent) error {
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event conditions.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 )
 
 // RefToFeatureKey extracts the feature key from a ref string.
@@ -19,7 +20,7 @@ func RefToFeatureKey(refStr string) (FeatureKey, error) {
 	}
 
 	// Check if it's a dnd5e feature
-	if ref.Module != "dnd5e" || ref.Type != "features" {
+	if ref.Module != dnd5e.Module || ref.Type != "features" {
 		return "", fmt.Errorf("not a dnd5e feature ref: %s", refStr)
 	}
 
@@ -38,7 +39,7 @@ func RefToFeatureKey(refStr string) (FeatureKey, error) {
 // IsConditionRef checks if a ref string is a condition
 func IsConditionRef(refStr string) bool {
 	if ref, err := core.ParseString(refStr); err == nil {
-		return ref.Module == "dnd5e" && ref.Type == "conditions"
+		return ref.Module == dnd5e.Module && ref.Type == "conditions"
 	}
 	return false
 }
@@ -50,7 +51,7 @@ func ParseConditionType(refStr string) (string, error) {
 		return "", err
 	}
 
-	if ref.Module != "dnd5e" || ref.Type != "conditions" {
+	if ref.Module != dnd5e.Module || ref.Type != "conditions" {
 		return "", fmt.Errorf("not a condition ref: %s", refStr)
 	}
 
