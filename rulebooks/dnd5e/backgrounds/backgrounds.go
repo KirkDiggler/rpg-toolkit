@@ -22,6 +22,7 @@ const (
 	Hermit       Background = "hermit"
 	Outlander    Background = "outlander"
 	Sailor       Background = "sailor"
+	Urchin       Background = "urchin"
 )
 
 // Criminal variant
@@ -58,6 +59,7 @@ var All = map[string]Background{
 	"hermit":        Hermit,
 	"outlander":     Outlander,
 	"sailor":        Sailor,
+	"urchin":        Urchin,
 	// Variants
 	"spy":            Spy,
 	"pirate":         Pirate,

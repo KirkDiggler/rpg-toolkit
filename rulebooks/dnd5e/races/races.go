@@ -40,6 +40,12 @@ const (
 	StoutHalfling     Race = "stout-halfling"
 )
 
+// Gnome subraces
+const (
+	ForestGnome Race = "forest-gnome"
+	RockGnome   Race = "rock-gnome"
+)
+
 // All provides map lookup for races
 var All = map[string]Race{
 	"human":      Human,
@@ -59,6 +65,8 @@ var All = map[string]Race{
 	"hill-dwarf":         HillDwarf,
 	"lightfoot-halfling": LightfootHalfling,
 	"stout-halfling":     StoutHalfling,
+	"forest-gnome":       ForestGnome,
+	"rock-gnome":         RockGnome,
 }
 
 // GetByID returns a race by its ID
@@ -81,7 +89,8 @@ func (r Race) IsSubrace() bool {
 	switch r {
 	case HighElf, WoodElf, DarkElf,
 		MountainDwarf, HillDwarf,
-		LightfootHalfling, StoutHalfling:
+		LightfootHalfling, StoutHalfling,
+		ForestGnome, RockGnome:
 		return true
 	default:
 		return false
@@ -97,6 +106,8 @@ func (r Race) ParentRace() Race {
 		return Dwarf
 	case LightfootHalfling, StoutHalfling:
 		return Halfling
+	case ForestGnome, RockGnome:
+		return Gnome
 	default:
 		return r
 	}
