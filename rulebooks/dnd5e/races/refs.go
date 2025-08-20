@@ -1,3 +1,4 @@
+// Package races provides ref builders and constants for D&D 5e races.
 package races
 
 import "github.com/KirkDiggler/rpg-toolkit/core"

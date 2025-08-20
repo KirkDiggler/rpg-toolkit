@@ -1,3 +1,4 @@
+// Package classes provides ref builders and constants for D&D 5e character classes.
 package classes
 
 import "github.com/KirkDiggler/rpg-toolkit/core"

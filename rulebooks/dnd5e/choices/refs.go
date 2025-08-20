@@ -1,3 +1,4 @@
+// Package choices provides ref builders and constants for D&D 5e character creation choices.
 package choices
 
 import "github.com/KirkDiggler/rpg-toolkit/core"

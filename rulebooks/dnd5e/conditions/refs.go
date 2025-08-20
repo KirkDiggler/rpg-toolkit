@@ -1,3 +1,4 @@
+// Package conditions provides ref builders and constants for D&D 5e conditions.
 package conditions
 
 import "github.com/KirkDiggler/rpg-toolkit/core"

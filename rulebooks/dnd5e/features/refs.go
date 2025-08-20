@@ -1,3 +1,4 @@
+// Package features provides ref builders and constants for D&D 5e class features.
 package features
 
 import "github.com/KirkDiggler/rpg-toolkit/core"

@@ -1,3 +1,4 @@
+// Package skills provides ref builders and constants for D&D 5e skills.
 package skills
 
 import "github.com/KirkDiggler/rpg-toolkit/core"

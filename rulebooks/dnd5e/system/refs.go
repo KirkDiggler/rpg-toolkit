@@ -1,3 +1,4 @@
+// Package system provides ref builders and constants for D&D 5e system concepts.
 package system
 
 import "github.com/KirkDiggler/rpg-toolkit/core"
