@@ -13,7 +13,7 @@ import (
 )
 
 // LoadJSON creates a feature from JSON data
-func LoadJSON(data []byte, bus *events.Bus) (Feature, error) {
+func LoadJSON(data []byte, bus events.EventBus) (Feature, error) {
 	var input struct {
 		Ref  string          `json:"ref"`
 		ID   string          `json:"id"`

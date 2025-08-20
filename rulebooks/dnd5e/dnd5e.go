@@ -8,22 +8,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// Character types from the character package
-type (
-	// Character represents a D&D 5e character
-	Character = character.Character
-	// CharacterData is the persistent character data structure
-	CharacterData = character.Data
-	// CharacterBuilder provides a step-by-step character creation process
-	CharacterBuilder = character.Builder
-	// CharacterDraft represents an in-progress character
-	CharacterDraft = character.Draft
-	// CharacterDraftData is the persistent draft data structure
-	CharacterDraftData = character.DraftData
-	// CreationData contains data for direct character creation
-	CreationData = character.CreationData
-)
-
 // Race types from the race package
 type (
 	// RaceData contains D&D 5e race information
@@ -50,6 +34,22 @@ type (
 	ChoiceCategory = shared.ChoiceCategory
 	// Background represents character background
 	Background = shared.Background
+)
+
+// Character types from the character package
+type (
+	// Character represents a D&D 5e character
+	Character = character.Character
+	// CharacterData is the persistent character data structure
+	CharacterData = character.Data
+	// CharacterBuilder provides a step-by-step character creation process
+	CharacterBuilder = character.Builder
+	// CharacterDraft represents an in-progress character
+	CharacterDraft = character.Draft
+	// CharacterDraftData is the persistent draft data structure
+	CharacterDraftData = character.DraftData
+	// CreationData contains data for direct character creation
+	CreationData = character.CreationData
 )
 
 // Re-export key functions

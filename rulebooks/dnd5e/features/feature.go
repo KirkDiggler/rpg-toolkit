@@ -17,8 +17,9 @@ const (
 
 // FeatureInput is the standard input for all D&D 5e features
 type FeatureInput struct {
-	Target core.Entity `json:"target,omitempty"`
-	// When we have actual use cases for other fields, we'll add them
+	Target         core.Entity          `json:"target,omitempty"`
+	OwnerLevel     int                  `json:"owner_level,omitempty"`     // Character's class level
+	OwnerResources map[ResourceType]int `json:"owner_resources,omitempty"` // Available resources
 }
 
 // ResourceType identifies what resource a feature consumes
