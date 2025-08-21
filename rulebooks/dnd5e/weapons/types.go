@@ -4,29 +4,41 @@ package weapons
 // WeaponCategory represents the category of weapon
 type WeaponCategory string
 
-// WeaponCategory constants classify weapons by complexity and range
 const (
-	CategorySimpleMelee   WeaponCategory = "simple-melee"
-	CategorySimpleRanged  WeaponCategory = "simple-ranged"
-	CategoryMartialMelee  WeaponCategory = "martial-melee"
+	// CategorySimpleMelee represents simple melee weapons
+	CategorySimpleMelee WeaponCategory = "simple-melee"
+	// CategorySimpleRanged represents simple ranged weapons
+	CategorySimpleRanged WeaponCategory = "simple-ranged"
+	// CategoryMartialMelee represents martial melee weapons
+	CategoryMartialMelee WeaponCategory = "martial-melee"
+	// CategoryMartialRanged represents martial ranged weapons
 	CategoryMartialRanged WeaponCategory = "martial-ranged"
 )
 
 // WeaponProperty represents special properties of weapons
 type WeaponProperty string
 
-// WeaponProperty constants define special weapon characteristics
 const (
-	PropertyLight      WeaponProperty = "light"
-	PropertyThrown     WeaponProperty = "thrown"
-	PropertyFinesse    WeaponProperty = "finesse"
-	PropertyVersatile  WeaponProperty = "versatile"
-	PropertyTwoHanded  WeaponProperty = "two-handed"
+	// PropertyLight indicates weapon is small and easy to handle
+	PropertyLight WeaponProperty = "light"
+	// PropertyThrown indicates weapon can be thrown
+	PropertyThrown WeaponProperty = "thrown"
+	// PropertyFinesse allows using Dexterity for attack and damage rolls
+	PropertyFinesse WeaponProperty = "finesse"
+	// PropertyVersatile allows one or two-handed use with different damage
+	PropertyVersatile WeaponProperty = "versatile"
+	// PropertyTwoHanded requires two hands to use
+	PropertyTwoHanded WeaponProperty = "two-handed"
+	// PropertyAmmunition requires ammunition to make ranged attacks
 	PropertyAmmunition WeaponProperty = "ammunition"
-	PropertyLoading    WeaponProperty = "loading"
-	PropertyReach      WeaponProperty = "reach"
-	PropertyHeavy      WeaponProperty = "heavy"
-	PropertySpecial    WeaponProperty = "special"
+	// PropertyLoading limits attacks to one per action
+	PropertyLoading WeaponProperty = "loading"
+	// PropertyReach adds 5 feet to attack range
+	PropertyReach WeaponProperty = "reach"
+	// PropertyHeavy indicates weapon is heavy and cumbersome
+	PropertyHeavy WeaponProperty = "heavy"
+	// PropertySpecial indicates weapon has special rules
+	PropertySpecial WeaponProperty = "special"
 )
 
 // Weapon represents a D&D 5e weapon

@@ -14,29 +14,41 @@ type Choice struct {
 // Category of choice
 type Category string
 
-// Category constants define the different types of choices in character creation
 const (
-	CategorySkill     Category = "skill"
-	CategoryLanguage  Category = "language"
-	CategoryTool      Category = "tool"
+	// CategorySkill represents skill proficiency choices
+	CategorySkill Category = "skill"
+	// CategoryLanguage represents language choices
+	CategoryLanguage Category = "language"
+	// CategoryTool represents tool proficiency choices
+	CategoryTool Category = "tool"
+	// CategoryEquipment represents equipment choices
 	CategoryEquipment Category = "equipment"
-	CategoryAbility   Category = "ability"
-	CategorySpell     Category = "spell"
-	CategoryCantrip   Category = "cantrip"
-	CategoryFeat      Category = "feat"
+	// CategoryAbility represents ability score choices
+	CategoryAbility Category = "ability"
+	// CategorySpell represents spell choices
+	CategorySpell Category = "spell"
+	// CategoryCantrip represents cantrip choices
+	CategoryCantrip Category = "cantrip"
+	// CategoryFeat represents feat choices
+	CategoryFeat Category = "feat"
 )
 
 // Source of the choice
 type Source string
 
-// Source constants identify where a choice originates from
 const (
-	SourceClass      Source = "class"
-	SourceRace       Source = "race"
+	// SourceClass indicates choice comes from character class
+	SourceClass Source = "class"
+	// SourceRace indicates choice comes from character race
+	SourceRace Source = "race"
+	// SourceBackground indicates choice comes from character background
 	SourceBackground Source = "background"
-	SourceSubclass   Source = "subclass"
-	SourceSubrace    Source = "subrace"
-	SourceFeat       Source = "feat"
+	// SourceSubclass indicates choice comes from class specialization
+	SourceSubclass Source = "subclass"
+	// SourceSubrace indicates choice comes from race variant
+	SourceSubrace Source = "subrace"
+	// SourceFeat indicates choice comes from a feat
+	SourceFeat Source = "feat"
 )
 
 // Option represents a single selectable option
@@ -49,24 +61,33 @@ type Option interface {
 // OptionType identifies the type of option
 type OptionType string
 
-// OptionType constants specify the structure of selectable options
 const (
-	OptionTypeSingle   OptionType = "single"   // Single item
-	OptionTypeBundle   OptionType = "bundle"   // Multiple items together
-	OptionTypeCategory OptionType = "category" // Choose from category
+	// OptionTypeSingle represents a single item choice
+	OptionTypeSingle OptionType = "single"
+	// OptionTypeBundle represents multiple items bundled together
+	OptionTypeBundle OptionType = "bundle"
+	// OptionTypeCategory represents choosing from a category of items
+	OptionTypeCategory OptionType = "category"
 )
 
 // ItemType identifies what kind of item this is
 type ItemType string
 
-// ItemType constants classify different types of selectable items
 const (
-	ItemTypeSkill    ItemType = "skill"
+	// ItemTypeSkill represents a skill proficiency
+	ItemTypeSkill ItemType = "skill"
+	// ItemTypeLanguage represents a language proficiency
 	ItemTypeLanguage ItemType = "language"
-	ItemTypeTool     ItemType = "tool"
-	ItemTypeWeapon   ItemType = "weapon"
-	ItemTypeArmor    ItemType = "armor"
-	ItemTypeGear     ItemType = "gear"
-	ItemTypeSpell    ItemType = "spell"
-	ItemTypeFeat     ItemType = "feat"
+	// ItemTypeTool represents a tool proficiency
+	ItemTypeTool ItemType = "tool"
+	// ItemTypeWeapon represents a weapon item
+	ItemTypeWeapon ItemType = "weapon"
+	// ItemTypeArmor represents an armor item
+	ItemTypeArmor ItemType = "armor"
+	// ItemTypeGear represents adventuring gear
+	ItemTypeGear ItemType = "gear"
+	// ItemTypeSpell represents a spell
+	ItemTypeSpell ItemType = "spell"
+	// ItemTypeFeat represents a feat
+	ItemTypeFeat ItemType = "feat"
 )

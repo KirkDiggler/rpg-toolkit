@@ -11,11 +11,14 @@ type ArmorID string
 // ArmorCategory represents armor weight classification
 type ArmorCategory string
 
-// ArmorCategory constants define armor weight classifications
 const (
-	CategoryLight  ArmorCategory = "light"
+	// CategoryLight represents light armor category
+	CategoryLight ArmorCategory = "light"
+	// CategoryMedium represents medium armor category
 	CategoryMedium ArmorCategory = "medium"
-	CategoryHeavy  ArmorCategory = "heavy"
+	// CategoryHeavy represents heavy armor category
+	CategoryHeavy ArmorCategory = "heavy"
+	// CategoryShield represents shield category
 	CategoryShield ArmorCategory = "shield"
 )
 
