@@ -8,8 +8,9 @@ type Item struct {
 	Cost   string  // e.g., "2 gp"
 }
 
-// Common adventuring gear items used in bundles
-var adventuringGear = map[string]Item{
+// AdventuringGear contains common items used in bundles
+// TODO: This will be used for bundle validation and lookups
+var AdventuringGear = map[string]Item{
 	// Ammunition
 	"arrow": {
 		ID:     "arrow",

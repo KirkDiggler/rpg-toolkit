@@ -296,9 +296,9 @@ func (s *TypedGameServerSuite) TestTypeSafetyBenefits() {
 
 	s.Run("CrossPackageTypeSafety", func() {
 		// Can't mix up types between packages
-		var myClass classes.Class = classes.Fighter
-		var myRace races.Race = races.Human
-		var myBackground backgrounds.Background = backgrounds.Soldier
+		myClass := classes.Fighter
+		myRace := races.Human
+		myBackground := backgrounds.Soldier
 
 		// These won't compile - catches errors immediately:
 		// myClass = myRace
