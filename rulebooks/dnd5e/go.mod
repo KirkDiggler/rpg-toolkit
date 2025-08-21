@@ -7,6 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/dice v0.1.1-0.20250807211656-0f8ebffb7bf0
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.0
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.2
 )
