@@ -94,23 +94,27 @@ func GetEquipmentChoices() []class.EquipmentChoiceData {
 			},
 		},
 		// Choice 2: Martial weapon and shield OR two martial weapons
+		// NOTE: This is a placeholder - the actual weapon choice happens through
+		// the choices system. These IDs signal to the handler what kind of 
+		// secondary choice needs to be presented.
 		{
 			ID:          "fighter-weapon-choice",
 			Description: "Choose your weapons",
 			Choose:      1,
 			Options: []class.EquipmentOption{
 				{
-					ID: string(bundles.MartialWeaponAndShield),
+					ID: "martial-weapon-and-shield",
 					Items: []class.EquipmentData{
-						// This will be expanded to let player choose ANY martial weapon
-						{ItemID: "martial-weapon-and-shield", Quantity: 1},
+						// This signals: player chooses 1 martial weapon, gets shield
+						{ItemID: "weapon-category:martial", Quantity: 1},
+						{ItemID: "shield", Quantity: 1},
 					},
 				},
 				{
-					ID: string(bundles.TwoMartialWeapons),
+					ID: "two-martial-weapons",
 					Items: []class.EquipmentData{
-						// This will be expanded to let player choose ANY 2 martial weapons
-						{ItemID: "two-martial-weapons", Quantity: 1},
+						// This signals: player chooses 2 martial weapons
+						{ItemID: "weapon-category:martial", Quantity: 2},
 					},
 				},
 			},
