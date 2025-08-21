@@ -1,31 +1,36 @@
 // Package race provides D&D 5e race data structures and functionality
 package race
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+)
 
 // Data contains all the data needed to define a D&D 5e race
 type Data struct {
-	ID          constants.Race `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
+	ID          races.Race `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
 
 	// Physical characteristics
 	Size  string `json:"size"`  // Small, Medium, Large
 	Speed int    `json:"speed"` // Base walking speed
 
 	// Ability score improvements
-	AbilityScoreIncreases map[constants.Ability]int `json:"ability_score_increases"`
+	AbilityScoreIncreases map[abilities.Ability]int `json:"ability_score_increases"`
 
 	// Features and traits
 	Traits []TraitData `json:"traits"`
 
 	// Proficiencies
-	SkillProficiencies  []constants.Skill `json:"skill_proficiencies"`
-	WeaponProficiencies []string          `json:"weapon_proficiencies"`
-	ToolProficiencies   []string          `json:"tool_proficiencies"`
+	SkillProficiencies  []skills.Skill `json:"skill_proficiencies"`
+	WeaponProficiencies []string       `json:"weapon_proficiencies"`
+	ToolProficiencies   []string       `json:"tool_proficiencies"`
 
 	// Languages
-	Languages      []constants.Language `json:"languages"`
+	Languages      []languages.Language `json:"languages"`
 	LanguageChoice *ChoiceData          `json:"language_choice,omitempty"`
 
 	// Other choices
@@ -38,12 +43,12 @@ type Data struct {
 
 // SubraceData defines a subrace variant
 type SubraceData struct {
-	ID          constants.Subrace `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
+	ID          races.Subrace `json:"id"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
 
 	// Additional ability score improvements
-	AbilityScoreIncreases map[constants.Ability]int `json:"ability_score_increases"`
+	AbilityScoreIncreases map[abilities.Ability]int `json:"ability_score_increases"`
 
 	// Additional traits
 	Traits []TraitData `json:"traits"`
@@ -95,7 +100,7 @@ type Race struct {
 }
 
 // ID returns the race ID
-func (r *Race) ID() constants.Race {
+func (r *Race) ID() races.Race {
 	return r.data.ID
 }
 
@@ -115,7 +120,7 @@ func (r *Race) Size() string {
 }
 
 // GetAbilityScoreIncreases returns ability score improvements
-func (r *Race) GetAbilityScoreIncreases() map[constants.Ability]int {
+func (r *Race) GetAbilityScoreIncreases() map[abilities.Ability]int {
 	return r.data.AbilityScoreIncreases
 }
 
@@ -125,7 +130,7 @@ func (r *Race) GetTraits() []TraitData {
 }
 
 // GetLanguages returns known languages
-func (r *Race) GetLanguages() []constants.Language {
+func (r *Race) GetLanguages() []languages.Language {
 	return r.data.Languages
 }
 

@@ -5,14 +5,19 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Helper function to create skill choices for tests
-func makeSkillChoices(className string, skills []constants.Skill) []ChoiceData {
+func makeSkillChoices(className string, skills []skills.Skill) []ChoiceData {
 	return []ChoiceData{
 		{
 			Category:       shared.ChoiceSkills,
@@ -24,7 +29,7 @@ func makeSkillChoices(className string, skills []constants.Skill) []ChoiceData {
 }
 
 // Helper function to create language choices for tests
-func makeLanguageChoices(source shared.ChoiceSource, languages []constants.Language) []ChoiceData {
+func makeLanguageChoices(source shared.ChoiceSource, languages []languages.Language) []ChoiceData {
 	return []ChoiceData{
 		{
 			Category:          shared.ChoiceLanguages,
@@ -110,15 +115,15 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		Name:  "Human",
 		Size:  "Medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[constants.Ability]int{
-			constants.STR: 1,
-			constants.DEX: 1,
-			constants.CON: 1,
-			constants.INT: 1,
-			constants.WIS: 1,
-			constants.CHA: 1,
+		AbilityScoreIncreases: map[abilities.Ability]int{
+			abilities.STR: 1,
+			abilities.DEX: 1,
+			abilities.CON: 1,
+			abilities.INT: 1,
+			abilities.WIS: 1,
+			abilities.CHA: 1,
 		},
-		Languages: []constants.Language{constants.LanguageCommon},
+		Languages: []languages.Language{languages.Common},
 	}
 
 	// Setup Elf race with subraces
@@ -127,24 +132,24 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		Name:  "Elf",
 		Size:  "Medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[constants.Ability]int{
-			constants.DEX: 2,
+		AbilityScoreIncreases: map[abilities.Ability]int{
+			abilities.DEX: 2,
 		},
-		Languages:           []constants.Language{constants.LanguageCommon, constants.LanguageElvish},
+		Languages:           []languages.Language{languages.Common, languages.Elvish},
 		WeaponProficiencies: []string{"Longsword", "Shortsword", "Shortbow", "Longbow"},
 		Subraces: []race.SubraceData{
 			{
 				ID:   "high-elf",
 				Name: "High Elf",
-				AbilityScoreIncreases: map[constants.Ability]int{
-					constants.INT: 1,
+				AbilityScoreIncreases: map[abilities.Ability]int{
+					abilities.INT: 1,
 				},
 			},
 			{
 				ID:   "wood-elf",
 				Name: "Wood Elf",
-				AbilityScoreIncreases: map[constants.Ability]int{
-					constants.WIS: 1,
+				AbilityScoreIncreases: map[abilities.Ability]int{
+					abilities.WIS: 1,
 				},
 			},
 		},
@@ -152,14 +157,14 @@ func (s *DraftConversionTestSuite) SetupTest() {
 
 	// Setup Fighter class
 	s.fighterClass = &class.Data{
-		ID:                    "fighter",
+		ID:                    classes.Fighter,
 		Name:                  "Fighter",
 		HitDice:               10,
-		SavingThrows:          []constants.Ability{constants.STR, constants.CON},
+		SavingThrows:          []abilities.Ability{abilities.STR, abilities.CON},
 		SkillProficiencyCount: 2,
-		SkillOptions: []constants.Skill{
-			constants.SkillAcrobatics, constants.SkillAnimalHandling, constants.SkillAthletics, constants.SkillHistory,
-			constants.SkillInsight, constants.SkillIntimidation, constants.SkillPerception, constants.SkillSurvival,
+		SkillOptions: []skills.Skill{
+			skills.Acrobatics, skills.AnimalHandling, skills.Athletics, skills.History,
+			skills.Insight, skills.Intimidation, skills.Perception, skills.Survival,
 		},
 		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
 		WeaponProficiencies: []string{"Simple", "Martial"},
@@ -173,14 +178,14 @@ func (s *DraftConversionTestSuite) SetupTest() {
 
 	// Setup Wizard class
 	s.wizardClass = &class.Data{
-		ID:                    "wizard",
+		ID:                    classes.Wizard,
 		Name:                  "Wizard",
 		HitDice:               6,
-		SavingThrows:          []constants.Ability{constants.INT, constants.WIS},
+		SavingThrows:          []abilities.Ability{abilities.INT, abilities.WIS},
 		SkillProficiencyCount: 2,
-		SkillOptions: []constants.Skill{
-			constants.SkillArcana, constants.SkillHistory, constants.SkillInsight,
-			constants.SkillInvestigation, constants.SkillMedicine, constants.SkillReligion,
+		SkillOptions: []skills.Skill{
+			skills.Arcana, skills.History, skills.Insight,
+			skills.Investigation, skills.Medicine, skills.Religion,
 		},
 		ArmorProficiencies:  []string{},
 		WeaponProficiencies: []string{"Dagger", "Dart", "Sling", "Quarterstaff", "Light Crossbow"},
@@ -191,8 +196,8 @@ func (s *DraftConversionTestSuite) SetupTest() {
 	s.soldierBg = &shared.Background{
 		ID:                 "soldier",
 		Name:               "Soldier",
-		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
-		Languages:          []constants.Language{constants.LanguageOrc},
+		SkillProficiencies: []skills.Skill{skills.Athletics, skills.Intimidation},
+		Languages:          []languages.Language{languages.Orc},
 		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
 		Equipment:          []string{"Insignia of rank", "Trophy", "Deck of cards", "Common clothes"},
 	}
@@ -201,8 +206,8 @@ func (s *DraftConversionTestSuite) SetupTest() {
 	s.hermitBg = &shared.Background{
 		ID:                 "hermit",
 		Name:               "Hermit",
-		SkillProficiencies: []constants.Skill{constants.SkillMedicine, constants.SkillReligion},
-		Languages:          []constants.Language{constants.LanguageCelestial},
+		SkillProficiencies: []skills.Skill{skills.Medicine, skills.Religion},
+		Languages:          []languages.Language{languages.Celestial},
 		ToolProficiencies:  []string{"Herbalism kit"},
 	}
 }
@@ -214,32 +219,32 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 		PlayerID: "player-123",
 		Name:     "Garen the Bold",
 		RaceChoice: RaceChoice{
-			RaceID: constants.RaceHuman,
+			RaceID: races.Human,
 		},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 15,
-			constants.DEX: 13,
-			constants.CON: 14,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 8,
+			abilities.STR: 15,
+			abilities.DEX: 13,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
 		},
 		Choices: []ChoiceData{
 			{
 				Category:       shared.ChoiceSkills,
 				Source:         shared.SourceClass,
 				ChoiceID:       "ranger_skill_proficiencies",
-				SkillSelection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+				SkillSelection: []skills.Skill{skills.Perception, skills.Survival},
 			},
 			{
 				Category:          shared.ChoiceLanguages,
 				Source:            shared.SourceRace,
 				ChoiceID:          "additional_languages",
-				LanguageSelection: []constants.Language{constants.LanguageDwarvish, constants.LanguageGiant},
+				LanguageSelection: []languages.Language{languages.Dwarvish, languages.Giant},
 			},
 		},
 		Progress: DraftProgress{
@@ -257,17 +262,17 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	s.Assert().Equal("player-123", character.playerID)
 	s.Assert().Equal("Garen the Bold", character.name)
 	s.Assert().Equal(1, character.level)
-	s.Assert().Equal(constants.RaceHuman, character.raceID)
-	s.Assert().Equal(constants.ClassFighter, character.classID)
-	s.Assert().Equal(constants.BackgroundSoldier, character.backgroundID)
+	s.Assert().Equal(races.Human, character.raceID)
+	s.Assert().Equal(classes.Fighter, character.classID)
+	s.Assert().Equal(backgrounds.Soldier, character.backgroundID)
 
 	// Verify ability scores with Human racial bonuses (+1 to all)
-	s.Assert().Equal(16, character.abilityScores[constants.STR]) // 15 + 1
-	s.Assert().Equal(14, character.abilityScores[constants.DEX]) // 13 + 1
-	s.Assert().Equal(15, character.abilityScores[constants.CON]) // 14 + 1
-	s.Assert().Equal(11, character.abilityScores[constants.INT]) // 10 + 1
-	s.Assert().Equal(13, character.abilityScores[constants.WIS]) // 12 + 1
-	s.Assert().Equal(9, character.abilityScores[constants.CHA])  // 8 + 1
+	s.Assert().Equal(16, character.abilityScores[abilities.STR]) // 15 + 1
+	s.Assert().Equal(14, character.abilityScores[abilities.DEX]) // 13 + 1
+	s.Assert().Equal(15, character.abilityScores[abilities.CON]) // 14 + 1
+	s.Assert().Equal(11, character.abilityScores[abilities.INT]) // 10 + 1
+	s.Assert().Equal(13, character.abilityScores[abilities.WIS]) // 12 + 1
+	s.Assert().Equal(9, character.abilityScores[abilities.CHA])  // 8 + 1
 
 	// Verify HP (Fighter d10 + CON modifier of +2)
 	s.Assert().Equal(12, character.maxHitPoints)
@@ -278,19 +283,19 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	s.Assert().Equal("Medium", character.size)
 
 	// Verify skills (chosen + background)
-	expectedSkills := map[constants.Skill]shared.ProficiencyLevel{
-		constants.SkillPerception:   shared.Proficient, // Chosen
-		constants.SkillSurvival:     shared.Proficient, // Chosen
-		constants.SkillAthletics:    shared.Proficient, // Background
-		constants.SkillIntimidation: shared.Proficient, // Background
+	expectedSkills := map[skills.Skill]shared.ProficiencyLevel{
+		skills.Perception:   shared.Proficient, // Chosen
+		skills.Survival:     shared.Proficient, // Chosen
+		skills.Athletics:    shared.Proficient, // Background
+		skills.Intimidation: shared.Proficient, // Background
 	}
 	s.Assert().Equal(expectedSkills, character.skills)
 
 	// Verify languages (race + background + chosen)
-	s.Assert().Contains(character.languages, constants.LanguageCommon)   // Human
-	s.Assert().Contains(character.languages, constants.LanguageOrc)      // Soldier background
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish) // Chosen
-	s.Assert().Contains(character.languages, constants.LanguageGiant)    // Chosen
+	s.Assert().Contains(character.languages, languages.Common)   // Human
+	s.Assert().Contains(character.languages, languages.Orc)      // Soldier background
+	s.Assert().Contains(character.languages, languages.Dwarvish) // Chosen
+	s.Assert().Contains(character.languages, languages.Giant)    // Chosen
 	s.Assert().Len(character.languages, 4)
 
 	// Verify proficiencies
@@ -299,12 +304,12 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	s.Assert().Equal(s.soldierBg.ToolProficiencies, character.proficiencies.Tools)
 
 	// Verify saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.CON])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.DEX])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.INT])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.WIS])
-	s.Assert().Equal(shared.NotProficient, character.savingThrows[constants.CHA])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.STR])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.CON])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[abilities.DEX])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[abilities.INT])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[abilities.WIS])
+	s.Assert().Equal(shared.NotProficient, character.savingThrows[abilities.CHA])
 
 	// Verify choices were recorded
 	s.Assert().True(len(character.choices) > 0)
@@ -313,13 +318,13 @@ func (s *DraftConversionTestSuite) TestCompleteHumanFighterConversion() {
 	for _, choice := range character.choices {
 		if choice.Category == shared.ChoiceSkills && choice.SkillSelection != nil {
 			hasSkillChoice = true
-			s.Assert().Contains(choice.SkillSelection, constants.SkillPerception)
-			s.Assert().Contains(choice.SkillSelection, constants.SkillSurvival)
+			s.Assert().Contains(choice.SkillSelection, skills.Perception)
+			s.Assert().Contains(choice.SkillSelection, skills.Survival)
 		}
 		if choice.Category == shared.ChoiceLanguages && choice.LanguageSelection != nil {
 			hasLanguageChoice = true
-			s.Assert().Contains(choice.LanguageSelection, constants.LanguageDwarvish)
-			s.Assert().Contains(choice.LanguageSelection, constants.LanguageGiant)
+			s.Assert().Contains(choice.LanguageSelection, languages.Dwarvish)
+			s.Assert().Contains(choice.LanguageSelection, languages.Giant)
 		}
 	}
 	s.Assert().True(hasSkillChoice, "Should have recorded skill choices")
@@ -333,33 +338,33 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 		PlayerID: "player-456",
 		Name:     "Elaria Moonshadow",
 		RaceChoice: RaceChoice{
-			RaceID:    constants.RaceElf,
-			SubraceID: constants.SubraceHighElf,
+			RaceID:    races.Elf,
+			SubraceID: races.HighElf,
 		},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassWizard,
+			ClassID: classes.Wizard,
 		},
-		BackgroundChoice: constants.BackgroundHermit,
+		BackgroundChoice: backgrounds.Hermit,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 8,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 15,
-			constants.WIS: 12,
-			constants.CHA: 10,
+			abilities.STR: 8,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 15,
+			abilities.WIS: 12,
+			abilities.CHA: 10,
 		},
 		Choices: []ChoiceData{
 			{
 				Category:       shared.ChoiceSkills,
 				Source:         shared.SourceClass,
 				ChoiceID:       "wizard_skill_proficiencies",
-				SkillSelection: []constants.Skill{constants.SkillArcana, constants.SkillInvestigation},
+				SkillSelection: []skills.Skill{skills.Arcana, skills.Investigation},
 			},
 			{
 				Category:          shared.ChoiceLanguages,
 				Source:            shared.SourceRace,
 				ChoiceID:          "additional_languages",
-				LanguageSelection: []constants.Language{constants.LanguageDraconic, constants.LanguageSylvan},
+				LanguageSelection: []languages.Language{languages.Draconic, languages.Sylvan},
 			},
 		},
 		Progress: DraftProgress{
@@ -378,30 +383,30 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 	// Note: subraceID is stored in the character data but not exposed on the Character struct
 
 	// Verify ability scores with Elf/High Elf bonuses
-	s.Assert().Equal(8, character.abilityScores[constants.STR])  // No bonus
-	s.Assert().Equal(16, character.abilityScores[constants.DEX]) // 14 + 2 (elf)
-	s.Assert().Equal(13, character.abilityScores[constants.CON]) // No bonus
-	s.Assert().Equal(16, character.abilityScores[constants.INT]) // 15 + 1 (high elf)
-	s.Assert().Equal(12, character.abilityScores[constants.WIS]) // No bonus
-	s.Assert().Equal(10, character.abilityScores[constants.CHA]) // No bonus
+	s.Assert().Equal(8, character.abilityScores[abilities.STR])  // No bonus
+	s.Assert().Equal(16, character.abilityScores[abilities.DEX]) // 14 + 2 (elf)
+	s.Assert().Equal(13, character.abilityScores[abilities.CON]) // No bonus
+	s.Assert().Equal(16, character.abilityScores[abilities.INT]) // 15 + 1 (high elf)
+	s.Assert().Equal(12, character.abilityScores[abilities.WIS]) // No bonus
+	s.Assert().Equal(10, character.abilityScores[abilities.CHA]) // No bonus
 
 	// Verify HP (Wizard d6 + CON modifier of +1)
 	s.Assert().Equal(7, character.maxHitPoints)
 	s.Assert().Equal(7, character.hitPoints)
 
 	// Verify skills
-	expectedSkills := map[constants.Skill]shared.ProficiencyLevel{
-		constants.SkillArcana:        shared.Proficient, // Chosen
-		constants.SkillInvestigation: shared.Proficient, // Chosen
-		constants.SkillMedicine:      shared.Proficient, // Hermit background
-		constants.SkillReligion:      shared.Proficient, // Hermit background
+	expectedSkills := map[skills.Skill]shared.ProficiencyLevel{
+		skills.Arcana:        shared.Proficient, // Chosen
+		skills.Investigation: shared.Proficient, // Chosen
+		skills.Medicine:      shared.Proficient, // Hermit background
+		skills.Religion:      shared.Proficient, // Hermit background
 	}
 	s.Assert().Equal(expectedSkills, character.skills)
 
 	// Verify languages
-	expectedLanguages := []constants.Language{
-		constants.LanguageCommon, constants.LanguageElvish, constants.LanguageCelestial,
-		constants.LanguageDraconic, constants.LanguageSylvan,
+	expectedLanguages := []languages.Language{
+		languages.Common, languages.Elvish, languages.Celestial,
+		languages.Draconic, languages.Sylvan,
 	}
 	s.Assert().Len(character.languages, len(expectedLanguages))
 	for _, lang := range expectedLanguages {
@@ -417,8 +422,8 @@ func (s *DraftConversionTestSuite) TestHighElfWizardConversion() {
 	}
 
 	// Verify saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.INT])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.WIS])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.INT])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.WIS])
 }
 
 func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
@@ -428,27 +433,27 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 		Name:      "Exotic Race",
 		Size:      "Medium",
 		Speed:     30,
-		Languages: []constants.Language{constants.LanguagePrimordial, constants.LanguageAbyssal}, // No Common
+		Languages: []languages.Language{languages.Primordial, languages.Abyssal}, // No Common
 	}
 
 	draft := &Draft{
 		ID:         "test-exotic",
 		PlayerID:   "player-789",
 		Name:       "Zyx'tar",
-		RaceChoice: RaceChoice{RaceID: constants.Race("exotic")},
+		RaceChoice: RaceChoice{RaceID: races.Race("exotic")},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 14,
-			constants.DEX: 12,
-			constants.CON: 15,
-			constants.INT: 10,
-			constants.WIS: 13,
-			constants.CHA: 8,
+			abilities.STR: 14,
+			abilities.DEX: 12,
+			abilities.CON: 15,
+			abilities.INT: 10,
+			abilities.WIS: 13,
+			abilities.CHA: 8,
 		},
-		Choices: makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+		Choices: makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.Perception, skills.Survival}),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -460,10 +465,10 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 	s.Require().NotNil(character)
 
 	// Verify Common is still included
-	s.Assert().Contains(character.languages, constants.LanguageCommon, "Common should always be included")
-	s.Assert().Contains(character.languages, constants.LanguagePrimordial)
-	s.Assert().Contains(character.languages, constants.LanguageAbyssal)
-	s.Assert().Contains(character.languages, constants.LanguageOrc) // From soldier background
+	s.Assert().Contains(character.languages, languages.Common, "Common should always be included")
+	s.Assert().Contains(character.languages, languages.Primordial)
+	s.Assert().Contains(character.languages, languages.Abyssal)
+	s.Assert().Contains(character.languages, languages.Orc) // From soldier background
 }
 
 func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
@@ -472,24 +477,24 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 		ID:         "test-duplicate-lang",
 		PlayerID:   "player-999",
 		Name:       "Linguist",
-		RaceChoice: RaceChoice{RaceID: constants.RaceElf},
+		RaceChoice: RaceChoice{RaceID: races.Elf},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassWizard,
+			ClassID: classes.Wizard,
 		},
-		BackgroundChoice: constants.BackgroundHermit,
+		BackgroundChoice: backgrounds.Hermit,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 10,
-			constants.DEX: 14,
-			constants.CON: 12,
-			constants.INT: 15,
-			constants.WIS: 13,
-			constants.CHA: 8,
+			abilities.STR: 10,
+			abilities.DEX: 14,
+			abilities.CON: 12,
+			abilities.INT: 15,
+			abilities.WIS: 13,
+			abilities.CHA: 8,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillHistory}),
-			makeLanguageChoices(shared.SourceBackground, []constants.Language{
-				constants.LanguageCommon, constants.LanguageElvish,
-				constants.LanguageCelestial, constants.LanguageDraconic,
+			makeSkillChoices(string(classes.Wizard), []skills.Skill{skills.Arcana, skills.History}),
+			makeLanguageChoices(shared.SourceBackground, []languages.Language{
+				languages.Common, languages.Elvish,
+				languages.Celestial, languages.Draconic,
 			}),
 		),
 		Progress: DraftProgress{
@@ -503,7 +508,7 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 	s.Require().NotNil(character)
 
 	// Count each language occurrence
-	languageCount := make(map[constants.Language]int)
+	languageCount := make(map[languages.Language]int)
 	for _, lang := range character.languages {
 		languageCount[lang]++
 	}
@@ -514,10 +519,10 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 	}
 
 	// Verify all expected languages are present
-	s.Assert().Contains(character.languages, constants.LanguageCommon)
-	s.Assert().Contains(character.languages, constants.LanguageElvish)
-	s.Assert().Contains(character.languages, constants.LanguageCelestial)
-	s.Assert().Contains(character.languages, constants.LanguageDraconic)
+	s.Assert().Contains(character.languages, languages.Common)
+	s.Assert().Contains(character.languages, languages.Elvish)
+	s.Assert().Contains(character.languages, languages.Celestial)
+	s.Assert().Contains(character.languages, languages.Draconic)
 }
 
 func (s *DraftConversionTestSuite) TestAllProficienciesApplied() {
@@ -526,20 +531,20 @@ func (s *DraftConversionTestSuite) TestAllProficienciesApplied() {
 		ID:         "test-all-prof",
 		PlayerID:   "player-prof",
 		Name:       "Jack of All Trades",
-		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceWoodElf},
+		RaceChoice: RaceChoice{RaceID: races.Elf, SubraceID: races.WoodElf},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 14,
-			constants.DEX: 15,
-			constants.CON: 13,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 8,
+			abilities.STR: 14,
+			abilities.DEX: 15,
+			abilities.CON: 13,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
 		},
-		Choices: makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+		Choices: makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.Perception, skills.Survival}),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
 		},
@@ -574,24 +579,24 @@ func (s *DraftConversionTestSuite) TestChoiceDataStorage() {
 		PlayerID: "player-choices",
 		Name:     "Choice Tracker",
 		RaceChoice: RaceChoice{
-			RaceID:    constants.RaceElf,
-			SubraceID: constants.SubraceHighElf,
+			RaceID:    races.Elf,
+			SubraceID: races.HighElf,
 		},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassWizard,
+			ClassID: classes.Wizard,
 		},
-		BackgroundChoice: constants.BackgroundHermit,
+		BackgroundChoice: backgrounds.Hermit,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 8,
-			constants.DEX: 14,
-			constants.CON: 12,
-			constants.INT: 15,
-			constants.WIS: 13,
-			constants.CHA: 10,
+			abilities.STR: 8,
+			abilities.DEX: 14,
+			abilities.CON: 12,
+			abilities.INT: 15,
+			abilities.WIS: 13,
+			abilities.CHA: 10,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillHistory}),
-			makeLanguageChoices(shared.SourceRace, []constants.Language{constants.LanguageDraconic}),
+			makeSkillChoices(string(classes.Wizard), []skills.Skill{skills.Arcana, skills.History}),
+			makeLanguageChoices(shared.SourceRace, []languages.Language{languages.Draconic}),
 		),
 		Progress: DraftProgress{
 			flags: ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores,
@@ -644,21 +649,21 @@ func (s *DraftConversionTestSuite) TestFightingStylesStoredCorrectly() {
 		ID:         "test-fighting-style",
 		PlayerID:   "player-fs",
 		Name:       "Fighter with Style",
-		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		RaceChoice: RaceChoice{RaceID: races.Human},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 14,
-			constants.CON: 15,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 8,
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 15,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+			makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.Perception, skills.Survival}),
 			makeFightingStyleChoice("dueling"),
 		),
 		Progress: DraftProgress{
@@ -691,21 +696,21 @@ func (s *DraftConversionTestSuite) TestSpellsAndCantripsStoredCorrectly() {
 		ID:         "test-spells",
 		PlayerID:   "player-spells",
 		Name:       "Spellcaster Supreme",
-		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		RaceChoice: RaceChoice{RaceID: races.Elf, SubraceID: races.HighElf},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassWizard,
+			ClassID: classes.Wizard,
 		},
-		BackgroundChoice: constants.BackgroundHermit,
+		BackgroundChoice: backgrounds.Hermit,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 8,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 15,
-			constants.WIS: 12,
-			constants.CHA: 10,
+			abilities.STR: 8,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 15,
+			abilities.WIS: 12,
+			abilities.CHA: 10,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillInvestigation}),
+			makeSkillChoices(string(classes.Wizard), []skills.Skill{skills.Arcana, skills.Investigation}),
 			makeCantripChoices([]string{"Mage Hand", "Prestidigitation", "Minor Illusion"}),
 			makeSpellChoices([]string{"Magic Missile", "Shield", "Identify", "Detect Magic", "Sleep", "Burning Hands"}),
 		),
@@ -760,21 +765,21 @@ func (s *DraftConversionTestSuite) TestEquipmentChoicesStoredCorrectly() {
 		ID:         "test-equipment",
 		PlayerID:   "player-eq",
 		Name:       "Well Equipped",
-		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		RaceChoice: RaceChoice{RaceID: races.Human},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 14,
-			constants.CON: 15,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 8,
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 15,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+			makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.Perception, skills.Survival}),
 			makeEquipmentChoices([]string{
 				"Chain Mail", "Shield", "Longsword", "Javelin (5)",
 				"Dungeoneer's Pack", "Explorer's Pack",
@@ -815,22 +820,22 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 		ID:         "test-comprehensive",
 		PlayerID:   "player-all",
 		Name:       "Jack of All Trades",
-		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		RaceChoice: RaceChoice{RaceID: races.Elf, SubraceID: races.HighElf},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		}, // Fighter with spellcasting (e.g., Eldritch Knight)
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 15,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 12,
-			constants.WIS: 10,
-			constants.CHA: 8,
+			abilities.STR: 15,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 12,
+			abilities.WIS: 10,
+			abilities.CHA: 8,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillHistory}),
-			makeLanguageChoices(shared.SourceRace, []constants.Language{constants.LanguageDraconic, constants.LanguageGiant}),
+			makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.Perception, skills.History}),
+			makeLanguageChoices(shared.SourceRace, []languages.Language{languages.Draconic, languages.Giant}),
 			makeFightingStyleChoice("protection"),
 			makeCantripChoices([]string{"Mage Hand", "Minor Illusion"}),
 			makeSpellChoices([]string{"Shield", "Magic Missile"}),
@@ -896,14 +901,14 @@ func (s *DraftConversionTestSuite) TestAllChoiceTypesComprehensive() {
 
 	// Verify character stats still work correctly
 	s.Assert().Equal("Jack of All Trades", character.name)
-	s.Assert().Equal(16, character.abilityScores[constants.DEX]) // 14 + 2 (elf)
-	s.Assert().Equal(13, character.abilityScores[constants.INT]) // 12 + 1 (high elf)
-	s.Assert().Contains(character.languages, constants.LanguageCommon)
-	s.Assert().Contains(character.languages, constants.LanguageElvish)
-	s.Assert().Contains(character.languages, constants.LanguageDraconic)
-	s.Assert().Contains(character.languages, constants.LanguageGiant)
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillHistory])
+	s.Assert().Equal(16, character.abilityScores[abilities.DEX]) // 14 + 2 (elf)
+	s.Assert().Equal(13, character.abilityScores[abilities.INT]) // 12 + 1 (high elf)
+	s.Assert().Contains(character.languages, languages.Common)
+	s.Assert().Contains(character.languages, languages.Elvish)
+	s.Assert().Contains(character.languages, languages.Draconic)
+	s.Assert().Contains(character.languages, languages.Giant)
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Perception])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.History])
 }
 
 func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
@@ -912,21 +917,21 @@ func (s *DraftConversionTestSuite) TestEquipmentProcessing() {
 		ID:         "test-equipment",
 		PlayerID:   "player-eq",
 		Name:       "Equipment Tester",
-		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		RaceChoice: RaceChoice{RaceID: races.Human},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 15,
-			constants.DEX: 13,
-			constants.CON: 14,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 11,
+			abilities.STR: 15,
+			abilities.DEX: 13,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 11,
 		},
 		Choices: combineChoices(
-			makeSkillChoices("fighter", []constants.Skill{constants.SkillPerception, constants.SkillSurvival}),
+			makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.Perception, skills.Survival}),
 			makeEquipmentChoices([]string{"Longsword", "Dungeoneer's Pack"}),
 		),
 	}
@@ -1002,20 +1007,20 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 		ID:         "test-resources",
 		PlayerID:   "player-res",
 		Name:       "Resource Fighter",
-		RaceChoice: RaceChoice{RaceID: constants.RaceHuman},
+		RaceChoice: RaceChoice{RaceID: races.Human},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassFighter,
+			ClassID: classes.Fighter,
 		},
-		BackgroundChoice: constants.BackgroundSoldier,
+		BackgroundChoice: backgrounds.Soldier,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 14,
-			constants.CON: 15,
-			constants.INT: 10,
-			constants.WIS: 13,
-			constants.CHA: 12,
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 15,
+			abilities.INT: 10,
+			abilities.WIS: 13,
+			abilities.CHA: 12,
 		},
-		Choices: makeSkillChoices("fighter", []constants.Skill{constants.SkillHistory, constants.SkillPerception}),
+		Choices: makeSkillChoices(string(classes.Fighter), []skills.Skill{skills.History, skills.Perception}),
 	}
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
 		ProgressAbilityScores | ProgressSkills
@@ -1060,20 +1065,20 @@ func (s *DraftConversionTestSuite) TestSpellSlotsInitialization() {
 		ID:         "test-spellslots",
 		PlayerID:   "player-spell",
 		Name:       "Spell Wizard",
-		RaceChoice: RaceChoice{RaceID: constants.RaceElf, SubraceID: constants.SubraceHighElf},
+		RaceChoice: RaceChoice{RaceID: races.Elf, SubraceID: races.HighElf},
 		ClassChoice: ClassChoice{
-			ClassID: constants.ClassWizard,
+			ClassID: classes.Wizard,
 		},
-		BackgroundChoice: constants.BackgroundHermit,
+		BackgroundChoice: backgrounds.Hermit,
 		AbilityScoreChoice: shared.AbilityScores{
-			constants.STR: 8,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 16,
-			constants.WIS: 12,
-			constants.CHA: 10,
+			abilities.STR: 8,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 16,
+			abilities.WIS: 12,
+			abilities.CHA: 10,
 		},
-		Choices: makeSkillChoices("wizard", []constants.Skill{constants.SkillArcana, constants.SkillInvestigation}),
+		Choices: makeSkillChoices(string(classes.Wizard), []skills.Skill{skills.Arcana, skills.Investigation}),
 	}
 	draft.Progress.flags = ProgressName | ProgressRace | ProgressClass | ProgressBackground |
 		ProgressAbilityScores | ProgressSkills

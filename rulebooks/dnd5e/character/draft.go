@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Draft represents a character in progress
@@ -20,10 +23,10 @@ type Draft struct {
 	Progress DraftProgress
 
 	// Core identity choices that need special handling
-	RaceChoice         RaceChoice           `json:"race_choice"`
-	ClassChoice        ClassChoice          `json:"class_choice"`
-	BackgroundChoice   constants.Background `json:"background_choice"`
-	AbilityScoreChoice shared.AbilityScores `json:"ability_score_choice"`
+	RaceChoice         RaceChoice             `json:"race_choice"`
+	ClassChoice        ClassChoice            `json:"class_choice"`
+	BackgroundChoice   backgrounds.Background `json:"background_choice"`
+	AbilityScoreChoice shared.AbilityScores   `json:"ability_score_choice"`
 
 	// All choices with source tracking
 	Choices []ChoiceData `json:"choices"`
@@ -78,7 +81,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	d.applyAbilityScoreImprovements(&charData, raceData)
 
 	// Calculate derived stats
-	charData.MaxHitPoints = classData.HitDice + charData.AbilityScores.Modifier(constants.CON)
+	charData.MaxHitPoints = classData.HitDice + charData.AbilityScores.Modifier(abilities.CON)
 	charData.HitPoints = charData.MaxHitPoints
 	charData.Speed = raceData.Speed
 	charData.Size = raceData.Size
@@ -97,7 +100,7 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	}
 
 	// Saving throws
-	charData.SavingThrows = make(map[constants.Ability]shared.ProficiencyLevel)
+	charData.SavingThrows = make(map[abilities.Ability]shared.ProficiencyLevel)
 	for _, save := range classData.SavingThrows {
 		charData.SavingThrows[save] = shared.Proficient
 	}
@@ -202,7 +205,7 @@ func (p *DraftProgress) hasFlag(flag uint32) bool {
 }
 
 // applyAbilityScoreIncreases applies ability score increases to the given scores
-func applyAbilityScoreIncreases(scores shared.AbilityScores, increases map[constants.Ability]int) {
+func applyAbilityScoreIncreases(scores shared.AbilityScores, increases map[abilities.Ability]int) {
 	// Apply the increases directly - no conversion needed!
 	_ = scores.ApplyIncreases(increases) // Ignore errors about exceeding 20 during creation
 }
@@ -253,8 +256,8 @@ func (d *Draft) applyAbilityScoreImprovements(charData *Data, raceData *race.Dat
 // compileSkills combines chosen skills with automatic grants from race and background
 func (d *Draft) compileSkills(
 	raceData *race.Data, backgroundData *shared.Background,
-) map[constants.Skill]shared.ProficiencyLevel {
-	skills := make(map[constants.Skill]shared.ProficiencyLevel)
+) map[skills.Skill]shared.ProficiencyLevel {
+	skills := make(map[skills.Skill]shared.ProficiencyLevel)
 
 	// Extract chosen skills from Choices
 	for _, choice := range d.Choices {
@@ -287,7 +290,7 @@ func (d *Draft) compileSkills(
 func (d *Draft) compileLanguages(raceData *race.Data, backgroundData *shared.Background) []string {
 	// Start with ensuring Common is always included
 	languageSet := make(map[string]bool)
-	languageSet[string(constants.LanguageCommon)] = true
+	languageSet[string(languages.Common)] = true
 
 	// Add race languages (automatic grants)
 	for _, lang := range raceData.Languages {

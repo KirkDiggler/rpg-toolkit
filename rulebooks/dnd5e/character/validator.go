@@ -4,10 +4,11 @@ package character
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Validator handles D&D 5e specific validation rules
@@ -88,7 +89,7 @@ func (v *Validator) ValidateRaceChoice(choice RaceChoice, raceData *race.Data) e
 			}
 		}
 		if !found {
-			return fmt.Errorf("invalid subrace %s for race %s", choice.SubraceID.Display(), raceData.Name)
+			return fmt.Errorf("invalid subrace %s for race %s", string(choice.SubraceID), raceData.Name)
 		}
 	}
 
@@ -102,7 +103,7 @@ func (v *Validator) ValidateAbilityScores(scores shared.AbilityScores) error {
 	// Rolled: Each score 3-18
 
 	// Check that all abilities are present and within range
-	for _, ability := range constants.AllAbilities() {
+	for _, ability := range abilities.AllAbilities() {
 		score, ok := scores[ability]
 		if !ok {
 			return fmt.Errorf("missing ability score: %s", ability.Display())
@@ -118,7 +119,7 @@ func (v *Validator) ValidateAbilityScores(scores shared.AbilityScores) error {
 }
 
 // ValidateSkillSelection validates skill proficiency choices
-func (v *Validator) ValidateSkillSelection(_ *Draft, skills []constants.Skill, classData *class.Data,
+func (v *Validator) ValidateSkillSelection(_ *Draft, selectedSkills []skills.Skill, classData *class.Data,
 	backgroundData *shared.Background) error {
 	if classData == nil {
 		return fmt.Errorf("class data is required for skill validation")
@@ -129,12 +130,12 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []constants.Skill, c
 	}
 
 	// Check that the number of skills matches what the class allows
-	if len(skills) != classData.SkillProficiencyCount {
-		return fmt.Errorf("must choose exactly %d skills, got %d", classData.SkillProficiencyCount, len(skills))
+	if len(selectedSkills) != classData.SkillProficiencyCount {
+		return fmt.Errorf("must choose exactly %d skills, got %d", classData.SkillProficiencyCount, len(selectedSkills))
 	}
 
 	// Check that all selected skills are valid options for the class
-	for _, skill := range skills {
+	for _, skill := range selectedSkills {
 		found := false
 		for _, option := range classData.SkillOptions {
 			if skill == option {
@@ -150,7 +151,7 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []constants.Skill, c
 	// Check for redundant selections (skills already granted by background/race)
 	// Note: This is a warning, not an error - it's valid but suboptimal
 	redundantSkills := []string{}
-	for _, skill := range skills {
+	for _, skill := range selectedSkills {
 		// Check if background already grants this skill
 		for _, bgSkill := range backgroundData.SkillProficiencies {
 			if skill == bgSkill {
@@ -168,8 +169,8 @@ func (v *Validator) ValidateSkillSelection(_ *Draft, skills []constants.Skill, c
 	}
 
 	// Check for duplicates
-	seen := make(map[constants.Skill]bool)
-	for _, skill := range skills {
+	seen := make(map[skills.Skill]bool)
+	for _, skill := range selectedSkills {
 		if seen[skill] {
 			return fmt.Errorf("duplicate skill selection: %s", skill.Display())
 		}

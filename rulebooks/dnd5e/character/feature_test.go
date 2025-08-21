@@ -5,10 +5,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 type FeatureTestSuite struct {
@@ -18,14 +23,14 @@ type FeatureTestSuite struct {
 func (s *FeatureTestSuite) TestFighterFeatures() {
 	// Create fighter class data with features
 	fighterClass := &class.Data{
-		ID:                    "fighter",
+		ID:                    classes.Fighter,
 		Name:                  "Fighter",
 		HitDice:               10,
-		SavingThrows:          []constants.Ability{constants.STR, constants.CON},
+		SavingThrows:          []abilities.Ability{abilities.STR, abilities.CON},
 		SkillProficiencyCount: 2,
-		SkillOptions: []constants.Skill{
-			constants.SkillAcrobatics, constants.SkillAnimalHandling, constants.SkillAthletics, constants.SkillHistory,
-			constants.SkillInsight, constants.SkillIntimidation, constants.SkillPerception, constants.SkillSurvival,
+		SkillOptions: []skills.Skill{
+			skills.Acrobatics, skills.AnimalHandling, skills.Athletics, skills.History,
+			skills.Insight, skills.Intimidation, skills.Perception, skills.Survival,
 		},
 		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
 		WeaponProficiencies: []string{"Simple", "Martial"},
@@ -67,23 +72,23 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		Name:  "Human",
 		Size:  "Medium",
 		Speed: 30,
-		AbilityScoreIncreases: map[constants.Ability]int{
-			constants.STR: 1,
-			constants.DEX: 1,
-			constants.CON: 1,
-			constants.INT: 1,
-			constants.WIS: 1,
-			constants.CHA: 1,
+		AbilityScoreIncreases: map[abilities.Ability]int{
+			abilities.STR: 1,
+			abilities.DEX: 1,
+			abilities.CON: 1,
+			abilities.INT: 1,
+			abilities.WIS: 1,
+			abilities.CHA: 1,
 		},
-		Languages: []constants.Language{constants.LanguageCommon},
+		Languages: []languages.Language{languages.Common},
 	}
 
 	// Create background
 	soldierBackground := &shared.Background{
 		ID:                 "soldier",
 		Name:               "Soldier",
-		SkillProficiencies: []constants.Skill{constants.SkillAthletics, constants.SkillIntimidation},
-		Languages:          []constants.Language{constants.LanguageDwarvish},
+		SkillProficiencies: []skills.Skill{skills.Athletics, skills.Intimidation},
+		Languages:          []languages.Language{languages.Dwarvish},
 		ToolProficiencies:  []string{"Gaming set"},
 	}
 
@@ -95,26 +100,26 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID: "player-123",
 			Name:     "Test Fighter",
 			RaceChoice: RaceChoice{
-				RaceID: constants.RaceHuman,
+				RaceID: races.Human,
 			},
 			ClassChoice: ClassChoice{
-				ClassID: constants.ClassFighter,
+				ClassID: classes.Fighter,
 			},
-			BackgroundChoice: constants.BackgroundSoldier,
+			BackgroundChoice: backgrounds.Soldier,
 			AbilityScoreChoice: shared.AbilityScores{
-				constants.STR: 16,
-				constants.DEX: 14,
-				constants.CON: 15,
-				constants.INT: 10,
-				constants.WIS: 12,
-				constants.CHA: 8,
+				abilities.STR: 16,
+				abilities.DEX: 14,
+				abilities.CON: 15,
+				abilities.INT: 10,
+				abilities.WIS: 12,
+				abilities.CHA: 8,
 			},
 			Choices: []ChoiceData{
 				{
 					Category:       shared.ChoiceSkills,
 					Source:         shared.SourceClass,
 					ChoiceID:       "fighter_skill_proficiencies",
-					SkillSelection: []constants.Skill{constants.SkillPerception, constants.SkillSurvival},
+					SkillSelection: []skills.Skill{skills.Perception, skills.Survival},
 				},
 				{
 					Category:               shared.ChoiceFightingStyle,
@@ -134,7 +139,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().NotNil(character)
 
 		// Check basic fighter features
-		s.Assert().Equal(constants.ClassFighter, character.classID)
+		s.Assert().Equal(classes.Fighter, character.classID)
 		s.Assert().Equal(10, character.hitDice)
 
 		// Check features - should have fighting_style and second_wind
@@ -164,30 +169,30 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID:     "player-123",
 			Name:         "Level 2 Fighter",
 			Level:        2, // Level 2
-			RaceID:       constants.RaceHuman,
-			ClassID:      constants.ClassFighter,
-			BackgroundID: constants.BackgroundSoldier,
+			RaceID:       races.Human,
+			ClassID:      classes.Fighter,
+			BackgroundID: backgrounds.Soldier,
 			AbilityScores: shared.AbilityScores{
-				constants.STR: 17, // With racial bonus
-				constants.DEX: 15,
-				constants.CON: 16,
-				constants.INT: 11,
-				constants.WIS: 13,
-				constants.CHA: 9,
+				abilities.STR: 17, // With racial bonus
+				abilities.DEX: 15,
+				abilities.CON: 16,
+				abilities.INT: 11,
+				abilities.WIS: 13,
+				abilities.CHA: 9,
 			},
 			MaxHitPoints: 20, // 10 + 3 (con) at level 1, +6 +3 at level 2
 			HitPoints:    20,
 			Speed:        30,
 			Size:         "Medium",
-			Skills: map[constants.Skill]shared.ProficiencyLevel{
-				constants.SkillPerception:   shared.Proficient,
-				constants.SkillSurvival:     shared.Proficient,
-				constants.SkillAthletics:    shared.Proficient,
-				constants.SkillIntimidation: shared.Proficient,
+			Skills: map[skills.Skill]shared.ProficiencyLevel{
+				skills.Perception:   shared.Proficient,
+				skills.Survival:     shared.Proficient,
+				skills.Athletics:    shared.Proficient,
+				skills.Intimidation: shared.Proficient,
 			},
-			SavingThrows: map[constants.Ability]shared.ProficiencyLevel{
-				constants.STR: shared.Proficient,
-				constants.CON: shared.Proficient,
+			SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+				abilities.STR: shared.Proficient,
+				abilities.CON: shared.Proficient,
 			},
 			Languages: []string{"Common", "dwarvish"},
 			Proficiencies: shared.Proficiencies{
@@ -223,14 +228,14 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 	s.Run("AllClassChoicesPreserved", func() {
 		// Create a wizard for variety
 		wizardClass := &class.Data{
-			ID:                    "wizard",
+			ID:                    classes.Wizard,
 			Name:                  "Wizard",
 			HitDice:               6,
-			SavingThrows:          []constants.Ability{constants.INT, constants.WIS},
+			SavingThrows:          []abilities.Ability{abilities.INT, abilities.WIS},
 			SkillProficiencyCount: 2,
-			SkillOptions: []constants.Skill{
-				constants.SkillArcana, constants.SkillHistory, constants.SkillInsight,
-				constants.SkillInvestigation, constants.SkillMedicine, constants.SkillReligion,
+			SkillOptions: []skills.Skill{
+				skills.Arcana, skills.History, skills.Insight,
+				skills.Investigation, skills.Medicine, skills.Religion,
 			},
 			ArmorProficiencies:  []string{},
 			WeaponProficiencies: []string{"Dagger", "Dart", "Sling", "Quarterstaff", "Light crossbow"},
@@ -251,7 +256,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				},
 			},
 			Spellcasting: &class.SpellcastingData{
-				Ability:       constants.INT,
+				Ability:       abilities.INT,
 				RitualCasting: true,
 				SpellsKnown: map[int]int{
 					1: 6, // 6 spells in spellbook at level 1
@@ -268,16 +273,16 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			Name:  "Elf",
 			Size:  "Medium",
 			Speed: 30,
-			AbilityScoreIncreases: map[constants.Ability]int{
-				constants.DEX: 2,
+			AbilityScoreIncreases: map[abilities.Ability]int{
+				abilities.DEX: 2,
 			},
-			Languages: []constants.Language{constants.LanguageCommon, constants.LanguageElvish},
+			Languages: []languages.Language{languages.Common, languages.Elvish},
 			Subraces: []race.SubraceData{
 				{
 					ID:   "high-elf",
 					Name: "High Elf",
-					AbilityScoreIncreases: map[constants.Ability]int{
-						constants.INT: 1,
+					AbilityScoreIncreases: map[abilities.Ability]int{
+						abilities.INT: 1,
 					},
 				},
 			},
@@ -287,8 +292,8 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		sageBackground := &shared.Background{
 			ID:                 "sage",
 			Name:               "Sage",
-			SkillProficiencies: []constants.Skill{constants.SkillArcana, constants.SkillHistory},
-			Languages:          []constants.Language{constants.LanguageCelestial, constants.LanguageDraconic},
+			SkillProficiencies: []skills.Skill{skills.Arcana, skills.History},
+			Languages:          []languages.Language{languages.Celestial, languages.Draconic},
 		}
 
 		// Create wizard draft
@@ -297,27 +302,27 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			PlayerID: "player-456",
 			Name:     "Test Wizard",
 			RaceChoice: RaceChoice{
-				RaceID:    constants.RaceElf,
-				SubraceID: constants.SubraceHighElf,
+				RaceID:    races.Elf,
+				SubraceID: races.HighElf,
 			},
 			ClassChoice: ClassChoice{
-				ClassID: constants.ClassWizard,
+				ClassID: classes.Wizard,
 			},
-			BackgroundChoice: constants.BackgroundSage,
+			BackgroundChoice: backgrounds.Sage,
 			AbilityScoreChoice: shared.AbilityScores{
-				constants.STR: 8,
-				constants.DEX: 14,
-				constants.CON: 13,
-				constants.INT: 15,
-				constants.WIS: 12,
-				constants.CHA: 10,
+				abilities.STR: 8,
+				abilities.DEX: 14,
+				abilities.CON: 13,
+				abilities.INT: 15,
+				abilities.WIS: 12,
+				abilities.CHA: 10,
 			},
 			Choices: []ChoiceData{
 				{
 					Category:       shared.ChoiceSkills,
 					Source:         shared.SourceClass,
 					ChoiceID:       "wizard_skill_proficiencies",
-					SkillSelection: []constants.Skill{constants.SkillInvestigation, constants.SkillInsight},
+					SkillSelection: []skills.Skill{skills.Investigation, skills.Insight},
 				},
 				{
 					Category:         shared.ChoiceCantrips,
@@ -368,12 +373,12 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		s.Assert().True(hasSpellChoice, "Spell choices should be stored")
 
 		// Check ability scores with racial bonuses
-		s.Assert().Equal(8, character.abilityScores[constants.STR])
-		s.Assert().Equal(16, character.abilityScores[constants.DEX]) // 14 + 2 (elf)
-		s.Assert().Equal(13, character.abilityScores[constants.CON])
-		s.Assert().Equal(16, character.abilityScores[constants.INT]) // 15 + 1 (high elf)
-		s.Assert().Equal(12, character.abilityScores[constants.WIS])
-		s.Assert().Equal(10, character.abilityScores[constants.CHA])
+		s.Assert().Equal(8, character.abilityScores[abilities.STR])
+		s.Assert().Equal(16, character.abilityScores[abilities.DEX]) // 14 + 2 (elf)
+		s.Assert().Equal(13, character.abilityScores[abilities.CON])
+		s.Assert().Equal(16, character.abilityScores[abilities.INT]) // 15 + 1 (high elf)
+		s.Assert().Equal(12, character.abilityScores[abilities.WIS])
+		s.Assert().Equal(10, character.abilityScores[abilities.CHA])
 	})
 }
 

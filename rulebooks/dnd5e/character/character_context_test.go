@@ -17,7 +17,7 @@ func TestLoadCharacterFromContext(t *testing.T) {
 		//     Name:     "Thorin Oakenshield",
 		//     Level:    5,
 		//     RaceID:   "dwarf",
-		//     ClassID:  "fighter",
+		//     ClassID:  classes.Fighter,
 		//     AbilityScores: shared.AbilityScores{
 		//         Strength:     16,
 		//         Dexterity:    14,
@@ -45,7 +45,7 @@ func TestLoadCharacterFromContext(t *testing.T) {
 		// }
 		//
 		// classData := &class.Data{
-		//     ID:      "fighter",
+		//     ID:      classes.Fighter,
 		//     Name:    "Fighter",
 		//     HitDice: 10,
 		// }

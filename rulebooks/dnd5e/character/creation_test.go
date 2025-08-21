@@ -5,10 +5,12 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Test constants for non-standard languages used in tests
@@ -39,12 +41,12 @@ func (s *CreationTestSuite) TestNewFromCreationData_ProcessesChoices() {
 		ClassData:      s.testClass,
 		BackgroundData: s.testBackground,
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 15,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 12,
-			constants.WIS: 10,
-			constants.CHA: 8,
+			abilities.STR: 15,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 12,
+			abilities.WIS: 10,
+			abilities.CHA: 8,
 		},
 		Choices: map[string]any{
 			"skills":    []string{"acrobatics", "animal-handling"},
@@ -58,31 +60,31 @@ func (s *CreationTestSuite) TestNewFromCreationData_ProcessesChoices() {
 	s.Assert().NotNil(character)
 
 	// Verify skills from choices are processed
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAcrobatics],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Acrobatics],
 		"Chosen skill Acrobatics should be proficient")
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAnimalHandling],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.AnimalHandling],
 		"Chosen skill Animal Handling should be proficient")
 
 	// Verify skills from background are included
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Athletics],
 		"Background skill Athletics should be proficient")
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Intimidation],
 		"Background skill Intimidation should be proficient")
 
 	// Verify languages from choices are processed
-	s.Assert().Contains(character.languages, constants.LanguageGoblin,
+	s.Assert().Contains(character.languages, languages.Goblin,
 		"Chosen language Goblin should be included")
 
 	// Verify languages from race and background are included
-	s.Assert().Contains(character.languages, constants.LanguageCommon,
+	s.Assert().Contains(character.languages, languages.Common,
 		"Race language Common should be included")
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish,
+	s.Assert().Contains(character.languages, languages.Dwarvish,
 		"Background language Dwarvish should be included")
 
 	// Verify saving throws from class
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR],
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.STR],
 		"Strength saving throw should be proficient")
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.CON],
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.CON],
 		"Constitution saving throw should be proficient")
 
 	// Verify proficiencies from class and background
@@ -104,12 +106,12 @@ func (s *CreationTestSuite) TestNewFromCreationData_EmptyChoices() {
 		ClassData:      s.testClass,
 		BackgroundData: s.testBackground,
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 15,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 12,
-			constants.WIS: 10,
-			constants.CHA: 8,
+			abilities.STR: 15,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 12,
+			abilities.WIS: 10,
+			abilities.CHA: 8,
 		},
 		Choices: map[string]any{}, // Empty choices
 	}
@@ -120,16 +122,16 @@ func (s *CreationTestSuite) TestNewFromCreationData_EmptyChoices() {
 	s.Assert().NotNil(character)
 
 	// Should still have background skills
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics])
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Athletics])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Intimidation])
 
 	// Should still have race and background languages
-	s.Assert().Contains(character.languages, constants.LanguageCommon)
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish)
+	s.Assert().Contains(character.languages, languages.Common)
+	s.Assert().Contains(character.languages, languages.Dwarvish)
 
 	// Should have saving throws
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.STR])
-	s.Assert().Equal(shared.Proficient, character.savingThrows[constants.CON])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.STR])
+	s.Assert().Equal(shared.Proficient, character.savingThrows[abilities.CON])
 }
 
 func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
@@ -139,15 +141,15 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 		Name:      "Exotic Race",
 		Size:      "Medium",
 		Speed:     30,
-		Languages: []constants.Language{constants.Language(testLanguageExotic)}, // No Common
+		Languages: []languages.Language{languages.Language(testLanguageExotic)}, // No Common
 	}
 
 	// Test background without Common
 	exoticBackground := &shared.Background{
 		ID:                 "exotic-bg",
 		Name:               "Exotic Background",
-		SkillProficiencies: []constants.Skill{constants.SkillArcana},
-		Languages:          []constants.Language{constants.LanguageCelestial}, // No Common
+		SkillProficiencies: []skills.Skill{skills.Arcana},
+		Languages:          []languages.Language{languages.Celestial}, // No Common
 	}
 
 	data := CreationData{
@@ -158,12 +160,12 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 		ClassData:      s.testClass,
 		BackgroundData: exoticBackground,
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 15,
-			constants.DEX: 14,
-			constants.CON: 13,
-			constants.INT: 12,
-			constants.WIS: 10,
-			constants.CHA: 8,
+			abilities.STR: 15,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 12,
+			abilities.WIS: 10,
+			abilities.CHA: 8,
 		},
 		Choices: map[string]any{
 			"languages": []string{"infernal"}, // Also no Common
@@ -176,13 +178,13 @@ func (s *CreationTestSuite) TestNewFromCreationData_CommonAlwaysIncluded() {
 	s.Assert().NotNil(character)
 
 	// Verify Common is still included
-	s.Assert().Contains(character.languages, constants.LanguageCommon,
+	s.Assert().Contains(character.languages, languages.Common,
 		"Common should always be included")
-	s.Assert().Contains(character.languages, constants.Language(testLanguageExotic),
+	s.Assert().Contains(character.languages, languages.Language(testLanguageExotic),
 		"Race language should be included")
-	s.Assert().Contains(character.languages, constants.LanguageCelestial,
+	s.Assert().Contains(character.languages, languages.Celestial,
 		"Background language should be included")
-	s.Assert().Contains(character.languages, constants.LanguageInfernal,
+	s.Assert().Contains(character.languages, languages.Infernal,
 		"Chosen language should be included")
 }
 

@@ -2,15 +2,17 @@
 package class
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Data contains all the data needed to define a D&D 5e class
 type Data struct {
-	ID          constants.Class `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
+	ID          classes.Class `json:"id"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
 
 	// Core mechanics
 	HitDice           int `json:"hit_dice"`             // d6, d8, d10, d12
@@ -20,11 +22,11 @@ type Data struct {
 	ArmorProficiencies  []string            `json:"armor_proficiencies"`
 	WeaponProficiencies []string            `json:"weapon_proficiencies"`
 	ToolProficiencies   []string            `json:"tool_proficiencies"`
-	SavingThrows        []constants.Ability `json:"saving_throws"` // Two ability scores
+	SavingThrows        []abilities.Ability `json:"saving_throws"` // Two ability scores
 
 	// Skills
-	SkillProficiencyCount int               `json:"skill_proficiency_count"`
-	SkillOptions          []constants.Skill `json:"skill_options"` // Available skills to choose from
+	SkillProficiencyCount int            `json:"skill_proficiency_count"`
+	SkillOptions          []skills.Skill `json:"skill_options"` // Available skills to choose from
 
 	// Starting equipment
 	StartingEquipment []EquipmentData       `json:"starting_equipment"`
@@ -57,7 +59,7 @@ type FeatureData struct {
 
 // SpellcastingData for spellcasting classes
 type SpellcastingData struct {
-	Ability         constants.Ability `json:"ability"`                    // Intelligence, Wisdom, Charisma
+	Ability         abilities.Ability `json:"ability"`                    // Intelligence, Wisdom, Charisma
 	PreparedFormula string            `json:"prepared_formula,omitempty"` // e.g., "wisdom_modifier + cleric_level"
 	RitualCasting   bool              `json:"ritual_casting"`
 	SpellsKnown     map[int]int       `json:"spells_known,omitempty"`   // Level -> number known
@@ -129,7 +131,7 @@ type Class struct {
 }
 
 // ID returns the class ID
-func (c *Class) ID() constants.Class {
+func (c *Class) ID() classes.Class {
 	return c.data.ID
 }
 
@@ -144,12 +146,12 @@ func (c *Class) HitDice() int {
 }
 
 // GetSavingThrowProficiencies returns saving throw proficiencies
-func (c *Class) GetSavingThrowProficiencies() []constants.Ability {
+func (c *Class) GetSavingThrowProficiencies() []abilities.Ability {
 	return c.data.SavingThrows
 }
 
 // GetSkillOptions returns available skill choices
-func (c *Class) GetSkillOptions() (int, []constants.Skill) {
+func (c *Class) GetSkillOptions() (int, []skills.Skill) {
 	return c.data.SkillProficiencyCount, c.data.SkillOptions
 }
 
@@ -203,7 +205,7 @@ func (c *Class) IsSpellcaster() bool {
 }
 
 // GetSpellcastingAbility returns the spellcasting ability score
-func (c *Class) GetSpellcastingAbility() constants.Ability {
+func (c *Class) GetSpellcastingAbility() abilities.Ability {
 	if c.data.Spellcasting == nil {
 		return ""
 	}

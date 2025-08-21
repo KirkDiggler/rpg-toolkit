@@ -10,9 +10,9 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -48,12 +48,12 @@ func (s *ConditionIntegrationTestSuite) TestRageFeaturePublishesConditionAndChar
 		ClassID:  "barbarian",
 		RaceID:   "human",
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 14,
-			constants.CON: 16,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 8,
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 16,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
 		},
 		HitPoints:    45,
 		MaxHitPoints: 45,

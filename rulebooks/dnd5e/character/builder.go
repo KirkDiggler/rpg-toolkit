@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Builder handles the multi-step character creation process
@@ -100,7 +104,7 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 
 	choice := RaceChoice{
 		RaceID:    raceData.ID,
-		SubraceID: constants.Subrace(subraceID),
+		SubraceID: races.Subrace(subraceID),
 	}
 
 	if err := b.validator.ValidateRaceChoice(choice, &raceData); err != nil {
@@ -131,7 +135,7 @@ func (b *Builder) SetRaceData(raceData race.Data, subraceID string) error {
 }
 
 // SetClassData sets the character's class using class data
-func (b *Builder) SetClassData(classData class.Data, subclassID constants.Subclass) error {
+func (b *Builder) SetClassData(classData class.Data, subclassID classes.Subclass) error {
 	if classData.ID == "" {
 		return errors.New("class data must have an ID")
 	}
@@ -223,11 +227,11 @@ func (b *Builder) SetAbilityScores(scores shared.AbilityScores) error {
 }
 
 // SelectSkills records skill proficiency selections
-func (b *Builder) SelectSkills(skills []string) error {
+func (b *Builder) SelectSkills(selectedSkills []string) error {
 	// Convert string skills to typed constants
-	typedSkills := make([]constants.Skill, len(skills))
-	for i, skill := range skills {
-		typedSkills[i] = constants.Skill(skill)
+	typedSkills := make([]skills.Skill, len(selectedSkills))
+	for i, skill := range selectedSkills {
+		typedSkills[i] = skills.Skill(skill)
 	}
 
 	// Validate skills are available based on class/background
@@ -254,11 +258,11 @@ func (b *Builder) SelectSkills(skills []string) error {
 }
 
 // SelectLanguages records language selections
-func (b *Builder) SelectLanguages(languages []string) error {
+func (b *Builder) SelectLanguages(selectedLanguages []string) error {
 	// Convert string languages to typed constants
-	typedLanguages := make([]constants.Language, len(languages))
-	for i, lang := range languages {
-		typedLanguages[i] = constants.Language(lang)
+	typedLanguages := make([]languages.Language, len(selectedLanguages))
+	for i, lang := range selectedLanguages {
+		typedLanguages[i] = languages.Language(lang)
 	}
 
 	// Add to choices with source tracking
@@ -413,10 +417,10 @@ type DraftData struct {
 	ProgressFlags uint32 `json:"progress_flags"`
 
 	// Core identity choices
-	RaceChoice         RaceChoice           `json:"race_choice"`
-	ClassChoice        ClassChoice          `json:"class_choice"`
-	BackgroundChoice   constants.Background `json:"background_choice"`
-	AbilityScoreChoice shared.AbilityScores `json:"ability_score_choice"`
+	RaceChoice         RaceChoice             `json:"race_choice"`
+	ClassChoice        ClassChoice            `json:"class_choice"`
+	BackgroundChoice   backgrounds.Background `json:"background_choice"`
+	AbilityScoreChoice shared.AbilityScores   `json:"ability_score_choice"`
 
 	// All choices with source tracking
 	Choices []ChoiceData `json:"choices"`
@@ -551,14 +555,14 @@ func (b *Builder) calculateCompletedSteps() int {
 
 // RaceChoice represents a race selection with optional subrace
 type RaceChoice struct {
-	RaceID    constants.Race    `json:"race_id"`
-	SubraceID constants.Subrace `json:"subrace_id,omitempty"`
+	RaceID    races.Race    `json:"race_id"`
+	SubraceID races.Subrace `json:"subrace_id,omitempty"`
 }
 
 // ClassChoice represents a class selection with optional subclass
 type ClassChoice struct {
-	ClassID    constants.Class    `json:"class_id"`
-	SubclassID constants.Subclass `json:"subclass_id,omitempty"`
+	ClassID    classes.Class    `json:"class_id"`
+	SubclassID classes.Subclass `json:"subclass_id,omitempty"`
 }
 
 // ValidationError represents a validation failure
