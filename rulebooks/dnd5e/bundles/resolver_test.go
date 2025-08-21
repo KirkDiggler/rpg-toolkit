@@ -10,6 +10,13 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// Test constants for repeated item IDs
+const (
+	inkItemID     = "ink"
+	incenseItemID = "incense"
+	censerItemID  = "censer"
+)
+
 type ResolverTestSuite struct {
 	suite.Suite
 }
@@ -95,7 +102,7 @@ func (s *ResolverTestSuite) TestResolveBundleOption() {
 			if item.ItemID == "book" {
 				hasBook = true
 			}
-			if item.ItemID == "ink" {
+			if item.ItemID == inkItemID {
 				hasInk = true
 			}
 		}
@@ -126,10 +133,10 @@ func (s *ResolverTestSuite) TestCreateBundleOption() {
 		hasIncense := false
 		hasCenser := false
 		for _, item := range option.Items {
-			if item.ItemID == "incense" {
+			if item.ItemID == incenseItemID {
 				hasIncense = true
 			}
-			if item.ItemID == "censer" {
+			if item.ItemID == censerItemID {
 				hasCenser = true
 			}
 		}

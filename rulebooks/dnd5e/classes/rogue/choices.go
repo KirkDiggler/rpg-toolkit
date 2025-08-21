@@ -10,11 +10,12 @@ import (
 // SkillChoices returns the rogue's skill proficiency choices
 func SkillChoices() choices.Choice {
 	return choices.Choice{
-		ID:          choices.RogueSkills,
-		Category:    choices.CategorySkill,
-		Description: "Choose four skills from Acrobatics, Athletics, Deception, Insight, Intimidation, Investigation, Perception, Performance, Persuasion, Sleight of Hand, and Stealth",
-		Choose:      4, // Rogues get more skills!
-		Source:      choices.SourceClass,
+		ID:       choices.RogueSkills,
+		Category: choices.CategorySkill,
+		Description: "Choose four skills from Acrobatics, Athletics, Deception, Insight, Intimidation, " +
+			"Investigation, Perception, Performance, Persuasion, Sleight of Hand, and Stealth",
+		Choose: 4, // Rogues get more skills!
+		Source: choices.SourceClass,
 		Options: []choices.Option{
 			choices.SkillListOption{
 				Skills: []skills.Skill{

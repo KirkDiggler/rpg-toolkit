@@ -11,11 +11,12 @@ import (
 // SkillChoices returns the fighter's skill proficiency choices
 func SkillChoices() choices.Choice {
 	return choices.Choice{
-		ID:          choices.FighterSkills,
-		Category:    choices.CategorySkill,
-		Description: "Choose two skills from Acrobatics, Animal Handling, Athletics, History, Insight, Intimidation, Perception, and Survival",
-		Choose:      2,
-		Source:      choices.SourceClass,
+		ID:       choices.FighterSkills,
+		Category: choices.CategorySkill,
+		Description: "Choose two skills from Acrobatics, Animal Handling, Athletics, History, " +
+			"Insight, Intimidation, Perception, and Survival",
+		Choose: 2,
+		Source: choices.SourceClass,
 		Options: []choices.Option{
 			choices.SkillListOption{
 				Skills: []skills.Skill{

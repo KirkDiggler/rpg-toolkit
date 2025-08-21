@@ -12,6 +12,11 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// Test constants for repeated strings
+const (
+	fighterClass = "fighter"
+)
+
 // CharacterCreationSession represents what the game server would track
 type CharacterCreationSession struct {
 	PlayerID    string
@@ -73,7 +78,7 @@ func (s *EndToEndTestSuite) TestCompleteHumanFighterCreation() {
 	s.Run("Step1_SelectRaceClassBackground", func() {
 		// Player selects Human Fighter with Soldier background
 		s.session.Race = "human"
-		s.session.Class = "fighter"
+		s.session.Class = fighterClass
 		s.session.Background = "soldier"
 
 		s.ctx = rpgerr.WithMetadata(s.ctx,
@@ -180,7 +185,7 @@ func (s *EndToEndTestSuite) TestCompleteHumanFighterCreation() {
 
 		// Verify final character state
 		s.Assert().Equal("human", s.session.Race)
-		s.Assert().Equal("fighter", s.session.Class)
+		s.Assert().Equal(fighterClass, s.session.Class)
 		s.Assert().Equal("soldier", s.session.Background)
 
 		// Skills
@@ -205,7 +210,7 @@ func (s *EndToEndTestSuite) TestCompleteHumanFighterCreation() {
 func (s *EndToEndTestSuite) TestValidationScenarios() {
 	s.Run("CannotSkipRequiredChoices", func() {
 		// Set up a fighter character
-		s.session.Class = "fighter"
+		s.session.Class = fighterClass
 		s.loadChoicesForCharacter()
 
 		// Character should NOT be complete without making choices
@@ -290,7 +295,7 @@ func (s *EndToEndTestSuite) TestChoiceInterdependencies() {
 
 func (s *EndToEndTestSuite) loadChoicesForCharacter() {
 	// Load all choices based on race/class/background
-	if s.session.Class == "fighter" {
+	if s.session.Class == fighterClass {
 		s.session.PendingChoices[choices.FighterSkills] = fighter.SkillChoices()
 		s.session.PendingChoices[choices.FighterEquipment1] = fighter.StartingEquipmentChoice1()
 		s.session.PendingChoices[choices.FighterEquipment2] = fighter.StartingEquipmentChoice2()

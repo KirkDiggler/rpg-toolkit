@@ -52,9 +52,10 @@ var bundleDefinitions = map[BundleID]Bundle{
 
 	// Burglar's Pack (16 gp)
 	BurglarsPack: {
-		ID:          BurglarsPack,
-		Name:        "Burglar's Pack",
-		Description: "Includes a backpack, ball bearings, string, bell, candles, crowbar, hammer, pitons, hooded lantern, oil, rations, tinderbox, waterskin, and rope",
+		ID:   BurglarsPack,
+		Name: "Burglar's Pack",
+		Description: "Includes a backpack, ball bearings, string, bell, candles, crowbar, " +
+			"hammer, pitons, hooded lantern, oil, rations, tinderbox, waterskin, and rope",
 		Items: []choices.CountedItem{
 			{ItemType: choices.ItemTypeGear, ItemID: "backpack", Quantity: 1},
 			{ItemType: choices.ItemTypeGear, ItemID: "ball-bearings", Quantity: 1},
@@ -127,9 +128,10 @@ var bundleDefinitions = map[BundleID]Bundle{
 
 	// Priest's Pack (19 gp)
 	PriestsPack: {
-		ID:          PriestsPack,
-		Name:        "Priest's Pack",
-		Description: "Includes a backpack, blanket, candles, tinderbox, alms box, incense, censer, vestments, rations, and waterskin",
+		ID:   PriestsPack,
+		Name: "Priest's Pack",
+		Description: "Includes a backpack, blanket, candles, tinderbox, alms box, incense, " +
+			"censer, vestments, rations, and waterskin",
 		Items: []choices.CountedItem{
 			{ItemType: choices.ItemTypeGear, ItemID: "backpack", Quantity: 1},
 			{ItemType: choices.ItemTypeGear, ItemID: "blanket", Quantity: 1},
