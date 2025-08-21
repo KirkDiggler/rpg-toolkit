@@ -49,8 +49,34 @@ const (
 	RockGnome   Race = "rock-gnome"
 )
 
-// All provides map lookup for races
+// All provides map lookup for base races only (no subraces)
 var All = map[string]Race{
+	"human":      Human,
+	"elf":        Elf,
+	"dwarf":      Dwarf,
+	"halfling":   Halfling,
+	"dragonborn": Dragonborn,
+	"gnome":      Gnome,
+	"half-elf":   HalfElf,
+	"half-orc":   HalfOrc,
+	"tiefling":   Tiefling,
+}
+
+// Subraces provides map lookup for subraces only
+var Subraces = map[string]Race{
+	"high-elf":           HighElf,
+	"wood-elf":           WoodElf,
+	"dark-elf":           DarkElf,
+	"mountain-dwarf":     MountainDwarf,
+	"hill-dwarf":         HillDwarf,
+	"lightfoot-halfling": LightfootHalfling,
+	"stout-halfling":     StoutHalfling,
+	"forest-gnome":       ForestGnome,
+	"rock-gnome":         RockGnome,
+}
+
+// AllIncludingSubraces provides map lookup for all races and subraces
+var AllIncludingSubraces = map[string]Race{
 	"human":      Human,
 	"elf":        Elf,
 	"dwarf":      Dwarf,
@@ -72,12 +98,12 @@ var All = map[string]Race{
 	"rock-gnome":         RockGnome,
 }
 
-// GetByID returns a race by its ID
+// GetByID returns a race or subrace by its ID
 func GetByID(id string) (Race, error) {
-	race, ok := All[id]
+	race, ok := AllIncludingSubraces[id]
 	if !ok {
-		validRaces := make([]string, 0, len(All))
-		for k := range All {
+		validRaces := make([]string, 0, len(AllIncludingSubraces))
+		for k := range AllIncludingSubraces {
 			validRaces = append(validRaces, k)
 		}
 		return "", rpgerr.New(rpgerr.CodeInvalidArgument, "invalid race",
