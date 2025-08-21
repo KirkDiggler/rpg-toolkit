@@ -4,6 +4,7 @@ package weapons
 // WeaponCategory represents the category of weapon
 type WeaponCategory string
 
+// WeaponCategory constants classify weapons by complexity and range
 const (
 	CategorySimpleMelee   WeaponCategory = "simple-melee"
 	CategorySimpleRanged  WeaponCategory = "simple-ranged"
@@ -14,6 +15,7 @@ const (
 // WeaponProperty represents special properties of weapons
 type WeaponProperty string
 
+// WeaponProperty constants define special weapon characteristics
 const (
 	PropertyLight      WeaponProperty = "light"
 	PropertyThrown     WeaponProperty = "thrown"

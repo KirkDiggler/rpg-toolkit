@@ -14,6 +14,7 @@ type Choice struct {
 // Category of choice
 type Category string
 
+// Category constants define the different types of choices in character creation
 const (
 	CategorySkill     Category = "skill"
 	CategoryLanguage  Category = "language"
@@ -28,6 +29,7 @@ const (
 // Source of the choice
 type Source string
 
+// Source constants identify where a choice originates from
 const (
 	SourceClass      Source = "class"
 	SourceRace       Source = "race"
@@ -47,6 +49,7 @@ type Option interface {
 // OptionType identifies the type of option
 type OptionType string
 
+// OptionType constants specify the structure of selectable options
 const (
 	OptionTypeSingle   OptionType = "single"   // Single item
 	OptionTypeBundle   OptionType = "bundle"   // Multiple items together
@@ -56,6 +59,7 @@ const (
 // ItemType identifies what kind of item this is
 type ItemType string
 
+// ItemType constants classify different types of selectable items
 const (
 	ItemTypeSkill    ItemType = "skill"
 	ItemTypeLanguage ItemType = "language"

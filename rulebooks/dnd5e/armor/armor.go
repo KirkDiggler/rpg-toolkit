@@ -8,9 +8,10 @@ import (
 // ArmorID represents unique identifier for armor
 type ArmorID string
 
-// Armor categories
+// ArmorCategory represents armor weight classification
 type ArmorCategory string
 
+// ArmorCategory constants define armor weight classifications
 const (
 	CategoryLight  ArmorCategory = "light"
 	CategoryMedium ArmorCategory = "medium"
