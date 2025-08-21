@@ -6,10 +6,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 type CharacterTestSuite struct {
@@ -32,31 +37,31 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 		PlayerID:     "player-123",
 		Name:         "Test Hero",
 		Level:        1,
-		RaceID:       constants.RaceHuman,
-		ClassID:      constants.ClassFighter,
-		BackgroundID: constants.BackgroundSoldier,
+		RaceID:       races.Human,
+		ClassID:      classes.Fighter,
+		BackgroundID: backgrounds.Soldier,
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 15,
-			constants.CON: 14,
-			constants.INT: 13,
-			constants.WIS: 11,
-			constants.CHA: 9,
+			abilities.STR: 16,
+			abilities.DEX: 15,
+			abilities.CON: 14,
+			abilities.INT: 13,
+			abilities.WIS: 11,
+			abilities.CHA: 9,
 		},
 		Speed:        30,
 		Size:         "Medium",
 		HitPoints:    12,
 		MaxHitPoints: 12,
 		// Skills and languages from character choices
-		Skills: map[constants.Skill]shared.ProficiencyLevel{
-			constants.SkillAcrobatics:   shared.Proficient, // From class choice
-			constants.SkillAthletics:    shared.Proficient, // From class choice and background
-			constants.SkillIntimidation: shared.Proficient, // From background
+		Skills: map[skills.Skill]shared.ProficiencyLevel{
+			skills.Acrobatics:   shared.Proficient, // From class choice
+			skills.Athletics:    shared.Proficient, // From class choice and background
+			skills.Intimidation: shared.Proficient, // From background
 		},
 		Languages: []string{"common", "goblin", "dwarvish"},
-		SavingThrows: map[constants.Ability]shared.ProficiencyLevel{
-			constants.STR: shared.Proficient,
-			constants.CON: shared.Proficient,
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+			abilities.CON: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
@@ -69,13 +74,13 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 				Category:       shared.ChoiceSkills,       // Standard category
 				Source:         shared.SourceClass,        // Source is class
 				ChoiceID:       "fighter_proficiencies_1", // Specific choice identifier
-				SkillSelection: []constants.Skill{constants.SkillAcrobatics, constants.SkillAthletics},
+				SkillSelection: []skills.Skill{skills.Acrobatics, skills.Athletics},
 			},
 			{
 				Category:          shared.ChoiceLanguages, // Standard category
 				Source:            shared.SourceRace,      // Source is race
 				ChoiceID:          "human_language_1",     // Specific choice identifier
-				LanguageSelection: []constants.Language{constants.LanguageGoblin},
+				LanguageSelection: []languages.Language{languages.Goblin},
 			},
 		},
 		CreatedAt: time.Now(),
@@ -88,25 +93,25 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 	s.Assert().NotNil(character)
 
 	// Verify skills are processed from choices
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAcrobatics],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Acrobatics],
 		"Chosen skill acrobatics should be proficient (from class_fighter_proficiencies_1)")
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Athletics],
 		"Chosen skill athletics should be proficient (from class_fighter_proficiencies_1)")
 
 	// Verify background skills are also included
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Athletics],
 		"Background skill Athletics should be proficient")
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation],
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Intimidation],
 		"Background skill Intimidation should be proficient")
 
 	// Verify languages are processed from choices
-	s.Assert().Contains(character.languages, constants.LanguageGoblin,
+	s.Assert().Contains(character.languages, languages.Goblin,
 		"Chosen language goblin should be included (from race_human_language_1)")
 
 	// Verify base languages are included
-	s.Assert().Contains(character.languages, constants.LanguageCommon,
+	s.Assert().Contains(character.languages, languages.Common,
 		"Common should always be included")
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish,
+	s.Assert().Contains(character.languages, languages.Dwarvish,
 		"Background language Dwarvish should be included")
 
 	// Verify ChoiceID tracking - NEW functionality from issue 129
@@ -148,36 +153,36 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 		PlayerID:     "player-123",
 		Name:         "Old Format Hero",
 		Level:        1,
-		RaceID:       constants.RaceHuman,
-		ClassID:      constants.ClassFighter,
-		BackgroundID: constants.BackgroundSoldier,
+		RaceID:       races.Human,
+		ClassID:      classes.Fighter,
+		BackgroundID: backgrounds.Soldier,
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 15,
-			constants.CON: 14,
-			constants.INT: 13,
-			constants.WIS: 11,
-			constants.CHA: 9,
+			abilities.STR: 16,
+			abilities.DEX: 15,
+			abilities.CON: 14,
+			abilities.INT: 13,
+			abilities.WIS: 11,
+			abilities.CHA: 9,
 		},
 		Speed:        30,
 		Size:         "Medium",
 		HitPoints:    12,
 		MaxHitPoints: 12,
 		// Pre-populated skills and languages (no choices)
-		Skills: map[constants.Skill]shared.ProficiencyLevel{
-			constants.SkillAthletics:    shared.Proficient,
-			constants.SkillIntimidation: shared.Proficient,
-			constants.SkillPerception:   shared.Proficient,
-			constants.SkillSurvival:     shared.Proficient,
+		Skills: map[skills.Skill]shared.ProficiencyLevel{
+			skills.Athletics:    shared.Proficient,
+			skills.Intimidation: shared.Proficient,
+			skills.Perception:   shared.Proficient,
+			skills.Survival:     shared.Proficient,
 		},
 		Languages: []string{
-			string(constants.LanguageCommon),
-			string(constants.LanguageDwarvish),
-			string(constants.LanguageElvish),
+			string(languages.Common),
+			string(languages.Dwarvish),
+			string(languages.Elvish),
 		},
-		SavingThrows: map[constants.Ability]shared.ProficiencyLevel{
-			constants.STR: shared.Proficient,
-			constants.CON: shared.Proficient,
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+			abilities.CON: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
@@ -196,15 +201,15 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 	s.Assert().NotNil(character)
 
 	// Verify skills are preserved
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillAthletics])
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillIntimidation])
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillSurvival])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Athletics])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Intimidation])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Perception])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Survival])
 
 	// Verify languages are preserved
-	s.Assert().Contains(character.languages, constants.LanguageCommon)
-	s.Assert().Contains(character.languages, constants.LanguageDwarvish)
-	s.Assert().Contains(character.languages, constants.LanguageElvish)
+	s.Assert().Contains(character.languages, languages.Common)
+	s.Assert().Contains(character.languages, languages.Dwarvish)
+	s.Assert().Contains(character.languages, languages.Elvish)
 }
 
 /*
@@ -218,31 +223,31 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 		PlayerID:     "player-123",
 		Name:         "Mixed Format Hero",
 		Level:        1,
-		RaceID:       constants.RaceHuman,
-		ClassID:      constants.ClassFighter,
-		BackgroundID: constants.BackgroundSoldier,
+		RaceID:       races.Human,
+		ClassID:      classes.Fighter,
+		BackgroundID: backgrounds.Soldier,
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 16,
-			constants.DEX: 15,
-			constants.CON: 14,
-			constants.INT: 13,
-			constants.WIS: 11,
-			constants.CHA: 9,
+			abilities.STR: 16,
+			abilities.DEX: 15,
+			abilities.CON: 14,
+			abilities.INT: 13,
+			abilities.WIS: 11,
+			abilities.CHA: 9,
 		},
 		Speed:        30,
 		Size:         "Medium",
 		HitPoints:    12,
 		MaxHitPoints: 12,
-		Skills: map[constants.Skill]shared.ProficiencyLevel{
-			constants.SkillPerception:   shared.Proficient,
-			constants.SkillSurvival:     shared.Proficient,
-			constants.SkillAthletics:    shared.Proficient, // From background
-			constants.SkillIntimidation: shared.Proficient, // From background
+		Skills: map[skills.Skill]shared.ProficiencyLevel{
+			skills.Perception:   shared.Proficient,
+			skills.Survival:     shared.Proficient,
+			skills.Athletics:    shared.Proficient, // From background
+			skills.Intimidation: shared.Proficient, // From background
 		},
 		Languages: []string{"common", "orc", "elvish", "draconic", "dwarvish"},
-		SavingThrows: map[constants.Ability]shared.ProficiencyLevel{
-			constants.STR: shared.Proficient,
-			constants.CON: shared.Proficient,
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+			abilities.CON: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
 			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
@@ -279,15 +284,15 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
 	s.Assert().NotNil(character)
 
 	// Verify skills from []string selection
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillPerception])
-	s.Assert().Equal(shared.Proficient, character.skills[constants.SkillSurvival])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Perception])
+	s.Assert().Equal(shared.Proficient, character.skills[skills.Survival])
 
 	// Verify language from string selection
-	s.Assert().Contains(character.languages, constants.LanguageOrc)
+	s.Assert().Contains(character.languages, languages.Orc)
 
 	// Verify languages from []interface{} selection
-	s.Assert().Contains(character.languages, constants.LanguageElvish)
-	s.Assert().Contains(character.languages, constants.LanguageDraconic)
+	s.Assert().Contains(character.languages, languages.Elvish)
+	s.Assert().Contains(character.languages, languages.Draconic)
 }
 */
 

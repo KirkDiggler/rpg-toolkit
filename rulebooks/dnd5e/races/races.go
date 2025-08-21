@@ -8,6 +8,9 @@ import (
 // Race represents a D&D 5e player race
 type Race string
 
+// Subrace is an alias for Race (subraces are just specific race variants)
+type Subrace = Race
+
 // Core races from Player's Handbook
 const (
 	Human      Race = "human"

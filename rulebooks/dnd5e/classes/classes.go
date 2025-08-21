@@ -8,6 +8,9 @@ import (
 // Class represents a D&D 5e character class
 type Class string
 
+// Subclass represents a D&D 5e character subclass/archetype
+type Subclass string
+
 // Core classes from Player's Handbook
 const (
 	Barbarian Class = "barbarian"

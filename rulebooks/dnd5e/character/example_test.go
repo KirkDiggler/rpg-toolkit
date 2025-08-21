@@ -4,11 +4,16 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Example_createCharacterFromDraft shows the complete flow of creating a D&D 5e character
@@ -27,15 +32,15 @@ func Example_createCharacterFromDraft() {
 
 	// Step 3: Set the race (you would load this from your race data source)
 	humanRace := race.Data{
-		ID:        constants.RaceHuman,
+		ID:        races.Human,
 		Name:      "Human",
 		Size:      "Medium",
 		Speed:     30,
-		Languages: []constants.Language{constants.LanguageCommon},
-		AbilityScoreIncreases: map[constants.Ability]int{
+		Languages: []languages.Language{languages.Common},
+		AbilityScoreIncreases: map[abilities.Ability]int{
 			// Variant human gets +1 to two different abilities
-			constants.STR: 1,
-			constants.CON: 1,
+			abilities.STR: 1,
+			abilities.CON: 1,
 		},
 	}
 	if err := builder.SetRaceData(humanRace, ""); err != nil {
@@ -44,23 +49,23 @@ func Example_createCharacterFromDraft() {
 
 	// Step 4: Set the class (you would load this from your class data source)
 	fighterClass := class.Data{
-		ID:                    constants.ClassFighter,
+		ID:                    classes.Fighter,
 		Name:                  "Fighter",
 		HitDice:               10,
 		SkillProficiencyCount: 2,
-		SkillOptions: []constants.Skill{
-			constants.SkillAcrobatics,
-			constants.SkillAnimalHandling,
-			constants.SkillAthletics,
-			constants.SkillHistory,
-			constants.SkillInsight,
-			constants.SkillIntimidation,
-			constants.SkillPerception,
-			constants.SkillSurvival,
+		SkillOptions: []skills.Skill{
+			skills.Acrobatics,
+			skills.AnimalHandling,
+			skills.Athletics,
+			skills.History,
+			skills.Insight,
+			skills.Intimidation,
+			skills.Perception,
+			skills.Survival,
 		},
-		SavingThrows: []constants.Ability{
-			constants.STR,
-			constants.CON,
+		SavingThrows: []abilities.Ability{
+			abilities.STR,
+			abilities.CON,
 		},
 		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shields"},
 		WeaponProficiencies: []string{"Simple", "Martial"},
@@ -71,13 +76,13 @@ func Example_createCharacterFromDraft() {
 
 	// Step 5: Set the background (you would load this from your background data source)
 	soldierBackground := shared.Background{
-		ID:   constants.BackgroundSoldier,
+		ID:   backgrounds.Soldier,
 		Name: "Soldier",
-		SkillProficiencies: []constants.Skill{
-			constants.SkillAthletics,
-			constants.SkillIntimidation,
+		SkillProficiencies: []skills.Skill{
+			skills.Athletics,
+			skills.Intimidation,
 		},
-		Languages:         []constants.Language{},
+		Languages:         []languages.Language{},
 		ToolProficiencies: []string{"Gaming set", "Land vehicles"},
 		Equipment: []string{
 			"Insignia of rank",
@@ -93,12 +98,12 @@ func Example_createCharacterFromDraft() {
 
 	// Step 6: Set ability scores (using standard array: 15, 14, 13, 12, 10, 8)
 	abilityScores := shared.AbilityScores{
-		constants.STR: 15, // Fighter primary
-		constants.DEX: 13,
-		constants.CON: 14, // Fighter secondary
-		constants.INT: 10,
-		constants.WIS: 12,
-		constants.CHA: 8,
+		abilities.STR: 15, // Fighter primary
+		abilities.DEX: 13,
+		abilities.CON: 14, // Fighter secondary
+		abilities.INT: 10,
+		abilities.WIS: 12,
+		abilities.CHA: 8,
 	}
 	if err := builder.SetAbilityScores(abilityScores); err != nil {
 		log.Fatal(err)
@@ -107,8 +112,8 @@ func Example_createCharacterFromDraft() {
 	// Step 7: Select skills from class options
 	// Fighter gets 2 skills from their list
 	skills := []string{
-		string(constants.SkillPerception),
-		string(constants.SkillSurvival),
+		string(skills.Perception),
+		string(skills.Survival),
 	}
 	if err := builder.SelectSkills(skills); err != nil {
 		log.Fatal(err)
@@ -173,17 +178,17 @@ func Example_createCharacterWithChoices() {
 
 	// Race choice is tracked
 	elfRace := race.Data{
-		ID:    constants.RaceElf,
+		ID:    races.Elf,
 		Name:  "Elf",
 		Size:  "Medium",
 		Speed: 30,
-		Languages: []constants.Language{
-			constants.LanguageCommon,
-			constants.LanguageElvish,
+		Languages: []languages.Language{
+			languages.Common,
+			languages.Elvish,
 		},
-		SkillProficiencies: []constants.Skill{constants.SkillPerception},
-		AbilityScoreIncreases: map[constants.Ability]int{
-			constants.DEX: 2,
+		SkillProficiencies: []skills.Skill{skills.Perception},
+		AbilityScoreIncreases: map[abilities.Ability]int{
+			abilities.DEX: 2,
 		},
 	}
 	if err := builder.SetRaceData(elfRace, ""); err != nil {

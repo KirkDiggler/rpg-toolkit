@@ -4,11 +4,14 @@ package shared
 import (
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // AbilityScores maps ability constants to their scores (includes all bonuses)
-type AbilityScores map[constants.Ability]int
+type AbilityScores map[abilities.Ability]int
 
 // AbilityScoreConfig provides a clear way to specify all ability scores at creation
 type AbilityScoreConfig struct {
@@ -49,17 +52,17 @@ func NewAbilityScores(config *AbilityScoreConfig) (AbilityScores, error) {
 	}
 
 	return AbilityScores{
-		constants.STR: config.STR,
-		constants.DEX: config.DEX,
-		constants.CON: config.CON,
-		constants.INT: config.INT,
-		constants.WIS: config.WIS,
-		constants.CHA: config.CHA,
+		abilities.STR: config.STR,
+		abilities.DEX: config.DEX,
+		abilities.CON: config.CON,
+		abilities.INT: config.INT,
+		abilities.WIS: config.WIS,
+		abilities.CHA: config.CHA,
 	}, nil
 }
 
 // Increase increments a specific ability, enforcing the maximum of 20
-func (a AbilityScores) Increase(ability constants.Ability, amount int) error {
+func (a AbilityScores) Increase(ability abilities.Ability, amount int) error {
 	newValue := a[ability] + amount
 	if newValue > 20 {
 		return fmt.Errorf("ability %s cannot exceed 20 (current: %d, increase: %d)", ability.Display(), a[ability], amount)
@@ -69,7 +72,7 @@ func (a AbilityScores) Increase(ability constants.Ability, amount int) error {
 }
 
 // ApplyIncreases applies multiple increases at once (e.g., racial bonuses)
-func (a AbilityScores) ApplyIncreases(increases map[constants.Ability]int) error {
+func (a AbilityScores) ApplyIncreases(increases map[abilities.Ability]int) error {
 	// Check all increases first
 	for ability, bonus := range increases {
 		if a[ability]+bonus > 20 {
@@ -84,7 +87,7 @@ func (a AbilityScores) ApplyIncreases(increases map[constants.Ability]int) error
 }
 
 // Modifier calculates the ability modifier for a given ability
-func (a AbilityScores) Modifier(ability constants.Ability) int {
+func (a AbilityScores) Modifier(ability abilities.Ability) int {
 	return (a[ability] - 10) / 2
 }
 
@@ -218,15 +221,15 @@ type DeathSaves struct {
 
 // Background represents character background
 type Background struct {
-	ID          constants.Background `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
+	ID          backgrounds.Background `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
 
 	// Skill proficiencies (usually 2)
-	SkillProficiencies []constants.Skill `json:"skill_proficiencies"`
+	SkillProficiencies []skills.Skill `json:"skill_proficiencies"`
 
 	// Languages
-	Languages      []constants.Language `json:"languages,omitempty"`
+	Languages      []languages.Language `json:"languages,omitempty"`
 	LanguageChoice *ChoiceData          `json:"language_choice,omitempty"`
 
 	// Tool proficiencies

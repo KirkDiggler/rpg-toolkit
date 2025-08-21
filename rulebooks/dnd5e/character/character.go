@@ -10,12 +10,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/game"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // Event types for character-related events
@@ -62,9 +67,9 @@ type Character struct {
 	eventBus events.EventBus
 
 	// Character creation info (IDs only for reference)
-	raceID       constants.Race
-	classID      constants.Class
-	backgroundID constants.Background
+	raceID       races.Race
+	classID      classes.Class
+	backgroundID backgrounds.Background
 
 	// Core attributes
 	abilityScores shared.AbilityScores
@@ -81,9 +86,9 @@ type Character struct {
 	hitDice      int // From class
 
 	// Capabilities (compiled from race/class/background)
-	skills        map[constants.Skill]shared.ProficiencyLevel
-	savingThrows  map[constants.Ability]shared.ProficiencyLevel
-	languages     []constants.Language
+	skills        map[skills.Skill]shared.ProficiencyLevel
+	savingThrows  map[abilities.Ability]shared.ProficiencyLevel
+	languages     []languages.Language
 	proficiencies shared.Proficiencies
 	features      []json.RawMessage // Feature data stored as JSON
 
@@ -131,9 +136,9 @@ func (c *Character) Attack(ctx context.Context, weapon Weapon) *AttackResult {
 	// Determine ability modifier (STR for melee, could be DEX for finesse)
 	var abilityMod int
 	if weapon.IsMelee() {
-		abilityMod = c.getAbilityModifier(constants.STR)
+		abilityMod = c.getAbilityModifier(abilities.STR)
 	} else {
-		abilityMod = c.getAbilityModifier(constants.DEX)
+		abilityMod = c.getAbilityModifier(abilities.DEX)
 	}
 
 	// Check proficiency with weapon
@@ -196,7 +201,7 @@ func (c *Character) Attack(ctx context.Context, weapon Weapon) *AttackResult {
 }
 
 // getAbilityModifier calculates the modifier for an ability score
-func (c *Character) getAbilityModifier(ability constants.Ability) int {
+func (c *Character) getAbilityModifier(ability abilities.Ability) int {
 	score := c.abilityScores[ability]
 	return (score - 10) / 2
 }
@@ -432,11 +437,11 @@ type Data struct {
 	Experience int    `json:"experience"`
 
 	// References to external data
-	RaceID       constants.Race       `json:"race_id"`
-	SubraceID    constants.Subrace    `json:"subrace_id,omitempty"`
-	ClassID      constants.Class      `json:"class_id"`
-	SubclassID   constants.Subclass   `json:"subclass_id,omitempty"`
-	BackgroundID constants.Background `json:"background_id"`
+	RaceID       races.Race             `json:"race_id"`
+	SubraceID    races.Subrace          `json:"subrace_id,omitempty"`
+	ClassID      classes.Class          `json:"class_id"`
+	SubclassID   classes.Subclass       `json:"subclass_id,omitempty"`
+	BackgroundID backgrounds.Background `json:"background_id"`
 
 	// Core stats
 	AbilityScores shared.AbilityScores `json:"ability_scores"`
@@ -448,8 +453,8 @@ type Data struct {
 	Size  string `json:"size"`
 
 	// Proficiencies and skills
-	Skills        map[constants.Skill]shared.ProficiencyLevel   `json:"skills"`        // skill -> proficiency level
-	SavingThrows  map[constants.Ability]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
+	Skills        map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`        // skill -> proficiency level
+	SavingThrows  map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"` // ability -> proficiency level
 	Languages     []string                                      `json:"languages"`
 	Proficiencies shared.Proficiencies                          `json:"proficiencies"`
 
@@ -491,22 +496,22 @@ type ChoiceData struct {
 	ChoiceID string                `json:"choice_id"` // Specific choice identifier like "fighter_proficiencies_1"
 
 	// Selection fields - only one should be populated based on Category
-	NameSelection          *string               `json:"name,omitempty"`           // For ChoiceName
-	SkillSelection         []constants.Skill     `json:"skills,omitempty"`         // For ChoiceSkills
-	LanguageSelection      []constants.Language  `json:"languages,omitempty"`      // For ChoiceLanguages
-	AbilityScoreSelection  *shared.AbilityScores `json:"ability_scores,omitempty"` // For ChoiceAbilityScores
-	FightingStyleSelection *string               `json:"fighting_style,omitempty"` // For ChoiceFightingStyle
-	EquipmentSelection     []string              `json:"equipment,omitempty"`      // For ChoiceEquipment
-	RaceSelection          *RaceChoice           `json:"race,omitempty"`           // For ChoiceRace
-	ClassSelection         *ClassChoice          `json:"class,omitempty"`          // For ChoiceClass
-	BackgroundSelection    *constants.Background `json:"background,omitempty"`     // For ChoiceBackground
-	SpellSelection         []string              `json:"spells,omitempty"`         // For ChoiceSpells
-	CantripSelection       []string              `json:"cantrips,omitempty"`       // For ChoiceCantrips
+	NameSelection          *string                 `json:"name,omitempty"`           // For ChoiceName
+	SkillSelection         []skills.Skill          `json:"skills,omitempty"`         // For ChoiceSkills
+	LanguageSelection      []languages.Language    `json:"languages,omitempty"`      // For ChoiceLanguages
+	AbilityScoreSelection  *shared.AbilityScores   `json:"ability_scores,omitempty"` // For ChoiceAbilityScores
+	FightingStyleSelection *string                 `json:"fighting_style,omitempty"` // For ChoiceFightingStyle
+	EquipmentSelection     []string                `json:"equipment,omitempty"`      // For ChoiceEquipment
+	RaceSelection          *RaceChoice             `json:"race,omitempty"`           // For ChoiceRace
+	ClassSelection         *ClassChoice            `json:"class,omitempty"`          // For ChoiceClass
+	BackgroundSelection    *backgrounds.Background `json:"background,omitempty"`     // For ChoiceBackground
+	SpellSelection         []string                `json:"spells,omitempty"`         // For ChoiceSpells
+	CantripSelection       []string                `json:"cantrips,omitempty"`       // For ChoiceCantrips
 }
 
 // ToData converts the character to its persistent representation
 func (c *Character) ToData() Data {
-	savesData := make(map[constants.Ability]shared.ProficiencyLevel)
+	savesData := make(map[abilities.Ability]shared.ProficiencyLevel)
 	for save, prof := range c.savingThrows {
 		savesData[save] = prof
 	}
@@ -572,9 +577,9 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 	// Skills are already typed correctly
 
 	// Build languages from persisted data
-	languages := make([]constants.Language, len(data.Languages))
+	langs := make([]languages.Language, len(data.Languages))
 	for i, langStr := range data.Languages {
-		languages[i] = constants.Language(langStr)
+		langs[i] = languages.Language(langStr)
 	}
 
 	// Saving throws are already typed correctly
@@ -614,12 +619,12 @@ func LoadCharacterFromData(data Data, raceData *race.Data, classData *class.Data
 		hitPoints:        data.HitPoints,
 		maxHitPoints:     data.MaxHitPoints,
 		tempHitPoints:    0,                                               // Reset on load
-		armorClass:       10 + data.AbilityScores.Modifier(constants.DEX), // Base AC, equipment will modify
-		initiative:       data.AbilityScores.Modifier(constants.DEX),
+		armorClass:       10 + data.AbilityScores.Modifier(abilities.DEX), // Base AC, equipment will modify
+		initiative:       data.AbilityScores.Modifier(abilities.DEX),
 		hitDice:          classData.HitDice,
 		skills:           data.Skills,
 		savingThrows:     data.SavingThrows,
-		languages:        languages,
+		languages:        langs,
 		proficiencies:    data.Proficiencies,
 		features:         features,
 		conditions:       data.Conditions,

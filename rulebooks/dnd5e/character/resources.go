@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -89,19 +89,19 @@ func evaluateResourceFormula(formula string, level int, abilityScores shared.Abi
 func replaceAbilityModifiers(formula string, abilityScores shared.AbilityScores) string {
 	// Replace each ability modifier reference
 	modifiers := map[string]int{
-		"strength_modifier":     abilityScores.Modifier(constants.STR),
-		"dexterity_modifier":    abilityScores.Modifier(constants.DEX),
-		"constitution_modifier": abilityScores.Modifier(constants.CON),
-		"intelligence_modifier": abilityScores.Modifier(constants.INT),
-		"wisdom_modifier":       abilityScores.Modifier(constants.WIS),
-		"charisma_modifier":     abilityScores.Modifier(constants.CHA),
+		"strength_modifier":     abilityScores.Modifier(abilities.STR),
+		"dexterity_modifier":    abilityScores.Modifier(abilities.DEX),
+		"constitution_modifier": abilityScores.Modifier(abilities.CON),
+		"intelligence_modifier": abilityScores.Modifier(abilities.INT),
+		"wisdom_modifier":       abilityScores.Modifier(abilities.WIS),
+		"charisma_modifier":     abilityScores.Modifier(abilities.CHA),
 		// Short forms
-		"str_modifier": abilityScores.Modifier(constants.STR),
-		"dex_modifier": abilityScores.Modifier(constants.DEX),
-		"con_modifier": abilityScores.Modifier(constants.CON),
-		"int_modifier": abilityScores.Modifier(constants.INT),
-		"wis_modifier": abilityScores.Modifier(constants.WIS),
-		"cha_modifier": abilityScores.Modifier(constants.CHA),
+		"str_modifier": abilityScores.Modifier(abilities.STR),
+		"dex_modifier": abilityScores.Modifier(abilities.DEX),
+		"con_modifier": abilityScores.Modifier(abilities.CON),
+		"int_modifier": abilityScores.Modifier(abilities.INT),
+		"wis_modifier": abilityScores.Modifier(abilities.WIS),
+		"cha_modifier": abilityScores.Modifier(abilities.CHA),
 	}
 
 	for name, value := range modifiers {

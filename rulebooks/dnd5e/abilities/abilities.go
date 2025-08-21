@@ -34,6 +34,11 @@ var All = map[string]Ability{
 	"charisma":     CHA,
 }
 
+// AllAbilities returns all six abilities
+func AllAbilities() []Ability {
+	return []Ability{STR, DEX, CON, INT, WIS, CHA}
+}
+
 // GetByID returns an ability by its ID (accepts abbreviations and full names)
 func GetByID(id string) (Ability, error) {
 	ability, ok := All[id]

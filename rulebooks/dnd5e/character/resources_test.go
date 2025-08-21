@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -107,12 +107,12 @@ func (s *ResourcesTestSuite) TestEvaluateSimpleExpression() {
 
 func (s *ResourcesTestSuite) TestEvaluateResourceFormula() {
 	abilityScores := shared.AbilityScores{
-		constants.STR: 14, // +2 modifier
-		constants.DEX: 12, // +1 modifier
-		constants.CON: 16, // +3 modifier
-		constants.INT: 10, // +0 modifier
-		constants.WIS: 13, // +1 modifier
-		constants.CHA: 18, // +4 modifier
+		abilities.STR: 14, // +2 modifier
+		abilities.DEX: 12, // +1 modifier
+		abilities.CON: 16, // +3 modifier
+		abilities.INT: 10, // +0 modifier
+		abilities.WIS: 13, // +1 modifier
+		abilities.CHA: 18, // +4 modifier
 	}
 
 	testCases := []struct {
@@ -175,12 +175,12 @@ func (s *ResourcesTestSuite) TestEvaluateResourceFormula() {
 
 func (s *ResourcesTestSuite) TestInitializeClassResources() {
 	abilityScores := shared.AbilityScores{
-		constants.STR: 16, // +3
-		constants.DEX: 14, // +2
-		constants.CON: 15, // +2
-		constants.INT: 10, // +0
-		constants.WIS: 13, // +1
-		constants.CHA: 8,  // -1
+		abilities.STR: 16, // +3
+		abilities.DEX: 14, // +2
+		abilities.CON: 15, // +2
+		abilities.INT: 10, // +0
+		abilities.WIS: 13, // +1
+		abilities.CHA: 8,  // -1
 	}
 
 	s.Run("barbarian rage", func() {

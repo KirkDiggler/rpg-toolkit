@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -43,12 +44,12 @@ func (s *AttackTestSuite) TestCharacterAttackWithRageBonus() {
 		ClassID:  "barbarian",
 		RaceID:   "human",
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 16, // +3 modifier
-			constants.DEX: 14,
-			constants.CON: 16,
-			constants.INT: 10,
-			constants.WIS: 12,
-			constants.CHA: 8,
+			abilities.STR: 16, // +3 modifier
+			abilities.DEX: 14,
+			abilities.CON: 16,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
 		},
 		HitPoints:    45,
 		MaxHitPoints: 45,
@@ -148,15 +149,15 @@ func (s *AttackTestSuite) TestCharacterAttackWithoutProficiency() {
 		PlayerID: "player1",
 		Name:     "Merlin",
 		Level:    5,
-		ClassID:  "wizard",
+		ClassID:  classes.Wizard,
 		RaceID:   "elf",
 		AbilityScores: shared.AbilityScores{
-			constants.STR: 10, // +0 modifier
-			constants.DEX: 14,
-			constants.CON: 12,
-			constants.INT: 16,
-			constants.WIS: 13,
-			constants.CHA: 11,
+			abilities.STR: 10, // +0 modifier
+			abilities.DEX: 14,
+			abilities.CON: 12,
+			abilities.INT: 16,
+			abilities.WIS: 13,
+			abilities.CHA: 11,
 		},
 		HitPoints:    22,
 		MaxHitPoints: 22,
@@ -169,7 +170,7 @@ func (s *AttackTestSuite) TestCharacterAttackWithoutProficiency() {
 	}
 
 	classData := &class.Data{
-		ID:      "wizard",
+		ID:      classes.Wizard,
 		Name:    "Wizard",
 		HitDice: 6,
 	}

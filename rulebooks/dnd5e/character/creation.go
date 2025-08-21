@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/constants"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // CreationData contains all data needed to create a character
@@ -45,34 +47,34 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	_ = abilityScores.ApplyIncreases(data.RaceData.AbilityScoreIncreases)
 
 	// Calculate HP
-	conMod := abilityScores.Modifier(constants.CON)
+	conMod := abilityScores.Modifier(abilities.CON)
 	maxHP := data.ClassData.HitDice + conMod
 
 	// Build skills map
-	skills := make(map[constants.Skill]shared.ProficiencyLevel)
+	skillProfs := make(map[skills.Skill]shared.ProficiencyLevel)
 
 	// Add background skills
 	for _, skill := range data.BackgroundData.SkillProficiencies {
-		skills[skill] = shared.Proficient
+		skillProfs[skill] = shared.Proficient
 	}
 
 	// Add chosen skills
 	if chosenSkills, ok := data.Choices["skills"].([]string); ok {
 		for _, skillStr := range chosenSkills {
-			skill := constants.Skill(skillStr)
-			skills[skill] = shared.Proficient
+			skill := skills.Skill(skillStr)
+			skillProfs[skill] = shared.Proficient
 		}
 	}
 
 	// Build saving throws
-	saves := make(map[constants.Ability]shared.ProficiencyLevel)
+	saves := make(map[abilities.Ability]shared.ProficiencyLevel)
 	for _, save := range data.ClassData.SavingThrows {
 		saves[save] = shared.Proficient
 	}
 
 	// Compile languages - ensure Common is always included
-	languageSet := make(map[constants.Language]bool)
-	languageSet[constants.LanguageCommon] = true
+	languageSet := make(map[languages.Language]bool)
+	languageSet[languages.Common] = true
 
 	// Add race languages
 	for _, lang := range data.RaceData.Languages {
@@ -87,13 +89,13 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 	// Add chosen languages
 	if chosenLangs, ok := data.Choices["languages"].([]string); ok {
 		for _, langStr := range chosenLangs {
-			lang := constants.Language(langStr)
+			lang := languages.Language(langStr)
 			languageSet[lang] = true
 		}
 	}
 
 	// Convert set to slice
-	languages := make([]constants.Language, 0, len(languageSet))
+	languages := make([]languages.Language, 0, len(languageSet))
 	for lang := range languageSet {
 		languages = append(languages, lang)
 	}
@@ -130,10 +132,10 @@ func NewFromCreationData(data CreationData) (*Character, error) {
 		hitPoints:        maxHP,
 		maxHitPoints:     maxHP,
 		tempHitPoints:    0,
-		armorClass:       10 + abilityScores.Modifier(constants.DEX),
-		initiative:       abilityScores.Modifier(constants.DEX),
+		armorClass:       10 + abilityScores.Modifier(abilities.DEX),
+		initiative:       abilityScores.Modifier(abilities.DEX),
 		hitDice:          data.ClassData.HitDice,
-		skills:           skills,
+		skills:           skillProfs,
 		savingThrows:     saves,
 		languages:        languages,
 		proficiencies:    proficiencies,
@@ -195,41 +197,41 @@ func convertLegacyChoice(choiceData *ChoiceData, selection any) {
 	}
 }
 
-// convertToSkills converts various formats to []constants.Skill
-func convertToSkills(selection any) []constants.Skill {
+// convertToSkills converts various formats to []skills.Skill
+func convertToSkills(selection any) []skills.Skill {
 	switch v := selection.(type) {
 	case []string:
-		skills := make([]constants.Skill, len(v))
+		result := make([]skills.Skill, len(v))
 		for i, s := range v {
-			skills[i] = constants.Skill(s)
+			result[i] = skills.Skill(s)
 		}
-		return skills
+		return result
 	case []interface{}:
-		skills := make([]constants.Skill, 0, len(v))
+		result := make([]skills.Skill, 0, len(v))
 		for _, item := range v {
 			if s, ok := item.(string); ok {
-				skills = append(skills, constants.Skill(s))
+				result = append(result, skills.Skill(s))
 			}
 		}
-		return skills
+		return result
 	}
 	return nil
 }
 
-// convertToLanguages converts various formats to []constants.Language
-func convertToLanguages(selection any) []constants.Language {
+// convertToLanguages converts various formats to []languages.Language
+func convertToLanguages(selection any) []languages.Language {
 	switch v := selection.(type) {
 	case []string:
-		langs := make([]constants.Language, len(v))
+		langs := make([]languages.Language, len(v))
 		for i, l := range v {
-			langs[i] = constants.Language(l)
+			langs[i] = languages.Language(l)
 		}
 		return langs
 	case []interface{}:
-		langs := make([]constants.Language, 0, len(v))
+		langs := make([]languages.Language, 0, len(v))
 		for _, item := range v {
 			if l, ok := item.(string); ok {
-				langs = append(langs, constants.Language(l))
+				langs = append(langs, languages.Language(l))
 			}
 		}
 		return langs
