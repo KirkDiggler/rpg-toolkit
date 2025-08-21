@@ -10,7 +10,10 @@ import (
 // WeaponProficiencies returns all weapons a fighter is proficient with
 func WeaponProficiencies() []string {
 	// Fighters are proficient with all simple and martial weapons
-	var profs []string
+	// Calculate total size for preallocation
+	totalSize := len(weapons.SimpleMeleeWeapons) + len(weapons.MartialMeleeWeapons) +
+		len(weapons.SimpleRangedWeapons) + len(weapons.MartialRangedWeapons)
+	profs := make([]string, 0, totalSize)
 
 	for id := range weapons.SimpleMeleeWeapons {
 		profs = append(profs, id)

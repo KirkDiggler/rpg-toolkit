@@ -6,9 +6,13 @@ import (
 )
 
 // ArmorID represents unique identifier for armor
+//
+//nolint:revive // ArmorID is clearer than just ID in this context
 type ArmorID string
 
 // ArmorCategory represents armor weight classification
+//
+//nolint:revive // ArmorCategory is clearer than just Category in this context
 type ArmorCategory string
 
 const (
