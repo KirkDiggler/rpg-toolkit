@@ -18,6 +18,7 @@ import (
 const (
 	fieldSkills   = "skills"
 	fieldCantrips = "cantrips"
+	fieldExpertise = "expertise"
 )
 
 // Error represents a validation issue
@@ -77,6 +78,21 @@ var validDruidSkills = map[skills.Skill]bool{
 	skills.Perception:     true,
 	skills.Religion:       true,
 	skills.Survival:       true,
+}
+
+// validRogueSkills defines the skills available for rogue class selection
+var validRogueSkills = map[skills.Skill]bool{
+	skills.Acrobatics:     true,
+	skills.Athletics:      true,
+	skills.Deception:      true,
+	skills.Insight:        true,
+	skills.Intimidation:   true,
+	skills.Investigation:  true,
+	skills.Perception:     true,
+	skills.Performance:    true,
+	skills.Persuasion:     true,
+	skills.SleightOfHand:  true,
+	skills.Stealth:        true,
 }
 
 // spellcasterValidationConfig holds configuration for validating spellcaster classes
@@ -339,6 +355,8 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 		errors = validateClericChoices(choices)
 	case classes.Druid:
 		errors = validateDruidChoices(choices)
+	case classes.Rogue:
+		errors = validateRogueChoices(choices)
 	// TODO: Add other classes
 	default:
 		// Unknown class, no validation yet
@@ -539,4 +557,85 @@ func validateDruidChoices(choices []character.ChoiceData) []Error {
 			"druid-equipment-focus":         "druidic focus",
 		},
 	}, choices)
+}
+
+// validateRogueChoices validates Rogue-specific requirements
+func validateRogueChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
+
+	// Track what we've found
+	hasSkills := false
+	hasExpertise := false
+	expertiseCount := 0
+	foundEquipment := make(map[string]bool)
+
+	// Rogue required equipment choices
+	requiredEquipment := map[string]string{
+		"rogue-equipment-primary-weapon": "primary weapon (rapier or shortsword)",
+		"rogue-equipment-secondary":      "secondary weapon (shortbow or shortsword)",
+		"rogue-equipment-pack":           "equipment pack",
+	}
+
+	// Check each choice
+	for _, choice := range choices {
+		// Only validate class choices
+		if choice.Source != shared.SourceClass {
+			continue
+		}
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			hasSkills = true
+			errors = append(errors, validateSkillChoice(choice, "Rogue", validRogueSkills, 4)...)
+
+		case shared.ChoiceExpertise:
+			hasExpertise = true
+			// Rogue can choose 2 skills OR 1 skill + thieves' tools
+			if choice.ExpertiseSelection != nil {
+				expertiseCount = len(choice.ExpertiseSelection)
+			}
+			if expertiseCount < 2 {
+				errors = append(errors, Error{
+					Field: fieldExpertise,
+					Message: fmt.Sprintf("Rogue requires 2 expertise choices at level 1, only %d selected",
+						expertiseCount),
+					Code: rpgerr.CodeInvalidArgument,
+				})
+			}
+			// Validate that expertise choices are skills the rogue has proficiency in
+			// Note: This would require checking the character's actual proficiencies
+			// For now, we just validate the count
+
+		case shared.ChoiceEquipment:
+			foundEquipment[choice.ChoiceID] = true
+			errors = append(errors, validateEquipmentChoice(choice, requiredEquipment)...)
+		}
+	}
+
+	// Check for missing required choices
+	var missing []string
+
+	if !hasSkills {
+		missing = append(missing, "skill proficiencies (choose 4 from rogue list)")
+	}
+
+	if !hasExpertise {
+		missing = append(missing, "expertise (choose 2 skills or 1 skill + thieves' tools)")
+	}
+
+	for choiceID, description := range requiredEquipment {
+		if !foundEquipment[choiceID] {
+			missing = append(missing, description)
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "class_choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
 }
