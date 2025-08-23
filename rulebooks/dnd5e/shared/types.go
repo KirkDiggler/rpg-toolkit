@@ -109,14 +109,14 @@ const (
 type ResetType string
 
 const (
-	// ShortRest resets on a short rest
-	ShortRest ResetType = "short_rest"
-	// LongRest resets on a long rest
-	LongRest ResetType = "long_rest"
-	// Dawn resets at dawn
-	Dawn ResetType = "dawn"
-	// None never recharges (consumable)
-	None ResetType = "none"
+	// ResetTypeShortRest resets on a short rest
+	ResetTypeShortRest ResetType = "short_rest"
+	// ResetTypeLongRest resets on a long rest
+	ResetTypeLongRest ResetType = "long_rest"
+	// ResetTypeDawn resets at dawn
+	ResetTypeDawn ResetType = "dawn"
+	// ResetTypeNone never recharges (consumable)
+	ResetTypeNone ResetType = "none"
 )
 
 // ClassResourceType represents different types of class resources
