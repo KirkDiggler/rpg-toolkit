@@ -33,12 +33,12 @@ func TestRollForOrder(t *testing.T) {
 
 	// Should be sorted by total (all rolled 10, so sorted by modifier)
 	assert.Equal(t, 3, len(order))
-	
+
 	// Verify the order is correct based on totals
 	assert.Equal(t, 13, order[0].Total, "First should have total of 13")
 	assert.Equal(t, 12, order[1].Total, "Second should have total of 12")
 	assert.Equal(t, 11, order[2].Total, "Third should have total of 11")
-	
+
 	// Verify entities are in the right order
 	assert.Equal(t, "ranger", order[0].Entity.GetID())
 	assert.Equal(t, "goblin", order[1].Entity.GetID())
