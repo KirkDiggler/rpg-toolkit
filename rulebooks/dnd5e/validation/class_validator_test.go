@@ -1008,7 +1008,7 @@ func (s *ClassValidatorTestSuite) TestValidateRogueChoices_Valid() {
 func (s *ClassValidatorTestSuite) TestValidateRogueChoices_InvalidSkill() {
 	choices := []character.ChoiceData{
 		{
-			Source: shared.SourceClass,
+			Source:   shared.SourceClass,
 			Category: shared.ChoiceSkills,
 			// History is not a valid rogue skill
 			SkillSelection: []skills.Skill{skills.Stealth, skills.Acrobatics, skills.Deception, skills.History},

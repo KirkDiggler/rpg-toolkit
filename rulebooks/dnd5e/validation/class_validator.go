@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	fieldSkills   = "skills"
-	fieldCantrips = "cantrips"
+	fieldSkills    = "skills"
+	fieldCantrips  = "cantrips"
 	fieldExpertise = "expertise"
 )
 
@@ -82,17 +82,17 @@ var validDruidSkills = map[skills.Skill]bool{
 
 // validRogueSkills defines the skills available for rogue class selection
 var validRogueSkills = map[skills.Skill]bool{
-	skills.Acrobatics:     true,
-	skills.Athletics:      true,
-	skills.Deception:      true,
-	skills.Insight:        true,
-	skills.Intimidation:   true,
-	skills.Investigation:  true,
-	skills.Perception:     true,
-	skills.Performance:    true,
-	skills.Persuasion:     true,
-	skills.SleightOfHand:  true,
-	skills.Stealth:        true,
+	skills.Acrobatics:    true,
+	skills.Athletics:     true,
+	skills.Deception:     true,
+	skills.Insight:       true,
+	skills.Intimidation:  true,
+	skills.Investigation: true,
+	skills.Perception:    true,
+	skills.Performance:   true,
+	skills.Persuasion:    true,
+	skills.SleightOfHand: true,
+	skills.Stealth:       true,
 }
 
 // spellcasterValidationConfig holds configuration for validating spellcaster classes
