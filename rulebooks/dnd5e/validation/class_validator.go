@@ -1,3 +1,4 @@
+// Package validation provides validation logic for D&D 5e character creation choices
 package validation
 
 import (
@@ -10,16 +11,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// ValidationError represents a validation issue
-type ValidationError struct {
+// Error represents a validation issue
+type Error struct {
 	Field   string
 	Message string
 	Code    rpgerr.Code
 }
 
 // ValidateClassChoices validates that all required choices for a class are satisfied
-func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData) ([]ValidationError, error) {
-	var errors []ValidationError
+func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData) ([]Error, error) {
+	var errors []Error
 
 	switch classID {
 	case classes.Fighter:
@@ -36,8 +37,8 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 }
 
 // validateFighterChoices validates Fighter-specific requirements
-func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
-	var errors []ValidationError
+func validateFighterChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
 	
 	// Track what we've found
 	hasSkills := false
@@ -66,7 +67,7 @@ func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
 			hasSkills = true
 			skillCount = len(choice.SkillSelection)
 			if skillCount < 2 {
-				errors = append(errors, ValidationError{
+				errors = append(errors, Error{
 					Field:   "skills",
 					Message: fmt.Sprintf("Fighter requires 2 skill proficiencies, only %d selected", skillCount),
 					Code:    rpgerr.CodeInvalidArgument,
@@ -76,7 +77,7 @@ func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
 		case shared.ChoiceFightingStyle:
 			hasFightingStyle = true
 			if choice.FightingStyleSelection == nil || *choice.FightingStyleSelection == "" {
-				errors = append(errors, ValidationError{
+				errors = append(errors, Error{
 					Field:   "fighting_style",
 					Message: "Fighter requires a fighting style selection",
 					Code:    rpgerr.CodeInvalidArgument,
@@ -92,7 +93,7 @@ func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
 					"two-weapon-fighting":  true,
 				}
 				if !validStyles[*choice.FightingStyleSelection] {
-					errors = append(errors, ValidationError{
+					errors = append(errors, Error{
 						Field:   "fighting_style",
 						Message: fmt.Sprintf("Invalid fighting style: %s", *choice.FightingStyleSelection),
 						Code:    rpgerr.CodeInvalidArgument,
@@ -104,7 +105,7 @@ func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
 			foundEquipment[choice.ChoiceID] = true
 			if len(choice.EquipmentSelection) == 0 {
 				if desc, ok := requiredEquipment[choice.ChoiceID]; ok {
-					errors = append(errors, ValidationError{
+					errors = append(errors, Error{
 						Field:   choice.ChoiceID,
 						Message: fmt.Sprintf("No selection made for %s", desc),
 						Code:    rpgerr.CodeInvalidArgument,
@@ -132,7 +133,7 @@ func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
 	}
 	
 	if len(missing) > 0 {
-		errors = append(errors, ValidationError{
+		errors = append(errors, Error{
 			Field:   "class_choices",
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
@@ -143,8 +144,8 @@ func validateFighterChoices(choices []character.ChoiceData) []ValidationError {
 }
 
 // validateWizardChoices validates Wizard-specific requirements
-func validateWizardChoices(choices []character.ChoiceData) []ValidationError {
-	var errors []ValidationError
+func validateWizardChoices(_ []character.ChoiceData) []Error {
+	var errors []Error
 	
 	// TODO: Implement wizard validation
 	// Wizards need:
