@@ -15,6 +15,11 @@ import (
 	"golang.org/x/text/language"
 )
 
+const (
+	fieldSkills   = "skills"
+	fieldCantrips = "cantrips"
+)
+
 // Error represents a validation issue
 type Error struct {
 	Field   string
@@ -53,6 +58,27 @@ var validWarlockSkills = map[skills.Skill]bool{
 	skills.Religion:      true,
 }
 
+// validClericSkills defines the skills available for cleric class selection
+var validClericSkills = map[skills.Skill]bool{
+	skills.History:    true,
+	skills.Insight:    true,
+	skills.Medicine:   true,
+	skills.Persuasion: true,
+	skills.Religion:   true,
+}
+
+// validDruidSkills defines the skills available for druid class selection
+var validDruidSkills = map[skills.Skill]bool{
+	skills.Arcana:         true,
+	skills.AnimalHandling: true,
+	skills.Insight:        true,
+	skills.Medicine:       true,
+	skills.Nature:         true,
+	skills.Perception:     true,
+	skills.Religion:       true,
+	skills.Survival:       true,
+}
+
 // spellcasterValidationConfig holds configuration for validating spellcaster classes
 type spellcasterValidationConfig struct {
 	className         string
@@ -62,6 +88,15 @@ type spellcasterValidationConfig struct {
 	requiredSpells    int
 	spellsDescription string // e.g., "spells for spellbook" or "spells known"
 	equipmentChoices  map[string]string
+}
+
+// preparedCasterValidationConfig holds configuration for validating prepared spellcaster classes
+type preparedCasterValidationConfig struct {
+	className        string
+	validSkills      map[skills.Skill]bool
+	requiredSkills   int
+	requiredCantrips int
+	equipmentChoices map[string]string
 }
 
 // getSkillsList returns a formatted string of valid skills from the provided map
@@ -80,15 +115,81 @@ func getSkillsList(validSkills map[skills.Skill]bool) string {
 	return strings.Join(skillNames, ", ")
 }
 
+// validateSkillChoice validates skill selection for a class
+func validateSkillChoice(choice character.ChoiceData, className string,
+	validSkills map[skills.Skill]bool, requiredSkills int) []Error {
+	var errors []Error
+
+	skillCount := len(choice.SkillSelection)
+	if skillCount < requiredSkills {
+		errors = append(errors, Error{
+			Field: fieldSkills,
+			Message: fmt.Sprintf("%s requires %d skill proficiencies, only %d selected",
+				className, requiredSkills, skillCount),
+			Code: rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	// Validate that skills are from class list
+	for _, skill := range choice.SkillSelection {
+		if !validSkills[skill] {
+			errors = append(errors, Error{
+				Field: fieldSkills,
+				Message: fmt.Sprintf("Invalid %s skill: %s. Must choose from %s",
+					strings.ToLower(className), string(skill), getSkillsList(validSkills)),
+				Code: rpgerr.CodeInvalidArgument,
+			})
+		}
+	}
+
+	return errors
+}
+
+// validateCantripChoice validates cantrip selection for a class
+func validateCantripChoice(choice character.ChoiceData, className string, requiredCantrips int) []Error {
+	var errors []Error
+
+	cantripCount := 0
+	if choice.CantripSelection != nil {
+		cantripCount = len(choice.CantripSelection)
+	}
+
+	if cantripCount < requiredCantrips {
+		errors = append(errors, Error{
+			Field: fieldCantrips,
+			Message: fmt.Sprintf("%s requires %d cantrips at level 1, only %d selected",
+				className, requiredCantrips, cantripCount),
+			Code: rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validateEquipmentChoice validates equipment selection
+func validateEquipmentChoice(choice character.ChoiceData, equipmentChoices map[string]string) []Error {
+	var errors []Error
+
+	if len(choice.EquipmentSelection) == 0 {
+		if desc, ok := equipmentChoices[choice.ChoiceID]; ok {
+			errors = append(errors, Error{
+				Field:   choice.ChoiceID,
+				Message: fmt.Sprintf("No selection made for %s", desc),
+				Code:    rpgerr.CodeInvalidArgument,
+			})
+		}
+	}
+
+	return errors
+}
+
 // validateSpellcasterChoices provides common validation logic for spellcaster classes
 func validateSpellcasterChoices(config spellcasterValidationConfig, choices []character.ChoiceData) []Error {
 	var errors []Error
 
 	// Track what we've found
 	hasSkills := false
-	skillCount := 0
 	hasCantrips := false
-	cantripCount := 0
 	hasSpells := false
 	spellCount := 0
 	foundEquipment := make(map[string]bool)
@@ -103,40 +204,11 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 		switch choice.Category {
 		case shared.ChoiceSkills:
 			hasSkills = true
-			skillCount = len(choice.SkillSelection)
-			if skillCount < config.requiredSkills {
-				errors = append(errors, Error{
-					Field: "skills",
-					Message: fmt.Sprintf("%s requires %d skill proficiencies, only %d selected",
-						config.className, config.requiredSkills, skillCount),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
-			// Validate that skills are from class list
-			for _, skill := range choice.SkillSelection {
-				if !config.validSkills[skill] {
-					errors = append(errors, Error{
-						Field: "skills",
-						Message: fmt.Sprintf("Invalid %s skill: %s. Must choose from %s",
-							strings.ToLower(config.className), string(skill), getSkillsList(config.validSkills)),
-						Code: rpgerr.CodeInvalidArgument,
-					})
-				}
-			}
+			errors = append(errors, validateSkillChoice(choice, config.className, config.validSkills, config.requiredSkills)...)
 
 		case shared.ChoiceCantrips:
 			hasCantrips = true
-			if choice.CantripSelection != nil {
-				cantripCount = len(choice.CantripSelection)
-			}
-			if cantripCount < config.requiredCantrips {
-				errors = append(errors, Error{
-					Field: "cantrips",
-					Message: fmt.Sprintf("%s requires %d cantrips at level 1, only %d selected",
-						config.className, config.requiredCantrips, cantripCount),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
+			errors = append(errors, validateCantripChoice(choice, config.className, config.requiredCantrips)...)
 
 		case shared.ChoiceSpells:
 			hasSpells = true
@@ -153,15 +225,7 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 
 		case shared.ChoiceEquipment:
 			foundEquipment[choice.ChoiceID] = true
-			if len(choice.EquipmentSelection) == 0 {
-				if desc, ok := config.equipmentChoices[choice.ChoiceID]; ok {
-					errors = append(errors, Error{
-						Field:   choice.ChoiceID,
-						Message: fmt.Sprintf("No selection made for %s", desc),
-						Code:    rpgerr.CodeInvalidArgument,
-					})
-				}
-			}
+			errors = append(errors, validateEquipmentChoice(choice, config.equipmentChoices)...)
 		}
 	}
 
@@ -198,6 +262,66 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 	return errors
 }
 
+// validatePreparedCasterChoices provides validation logic for prepared spellcaster classes
+func validatePreparedCasterChoices(config preparedCasterValidationConfig, choices []character.ChoiceData) []Error {
+	var errors []Error
+
+	// Track what we've found
+	hasSkills := false
+	hasCantrips := false
+	foundEquipment := make(map[string]bool)
+
+	// Check each choice
+	for _, choice := range choices {
+		// Only validate class choices
+		if choice.Source != shared.SourceClass {
+			continue
+		}
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			hasSkills = true
+			errors = append(errors, validateSkillChoice(choice, config.className, config.validSkills, config.requiredSkills)...)
+
+		case shared.ChoiceCantrips:
+			hasCantrips = true
+			errors = append(errors, validateCantripChoice(choice, config.className, config.requiredCantrips)...)
+
+		case shared.ChoiceEquipment:
+			foundEquipment[choice.ChoiceID] = true
+			errors = append(errors, validateEquipmentChoice(choice, config.equipmentChoices)...)
+		}
+	}
+
+	// Check for missing required choices
+	var missing []string
+
+	if !hasSkills {
+		missing = append(missing, fmt.Sprintf("skill proficiencies (choose %d from %s list)",
+			config.requiredSkills, strings.ToLower(config.className)))
+	}
+
+	if !hasCantrips {
+		missing = append(missing, fmt.Sprintf("cantrips (choose %d)", config.requiredCantrips))
+	}
+
+	for choiceID, description := range config.equipmentChoices {
+		if !foundEquipment[choiceID] {
+			missing = append(missing, description)
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "class_choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
 // ValidateClassChoices validates that all required choices for a class are satisfied
 func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData) ([]Error, error) {
 	var errors []Error
@@ -211,6 +335,10 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 		errors = validateSorcererChoices(choices)
 	case classes.Warlock:
 		errors = validateWarlockChoices(choices)
+	case classes.Cleric:
+		errors = validateClericChoices(choices)
+	case classes.Druid:
+		errors = validateDruidChoices(choices)
 	// TODO: Add other classes
 	default:
 		// Unknown class, no validation yet
@@ -379,4 +507,36 @@ func validateWarlockChoices(choices []character.ChoiceData) []Error {
 		},
 	}
 	return validateSpellcasterChoices(config, choices)
+}
+
+// validateClericChoices validates Cleric-specific requirements
+func validateClericChoices(choices []character.ChoiceData) []Error {
+	return validatePreparedCasterChoices(preparedCasterValidationConfig{
+		className:        "Cleric",
+		validSkills:      validClericSkills,
+		requiredSkills:   2,
+		requiredCantrips: 3,
+		equipmentChoices: map[string]string{
+			"cleric-equipment-primary-weapon": "weapon choice (mace or warhammer)",
+			"cleric-equipment-armor":          "armor choice (scale mail, leather, or chain mail)",
+			"cleric-equipment-ranged":         "ranged weapon choice (light crossbow or simple weapon)",
+			"cleric-equipment-pack":           "pack choice (priest's pack or explorer's pack)",
+			"cleric-equipment-holy-symbol":    "holy symbol",
+		},
+	}, choices)
+}
+
+// validateDruidChoices validates Druid-specific requirements
+func validateDruidChoices(choices []character.ChoiceData) []Error {
+	return validatePreparedCasterChoices(preparedCasterValidationConfig{
+		className:        "Druid",
+		validSkills:      validDruidSkills,
+		requiredSkills:   2,
+		requiredCantrips: 2,
+		equipmentChoices: map[string]string{
+			"druid-equipment-shield-weapon": "shield or simple weapon choice",
+			"druid-equipment-melee":         "scimitar or simple melee weapon choice",
+			"druid-equipment-focus":         "druidic focus",
+		},
+	}, choices)
 }

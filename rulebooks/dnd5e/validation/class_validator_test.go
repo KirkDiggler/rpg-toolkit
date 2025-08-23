@@ -14,7 +14,6 @@ import (
 
 const (
 	fieldClassChoices = "class_choices"
-	fieldSkills       = "skills"
 )
 
 type ClassValidatorTestSuite struct {
@@ -297,7 +296,7 @@ func (s *ClassValidatorTestSuite) TestValidateWizardChoices_InsufficientCantrips
 
 	hasCantripError := false
 	for _, e := range errors {
-		if e.Field == "cantrips" {
+		if e.Field == fieldCantrips {
 			s.Assert().Contains(e.Message, "requires 3 cantrips")
 			s.Assert().Contains(e.Message, "only 2 selected")
 			hasCantripError = true
@@ -652,7 +651,7 @@ func (s *ClassValidatorTestSuite) TestValidateSorcererChoices_InsufficientCantri
 
 	hasCantripError := false
 	for _, e := range errors {
-		if e.Field == "cantrips" {
+		if e.Field == fieldCantrips {
 			s.Assert().Contains(e.Message, "requires 4 cantrips")
 			s.Assert().Contains(e.Message, "only 2 selected")
 			hasCantripError = true
@@ -767,4 +766,204 @@ func (s *ClassValidatorTestSuite) TestValidateWarlockChoices_InsufficientSpells(
 		}
 	}
 	s.Assert().True(hasSpellError, "Should have error about insufficient spells")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateClericChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.History, skills.Medicine},
+		},
+		{
+			Source:           shared.SourceClass,
+			Category:         shared.ChoiceCantrips,
+			CantripSelection: []string{"sacred-flame", "guidance", "thaumaturgy"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "cleric-equipment-primary-weapon",
+			EquipmentSelection: []string{"mace"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "cleric-equipment-armor",
+			EquipmentSelection: []string{"scale-mail"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "cleric-equipment-ranged",
+			EquipmentSelection: []string{"crossbow-light"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "cleric-equipment-pack",
+			EquipmentSelection: []string{"priests-pack"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "cleric-equipment-holy-symbol",
+			EquipmentSelection: []string{"amulet"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Cleric, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateClericChoices_InvalidSkill() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Athletics, skills.Medicine}, // Athletics not valid for Cleric
+		},
+		{
+			Source:           shared.SourceClass,
+			Category:         shared.ChoiceCantrips,
+			CantripSelection: []string{"sacred-flame", "guidance", "thaumaturgy"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Cleric, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasInvalidSkillError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Invalid cleric skill: athletics")
+			s.Assert().Contains(e.Message, "Must choose from")
+			hasInvalidSkillError = true
+		}
+	}
+	s.Assert().True(hasInvalidSkillError, "Should have error about invalid skill")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateClericChoices_InsufficientCantrips() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.History, skills.Medicine},
+		},
+		{
+			Source:           shared.SourceClass,
+			Category:         shared.ChoiceCantrips,
+			CantripSelection: []string{"sacred-flame", "guidance"}, // Only 2, need 3
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Cleric, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasCantripError := false
+	for _, e := range errors {
+		if e.Field == fieldCantrips {
+			s.Assert().Contains(e.Message, "Cleric requires 3 cantrips at level 1, only 2 selected")
+			hasCantripError = true
+		}
+	}
+	s.Assert().True(hasCantripError, "Should have error about insufficient cantrips")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateDruidChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Nature, skills.Perception},
+		},
+		{
+			Source:           shared.SourceClass,
+			Category:         shared.ChoiceCantrips,
+			CantripSelection: []string{"druidcraft", "guidance"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "druid-equipment-shield-weapon",
+			EquipmentSelection: []string{"shield"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "druid-equipment-melee",
+			EquipmentSelection: []string{"scimitar"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "druid-equipment-focus",
+			EquipmentSelection: []string{"druidcraft-focus"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Druid, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateDruidChoices_InvalidSkill() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Deception, skills.Perception}, // Deception not valid for Druid
+		},
+		{
+			Source:           shared.SourceClass,
+			Category:         shared.ChoiceCantrips,
+			CantripSelection: []string{"druidcraft", "guidance"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Druid, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasInvalidSkillError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Invalid druid skill: deception")
+			s.Assert().Contains(e.Message, "Must choose from")
+			hasInvalidSkillError = true
+		}
+	}
+	s.Assert().True(hasInvalidSkillError, "Should have error about invalid skill")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateDruidChoices_InsufficientCantrips() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Nature, skills.Perception},
+		},
+		{
+			Source:           shared.SourceClass,
+			Category:         shared.ChoiceCantrips,
+			CantripSelection: []string{"druidcraft"}, // Only 1, need 2
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Druid, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasCantripError := false
+	for _, e := range errors {
+		if e.Field == fieldCantrips {
+			s.Assert().Contains(e.Message, "Druid requires 2 cantrips at level 1, only 1 selected")
+			hasCantripError = true
+		}
+	}
+	s.Assert().True(hasCantripError, "Should have error about insufficient cantrips")
 }
