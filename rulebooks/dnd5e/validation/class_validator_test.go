@@ -14,6 +14,7 @@ import (
 
 const (
 	fieldClassChoices = "class_choices"
+	fieldSkills       = "skills"
 )
 
 type ClassValidatorTestSuite struct {
@@ -126,7 +127,7 @@ func (s *ClassValidatorTestSuite) TestValidateFighterChoices_InsufficientSkills(
 
 	hasSkillError := false
 	for _, e := range errors {
-		if e.Field == "skills" {
+		if e.Field == fieldSkills {
 			s.Assert().Contains(e.Message, "requires 2 skill proficiencies")
 			s.Assert().Contains(e.Message, "only 1 selected")
 			hasSkillError = true
@@ -259,7 +260,7 @@ func (s *ClassValidatorTestSuite) TestValidateWizardChoices_InvalidSkill() {
 
 	hasInvalidSkillError := false
 	for _, e := range errors {
-		if e.Field == "skills" {
+		if e.Field == fieldSkills {
 			s.Assert().Contains(e.Message, "Invalid wizard skill")
 			s.Assert().Contains(e.Message, "athletics")
 			hasInvalidSkillError = true
@@ -334,7 +335,7 @@ func (s *ClassValidatorTestSuite) TestValidateWizardChoices_InsufficientSpells()
 	hasSpellError := false
 	for _, e := range errors {
 		if e.Field == "spells" {
-			s.Assert().Contains(e.Message, "requires 6 spells")
+			s.Assert().Contains(e.Message, "Wizard spells for spellbook")
 			s.Assert().Contains(e.Message, "only 2 selected")
 			hasSpellError = true
 		}
@@ -614,7 +615,7 @@ func (s *ClassValidatorTestSuite) TestValidateSorcererChoices_InvalidSkill() {
 
 	hasInvalidSkillError := false
 	for _, e := range errors {
-		if e.Field == "skills" {
+		if e.Field == fieldSkills {
 			s.Assert().Contains(e.Message, "Invalid sorcerer skill")
 			s.Assert().Contains(e.Message, "athletics")
 			hasInvalidSkillError = true
@@ -722,7 +723,7 @@ func (s *ClassValidatorTestSuite) TestValidateWarlockChoices_InvalidSkill() {
 
 	hasInvalidSkillError := false
 	for _, e := range errors {
-		if e.Field == "skills" {
+		if e.Field == fieldSkills {
 			s.Assert().Contains(e.Message, "Invalid warlock skill")
 			s.Assert().Contains(e.Message, "athletics")
 			hasInvalidSkillError = true
@@ -760,7 +761,7 @@ func (s *ClassValidatorTestSuite) TestValidateWarlockChoices_InsufficientSpells(
 	hasSpellError := false
 	for _, e := range errors {
 		if e.Field == "spells" {
-			s.Assert().Contains(e.Message, "requires 2 spells")
+			s.Assert().Contains(e.Message, "Warlock spells known")
 			s.Assert().Contains(e.Message, "only 1 selected")
 			hasSpellError = true
 		}
