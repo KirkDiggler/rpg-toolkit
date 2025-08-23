@@ -22,6 +22,9 @@ func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []Roll {
 		roller = dice.DefaultRoller
 	}
 
+	// TODO(#285): Make iteration deterministic to ensure consistent ordering
+	// when multiple entities have the same total (roll + modifier).
+	// Currently, map iteration is non-deterministic in Go.
 	// Roll for each entity
 	entries := make([]Roll, 0, len(entities))
 	for entity, modifier := range entities {

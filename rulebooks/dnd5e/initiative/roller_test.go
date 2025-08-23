@@ -18,24 +18,28 @@ func TestRollForOrder(t *testing.T) {
 
 	mockRoller := mock_dice.NewMockRoller(ctrl)
 
-	// Set up deterministic rolls
-	// Ranger rolls 15 + 3 = 18
-	// Goblin rolls 10 + 2 = 12
-	// Wizard rolls 8 + 1 = 9
-	mockRoller.EXPECT().Roll(20).Return(15, nil) // Ranger
-	mockRoller.EXPECT().Roll(20).Return(10, nil) // Goblin
-	mockRoller.EXPECT().Roll(20).Return(8, nil)  // Wizard
+	// Since map iteration is non-deterministic, we need to set up expectations
+	// that work regardless of iteration order. All entities get the same roll (10)
+	// so the order will be determined by modifiers alone
+	mockRoller.EXPECT().Roll(20).Return(10, nil).Times(3)
 
 	participants := map[core.Entity]int{
-		initiative.NewParticipant("ranger", dnd5e.EntityTypeCharacter): +3,
-		initiative.NewParticipant("goblin", dnd5e.EntityTypeMonster):   +2,
-		initiative.NewParticipant("wizard", dnd5e.EntityTypeCharacter): +1,
+		initiative.NewParticipant("ranger", dnd5e.EntityTypeCharacter): +3, // Total: 13
+		initiative.NewParticipant("goblin", dnd5e.EntityTypeMonster):   +2, // Total: 12
+		initiative.NewParticipant("wizard", dnd5e.EntityTypeCharacter): +1, // Total: 11
 	}
 
 	order := initiative.RollForOrder(participants, mockRoller)
 
-	// Should be sorted by total: ranger (18), goblin (12), wizard (9)
+	// Should be sorted by total (all rolled 10, so sorted by modifier)
 	assert.Equal(t, 3, len(order))
+	
+	// Verify the order is correct based on totals
+	assert.Equal(t, 13, order[0].Total, "First should have total of 13")
+	assert.Equal(t, 12, order[1].Total, "Second should have total of 12")
+	assert.Equal(t, 11, order[2].Total, "Third should have total of 11")
+	
+	// Verify entities are in the right order
 	assert.Equal(t, "ranger", order[0].Entity.GetID())
 	assert.Equal(t, "goblin", order[1].Entity.GetID())
 	assert.Equal(t, "wizard", order[2].Entity.GetID())
