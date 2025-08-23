@@ -28,6 +28,8 @@ const (
 	Poison   Type = "poison"
 	Psychic  Type = "psychic"
 	Radiant  Type = "radiant"
+
+	None Type = "none"
 )
 
 // All contains all damage types mapped by ID for O(1) lookup
@@ -45,6 +47,7 @@ var All = map[string]Type{
 	"poison":      Poison,
 	"psychic":     Psychic,
 	"radiant":     Radiant,
+	"none":        None,
 }
 
 // Physical returns all physical damage types

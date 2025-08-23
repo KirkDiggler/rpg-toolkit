@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -68,8 +69,9 @@ func (s *FighterTestSuite) TestFighterBasics() {
 func (s *FighterTestSuite) TestFighterEquipmentChoices() {
 	f := fighter.Get()
 	
-	s.Run("has 4 equipment choices", func() {
-		s.Len(f.EquipmentChoices, 4)
+	s.Run("has 3 equipment choices", func() {
+		// armor, ranged, pack (weapons handled via choices system)
+		s.Len(f.EquipmentChoices, 3)
 	})
 	
 	s.Run("armor choice", func() {
@@ -94,19 +96,10 @@ func (s *FighterTestSuite) TestFighterEquipmentChoices() {
 		s.Equal(20, leatherBundle.Items[2].Quantity)
 	})
 	
-	s.Run("weapon choice", func() {
-		weaponChoice := f.EquipmentChoices[1]
-		s.Equal("fighter-weapon-choice", weaponChoice.ID)
-		s.Equal(1, weaponChoice.Choose)
-		s.Len(weaponChoice.Options, 2)
-		
-		// These are bundles that will expand later
-		s.Equal("martial-weapon-and-shield", weaponChoice.Options[0].ID)
-		s.Equal("two-martial-weapons", weaponChoice.Options[1].ID)
-	})
+	// Weapon choices removed - handled via choices system
 	
 	s.Run("ranged choice", func() {
-		rangedChoice := f.EquipmentChoices[2]
+		rangedChoice := f.EquipmentChoices[1]
 		s.Equal("fighter-ranged-choice", rangedChoice.ID)
 		s.Len(rangedChoice.Options, 2)
 		
@@ -125,7 +118,7 @@ func (s *FighterTestSuite) TestFighterEquipmentChoices() {
 	})
 	
 	s.Run("pack choice", func() {
-		packChoice := f.EquipmentChoices[3]
+		packChoice := f.EquipmentChoices[2]
 		s.Equal("fighter-pack-choice", packChoice.ID)
 		s.Len(packChoice.Options, 2)
 		s.Equal("dungeoneers-pack", packChoice.Options[0].ID)
@@ -136,8 +129,9 @@ func (s *FighterTestSuite) TestFighterEquipmentChoices() {
 func (s *FighterTestSuite) TestFighterEquipmentAsChoices() {
 	equipChoices := fighter.GetEquipmentChoicesAsChoices()
 	
-	s.Run("has 4 choices in choice format", func() {
-		s.Len(equipChoices, 4)
+	s.Run("has 5 choices in choice format", func() {
+		// armor, martial weapon, shield/weapon, ranged, pack
+		s.Len(equipChoices, 5)
 	})
 	
 	s.Run("armor choice uses proper Option types", func() {
@@ -160,18 +154,44 @@ func (s *FighterTestSuite) TestFighterEquipmentAsChoices() {
 		s.Len(leatherBundle.Items, 3)
 	})
 	
-	s.Run("weapon choice uses bundles", func() {
-		weaponChoice := equipChoices[1]
-		s.Equal(choices.ChoiceID("fighter-weapon-choice"), weaponChoice.ID)
+	s.Run("martial weapon choice uses category options", func() {
+		// Find the martial weapon choice
+		var weaponChoice *choices.Choice
+		for i := range equipChoices {
+			if equipChoices[i].ID == choices.ChoiceID("fighter-martial-weapon") {
+				weaponChoice = &equipChoices[i]
+				break
+			}
+		}
+		s.Require().NotNil(weaponChoice)
 		
-		// Both options are bundles
-		bundle1, ok := weaponChoice.Options[0].(choices.BundleOption)
-		s.True(ok)
-		s.Equal("martial-weapon-and-shield", bundle1.ID)
+		// Both options should be weapon categories
+		meleeOpt, ok := weaponChoice.Options[0].(choices.WeaponCategoryOption)
+		s.True(ok, "first option should be weapon category")
+		s.Equal(weapons.CategoryMartialMelee, meleeOpt.Category)
 		
-		bundle2, ok := weaponChoice.Options[1].(choices.BundleOption)
-		s.True(ok)
-		s.Equal("two-martial-weapons", bundle2.ID)
+		rangedOpt, ok := weaponChoice.Options[1].(choices.WeaponCategoryOption)
+		s.True(ok, "second option should be weapon category")
+		s.Equal(weapons.CategoryMartialRanged, rangedOpt.Category)
+	})
+	
+	s.Run("shield or second weapon choice", func() {
+		// Find the second equipment choice
+		var secondChoice *choices.Choice
+		for i := range equipChoices {
+			if equipChoices[i].ID == choices.ChoiceID("fighter-second-equipment") {
+				secondChoice = &equipChoices[i]
+				break
+			}
+		}
+		s.Require().NotNil(secondChoice)
+		
+		s.Len(secondChoice.Options, 3) // shield + 2 weapon categories
+		
+		// First option is shield
+		shieldOpt, ok := secondChoice.Options[0].(choices.SingleOption)
+		s.True(ok, "first option should be single item")
+		s.Equal("shield", shieldOpt.ItemID)
 	})
 }
 
@@ -195,7 +215,16 @@ func (s *FighterTestSuite) TestFighterSkillChoice() {
 }
 
 func (s *FighterTestSuite) TestFighterMartialWeaponChoice() {
-	weaponChoice := fighter.GetMartialWeaponChoice()
+	// Get all Fighter choices and find the martial weapon choice
+	allChoices := fighter.GetEquipmentChoicesAsChoices()
+	var weaponChoice *choices.Choice
+	for i := range allChoices {
+		if allChoices[i].ID == choices.ChoiceID("fighter-martial-weapon") {
+			weaponChoice = &allChoices[i]
+			break
+		}
+	}
+	s.Require().NotNil(weaponChoice, "should find martial weapon choice")
 	
 	s.Run("martial weapon choice expands to categories", func() {
 		s.Equal(choices.ChoiceID("fighter-martial-weapon"), weaponChoice.ID)

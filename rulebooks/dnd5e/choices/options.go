@@ -38,8 +38,9 @@ func (o SingleOption) Validate() error {
 
 // BundleOption represents multiple items as one choice
 type BundleOption struct {
-	ID    string
-	Items []CountedItem
+	ID      string
+	Display string // Optional display name for the bundle
+	Items   []CountedItem
 }
 
 // CountedItem represents an item with quantity

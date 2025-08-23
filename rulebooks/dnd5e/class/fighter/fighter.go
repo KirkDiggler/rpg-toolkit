@@ -93,33 +93,7 @@ func GetEquipmentChoices() []class.EquipmentChoiceData {
 				},
 			},
 		},
-		// Choice 2: Martial weapon and shield OR two martial weapons
-		// NOTE: This is a placeholder - the actual weapon choice happens through
-		// the choices system. These IDs signal to the handler what kind of 
-		// secondary choice needs to be presented.
-		{
-			ID:          "fighter-weapon-choice",
-			Description: "Choose your weapons",
-			Choose:      1,
-			Options: []class.EquipmentOption{
-				{
-					ID: "martial-weapon-and-shield",
-					Items: []class.EquipmentData{
-						// This signals: player chooses 1 martial weapon, gets shield
-						{ItemID: "weapon-category:martial", Quantity: 1},
-						{ItemID: "shield", Quantity: 1},
-					},
-				},
-				{
-					ID: "two-martial-weapons",
-					Items: []class.EquipmentData{
-						// This signals: player chooses 2 martial weapons
-						{ItemID: "weapon-category:martial", Quantity: 2},
-					},
-				},
-			},
-		},
-		// Choice 3: Light crossbow + 20 bolts OR two handaxes
+		// Choice 2: Light crossbow + 20 bolts OR two handaxes
 		{
 			ID:          "fighter-ranged-choice",
 			Description: "Choose your ranged weapons",
@@ -140,7 +114,7 @@ func GetEquipmentChoices() []class.EquipmentChoiceData {
 				},
 			},
 		},
-		// Choice 4: Dungeoneer's pack OR explorer's pack
+		// Choice 3: Dungeoneer's pack OR explorer's pack
 		{
 			ID:          "fighter-pack-choice",
 			Description: "Choose your equipment pack",
@@ -163,15 +137,16 @@ func GetEquipmentChoices() []class.EquipmentChoiceData {
 	}
 }
 
-// GetEquipmentChoicesAsChoices converts equipment choices to the choices.Choice format
-// This is what the game server actually uses
+// GetEquipmentChoicesAsChoices returns Fighter equipment choices in the choices format.
+// This provides the actual weapon category expansion that the game server uses.
+// Following D&D 5e RAW: Fighter gets 4 equipment choices.
 func GetEquipmentChoicesAsChoices() []choices.Choice {
 	return []choices.Choice{
 		// Choice 1: Chain mail OR leather armor + longbow + 20 arrows
 		{
 			ID:          choices.ChoiceID("fighter-armor-choice"),
 			Category:    choices.CategoryEquipment,
-			Description: "Choose your starting armor",
+			Description: "(a) chain mail or (b) leather armor, longbow, and 20 arrows",
 			Choose:      1,
 			Source:      choices.SourceClass,
 			Options: []choices.Option{
@@ -181,39 +156,52 @@ func GetEquipmentChoicesAsChoices() []choices.Choice {
 					Display:  "Chain mail",
 				},
 				choices.BundleOption{
-					ID: "leather-longbow",
+					ID:      "leather-longbow",
+					Display: "Leather armor, longbow, and 20 arrows",
 					Items: []choices.CountedItem{
-						{ItemType: choices.ItemTypeArmor, ItemID: "leather", Quantity: 1},
+						{ItemType: choices.ItemTypeArmor, ItemID: "leather-armor", Quantity: 1},
 						{ItemType: choices.ItemTypeWeapon, ItemID: "longbow", Quantity: 1},
 						{ItemType: choices.ItemTypeGear, ItemID: "arrow", Quantity: 20},
 					},
 				},
 			},
 		},
-		// Choice 2: Martial weapon and shield OR two martial weapons
+		// Choice 2a: First martial weapon (or weapon + shield choice)
+		// We split the complex choice into separate choices for simplicity
 		{
-			ID:          choices.ChoiceID("fighter-weapon-choice"),
+			ID:          choices.ChoiceID("fighter-primary-weapon"),
 			Category:    choices.CategoryEquipment,
-			Description: "Choose your weapons",
+			Description: "Choose your first martial weapon",
 			Choose:      1,
 			Source:      choices.SourceClass,
 			Options: []choices.Option{
-				// Martial weapon + shield (player chooses the weapon)
-				choices.BundleOption{
-					ID: string(bundles.MartialWeaponAndShield),
-					Items: []choices.CountedItem{
-						// This is a special bundle that expands to weapon choice + shield
-						{ItemType: choices.ItemTypeWeapon, ItemID: "martial-weapon-choice", Quantity: 1},
-						{ItemType: choices.ItemTypeArmor, ItemID: "shield", Quantity: 1},
-					},
+				choices.WeaponCategoryOption{
+					Category: weapons.CategoryMartialMelee,
 				},
-				// Two martial weapons (player chooses both)
-				choices.BundleOption{
-					ID: string(bundles.TwoMartialWeapons),
-					Items: []choices.CountedItem{
-						// This is a special bundle that expands to 2 weapon choices
-						{ItemType: choices.ItemTypeWeapon, ItemID: "martial-weapon-choice", Quantity: 2},
-					},
+				choices.WeaponCategoryOption{
+					Category: weapons.CategoryMartialRanged,
+				},
+			},
+		},
+		// Choice 2b: Shield OR second martial weapon
+		// This gives the player the choice between defensive (shield) or offensive (second weapon)
+		{
+			ID:          choices.ChoiceID("fighter-secondary-equipment"),
+			Category:    choices.CategoryEquipment,
+			Description: "(a) a shield or (b) a second martial weapon",
+			Choose:      1,
+			Source:      choices.SourceClass,
+			Options: []choices.Option{
+				choices.SingleOption{
+					ItemType: choices.ItemTypeArmor,
+					ItemID:   "shield",
+					Display:  "Shield",
+				},
+				choices.WeaponCategoryOption{
+					Category: weapons.CategoryMartialMelee,
+				},
+				choices.WeaponCategoryOption{
+					Category: weapons.CategoryMartialRanged,
 				},
 			},
 		},
@@ -221,19 +209,21 @@ func GetEquipmentChoicesAsChoices() []choices.Choice {
 		{
 			ID:          choices.ChoiceID("fighter-ranged-choice"),
 			Category:    choices.CategoryEquipment,
-			Description: "Choose your ranged weapons",
+			Description: "(a) a light crossbow and 20 bolts or (b) two handaxes",
 			Choose:      1,
 			Source:      choices.SourceClass,
 			Options: []choices.Option{
 				choices.BundleOption{
-					ID: "crossbow-bolts",
+					ID:      "crossbow-bolts",
+					Display: "Light crossbow and 20 bolts",
 					Items: []choices.CountedItem{
-						{ItemType: choices.ItemTypeWeapon, ItemID: "light-crossbow", Quantity: 1},
+						{ItemType: choices.ItemTypeWeapon, ItemID: "crossbow-light", Quantity: 1},
 						{ItemType: choices.ItemTypeGear, ItemID: "crossbow-bolt", Quantity: 20},
 					},
 				},
 				choices.BundleOption{
-					ID: "two-handaxes",
+					ID:      "two-handaxes",
+					Display: "Two handaxes",
 					Items: []choices.CountedItem{
 						{ItemType: choices.ItemTypeWeapon, ItemID: "handaxe", Quantity: 2},
 					},
@@ -244,18 +234,18 @@ func GetEquipmentChoicesAsChoices() []choices.Choice {
 		{
 			ID:          choices.ChoiceID("fighter-pack-choice"),
 			Category:    choices.CategoryEquipment,
-			Description: "Choose your equipment pack",
+			Description: "(a) a dungeoneer's pack or (b) an explorer's pack",
 			Choose:      1,
 			Source:      choices.SourceClass,
 			Options: []choices.Option{
 				choices.SingleOption{
 					ItemType: choices.ItemTypeGear,
-					ItemID:   string(bundles.DungeoneersPack),
+					ItemID:   "dungeoneers-pack",
 					Display:  "Dungeoneer's Pack",
 				},
 				choices.SingleOption{
 					ItemType: choices.ItemTypeGear,
-					ItemID:   string(bundles.ExplorersPack),
+					ItemID:   "explorers-pack",
 					Display:  "Explorer's Pack",
 				},
 			},
@@ -263,23 +253,71 @@ func GetEquipmentChoicesAsChoices() []choices.Choice {
 	}
 }
 
-// GetMartialWeaponChoice returns a choice for selecting any martial weapon
-// This is used when a bundle includes "choose a martial weapon"
-func GetMartialWeaponChoice() choices.Choice {
-	return choices.Choice{
-		ID:          choices.ChoiceID("fighter-martial-weapon"),
-		Category:    choices.CategoryEquipment,
-		Description: "Choose a martial weapon",
-		Choose:      1,
-		Source:      choices.SourceClass,
-		Options: []choices.Option{
-			choices.WeaponCategoryOption{
-				Category: weapons.CategoryMartialMelee,
+// GetAllChoices returns all Fighter choices including equipment and skills
+func GetAllChoices() []choices.Choice {
+	choices := GetEquipmentChoicesAsChoices()
+	choices = append(choices, GetSkillChoices())
+	return choices
+}
+
+// GetWeaponSelectionChoices returns the actual weapon selection choices based on the configuration chosen
+func GetWeaponSelectionChoices(weaponConfig string) []choices.Choice {
+	switch weaponConfig {
+	case "weapon-and-shield":
+		// Choose one martial weapon, automatically get a shield
+		return []choices.Choice{
+			{
+				ID:          choices.ChoiceID("fighter-primary-weapon"),
+				Category:    choices.CategoryEquipment,
+				Description: "Choose your martial weapon",
+				Choose:      1,
+				Source:      choices.SourceClass,
+				Options: []choices.Option{
+					choices.WeaponCategoryOption{
+						Category: weapons.CategoryMartialMelee,
+					},
+					choices.WeaponCategoryOption{
+						Category: weapons.CategoryMartialRanged,
+					},
+				},
 			},
-			choices.WeaponCategoryOption{
-				Category: weapons.CategoryMartialRanged,
+		}
+	case "two-weapons":
+		// Choose two martial weapons
+		return []choices.Choice{
+			{
+				ID:          choices.ChoiceID("fighter-first-weapon"),
+				Category:    choices.CategoryEquipment,
+				Description: "Choose your first martial weapon",
+				Choose:      1,
+				Source:      choices.SourceClass,
+				Options: []choices.Option{
+					choices.WeaponCategoryOption{
+						Category: weapons.CategoryMartialMelee,
+					},
+					choices.WeaponCategoryOption{
+						Category: weapons.CategoryMartialRanged,
+					},
+				},
 			},
-		},
+			{
+				ID:          choices.ChoiceID("fighter-second-weapon"),
+				Category:    choices.CategoryEquipment,
+				Description: "Choose your second martial weapon",
+				Choose:      1,
+				Source:      choices.SourceClass,
+				Options: []choices.Option{
+					choices.WeaponCategoryOption{
+						Category: weapons.CategoryMartialMelee,
+					},
+					choices.WeaponCategoryOption{
+						Category: weapons.CategoryMartialRanged,
+					},
+				},
+			},
+		}
+	default:
+		return nil
 	}
 }
 

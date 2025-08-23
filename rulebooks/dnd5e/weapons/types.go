@@ -1,6 +1,8 @@
 // Package weapons provides D&D 5e weapon definitions and data
 package weapons
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+
 // WeaponCategory represents the category of weapon
 type WeaponCategory string
 
@@ -46,9 +48,9 @@ type Weapon struct {
 	ID         string
 	Name       string
 	Category   WeaponCategory
-	Cost       string // "5 gp"
-	Damage     string // "1d8"
-	DamageType string // "slashing"
+	Cost       string      // "5 gp"
+	Damage     string      // "1d8"
+	DamageType damage.Type // "slashing"
 	Weight     float64
 	Properties []WeaponProperty
 	Range      *Range // nil for melee-only weapons
