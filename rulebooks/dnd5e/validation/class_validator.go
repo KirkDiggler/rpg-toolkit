@@ -39,13 +39,13 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 // validateFighterChoices validates Fighter-specific requirements
 func validateFighterChoices(choices []character.ChoiceData) []Error {
 	var errors []Error
-	
+
 	// Track what we've found
 	hasSkills := false
 	skillCount := 0
 	hasFightingStyle := false
 	foundEquipment := make(map[string]bool)
-	
+
 	// Fighter required equipment choices
 	requiredEquipment := map[string]string{
 		"fighter-armor-choice":        "starting armor",
@@ -54,14 +54,14 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 		"fighter-ranged-choice":       "ranged weapon",
 		"fighter-pack-choice":         "equipment pack",
 	}
-	
+
 	// Check each choice
 	for _, choice := range choices {
 		// Only validate class choices
 		if choice.Source != shared.SourceClass {
 			continue
 		}
-		
+
 		switch choice.Category {
 		case shared.ChoiceSkills:
 			hasSkills = true
@@ -73,7 +73,7 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 					Code:    rpgerr.CodeInvalidArgument,
 				})
 			}
-			
+
 		case shared.ChoiceFightingStyle:
 			hasFightingStyle = true
 			if choice.FightingStyleSelection == nil || *choice.FightingStyleSelection == "" {
@@ -85,12 +85,12 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 			} else {
 				// Validate it's a valid fighting style
 				validStyles := map[string]bool{
-					"archery":              true,
-					"defense":              true,
-					"dueling":              true,
+					"archery":               true,
+					"defense":               true,
+					"dueling":               true,
 					"great-weapon-fighting": true,
-					"protection":           true,
-					"two-weapon-fighting":  true,
+					"protection":            true,
+					"two-weapon-fighting":   true,
 				}
 				if !validStyles[*choice.FightingStyleSelection] {
 					errors = append(errors, Error{
@@ -100,7 +100,7 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 					})
 				}
 			}
-			
+
 		case shared.ChoiceEquipment:
 			foundEquipment[choice.ChoiceID] = true
 			if len(choice.EquipmentSelection) == 0 {
@@ -114,24 +114,24 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 			}
 		}
 	}
-	
+
 	// Check for missing required choices
 	var missing []string
-	
+
 	if !hasSkills {
 		missing = append(missing, "skill proficiencies (choose 2)")
 	}
-	
+
 	if !hasFightingStyle {
 		missing = append(missing, "fighting style")
 	}
-	
+
 	for choiceID, description := range requiredEquipment {
 		if !foundEquipment[choiceID] {
 			missing = append(missing, description)
 		}
 	}
-	
+
 	if len(missing) > 0 {
 		errors = append(errors, Error{
 			Field:   "class_choices",
@@ -139,20 +139,20 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 			Code:    rpgerr.CodeInvalidArgument,
 		})
 	}
-	
+
 	return errors
 }
 
 // validateWizardChoices validates Wizard-specific requirements
 func validateWizardChoices(_ []character.ChoiceData) []Error {
 	var errors []Error
-	
+
 	// TODO: Implement wizard validation
 	// Wizards need:
 	// - Skills (2 from their list)
 	// - Cantrips (3 at level 1)
 	// - Spells (6 at level 1)
 	// - Equipment choices
-	
+
 	return errors
 }
