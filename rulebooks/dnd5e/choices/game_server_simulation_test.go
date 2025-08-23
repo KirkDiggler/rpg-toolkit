@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes/fighter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes/rogue"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
@@ -283,7 +284,7 @@ func (s *GameServerSimulationSuite) TestWeaponChoiceFlow() {
 		weapon, err := weapons.GetByID("longsword")
 		s.Require().NoError(err)
 		s.Assert().Equal("1d8", weapon.Damage)
-		s.Assert().Equal("slashing", weapon.DamageType)
+		s.Assert().Equal(damage.Slashing, weapon.DamageType)
 		s.Assert().True(weapon.HasProperty(weapons.PropertyVersatile))
 	})
 
