@@ -193,7 +193,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 					UsesPerLevel: map[int]int{
 						1: 2, 2: 2, 3: 3, 4: 3, 5: 3, 6: 4,
 					},
-					Resets: shared.LongRest,
+					Resets: shared.ResetTypeLongRest,
 				},
 			},
 		}
@@ -205,7 +205,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		s.Equal("Rage", rage.Name)
 		s.Equal(2, rage.Max)
 		s.Equal(2, rage.Current)
-		s.Equal(shared.LongRest, rage.Resets)
+		s.Equal(shared.ResetTypeLongRest, rage.Resets)
 
 		// Level 6 barbarian
 		resources = initializeClassResources(barbarianClass, 6, abilityScores)
@@ -220,7 +220,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 					Type:       shared.ClassResourceKiPoints,
 					Name:       "Ki Points",
 					MaxFormula: "level",
-					Resets:     shared.ShortRest,
+					Resets:     shared.ResetTypeShortRest,
 				},
 			},
 		}
@@ -232,7 +232,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 		s.Equal("Ki Points", ki.Name)
 		s.Equal(5, ki.Max)
 		s.Equal(5, ki.Current)
-		s.Equal(shared.ShortRest, ki.Resets)
+		s.Equal(shared.ResetTypeShortRest, ki.Resets)
 	})
 
 	s.Run("sorcerer sorcery points", func() {
@@ -242,7 +242,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 					Type:       shared.ClassResourceSorceryPoints,
 					Name:       "Sorcery Points",
 					MaxFormula: "level",
-					Resets:     shared.LongRest,
+					Resets:     shared.ResetTypeLongRest,
 				},
 			},
 		}
@@ -262,7 +262,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 					Type:       shared.ClassResourceChannelDivinity,
 					Name:       "Channel Divinity",
 					MaxFormula: "1", // Most classes get 1 use
-					Resets:     shared.ShortRest,
+					Resets:     shared.ResetTypeShortRest,
 				},
 			},
 		}
@@ -280,7 +280,7 @@ func (s *ResourcesTestSuite) TestInitializeClassResources() {
 					Type:       shared.ClassResourceUnspecified, // Custom resource
 					Name:       "Focus Points",
 					MaxFormula: "1 + wisdom_modifier",
-					Resets:     shared.ShortRest,
+					Resets:     shared.ResetTypeShortRest,
 				},
 			},
 		}

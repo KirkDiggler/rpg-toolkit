@@ -992,13 +992,13 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 			Type:       shared.ClassResourceSecondWind,
 			Name:       "Second Wind",
 			MaxFormula: "1",
-			Resets:     shared.ShortRest,
+			Resets:     shared.ResetTypeShortRest,
 		},
 		{
 			Type:       shared.ClassResourceActionSurge,
 			Name:       "Action Surge",
 			MaxFormula: "1", // Would increase at higher levels
-			Resets:     shared.ShortRest,
+			Resets:     shared.ResetTypeShortRest,
 		},
 	}
 
@@ -1039,7 +1039,7 @@ func (s *DraftConversionTestSuite) TestClassResourcesInitialization() {
 	s.Equal("Second Wind", secondWind.Name)
 	s.Equal(1, secondWind.Max)
 	s.Equal(1, secondWind.Current)
-	s.Equal(shared.ShortRest, secondWind.Resets)
+	s.Equal(shared.ResetTypeShortRest, secondWind.Resets)
 
 	// Check Action Surge
 	actionSurge, ok := resources[shared.ClassResourceActionSurge]
