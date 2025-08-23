@@ -115,15 +115,81 @@ func getSkillsList(validSkills map[skills.Skill]bool) string {
 	return strings.Join(skillNames, ", ")
 }
 
+// validateSkillChoice validates skill selection for a class
+func validateSkillChoice(choice character.ChoiceData, className string,
+	validSkills map[skills.Skill]bool, requiredSkills int) []Error {
+	var errors []Error
+
+	skillCount := len(choice.SkillSelection)
+	if skillCount < requiredSkills {
+		errors = append(errors, Error{
+			Field: fieldSkills,
+			Message: fmt.Sprintf("%s requires %d skill proficiencies, only %d selected",
+				className, requiredSkills, skillCount),
+			Code: rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	// Validate that skills are from class list
+	for _, skill := range choice.SkillSelection {
+		if !validSkills[skill] {
+			errors = append(errors, Error{
+				Field: fieldSkills,
+				Message: fmt.Sprintf("Invalid %s skill: %s. Must choose from %s",
+					strings.ToLower(className), string(skill), getSkillsList(validSkills)),
+				Code: rpgerr.CodeInvalidArgument,
+			})
+		}
+	}
+
+	return errors
+}
+
+// validateCantripChoice validates cantrip selection for a class
+func validateCantripChoice(choice character.ChoiceData, className string, requiredCantrips int) []Error {
+	var errors []Error
+
+	cantripCount := 0
+	if choice.CantripSelection != nil {
+		cantripCount = len(choice.CantripSelection)
+	}
+
+	if cantripCount < requiredCantrips {
+		errors = append(errors, Error{
+			Field: fieldCantrips,
+			Message: fmt.Sprintf("%s requires %d cantrips at level 1, only %d selected",
+				className, requiredCantrips, cantripCount),
+			Code: rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validateEquipmentChoice validates equipment selection
+func validateEquipmentChoice(choice character.ChoiceData, equipmentChoices map[string]string) []Error {
+	var errors []Error
+
+	if len(choice.EquipmentSelection) == 0 {
+		if desc, ok := equipmentChoices[choice.ChoiceID]; ok {
+			errors = append(errors, Error{
+				Field:   choice.ChoiceID,
+				Message: fmt.Sprintf("No selection made for %s", desc),
+				Code:    rpgerr.CodeInvalidArgument,
+			})
+		}
+	}
+
+	return errors
+}
+
 // validateSpellcasterChoices provides common validation logic for spellcaster classes
 func validateSpellcasterChoices(config spellcasterValidationConfig, choices []character.ChoiceData) []Error {
 	var errors []Error
 
 	// Track what we've found
 	hasSkills := false
-	skillCount := 0
 	hasCantrips := false
-	cantripCount := 0
 	hasSpells := false
 	spellCount := 0
 	foundEquipment := make(map[string]bool)
@@ -138,40 +204,11 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 		switch choice.Category {
 		case shared.ChoiceSkills:
 			hasSkills = true
-			skillCount = len(choice.SkillSelection)
-			if skillCount < config.requiredSkills {
-				errors = append(errors, Error{
-					Field: "skills",
-					Message: fmt.Sprintf("%s requires %d skill proficiencies, only %d selected",
-						config.className, config.requiredSkills, skillCount),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
-			// Validate that skills are from class list
-			for _, skill := range choice.SkillSelection {
-				if !config.validSkills[skill] {
-					errors = append(errors, Error{
-						Field: "skills",
-						Message: fmt.Sprintf("Invalid %s skill: %s. Must choose from %s",
-							strings.ToLower(config.className), string(skill), getSkillsList(config.validSkills)),
-						Code: rpgerr.CodeInvalidArgument,
-					})
-				}
-			}
+			errors = append(errors, validateSkillChoice(choice, config.className, config.validSkills, config.requiredSkills)...)
 
 		case shared.ChoiceCantrips:
 			hasCantrips = true
-			if choice.CantripSelection != nil {
-				cantripCount = len(choice.CantripSelection)
-			}
-			if cantripCount < config.requiredCantrips {
-				errors = append(errors, Error{
-					Field: fieldCantrips,
-					Message: fmt.Sprintf("%s requires %d cantrips at level 1, only %d selected",
-						config.className, config.requiredCantrips, cantripCount),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
+			errors = append(errors, validateCantripChoice(choice, config.className, config.requiredCantrips)...)
 
 		case shared.ChoiceSpells:
 			hasSpells = true
@@ -188,15 +225,7 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 
 		case shared.ChoiceEquipment:
 			foundEquipment[choice.ChoiceID] = true
-			if len(choice.EquipmentSelection) == 0 {
-				if desc, ok := config.equipmentChoices[choice.ChoiceID]; ok {
-					errors = append(errors, Error{
-						Field:   choice.ChoiceID,
-						Message: fmt.Sprintf("No selection made for %s", desc),
-						Code:    rpgerr.CodeInvalidArgument,
-					})
-				}
-			}
+			errors = append(errors, validateEquipmentChoice(choice, config.equipmentChoices)...)
 		}
 	}
 
@@ -239,9 +268,7 @@ func validatePreparedCasterChoices(config preparedCasterValidationConfig, choice
 
 	// Track what we've found
 	hasSkills := false
-	skillCount := 0
 	hasCantrips := false
-	cantripCount := 0
 	foundEquipment := make(map[string]bool)
 
 	// Check each choice
@@ -254,52 +281,15 @@ func validatePreparedCasterChoices(config preparedCasterValidationConfig, choice
 		switch choice.Category {
 		case shared.ChoiceSkills:
 			hasSkills = true
-			skillCount = len(choice.SkillSelection)
-			if skillCount < config.requiredSkills {
-				errors = append(errors, Error{
-					Field: fieldSkills,
-					Message: fmt.Sprintf("%s requires %d skill proficiencies, only %d selected",
-						config.className, config.requiredSkills, skillCount),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
-			// Validate that skills are from class list
-			for _, skill := range choice.SkillSelection {
-				if !config.validSkills[skill] {
-					errors = append(errors, Error{
-						Field: fieldSkills,
-						Message: fmt.Sprintf("Invalid %s skill: %s. Must choose from %s",
-							strings.ToLower(config.className), string(skill), getSkillsList(config.validSkills)),
-						Code: rpgerr.CodeInvalidArgument,
-					})
-				}
-			}
+			errors = append(errors, validateSkillChoice(choice, config.className, config.validSkills, config.requiredSkills)...)
 
 		case shared.ChoiceCantrips:
 			hasCantrips = true
-			if choice.CantripSelection != nil {
-				cantripCount = len(choice.CantripSelection)
-			}
-			if cantripCount < config.requiredCantrips {
-				errors = append(errors, Error{
-					Field: fieldCantrips,
-					Message: fmt.Sprintf("%s requires %d cantrips at level 1, only %d selected",
-						config.className, config.requiredCantrips, cantripCount),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
+			errors = append(errors, validateCantripChoice(choice, config.className, config.requiredCantrips)...)
 
 		case shared.ChoiceEquipment:
 			foundEquipment[choice.ChoiceID] = true
-			if len(choice.EquipmentSelection) == 0 {
-				if desc, ok := config.equipmentChoices[choice.ChoiceID]; ok {
-					errors = append(errors, Error{
-						Field:   choice.ChoiceID,
-						Message: fmt.Sprintf("No selection made for %s", desc),
-						Code:    rpgerr.CodeInvalidArgument,
-					})
-				}
-			}
+			errors = append(errors, validateEquipmentChoice(choice, config.equipmentChoices)...)
 		}
 	}
 
