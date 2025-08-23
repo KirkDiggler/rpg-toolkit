@@ -3,6 +3,7 @@ package validation
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -10,6 +11,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // Error represents a validation issue
@@ -17,6 +20,32 @@ type Error struct {
 	Field   string
 	Message string
 	Code    rpgerr.Code
+}
+
+// validWizardSkills defines the skills available for wizard class selection
+var validWizardSkills = map[skills.Skill]bool{
+	skills.Arcana:        true,
+	skills.History:       true,
+	skills.Insight:       true,
+	skills.Investigation: true,
+	skills.Medicine:      true,
+	skills.Religion:      true,
+}
+
+// getWizardSkillsList returns a formatted string of valid wizard skills
+func getWizardSkillsList() string {
+	skillNames := make([]string, 0, len(validWizardSkills))
+	titleCaser := cases.Title(language.English)
+	for skill := range validWizardSkills {
+		// Capitalize using proper Unicode-aware casing
+		name := string(skill)
+		if len(name) > 0 {
+			skillNames = append(skillNames, titleCaser.String(name))
+		}
+	}
+	// Sort for consistent output
+	sort.Strings(skillNames)
+	return strings.Join(skillNames, ", ")
 }
 
 // ValidateClassChoices validates that all required choices for a class are satisfied
@@ -164,16 +193,6 @@ func validateWizardChoices(choices []character.ChoiceData) []Error {
 		"wizard-equipment-pack":           "equipment pack",
 	}
 
-	// Valid wizard skills from D&D 5e
-	validWizardSkills := map[skills.Skill]bool{
-		skills.Arcana:        true,
-		skills.History:       true,
-		skills.Insight:       true,
-		skills.Investigation: true,
-		skills.Medicine:      true,
-		skills.Religion:      true,
-	}
-
 	// Check each choice
 	for _, choice := range choices {
 		// Only validate class choices
@@ -196,10 +215,9 @@ func validateWizardChoices(choices []character.ChoiceData) []Error {
 			for _, skill := range choice.SkillSelection {
 				if !validWizardSkills[skill] {
 					errors = append(errors, Error{
-						Field: "skills",
-						Message: fmt.Sprintf("Invalid wizard skill: %s. Must choose from Arcana, History, "+
-							"Insight, Investigation, Medicine, or Religion", string(skill)),
-						Code: rpgerr.CodeInvalidArgument,
+						Field:   "skills",
+						Message: fmt.Sprintf("Invalid wizard skill: %s. Must choose from %s", string(skill), getWizardSkillsList()),
+						Code:    rpgerr.CodeInvalidArgument,
 					})
 				}
 			}
