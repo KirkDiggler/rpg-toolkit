@@ -602,9 +602,6 @@ func validateRogueChoices(choices []character.ChoiceData) []Error {
 					Code: rpgerr.CodeInvalidArgument,
 				})
 			}
-			// Validate that expertise choices are skills the rogue has proficiency in
-			// Note: This would require checking the character's actual proficiencies
-			// For now, we just validate the count
 
 		case shared.ChoiceEquipment:
 			foundEquipment[choice.ChoiceID] = true
