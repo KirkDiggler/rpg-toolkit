@@ -333,7 +333,7 @@ func (s *ClassValidatorTestSuite) TestValidateWizardChoices_InsufficientSpells()
 
 	hasSpellError := false
 	for _, e := range errors {
-		if e.Field == "spells" {
+		if e.Field == fieldSpells {
 			s.Assert().Contains(e.Message, "Wizard spells for spellbook")
 			s.Assert().Contains(e.Message, "only 2 selected")
 			hasSpellError = true
@@ -546,8 +546,8 @@ func (s *ClassValidatorTestSuite) TestValidateWizardChoices_IgnoresNonClassChoic
 func (s *ClassValidatorTestSuite) TestValidateClassChoices_UnknownClass() {
 	choices := []character.ChoiceData{}
 
-	// Test with a class that doesn't have validation yet
-	errors, err := ValidateClassChoices(classes.Bard, choices)
+	// Test with a class that doesn't have validation yet (artificer doesn't exist in constants)
+	errors, err := ValidateClassChoices("artificer", choices)
 	s.Require().NoError(err)
 	s.Assert().Nil(errors, "Unknown class should return nil errors")
 }
@@ -759,7 +759,7 @@ func (s *ClassValidatorTestSuite) TestValidateWarlockChoices_InsufficientSpells(
 
 	hasSpellError := false
 	for _, e := range errors {
-		if e.Field == "spells" {
+		if e.Field == fieldSpells {
 			s.Assert().Contains(e.Message, "Warlock spells known")
 			s.Assert().Contains(e.Message, "only 1 selected")
 			hasSpellError = true
@@ -1319,4 +1319,267 @@ func (s *ClassValidatorTestSuite) TestValidatePaladinChoices_MissingEquipment() 
 		}
 	}
 	s.Assert().True(hasMissingError, "Should have error about missing equipment")
+}
+
+// Bard validation tests
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
+		},
+		{
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
+			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "bard-equipment-primary-weapon",
+			EquipmentSelection: []string{"rapier"},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "bard-equipment-instrument",
+			EquipmentSelection: []string{"lute"},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "bard-equipment-pack",
+			EquipmentSelection: []string{"entertainers-pack"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_AnySkillValid() {
+	// Bard can choose ANY 3 skills
+	choices := []character.ChoiceData{
+		{
+			Category: shared.ChoiceSkills,
+			Source:   shared.SourceClass,
+			ChoiceID: "bard-skills",
+			// Testing with skills that aren't typical "bard" skills
+			SkillSelection: []skills.Skill{skills.Athletics, skills.Survival, skills.Medicine},
+		},
+		{
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
+			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "bard-equipment-primary-weapon",
+			EquipmentSelection: []string{"rapier"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors, "Bard should be able to choose any skills")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_InsufficientSkills() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception}, // Only 2, needs 3
+		},
+		{
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
+			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasSkillError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Bard requires 3 skill proficiencies, only 2 selected")
+			hasSkillError = true
+		}
+	}
+	s.Assert().True(hasSkillError, "Should have error about insufficient skills")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_InsufficientCantrips() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
+		},
+		{
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
+			CantripSelection: []string{"vicious-mockery"}, // Only 1, needs 2
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasCantripError := false
+	for _, e := range errors {
+		if e.Field == fieldCantrips {
+			s.Assert().Contains(e.Message, "Bard requires 2 cantrips at level 1, only 1 selected")
+			hasCantripError = true
+		}
+	}
+	s.Assert().True(hasCantripError, "Should have error about insufficient cantrips")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_InsufficientSpells() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
+		},
+		{
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
+			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word"}, // Only 2, needs 4
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasSpellError := false
+	for _, e := range errors {
+		if e.Field == fieldSpells {
+			s.Assert().Contains(e.Message, "Bard spells known: requires 4 spells at level 1, only 2 selected")
+			hasSpellError = true
+		}
+	}
+	s.Assert().True(hasSpellError, "Should have error about insufficient spells")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_MissingCantrips() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "bard-equipment-primary-weapon",
+			EquipmentSelection: []string{"rapier"},
+		},
+		// Missing cantrips choice
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasMissingError := false
+	for _, e := range errors {
+		if e.Field == "class_choices" {
+			s.Assert().Contains(e.Message, "Missing required choices")
+			s.Assert().Contains(e.Message, "cantrips")
+			hasMissingError = true
+		}
+	}
+	s.Assert().True(hasMissingError, "Should have error about missing cantrips")
+}
+
+// Test that Bard doesn't require expertise at level 1
+func (s *ClassValidatorTestSuite) TestValidateBardChoices_NoExpertiseRequired() {
+	// Valid Bard choices without expertise (since Bards get expertise at level 3)
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
+		},
+		{
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
+			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
+		},
+		{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-spells-level-1",
+			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "bard-equipment-primary-weapon",
+			EquipmentSelection: []string{"rapier"},
+		},
+		// No expertise choice - this should be valid for level 1 Bard
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors, "Level 1 Bard should not require expertise")
 }

@@ -19,6 +19,7 @@ const (
 	fieldSkills    = "skills"
 	fieldCantrips  = "cantrips"
 	fieldExpertise = "expertise"
+	fieldSpells    = "spells"
 )
 
 // Error represents a validation issue
@@ -233,7 +234,7 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 			}
 			if spellCount < config.requiredSpells {
 				errors = append(errors, Error{
-					Field:   "spells",
+					Field:   fieldSpells,
 					Message: fmt.Sprintf("%s %s, only %d selected", config.className, config.spellsDescription, spellCount),
 					Code:    rpgerr.CodeInvalidArgument,
 				})
@@ -365,6 +366,8 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 		errors = validateRangerChoices(choices)
 	case classes.Paladin:
 		errors = validatePaladinChoices(choices)
+	case classes.Bard:
+		errors = validateBardChoices(choices)
 	// TODO: Add other classes
 	default:
 		// Unknown class, no validation yet
@@ -753,4 +756,119 @@ func validatePaladinChoices(choices []character.ChoiceData) []Error {
 		skills.Religion:     true,
 	}
 	return validateMartialClassChoices(choices, "Paladin", validSkills, 2)
+}
+
+// validateBardChoices validates Bard-specific requirements
+// Bard is a hybrid class with spellcasting and expertise
+func validateBardChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
+	foundChoices := make(map[shared.ChoiceCategory]bool)
+
+	// Bard can choose any 3 skills
+	validSkills := map[skills.Skill]bool{
+		skills.Acrobatics:     true,
+		skills.AnimalHandling: true,
+		skills.Arcana:         true,
+		skills.Athletics:      true,
+		skills.Deception:      true,
+		skills.History:        true,
+		skills.Insight:        true,
+		skills.Intimidation:   true,
+		skills.Investigation:  true,
+		skills.Medicine:       true,
+		skills.Nature:         true,
+		skills.Perception:     true,
+		skills.Performance:    true,
+		skills.Persuasion:     true,
+		skills.Religion:       true,
+		skills.SleightOfHand:  true,
+		skills.Stealth:        true,
+		skills.Survival:       true,
+	}
+
+	for _, choice := range choices {
+		foundChoices[choice.Category] = true
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			if choice.SkillSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSkills,
+					Message: "Bard requires skill selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			skillErrors := validateSkillChoice(choice, "Bard", validSkills, 3)
+			errors = append(errors, skillErrors...)
+
+		case shared.ChoiceCantrips:
+			if choice.CantripSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldCantrips,
+					Message: "Bard requires cantrip selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			cantripErrors := validateCantripChoice(choice, "Bard", 2)
+			errors = append(errors, cantripErrors...)
+
+		case shared.ChoiceSpells:
+			if choice.SpellSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSpells,
+					Message: "Bard requires spell selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			// Bard knows 4 spells at level 1
+			spellCount := len(choice.SpellSelection)
+			if spellCount < 4 {
+				errors = append(errors, Error{
+					Field: fieldSpells,
+					Message: fmt.Sprintf("Bard spells known: requires 4 spells at level 1, only %d selected",
+						spellCount),
+					Code: rpgerr.CodeInvalidArgument,
+				})
+			}
+
+		case shared.ChoiceEquipment:
+			if choice.EquipmentSelection == nil {
+				errors = append(errors, Error{
+					Field:   "equipment",
+					Message: "Bard requires equipment selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
+			errors = append(errors, equipmentErrors...)
+		}
+	}
+
+	// Check for required choices
+	required := []shared.ChoiceCategory{
+		shared.ChoiceSkills,
+		shared.ChoiceCantrips,
+		shared.ChoiceSpells,
+		shared.ChoiceEquipment,
+	}
+	var missing []string
+	for _, req := range required {
+		if !foundChoices[req] {
+			missing = append(missing, string(req))
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "class_choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
 }
