@@ -103,8 +103,7 @@ func isValidSubrace(raceID races.Race, subraceID races.Subrace) bool {
 // validateHalfElfChoices validates Half-Elf specific choices
 func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 	var errors []Error
-	foundSkillChoice := false
-	foundLanguageChoice := false
+	found := make(map[shared.ChoiceCategory]bool)
 
 	for _, choice := range choices {
 		// Only validate race-sourced choices
@@ -114,7 +113,7 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 
 		switch choice.Category {
 		case shared.ChoiceSkills:
-			foundSkillChoice = true
+			found[choice.Category] = true
 			if len(choice.SkillSelection) == 0 {
 				errors = append(errors, Error{
 					Field:   fieldRaceSkills,
@@ -123,19 +122,18 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 				})
 				continue
 			}
-
 			// Half-Elf can choose ANY 2 skills
 			if len(choice.SkillSelection) != 2 {
 				errors = append(errors, Error{
-					Field:   fieldRaceSkills,
-					Message: fmt.Sprintf("Half-Elf requires exactly 2 skill proficiencies, %d selected", len(choice.SkillSelection)),
-					Code:    rpgerr.CodeInvalidArgument,
+					Field: fieldRaceSkills,
+					Message: fmt.Sprintf("Half-Elf requires exactly 2 skill proficiencies, %d selected",
+						len(choice.SkillSelection)),
+					Code: rpgerr.CodeInvalidArgument,
 				})
 			}
-			// Half-Elf can choose from ANY skills, so no validation needed for specific skills
 
 		case shared.ChoiceLanguages:
-			foundLanguageChoice = true
+			found[choice.Category] = true
 			if len(choice.LanguageSelection) == 0 {
 				errors = append(errors, Error{
 					Field:   fieldLanguages,
@@ -144,12 +142,11 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 				})
 				continue
 			}
-
 			// Half-Elf chooses 1 additional language
 			if len(choice.LanguageSelection) != 1 {
 				errors = append(errors, Error{
 					Field: fieldLanguages,
-					Message: fmt.Sprintf("Half-Elf requires exactly 1 additional language, %d selected",
+					Message: fmt.Sprintf("Half-Elf: 1 language required, %d selected",
 						len(choice.LanguageSelection)),
 					Code: rpgerr.CodeInvalidArgument,
 				})
@@ -158,15 +155,14 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 	}
 
 	// Check for required choices
-	if !foundSkillChoice {
+	if !found[shared.ChoiceSkills] {
 		errors = append(errors, Error{
 			Field:   fieldRaceSkills,
 			Message: "Half-Elf requires 2 skill proficiency choices",
 			Code:    rpgerr.CodeInvalidArgument,
 		})
 	}
-
-	if !foundLanguageChoice {
+	if !found[shared.ChoiceLanguages] {
 		errors = append(errors, Error{
 			Field:   fieldLanguages,
 			Message: "Half-Elf requires 1 additional language choice",
@@ -180,8 +176,7 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 // validateHighElfChoices validates High Elf subrace specific choices
 func validateHighElfChoices(choices []character.ChoiceData) []Error {
 	var errors []Error
-	foundLanguageChoice := false
-	foundCantripChoice := false
+	found := make(map[shared.ChoiceCategory]bool)
 
 	for _, choice := range choices {
 		// Only validate race-sourced choices
@@ -191,7 +186,7 @@ func validateHighElfChoices(choices []character.ChoiceData) []Error {
 
 		switch choice.Category {
 		case shared.ChoiceLanguages:
-			foundLanguageChoice = true
+			found[choice.Category] = true
 			if len(choice.LanguageSelection) == 0 {
 				errors = append(errors, Error{
 					Field:   fieldLanguages,
@@ -200,19 +195,18 @@ func validateHighElfChoices(choices []character.ChoiceData) []Error {
 				})
 				continue
 			}
-
 			// High Elf chooses 1 additional language
 			if len(choice.LanguageSelection) != 1 {
 				errors = append(errors, Error{
 					Field: fieldLanguages,
-					Message: fmt.Sprintf("High Elf requires exactly 1 additional language, %d selected",
+					Message: fmt.Sprintf("High Elf: 1 language required, %d selected",
 						len(choice.LanguageSelection)),
 					Code: rpgerr.CodeInvalidArgument,
 				})
 			}
 
 		case shared.ChoiceCantrips:
-			foundCantripChoice = true
+			found[choice.Category] = true
 			if len(choice.CantripSelection) == 0 {
 				errors = append(errors, Error{
 					Field:   fieldCantrips,
@@ -221,28 +215,27 @@ func validateHighElfChoices(choices []character.ChoiceData) []Error {
 				})
 				continue
 			}
-
 			// High Elf gets 1 wizard cantrip
 			if len(choice.CantripSelection) != 1 {
 				errors = append(errors, Error{
-					Field:   fieldCantrips,
-					Message: fmt.Sprintf("High Elf requires exactly 1 wizard cantrip, %d selected", len(choice.CantripSelection)),
-					Code:    rpgerr.CodeInvalidArgument,
+					Field: fieldCantrips,
+					Message: fmt.Sprintf("High Elf: 1 wizard cantrip required, %d selected",
+						len(choice.CantripSelection)),
+					Code: rpgerr.CodeInvalidArgument,
 				})
 			}
 		}
 	}
 
 	// Check for required choices
-	if !foundLanguageChoice {
+	if !found[shared.ChoiceLanguages] {
 		errors = append(errors, Error{
 			Field:   fieldLanguages,
 			Message: "High Elf requires 1 additional language choice",
 			Code:    rpgerr.CodeInvalidArgument,
 		})
 	}
-
-	if !foundCantripChoice {
+	if !found[shared.ChoiceCantrips] {
 		errors = append(errors, Error{
 			Field:   fieldCantrips,
 			Message: "High Elf requires 1 wizard cantrip choice",
