@@ -188,6 +188,8 @@ const (
 	ChoiceToolProficiency ChoiceCategory = "tool_proficiency"
 	// ChoiceExpertise represents expertise selection (for rogues and bards)
 	ChoiceExpertise ChoiceCategory = "expertise"
+	// ChoiceTraits represents racial trait selection (e.g., draconic ancestry)
+	ChoiceTraits ChoiceCategory = "traits"
 )
 
 // ChoiceSource represents where a choice or grant comes from
