@@ -109,7 +109,7 @@ type raceChoiceRequirement struct {
 }
 
 // validateRaceChoicesGeneric handles validation for races with language/skill/cantrip choices
-func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []raceChoiceRequirement) []Error {
+func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []raceChoiceRequirement) []Error { //nolint:lll
 	var errors []Error
 	found := make(map[shared.ChoiceCategory]bool)
 
