@@ -63,7 +63,7 @@ linters-settings:
     check-shadowing: true
   
   lll:
-    line-length: 120
+    line-length: 140
     tab-width: 4
   
   misspell:

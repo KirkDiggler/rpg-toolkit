@@ -508,6 +508,7 @@ type ChoiceData struct {
 	SpellSelection         []string                `json:"spells,omitempty"`         // For ChoiceSpells
 	CantripSelection       []string                `json:"cantrips,omitempty"`       // For ChoiceCantrips
 	ExpertiseSelection     []string                `json:"expertise,omitempty"`      // For ChoiceExpertise
+	TraitSelection         []string                `json:"traits,omitempty"`         // For ChoiceTraits
 }
 
 // ToData converts the character to its persistent representation
