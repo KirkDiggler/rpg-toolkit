@@ -547,7 +547,7 @@ func (s *ClassValidatorTestSuite) TestValidateClassChoices_UnknownClass() {
 	choices := []character.ChoiceData{}
 
 	// Test with a class that doesn't have validation yet
-	errors, err := ValidateClassChoices(classes.Barbarian, choices)
+	errors, err := ValidateClassChoices(classes.Bard, choices)
 	s.Require().NoError(err)
 	s.Assert().Nil(errors, "Unknown class should return nil errors")
 }
@@ -1114,4 +1114,209 @@ func (s *ClassValidatorTestSuite) TestValidateRogueChoices_MissingExpertise() {
 		}
 	}
 	s.Assert().True(hasMissingError, "Should have error about missing expertise")
+}
+
+// Barbarian validation tests
+func (s *ClassValidatorTestSuite) TestValidateBarbarianChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "barbarian-skills",
+			SkillSelection: []skills.Skill{skills.Athletics, skills.Survival},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "barbarian-weapon-choice",
+			EquipmentSelection: []string{"greataxe"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Barbarian, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateBarbarianChoices_InvalidSkill() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "barbarian-skills",
+			SkillSelection: []skills.Skill{skills.Athletics, skills.Arcana}, // Arcana is invalid
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "barbarian-weapon-choice",
+			EquipmentSelection: []string{"greataxe"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Barbarian, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasInvalidSkillError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Invalid barbarian skill: arcana")
+			s.Assert().Contains(e.Message, "Must choose from")
+			hasInvalidSkillError = true
+		}
+	}
+	s.Assert().True(hasInvalidSkillError, "Should have error about invalid skill")
+}
+
+// Monk validation tests
+func (s *ClassValidatorTestSuite) TestValidateMonkChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "monk-skills",
+			SkillSelection: []skills.Skill{skills.Acrobatics, skills.Stealth},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "monk-weapon-choice",
+			EquipmentSelection: []string{"shortsword"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Monk, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateMonkChoices_TooFewSkills() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "monk-skills",
+			SkillSelection: []skills.Skill{skills.Acrobatics}, // Only 1, needs 2
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "monk-weapon-choice",
+			EquipmentSelection: []string{"shortsword"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Monk, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasSkillCountError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills && e.Code == rpgerr.CodeInvalidArgument {
+			s.Assert().Contains(e.Message, "Monk requires 2 skill proficiencies")
+			hasSkillCountError = true
+		}
+	}
+	s.Assert().True(hasSkillCountError, "Should have error about skill count")
+}
+
+// Ranger validation tests
+func (s *ClassValidatorTestSuite) TestValidateRangerChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "ranger-skills",
+			SkillSelection: []skills.Skill{skills.AnimalHandling, skills.Survival, skills.Perception},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "ranger-armor-choice",
+			EquipmentSelection: []string{"leather-armor"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Ranger, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateRangerChoices_InvalidSkillCount() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "ranger-skills",
+			SkillSelection: []skills.Skill{skills.AnimalHandling, skills.Survival}, // Only 2, needs 3
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "ranger-armor-choice",
+			EquipmentSelection: []string{"leather-armor"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Ranger, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasSkillCountError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Ranger requires 3 skill proficiencies")
+			hasSkillCountError = true
+		}
+	}
+	s.Assert().True(hasSkillCountError, "Should have error about skill count")
+}
+
+// Paladin validation tests
+func (s *ClassValidatorTestSuite) TestValidatePaladinChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "paladin-skills",
+			SkillSelection: []skills.Skill{skills.Athletics, skills.Persuasion},
+		},
+		{
+			Category:           shared.ChoiceEquipment,
+			Source:             shared.SourceClass,
+			ChoiceID:           "paladin-weapon-choice",
+			EquipmentSelection: []string{"longsword", "shield"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Paladin, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidatePaladinChoices_MissingEquipment() {
+	choices := []character.ChoiceData{
+		{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "paladin-skills",
+			SkillSelection: []skills.Skill{skills.Athletics, skills.Persuasion},
+		},
+		// No equipment choice
+	}
+
+	errors, err := ValidateClassChoices(classes.Paladin, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasMissingError := false
+	for _, e := range errors {
+		if e.Field == "choices" {
+			s.Assert().Contains(e.Message, "Missing required choices")
+			s.Assert().Contains(e.Message, "equipment")
+			hasMissingError = true
+		}
+	}
+	s.Assert().True(hasMissingError, "Should have error about missing equipment")
 }

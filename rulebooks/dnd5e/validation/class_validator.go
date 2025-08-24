@@ -357,6 +357,14 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 		errors = validateDruidChoices(choices)
 	case classes.Rogue:
 		errors = validateRogueChoices(choices)
+	case classes.Barbarian:
+		errors = validateBarbarianChoices(choices)
+	case classes.Monk:
+		errors = validateMonkChoices(choices)
+	case classes.Ranger:
+		errors = validateRangerChoices(choices)
+	case classes.Paladin:
+		errors = validatePaladinChoices(choices)
 	// TODO: Add other classes
 	default:
 		// Unknown class, no validation yet
@@ -635,4 +643,114 @@ func validateRogueChoices(choices []character.ChoiceData) []Error {
 	}
 
 	return errors
+}
+
+// validateMartialClassChoices is a generic validator for martial classes
+func validateMartialClassChoices(choices []character.ChoiceData, className string,
+	validSkills map[skills.Skill]bool, requiredSkills int) []Error {
+	var errors []Error
+	foundChoices := make(map[shared.ChoiceCategory]bool)
+
+	for _, choice := range choices {
+		foundChoices[choice.Category] = true
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			if choice.SkillSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSkills,
+					Message: fmt.Sprintf("%s requires skill selection", className),
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			skillErrors := validateSkillChoice(choice, className, validSkills, requiredSkills)
+			errors = append(errors, skillErrors...)
+
+		case shared.ChoiceEquipment:
+			if choice.EquipmentSelection == nil {
+				errors = append(errors, Error{
+					Field:   "equipment",
+					Message: fmt.Sprintf("%s requires equipment selection", className),
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
+			errors = append(errors, equipmentErrors...)
+		}
+	}
+
+	// Check for required choices
+	required := []shared.ChoiceCategory{shared.ChoiceSkills, shared.ChoiceEquipment}
+	var missing []string
+	for _, req := range required {
+		if !foundChoices[req] {
+			missing = append(missing, string(req))
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validateBarbarianChoices validates Barbarian-specific requirements
+func validateBarbarianChoices(choices []character.ChoiceData) []Error {
+	validSkills := map[skills.Skill]bool{
+		skills.AnimalHandling: true,
+		skills.Athletics:      true,
+		skills.Intimidation:   true,
+		skills.Nature:         true,
+		skills.Perception:     true,
+		skills.Survival:       true,
+	}
+	return validateMartialClassChoices(choices, "Barbarian", validSkills, 2)
+}
+
+// validateMonkChoices validates Monk-specific requirements
+func validateMonkChoices(choices []character.ChoiceData) []Error {
+	validSkills := map[skills.Skill]bool{
+		skills.Acrobatics: true,
+		skills.Athletics:  true,
+		skills.History:    true,
+		skills.Insight:    true,
+		skills.Religion:   true,
+		skills.Stealth:    true,
+	}
+	return validateMartialClassChoices(choices, "Monk", validSkills, 2)
+}
+
+// validateRangerChoices validates Ranger-specific requirements
+func validateRangerChoices(choices []character.ChoiceData) []Error {
+	validSkills := map[skills.Skill]bool{
+		skills.AnimalHandling: true,
+		skills.Athletics:      true,
+		skills.Insight:        true,
+		skills.Investigation:  true,
+		skills.Nature:         true,
+		skills.Perception:     true,
+		skills.Stealth:        true,
+		skills.Survival:       true,
+	}
+	return validateMartialClassChoices(choices, "Ranger", validSkills, 3)
+}
+
+// validatePaladinChoices validates Paladin-specific requirements
+func validatePaladinChoices(choices []character.ChoiceData) []Error {
+	validSkills := map[skills.Skill]bool{
+		skills.Athletics:    true,
+		skills.Insight:      true,
+		skills.Intimidation: true,
+		skills.Medicine:     true,
+		skills.Persuasion:   true,
+		skills.Religion:     true,
+	}
+	return validateMartialClassChoices(choices, "Paladin", validSkills, 2)
 }
