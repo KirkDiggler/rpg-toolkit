@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	fieldLanguages      = "languages"
-	fieldTraits         = "traits"
-	fieldRaceSkills     = "race_skills"
+	fieldLanguages        = "languages"
+	fieldTraits           = "traits"
+	fieldRaceSkills       = "race_skills"
 	fieldDraconicAncestry = "draconic_ancestry"
 )
 
@@ -333,17 +333,17 @@ func validateDragonbornChoices(choices []character.ChoiceData) []Error {
 }
 
 // Helper function to validate skill choices for races
-func validateRaceSkillChoice(choice character.ChoiceData, raceName string, 
+func validateRaceSkillChoice(choice character.ChoiceData, raceName string,
 	validSkills map[skills.Skill]bool, requiredCount int) []Error {
 	var errors []Error
-	
+
 	skillCount := len(choice.SkillSelection)
 	if skillCount != requiredCount {
 		errors = append(errors, Error{
-			Field:   fieldRaceSkills,
-			Message: fmt.Sprintf("%s requires %d skill proficiencies, %d selected", 
+			Field: fieldRaceSkills,
+			Message: fmt.Sprintf("%s requires %d skill proficiencies, %d selected",
 				raceName, requiredCount, skillCount),
-			Code:    rpgerr.CodeInvalidArgument,
+			Code: rpgerr.CodeInvalidArgument,
 		})
 	}
 
@@ -366,14 +366,14 @@ func validateRaceSkillChoice(choice character.ChoiceData, raceName string,
 // Helper function to validate language choices for races
 func validateRaceLanguageChoice(choice character.ChoiceData, raceName string, requiredCount int) []Error {
 	var errors []Error
-	
+
 	langCount := len(choice.LanguageSelection)
 	if langCount != requiredCount {
 		errors = append(errors, Error{
-			Field:   fieldLanguages,
-			Message: fmt.Sprintf("%s requires %d additional language(s), %d selected", 
+			Field: fieldLanguages,
+			Message: fmt.Sprintf("%s requires %d additional language(s), %d selected",
 				raceName, requiredCount, langCount),
-			Code:    rpgerr.CodeInvalidArgument,
+			Code: rpgerr.CodeInvalidArgument,
 		})
 	}
 
