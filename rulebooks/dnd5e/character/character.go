@@ -508,7 +508,12 @@ type ChoiceData struct {
 	SpellSelection         []string                `json:"spells,omitempty"`         // For ChoiceSpells
 	CantripSelection       []string                `json:"cantrips,omitempty"`       // For ChoiceCantrips
 	ExpertiseSelection     []string                `json:"expertise,omitempty"`      // For ChoiceExpertise
-	TraitSelection         []string                `json:"traits,omitempty"`         // For ChoiceTraits 
+	TraitSelection         []string                `json:"traits,omitempty"`         // For ChoiceTraits
+}
+
+// ToData converts the character to its persistent representation
+func (c *Character) ToData() Data {
+	savesData := make(map[abilities.Ability]shared.ProficiencyLevel)
 	for save, prof := range c.savingThrows {
 		savesData[save] = prof
 	}
