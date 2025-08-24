@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	fieldSkills    = "skills"
-	fieldCantrips  = "cantrips"
-	fieldExpertise = "expertise"
-	fieldSpells    = "spells"
+	fieldSkills       = "skills"
+	fieldCantrips     = "cantrips"
+	fieldExpertise    = "expertise"
+	fieldSpells       = "spells"
+	fieldClassChoices = "class_choices"
 )
 
 // Error represents a validation issue
@@ -270,7 +271,7 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 
 	if len(missing) > 0 {
 		errors = append(errors, Error{
-			Field:   "class_choices",
+			Field:   fieldClassChoices,
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
 		})
@@ -330,7 +331,7 @@ func validatePreparedCasterChoices(config preparedCasterValidationConfig, choice
 
 	if len(missing) > 0 {
 		errors = append(errors, Error{
-			Field:   "class_choices",
+			Field:   fieldClassChoices,
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
 		})
@@ -475,7 +476,7 @@ func validateFighterChoices(choices []character.ChoiceData) []Error {
 
 	if len(missing) > 0 {
 		errors = append(errors, Error{
-			Field:   "class_choices",
+			Field:   fieldClassChoices,
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
 		})
@@ -639,7 +640,7 @@ func validateRogueChoices(choices []character.ChoiceData) []Error {
 
 	if len(missing) > 0 {
 		errors = append(errors, Error{
-			Field:   "class_choices",
+			Field:   fieldClassChoices,
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
 		})
@@ -791,7 +792,7 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 		if choice.Source != shared.SourceClass {
 			continue
 		}
-		
+
 		foundChoices[choice.Category] = true
 
 		switch choice.Category {
@@ -850,10 +851,10 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 			}
 			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
 			errors = append(errors, equipmentErrors...)
-			
+
 		case shared.ChoiceToolProficiency:
 			// Bard must choose 3 musical instruments
-			if choice.ToolProficiencySelection == nil || len(choice.ToolProficiencySelection) == 0 {
+			if len(choice.ToolProficiencySelection) == 0 {
 				errors = append(errors, Error{
 					Field:   "tool_proficiencies",
 					Message: "Bard requires musical instrument selection",
@@ -863,7 +864,7 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 			}
 			if len(choice.ToolProficiencySelection) != 3 {
 				errors = append(errors, Error{
-					Field:   "tool_proficiencies",
+					Field: "tool_proficiencies",
 					Message: fmt.Sprintf("Bard requires exactly 3 musical instruments, %d selected",
 						len(choice.ToolProficiencySelection)),
 					Code: rpgerr.CodeInvalidArgument,
@@ -889,7 +890,7 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 
 	if len(missing) > 0 {
 		errors = append(errors, Error{
-			Field:   "class_choices",
+			Field:   fieldClassChoices,
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
 		})

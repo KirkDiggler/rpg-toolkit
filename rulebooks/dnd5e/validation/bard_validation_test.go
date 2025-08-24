@@ -25,9 +25,9 @@ func (s *BardValidatorTestSuite) TestValidateBardChoices_IgnoresNonClassSources(
 	choices := []character.ChoiceData{
 		// Class choices (should be validated)
 		{
-			Category:       shared.ChoiceCantrips,
-			Source:         shared.SourceClass,
-			ChoiceID:       "bard-cantrips",
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
 			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
 		},
 		{
@@ -54,15 +54,15 @@ func (s *BardValidatorTestSuite) TestValidateBardChoices_IgnoresNonClassSources(
 
 	errors, err := ValidateClassChoices(classes.Bard, choices)
 	s.Require().NoError(err)
-	
+
 	// Should have errors about missing class choices (skills, equipment, tools)
 	// but NOT complain about the race/background choices
 	s.Require().NotEmpty(errors)
-	
+
 	// Check that it's missing the class skills, not complaining about race skills
 	hasClassSkillError := false
 	for _, e := range errors {
-		if e.Field == "class_choices" {
+		if e.Field == fieldClassChoices {
 			s.Assert().Contains(e.Message, "skills")
 			s.Assert().Contains(e.Message, "equipment")
 			s.Assert().Contains(e.Message, "tool_proficiency")
@@ -82,9 +82,9 @@ func (s *BardValidatorTestSuite) TestValidateBardChoices_RequiresMusicalInstrume
 			SkillSelection: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 		},
 		{
-			Category:       shared.ChoiceCantrips,
-			Source:         shared.SourceClass,
-			ChoiceID:       "bard-cantrips",
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
 			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
 		},
 		{
@@ -109,7 +109,7 @@ func (s *BardValidatorTestSuite) TestValidateBardChoices_RequiresMusicalInstrume
 	// Should have error about missing musical instruments
 	hasInstrumentError := false
 	for _, e := range errors {
-		if e.Field == "class_choices" {
+		if e.Field == fieldClassChoices {
 			s.Assert().Contains(e.Message, "tool_proficiency")
 			hasInstrumentError = true
 		}
@@ -127,9 +127,9 @@ func (s *BardValidatorTestSuite) TestValidateBardChoices_ValidWithInstruments() 
 			SkillSelection: []skills.Skill{skills.Performance, skills.Persuasion, skills.Deception},
 		},
 		{
-			Category:       shared.ChoiceCantrips,
-			Source:         shared.SourceClass,
-			ChoiceID:       "bard-cantrips",
+			Category:         shared.ChoiceCantrips,
+			Source:           shared.SourceClass,
+			ChoiceID:         "bard-cantrips",
 			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
 		},
 		{

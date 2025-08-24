@@ -12,10 +12,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-const (
-	fieldClassChoices = "class_choices"
-)
-
 type ClassValidatorTestSuite struct {
 	suite.Suite
 }
@@ -1107,7 +1103,7 @@ func (s *ClassValidatorTestSuite) TestValidateRogueChoices_MissingExpertise() {
 
 	hasMissingError := false
 	for _, e := range errors {
-		if e.Field == "class_choices" {
+		if e.Field == fieldClassChoices {
 			s.Assert().Contains(e.Message, "Missing required choices")
 			s.Assert().Contains(e.Message, "expertise")
 			hasMissingError = true
@@ -1377,14 +1373,14 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_AnySkillValid() {
 	// Bard can choose ANY 3 skills - testing with non-typical choices
 	// Using a helper to generate standard bard choices
 	baseChoices := s.createValidBardChoices()
-	
+
 	// Override with non-typical skill selections to test flexibility
 	for i, choice := range baseChoices {
 		if choice.Category == shared.ChoiceSkills {
 			baseChoices[i].SkillSelection = []skills.Skill{
-				skills.Athletics,  // STR - not typical for bards
-				skills.Survival,   // WIS - unusual choice
-				skills.Medicine,   // WIS - another unusual choice
+				skills.Athletics, // STR - not typical for bards
+				skills.Survival,  // WIS - unusual choice
+				skills.Medicine,  // WIS - another unusual choice
 			}
 			break
 		}
@@ -1568,7 +1564,7 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_MissingCantrips() {
 
 	hasMissingError := false
 	for _, e := range errors {
-		if e.Field == "class_choices" {
+		if e.Field == fieldClassChoices {
 			s.Assert().Contains(e.Message, "Missing required choices")
 			s.Assert().Contains(e.Message, "cantrips")
 			hasMissingError = true
