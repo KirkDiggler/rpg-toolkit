@@ -16,15 +16,7 @@ const (
 	fieldTraits           = "traits"
 	fieldRaceSkills       = "race_skills"
 	fieldDraconicAncestry = "draconic_ancestry"
-	fieldCantrips         = "cantrips"
 )
-
-// Error represents a validation error
-type Error struct {
-	Field   string
-	Message string
-	Code    rpgerr.Code
-}
 
 // ValidateRaceChoices validates that all required racial choices are satisfied
 func ValidateRaceChoices(raceID races.Race, subraceID races.Subrace, choices []character.ChoiceData) ([]Error, error) {
