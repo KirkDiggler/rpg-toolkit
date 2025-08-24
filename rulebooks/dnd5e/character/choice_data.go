@@ -8,7 +8,7 @@ import (
 )
 
 // ChoiceData represents a choice made during character creation using a sum type pattern
-// DEPRECATED: Use the new Choice interface types instead
+// Deprecated: Use the new Choice interface types instead
 // This is kept for backward compatibility and JSON serialization
 type ChoiceData struct {
 	Category shared.ChoiceCategory `json:"category"`  // Type-safe category

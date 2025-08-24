@@ -9,7 +9,7 @@ import (
 // This allows gradual migration without breaking existing code
 func ValidateClassChoicesWrapper(classID classes.Class, choicesData []character.ChoiceData) ([]Error, error) {
 	// Convert old ChoiceData to new Choice types
-	var choices []character.Choice
+	choices := make([]character.Choice, 0, len(choicesData))
 	for _, old := range choicesData {
 		choice, err := character.ConvertFromChoiceData(old)
 		if err != nil {
@@ -18,7 +18,7 @@ func ValidateClassChoicesWrapper(classID classes.Class, choicesData []character.
 		}
 		choices = append(choices, choice)
 	}
-	
+
 	// Use new V2 validation
 	return ValidateClassChoicesV2(classID, choices)
 }

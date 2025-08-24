@@ -488,7 +488,6 @@ type ResourceData struct {
 	Resets  shared.ResetType         `json:"resets"`  // When it resets
 }
 
-
 // ToData converts the character to its persistent representation
 func (c *Character) ToData() Data {
 	savesData := make(map[abilities.Ability]shared.ProficiencyLevel)

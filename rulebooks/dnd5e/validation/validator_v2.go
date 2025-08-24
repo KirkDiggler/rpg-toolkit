@@ -262,17 +262,17 @@ func validateRogueChoicesV2(choices []character.Choice) ([]Error, error) {
 
 	// Rogue can choose 4 skills from their list
 	rogueSkills := map[skills.Skill]bool{
-		skills.Acrobatics:     true,
-		skills.Athletics:      true,
-		skills.Deception:      true,
-		skills.Insight:        true,
-		skills.Intimidation:   true,
-		skills.Investigation:  true,
-		skills.Perception:     true,
-		skills.Performance:    true,
-		skills.Persuasion:     true,
-		skills.SleightOfHand:  true,
-		skills.Stealth:        true,
+		skills.Acrobatics:    true,
+		skills.Athletics:     true,
+		skills.Deception:     true,
+		skills.Insight:       true,
+		skills.Intimidation:  true,
+		skills.Investigation: true,
+		skills.Perception:    true,
+		skills.Performance:   true,
+		skills.Persuasion:    true,
+		skills.SleightOfHand: true,
+		skills.Stealth:       true,
 	}
 
 	if skillChoices, ok := grouped[shared.ChoiceSkills]; !ok || len(skillChoices) == 0 {
@@ -339,47 +339,47 @@ func validateRogueChoicesV2(choices []character.Choice) ([]Error, error) {
 }
 
 // Stub implementations for other classes - to be implemented
-func validateWizardChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateWizardChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement wizard validation
 	return nil, nil
 }
 
-func validateClericChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateClericChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement cleric validation
 	return nil, nil
 }
 
-func validateRangerChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateRangerChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement ranger validation
 	return nil, nil
 }
 
-func validatePaladinChoicesV2(choices []character.Choice) ([]Error, error) {
+func validatePaladinChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement paladin validation
 	return nil, nil
 }
 
-func validateBarbarianChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateBarbarianChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement barbarian validation
 	return nil, nil
 }
 
-func validateDruidChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateDruidChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement druid validation
 	return nil, nil
 }
 
-func validateMonkChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateMonkChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement monk validation
 	return nil, nil
 }
 
-func validateSorcererChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateSorcererChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement sorcerer validation
 	return nil, nil
 }
 
-func validateWarlockChoicesV2(choices []character.Choice) ([]Error, error) {
+func validateWarlockChoicesV2(_ []character.Choice) ([]Error, error) {
 	// TODO: Implement warlock validation
 	return nil, nil
 }
