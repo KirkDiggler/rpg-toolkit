@@ -100,8 +100,16 @@ func isValidSubrace(raceID races.Race, subraceID races.Subrace) bool {
 	}
 }
 
-// validateHalfElfChoices validates Half-Elf specific choices
-func validateHalfElfChoices(choices []character.ChoiceData) []Error {
+// raceChoiceRequirement defines what a race requires for a specific choice type
+type raceChoiceRequirement struct {
+	raceName      string
+	requiredCount int
+	field         string
+	choiceType    string // "skill", "language", or "cantrip"
+}
+
+// validateRaceChoicesGeneric handles validation for races with language/skill/cantrip choices
+func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []raceChoiceRequirement) []Error {
 	var errors []Error
 	found := make(map[shared.ChoiceCategory]bool)
 
@@ -114,136 +122,123 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 		switch choice.Category {
 		case shared.ChoiceSkills:
 			found[choice.Category] = true
-			if len(choice.SkillSelection) == 0 {
-				errors = append(errors, Error{
-					Field:   fieldRaceSkills,
-					Message: "Half-Elf requires skill selection",
-					Code:    rpgerr.CodeInvalidArgument,
-				})
-				continue
-			}
-			// Half-Elf can choose ANY 2 skills
-			if len(choice.SkillSelection) != 2 {
-				errors = append(errors, Error{
-					Field: fieldRaceSkills,
-					Message: fmt.Sprintf("Half-Elf requires exactly 2 skill proficiencies, %d selected",
-						len(choice.SkillSelection)),
-					Code: rpgerr.CodeInvalidArgument,
-				})
+			for _, req := range requirements {
+				if req.choiceType != "skill" {
+					continue
+				}
+				if len(choice.SkillSelection) == 0 {
+					errors = append(errors, Error{
+						Field:   req.field,
+						Message: fmt.Sprintf("%s requires skill selection", req.raceName),
+						Code:    rpgerr.CodeInvalidArgument,
+					})
+					break
+				}
+				if len(choice.SkillSelection) != req.requiredCount {
+					errors = append(errors, Error{
+						Field: req.field,
+						Message: fmt.Sprintf("%s: %d skill(s) required, %d selected",
+							req.raceName, req.requiredCount, len(choice.SkillSelection)),
+						Code: rpgerr.CodeInvalidArgument,
+					})
+				}
 			}
 
 		case shared.ChoiceLanguages:
 			found[choice.Category] = true
-			if len(choice.LanguageSelection) == 0 {
-				errors = append(errors, Error{
-					Field:   fieldLanguages,
-					Message: "Half-Elf requires language selection",
-					Code:    rpgerr.CodeInvalidArgument,
-				})
-				continue
+			for _, req := range requirements {
+				if req.choiceType != "language" {
+					continue
+				}
+				if len(choice.LanguageSelection) == 0 {
+					errors = append(errors, Error{
+						Field:   req.field,
+						Message: fmt.Sprintf("%s requires language selection", req.raceName),
+						Code:    rpgerr.CodeInvalidArgument,
+					})
+					break
+				}
+				if len(choice.LanguageSelection) != req.requiredCount {
+					errors = append(errors, Error{
+						Field: req.field,
+						Message: fmt.Sprintf("%s: %d language(s) required, %d selected",
+							req.raceName, req.requiredCount, len(choice.LanguageSelection)),
+						Code: rpgerr.CodeInvalidArgument,
+					})
+				}
 			}
-			// Half-Elf chooses 1 additional language
-			if len(choice.LanguageSelection) != 1 {
-				errors = append(errors, Error{
-					Field: fieldLanguages,
-					Message: fmt.Sprintf("Half-Elf: 1 language required, %d selected",
-						len(choice.LanguageSelection)),
-					Code: rpgerr.CodeInvalidArgument,
-				})
+
+		case shared.ChoiceCantrips:
+			found[choice.Category] = true
+			for _, req := range requirements {
+				if req.choiceType != "cantrip" {
+					continue
+				}
+				if len(choice.CantripSelection) == 0 {
+					errors = append(errors, Error{
+						Field:   req.field,
+						Message: fmt.Sprintf("%s requires cantrip selection", req.raceName),
+						Code:    rpgerr.CodeInvalidArgument,
+					})
+					break
+				}
+				if len(choice.CantripSelection) != req.requiredCount {
+					errors = append(errors, Error{
+						Field: req.field,
+						Message: fmt.Sprintf("%s: %d cantrip(s) required, %d selected",
+							req.raceName, req.requiredCount, len(choice.CantripSelection)),
+						Code: rpgerr.CodeInvalidArgument,
+					})
+				}
 			}
 		}
 	}
 
-	// Check for required choices
-	if !found[shared.ChoiceSkills] {
-		errors = append(errors, Error{
-			Field:   fieldRaceSkills,
-			Message: "Half-Elf requires 2 skill proficiency choices",
-			Code:    rpgerr.CodeInvalidArgument,
-		})
-	}
-	if !found[shared.ChoiceLanguages] {
-		errors = append(errors, Error{
-			Field:   fieldLanguages,
-			Message: "Half-Elf requires 1 additional language choice",
-			Code:    rpgerr.CodeInvalidArgument,
-		})
+	// Check for missing required choices
+	for _, req := range requirements {
+		var category shared.ChoiceCategory
+		var missingMsg string
+
+		switch req.choiceType {
+		case "skill":
+			category = shared.ChoiceSkills
+			missingMsg = fmt.Sprintf("%s requires %d skill proficiency choice(s)", req.raceName, req.requiredCount)
+		case "language":
+			category = shared.ChoiceLanguages
+			missingMsg = fmt.Sprintf("%s requires %d additional language choice(s)", req.raceName, req.requiredCount)
+		case "cantrip":
+			category = shared.ChoiceCantrips
+			missingMsg = fmt.Sprintf("%s requires %d cantrip choice(s)", req.raceName, req.requiredCount)
+		}
+
+		if !found[category] {
+			errors = append(errors, Error{
+				Field:   req.field,
+				Message: missingMsg,
+				Code:    rpgerr.CodeInvalidArgument,
+			})
+		}
 	}
 
 	return errors
 }
 
+// validateHalfElfChoices validates Half-Elf specific choices
+func validateHalfElfChoices(choices []character.ChoiceData) []Error {
+	requirements := []raceChoiceRequirement{
+		{raceName: "Half-Elf", requiredCount: 2, field: fieldRaceSkills, choiceType: "skill"},
+		{raceName: "Half-Elf", requiredCount: 1, field: fieldLanguages, choiceType: "language"},
+	}
+	return validateRaceChoicesGeneric(choices, requirements)
+}
+
 // validateHighElfChoices validates High Elf subrace specific choices
 func validateHighElfChoices(choices []character.ChoiceData) []Error {
-	var errors []Error
-	found := make(map[shared.ChoiceCategory]bool)
-
-	for _, choice := range choices {
-		// Only validate race-sourced choices
-		if choice.Source != shared.SourceRace {
-			continue
-		}
-
-		switch choice.Category {
-		case shared.ChoiceLanguages:
-			found[choice.Category] = true
-			if len(choice.LanguageSelection) == 0 {
-				errors = append(errors, Error{
-					Field:   fieldLanguages,
-					Message: "High Elf requires language selection",
-					Code:    rpgerr.CodeInvalidArgument,
-				})
-				continue
-			}
-			// High Elf chooses 1 additional language
-			if len(choice.LanguageSelection) != 1 {
-				errors = append(errors, Error{
-					Field: fieldLanguages,
-					Message: fmt.Sprintf("High Elf: 1 language required, %d selected",
-						len(choice.LanguageSelection)),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
-
-		case shared.ChoiceCantrips:
-			found[choice.Category] = true
-			if len(choice.CantripSelection) == 0 {
-				errors = append(errors, Error{
-					Field:   fieldCantrips,
-					Message: "High Elf requires cantrip selection",
-					Code:    rpgerr.CodeInvalidArgument,
-				})
-				continue
-			}
-			// High Elf gets 1 wizard cantrip
-			if len(choice.CantripSelection) != 1 {
-				errors = append(errors, Error{
-					Field: fieldCantrips,
-					Message: fmt.Sprintf("High Elf: 1 wizard cantrip required, %d selected",
-						len(choice.CantripSelection)),
-					Code: rpgerr.CodeInvalidArgument,
-				})
-			}
-		}
+	requirements := []raceChoiceRequirement{
+		{raceName: "High Elf", requiredCount: 1, field: fieldLanguages, choiceType: "language"},
+		{raceName: "High Elf", requiredCount: 1, field: fieldCantrips, choiceType: "cantrip"},
 	}
-
-	// Check for required choices
-	if !found[shared.ChoiceLanguages] {
-		errors = append(errors, Error{
-			Field:   fieldLanguages,
-			Message: "High Elf requires 1 additional language choice",
-			Code:    rpgerr.CodeInvalidArgument,
-		})
-	}
-	if !found[shared.ChoiceCantrips] {
-		errors = append(errors, Error{
-			Field:   fieldCantrips,
-			Message: "High Elf requires 1 wizard cantrip choice",
-			Code:    rpgerr.CodeInvalidArgument,
-		})
-	}
-
-	return errors
+	return validateRaceChoicesGeneric(choices, requirements)
 }
 
 // validateDragonbornChoices validates Dragonborn specific choices
