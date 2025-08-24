@@ -333,7 +333,7 @@ func (s *ClassValidatorTestSuite) TestValidateWizardChoices_InsufficientSpells()
 
 	hasSpellError := false
 	for _, e := range errors {
-		if e.Field == "spells" {
+		if e.Field == fieldSpells {
 			s.Assert().Contains(e.Message, "Wizard spells for spellbook")
 			s.Assert().Contains(e.Message, "only 2 selected")
 			hasSpellError = true
@@ -759,7 +759,7 @@ func (s *ClassValidatorTestSuite) TestValidateWarlockChoices_InsufficientSpells(
 
 	hasSpellError := false
 	for _, e := range errors {
-		if e.Field == "spells" {
+		if e.Field == fieldSpells {
 			s.Assert().Contains(e.Message, "Warlock spells known")
 			s.Assert().Contains(e.Message, "only 1 selected")
 			hasSpellError = true
@@ -1502,7 +1502,7 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_InsufficientSpells() {
 
 	hasSpellError := false
 	for _, e := range errors {
-		if e.Field == "spells" {
+		if e.Field == fieldSpells {
 			s.Assert().Contains(e.Message, "Bard spells known: requires 4 spells at level 1, only 2 selected")
 			hasSpellError = true
 		}

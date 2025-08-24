@@ -19,6 +19,7 @@ const (
 	fieldSkills    = "skills"
 	fieldCantrips  = "cantrips"
 	fieldExpertise = "expertise"
+	fieldSpells    = "spells"
 )
 
 // Error represents a validation issue
@@ -233,7 +234,7 @@ func validateSpellcasterChoices(config spellcasterValidationConfig, choices []ch
 			}
 			if spellCount < config.requiredSpells {
 				errors = append(errors, Error{
-					Field:   "spells",
+					Field:   fieldSpells,
 					Message: fmt.Sprintf("%s %s, only %d selected", config.className, config.spellsDescription, spellCount),
 					Code:    rpgerr.CodeInvalidArgument,
 				})
@@ -816,7 +817,7 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 		case shared.ChoiceSpells:
 			if choice.SpellSelection == nil {
 				errors = append(errors, Error{
-					Field:   "spells",
+					Field:   fieldSpells,
 					Message: "Bard requires spell selection",
 					Code:    rpgerr.CodeInvalidArgument,
 				})
@@ -826,7 +827,7 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 			spellCount := len(choice.SpellSelection)
 			if spellCount < 4 {
 				errors = append(errors, Error{
-					Field: "spells",
+					Field: fieldSpells,
 					Message: fmt.Sprintf("Bard spells known: requires 4 spells at level 1, only %d selected",
 						spellCount),
 					Code: rpgerr.CodeInvalidArgument,
