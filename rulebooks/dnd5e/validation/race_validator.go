@@ -106,6 +106,9 @@ type raceChoiceRequirement struct {
 	requiredCount int
 	field         string
 	choiceType    string // "skill", "language", or "cantrip"
+	// Custom messages for better error reporting
+	missingMsg  string // Message when choice is missing
+	wrongCountMsg string // Message format when count is wrong (use %d for actual count)
 }
 
 // validateRaceChoicesGeneric handles validation for races with language/skill/cantrip choices
@@ -135,10 +138,13 @@ func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []r
 					break
 				}
 				if len(choice.SkillSelection) != req.requiredCount {
+					msg := req.wrongCountMsg
+					if msg == "" {
+						msg = fmt.Sprintf("%s: %d skill(s) required, %%d selected", req.raceName, req.requiredCount)
+					}
 					errors = append(errors, Error{
 						Field: req.field,
-						Message: fmt.Sprintf("%s: %d skill(s) required, %d selected",
-							req.raceName, req.requiredCount, len(choice.SkillSelection)),
+						Message: fmt.Sprintf(msg, len(choice.SkillSelection)),
 						Code: rpgerr.CodeInvalidArgument,
 					})
 				}
@@ -159,10 +165,13 @@ func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []r
 					break
 				}
 				if len(choice.LanguageSelection) != req.requiredCount {
+					msg := req.wrongCountMsg
+					if msg == "" {
+						msg = fmt.Sprintf("%s: %d language(s) required, %%d selected", req.raceName, req.requiredCount)
+					}
 					errors = append(errors, Error{
 						Field: req.field,
-						Message: fmt.Sprintf("%s: %d language(s) required, %d selected",
-							req.raceName, req.requiredCount, len(choice.LanguageSelection)),
+						Message: fmt.Sprintf(msg, len(choice.LanguageSelection)),
 						Code: rpgerr.CodeInvalidArgument,
 					})
 				}
@@ -183,10 +192,13 @@ func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []r
 					break
 				}
 				if len(choice.CantripSelection) != req.requiredCount {
+					msg := req.wrongCountMsg
+					if msg == "" {
+						msg = fmt.Sprintf("%s: %d cantrip(s) required, %%d selected", req.raceName, req.requiredCount)
+					}
 					errors = append(errors, Error{
 						Field: req.field,
-						Message: fmt.Sprintf("%s: %d cantrip(s) required, %d selected",
-							req.raceName, req.requiredCount, len(choice.CantripSelection)),
+						Message: fmt.Sprintf(msg, len(choice.CantripSelection)),
 						Code: rpgerr.CodeInvalidArgument,
 					})
 				}
@@ -197,24 +209,31 @@ func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []r
 	// Check for missing required choices
 	for _, req := range requirements {
 		var category shared.ChoiceCategory
-		var missingMsg string
-
 		switch req.choiceType {
 		case "skill":
 			category = shared.ChoiceSkills
-			missingMsg = fmt.Sprintf("%s requires %d skill proficiency choice(s)", req.raceName, req.requiredCount)
 		case "language":
 			category = shared.ChoiceLanguages
-			missingMsg = fmt.Sprintf("%s requires %d additional language choice(s)", req.raceName, req.requiredCount)
 		case "cantrip":
 			category = shared.ChoiceCantrips
-			missingMsg = fmt.Sprintf("%s requires %d cantrip choice(s)", req.raceName, req.requiredCount)
 		}
 
 		if !found[category] {
+			msg := req.missingMsg
+			if msg == "" {
+				// Default messages if not provided
+				switch req.choiceType {
+				case "skill":
+					msg = fmt.Sprintf("%s requires %d skill proficiency choice(s)", req.raceName, req.requiredCount)
+				case "language":
+					msg = fmt.Sprintf("%s requires %d additional language choice(s)", req.raceName, req.requiredCount)
+				case "cantrip":
+					msg = fmt.Sprintf("%s requires %d cantrip choice(s)", req.raceName, req.requiredCount)
+				}
+			}
 			errors = append(errors, Error{
 				Field:   req.field,
-				Message: missingMsg,
+				Message: msg,
 				Code:    rpgerr.CodeInvalidArgument,
 			})
 		}
@@ -226,8 +245,22 @@ func validateRaceChoicesGeneric(choices []character.ChoiceData, requirements []r
 // validateHalfElfChoices validates Half-Elf specific choices
 func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 	requirements := []raceChoiceRequirement{
-		{raceName: "Half-Elf", requiredCount: 2, field: fieldRaceSkills, choiceType: "skill"},
-		{raceName: "Half-Elf", requiredCount: 1, field: fieldLanguages, choiceType: "language"},
+		{
+			raceName:      "Half-Elf",
+			requiredCount: 2,
+			field:         fieldRaceSkills,
+			choiceType:    "skill",
+			missingMsg:    "Half-Elf requires 2 skill proficiency choices",
+			wrongCountMsg: "Half-Elf requires exactly 2 skill proficiencies, %d selected",
+		},
+		{
+			raceName:      "Half-Elf",
+			requiredCount: 1,
+			field:         fieldLanguages,
+			choiceType:    "language",
+			missingMsg:    "Half-Elf requires 1 additional language choice",
+			wrongCountMsg: "Half-Elf requires exactly 1 additional language, %d selected",
+		},
 	}
 	return validateRaceChoicesGeneric(choices, requirements)
 }
@@ -235,8 +268,22 @@ func validateHalfElfChoices(choices []character.ChoiceData) []Error {
 // validateHighElfChoices validates High Elf subrace specific choices
 func validateHighElfChoices(choices []character.ChoiceData) []Error {
 	requirements := []raceChoiceRequirement{
-		{raceName: "High Elf", requiredCount: 1, field: fieldLanguages, choiceType: "language"},
-		{raceName: "High Elf", requiredCount: 1, field: fieldCantrips, choiceType: "cantrip"},
+		{
+			raceName:      "High Elf",
+			requiredCount: 1,
+			field:         fieldLanguages,
+			choiceType:    "language",
+			missingMsg:    "High Elf requires 1 additional language choice",
+			wrongCountMsg: "High Elf requires exactly 1 additional language, %d selected",
+		},
+		{
+			raceName:      "High Elf",
+			requiredCount: 1,
+			field:         fieldCantrips,
+			choiceType:    "cantrip",
+			missingMsg:    "High Elf requires 1 wizard cantrip choice",
+			wrongCountMsg: "High Elf requires exactly 1 wizard cantrip, %d selected",
+		},
 	}
 	return validateRaceChoicesGeneric(choices, requirements)
 }
