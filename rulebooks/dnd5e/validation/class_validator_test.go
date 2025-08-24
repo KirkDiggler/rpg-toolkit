@@ -1360,6 +1360,12 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_Valid() {
 			ChoiceID:           "bard-equipment-pack",
 			EquipmentSelection: []string{"entertainers-pack"},
 		},
+		{
+			Category:                 shared.ChoiceToolProficiency,
+			Source:                   shared.SourceClass,
+			ChoiceID:                 "bard-instruments",
+			ToolProficiencySelection: []string{"lute", "flute", "drum"},
+		},
 	}
 
 	errors, err := ValidateClassChoices(classes.Bard, choices)
@@ -1394,6 +1400,12 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_AnySkillValid() {
 			Source:             shared.SourceClass,
 			ChoiceID:           "bard-equipment-primary-weapon",
 			EquipmentSelection: []string{"rapier"},
+		},
+		{
+			Category:                 shared.ChoiceToolProficiency,
+			Source:                   shared.SourceClass,
+			ChoiceID:                 "bard-instruments",
+			ToolProficiencySelection: []string{"lute", "flute", "drum"},
 		},
 	}
 
@@ -1575,6 +1587,12 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_NoExpertiseRequired() 
 			Source:             shared.SourceClass,
 			ChoiceID:           "bard-equipment-primary-weapon",
 			EquipmentSelection: []string{"rapier"},
+		},
+		{
+			Category:                 shared.ChoiceToolProficiency,
+			Source:                   shared.SourceClass,
+			ChoiceID:                 "bard-instruments",
+			ToolProficiencySelection: []string{"lute", "flute", "drum"},
 		},
 		// No expertise choice - this should be valid for level 1 Bard
 	}

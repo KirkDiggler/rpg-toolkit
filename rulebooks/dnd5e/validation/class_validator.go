@@ -787,6 +787,11 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 	}
 
 	for _, choice := range choices {
+		// Only validate class-sourced choices
+		if choice.Source != shared.SourceClass {
+			continue
+		}
+		
 		foundChoices[choice.Category] = true
 
 		switch choice.Category {
@@ -845,6 +850,25 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 			}
 			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
 			errors = append(errors, equipmentErrors...)
+			
+		case shared.ChoiceToolProficiency:
+			// Bard must choose 3 musical instruments
+			if choice.ToolProficiencySelection == nil || len(choice.ToolProficiencySelection) == 0 {
+				errors = append(errors, Error{
+					Field:   "tool_proficiencies",
+					Message: "Bard requires musical instrument selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			if len(choice.ToolProficiencySelection) != 3 {
+				errors = append(errors, Error{
+					Field:   "tool_proficiencies",
+					Message: fmt.Sprintf("Bard requires exactly 3 musical instruments, %d selected",
+						len(choice.ToolProficiencySelection)),
+					Code: rpgerr.CodeInvalidArgument,
+				})
+			}
 		}
 	}
 
@@ -854,6 +878,7 @@ func validateBardChoices(choices []character.ChoiceData) []Error {
 		shared.ChoiceCantrips,
 		shared.ChoiceSpells,
 		shared.ChoiceEquipment,
+		shared.ChoiceToolProficiency,
 	}
 	var missing []string
 	for _, req := range required {
