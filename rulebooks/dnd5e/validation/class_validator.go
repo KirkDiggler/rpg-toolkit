@@ -357,6 +357,14 @@ func ValidateClassChoices(classID classes.Class, choices []character.ChoiceData)
 		errors = validateDruidChoices(choices)
 	case classes.Rogue:
 		errors = validateRogueChoices(choices)
+	case classes.Barbarian:
+		errors = validateBarbarianChoices(choices)
+	case classes.Monk:
+		errors = validateMonkChoices(choices)
+	case classes.Ranger:
+		errors = validateRangerChoices(choices)
+	case classes.Paladin:
+		errors = validatePaladinChoices(choices)
 	// TODO: Add other classes
 	default:
 		// Unknown class, no validation yet
@@ -629,6 +637,264 @@ func validateRogueChoices(choices []character.ChoiceData) []Error {
 	if len(missing) > 0 {
 		errors = append(errors, Error{
 			Field:   "class_choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validateBarbarianChoices validates Barbarian-specific requirements
+func validateBarbarianChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
+	foundChoices := make(map[shared.ChoiceCategory]bool)
+
+	validSkills := map[skills.Skill]bool{
+		skills.AnimalHandling: true,
+		skills.Athletics:      true,
+		skills.Intimidation:   true,
+		skills.Nature:         true,
+		skills.Perception:     true,
+		skills.Survival:       true,
+	}
+
+	for _, choice := range choices {
+		foundChoices[choice.Category] = true
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			if choice.SkillSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSkills,
+					Message: "Barbarian requires skill selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			skillErrors := validateSkillChoice(choice, "Barbarian", validSkills, 2)
+			errors = append(errors, skillErrors...)
+
+		case shared.ChoiceEquipment:
+			if choice.EquipmentSelection == nil {
+				errors = append(errors, Error{
+					Field:   "equipment",
+					Message: "Barbarian requires equipment selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
+			errors = append(errors, equipmentErrors...)
+		}
+	}
+
+	// Check for required choices
+	required := []shared.ChoiceCategory{shared.ChoiceSkills, shared.ChoiceEquipment}
+	var missing []string
+	for _, req := range required {
+		if !foundChoices[req] {
+			missing = append(missing, string(req))
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validateMonkChoices validates Monk-specific requirements
+func validateMonkChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
+	foundChoices := make(map[shared.ChoiceCategory]bool)
+
+	validSkills := map[skills.Skill]bool{
+		skills.Acrobatics: true,
+		skills.Athletics:  true,
+		skills.History:    true,
+		skills.Insight:    true,
+		skills.Religion:   true,
+		skills.Stealth:    true,
+	}
+
+	for _, choice := range choices {
+		foundChoices[choice.Category] = true
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			if choice.SkillSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSkills,
+					Message: "Monk requires skill selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			skillErrors := validateSkillChoice(choice, "Monk", validSkills, 2)
+			errors = append(errors, skillErrors...)
+
+		case shared.ChoiceEquipment:
+			if choice.EquipmentSelection == nil {
+				errors = append(errors, Error{
+					Field:   "equipment",
+					Message: "Monk requires equipment selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
+			errors = append(errors, equipmentErrors...)
+		}
+	}
+
+	// Check for required choices
+	required := []shared.ChoiceCategory{shared.ChoiceSkills, shared.ChoiceEquipment}
+	var missing []string
+	for _, req := range required {
+		if !foundChoices[req] {
+			missing = append(missing, string(req))
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validateRangerChoices validates Ranger-specific requirements
+func validateRangerChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
+	foundChoices := make(map[shared.ChoiceCategory]bool)
+
+	validSkills := map[skills.Skill]bool{
+		skills.AnimalHandling: true,
+		skills.Athletics:      true,
+		skills.Insight:        true,
+		skills.Investigation:  true,
+		skills.Nature:         true,
+		skills.Perception:     true,
+		skills.Stealth:        true,
+		skills.Survival:       true,
+	}
+
+	for _, choice := range choices {
+		foundChoices[choice.Category] = true
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			if choice.SkillSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSkills,
+					Message: "Ranger requires skill selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			skillErrors := validateSkillChoice(choice, "Ranger", validSkills, 3)
+			errors = append(errors, skillErrors...)
+
+		case shared.ChoiceEquipment:
+			if choice.EquipmentSelection == nil {
+				errors = append(errors, Error{
+					Field:   "equipment",
+					Message: "Ranger requires equipment selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
+			errors = append(errors, equipmentErrors...)
+		}
+	}
+
+	// Check for required choices
+	required := []shared.ChoiceCategory{shared.ChoiceSkills, shared.ChoiceEquipment}
+	var missing []string
+	for _, req := range required {
+		if !foundChoices[req] {
+			missing = append(missing, string(req))
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "choices",
+			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
+			Code:    rpgerr.CodeInvalidArgument,
+		})
+	}
+
+	return errors
+}
+
+// validatePaladinChoices validates Paladin-specific requirements
+func validatePaladinChoices(choices []character.ChoiceData) []Error {
+	var errors []Error
+	foundChoices := make(map[shared.ChoiceCategory]bool)
+
+	validSkills := map[skills.Skill]bool{
+		skills.Athletics:    true,
+		skills.Insight:      true,
+		skills.Intimidation: true,
+		skills.Medicine:     true,
+		skills.Persuasion:   true,
+		skills.Religion:     true,
+	}
+
+	for _, choice := range choices {
+		foundChoices[choice.Category] = true
+
+		switch choice.Category {
+		case shared.ChoiceSkills:
+			if choice.SkillSelection == nil {
+				errors = append(errors, Error{
+					Field:   fieldSkills,
+					Message: "Paladin requires skill selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			skillErrors := validateSkillChoice(choice, "Paladin", validSkills, 2)
+			errors = append(errors, skillErrors...)
+
+		case shared.ChoiceEquipment:
+			if choice.EquipmentSelection == nil {
+				errors = append(errors, Error{
+					Field:   "equipment",
+					Message: "Paladin requires equipment selection",
+					Code:    rpgerr.CodeInvalidArgument,
+				})
+				continue
+			}
+			equipmentErrors := validateEquipmentChoice(choice, map[string]string{})
+			errors = append(errors, equipmentErrors...)
+		}
+	}
+
+	// Check for required choices
+	required := []shared.ChoiceCategory{shared.ChoiceSkills, shared.ChoiceEquipment}
+	var missing []string
+	for _, req := range required {
+		if !foundChoices[req] {
+			missing = append(missing, string(req))
+		}
+	}
+
+	if len(missing) > 0 {
+		errors = append(errors, Error{
+			Field:   "choices",
 			Message: fmt.Sprintf("Missing required choices: %s", strings.Join(missing, ", ")),
 			Code:    rpgerr.CodeInvalidArgument,
 		})
