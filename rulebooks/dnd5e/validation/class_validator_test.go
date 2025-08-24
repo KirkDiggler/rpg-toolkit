@@ -1371,9 +1371,9 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_AnySkillValid() {
 	// Bard can choose ANY 3 skills
 	choices := []character.ChoiceData{
 		{
-			Category:       shared.ChoiceSkills,
-			Source:         shared.SourceClass,
-			ChoiceID:       "bard-skills",
+			Category: shared.ChoiceSkills,
+			Source:   shared.SourceClass,
+			ChoiceID: "bard-skills",
 			// Testing with skills that aren't typical "bard" skills
 			SkillSelection: []skills.Skill{skills.Athletics, skills.Survival, skills.Medicine},
 		},
