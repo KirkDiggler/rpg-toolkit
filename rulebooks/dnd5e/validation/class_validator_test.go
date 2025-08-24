@@ -1374,14 +1374,35 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_Valid() {
 }
 
 func (s *ClassValidatorTestSuite) TestValidateBardChoices_AnySkillValid() {
-	// Bard can choose ANY 3 skills
-	choices := []character.ChoiceData{
+	// Bard can choose ANY 3 skills - testing with non-typical choices
+	// Using a helper to generate standard bard choices
+	baseChoices := s.createValidBardChoices()
+	
+	// Override with non-typical skill selections to test flexibility
+	for i, choice := range baseChoices {
+		if choice.Category == shared.ChoiceSkills {
+			baseChoices[i].SkillSelection = []skills.Skill{
+				skills.Athletics,  // STR - not typical for bards
+				skills.Survival,   // WIS - unusual choice
+				skills.Medicine,   // WIS - another unusual choice
+			}
+			break
+		}
+	}
+
+	errors, err := ValidateClassChoices(classes.Bard, baseChoices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors, "Bard should be able to choose any 3 skills, regardless of type")
+}
+
+// Helper function to create standard valid Bard choices
+func (s *ClassValidatorTestSuite) createValidBardChoices() []character.ChoiceData {
+	return []character.ChoiceData{
 		{
-			Category: shared.ChoiceSkills,
-			Source:   shared.SourceClass,
-			ChoiceID: "bard-skills",
-			// Testing with skills that aren't typical "bard" skills
-			SkillSelection: []skills.Skill{skills.Athletics, skills.Survival, skills.Medicine},
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			ChoiceID:       "bard-skills",
+			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
 		},
 		{
 			Category:         shared.ChoiceCantrips,
@@ -1408,10 +1429,6 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_AnySkillValid() {
 			ToolProficiencySelection: []string{"lute", "flute", "drum"},
 		},
 	}
-
-	errors, err := ValidateClassChoices(classes.Bard, choices)
-	s.Require().NoError(err)
-	s.Assert().Empty(errors, "Bard should be able to choose any skills")
 }
 
 func (s *ClassValidatorTestSuite) TestValidateBardChoices_InsufficientSkills() {
@@ -1563,39 +1580,10 @@ func (s *ClassValidatorTestSuite) TestValidateBardChoices_MissingCantrips() {
 // Test that Bard doesn't require expertise at level 1
 func (s *ClassValidatorTestSuite) TestValidateBardChoices_NoExpertiseRequired() {
 	// Valid Bard choices without expertise (since Bards get expertise at level 3)
-	choices := []character.ChoiceData{
-		{
-			Category:       shared.ChoiceSkills,
-			Source:         shared.SourceClass,
-			ChoiceID:       "bard-skills",
-			SkillSelection: []skills.Skill{skills.Performance, skills.Deception, skills.Persuasion},
-		},
-		{
-			Category:         shared.ChoiceCantrips,
-			Source:           shared.SourceClass,
-			ChoiceID:         "bard-cantrips",
-			CantripSelection: []string{"vicious-mockery", "minor-illusion"},
-		},
-		{
-			Category:       shared.ChoiceSpells,
-			Source:         shared.SourceClass,
-			ChoiceID:       "bard-spells-level-1",
-			SpellSelection: []string{"charm-person", "healing-word", "thunderwave", "disguise-self"},
-		},
-		{
-			Category:           shared.ChoiceEquipment,
-			Source:             shared.SourceClass,
-			ChoiceID:           "bard-equipment-primary-weapon",
-			EquipmentSelection: []string{"rapier"},
-		},
-		{
-			Category:                 shared.ChoiceToolProficiency,
-			Source:                   shared.SourceClass,
-			ChoiceID:                 "bard-instruments",
-			ToolProficiencySelection: []string{"lute", "flute", "drum"},
-		},
-		// No expertise choice - this should be valid for level 1 Bard
-	}
+	// Using the helper function to avoid duplication
+	choices := s.createValidBardChoices()
+	// The helper already provides all required level 1 choices
+	// No expertise choice is included - this should be valid for level 1 Bard
 
 	errors, err := ValidateClassChoices(classes.Bard, choices)
 	s.Require().NoError(err)
