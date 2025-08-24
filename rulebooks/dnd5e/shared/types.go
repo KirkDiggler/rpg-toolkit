@@ -186,6 +186,8 @@ const (
 	ChoiceFightingStyle ChoiceCategory = "fighting_style"
 	// ChoiceToolProficiency represents tool proficiency selection
 	ChoiceToolProficiency ChoiceCategory = "tool_proficiency"
+	// ChoiceExpertise represents expertise selection (for rogues and bards)
+	ChoiceExpertise ChoiceCategory = "expertise"
 )
 
 // ChoiceSource represents where a choice or grant comes from

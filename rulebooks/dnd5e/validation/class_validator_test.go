@@ -547,7 +547,7 @@ func (s *ClassValidatorTestSuite) TestValidateClassChoices_UnknownClass() {
 	choices := []character.ChoiceData{}
 
 	// Test with a class that doesn't have validation yet
-	errors, err := ValidateClassChoices(classes.Rogue, choices)
+	errors, err := ValidateClassChoices(classes.Barbarian, choices)
 	s.Require().NoError(err)
 	s.Assert().Nil(errors, "Unknown class should return nil errors")
 }
@@ -966,4 +966,152 @@ func (s *ClassValidatorTestSuite) TestValidateDruidChoices_InsufficientCantrips(
 		}
 	}
 	s.Assert().True(hasCantripError, "Should have error about insufficient cantrips")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateRogueChoices_Valid() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Stealth, skills.Acrobatics, skills.Deception, skills.Perception},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceExpertise,
+			ExpertiseSelection: []string{"stealth", "perception"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "rogue-equipment-primary-weapon",
+			EquipmentSelection: []string{"rapier"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "rogue-equipment-secondary",
+			EquipmentSelection: []string{"shortbow"},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceEquipment,
+			ChoiceID:           "rogue-equipment-pack",
+			EquipmentSelection: []string{"burglars-pack"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Rogue, choices)
+	s.Require().NoError(err)
+	s.Assert().Empty(errors)
+}
+
+func (s *ClassValidatorTestSuite) TestValidateRogueChoices_InvalidSkill() {
+	choices := []character.ChoiceData{
+		{
+			Source:   shared.SourceClass,
+			Category: shared.ChoiceSkills,
+			// History is not a valid rogue skill
+			SkillSelection: []skills.Skill{skills.Stealth, skills.Acrobatics, skills.Deception, skills.History},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceExpertise,
+			ExpertiseSelection: []string{"stealth", "perception"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Rogue, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasInvalidSkillError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Invalid rogue skill: history")
+			s.Assert().Contains(e.Message, "Must choose from")
+			hasInvalidSkillError = true
+		}
+	}
+	s.Assert().True(hasInvalidSkillError, "Should have error about invalid skill")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateRogueChoices_InsufficientSkills() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Stealth, skills.Acrobatics}, // Only 2, needs 4
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceExpertise,
+			ExpertiseSelection: []string{"stealth", "acrobatics"},
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Rogue, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasSkillError := false
+	for _, e := range errors {
+		if e.Field == fieldSkills {
+			s.Assert().Contains(e.Message, "Rogue requires 4 skill proficiencies, only 2 selected")
+			hasSkillError = true
+		}
+	}
+	s.Assert().True(hasSkillError, "Should have error about insufficient skills")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateRogueChoices_InsufficientExpertise() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Stealth, skills.Acrobatics, skills.Deception, skills.Perception},
+		},
+		{
+			Source:             shared.SourceClass,
+			Category:           shared.ChoiceExpertise,
+			ExpertiseSelection: []string{"stealth"}, // Only 1, needs 2
+		},
+	}
+
+	errors, err := ValidateClassChoices(classes.Rogue, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasExpertiseError := false
+	for _, e := range errors {
+		if e.Field == fieldExpertise {
+			s.Assert().Contains(e.Message, "Rogue requires 2 expertise choices at level 1, only 1 selected")
+			hasExpertiseError = true
+		}
+	}
+	s.Assert().True(hasExpertiseError, "Should have error about insufficient expertise")
+}
+
+func (s *ClassValidatorTestSuite) TestValidateRogueChoices_MissingExpertise() {
+	choices := []character.ChoiceData{
+		{
+			Source:         shared.SourceClass,
+			Category:       shared.ChoiceSkills,
+			SkillSelection: []skills.Skill{skills.Stealth, skills.Acrobatics, skills.Deception, skills.Perception},
+		},
+		// No expertise choice at all
+	}
+
+	errors, err := ValidateClassChoices(classes.Rogue, choices)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(errors)
+
+	hasMissingError := false
+	for _, e := range errors {
+		if e.Field == "class_choices" {
+			s.Assert().Contains(e.Message, "Missing required choices")
+			s.Assert().Contains(e.Message, "expertise")
+			hasMissingError = true
+		}
+	}
+	s.Assert().True(hasMissingError, "Should have error about missing expertise")
 }
