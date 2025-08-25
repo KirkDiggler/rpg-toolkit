@@ -16,6 +16,8 @@ const (
 	fieldTraits           = "traits"
 	fieldRaceSkills       = "race_skills"
 	fieldDraconicAncestry = "draconic_ancestry"
+	fieldCantrips         = "cantrips"
+	fieldSkills           = "skills"
 
 	// Choice types for race validation
 	choiceTypeSkill    = "skill"
