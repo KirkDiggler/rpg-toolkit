@@ -1,4 +1,5 @@
 // Package character provides D&D 5e character creation and management
+//
 //nolint:revive // Interface methods are self-documenting
 package character
 
@@ -31,9 +32,11 @@ type NameChoice struct {
 }
 
 // GetSource returns the source of this choice
-func (c NameChoice) GetSource() shared.ChoiceSource     { return c.Source }
+func (c NameChoice) GetSource() shared.ChoiceSource { return c.Source }
+
 // GetChoiceID returns the unique identifier for this choice
-func (c NameChoice) GetChoiceID() string                { return c.ChoiceID }
+func (c NameChoice) GetChoiceID() string { return c.ChoiceID }
+
 // GetCategory returns the category of this choice
 func (c NameChoice) GetCategory() shared.ChoiceCategory { return shared.ChoiceName }
 
