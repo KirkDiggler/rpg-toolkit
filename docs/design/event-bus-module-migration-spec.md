@@ -8,15 +8,19 @@ This document specifies the migration of spatial, environment, and spawn modules
 
 ### Current State Analysis
 
-**Legacy Pattern**: String-based events with context data injection
+**Current Legacy Pattern**: String-based events with context data injection
 ```go
-// Old: Runtime string matching, no type safety
-event := events.NewGameEvent("spatial.entity.placed", entity, nil)
-eventBus.Publish(context.TODO(), event)
+// Current: String constants + context data
+event := events.NewGameEvent(EventEntityPlaced, entity, nil)
+event.Context().Set("position", pos)
+event.Context().Set("room_id", r.id)
+_ = r.eventBus.Publish(ctx, event)
 
-// Old: String-based subscription
-eventBus.SubscribeFunc("spatial.entity.placed", 0, func(_ context.Context, event events.Event) error {
-    // Type assertion required, runtime errors possible
+// Current: String-based subscription  
+eventBus.SubscribeFunc(EventEntityPlaced, 0, func(_ context.Context, event events.Event) error {
+    // Must extract data from event context - no type safety
+    pos := event.Context().Get("position")
+    roomID := event.Context().Get("room_id") 
     return nil
 })
 ```
@@ -48,21 +52,20 @@ placements.Publish(ctx, EntityPlacedEvent{
 
 ### 1. Spatial Module Migration
 
-#### Current Event Inventory
+#### Current Event Inventory (Actual Implementation)
 
-**Entity Lifecycle Events**:
-- `spatial.entity.placed` → `EntityPlacedEvent`
-- `spatial.entity.moved` → `EntityMovedEvent`
-- `spatial.entity.removed` → `EntityRemovedEvent`
+**Entity Lifecycle Events** (Published from `room.go`):
+- `EventEntityPlaced = "spatial.entity.placed"` → `EntityPlacedEvent`
+- `EventEntityMoved = "spatial.entity.moved"` → `EntityMovedEvent`  
+- `EventEntityRemoved = "spatial.entity.removed"` → `EntityRemovedEvent`
 
-**Room Lifecycle Events**:
-- `spatial.room.created` → `RoomCreatedEvent`
-- `spatial.orchestrator.room_added` → `RoomAddedEvent`
+**Room Lifecycle Events** (Published from `room.go`):
+- `EventRoomCreated = "spatial.room.created"` → `RoomCreatedEvent`
 
-**Query Events** (Special Consideration):
-- `spatial.query.positions_in_range` → `PositionQueryEvent`
-- `spatial.query.entities_in_range` → `EntityQueryEvent`
-- Query events require request/response pattern evaluation
+**Query Events** (Used in query handlers - **keep as function calls**):
+- `EventQueryPositionsInRange`, `EventQueryEntitiesInRange`, etc.
+- These are request/response patterns, not notifications
+- **Decision**: Keep queries as direct function calls, don't migrate to events
 
 #### Migration Implementation
 
@@ -127,43 +130,46 @@ var (
 )
 ```
 
-**3. Room Implementation Update**
+**3. Room Implementation Update** (Exact Migration)
 
 ```go
 // File: tools/spatial/room.go
 
 type Room struct {
-    // ... existing fields ...
+    // ... existing fields (keep all current fields) ...
     
-    // New: Type-safe event publishers
+    // REPLACE: eventBus events.EventBus 
+    // WITH: Type-safe event publishers  
     entityPlacements TypedTopic[EntityPlacedEvent]
-    entityMovements  TypedTopic[EntityMovedEvent]
+    entityMovements  TypedTopic[EntityMovedEvent]  
     entityRemovals   TypedTopic[EntityRemovedEvent]
+    roomCreated      TypedTopic[RoomCreatedEvent]
 }
 
-// New: Event bus connection method
+// REPLACE: eventBus in constructor config
+// WITH: ConnectToEventBus method called after creation
 func (r *Room) ConnectToEventBus(bus events.EventBus) {
     r.entityPlacements = EntityPlacedTopic.On(bus)
     r.entityMovements = EntityMovedTopic.On(bus)
     r.entityRemovals = EntityRemovedTopic.On(bus)
+    r.roomCreated = RoomCreatedTopic.On(bus)
 }
 
-// Updated: Type-safe event publishing
+// EXACT REPLACEMENT for current publishing pattern:
+// OLD: event := events.NewGameEvent(EventEntityPlaced, entity, nil)
+//      event.Context().Set("position", pos)
+//      _ = r.eventBus.Publish(ctx, event)
+// NEW: Type-safe event publishing
 func (r *Room) PlaceEntity(ctx context.Context, entity core.Entity, position Position) error {
-    // ... existing placement logic ...
+    // ... existing placement logic (unchanged) ...
     
-    // Publish type-safe event
+    // REPLACE legacy event publishing
     if r.entityPlacements != nil {
-        err := r.entityPlacements.Publish(ctx, EntityPlacedEvent{
+        _ = r.entityPlacements.Publish(ctx, EntityPlacedEvent{
             EntityID: entity.GetID(),
             Position: position,
             RoomID:   r.id,
-            GridType: r.grid.Type(),
         })
-        if err != nil {
-            // Log but don't fail the operation
-            fmt.Printf("Failed to publish entity placed event: %v", err)
-        }
     }
     
     return nil
@@ -581,17 +587,25 @@ func (e *BasicSpawnEngine) ConnectToEventBus(bus events.EventBus) {
 
 ### Phase 1: Foundation & Module Migration (Week 1)
 
-**Goals**:
-- Define all event types and topics for all modules
-- Replace legacy string-based events with type-safe events
-- Remove old event system code completely
+**Day 1-2: Event Type & Topic Definitions**
+1. Create `tools/spatial/topics.go` with typed topic definitions
+2. Create `tools/environments/topics.go` with typed topic definitions
+3. Create `tools/spawn/topics.go` with typed topic definitions
+4. Update existing `events.go` files with new event struct types
 
-**Deliverables**:
-- `tools/spatial/events.go`, `topics.go` - Entity/room lifecycle events
-- `tools/environments/events.go`, `topics.go` - Generation/environment events  
-- `tools/spawn/events.go`, `topics.go` - Spawn/capacity events
-- Updated Room, Orchestrator, GraphGenerator, BasicSpawnEngine implementations
-- Complete removal of legacy event constants and publishing code
+**Day 3-4: Spatial Module Migration**
+1. Update `tools/spatial/room.go`:
+   - Replace `eventBus events.EventBus` field with typed topics
+   - Add `ConnectToEventBus(bus events.EventBus)` method
+   - Replace all `events.NewGameEvent()` calls with typed publishing
+2. Update `tools/spatial/basic_orchestrator.go` similarly
+3. Remove legacy event constants from `tools/spatial/events.go`
+
+**Day 5: Environment & Spawn Module Migration**
+1. Update `tools/environments/graph_generator.go` event publishing
+2. Update `tools/spawn/basic_engine.go` event publishing  
+3. Remove all legacy event constants and `NewGameEvent` calls
+4. Add `ConnectToEventBus` methods to all components
 
 ### Phase 2: Integration & Testing (Week 2)
 
@@ -798,3 +812,37 @@ This migration transforms the rpg-toolkit from a runtime string-based event syst
 With no external users requiring backwards compatibility, this becomes a straightforward refactoring that can be completed in 3-4 weeks. The clean cut-over approach eliminates migration complexity while comprehensive testing ensures functional correctness and performance validation.
 
 Upon completion, the toolkit will have a more maintainable, discoverable, and reliable event system that provides compile-time safety and explicit event flow visualization for the complex interactions between spatial, environment, and spawn modules.
+
+## Exact Migration Checklist
+
+### Spatial Module (`tools/spatial/`)
+- [ ] Create `topics.go` with `EntityPlacedTopic`, `EntityMovedTopic`, `EntityRemovedTopic`, `RoomCreatedTopic`
+- [ ] Update `events.go` - replace legacy constants with event structs
+- [ ] Update `room.go`:
+  - [ ] Replace `eventBus events.EventBus` field with typed topic fields
+  - [ ] Add `ConnectToEventBus(bus events.EventBus)` method
+  - [ ] Replace 4 `events.NewGameEvent()` calls with typed publishing (lines ~50, ~119, ~162, ~196)
+- [ ] Update `basic_orchestrator.go` - same pattern as room.go
+- [ ] Update constructors to remove `EventBus` from config, call `ConnectToEventBus` after creation
+
+### Environment Module (`tools/environments/`)  
+- [ ] Create `topics.go` with all generation lifecycle topics
+- [ ] Update `events.go` - replace 20+ event constants with event structs
+- [ ] Update `graph_generator.go`:
+  - [ ] Replace `eventBus events.EventBus` field with typed topics  
+  - [ ] Add `ConnectToEventBus(bus events.EventBus)` method
+  - [ ] Replace `events.NewGameEvent()` calls in generation methods (lines ~123, ~160, ~1046, ~1055)
+- [ ] Update other files with event publishing: `environment.go`, `wall_patterns.go`, `query_handler.go`
+
+### Spawn Module (`tools/spawn/`)
+- [ ] Create `topics.go` with `EntitySpawnedTopic`, `SplitRecommendedTopic`, `RoomScaledTopic`  
+- [ ] Update `basic_engine.go`:
+  - [ ] Add typed topic fields and `ConnectToEventBus` method
+  - [ ] Replace hardcoded `"spawn.entity.spawned"` string with typed publishing (line ~305)
+- [ ] Update `capacity_analysis.go` if it has event publishing
+
+### Global Changes
+- [ ] Update all example and test files to use new connection pattern
+- [ ] Update all constructors that previously took `EventBus` parameter  
+- [ ] Search and remove all remaining `events.NewGameEvent()` calls
+- [ ] Update any cross-module event subscriptions to use new typed topics
