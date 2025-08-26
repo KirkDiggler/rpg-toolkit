@@ -123,29 +123,6 @@ type FeatRequirement struct {
 	Label string `json:"label"`
 }
 
-// ValidationResult represents the result of validating choices
-type ValidationResult struct {
-	Valid    bool                `json:"valid"`
-	Errors   []ValidationError   `json:"errors,omitempty"`
-	Warnings []ValidationWarning `json:"warnings,omitempty"`
-}
-
-// ValidationError represents a validation error that blocks character creation
-type ValidationError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-}
-
-// ValidationWarning represents a validation warning (informational, doesn't block)
-type ValidationWarning struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-	Type    string `json:"type"` // e.g., "duplicate_skill", "missing_prerequisite"
-}
-
-// Submissions represents player choices submitted for validation
-type Submissions map[string][]string
-
 // API Functions - These are the main entry points
 
 // GetClassRequirements returns the requirements for a specific class at a given level
@@ -177,26 +154,36 @@ func GetRequirements(classID classes.Class, raceID races.Race, level int) *Requi
 	return mergeRequirements(classReqs, raceReqs)
 }
 
+// Validate provides validation with severity levels and typed submissions
+func Validate(
+	classID classes.Class,
+	raceID races.Race,
+	backgroundID backgrounds.Background,
+	level int,
+	submissions *TypedSubmissions,
+	context *ValidationContext,
+) *ValidationResult {
+	validator := NewValidator(context)
+	return validator.ValidateAll(classID, raceID, backgroundID, level, submissions)
+}
+
 // ValidateClassChoices validates choices for a specific class
-func ValidateClassChoices(classID classes.Class, level int, submissions Submissions) *ValidationResult {
-	// Implementation in validator.go
-	return validateClassChoicesInternal(classID, level, submissions)
+func ValidateClassChoices(
+	classID classes.Class,
+	level int,
+	submissions *TypedSubmissions,
+	context *ValidationContext,
+) *ValidationResult {
+	validator := NewValidator(context)
+	return validator.ValidateClassChoices(classID, level, submissions)
 }
 
 // ValidateRaceChoices validates choices for a specific race
-func ValidateRaceChoices(raceID races.Race, submissions Submissions) *ValidationResult {
-	// Implementation in validator.go
-	return validateRaceChoicesInternal(raceID, submissions)
-}
-
-// ValidateBackgroundChoices validates choices for a specific background
-func ValidateBackgroundChoices(backgroundID backgrounds.Background, submissions Submissions) *ValidationResult {
-	// Implementation in validator.go
-	return validateBackgroundChoicesInternal(backgroundID, submissions)
-}
-
-// Validate validates all choices for a character (used for level-up and cross-source validation)
-func Validate(classID classes.Class, raceID races.Race, level int, submissions Submissions) *ValidationResult {
-	// Implementation in validator.go
-	return validateAllInternal(classID, raceID, level, submissions)
+func ValidateRaceChoices(
+	raceID races.Race,
+	submissions *TypedSubmissions,
+	context *ValidationContext,
+) *ValidationResult {
+	validator := NewValidator(context)
+	return validator.ValidateRaceChoices(raceID, submissions)
 }
