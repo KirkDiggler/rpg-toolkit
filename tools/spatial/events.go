@@ -3,20 +3,11 @@ package spatial
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
-// Spatial event constants following the toolkit's dot notation pattern
+// Legacy event constants kept only for query operations (non-notification events)
 const (
-	// Entity placement events
-	EventEntityPlaced  = "spatial.entity.placed"
-	EventEntityMoved   = "spatial.entity.moved"
-	EventEntityRemoved = "spatial.entity.removed"
-
-	// Room events
-	EventRoomCreated = "spatial.room.created"
-
-	// Query events
+	// Query events - these remain as direct function calls, not migrated to typed events
 	EventQueryPositionsInRange = "spatial.query.positions_in_range"
 	EventQueryEntitiesInRange  = "spatial.query.entities_in_range"
 	EventQueryLineOfSight      = "spatial.query.line_of_sight"
@@ -24,34 +15,8 @@ const (
 	EventQueryPlacement        = "spatial.query.placement"
 )
 
-// EntityPlacedData contains data for entity placement events
-type EntityPlacedData struct {
-	Entity   core.Entity `json:"entity"`
-	Position Position    `json:"position"`
-	RoomID   string      `json:"room_id"`
-}
-
-// EntityMovedData contains data for entity movement events
-type EntityMovedData struct {
-	Entity      core.Entity `json:"entity"`
-	OldPosition Position    `json:"old_position"`
-	NewPosition Position    `json:"new_position"`
-	RoomID      string      `json:"room_id"`
-}
-
-// EntityRemovedData contains data for entity removal events
-type EntityRemovedData struct {
-	Entity   core.Entity `json:"entity"`
-	Position Position    `json:"position"`
-	RoomID   string      `json:"room_id"`
-}
-
-// RoomCreatedData contains data for room creation events
-type RoomCreatedData struct {
-	RoomID   string          `json:"room_id"`
-	Grid     Grid            `json:"grid"`
-	EventBus events.EventBus `json:"-"` // Don't serialize event bus
-}
+// NOTE: Entity and room lifecycle events have been migrated to typed topics.
+// See topics.go for: EntityPlacedEvent, EntityMovedEvent, EntityRemovedEvent, RoomCreatedEvent
 
 // QueryPositionsInRangeData contains data for position range queries
 type QueryPositionsInRangeData struct {

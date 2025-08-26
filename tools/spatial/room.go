@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -14,7 +15,12 @@ type BasicRoom struct {
 	id       string
 	roomType string
 	grid     Grid
-	eventBus events.EventBus
+
+	// Type-safe event publishers (replaces eventBus events.EventBus)
+	entityPlacements events.TypedTopic[EntityPlacedEvent]
+	entityMovements  events.TypedTopic[EntityMovedEvent]
+	entityRemovals   events.TypedTopic[EntityRemovedEvent]
+	roomCreated      events.TypedTopic[RoomCreatedEvent]
 
 	// Triple entity tracking for efficient lookups
 	entities  map[string]core.Entity // ID -> Entity
@@ -27,33 +33,46 @@ type BasicRoom struct {
 
 // BasicRoomConfig holds configuration for creating a basic room
 type BasicRoomConfig struct {
-	ID       string
-	Type     string
-	Grid     Grid
-	EventBus events.EventBus
+	ID   string
+	Type string
+	Grid Grid
+	// EventBus removed - use ConnectToEventBus() method after creation
 }
 
-// NewBasicRoom creates a new basic room with event integration
+// NewBasicRoom creates a new basic room (call ConnectToEventBus after creation)
 func NewBasicRoom(config BasicRoomConfig) *BasicRoom {
 	room := &BasicRoom{
 		id:        config.ID,
 		roomType:  config.Type,
 		grid:      config.Grid,
-		eventBus:  config.EventBus,
+		// Event topics will be connected via ConnectToEventBus()
 		entities:  make(map[string]core.Entity),
 		positions: make(map[string]Position),
 		occupancy: make(map[Position][]string),
 	}
 
-	// Emit room creation event
-	if room.eventBus != nil {
-		event := events.NewGameEvent(EventRoomCreated, nil, nil)
-		event.Context().Set("room_id", room.id)
-		event.Context().Set("grid", room.grid)
-		_ = room.eventBus.Publish(context.Background(), event)
-	}
-
 	return room
+}
+
+// ConnectToEventBus connects the room to an event bus for typed event publishing
+func (r *BasicRoom) ConnectToEventBus(bus events.EventBus) {
+	r.entityPlacements = EntityPlacedTopic.On(bus)
+	r.entityMovements = EntityMovedTopic.On(bus)
+	r.entityRemovals = EntityRemovedTopic.On(bus)
+	r.roomCreated = RoomCreatedTopic.On(bus)
+
+	// Now emit room creation event since we're connected
+	if r.roomCreated != nil {
+		dimensions := r.grid.GetDimensions()
+		_ = r.roomCreated.Publish(context.Background(), RoomCreatedEvent{
+			RoomID:       r.id,
+			RoomType:     r.roomType,
+			GridType:     gridShapeToString(r.grid.GetShape()),
+			Width:        int(dimensions.Width),
+			Height:       int(dimensions.Height),
+			CreationTime: time.Now(),
+		})
+	}
 }
 
 // GetID returns the room's unique identifier (implements core.Entity)
@@ -71,19 +90,7 @@ func (r *BasicRoom) GetGrid() Grid {
 	return r.grid
 }
 
-// SetEventBus sets the event bus for the room
-func (r *BasicRoom) SetEventBus(bus events.EventBus) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	r.eventBus = bus
-}
-
-// GetEventBus returns the current event bus
-func (r *BasicRoom) GetEventBus() events.EventBus {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-	return r.eventBus
-}
+// Note: SetEventBus/GetEventBus methods removed - use ConnectToEventBus() instead
 
 // PlaceEntity places an entity at a specific position
 func (r *BasicRoom) PlaceEntity(entity core.Entity, pos Position) error {
@@ -115,11 +122,13 @@ func (r *BasicRoom) PlaceEntity(entity core.Entity, pos Position) error {
 	r.addToOccupancyUnsafe(entity.GetID(), pos)
 
 	// Emit placement event
-	if r.eventBus != nil {
-		event := events.NewGameEvent(EventEntityPlaced, entity, nil)
-		event.Context().Set("position", pos)
-		event.Context().Set("room_id", r.id)
-		_ = r.eventBus.Publish(context.Background(), event)
+	if r.entityPlacements != nil {
+		_ = r.entityPlacements.Publish(context.Background(), EntityPlacedEvent{
+			EntityID: entity.GetID(),
+			Position: pos,
+			RoomID:   r.id,
+			GridType: gridShapeToString(r.grid.GetShape()),
+		})
 	}
 
 	return nil
@@ -158,12 +167,14 @@ func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 	r.addToOccupancyUnsafe(entityID, newPos)
 
 	// Emit movement event
-	if r.eventBus != nil {
-		event := events.NewGameEvent(EventEntityMoved, entity, nil)
-		event.Context().Set("old_position", oldPos)
-		event.Context().Set("new_position", newPos)
-		event.Context().Set("room_id", r.id)
-		_ = r.eventBus.Publish(context.Background(), event)
+	if r.entityMovements != nil {
+		_ = r.entityMovements.Publish(context.Background(), EntityMovedEvent{
+			EntityID:     entity.GetID(),
+			FromPosition: oldPos,
+			ToPosition:   newPos,
+			RoomID:       r.id,
+			MovementType: "normal", // Could be "teleport", "forced" based on context
+		})
 	}
 
 	return nil
@@ -192,11 +203,13 @@ func (r *BasicRoom) RemoveEntity(entityID string) error {
 	r.removeFromOccupancyUnsafe(entityID, pos)
 
 	// Emit removal event
-	if r.eventBus != nil {
-		event := events.NewGameEvent(EventEntityRemoved, entity, nil)
-		event.Context().Set("position", pos)
-		event.Context().Set("room_id", r.id)
-		_ = r.eventBus.Publish(context.Background(), event)
+	if r.entityRemovals != nil {
+		_ = r.entityRemovals.Publish(context.Background(), EntityRemovedEvent{
+			EntityID:    entity.GetID(),
+			Position:    pos,
+			RoomID:      r.id,
+			RemovalType: "normal", // Could be "destroyed", "teleported" based on context
+		})
 	}
 
 	return nil
@@ -388,4 +401,18 @@ func (r *BasicRoom) GetOccupiedPositions() []Position {
 	}
 
 	return positions
+}
+
+// gridShapeToString converts GridShape to string for events
+func gridShapeToString(shape GridShape) string {
+	switch shape {
+	case GridShapeSquare:
+		return "square"
+	case GridShapeHex:
+		return "hex"
+	case GridShapeGridless:
+		return "gridless"
+	default:
+		return "unknown"
+	}
 }
