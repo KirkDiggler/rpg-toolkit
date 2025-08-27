@@ -137,7 +137,7 @@ func TestLoadDraftFromData_Validation(t *testing.T) {
 	t.Run("Invalid Background", func(t *testing.T) {
 		data := DraftData{
 			ID: "test-draft",
-			BackgroundChoice: backgrounds.Background("pirate"), // Not defined
+			BackgroundChoice: backgrounds.Background("invalid-background"), // Not defined
 		}
 
 		_, err := LoadDraftFromData(data)
