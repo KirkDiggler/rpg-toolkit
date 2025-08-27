@@ -168,9 +168,17 @@ const (
 
 // NewCountError creates a validation issue for incorrect count
 func NewCountError(field Field, expected, actual int, itemType string) ValidationIssue {
+	// If nothing selected yet (actual == 0), it's incomplete not error
+	severity := SeverityError
+	code := CodeExactCountRequired
+	if actual == 0 {
+		severity = SeverityIncomplete
+		code = CodeMissingRequired
+	}
+	
 	return ValidationIssue{
-		Code:     CodeExactCountRequired,
-		Severity: SeverityError,
+		Code:     code,
+		Severity: severity,
 		Field:    field,
 		Message:  fmt.Sprintf(MessageExactCount, expected, itemType, actual),
 		Details: map[DetailKey]any{

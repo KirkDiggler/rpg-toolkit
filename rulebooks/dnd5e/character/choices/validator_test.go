@@ -94,9 +94,9 @@ func (s *ValidatorTestSuite) TestValidateClassChoices_Fighter() {
 				})
 				return subs
 			},
-			expectCanSave:     false,
+			expectCanSave:     true,  // Missing choices are incomplete, not errors
 			expectCanFinalize: false,
-			expectErrorCount:  1,
+			expectErrorCount:  0,     // No errors, just incomplete
 			expectWarnCount:   0,
 		},
 		{
@@ -379,7 +379,7 @@ func (s *ValidatorTestSuite) TestValidateRaceChoices_HalfElf() {
 				})
 				return subs
 			},
-			expectCanSave:     false,
+			expectCanSave:     true,  // Missing choices are incomplete, not errors
 			expectCanFinalize: false,
 		},
 	}
@@ -475,11 +475,11 @@ func (s *ValidatorTestSuite) TestValidationSeverityLevels() {
 
 	// Should have incomplete issues
 	s.False(result.CanFinalize, "Missing choices should prevent finalization")
-	s.NotEmpty(result.Errors, "Should have errors for missing required choices")
+	s.NotEmpty(result.Incomplete, "Should have incomplete issues for missing required choices")
 
 	// Check severity categorization
-	for _, err := range result.Errors {
-		s.Equal(SeverityError, err.Severity)
+	for _, inc := range result.Incomplete {
+		s.Equal(SeverityIncomplete, inc.Severity)
 	}
 }
 

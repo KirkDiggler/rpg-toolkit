@@ -8,9 +8,12 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -142,13 +145,33 @@ func LoadDraftFromData(data DraftData) (*Draft, error) {
 		return nil, errors.New("draft ID is required")
 	}
 
+	// Validate that class/race/background are valid constants
+	// This ensures we fail fast on bad data from the database
+	if data.ClassChoice.ClassID != "" {
+		if _, err := classes.GetByID(string(data.ClassChoice.ClassID)); err != nil {
+			return nil, fmt.Errorf("invalid class in draft data '%s': %w", data.ClassChoice.ClassID, err)
+		}
+	}
+
+	if data.RaceChoice.RaceID != "" {
+		if _, err := races.GetByID(string(data.RaceChoice.RaceID)); err != nil {
+			return nil, fmt.Errorf("invalid race in draft data '%s': %w", data.RaceChoice.RaceID, err)
+		}
+	}
+
+	if data.BackgroundChoice != "" {
+		if _, err := backgrounds.GetByID(string(data.BackgroundChoice)); err != nil {
+			return nil, fmt.Errorf("invalid background in draft data '%s': %w", data.BackgroundChoice, err)
+		}
+	}
+
 	return &Draft{
 		ID:       data.ID,
 		PlayerID: data.PlayerID,
 		Name:     data.Name,
 		Progress: DraftProgress{flags: data.ProgressFlags},
 
-		// Load core identity choices
+		// Load core identity choices - now validated
 		RaceChoice:         data.RaceChoice,
 		ClassChoice:        data.ClassChoice,
 		BackgroundChoice:   data.BackgroundChoice,
@@ -192,6 +215,68 @@ func (d *Draft) GetProgress() DraftProgress {
 // IsComplete returns true if the draft has all required fields to create a character
 func (d *Draft) IsComplete() bool {
 	return d.isComplete()
+}
+
+// ValidateChoices validates the draft's choices using the new choices validation system
+func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
+	// Can only validate if we have class/race/background selected
+	if d.ClassChoice.ClassID == "" || d.RaceChoice.RaceID == "" {
+		return nil, errors.New("class and race must be selected before validating choices")
+	}
+
+	// Convert ChoiceData to TypedSubmissions
+	submissions := choices.NewTypedSubmissions()
+	for _, choice := range d.Choices {
+		// Convert shared types to choices types
+		source := convertChoiceSource(choice.Source)
+		field := convertChoiceCategory(choice.Category)
+		values := extractChoiceValues(choice)
+
+		if len(values) > 0 {
+			submissions.AddChoice(choices.ChoiceSubmission{
+				Source:   source,
+				Field:    field,
+				ChoiceID: choice.ChoiceID,
+				Values:   values,
+			})
+		}
+	}
+
+	// Build validation context with current proficiencies
+	context := d.buildValidationContext()
+
+	// Create validator and validate with typed constants from the Draft
+	validator := choices.NewValidator(context)
+	return validator.ValidateAll(
+		d.ClassChoice.ClassID,
+		d.RaceChoice.RaceID,
+		d.BackgroundChoice,
+		1, // Level 1 for now
+		submissions,
+	), nil
+}
+
+// buildValidationContext creates a validation context from the draft's current state
+func (d *Draft) buildValidationContext() *choices.ValidationContext {
+	context := choices.NewValidationContext()
+	
+	// Add skill proficiencies from all sources
+	for _, choice := range d.Choices {
+		if choice.Category == shared.ChoiceSkills {
+			for _, skill := range choice.SkillSelection {
+				context.AddProficiency(string(skill))
+			}
+		} else if choice.Category == shared.ChoiceToolProficiency {
+			for _, tool := range choice.ToolProficiencySelection {
+				context.AddProficiency(tool)
+			}
+		}
+	}
+	
+	context.CharacterLevel = 1 // For now, always level 1
+	context.ClassLevel = 1
+	
+	return context
 }
 
 // Helper methods for DraftProgress
