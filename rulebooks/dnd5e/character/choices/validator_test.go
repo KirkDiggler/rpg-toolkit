@@ -94,9 +94,9 @@ func (s *ValidatorTestSuite) TestValidateClassChoices_Fighter() {
 				})
 				return subs
 			},
-			expectCanSave:     true,  // Missing choices are incomplete, not errors
+			expectCanSave:     true, // Missing choices are incomplete, not errors
 			expectCanFinalize: false,
-			expectErrorCount:  0,     // No errors, just incomplete
+			expectErrorCount:  0, // No errors, just incomplete
 			expectWarnCount:   0,
 		},
 		{
@@ -379,7 +379,7 @@ func (s *ValidatorTestSuite) TestValidateRaceChoices_HalfElf() {
 				})
 				return subs
 			},
-			expectCanSave:     true,  // Missing choices are incomplete, not errors
+			expectCanSave:     true, // Missing choices are incomplete, not errors
 			expectCanFinalize: false,
 		},
 	}

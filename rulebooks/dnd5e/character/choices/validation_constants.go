@@ -175,7 +175,7 @@ func NewCountError(field Field, expected, actual int, itemType string) Validatio
 		severity = SeverityIncomplete
 		code = CodeMissingRequired
 	}
-	
+
 	return ValidationIssue{
 		Code:     code,
 		Severity: severity,

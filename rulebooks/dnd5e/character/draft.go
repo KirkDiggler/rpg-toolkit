@@ -259,7 +259,7 @@ func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
 // buildValidationContext creates a validation context from the draft's current state
 func (d *Draft) buildValidationContext() *choices.ValidationContext {
 	context := choices.NewValidationContext()
-	
+
 	// Add skill proficiencies from all sources
 	for _, choice := range d.Choices {
 		switch choice.Category {
@@ -273,10 +273,10 @@ func (d *Draft) buildValidationContext() *choices.ValidationContext {
 			}
 		}
 	}
-	
+
 	context.CharacterLevel = 1 // For now, always level 1
 	context.ClassLevel = 1
-	
+
 	return context
 }
 

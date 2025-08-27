@@ -40,14 +40,14 @@ func TestDraft_ValidateChoices(t *testing.T) {
 		result, err := draft.ValidateChoices()
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		
+
 		// Debug output
 		if !result.CanSave {
 			for _, err := range result.Errors {
 				t.Logf("Error: %s", err.Message)
 			}
 		}
-		
+
 		// Fighter requires 2 skills, fighting style, and equipment
 		// We only provided skills, so should have incomplete for missing choices
 		assert.True(t, result.CanSave, "Should be able to save with valid skill choices")
@@ -94,7 +94,7 @@ func TestDraft_ValidateChoices(t *testing.T) {
 		result, err := draft.ValidateChoices()
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		
+
 		// Should have error for duplicate skill
 		assert.False(t, result.CanSave)
 		assert.NotEmpty(t, result.Errors)
@@ -136,7 +136,7 @@ func TestLoadDraftFromData_Validation(t *testing.T) {
 
 	t.Run("Invalid Background", func(t *testing.T) {
 		data := DraftData{
-			ID: "test-draft",
+			ID:               "test-draft",
 			BackgroundChoice: backgrounds.Background("invalid-background"), // Not defined
 		}
 
