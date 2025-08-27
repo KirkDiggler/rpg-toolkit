@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/game"
 )
@@ -23,8 +24,8 @@ func (m *MockEntity) GetID() string {
 	return m.id
 }
 
-func (m *MockEntity) GetType() string {
-	return m.entityType
+func (m *MockEntity) GetType() core.EntityType {
+	return core.EntityType(m.entityType)
 }
 
 func (m *MockEntity) GetSize() int {
@@ -49,7 +50,7 @@ type RoomDataTestSuite struct {
 }
 
 func (s *RoomDataTestSuite) SetupTest() {
-	s.eventBus = events.NewBus()
+	s.eventBus = events.NewEventBus()
 }
 
 func TestRoomDataSuite(t *testing.T) {
@@ -65,8 +66,8 @@ func (s *RoomDataTestSuite) TestToDataBasicRoom() {
 			Width:  10,
 			Height: 10,
 		}),
-		EventBus: s.eventBus,
 	})
+	room.ConnectToEventBus(s.eventBus)
 
 	// Add some entities
 	entity1 := &MockEntity{
@@ -131,8 +132,8 @@ func (s *RoomDataTestSuite) TestToDataHexRoom() {
 			Width:  8,
 			Height: 8,
 		}),
-		EventBus: s.eventBus,
 	})
+	room.ConnectToEventBus(s.eventBus)
 
 	// Convert to data
 	data := room.ToData()
@@ -152,8 +153,8 @@ func (s *RoomDataTestSuite) TestToDataGridlessRoom() {
 			Width:  20,
 			Height: 15,
 		}),
-		EventBus: s.eventBus,
 	})
+	room.ConnectToEventBus(s.eventBus)
 
 	// Convert to data
 	data := room.ToData()
@@ -192,7 +193,7 @@ func (s *RoomDataTestSuite) TestLoadRoomFromContext() {
 
 	// Verify room properties
 	s.Equal("loaded-room", room.GetID())
-	s.Equal("tavern", room.GetType())
+	s.Equal(core.EntityType("tavern"), room.GetType())
 
 	// Verify grid
 	grid := room.GetGrid()
@@ -209,7 +210,7 @@ func (s *RoomDataTestSuite) TestLoadRoomFromContext() {
 	bartenderEntity, exists := entities["bartender"]
 	s.True(exists)
 	s.Equal("bartender", bartenderEntity.GetID())
-	s.Equal("npc", bartenderEntity.GetType())
+	s.Equal(core.EntityType("npc"), bartenderEntity.GetType())
 
 	// Verify position
 	pos, ok := room.GetEntityPosition("bartender")
@@ -293,8 +294,8 @@ func (s *RoomDataTestSuite) TestRoundTripConversion() {
 			Width:  15,
 			Height: 12,
 		}),
-		EventBus: s.eventBus,
 	})
+	originalRoom.ConnectToEventBus(s.eventBus)
 
 	// Add entities
 	entity := &MockEntity{
@@ -349,8 +350,8 @@ func (s *RoomDataTestSuite) TestSpatialPropertiesPreserved() {
 			Width:  20,
 			Height: 20,
 		}),
-		EventBus: s.eventBus,
 	})
+	room.ConnectToEventBus(s.eventBus)
 
 	// Add a large creature that blocks LOS
 	dragon := &MockEntity{
@@ -419,8 +420,8 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 				Height:    float64(height),
 				PointyTop: pointyTop,
 			}),
-			EventBus: s.eventBus,
 		})
+		room.ConnectToEventBus(s.eventBus)
 
 		// Convert to data
 		data := room.ToData()
@@ -486,8 +487,8 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 				Width:  10,
 				Height: 10,
 			}),
-			EventBus: s.eventBus,
 		})
+		room.ConnectToEventBus(s.eventBus)
 
 		// Convert to data
 		data := room.ToData()

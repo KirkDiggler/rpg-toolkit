@@ -1,6 +1,7 @@
 package selectables
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -24,8 +25,18 @@ type BasicTable[T comparable] struct {
 	items map[T]int
 	mutex sync.RWMutex
 
-	// Event integration
-	eventPublisher *EventPublisher
+	// Connected typed topics for event publishing
+	connectedTopics struct {
+		tableCreated       events.TypedTopic[SelectionTableCreatedEvent]
+		tableDestroyed     events.TypedTopic[SelectionTableDestroyedEvent]
+		itemAdded          events.TypedTopic[ItemAddedEvent]
+		itemRemoved        events.TypedTopic[ItemRemovedEvent]
+		weightChanged      events.TypedTopic[WeightChangedEvent]
+		selectionStarted   events.TypedTopic[SelectionStartedEvent]
+		selectionCompleted events.TypedTopic[SelectionCompletedEvent]
+		selectionFailed    events.TypedTopic[SelectionFailedEvent]
+		contextModified    events.TypedTopic[ContextModifiedEvent]
+	}
 
 	// Weight calculation caching for performance
 	cachedWeights    map[string]map[T]int // keyed by context hash
@@ -38,9 +49,6 @@ type BasicTable[T comparable] struct {
 type BasicTableConfig struct {
 	// ID uniquely identifies this table for debugging and events
 	ID string
-
-	// EventBus enables event publishing for selection operations
-	EventBus events.EventBus
 
 	// Configuration customizes table behavior
 	Configuration TableConfiguration
@@ -70,23 +78,34 @@ func NewBasicTable[T comparable](config BasicTableConfig) SelectionTable[T] {
 		lastModification: time.Now(),
 	}
 
-	// Set up event publishing if event bus is provided
-	if config.EventBus != nil {
-		table.eventPublisher = NewEventPublisher(config.EventBus)
-
-		// Publish table creation event
-		if table.config.EnableEvents {
-			table.publishTableEvent(EventSelectionTableCreated, TableEventData{
-				TableID:       table.id,
-				TableType:     "basic",
-				Operation:     "created",
-				TableSize:     0,
-				Configuration: table.config,
-			})
-		}
-	}
-
 	return table
+}
+
+// ConnectToEventBus connects all typed topics to the event bus
+func (t *BasicTable[T]) ConnectToEventBus(bus events.EventBus) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	// Connect all typed topics
+	t.connectedTopics.tableCreated = SelectionTableCreatedTopic.On(bus)
+	t.connectedTopics.tableDestroyed = SelectionTableDestroyedTopic.On(bus)
+	t.connectedTopics.itemAdded = ItemAddedTopic.On(bus)
+	t.connectedTopics.itemRemoved = ItemRemovedTopic.On(bus)
+	t.connectedTopics.weightChanged = WeightChangedTopic.On(bus)
+	t.connectedTopics.selectionStarted = SelectionStartedTopic.On(bus)
+	t.connectedTopics.selectionCompleted = SelectionCompletedTopic.On(bus)
+	t.connectedTopics.selectionFailed = SelectionFailedTopic.On(bus)
+	t.connectedTopics.contextModified = ContextModifiedTopic.On(bus)
+
+	// Publish table creation event if events are enabled
+	if t.config.EnableEvents && t.connectedTopics.tableCreated != nil {
+		event := SelectionTableCreatedEvent{
+			TableID:   t.id,
+			TableType: "basic",
+			CreatedAt: time.Now(),
+		}
+		_ = t.connectedTopics.tableCreated.Publish(context.Background(), event)
+	}
 }
 
 // Add includes an item in the selection table with the specified weight
@@ -112,21 +131,27 @@ func (t *BasicTable[T]) Add(item T, weight int) SelectionTable[T] {
 	}
 
 	// Publish item added event
-	if t.config.EnableEvents && t.eventPublisher != nil {
-		operation := "added"
-		if existed {
-			operation = "weight_changed"
+	if t.config.EnableEvents {
+		if existed && t.connectedTopics.weightChanged != nil {
+			// Weight was changed for existing item
+			event := WeightChangedEvent{
+				TableID:   t.id,
+				ItemID:    fmt.Sprintf("%v", item),
+				OldWeight: previousWeight,
+				NewWeight: weight,
+				ChangedAt: time.Now(),
+			}
+			_ = t.connectedTopics.weightChanged.Publish(context.Background(), event)
+		} else if !existed && t.connectedTopics.itemAdded != nil {
+			// New item was added
+			event := ItemAddedEvent{
+				TableID: t.id,
+				ItemID:  fmt.Sprintf("%v", item),
+				Weight:  weight,
+				AddedAt: time.Now(),
+			}
+			_ = t.connectedTopics.itemAdded.Publish(context.Background(), event)
 		}
-
-		t.publishTableEvent(EventItemAdded, TableEventData{
-			TableID:        t.id,
-			TableType:      "basic",
-			Operation:      operation,
-			Item:           item,
-			Weight:         weight,
-			PreviousWeight: previousWeight,
-			TableSize:      len(t.items),
-		})
 	}
 
 	return t
@@ -173,20 +198,50 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 
 	if t.IsEmpty() {
 		err := NewSelectionError("select", t.id, ctx, ErrEmptyTable)
-		t.publishSelectionFailedEvent("select", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select",
+				RequestCount:  1,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return zeroValue, err
 	}
 
 	if ctx == nil {
 		err := NewSelectionError("select", t.id, ctx, ErrContextRequired)
-		t.publishSelectionFailedEvent("select", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select",
+				RequestCount:  1,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return zeroValue, err
 	}
 
 	roller := ctx.GetDiceRoller()
 	if roller == nil {
 		err := NewSelectionError("select", t.id, ctx, ErrDiceRollerRequired)
-		t.publishSelectionFailedEvent("select", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select",
+				RequestCount:  1,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return zeroValue, err
 	}
 
@@ -194,7 +249,17 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 	effectiveWeights, err := t.getEffectiveWeights(ctx)
 	if err != nil {
 		selectionErr := NewSelectionError("select", t.id, ctx, err)
-		t.publishSelectionFailedEvent("select", ctx, selectionErr, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select",
+				RequestCount:  1,
+				SelectionMode: "standard",
+				Error:         selectionErr.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return zeroValue, selectionErr
 	}
 
@@ -207,7 +272,17 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 	if totalWeight <= 0 {
 		err := NewSelectionError("select", t.id, ctx, ErrEmptyTable).
 			AddDetail("reason", "all items have zero effective weight")
-		t.publishSelectionFailedEvent("select", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select",
+				RequestCount:  1,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return zeroValue, err
 	}
 
@@ -215,7 +290,17 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 	rollValue, err := roller.Roll(totalWeight)
 	if err != nil {
 		selectionErr := NewSelectionError("select", t.id, ctx, err)
-		t.publishSelectionFailedEvent("select", ctx, selectionErr, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select",
+				RequestCount:  1,
+				SelectionMode: "standard",
+				Error:         selectionErr.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return zeroValue, selectionErr
 	}
 
@@ -224,9 +309,17 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 		currentWeight += weight
 		if rollValue <= currentWeight {
 			// Publish successful selection event
-			if t.config.EnableEvents && t.eventPublisher != nil {
-				t.publishSelectionCompletedEvent("select", ctx, []T{item}, effectiveWeights,
-					[]int{rollValue}, time.Since(startTime))
+			if t.config.EnableEvents && t.connectedTopics.selectionCompleted != nil {
+				event := SelectionCompletedEvent{
+					TableID:       t.id,
+					Operation:     "select",
+					RequestCount:  1,
+					ActualCount:   1,
+					SelectionMode: "standard",
+					DurationMs:    int(time.Since(startTime).Milliseconds()),
+					CompletedAt:   time.Now(),
+				}
+				_ = t.connectedTopics.selectionCompleted.Publish(context.Background(), event)
 			}
 			return item, nil
 		}
@@ -237,7 +330,17 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 		AddDetail("reason", "selection algorithm failed").
 		AddDetail("roll_value", rollValue).
 		AddDetail("total_weight", totalWeight)
-	t.publishSelectionFailedEvent("select", ctx, selectionErr, time.Since(startTime))
+	if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+		event := SelectionFailedEvent{
+			TableID:       t.id,
+			Operation:     "select",
+			RequestCount:  1,
+			SelectionMode: "standard",
+			Error:         selectionErr.Error(),
+			FailedAt:      time.Now(),
+		}
+		_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+	}
 	return zeroValue, selectionErr
 }
 
@@ -248,7 +351,17 @@ func (t *BasicTable[T]) SelectMany(ctx SelectionContext, count int) ([]T, error)
 
 	if count < 1 {
 		err := NewSelectionError("select_many", t.id, ctx, ErrInvalidCount)
-		t.publishSelectionFailedEvent("select_many", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_many",
+				RequestCount:  count,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, err
 	}
 
@@ -261,7 +374,17 @@ func (t *BasicTable[T]) SelectMany(ctx SelectionContext, count int) ([]T, error)
 			selectionErr := NewSelectionError("select_many", t.id, ctx, err).
 				AddDetail("completed_selections", i).
 				AddDetail("requested_count", count)
-			t.publishSelectionFailedEvent("select_many", ctx, selectionErr, time.Since(startTime))
+			if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+				event := SelectionFailedEvent{
+					TableID:       t.id,
+					Operation:     "select_many",
+					RequestCount:  count,
+					SelectionMode: "standard",
+					Error:         selectionErr.Error(),
+					FailedAt:      time.Now(),
+				}
+				_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+			}
 			return nil, selectionErr
 		}
 		results[i] = item
@@ -270,10 +393,17 @@ func (t *BasicTable[T]) SelectMany(ctx SelectionContext, count int) ([]T, error)
 	}
 
 	// Publish successful selection event
-	if t.config.EnableEvents && t.eventPublisher != nil {
-		effectiveWeights, _ := t.getEffectiveWeights(ctx)
-		t.publishSelectionCompletedEvent("select_many", ctx, results, effectiveWeights,
-			rollResults, time.Since(startTime))
+	if t.config.EnableEvents && t.connectedTopics.selectionCompleted != nil {
+		event := SelectionCompletedEvent{
+			TableID:       t.id,
+			Operation:     "select_many",
+			RequestCount:  count,
+			ActualCount:   len(results),
+			SelectionMode: "standard",
+			DurationMs:    int(time.Since(startTime).Milliseconds()),
+			CompletedAt:   time.Now(),
+		}
+		_ = t.connectedTopics.selectionCompleted.Publish(context.Background(), event)
 	}
 
 	return results, nil
@@ -286,13 +416,33 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 
 	if count < 1 {
 		err := NewSelectionError("select_unique", t.id, ctx, ErrInvalidCount)
-		t.publishSelectionFailedEvent("select_unique", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_unique",
+				RequestCount:  count,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, err
 	}
 
 	if t.IsEmpty() {
 		err := NewSelectionError("select_unique", t.id, ctx, ErrEmptyTable)
-		t.publishSelectionFailedEvent("select_unique", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_unique",
+				RequestCount:  count,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, err
 	}
 
@@ -300,20 +450,39 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 		err := NewSelectionError("select_unique", t.id, ctx, ErrInsufficientItems).
 			AddDetail("requested_count", count).
 			AddDetail("available_count", t.Size())
-		t.publishSelectionFailedEvent("select_unique", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_unique",
+				RequestCount:  count,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, err
 	}
 
 	results := make([]T, 0, count)
 	used := make(map[T]bool)
-	rollResults := make([]int, 0, count)
 
 	for len(results) < count {
 		// Get effective weights excluding already selected items
 		effectiveWeights, err := t.getEffectiveWeightsExcluding(ctx, used)
 		if err != nil {
 			selectionErr := NewSelectionError("select_unique", t.id, ctx, err)
-			t.publishSelectionFailedEvent("select_unique", ctx, selectionErr, time.Since(startTime))
+			if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+				event := SelectionFailedEvent{
+					TableID:       t.id,
+					Operation:     "select_unique",
+					RequestCount:  count,
+					SelectionMode: "standard",
+					Error:         selectionErr.Error(),
+					FailedAt:      time.Now(),
+				}
+				_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+			}
 			return nil, selectionErr
 		}
 
@@ -332,7 +501,17 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 		rollValue, err := roller.Roll(totalWeight)
 		if err != nil {
 			selectionErr := NewSelectionError("select_unique", t.id, ctx, err)
-			t.publishSelectionFailedEvent("select_unique", ctx, selectionErr, time.Since(startTime))
+			if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+				event := SelectionFailedEvent{
+					TableID:       t.id,
+					Operation:     "select_unique",
+					RequestCount:  count,
+					SelectionMode: "standard",
+					Error:         selectionErr.Error(),
+					FailedAt:      time.Now(),
+				}
+				_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+			}
 			return nil, selectionErr
 		}
 
@@ -342,7 +521,6 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 			if rollValue <= currentWeight && !used[item] {
 				results = append(results, item)
 				used[item] = true
-				rollResults = append(rollResults, rollValue)
 				break
 			}
 		}
@@ -352,15 +530,32 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 		err := NewSelectionError("select_unique", t.id, ctx, ErrInsufficientItems).
 			AddDetail("requested_count", count).
 			AddDetail("actual_count", len(results))
-		t.publishSelectionFailedEvent("select_unique", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_unique",
+				RequestCount:  count,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return results, err
 	}
 
 	// Publish successful selection event
-	if t.config.EnableEvents && t.eventPublisher != nil {
-		effectiveWeights, _ := t.getEffectiveWeights(ctx)
-		t.publishSelectionCompletedEvent("select_unique", ctx, results, effectiveWeights,
-			rollResults, time.Since(startTime))
+	if t.config.EnableEvents && t.connectedTopics.selectionCompleted != nil {
+		event := SelectionCompletedEvent{
+			TableID:       t.id,
+			Operation:     "select_unique",
+			RequestCount:  count,
+			ActualCount:   len(results),
+			SelectionMode: "standard",
+			DurationMs:    int(time.Since(startTime).Milliseconds()),
+			CompletedAt:   time.Now(),
+		}
+		_ = t.connectedTopics.selectionCompleted.Publish(context.Background(), event)
 	}
 
 	return results, nil
@@ -369,18 +564,36 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 // SelectVariable performs selection with quantity determined by dice expression
 // Combines quantity rolling with item selection in a single operation
 func (t *BasicTable[T]) SelectVariable(ctx SelectionContext, diceExpression string) ([]T, error) {
-	startTime := time.Now()
-
 	if ctx == nil {
 		err := NewSelectionError("select_variable", t.id, ctx, ErrContextRequired)
-		t.publishSelectionFailedEvent("select_variable", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_variable",
+				RequestCount:  0,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, err
 	}
 
 	roller := ctx.GetDiceRoller()
 	if roller == nil {
 		err := NewSelectionError("select_variable", t.id, ctx, ErrDiceRollerRequired)
-		t.publishSelectionFailedEvent("select_variable", ctx, err, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_variable",
+				RequestCount:  0,
+				SelectionMode: "standard",
+				Error:         err.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, err
 	}
 
@@ -391,7 +604,17 @@ func (t *BasicTable[T]) SelectVariable(ctx SelectionContext, diceExpression stri
 		selectionErr := NewSelectionError("select_variable", t.id, ctx, ErrInvalidDiceExpression).
 			AddDetail("dice_expression", diceExpression).
 			AddDetail("parse_error", err.Error())
-		t.publishSelectionFailedEvent("select_variable", ctx, selectionErr, time.Since(startTime))
+		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
+			event := SelectionFailedEvent{
+				TableID:       t.id,
+				Operation:     "select_variable",
+				RequestCount:  0,
+				SelectionMode: "standard",
+				Error:         selectionErr.Error(),
+				FailedAt:      time.Now(),
+			}
+			_ = t.connectedTopics.selectionFailed.Publish(context.Background(), event)
+		}
 		return nil, selectionErr
 	}
 	if count < 1 {
@@ -508,90 +731,6 @@ func (t *BasicTable[T]) clearWeightCache() {
 	t.cachedWeights = make(map[string]map[T]int)
 }
 
-// Event publishing helper methods
-
-func (t *BasicTable[T]) publishTableEvent(eventType string, data TableEventData) {
-	if t.eventPublisher != nil {
-		// Create a minimal entity to represent this table
-		entity := &tableEntity{id: t.id, tableType: "basic"}
-		_ = t.eventPublisher.PublishTableEvent(eventType, entity, data)
-	}
-}
-
-func (t *BasicTable[T]) publishSelectionCompletedEvent(operation string, ctx SelectionContext,
-	selected []T, availableWeights map[T]int, rollResults []int, duration time.Duration) {
-	if t.eventPublisher == nil {
-		return
-	}
-
-	selectedItems := make([]interface{}, len(selected))
-	for i, item := range selected {
-		selectedItems[i] = item
-	}
-
-	availableItems := make(map[interface{}]int)
-	for item, weight := range availableWeights {
-		availableItems[item] = weight
-	}
-
-	contextMap := make(map[string]interface{})
-	if ctx != nil {
-		for _, key := range ctx.Keys() {
-			if value, exists := ctx.Get(key); exists {
-				contextMap[key] = value
-			}
-		}
-	}
-
-	totalWeight := 0
-	for _, weight := range availableWeights {
-		totalWeight += weight
-	}
-
-	data := SelectionEventData{
-		TableID:        t.id,
-		Operation:      operation,
-		SelectedItems:  selectedItems,
-		AvailableItems: availableItems,
-		Context:        contextMap,
-		RequestedCount: len(selected),
-		ActualCount:    len(selected),
-		TotalWeight:    totalWeight,
-		RollResults:    rollResults,
-		Duration:       duration,
-	}
-
-	entity := &tableEntity{id: t.id, tableType: "basic"}
-	_ = t.eventPublisher.PublishSelectionEvent(EventSelectionCompleted, entity, nil, data)
-}
-
-func (t *BasicTable[T]) publishSelectionFailedEvent(operation string, ctx SelectionContext,
-	err error, duration time.Duration) {
-	if t.eventPublisher == nil {
-		return
-	}
-
-	contextMap := make(map[string]interface{})
-	if ctx != nil {
-		for _, key := range ctx.Keys() {
-			if value, exists := ctx.Get(key); exists {
-				contextMap[key] = value
-			}
-		}
-	}
-
-	data := SelectionEventData{
-		TableID:   t.id,
-		Operation: operation,
-		Context:   contextMap,
-		Duration:  duration,
-		Error:     err.Error(),
-	}
-
-	entity := &tableEntity{id: t.id, tableType: "basic"}
-	_ = t.eventPublisher.PublishSelectionEvent(EventSelectionFailed, entity, nil, data)
-}
-
 // parseDiceExpression parses and rolls a simple dice expression
 // For now supports basic expressions like "1d6", "2d4", etc.
 func (t *BasicTable[T]) parseDiceExpression(expression string, roller dice.Roller) (int, error) {
@@ -698,7 +837,7 @@ type tableEntity struct {
 func (e *tableEntity) GetID() string { return e.id }
 
 // GetType returns the table entity's type
-func (e *tableEntity) GetType() string { return e.tableType }
+func (e *tableEntity) GetType() core.EntityType { return core.EntityType(e.tableType) }
 
 // Ensure tableEntity implements core.Entity
 var _ core.Entity = (*tableEntity)(nil)

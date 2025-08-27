@@ -19,11 +19,12 @@ type BasicSpawnEngine struct {
 	spatialHandler     spatial.QueryHandler
 	environmentHandler *environments.BasicQueryHandler
 	selectablesReg     SelectablesRegistry
-	eventBus           events.EventBus
-	enableEvents       bool
-	maxAttempts        int
-	random             *rand.Rand
-	constraintSolver   *ConstraintSolver
+	// Type-safe event publishers (replaces eventBus events.EventBus)
+	entitySpawned    events.TypedTopic[EntitySpawnedEvent]
+	enableEvents     bool
+	maxAttempts      int
+	random           *rand.Rand
+	constraintSolver *ConstraintSolver
 }
 
 // BasicSpawnEngineConfig configures a BasicSpawnEngine.
@@ -33,9 +34,9 @@ type BasicSpawnEngineConfig struct {
 	SpatialHandler     spatial.QueryHandler
 	EnvironmentHandler *environments.BasicQueryHandler
 	SelectablesReg     SelectablesRegistry
-	EventBus           events.EventBus
-	EnableEvents       bool
-	MaxAttempts        int
+	// EventBus removed - use ConnectToEventBus() method after creation
+	EnableEvents bool
+	MaxAttempts  int
 }
 
 // NewBasicSpawnEngine creates a new spawn engine with the specified configuration.
@@ -53,12 +54,17 @@ func NewBasicSpawnEngine(config BasicSpawnEngineConfig) *BasicSpawnEngine {
 		spatialHandler:     config.SpatialHandler,
 		environmentHandler: config.EnvironmentHandler,
 		selectablesReg:     config.SelectablesReg,
-		eventBus:           config.EventBus,
-		enableEvents:       config.EnableEvents,
-		maxAttempts:        config.MaxAttempts,
-		random:             rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404
-		constraintSolver:   NewConstraintSolver(),
+		// Event topics will be connected via ConnectToEventBus()
+		enableEvents:     config.EnableEvents,
+		maxAttempts:      config.MaxAttempts,
+		random:           rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404
+		constraintSolver: NewConstraintSolver(),
 	}
+}
+
+// ConnectToEventBus connects all typed topics to the event bus
+func (e *BasicSpawnEngine) ConnectToEventBus(bus events.EventBus) {
+	e.entitySpawned = EntitySpawnedTopic.On(bus)
 }
 
 // PopulateSpace implements SpawnEngine.PopulateSpace
@@ -294,22 +300,21 @@ func (e *BasicSpawnEngine) placeEntityInRoom(_ spatial.Room, _ core.Entity, _ sp
 func (e *BasicSpawnEngine) publishEntitySpawnedEvent(
 	ctx context.Context, roomID string, entity core.Entity, position spatial.Position,
 ) {
-	if !e.enableEvents || e.eventBus == nil {
+	if !e.enableEvents || e.entitySpawned == nil {
 		return
 	}
 
-	// Create a simple room entity for event source
-	roomEntity := &SimpleRoomEntity{id: roomID, roomType: "spawn_target"}
-
-	// Publish entity spawned event
-	event := events.NewGameEvent("spawn.entity.spawned", roomEntity, nil)
-	event.Context().Set("entity_id", entity.GetID())
-	event.Context().Set("entity_type", entity.GetType())
-	event.Context().Set("position_x", position.X)
-	event.Context().Set("position_y", position.Y)
-	event.Context().Set("room_id", roomID)
-
-	_ = e.eventBus.Publish(ctx, event)
+	// Publish typed entity spawned event
+	_ = e.entitySpawned.Publish(ctx, EntitySpawnedEvent{
+		EntityID:     entity.GetID(),
+		EntityType:   string(entity.GetType()),
+		Position:     position,
+		RoomID:       roomID,
+		SpawnType:    "scattered", // Default for basic engine
+		SpawnGroupID: "",          // Not used in basic engine
+		Constraints:  []string{},  // No constraints for basic engine
+		SpawnedAt:    time.Now(),
+	})
 }
 
 // SimpleRoomEntity implements core.Entity for event publishing.

@@ -6,8 +6,9 @@ package events_test
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/core/events"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/KirkDiggler/rpg-toolkit/core/events"
 )
 
 // Example event data keys that a rulebook might define

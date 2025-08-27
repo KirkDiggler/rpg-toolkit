@@ -5,9 +5,9 @@ go 1.24
 toolchain go1.24.5
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/core v0.9.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/events v0.1.1
+	github.com/KirkDiggler/rpg-toolkit/events v0.6.0
 	github.com/stretchr/testify v1.10.0
 )
 

@@ -19,7 +19,7 @@ type BasicTableTestSuite struct {
 // SetupTest runs before EACH test function
 func (s *BasicTableTestSuite) SetupTest() {
 	// Create event bus for testing
-	s.eventBus = events.NewBus()
+	s.eventBus = events.NewEventBus()
 
 	// Create test context with deterministic dice roller for predictable tests
 	testRoller := NewTestRoller([]int{50}) // Predictable rolls
@@ -27,8 +27,7 @@ func (s *BasicTableTestSuite) SetupTest() {
 
 	// Create table configuration
 	s.config = BasicTableConfig{
-		ID:       "test_table",
-		EventBus: s.eventBus,
+		ID: "test_table",
 		Configuration: TableConfiguration{
 			EnableEvents:    true,
 			EnableDebugging: true,
@@ -40,12 +39,18 @@ func (s *BasicTableTestSuite) SetupTest() {
 
 	// Create fresh table for each test
 	s.table = NewBasicTable[string](s.config)
+	if basicTable, ok := s.table.(*BasicTable[string]); ok {
+		basicTable.ConnectToEventBus(s.eventBus)
+	}
 }
 
 // SetupSubTest runs before EACH s.Run()
 func (s *BasicTableTestSuite) SetupSubTest() {
 	// Reset table to clean state for each subtest
 	s.table = NewBasicTable[string](s.config)
+	if basicTable, ok := s.table.(*BasicTable[string]); ok {
+		basicTable.ConnectToEventBus(s.eventBus)
+	}
 
 	// Reset context to clean state
 	testRoller := NewTestRoller([]int{50})
@@ -67,8 +72,7 @@ func (s *BasicTableTestSuite) TestTableCreation() {
 
 	s.Run("creates table with custom configuration", func() {
 		config := BasicTableConfig{
-			ID:       "custom_table",
-			EventBus: s.eventBus,
+			ID: "custom_table",
 			Configuration: TableConfiguration{
 				EnableEvents: true,
 				MinWeight:    5,
