@@ -8,7 +8,7 @@ require (
 	go.uber.org/mock v0.5.2
 )
 
-require github.com/KirkDiggler/rpg-toolkit/core v0.1.0 // indirect
+require github.com/KirkDiggler/rpg-toolkit/core v0.9.0 // indirect
 
 replace github.com/KirkDiggler/rpg-toolkit/core => ../../core
 
