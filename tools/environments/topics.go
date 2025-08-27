@@ -33,18 +33,21 @@ var (
 	EnvironmentEntityRemovedTopic = events.DefineTypedTopic[EnvironmentEntityRemovedEvent]("environment.entity.removed")
 
 	// EnvironmentRoomAddedTopic publishes events when rooms are added to environments
-	EnvironmentRoomAddedTopic   = events.DefineTypedTopic[EnvironmentRoomAddedEvent]("environment.room.added")
+	EnvironmentRoomAddedTopic = events.DefineTypedTopic[EnvironmentRoomAddedEvent]("environment.room.added")
+	// EnvironmentRoomRemovedTopic publishes events when rooms are removed from environments
 	EnvironmentRoomRemovedTopic = events.DefineTypedTopic[EnvironmentRoomRemovedEvent]("environment.room.removed")
 
 	// FeatureAddedTopic publishes events when features are added to environments
-	FeatureAddedTopic   = events.DefineTypedTopic[FeatureAddedEvent]("environment.feature.added")
+	FeatureAddedTopic = events.DefineTypedTopic[FeatureAddedEvent]("environment.feature.added")
+	// FeatureRemovedTopic publishes events when features are removed from environments
 	FeatureRemovedTopic = events.DefineTypedTopic[FeatureRemovedEvent]("environment.feature.removed")
 
 	// HazardTriggeredTopic publishes events when environmental hazards are triggered
 	HazardTriggeredTopic = events.DefineTypedTopic[HazardTriggeredEvent]("environment.hazard.triggered")
 
 	// ThemeChangedTopic publishes events when environment themes change
-	ThemeChangedTopic               = events.DefineTypedTopic[ThemeChangedEvent]("environment.theme.changed")
+	ThemeChangedTopic = events.DefineTypedTopic[ThemeChangedEvent]("environment.theme.changed")
+	// EnvironmentMetadataChangedTopic publishes events when environment metadata changes
 	EnvironmentMetadataChangedTopic = events.DefineTypedTopic[EnvironmentMetadataChangedEvent]("environment.metadata")
 
 	// EnvironmentEntityMovedTopic publishes events when entities move within environments
@@ -52,7 +55,8 @@ var (
 
 	// QueryExecutedTopic publishes events when environment queries are executed
 	QueryExecutedTopic = events.DefineTypedTopic[QueryExecutedEvent]("environment.query.executed")
-	QueryFailedTopic   = events.DefineTypedTopic[QueryFailedEvent]("environment.query.failed")
+	// QueryFailedTopic publishes events when environment queries fail
+	QueryFailedTopic = events.DefineTypedTopic[QueryFailedEvent]("environment.query.failed")
 
 	// RoomBuiltTopic publishes events when rooms are built within environments
 	RoomBuiltTopic = events.DefineTypedTopic[RoomBuiltEvent]("environment.room.built")
