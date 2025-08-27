@@ -170,7 +170,7 @@ func LoadDraftFromData(data DraftData) (*Draft, error) {
 		}
 	}
 
-	return &Draft{
+	draft := &Draft{
 		ID:       data.ID,
 		PlayerID: data.PlayerID,
 		Name:     data.Name,
@@ -185,14 +185,18 @@ func LoadDraftFromData(data DraftData) (*Draft, error) {
 		// Load choices with source tracking
 		Choices: data.Choices,
 
-		// Load validation state
-		ValidationWarnings: data.ValidationWarnings,
-		ValidationErrors:   data.ValidationErrors,
-		CanFinalize:        data.CanFinalize,
+		// Validation state is NOT loaded from persistence - it will be calculated
+		// on-demand to ensure it's always current with the rules
 
 		CreatedAt: data.CreatedAt,
 		UpdatedAt: data.UpdatedAt,
-	}, nil
+	}
+
+	// Run validation to populate the validation state
+	// This ensures the draft always has current validation based on the latest rules
+	_, _ = draft.ValidateChoices()
+
+	return draft, nil
 }
 
 // ToData converts the draft to its persistent representation
@@ -212,10 +216,8 @@ func (d *Draft) ToData() DraftData {
 		// Save choices with source tracking
 		Choices: d.Choices,
 
-		// Save validation state
-		ValidationWarnings: d.ValidationWarnings,
-		ValidationErrors:   d.ValidationErrors,
-		CanFinalize:        d.CanFinalize,
+		// Note: Validation state is not saved - it's derived data that should be
+		// recalculated when needed to ensure it's always current with the rules
 
 		CreatedAt: d.CreatedAt,
 		UpdatedAt: d.UpdatedAt,

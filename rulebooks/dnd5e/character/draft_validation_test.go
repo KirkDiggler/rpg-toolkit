@@ -212,8 +212,8 @@ func TestLoadDraftFromData_Validation(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid background")
 	})
 
-	t.Run("Validation State Persists", func(t *testing.T) {
-		// Create draft with validation state
+	t.Run("Validation State Is Recalculated On Load", func(t *testing.T) {
+		// Create draft with validation state (to show it doesn't persist)
 		originalDraft := &Draft{
 			ID: "test-draft",
 			ClassChoice: ClassChoice{
@@ -235,18 +235,28 @@ func TestLoadDraftFromData_Validation(t *testing.T) {
 		// Convert to data
 		data := originalDraft.ToData()
 
-		// Verify data contains validation state
-		assert.Equal(t, originalDraft.ValidationWarnings, data.ValidationWarnings)
-		assert.Equal(t, originalDraft.ValidationErrors, data.ValidationErrors)
-		assert.Equal(t, originalDraft.CanFinalize, data.CanFinalize)
+		// Verify data does NOT contain validation state fields anymore
+		// This is implicitly verified by the fact that the DraftData struct
+		// no longer has these fields and the code compiles
 
 		// Load from data
 		loadedDraft, err := LoadDraftFromData(data)
 		require.NoError(t, err)
 
-		// Verify loaded draft has same validation state
-		assert.Equal(t, originalDraft.ValidationWarnings, loadedDraft.ValidationWarnings)
-		assert.Equal(t, originalDraft.ValidationErrors, loadedDraft.ValidationErrors)
-		assert.Equal(t, originalDraft.CanFinalize, loadedDraft.CanFinalize)
+		// Verify loaded draft has recalculated validation state based on choices
+		// The validation should detect missing fighting style and equipment
+		assert.NotNil(t, loadedDraft.ValidationErrors, "Should have validation errors")
+		assert.False(t, loadedDraft.CanFinalize, "Should not be able to finalize incomplete draft")
+
+		// The exact validation messages may differ since they're recalculated,
+		// but we should have errors about missing choices
+		hasRequiredChoiceError := false
+		for _, err := range loadedDraft.ValidationErrors {
+			if strings.Contains(err, "fighting style") || strings.Contains(err, "equipment") {
+				hasRequiredChoiceError = true
+				break
+			}
+		}
+		assert.True(t, hasRequiredChoiceError, "Should have error about missing required choices")
 	})
 }

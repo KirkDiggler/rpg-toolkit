@@ -425,11 +425,6 @@ type DraftData struct {
 	// All choices with source tracking
 	Choices []ChoiceData `json:"choices"`
 
-	// Validation state
-	ValidationWarnings []string `json:"validation_warnings,omitempty"`
-	ValidationErrors   []string `json:"validation_errors,omitempty"`
-	CanFinalize        bool     `json:"can_finalize"`
-
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
