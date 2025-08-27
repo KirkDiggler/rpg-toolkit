@@ -166,6 +166,14 @@ type ValidationContext struct {
 	ArmorProficiencies    map[string]Source // armor -> source of proficiency
 	LanguageProficiencies map[string]Source // language -> source of proficiency
 
+	// Automatic grants from race/class/background
+	// These are NOT player choices, but inherent features that inform validation
+	AutomaticGrants struct {
+		Skills    map[string]Source // skill -> source that grants it automatically
+		Languages map[string]Source // language -> source that grants it automatically
+		Tools     map[string]Source // tool -> source that grants it automatically
+	}
+
 	// Existing expertise
 	ExistingExpertise map[string]bool // skill/tool -> has expertise
 
@@ -188,7 +196,16 @@ func NewValidationContext() *ValidationContext {
 		WeaponProficiencies:   make(map[string]Source),
 		ArmorProficiencies:    make(map[string]Source),
 		LanguageProficiencies: make(map[string]Source),
-		ExistingExpertise:     make(map[string]bool),
+		AutomaticGrants: struct {
+			Skills    map[string]Source
+			Languages map[string]Source
+			Tools     map[string]Source
+		}{
+			Skills:    make(map[string]Source),
+			Languages: make(map[string]Source),
+			Tools:     make(map[string]Source),
+		},
+		ExistingExpertise: make(map[string]bool),
 	}
 }
 
@@ -209,4 +226,40 @@ func (vc *ValidationContext) AddProficiency(name string) {
 	}
 	// Default to class source if not specified
 	vc.SkillProficiencies[name] = SourceClass
+}
+
+// AddAutomaticGrant adds an automatic grant to the context
+// These are features that come automatically from race/background, not player choices
+func (vc *ValidationContext) AddAutomaticGrant(grantType Field, value string, source Source) {
+	if vc == nil {
+		return
+	}
+	switch grantType {
+	case FieldSkills:
+		vc.AutomaticGrants.Skills[value] = source
+	case FieldLanguages:
+		vc.AutomaticGrants.Languages[value] = source
+	case FieldTools:
+		vc.AutomaticGrants.Tools[value] = source
+	}
+}
+
+// HasAutomaticGrant checks if a value is automatically granted
+func (vc *ValidationContext) HasAutomaticGrant(grantType Field, value string) (bool, Source) {
+	if vc == nil {
+		return false, ""
+	}
+	var source Source
+	var exists bool
+
+	switch grantType {
+	case FieldSkills:
+		source, exists = vc.AutomaticGrants.Skills[value]
+	case FieldLanguages:
+		source, exists = vc.AutomaticGrants.Languages[value]
+	case FieldTools:
+		source, exists = vc.AutomaticGrants.Tools[value]
+	}
+
+	return exists, source
 }
