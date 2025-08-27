@@ -92,10 +92,10 @@ func (cs *ConstraintSolver) validateMinDistance(
 	position spatial.Position, entity core.Entity, minDistances map[string]float64,
 	existingEntities []SpawnedEntity,
 ) error {
-	entityType := entity.GetType()
+	entityType := string(entity.GetType()) // Convert to string for map operations
 
 	for _, existing := range existingEntities {
-		existingType := existing.Entity.GetType()
+		existingType := string(existing.Entity.GetType()) // Convert to string for map operations
 
 		// Check if there's a minimum distance requirement
 		if requiredDistance, exists := minDistances[entityType+":"+existingType]; exists {
@@ -148,7 +148,7 @@ func (cs *ConstraintSolver) validateLineOfSight(
 	_ spatial.Room, position spatial.Position, entity core.Entity,
 	losRules LineOfSightRules, existingEntities []SpawnedEntity,
 ) error {
-	entityType := entity.GetType()
+	entityType := string(entity.GetType()) // Convert to string for comparisons
 
 	// Check required sight relationships
 	for _, pair := range losRules.RequiredSight {
@@ -190,7 +190,7 @@ func (cs *ConstraintSolver) validateAreaOfEffect(
 	position spatial.Position, entity core.Entity, aoeRules map[string]float64,
 	existingEntities []SpawnedEntity,
 ) error {
-	entityType := entity.GetType()
+	entityType := string(entity.GetType()) // Convert to string for map lookup
 
 	// Check if this entity type has area of effect requirements
 	if aoeRadius, exists := aoeRules[entityType]; exists && aoeRadius > 0 {
@@ -205,7 +205,7 @@ func (cs *ConstraintSolver) validateAreaOfEffect(
 
 	// Check if existing entities have area of effect that would affect this position
 	for _, existing := range existingEntities {
-		existingType := existing.Entity.GetType()
+		existingType := string(existing.Entity.GetType()) // Convert to string for map lookup
 		if aoeRadius, exists := aoeRules[existingType]; exists && aoeRadius > 0 {
 			distance := cs.calculateDistance(position, existing.Position)
 			if distance < aoeRadius {
@@ -367,7 +367,7 @@ func (cs *ConstraintSolver) getEntitiesByType(
 ) []SpawnedEntity {
 	var filtered []SpawnedEntity
 	for _, entity := range entities {
-		if entity.Entity.GetType() == entityType {
+		if string(entity.Entity.GetType()) == entityType { // Convert core.EntityType to string
 			filtered = append(filtered, entity)
 		}
 	}

@@ -4,8 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 )
 
 type ErrorsTestSuite struct {

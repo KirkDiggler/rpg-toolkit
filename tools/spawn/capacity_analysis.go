@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -142,40 +141,25 @@ func (e *BasicSpawnEngine) convertEnvironmentSplitOptions(envSplits []environmen
 
 // publishSplitRecommendationEvent publishes split recommendation event
 func (e *BasicSpawnEngine) publishSplitRecommendationEvent(
-	ctx context.Context, roomID string, splits []RoomSplit, entityCount int,
+	_ context.Context, _ string, _ []RoomSplit, _ int,
 ) {
-	if !e.enableEvents || e.eventBus == nil {
+	if !e.enableEvents {
 		return
 	}
 
-	roomEntity := &SimpleRoomEntity{id: roomID, roomType: "spawn_target"}
-	event := events.NewGameEvent("spawn.split.recommended", roomEntity, nil)
-	event.Context().Set("room_id", roomID)
-	event.Context().Set("entity_count", entityCount)
-	event.Context().Set("split_count", len(splits))
-	event.Context().Set("reason", "Capacity analysis suggests room splitting")
-
-	_ = e.eventBus.Publish(ctx, event)
+	// TODO: Consider how to notify callers about split recommendation
+	// Note: Static functions cannot publish events directly
 }
 
 // publishRoomScalingEvent publishes room scaling event
 func (e *BasicSpawnEngine) publishRoomScalingEvent(
-	ctx context.Context, roomID string, oldDimensions, newDimensions spatial.Dimensions,
-	entityCount int, scaleFactor float64,
+	_ context.Context, _ string, _, _ spatial.Dimensions,
+	_ int, _ float64,
 ) {
-	if !e.enableEvents || e.eventBus == nil {
+	if !e.enableEvents {
 		return
 	}
 
-	roomEntity := &SimpleRoomEntity{id: roomID, roomType: "spawn_target"}
-	event := events.NewGameEvent("spawn.room.scaled", roomEntity, nil)
-	event.Context().Set("room_id", roomID)
-	event.Context().Set("entity_count", entityCount)
-	event.Context().Set("scale_factor", scaleFactor)
-	event.Context().Set("old_width", oldDimensions.Width)
-	event.Context().Set("old_height", oldDimensions.Height)
-	event.Context().Set("new_width", newDimensions.Width)
-	event.Context().Set("new_height", newDimensions.Height)
-
-	_ = e.eventBus.Publish(ctx, event)
+	// TODO: Consider how to notify callers about room scaling
+	// Note: Static functions cannot publish events directly
 }

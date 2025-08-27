@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -30,8 +31,12 @@ type BasicEnvironment struct {
 	metadata EnvironmentMetadata
 	theme    string
 
-	// Event integration following toolkit patterns
-	eventBus events.EventBus
+	// Event integration following toolkit patterns - typed topics
+	environmentEntityAddedTopic     events.TypedTopic[EnvironmentEntityAddedEvent]
+	environmentEntityMovedTopic     events.TypedTopic[EnvironmentEntityMovedEvent]
+	environmentRoomAddedTopic       events.TypedTopic[EnvironmentRoomAddedEvent]
+	themeChangedTopic               events.TypedTopic[ThemeChangedEvent]
+	environmentMetadataChangedTopic events.TypedTopic[EnvironmentMetadataChangedEvent]
 
 	// Query delegation - delegates to spatial, adds environment-level aggregation
 	queryHandler QueryHandler
@@ -46,11 +51,11 @@ type BasicEnvironment struct {
 // BasicEnvironmentConfig follows the toolkit's config pattern
 // Purpose: Provides clean dependency injection and configuration
 type BasicEnvironmentConfig struct {
-	ID           string                   `json:"id"`
-	Type         string                   `json:"type"`
-	Theme        string                   `json:"theme"`
-	Metadata     EnvironmentMetadata      `json:"metadata"`
-	EventBus     events.EventBus          `json:"-"` // Not serializable
+	ID       string              `json:"id"`
+	Type     string              `json:"type"`
+	Theme    string              `json:"theme"`
+	Metadata EnvironmentMetadata `json:"metadata"`
+	// EventBus removed - ConnectToEventBus pattern used instead
 	Orchestrator spatial.RoomOrchestrator `json:"-"` // Not serializable
 	QueryHandler QueryHandler             `json:"-"` // Not serializable
 }
@@ -64,15 +69,11 @@ func NewBasicEnvironment(config BasicEnvironmentConfig) *BasicEnvironment {
 		theme:         config.Theme,
 		metadata:      config.Metadata,
 		orchestrator:  config.Orchestrator,
-		eventBus:      config.EventBus,
 		queryHandler:  config.QueryHandler,
 		subscriptions: make([]string, 0),
 	}
 
-	// Subscribe to relevant events for reactive behavior
-	if env.eventBus != nil {
-		env.setupEventSubscriptions()
-	}
+	// Note: Event subscriptions handled via ConnectToEventBus method
 
 	return env
 }
@@ -85,10 +86,10 @@ func (e *BasicEnvironment) GetID() string {
 }
 
 // GetType returns the type of this environment
-func (e *BasicEnvironment) GetType() string {
+func (e *BasicEnvironment) GetType() core.EntityType {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
-	return e.typ
+	return core.EntityType(e.typ)
 }
 
 // Environment interface implementation - delegates to spatial infrastructure
@@ -240,57 +241,22 @@ func (e *BasicEnvironment) Export() ([]byte, error) {
 
 // Event integration following toolkit patterns
 
-func (e *BasicEnvironment) setupEventSubscriptions() {
-	// Subscribe to spatial events to react to changes
-	if e.eventBus != nil {
-		// React to spatial entity changes
-		sub1 := e.eventBus.SubscribeFunc("spatial.entity.placed", 0, events.HandlerFunc(e.handleEntityPlaced))
-		sub2 := e.eventBus.SubscribeFunc("spatial.entity.moved", 0, events.HandlerFunc(e.handleEntityMoved))
-		sub3 := e.eventBus.SubscribeFunc("spatial.room.created", 0, events.HandlerFunc(e.handleRoomCreated))
+// ConnectToEventBus connects the environment's typed topics to the event bus
+func (e *BasicEnvironment) ConnectToEventBus(bus events.EventBus) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
 
-		e.subscriptions = append(e.subscriptions, sub1, sub2, sub3)
-	}
-}
+	// Connect typed topics to event bus
+	e.environmentEntityAddedTopic = EnvironmentEntityAddedTopic.On(bus)
+	e.environmentEntityMovedTopic = EnvironmentEntityMovedTopic.On(bus)
+	e.environmentRoomAddedTopic = EnvironmentRoomAddedTopic.On(bus)
+	e.themeChangedTopic = ThemeChangedTopic.On(bus)
+	e.environmentMetadataChangedTopic = EnvironmentMetadataChangedTopic.On(bus)
 
-func (e *BasicEnvironment) handleEntityPlaced(ctx context.Context, event events.Event) error {
-	// React to entities being placed in our environment
-	// This is where we could apply environment effects, update tracking, etc.
-
-	// Publish environment-specific event
-	if e.eventBus != nil {
-		envEvent := events.NewGameEvent(EventEnvironmentEntityAdded, e, event.Source())
-		envEvent.Context().Set("original_event", event)
-		envEvent.Context().Set("environment_theme", e.theme)
-		_ = e.eventBus.Publish(ctx, envEvent)
-	}
-	return nil
-}
-
-func (e *BasicEnvironment) handleEntityMoved(ctx context.Context, event events.Event) error {
-	// React to entity movement within our environment
-	// Could trigger environment transitions, hazards, etc.
-
-	// Publish environment-specific event if needed
-	if e.eventBus != nil {
-		envEvent := events.NewGameEvent(EventEnvironmentEntityMoved, e, event.Source())
-		envEvent.Context().Set("original_event", event)
-		envEvent.Context().Set("environment_theme", e.theme)
-		_ = e.eventBus.Publish(ctx, envEvent)
-	}
-	return nil
-}
-
-func (e *BasicEnvironment) handleRoomCreated(ctx context.Context, event events.Event) error {
-	// React to new rooms being added to our environment
-	// Could apply theme, add default features, etc.
-
-	if e.eventBus != nil {
-		envEvent := events.NewGameEvent(EventEnvironmentRoomAdded, e, event.Source())
-		envEvent.Context().Set("original_event", event)
-		envEvent.Context().Set("environment_theme", e.theme)
-		_ = e.eventBus.Publish(ctx, envEvent)
-	}
-	return nil
+	// TODO: Subscribe to spatial typed events once integration is completed
+	// e.g.: e.spatialEntityPlacedSub = spatial.EntityPlacedTopic.Subscribe(ctx, e.handleEntityPlaced)
+	// e.g.: e.spatialEntityMovedSub = spatial.EntityMovedTopic.Subscribe(ctx, e.handleEntityMoved)
+	// e.g.: e.spatialRoomCreatedSub = spatial.RoomCreatedTopic.Subscribe(ctx, e.handleRoomCreated)
 }
 
 // Cleanup method for proper resource management
@@ -298,13 +264,9 @@ func (e *BasicEnvironment) Cleanup() {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	// Unsubscribe from all events
-	if e.eventBus != nil {
-		for _, subID := range e.subscriptions {
-			_ = e.eventBus.Unsubscribe(subID)
-		}
-		e.subscriptions = nil
-	}
+	// Cleanup typed topic connections
+	// Note: With typed topics, cleanup is handled automatically by event bus
+	e.subscriptions = nil
 }
 
 // Theme management - environment-specific functionality
@@ -317,14 +279,15 @@ func (e *BasicEnvironment) SetTheme(newTheme string) {
 	oldTheme := e.theme
 	e.theme = newTheme
 
-	// Publish theme change event
-	if e.eventBus != nil {
-		event := events.NewGameEvent(EventThemeChanged, e, nil)
-		event.Context().Set("old_theme", oldTheme)
-		event.Context().Set("new_theme", newTheme)
-		event.Context().Set("affected_rooms", e.getAllRoomIDsUnsafe())
-		_ = e.eventBus.Publish(context.Background(), event)
+	// Publish typed theme change event
+	event := ThemeChangedEvent{
+		EnvironmentID: e.id,
+		OldTheme:      oldTheme,
+		NewTheme:      newTheme,
+		AffectedRooms: e.getAllRoomIDsUnsafe(),
+		ChangedAt:     time.Now(),
 	}
+	_ = e.themeChangedTopic.Publish(context.Background(), event)
 }
 
 // UpdateMetadata updates the environment's metadata with new information.
@@ -334,12 +297,13 @@ func (e *BasicEnvironment) UpdateMetadata(metadata EnvironmentMetadata) {
 
 	e.metadata = metadata
 
-	// Publish metadata change event
-	if e.eventBus != nil {
-		event := events.NewGameEvent(EventEnvironmentMetadataChanged, e, nil)
-		event.Context().Set("metadata", metadata)
-		_ = e.eventBus.Publish(context.Background(), event)
+	// Publish typed metadata change event
+	event := EnvironmentMetadataChangedEvent{
+		EnvironmentID: e.id,
+		Metadata:      metadata,
+		ChangedAt:     time.Now(),
 	}
+	_ = e.environmentMetadataChangedTopic.Publish(context.Background(), event)
 }
 
 // Helper methods

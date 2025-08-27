@@ -101,7 +101,7 @@ func (f *SimpleEntityFilter) Matches(entity core.Entity) bool {
 	// Check entity types
 	if len(f.EntityTypes) > 0 {
 		for _, entityType := range f.EntityTypes {
-			if entity.GetType() == entityType {
+			if string(entity.GetType()) == entityType {
 				return true
 			}
 		}

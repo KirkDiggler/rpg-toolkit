@@ -42,9 +42,9 @@ type BasicRoomConfig struct {
 // NewBasicRoom creates a new basic room (call ConnectToEventBus after creation)
 func NewBasicRoom(config BasicRoomConfig) *BasicRoom {
 	room := &BasicRoom{
-		id:        config.ID,
-		roomType:  config.Type,
-		grid:      config.Grid,
+		id:       config.ID,
+		roomType: config.Type,
+		grid:     config.Grid,
 		// Event topics will be connected via ConnectToEventBus()
 		entities:  make(map[string]core.Entity),
 		positions: make(map[string]Position),
@@ -81,8 +81,8 @@ func (r *BasicRoom) GetID() string {
 }
 
 // GetType returns the room's type (implements core.Entity)
-func (r *BasicRoom) GetType() string {
-	return r.roomType
+func (r *BasicRoom) GetType() core.EntityType {
+	return core.EntityType(r.roomType)
 }
 
 // GetGrid returns the grid system used by this room

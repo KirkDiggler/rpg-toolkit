@@ -12,24 +12,25 @@ import (
 // These are defined at compile-time and connected to event bus at runtime via .On(bus)
 
 var (
-	// Entity operations topics
+	// EntitySpawnedTopic publishes events when entities are spawned
 	EntitySpawnedTopic = events.DefineTypedTopic[EntitySpawnedEvent]("spawn.entity.spawned")
-	
-	// Capacity management topics
+
+	// SplitRecommendedTopic publishes events when room splitting is recommended
 	SplitRecommendedTopic = events.DefineTypedTopic[SplitRecommendedEvent]("spawn.split.recommended")
-	RoomScaledTopic       = events.DefineTypedTopic[RoomScaledEvent]("spawn.room.scaled")
+	// RoomScaledTopic publishes events when rooms are scaled for capacity
+	RoomScaledTopic = events.DefineTypedTopic[RoomScaledEvent]("spawn.room.scaled")
 )
 
 // EntitySpawnedEvent contains data for entity spawning events
 type EntitySpawnedEvent struct {
-	EntityID     string            `json:"entity_id"`
-	EntityType   string            `json:"entity_type,omitempty"`
-	Position     spatial.Position  `json:"position"`
-	RoomID       string            `json:"room_id"`
-	SpawnType    string            `json:"spawn_type"` // "scattered", "formation", "player_choice", "clustered"
-	SpawnGroupID string            `json:"spawn_group_id,omitempty"`
-	Constraints  []string          `json:"constraints,omitempty"`
-	SpawnedAt    time.Time         `json:"spawned_at"`
+	EntityID     string           `json:"entity_id"`
+	EntityType   string           `json:"entity_type,omitempty"`
+	Position     spatial.Position `json:"position"`
+	RoomID       string           `json:"room_id"`
+	SpawnType    string           `json:"spawn_type"` // "scattered", "formation", "player_choice", "clustered"
+	SpawnGroupID string           `json:"spawn_group_id,omitempty"`
+	Constraints  []string         `json:"constraints,omitempty"`
+	SpawnedAt    time.Time        `json:"spawned_at"`
 }
 
 // SplitRecommendedEvent indicates when room splitting is recommended for capacity

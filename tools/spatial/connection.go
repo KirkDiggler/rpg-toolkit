@@ -56,8 +56,8 @@ func (bc *BasicConnection) GetID() string {
 }
 
 // GetType returns the entity type (implementing core.Entity)
-func (bc *BasicConnection) GetType() string {
-	return bc.entityType
+func (bc *BasicConnection) GetType() core.EntityType {
+	return core.EntityType(bc.entityType)
 }
 
 // GetConnectionType returns the connection type

@@ -25,6 +25,10 @@ type EnvironmentMetadata struct {
 // the generator interface clean. Allows for complex configurations without
 // polluting the Generate() method signature.
 type GenerationConfig struct {
+	// Request identification
+	ID        string `json:"id"`         // Unique generation ID
+	RequestID string `json:"request_id"` // Optional request correlation ID
+
 	// Basic generation parameters
 	Type  GenerationType  `json:"type"`  // Graph, Prefab, or Hybrid
 	Seed  int64           `json:"seed"`  // Random seed for reproducible generation
@@ -32,10 +36,11 @@ type GenerationConfig struct {
 	Size  EnvironmentSize `json:"size"`  // Small, Medium, Large, Custom
 
 	// Room configuration
-	RoomCount   int                `json:"room_count"`    // Number of rooms to generate
-	RoomTypes   []string           `json:"room_types"`    // Available room types
-	MinRoomSize spatial.Dimensions `json:"min_room_size"` // Minimum room dimensions
-	MaxRoomSize spatial.Dimensions `json:"max_room_size"` // Maximum room dimensions
+	RoomCount       int                `json:"room_count"`       // Number of rooms to generate
+	ConnectionCount int                `json:"connection_count"` // Number of connections between rooms
+	RoomTypes       []string           `json:"room_types"`       // Available room types
+	MinRoomSize     spatial.Dimensions `json:"min_room_size"`    // Minimum room dimensions
+	MaxRoomSize     spatial.Dimensions `json:"max_room_size"`    // Maximum room dimensions
 
 	// Layout configuration
 	Layout       LayoutType `json:"layout"`       // Overall layout pattern

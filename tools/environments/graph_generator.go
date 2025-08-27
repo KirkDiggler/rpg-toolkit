@@ -3,10 +3,12 @@ package environments
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -33,8 +35,13 @@ type GraphBasedGenerator struct {
 	typ string
 
 	// Dependencies - we are clients of these systems
-	eventBus     events.EventBus
 	spatialQuery *spatial.QueryUtils
+
+	// Typed topics for generation events
+	generationStartedTopic   events.TypedTopic[GenerationStartedEvent]
+	generationProgressTopic  events.TypedTopic[GenerationProgressEvent]
+	generationCompletedTopic events.TypedTopic[GenerationCompletedEvent]
+	generationFailedTopic    events.TypedTopic[GenerationFailedEvent]
 
 	// Graph generation state
 	random       *rand.Rand
@@ -49,9 +56,9 @@ type GraphBasedGenerator struct {
 
 // GraphBasedGeneratorConfig follows toolkit config pattern
 type GraphBasedGeneratorConfig struct {
-	ID            string                      `json:"id"`
-	Type          string                      `json:"type"`
-	EventBus      events.EventBus             `json:"-"`
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	// EventBus removed - ConnectToEventBus pattern used instead
 	SpatialQuery  *spatial.QueryUtils         `json:"-"`
 	Seed          int64                       `json:"seed"`
 	RoomFactories map[string]ComponentFactory `json:"-"`
@@ -67,8 +74,8 @@ func NewGraphBasedGenerator(config GraphBasedGeneratorConfig) *GraphBasedGenerat
 	generator := &GraphBasedGenerator{
 		id:           config.ID,
 		typ:          config.Type,
-		eventBus:     config.EventBus,
 		spatialQuery: config.SpatialQuery,
+		// Typed topics will be connected via ConnectToEventBus
 		// #nosec G404 - Using math/rand for seeded, reproducible procedural generation
 		// Same seed must produce identical environments for gameplay consistency
 		random:        rand.New(rand.NewSource(seed)),
@@ -92,6 +99,18 @@ func NewGraphBasedGenerator(config GraphBasedGeneratorConfig) *GraphBasedGenerat
 	return generator
 }
 
+// ConnectToEventBus connects the generator's typed topics to the event bus
+func (g *GraphBasedGenerator) ConnectToEventBus(bus events.EventBus) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	// Connect typed topics to event bus
+	g.generationStartedTopic = GenerationStartedTopic.On(bus)
+	g.generationProgressTopic = GenerationProgressTopic.On(bus)
+	g.generationCompletedTopic = GenerationCompletedTopic.On(bus)
+	g.generationFailedTopic = GenerationFailedTopic.On(bus)
+}
+
 // EnvironmentGenerator interface implementation
 
 // GetID returns the unique identifier of the generator.
@@ -102,10 +121,10 @@ func (g *GraphBasedGenerator) GetID() string {
 }
 
 // GetType returns the type of the generator.
-func (g *GraphBasedGenerator) GetType() string {
+func (g *GraphBasedGenerator) GetType() core.EntityType {
 	g.mutex.RLock()
 	defer g.mutex.RUnlock()
-	return g.typ
+	return core.EntityType(g.typ)
 }
 
 // Generate creates a new environment based on the provided configuration.
@@ -118,12 +137,20 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 		return nil, fmt.Errorf("invalid generation config: %w", err)
 	}
 
-	// Publish generation started event
-	if g.eventBus != nil {
-		event := events.NewGameEvent(EventGenerationStarted, g, nil)
-		event.Context().Set("config", config)
-		_ = g.eventBus.Publish(ctx, event)
+	// Publish typed generation started event
+	startTime := time.Now()
+	startedEvent := GenerationStartedEvent{
+		GenerationID: config.ID,
+		RequestID:    config.RequestID,
+		Config: map[string]interface{}{
+			"layout":           config.Layout,
+			"size":             config.Size,
+			"room_count":       config.RoomCount,
+			"connection_count": config.ConnectionCount,
+		},
+		StartTime: startTime,
 	}
+	_ = g.generationStartedTopic.Publish(ctx, startedEvent)
 
 	// Set random seed for reproducible generation
 	if config.Seed != 0 {
@@ -155,14 +182,22 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 	// Step 5: Create environment wrapper
 	environment := g.createEnvironmentUnsafe(orchestrator, config)
 
-	// Publish generation completed event
-	if g.eventBus != nil {
-		event := events.NewGameEvent(EventGenerationCompleted, g, environment)
-		event.Context().Set("config", config)
-		event.Context().Set("room_count", len(roomGraph.nodes))
-		event.Context().Set("connection_count", len(roomGraph.edges))
-		_ = g.eventBus.Publish(ctx, event)
+	// Publish typed generation completed event
+	completedEvent := GenerationCompletedEvent{
+		GenerationID: config.ID,
+		RequestID:    config.RequestID,
+		Config: map[string]interface{}{
+			"layout":           config.Layout,
+			"size":             config.Size,
+			"room_count":       config.RoomCount,
+			"connection_count": config.ConnectionCount,
+		},
+		RoomCount:       len(roomGraph.nodes),
+		ConnectionCount: len(roomGraph.edges),
+		Duration:        time.Since(startTime),
+		CompletedAt:     time.Now(),
 	}
+	_ = g.generationCompletedTopic.Publish(ctx, completedEvent)
 
 	return environment, nil
 }
@@ -675,10 +710,9 @@ func (g *GraphBasedGenerator) createOrchestratorUnsafe(
 
 	// Create orchestrator using spatial module
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       spatial.OrchestratorID(orchestratorID),
-		Type:     "environment_orchestrator",
-		EventBus: g.eventBus,
-		Layout:   layoutType,
+		ID:     spatial.OrchestratorID(orchestratorID),
+		Type:   "environment_orchestrator",
+		Layout: layoutType,
 	})
 
 	return orchestrator
@@ -797,8 +831,8 @@ func (g *GraphBasedGenerator) generateRoomWallsUnsafe(
 		WallHeight: 3.0, // Default wall height
 	}
 
-	// Pass event bus for emergency fallback notifications
-	params.EventBus = g.eventBus
+	// Note: EventBus reference removed - emergency fallback notifications
+	// will be handled via typed topics if needed
 
 	// Generate walls using pattern function
 	walls, err := patternFunc(ctx, shape, roomNode.Size, params)
@@ -912,10 +946,9 @@ func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(
 
 	// Create spatial room configuration
 	roomConfig := spatial.BasicRoomConfig{
-		ID:       roomNode.ID,
-		Type:     roomNode.Type,
-		Grid:     grid,
-		EventBus: g.eventBus,
+		ID:   roomNode.ID,
+		Type: roomNode.Type,
+		Grid: grid,
 	}
 
 	// Create basic spatial room
@@ -971,19 +1004,28 @@ func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
 	fromPos := g.findConnectionPositionUnsafe(fromRoom, toRoom, "exit")
 	toPos := g.findConnectionPositionUnsafe(toRoom, fromRoom, "entrance")
 
+	// Calculate cost based on position distance (fromPos, toPos used for cost calculation)
+	dx := fromPos.X - toPos.X
+	dy := fromPos.Y - toPos.Y
+	distance := math.Sqrt(dx*dx + dy*dy)
+	cost := distance * 1.0 // Base cost multiplier
+	if cost < 1.0 {
+		cost = 1.0 // Minimum cost
+	}
+
 	// Create spatial connection based on edge type
 	switch edge.Type {
 	case "door":
-		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos)
+		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost)
 	case "stairs":
-		return spatial.CreateStairsConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, true)
+		return spatial.CreateStairsConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost, true)
 	case "passage":
-		return spatial.CreateSecretPassageConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, []string{})
+		return spatial.CreateSecretPassageConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost, []string{})
 	case "portal":
-		return spatial.CreatePortalConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos, true)
+		return spatial.CreatePortalConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost, true)
 	default:
 		// Default to door connection
-		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, fromPos, toPos)
+		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost)
 	}
 }
 
@@ -1022,16 +1064,16 @@ func (g *GraphBasedGenerator) createEnvironmentUnsafe(
 	queryHandler := NewBasicQueryHandler(BasicQueryHandlerConfig{
 		Orchestrator: orchestrator,
 		SpatialQuery: g.spatialQuery,
-		EventBus:     g.eventBus,
+		// EventBus removed - ConnectToEventBus pattern used instead
 	})
 
 	// Create environment wrapper
 	environment := NewBasicEnvironment(BasicEnvironmentConfig{
-		ID:           fmt.Sprintf("%s_environment", g.id),
-		Type:         "generated_environment",
-		Theme:        config.Theme,
-		Metadata:     config.Metadata,
-		EventBus:     g.eventBus,
+		ID:       fmt.Sprintf("%s_environment", g.id),
+		Type:     "generated_environment",
+		Theme:    config.Theme,
+		Metadata: config.Metadata,
+		// EventBus removed - ConnectToEventBus pattern used instead
 		Orchestrator: orchestrator,
 		QueryHandler: queryHandler,
 	})
@@ -1042,21 +1084,32 @@ func (g *GraphBasedGenerator) createEnvironmentUnsafe(
 // Event helpers
 
 func (g *GraphBasedGenerator) publishGenerationProgressUnsafe(ctx context.Context, progress float64, stage string) {
-	if g.eventBus != nil {
-		event := events.NewGameEvent(EventGenerationProgress, g, nil)
-		event.Context().Set("progress", progress)
-		event.Context().Set("stage", stage)
-		_ = g.eventBus.Publish(ctx, event)
+	// Create typed generation progress event
+	event := GenerationProgressEvent{
+		GenerationID: g.id, // Use generator ID as generation ID
+		Stage:        stage,
+		Progress:     progress,
+		Message:      "", // Optional message can be added if needed
+		Timestamp:    time.Now(),
 	}
+
+	// Publish typed event
+	_ = g.generationProgressTopic.Publish(ctx, event)
 }
 
 func (g *GraphBasedGenerator) publishGenerationFailedUnsafe(ctx context.Context, err error, stage string) {
-	if g.eventBus != nil {
-		event := events.NewGameEvent(EventGenerationFailed, g, nil)
-		event.Context().Set("error", err.Error())
-		event.Context().Set("stage", stage)
-		_ = g.eventBus.Publish(ctx, event)
+	// Create typed generation failed event
+	event := GenerationFailedEvent{
+		GenerationID: g.id, // Use generator ID as generation ID
+		RequestID:    "",   // Request ID not available in this context
+		Config:       nil,  // Config not available in this context
+		Error:        err.Error(),
+		Stage:        stage,
+		FailedAt:     time.Now(),
 	}
+
+	// Publish typed event
+	_ = g.generationFailedTopic.Publish(ctx, event)
 }
 
 // Validation

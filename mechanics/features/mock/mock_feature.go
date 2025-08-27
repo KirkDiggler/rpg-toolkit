@@ -13,10 +13,11 @@ import (
 	json "encoding/json"
 	reflect "reflect"
 
+	gomock "go.uber.org/mock/gomock"
+
 	core "github.com/KirkDiggler/rpg-toolkit/core"
 	events "github.com/KirkDiggler/rpg-toolkit/events"
 	features "github.com/KirkDiggler/rpg-toolkit/mechanics/features"
-	gomock "go.uber.org/mock/gomock"
 )
 
 // MockFeature is a mock of Feature interface.

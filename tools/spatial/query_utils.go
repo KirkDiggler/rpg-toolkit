@@ -5,219 +5,128 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 // QueryUtils provides convenient methods for performing spatial queries
 type QueryUtils struct {
-	eventBus events.EventBus
+	queryHandler *SpatialQueryHandler
 }
 
 // NewQueryUtils creates a new query utilities instance
-func NewQueryUtils(eventBus events.EventBus) *QueryUtils {
+func NewQueryUtils(queryHandler *SpatialQueryHandler) *QueryUtils {
 	return &QueryUtils{
-		eventBus: eventBus,
+		queryHandler: queryHandler,
 	}
 }
 
-// QueryPositionsInRange performs a positions-in-range query through the event system
+// QueryPositionsInRange performs a positions-in-range query directly through the query handler
 func (q *QueryUtils) QueryPositionsInRange(
 	ctx context.Context, center Position, radius float64, roomID string,
 ) ([]Position, error) {
-	event := events.NewGameEvent(EventQueryPositionsInRange, nil, nil)
-	event.Context().Set("center", center)
-	event.Context().Set("radius", radius)
-	event.Context().Set("room_id", roomID)
+	data := &QueryPositionsInRangeData{
+		Center: center,
+		Radius: radius,
+		RoomID: roomID,
+	}
 
-	err := q.eventBus.Publish(ctx, event)
+	result, err := q.queryHandler.handlePositionsInRange(ctx, data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to publish positions query: %w", err)
+		return nil, fmt.Errorf("failed to execute positions query: %w", err)
 	}
 
-	// Check for errors in the event context
-	if eventErr, exists := event.Context().Get("error"); exists {
-		return nil, eventErr.(error)
+	if result.Error != nil {
+		return nil, result.Error
 	}
 
-	// Get results from event context
-	results, exists := event.Context().Get("results")
-	if !exists {
-		return nil, fmt.Errorf("no results found in event context")
-	}
-
-	positions, ok := results.([]Position)
-	if !ok {
-		return nil, fmt.Errorf("invalid result type: expected []Position, got %T", results)
-	}
-
-	return positions, nil
+	return result.Results, nil
 }
 
-// QueryEntitiesInRange performs an entities-in-range query through the event system
+// QueryEntitiesInRange performs an entities-in-range query directly through the query handler
 func (q *QueryUtils) QueryEntitiesInRange(
 	ctx context.Context, center Position, radius float64, roomID string, filter EntityFilter,
 ) ([]core.Entity, error) {
-	event := events.NewGameEvent(EventQueryEntitiesInRange, nil, nil)
-	event.Context().Set("center", center)
-	event.Context().Set("radius", radius)
-	event.Context().Set("room_id", roomID)
-
-	if filter != nil {
-		event.Context().Set("filter", filter)
+	data := &QueryEntitiesInRangeData{
+		Center: center,
+		Radius: radius,
+		RoomID: roomID,
+		Filter: filter,
 	}
 
-	err := q.eventBus.Publish(ctx, event)
+	result, err := q.queryHandler.handleEntitiesInRange(ctx, data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to publish entities query: %w", err)
+		return nil, fmt.Errorf("failed to execute entities query: %w", err)
 	}
 
-	// Check for errors in the event context
-	if eventErr, exists := event.Context().Get("error"); exists {
-		return nil, eventErr.(error)
+	if result.Error != nil {
+		return nil, result.Error
 	}
 
-	// Get results from event context
-	results, exists := event.Context().Get("results")
-	if !exists {
-		return nil, fmt.Errorf("no results found in event context")
-	}
-
-	entities, ok := results.([]core.Entity)
-	if !ok {
-		return nil, fmt.Errorf("invalid result type: expected []core.Entity, got %T", results)
-	}
-
-	return entities, nil
+	return result.Results, nil
 }
 
-// QueryLineOfSight performs a line-of-sight query through the event system
+// QueryLineOfSight performs a line-of-sight query directly through the query handler
 func (q *QueryUtils) QueryLineOfSight(ctx context.Context, from, to Position, roomID string) ([]Position, bool, error) {
-	event := events.NewGameEvent(EventQueryLineOfSight, nil, nil)
-	event.Context().Set("from", from)
-	event.Context().Set("to", to)
-	event.Context().Set("room_id", roomID)
+	data := &QueryLineOfSightData{
+		From:   from,
+		To:     to,
+		RoomID: roomID,
+	}
 
-	err := q.eventBus.Publish(ctx, event)
+	result, err := q.queryHandler.handleLineOfSight(ctx, data)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to publish line of sight query: %w", err)
+		return nil, false, fmt.Errorf("failed to execute line of sight query: %w", err)
 	}
 
-	// Check for errors in the event context
-	if eventErr, exists := event.Context().Get("error"); exists {
-		return nil, false, eventErr.(error)
+	if result.Error != nil {
+		return nil, false, result.Error
 	}
 
-	// Get results from event context
-	results, exists := event.Context().Get("results")
-	if !exists {
-		return nil, false, fmt.Errorf("no results found in event context")
-	}
-
-	positions, ok := results.([]Position)
-	if !ok {
-		return nil, false, fmt.Errorf("invalid result type: expected []Position, got %T", results)
-	}
-
-	blocked, exists := event.Context().Get("blocked")
-	if !exists {
-		return nil, false, fmt.Errorf("no blocked status found in event context")
-	}
-
-	blockedBool, ok := blocked.(bool)
-	if !ok {
-		return nil, false, fmt.Errorf("invalid blocked type: expected bool, got %T", blocked)
-	}
-
-	return positions, blockedBool, nil
+	return result.Results, result.Blocked, nil
 }
 
-// QueryMovement performs a movement query through the event system
+// QueryMovement performs a movement query directly through the query handler
 func (q *QueryUtils) QueryMovement(
 	ctx context.Context, entity core.Entity, from, to Position, roomID string,
 ) (bool, []Position, float64, error) {
-	event := events.NewGameEvent(EventQueryMovement, nil, nil)
-	event.Context().Set("entity", entity)
-	event.Context().Set("from", from)
-	event.Context().Set("to", to)
-	event.Context().Set("room_id", roomID)
+	data := &QueryMovementData{
+		Entity: entity,
+		From:   from,
+		To:     to,
+		RoomID: roomID,
+	}
 
-	err := q.eventBus.Publish(ctx, event)
+	result, err := q.queryHandler.handleMovement(ctx, data)
 	if err != nil {
-		return false, nil, 0, fmt.Errorf("failed to publish movement query: %w", err)
+		return false, nil, 0, fmt.Errorf("failed to execute movement query: %w", err)
 	}
 
-	// Check for errors in the event context
-	if eventErr, exists := event.Context().Get("error"); exists {
-		return false, nil, 0, eventErr.(error)
+	if result.Error != nil {
+		return false, nil, 0, result.Error
 	}
 
-	// Get valid status
-	valid, exists := event.Context().Get("valid")
-	if !exists {
-		return false, nil, 0, fmt.Errorf("no valid status found in event context")
-	}
-
-	validBool, ok := valid.(bool)
-	if !ok {
-		return false, nil, 0, fmt.Errorf("invalid valid type: expected bool, got %T", valid)
-	}
-
-	// Get path
-	path, exists := event.Context().Get("path")
-	if !exists {
-		return false, nil, 0, fmt.Errorf("no path found in event context")
-	}
-
-	pathPositions, ok := path.([]Position)
-	if !ok {
-		return false, nil, 0, fmt.Errorf("invalid path type: expected []Position, got %T", path)
-	}
-
-	// Get distance
-	distance, exists := event.Context().Get("distance")
-	if !exists {
-		return false, nil, 0, fmt.Errorf("no distance found in event context")
-	}
-
-	distanceFloat, ok := distance.(float64)
-	if !ok {
-		return false, nil, 0, fmt.Errorf("invalid distance type: expected float64, got %T", distance)
-	}
-
-	return validBool, pathPositions, distanceFloat, nil
+	return result.Valid, result.Path, result.Distance, nil
 }
 
-// QueryPlacement performs a placement query through the event system
+// QueryPlacement performs a placement query directly through the query handler
 func (q *QueryUtils) QueryPlacement(
 	ctx context.Context, entity core.Entity, position Position, roomID string,
 ) (bool, error) {
-	event := events.NewGameEvent(EventQueryPlacement, nil, nil)
-	event.Context().Set("entity", entity)
-	event.Context().Set("position", position)
-	event.Context().Set("room_id", roomID)
+	data := &QueryPlacementData{
+		Entity:   entity,
+		Position: position,
+		RoomID:   roomID,
+	}
 
-	err := q.eventBus.Publish(ctx, event)
+	result, err := q.queryHandler.handlePlacement(ctx, data)
 	if err != nil {
-		return false, fmt.Errorf("failed to publish placement query: %w", err)
+		return false, fmt.Errorf("failed to execute placement query: %w", err)
 	}
 
-	// Check for errors in the event context
-	if eventErr, exists := event.Context().Get("error"); exists {
-		return false, eventErr.(error)
+	if result.Error != nil {
+		return false, result.Error
 	}
 
-	// Get valid status
-	valid, exists := event.Context().Get("valid")
-	if !exists {
-		return false, fmt.Errorf("no valid status found in event context")
-	}
-
-	validBool, ok := valid.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid valid type: expected bool, got %T", valid)
-	}
-
-	return validBool, nil
+	return result.Valid, nil
 }
 
 // Convenience methods for common entity filters

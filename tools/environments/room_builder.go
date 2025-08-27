@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/selectables"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -33,9 +34,11 @@ type BasicRoomBuilder struct {
 	rotation       int  // Rotation angle in degrees (0, 90, 180, 270)
 	randomRotation bool // Whether to apply random rotation
 
-	// Dependencies
-	eventBus    events.EventBus
+	// Dependencies - using typed topics instead of direct EventBus
 	shapeLoader *ShapeLoader
+
+	// Typed topics for room building events
+	roomBuiltTopic events.TypedTopic[RoomBuiltEvent]
 
 	// State
 	built bool
@@ -43,16 +46,16 @@ type BasicRoomBuilder struct {
 
 // BasicRoomBuilderConfig configures the room builder
 type BasicRoomBuilderConfig struct {
-	EventBus    events.EventBus
+	// EventBus removed - ConnectToEventBus pattern used instead
 	ShapeLoader *ShapeLoader
 }
 
 // NewBasicRoomBuilder creates a new room builder
 func NewBasicRoomBuilder(config BasicRoomBuilderConfig) *BasicRoomBuilder {
 	return &BasicRoomBuilder{
-		eventBus:    config.EventBus,
 		shapeLoader: config.ShapeLoader,
-		pattern:     PatternEmpty, // Default pattern
+		// Typed topics will be connected via ConnectToEventBus
+		pattern: PatternEmpty, // Default pattern
 		patternParams: PatternParams{
 			Density:           0.4,
 			DestructibleRatio: 0.7,
@@ -67,6 +70,12 @@ func NewBasicRoomBuilder(config BasicRoomBuilderConfig) *BasicRoomBuilder {
 		},
 		theme: ThemeDefault,
 	}
+}
+
+// ConnectToEventBus connects the room builder's typed topics to the event bus
+func (b *BasicRoomBuilder) ConnectToEventBus(bus events.EventBus) {
+	// Connect typed topics to event bus
+	b.roomBuiltTopic = RoomBuiltTopic.On(bus)
 }
 
 // RoomBuilder interface implementation
@@ -325,7 +334,7 @@ func (b *BasicRoomBuilder) generateWalls(ctx context.Context, shape *RoomShape) 
 	b.patternParams.Safety.RequiredPaths = b.createRequiredPaths(shape)
 
 	// Pass event bus for emergency fallback notifications
-	b.patternParams.EventBus = b.eventBus
+	// Note: EventBus reference removed from PatternParams - events handled via typed topics
 
 	// Generate walls
 	walls, err := patternFunc(ctx, shape, b.size, b.patternParams)
@@ -363,10 +372,10 @@ func (b *BasicRoomBuilder) createSpatialRoom(_ *RoomShape, walls []WallSegment) 
 
 	// Create spatial room configuration
 	roomConfig := spatial.BasicRoomConfig{
-		ID:       fmt.Sprintf("room_%s_%.0f_%.0f", b.theme, b.size.Width, b.size.Height),
-		Type:     "generated_room",
-		Grid:     grid,
-		EventBus: b.eventBus,
+		ID:   fmt.Sprintf("room_%s_%.0f_%.0f", b.theme, b.size.Width, b.size.Height),
+		Type: "generated_room",
+		Grid: grid,
+		// EventBus reference removed - using typed topics instead
 	}
 
 	// Create basic spatial room
@@ -433,7 +442,7 @@ type FeatureEntity struct {
 func (f *FeatureEntity) GetID() string { return f.id }
 
 // GetType returns the type of this feature entity
-func (f *FeatureEntity) GetType() string { return f.featureType }
+func (f *FeatureEntity) GetType() core.EntityType { return core.EntityType(f.featureType) }
 
 // GetSize returns the size of this feature entity
 func (f *FeatureEntity) GetSize() int { return 1 }

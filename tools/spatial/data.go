@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/game"
 )
 
@@ -82,8 +83,8 @@ func (p *PlaceableData) GetID() string {
 }
 
 // GetType returns the entity's type
-func (p *PlaceableData) GetType() string {
-	return p.entityType
+func (p *PlaceableData) GetType() core.EntityType {
+	return core.EntityType(p.entityType)
 }
 
 // GetSize returns the size of the entity
@@ -137,7 +138,7 @@ func (r *BasicRoom) ToData() RoomData {
 		if pos, exists := r.positions[id]; exists {
 			placement := EntityPlacement{
 				EntityID:   entity.GetID(),
-				EntityType: entity.GetType(),
+				EntityType: string(entity.GetType()),
 				Position:   pos,
 			}
 
@@ -199,11 +200,13 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 
 	// Create the room
 	room := NewBasicRoom(BasicRoomConfig{
-		ID:       data.ID,
-		Type:     data.Type,
-		Grid:     grid,
-		EventBus: eventBus,
+		ID:   data.ID,
+		Type: data.Type,
+		Grid: grid,
 	})
+
+	// Connect to event bus for typed events
+	room.ConnectToEventBus(eventBus)
 
 	// Place entities using minimal spatial data
 	for _, placement := range data.Entities {

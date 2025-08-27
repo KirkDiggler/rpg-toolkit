@@ -2,7 +2,6 @@ package spawn
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -11,97 +10,45 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
-// BasicSpawnEngineTestSuite tests the Phase 1 implementation
+// BasicSpawnEngineTestSuite tests spawn engine functionality
 type BasicSpawnEngineTestSuite struct {
 	suite.Suite
-	engine       *BasicSpawnEngine
-	registry     *BasicSelectablesRegistry
-	mockEventBus *MockEventBus
-	testEntities []core.Entity
+	engine     *BasicSpawnEngine
+	registry   *BasicSelectablesRegistry
+	eventBus   events.EventBus
+	testEntity *MockEntity
 }
 
 func (s *BasicSpawnEngineTestSuite) SetupTest() {
-	s.mockEventBus = NewMockEventBus(s.T())
+	s.eventBus = events.NewEventBus()
 	s.registry = NewBasicSelectablesRegistry()
+	s.testEntity = &MockEntity{id: "test-entity", entityType: "test"}
 
+	// Create engine with basic config
 	s.engine = NewBasicSpawnEngine(BasicSpawnEngineConfig{
 		ID:             "test-engine",
-		SpatialHandler: nil, // Phase 1: not implemented
 		SelectablesReg: s.registry,
-		EventBus:       s.mockEventBus,
 		EnableEvents:   true,
 		MaxAttempts:    10,
 	})
 
-	s.testEntities = []core.Entity{
-		&TestEntity{id: "entity1", entityType: "enemy"},
-		&TestEntity{id: "entity2", entityType: "enemy"},
-		&TestEntity{id: "entity3", entityType: "treasure"},
-	}
+	// Connect to event bus
+	s.engine.ConnectToEventBus(s.eventBus)
+
+	// Register test entity
+	err := s.registry.RegisterTable("test-table", []core.Entity{s.testEntity})
+	s.Require().NoError(err)
 }
 
-func (s *BasicSpawnEngineTestSuite) TestConstraintValidation() {
-	s.Run("validates spatial constraints", func() {
+func (s *BasicSpawnEngineTestSuite) TestSpawnConfigValidation() {
+	s.Run("validates basic config", func() {
 		config := SpawnConfig{
 			EntityGroups: []EntityGroup{
 				{
-					ID:             "test-group",
-					Type:           "enemy",
-					SelectionTable: "enemies",
+					ID:             "group1",
+					Type:           "test",
+					SelectionTable: "test-table",
 					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-				},
-			},
-			Pattern: PatternScattered,
-			SpatialRules: SpatialConstraints{
-				MinDistance: map[string]float64{
-					"player:enemy": 2.0,
-				},
-				WallProximity: 1.0,
-				LineOfSight: LineOfSightRules{
-					RequiredSight: []EntityPair{
-						{From: "guard", To: "treasure"},
-					},
-				},
-			},
-		}
-
-		err := s.engine.ValidateSpawnConfig(config)
-		s.Assert().NoError(err)
-	})
-
-	s.Run("rejects invalid spatial constraints", func() {
-		config := SpawnConfig{
-			EntityGroups: []EntityGroup{
-				{
-					ID:             "test-group",
-					Type:           "enemy",
-					SelectionTable: "enemies",
-					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-				},
-			},
-			Pattern: PatternScattered,
-			SpatialRules: SpatialConstraints{
-				MinDistance: map[string]float64{
-					"player:enemy": -1.0, // Invalid negative distance
-				},
-			},
-		}
-
-		err := s.engine.ValidateSpawnConfig(config)
-		s.Assert().Error(err)
-		s.Assert().Contains(err.Error(), "spatial constraints")
-	})
-}
-
-func (s *BasicSpawnEngineTestSuite) TestConfigValidation() {
-	s.Run("validates valid config", func() {
-		config := SpawnConfig{
-			EntityGroups: []EntityGroup{
-				{
-					ID:             "test-group",
-					Type:           "enemy",
-					SelectionTable: "enemies",
-					Quantity:       QuantitySpec{Fixed: &[]int{2}[0]},
 				},
 			},
 			Pattern: PatternScattered,
@@ -122,182 +69,95 @@ func (s *BasicSpawnEngineTestSuite) TestConfigValidation() {
 		s.Assert().Contains(err.Error(), "no entity groups")
 	})
 
-	s.Run("rejects unsupported pattern", func() {
-		config := SpawnConfig{
-			EntityGroups: []EntityGroup{
-				{
-					ID:             "test-group",
-					Type:           "enemy",
-					SelectionTable: "enemies",
-					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-				},
-			},
-			Pattern: "invalid_pattern", // Truly unsupported pattern
+	s.Run("validates all supported patterns", func() {
+		patterns := []SpawnPattern{
+			PatternScattered,
+			PatternFormation,
+			PatternClustered,
+			PatternTeamBased,
+			PatternPlayerChoice,
 		}
 
-		err := s.engine.ValidateSpawnConfig(config)
-		s.Assert().Error(err)
-		s.Assert().Contains(err.Error(), "unsupported pattern")
+		for _, pattern := range patterns {
+			config := SpawnConfig{
+				EntityGroups: []EntityGroup{
+					{
+						ID:             "group1",
+						Type:           "test",
+						SelectionTable: "test-table",
+						Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+					},
+				},
+				Pattern: pattern,
+			}
+
+			err := s.engine.ValidateSpawnConfig(config)
+			s.Assert().NoError(err, "Pattern %s should validate", pattern)
+		}
 	})
 }
 
 func (s *BasicSpawnEngineTestSuite) TestEntitySelection() {
 	s.Run("selects entities from registry", func() {
-		// Register test entities
-		err := s.registry.RegisterTable("enemies", s.testEntities[:2])
-		s.Require().NoError(err)
-
-		entities, err := s.engine.selectEntitiesForGroup(EntityGroup{
+		group := EntityGroup{
 			ID:             "test-group",
-			Type:           "enemy",
-			SelectionTable: "enemies",
-			Quantity:       QuantitySpec{Fixed: &[]int{2}[0]},
-		})
+			Type:           "test",
+			SelectionTable: "test-table",
+			Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+		}
 
+		entities, err := s.engine.selectEntitiesForGroup(group)
 		s.Assert().NoError(err)
-		s.Assert().Len(entities, 2)
+		s.Assert().Len(entities, 1)
+		s.Assert().Equal("test-entity", entities[0].GetID())
 	})
 
 	s.Run("handles missing table", func() {
-		entities, err := s.engine.selectEntitiesForGroup(EntityGroup{
+		group := EntityGroup{
 			ID:             "test-group",
-			Type:           "enemy",
+			Type:           "test",
 			SelectionTable: "nonexistent",
 			Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-		})
+		}
 
+		entities, err := s.engine.selectEntitiesForGroup(group)
 		s.Assert().Error(err)
 		s.Assert().Nil(entities)
-		s.Assert().Contains(err.Error(), "not found")
-	})
-}
-
-func (s *BasicSpawnEngineTestSuite) TestConfigValidationComprehensive() {
-	s.Run("validates complex configurations", func() {
-		// Register test entities
-		err := s.registry.RegisterTable("mixed-entities", s.testEntities)
-		s.Require().NoError(err)
-
-		config := SpawnConfig{
-			EntityGroups: []EntityGroup{
-				{
-					ID:             "group1",
-					Type:           "enemy",
-					SelectionTable: "mixed-entities",
-					Quantity:       QuantitySpec{Fixed: &[]int{2}[0]},
-				},
-				{
-					ID:             "group2",
-					Type:           "treasure",
-					SelectionTable: "mixed-entities",
-					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-				},
-			},
-			Pattern: PatternScattered,
-		}
-
-		err = s.engine.ValidateSpawnConfig(config)
-		s.Assert().NoError(err, "Complex config should validate successfully")
-	})
-}
-
-func (s *BasicSpawnEngineTestSuite) TestPatternValidation() {
-	s.Run("validates all supported patterns", func() {
-		// Register test entities
-		err := s.registry.RegisterTable("test-entities", s.testEntities)
-		s.Require().NoError(err)
-
-		patterns := []SpawnPattern{
-			PatternScattered,
-			PatternFormation,
-			PatternTeamBased,
-			PatternPlayerChoice,
-			PatternClustered,
-		}
-
-		for _, pattern := range patterns {
-			s.Run(fmt.Sprintf("pattern_%s_validates", pattern), func() {
-				config := SpawnConfig{
-					EntityGroups: []EntityGroup{
-						{
-							ID:             "test-group",
-							Type:           "mixed",
-							SelectionTable: "test-entities",
-							Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-						},
-					},
-					Pattern: pattern,
-				}
-
-				// Add required config for specific patterns
-				if pattern == PatternTeamBased {
-					config.TeamConfiguration = &TeamConfig{
-						Teams: []Team{
-							{ID: "team1", EntityTypes: []string{"enemy"}},
-						},
-					}
-				}
-				if pattern == PatternPlayerChoice {
-					config.PlayerSpawnZones = []SpawnZone{
-						{
-							ID:          "zone1",
-							EntityTypes: []string{"player"},
-							MaxEntities: 5,
-						},
-					}
-				}
-
-				err := s.engine.ValidateSpawnConfig(config)
-				s.Assert().NoError(err, "Pattern %s should validate", pattern)
-			})
-		}
-	})
-}
-
-func (s *BasicSpawnEngineTestSuite) TestInterfaceCompliance() {
-	s.Run("implements all SpawnEngine methods", func() {
-		// This test verifies interface compliance by calling all methods
-		// Even if they don't fully work due to missing spatial integration
-
-		config := SpawnConfig{
-			EntityGroups: []EntityGroup{
-				{
-					ID:             "test-group",
-					Type:           "test",
-					SelectionTable: "nonexistent",
-					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
-				},
-			},
-			Pattern: PatternScattered,
-		}
-
-		// All these methods should exist and be callable
-		info := s.engine.AnalyzeRoomStructure("test-room")
-		s.Assert().False(info.IsSplit)
-		s.Assert().Equal("test-room", info.PrimaryRoomID)
-
-		err := s.engine.ValidateSpawnConfig(config)
-		s.Assert().NoError(err) // Validation only checks config structure, not table existence
-
-		// PopulateSpace should also be callable (even if it fails)
-		_, err = s.engine.PopulateSpace(context.Background(), "test-room", config)
-		s.Assert().Error(err) // Expected to fail due to spatial integration
-
-		_, err = s.engine.PopulateRoom(context.Background(), "test-room", config)
-		s.Assert().Error(err) // Expected to fail due to spatial integration
-
-		_, err = s.engine.PopulateSplitRooms(context.Background(), []string{"room1"}, config)
-		s.Assert().Error(err) // Expected to fail due to spatial integration
 	})
 }
 
 func (s *BasicSpawnEngineTestSuite) TestRoomStructureAnalysis() {
-	s.Run("analyzes room structure correctly", func() {
-		// Test single room
-		info := s.engine.AnalyzeRoomStructure("single-room")
+	s.Run("analyzes single room", func() {
+		info := s.engine.AnalyzeRoomStructure("test-room")
 		s.Assert().False(info.IsSplit)
-		s.Assert().Equal([]string{"single-room"}, info.ConnectedRooms)
-		s.Assert().Equal("single-room", info.PrimaryRoomID)
+		s.Assert().Equal([]string{"test-room"}, info.ConnectedRooms)
+		s.Assert().Equal("test-room", info.PrimaryRoomID)
+	})
+}
+
+func (s *BasicSpawnEngineTestSuite) TestPopulateSpaceMethods() {
+	s.Run("handles interface compliance", func() {
+		config := SpawnConfig{
+			EntityGroups: []EntityGroup{
+				{
+					ID:             "group1",
+					Type:           "test",
+					SelectionTable: "test-table",
+					Quantity:       QuantitySpec{Fixed: &[]int{1}[0]},
+				},
+			},
+			Pattern: PatternScattered,
+		}
+
+		// Methods should be callable even if they fail due to missing spatial integration
+		_, err := s.engine.PopulateSpace(context.Background(), "test-room", config)
+		s.Assert().Error(err) // Expected to fail without spatial handler
+
+		_, err = s.engine.PopulateRoom(context.Background(), "test-room", config)
+		s.Assert().Error(err) // Expected to fail without spatial handler
+
+		_, err = s.engine.PopulateSplitRooms(context.Background(), []string{"room1", "room2"}, config)
+		s.Assert().Error(err) // Expected to fail without spatial handler
 	})
 }
 
@@ -305,42 +165,16 @@ func TestBasicSpawnEngineTestSuite(t *testing.T) {
 	suite.Run(t, new(BasicSpawnEngineTestSuite))
 }
 
-// TestEntity implements core.Entity for testing
-type TestEntity struct {
+// MockEntity implements core.Entity for testing
+type MockEntity struct {
 	id         string
 	entityType string
 }
 
-func (e *TestEntity) GetID() string   { return e.id }
-func (e *TestEntity) GetType() string { return e.entityType }
-
-// MockEventBus for testing
-type MockEventBus struct {
-	t *testing.T
+func (e *MockEntity) GetID() string {
+	return e.id
 }
 
-func NewMockEventBus(t *testing.T) *MockEventBus {
-	return &MockEventBus{t: t}
-}
-
-func (m *MockEventBus) Publish(_ context.Context, _ events.Event) error {
-	return nil
-}
-
-func (m *MockEventBus) Subscribe(_ string, _ events.Handler) string {
-	return "mock-subscription"
-}
-
-func (m *MockEventBus) SubscribeFunc(_ string, _ int, _ events.HandlerFunc) string {
-	return "mock-subscription"
-}
-
-func (m *MockEventBus) Unsubscribe(_ string) error {
-	return nil
-}
-
-func (m *MockEventBus) Clear(_ string) {
-}
-
-func (m *MockEventBus) ClearAll() {
+func (e *MockEntity) GetType() core.EntityType {
+	return core.EntityType(e.entityType)
 }

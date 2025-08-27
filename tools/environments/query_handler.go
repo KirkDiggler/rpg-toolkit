@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -18,7 +19,10 @@ type BasicQueryHandler struct {
 	// Dependencies - we are a CLIENT of spatial, not replacement
 	orchestrator spatial.RoomOrchestrator
 	spatialQuery *spatial.QueryUtils
-	eventBus     events.EventBus
+
+	// Typed topics for query events
+	queryExecutedTopic events.TypedTopic[QueryExecutedEvent]
+	queryFailedTopic   events.TypedTopic[QueryFailedEvent]
 
 	// Thread safety
 	mutex sync.RWMutex
@@ -28,7 +32,7 @@ type BasicQueryHandler struct {
 type BasicQueryHandlerConfig struct {
 	Orchestrator spatial.RoomOrchestrator `json:"-"`
 	SpatialQuery *spatial.QueryUtils      `json:"-"`
-	EventBus     events.EventBus          `json:"-"`
+	// EventBus removed - ConnectToEventBus pattern used instead
 }
 
 // NewBasicQueryHandler creates a new query handler
@@ -36,7 +40,7 @@ func NewBasicQueryHandler(config BasicQueryHandlerConfig) *BasicQueryHandler {
 	return &BasicQueryHandler{
 		orchestrator: config.Orchestrator,
 		spatialQuery: config.SpatialQuery,
-		eventBus:     config.EventBus,
+		// Typed topics will be connected via ConnectToEventBus
 	}
 }
 
@@ -406,7 +410,7 @@ func (h *BasicQueryHandler) querySingleRoomEntitiesUnsafe(
 func (h *BasicQueryHandler) roomMatchesQueryUnsafe(room spatial.Room, query RoomQuery) bool {
 	// Check room type filter
 	if len(query.RoomTypes) > 0 {
-		roomType := room.GetType()
+		roomType := string(room.GetType()) // Convert core.EntityType to string for comparison
 		found := false
 		for _, allowedType := range query.RoomTypes {
 			if roomType == allowedType {
@@ -667,11 +671,24 @@ func (h *BasicQueryHandler) isPositionInRoomUnsafe(position spatial.Position, ro
 
 // Event publishing
 
+// ConnectToEventBus connects the query handler's typed topics to the event bus
+func (h *BasicQueryHandler) ConnectToEventBus(bus events.EventBus) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	// Connect typed topics to event bus
+	h.queryExecutedTopic = QueryExecutedTopic.On(bus)
+	h.queryFailedTopic = QueryFailedTopic.On(bus)
+}
+
 func (h *BasicQueryHandler) publishQueryEventUnsafe(ctx context.Context, queryType string, query interface{}) {
-	if h.eventBus != nil {
-		event := events.NewGameEvent(EventEnvironmentQueryExecuted, nil, nil)
-		event.Context().Set("query_type", queryType)
-		event.Context().Set("query", query)
-		_ = h.eventBus.Publish(ctx, event)
+	// Create typed query executed event
+	event := QueryExecutedEvent{
+		QueryType:  queryType,
+		Query:      query,
+		ExecutedAt: time.Now(),
 	}
+
+	// Publish typed event
+	_ = h.queryExecutedTopic.Publish(ctx, event)
 }
