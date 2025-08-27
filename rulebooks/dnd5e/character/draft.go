@@ -356,12 +356,12 @@ func (d *Draft) buildValidationContextWithRulebookKnowledge() *choices.Validatio
 
 	// Add automatic skill grants from race
 	for _, skill := range raceGrants.Skills {
-		context.AddAutomaticGrant(choices.FieldSkills, string(skill), choices.SourceRace)
+		context.AddAutomaticSkillGrant(skill, choices.SourceRace)
 	}
 
 	// Add automatic language grants from race
 	for _, lang := range raceGrants.Languages {
-		context.AddAutomaticGrant(choices.FieldLanguages, string(lang), choices.SourceRace)
+		context.AddAutomaticLanguageGrant(lang, choices.SourceRace)
 	}
 
 	// Get automatic grants from the background using rulebook knowledge
@@ -369,7 +369,7 @@ func (d *Draft) buildValidationContextWithRulebookKnowledge() *choices.Validatio
 
 	// Add automatic skill grants from background
 	for _, skill := range bgGrants.Skills {
-		context.AddAutomaticGrant(choices.FieldSkills, string(skill), choices.SourceBackground)
+		context.AddAutomaticSkillGrant(skill, choices.SourceBackground)
 	}
 
 	// TODO: Add language and tool grants from background when they exist

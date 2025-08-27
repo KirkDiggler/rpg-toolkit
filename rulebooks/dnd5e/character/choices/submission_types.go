@@ -1,5 +1,10 @@
 package choices
 
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+)
+
 // Submissions represents player choices submitted for validation (legacy format)
 type Submissions map[string][]string
 
@@ -169,9 +174,9 @@ type ValidationContext struct {
 	// Automatic grants from race/class/background
 	// These are NOT player choices, but inherent features that inform validation
 	AutomaticGrants struct {
-		Skills    map[string]Source // skill -> source that grants it automatically
-		Languages map[string]Source // language -> source that grants it automatically
-		Tools     map[string]Source // tool -> source that grants it automatically
+		Skills    map[skills.Skill]Source       // skill -> source that grants it automatically
+		Languages map[languages.Language]Source // language -> source that grants it automatically
+		Tools     map[string]Source             // tool -> source that grants it automatically
 	}
 
 	// Existing expertise
@@ -197,12 +202,12 @@ func NewValidationContext() *ValidationContext {
 		ArmorProficiencies:    make(map[string]Source),
 		LanguageProficiencies: make(map[string]Source),
 		AutomaticGrants: struct {
-			Skills    map[string]Source
-			Languages map[string]Source
+			Skills    map[skills.Skill]Source
+			Languages map[languages.Language]Source
 			Tools     map[string]Source
 		}{
-			Skills:    make(map[string]Source),
-			Languages: make(map[string]Source),
+			Skills:    make(map[skills.Skill]Source),
+			Languages: make(map[languages.Language]Source),
 			Tools:     make(map[string]Source),
 		},
 		ExistingExpertise: make(map[string]bool),
@@ -228,38 +233,53 @@ func (vc *ValidationContext) AddProficiency(name string) {
 	vc.SkillProficiencies[name] = SourceClass
 }
 
-// AddAutomaticGrant adds an automatic grant to the context
-// These are features that come automatically from race/background, not player choices
-func (vc *ValidationContext) AddAutomaticGrant(grantType Field, value string, source Source) {
+// AddAutomaticSkillGrant adds an automatic skill grant to the context
+func (vc *ValidationContext) AddAutomaticSkillGrant(skill skills.Skill, source Source) {
 	if vc == nil {
 		return
 	}
-	switch grantType {
-	case FieldSkills:
-		vc.AutomaticGrants.Skills[value] = source
-	case FieldLanguages:
-		vc.AutomaticGrants.Languages[value] = source
-	case FieldTools:
-		vc.AutomaticGrants.Tools[value] = source
-	}
+	vc.AutomaticGrants.Skills[skill] = source
 }
 
-// HasAutomaticGrant checks if a value is automatically granted
-func (vc *ValidationContext) HasAutomaticGrant(grantType Field, value string) (bool, Source) {
+// AddAutomaticLanguageGrant adds an automatic language grant to the context
+func (vc *ValidationContext) AddAutomaticLanguageGrant(lang languages.Language, source Source) {
+	if vc == nil {
+		return
+	}
+	vc.AutomaticGrants.Languages[lang] = source
+}
+
+// AddAutomaticToolGrant adds an automatic tool grant to the context (tool is still string until we have typed tools)
+func (vc *ValidationContext) AddAutomaticToolGrant(tool string, source Source) {
+	if vc == nil {
+		return
+	}
+	vc.AutomaticGrants.Tools[tool] = source
+}
+
+// HasAutomaticSkillGrant checks if a skill is automatically granted
+func (vc *ValidationContext) HasAutomaticSkillGrant(skill skills.Skill) (bool, Source) {
 	if vc == nil {
 		return false, ""
 	}
-	var source Source
-	var exists bool
+	source, exists := vc.AutomaticGrants.Skills[skill]
+	return exists, source
+}
 
-	switch grantType {
-	case FieldSkills:
-		source, exists = vc.AutomaticGrants.Skills[value]
-	case FieldLanguages:
-		source, exists = vc.AutomaticGrants.Languages[value]
-	case FieldTools:
-		source, exists = vc.AutomaticGrants.Tools[value]
+// HasAutomaticLanguageGrant checks if a language is automatically granted
+func (vc *ValidationContext) HasAutomaticLanguageGrant(lang languages.Language) (bool, Source) {
+	if vc == nil {
+		return false, ""
 	}
+	source, exists := vc.AutomaticGrants.Languages[lang]
+	return exists, source
+}
 
+// HasAutomaticToolGrant checks if a tool is automatically granted
+func (vc *ValidationContext) HasAutomaticToolGrant(tool string) (bool, Source) {
+	if vc == nil {
+		return false, ""
+	}
+	source, exists := vc.AutomaticGrants.Tools[tool]
 	return exists, source
 }

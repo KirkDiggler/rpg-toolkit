@@ -5,10 +5,9 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 // Validator provides validation for character choices
@@ -116,19 +115,22 @@ func (v *Validator) validateSkills(req *SkillRequirement, chosen []string, sourc
 
 		// Check if this skill is redundant due to automatic grants
 		if v.context != nil {
-			if hasGrant, grantSource := v.context.HasAutomaticGrant(FieldSkills, skill); hasGrant {
-				result.AddIssue(ValidationIssue{
-					Code:     CodeRedundantChoice,
-					Severity: SeverityWarning,
-					Field:    FieldSkills,
-					Message: fmt.Sprintf(
-						"Skill '%s' is already granted automatically by %s - "+
-							"consider choosing a different skill", skill, grantSource),
-					Details: map[DetailKey]any{
-						DetailValue:   skill,
-						DetailSources: []Source{source, grantSource},
-					},
-				})
+			// Convert string to typed skill for checking
+			if skillType, ok := skills.All[skill]; ok {
+				if hasGrant, grantSource := v.context.HasAutomaticSkillGrant(skillType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    FieldSkills,
+						Message: fmt.Sprintf(
+							"Skill '%s' is already granted automatically by %s - "+
+								"consider choosing a different skill", skill, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   skill,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
 			}
 		}
 	}
@@ -419,32 +421,47 @@ func (v *Validator) checkRedundantChoices(field Field, chosen []string, source S
 		return
 	}
 
-	var itemType string
-
 	switch field {
 	case FieldSkills:
-		itemType = "skill"
-	case FieldLanguages:
-		itemType = "language"
-	default:
-		itemType = "unknown"
-	}
-
-	title := cases.Title(language.English)
-	for _, value := range chosen {
-		if hasGrant, grantSource := v.context.HasAutomaticGrant(field, value); hasGrant {
-			result.AddIssue(ValidationIssue{
-				Code:     CodeRedundantChoice,
-				Severity: SeverityWarning,
-				Field:    field,
-				Message: fmt.Sprintf("%s '%s' is already granted automatically by %s - consider choosing a different %s",
-					title.String(itemType), value, grantSource, itemType),
-				Details: map[DetailKey]any{
-					DetailValue:   value,
-					DetailSources: []Source{source, grantSource},
-				},
-			})
+		for _, value := range chosen {
+			if skillType, ok := skills.All[value]; ok {
+				if hasGrant, grantSource := v.context.HasAutomaticSkillGrant(skillType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    field,
+						Message: fmt.Sprintf("Skill '%s' is already granted automatically by %s - consider choosing a different skill",
+							value, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   value,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
+			}
 		}
+	case FieldLanguages:
+		for _, value := range chosen {
+			if langType := languages.Language(value); langType != "" {
+				if hasGrant, grantSource := v.context.HasAutomaticLanguageGrant(langType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    field,
+						Message: fmt.Sprintf(
+							"Language '%s' is already granted automatically by %s - consider choosing a different language",
+							value, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   value,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
+			}
+		}
+	default:
+		// For other fields (tools etc), we don't check redundancy yet
+		return
 	}
 }
 
@@ -499,19 +516,22 @@ func (v *Validator) validateLanguages(
 
 		// Check if this language is redundant due to automatic grants
 		if v.context != nil {
-			if hasGrant, grantSource := v.context.HasAutomaticGrant(FieldLanguages, lang); hasGrant {
-				result.AddIssue(ValidationIssue{
-					Code:     CodeRedundantChoice,
-					Severity: SeverityWarning,
-					Field:    FieldLanguages,
-					Message: fmt.Sprintf(
-						"Language '%s' is already granted automatically by %s - "+
-							"consider choosing a different language", lang, grantSource),
-					Details: map[DetailKey]any{
-						DetailValue:   lang,
-						DetailSources: []Source{source, grantSource},
-					},
-				})
+			// Convert string to typed language for checking
+			if langType := languages.Language(lang); langType != "" {
+				if hasGrant, grantSource := v.context.HasAutomaticLanguageGrant(langType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    FieldLanguages,
+						Message: fmt.Sprintf(
+							"Language '%s' is already granted automatically by %s - "+
+								"consider choosing a different language", lang, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   lang,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
 			}
 		}
 	}
