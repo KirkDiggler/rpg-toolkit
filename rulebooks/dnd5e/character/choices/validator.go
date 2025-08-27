@@ -5,398 +5,495 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// validateClassChoicesInternal validates choices for a specific class
-func validateClassChoicesInternal(classID classes.Class, level int, submissions Submissions) *ValidationResult {
+// Validator provides validation for character choices
+type Validator struct {
+	context *ValidationContext
+}
+
+// NewValidator creates a new validator
+func NewValidator(context *ValidationContext) *Validator {
+	if context == nil {
+		context = NewValidationContext()
+	}
+	return &Validator{
+		context: context,
+	}
+}
+
+// ValidateClassChoices validates choices for a specific class
+func (v *Validator) ValidateClassChoices(
+	classID classes.Class,
+	level int,
+	submissions *TypedSubmissions,
+) *ValidationResult {
+	result := NewValidationResult()
 	reqs := getClassRequirementsInternal(classID, level)
 	if reqs == nil {
-		return &ValidationResult{Valid: true}
+		return result
 	}
-
-	result := &ValidationResult{Valid: true}
 
 	// Validate skills
 	if reqs.Skills != nil {
-		validateSkills(reqs.Skills, submissions["skills"], result)
+		v.validateSkills(reqs.Skills, submissions.GetValues(SourceClass, FieldSkills), SourceClass, result)
 	}
 
 	// Validate fighting style
 	if reqs.FightingStyle != nil {
-		validateFightingStyle(reqs.FightingStyle, submissions["fighting_style"], result)
+		v.validateFightingStyle(reqs.FightingStyle, submissions.GetValues(SourceClass, FieldFightingStyle), result)
 	}
 
 	// Validate equipment choices
 	if len(reqs.Equipment) > 0 {
-		validateEquipment(reqs.Equipment, submissions, result)
+		v.validateEquipment(reqs.Equipment, submissions, result)
 	}
 
 	// Validate cantrips
 	if reqs.Cantrips != nil {
-		validateSpells(reqs.Cantrips, submissions["cantrips"], result)
+		v.validateSpells(reqs.Cantrips, submissions.GetValues(SourceClass, FieldCantrips), FieldCantrips, result)
 	}
 
 	// Validate spells
 	if reqs.Spells != nil {
-		validateSpells(reqs.Spells, submissions["spells"], result)
+		v.validateSpells(reqs.Spells, submissions.GetValues(SourceClass, FieldSpells), FieldSpells, result)
 	}
 
-	// Validate expertise
+	// Validate expertise with proficiency checking
 	if reqs.Expertise != nil {
-		validateExpertise(reqs.Expertise, submissions["expertise"], result)
+		v.validateExpertise(reqs.Expertise, submissions.GetValues(SourceClass, FieldExpertise), result)
 	}
 
 	// Validate instruments
 	if reqs.Instruments != nil {
-		validateInstruments(reqs.Instruments, submissions["instruments"], result)
+		v.validateInstruments(reqs.Instruments, submissions.GetValues(SourceClass, FieldInstruments), result)
 	}
 
 	return result
 }
 
-// validateRaceChoicesInternal validates choices for a specific race
-func validateRaceChoicesInternal(raceID races.Race, submissions Submissions) *ValidationResult {
-	reqs := getRaceRequirementsInternal(raceID)
-	if reqs == nil {
-		return &ValidationResult{Valid: true}
-	}
-
-	result := &ValidationResult{Valid: true}
-
-	// Validate skills (e.g., Half-Elf)
-	if reqs.Skills != nil {
-		validateSkills(reqs.Skills, submissions["race_skills"], result)
-	}
-
-	// Validate languages (e.g., Half-Elf)
-	if reqs.Languages != nil {
-		validateLanguages(reqs.Languages, submissions["race_languages"], result)
-	}
-
-	// Validate draconic ancestry (Dragonborn)
-	if reqs.DraconicAncestry != nil {
-		validateAncestry(reqs.DraconicAncestry, submissions["draconic_ancestry"], result)
-	}
-
-	return result
-}
-
-// validateBackgroundChoicesInternal validates choices for a specific background
-func validateBackgroundChoicesInternal(backgroundID backgrounds.Background, _ Submissions) *ValidationResult {
-	reqs := getBackgroundRequirementsInternal(backgroundID)
-	if reqs == nil {
-		return &ValidationResult{Valid: true}
-	}
-
-	// Most backgrounds have no choices
-	// TODO: Implement when we add backgrounds with choices
-
-	return &ValidationResult{Valid: true}
-}
-
-// validateAllInternal validates all choices for a character
-func validateAllInternal(
-	classID classes.Class, raceID races.Race, level int, submissions Submissions,
-) *ValidationResult {
-	result := &ValidationResult{Valid: true}
-
-	// Validate class choices
-	classResult := validateClassChoicesInternal(classID, level, submissions)
-	if !classResult.Valid {
-		result.Valid = false
-		result.Errors = append(result.Errors, classResult.Errors...)
-	}
-	result.Warnings = append(result.Warnings, classResult.Warnings...)
-
-	// Validate race choices
-	raceResult := validateRaceChoicesInternal(raceID, submissions)
-	if !raceResult.Valid {
-		result.Valid = false
-		result.Errors = append(result.Errors, raceResult.Errors...)
-	}
-	result.Warnings = append(result.Warnings, raceResult.Warnings...)
-
-	// Check for cross-source duplicates
-	checkCrossSourceDuplicates(classID, raceID, submissions, result)
-
-	return result
-}
-
-// Helper validation functions
-
-func validateSkills(req *SkillRequirement, chosen []string, result *ValidationResult) {
+// validateSkills validates skill choices with enhanced error reporting
+func (v *Validator) validateSkills(req *SkillRequirement, chosen []string, source Source, result *ValidationResult) {
 	if len(chosen) != req.Count {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "skills",
-			Message: fmt.Sprintf("Must choose exactly %d skills, got %d", req.Count, len(chosen)),
-		})
+		result.AddIssue(NewCountError(FieldSkills, req.Count, len(chosen), "skills"))
 		return
 	}
 
-	// If specific options are required, validate against them
+	// Track seen skills for duplicate detection
+	seen := make(map[string]bool)
+	validOptions := make(map[string]bool)
+
+	// Build valid options map
 	if req.Options != nil {
-		validOptions := make(map[string]bool)
 		for _, opt := range req.Options {
 			validOptions[string(opt)] = true
 		}
-
-		for _, skill := range chosen {
-			if !validOptions[skill] {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   "skills",
-					Message: fmt.Sprintf("Invalid skill choice: %s", skill),
-				})
-			}
-		}
 	} else {
-		// Validate against all valid skills
-		for _, skill := range chosen {
-			if _, ok := skills.All[skill]; !ok {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   "skills",
-					Message: fmt.Sprintf("Invalid skill: %s", skill),
-				})
-			}
+		// All skills are valid
+		for skill := range skills.All {
+			validOptions[skill] = true
 		}
 	}
 
-	// Check for duplicates within the same choice set
-	seen := make(map[string]bool)
+	// Validate each chosen skill
 	for _, skill := range chosen {
+		// Check if skill is valid
+		if !validOptions[skill] {
+			result.AddIssue(NewInvalidOptionError(FieldSkills, skill, "skill"))
+			continue
+		}
+
+		// Check for duplicates within this selection
 		if seen[skill] {
-			result.Warnings = append(result.Warnings, ValidationWarning{
-				Field:   "skills",
-				Message: fmt.Sprintf("Duplicate skill selected: %s", skill),
-				Type:    "duplicate_skill",
-			})
+			result.AddIssue(NewDuplicateError(FieldSkills, skill, source, source))
+			continue
 		}
 		seen[skill] = true
 	}
 }
 
-func validateFightingStyle(req *FightingStyleRequirement, chosen []string, result *ValidationResult) {
+// validateFightingStyle validates fighting style choices
+func (v *Validator) validateFightingStyle(req *FightingStyleRequirement, chosen []string, result *ValidationResult) {
 	if len(chosen) != 1 {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "fighting_style",
-			Message: "Must choose exactly 1 fighting style",
-		})
+		result.AddIssue(NewCountError(FieldFightingStyle, 1, len(chosen), "fighting style"))
 		return
 	}
 
-	validStyles := make(map[string]bool)
-	for _, style := range req.Options {
-		validStyles[string(style)] = true
-	}
-
-	if !validStyles[chosen[0]] {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "fighting_style",
-			Message: fmt.Sprintf("Invalid fighting style: %s", chosen[0]),
-		})
+	// Check if the chosen style is valid for the class
+	if req.Options != nil {
+		valid := false
+		for _, style := range req.Options {
+			if string(style) == chosen[0] {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			result.AddIssue(NewInvalidOptionError(FieldFightingStyle, chosen[0], "fighting style"))
+		}
 	}
 }
 
-func validateEquipment(reqs []*EquipmentRequirement, submissions Submissions, result *ValidationResult) {
-	for i, req := range reqs {
-		fieldName := fmt.Sprintf("equipment_%d", i)
-		chosen := submissions[fieldName]
+// validateExpertise validates expertise choices with proficiency checking
+func (v *Validator) validateExpertise(req *ExpertiseRequirement, chosen []string, result *ValidationResult) {
+	if len(chosen) != req.Count {
+		result.AddIssue(NewCountError(FieldExpertise, req.Count, len(chosen), "expertise skills"))
+		return
+	}
 
-		if len(chosen) != req.Choose {
-			result.Valid = false
-			result.Errors = append(result.Errors, ValidationError{
-				Field:   fieldName,
-				Message: fmt.Sprintf("%s: must choose %d option(s)", req.Label, req.Choose),
+	// Check each expertise choice
+	seen := make(map[string]bool)
+	for _, skill := range chosen {
+		// Check for duplicates
+		if seen[skill] {
+			result.AddIssue(NewDuplicateError(FieldExpertise, skill, SourceClass, SourceClass))
+			continue
+		}
+		seen[skill] = true
+
+		// Check if character has proficiency in this skill
+		if v.context != nil && !v.context.HasProficiency(skill) {
+			result.AddIssue(ValidationIssue{
+				Code:     CodeExpertiseWithoutProficiency,
+				Severity: SeverityError,
+				Field:    FieldExpertise,
+				Message:  fmt.Sprintf("Cannot have expertise in %s without proficiency", skill),
+				Details: map[DetailKey]any{
+					DetailSkill:    skill,
+					DetailRequired: "proficiency",
+				},
+			})
+		}
+	}
+}
+
+// validateEquipment validates equipment choices
+func (v *Validator) validateEquipment(
+	reqs []*EquipmentRequirement,
+	submissions *TypedSubmissions,
+	result *ValidationResult,
+) {
+	// For each equipment choice requirement
+	for i, req := range reqs {
+		choiceKey := fmt.Sprintf("equipment_choice_%d", i)
+
+		// Get the values for this specific equipment choice
+		var chosen []string
+		for _, choice := range submissions.GetByField(Field(choiceKey)) {
+			if choice.Source == SourceClass {
+				chosen = choice.Values
+				break
+			}
+		}
+
+		// Check if a choice was made
+		if len(chosen) == 0 {
+			result.AddIssue(ValidationIssue{
+				Code:     CodeMissingRequired,
+				Severity: SeverityIncomplete,
+				Field:    Field(choiceKey),
+				Message:  fmt.Sprintf("Equipment choice %d is required", i+1),
 			})
 			continue
 		}
 
-		// Validate that chosen IDs are valid options
-		validOptions := make(map[string]bool)
-		for _, opt := range req.Options {
-			validOptions[opt.ID] = true
-		}
-
-		for _, choice := range chosen {
-			if !validOptions[choice] {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   fieldName,
-					Message: fmt.Sprintf("Invalid equipment choice: %s", choice),
-				})
+		// Validate the choice is from available options
+		if req.Options != nil {
+			valid := false
+			for _, opt := range req.Options {
+				if len(chosen) == 1 && chosen[0] == opt.ID {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				result.AddIssue(NewInvalidOptionError(Field(choiceKey), chosen[0], "equipment"))
 			}
 		}
 	}
 }
 
-func validateSpells(req *SpellRequirement, chosen []string, result *ValidationResult) {
-	if len(chosen) != req.Count {
-		result.Valid = false
-		spellType := "spells"
-		if req.Level == 0 {
-			spellType = "cantrips"
+// validateSpells validates spell choices
+func (v *Validator) validateSpells(req *SpellRequirement, chosen []string, field Field, result *ValidationResult) {
+	expectedCount := req.Count
+	if len(chosen) != expectedCount {
+		itemType := "spells"
+		if field == FieldCantrips {
+			itemType = "cantrips"
 		}
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   spellType,
-			Message: fmt.Sprintf("Must choose exactly %d %s, got %d", req.Count, spellType, len(chosen)),
-		})
-	}
-
-	// TODO: Validate against actual spell lists when we have them
-}
-
-func validateExpertise(req *ExpertiseRequirement, chosen []string, result *ValidationResult) {
-	if len(chosen) != req.Count {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "expertise",
-			Message: fmt.Sprintf("Must choose exactly %d skills/tools for expertise, got %d", req.Count, len(chosen)),
-		})
-	}
-
-	// TODO: Validate that chosen skills/tools are ones the character has proficiency in
-}
-
-func validateInstruments(req *InstrumentRequirement, chosen []string, result *ValidationResult) {
-	if len(chosen) != req.Count {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "instruments",
-			Message: fmt.Sprintf("Must choose exactly %d instruments, got %d", req.Count, len(chosen)),
-		})
-	}
-
-	// If specific options are required, validate against them
-	if req.Options != nil {
-		validOptions := make(map[string]bool)
-		for _, opt := range req.Options {
-			validOptions[opt] = true
-		}
-
-		for _, instrument := range chosen {
-			if !validOptions[instrument] {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   "instruments",
-					Message: fmt.Sprintf("Invalid instrument choice: %s", instrument),
-				})
-			}
-		}
-	}
-	// TODO: Validate against all valid instruments when we have that list
-}
-
-func validateLanguages(req *LanguageRequirement, chosen []string, result *ValidationResult) {
-	if len(chosen) != req.Count {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "languages",
-			Message: fmt.Sprintf("Must choose exactly %d languages, got %d", req.Count, len(chosen)),
-		})
+		result.AddIssue(NewCountError(field, expectedCount, len(chosen), itemType))
 		return
-	}
-
-	// If specific options are required, validate against them
-	if req.Options != nil {
-		validOptions := make(map[string]bool)
-		for _, opt := range req.Options {
-			validOptions[string(opt)] = true
-		}
-
-		for _, lang := range chosen {
-			if !validOptions[lang] {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   "languages",
-					Message: fmt.Sprintf("Invalid language choice: %s", lang),
-				})
-			}
-		}
-	} else {
-		// Validate against all valid languages
-		for _, lang := range chosen {
-			if _, ok := languages.All[lang]; !ok {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   "languages",
-					Message: fmt.Sprintf("Invalid language: %s", lang),
-				})
-			}
-		}
-	}
-}
-
-func validateAncestry(req *AncestryRequirement, chosen []string, result *ValidationResult) {
-	if len(chosen) != 1 {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "draconic_ancestry",
-			Message: "Must choose exactly 1 draconic ancestry",
-		})
-		return
-	}
-
-	validOptions := make(map[string]bool)
-	for _, opt := range req.Options {
-		validOptions[string(opt)] = true
-	}
-
-	if !validOptions[chosen[0]] {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "draconic_ancestry",
-			Message: fmt.Sprintf("Invalid ancestry choice: %s", chosen[0]),
-		})
-	}
-}
-
-// checkCrossSourceDuplicates checks for duplicate choices across race, class, and background
-func checkCrossSourceDuplicates(_ classes.Class, raceID races.Race, submissions Submissions, result *ValidationResult) {
-	// Track all skill sources
-	allSkills := make(map[string][]string) // skill -> sources
-
-	// Collect class skills
-	if classSkills, ok := submissions["skills"]; ok {
-		for _, skill := range classSkills {
-			allSkills[skill] = append(allSkills[skill], "class")
-		}
-	}
-
-	// Collect race skills
-	if raceSkills, ok := submissions["race_skills"]; ok {
-		for _, skill := range raceSkills {
-			allSkills[skill] = append(allSkills[skill], "race")
-		}
-	}
-
-	// Collect background skills (when implemented)
-	if bgSkills, ok := submissions["background_skills"]; ok {
-		for _, skill := range bgSkills {
-			allSkills[skill] = append(allSkills[skill], "background")
-		}
-	}
-
-	// Add granted skills (not choices, but automatic grants)
-	// This would need to be expanded based on actual race/background grants
-	if raceID == races.HalfOrc {
-		allSkills["intimidation"] = append(allSkills["intimidation"], "race (granted)")
 	}
 
 	// Check for duplicates
-	for skill, sources := range allSkills {
+	seen := make(map[string]bool)
+	for _, spell := range chosen {
+		if seen[spell] {
+			result.AddIssue(NewDuplicateError(field, spell, SourceClass, SourceClass))
+			continue
+		}
+		seen[spell] = true
+
+		// TODO: Validate spell is valid for class and level when spell data is available
+		// For now, any non-empty string is considered valid
+		if spell == "" {
+			result.AddIssue(NewInvalidOptionError(field, spell, string(field)))
+		}
+	}
+}
+
+// validateInstruments validates instrument choices
+func (v *Validator) validateInstruments(req *InstrumentRequirement, chosen []string, result *ValidationResult) {
+	if len(chosen) != req.Count {
+		result.AddIssue(NewCountError(FieldInstruments, req.Count, len(chosen), "instruments"))
+		return
+	}
+
+	// Check for duplicates and validate options
+	seen := make(map[string]bool)
+	for _, instrument := range chosen {
+		if seen[instrument] {
+			result.AddIssue(NewDuplicateError(FieldInstruments, instrument, SourceClass, SourceClass))
+			continue
+		}
+		seen[instrument] = true
+
+		// TODO: Validate instrument is valid when instrument data is available
+		if instrument == "" {
+			result.AddIssue(NewInvalidOptionError(FieldInstruments, instrument, "instrument"))
+		}
+	}
+}
+
+// ValidateCrossSourceDuplicates checks for duplicates across different sources
+func (v *Validator) ValidateCrossSourceDuplicates(submissions *TypedSubmissions) *ValidationResult {
+	result := NewValidationResult()
+
+	// Check each field type that can have duplicates
+	v.checkFieldDuplicates(FieldSkills, "skill", submissions, result)
+	v.checkFieldDuplicates(FieldLanguages, "language", submissions, result)
+
+	return result
+}
+
+// checkFieldDuplicates checks for duplicates of a specific field across sources
+func (v *Validator) checkFieldDuplicates(
+	field Field,
+	_ string,
+	submissions *TypedSubmissions,
+	result *ValidationResult,
+) {
+	seen := make(map[string]Source)
+
+	for _, choice := range submissions.GetByField(field) {
+		for _, value := range choice.Values {
+			if firstSource, exists := seen[value]; exists {
+				if firstSource != choice.Source {
+					result.AddIssue(NewDuplicateError(field, value, firstSource, choice.Source))
+				}
+			} else {
+				seen[value] = choice.Source
+			}
+		}
+	}
+}
+
+// ValidateProficiencyDuplicates checks for proficiency duplicates with special handling
+func (v *Validator) ValidateProficiencyDuplicates(submissions *TypedSubmissions) *ValidationResult {
+	result := NewValidationResult()
+
+	// Collect all proficiencies by source, deduplicating within source
+	// to avoid redundant warnings for duplicates already caught as errors
+	skillProfs := make(map[Source][]string)
+	for _, choice := range submissions.GetByField(FieldSkills) {
+		seen := make(map[string]bool)
+		dedupedValues := []string{}
+		for _, val := range choice.Values {
+			if !seen[val] {
+				dedupedValues = append(dedupedValues, val)
+				seen[val] = true
+			}
+		}
+		skillProfs[choice.Source] = dedupedValues
+	}
+
+	v.checkProficiencyDuplicates(skillProfs, "skill", FieldSkills, result)
+
+	return result
+}
+
+// checkProficiencyDuplicates checks for duplicates with information about redundancy
+func (v *Validator) checkProficiencyDuplicates(
+	proficiencies map[Source][]string,
+	profType string,
+	field Field,
+	result *ValidationResult,
+) {
+	seen := make(map[string][]Source)
+
+	// Track all occurrences
+	for source, profs := range proficiencies {
+		for _, prof := range profs {
+			seen[prof] = append(seen[prof], source)
+		}
+	}
+
+	// Report duplicates
+	for prof, sources := range seen {
 		if len(sources) > 1 {
-			result.Warnings = append(result.Warnings, ValidationWarning{
-				Field:   "skills",
-				Message: fmt.Sprintf("Skill '%s' granted by multiple sources: %v", skill, sources),
-				Type:    "duplicate_skill",
+			// This is a warning - player is wasting a choice
+			result.AddIssue(ValidationIssue{
+				Code:     CodeRedundantChoice,
+				Severity: SeverityWarning,
+				Field:    field,
+				Message: fmt.Sprintf("%s '%s' chosen from %v but already granted by %v - pick another instead",
+					profType, prof, sources[0], sources[1]),
+				Details: map[DetailKey]any{
+					DetailValue:   prof,
+					DetailSources: sources,
+				},
 			})
 		}
+	}
+}
+
+// ValidateRaceChoices validates choices for a specific race
+func (v *Validator) ValidateRaceChoices(raceID races.Race, submissions *TypedSubmissions) *ValidationResult {
+	result := NewValidationResult()
+	reqs := getRaceRequirementsInternal(raceID)
+	if reqs == nil {
+		return result
+	}
+
+	// Validate skills (e.g., Half-Elf)
+	if reqs.Skills != nil {
+		v.validateSkills(reqs.Skills, submissions.GetValues(SourceRace, FieldSkills), SourceRace, result)
+	}
+
+	// Validate languages (e.g., Half-Elf)
+	if reqs.Languages != nil {
+		v.validateLanguages(reqs.Languages, submissions.GetValues(SourceRace, FieldLanguages), SourceRace, result)
+	}
+
+	// Validate draconic ancestry (Dragonborn)
+	if reqs.DraconicAncestry != nil {
+		v.validateAncestry(reqs.DraconicAncestry, submissions.GetValues(SourceRace, FieldDraconicAncestry), result)
+	}
+
+	return result
+}
+
+// validateLanguages validates language choices
+func (v *Validator) validateLanguages(
+	req *LanguageRequirement,
+	chosen []string,
+	source Source,
+	result *ValidationResult,
+) {
+	if len(chosen) != req.Count {
+		result.AddIssue(NewCountError(FieldLanguages, req.Count, len(chosen), "languages"))
+		return
+	}
+
+	// Track seen languages for duplicate detection
+	seen := make(map[string]bool)
+	validOptions := make(map[string]bool)
+
+	// Build valid options map
+	if req.Options != nil {
+		for _, opt := range req.Options {
+			validOptions[string(opt)] = true
+		}
+	} else {
+		// All languages are valid if no options specified
+		// TODO: Get all valid languages from language package
+		validOptions["common"] = true
+		validOptions["dwarvish"] = true
+		validOptions["elvish"] = true
+		validOptions["giant"] = true
+		validOptions["gnomish"] = true
+		validOptions["goblin"] = true
+		validOptions["halfling"] = true
+		validOptions["orc"] = true
+	}
+
+	// Validate each chosen language
+	for _, lang := range chosen {
+		// Check if language is valid
+		if !validOptions[lang] {
+			result.AddIssue(NewInvalidOptionError(FieldLanguages, lang, "language"))
+			continue
+		}
+
+		// Check for duplicates within this selection
+		if seen[lang] {
+			result.AddIssue(NewDuplicateError(FieldLanguages, lang, source, source))
+			continue
+		}
+		seen[lang] = true
+	}
+}
+
+// validateAncestry validates draconic ancestry choices
+func (v *Validator) validateAncestry(_ *AncestryRequirement, chosen []string, result *ValidationResult) {
+	if len(chosen) != 1 {
+		result.AddIssue(NewCountError(FieldDraconicAncestry, 1, len(chosen), "draconic ancestry"))
+		return
+	}
+
+	// Validate the chosen ancestry
+	// TODO: Add proper ancestry validation when data is available
+	if chosen[0] == "" {
+		result.AddIssue(NewInvalidOptionError(FieldDraconicAncestry, chosen[0], "draconic ancestry"))
+	}
+}
+
+// ValidateAll validates all choices for a character
+func (v *Validator) ValidateAll(
+	classID classes.Class,
+	raceID races.Race,
+	_ backgrounds.Background,
+	level int,
+	submissions *TypedSubmissions,
+) *ValidationResult {
+	result := NewValidationResult()
+
+	// Validate class choices
+	classResult := v.ValidateClassChoices(classID, level, submissions)
+	v.mergeResults(result, classResult)
+
+	// Validate race choices
+	raceResult := v.ValidateRaceChoices(raceID, submissions)
+	v.mergeResults(result, raceResult)
+
+	// Validate cross-source duplicates
+	dupResult := v.ValidateCrossSourceDuplicates(submissions)
+	v.mergeResults(result, dupResult)
+
+	// Check proficiency redundancy (informational)
+	profResult := v.ValidateProficiencyDuplicates(submissions)
+	v.mergeResults(result, profResult)
+
+	return result
+}
+
+// mergeResults merges source validation results into target
+func (v *Validator) mergeResults(target, source *ValidationResult) {
+	target.AllIssues = append(target.AllIssues, source.AllIssues...)
+	target.Errors = append(target.Errors, source.Errors...)
+	target.Incomplete = append(target.Incomplete, source.Incomplete...)
+	target.Warnings = append(target.Warnings, source.Warnings...)
+
+	// Update status flags
+	if !source.CanSave {
+		target.CanSave = false
+	}
+	if !source.CanFinalize {
+		target.CanFinalize = false
+	}
+	if !source.IsOptimal {
+		target.IsOptimal = false
 	}
 }

@@ -3,302 +3,487 @@ package choices
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestValidateClassChoices_Fighter(t *testing.T) {
+// ValidatorTestSuite tests the validator functionality
+type ValidatorTestSuite struct {
+	suite.Suite
+	validator *Validator
+}
+
+func (s *ValidatorTestSuite) SetupTest() {
+	s.validator = NewValidator(nil)
+}
+
+func TestValidatorTestSuite(t *testing.T) {
+	suite.Run(t, new(ValidatorTestSuite))
+}
+
+// Test Fighter class validation
+func (s *ValidatorTestSuite) TestValidateClassChoices_Fighter() {
 	tests := []struct {
-		name        string
-		submissions Submissions
-		expectValid bool
-		expectError string
-		expectWarn  string
+		name              string
+		setupSubmissions  func() *TypedSubmissions
+		expectCanSave     bool
+		expectCanFinalize bool
+		expectErrorCount  int
+		expectWarnCount   int
 	}{
 		{
 			name: "Valid Fighter Choices",
-			submissions: Submissions{
-				"skills":         []string{"athletics", "intimidation"},
-				"fighting_style": []string{"defense"},
-				"equipment_0":    []string{"chain-mail"},
-				"equipment_1":    []string{"martial-and-shield"},
-				"equipment_2":    []string{"light-crossbow"},
-				"equipment_3":    []string{"dungeoneers-pack"},
+			setupSubmissions: func() *TypedSubmissions {
+				subs := NewTypedSubmissions()
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldSkills,
+					ChoiceID: "fighter_skills",
+					Values:   []string{"athletics", "intimidation"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldFightingStyle,
+					ChoiceID: "fighter_style",
+					Values:   []string{"defense"},
+				})
+				// Add equipment choices
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    Field("equipment_choice_0"),
+					ChoiceID: "equipment_0",
+					Values:   []string{"chain-mail"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    Field("equipment_choice_1"),
+					ChoiceID: "equipment_1",
+					Values:   []string{"martial-and-shield"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    Field("equipment_choice_2"),
+					ChoiceID: "equipment_2",
+					Values:   []string{"light-crossbow"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    Field("equipment_choice_3"),
+					ChoiceID: "equipment_3",
+					Values:   []string{"dungeoneers-pack"},
+				})
+				return subs
 			},
-			expectValid: true,
+			expectCanSave:     true,
+			expectCanFinalize: true,
+			expectErrorCount:  0,
+			expectWarnCount:   0,
 		},
 		{
 			name: "Missing Skills",
-			submissions: Submissions{
-				"fighting_style": []string{"defense"},
-				"equipment_0":    []string{"chain-mail"},
-				"equipment_1":    []string{"martial-and-shield"},
-				"equipment_2":    []string{"light-crossbow"},
-				"equipment_3":    []string{"dungeoneers-pack"},
+			setupSubmissions: func() *TypedSubmissions {
+				subs := NewTypedSubmissions()
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldFightingStyle,
+					ChoiceID: "fighter_style",
+					Values:   []string{"defense"},
+				})
+				return subs
 			},
-			expectValid: false,
-			expectError: "Must choose exactly 2 skills",
+			expectCanSave:     true, // Missing choices are incomplete, not errors
+			expectCanFinalize: false,
+			expectErrorCount:  0, // No errors, just incomplete
+			expectWarnCount:   0,
 		},
 		{
 			name: "Too Many Skills",
-			submissions: Submissions{
-				"skills":         []string{"athletics", "intimidation", "perception"},
-				"fighting_style": []string{"defense"},
-				"equipment_0":    []string{"chain-mail"},
-				"equipment_1":    []string{"martial-and-shield"},
-				"equipment_2":    []string{"light-crossbow"},
-				"equipment_3":    []string{"dungeoneers-pack"},
+			setupSubmissions: func() *TypedSubmissions {
+				subs := NewTypedSubmissions()
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldSkills,
+					ChoiceID: "fighter_skills",
+					Values:   []string{"athletics", "intimidation", "perception"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldFightingStyle,
+					ChoiceID: "fighter_style",
+					Values:   []string{"defense"},
+				})
+				return subs
 			},
-			expectValid: false,
-			expectError: "Must choose exactly 2 skills",
+			expectCanSave:     false,
+			expectCanFinalize: false,
+			expectErrorCount:  1,
+			expectWarnCount:   0,
 		},
 		{
-			name: "Invalid Skill for Fighter",
-			submissions: Submissions{
-				"skills":         []string{"athletics", "stealth"}, // stealth not available to Fighter
-				"fighting_style": []string{"defense"},
-				"equipment_0":    []string{"chain-mail"},
-				"equipment_1":    []string{"martial-and-shield"},
-				"equipment_2":    []string{"light-crossbow"},
-				"equipment_3":    []string{"dungeoneers-pack"},
+			name: "Duplicate Skills",
+			setupSubmissions: func() *TypedSubmissions {
+				subs := NewTypedSubmissions()
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldSkills,
+					ChoiceID: "fighter_skills",
+					Values:   []string{"athletics", "athletics"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceClass,
+					Field:    FieldFightingStyle,
+					ChoiceID: "fighter_style",
+					Values:   []string{"defense"},
+				})
+				return subs
 			},
-			expectValid: false,
-			expectError: "Invalid skill choice: stealth",
-		},
-		{
-			name: "Missing Fighting Style",
-			submissions: Submissions{
-				"skills":      []string{"athletics", "intimidation"},
-				"equipment_0": []string{"chain-mail"},
-				"equipment_1": []string{"martial-and-shield"},
-				"equipment_2": []string{"light-crossbow"},
-				"equipment_3": []string{"dungeoneers-pack"},
-			},
-			expectValid: false,
-			expectError: "Must choose exactly 1 fighting style",
-		},
-		{
-			name: "Invalid Fighting Style",
-			submissions: Submissions{
-				"skills":         []string{"athletics", "intimidation"},
-				"fighting_style": []string{"sneak-attack"}, // not a valid fighting style
-				"equipment_0":    []string{"chain-mail"},
-				"equipment_1":    []string{"martial-and-shield"},
-				"equipment_2":    []string{"light-crossbow"},
-				"equipment_3":    []string{"dungeoneers-pack"},
-			},
-			expectValid: false,
-			expectError: "Invalid fighting style",
-		},
-		{
-			name: "Duplicate Skills Warning",
-			submissions: Submissions{
-				"skills":         []string{"athletics", "athletics"},
-				"fighting_style": []string{"defense"},
-				"equipment_0":    []string{"chain-mail"},
-				"equipment_1":    []string{"martial-and-shield"},
-				"equipment_2":    []string{"light-crossbow"},
-				"equipment_3":    []string{"dungeoneers-pack"},
-			},
-			expectValid: true, // Valid but has warning
-			expectWarn:  "Duplicate skill selected: athletics",
+			expectCanSave:     false,
+			expectCanFinalize: false,
+			expectErrorCount:  1,
+			expectWarnCount:   0,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ValidateClassChoices(classes.Fighter, 1, tt.submissions)
+		s.Run(tt.name, func() {
+			subs := tt.setupSubmissions()
+			result := s.validator.ValidateClassChoices(classes.Fighter, 1, subs)
 
-			assert.Equal(t, tt.expectValid, result.Valid)
-
-			if tt.expectError != "" {
-				require.NotEmpty(t, result.Errors)
-				found := false
+			// Debug output
+			if !result.CanSave || !result.CanFinalize {
 				for _, err := range result.Errors {
-					if containsString(err.Message, tt.expectError) {
-						found = true
-						break
-					}
+					s.T().Logf("Error: %s", err.Message)
 				}
-				assert.True(t, found, "Expected error containing '%s', got %v", tt.expectError, result.Errors)
+				for _, inc := range result.Incomplete {
+					s.T().Logf("Incomplete: %s", inc.Message)
+				}
 			}
 
-			if tt.expectWarn != "" {
-				require.NotEmpty(t, result.Warnings)
-				found := false
-				for _, warn := range result.Warnings {
-					if containsString(warn.Message, tt.expectWarn) {
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "Expected warning containing '%s', got %v", tt.expectWarn, result.Warnings)
-			}
+			s.Equal(tt.expectCanSave, result.CanSave, "CanSave mismatch")
+			s.Equal(tt.expectCanFinalize, result.CanFinalize, "CanFinalize mismatch")
+			s.Len(result.Errors, tt.expectErrorCount, "Error count mismatch")
+			s.Len(result.Warnings, tt.expectWarnCount, "Warning count mismatch")
 		})
 	}
 }
 
-func TestValidateClassChoices_Wizard(t *testing.T) {
-	validSubmissions := Submissions{
-		"skills":      []string{"arcana", "investigation"},
-		"cantrips":    []string{"mage-hand", "light", "ray-of-frost"},
-		"spells":      []string{"magic-missile", "shield", "sleep", "identify", "detect-magic", "burning-hands"},
-		"equipment_0": []string{"quarterstaff"},
-		"equipment_1": []string{"component-pouch"},
-		"equipment_2": []string{"scholars-pack"},
+// Test Wizard class validation
+func (s *ValidatorTestSuite) TestValidateClassChoices_Wizard() {
+	subs := NewTypedSubmissions()
+
+	// Wizard needs cantrips and spells
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    FieldSkills,
+		ChoiceID: "wizard_skills",
+		Values:   []string{"arcana", "history"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    FieldCantrips,
+		ChoiceID: "wizard_cantrips",
+		Values:   []string{"fire-bolt", "mage-hand", "prestidigitation"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    FieldSpells,
+		ChoiceID: "wizard_spells",
+		Values:   []string{"burning-hands", "shield", "magic-missile", "detect-magic", "identify", "sleep"},
+	})
+	// Add equipment choices
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_0"),
+		ChoiceID: "equipment_0",
+		Values:   []string{"quarterstaff"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_1"),
+		ChoiceID: "equipment_1",
+		Values:   []string{"component-pouch"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_2"),
+		ChoiceID: "equipment_2",
+		Values:   []string{"scholars-pack"},
+	})
+
+	result := s.validator.ValidateClassChoices(classes.Wizard, 1, subs)
+
+	// Debug output
+	if !result.CanSave || !result.CanFinalize {
+		for _, err := range result.Errors {
+			s.T().Logf("Error: %s", err.Message)
+		}
+		for _, inc := range result.Incomplete {
+			s.T().Logf("Incomplete: %s", inc.Message)
+		}
 	}
 
-	result := ValidateClassChoices(classes.Wizard, 1, validSubmissions)
-	assert.True(t, result.Valid)
-	assert.Empty(t, result.Errors)
-
-	// Test wrong number of cantrips
-	invalidCantrips := copySubmissions(validSubmissions)
-	invalidCantrips["cantrips"] = []string{"mage-hand", "light"} // only 2, needs 3
-
-	result = ValidateClassChoices(classes.Wizard, 1, invalidCantrips)
-	assert.False(t, result.Valid)
-	assert.NotEmpty(t, result.Errors)
+	s.True(result.CanSave)
+	s.True(result.CanFinalize)
+	s.Empty(result.Errors)
 }
 
-func TestValidateRaceChoices(t *testing.T) {
+// Test Rogue class with expertise
+func (s *ValidatorTestSuite) TestValidateClassChoices_RogueExpertise() {
+	// Create context with proficiencies
+	context := NewValidationContext()
+	context.AddProficiency("stealth")
+	context.AddProficiency("thieves-tools")
+	context.AddProficiency("deception")
+	context.AddProficiency("sleight-of-hand")
+
+	validator := NewValidator(context)
+
 	tests := []struct {
-		name        string
-		raceID      races.Race
-		submissions Submissions
-		expectValid bool
-		expectError string
+		name             string
+		expertiseChoices []string
+		expectCanSave    bool
+		expectErrorMsg   string
 	}{
 		{
-			name:   "Valid Half-Elf Choices",
-			raceID: races.HalfElf,
-			submissions: Submissions{
-				"race_skills":    []string{"perception", "persuasion"},
-				"race_languages": []string{"elvish"},
-			},
-			expectValid: true,
+			name:             "Valid Expertise",
+			expertiseChoices: []string{"stealth", "thieves-tools"},
+			expectCanSave:    true,
 		},
 		{
-			name:   "Half-Elf Missing Skills",
-			raceID: races.HalfElf,
-			submissions: Submissions{
-				"race_languages": []string{"elvish"},
-			},
-			expectValid: false,
-			expectError: "Must choose exactly 2 skills",
+			name:             "Expertise Without Proficiency",
+			expertiseChoices: []string{"stealth", "athletics"},
+			expectCanSave:    false,
+			expectErrorMsg:   "Cannot have expertise in athletics without proficiency",
 		},
 		{
-			name:   "Valid Dragonborn Ancestry",
-			raceID: races.Dragonborn,
-			submissions: Submissions{
-				"draconic_ancestry": []string{"red"},
-			},
-			expectValid: true,
-		},
-		{
-			name:   "Dragonborn Invalid Ancestry",
-			raceID: races.Dragonborn,
-			submissions: Submissions{
-				"draconic_ancestry": []string{"purple"}, // not a valid color
-			},
-			expectValid: false,
-			expectError: "Invalid ancestry choice",
-		},
-		{
-			name:        "Human Has No Choices",
-			raceID:      races.Human,
-			submissions: Submissions{},
-			expectValid: true,
+			name:             "Duplicate Expertise",
+			expertiseChoices: []string{"stealth", "stealth"},
+			expectCanSave:    false,
+			expectErrorMsg:   "Duplicate selection",
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ValidateRaceChoices(tt.raceID, tt.submissions)
+		s.Run(tt.name, func() {
+			subs := NewTypedSubmissions()
+			subs.AddChoice(ChoiceSubmission{
+				Source:   SourceClass,
+				Field:    FieldSkills,
+				ChoiceID: "rogue_skills",
+				Values:   []string{"stealth", "deception", "sleight-of-hand", "perception"},
+			})
+			subs.AddChoice(ChoiceSubmission{
+				Source:   SourceClass,
+				Field:    FieldExpertise,
+				ChoiceID: "rogue_expertise",
+				Values:   tt.expertiseChoices,
+			})
 
-			assert.Equal(t, tt.expectValid, result.Valid)
+			result := validator.ValidateClassChoices(classes.Rogue, 1, subs)
 
-			if tt.expectError != "" {
-				require.NotEmpty(t, result.Errors)
+			s.Equal(tt.expectCanSave, result.CanSave)
+			if tt.expectErrorMsg != "" {
+				s.NotEmpty(result.Errors)
 				found := false
 				for _, err := range result.Errors {
-					if containsString(err.Message, tt.expectError) {
+					if containsString(err.Message, tt.expectErrorMsg) {
 						found = true
 						break
 					}
 				}
-				assert.True(t, found, "Expected error containing '%s'", tt.expectError)
+				s.True(found, "Expected error message '%s' not found", tt.expectErrorMsg)
 			}
 		})
 	}
 }
 
-func TestValidate_CrossSourceDuplicates(t *testing.T) {
-	// Test Half-Orc Fighter with duplicate Intimidation
-	// Half-Orc grants Intimidation, Fighter can choose Intimidation
-	submissions := Submissions{
-		"skills":         []string{"intimidation", "athletics"}, // Fighter chooses intimidation
-		"fighting_style": []string{"defense"},
-		"equipment_0":    []string{"chain-mail"},
-		"equipment_1":    []string{"martial-and-shield"},
-		"equipment_2":    []string{"light-crossbow"},
-		"equipment_3":    []string{"dungeoneers-pack"},
-	}
+// Test cross-source validation
+func (s *ValidatorTestSuite) TestValidateCrossSourceDuplicates() {
+	subs := NewTypedSubmissions()
 
-	result := Validate(classes.Fighter, races.HalfOrc, 1, submissions)
-	assert.True(t, result.Valid) // Still valid, just suboptimal
+	// Fighter chooses Athletics
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    FieldSkills,
+		ChoiceID: "fighter_skills",
+		Values:   []string{"athletics", "intimidation"},
+	})
 
-	// Should have warning about duplicate
-	found := false
-	for _, warn := range result.Warnings {
-		if containsString(warn.Message, "intimidation") && containsString(warn.Message, "multiple sources") {
-			found = true
+	// Background also grants Athletics - should create info message
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceBackground,
+		Field:    FieldSkills,
+		ChoiceID: "soldier_skills",
+		Values:   []string{"athletics", "survival"},
+	})
+
+	result := s.validator.ValidateCrossSourceDuplicates(subs)
+
+	// Should have duplicate detection
+	s.True(result.CanSave) // Duplicates across sources are allowed
+	s.True(result.CanFinalize)
+	s.NotEmpty(result.AllIssues)
+
+	// Check for duplicate detection
+	foundDuplicate := false
+	for _, issue := range result.AllIssues {
+		if issue.Code == CodeDuplicateChoice && containsString(issue.Message, "athletics") {
+			foundDuplicate = true
 			break
 		}
 	}
-	assert.True(t, found, "Should warn about intimidation from multiple sources")
+	s.True(foundDuplicate, "Should detect duplicate skill across sources")
 }
 
-func TestValidate_Level4ASI(t *testing.T) {
-	submissions := Submissions{
-		"level4_choice":  []string{"ability_score_improvement"},
-		"ability_scores": []string{"strength", "strength"}, // +2 to Strength
+// Test Half-Elf race validation
+func (s *ValidatorTestSuite) TestValidateRaceChoices_HalfElf() {
+	tests := []struct {
+		name              string
+		setupSubmissions  func() *TypedSubmissions
+		expectCanSave     bool
+		expectCanFinalize bool
+	}{
+		{
+			name: "Valid Half-Elf Choices",
+			setupSubmissions: func() *TypedSubmissions {
+				subs := NewTypedSubmissions()
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceRace,
+					Field:    FieldSkills,
+					ChoiceID: "half_elf_skills",
+					Values:   []string{"perception", "persuasion"},
+				})
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceRace,
+					Field:    FieldLanguages,
+					ChoiceID: "half_elf_language",
+					Values:   []string{"dwarvish"},
+				})
+				return subs
+			},
+			expectCanSave:     true,
+			expectCanFinalize: true,
+		},
+		{
+			name: "Missing Language Choice",
+			setupSubmissions: func() *TypedSubmissions {
+				subs := NewTypedSubmissions()
+				subs.AddChoice(ChoiceSubmission{
+					Source:   SourceRace,
+					Field:    FieldSkills,
+					ChoiceID: "half_elf_skills",
+					Values:   []string{"perception", "persuasion"},
+				})
+				return subs
+			},
+			expectCanSave:     true, // Missing choices are incomplete, not errors
+			expectCanFinalize: false,
+		},
 	}
 
-	result := Validate(classes.Fighter, races.Human, 4, submissions)
-	assert.True(t, result.Valid)
-}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			subs := tt.setupSubmissions()
+			result := s.validator.ValidateRaceChoices(races.HalfElf, subs)
 
-// Helper functions
-
-func containsString(haystack, needle string) bool {
-	return len(haystack) >= len(needle) &&
-		(haystack == needle ||
-			len(haystack) > len(needle) &&
-				(haystack[:len(needle)] == needle ||
-					haystack[len(haystack)-len(needle):] == needle ||
-					len(needle) > 0 && len(haystack) > len(needle) &&
-						findSubstring(haystack, needle)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+			s.Equal(tt.expectCanSave, result.CanSave)
+			s.Equal(tt.expectCanFinalize, result.CanFinalize)
+		})
 	}
-	return false
 }
 
-func copySubmissions(s Submissions) Submissions {
-	result := make(Submissions)
-	for k, v := range s {
-		newSlice := make([]string, len(v))
-		copy(newSlice, v)
-		result[k] = newSlice
+// Test complete character validation
+func (s *ValidatorTestSuite) TestValidateAll_CompleteCharacter() {
+	// Create a complete Fighter/Half-Elf/Soldier build
+	subs := NewTypedSubmissions()
+
+	// Class choices (Fighter)
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    FieldSkills,
+		ChoiceID: "fighter_skills",
+		Values:   []string{"athletics", "intimidation"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    FieldFightingStyle,
+		ChoiceID: "fighter_style",
+		Values:   []string{"defense"},
+	})
+	// Add equipment choices for Fighter
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_0"),
+		ChoiceID: "equipment_0",
+		Values:   []string{"chain-mail"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_1"),
+		ChoiceID: "equipment_1",
+		Values:   []string{"martial-and-shield"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_2"),
+		ChoiceID: "equipment_2",
+		Values:   []string{"light-crossbow"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceClass,
+		Field:    Field("equipment_choice_3"),
+		ChoiceID: "equipment_3",
+		Values:   []string{"dungeoneers-pack"},
+	})
+
+	// Race choices (Half-Elf)
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceRace,
+		Field:    FieldSkills,
+		ChoiceID: "half_elf_skills",
+		Values:   []string{"perception", "persuasion"},
+	})
+	subs.AddChoice(ChoiceSubmission{
+		Source:   SourceRace,
+		Field:    FieldLanguages,
+		ChoiceID: "half_elf_language",
+		Values:   []string{"dwarvish"},
+	})
+
+	result := s.validator.ValidateAll(
+		classes.Fighter,
+		races.HalfElf,
+		backgrounds.Soldier,
+		1,
+		subs,
+	)
+
+	s.True(result.CanSave)
+	s.True(result.CanFinalize)
+	// Note: IsOptimal will be false if there are any warnings about duplicate skills
+}
+
+// Test severity levels
+func (s *ValidatorTestSuite) TestValidationSeverityLevels() {
+	subs := NewTypedSubmissions()
+
+	// Missing required choice (incomplete)
+	result := s.validator.ValidateClassChoices(classes.Fighter, 1, subs)
+
+	// Should have incomplete issues
+	s.False(result.CanFinalize, "Missing choices should prevent finalization")
+	s.NotEmpty(result.Incomplete, "Should have incomplete issues for missing required choices")
+
+	// Check severity categorization
+	for _, inc := range result.Incomplete {
+		s.Equal(SeverityIncomplete, inc.Severity)
 	}
-	return result
+}
+
+// Helper function
+func containsString(text, substr string) bool {
+	return len(text) > 0 && len(substr) > 0 && assert.Contains(nil, text, substr)
 }

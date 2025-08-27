@@ -3,6 +3,7 @@ package character
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -132,6 +133,83 @@ func ConvertFromChoiceData(old ChoiceData) (Choice, error) {
 	default:
 		return nil, fmt.Errorf("unknown choice category: %s", old.Category)
 	}
+}
+
+// convertChoiceSource converts shared.ChoiceSource to choices.Source
+func convertChoiceSource(source shared.ChoiceSource) choices.Source {
+	switch source {
+	case shared.SourceClass:
+		return choices.SourceClass
+	case shared.SourceRace:
+		return choices.SourceRace
+	case shared.SourceSubrace:
+		return choices.SourceSubrace
+	case shared.SourceBackground:
+		return choices.SourceBackground
+	case shared.SourceSubclass:
+		return choices.SourceMulticlass // Map subclass to multiclass for now
+	default:
+		return choices.SourceManual
+	}
+}
+
+// convertChoiceCategory converts shared.ChoiceCategory to choices.Field
+func convertChoiceCategory(category shared.ChoiceCategory) choices.Field {
+	switch category {
+	case shared.ChoiceSkills:
+		return choices.FieldSkills
+	case shared.ChoiceLanguages:
+		return choices.FieldLanguages
+	case shared.ChoiceFightingStyle:
+		return choices.FieldFightingStyle
+	case shared.ChoiceExpertise:
+		return choices.FieldExpertise
+	case shared.ChoiceCantrips:
+		return choices.FieldCantrips
+	case shared.ChoiceSpells:
+		return choices.FieldSpells
+	case shared.ChoiceEquipment:
+		return choices.FieldEquipment
+	case shared.ChoiceAbilityScores:
+		return choices.FieldAbilityScores
+	case shared.ChoiceToolProficiency:
+		return choices.FieldInstruments // Map tools to instruments for now
+	default:
+		return choices.Field(string(category)) // Fallback to string conversion
+	}
+}
+
+// extractChoiceValues extracts string values from a ChoiceData for validation
+func extractChoiceValues(choice ChoiceData) []string {
+	switch choice.Category {
+	case shared.ChoiceSkills:
+		values := make([]string, len(choice.SkillSelection))
+		for i, skill := range choice.SkillSelection {
+			values[i] = string(skill)
+		}
+		return values
+	case shared.ChoiceLanguages:
+		values := make([]string, len(choice.LanguageSelection))
+		for i, lang := range choice.LanguageSelection {
+			values[i] = string(lang)
+		}
+		return values
+	case shared.ChoiceFightingStyle:
+		if choice.FightingStyleSelection != nil && *choice.FightingStyleSelection != "" {
+			return []string{*choice.FightingStyleSelection}
+		}
+	case shared.ChoiceEquipment:
+		return choice.EquipmentSelection
+	case shared.ChoiceSpells:
+		return choice.SpellSelection
+	case shared.ChoiceCantrips:
+		return choice.CantripSelection
+	case shared.ChoiceExpertise:
+		return choice.ExpertiseSelection
+	case shared.ChoiceToolProficiency:
+		return choice.ToolProficiencySelection
+	}
+	return []string{}
 }
 
 // ConvertToChoiceData converts new Choice types back to old ChoiceData

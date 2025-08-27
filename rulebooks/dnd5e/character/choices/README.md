@@ -148,21 +148,34 @@ result := choices.Validate(classes.Fighter, races.HalfOrc, 4, submissions)
 // result.Valid = true
 ```
 
-### Example 3: Cross-Source Duplicate Detection
+### Example 3: Cross-Source Duplicate Detection (3-Tier Validation)
 
 ```go  
-// After character creation, checking for optimization opportunities
-allChoices := map[string][]string{
-    "race_skills": {"intimidation"},        // From Half-Orc
-    "class_skills": {"intimidation", "athletics"}, // From Fighter
-    "background_skills": {"athletics", "intimidation"}, // From Soldier
-}
+// Player picks Fighter skills, then switches to Half-Orc (grants Intimidation)
+submissions := choices.NewTypedSubmissions()
 
-result := choices.Validate(classes.Fighter, races.HalfOrc, 1, allChoices)
-// result.Valid = true (it's legal, just suboptimal)
+// Fighter chose Intimidation, but Half-Orc grants it automatically
+submissions.AddChoice(choices.ChoiceSubmission{
+    Source: choices.SourceClass,
+    Field:  choices.FieldSkills,
+    Values: []string{"intimidation", "athletics"},
+})
+
+result := choices.Validate(
+    classes.Fighter,
+    races.HalfOrc, 
+    backgrounds.Soldier, // Soldier also grants Athletics
+    1,
+    submissions,
+    nil, // no context needed for this example
+)
+
+// result.CanSave = true (can save draft)
+// result.CanFinalize = true (can create character)
+// result.IsOptimal = false (has warnings)
 // result.Warnings = [
-//   "Intimidation granted by race, class, and background",
-//   "Athletics granted by class and background"
+//   "skill 'intimidation' chosen from class but already granted by race - pick another instead",
+//   "skill 'athletics' chosen from class but already granted by background - pick another instead"
 // ]
 ```
 
@@ -202,12 +215,15 @@ requirements := choices.GetMulticlassRequirements(
 ## Implementation Status
 
 - [x] Core design and API contract
-- [ ] Basic types and interfaces
-- [ ] Requirements for all 12 classes
-- [ ] Requirements for racial choices
-- [ ] Validation logic with errors/warnings
-- [ ] Cross-source duplicate detection
-- [ ] Comprehensive test coverage
+- [x] Basic types and interfaces (Requirements, TypedSubmissions, ValidationResult)
+- [x] Requirements for all 12 PHB classes (Fighter, Wizard, Cleric, Rogue, etc.)
+- [x] Requirements for racial choices (Half-Elf, Half-Orc, Dragonborn, etc.)
+- [x] 3-tier validation system (Error/Incomplete/Warning)
+- [x] Cross-source duplicate detection with smart warnings
+- [x] TypedSubmissions with source tracking (class/race/background)
+- [x] ValidationContext for expertise prerequisite checking
+- [ ] Background-specific requirements (most backgrounds have no choices)
+- [ ] Comprehensive test coverage (partial coverage exists)
 
 ## Contributing
 
