@@ -6,8 +6,9 @@ package resources_test
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
 
 type CounterTestSuite struct {

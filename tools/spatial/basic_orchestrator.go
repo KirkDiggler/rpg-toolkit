@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -11,23 +12,38 @@ import (
 
 // BasicRoomOrchestrator implements the RoomOrchestrator interface
 type BasicRoomOrchestrator struct {
-	mu            sync.RWMutex
-	id            OrchestratorID
-	entityType    string
-	eventBus      events.EventBus
+	mu         sync.RWMutex
+	id         OrchestratorID
+	entityType string
+	eventBus   events.EventBus // Store the event bus for EventBusIntegration interface
+
+	// Type-safe event publishers (replaces eventBus events.EventBus)
+	roomAdded             events.TypedTopic[RoomAddedEvent]
+	roomRemoved           events.TypedTopic[RoomRemovedEvent]
+	connectionAdded       events.TypedTopic[ConnectionAddedEvent]
+	connectionRemoved     events.TypedTopic[ConnectionRemovedEvent]
+	entityTransitionBegan events.TypedTopic[EntityTransitionBeganEvent]
+	entityTransitionEnded events.TypedTopic[EntityTransitionEndedEvent]
+	entityRoomTransition  events.TypedTopic[EntityRoomTransitionEvent]
+	layoutChanged         events.TypedTopic[LayoutChangedEvent]
+
+	// Entity event subscriptions
+	entityPlacements events.TypedTopic[EntityPlacedEvent]
+	entityMovements  events.TypedTopic[EntityMovedEvent]
+	entityRemovals   events.TypedTopic[EntityRemovedEvent]
+
 	rooms         map[RoomID]Room
 	connections   map[ConnectionID]Connection
 	entityRooms   map[EntityID]RoomID // entityID -> roomID mapping
 	layout        LayoutType
-	subscriptions []string // Track event subscription IDs
+	subscriptions []string // Track event subscription IDs for entity events
 }
 
 // BasicRoomOrchestratorConfig holds configuration for creating a basic room orchestrator
 type BasicRoomOrchestratorConfig struct {
-	ID       OrchestratorID // Optional: if empty, will auto-generate
-	Type     string
-	EventBus events.EventBus
-	Layout   LayoutType
+	ID     OrchestratorID // Optional: if empty, will auto-generate
+	Type   string
+	Layout LayoutType
 }
 
 // NewBasicRoomOrchestrator creates a new basic room orchestrator
@@ -45,13 +61,47 @@ func NewBasicRoomOrchestrator(config BasicRoomOrchestratorConfig) *BasicRoomOrch
 	return &BasicRoomOrchestrator{
 		id:            id,
 		entityType:    config.Type,
-		eventBus:      config.EventBus,
 		rooms:         make(map[RoomID]Room),
 		connections:   make(map[ConnectionID]Connection),
 		entityRooms:   make(map[EntityID]RoomID),
 		layout:        layout,
 		subscriptions: make([]string, 0),
 	}
+}
+
+// ConnectToEventBus connects all typed topics to the event bus
+func (bro *BasicRoomOrchestrator) ConnectToEventBus(bus events.EventBus) {
+	bro.SetEventBus(bus)
+}
+
+// SetEventBus sets the event bus for the orchestrator (implements EventBusIntegration)
+func (bro *BasicRoomOrchestrator) SetEventBus(bus events.EventBus) {
+	bro.mu.Lock()
+	defer bro.mu.Unlock()
+
+	bro.eventBus = bus
+
+	// Connect orchestrator event publishers
+	bro.roomAdded = RoomAddedTopic.On(bus)
+	bro.roomRemoved = RoomRemovedTopic.On(bus)
+	bro.connectionAdded = ConnectionAddedTopic.On(bus)
+	bro.connectionRemoved = ConnectionRemovedTopic.On(bus)
+	bro.entityTransitionBegan = EntityTransitionBeganTopic.On(bus)
+	bro.entityTransitionEnded = EntityTransitionEndedTopic.On(bus)
+	bro.entityRoomTransition = EntityRoomTransitionTopic.On(bus)
+	bro.layoutChanged = LayoutChangedTopic.On(bus)
+
+	// Connect entity event subscriptions
+	bro.entityPlacements = EntityPlacedTopic.On(bus)
+	bro.entityMovements = EntityMovedTopic.On(bus)
+	bro.entityRemovals = EntityRemovedTopic.On(bus)
+}
+
+// GetEventBus returns the current event bus (implements EventBusIntegration)
+func (bro *BasicRoomOrchestrator) GetEventBus() events.EventBus {
+	bro.mu.RLock()
+	defer bro.mu.RUnlock()
+	return bro.eventBus
 }
 
 // GetID returns the orchestrator ID
@@ -62,24 +112,10 @@ func (bro *BasicRoomOrchestrator) GetID() string {
 }
 
 // GetType returns the entity type
-func (bro *BasicRoomOrchestrator) GetType() string {
+func (bro *BasicRoomOrchestrator) GetType() core.EntityType {
 	bro.mu.RLock()
 	defer bro.mu.RUnlock()
-	return bro.entityType
-}
-
-// SetEventBus sets the event bus for the orchestrator
-func (bro *BasicRoomOrchestrator) SetEventBus(bus events.EventBus) {
-	bro.mu.Lock()
-	defer bro.mu.Unlock()
-	bro.eventBus = bus
-}
-
-// GetEventBus returns the current event bus
-func (bro *BasicRoomOrchestrator) GetEventBus() events.EventBus {
-	bro.mu.RLock()
-	defer bro.mu.RUnlock()
-	return bro.eventBus
+	return core.EntityType(bro.entityType)
 }
 
 // AddRoom adds a room to the orchestrator
@@ -105,21 +141,24 @@ func (bro *BasicRoomOrchestrator) AddRoom(room Room) error {
 		bro.entityRooms[entityID] = roomID
 	}
 
-	// Subscribe to room events to track entity movements (only once)
-	if bro.eventBus != nil && len(bro.subscriptions) == 0 {
-		// Subscribe to entity placement events for this room
-		sub1 := bro.eventBus.SubscribeFunc(EventEntityPlaced, 0, bro.handleEntityPlaced)
-		sub2 := bro.eventBus.SubscribeFunc(EventEntityMoved, 0, bro.handleEntityMoved)
-		sub3 := bro.eventBus.SubscribeFunc(EventEntityRemoved, 0, bro.handleEntityRemoved)
+	// Subscribe to entity events using typed subscriptions (only once)
+	if len(bro.subscriptions) == 0 && bro.entityPlacements != nil {
+		ctx := context.Background()
+		sub1, _ := bro.entityPlacements.Subscribe(ctx, bro.handleEntityPlacedTyped)
+		sub2, _ := bro.entityMovements.Subscribe(ctx, bro.handleEntityMovedTyped)
+		sub3, _ := bro.entityRemovals.Subscribe(ctx, bro.handleEntityRemovedTyped)
 		bro.subscriptions = append(bro.subscriptions, sub1, sub2, sub3)
 	}
 
-	// Emit event
-	if bro.eventBus != nil {
-		event := events.NewGameEvent(EventRoomAdded, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id.String())
-		event.Context().Set("room", room)
-		_ = bro.eventBus.Publish(context.Background(), event)
+	// Emit typed event
+	if bro.roomAdded != nil {
+		event := RoomAddedEvent{
+			OrchestratorID: bro.id.String(),
+			RoomID:         room.GetID(),
+			RoomType:       string(room.GetType()),
+			AddedAt:        time.Now(),
+		}
+		_ = bro.roomAdded.Publish(context.Background(), event)
 	}
 
 	return nil
@@ -161,19 +200,23 @@ func (bro *BasicRoomOrchestrator) RemoveRoom(roomIDStr string) error {
 	delete(bro.rooms, roomID)
 
 	// Clean up subscriptions when last room is removed
-	if len(bro.rooms) == 0 && bro.eventBus != nil {
+	if len(bro.rooms) == 0 && bro.entityPlacements != nil {
+		ctx := context.Background()
 		for _, subID := range bro.subscriptions {
-			_ = bro.eventBus.Unsubscribe(subID)
+			_ = bro.entityPlacements.Unsubscribe(ctx, subID)
 		}
 		bro.subscriptions = nil
 	}
 
-	// Emit event
-	if bro.eventBus != nil {
-		event := events.NewGameEvent(EventRoomRemoved, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id.String())
-		event.Context().Set("room_id", roomIDStr)
-		_ = bro.eventBus.Publish(context.Background(), event)
+	// Emit typed event
+	if bro.roomRemoved != nil {
+		event := RoomRemovedEvent{
+			OrchestratorID: bro.id.String(),
+			RoomID:         roomIDStr,
+			Reason:         "removed",
+			RemovedAt:      time.Now(),
+		}
+		_ = bro.roomRemoved.Publish(context.Background(), event)
 	}
 
 	return nil
@@ -228,12 +271,17 @@ func (bro *BasicRoomOrchestrator) AddConnection(connection Connection) error {
 
 	bro.connections[connID] = connection
 
-	// Emit event
-	if bro.eventBus != nil {
-		event := events.NewGameEvent(EventConnectionAdded, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id.String())
-		event.Context().Set("connection", connection)
-		_ = bro.eventBus.Publish(context.Background(), event)
+	// Emit typed event
+	if bro.connectionAdded != nil {
+		event := ConnectionAddedEvent{
+			OrchestratorID: bro.id.String(),
+			ConnectionID:   connection.GetID(),
+			FromRoom:       connection.GetFromRoom(),
+			ToRoom:         connection.GetToRoom(),
+			ConnectionType: string(connection.GetConnectionType()),
+			AddedAt:        time.Now(),
+		}
+		_ = bro.connectionAdded.Publish(context.Background(), event)
 	}
 
 	return nil
@@ -251,12 +299,15 @@ func (bro *BasicRoomOrchestrator) RemoveConnection(connectionIDStr string) error
 
 	delete(bro.connections, connectionID)
 
-	// Emit event
-	if bro.eventBus != nil {
-		event := events.NewGameEvent(EventConnectionRemoved, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id.String())
-		event.Context().Set("connection_id", connectionIDStr)
-		_ = bro.eventBus.Publish(context.Background(), event)
+	// Emit typed event
+	if bro.connectionRemoved != nil {
+		event := ConnectionRemovedEvent{
+			OrchestratorID: bro.id.String(),
+			ConnectionID:   connectionIDStr,
+			Reason:         "removed",
+			RemovedAt:      time.Now(),
+		}
+		_ = bro.connectionRemoved.Publish(context.Background(), event)
 	}
 
 	return nil
@@ -318,9 +369,9 @@ func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(
 		return fmt.Errorf("from room %s not found", fromRoom)
 	}
 
-	// Get entity from source room
-	entity, exists := fromRoomObj.GetAllEntities()[entityIDStr]
-	if !exists {
+	// Verify entity exists in source room
+	entities := fromRoomObj.GetAllEntities()
+	if _, exists := entities[entityIDStr]; !exists {
 		return fmt.Errorf("entity %s not found in room %s", entityID, fromRoom)
 	}
 
@@ -333,14 +384,16 @@ func (bro *BasicRoomOrchestrator) MoveEntityBetweenRooms(
 	// Update entity room mapping
 	bro.entityRooms[entityID] = toRoom
 
-	// Emit transition event for game to handle positioning (ADR-0015)
-	if bro.eventBus != nil {
-		event := events.NewGameEvent(EventEntityRoomTransition, entity, nil)
-		event.Context().Set("entity_id", entityIDStr)
-		event.Context().Set("from_room", fromRoomStr)
-		event.Context().Set("to_room", toRoomStr)
-		event.Context().Set("connection_id", connectionIDStr)
-		_ = bro.eventBus.Publish(context.Background(), event)
+	// Emit typed transition event for game to handle positioning (ADR-0015)
+	if bro.entityRoomTransition != nil {
+		event := EntityRoomTransitionEvent{
+			EntityID:  entityIDStr,
+			FromRoom:  fromRoomStr,
+			ToRoom:    toRoomStr,
+			Reason:    fmt.Sprintf("connection:%s", connectionIDStr),
+			Timestamp: time.Now(),
+		}
+		_ = bro.entityRoomTransition.Publish(context.Background(), event)
 	}
 
 	return nil
@@ -472,114 +525,58 @@ func (bro *BasicRoomOrchestrator) SetLayout(layout LayoutType) error {
 	oldLayout := bro.layout
 	bro.layout = layout
 
-	// Emit event
-	if bro.eventBus != nil {
-		event := events.NewGameEvent(EventLayoutChanged, bro, nil)
-		event.Context().Set("orchestrator_id", bro.id)
-		event.Context().Set("old_layout", oldLayout)
-		event.Context().Set("new_layout", layout)
-		event.Context().Set("metrics", bro.calculateMetrics())
-		_ = bro.eventBus.Publish(context.Background(), event)
+	// Emit typed event
+	if bro.layoutChanged != nil {
+		event := LayoutChangedEvent{
+			OrchestratorID: bro.id.String(),
+			OldLayout:      string(oldLayout),
+			NewLayout:      string(layout),
+			ChangedAt:      time.Now(),
+		}
+		_ = bro.layoutChanged.Publish(context.Background(), event)
 	}
 
 	return nil
 }
 
-// calculateMetrics calculates layout metrics
-func (bro *BasicRoomOrchestrator) calculateMetrics() LayoutMetrics {
-	totalRooms := len(bro.rooms)
-	totalConnections := len(bro.connections)
-
-	var connectivity float64
-	if totalRooms > 0 {
-		connectivity = float64(totalConnections) / float64(totalRooms)
-	}
-
-	return LayoutMetrics{
-		TotalRooms:       totalRooms,
-		TotalConnections: totalConnections,
-		AverageDistance:  0.0, // TODO: Implement distance calculation
-		MaxDistance:      0.0, // TODO: Implement distance calculation
-		Connectivity:     connectivity,
-		RoomPositions:    make(map[string]Position), // TODO: Implement room positioning
-		LayoutType:       bro.layout,
-	}
-}
-
-// handleEntityPlaced handles entity placement events to track entity locations
-func (bro *BasicRoomOrchestrator) handleEntityPlaced(_ context.Context, event events.Event) error {
-	roomID, ok := event.Context().Get("room_id")
-	if !ok {
-		return nil
-	}
-
-	roomIDStr, ok := roomID.(string)
-	if !ok {
-		return nil
-	}
-
+// handleEntityPlacedTyped handles typed entity placement events to track entity locations
+func (bro *BasicRoomOrchestrator) handleEntityPlacedTyped(_ context.Context, event EntityPlacedEvent) error {
 	// Only track if this room is managed by this orchestrator
-	roomTypedID := RoomID(roomIDStr)
+	roomTypedID := RoomID(event.RoomID)
 	if _, exists := bro.rooms[roomTypedID]; !exists {
 		return nil
 	}
 
-	if event.Source() != nil {
-		entityID := EntityID(event.Source().GetID())
-		bro.entityRooms[entityID] = roomTypedID
-	}
+	entityID := EntityID(event.EntityID)
+	bro.entityRooms[entityID] = roomTypedID
 
 	return nil
 }
 
-// handleEntityMoved handles entity movement events to update tracking
-func (bro *BasicRoomOrchestrator) handleEntityMoved(_ context.Context, event events.Event) error {
-	roomID, ok := event.Context().Get("room_id")
-	if !ok {
-		return nil
-	}
-
-	roomIDStr, ok := roomID.(string)
-	if !ok {
-		return nil
-	}
-
+// handleEntityMovedTyped handles typed entity movement events to update tracking
+func (bro *BasicRoomOrchestrator) handleEntityMovedTyped(_ context.Context, event EntityMovedEvent) error {
 	// Only track if this room is managed by this orchestrator
-	roomTypedID := RoomID(roomIDStr)
+	roomTypedID := RoomID(event.RoomID)
 	if _, exists := bro.rooms[roomTypedID]; !exists {
 		return nil
 	}
 
-	if event.Source() != nil {
-		entityID := EntityID(event.Source().GetID())
-		bro.entityRooms[entityID] = roomTypedID
-	}
+	entityID := EntityID(event.EntityID)
+	bro.entityRooms[entityID] = roomTypedID
 
 	return nil
 }
 
-// handleEntityRemoved handles entity removal events to update tracking
-func (bro *BasicRoomOrchestrator) handleEntityRemoved(_ context.Context, event events.Event) error {
-	roomID, ok := event.Context().Get("room_id")
-	if !ok {
-		return nil
-	}
-
-	roomIDStr, ok := roomID.(string)
-	if !ok {
-		return nil
-	}
-
+// handleEntityRemovedTyped handles typed entity removal events to update tracking
+func (bro *BasicRoomOrchestrator) handleEntityRemovedTyped(_ context.Context, event EntityRemovedEvent) error {
 	// Only track if this room is managed by this orchestrator
-	roomTypedID := RoomID(roomIDStr)
+	roomTypedID := RoomID(event.RoomID)
 	if _, exists := bro.rooms[roomTypedID]; !exists {
 		return nil
 	}
 
-	if event.Source() != nil {
-		entityID := EntityID(event.Source().GetID())
-		delete(bro.entityRooms, entityID)
-	}
+	entityID := EntityID(event.EntityID)
+	delete(bro.entityRooms, entityID)
 
 	return nil
 }

@@ -13,30 +13,30 @@ import (
 
 func TestBasicRoomOrchestrator(t *testing.T) {
 	// Setup
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       "dungeon-orchestrator",
-		Type:     "orchestrator",
-		EventBus: eventBus,
-		Layout:   spatial.LayoutTypeOrganic,
+		ID:     "dungeon-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
 	})
+	orchestrator.ConnectToEventBus(eventBus)
 
 	// Create some rooms
 	grid1 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-1",
-		Type:     "chamber",
-		Grid:     grid1,
-		EventBus: eventBus,
+		ID:   "room-1",
+		Type: "chamber",
+		Grid: grid1,
 	})
+	room1.ConnectToEventBus(eventBus)
 
 	grid2 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 15, Height: 12})
 	room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-2",
-		Type:     "hallway",
-		Grid:     grid2,
-		EventBus: eventBus,
+		ID:   "room-2",
+		Type: "hallway",
+		Grid: grid2,
 	})
+	room2.ConnectToEventBus(eventBus)
 
 	// Test adding rooms
 	err := orchestrator.AddRoom(room1)
@@ -64,30 +64,30 @@ func TestBasicRoomOrchestrator(t *testing.T) {
 
 func TestBasicConnectionSystem(t *testing.T) {
 	// Setup
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       "test-orchestrator",
-		Type:     "orchestrator",
-		EventBus: eventBus,
-		Layout:   spatial.LayoutTypeOrganic,
+		ID:     "test-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
 	})
+	orchestrator.ConnectToEventBus(eventBus)
 
 	// Create rooms
 	grid1 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-1",
-		Type:     "chamber",
-		Grid:     grid1,
-		EventBus: eventBus,
+		ID:   "room-1",
+		Type: "chamber",
+		Grid: grid1,
 	})
+	room1.ConnectToEventBus(eventBus)
 
 	grid2 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-2",
-		Type:     "chamber",
-		Grid:     grid2,
-		EventBus: eventBus,
+		ID:   "room-2",
+		Type: "chamber",
+		Grid: grid2,
 	})
+	room2.ConnectToEventBus(eventBus)
 
 	err := orchestrator.AddRoom(room1)
 	require.NoError(t, err)
@@ -138,30 +138,30 @@ func TestBasicConnectionSystem(t *testing.T) {
 func TestEntityMovementBetweenRooms(t *testing.T) {
 	t.Skip("Skipping until spawn layer is implemented to handle entity placement via events (ADR-0015)")
 	// Setup
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       "movement-orchestrator",
-		Type:     "orchestrator",
-		EventBus: eventBus,
-		Layout:   spatial.LayoutTypeOrganic,
+		ID:     "movement-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
 	})
+	orchestrator.ConnectToEventBus(eventBus)
 
 	// Create rooms
 	grid1 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-a",
-		Type:     "chamber",
-		Grid:     grid1,
-		EventBus: eventBus,
+		ID:   "room-a",
+		Type: "chamber",
+		Grid: grid1,
 	})
+	room1.ConnectToEventBus(eventBus)
 
 	grid2 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-b",
-		Type:     "chamber",
-		Grid:     grid2,
-		EventBus: eventBus,
+		ID:   "room-b",
+		Type: "chamber",
+		Grid: grid2,
 	})
+	room2.ConnectToEventBus(eventBus)
 
 	err := orchestrator.AddRoom(room1)
 	require.NoError(t, err)
@@ -222,33 +222,33 @@ func TestEntityMovementBetweenRooms(t *testing.T) {
 
 func TestPathfinding(t *testing.T) {
 	// Setup
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       "pathfinding-orchestrator",
-		Type:     "orchestrator",
-		EventBus: eventBus,
-		Layout:   spatial.LayoutTypeOrganic,
+		ID:     "pathfinding-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
 	})
+	orchestrator.ConnectToEventBus(eventBus)
 
 	// Create rooms: A -> B -> C
 	roomA := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-a",
-		Type:     "chamber",
-		Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
-		EventBus: eventBus,
+		ID:   "room-a",
+		Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
+	roomA.ConnectToEventBus(eventBus)
 	roomB := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-b",
-		Type:     "chamber",
-		Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
-		EventBus: eventBus,
+		ID:   "room-b",
+		Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
+	roomB.ConnectToEventBus(eventBus)
 	roomC := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-c",
-		Type:     "chamber",
-		Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
-		EventBus: eventBus,
+		ID:   "room-c",
+		Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
+	roomC.ConnectToEventBus(eventBus)
 
 	err := orchestrator.AddRoom(roomA)
 	require.NoError(t, err)
@@ -292,11 +292,11 @@ func TestPathfinding(t *testing.T) {
 
 	// Test no path (isolated room)
 	roomD := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "room-d",
-		Type:     "chamber",
-		Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
-		EventBus: eventBus,
+		ID:   "room-d",
+		Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
+	roomD.ConnectToEventBus(eventBus)
 	err = orchestrator.AddRoom(roomD)
 	require.NoError(t, err)
 
@@ -306,81 +306,47 @@ func TestPathfinding(t *testing.T) {
 	assert.Nil(t, path)
 }
 
-func TestConnectionTypes(t *testing.T) {
-	// Test different connection factory functions
-
-	// Test door
-	door := spatial.CreateDoorConnection("door-1", "room-a", "room-b", 1.0)
-	assert.Equal(t, spatial.ConnectionTypeDoor, door.GetConnectionType())
-	assert.True(t, door.IsReversible())
-	assert.True(t, door.IsPassable(NewMockEntity("test", "character")))
-
-	// Test stairs
-	stairs := spatial.CreateStairsConnection("stairs-1", "floor-1", "floor-2", 2.0, true)
-	assert.Equal(t, spatial.ConnectionTypeStairs, stairs.GetConnectionType())
-	assert.True(t, stairs.IsReversible())
-	assert.Contains(t, stairs.GetRequirements(), "can_climb")
-	assert.Equal(t, 2.0, stairs.GetTraversalCost(NewMockEntity("test", "character")))
-
-	// Test secret passage
-	secret := spatial.CreateSecretPassageConnection(
-		"secret-1", "room-a", "room-b", 1.0, []string{"found_secret", "has_key"})
-	assert.Equal(t, spatial.ConnectionTypePassage, secret.GetConnectionType())
-	assert.Contains(t, secret.GetRequirements(), "found_secret")
-	assert.Contains(t, secret.GetRequirements(), "has_key")
-
-	// Test portal
-	portal := spatial.CreatePortalConnection("portal-1", "room-a", "room-b", 0.5, false)
-	assert.Equal(t, spatial.ConnectionTypePortal, portal.GetConnectionType())
-	assert.False(t, portal.IsReversible())
-	assert.Equal(t, 0.5, portal.GetTraversalCost(NewMockEntity("test", "character")))
-
-	// Test bridge
-	bridge := spatial.CreateBridgeConnection("bridge-1", "side-a", "side-b", 1.0)
-	assert.Equal(t, spatial.ConnectionTypeBridge, bridge.GetConnectionType())
-	assert.True(t, bridge.IsReversible())
-
-	// Test tunnel
-	tunnel := spatial.CreateTunnelConnection("tunnel-1", "cave-a", "cave-b", 1.5)
-	assert.Equal(t, spatial.ConnectionTypeTunnel, tunnel.GetConnectionType())
-	assert.Equal(t, 1.5, tunnel.GetTraversalCost(NewMockEntity("test", "character")))
-}
-
 func TestOrchestratorEvents(t *testing.T) {
 	// Setup event capture
-	eventBus := events.NewBus()
-	var capturedEvents []events.Event
+	eventBus := events.NewEventBus()
+	var capturedEvents []interface{}
 
-	eventBus.SubscribeFunc(spatial.EventRoomAdded, 0, func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		return nil
-	})
+	_, _ = spatial.RoomAddedTopic.On(eventBus).Subscribe(
+		context.Background(),
+		func(_ context.Context, event spatial.RoomAddedEvent) error {
+			capturedEvents = append(capturedEvents, event)
+			return nil
+		})
 
-	eventBus.SubscribeFunc(spatial.EventConnectionAdded, 0, func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		return nil
-	})
+	_, _ = spatial.ConnectionAddedTopic.On(eventBus).Subscribe(
+		context.Background(),
+		func(_ context.Context, event spatial.ConnectionAddedEvent) error {
+			capturedEvents = append(capturedEvents, event)
+			return nil
+		})
 
-	eventBus.SubscribeFunc(spatial.EventLayoutChanged, 0, func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		return nil
-	})
+	_, _ = spatial.LayoutChangedTopic.On(eventBus).Subscribe(
+		context.Background(),
+		func(_ context.Context, event spatial.LayoutChangedEvent) error {
+			capturedEvents = append(capturedEvents, event)
+			return nil
+		})
 
 	// Create orchestrator
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       "event-orchestrator",
-		Type:     "orchestrator",
-		EventBus: eventBus,
-		Layout:   spatial.LayoutTypeOrganic,
+		ID:     "event-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
 	})
+	orchestrator.ConnectToEventBus(eventBus)
 
 	// Test operations that should generate events
 	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "test-room",
-		Type:     "chamber",
-		Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
-		EventBus: eventBus,
+		ID:   "test-room",
+		Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
+	room.ConnectToEventBus(eventBus)
 
 	err := orchestrator.AddRoom(room)
 	require.NoError(t, err)
@@ -392,24 +358,30 @@ func TestOrchestratorEvents(t *testing.T) {
 	// Verify events were captured
 	assert.True(t, len(capturedEvents) >= 2, "Should have captured room added and layout changed events")
 
-	// Check event types
-	eventTypes := make(map[string]bool)
+	// Check that we have the right types of events
+	hasRoomAdded := false
+	hasLayoutChanged := false
 	for _, event := range capturedEvents {
-		eventTypes[event.Type()] = true
+		switch event.(type) {
+		case spatial.RoomAddedEvent:
+			hasRoomAdded = true
+		case spatial.LayoutChangedEvent:
+			hasLayoutChanged = true
+		}
 	}
 
-	assert.True(t, eventTypes[spatial.EventRoomAdded], "Should have room added event")
-	assert.True(t, eventTypes[spatial.EventLayoutChanged], "Should have layout changed event")
+	assert.True(t, hasRoomAdded, "Should have room added event")
+	assert.True(t, hasLayoutChanged, "Should have layout changed event")
 }
 
 func TestLayoutTypes(t *testing.T) {
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:       "layout-orchestrator",
-		Type:     "orchestrator",
-		EventBus: eventBus,
-		Layout:   spatial.LayoutTypeOrganic,
+		ID:     "layout-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
 	})
+	orchestrator.ConnectToEventBus(eventBus)
 
 	// Test initial layout
 	assert.Equal(t, spatial.LayoutTypeOrganic, orchestrator.GetLayout())

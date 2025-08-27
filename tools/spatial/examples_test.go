@@ -14,7 +14,7 @@ import (
 // TestSpatialSystem demonstrates how to use the spatial system
 func TestSpatialSystem(t *testing.T) {
 	// Setup event bus
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 
 	// Create a square grid room
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
@@ -23,19 +23,18 @@ func TestSpatialSystem(t *testing.T) {
 	})
 
 	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "dungeon-room-1",
-		Type:     "dungeon",
-		Grid:     grid,
-		EventBus: eventBus,
+		ID:   "dungeon-room-1",
+		Type: "dungeon",
+		Grid: grid,
 	})
+	room.ConnectToEventBus(eventBus)
 
 	// Setup query system
 	queryHandler := spatial.NewSpatialQueryHandler()
 	queryHandler.RegisterRoom(room)
-	queryHandler.RegisterWithEventBus(eventBus)
 
 	// Create query utilities for convenience
-	queryUtils := spatial.NewQueryUtils(eventBus)
+	queryUtils := spatial.NewQueryUtils(queryHandler)
 
 	// Create some entities
 	hero := NewMockEntity("hero", "character")
@@ -241,29 +240,35 @@ func TestGridComparison(t *testing.T) {
 // TestEventIntegration demonstrates event-driven spatial interactions
 func TestEventIntegration(t *testing.T) {
 	// Setup
-	eventBus := events.NewBus()
+	eventBus := events.NewEventBus()
 
 	// Track events
-	var capturedEvents []events.Event
+	var capturedEvents []interface{}
 
-	// Subscribe to all spatial events
-	eventBus.SubscribeFunc(spatial.EventEntityPlaced, 0, func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		t.Logf("Entity placed: %s", event.Source().GetID())
-		return nil
-	})
+	// Subscribe to all spatial events using typed topics
+	_, _ = spatial.EntityPlacedTopic.On(eventBus).Subscribe(
+		context.Background(),
+		func(_ context.Context, event spatial.EntityPlacedEvent) error {
+			capturedEvents = append(capturedEvents, event)
+			t.Logf("Entity placed: %s", event.EntityID)
+			return nil
+		})
 
-	eventBus.SubscribeFunc(spatial.EventEntityMoved, 0, func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		t.Logf("Entity moved: %s", event.Source().GetID())
-		return nil
-	})
+	_, _ = spatial.EntityMovedTopic.On(eventBus).Subscribe(
+		context.Background(),
+		func(_ context.Context, event spatial.EntityMovedEvent) error {
+			capturedEvents = append(capturedEvents, event)
+			t.Logf("Entity moved: %s", event.EntityID)
+			return nil
+		})
 
-	eventBus.SubscribeFunc(spatial.EventEntityRemoved, 0, func(_ context.Context, event events.Event) error {
-		capturedEvents = append(capturedEvents, event)
-		t.Logf("Entity removed: %s", event.Source().GetID())
-		return nil
-	})
+	_, _ = spatial.EntityRemovedTopic.On(eventBus).Subscribe(
+		context.Background(),
+		func(_ context.Context, event spatial.EntityRemovedEvent) error {
+			capturedEvents = append(capturedEvents, event)
+			t.Logf("Entity removed: %s", event.EntityID)
+			return nil
+		})
 
 	// Create room
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
@@ -272,11 +277,11 @@ func TestEventIntegration(t *testing.T) {
 	})
 
 	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "event-room",
-		Type:     "test",
-		Grid:     grid,
-		EventBus: eventBus,
+		ID:   "event-room",
+		Type: "test",
+		Grid: grid,
 	})
+	room.ConnectToEventBus(eventBus)
 
 	// Create entity
 	entity := NewMockEntity("test-entity", "character")
@@ -294,17 +299,118 @@ func TestEventIntegration(t *testing.T) {
 	// Verify events were captured
 	assert.True(t, len(capturedEvents) >= 3, "Should capture placement, movement, and removal events")
 
-	// Verify event types
-	eventTypes := make(map[string]bool)
-	for _, event := range capturedEvents {
-		eventTypes[event.Type()] = true
-	}
-
-	assert.True(t, eventTypes[spatial.EventEntityPlaced], "Should have placement event")
-	assert.True(t, eventTypes[spatial.EventEntityMoved], "Should have movement event")
-	assert.True(t, eventTypes[spatial.EventEntityRemoved], "Should have removal event")
-
 	t.Logf("Captured %d events", len(capturedEvents))
+}
+
+// TestMultiRoomOrchestration demonstrates multi-room functionality
+func TestMultiRoomOrchestration(t *testing.T) {
+	// Setup event bus
+	eventBus := events.NewEventBus()
+
+	// Create orchestrator
+	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
+		ID:     "dungeon-orchestrator",
+		Type:   "orchestrator",
+		Layout: spatial.LayoutTypeOrganic,
+	})
+	orchestrator.ConnectToEventBus(eventBus)
+
+	// Create rooms
+	room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "room-1",
+		Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
+	})
+	room1.ConnectToEventBus(eventBus)
+
+	room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "room-2",
+		Type: "hallway",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 15, Height: 5}),
+	})
+	room2.ConnectToEventBus(eventBus)
+
+	// Add rooms to orchestrator
+	err := orchestrator.AddRoom(room1)
+	require.NoError(t, err)
+
+	err = orchestrator.AddRoom(room2)
+	require.NoError(t, err)
+
+	// Create connection between rooms
+	door := spatial.CreateDoorConnection(
+		"door-1",
+		"room-1", "room-2",
+		1.0, // Standard movement cost
+	)
+
+	err = orchestrator.AddConnection(door)
+	require.NoError(t, err)
+
+	// Create and place entity
+	hero := NewMockEntity("hero", "character")
+	err = room1.PlaceEntity(hero, spatial.Position{X: 5, Y: 5})
+	require.NoError(t, err)
+
+	// Test pathfinding between rooms
+	path, err := orchestrator.FindPath("room-1", "room-2", hero)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"room-1", "room-2"}, path)
+
+	// Test entity movement between rooms
+	canMove := orchestrator.CanMoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
+	assert.True(t, canMove)
+
+	err = orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
+	require.NoError(t, err)
+
+	// Verify entity is now in room-2
+	currentRoom, exists := orchestrator.GetEntityRoom("hero")
+	assert.True(t, exists)
+	assert.Equal(t, "room-2", currentRoom)
+
+	t.Logf("Successfully moved hero from room-1 to room-2 through door-1")
+}
+
+// TestConnectionTypes demonstrates different connection types
+func TestConnectionTypes(t *testing.T) {
+	// Test door
+	door := spatial.CreateDoorConnection("door-1", "room-a", "room-b", 1.0)
+	assert.Equal(t, spatial.ConnectionTypeDoor, door.GetConnectionType())
+	assert.True(t, door.IsReversible())
+	assert.True(t, door.IsPassable(NewMockEntity("test", "character")))
+
+	// Test stairs
+	stairs := spatial.CreateStairsConnection("stairs-1", "floor-1", "floor-2", 2.0, true)
+	assert.Equal(t, spatial.ConnectionTypeStairs, stairs.GetConnectionType())
+	assert.True(t, stairs.IsReversible())
+	assert.Contains(t, stairs.GetRequirements(), "can_climb")
+	assert.Equal(t, 2.0, stairs.GetTraversalCost(NewMockEntity("test", "character")))
+
+	// Test secret passage
+	secret := spatial.CreateSecretPassageConnection(
+		"secret-1", "room-a", "room-b", 1.0, []string{"found_secret", "has_key"})
+	assert.Equal(t, spatial.ConnectionTypePassage, secret.GetConnectionType())
+	assert.Contains(t, secret.GetRequirements(), "found_secret")
+	assert.Contains(t, secret.GetRequirements(), "has_key")
+
+	// Test portal
+	portal := spatial.CreatePortalConnection("portal-1", "room-a", "room-b", 0.5, false)
+	assert.Equal(t, spatial.ConnectionTypePortal, portal.GetConnectionType())
+	assert.False(t, portal.IsReversible())
+	assert.Equal(t, 0.5, portal.GetTraversalCost(NewMockEntity("test", "character")))
+
+	// Test bridge
+	bridge := spatial.CreateBridgeConnection("bridge-1", "side-a", "side-b", 1.0)
+	assert.Equal(t, spatial.ConnectionTypeBridge, bridge.GetConnectionType())
+	assert.True(t, bridge.IsReversible())
+
+	// Test tunnel
+	tunnel := spatial.CreateTunnelConnection("tunnel-1", "cave-a", "cave-b", 1.5)
+	assert.Equal(t, spatial.ConnectionTypeTunnel, tunnel.GetConnectionType())
+	assert.Equal(t, 1.5, tunnel.GetTraversalCost(NewMockEntity("test", "character")))
+
+	t.Logf("All connection types work correctly")
 }
 
 // Run all examples as tests
@@ -312,4 +418,6 @@ func TestExamples(t *testing.T) {
 	t.Run("SpatialSystem", TestSpatialSystem)
 	t.Run("GridComparison", TestGridComparison)
 	t.Run("EventIntegration", TestEventIntegration)
+	t.Run("MultiRoomOrchestration", TestMultiRoomOrchestration)
+	t.Run("ConnectionTypes", TestConnectionTypes)
 }

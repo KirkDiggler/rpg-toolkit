@@ -39,7 +39,7 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(
 				position, err = e.findValidPositionWithConstraints(room, entity, config.SpatialRules, result.SpawnedEntities)
 				if err != nil {
 					result.Failures = append(result.Failures, SpawnFailure{
-						EntityType: entity.GetType(),
+						EntityType: string(entity.GetType()), // Convert core.EntityType to string
 						Reason:     fmt.Sprintf("constraint validation failed: %v", err),
 					})
 					continue
@@ -51,7 +51,7 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(
 			// Place entity in room
 			if err := e.placeEntityInRoom(room, entity, position); err != nil {
 				result.Failures = append(result.Failures, SpawnFailure{
-					EntityType: entity.GetType(),
+					EntityType: string(entity.GetType()), // Convert core.EntityType to string
 					Reason:     fmt.Sprintf("placement failed: %v", err),
 				})
 				continue
@@ -126,7 +126,7 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 				position, err := e.findPlayerSpawnPosition(entity, config.PlayerSpawnZones, config.PlayerChoices)
 				if err != nil {
 					result.Failures = append(result.Failures, SpawnFailure{
-						EntityType: entity.GetType(),
+						EntityType: string(entity.GetType()), // Convert core.EntityType to string
 						Reason:     fmt.Sprintf("player spawn failed: %v", err),
 					})
 					continue
@@ -146,7 +146,7 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 					position, err = e.findValidPositionWithConstraints(room, entity, config.SpatialRules, result.SpawnedEntities)
 					if err != nil {
 						result.Failures = append(result.Failures, SpawnFailure{
-							EntityType: entity.GetType(),
+							EntityType: string(entity.GetType()), // Convert core.EntityType to string
 							Reason:     fmt.Sprintf("constraint validation failed: %v", err),
 						})
 						continue
@@ -227,7 +227,7 @@ func (e *BasicSpawnEngine) isEntityAllowedInZone(
 		return true // Zone allows all types
 	}
 
-	entityType := entity.GetType()
+	entityType := string(entity.GetType()) // Convert core.EntityType to string
 	for _, allowedType := range zone.EntityTypes {
 		if entityType == allowedType {
 			return true

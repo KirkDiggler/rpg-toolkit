@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -72,8 +71,8 @@ type PatternParams struct {
 	WallHeight float64                `json:"wall_height"` // Default wall height
 	Properties map[string]interface{} `json:"properties"`  // Custom properties
 
-	// Event integration (optional)
-	EventBus events.EventBus `json:"-"` // For emergency fallback notifications
+	// Event integration (optional) - use typed topics instead
+	// EmergencyFallbackTopic will be used via ConnectToEventBus pattern
 }
 
 // PathSafetyParams ensures generated rooms are navigable
@@ -247,8 +246,8 @@ func validatePathSafety(walls []WallSegment, shape *RoomShape, size spatial.Dime
 }
 
 func validateAndFixPathfinding(
-	ctx context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions,
-	safety PathSafetyParams, params PatternParams,
+	_ context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions,
+	safety PathSafetyParams, _ PatternParams,
 ) ([]WallSegment, error) {
 	// First, try to validate as-is
 	if err := validatePathSafety(walls, shape, size, safety); err == nil {
@@ -280,20 +279,8 @@ func validateAndFixPathfinding(
 	// Final validation
 	if err := validatePathSafety(fixedWalls, shape, size, safety); err != nil {
 		if safety.EmergencyFallback {
-			// Publish emergency fallback event to notify client
-			if params.EventBus != nil {
-				event := events.NewGameEvent(EventEmergencyFallbackTriggered, nil, nil)
-				event.Context().Set("pattern_type", "random")
-				event.Context().Set("reason", "path_safety_validation_failed")
-				event.Context().Set("original_density", params.Density)
-				event.Context().Set("original_wall_count", len(fixedWalls))
-				event.Context().Set("validation_error", err.Error())
-				event.Context().Set("fallback_type", "empty_room")
-				event.Context().Set("room_size", fmt.Sprintf("%.0fx%.0f", size.Width, size.Height))
-				_ = params.EventBus.Publish(ctx, event)
-			}
-
 			// Emergency fallback: return empty room
+			// TODO: Consider how to notify callers about fallback usage
 			return []WallSegment{}, nil
 		}
 		return nil, fmt.Errorf("could not fix pathfinding issues: %w", err)

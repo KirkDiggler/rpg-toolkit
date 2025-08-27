@@ -3,10 +3,11 @@ package choices
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 )
 
 func TestValidateClassChoices_Fighter(t *testing.T) {

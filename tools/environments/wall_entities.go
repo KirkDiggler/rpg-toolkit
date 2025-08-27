@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -57,8 +58,8 @@ func (w *WallEntity) GetID() string {
 }
 
 // GetType returns the type of this entity
-func (w *WallEntity) GetType() string {
-	return "wall"
+func (w *WallEntity) GetType() core.EntityType {
+	return core.EntityType("wall")
 }
 
 // GetSize returns the size of this entity

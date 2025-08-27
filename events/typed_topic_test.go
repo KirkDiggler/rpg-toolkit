@@ -8,8 +8,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 // Test events

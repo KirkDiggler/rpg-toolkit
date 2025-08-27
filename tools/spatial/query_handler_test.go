@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -14,7 +13,7 @@ import (
 type QueryHandlerTestSuite struct {
 	suite.Suite
 	queryHandler *spatial.SpatialQueryHandler
-	eventBus     *events.Bus
+	eventBus     events.EventBus
 	room         *spatial.BasicRoom
 	entity1      *MockEntity
 	entity2      *MockEntity
@@ -24,7 +23,7 @@ type QueryHandlerTestSuite struct {
 // SetupTest runs before EACH test function
 func (s *QueryHandlerTestSuite) SetupTest() {
 	s.queryHandler = spatial.NewSpatialQueryHandler()
-	s.eventBus = events.NewBus()
+	s.eventBus = events.NewEventBus()
 
 	// Create test room
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
@@ -33,17 +32,14 @@ func (s *QueryHandlerTestSuite) SetupTest() {
 	})
 
 	s.room = spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:       "test-room",
-		Type:     "square",
-		Grid:     grid,
-		EventBus: s.eventBus,
+		ID:   "test-room",
+		Type: "square",
+		Grid: grid,
 	})
+	s.room.ConnectToEventBus(s.eventBus)
 
 	// Register room with query handler
 	s.queryHandler.RegisterRoom(s.room)
-
-	// Register query handler with event bus
-	s.queryHandler.RegisterWithEventBus(s.eventBus)
 
 	// Create test entities
 	s.entity1 = NewMockEntity("entity1", "character")
@@ -162,124 +158,6 @@ func (s *QueryHandlerTestSuite) TestDirectQueryHandling() {
 	})
 }
 
-// TestEventBasedQueries tests queries through the event system
-func (s *QueryHandlerTestSuite) TestEventBasedQueries() {
-	s.Run("positions in range via event", func() {
-		event := events.NewGameEvent(spatial.EventQueryPositionsInRange, nil, nil)
-		event.Context().Set("center", spatial.Position{X: 5, Y: 5})
-		event.Context().Set("radius", 2.0)
-		event.Context().Set("room_id", "test-room")
-
-		err := s.eventBus.Publish(context.Background(), event)
-		s.Require().NoError(err)
-
-		results, exists := event.Context().Get("results")
-		s.Assert().True(exists)
-		s.Assert().NotNil(results)
-
-		positions := results.([]spatial.Position)
-		s.Assert().True(len(positions) > 0)
-	})
-
-	s.Run("entities in range via event", func() {
-		event := events.NewGameEvent(spatial.EventQueryEntitiesInRange, nil, nil)
-		event.Context().Set("center", spatial.Position{X: 5, Y: 5})
-		event.Context().Set("radius", 5.0)
-		event.Context().Set("room_id", "test-room")
-
-		err := s.eventBus.Publish(context.Background(), event)
-		s.Require().NoError(err)
-
-		results, exists := event.Context().Get("results")
-		s.Assert().True(exists)
-		s.Assert().NotNil(results)
-
-		entities := results.([]core.Entity)
-		s.Assert().True(len(entities) > 0)
-	})
-
-	s.Run("entities in range via event with filter", func() {
-		filter := spatial.NewSimpleEntityFilter().WithEntityTypes("character")
-
-		event := events.NewGameEvent(spatial.EventQueryEntitiesInRange, nil, nil)
-		event.Context().Set("center", spatial.Position{X: 5, Y: 5})
-		event.Context().Set("radius", 10.0)
-		event.Context().Set("room_id", "test-room")
-		event.Context().Set("filter", filter)
-
-		err := s.eventBus.Publish(context.Background(), event)
-		s.Require().NoError(err)
-
-		results, exists := event.Context().Get("results")
-		s.Assert().True(exists)
-		s.Assert().NotNil(results)
-
-		entities := results.([]core.Entity)
-		s.Assert().Len(entities, 1) // Only entity1 is a character
-		s.Assert().Equal("entity1", entities[0].GetID())
-	})
-
-	s.Run("line of sight via event", func() {
-		event := events.NewGameEvent(spatial.EventQueryLineOfSight, nil, nil)
-		event.Context().Set("from", spatial.Position{X: 1, Y: 1})
-		event.Context().Set("to", spatial.Position{X: 9, Y: 9})
-		event.Context().Set("room_id", "test-room")
-
-		err := s.eventBus.Publish(context.Background(), event)
-		s.Require().NoError(err)
-
-		results, exists := event.Context().Get("results")
-		s.Assert().True(exists)
-		s.Assert().NotNil(results)
-
-		positions := results.([]spatial.Position)
-		s.Assert().True(len(positions) > 0)
-
-		blocked, exists := event.Context().Get("blocked")
-		s.Assert().True(exists)
-		s.Assert().NotNil(blocked)
-	})
-
-	s.Run("movement via event", func() {
-		event := events.NewGameEvent(spatial.EventQueryMovement, nil, nil)
-		event.Context().Set("entity", s.entity1)
-		event.Context().Set("from", spatial.Position{X: 3, Y: 3})
-		event.Context().Set("to", spatial.Position{X: 5, Y: 5})
-		event.Context().Set("room_id", "test-room")
-
-		err := s.eventBus.Publish(context.Background(), event)
-		s.Require().NoError(err)
-
-		valid, exists := event.Context().Get("valid")
-		s.Assert().True(exists)
-		s.Assert().True(valid.(bool))
-
-		distance, exists := event.Context().Get("distance")
-		s.Assert().True(exists)
-		s.Assert().True(distance.(float64) > 0)
-
-		path, exists := event.Context().Get("path")
-		s.Assert().True(exists)
-		s.Assert().NotNil(path)
-	})
-
-	s.Run("placement via event", func() {
-		entity := NewMockEntity("new-entity", "character")
-
-		event := events.NewGameEvent(spatial.EventQueryPlacement, nil, nil)
-		event.Context().Set("entity", entity)
-		event.Context().Set("position", spatial.Position{X: 2, Y: 2})
-		event.Context().Set("room_id", "test-room")
-
-		err := s.eventBus.Publish(context.Background(), event)
-		s.Require().NoError(err)
-
-		valid, exists := event.Context().Get("valid")
-		s.Assert().True(exists)
-		s.Assert().True(valid.(bool))
-	})
-}
-
 // TestQueryHandlerRoomManagement tests room registration/unregistration
 func (s *QueryHandlerTestSuite) TestQueryHandlerRoomManagement() {
 	s.Run("unregister room", func() {
@@ -379,6 +257,90 @@ func (s *QueryHandlerTestSuite) TestEntityFiltering() {
 		filter := spatial.NewSimpleEntityFilter()
 
 		s.Assert().False(filter.Matches(nil))
+	})
+}
+
+// TestQueryConvenienceMethods tests the QueryUtils wrapper functions
+func (s *QueryHandlerTestSuite) TestQueryConvenienceMethods() {
+	// Create query utilities
+	queryUtils := spatial.NewQueryUtils(s.queryHandler)
+
+	s.Run("query entities in range", func() {
+		entities, err := queryUtils.QueryEntitiesInRange(
+			context.Background(),
+			spatial.Position{X: 5, Y: 5},
+			5.0,
+			"test-room",
+			nil, // no filter
+		)
+		s.Require().NoError(err)
+		s.Assert().True(len(entities) > 0)
+	})
+
+	s.Run("query positions in range", func() {
+		positions, err := queryUtils.QueryPositionsInRange(
+			context.Background(),
+			spatial.Position{X: 5, Y: 5},
+			3.0,
+			"test-room",
+		)
+		s.Require().NoError(err)
+		s.Assert().True(len(positions) > 0)
+	})
+
+	s.Run("query line of sight", func() {
+		positions, blocked, err := queryUtils.QueryLineOfSight(
+			context.Background(),
+			spatial.Position{X: 1, Y: 1},
+			spatial.Position{X: 9, Y: 9},
+			"test-room",
+		)
+		s.Require().NoError(err)
+		s.Assert().True(len(positions) > 0)
+		s.Assert().NotNil(blocked) // blocked can be true or false
+	})
+
+	s.Run("query movement", func() {
+		canMove, path, distance, err := queryUtils.QueryMovement(
+			context.Background(),
+			s.entity1,
+			spatial.Position{X: 3, Y: 3},
+			spatial.Position{X: 5, Y: 5},
+			"test-room",
+		)
+		s.Require().NoError(err)
+		s.Assert().True(canMove)
+		s.Assert().NotNil(path)
+		s.Assert().True(distance > 0)
+	})
+
+	s.Run("query placement", func() {
+		newEntity := NewMockEntity("test-placement", "character")
+		canPlace, err := queryUtils.QueryPlacement(
+			context.Background(),
+			newEntity,
+			spatial.Position{X: 2, Y: 2},
+			"test-room",
+		)
+		s.Require().NoError(err)
+		s.Assert().True(canPlace)
+	})
+}
+
+// TestFilterFactories tests the filter factory functions
+func (s *QueryHandlerTestSuite) TestFilterFactories() {
+	s.Run("create monster filter", func() {
+		filter := spatial.CreateMonsterFilter()
+		s.Assert().True(filter.Matches(s.entity2))  // monster
+		s.Assert().False(filter.Matches(s.entity1)) // character
+		s.Assert().False(filter.Matches(s.entity3)) // item
+	})
+
+	s.Run("create combatant filter", func() {
+		filter := spatial.CreateCombatantFilter()
+		s.Assert().True(filter.Matches(s.entity1))  // character
+		s.Assert().True(filter.Matches(s.entity2))  // monster
+		s.Assert().False(filter.Matches(s.entity3)) // item
 	})
 }
 
