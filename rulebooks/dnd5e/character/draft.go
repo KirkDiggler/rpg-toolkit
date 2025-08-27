@@ -262,11 +262,12 @@ func (d *Draft) buildValidationContext() *choices.ValidationContext {
 	
 	// Add skill proficiencies from all sources
 	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceSkills {
+		switch choice.Category {
+		case shared.ChoiceSkills:
 			for _, skill := range choice.SkillSelection {
 				context.AddProficiency(string(skill))
 			}
-		} else if choice.Category == shared.ChoiceToolProficiency {
+		case shared.ChoiceToolProficiency:
 			for _, tool := range choice.ToolProficiencySelection {
 				context.AddProficiency(tool)
 			}
