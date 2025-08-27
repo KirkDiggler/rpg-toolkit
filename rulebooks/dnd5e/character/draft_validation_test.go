@@ -1,6 +1,7 @@
 package character
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
@@ -13,6 +14,51 @@ import (
 )
 
 func TestDraft_ValidateChoices(t *testing.T) {
+	t.Run("Validation Updates Draft State", func(t *testing.T) {
+		// Test that validation warnings and errors are stored on the draft
+		// Note: For now, we're not detecting automatic grants from race/background
+		// That will come with the individual validator updates
+		draft := &Draft{
+			ID:   "test-draft",
+			Name: "Test Fighter",
+			ClassChoice: ClassChoice{
+				ClassID: classes.Fighter,
+			},
+			RaceChoice: RaceChoice{
+				RaceID: races.Human,
+			},
+			BackgroundChoice: backgrounds.Noble,
+			Choices: []ChoiceData{
+				{
+					Category: shared.ChoiceSkills,
+					Source:   shared.SourceClass,
+					ChoiceID: "fighter_skills",
+					SkillSelection: []skills.Skill{
+						skills.Athletics,
+						skills.Athletics, // Duplicate within same choice
+					},
+				},
+			},
+		}
+
+		result, err := draft.ValidateChoices()
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+
+		// Check that draft state was updated
+		assert.NotEmpty(t, draft.ValidationErrors, "Should have errors for duplicate skill and missing requirements")
+		assert.False(t, draft.CanFinalize, "Should not be able to finalize with errors")
+
+		// Check for duplicate error
+		foundDuplicateError := false
+		for _, err := range draft.ValidationErrors {
+			if strings.Contains(err, "Duplicate selection") {
+				foundDuplicateError = true
+			}
+		}
+		assert.True(t, foundDuplicateError, "Should have error for duplicate skill selection")
+	})
+
 	t.Run("Valid Fighter Choices", func(t *testing.T) {
 		draft := &Draft{
 			ID:   "test-draft",
@@ -101,6 +147,27 @@ func TestDraft_ValidateChoices(t *testing.T) {
 	})
 }
 
+func TestDraft_GetValidationStatus(t *testing.T) {
+	draft := &Draft{
+		ID:   "test-draft",
+		Name: "Test Character",
+		ValidationWarnings: []string{
+			"skill 'athletics' chosen from class but already granted by background",
+		},
+		ValidationErrors: []string{
+			"Must choose exactly 1 fighting style, got 0",
+		},
+		CanFinalize: false,
+	}
+
+	warnings, errors, canFinalize := draft.GetValidationStatus()
+
+	assert.Equal(t, draft.ValidationWarnings, warnings)
+	assert.Equal(t, draft.ValidationErrors, errors)
+	assert.Equal(t, draft.CanFinalize, canFinalize)
+	assert.True(t, draft.HasValidationIssues())
+}
+
 func TestLoadDraftFromData_Validation(t *testing.T) {
 	t.Run("Valid Data", func(t *testing.T) {
 		data := DraftData{
@@ -143,5 +210,53 @@ func TestLoadDraftFromData_Validation(t *testing.T) {
 		_, err := LoadDraftFromData(data)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid background")
+	})
+
+	t.Run("Validation State Is Recalculated On Load", func(t *testing.T) {
+		// Create draft with validation state (to show it doesn't persist)
+		originalDraft := &Draft{
+			ID: "test-draft",
+			ClassChoice: ClassChoice{
+				ClassID: classes.Fighter,
+			},
+			RaceChoice: RaceChoice{
+				RaceID: races.Human,
+			},
+			BackgroundChoice: backgrounds.Soldier,
+			ValidationWarnings: []string{
+				"skill 'athletics' chosen from class but already granted by background",
+			},
+			ValidationErrors: []string{
+				"Must choose exactly 1 fighting style, got 0",
+			},
+			CanFinalize: false,
+		}
+
+		// Convert to data
+		data := originalDraft.ToData()
+
+		// Verify data does NOT contain validation state fields anymore
+		// This is implicitly verified by the fact that the DraftData struct
+		// no longer has these fields and the code compiles
+
+		// Load from data
+		loadedDraft, err := LoadDraftFromData(data)
+		require.NoError(t, err)
+
+		// Verify loaded draft has recalculated validation state based on choices
+		// The validation should detect missing fighting style and equipment
+		assert.NotNil(t, loadedDraft.ValidationErrors, "Should have validation errors")
+		assert.False(t, loadedDraft.CanFinalize, "Should not be able to finalize incomplete draft")
+
+		// The exact validation messages may differ since they're recalculated,
+		// but we should have errors about missing choices
+		hasRequiredChoiceError := false
+		for _, err := range loadedDraft.ValidationErrors {
+			if strings.Contains(err, "fighting style") || strings.Contains(err, "equipment") {
+				hasRequiredChoiceError = true
+				break
+			}
+		}
+		assert.True(t, hasRequiredChoiceError, "Should have error about missing required choices")
 	})
 }

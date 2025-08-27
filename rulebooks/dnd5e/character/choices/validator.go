@@ -5,6 +5,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -111,6 +112,27 @@ func (v *Validator) validateSkills(req *SkillRequirement, chosen []string, sourc
 			continue
 		}
 		seen[skill] = true
+
+		// Check if this skill is redundant due to automatic grants
+		if v.context != nil {
+			// Convert string to typed skill for checking
+			if skillType, ok := skills.All[skill]; ok {
+				if hasGrant, grantSource := v.context.HasAutomaticSkillGrant(skillType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    FieldSkills,
+						Message: fmt.Sprintf(
+							"Skill '%s' is already granted automatically by %s - "+
+								"consider choosing a different skill", skill, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   skill,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
+			}
+		}
 	}
 }
 
@@ -363,26 +385,84 @@ func (v *Validator) checkProficiencyDuplicates(
 func (v *Validator) ValidateRaceChoices(raceID races.Race, submissions *TypedSubmissions) *ValidationResult {
 	result := NewValidationResult()
 	reqs := getRaceRequirementsInternal(raceID)
-	if reqs == nil {
-		return result
+
+	// Even if there are no formal requirements, check for redundant choices
+	// This handles cases where players make choices that aren't required (like choosing a language already granted)
+
+	// Check skills - either validate requirements or just check for redundancy
+	raceSkills := submissions.GetValues(SourceRace, FieldSkills)
+	if reqs != nil && reqs.Skills != nil {
+		v.validateSkills(reqs.Skills, raceSkills, SourceRace, result)
+	} else if len(raceSkills) > 0 {
+		// No skill requirements, but player made skill choices - check for redundancy
+		v.checkRedundantChoices(FieldSkills, raceSkills, SourceRace, result)
 	}
 
-	// Validate skills (e.g., Half-Elf)
-	if reqs.Skills != nil {
-		v.validateSkills(reqs.Skills, submissions.GetValues(SourceRace, FieldSkills), SourceRace, result)
-	}
-
-	// Validate languages (e.g., Half-Elf)
-	if reqs.Languages != nil {
-		v.validateLanguages(reqs.Languages, submissions.GetValues(SourceRace, FieldLanguages), SourceRace, result)
+	// Check languages - either validate requirements or just check for redundancy
+	raceLanguages := submissions.GetValues(SourceRace, FieldLanguages)
+	if reqs != nil && reqs.Languages != nil {
+		v.validateLanguages(reqs.Languages, raceLanguages, SourceRace, result)
+	} else if len(raceLanguages) > 0 {
+		// No language requirements, but player made language choices - check for redundancy
+		v.checkRedundantChoices(FieldLanguages, raceLanguages, SourceRace, result)
 	}
 
 	// Validate draconic ancestry (Dragonborn)
-	if reqs.DraconicAncestry != nil {
+	if reqs != nil && reqs.DraconicAncestry != nil {
 		v.validateAncestry(reqs.DraconicAncestry, submissions.GetValues(SourceRace, FieldDraconicAncestry), result)
 	}
 
 	return result
+}
+
+// checkRedundantChoices checks if choices are redundant due to automatic grants
+func (v *Validator) checkRedundantChoices(field Field, chosen []string, source Source, result *ValidationResult) {
+	if v.context == nil {
+		return
+	}
+
+	switch field {
+	case FieldSkills:
+		for _, value := range chosen {
+			if skillType, ok := skills.All[value]; ok {
+				if hasGrant, grantSource := v.context.HasAutomaticSkillGrant(skillType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    field,
+						Message: fmt.Sprintf("Skill '%s' is already granted automatically by %s - consider choosing a different skill",
+							value, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   value,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
+			}
+		}
+	case FieldLanguages:
+		for _, value := range chosen {
+			if langType := languages.Language(value); langType != "" {
+				if hasGrant, grantSource := v.context.HasAutomaticLanguageGrant(langType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    field,
+						Message: fmt.Sprintf(
+							"Language '%s' is already granted automatically by %s - consider choosing a different language",
+							value, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   value,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
+			}
+		}
+	default:
+		// For other fields (tools etc), we don't check redundancy yet
+		return
+	}
 }
 
 // validateLanguages validates language choices
@@ -433,6 +513,27 @@ func (v *Validator) validateLanguages(
 			continue
 		}
 		seen[lang] = true
+
+		// Check if this language is redundant due to automatic grants
+		if v.context != nil {
+			// Convert string to typed language for checking
+			if langType := languages.Language(lang); langType != "" {
+				if hasGrant, grantSource := v.context.HasAutomaticLanguageGrant(langType); hasGrant {
+					result.AddIssue(ValidationIssue{
+						Code:     CodeRedundantChoice,
+						Severity: SeverityWarning,
+						Field:    FieldLanguages,
+						Message: fmt.Sprintf(
+							"Language '%s' is already granted automatically by %s - "+
+								"consider choosing a different language", lang, grantSource),
+						Details: map[DetailKey]any{
+							DetailValue:   lang,
+							DetailSources: []Source{source, grantSource},
+						},
+					})
+				}
+			}
+		}
 	}
 }
 

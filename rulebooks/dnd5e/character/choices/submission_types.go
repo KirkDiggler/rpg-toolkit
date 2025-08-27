@@ -1,5 +1,10 @@
 package choices
 
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+)
+
 // Submissions represents player choices submitted for validation (legacy format)
 type Submissions map[string][]string
 
@@ -166,6 +171,14 @@ type ValidationContext struct {
 	ArmorProficiencies    map[string]Source // armor -> source of proficiency
 	LanguageProficiencies map[string]Source // language -> source of proficiency
 
+	// Automatic grants from race/class/background
+	// These are NOT player choices, but inherent features that inform validation
+	AutomaticGrants struct {
+		Skills    map[skills.Skill]Source       // skill -> source that grants it automatically
+		Languages map[languages.Language]Source // language -> source that grants it automatically
+		Tools     map[string]Source             // tool -> source that grants it automatically
+	}
+
 	// Existing expertise
 	ExistingExpertise map[string]bool // skill/tool -> has expertise
 
@@ -188,7 +201,16 @@ func NewValidationContext() *ValidationContext {
 		WeaponProficiencies:   make(map[string]Source),
 		ArmorProficiencies:    make(map[string]Source),
 		LanguageProficiencies: make(map[string]Source),
-		ExistingExpertise:     make(map[string]bool),
+		AutomaticGrants: struct {
+			Skills    map[skills.Skill]Source
+			Languages map[languages.Language]Source
+			Tools     map[string]Source
+		}{
+			Skills:    make(map[skills.Skill]Source),
+			Languages: make(map[languages.Language]Source),
+			Tools:     make(map[string]Source),
+		},
+		ExistingExpertise: make(map[string]bool),
 	}
 }
 
@@ -209,4 +231,55 @@ func (vc *ValidationContext) AddProficiency(name string) {
 	}
 	// Default to class source if not specified
 	vc.SkillProficiencies[name] = SourceClass
+}
+
+// AddAutomaticSkillGrant adds an automatic skill grant to the context
+func (vc *ValidationContext) AddAutomaticSkillGrant(skill skills.Skill, source Source) {
+	if vc == nil {
+		return
+	}
+	vc.AutomaticGrants.Skills[skill] = source
+}
+
+// AddAutomaticLanguageGrant adds an automatic language grant to the context
+func (vc *ValidationContext) AddAutomaticLanguageGrant(lang languages.Language, source Source) {
+	if vc == nil {
+		return
+	}
+	vc.AutomaticGrants.Languages[lang] = source
+}
+
+// AddAutomaticToolGrant adds an automatic tool grant to the context (tool is still string until we have typed tools)
+func (vc *ValidationContext) AddAutomaticToolGrant(tool string, source Source) {
+	if vc == nil {
+		return
+	}
+	vc.AutomaticGrants.Tools[tool] = source
+}
+
+// HasAutomaticSkillGrant checks if a skill is automatically granted
+func (vc *ValidationContext) HasAutomaticSkillGrant(skill skills.Skill) (bool, Source) {
+	if vc == nil {
+		return false, ""
+	}
+	source, exists := vc.AutomaticGrants.Skills[skill]
+	return exists, source
+}
+
+// HasAutomaticLanguageGrant checks if a language is automatically granted
+func (vc *ValidationContext) HasAutomaticLanguageGrant(lang languages.Language) (bool, Source) {
+	if vc == nil {
+		return false, ""
+	}
+	source, exists := vc.AutomaticGrants.Languages[lang]
+	return exists, source
+}
+
+// HasAutomaticToolGrant checks if a tool is automatically granted
+func (vc *ValidationContext) HasAutomaticToolGrant(tool string) (bool, Source) {
+	if vc == nil {
+		return false, ""
+	}
+	source, exists := vc.AutomaticGrants.Tools[tool]
+	return exists, source
 }

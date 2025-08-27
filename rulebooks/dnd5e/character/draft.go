@@ -34,6 +34,11 @@ type Draft struct {
 	// All choices with source tracking
 	Choices []ChoiceData `json:"choices"`
 
+	// Validation state - populated by ValidateChoices()
+	ValidationWarnings []string `json:"validation_warnings,omitempty"`
+	ValidationErrors   []string `json:"validation_errors,omitempty"`
+	CanFinalize        bool     `json:"can_finalize"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -165,7 +170,7 @@ func LoadDraftFromData(data DraftData) (*Draft, error) {
 		}
 	}
 
-	return &Draft{
+	draft := &Draft{
 		ID:       data.ID,
 		PlayerID: data.PlayerID,
 		Name:     data.Name,
@@ -180,9 +185,18 @@ func LoadDraftFromData(data DraftData) (*Draft, error) {
 		// Load choices with source tracking
 		Choices: data.Choices,
 
+		// Validation state is NOT loaded from persistence - it will be calculated
+		// on-demand to ensure it's always current with the rules
+
 		CreatedAt: data.CreatedAt,
 		UpdatedAt: data.UpdatedAt,
-	}, nil
+	}
+
+	// Run validation to populate the validation state
+	// This ensures the draft always has current validation based on the latest rules
+	_, _ = draft.ValidateChoices()
+
+	return draft, nil
 }
 
 // ToData converts the draft to its persistent representation
@@ -202,6 +216,9 @@ func (d *Draft) ToData() DraftData {
 		// Save choices with source tracking
 		Choices: d.Choices,
 
+		// Note: Validation state is not saved - it's derived data that should be
+		// recalculated when needed to ensure it's always current with the rules
+
 		CreatedAt: d.CreatedAt,
 		UpdatedAt: d.UpdatedAt,
 	}
@@ -217,8 +234,24 @@ func (d *Draft) IsComplete() bool {
 	return d.isComplete()
 }
 
+// GetValidationStatus returns the current validation state of the draft
+func (d *Draft) GetValidationStatus() (warnings []string, errors []string, canFinalize bool) {
+	return d.ValidationWarnings, d.ValidationErrors, d.CanFinalize
+}
+
+// HasValidationIssues returns true if the draft has any validation errors or warnings
+func (d *Draft) HasValidationIssues() bool {
+	return len(d.ValidationErrors) > 0 || len(d.ValidationWarnings) > 0
+}
+
 // ValidateChoices validates the draft's choices using the new choices validation system
+// and updates the draft's validation state
 func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
+	// Clear previous validation state
+	d.ValidationWarnings = nil
+	d.ValidationErrors = nil
+	d.CanFinalize = false
+
 	// Can only validate if we have class/race/background selected
 	if d.ClassChoice.ClassID == "" || d.RaceChoice.RaceID == "" {
 		return nil, errors.New("class and race must be selected before validating choices")
@@ -242,18 +275,52 @@ func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
 		}
 	}
 
-	// Build validation context with current proficiencies
-	context := d.buildValidationContext()
+	// Build validation context using the rulebook's knowledge of automatic grants
+	context := d.buildValidationContextWithRulebookKnowledge()
 
 	// Create validator and validate with typed constants from the Draft
 	validator := choices.NewValidator(context)
-	return validator.ValidateAll(
+	result := validator.ValidateAll(
 		d.ClassChoice.ClassID,
 		d.RaceChoice.RaceID,
 		d.BackgroundChoice,
 		1, // Level 1 for now
 		submissions,
-	), nil
+	)
+
+	// Update draft's validation state from result
+	d.updateValidationState(result)
+
+	return result, nil
+}
+
+// ValidateChoicesWithData is deprecated. Use ValidateChoices() which now uses the rulebook's knowledge.
+// This method will be removed before v1.0
+//
+// Deprecated: Use ValidateChoices instead
+func (d *Draft) ValidateChoicesWithData(_ *race.Data, _ *shared.Background) (*choices.ValidationResult, error) {
+	return d.ValidateChoices()
+}
+
+// updateValidationState updates the draft's validation fields from the validation result
+func (d *Draft) updateValidationState(result *choices.ValidationResult) {
+	// Collect error messages
+	for _, err := range result.Errors {
+		d.ValidationErrors = append(d.ValidationErrors, err.Message)
+	}
+
+	// Collect incomplete messages as errors (they prevent finalization)
+	for _, inc := range result.Incomplete {
+		d.ValidationErrors = append(d.ValidationErrors, inc.Message)
+	}
+
+	// Collect warning messages
+	for _, warn := range result.Warnings {
+		d.ValidationWarnings = append(d.ValidationWarnings, warn.Message)
+	}
+
+	// Update finalization status
+	d.CanFinalize = result.CanFinalize
 }
 
 // buildValidationContext creates a validation context from the draft's current state
@@ -276,6 +343,38 @@ func (d *Draft) buildValidationContext() *choices.ValidationContext {
 
 	context.CharacterLevel = 1 // For now, always level 1
 	context.ClassLevel = 1
+
+	return context
+}
+
+// buildValidationContextWithGrants creates a validation context with automatic grants populated
+// This is used when we have the full race and background data available
+// buildValidationContextWithRulebookKnowledge uses the rulebook's knowledge to populate automatic grants
+func (d *Draft) buildValidationContextWithRulebookKnowledge() *choices.ValidationContext {
+	context := d.buildValidationContext()
+
+	// Get automatic grants from the race using rulebook knowledge
+	raceGrants := races.GetAutomaticGrants(d.RaceChoice.RaceID)
+
+	// Add automatic skill grants from race
+	for _, skill := range raceGrants.Skills {
+		context.AddAutomaticSkillGrant(skill, choices.SourceRace)
+	}
+
+	// Add automatic language grants from race
+	for _, lang := range raceGrants.Languages {
+		context.AddAutomaticLanguageGrant(lang, choices.SourceRace)
+	}
+
+	// Get automatic grants from the background using rulebook knowledge
+	bgGrants := backgrounds.GetAutomaticGrants(d.BackgroundChoice)
+
+	// Add automatic skill grants from background
+	for _, skill := range bgGrants.Skills {
+		context.AddAutomaticSkillGrant(skill, choices.SourceBackground)
+	}
+
+	// TODO: Add language and tool grants from background when they exist
 
 	return context
 }
