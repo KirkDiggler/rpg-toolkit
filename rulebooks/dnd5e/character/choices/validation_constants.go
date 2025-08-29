@@ -7,6 +7,7 @@ type Source string
 
 // Source constants - where choices come from
 const (
+	SourceInvalid    Source = "invalid" // Invalid or unknown source
 	SourceClass      Source = "class"
 	SourceRace       Source = "race"
 	SourceSubrace    Source = "subrace"
@@ -22,6 +23,11 @@ type Field string
 
 // Field constants - what's being validated
 const (
+	FieldInvalid             Field = "invalid"    // Invalid or unknown field
+	FieldClass               Field = "class"      // Class selection
+	FieldRace                Field = "race"       // Race selection
+	FieldBackground          Field = "background" // Background selection
+	FieldName                Field = "name"       // Character name
 	FieldSkills              Field = "skills"
 	FieldRaceSkills          Field = "race_skills"
 	FieldBackgroundSkills    Field = "background_skills"

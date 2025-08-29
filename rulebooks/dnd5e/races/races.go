@@ -13,6 +13,7 @@ type Subrace = Race
 
 // Core races from Player's Handbook
 const (
+	Invalid    Race = "invalid" // Invalid or unknown race
 	Human      Race = "human"
 	Elf        Race = "elf"
 	Dwarf      Race = "dwarf"

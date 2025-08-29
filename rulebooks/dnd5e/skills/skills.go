@@ -11,6 +11,7 @@ type Skill string
 
 // All D&D 5e skills
 const (
+	Invalid        Skill = "invalid" // Invalid or unknown skill
 	Acrobatics     Skill = "acrobatics"
 	AnimalHandling Skill = "animal-handling"
 	Arcana         Skill = "arcana"
