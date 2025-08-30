@@ -711,6 +711,27 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 		}
 		// Knowledge Domain adds 2 skills from: Arcana, History, Nature, or Religion
 		baseReqs.Skills.Count += 2
+		// Add the Knowledge Domain specific skills to the allowed options
+		knowledgeSkills := []skills.Skill{
+			skills.Arcana,
+			skills.History,
+			skills.Nature,
+			skills.Religion,
+		}
+		// Merge the knowledge domain skills with existing options
+		for _, skill := range knowledgeSkills {
+			// Check if skill is not already in the list
+			found := false
+			for _, existing := range baseReqs.Skills.Options {
+				if existing == skill {
+					found = true
+					break
+				}
+			}
+			if !found {
+				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
+			}
+		}
 		baseReqs.Skills.Label = "Choose 2 skills (base) + 2: Arcana/History/Nature/Religion (Knowledge Domain)"
 
 	case classes.NatureDomain:

@@ -78,6 +78,72 @@ func (v *Validator) ValidateClassChoices(
 	return result
 }
 
+// ValidateClassChoicesWithSubclass validates choices for a specific class and subclass combination
+func (v *Validator) ValidateClassChoicesWithSubclass(
+	classID classes.Class,
+	subclassID classes.Subclass,
+	_ int, // Deprecated: always 1 for character creation
+	submissions *TypedSubmissions,
+) *ValidationResult {
+	result := NewValidationResult()
+	
+	// Get requirements that include subclass modifications
+	var reqs *Requirements
+	if subclassID != "" {
+		// Use subclass-aware requirements
+		reqs = GetSubclassRequirements(subclassID)
+	} else {
+		// Fall back to base class requirements
+		reqs = getClassRequirementsInternal(classID)
+	}
+	
+	if reqs == nil {
+		return result
+	}
+
+	// Validate skills with subclass-modified count
+	if reqs.Skills != nil {
+		v.validateSkills(reqs.Skills, submissions.GetValues(SourceClass, FieldSkills), SourceClass, result)
+	}
+
+	// Validate fighting style
+	if reqs.FightingStyle != nil {
+		v.validateFightingStyle(reqs.FightingStyle, submissions.GetValues(SourceClass, FieldFightingStyle), result)
+	}
+
+	// Validate equipment choices
+	if len(reqs.Equipment) > 0 {
+		v.validateEquipment(reqs.Equipment, submissions, result)
+	}
+
+	// Validate cantrips (may be modified by subclass like Nature Domain)
+	if reqs.Cantrips != nil {
+		v.validateSpells(reqs.Cantrips, submissions.GetValues(SourceClass, FieldCantrips), FieldCantrips, result)
+	}
+
+	// Validate spells
+	if reqs.Spells != nil {
+		v.validateSpells(reqs.Spells, submissions.GetValues(SourceClass, FieldSpells), FieldSpells, result)
+	}
+
+	// Validate expertise with proficiency checking
+	if reqs.Expertise != nil {
+		v.validateExpertise(reqs.Expertise, submissions.GetValues(SourceClass, FieldExpertise), result)
+	}
+
+	// Validate instruments
+	if reqs.Instruments != nil {
+		v.validateInstruments(reqs.Instruments, submissions.GetValues(SourceClass, FieldInstruments), result)
+	}
+
+	// Validate languages (may be added by subclass like Knowledge Domain)
+	if reqs.Languages != nil {
+		v.validateLanguages(reqs.Languages, submissions.GetValues(SourceClass, FieldLanguages), SourceClass, result)
+	}
+
+	return result
+}
+
 // validateSkills validates skill choices with enhanced error reporting
 func (v *Validator) validateSkills(req *SkillRequirement, chosen []string, source Source, result *ValidationResult) {
 	if len(chosen) != req.Count {
@@ -566,6 +632,36 @@ func (v *Validator) ValidateAll(
 
 	// Validate class choices
 	classResult := v.ValidateClassChoices(classID, level, submissions)
+	v.mergeResults(result, classResult)
+
+	// Validate race choices
+	raceResult := v.ValidateRaceChoices(raceID, submissions)
+	v.mergeResults(result, raceResult)
+
+	// Validate cross-source duplicates
+	dupResult := v.ValidateCrossSourceDuplicates(submissions)
+	v.mergeResults(result, dupResult)
+
+	// Check proficiency redundancy (informational)
+	profResult := v.ValidateProficiencyDuplicates(submissions)
+	v.mergeResults(result, profResult)
+
+	return result
+}
+
+// ValidateAllWithSubclass validates all choices including subclass-specific requirements
+func (v *Validator) ValidateAllWithSubclass(
+	classID classes.Class,
+	subclassID classes.Subclass,
+	raceID races.Race,
+	_ backgrounds.Background,
+	level int,
+	submissions *TypedSubmissions,
+) *ValidationResult {
+	result := NewValidationResult()
+
+	// Validate class choices with subclass requirements
+	classResult := v.ValidateClassChoicesWithSubclass(classID, subclassID, level, submissions)
 	v.mergeResults(result, classResult)
 
 	// Validate race choices

@@ -280,13 +280,27 @@ func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
 
 	// Create validator and validate with typed constants from the Draft
 	validator := choices.NewValidator(context)
-	result := validator.ValidateAll(
-		d.ClassChoice.ClassID,
-		d.RaceChoice.RaceID,
-		d.BackgroundChoice,
-		1, // Level 1 for now
-		submissions,
-	)
+	
+	// Use subclass-aware validation if subclass is selected
+	var result *choices.ValidationResult
+	if d.ClassChoice.SubclassID != "" {
+		result = validator.ValidateAllWithSubclass(
+			d.ClassChoice.ClassID,
+			d.ClassChoice.SubclassID,
+			d.RaceChoice.RaceID,
+			d.BackgroundChoice,
+			1, // Level 1 for now
+			submissions,
+		)
+	} else {
+		result = validator.ValidateAll(
+			d.ClassChoice.ClassID,
+			d.RaceChoice.RaceID,
+			d.BackgroundChoice,
+			1, // Level 1 for now
+			submissions,
+		)
+	}
 
 	// Update draft's validation state from result
 	d.updateValidationState(result)
