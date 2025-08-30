@@ -9,9 +9,9 @@ import (
 // Note: Fighter gets all simple and martial weapons, but we'll add just a few for testing
 
 // SimpleMeleeWeapons - fighter-accessible simple melee weapons (for testing)
-var SimpleMeleeWeapons = map[string]Weapon{
-	"club": {
-		ID:         "club",
+var SimpleMeleeWeapons = map[WeaponID]Weapon{
+	Club: {
+		ID:         Club,
 		Name:       "Club",
 		Category:   CategorySimpleMelee,
 		Cost:       "1 sp",
@@ -20,8 +20,8 @@ var SimpleMeleeWeapons = map[string]Weapon{
 		Weight:     2,
 		Properties: []WeaponProperty{PropertyLight},
 	},
-	"dagger": {
-		ID:         "dagger",
+	Dagger: {
+		ID:         Dagger,
 		Name:       "Dagger",
 		Category:   CategorySimpleMelee,
 		Cost:       "2 gp",
@@ -31,8 +31,8 @@ var SimpleMeleeWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyFinesse, PropertyLight, PropertyThrown},
 		Range:      &Range{Normal: 20, Long: 60},
 	},
-	"handaxe": {
-		ID:         "handaxe",
+	Handaxe: {
+		ID:         Handaxe,
 		Name:       "Handaxe",
 		Category:   CategorySimpleMelee,
 		Cost:       "5 gp",
@@ -42,8 +42,8 @@ var SimpleMeleeWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyLight, PropertyThrown},
 		Range:      &Range{Normal: 20, Long: 60},
 	},
-	"javelin": {
-		ID:         "javelin",
+	Javelin: {
+		ID:         Javelin,
 		Name:       "Javelin",
 		Category:   CategorySimpleMelee,
 		Cost:       "5 sp",
@@ -53,12 +53,74 @@ var SimpleMeleeWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyThrown},
 		Range:      &Range{Normal: 30, Long: 120},
 	},
+	Greatclub: {
+		ID:         Greatclub,
+		Name:       "Greatclub",
+		Category:   CategorySimpleMelee,
+		Cost:       "2 sp",
+		Damage:     "1d8",
+		DamageType: damage.Bludgeoning,
+		Weight:     10,
+		Properties: []WeaponProperty{PropertyTwoHanded},
+	},
+	LightHammer: {
+		ID:         LightHammer,
+		Name:       "Light Hammer",
+		Category:   CategorySimpleMelee,
+		Cost:       "2 gp",
+		Damage:     "1d4",
+		DamageType: damage.Bludgeoning,
+		Weight:     2,
+		Properties: []WeaponProperty{PropertyLight, PropertyThrown},
+		Range:      &Range{Normal: 20, Long: 60},
+	},
+	Mace: {
+		ID:         Mace,
+		Name:       "Mace",
+		Category:   CategorySimpleMelee,
+		Cost:       "5 gp",
+		Damage:     "1d6",
+		DamageType: damage.Bludgeoning,
+		Weight:     4,
+		Properties: []WeaponProperty{},
+	},
+	Quarterstaff: {
+		ID:         Quarterstaff,
+		Name:       "Quarterstaff",
+		Category:   CategorySimpleMelee,
+		Cost:       "2 sp",
+		Damage:     "1d6",
+		DamageType: damage.Bludgeoning,
+		Weight:     4,
+		Properties: []WeaponProperty{PropertyVersatile},
+	},
+	Sickle: {
+		ID:         Sickle,
+		Name:       "Sickle",
+		Category:   CategorySimpleMelee,
+		Cost:       "1 gp",
+		Damage:     "1d4",
+		DamageType: damage.Slashing,
+		Weight:     2,
+		Properties: []WeaponProperty{PropertyLight},
+	},
+	Spear: {
+		ID:         Spear,
+		Name:       "Spear",
+		Category:   CategorySimpleMelee,
+		Cost:       "1 gp",
+		Damage:     "1d6",
+		DamageType: damage.Piercing,
+		Weight:     3,
+		Properties: []WeaponProperty{PropertyThrown, PropertyVersatile},
+		Range:      &Range{Normal: 20, Long: 60},
+	},
 }
 
 // MartialMeleeWeapons - fighter-accessible martial melee weapons (for testing)
-var MartialMeleeWeapons = map[string]Weapon{
-	"greatsword": {
-		ID:         "greatsword",
+var MartialMeleeWeapons = map[WeaponID]Weapon{
+	Greatsword: {
+		ID:         Greatsword,
 		Name:       "Greatsword",
 		Category:   CategoryMartialMelee,
 		Cost:       "50 gp",
@@ -67,8 +129,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     6,
 		Properties: []WeaponProperty{PropertyHeavy, PropertyTwoHanded},
 	},
-	"longsword": {
-		ID:         "longsword",
+	Longsword: {
+		ID:         Longsword,
 		Name:       "Longsword",
 		Category:   CategoryMartialMelee,
 		Cost:       "15 gp",
@@ -77,8 +139,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     3,
 		Properties: []WeaponProperty{PropertyVersatile},
 	},
-	"rapier": {
-		ID:         "rapier",
+	Rapier: {
+		ID:         Rapier,
 		Name:       "Rapier",
 		Category:   CategoryMartialMelee,
 		Cost:       "25 gp",
@@ -87,8 +149,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     2,
 		Properties: []WeaponProperty{PropertyFinesse},
 	},
-	"shortsword": {
-		ID:         "shortsword",
+	Shortsword: {
+		ID:         Shortsword,
 		Name:       "Shortsword",
 		Category:   CategoryMartialMelee,
 		Cost:       "10 gp",
@@ -97,8 +159,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     2,
 		Properties: []WeaponProperty{PropertyFinesse, PropertyLight},
 	},
-	"battleaxe": {
-		ID:         "battleaxe",
+	Battleaxe: {
+		ID:         Battleaxe,
 		Name:       "Battleaxe",
 		Category:   CategoryMartialMelee,
 		Cost:       "10 gp",
@@ -107,8 +169,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     4,
 		Properties: []WeaponProperty{PropertyVersatile},
 	},
-	"flail": {
-		ID:         "flail",
+	Flail: {
+		ID:         Flail,
 		Name:       "Flail",
 		Category:   CategoryMartialMelee,
 		Cost:       "10 gp",
@@ -117,8 +179,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     2,
 		Properties: []WeaponProperty{},
 	},
-	"glaive": {
-		ID:         "glaive",
+	Glaive: {
+		ID:         Glaive,
 		Name:       "Glaive",
 		Category:   CategoryMartialMelee,
 		Cost:       "20 gp",
@@ -127,8 +189,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     6,
 		Properties: []WeaponProperty{PropertyHeavy, PropertyReach, PropertyTwoHanded},
 	},
-	"greataxe": {
-		ID:         "greataxe",
+	Greataxe: {
+		ID:         Greataxe,
 		Name:       "Greataxe",
 		Category:   CategoryMartialMelee,
 		Cost:       "30 gp",
@@ -137,8 +199,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     7,
 		Properties: []WeaponProperty{PropertyHeavy, PropertyTwoHanded},
 	},
-	"halberd": {
-		ID:         "halberd",
+	Halberd: {
+		ID:         Halberd,
 		Name:       "Halberd",
 		Category:   CategoryMartialMelee,
 		Cost:       "20 gp",
@@ -147,8 +209,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     6,
 		Properties: []WeaponProperty{PropertyHeavy, PropertyReach, PropertyTwoHanded},
 	},
-	"lance": {
-		ID:         "lance",
+	Lance: {
+		ID:         Lance,
 		Name:       "Lance",
 		Category:   CategoryMartialMelee,
 		Cost:       "10 gp",
@@ -157,8 +219,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     6,
 		Properties: []WeaponProperty{PropertyReach}, // Special: disadvantage when within 5 feet
 	},
-	"maul": {
-		ID:         "maul",
+	Maul: {
+		ID:         Maul,
 		Name:       "Maul",
 		Category:   CategoryMartialMelee,
 		Cost:       "10 gp",
@@ -167,8 +229,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     10,
 		Properties: []WeaponProperty{PropertyHeavy, PropertyTwoHanded},
 	},
-	"morningstar": {
-		ID:         "morningstar",
+	Morningstar: {
+		ID:         Morningstar,
 		Name:       "Morningstar",
 		Category:   CategoryMartialMelee,
 		Cost:       "15 gp",
@@ -177,8 +239,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     4,
 		Properties: []WeaponProperty{},
 	},
-	"pike": {
-		ID:         "pike",
+	Pike: {
+		ID:         Pike,
 		Name:       "Pike",
 		Category:   CategoryMartialMelee,
 		Cost:       "5 gp",
@@ -187,8 +249,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     18,
 		Properties: []WeaponProperty{PropertyHeavy, PropertyReach, PropertyTwoHanded},
 	},
-	"scimitar": {
-		ID:         "scimitar",
+	Scimitar: {
+		ID:         Scimitar,
 		Name:       "Scimitar",
 		Category:   CategoryMartialMelee,
 		Cost:       "25 gp",
@@ -197,8 +259,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     3,
 		Properties: []WeaponProperty{PropertyFinesse, PropertyLight},
 	},
-	"trident": {
-		ID:         "trident",
+	Trident: {
+		ID:         Trident,
 		Name:       "Trident",
 		Category:   CategoryMartialMelee,
 		Cost:       "5 gp",
@@ -208,8 +270,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyThrown, PropertyVersatile},
 		Range:      &Range{Normal: 20, Long: 60},
 	},
-	"war-pick": {
-		ID:         "war-pick",
+	WarPick: {
+		ID:         WarPick,
 		Name:       "War Pick",
 		Category:   CategoryMartialMelee,
 		Cost:       "5 gp",
@@ -218,8 +280,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     2,
 		Properties: []WeaponProperty{},
 	},
-	"warhammer": {
-		ID:         "warhammer",
+	Warhammer: {
+		ID:         Warhammer,
 		Name:       "Warhammer",
 		Category:   CategoryMartialMelee,
 		Cost:       "15 gp",
@@ -228,8 +290,8 @@ var MartialMeleeWeapons = map[string]Weapon{
 		Weight:     2,
 		Properties: []WeaponProperty{PropertyVersatile},
 	},
-	"whip": {
-		ID:         "whip",
+	Whip: {
+		ID:         Whip,
 		Name:       "Whip",
 		Category:   CategoryMartialMelee,
 		Cost:       "2 gp",
@@ -241,9 +303,9 @@ var MartialMeleeWeapons = map[string]Weapon{
 }
 
 // SimpleRangedWeapons - fighter-accessible simple ranged weapons (for testing)
-var SimpleRangedWeapons = map[string]Weapon{
-	"light-crossbow": {
-		ID:         "light-crossbow",
+var SimpleRangedWeapons = map[WeaponID]Weapon{
+	LightCrossbow: {
+		ID:         LightCrossbow,
 		Name:       "Light Crossbow",
 		Category:   CategorySimpleRanged,
 		Cost:       "25 gp",
@@ -253,8 +315,8 @@ var SimpleRangedWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition, PropertyLoading, PropertyTwoHanded},
 		Range:      &Range{Normal: 80, Long: 320},
 	},
-	"shortbow": {
-		ID:         "shortbow",
+	Shortbow: {
+		ID:         Shortbow,
 		Name:       "Shortbow",
 		Category:   CategorySimpleRanged,
 		Cost:       "25 gp",
@@ -264,12 +326,34 @@ var SimpleRangedWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition, PropertyTwoHanded},
 		Range:      &Range{Normal: 80, Long: 320},
 	},
+	Dart: {
+		ID:         Dart,
+		Name:       "Dart",
+		Category:   CategorySimpleRanged,
+		Cost:       "5 cp",
+		Damage:     "1d4",
+		DamageType: damage.Piercing,
+		Weight:     0.25,
+		Properties: []WeaponProperty{PropertyFinesse, PropertyThrown},
+		Range:      &Range{Normal: 20, Long: 60},
+	},
+	Sling: {
+		ID:         Sling,
+		Name:       "Sling",
+		Category:   CategorySimpleRanged,
+		Cost:       "1 sp",
+		Damage:     "1d4",
+		DamageType: damage.Bludgeoning,
+		Weight:     0,
+		Properties: []WeaponProperty{PropertyAmmunition},
+		Range:      &Range{Normal: 30, Long: 120},
+	},
 }
 
 // MartialRangedWeapons - fighter-accessible martial ranged weapons (for testing)
-var MartialRangedWeapons = map[string]Weapon{
-	"heavy-crossbow": {
-		ID:         "heavy-crossbow",
+var MartialRangedWeapons = map[WeaponID]Weapon{
+	HeavyCrossbow: {
+		ID:         HeavyCrossbow,
 		Name:       "Heavy Crossbow",
 		Category:   CategoryMartialRanged,
 		Cost:       "50 gp",
@@ -279,8 +363,8 @@ var MartialRangedWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition, PropertyHeavy, PropertyLoading, PropertyTwoHanded},
 		Range:      &Range{Normal: 100, Long: 400},
 	},
-	"longbow": {
-		ID:         "longbow",
+	Longbow: {
+		ID:         Longbow,
 		Name:       "Longbow",
 		Category:   CategoryMartialRanged,
 		Cost:       "50 gp",
@@ -290,8 +374,8 @@ var MartialRangedWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition, PropertyHeavy, PropertyTwoHanded},
 		Range:      &Range{Normal: 150, Long: 600},
 	},
-	"blowgun": {
-		ID:         "blowgun",
+	Blowgun: {
+		ID:         Blowgun,
 		Name:       "Blowgun",
 		Category:   CategoryMartialRanged,
 		Cost:       "10 gp",
@@ -301,8 +385,8 @@ var MartialRangedWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition, PropertyLoading},
 		Range:      &Range{Normal: 25, Long: 100},
 	},
-	"hand-crossbow": {
-		ID:         "hand-crossbow",
+	HandCrossbow: {
+		ID:         HandCrossbow,
 		Name:       "Hand Crossbow",
 		Category:   CategoryMartialRanged,
 		Cost:       "75 gp",
@@ -312,8 +396,8 @@ var MartialRangedWeapons = map[string]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition, PropertyLight, PropertyLoading},
 		Range:      &Range{Normal: 30, Long: 120},
 	},
-	"net": {
-		ID:         "net",
+	Net: {
+		ID:         Net,
 		Name:       "Net",
 		Category:   CategoryMartialRanged,
 		Cost:       "1 gp",
@@ -326,7 +410,7 @@ var MartialRangedWeapons = map[string]Weapon{
 }
 
 // All combines all weapon maps for easy lookup
-var All = make(map[string]Weapon)
+var All = make(map[WeaponID]Weapon)
 
 func init() {
 	// Populate the All map
@@ -345,15 +429,15 @@ func init() {
 }
 
 // GetByID returns a weapon by its ID
-func GetByID(id string) (Weapon, error) {
+func GetByID(id WeaponID) (Weapon, error) {
 	w, ok := All[id]
 	if !ok {
 		validWeapons := make([]string, 0, len(All))
 		for k := range All {
-			validWeapons = append(validWeapons, k)
+			validWeapons = append(validWeapons, string(k))
 		}
 		return Weapon{}, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid weapon",
-			rpgerr.WithMeta("provided", id),
+			rpgerr.WithMeta("provided", string(id)),
 			rpgerr.WithMeta("valid_options", validWeapons))
 	}
 	return w, nil

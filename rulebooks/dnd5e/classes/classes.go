@@ -385,6 +385,11 @@ func (c Class) String() string {
 	}
 }
 
+// Name returns the display name of the class
+func (c Class) Name() string {
+	return c.String()
+}
+
 // Description returns a brief description of the class
 func (c Class) Description() string {
 	switch c {
@@ -430,7 +435,13 @@ func (s Subclass) String() string {
 	if name, ok := subclassNames[s]; ok {
 		return name
 	}
+
 	return string(s)
+}
+
+// Name returns the display name of the subclass
+func (s Subclass) Name() string {
+	return s.String()
 }
 
 // Description returns a brief description of the subclass
