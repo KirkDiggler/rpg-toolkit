@@ -25,14 +25,17 @@ func NewValidator(context *ValidationContext) *Validator {
 	}
 }
 
-// ValidateClassChoices validates choices for a specific class
+// ValidateClassChoices validates choices for a specific class at level 1
+// Note: This only handles level 1 character creation validation.
+// Level-up validation should be handled by the Character struct.
+// TODO: Remove level parameter since it's always 1
 func (v *Validator) ValidateClassChoices(
 	classID classes.Class,
-	level int,
+	_ int, // Deprecated: always 1 for character creation
 	submissions *TypedSubmissions,
 ) *ValidationResult {
 	result := NewValidationResult()
-	reqs := getClassRequirementsInternal(classID, level)
+	reqs := getClassRequirementsInternal(classID)
 	if reqs == nil {
 		return result
 	}

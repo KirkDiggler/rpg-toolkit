@@ -68,6 +68,11 @@ type Armor struct {
 	Cost                string // e.g., "5 gp"
 }
 
+// GetName returns the name of the armor
+func (a Armor) GetName() string {
+	return a.Name
+}
+
 // All armor definitions
 var All = map[ArmorID]Armor{
 	// Light armor

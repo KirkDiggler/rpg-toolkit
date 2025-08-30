@@ -10,6 +10,7 @@ type Language string
 
 // Standard languages that most characters can learn
 const (
+	Invalid  Language = "invalid" // Invalid or unknown language
 	Common   Language = "common"
 	Dwarvish Language = "dwarvish"
 	Elvish   Language = "elvish"

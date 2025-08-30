@@ -45,7 +45,7 @@ const (
 
 // Weapon represents a D&D 5e weapon
 type Weapon struct {
-	ID         string
+	ID         WeaponID
 	Name       string
 	Category   WeaponCategory
 	Cost       string      // "5 gp"
@@ -54,6 +54,11 @@ type Weapon struct {
 	Weight     float64
 	Properties []WeaponProperty
 	Range      *Range // nil for melee-only weapons
+}
+
+// GetName returns the name of the weapon
+func (w Weapon) GetName() string {
+	return w.Name
 }
 
 // Range represents weapon range (for thrown/ranged weapons)

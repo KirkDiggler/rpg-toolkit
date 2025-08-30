@@ -15,13 +15,11 @@ func TestGetClassRequirements(t *testing.T) {
 	tests := []struct {
 		name     string
 		classID  classes.Class
-		level    int
 		validate func(t *testing.T, reqs *Requirements)
 	}{
 		{
 			name:    "Fighter Level 1",
 			classID: classes.Fighter,
-			level:   1,
 			validate: func(t *testing.T, reqs *Requirements) {
 				require.NotNil(t, reqs)
 
@@ -44,7 +42,6 @@ func TestGetClassRequirements(t *testing.T) {
 		{
 			name:    "Rogue Level 1",
 			classID: classes.Rogue,
-			level:   1,
 			validate: func(t *testing.T, reqs *Requirements) {
 				require.NotNil(t, reqs)
 
@@ -65,7 +62,6 @@ func TestGetClassRequirements(t *testing.T) {
 		{
 			name:    "Wizard Level 1",
 			classID: classes.Wizard,
-			level:   1,
 			validate: func(t *testing.T, reqs *Requirements) {
 				require.NotNil(t, reqs)
 
@@ -89,7 +85,6 @@ func TestGetClassRequirements(t *testing.T) {
 		{
 			name:    "Bard Level 1",
 			classID: classes.Bard,
-			level:   1,
 			validate: func(t *testing.T, reqs *Requirements) {
 				require.NotNil(t, reqs)
 
@@ -104,31 +99,11 @@ func TestGetClassRequirements(t *testing.T) {
 				assert.Nil(t, reqs.Instruments.Options) // can choose any
 			},
 		},
-		{
-			name:    "Level 4 ASI",
-			classID: classes.Fighter,
-			level:   4,
-			validate: func(t *testing.T, reqs *Requirements) {
-				require.NotNil(t, reqs)
-
-				// Level 4 gets ability score improvement
-				require.NotNil(t, reqs.AbilityScoreImprovement)
-				assert.Equal(t, 2, reqs.AbilityScoreImprovement.Points)
-			},
-		},
-		{
-			name:    "Unknown Level Returns Empty",
-			classID: classes.Fighter,
-			level:   7,
-			validate: func(t *testing.T, reqs *Requirements) {
-				assert.Nil(t, reqs)
-			},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reqs := GetClassRequirements(tt.classID, tt.level)
+			reqs := GetClassRequirements(tt.classID)
 			tt.validate(t, reqs)
 		})
 	}
@@ -189,7 +164,7 @@ func TestGetRaceRequirements(t *testing.T) {
 
 func TestGetRequirements_Combined(t *testing.T) {
 	// Test combining class and race requirements
-	reqs := GetRequirements(classes.Fighter, races.HalfElf, 1)
+	reqs := GetRequirements(classes.Fighter, races.HalfElf)
 	require.NotNil(t, reqs)
 
 	// Should have Fighter's skills requirement
@@ -206,7 +181,7 @@ func TestGetRequirements_Combined(t *testing.T) {
 }
 
 func TestEquipmentRequirements(t *testing.T) {
-	reqs := GetClassRequirements(classes.Fighter, 1)
+	reqs := GetClassRequirements(classes.Fighter)
 	require.NotNil(t, reqs)
 	require.Len(t, reqs.Equipment, 4)
 
@@ -246,7 +221,7 @@ func TestAllClassesHaveLevel1Requirements(t *testing.T) {
 
 	for _, classID := range allClasses {
 		t.Run(string(classID), func(t *testing.T) {
-			reqs := GetClassRequirements(classID, 1)
+			reqs := GetClassRequirements(classID)
 			require.NotNil(t, reqs, "Every class should have level 1 requirements")
 
 			// Every class should have skill choices

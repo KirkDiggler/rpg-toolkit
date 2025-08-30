@@ -8,46 +8,36 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// getClassRequirementsInternal returns requirements for a specific class and level
-func getClassRequirementsInternal(classID classes.Class, level int) *Requirements {
-	// Level 1 requirements
-	if level == 1 {
-		switch classID {
-		case classes.Fighter:
-			return getFighterLevel1Requirements()
-		case classes.Rogue:
-			return getRogueLevel1Requirements()
-		case classes.Wizard:
-			return getWizardLevel1Requirements()
-		case classes.Barbarian:
-			return getBarbarianLevel1Requirements()
-		case classes.Bard:
-			return getBardLevel1Requirements()
-		case classes.Cleric:
-			return getClericLevel1Requirements()
-		case classes.Druid:
-			return getDruidLevel1Requirements()
-		case classes.Monk:
-			return getMonkLevel1Requirements()
-		case classes.Paladin:
-			return getPaladinLevel1Requirements()
-		case classes.Ranger:
-			return getRangerLevel1Requirements()
-		case classes.Sorcerer:
-			return getSorcererLevel1Requirements()
-		case classes.Warlock:
-			return getWarlockLevel1Requirements()
-		}
+// getClassRequirementsInternal returns requirements for a specific class at level 1
+func getClassRequirementsInternal(classID classes.Class) *Requirements {
+	switch classID {
+	case classes.Fighter:
+		return getFighterLevel1Requirements()
+	case classes.Rogue:
+		return getRogueLevel1Requirements()
+	case classes.Wizard:
+		return getWizardLevel1Requirements()
+	case classes.Barbarian:
+		return getBarbarianLevel1Requirements()
+	case classes.Bard:
+		return getBardLevel1Requirements()
+	case classes.Cleric:
+		return getClericLevel1Requirements()
+	case classes.Druid:
+		return getDruidLevel1Requirements()
+	case classes.Monk:
+		return getMonkLevel1Requirements()
+	case classes.Paladin:
+		return getPaladinLevel1Requirements()
+	case classes.Ranger:
+		return getRangerLevel1Requirements()
+	case classes.Sorcerer:
+		return getSorcererLevel1Requirements()
+	case classes.Warlock:
+		return getWarlockLevel1Requirements()
+	default:
+		return nil
 	}
-
-	// Level 4 - Ability Score Improvement or Feat
-	if level == 4 {
-		return getLevel4Requirements()
-	}
-
-	// TODO: Add more levels as needed
-
-	return nil
 }
 
 // Fighter Requirements
@@ -499,6 +489,19 @@ func getClericLevel1Requirements() *Requirements {
 			Level: 0,
 			Label: "Choose 3 cantrips from the Cleric spell list",
 		},
+		Subclass: &SubclassRequirement{
+			Options: []classes.Subclass{
+				classes.LifeDomain,
+				classes.LightDomain,
+				classes.NatureDomain,
+				classes.TempestDomain,
+				classes.TrickeryDomain,
+				classes.WarDomain,
+				classes.KnowledgeDomain,
+				classes.DeathDomain,
+			},
+			Label: "Choose your Divine Domain",
+		},
 		// Note: Clerics prepare spells, don't learn them
 		Equipment: []*EquipmentRequirement{
 			{
@@ -661,6 +664,14 @@ func getSorcererLevel1Requirements() *Requirements {
 			},
 			Label: "Choose 2 skills",
 		},
+		Subclass: &SubclassRequirement{
+			Options: []classes.Subclass{
+				classes.DraconicBloodline,
+				classes.WildMagic,
+				classes.DivineSoul,
+			},
+			Label: "Choose your Sorcerous Origin",
+		},
 		Cantrips: &SpellRequirement{
 			Count: 4,
 			Level: 0,
@@ -674,6 +685,52 @@ func getSorcererLevel1Requirements() *Requirements {
 	}
 }
 
+// GetSubclassRequirements returns the complete requirements for a subclass (base + subclass specific)
+func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
+	// Get base class requirements
+	baseReqs := GetClassRequirements(subclassID.Parent())
+	if baseReqs == nil {
+		return nil
+	}
+
+	// Remove the subclass requirement since it's already been chosen
+	baseReqs.Subclass = nil
+
+	// Add subclass-specific requirements
+	switch subclassID {
+	// Cleric subclasses
+	case classes.KnowledgeDomain:
+		// Knowledge Domain gets 2 extra languages and 2 extra skills
+		baseReqs.Languages = &LanguageRequirement{
+			Count: 2,
+			Label: "Choose 2 languages (Knowledge Domain)",
+		}
+		// Add extra skill choices from specific list
+		if baseReqs.Skills == nil {
+			baseReqs.Skills = &SkillRequirement{}
+		}
+		// Knowledge Domain adds 2 skills from: Arcana, History, Nature, or Religion
+		baseReqs.Skills.Count += 2
+		baseReqs.Skills.Label = "Choose 2 skills (base) + 2: Arcana/History/Nature/Religion (Knowledge Domain)"
+
+	case classes.NatureDomain:
+		// Nature Domain gets one druid cantrip and proficiency in one of: Animal Handling, Nature, or Survival
+		if baseReqs.Cantrips != nil {
+			baseReqs.Cantrips.Count++
+			baseReqs.Cantrips.Label = "Choose 3 Cleric cantrips + 1 Druid cantrip (Nature Domain)"
+		}
+
+	case classes.TrickeryDomain:
+		// No additional requirements, but gets specific domain spells (handled elsewhere)
+
+	// Most subclasses don't add requirements
+	default:
+		// No additional requirements
+	}
+
+	return baseReqs
+}
+
 func getWarlockLevel1Requirements() *Requirements {
 	return &Requirements{
 		Skills: &SkillRequirement{
@@ -683,6 +740,15 @@ func getWarlockLevel1Requirements() *Requirements {
 				skills.Investigation, skills.Nature, skills.Religion,
 			},
 			Label: "Choose 2 skills",
+		},
+		Subclass: &SubclassRequirement{
+			Options: []classes.Subclass{
+				classes.Archfey,
+				classes.Fiend,
+				classes.GreatOldOne,
+				classes.Hexblade,
+			},
+			Label: "Choose your Otherworldly Patron",
 		},
 		Cantrips: &SpellRequirement{
 			Count: 2,
@@ -694,17 +760,6 @@ func getWarlockLevel1Requirements() *Requirements {
 			Level: 1,
 			Label: "Choose 2 1st-level spells from the Warlock spell list",
 		},
-	}
-}
-
-// Level 4 - Ability Score Improvement or Feat
-func getLevel4Requirements() *Requirements {
-	return &Requirements{
-		AbilityScoreImprovement: &ASIRequirement{
-			Points: 2,
-			Label:  "Increase ability scores (2 points total) or choose a feat",
-		},
-		// Feat option is handled by the game server
 	}
 }
 

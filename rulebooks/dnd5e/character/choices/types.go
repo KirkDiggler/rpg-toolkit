@@ -36,6 +36,9 @@ type Requirements struct {
 	// Level-up choices
 	AbilityScoreImprovement *ASIRequirement  `json:"ability_score_improvement,omitempty"`
 	Feat                    *FeatRequirement `json:"feat,omitempty"`
+
+	// Subclass choice (required at specific levels)
+	Subclass *SubclassRequirement `json:"subclass,omitempty"`
 }
 
 // SkillRequirement defines skill choice requirements
@@ -123,12 +126,18 @@ type FeatRequirement struct {
 	Label string `json:"label"`
 }
 
+// SubclassRequirement defines subclass choice requirements
+type SubclassRequirement struct {
+	Options []classes.Subclass `json:"options"` // Available subclasses
+	Label   string             `json:"label"`   // e.g., "Choose your Martial Archetype"
+}
+
 // API Functions - These are the main entry points
 
-// GetClassRequirements returns the requirements for a specific class at a given level
-func GetClassRequirements(classID classes.Class, level int) *Requirements {
+// GetClassRequirements returns the requirements for a specific class at level 1
+func GetClassRequirements(classID classes.Class) *Requirements {
 	// Implementation in requirements.go
-	return getClassRequirementsInternal(classID, level)
+	return getClassRequirementsInternal(classID)
 }
 
 // GetRaceRequirements returns the requirements for a specific race
@@ -144,10 +153,10 @@ func GetBackgroundRequirements(backgroundID backgrounds.Background) *Requirement
 	return getBackgroundRequirementsInternal(backgroundID)
 }
 
-// GetRequirements returns combined requirements for a character at a specific level
-func GetRequirements(classID classes.Class, raceID races.Race, level int) *Requirements {
-	// This combines class and race requirements for level-up scenarios
-	classReqs := GetClassRequirements(classID, level)
+// GetRequirements returns combined requirements for character creation
+func GetRequirements(classID classes.Class, raceID races.Race) *Requirements {
+	// This combines class and race requirements for character creation
+	classReqs := GetClassRequirements(classID)
 	raceReqs := GetRaceRequirements(raceID)
 
 	// Merge requirements (implementation will be in requirements.go)
