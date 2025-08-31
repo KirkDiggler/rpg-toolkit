@@ -733,6 +733,13 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 			}
 		}
 		baseReqs.Skills.Label = "Choose 2 skills (base) + 2: Arcana/History/Nature/Religion (Knowledge Domain)"
+		
+		// Knowledge Domain also gets expertise in 2 INT skills
+		baseReqs.Expertise = &ExpertiseRequirement{
+			Count: 2,
+			Label: "Choose 2 from Arcana, History, Nature, or Religion for expertise (Knowledge Domain)",
+			// Note: The actual skill options are validated against what the character has proficiency in
+		}
 
 	case classes.NatureDomain:
 		// Nature Domain gets one druid cantrip and proficiency in one of: Animal Handling, Nature, or Survival

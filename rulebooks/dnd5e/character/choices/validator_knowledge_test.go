@@ -24,6 +24,9 @@ func (s *KnowledgeDomainTestSuite) TestValidateClassChoicesWithSubclass_Knowledg
 	// - 2 additional from: Arcana, History, Nature, or Religion
 
 	context := choices.NewValidationContext()
+	// Add proficiencies for expertise validation
+	context.AddProficiency(string(skills.Arcana))
+	context.AddProficiency(string(skills.History))
 	submissions := choices.NewTypedSubmissions()
 
 	// Add 4 skills as a Knowledge Domain Cleric would
@@ -83,6 +86,14 @@ func (s *KnowledgeDomainTestSuite) TestValidateClassChoicesWithSubclass_Knowledg
 		Field:    choices.FieldLanguages,
 		ChoiceID: "knowledge_languages",
 		Values:   []string{"elvish", "dwarvish"},
+	})
+
+	// Add required expertise (2 INT skills for Knowledge Domain)
+	submissions.AddChoice(choices.ChoiceSubmission{
+		Source:   choices.SourceClass,
+		Field:    choices.FieldExpertise,
+		ChoiceID: "knowledge_expertise",
+		Values:   []string{string(skills.Arcana), string(skills.History)},
 	})
 
 	// Validate with subclass
@@ -152,6 +163,9 @@ func (s *KnowledgeDomainTestSuite) TestValidateAllWithSubclass_CompleteKnowledge
 	// Test complete validation with Knowledge Domain subclass
 	
 	context := choices.NewValidationContext()
+	// Add proficiencies for expertise validation
+	context.AddProficiency(string(skills.Arcana))
+	context.AddProficiency(string(skills.History))
 	submissions := choices.NewTypedSubmissions()
 
 	// Class choices - Knowledge Domain gets 4 skills
@@ -207,6 +221,14 @@ func (s *KnowledgeDomainTestSuite) TestValidateAllWithSubclass_CompleteKnowledge
 		Field:    choices.FieldLanguages,
 		ChoiceID: "knowledge_languages",
 		Values:   []string{"elvish", "dwarvish"},
+	})
+
+	// Expertise for Knowledge Domain
+	submissions.AddChoice(choices.ChoiceSubmission{
+		Source:   choices.SourceClass,
+		Field:    choices.FieldExpertise,
+		ChoiceID: "knowledge_expertise",
+		Values:   []string{string(skills.Arcana), string(skills.History)},
 	})
 
 	// Race choices (Human for simplicity - no choices needed)

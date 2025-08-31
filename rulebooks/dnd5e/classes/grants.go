@@ -247,6 +247,11 @@ func GetSubclassGrants(subclassID Subclass) *AutomaticGrants {
 		// Life Domain gets heavy armor
 		grants.ArmorProficiencies = append(grants.ArmorProficiencies, proficiencies.ArmorHeavy)
 
+	case KnowledgeDomain:
+		// Knowledge Domain gets expertise in 2 INT skills (handled through features)
+		// Languages are handled through requirements/choices
+		// No additional proficiencies
+
 	case NatureDomain:
 		// Nature Domain gets heavy armor
 		grants.ArmorProficiencies = append(grants.ArmorProficiencies, proficiencies.ArmorHeavy)
