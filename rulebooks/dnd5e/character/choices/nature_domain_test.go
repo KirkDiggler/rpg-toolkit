@@ -22,16 +22,16 @@ func (s *NatureDomainTestSuite) TestNatureDomainRequirements() {
 	// - 2 base Cleric skills
 	// - 1 additional skill from Animal Handling, Nature, or Survival
 	// - 1 additional druid cantrip (4 total cantrips)
-	
+
 	reqs := choices.GetSubclassRequirements(classes.NatureDomain)
-	
+
 	s.NotNil(reqs)
 	s.NotNil(reqs.Skills)
 	s.NotNil(reqs.Cantrips)
-	
+
 	// Should require 3 skills total (2 base + 1 nature domain)
 	s.Equal(3, reqs.Skills.Count, "Nature Domain should require 3 skills")
-	
+
 	// Should have the Nature Domain specific skills in options
 	hasAnimalHandling := false
 	hasNature := false
@@ -49,7 +49,7 @@ func (s *NatureDomainTestSuite) TestNatureDomainRequirements() {
 	s.True(hasAnimalHandling, "Should have Animal Handling as option")
 	s.True(hasNature, "Should have Nature as option")
 	s.True(hasSurvival, "Should have Survival as option")
-	
+
 	// Should require 4 cantrips (3 base + 1 druid)
 	s.Equal(4, reqs.Cantrips.Count, "Nature Domain should require 4 cantrips")
 	s.Contains(reqs.Cantrips.Label, "Druid", "Label should mention Druid cantrip")
@@ -58,7 +58,7 @@ func (s *NatureDomainTestSuite) TestNatureDomainRequirements() {
 func (s *NatureDomainTestSuite) TestNatureDomainValidation() {
 	context := choices.NewValidationContext()
 	submissions := choices.NewTypedSubmissions()
-	
+
 	// Add 3 skills - 2 from base Cleric list + 1 from Nature Domain list
 	submissions.AddChoice(choices.ChoiceSubmission{
 		Source:   choices.SourceClass,
@@ -70,7 +70,7 @@ func (s *NatureDomainTestSuite) TestNatureDomainValidation() {
 			string(skills.Nature), // Nature Domain bonus
 		},
 	})
-	
+
 	// Add 4 cantrips
 	submissions.AddChoice(choices.ChoiceSubmission{
 		Source:   choices.SourceClass,
@@ -78,17 +78,17 @@ func (s *NatureDomainTestSuite) TestNatureDomainValidation() {
 		ChoiceID: "cleric_cantrips",
 		Values:   []string{"sacred_flame", "guidance", "thaumaturgy", "druidcraft"},
 	})
-	
+
 	// Add equipment choices
 	for i := 0; i < 4; i++ {
 		submissions.AddChoice(choices.ChoiceSubmission{
 			Source:   choices.SourceClass,
 			Field:    choices.Field("equipment_choice_" + string(rune('0'+i))),
 			ChoiceID: "equipment_" + string(rune('0'+i)),
-			Values:   []string{"mace", "scale-mail", "light-crossbow-set", "priests-pack"}[i:i+1],
+			Values:   []string{"mace", "scale-mail", "light-crossbow-set", "priests-pack"}[i : i+1],
 		})
 	}
-	
+
 	// Validate with Nature Domain subclass
 	result := choices.ValidateClassChoicesWithSubclass(
 		classes.Cleric,
@@ -97,10 +97,10 @@ func (s *NatureDomainTestSuite) TestNatureDomainValidation() {
 		submissions,
 		context,
 	)
-	
+
 	// Should be valid
 	s.True(result.CanFinalize, "Nature Domain with 3 skills and 4 cantrips should be valid")
-	
+
 	// Check for errors
 	for _, issue := range result.AllIssues {
 		if issue.Severity == choices.SeverityError {

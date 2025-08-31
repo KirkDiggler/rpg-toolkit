@@ -86,7 +86,7 @@ func (v *Validator) ValidateClassChoicesWithSubclass(
 	submissions *TypedSubmissions,
 ) *ValidationResult {
 	result := NewValidationResult()
-	
+
 	// Get requirements that include subclass modifications
 	var reqs *Requirements
 	if subclassID != "" {
@@ -96,7 +96,7 @@ func (v *Validator) ValidateClassChoicesWithSubclass(
 		// Fall back to base class requirements
 		reqs = getClassRequirementsInternal(classID)
 	}
-	
+
 	if reqs == nil {
 		return result
 	}

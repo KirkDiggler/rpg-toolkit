@@ -107,7 +107,7 @@ func (s *KnowledgeDomainTestSuite) TestValidateClassChoicesWithSubclass_Knowledg
 
 	// Should be valid - Knowledge Domain allows 4 skills
 	s.True(result.CanFinalize, "Knowledge Domain Cleric with 4 skills should be valid")
-	
+
 	// Check for skill errors and debug
 	for _, issue := range result.AllIssues {
 		s.T().Logf("Issue: Field=%v, Severity=%v, Message=%s", issue.Field, issue.Severity, issue.Message)
@@ -146,7 +146,7 @@ func (s *KnowledgeDomainTestSuite) TestValidateClassChoicesWithSubclass_RegularC
 
 	// Should have an error - regular Cleric only allows 2 skills
 	s.False(result.CanFinalize, "Regular Cleric with 4 skills should be invalid")
-	
+
 	// Check for skill errors
 	hasSkillError := false
 	for _, issue := range result.AllIssues {
@@ -161,7 +161,7 @@ func (s *KnowledgeDomainTestSuite) TestValidateClassChoicesWithSubclass_RegularC
 
 func (s *KnowledgeDomainTestSuite) TestValidateAllWithSubclass_CompleteKnowledgeDomainCharacter() {
 	// Test complete validation with Knowledge Domain subclass
-	
+
 	context := choices.NewValidationContext()
 	// Add proficiencies for expertise validation
 	context.AddProficiency(string(skills.Arcana))
@@ -247,7 +247,7 @@ func (s *KnowledgeDomainTestSuite) TestValidateAllWithSubclass_CompleteKnowledge
 
 	// Should be valid
 	s.True(result.CanFinalize, "Complete Knowledge Domain character should be valid")
-	
+
 	// No skill errors
 	for _, issue := range result.AllIssues {
 		if issue.Field == choices.FieldSkills && issue.Severity == choices.SeverityError {

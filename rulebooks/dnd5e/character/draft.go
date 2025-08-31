@@ -280,7 +280,7 @@ func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
 
 	// Create validator and validate with typed constants from the Draft
 	validator := choices.NewValidator(context)
-	
+
 	// Use subclass-aware validation if subclass is selected
 	var result *choices.ValidationResult
 	if d.ClassChoice.SubclassID != "" {

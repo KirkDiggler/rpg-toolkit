@@ -718,22 +718,19 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 			skills.Nature,
 			skills.Religion,
 		}
-		// Merge the knowledge domain skills with existing options
+		// Use map for O(1) lookups to avoid nested loops
+		existingSkills := make(map[skills.Skill]bool)
+		for _, skill := range baseReqs.Skills.Options {
+			existingSkills[skill] = true
+		}
+		// Add only skills that don't already exist
 		for _, skill := range knowledgeSkills {
-			// Check if skill is not already in the list
-			found := false
-			for _, existing := range baseReqs.Skills.Options {
-				if existing == skill {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !existingSkills[skill] {
 				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
 			}
 		}
 		baseReqs.Skills.Label = "Choose 2 skills (base) + 2: Arcana/History/Nature/Religion (Knowledge Domain)"
-		
+
 		// Knowledge Domain also gets expertise in 2 INT skills
 		baseReqs.Expertise = &ExpertiseRequirement{
 			Count: 2,
@@ -751,23 +748,21 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 		if baseReqs.Skills == nil {
 			baseReqs.Skills = &SkillRequirement{}
 		}
-		baseReqs.Skills.Count += 1
+		baseReqs.Skills.Count++
 		// Add Nature Domain specific skill options
 		natureDomainSkills := []skills.Skill{
 			skills.AnimalHandling,
 			skills.Nature,
 			skills.Survival,
 		}
-		// Merge with existing options
+		// Use map for O(1) lookups to avoid nested loops
+		existingSkills := make(map[skills.Skill]bool)
+		for _, skill := range baseReqs.Skills.Options {
+			existingSkills[skill] = true
+		}
+		// Add only skills that don't already exist
 		for _, skill := range natureDomainSkills {
-			found := false
-			for _, existing := range baseReqs.Skills.Options {
-				if existing == skill {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !existingSkills[skill] {
 				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
 			}
 		}
