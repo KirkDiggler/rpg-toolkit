@@ -711,7 +711,32 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 		}
 		// Knowledge Domain adds 2 skills from: Arcana, History, Nature, or Religion
 		baseReqs.Skills.Count += 2
+		// Add the Knowledge Domain specific skills to the allowed options
+		knowledgeSkills := []skills.Skill{
+			skills.Arcana,
+			skills.History,
+			skills.Nature,
+			skills.Religion,
+		}
+		// Use map for O(1) lookups to avoid nested loops
+		existingSkills := make(map[skills.Skill]bool)
+		for _, skill := range baseReqs.Skills.Options {
+			existingSkills[skill] = true
+		}
+		// Add only skills that don't already exist
+		for _, skill := range knowledgeSkills {
+			if !existingSkills[skill] {
+				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
+			}
+		}
 		baseReqs.Skills.Label = "Choose 2 skills (base) + 2: Arcana/History/Nature/Religion (Knowledge Domain)"
+
+		// Knowledge Domain also gets expertise in 2 INT skills
+		baseReqs.Expertise = &ExpertiseRequirement{
+			Count: 2,
+			Label: "Choose 2 from Arcana, History, Nature, or Religion for expertise (Knowledge Domain)",
+			// Note: The actual skill options are validated against what the character has proficiency in
+		}
 
 	case classes.NatureDomain:
 		// Nature Domain gets one druid cantrip and proficiency in one of: Animal Handling, Nature, or Survival
@@ -719,6 +744,29 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 			baseReqs.Cantrips.Count++
 			baseReqs.Cantrips.Label = "Choose 3 Cleric cantrips + 1 Druid cantrip (Nature Domain)"
 		}
+		// Add skill proficiency choice
+		if baseReqs.Skills == nil {
+			baseReqs.Skills = &SkillRequirement{}
+		}
+		baseReqs.Skills.Count++
+		// Add Nature Domain specific skill options
+		natureDomainSkills := []skills.Skill{
+			skills.AnimalHandling,
+			skills.Nature,
+			skills.Survival,
+		}
+		// Use map for O(1) lookups to avoid nested loops
+		existingSkills := make(map[skills.Skill]bool)
+		for _, skill := range baseReqs.Skills.Options {
+			existingSkills[skill] = true
+		}
+		// Add only skills that don't already exist
+		for _, skill := range natureDomainSkills {
+			if !existingSkills[skill] {
+				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
+			}
+		}
+		baseReqs.Skills.Label = "Choose 2 skills (base) + 1: Animal Handling/Nature/Survival (Nature Domain)"
 
 	case classes.TrickeryDomain:
 		// No additional requirements, but gets specific domain spells (handled elsewhere)

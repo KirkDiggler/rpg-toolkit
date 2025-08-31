@@ -176,6 +176,20 @@ func Validate(
 	return validator.ValidateAll(classID, raceID, backgroundID, level, submissions)
 }
 
+// ValidateWithSubclass provides validation with subclass-specific requirements
+func ValidateWithSubclass(
+	classID classes.Class,
+	subclassID classes.Subclass,
+	raceID races.Race,
+	backgroundID backgrounds.Background,
+	level int,
+	submissions *TypedSubmissions,
+	context *ValidationContext,
+) *ValidationResult {
+	validator := NewValidator(context)
+	return validator.ValidateAllWithSubclass(classID, subclassID, raceID, backgroundID, level, submissions)
+}
+
 // ValidateClassChoices validates choices for a specific class
 func ValidateClassChoices(
 	classID classes.Class,
@@ -185,6 +199,18 @@ func ValidateClassChoices(
 ) *ValidationResult {
 	validator := NewValidator(context)
 	return validator.ValidateClassChoices(classID, level, submissions)
+}
+
+// ValidateClassChoicesWithSubclass validates choices for a specific class and subclass
+func ValidateClassChoicesWithSubclass(
+	classID classes.Class,
+	subclassID classes.Subclass,
+	level int,
+	submissions *TypedSubmissions,
+	context *ValidationContext,
+) *ValidationResult {
+	validator := NewValidator(context)
+	return validator.ValidateClassChoicesWithSubclass(classID, subclassID, level, submissions)
 }
 
 // ValidateRaceChoices validates choices for a specific race
