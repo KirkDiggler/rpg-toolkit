@@ -740,6 +740,31 @@ func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
 			baseReqs.Cantrips.Count++
 			baseReqs.Cantrips.Label = "Choose 3 Cleric cantrips + 1 Druid cantrip (Nature Domain)"
 		}
+		// Add skill proficiency choice
+		if baseReqs.Skills == nil {
+			baseReqs.Skills = &SkillRequirement{}
+		}
+		baseReqs.Skills.Count += 1
+		// Add Nature Domain specific skill options
+		natureDomainSkills := []skills.Skill{
+			skills.AnimalHandling,
+			skills.Nature,
+			skills.Survival,
+		}
+		// Merge with existing options
+		for _, skill := range natureDomainSkills {
+			found := false
+			for _, existing := range baseReqs.Skills.Options {
+				if existing == skill {
+					found = true
+					break
+				}
+			}
+			if !found {
+				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
+			}
+		}
+		baseReqs.Skills.Label = "Choose 2 skills (base) + 1: Animal Handling/Nature/Survival (Nature Domain)"
 
 	case classes.TrickeryDomain:
 		// No additional requirements, but gets specific domain spells (handled elsewhere)
