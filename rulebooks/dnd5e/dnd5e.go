@@ -44,16 +44,6 @@ type (
 	CharacterData = character.Data
 	// CharacterDraft represents an in-progress character
 	CharacterDraft = character.Draft
-	// CharacterDraftData is the persistent draft data structure
-	CharacterDraftData = character.DraftData
-	// CreationData contains data for direct character creation
-	CreationData = character.CreationData
-)
-
-// Re-export key functions
-var (
-	NewFromCreationData   = character.NewFromCreationData
-	LoadCharacterFromData = character.LoadCharacterFromData
 )
 
 // Choice category constants for character creation

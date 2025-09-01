@@ -1,910 +1,356 @@
+// Package choices provides character creation choice requirements and validation
 package choices
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"fmt"
+	"strings"
+	
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// getClassRequirementsInternal returns requirements for a specific class at level 1
-func getClassRequirementsInternal(classID classes.Class) *Requirements {
+// Requirements represents what choices need to be made
+type Requirements struct {
+	// Skills that need to be chosen
+	Skills *SkillRequirement `json:"skills,omitempty"`
+
+	// Equipment choices
+	Equipment []*EquipmentRequirement `json:"equipment,omitempty"`
+
+	// Proficiency choices
+	Languages   *LanguageRequirement   `json:"languages,omitempty"`
+	Tools       *ToolRequirement       `json:"tools,omitempty"`
+
+	// Class-specific choices
+	FightingStyle *FightingStyleRequirement `json:"fighting_style,omitempty"`
+	Expertise     *ExpertiseRequirement     `json:"expertise,omitempty"`
+
+	// Subclass choice (required at specific levels)
+	Subclass *SubclassRequirement `json:"subclass,omitempty"`
+}
+
+// SkillRequirement defines skill choice requirements
+type SkillRequirement struct {
+	ID      ChoiceID       `json:"id"`                // Unique identifier
+	Count   int            `json:"count"`
+	Options []skills.Skill `json:"options,omitempty"` // nil means any skill
+	Label   string         `json:"label"`             // e.g., "Choose 2 skills"
+}
+
+// EquipmentRequirement defines equipment choice requirements
+type EquipmentRequirement struct {
+	ID      ChoiceID          `json:"id"`     // Unique identifier
+	Choose  int               `json:"choose"` // How many options to pick (usually 1)
+	Options []EquipmentOption `json:"options"`
+	Label   string            `json:"label"` // e.g., "Choose your armor"
+}
+
+// EquipmentOption represents one equipment choice option
+type EquipmentOption struct {
+	ID    string          `json:"id"`    // Unique identifier for this option
+	Items []EquipmentItem `json:"items"` // What you get if you choose this
+	Label string          `json:"label"` // e.g., "Chain mail"
+}
+
+// EquipmentItem represents an item in an equipment option with full Equipment data
+type EquipmentItem struct {
+	Equipment equipment.Equipment `json:"equipment"` // The actual equipment object
+	Quantity  int                 `json:"quantity"`  // How many (default 1)
+}
+
+// LanguageRequirement defines language choice requirements
+type LanguageRequirement struct {
+	ID      ChoiceID             `json:"id"` // Unique identifier
+	Count   int                  `json:"count"`
+	Options []languages.Language `json:"options,omitempty"` // nil means any language
+	Label   string               `json:"label"`
+}
+
+// ToolRequirement defines tool proficiency choice requirements
+type ToolRequirement struct {
+	ID      ChoiceID `json:"id"` // Unique identifier
+	Count   int      `json:"count"`
+	Options []string `json:"options"` // Tool IDs
+	Label   string   `json:"label"`
+}
+
+// FightingStyleRequirement defines fighting style choice requirements
+type FightingStyleRequirement struct {
+	ID      ChoiceID                        `json:"id"` // Unique identifier
+	Options []fightingstyles.FightingStyle `json:"options"` // Fighting style constants
+	Label   string                          `json:"label"`
+}
+
+// ExpertiseRequirement defines expertise choice requirements
+type ExpertiseRequirement struct {
+	ID    ChoiceID `json:"id"` // Unique identifier
+	Count int      `json:"count"`
+	Label string   `json:"label"` // e.g., "Choose 2 skills or thieves' tools for expertise"
+}
+
+// SubclassRequirement defines subclass choice requirements
+type SubclassRequirement struct {
+	ID      ChoiceID           `json:"id"` // Unique identifier
+	Options []classes.Subclass `json:"options"` // Available subclasses
+	Label   string             `json:"label"`   // e.g., "Choose your Martial Archetype"
+}
+
+// GetClassRequirements returns the requirements for a specific class at level 1
+func GetClassRequirements(classID classes.Class) *Requirements {
+	return GetClassRequirementsAtLevel(classID, 1)
+}
+
+// GetClassRequirementsAtLevel returns the requirements for a specific class at a given level
+func GetClassRequirementsAtLevel(classID classes.Class, level int) *Requirements {
+	reqs := getBaseClassRequirements(classID)
+	
+	// Add subclass requirement if needed at this level
+	classData := classes.ClassData[classID]
+	if classData != nil && classData.SubclassLevel > 0 && level >= classData.SubclassLevel {
+		reqs.Subclass = &SubclassRequirement{
+			ID:      ChoiceID(classData.SubclassChoiceID),
+			Options: classData.Subclasses,
+			Label:   classData.SubclassLabel,
+		}
+	}
+	
+	return reqs
+}
+
+// getBaseClassRequirements returns the base requirements for a class (without subclass)
+func getBaseClassRequirements(classID classes.Class) *Requirements {
+	classData := classes.ClassData[classID]
+	if classData == nil {
+		return &Requirements{}
+	}
+	
+	reqs := &Requirements{}
+	
+	// Add skill requirements if the class has skill choices
+	if classData.SkillCount > 0 && len(classData.SkillList) > 0 {
+		reqs.Skills = &SkillRequirement{
+			ID:      getSkillChoiceID(classID),
+			Count:   classData.SkillCount,
+			Options: classData.SkillList,
+			Label:   fmt.Sprintf("Choose %d skills", classData.SkillCount),
+		}
+	}
+	
+	// Add class-specific requirements
 	switch classID {
 	case classes.Fighter:
-		return getFighterLevel1Requirements()
-	case classes.Rogue:
-		return getRogueLevel1Requirements()
-	case classes.Wizard:
-		return getWizardLevel1Requirements()
-	case classes.Barbarian:
-		return getBarbarianLevel1Requirements()
-	case classes.Bard:
-		return getBardLevel1Requirements()
-	case classes.Cleric:
-		return getClericLevel1Requirements()
-	case classes.Druid:
-		return getDruidLevel1Requirements()
-	case classes.Monk:
-		return getMonkLevel1Requirements()
-	case classes.Paladin:
-		return getPaladinLevel1Requirements()
-	case classes.Ranger:
-		return getRangerLevel1Requirements()
-	case classes.Sorcerer:
-		return getSorcererLevel1Requirements()
-	case classes.Warlock:
-		return getWarlockLevel1Requirements()
-	default:
-		return nil
-	}
-}
-
-// Fighter Requirements
-func getFighterLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Acrobatics, skills.AnimalHandling, skills.Athletics, skills.History,
-				skills.Insight, skills.Intimidation, skills.Perception, skills.Survival,
-			},
-			Label: "Choose 2 skills",
-		},
-		FightingStyle: &FightingStyleRequirement{
-			Options: []FightingStyle{
-				FightingStyleArchery, FightingStyleDefense, FightingStyleDueling, FightingStyleGreatWeaponFighting,
-				FightingStyleProtection, FightingStyleTwoWeaponFighting,
+		reqs.FightingStyle = &FightingStyleRequirement{
+			ID: FighterFightingStyle,
+			Options: []fightingstyles.FightingStyle{
+				fightingstyles.Archery,
+				fightingstyles.Defense,
+				fightingstyles.Dueling,
+				fightingstyles.GreatWeaponFighting,
+				fightingstyles.Protection,
+				fightingstyles.TwoWeaponFighting,
 			},
 			Label: "Choose a fighting style",
-		},
-		Equipment: []*EquipmentRequirement{
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "chain-mail",
-						Items: []ItemSpec{
-							{Type: "armor", ID: string(ChainMail), Quantity: 1},
-						},
-						Label: "Chain mail",
-					},
-					{
-						ID: "leather-armor-set",
-						Items: []ItemSpec{
-							{Type: "armor", ID: string(LeatherArmor), Quantity: 1},
-							{Type: "weapon", ID: string(weapons.Longbow), Quantity: 1},
-							{Type: "ammunition", ID: string(weapons.Arrows20), Quantity: 1},
-						},
-						Label: "Leather armor, longbow, and 20 arrows",
-					},
-				},
-				Label: "Choose armor",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "martial-and-shield",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.AnyMartialWeapon), Quantity: 1},
-							{Type: "armor", ID: string(Shield), Quantity: 1},
-						},
-						Label: "A martial weapon and a shield",
-					},
-					{
-						ID: "two-martials",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.AnyMartialWeapon), Quantity: 2},
-						},
-						Label: "Two martial weapons",
-					},
-				},
-				Label: "Choose weapons",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "light-crossbow",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.LightCrossbow), Quantity: 1},
-							{Type: "ammunition", ID: string(weapons.Bolts20), Quantity: 1},
-						},
-						Label: "Light crossbow and 20 bolts",
-					},
-					{
-						ID: "two-handaxes",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Handaxe), Quantity: 2},
-						},
-						Label: "Two handaxes",
-					},
-				},
-				Label: "Choose ranged weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "dungeoneers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(DungeoneersPack), Quantity: 1},
-						},
-						Label: "Dungeoneer's pack",
-					},
-					{
-						ID: "explorers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(ExplorersPack), Quantity: 1},
-						},
-						Label: "Explorer's pack",
-					},
-				},
-				Label: "Choose equipment pack",
-			},
-		},
-	}
-}
-
-// Rogue Requirements
-func getRogueLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 4,
-			Options: []skills.Skill{
-				skills.Acrobatics, skills.Athletics, skills.Deception, skills.Insight, skills.Intimidation,
-				skills.Investigation, skills.Perception, skills.Performance, skills.Persuasion,
-				skills.SleightOfHand, skills.Stealth,
-			},
-			Label: "Choose 4 skills",
-		},
-		Expertise: &ExpertiseRequirement{
+		}
+		reqs.Equipment = getFighterEquipmentRequirements()
+	case classes.Rogue:
+		reqs.Equipment = getRogueEquipmentRequirements()
+		reqs.Expertise = &ExpertiseRequirement{
+			ID:    RogueExpertise1,
 			Count: 2,
 			Label: "Choose 2 skills or thieves' tools for expertise",
-		},
-		Equipment: []*EquipmentRequirement{
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "rapier",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Rapier), Quantity: 1},
-						},
-						Label: "Rapier",
-					},
-					{
-						ID: "shortsword",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Shortsword), Quantity: 1},
-						},
-						Label: "Shortsword",
-					},
-				},
-				Label: "Choose weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "shortbow-set",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Shortbow), Quantity: 1},
-							{Type: "gear", ID: "quiver", Quantity: 1},
-							{Type: "ammunition", ID: string(weapons.Arrows20), Quantity: 1},
-						},
-						Label: "Shortbow and quiver of 20 arrows",
-					},
-					{
-						ID: "shortsword-2",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Shortsword), Quantity: 1},
-						},
-						Label: "Shortsword",
-					},
-				},
-				Label: "Choose secondary weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "burglars-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(BurglarsPack), Quantity: 1},
-						},
-						Label: "Burglar's pack",
-					},
-					{
-						ID: "dungeoneers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(DungeoneersPack), Quantity: 1},
-						},
-						Label: "Dungeoneer's pack",
-					},
-					{
-						ID: "explorers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(ExplorersPack), Quantity: 1},
-						},
-						Label: "Explorer's pack",
-					},
-				},
-				Label: "Choose equipment pack",
-			},
-		},
-	}
-}
-
-// Wizard Requirements
-func getWizardLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Arcana, skills.History, skills.Insight, skills.Investigation,
-				skills.Medicine, skills.Religion,
-			},
-			Label: "Choose 2 skills",
-		},
-		Cantrips: &SpellRequirement{
-			Count: 3,
-			Level: 0,
-			Label: "Choose 3 cantrips from the Wizard spell list",
-		},
-		Spells: &SpellRequirement{
-			Count: 6,
-			Level: 1,
-			Label: "Choose 6 1st-level spells for your spellbook",
-		},
-		Equipment: []*EquipmentRequirement{
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "quarterstaff",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Quarterstaff), Quantity: 1},
-						},
-						Label: "Quarterstaff",
-					},
-					{
-						ID: "dagger",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Dagger), Quantity: 1},
-						},
-						Label: "Dagger",
-					},
-				},
-				Label: "Choose weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "component-pouch",
-						Items: []ItemSpec{
-							{Type: "focus", ID: string(ComponentPouch), Quantity: 1},
-						},
-						Label: "Component pouch",
-					},
-					{
-						ID: "arcane-focus",
-						Items: []ItemSpec{
-							{Type: "focus", ID: string(ArcaneFocus), Quantity: 1},
-						},
-						Label: "Arcane focus",
-					},
-				},
-				Label: "Choose spellcasting focus",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "scholars-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(ScholarsPack), Quantity: 1},
-						},
-						Label: "Scholar's pack",
-					},
-					{
-						ID: "explorers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(ExplorersPack), Quantity: 1},
-						},
-						Label: "Explorer's pack",
-					},
-				},
-				Label: "Choose equipment pack",
-			},
-		},
-	}
-}
-
-// Barbarian Requirements
-func getBarbarianLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.AnimalHandling, skills.Athletics, skills.Intimidation, skills.Nature,
-				skills.Perception, skills.Survival,
-			},
-			Label: "Choose 2 skills",
-		},
-		Equipment: []*EquipmentRequirement{
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "greataxe",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Greataxe), Quantity: 1},
-						},
-						Label: "Greataxe",
-					},
-					{
-						ID: "any-martial",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.AnyMartialWeapon), Quantity: 1},
-						},
-						Label: "Any martial melee weapon",
-					},
-				},
-				Label: "Choose weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "two-handaxes",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Handaxe), Quantity: 2},
-						},
-						Label: "Two handaxes",
-					},
-					{
-						ID: "any-simple",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.AnySimpleWeapon), Quantity: 1},
-						},
-						Label: "Any simple weapon",
-					},
-				},
-				Label: "Choose secondary weapon",
-			},
-		},
-	}
-}
-
-// Bard Requirements
-func getBardLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count:   3,
-			Options: nil, // Bard can choose ANY skills
-			Label:   "Choose any 3 skills",
-		},
-		Cantrips: &SpellRequirement{
-			Count: 2,
-			Level: 0,
-			Label: "Choose 2 cantrips from the Bard spell list",
-		},
-		Spells: &SpellRequirement{
-			Count: 4,
-			Level: 1,
-			Label: "Choose 4 1st-level spells from the Bard spell list",
-		},
-		Instruments: &InstrumentRequirement{
-			Count:   3,
-			Options: nil, // Can choose any instruments
-			Label:   "Choose 3 musical instruments",
-		},
-		Equipment: []*EquipmentRequirement{
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "rapier",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Rapier), Quantity: 1},
-						},
-						Label: "Rapier",
-					},
-					{
-						ID: "longsword",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Longsword), Quantity: 1},
-						},
-						Label: "Longsword",
-					},
-					{
-						ID: "any-simple",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.AnySimpleWeapon), Quantity: 1},
-						},
-						Label: "Any simple weapon",
-					},
-				},
-				Label: "Choose weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "diplomats-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(DiplomatsPack), Quantity: 1},
-						},
-						Label: "Diplomat's pack",
-					},
-					{
-						ID: "entertainers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(EntertainersPack), Quantity: 1},
-						},
-						Label: "Entertainer's pack",
-					},
-				},
-				Label: "Choose equipment pack",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "lute",
-						Items: []ItemSpec{
-							{Type: "instrument", ID: string(Lute), Quantity: 1},
-						},
-						Label: "Lute",
-					},
-					{
-						ID: "any-instrument",
-						Items: []ItemSpec{
-							{Type: "instrument", ID: string(AnyInstrument), Quantity: 1},
-						},
-						Label: "Any other musical instrument",
-					},
-				},
-				Label: "Choose musical instrument",
-			},
-		},
-	}
-}
-
-// Cleric Requirements
-func getClericLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.History, skills.Insight, skills.Medicine, skills.Persuasion, skills.Religion,
-			},
-			Label: "Choose 2 skills",
-		},
-		Cantrips: &SpellRequirement{
-			Count: 3,
-			Level: 0,
-			Label: "Choose 3 cantrips from the Cleric spell list",
-		},
-		Subclass: &SubclassRequirement{
-			Options: []classes.Subclass{
-				classes.LifeDomain,
-				classes.LightDomain,
-				classes.NatureDomain,
-				classes.TempestDomain,
-				classes.TrickeryDomain,
-				classes.WarDomain,
-				classes.KnowledgeDomain,
-				classes.DeathDomain,
-			},
-			Label: "Choose your Divine Domain",
-		},
-		// Note: Clerics prepare spells, don't learn them
-		Equipment: []*EquipmentRequirement{
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "mace",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Mace), Quantity: 1},
-						},
-						Label: "Mace",
-					},
-					{
-						ID: "warhammer",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.Warhammer), Quantity: 1},
-						},
-						Label: "Warhammer (if proficient)",
-					},
-				},
-				Label: "Choose weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "scale-mail",
-						Items: []ItemSpec{
-							{Type: "armor", ID: string(ScaleMail), Quantity: 1},
-						},
-						Label: "Scale mail",
-					},
-					{
-						ID: "leather-armor",
-						Items: []ItemSpec{
-							{Type: "armor", ID: string(LeatherArmor), Quantity: 1},
-						},
-						Label: "Leather armor",
-					},
-					{
-						ID: "chain-mail",
-						Items: []ItemSpec{
-							{Type: "armor", ID: string(ChainMail), Quantity: 1},
-						},
-						Label: "Chain mail (if proficient)",
-					},
-				},
-				Label: "Choose armor",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "light-crossbow-set",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.LightCrossbow), Quantity: 1},
-							{Type: "ammunition", ID: string(weapons.Bolts20), Quantity: 1},
-						},
-						Label: "Light crossbow and 20 bolts",
-					},
-					{
-						ID: "any-simple",
-						Items: []ItemSpec{
-							{Type: "weapon", ID: string(weapons.AnySimpleWeapon), Quantity: 1},
-						},
-						Label: "Any simple weapon",
-					},
-				},
-				Label: "Choose secondary weapon",
-			},
-			{
-				Choose: 1,
-				Options: []EquipmentOption{
-					{
-						ID: "priests-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(PriestsPack), Quantity: 1},
-						},
-						Label: "Priest's pack",
-					},
-					{
-						ID: "explorers-pack",
-						Items: []ItemSpec{
-							{Type: "pack", ID: string(ExplorersPack), Quantity: 1},
-						},
-						Label: "Explorer's pack",
-					},
-				},
-				Label: "Choose equipment pack",
-			},
-		},
-	}
-}
-
-// Additional class requirements...
-func getDruidLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Arcana, skills.AnimalHandling, skills.Insight, skills.Medicine,
-				skills.Nature, skills.Perception, skills.Religion, skills.Survival,
-			},
-			Label: "Choose 2 skills",
-		},
-		Cantrips: &SpellRequirement{
-			Count: 2,
-			Level: 0,
-			Label: "Choose 2 cantrips from the Druid spell list",
-		},
-	}
-}
-
-func getMonkLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Acrobatics, skills.Athletics, skills.History, skills.Insight,
-				skills.Religion, skills.Stealth,
-			},
-			Label: "Choose 2 skills",
-		},
-	}
-}
-
-func getPaladinLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Athletics, skills.Insight, skills.Intimidation, skills.Medicine,
-				skills.Persuasion, skills.Religion,
-			},
-			Label: "Choose 2 skills",
-		},
-	}
-}
-
-func getRangerLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 3,
-			Options: []skills.Skill{
-				skills.AnimalHandling, skills.Athletics, skills.Insight, skills.Investigation,
-				skills.Nature, skills.Perception, skills.Stealth, skills.Survival,
-			},
-			Label: "Choose 3 skills",
-		},
-	}
-}
-
-func getSorcererLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Arcana, skills.Deception, skills.Insight, skills.Intimidation,
-				skills.Persuasion, skills.Religion,
-			},
-			Label: "Choose 2 skills",
-		},
-		Subclass: &SubclassRequirement{
-			Options: []classes.Subclass{
-				classes.DraconicBloodline,
-				classes.WildMagic,
-				classes.DivineSoul,
-			},
-			Label: "Choose your Sorcerous Origin",
-		},
-		Cantrips: &SpellRequirement{
-			Count: 4,
-			Level: 0,
-			Label: "Choose 4 cantrips from the Sorcerer spell list",
-		},
-		Spells: &SpellRequirement{
-			Count: 2,
-			Level: 1,
-			Label: "Choose 2 1st-level spells from the Sorcerer spell list",
-		},
-	}
-}
-
-// GetSubclassRequirements returns the complete requirements for a subclass (base + subclass specific)
-func GetSubclassRequirements(subclassID classes.Subclass) *Requirements {
-	// Get base class requirements
-	baseReqs := GetClassRequirements(subclassID.Parent())
-	if baseReqs == nil {
-		return nil
-	}
-
-	// Remove the subclass requirement since it's already been chosen
-	baseReqs.Subclass = nil
-
-	// Add subclass-specific requirements
-	switch subclassID {
-	// Cleric subclasses
-	case classes.KnowledgeDomain:
-		// Knowledge Domain gets 2 extra languages and 2 extra skills
-		baseReqs.Languages = &LanguageRequirement{
-			Count: 2,
-			Label: "Choose 2 languages (Knowledge Domain)",
 		}
-		// Add extra skill choices from specific list
-		if baseReqs.Skills == nil {
-			baseReqs.Skills = &SkillRequirement{}
-		}
-		// Knowledge Domain adds 2 skills from: Arcana, History, Nature, or Religion
-		baseReqs.Skills.Count += 2
-		// Add the Knowledge Domain specific skills to the allowed options
-		knowledgeSkills := []skills.Skill{
-			skills.Arcana,
-			skills.History,
-			skills.Nature,
-			skills.Religion,
-		}
-		// Use map for O(1) lookups to avoid nested loops
-		existingSkills := make(map[skills.Skill]bool)
-		for _, skill := range baseReqs.Skills.Options {
-			existingSkills[skill] = true
-		}
-		// Add only skills that don't already exist
-		for _, skill := range knowledgeSkills {
-			if !existingSkills[skill] {
-				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
-			}
-		}
-		baseReqs.Skills.Label = "Choose 2 skills (base) + 2: Arcana/History/Nature/Religion (Knowledge Domain)"
-
-		// Knowledge Domain also gets expertise in 2 INT skills
-		baseReqs.Expertise = &ExpertiseRequirement{
-			Count: 2,
-			Label: "Choose 2 from Arcana, History, Nature, or Religion for expertise (Knowledge Domain)",
-			// Note: The actual skill options are validated against what the character has proficiency in
-		}
-
-	case classes.NatureDomain:
-		// Nature Domain gets one druid cantrip and proficiency in one of: Animal Handling, Nature, or Survival
-		if baseReqs.Cantrips != nil {
-			baseReqs.Cantrips.Count++
-			baseReqs.Cantrips.Label = "Choose 3 Cleric cantrips + 1 Druid cantrip (Nature Domain)"
-		}
-		// Add skill proficiency choice
-		if baseReqs.Skills == nil {
-			baseReqs.Skills = &SkillRequirement{}
-		}
-		baseReqs.Skills.Count++
-		// Add Nature Domain specific skill options
-		natureDomainSkills := []skills.Skill{
-			skills.AnimalHandling,
-			skills.Nature,
-			skills.Survival,
-		}
-		// Use map for O(1) lookups to avoid nested loops
-		existingSkills := make(map[skills.Skill]bool)
-		for _, skill := range baseReqs.Skills.Options {
-			existingSkills[skill] = true
-		}
-		// Add only skills that don't already exist
-		for _, skill := range natureDomainSkills {
-			if !existingSkills[skill] {
-				baseReqs.Skills.Options = append(baseReqs.Skills.Options, skill)
-			}
-		}
-		baseReqs.Skills.Label = "Choose 2 skills (base) + 1: Animal Handling/Nature/Survival (Nature Domain)"
-
-	case classes.TrickeryDomain:
-		// No additional requirements, but gets specific domain spells (handled elsewhere)
-
-	// Most subclasses don't add requirements
+	case classes.Wizard:
+		reqs.Equipment = getWizardEquipmentRequirements()
+	case classes.Cleric:
+		reqs.Equipment = getClericEquipmentRequirements()
 	default:
-		// No additional requirements
+		// Add equipment requirements for other classes when implemented
 	}
-
-	return baseReqs
+	
+	return reqs
 }
 
-func getWarlockLevel1Requirements() *Requirements {
-	return &Requirements{
-		Skills: &SkillRequirement{
-			Count: 2,
-			Options: []skills.Skill{
-				skills.Arcana, skills.Deception, skills.History, skills.Intimidation,
-				skills.Investigation, skills.Nature, skills.Religion,
-			},
-			Label: "Choose 2 skills",
-		},
-		Subclass: &SubclassRequirement{
-			Options: []classes.Subclass{
-				classes.Archfey,
-				classes.Fiend,
-				classes.GreatOldOne,
-				classes.Hexblade,
-			},
-			Label: "Choose your Otherworldly Patron",
-		},
-		Cantrips: &SpellRequirement{
-			Count: 2,
-			Level: 0,
-			Label: "Choose 2 cantrips from the Warlock spell list",
-		},
-		Spells: &SpellRequirement{
-			Count: 2,
-			Level: 1,
-			Label: "Choose 2 1st-level spells from the Warlock spell list",
-		},
+// getSkillChoiceID returns the appropriate ChoiceID for a class's skill selection
+func getSkillChoiceID(classID classes.Class) ChoiceID {
+	switch classID {
+	case classes.Fighter:
+		return FighterSkills
+	case classes.Rogue:
+		return RogueSkills
+	case classes.Wizard:
+		return WizardSkills
+	case classes.Cleric:
+		return ClericSkills
+	case classes.Barbarian:
+		return BarbarianSkills
+	case classes.Bard:
+		return BardSkills
+	case classes.Druid:
+		return DruidSkills
+	case classes.Monk:
+		return MonkSkills
+	case classes.Paladin:
+		return PaladinSkills
+	case classes.Ranger:
+		return RangerSkills
+	case classes.Sorcerer:
+		return SorcererSkills
+	case classes.Warlock:
+		return WarlockSkills
+	default:
+		return ChoiceID(fmt.Sprintf("%s-skills", strings.ToLower(string(classID))))
 	}
 }
 
-// Race Requirements
-func getRaceRequirementsInternal(raceID races.Race) *Requirements {
+
+// GetRaceRequirements returns the requirements for a specific race
+func GetRaceRequirements(raceID races.Race) *Requirements {
 	switch raceID {
 	case races.HalfElf:
 		return &Requirements{
 			Skills: &SkillRequirement{
+				ID:      HalfElfSkills,
 				Count:   2,
-				Options: nil, // Can choose any skills
-				Label:   "Choose any 2 skills",
+				Options: nil, // Any skills
+				Label:   "Choose 2 skills",
 			},
 			Languages: &LanguageRequirement{
+				ID:      HalfElfLanguage,
 				Count:   1,
-				Options: nil, // Can choose any language
-				Label:   "Choose 1 additional language",
+				Options: nil, // Any language
+				Label:   "Choose 1 language",
 			},
 		}
-	case races.Dragonborn:
+	case races.Human:
 		return &Requirements{
-			DraconicAncestry: &AncestryRequirement{
-				Options: []AncestryID{
-					AncestryBlack, AncestryBlue, AncestryBrass, AncestryBronze, AncestryCopper,
-					AncestryGold, AncestryGreen, AncestryRed, Ancestrysilver, AncestryWhite,
-				},
-				Label: "Choose your draconic ancestry",
+			Languages: &LanguageRequirement{
+				ID:      HumanLanguage,
+				Count:   1,
+				Options: nil, // Any language
+				Label:   "Choose 1 language",
 			},
 		}
-	case races.Elf:
-		// High Elf subrace has choices
-		// TODO: Handle subraces
-		return nil
+	case races.HighElf:
+		return &Requirements{
+			Languages: &LanguageRequirement{
+				ID:      HighElfLanguage,
+				Count:   1,
+				Options: nil, // Any language
+				Label:   "Choose 1 language",
+			},
+		}
 	default:
-		// Most races have no choices
-		return nil
+		return &Requirements{}
 	}
 }
 
-// Background Requirements
-func getBackgroundRequirementsInternal(_ backgrounds.Background) *Requirements {
-	// Most backgrounds have no choices, they just grant skills/tools/languages
-	// Some backgrounds like Guild Artisan let you choose a guild
-	// TODO: Add backgrounds with choices
-	return nil
+// Helper functions for equipment requirements
+func getFighterEquipmentRequirements() []*EquipmentRequirement {
+	// We'll populate these with actual Equipment objects
+	// For now, returning empty to compile
+	return []*EquipmentRequirement{
+		{
+			ID:     FighterArmor,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "fighter-armor-a",
+					Label: "Chain mail",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+				{
+					ID:    "fighter-armor-b",
+					Label: "Leather armor, longbow, and 20 arrows",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+			},
+			Label: "Choose your armor",
+		},
+		{
+			ID:     FighterWeaponsPrimary,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "fighter-weapon-a",
+					Label: "A martial weapon and a shield",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+				{
+					ID:    "fighter-weapon-b",
+					Label: "Two martial weapons",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+			},
+			Label: "Choose your primary weapons",
+		},
+		{
+			ID:     FighterWeaponsSecondary,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "fighter-ranged-a",
+					Label: "A light crossbow and 20 bolts",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+				{
+					ID:    "fighter-ranged-b",
+					Label: "Two handaxes",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+			},
+			Label: "Choose your secondary weapons",
+		},
+		{
+			ID:     FighterPack,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "fighter-pack-a",
+					Label: "Dungeoneer's pack",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+				{
+					ID:    "fighter-pack-b",
+					Label: "Explorer's pack",
+					Items: []EquipmentItem{
+						// Will be populated with actual equipment
+					},
+				},
+			},
+			Label: "Choose your equipment pack",
+		},
+	}
 }
 
-// mergeRequirements combines multiple requirement sets
-func mergeRequirements(reqs ...*Requirements) *Requirements {
-	if len(reqs) == 0 {
-		return nil
-	}
+func getRogueEquipmentRequirements() []*EquipmentRequirement {
+	// Placeholder for rogue equipment
+	return []*EquipmentRequirement{}
+}
 
-	// Start with the first non-nil requirements
-	var merged *Requirements
-	for _, r := range reqs {
-		if r != nil {
-			merged = &Requirements{
-				Skills:                  r.Skills,
-				Cantrips:                r.Cantrips,
-				Spells:                  r.Spells,
-				Equipment:               r.Equipment,
-				Languages:               r.Languages,
-				Tools:                   r.Tools,
-				Instruments:             r.Instruments,
-				FightingStyle:           r.FightingStyle,
-				Expertise:               r.Expertise,
-				DraconicAncestry:        r.DraconicAncestry,
-				AbilityScoreImprovement: r.AbilityScoreImprovement,
-				Feat:                    r.Feat,
-			}
-			break
-		}
-	}
+func getWizardEquipmentRequirements() []*EquipmentRequirement {
+	// Placeholder for wizard equipment
+	return []*EquipmentRequirement{}
+}
 
-	if merged == nil {
-		return nil
-	}
-
-	// Merge additional requirements
-	// For now, we just take the first non-nil value for each field
-	// In the future, we might need more complex merging logic
-	for _, r := range reqs[1:] {
-		if r == nil {
-			continue
-		}
-		if merged.Skills == nil && r.Skills != nil {
-			merged.Skills = r.Skills
-		}
-		if merged.Languages == nil && r.Languages != nil {
-			merged.Languages = r.Languages
-		}
-		if merged.DraconicAncestry == nil && r.DraconicAncestry != nil {
-			merged.DraconicAncestry = r.DraconicAncestry
-		}
-		// Add more fields as needed
-	}
-
-	return merged
+func getClericEquipmentRequirements() []*EquipmentRequirement {
+	// Placeholder for cleric equipment
+	return []*EquipmentRequirement{}
 }

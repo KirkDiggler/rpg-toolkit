@@ -5,30 +5,9 @@ package dnd5e
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 )
 
-// Re-export event types from character package
-type (
-	// ConditionAppliedEvent is published when a condition is applied to an entity
-	ConditionAppliedEvent = character.ConditionAppliedEvent
-	// ConditionRemovedEvent is published when a condition is removed from an entity
-	ConditionRemovedEvent = character.ConditionRemovedEvent
-	// AttackEvent is published when a character makes an attack
-	AttackEvent = character.AttackEvent
-)
-
-// Re-export topic definitions
-var (
-	// ConditionAppliedTopic provides typed pub/sub for condition applied events
-	ConditionAppliedTopic = character.ConditionAppliedTopic
-	// ConditionRemovedTopic provides typed pub/sub for condition removed events
-	ConditionRemovedTopic = character.ConditionRemovedTopic
-	// AttackTopic provides typed pub/sub for attack events
-	AttackTopic = character.AttackTopic
-)
-
-// Additional event types that aren't in character package yet
+// Event types for D&D 5e gameplay
 
 // TurnStartEvent is published when a character's turn begins
 type TurnStartEvent struct {

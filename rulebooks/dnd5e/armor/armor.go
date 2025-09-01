@@ -2,7 +2,10 @@
 package armor
 
 import (
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // ArmorID represents unique identifier for armor
@@ -68,9 +71,48 @@ type Armor struct {
 	Cost                string // e.g., "5 gp"
 }
 
+// GetID returns the unique identifier for this armor
+func (a *Armor) GetID() string {
+	return string(a.ID)
+}
+
+// GetType returns the equipment type (always TypeArmor)
+func (a *Armor) GetType() shared.EquipmentType {
+	return shared.EquipmentTypeArmor
+}
+
 // GetName returns the name of the armor
-func (a Armor) GetName() string {
+func (a *Armor) GetName() string {
 	return a.Name
+}
+
+// GetWeight returns the weight in pounds
+func (a *Armor) GetWeight() float32 {
+	return float32(a.Weight)
+}
+
+// GetValue returns the value in copper pieces
+func (a *Armor) GetValue() int {
+	// TODO: Parse cost string (e.g., "5 gp") and convert to copper
+	// For now, return a placeholder
+	return 0
+}
+
+// GetDescription returns a description of the armor
+func (a *Armor) GetDescription() string {
+	desc := fmt.Sprintf("AC %d", a.AC)
+	if a.MaxDexBonus != nil {
+		desc += fmt.Sprintf(" + Dex (max %d)", *a.MaxDexBonus)
+	} else {
+		desc += " + Dex"
+	}
+	if a.StealthDisadvantage {
+		desc += ", Stealth disadvantage"
+	}
+	if a.Strength > 0 {
+		desc += fmt.Sprintf(", Str %d required", a.Strength)
+	}
+	return desc
 }
 
 // All armor definitions

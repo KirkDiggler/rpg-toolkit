@@ -1,7 +1,10 @@
 // Package weapons provides D&D 5e weapon definitions and data
 package weapons
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+)
 
 // WeaponCategory represents the category of weapon
 type WeaponCategory string
@@ -56,9 +59,48 @@ type Weapon struct {
 	Range      *Range // nil for melee-only weapons
 }
 
+// GetID returns the unique identifier for this weapon
+func (w *Weapon) GetID() string {
+	return string(w.ID)
+}
+
+// GetType returns the equipment type (always TypeWeapon)
+func (w *Weapon) GetType() shared.EquipmentType {
+	return shared.EquipmentTypeWeapon
+}
+
 // GetName returns the name of the weapon
-func (w Weapon) GetName() string {
+func (w *Weapon) GetName() string {
 	return w.Name
+}
+
+// GetWeight returns the weight in pounds
+func (w *Weapon) GetWeight() float32 {
+	return float32(w.Weight)
+}
+
+// GetValue returns the value in copper pieces
+func (w *Weapon) GetValue() int {
+	// TODO: Parse cost string (e.g., "5 gp") and convert to copper
+	// For now, return a placeholder
+	return 0
+}
+
+// GetDescription returns a description of the weapon
+func (w *Weapon) GetDescription() string {
+	// Build description from damage and properties
+	desc := w.Damage + " " + string(w.DamageType) + " damage"
+	if len(w.Properties) > 0 {
+		desc += " ("
+		for i, prop := range w.Properties {
+			if i > 0 {
+				desc += ", "
+			}
+			desc += string(prop)
+		}
+		desc += ")"
+	}
+	return desc
 }
 
 // Range represents weapon range (for thrown/ranged weapons)

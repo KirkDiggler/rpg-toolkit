@@ -1,9 +1,7 @@
 package dnd5e_test
 
 import (
-	"fmt"
-
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	_ "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 )
 
 func Example_gameplay() {
@@ -15,7 +13,12 @@ func Example_gameplay() {
 	classData := loadClassData("fighter")           // You implement this
 	backgroundData := loadBackgroundData("soldier") // You implement this
 
-	character, _ := dnd5e.LoadCharacterFromData(charData, &raceData, &classData, &backgroundData)
+	// TODO: Update this example for the new character system
+	_ = charData
+	_ = raceData
+	_ = classData
+	_ = backgroundData
+	// character, _ := dnd5e.LoadCharacterFromData(charData, &raceData, &classData, &backgroundData)
 
 	// NOTE: This example needs updating for the new event-driven condition system
 	// In the new system, conditions are applied via events:
@@ -32,16 +35,16 @@ func Example_gameplay() {
 	// })
 
 	// Check if character has a condition by ref
-	if character.HasCondition("dnd5e:conditions:poisoned") {
-		fmt.Println("Character has disadvantage on attack rolls")
-	}
+	// if character.HasCondition("dnd5e:conditions:poisoned") {
+	// 	fmt.Println("Character has disadvantage on attack rolls")
+	// }
 
 	// Calculate AC (effects system needs updating too)
-	fmt.Printf("AC: %d\n", character.AC())
+	// fmt.Printf("AC: %d\n", character.AC())
 
 	// Save character state
-	updatedData := character.ToData()
-	saveCharacterData(updatedData) // You implement this
+	// updatedData := character.ToData()
+	// saveCharacterData(updatedData) // You implement this
 
 	// The saved data includes:
 	// - Current conditions (poisoned)
@@ -50,11 +53,11 @@ func Example_gameplay() {
 }
 
 // Helper stubs for the example
-func loadCharacterData(_ string) dnd5e.CharacterData { return dnd5e.CharacterData{} }
-func loadRaceData(_ string) dnd5e.RaceData           { return dnd5e.RaceData{} }
-func loadClassData(_ string) dnd5e.ClassData         { return dnd5e.ClassData{} }
-func loadBackgroundData(_ string) dnd5e.Background   { return dnd5e.Background{} }
-func saveCharacterData(_ dnd5e.CharacterData)        {}
+func loadCharacterData(_ string) interface{} { return nil }
+func loadRaceData(_ string) interface{}      { return nil }
+func loadClassData(_ string) interface{}     { return nil }
+func loadBackgroundData(_ string) interface{} { return nil }
+func saveCharacterData(_ interface{})        {}
 
 // TestEffectStacking demonstrates how effects will work once updated
 // func TestEffectStacking(_ *testing.T) {
