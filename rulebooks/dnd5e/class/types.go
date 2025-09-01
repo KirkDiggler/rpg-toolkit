@@ -4,6 +4,7 @@ package class
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -19,10 +20,10 @@ type Data struct {
 	HitPointsPerLevel int `json:"hit_points_per_level"` // Average HP per level
 
 	// Proficiencies
-	ArmorProficiencies  []string            `json:"armor_proficiencies"`
-	WeaponProficiencies []string            `json:"weapon_proficiencies"`
-	ToolProficiencies   []string            `json:"tool_proficiencies"`
-	SavingThrows        []abilities.Ability `json:"saving_throws"` // Two ability scores
+	ArmorProficiencies  []proficiencies.Armor  `json:"armor_proficiencies"`
+	WeaponProficiencies []proficiencies.Weapon `json:"weapon_proficiencies"`
+	ToolProficiencies   []proficiencies.Tool   `json:"tool_proficiencies"`
+	SavingThrows        []abilities.Ability    `json:"saving_throws"` // Two ability scores
 
 	// Skills
 	SkillProficiencyCount int            `json:"skill_proficiency_count"`

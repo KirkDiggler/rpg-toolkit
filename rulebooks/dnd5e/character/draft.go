@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -79,6 +81,21 @@ func (d *Draft) isComplete() bool {
 	return d.Progress.flags&required == required
 }
 
+// GetBackgroundProficiencies returns the proficiencies for a background
+func GetBackgroundProficiencies(backgroundData *shared.Background) (Proficiencies, error) {
+	if backgroundData == nil {
+		return Proficiencies{}, rpgerr.New(rpgerr.CodeInvalidArgument, "background data is required")
+	}
+
+	grants := backgrounds.GetAutomaticGrants(backgroundData.ID)
+
+	return Proficiencies{
+		Skills:    grants.Skills,
+		Tools:     backgroundData.ToolProficiencies,
+		Languages: backgroundData.Languages,
+	}, nil
+}
+
 // compileCharacter creates a character from the draft data
 func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	backgroundData *shared.Background) (*Character, error) {
@@ -94,22 +111,48 @@ func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
 	charData.Speed = raceData.Speed
 	charData.Size = raceData.Size
 
-	// Compile skills
-	charData.Skills = d.compileSkills(raceData, backgroundData)
-
-	// Compile languages
-	charData.Languages = d.compileLanguages(raceData, backgroundData)
-
-	// Proficiencies
-	charData.Proficiencies = shared.Proficiencies{
-		Armor:   classData.ArmorProficiencies,
-		Weapons: append(classData.WeaponProficiencies, raceData.WeaponProficiencies...),
-		Tools:   append(classData.ToolProficiencies, backgroundData.ToolProficiencies...),
+	// Get proficiencies from all sources
+	classProficiencies, err := d.ClassChoice.GetProficiencies()
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "failed to get class proficiencies",
+			rpgerr.WithMeta("classID", d.ClassChoice.ClassID),
+			rpgerr.WithMeta("subclassID", d.ClassChoice.SubclassID))
 	}
 
-	// Saving throws
+	backgroundProficiencies, err := GetBackgroundProficiencies(backgroundData)
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "failed to get background proficiencies",
+			rpgerr.WithMeta("backgroundID", d.BackgroundChoice))
+	}
+
+	// Note: Race proficiencies (skills/languages) are handled separately in compileSkills/Languages
+	// Race weapon proficiencies come directly from raceData
+
+	// Merge proficiencies - note that some need special handling
+	// Armor and saves only come from class
+	// Weapons come from class and race (race weapons come from raceData)
+	// Tools come from class and background
+	// Skills and languages need special handling due to player choices
+
+	// Compile skills (includes player choices + automatic grants)
+	charData.Skills = d.compileSkills(raceData, backgroundData)
+
+	// Compile languages (includes player choices + automatic grants)
+	charData.Languages = d.compileLanguages(raceData, backgroundData)
+
+	// Combine weapon proficiencies from class and race data
+	allWeapons := append([]proficiencies.Weapon{}, classProficiencies.Weapons...)
+	allWeapons = append(allWeapons, raceData.WeaponProficiencies...)
+
+	charData.Proficiencies = shared.Proficiencies{
+		Armor:   classProficiencies.Armor,
+		Weapons: allWeapons,
+		Tools:   append(classProficiencies.Tools, backgroundProficiencies.Tools...),
+	}
+
+	// Saving throws (only from class)
 	charData.SavingThrows = make(map[abilities.Ability]shared.ProficiencyLevel)
-	for _, save := range classData.SavingThrows {
+	for _, save := range classProficiencies.SavingThrows {
 		charData.SavingThrows[save] = shared.Proficient
 	}
 
@@ -273,6 +316,35 @@ func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
 				Values:   values,
 			})
 		}
+	}
+
+	// Check for missing subclass
+	if d.ClassChoice.MissingSubclass() {
+		// Create initial result with subclass error
+		result := choices.NewValidationResult()
+		result.AddIssue(choices.ValidationIssue{
+			Code:     choices.CodeRequiredChoiceMissing,
+			Severity: choices.SeverityError,
+			Field:    choices.Field("subclass"),
+			Message:  fmt.Sprintf("%s requires a subclass selection at level 1", d.ClassChoice.ClassID),
+			Source:   choices.SourceClass,
+		})
+		d.updateValidationState(result)
+		return result, nil
+	}
+
+	// Check for missing subrace
+	if d.RaceChoice.MissingRequiredSubrace() {
+		result := choices.NewValidationResult()
+		result.AddIssue(choices.ValidationIssue{
+			Code:     choices.CodeRequiredChoiceMissing,
+			Severity: choices.SeverityError,
+			Field:    choices.Field("subrace"),
+			Message:  fmt.Sprintf("%s requires a subrace selection", d.RaceChoice.RaceID),
+			Source:   choices.SourceRace,
+		})
+		d.updateValidationState(result)
+		return result, nil
 	}
 
 	// Build validation context using the rulebook's knowledge of automatic grants

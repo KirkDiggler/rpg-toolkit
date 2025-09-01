@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -67,8 +68,16 @@ func Example_createCharacterFromDraft() {
 			abilities.STR,
 			abilities.CON,
 		},
-		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shields"},
-		WeaponProficiencies: []string{"Simple", "Martial"},
+		ArmorProficiencies: []proficiencies.Armor{
+			proficiencies.ArmorLight,
+			proficiencies.ArmorMedium,
+			proficiencies.ArmorHeavy,
+			proficiencies.ArmorShields,
+		},
+		WeaponProficiencies: []proficiencies.Weapon{
+			proficiencies.WeaponSimple,
+			proficiencies.WeaponMartial,
+		},
 	}
 	if err := builder.SetClassData(fighterClass, ""); err != nil {
 		log.Fatal(err)
@@ -83,7 +92,7 @@ func Example_createCharacterFromDraft() {
 			skills.Intimidation,
 		},
 		Languages:         []languages.Language{},
-		ToolProficiencies: []string{"Gaming set", "Land vehicles"},
+		ToolProficiencies: []proficiencies.Tool{proficiencies.ToolDiceSet, proficiencies.ToolVehicleLand},
 		Equipment: []string{
 			"Insignia of rank",
 			"Trophy from fallen enemy",

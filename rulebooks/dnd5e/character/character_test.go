@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -64,9 +65,20 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_WithChoices() {
 			abilities.CON: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
-			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
-			Weapons: []string{"Simple", "Martial"},
-			Tools:   []string{"Gaming set", "Land vehicles"},
+			Armor: []proficiencies.Armor{
+				proficiencies.ArmorLight,
+				proficiencies.ArmorMedium,
+				proficiencies.ArmorHeavy,
+				proficiencies.ArmorShields,
+			},
+			Weapons: []proficiencies.Weapon{
+				proficiencies.WeaponSimple,
+				proficiencies.WeaponMartial,
+			},
+			Tools: []proficiencies.Tool{
+				proficiencies.ToolDiceSet,
+				proficiencies.ToolVehicleLand,
+			},
 		},
 		// Choices as shown in the issue - enhanced with ChoiceID field
 		Choices: []ChoiceData{
@@ -185,9 +197,20 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 			abilities.CON: shared.Proficient,
 		},
 		Proficiencies: shared.Proficiencies{
-			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
-			Weapons: []string{"Simple", "Martial"},
-			Tools:   []string{"Gaming set", "Land vehicles"},
+			Armor: []proficiencies.Armor{
+				proficiencies.ArmorLight,
+				proficiencies.ArmorMedium,
+				proficiencies.ArmorHeavy,
+				proficiencies.ArmorShields,
+			},
+			Weapons: []proficiencies.Weapon{
+				proficiencies.WeaponSimple,
+				proficiencies.WeaponMartial,
+			},
+			Tools: []proficiencies.Tool{
+				proficiencies.ToolDiceSet,
+				proficiencies.ToolVehicleLand,
+			},
 		},
 		// No choices
 		Choices:   []ChoiceData{},
@@ -211,90 +234,6 @@ func (s *CharacterTestSuite) TestLoadCharacterFromData_BackwardsCompatibility() 
 	s.Assert().Contains(character.languages, languages.Dwarvish)
 	s.Assert().Contains(character.languages, languages.Elvish)
 }
-
-/*
-// TestLoadCharacterFromData_MixedSelectionTypes is no longer needed with sum type pattern
-// The old test was checking handling of different Selection types (any, []string, string)
-// which is now handled by specific typed fields
-func (s *CharacterTestSuite) TestLoadCharacterFromData_MixedSelectionTypes() {
-	// Test with various selection formats ([]interface{}, []string, string)
-	charData := Data{
-		ID:           "test-char-3",
-		PlayerID:     "player-123",
-		Name:         "Mixed Format Hero",
-		Level:        1,
-		RaceID:       races.Human,
-		ClassID:      classes.Fighter,
-		BackgroundID: backgrounds.Soldier,
-		AbilityScores: shared.AbilityScores{
-			abilities.STR: 16,
-			abilities.DEX: 15,
-			abilities.CON: 14,
-			abilities.INT: 13,
-			abilities.WIS: 11,
-			abilities.CHA: 9,
-		},
-		Speed:        30,
-		Size:         "Medium",
-		HitPoints:    12,
-		MaxHitPoints: 12,
-		Skills: map[skills.Skill]shared.ProficiencyLevel{
-			skills.Perception:   shared.Proficient,
-			skills.Survival:     shared.Proficient,
-			skills.Athletics:    shared.Proficient, // From background
-			skills.Intimidation: shared.Proficient, // From background
-		},
-		Languages: []string{"common", "orc", "elvish", "draconic", "dwarvish"},
-		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
-			abilities.STR: shared.Proficient,
-			abilities.CON: shared.Proficient,
-		},
-		Proficiencies: shared.Proficiencies{
-			Armor:   []string{"Light", "Medium", "Heavy", "Shield"},
-			Weapons: []string{"Simple", "Martial"},
-			Tools:   []string{"Gaming set", "Land vehicles"},
-		},
-		Choices: []ChoiceData{
-			{
-				Category: shared.ChoiceSkills,
-				Source:   shared.SourcePlayer,
-				// []string format
-				Selection: []string{"Perception", "Survival"},
-			},
-			{
-				Category: shared.ChoiceLanguages,
-				Source:   shared.SourcePlayer,
-				// single string format
-				Selection: "Orcish",
-			},
-			{
-				Category: shared.ChoiceLanguages,
-				Source:   shared.SourcePlayer,
-				// Simulate []interface{} from JSON unmarshaling
-				Selection: []interface{}{"Elvish", "Draconic"},
-			},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	// Load character from data
-	character, err := LoadCharacterFromData(charData, s.testRace, s.testClass, s.testBackground)
-	s.Require().NoError(err)
-	s.Assert().NotNil(character)
-
-	// Verify skills from []string selection
-	s.Assert().Equal(shared.Proficient, character.skills[skills.Perception])
-	s.Assert().Equal(shared.Proficient, character.skills[skills.Survival])
-
-	// Verify language from string selection
-	s.Assert().Contains(character.languages, languages.Orc)
-
-	// Verify languages from []interface{} selection
-	s.Assert().Contains(character.languages, languages.Elvish)
-	s.Assert().Contains(character.languages, languages.Draconic)
-}
-*/
 
 func TestCharacterTestSuite(t *testing.T) {
 	suite.Run(t, new(CharacterTestSuite))
