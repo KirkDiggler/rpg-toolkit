@@ -245,7 +245,7 @@ func (s *DraftTestSuite) TestToCharacter_IncompleteDraft() {
 	character, err := draft.ToCharacter(s.testRace, s.testClass, s.testBackground)
 	s.Assert().Error(err)
 	s.Assert().Nil(character)
-	s.Assert().Contains(err.Error(), "incomplete")
+	s.Assert().Contains(err.Error(), "ability scores must be set")
 }
 
 func (s *DraftTestSuite) TestToCharacter_MissingData() {

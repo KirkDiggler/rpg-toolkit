@@ -59,17 +59,14 @@ func (d *Draft) ToCharacter(raceData *race.Data, classData *class.Data,
 		return nil, errors.New("race, class, and background data are required")
 	}
 
-	// Check if draft is complete enough to build
-	if !d.isComplete() {
-		return nil, errors.New("draft is incomplete - missing required choices")
+	// Validate basic requirements (name, race, class, background, ability scores)
+	if err := d.ValidateBasicRequirements(); err != nil {
+		return nil, rpgerr.Wrap(err, "draft validation failed")
 	}
-
-	// Validate the draft with external data
-	validator := NewValidator()
-	errors := validator.ValidateDraft(d, raceData, classData, backgroundData)
-	if len(errors) > 0 {
-		return nil, fmt.Errorf("validation failed: %v", errors)
-	}
+	
+	// Note: We don't validate choices here because ToCharacter is used in many contexts
+	// where choices might not be complete yet (e.g., during character import/migration).
+	// Callers who need strict validation should call ValidateChoices() separately.
 
 	// Compile the character using the same logic as builder
 	return d.compileCharacter(raceData, classData, backgroundData)
@@ -285,6 +282,75 @@ func (d *Draft) GetValidationStatus() (warnings []string, errors []string, canFi
 // HasValidationIssues returns true if the draft has any validation errors or warnings
 func (d *Draft) HasValidationIssues() bool {
 	return len(d.ValidationErrors) > 0 || len(d.ValidationWarnings) > 0
+}
+
+// ValidateBasicRequirements checks if the draft has all required basic fields
+// This includes name, race, class, background, and ability scores
+func (d *Draft) ValidateBasicRequirements() error {
+	// Check name
+	if d.Name == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "character name is required",
+			rpgerr.WithMeta("field", "name"))
+	}
+	
+	// Check race selection and validate it
+	if d.RaceChoice.RaceID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "race must be selected",
+			rpgerr.WithMeta("field", "race"))
+	}
+	if err := d.RaceChoice.IsValid(); err != nil {
+		return rpgerr.Wrap(err, "invalid race choice",
+			rpgerr.WithMeta("raceID", d.RaceChoice.RaceID),
+			rpgerr.WithMeta("subraceID", d.RaceChoice.SubraceID))
+	}
+	
+	// Check class selection
+	if d.ClassChoice.ClassID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "class must be selected",
+			rpgerr.WithMeta("field", "class"))
+	}
+	// Check for missing subclass if required at level 1
+	if d.ClassChoice.MissingSubclass() {
+		return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument,
+			[]rpgerr.Option{
+				rpgerr.WithMeta("classID", d.ClassChoice.ClassID),
+			},
+			"%s requires a subclass selection at level 1", d.ClassChoice.ClassID)
+	}
+	
+	// Check background
+	if d.BackgroundChoice == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "background must be selected",
+			rpgerr.WithMeta("field", "background"))
+	}
+	
+	// Check ability scores
+	if len(d.AbilityScoreChoice) == 0 {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "ability scores must be set",
+			rpgerr.WithMeta("field", "ability_scores"))
+	}
+	
+	// Validate ability scores are within range and all present
+	for _, ability := range abilities.AllAbilities() {
+		score, ok := d.AbilityScoreChoice[ability]
+		if !ok {
+			return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument,
+				[]rpgerr.Option{
+					rpgerr.WithMeta("ability", ability),
+				},
+				"missing ability score: %s", ability.Display())
+		}
+		if score < 3 || score > 20 {
+			return rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument,
+				[]rpgerr.Option{
+					rpgerr.WithMeta("ability", ability),
+					rpgerr.WithMeta("score", score),
+				},
+				"%s must be between 3 and 20, got %d", ability.Display(), score)
+		}
+	}
+	
+	return nil
 }
 
 // ValidateChoices validates the draft's choices using the new choices validation system

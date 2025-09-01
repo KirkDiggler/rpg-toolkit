@@ -502,7 +502,10 @@ func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 		ID:         "test-duplicate-lang",
 		PlayerID:   "player-999",
 		Name:       "Linguist",
-		RaceChoice: RaceChoice{RaceID: races.Elf},
+		RaceChoice: RaceChoice{
+			RaceID:    races.Elf,
+			SubraceID: races.HighElf,
+		},
 		ClassChoice: ClassChoice{
 			ClassID: classes.Wizard,
 		},

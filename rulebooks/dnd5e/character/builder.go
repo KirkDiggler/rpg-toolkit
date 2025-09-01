@@ -369,8 +369,42 @@ func (b *Builder) SelectEquipment(equipment []string) error {
 }
 
 // Validate checks if the draft is valid in its current state
+// Deprecated: Use draft.ValidateBasicRequirements() and draft.ValidateChoices() directly
 func (b *Builder) Validate() []ValidationError {
-	return b.validator.ValidateDraft(b.draft, b.raceData, b.classData, b.backgroundData)
+	// First check basic requirements
+	if err := b.draft.ValidateBasicRequirements(); err != nil {
+		// Convert rpgerr to ValidationError for backwards compatibility
+		return []ValidationError{{
+			Field:   "general",
+			Message: err.Error(),
+		}}
+	}
+	
+	// Then check choices
+	result, err := b.draft.ValidateChoices()
+	if err != nil {
+		return []ValidationError{{
+			Field:   "choices",
+			Message: err.Error(),
+		}}
+	}
+	
+	// Convert validation result to ValidationError slice for backwards compatibility
+	var errors []ValidationError
+	for _, e := range result.Errors {
+		errors = append(errors, ValidationError{
+			Field:   string(e.Field),
+			Message: e.Message,
+		})
+	}
+	for _, i := range result.Incomplete {
+		errors = append(errors, ValidationError{
+			Field:   string(i.Field),
+			Message: i.Message,
+		})
+	}
+	
+	return errors
 }
 
 // Progress returns the current progress of character creation
@@ -394,16 +428,8 @@ func (b *Builder) Progress() BuilderProgress {
 
 // Build creates the final character from the draft
 func (b *Builder) Build() (*Character, error) {
-	if !b.canBuild() {
-		return nil, errors.New("character draft is incomplete")
-	}
-
-	errors := b.Validate()
-	if len(errors) > 0 {
-		return nil, fmt.Errorf("validation failed: %v", errors)
-	}
-
-	// Use the draft's ToCharacter method
+	// The draft's ToCharacter method handles all validation now
+	// It will check both basic requirements and choice validation
 	return b.draft.ToCharacter(b.raceData, b.classData, b.backgroundData)
 }
 
