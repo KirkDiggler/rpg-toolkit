@@ -4,6 +4,7 @@ package race
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -25,9 +26,9 @@ type Data struct {
 	Traits []TraitData `json:"traits"`
 
 	// Proficiencies
-	SkillProficiencies  []skills.Skill `json:"skill_proficiencies"`
-	WeaponProficiencies []string       `json:"weapon_proficiencies"`
-	ToolProficiencies   []string       `json:"tool_proficiencies"`
+	SkillProficiencies  []skills.Skill         `json:"skill_proficiencies"`
+	WeaponProficiencies []proficiencies.Weapon `json:"weapon_proficiencies"`
+	ToolProficiencies   []proficiencies.Tool   `json:"tool_proficiencies"`
 
 	// Languages
 	Languages      []languages.Language `json:"languages"`
@@ -54,8 +55,8 @@ type SubraceData struct {
 	Traits []TraitData `json:"traits"`
 
 	// Additional proficiencies
-	WeaponProficiencies []string `json:"weapon_proficiencies,omitempty"`
-	ArmorProficiencies  []string `json:"armor_proficiencies,omitempty"`
+	WeaponProficiencies []proficiencies.Weapon `json:"weapon_proficiencies,omitempty"`
+	ArmorProficiencies  []proficiencies.Armor  `json:"armor_proficiencies,omitempty"`
 
 	// Spells (for races like Tiefling, Drow)
 	Spells []SpellProgressionData `json:"spells,omitempty"`

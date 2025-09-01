@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -32,8 +33,16 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 			skills.Acrobatics, skills.AnimalHandling, skills.Athletics, skills.History,
 			skills.Insight, skills.Intimidation, skills.Perception, skills.Survival,
 		},
-		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
-		WeaponProficiencies: []string{"Simple", "Martial"},
+		ArmorProficiencies: []proficiencies.Armor{
+			proficiencies.ArmorLight,
+			proficiencies.ArmorMedium,
+			proficiencies.ArmorHeavy,
+			proficiencies.ArmorShields,
+		},
+		WeaponProficiencies: []proficiencies.Weapon{
+			proficiencies.WeaponSimple,
+			proficiencies.WeaponMartial,
+		},
 		Features: map[int][]class.FeatureData{
 			1: {
 				{
@@ -89,7 +98,7 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 		Name:               "Soldier",
 		SkillProficiencies: []skills.Skill{skills.Athletics, skills.Intimidation},
 		Languages:          []languages.Language{languages.Dwarvish},
-		ToolProficiencies:  []string{"Gaming set"},
+		ToolProficiencies:  []proficiencies.Tool{proficiencies.ToolDiceSet},
 	}
 
 	// Test creating level 1 fighter
@@ -237,8 +246,19 @@ func (s *FeatureTestSuite) TestFighterFeatures() {
 				skills.Arcana, skills.History, skills.Insight,
 				skills.Investigation, skills.Medicine, skills.Religion,
 			},
-			ArmorProficiencies:  []string{},
-			WeaponProficiencies: []string{"Dagger", "Dart", "Sling", "Quarterstaff", "Light crossbow"},
+			ArmorProficiencies: []proficiencies.Armor{
+				proficiencies.ArmorLight,
+				proficiencies.ArmorMedium,
+				proficiencies.ArmorHeavy,
+				proficiencies.ArmorShields,
+			},
+			WeaponProficiencies: []proficiencies.Weapon{
+				proficiencies.WeaponDagger,
+				proficiencies.WeaponDart,
+				proficiencies.WeaponSling,
+				proficiencies.WeaponQuarterstaff,
+				proficiencies.WeaponLightCrossbow,
+			},
 			Features: map[int][]class.FeatureData{
 				1: {
 					{

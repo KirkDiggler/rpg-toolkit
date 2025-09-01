@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -135,8 +136,13 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		AbilityScoreIncreases: map[abilities.Ability]int{
 			abilities.DEX: 2,
 		},
-		Languages:           []languages.Language{languages.Common, languages.Elvish},
-		WeaponProficiencies: []string{"Longsword", "Shortsword", "Shortbow", "Longbow"},
+		Languages: []languages.Language{languages.Common, languages.Elvish},
+		WeaponProficiencies: []proficiencies.Weapon{
+			proficiencies.WeaponLongsword,
+			proficiencies.WeaponShortsword,
+			proficiencies.WeaponShortbow,
+			proficiencies.WeaponLongbow,
+		},
 		Subraces: []race.SubraceData{
 			{
 				ID:   "high-elf",
@@ -166,9 +172,17 @@ func (s *DraftConversionTestSuite) SetupTest() {
 			skills.Acrobatics, skills.AnimalHandling, skills.Athletics, skills.History,
 			skills.Insight, skills.Intimidation, skills.Perception, skills.Survival,
 		},
-		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
-		WeaponProficiencies: []string{"Simple", "Martial"},
-		ToolProficiencies:   []string{},
+		ArmorProficiencies: []proficiencies.Armor{
+			proficiencies.ArmorLight,
+			proficiencies.ArmorMedium,
+			proficiencies.ArmorHeavy,
+			proficiencies.ArmorShields,
+		},
+		WeaponProficiencies: []proficiencies.Weapon{
+			proficiencies.WeaponSimple,
+			proficiencies.WeaponMartial,
+		},
+		ToolProficiencies: []proficiencies.Tool{},
 		StartingEquipment: []class.EquipmentData{
 			{ItemID: "Chain Mail", Quantity: 1},
 			{ItemID: "Shield", Quantity: 1},
@@ -187,9 +201,20 @@ func (s *DraftConversionTestSuite) SetupTest() {
 			skills.Arcana, skills.History, skills.Insight,
 			skills.Investigation, skills.Medicine, skills.Religion,
 		},
-		ArmorProficiencies:  []string{},
-		WeaponProficiencies: []string{"Dagger", "Dart", "Sling", "Quarterstaff", "Light Crossbow"},
-		ToolProficiencies:   []string{},
+		ArmorProficiencies: []proficiencies.Armor{
+			proficiencies.ArmorLight,
+			proficiencies.ArmorMedium,
+			proficiencies.ArmorHeavy,
+			proficiencies.ArmorShields,
+		},
+		WeaponProficiencies: []proficiencies.Weapon{
+			proficiencies.WeaponDagger,
+			proficiencies.WeaponDart,
+			proficiencies.WeaponSling,
+			proficiencies.WeaponQuarterstaff,
+			proficiencies.WeaponLightCrossbow,
+		},
+		ToolProficiencies: []proficiencies.Tool{},
 	}
 
 	// Setup Soldier background
@@ -198,7 +223,7 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		Name:               "Soldier",
 		SkillProficiencies: []skills.Skill{skills.Athletics, skills.Intimidation},
 		Languages:          []languages.Language{languages.Orc},
-		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
+		ToolProficiencies:  []proficiencies.Tool{proficiencies.ToolDiceSet, proficiencies.ToolVehicleLand},
 		Equipment:          []string{"Insignia of rank", "Trophy", "Deck of cards", "Common clothes"},
 	}
 
@@ -208,7 +233,7 @@ func (s *DraftConversionTestSuite) SetupTest() {
 		Name:               "Hermit",
 		SkillProficiencies: []skills.Skill{skills.Medicine, skills.Religion},
 		Languages:          []languages.Language{languages.Celestial},
-		ToolProficiencies:  []string{"Herbalism kit"},
+		ToolProficiencies:  []proficiencies.Tool{proficiencies.ToolHerbalism},
 	}
 }
 

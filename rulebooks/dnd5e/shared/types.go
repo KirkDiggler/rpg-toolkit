@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
@@ -211,10 +212,11 @@ const (
 )
 
 // Proficiencies tracks what the character is proficient with
+// Now uses typed constants from the proficiencies package for type safety
 type Proficiencies struct {
-	Armor   []string `json:"armor,omitempty"`
-	Weapons []string `json:"weapons,omitempty"`
-	Tools   []string `json:"tools,omitempty"`
+	Armor   []proficiencies.Armor  `json:"armor,omitempty"`
+	Weapons []proficiencies.Weapon `json:"weapons,omitempty"`
+	Tools   []proficiencies.Tool   `json:"tools,omitempty"`
 }
 
 // DeathSaves tracks death saving throws
@@ -237,8 +239,8 @@ type Background struct {
 	LanguageChoice *ChoiceData          `json:"language_choice,omitempty"`
 
 	// Tool proficiencies
-	ToolProficiencies []string    `json:"tool_proficiencies,omitempty"`
-	ToolChoice        *ChoiceData `json:"tool_choice,omitempty"`
+	ToolProficiencies []proficiencies.Tool `json:"tool_proficiencies,omitempty"`
+	ToolChoice        *ChoiceData          `json:"tool_choice,omitempty"`
 
 	// Starting equipment
 	Equipment []string `json:"equipment"`

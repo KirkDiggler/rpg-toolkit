@@ -6,6 +6,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -43,8 +44,16 @@ func createTestClassData() *class.Data {
 			skills.Acrobatics, skills.AnimalHandling, skills.Athletics, skills.History,
 			skills.Insight, skills.Intimidation, skills.Perception, skills.Survival,
 		},
-		ArmorProficiencies:  []string{"Light", "Medium", "Heavy", "Shield"},
-		WeaponProficiencies: []string{"Simple", "Martial"},
+		ArmorProficiencies: []proficiencies.Armor{
+			proficiencies.ArmorLight,
+			proficiencies.ArmorMedium,
+			proficiencies.ArmorHeavy,
+			proficiencies.ArmorShields,
+		},
+		WeaponProficiencies: []proficiencies.Weapon{
+			proficiencies.WeaponSimple,
+			proficiencies.WeaponMartial,
+		},
 		Features: map[int][]class.FeatureData{
 			1: {
 				{ID: "fighting-style", Name: "Fighting Style", Level: 1},
@@ -61,6 +70,6 @@ func createTestBackgroundData() *shared.Background {
 		Name:               "Soldier",
 		SkillProficiencies: []skills.Skill{skills.Athletics, skills.Intimidation},
 		Languages:          []languages.Language{languages.Dwarvish},
-		ToolProficiencies:  []string{"Gaming set", "Land vehicles"},
+		ToolProficiencies:  []proficiencies.Tool{proficiencies.ToolDiceSet, proficiencies.ToolVehicleLand},
 	}
 }
