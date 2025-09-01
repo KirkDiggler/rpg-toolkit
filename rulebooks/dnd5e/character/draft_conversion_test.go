@@ -499,9 +499,9 @@ func (s *DraftConversionTestSuite) TestRaceWithoutCommonLanguage() {
 func (s *DraftConversionTestSuite) TestDuplicateLanguageHandling() {
 	// Create a draft where chosen languages overlap with race/background
 	draft := &Draft{
-		ID:         "test-duplicate-lang",
-		PlayerID:   "player-999",
-		Name:       "Linguist",
+		ID:       "test-duplicate-lang",
+		PlayerID: "player-999",
+		Name:     "Linguist",
 		RaceChoice: RaceChoice{
 			RaceID:    races.Elf,
 			SubraceID: races.HighElf,

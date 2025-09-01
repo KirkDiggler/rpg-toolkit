@@ -52,6 +52,7 @@ type ValidationCode string
 
 // ValidationCode constants - specific validation issues
 const (
+	CodeInvalidValue ValidationCode = "invalid_value"
 	// Count violations
 	CodeTooFewChoices      ValidationCode = "too_few_choices"
 	CodeTooManyChoices     ValidationCode = "too_many_choices"

@@ -63,7 +63,7 @@ func (d *Draft) ToCharacter(raceData *race.Data, classData *class.Data,
 	if err := d.ValidateBasicRequirements(); err != nil {
 		return nil, rpgerr.Wrap(err, "draft validation failed")
 	}
-	
+
 	// Note: We don't validate choices here because ToCharacter is used in many contexts
 	// where choices might not be complete yet (e.g., during character import/migration).
 	// Callers who need strict validation should call ValidateChoices() separately.
@@ -284,6 +284,459 @@ func (d *Draft) HasValidationIssues() bool {
 	return len(d.ValidationErrors) > 0 || len(d.ValidationWarnings) > 0
 }
 
+// SetClass updates the draft's class choice with all required choices and validates it
+// Returns validation results immediately for UI feedback
+func (d *Draft) SetClass(input *SetClassInput) (*choices.ValidationResult, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is required")
+	}
+
+	// Update the class choice
+	d.ClassChoice = ClassChoice{
+		ClassID:    input.ClassID,
+		SubclassID: input.SubclassID,
+	}
+
+	// Add/update the class choice in choices array
+	classChoiceFound := false
+	for i, choice := range d.Choices {
+		if choice.Category == shared.ChoiceClass && choice.ChoiceID == "class_selection" {
+			d.Choices[i].ClassSelection = &d.ClassChoice
+			classChoiceFound = true
+			break
+		}
+	}
+
+	if !classChoiceFound {
+		d.Choices = append(d.Choices, ChoiceData{
+			Category:       shared.ChoiceClass,
+			Source:         shared.SourcePlayer,
+			ChoiceID:       "class_selection",
+			ClassSelection: &d.ClassChoice,
+		})
+	}
+
+	// Store skill choices if provided
+	if len(input.Choices.Skills) > 0 {
+		skillChoiceFound := false
+		for i, choice := range d.Choices {
+			if choice.Category == shared.ChoiceSkills && choice.Source == shared.SourceClass {
+				d.Choices[i].SkillSelection = input.Choices.Skills
+				skillChoiceFound = true
+				break
+			}
+		}
+		if !skillChoiceFound {
+			d.Choices = append(d.Choices, ChoiceData{
+				Category:       shared.ChoiceSkills,
+				Source:         shared.SourceClass,
+				ChoiceID:       "class_skills",
+				SkillSelection: input.Choices.Skills,
+			})
+		}
+	}
+
+	// Store expertise choices if provided (for Rogue, etc.)
+	if len(input.Choices.Expertise) > 0 {
+		expertiseChoiceFound := false
+		for i, choice := range d.Choices {
+			if choice.Category == shared.ChoiceExpertise && choice.Source == shared.SourceClass {
+				d.Choices[i].SkillSelection = input.Choices.Expertise // Expertise uses skill selection
+				expertiseChoiceFound = true
+				break
+			}
+		}
+		if !expertiseChoiceFound {
+			d.Choices = append(d.Choices, ChoiceData{
+				Category:       shared.ChoiceExpertise,
+				Source:         shared.SourceClass,
+				ChoiceID:       "class_expertise",
+				SkillSelection: input.Choices.Expertise,
+			})
+		}
+	}
+
+	// TODO: Store equipment choices when Equipment type is available
+	// TODO: Store fighting style when constants are available
+	// TODO: Store cantrips/spells when constants are available
+
+	// Update progress
+	d.Progress.setFlag(ProgressClass)
+	if len(input.Choices.Skills) > 0 {
+		d.Progress.setFlag(ProgressSkills)
+	}
+	d.UpdatedAt = time.Now()
+
+	// Validate and return immediate feedback
+	result := choices.NewValidationResult()
+
+	// Check if subclass is required at level 1
+	if d.ClassChoice.MissingSubclass() {
+		result.AddIssue(choices.ValidationIssue{
+			Code:     choices.CodeRequiredChoiceMissing,
+			Severity: choices.SeverityWarning, // Warning for now, error when finalizing
+			Field:    choices.Field("subclass"),
+			Message:  fmt.Sprintf("%s requires a subclass selection at level 1", input.ClassID),
+			Source:   choices.SourceClass,
+		})
+	}
+
+	// If we have enough data, run full validation
+	if d.RaceChoice.RaceID != "" {
+		fullResult, _ := d.ValidateChoices()
+		if fullResult != nil {
+			return fullResult, nil
+		}
+	}
+
+	return result, nil
+}
+
+// SetRace updates the draft's race choice with all required choices and validates it
+// Returns validation results immediately for UI feedback
+func (d *Draft) SetRace(input *SetRaceInput) (*choices.ValidationResult, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is required")
+	}
+
+	// Update the race choice
+	d.RaceChoice = RaceChoice{
+		RaceID:    input.RaceID,
+		SubraceID: input.SubraceID,
+	}
+
+	// Add/update the race choice in choices array
+	raceChoiceFound := false
+	for i, choice := range d.Choices {
+		if choice.Category == shared.ChoiceRace && choice.ChoiceID == "race_selection" {
+			d.Choices[i].RaceSelection = &d.RaceChoice
+			raceChoiceFound = true
+			break
+		}
+	}
+
+	if !raceChoiceFound {
+		d.Choices = append(d.Choices, ChoiceData{
+			Category:      shared.ChoiceRace,
+			Source:        shared.SourcePlayer,
+			ChoiceID:      "race_selection",
+			RaceSelection: &d.RaceChoice,
+		})
+	}
+
+	// Store language choices if provided (for variant human, half-elf)
+	if len(input.Choices.Languages) > 0 {
+		langChoiceFound := false
+		for i, choice := range d.Choices {
+			if choice.Category == shared.ChoiceLanguages && choice.Source == shared.SourceRace {
+				d.Choices[i].LanguageSelection = input.Choices.Languages
+				langChoiceFound = true
+				break
+			}
+		}
+		if !langChoiceFound {
+			d.Choices = append(d.Choices, ChoiceData{
+				Category:          shared.ChoiceLanguages,
+				Source:            shared.SourceRace,
+				ChoiceID:          "race_languages",
+				LanguageSelection: input.Choices.Languages,
+			})
+		}
+	}
+
+	// Store skill proficiency choice if provided (for half-elf)
+	if input.Choices.SkillProficiency != nil {
+		skillChoiceFound := false
+		for i, choice := range d.Choices {
+			if choice.Category == shared.ChoiceSkills && choice.Source == shared.SourceRace {
+				d.Choices[i].SkillSelection = []skills.Skill{*input.Choices.SkillProficiency}
+				skillChoiceFound = true
+				break
+			}
+		}
+		if !skillChoiceFound {
+			d.Choices = append(d.Choices, ChoiceData{
+				Category:       shared.ChoiceSkills,
+				Source:         shared.SourceRace,
+				ChoiceID:       "race_skill",
+				SkillSelection: []skills.Skill{*input.Choices.SkillProficiency},
+			})
+		}
+	}
+
+	// Store ability score increase choices if provided (for variant human)
+	if len(input.Choices.AbilityIncrease) > 0 {
+		// Convert to shared.AbilityScores for storage
+		scores := make(shared.AbilityScores)
+		for ability, increase := range input.Choices.AbilityIncrease {
+			scores[ability] = increase
+		}
+		abilityChoiceFound := false
+		for i, choice := range d.Choices {
+			if choice.Category == shared.ChoiceAbilityScores && choice.Source == shared.SourceRace {
+				d.Choices[i].AbilityScoreSelection = &scores
+				abilityChoiceFound = true
+				break
+			}
+		}
+		if !abilityChoiceFound {
+			d.Choices = append(d.Choices, ChoiceData{
+				Category:              shared.ChoiceAbilityScores,
+				Source:                shared.SourceRace,
+				ChoiceID:              "race_ability_increase",
+				AbilityScoreSelection: &scores,
+			})
+		}
+	}
+
+	// TODO: Store draconic ancestry when constants are available
+
+	// Update progress
+	d.Progress.setFlag(ProgressRace)
+	if len(input.Choices.Languages) > 0 {
+		d.Progress.setFlag(ProgressLanguages)
+	}
+	d.UpdatedAt = time.Now()
+
+	// Validate and return immediate feedback
+	result := choices.NewValidationResult()
+
+	// Check race-specific validation
+	if err := d.RaceChoice.IsValid(); err != nil {
+		result.AddIssue(choices.ValidationIssue{
+			Code:     choices.CodeInvalidValue,
+			Severity: choices.SeverityError,
+			Field:    choices.Field("race"),
+			Message:  err.Error(),
+			Source:   choices.SourceRace,
+		})
+		return result, nil
+	}
+
+	// If we have enough data, run full validation
+	if d.ClassChoice.ClassID != "" {
+		fullResult, _ := d.ValidateChoices()
+		if fullResult != nil {
+			return fullResult, nil
+		}
+	}
+
+	return result, nil
+}
+
+// SetBackground updates the draft's background choice with all required choices and validates it
+// Returns validation results immediately for UI feedback
+func (d *Draft) SetBackground(input *SetBackgroundInput) (*choices.ValidationResult, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is required")
+	}
+
+	// Update the background choice
+	d.BackgroundChoice = input.BackgroundID
+
+	// Add/update the background choice in choices array
+	bgChoiceFound := false
+	for i, choice := range d.Choices {
+		if choice.Category == shared.ChoiceBackground && choice.ChoiceID == "background_selection" {
+			d.Choices[i].BackgroundSelection = &d.BackgroundChoice
+			bgChoiceFound = true
+			break
+		}
+	}
+
+	if !bgChoiceFound {
+		d.Choices = append(d.Choices, ChoiceData{
+			Category:            shared.ChoiceBackground,
+			Source:              shared.SourcePlayer,
+			ChoiceID:            "background_selection",
+			BackgroundSelection: &d.BackgroundChoice,
+		})
+	}
+
+	// Store language choices if provided
+	if len(input.Choices.Languages) > 0 {
+		langChoiceFound := false
+		for i, choice := range d.Choices {
+			if choice.Category == shared.ChoiceLanguages && choice.Source == shared.SourceBackground {
+				d.Choices[i].LanguageSelection = input.Choices.Languages
+				langChoiceFound = true
+				break
+			}
+		}
+		if !langChoiceFound {
+			d.Choices = append(d.Choices, ChoiceData{
+				Category:          shared.ChoiceLanguages,
+				Source:            shared.SourceBackground,
+				ChoiceID:          "background_languages",
+				LanguageSelection: input.Choices.Languages,
+			})
+		}
+	}
+
+	// TODO: Store tool choices when constants are available
+
+	// Update progress
+	d.Progress.setFlag(ProgressBackground)
+	if len(input.Choices.Languages) > 0 {
+		d.Progress.setFlag(ProgressLanguages)
+	}
+	d.UpdatedAt = time.Now()
+
+	// Validate and return immediate feedback
+	result := choices.NewValidationResult()
+
+	// If we have enough data, run full validation
+	if d.ClassChoice.ClassID != "" && d.RaceChoice.RaceID != "" {
+		fullResult, _ := d.ValidateChoices()
+		if fullResult != nil {
+			return fullResult, nil
+		}
+	}
+
+	return result, nil
+}
+
+// SetAbilityScores updates the draft's ability scores and validates them
+// Returns validation results immediately for UI feedback
+func (d *Draft) SetAbilityScores(input *SetAbilityScoresInput) (*choices.ValidationResult, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is required")
+	}
+
+	// Convert input type to shared.AbilityScores
+	scores := make(shared.AbilityScores)
+	for ability, score := range input.Scores {
+		scores[ability] = score
+	}
+
+	// Update the ability score choice
+	d.AbilityScoreChoice = scores
+
+	// Add/update the ability score choice in choices array
+	scoreChoiceFound := false
+	for i, choice := range d.Choices {
+		if choice.Category == shared.ChoiceAbilityScores && choice.Source == shared.SourcePlayer {
+			d.Choices[i].AbilityScoreSelection = &scores
+			scoreChoiceFound = true
+			break
+		}
+	}
+
+	if !scoreChoiceFound {
+		d.Choices = append(d.Choices, ChoiceData{
+			Category:              shared.ChoiceAbilityScores,
+			Source:                shared.SourcePlayer,
+			ChoiceID:              "ability_scores",
+			AbilityScoreSelection: &scores,
+		})
+	}
+
+	// Update progress
+	d.Progress.setFlag(ProgressAbilityScores)
+	d.UpdatedAt = time.Now()
+
+	// Validate and return immediate feedback
+	result := choices.NewValidationResult()
+
+	// Validate ability scores are within range and all present
+	for _, ability := range abilities.AllAbilities() {
+		score, ok := scores[ability]
+		if !ok {
+			result.AddIssue(choices.ValidationIssue{
+				Code:     choices.CodeRequiredChoiceMissing,
+				Severity: choices.SeverityError,
+				Field:    choices.Field(fmt.Sprintf("ability_scores.%s", ability)),
+				Message:  fmt.Sprintf("missing ability score: %s", ability.Display()),
+				Source:   choices.SourceClass,
+			})
+		} else if score < 3 || score > 20 {
+			result.AddIssue(choices.ValidationIssue{
+				Code:     choices.CodeInvalidValue,
+				Severity: choices.SeverityError,
+				Field:    choices.Field(fmt.Sprintf("ability_scores.%s", ability)),
+				Message:  fmt.Sprintf("%s must be between 3 and 20, got %d", ability.Display(), score),
+				Source:   choices.SourceClass,
+			})
+		}
+	}
+
+	// Validate based on method if specified
+	if input.Method != "" {
+		switch input.Method {
+		case "standard":
+			// Standard array: 15, 14, 13, 12, 10, 8
+			standardArray := map[int]int{15: 1, 14: 1, 13: 1, 12: 1, 10: 1, 8: 1}
+			scoreCount := make(map[int]int)
+			for _, score := range scores {
+				scoreCount[score]++
+			}
+
+			// Check if scores match standard array
+			for score, count := range standardArray {
+				if scoreCount[score] != count {
+					result.AddIssue(choices.ValidationIssue{
+						Code:     choices.CodeInvalidValue,
+						Severity: choices.SeverityWarning,
+						Field:    choices.Field("ability_scores"),
+						Message:  "scores do not match standard array (15, 14, 13, 12, 10, 8)",
+						Source:   choices.SourceClass,
+					})
+					break
+				}
+			}
+
+		case "point-buy":
+			// Point buy: All scores must be 8-15 before racial modifiers
+			// Total cost must be <= 27
+			totalCost := 0
+			pointCosts := map[int]int{8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
+
+			for ability, score := range scores {
+				if score < 8 || score > 15 {
+					result.AddIssue(choices.ValidationIssue{
+						Code:     choices.CodeInvalidValue,
+						Severity: choices.SeverityWarning,
+						Field:    choices.Field(fmt.Sprintf("ability_scores.%s", ability)),
+						Message:  fmt.Sprintf("point buy scores must be 8-15, %s is %d", ability.Display(), score),
+						Source:   choices.SourceClass,
+					})
+				} else {
+					totalCost += pointCosts[score]
+				}
+			}
+
+			if totalCost > 27 {
+				result.AddIssue(choices.ValidationIssue{
+					Code:     choices.CodeInvalidValue,
+					Severity: choices.SeverityWarning,
+					Field:    choices.Field("ability_scores"),
+					Message:  fmt.Sprintf("point buy total cost %d exceeds maximum of 27", totalCost),
+					Source:   choices.SourceClass,
+				})
+			}
+
+		case "rolled":
+			// No specific validation for rolled scores
+			// They just need to be within 3-20 range which we already checked
+		}
+	}
+
+	// If validation found issues, return them
+	if len(result.Errors) > 0 || len(result.Warnings) > 0 {
+		return result, nil
+	}
+
+	// If we have enough data, run full validation
+	if d.ClassChoice.ClassID != "" && d.RaceChoice.RaceID != "" {
+		fullResult, _ := d.ValidateChoices()
+		if fullResult != nil {
+			return fullResult, nil
+		}
+	}
+
+	return result, nil
+}
+
 // ValidateBasicRequirements checks if the draft has all required basic fields
 // This includes name, race, class, background, and ability scores
 func (d *Draft) ValidateBasicRequirements() error {
@@ -292,7 +745,7 @@ func (d *Draft) ValidateBasicRequirements() error {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character name is required",
 			rpgerr.WithMeta("field", "name"))
 	}
-	
+
 	// Check race selection and validate it
 	if d.RaceChoice.RaceID == "" {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "race must be selected",
@@ -303,7 +756,7 @@ func (d *Draft) ValidateBasicRequirements() error {
 			rpgerr.WithMeta("raceID", d.RaceChoice.RaceID),
 			rpgerr.WithMeta("subraceID", d.RaceChoice.SubraceID))
 	}
-	
+
 	// Check class selection
 	if d.ClassChoice.ClassID == "" {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "class must be selected",
@@ -317,19 +770,19 @@ func (d *Draft) ValidateBasicRequirements() error {
 			},
 			"%s requires a subclass selection at level 1", d.ClassChoice.ClassID)
 	}
-	
+
 	// Check background
 	if d.BackgroundChoice == "" {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "background must be selected",
 			rpgerr.WithMeta("field", "background"))
 	}
-	
+
 	// Check ability scores
 	if len(d.AbilityScoreChoice) == 0 {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "ability scores must be set",
 			rpgerr.WithMeta("field", "ability_scores"))
 	}
-	
+
 	// Validate ability scores are within range and all present
 	for _, ability := range abilities.AllAbilities() {
 		score, ok := d.AbilityScoreChoice[ability]
@@ -349,7 +802,7 @@ func (d *Draft) ValidateBasicRequirements() error {
 				"%s must be between 3 and 20, got %d", ability.Display(), score)
 		}
 	}
-	
+
 	return nil
 }
 
