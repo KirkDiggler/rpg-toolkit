@@ -25,7 +25,7 @@ type Roll struct {
 	err    error // Store any error that occurred during rolling
 }
 
-// NewRoll creates a new dice roll modifier using the DefaultRoller.
+// NewRoll creates a new dice roll modifier using a new CryptoRoller.
 // Returns an error if size <= 0.
 func NewRoll(count, size int) (*Roll, error) {
 	if size <= 0 {
@@ -34,7 +34,7 @@ func NewRoll(count, size int) (*Roll, error) {
 	return &Roll{
 		count:  count,
 		size:   size,
-		roller: DefaultRoller,
+		roller: NewRoller(),
 	}, nil
 }
 
