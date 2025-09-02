@@ -143,10 +143,6 @@ func Example_roguesSneakAttack() {
 
 // TestWithMockRoller demonstrates how to test code that uses dice
 func TestWithMockRoller(t *testing.T) {
-	// Save the original roller and restore it after the test
-	original := dice.DefaultRoller
-	defer dice.SetDefaultRoller(original)
-
 	// Create a mock controller
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -157,18 +153,15 @@ func TestWithMockRoller(t *testing.T) {
 	mockRoller.EXPECT().RollN(ctx, 1, 20).Return([]int{20}, nil) // Natural 20!
 	mockRoller.EXPECT().RollN(ctx, 2, 6).Return([]int{6, 5}, nil)
 
-	// Set the mock as the default
-	dice.SetDefaultRoller(mockRoller)
-
-	// Now test your game logic with predictable dice
-	attackRoll := dice.D20(1).GetValue()
-	if attackRoll != 20 {
-		t.Errorf("Expected critical hit (20), got %d", attackRoll)
+	// Now test your game logic with predictable dice using the mock roller
+	attackRoll, _ := dice.NewRollWithRoller(1, 20, mockRoller)
+	if attackRoll.GetValue() != 20 {
+		t.Errorf("Expected critical hit (20), got %d", attackRoll.GetValue())
 	}
 
-	damage := dice.D6(2).GetValue()
-	if damage != 11 {
-		t.Errorf("Expected damage of 11, got %d", damage)
+	damageRoll, _ := dice.NewRollWithRoller(2, 6, mockRoller)
+	if damageRoll.GetValue() != 11 {
+		t.Errorf("Expected damage of 11, got %d", damageRoll.GetValue())
 	}
 }
 

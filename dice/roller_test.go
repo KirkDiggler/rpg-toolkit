@@ -146,44 +146,48 @@ func TestCryptoRoller_Errors(t *testing.T) {
 	}
 }
 
-func TestDefaultRoller(t *testing.T) {
+func TestNewRoller(t *testing.T) {
 	ctx := context.Background()
-	// Ensure DefaultRoller is set
-	if DefaultRoller == nil {
-		t.Fatal("DefaultRoller is nil")
+	// Create a new roller
+	roller := NewRoller()
+	if roller == nil {
+		t.Fatal("NewRoller() returned nil")
 	}
 
 	// Test it works
-	result, err := DefaultRoller.Roll(ctx, 6)
+	result, err := roller.Roll(ctx, 6)
 	if err != nil {
-		t.Fatalf("DefaultRoller.Roll(6) error = %v", err)
+		t.Fatalf("roller.Roll(6) error = %v", err)
 	}
 	if result < 1 || result > 6 {
-		t.Errorf("DefaultRoller.Roll(6) = %d, want between 1 and 6", result)
+		t.Errorf("roller.Roll(6) = %d, want between 1 and 6", result)
 	}
 }
 
-func TestSetDefaultRoller(t *testing.T) {
+func TestNewMockableRoller(t *testing.T) {
 	ctx := context.Background()
-	// Save original
-	original := DefaultRoller
-	defer func() { DefaultRoller = original }()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	// Set mock roller
+	// Test with mock roller
 	mockRoller := mock_dice.NewMockRoller(ctrl)
 	mockRoller.EXPECT().Roll(ctx, 6).Return(4, nil)
 
-	SetDefaultRoller(mockRoller)
+	roller := NewMockableRoller(mockRoller)
 
-	// Verify it was set
-	result, err := DefaultRoller.Roll(ctx, 6)
+	// Verify mock is used
+	result, err := roller.Roll(ctx, 6)
 	if err != nil {
-		t.Fatalf("DefaultRoller.Roll(6) error = %v", err)
+		t.Fatalf("roller.Roll(6) error = %v", err)
 	}
 	if result != 4 {
-		t.Errorf("DefaultRoller.Roll(6) = %d, want 4", result)
+		t.Errorf("roller.Roll(6) = %d, want 4", result)
+	}
+
+	// Test with nil returns default
+	defaultRoller := NewMockableRoller(nil)
+	if defaultRoller == nil {
+		t.Fatal("NewMockableRoller(nil) returned nil")
 	}
 }

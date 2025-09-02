@@ -332,9 +332,9 @@ func TestRoll_HelperFunctions(t *testing.T) {
 				t.Errorf("%s(%d).size = %d, want %d", tt.name, tt.count, roll.size, tt.wantSize)
 			}
 
-			// Verify it uses DefaultRoller
-			if roll.roller != DefaultRoller {
-				t.Errorf("%s(%d) not using DefaultRoller", tt.name, tt.count)
+			// Verify roller is not nil
+			if roll.roller == nil {
+				t.Errorf("%s(%d) has nil roller", tt.name, tt.count)
 			}
 		})
 	}

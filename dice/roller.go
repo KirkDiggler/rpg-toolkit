@@ -68,12 +68,3 @@ func (c *CryptoRoller) RollN(ctx context.Context, count, size int) ([]int, error
 	}
 	return results, nil
 }
-
-// DefaultRoller is the default roller using crypto/rand.
-var DefaultRoller Roller = &CryptoRoller{}
-
-// SetDefaultRoller allows changing the default roller (primarily for testing).
-// This function is not safe for concurrent use with other dice operations.
-func SetDefaultRoller(r Roller) {
-	DefaultRoller = r
-}
