@@ -25,6 +25,11 @@ const (
 	Tiefling   Race = "tiefling"
 )
 
+// Subrace constants
+const (
+	SubraceNone Race = "none" // No subrace (for races without subraces)
+)
+
 // Elf subraces
 const (
 	HighElf Race = "high-elf"

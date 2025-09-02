@@ -8,15 +8,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// ArmorID represents unique identifier for armor
+// ArmorID represents unique identifier for armor (alias of shared.EquipmentID)
 //
 //nolint:revive // ArmorID is clearer than just ID in this context
-type ArmorID string
+type ArmorID = shared.EquipmentID
 
 // ArmorCategory represents armor weight classification
 //
 //nolint:revive // ArmorCategory is clearer than just Category in this context
-type ArmorCategory string
+type ArmorCategory = shared.EquipmentCategory
 
 const (
 	// CategoryLight represents light armor category
@@ -71,35 +71,35 @@ type Armor struct {
 	Cost                string // e.g., "5 gp"
 }
 
-// GetID returns the unique identifier for this armor
-func (a *Armor) GetID() string {
+// EquipmentID returns the unique identifier for this armor
+func (a *Armor) EquipmentID() string {
 	return string(a.ID)
 }
 
-// GetType returns the equipment type (always TypeArmor)
-func (a *Armor) GetType() shared.EquipmentType {
+// EquipmentType returns the equipment type (always TypeArmor)
+func (a *Armor) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypeArmor
 }
 
-// GetName returns the name of the armor
-func (a *Armor) GetName() string {
+// EquipmentName returns the name of the armor
+func (a *Armor) EquipmentName() string {
 	return a.Name
 }
 
-// GetWeight returns the weight in pounds
-func (a *Armor) GetWeight() float32 {
+// EquipmentWeight returns the weight in pounds
+func (a *Armor) EquipmentWeight() float32 {
 	return float32(a.Weight)
 }
 
-// GetValue returns the value in copper pieces
-func (a *Armor) GetValue() int {
+// EquipmentValue returns the value in copper pieces
+func (a *Armor) EquipmentValue() int {
 	// TODO: Parse cost string (e.g., "5 gp") and convert to copper
 	// For now, return a placeholder
 	return 0
 }
 
-// GetDescription returns a description of the armor
-func (a *Armor) GetDescription() string {
+// EquipmentDescription returns a description of the armor
+func (a *Armor) EquipmentDescription() string {
 	desc := fmt.Sprintf("AC %d", a.AC)
 	if a.MaxDexBonus != nil {
 		desc += fmt.Sprintf(" + Dex (max %d)", *a.MaxDexBonus)

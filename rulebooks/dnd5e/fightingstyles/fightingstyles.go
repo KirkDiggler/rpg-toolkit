@@ -6,21 +6,24 @@ type FightingStyle string
 
 // Fighting style constants
 const (
+	// Unspecified means fighting style not yet chosen (invalid for classes that get one)
+	Unspecified FightingStyle = ""
+
 	// Archery grants +2 to attack rolls with ranged weapons
 	Archery FightingStyle = "archery"
-	
+
 	// Defense grants +1 to AC while wearing armor
 	Defense FightingStyle = "defense"
-	
+
 	// Dueling grants +2 damage with one-handed weapons when no other weapon
 	Dueling FightingStyle = "dueling"
-	
+
 	// GreatWeaponFighting allows reroll 1s and 2s on damage with two-handed weapons
 	GreatWeaponFighting FightingStyle = "great_weapon_fighting"
-	
+
 	// Protection allows imposing disadvantage on attacks against nearby allies
 	Protection FightingStyle = "protection"
-	
+
 	// TwoWeaponFighting adds ability modifier to off-hand damage
 	TwoWeaponFighting FightingStyle = "two_weapon_fighting"
 )

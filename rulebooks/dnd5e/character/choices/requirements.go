@@ -4,13 +4,14 @@ package choices
 import (
 	"fmt"
 	"strings"
-	
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // Requirements represents what choices need to be made
@@ -21,9 +22,12 @@ type Requirements struct {
 	// Equipment choices
 	Equipment []*EquipmentRequirement `json:"equipment,omitempty"`
 
+	// Equipment category choices (e.g., "choose 2 martial weapons")
+	EquipmentCategories []*EquipmentCategoryRequirement `json:"equipment_categories,omitempty"`
+
 	// Proficiency choices
-	Languages   *LanguageRequirement   `json:"languages,omitempty"`
-	Tools       *ToolRequirement       `json:"tools,omitempty"`
+	Languages *LanguageRequirement `json:"languages,omitempty"`
+	Tools     *ToolRequirement     `json:"tools,omitempty"`
 
 	// Class-specific choices
 	FightingStyle *FightingStyleRequirement `json:"fighting_style,omitempty"`
@@ -35,7 +39,7 @@ type Requirements struct {
 
 // SkillRequirement defines skill choice requirements
 type SkillRequirement struct {
-	ID      ChoiceID       `json:"id"`                // Unique identifier
+	ID      ChoiceID       `json:"id"` // Unique identifier
 	Count   int            `json:"count"`
 	Options []skills.Skill `json:"options,omitempty"` // nil means any skill
 	Label   string         `json:"label"`             // e.g., "Choose 2 skills"
@@ -56,10 +60,19 @@ type EquipmentOption struct {
 	Label string          `json:"label"` // e.g., "Chain mail"
 }
 
-// EquipmentItem represents an item in an equipment option with full Equipment data
+// EquipmentItem represents an item in an equipment option
 type EquipmentItem struct {
-	Equipment equipment.Equipment `json:"equipment"` // The actual equipment object
-	Quantity  int                 `json:"quantity"`  // How many (default 1)
+	ID       shared.EquipmentID `json:"id"`       // Equipment ID
+	Quantity int                `json:"quantity"` // How many (default 1)
+}
+
+// EquipmentCategoryRequirement defines equipment choices from categories (e.g., "choose 2 martial weapons")
+type EquipmentCategoryRequirement struct {
+	ID         ChoiceID                   `json:"id"`         // Unique identifier
+	Choose     int                        `json:"choose"`     // How many to choose
+	Type       shared.EquipmentType       `json:"type"`       // Equipment type (weapon, armor, etc.)
+	Categories []shared.EquipmentCategory `json:"categories"` // Categories to choose from
+	Label      string                     `json:"label"`      // e.g., "Choose 2 martial weapons"
 }
 
 // LanguageRequirement defines language choice requirements
@@ -80,9 +93,9 @@ type ToolRequirement struct {
 
 // FightingStyleRequirement defines fighting style choice requirements
 type FightingStyleRequirement struct {
-	ID      ChoiceID                        `json:"id"` // Unique identifier
+	ID      ChoiceID                       `json:"id"`      // Unique identifier
 	Options []fightingstyles.FightingStyle `json:"options"` // Fighting style constants
-	Label   string                          `json:"label"`
+	Label   string                         `json:"label"`
 }
 
 // ExpertiseRequirement defines expertise choice requirements
@@ -94,7 +107,7 @@ type ExpertiseRequirement struct {
 
 // SubclassRequirement defines subclass choice requirements
 type SubclassRequirement struct {
-	ID      ChoiceID           `json:"id"` // Unique identifier
+	ID      ChoiceID           `json:"id"`      // Unique identifier
 	Options []classes.Subclass `json:"options"` // Available subclasses
 	Label   string             `json:"label"`   // e.g., "Choose your Martial Archetype"
 }
@@ -107,7 +120,7 @@ func GetClassRequirements(classID classes.Class) *Requirements {
 // GetClassRequirementsAtLevel returns the requirements for a specific class at a given level
 func GetClassRequirementsAtLevel(classID classes.Class, level int) *Requirements {
 	reqs := getBaseClassRequirements(classID)
-	
+
 	// Add subclass requirement if needed at this level
 	classData := classes.ClassData[classID]
 	if classData != nil && classData.SubclassLevel > 0 && level >= classData.SubclassLevel {
@@ -117,7 +130,7 @@ func GetClassRequirementsAtLevel(classID classes.Class, level int) *Requirements
 			Label:   classData.SubclassLabel,
 		}
 	}
-	
+
 	return reqs
 }
 
@@ -127,9 +140,9 @@ func getBaseClassRequirements(classID classes.Class) *Requirements {
 	if classData == nil {
 		return &Requirements{}
 	}
-	
+
 	reqs := &Requirements{}
-	
+
 	// Add skill requirements if the class has skill choices
 	if classData.SkillCount > 0 && len(classData.SkillList) > 0 {
 		reqs.Skills = &SkillRequirement{
@@ -139,7 +152,7 @@ func getBaseClassRequirements(classID classes.Class) *Requirements {
 			Label:   fmt.Sprintf("Choose %d skills", classData.SkillCount),
 		}
 	}
-	
+
 	// Add class-specific requirements
 	switch classID {
 	case classes.Fighter:
@@ -156,6 +169,7 @@ func getBaseClassRequirements(classID classes.Class) *Requirements {
 			Label: "Choose a fighting style",
 		}
 		reqs.Equipment = getFighterEquipmentRequirements()
+		reqs.EquipmentCategories = getFighterEquipmentCategoryRequirements()
 	case classes.Rogue:
 		reqs.Equipment = getRogueEquipmentRequirements()
 		reqs.Expertise = &ExpertiseRequirement{
@@ -170,7 +184,7 @@ func getBaseClassRequirements(classID classes.Class) *Requirements {
 	default:
 		// Add equipment requirements for other classes when implemented
 	}
-	
+
 	return reqs
 }
 
@@ -205,7 +219,6 @@ func getSkillChoiceID(classID classes.Class) ChoiceID {
 		return ChoiceID(fmt.Sprintf("%s-skills", strings.ToLower(string(classID))))
 	}
 }
-
 
 // GetRaceRequirements returns the requirements for a specific race
 func GetRaceRequirements(raceID races.Race) *Requirements {
@@ -250,8 +263,6 @@ func GetRaceRequirements(raceID races.Race) *Requirements {
 
 // Helper functions for equipment requirements
 func getFighterEquipmentRequirements() []*EquipmentRequirement {
-	// We'll populate these with actual Equipment objects
-	// For now, returning empty to compile
 	return []*EquipmentRequirement{
 		{
 			ID:     FighterArmor,
@@ -261,14 +272,16 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-armor-a",
 					Label: "Chain mail",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						{ID: "chain-mail", Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-armor-b",
 					Label: "Leather armor, longbow, and 20 arrows",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						{ID: "leather", Quantity: 1},
+						{ID: "longbow", Quantity: 1},
+						{ID: "arrows-20", Quantity: 1},
 					},
 				},
 			},
@@ -282,14 +295,15 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-weapon-a",
 					Label: "A martial weapon and a shield",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						// Martial weapon will be chosen via category requirement
+						{ID: "shield", Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-weapon-b",
 					Label: "Two martial weapons",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						// Both martial weapons will be chosen via category requirements
 					},
 				},
 			},
@@ -303,14 +317,15 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-ranged-a",
 					Label: "A light crossbow and 20 bolts",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						{ID: "light-crossbow", Quantity: 1},
+						{ID: "bolts-20", Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-ranged-b",
 					Label: "Two handaxes",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						{ID: "handaxe", Quantity: 2},
 					},
 				},
 			},
@@ -324,14 +339,14 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-pack-a",
 					Label: "Dungeoneer's pack",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						{ID: "dungeoneer-pack", Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-pack-b",
 					Label: "Explorer's pack",
 					Items: []EquipmentItem{
-						// Will be populated with actual equipment
+						{ID: "explorer-pack", Quantity: 1},
 					},
 				},
 			},
@@ -353,4 +368,25 @@ func getWizardEquipmentRequirements() []*EquipmentRequirement {
 func getClericEquipmentRequirements() []*EquipmentRequirement {
 	// Placeholder for cleric equipment
 	return []*EquipmentRequirement{}
+}
+
+// getFighterEquipmentCategoryRequirements returns category-based equipment choices for fighters
+func getFighterEquipmentCategoryRequirements() []*EquipmentCategoryRequirement {
+	// Fighter can choose martial weapons as part of their primary weapon selection
+	// This handles the "any martial weapon" part of the choice
+	return []*EquipmentCategoryRequirement{
+		{
+			ID:     FighterMartialWeapon1,
+			Choose: 1,
+			Type:   shared.EquipmentTypeWeapon,
+			Categories: []shared.EquipmentCategory{
+				weapons.CategoryMartialMelee,
+				weapons.CategoryMartialRanged,
+			},
+			Label: "Choose your first martial weapon",
+		},
+		// Note: Second martial weapon choice would be conditional based on
+		// whether they chose option B (two martial weapons)
+		// This might need to be handled dynamically based on the primary weapon choice
+	}
 }

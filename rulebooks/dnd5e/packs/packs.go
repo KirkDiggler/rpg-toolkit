@@ -8,8 +8,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// PackID represents unique identifier for equipment packs
-type PackID string
+// PackID represents unique identifier for equipment packs (alias of shared.EquipmentID)
+type PackID = shared.EquipmentID
 
 // Standard equipment packs
 const (
@@ -38,35 +38,35 @@ type Pack struct {
 	Description string
 }
 
-// GetID returns the unique identifier for this pack
-func (p *Pack) GetID() string {
+// EquipmentID returns the unique identifier for this pack
+func (p *Pack) EquipmentID() string {
 	return string(p.ID)
 }
 
-// GetType returns the equipment type (always TypePack)
-func (p *Pack) GetType() shared.EquipmentType {
+// EquipmentType returns the equipment type (always TypePack)
+func (p *Pack) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypePack
 }
 
-// GetName returns the name of the pack
-func (p *Pack) GetName() string {
+// EquipmentName returns the name of the pack
+func (p *Pack) EquipmentName() string {
 	return p.Name
 }
 
-// GetWeight returns the weight in pounds
-func (p *Pack) GetWeight() float32 {
+// EquipmentWeight returns the weight in pounds
+func (p *Pack) EquipmentWeight() float32 {
 	return p.Weight
 }
 
-// GetValue returns the value in copper pieces
-func (p *Pack) GetValue() int {
+// EquipmentValue returns the value in copper pieces
+func (p *Pack) EquipmentValue() int {
 	// TODO: Parse cost string (e.g., "12 gp") and convert to copper
 	// For now, return a placeholder
 	return 0
 }
 
-// GetDescription returns a description of the pack
-func (p *Pack) GetDescription() string {
+// EquipmentDescription returns a description of the pack
+func (p *Pack) EquipmentDescription() string {
 	if p.Description != "" {
 		return p.Description
 	}

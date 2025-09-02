@@ -8,31 +8,31 @@ import (
 
 // Data contains all the game mechanics data for a class
 type Data struct {
-	HitDice          int
-	PrimaryAbility   abilities.Ability
-	SavingThrows     []abilities.Ability
-	
+	HitDice        int
+	PrimaryAbility abilities.Ability
+	SavingThrows   []abilities.Ability
+
 	// Proficiencies
 	Armor   []proficiencies.Armor
 	Weapons []proficiencies.Weapon
 	Tools   []proficiencies.Tool // Some classes get tool proficiencies
-	
+
 	// Skill proficiencies
 	SkillCount int            // Number of skills to choose
 	SkillList  []skills.Skill // Available skills to choose from
-	
+
 	// Spellcasting
 	SpellcastingAbility abilities.Ability // Empty if not a spellcaster
-	CantripsKnown       int              // At level 1
-	SpellsKnown         int              // At level 1 (0 for prepared casters)
-	SpellSlots          []int            // Spell slots at level 1 [1st, 2nd, 3rd...]
-	
+	CantripsKnown       int               // At level 1
+	SpellsKnown         int               // At level 1 (0 for prepared casters)
+	SpellSlots          []int             // Spell slots at level 1 [1st, 2nd, 3rd...]
+
 	// Subclass information
 	SubclassLevel    int        // Level when subclass is chosen (0 = no subclass)
 	SubclassLabel    string     // e.g., "Divine Domain", "Martial Archetype"
 	SubclassChoiceID string     // The choice ID for this subclass (e.g., "fighter-archetype")
 	Subclasses       []Subclass // Available subclass options
-	
+
 	// Starting equipment (simplified for now)
 	// TODO: Add equipment choices
 }
@@ -75,11 +75,11 @@ var ClassData = map[Class]*Data{
 	},
 
 	Wizard: {
-		HitDice:             6,
-		PrimaryAbility:      abilities.INT,
-		SavingThrows:        []abilities.Ability{abilities.INT, abilities.WIS},
-		Armor:               []proficiencies.Armor{},
-		Weapons:             []proficiencies.Weapon{
+		HitDice:        6,
+		PrimaryAbility: abilities.INT,
+		SavingThrows:   []abilities.Ability{abilities.INT, abilities.WIS},
+		Armor:          []proficiencies.Armor{},
+		Weapons: []proficiencies.Weapon{
 			proficiencies.WeaponDagger,
 			proficiencies.WeaponDart,
 			proficiencies.WeaponSling,
@@ -97,7 +97,7 @@ var ClassData = map[Class]*Data{
 		},
 		SpellcastingAbility: abilities.INT,
 		CantripsKnown:       3,
-		SpellsKnown:         0, // Wizards prepare from spellbook
+		SpellsKnown:         0,        // Wizards prepare from spellbook
 		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       2,
 		SubclassLabel:       "Arcane Tradition",
@@ -136,7 +136,7 @@ var ClassData = map[Class]*Data{
 		},
 		SpellcastingAbility: abilities.WIS,
 		CantripsKnown:       3,
-		SpellsKnown:         0, // Clerics prepare from full spell list
+		SpellsKnown:         0,        // Clerics prepare from full spell list
 		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       1,
 		SubclassLabel:       "Divine Domain",
@@ -238,9 +238,9 @@ var ClassData = map[Class]*Data{
 			proficiencies.WeaponRapier,
 			proficiencies.WeaponShortsword,
 		},
-		Tools:      []proficiencies.Tool{}, // Bards choose 3 musical instruments
-		SkillCount: 3,
-		SkillList:  []skills.Skill{}, // Bards can choose any 3 skills
+		Tools:               []proficiencies.Tool{}, // Bards choose 3 musical instruments
+		SkillCount:          3,
+		SkillList:           []skills.Skill{}, // Bards can choose any 3 skills
 		SpellcastingAbility: abilities.CHA,
 		CantripsKnown:       2,
 		SpellsKnown:         4,
@@ -292,7 +292,7 @@ var ClassData = map[Class]*Data{
 		},
 		SpellcastingAbility: abilities.WIS,
 		CantripsKnown:       2,
-		SpellsKnown:         0, // Druids prepare from full spell list
+		SpellsKnown:         0,        // Druids prepare from full spell list
 		SpellSlots:          []int{2}, // Two 1st level slots at level 1
 		SubclassLevel:       2,
 		SubclassLabel:       "Druid Circle",

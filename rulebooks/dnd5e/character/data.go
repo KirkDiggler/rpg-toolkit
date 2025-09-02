@@ -19,38 +19,38 @@ type Data struct {
 	ID       string `json:"id"`
 	PlayerID string `json:"player_id"`
 	Name     string `json:"name"`
-	
+
 	// Core attributes
 	Level            int `json:"level"`
 	ProficiencyBonus int `json:"proficiency_bonus"`
-	
+
 	// Race and class
 	RaceID     races.Race       `json:"race_id"`
 	SubraceID  races.Subrace    `json:"subrace_id,omitempty"`
 	ClassID    classes.Class    `json:"class_id"`
 	SubclassID classes.Subclass `json:"subclass_id,omitempty"`
-	
+
 	// Background
 	BackgroundID backgrounds.Background `json:"background_id"`
-	
+
 	// Ability scores (final values including racial modifiers)
 	AbilityScores shared.AbilityScores `json:"ability_scores"`
-	
+
 	// Combat stats
 	HitPoints    int `json:"hit_points"`
 	MaxHitPoints int `json:"max_hit_points"`
 	ArmorClass   int `json:"armor_class"`
-	
+
 	// Proficiencies and skills
-	Skills       map[skills.Skill]shared.ProficiencyLevel     `json:"skills"`
+	Skills       map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
 	SavingThrows map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"`
 	Languages    []string                                      `json:"languages"`
-	
+
 	// Equipment and resources
-	Inventory      []InventoryItemData                      `json:"inventory"`
-	SpellSlots     map[int]SpellSlotData                    `json:"spell_slots,omitempty"`
+	Inventory      []InventoryItemData                       `json:"inventory"`
+	SpellSlots     map[int]SpellSlotData                     `json:"spell_slots,omitempty"`
 	ClassResources map[shared.ClassResourceType]ResourceData `json:"class_resources,omitempty"`
-	
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -58,8 +58,8 @@ type Data struct {
 
 // InventoryItemData represents serializable inventory item
 type InventoryItemData struct {
-	Type     shared.EquipmentType `json:"type"`     // weapon, armor, tool, pack, item, ammunition
-	ID       string               `json:"id"`       // The specific item ID (e.g., "longsword", "leather_armor")
+	Type     shared.EquipmentType `json:"type"` // weapon, armor, tool, pack, item, ammunition
+	ID       string               `json:"id"`   // The specific item ID (e.g., "longsword", "leather_armor")
 	Quantity int                  `json:"quantity"`
 }
 
@@ -96,12 +96,12 @@ func (d *Data) ToCharacter() *Character {
 		skills:           d.Skills,
 		savingThrows:     d.SavingThrows,
 	}
-	
+
 	// Get hit dice from class data
 	if classData := classes.GetData(d.ClassID); classData != nil {
 		char.hitDice = classData.HitDice
 	}
-	
+
 	// Convert inventory data back to Equipment items
 	char.inventory = make([]InventoryItem, 0, len(d.Inventory))
 	for _, itemData := range d.Inventory {
@@ -117,10 +117,10 @@ func (d *Data) ToCharacter() *Character {
 			Quantity:  itemData.Quantity,
 		})
 	}
-	
+
 	// Convert languages (stored as strings) back to typed constants
 	// TODO: Implement proper language string to constant conversion
-	
+
 	// Convert spell slots
 	char.spellSlots = make(map[int]SpellSlot)
 	for level, slot := range d.SpellSlots {
@@ -129,7 +129,7 @@ func (d *Data) ToCharacter() *Character {
 			Used: slot.Used,
 		}
 	}
-	
+
 	// Convert class resources
 	char.classResources = make(map[shared.ClassResourceType]Resource)
 	for resourceType, resource := range d.ClassResources {
@@ -140,7 +140,7 @@ func (d *Data) ToCharacter() *Character {
 			Resets:  resource.Resets,
 		}
 	}
-	
+
 	return char
 }
 
@@ -164,20 +164,20 @@ func FromCharacter(c *Character) *Data {
 		SavingThrows:     c.savingThrows,
 		UpdatedAt:        time.Now(),
 	}
-	
+
 	// Convert inventory to data
 	data.Inventory = make([]InventoryItemData, 0, len(c.inventory))
 	for _, item := range c.inventory {
 		data.Inventory = append(data.Inventory, InventoryItemData{
-			Type:     item.Equipment.GetType(),
-			ID:       item.Equipment.GetID(),
+			Type:     item.Equipment.EquipmentType(),
+			ID:       item.Equipment.EquipmentID(),
 			Quantity: item.Quantity,
 		})
 	}
-	
+
 	// Convert languages to strings
 	// TODO: Convert typed language constants to strings
-	
+
 	// Convert spell slots
 	data.SpellSlots = make(map[int]SpellSlotData)
 	for level, slot := range c.spellSlots {
@@ -186,7 +186,7 @@ func FromCharacter(c *Character) *Data {
 			Used: slot.Used,
 		}
 	}
-	
+
 	// Convert class resources
 	data.ClassResources = make(map[shared.ClassResourceType]ResourceData)
 	for resourceType, resource := range c.classResources {
@@ -197,6 +197,6 @@ func FromCharacter(c *Character) *Data {
 			Resets:  resource.Resets,
 		}
 	}
-	
+
 	return data
 }

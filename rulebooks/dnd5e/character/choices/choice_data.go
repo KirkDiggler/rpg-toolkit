@@ -17,18 +17,19 @@ type ChoiceData struct {
 	Category shared.ChoiceCategory `json:"category"`
 	Source   shared.ChoiceSource   `json:"source"`
 	ChoiceID ChoiceID              `json:"choice_id,omitempty"`
-	
+	OptionID string                `json:"option_id,omitempty"` // For equipment bundles, tracks which option was selected
+
 	// Selection fields - only one should be populated based on Category
-	NameSelection          *string                         `json:"name,omitempty"`
-	SkillSelection         []skills.Skill                  `json:"skills,omitempty"`
-	LanguageSelection      []languages.Language            `json:"languages,omitempty"`
-	AbilityScoreSelection  shared.AbilityScores            `json:"ability_scores,omitempty"`
-	FightingStyleSelection *fightingstyles.FightingStyle  `json:"fighting_style,omitempty"`
-	EquipmentSelection     []string                        `json:"equipment,omitempty"`
-	BackgroundSelection    *backgrounds.Background         `json:"background,omitempty"`
-	SpellSelection         []spells.Spell                  `json:"spells,omitempty"`
-	ToolSelection          []proficiencies.Tool            `json:"tools,omitempty"`
-	ExpertiseSelection     []skills.Skill                  `json:"expertise,omitempty"`
-	TraitSelection         []string                        `json:"traits,omitempty"`
-	Method                 string                          `json:"method,omitempty"` // For ability score generation
+	NameSelection          *string                       `json:"name,omitempty"`
+	SkillSelection         []skills.Skill                `json:"skills,omitempty"`
+	LanguageSelection      []languages.Language          `json:"languages,omitempty"`
+	AbilityScoreSelection  shared.AbilityScores          `json:"ability_scores,omitempty"`
+	FightingStyleSelection *fightingstyles.FightingStyle `json:"fighting_style,omitempty"`
+	EquipmentSelection     []shared.SelectionID          `json:"equipment,omitempty"`
+	BackgroundSelection    *backgrounds.Background       `json:"background,omitempty"`
+	SpellSelection         []spells.Spell                `json:"spells,omitempty"`
+	ToolSelection          []proficiencies.Tool          `json:"tools,omitempty"`
+	ExpertiseSelection     []skills.Skill                `json:"expertise,omitempty"`
+	TraitSelection         []string                      `json:"traits,omitempty"`
+	Method                 string                        `json:"method,omitempty"` // For ability score generation
 }

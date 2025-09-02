@@ -12,7 +12,7 @@ type InventoryItem struct {
 
 // GetTotalWeight returns the total weight of this stack of items
 func (i InventoryItem) GetTotalWeight() float32 {
-	return i.Equipment.GetWeight() * float32(i.Quantity)
+	return i.Equipment.EquipmentWeight() * float32(i.Quantity)
 }
 
 // InventorySlot represents where an item can be equipped

@@ -2,6 +2,7 @@ package character
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -39,10 +40,11 @@ type SetClassInput struct {
 
 // ClassChoices contains choices when selecting a class
 type ClassChoices struct {
-	Skills        []skills.Skill               `json:"skills"`
-	FightingStyle fightingstyles.FightingStyle `json:"fighting_style,omitempty"`
-	Cantrips      []spells.Spell               `json:"cantrips,omitempty"`
-	Spells        []spells.Spell               `json:"spells,omitempty"`
+	Skills        []skills.Skill                          `json:"skills"`
+	FightingStyle fightingstyles.FightingStyle            `json:"fighting_style,omitempty"`
+	Cantrips      []spells.Spell                          `json:"cantrips,omitempty"`
+	Spells        []spells.Spell                          `json:"spells,omitempty"`
+	Equipment     map[choices.ChoiceID]shared.SelectionID `json:"equipment,omitempty"` // Maps choice ID to selected option/equipment ID
 }
 
 // SetBackgroundInput contains the input for setting a character's background

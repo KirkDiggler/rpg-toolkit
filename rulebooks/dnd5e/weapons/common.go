@@ -1,10 +1,12 @@
 package weapons
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+
 // Common weapon IDs used in character creation and equipment choices
 // These are typed strings to provide compile-time safety for frequently used weapons
 
-// WeaponID represents a specific weapon
-type WeaponID string
+// WeaponID represents a specific weapon (alias of shared.EquipmentID)
+type WeaponID = shared.EquipmentID
 
 // Simple Melee Weapons
 const (
@@ -72,8 +74,3 @@ const (
 	AnyMartialWeapon WeaponID = "martial-weapon"
 	AnyWeapon        WeaponID = "any-weapon"
 )
-
-// String returns the string representation of the weapon ID
-func (w WeaponID) String() string {
-	return string(w)
-}

@@ -7,7 +7,7 @@ import (
 )
 
 // WeaponCategory represents the category of weapon
-type WeaponCategory string
+type WeaponCategory = shared.EquipmentCategory
 
 const (
 	// CategorySimpleMelee represents simple melee weapons
@@ -59,35 +59,35 @@ type Weapon struct {
 	Range      *Range // nil for melee-only weapons
 }
 
-// GetID returns the unique identifier for this weapon
-func (w *Weapon) GetID() string {
+// EquipmentID returns the unique identifier for this weapon
+func (w *Weapon) EquipmentID() string {
 	return string(w.ID)
 }
 
-// GetType returns the equipment type (always TypeWeapon)
-func (w *Weapon) GetType() shared.EquipmentType {
+// EquipmentType returns the equipment type (always TypeWeapon)
+func (w *Weapon) EquipmentType() shared.EquipmentType {
 	return shared.EquipmentTypeWeapon
 }
 
-// GetName returns the name of the weapon
-func (w *Weapon) GetName() string {
+// EquipmentName returns the name of the weapon
+func (w *Weapon) EquipmentName() string {
 	return w.Name
 }
 
-// GetWeight returns the weight in pounds
-func (w *Weapon) GetWeight() float32 {
+// EquipmentWeight returns the weight in pounds
+func (w *Weapon) EquipmentWeight() float32 {
 	return float32(w.Weight)
 }
 
-// GetValue returns the value in copper pieces
-func (w *Weapon) GetValue() int {
+// EquipmentValue returns the value in copper pieces
+func (w *Weapon) EquipmentValue() int {
 	// TODO: Parse cost string (e.g., "5 gp") and convert to copper
 	// For now, return a placeholder
 	return 0
 }
 
-// GetDescription returns a description of the weapon
-func (w *Weapon) GetDescription() string {
+// EquipmentDescription returns a description of the weapon
+func (w *Weapon) EquipmentDescription() string {
 	// Build description from damage and properties
 	desc := w.Damage + " " + string(w.DamageType) + " damage"
 	if len(w.Properties) > 0 {

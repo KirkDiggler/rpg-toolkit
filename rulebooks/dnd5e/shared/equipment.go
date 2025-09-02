@@ -1,22 +1,11 @@
 // Package shared provides common types and interfaces for D&D 5e
 package shared
 
-// Equipment represents any item that can be owned, carried, or equipped
-// This interface unifies weapons, armor, tools, packs, and mundane items
-// for selection and inventory purposes
-type Equipment interface {
-	// GetID returns the unique identifier for this equipment
-	GetID() string
+// EquipmentID is the base type for all equipment identifiers
+type EquipmentID = SelectionID
 
-	// GetType returns the category of equipment
-	GetType() EquipmentType
-
-	// GetName returns the display name
-	GetName() string
-
-	// GetWeight returns the weight in pounds
-	GetWeight() float32
-}
+// EquipmentCategory is the base type for equipment category classifications
+type EquipmentCategory string
 
 // EquipmentType categorizes different kinds of equipment
 type EquipmentType string

@@ -9,16 +9,17 @@ type Submission struct {
 	// Metadata about the choice
 	Category shared.ChoiceCategory `json:"category"`
 	Source   shared.ChoiceSource   `json:"source"`
-	ChoiceID ChoiceID              `json:"choice_id"` // References the requirement ID
-	
+	ChoiceID ChoiceID              `json:"choice_id"`           // References the requirement ID
+	OptionID string                `json:"option_id,omitempty"` // Which option was selected (for equipment bundles)
+
 	// The actual selection (just IDs, not full objects)
-	Values []string `json:"values"`
+	Values []shared.SelectionID `json:"values"`
 }
 
 // Submissions represents all player choices
 type Submissions struct {
 	Choices []Submission `json:"choices"`
-	
+
 	// Quick lookups
 	byCategory map[shared.ChoiceCategory][]Submission
 	bySource   map[shared.ChoiceSource][]Submission
@@ -36,7 +37,7 @@ func NewSubmissions() *Submissions {
 // Add adds a submission
 func (s *Submissions) Add(submission Submission) {
 	s.Choices = append(s.Choices, submission)
-	
+
 	// Update lookups
 	s.byCategory[submission.Category] = append(s.byCategory[submission.Category], submission)
 	s.bySource[submission.Source] = append(s.bySource[submission.Source], submission)
