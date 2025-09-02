@@ -82,6 +82,92 @@ func GetByID(id string) (Background, error) {
 	return bg, nil
 }
 
+// Name returns the display name of the background
+func (b Background) Name() string {
+	switch b {
+	case Acolyte:
+		return "Acolyte"
+	case Criminal:
+		return "Criminal"
+	case FolkHero:
+		return "Folk Hero"
+	case Noble:
+		return "Noble"
+	case Sage:
+		return "Sage"
+	case Soldier:
+		return "Soldier"
+	case Charlatan:
+		return "Charlatan"
+	case Entertainer:
+		return "Entertainer"
+	case GuildArtisan:
+		return "Guild Artisan"
+	case Hermit:
+		return "Hermit"
+	case Outlander:
+		return "Outlander"
+	case Sailor:
+		return "Sailor"
+	case Urchin:
+		return "Urchin"
+	// Variants
+	case Spy:
+		return "Spy"
+	case Pirate:
+		return "Pirate"
+	case Knight:
+		return "Knight"
+	case GuildMerchant:
+		return "Guild Merchant"
+	default:
+		return string(b)
+	}
+}
+
+// Description returns a brief description of the background
+func (b Background) Description() string {
+	switch b {
+	case Acolyte:
+		return "You have spent your life in the service of a temple"
+	case Criminal:
+		return "You are an experienced criminal with a history of breaking the law"
+	case FolkHero:
+		return "You come from a humble social rank, but are destined for much more"
+	case Noble:
+		return "You understand wealth, power, and privilege"
+	case Sage:
+		return "You spent years learning the lore of the multiverse"
+	case Soldier:
+		return "War has been your life for as long as you care to remember"
+	case Charlatan:
+		return "You have always had a way with people"
+	case Entertainer:
+		return "You thrive in front of an audience"
+	case GuildArtisan:
+		return "You are a member of an artisan's guild"
+	case Hermit:
+		return "You lived in seclusion for a formative part of your life"
+	case Outlander:
+		return "You grew up in the wilds, far from civilization"
+	case Sailor:
+		return "You sailed on a seagoing vessel for years"
+	case Urchin:
+		return "You grew up on the streets alone, orphaned, and poor"
+	// Variants
+	case Spy:
+		return "You secretly gather information for a living"
+	case Pirate:
+		return "You spent your youth under the sway of a dread pirate"
+	case Knight:
+		return "You are a noble warrior sworn to a code of honor"
+	case GuildMerchant:
+		return "You are a member of a merchant's guild"
+	default:
+		return ""
+	}
+}
+
 // IsVariant returns true if this is a variant background
 func (b Background) IsVariant() bool {
 	switch b {

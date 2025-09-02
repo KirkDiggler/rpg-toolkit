@@ -11,6 +11,11 @@ type Class string
 // Subclass represents a D&D 5e character subclass/archetype
 type Subclass string
 
+// Subclass constants
+const (
+	SubclassNone Subclass = "none" // No subclass (for characters below subclass level)
+)
+
 // Fighter subclasses
 const (
 	Champion       Subclass = "champion"

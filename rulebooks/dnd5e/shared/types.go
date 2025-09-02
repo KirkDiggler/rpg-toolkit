@@ -11,6 +11,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
+// SelectionID represents any selectable game content ID
+type SelectionID = string
+
 // AbilityScores maps ability constants to their scores (includes all bonuses)
 type AbilityScores map[abilities.Ability]int
 
