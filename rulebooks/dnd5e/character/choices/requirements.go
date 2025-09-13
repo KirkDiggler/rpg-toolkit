@@ -64,7 +64,7 @@ type EquipmentRequirement struct {
 
 // EquipmentOption represents one equipment choice option
 type EquipmentOption struct {
-	ID              string                    `json:"id"`               // Unique identifier for this option
+	ID              OptionID                  `json:"id"`               // Unique identifier for this option
 	Items           []EquipmentItem           `json:"items"`            // What you get if you choose this
 	Label           string                    `json:"label"`            // e.g., "Chain mail"
 	CategoryChoices []EquipmentCategoryChoice `json:"category_choices"` // Category-based selections this option grants
@@ -414,14 +414,14 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "fighter-armor-a",
+					ID:    FighterArmorChainMail,
 					Label: "Chain mail",
 					Items: []EquipmentItem{
 						{ID: armor.ChainMail, Quantity: 1},
 					},
 				},
 				{
-					ID:    "fighter-armor-b",
+					ID:    FighterArmorLeather,
 					Label: "Leather armor, longbow, and 20 arrows",
 					Items: []EquipmentItem{
 						{ID: armor.Leather, Quantity: 1},
@@ -437,7 +437,7 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "fighter-weapon-a",
+					ID:    FighterWeaponMartialShield,
 					Label: "A martial weapon and a shield",
 					Items: []EquipmentItem{
 						{ID: armor.Shield, Quantity: 1},
@@ -455,7 +455,7 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					},
 				},
 				{
-					ID:    "fighter-weapon-b",
+					ID:    FighterWeaponTwoMartial,
 					Label: "Two martial weapons",
 					CategoryChoices: []EquipmentCategoryChoice{
 						{
@@ -477,7 +477,7 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "fighter-ranged-a",
+					ID:    FighterRangedCrossbow,
 					Label: "A light crossbow and 20 bolts",
 					Items: []EquipmentItem{
 						{ID: weapons.LightCrossbow, Quantity: 1},
@@ -485,7 +485,7 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					},
 				},
 				{
-					ID:    "fighter-ranged-b",
+					ID:    FighterRangedHandaxes,
 					Label: "Two handaxes",
 					Items: []EquipmentItem{
 						{ID: weapons.Handaxe, Quantity: 2},
@@ -499,14 +499,14 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "fighter-pack-a",
+					ID:    FighterPackDungeoneer,
 					Label: "Dungeoneer's pack",
 					Items: []EquipmentItem{
 						{ID: packs.DungeoneerPack, Quantity: 1},
 					},
 				},
 				{
-					ID:    "fighter-pack-b",
+					ID:    FighterPackExplorer,
 					Label: "Explorer's pack",
 					Items: []EquipmentItem{
 						{ID: packs.ExplorerPack, Quantity: 1},
@@ -519,8 +519,81 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 }
 
 func getRogueEquipmentRequirements() []*EquipmentRequirement {
-	// Placeholder for rogue equipment
-	return []*EquipmentRequirement{}
+	return []*EquipmentRequirement{
+		{
+			ID:     RogueWeaponsPrimary,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    RogueWeaponRapier,
+					Label: "Rapier",
+					Items: []EquipmentItem{
+						{ID: weapons.Rapier, Quantity: 1},
+					},
+				},
+				{
+					ID:    RogueWeaponShortsword,
+					Label: "Shortsword",
+					Items: []EquipmentItem{
+						{ID: weapons.Shortsword, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your primary weapon",
+		},
+		{
+			ID:     RogueWeaponsSecondary,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    RogueSecondaryShortbow,
+					Label: "Shortbow and quiver of 20 arrows",
+					Items: []EquipmentItem{
+						{ID: weapons.Shortbow, Quantity: 1},
+						{ID: weapons.Arrows20, Quantity: 1},
+					},
+				},
+				{
+					ID:    RogueSecondaryShortsword,
+					Label: "Shortsword",
+					Items: []EquipmentItem{
+						{ID: weapons.Shortsword, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your secondary weapon",
+		},
+		{
+			ID:     RoguePack,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    RoguePackBurglar,
+					Label: "Burglar's pack",
+					Items: []EquipmentItem{
+						{ID: packs.BurglarPack, Quantity: 1},
+					},
+				},
+				{
+					ID:    RoguePackDungeoneer,
+					Label: "Dungeoneer's pack",
+					Items: []EquipmentItem{
+						{ID: packs.DungeoneerPack, Quantity: 1},
+					},
+				},
+				{
+					ID:    RoguePackExplorer,
+					Label: "Explorer's pack",
+					Items: []EquipmentItem{
+						{ID: packs.ExplorerPack, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your equipment pack",
+		},
+		// Rogues automatically get leather armor, two daggers, and thieves' tools
+		// These would be granted automatically, not choices
+	}
 }
 
 func getWizardEquipmentRequirements() []*EquipmentRequirement {
@@ -530,14 +603,14 @@ func getWizardEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "wizard-weapon-a",
+					ID:    WizardWeaponQuarterstaff,
 					Label: "Quarterstaff",
 					Items: []EquipmentItem{
 						{ID: weapons.Quarterstaff, Quantity: 1},
 					},
 				},
 				{
-					ID:    "wizard-weapon-b",
+					ID:    WizardWeaponDagger,
 					Label: "Dagger",
 					Items: []EquipmentItem{
 						{ID: weapons.Dagger, Quantity: 1},
@@ -551,14 +624,14 @@ func getWizardEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "wizard-focus-a",
+					ID:    WizardFocusComponent,
 					Label: "Component pouch",
 					Items: []EquipmentItem{
 						{ID: items.ComponentPouch, Quantity: 1},
 					},
 				},
 				{
-					ID:    "wizard-focus-b",
+					ID:    WizardFocusStaff,
 					Label: "Arcane focus",
 					Items: []EquipmentItem{
 						{ID: items.ArcaneFocus, Quantity: 1},
@@ -572,14 +645,14 @@ func getWizardEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "wizard-pack-a",
+					ID:    WizardPackScholar,
 					Label: "Scholar's pack",
 					Items: []EquipmentItem{
 						{ID: packs.ScholarPack, Quantity: 1},
 					},
 				},
 				{
-					ID:    "wizard-pack-b",
+					ID:    WizardPackExplorer,
 					Label: "Explorer's pack",
 					Items: []EquipmentItem{
 						{ID: packs.ExplorerPack, Quantity: 1},
@@ -598,14 +671,14 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "cleric-weapon-a",
+					ID:    ClericWeaponMace,
 					Label: "Mace",
 					Items: []EquipmentItem{
 						{ID: weapons.Mace, Quantity: 1},
 					},
 				},
 				{
-					ID:    "cleric-weapon-b",
+					ID:    ClericWeaponWarhammer,
 					Label: "Warhammer (if proficient)",
 					Items: []EquipmentItem{
 						{ID: weapons.Warhammer, Quantity: 1},
@@ -620,21 +693,21 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "cleric-armor-a",
+					ID:    ClericArmorScale,
 					Label: "Scale mail",
 					Items: []EquipmentItem{
 						{ID: armor.ScaleMail, Quantity: 1},
 					},
 				},
 				{
-					ID:    "cleric-armor-b",
+					ID:    ClericArmorLeather,
 					Label: "Leather armor",
 					Items: []EquipmentItem{
 						{ID: armor.Leather, Quantity: 1},
 					},
 				},
 				{
-					ID:    "cleric-armor-c",
+					ID:    ClericArmorChainMail,
 					Label: "Chain mail (if proficient)",
 					Items: []EquipmentItem{
 						{ID: armor.ChainMail, Quantity: 1},
@@ -649,7 +722,7 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "cleric-secondary-a",
+					ID:    ClericSecondaryShortbow,
 					Label: "Light crossbow and 20 bolts",
 					Items: []EquipmentItem{
 						{ID: weapons.LightCrossbow, Quantity: 1},
@@ -657,7 +730,7 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 					},
 				},
 				{
-					ID:    "cleric-secondary-b",
+					ID:    ClericSecondarySimple,
 					Label: "Any simple weapon",
 					CategoryChoices: []EquipmentCategoryChoice{
 						{
@@ -679,14 +752,14 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "cleric-pack-a",
+					ID:    ClericPackPriest,
 					Label: "Priest's pack",
 					Items: []EquipmentItem{
 						{ID: packs.PriestPack, Quantity: 1},
 					},
 				},
 				{
-					ID:    "cleric-pack-b",
+					ID:    ClericPackExplorer,
 					Label: "Explorer's pack",
 					Items: []EquipmentItem{
 						{ID: packs.ExplorerPack, Quantity: 1},
@@ -700,7 +773,7 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 			Choose: 1,
 			Options: []EquipmentOption{
 				{
-					ID:    "cleric-holy-symbol",
+					ID:    ClericHolyAmulet,
 					Label: "Holy symbol",
 					Items: []EquipmentItem{
 						{ID: items.HolySymbol, Quantity: 1},

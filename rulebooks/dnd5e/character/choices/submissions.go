@@ -10,7 +10,7 @@ type Submission struct {
 	Category shared.ChoiceCategory `json:"category"`
 	Source   shared.ChoiceSource   `json:"source"`
 	ChoiceID ChoiceID              `json:"choice_id"`           // References the requirement ID
-	OptionID string                `json:"option_id,omitempty"` // Which option was selected (for equipment bundles)
+	OptionID OptionID              `json:"option_id,omitempty"` // Which option was selected (for equipment bundles)
 
 	// The actual selection (just IDs, not full objects)
 	Values []shared.SelectionID `json:"values"`
@@ -54,7 +54,7 @@ func (s *Submissions) GetBySource(source shared.ChoiceSource) []Submission {
 }
 
 // GetValues returns the values for a specific choice
-func (s *Submissions) GetValues(source shared.ChoiceSource, choiceID ChoiceID) []string {
+func (s *Submissions) GetValues(source shared.ChoiceSource, choiceID ChoiceID) []shared.SelectionID {
 	submissions := s.bySource[source]
 	for _, sub := range submissions {
 		if sub.ChoiceID == choiceID {

@@ -3,6 +3,9 @@ package choices
 // ChoiceID represents a unique identifier for a choice requirement
 type ChoiceID string
 
+// OptionID represents a unique identifier for an option within a choice
+type OptionID string
+
 // Class skill choice IDs
 const (
 	FighterSkills   ChoiceID = "fighter-skills"
@@ -132,4 +135,52 @@ const (
 	OutlanderLanguage    ChoiceID = "outlander-language"
 	SageLanguages        ChoiceID = "sage-languages"
 	SoldierTools         ChoiceID = "soldier-tools"
+)
+
+// Equipment option IDs - Fighter
+const (
+	FighterArmorChainMail    OptionID = "fighter-armor-a"
+	FighterArmorLeather      OptionID = "fighter-armor-b"
+	FighterWeaponMartialShield OptionID = "fighter-weapon-a"
+	FighterWeaponTwoMartial  OptionID = "fighter-weapon-b"
+	FighterRangedCrossbow    OptionID = "fighter-ranged-a"
+	FighterRangedHandaxes    OptionID = "fighter-ranged-b"
+	FighterPackDungeoneer    OptionID = "fighter-pack-a"
+	FighterPackExplorer      OptionID = "fighter-pack-b"
+)
+
+// Equipment option IDs - Rogue
+const (
+	RogueWeaponRapier      OptionID = "rogue-weapon-a"
+	RogueWeaponShortsword  OptionID = "rogue-weapon-b"
+	RogueSecondaryShortbow OptionID = "rogue-secondary-a"
+	RogueSecondaryShortsword OptionID = "rogue-secondary-b"
+	RoguePackBurglar       OptionID = "rogue-pack-a"
+	RoguePackDungeoneer    OptionID = "rogue-pack-b"
+	RoguePackExplorer      OptionID = "rogue-pack-c"
+)
+
+// Equipment option IDs - Wizard
+const (
+	WizardWeaponQuarterstaff OptionID = "wizard-weapon-a"
+	WizardWeaponDagger       OptionID = "wizard-weapon-b"
+	WizardFocusComponent     OptionID = "wizard-focus-a"
+	WizardFocusStaff         OptionID = "wizard-focus-b"
+	WizardPackScholar        OptionID = "wizard-pack-a"
+	WizardPackExplorer       OptionID = "wizard-pack-b"
+)
+
+// Equipment option IDs - Cleric
+const (
+	ClericWeaponMace         OptionID = "cleric-weapon-a"
+	ClericWeaponWarhammer    OptionID = "cleric-weapon-b"
+	ClericArmorScale         OptionID = "cleric-armor-a"
+	ClericArmorLeather       OptionID = "cleric-armor-b"
+	ClericArmorChainMail     OptionID = "cleric-armor-c"
+	ClericSecondaryShortbow  OptionID = "cleric-secondary-a"
+	ClericSecondarySimple    OptionID = "cleric-secondary-b"
+	ClericPackPriest         OptionID = "cleric-pack-a"
+	ClericPackExplorer       OptionID = "cleric-pack-b"
+	ClericHolyAmulet         OptionID = "cleric-holy-a"
+	ClericHolyEmblem         OptionID = "cleric-holy-b"
 )

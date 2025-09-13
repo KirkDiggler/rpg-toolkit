@@ -107,6 +107,30 @@ func (v *Validator) Validate(requirements *Requirements, submissions *Submission
 		}
 	}
 
+	// Validate fighting style
+	if requirements.FightingStyle != nil {
+		if err := v.validateFightingStyle(requirements.FightingStyle, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+	}
+
+	// Validate expertise (for rogues)
+	if requirements.Expertise != nil {
+		if err := v.validateExpertise(requirements.Expertise, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+	}
+
+	// Validate spellbook (for wizards)
+	if requirements.Spellbook != nil {
+		if err := v.validateSpellbook(requirements.Spellbook, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+	}
+
 	return result
 }
 
@@ -450,6 +474,137 @@ func (v *Validator) validateCantrips(req *CantripRequirement, submissions *Submi
 			Category: shared.ChoiceCantrips,
 			ChoiceID: req.ID,
 			Message:  fmt.Sprintf("%s required", req.Label),
+		}
+	}
+
+	return nil
+}
+
+func (v *Validator) validateFightingStyle(req *FightingStyleRequirement, submissions *Submissions) *ValidationError {
+	// Find fighting style submissions
+	styleSubs := submissions.GetByCategory(shared.ChoiceFightingStyle)
+
+	found := false
+	for _, sub := range styleSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			if len(sub.Values) != 1 {
+				return &ValidationError{
+					Category: shared.ChoiceFightingStyle,
+					ChoiceID: req.ID,
+					Message:  "Must choose exactly one fighting style",
+				}
+			}
+
+			// Validate the chosen style is in the allowed options
+			if req.Options != nil && len(req.Options) > 0 {
+				chosenStyle := string(sub.Values[0])
+				validStyle := false
+				for _, option := range req.Options {
+					if string(option) == chosenStyle {
+						validStyle = true
+						break
+					}
+				}
+				if !validStyle {
+					return &ValidationError{
+						Category: shared.ChoiceFightingStyle,
+						ChoiceID: req.ID,
+						Message:  fmt.Sprintf("Invalid fighting style '%s'", chosenStyle),
+					}
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceFightingStyle,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s required", req.Label),
+		}
+	}
+
+	return nil
+}
+
+func (v *Validator) validateExpertise(req *ExpertiseRequirement, submissions *Submissions) *ValidationError {
+	// Find expertise submissions
+	expertiseSubs := submissions.GetByCategory(shared.ChoiceExpertise)
+
+	found := false
+	totalChosen := 0
+	for _, sub := range expertiseSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			totalChosen += len(sub.Values)
+		}
+	}
+
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceExpertise,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose %d skills or tools for expertise", req.Label, req.Count),
+		}
+	}
+
+	if totalChosen != req.Count {
+		return &ValidationError{
+			Category: shared.ChoiceExpertise,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose exactly %d for expertise, got %d", req.Label, req.Count, totalChosen),
+		}
+	}
+
+	return nil
+}
+
+func (v *Validator) validateSpellbook(req *SpellbookRequirement, submissions *Submissions) *ValidationError {
+	// Find spellbook submissions
+	spellSubs := submissions.GetByCategory(shared.ChoiceSpells)
+
+	found := false
+	totalChosen := 0
+	for _, sub := range spellSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			totalChosen += len(sub.Values)
+
+			// Validate chosen spells are in the allowed options
+			if req.Options != nil && len(req.Options) > 0 {
+				allowedSpells := make(map[string]bool)
+				for _, spell := range req.Options {
+					allowedSpells[string(spell)] = true
+				}
+
+				for _, chosenSpell := range sub.Values {
+					if !allowedSpells[string(chosenSpell)] {
+						return &ValidationError{
+							Category: shared.ChoiceSpells,
+							ChoiceID: req.ID,
+							Message:  fmt.Sprintf("Spell '%s' is not in the allowed options", chosenSpell),
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceSpells,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose %d spells", req.Label, req.Count),
+		}
+	}
+
+	if totalChosen != req.Count {
+		return &ValidationError{
+			Category: shared.ChoiceSpells,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose exactly %d spells, got %d", req.Label, req.Count, totalChosen),
 		}
 	}
 

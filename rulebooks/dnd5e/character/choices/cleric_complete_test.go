@@ -74,9 +74,9 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Category: shared.ChoiceEquipment,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericWeapons,
-		OptionID: "cleric-weapon-a",
+		OptionID: choices.ClericWeaponMace,
 		Values: []shared.SelectionID{
-			shared.SelectionID("cleric-weapon-a"), // The option chosen
+			shared.SelectionID(choices.ClericWeaponMace), // The option chosen
 		},
 	})
 
@@ -85,9 +85,9 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Category: shared.ChoiceEquipment,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericArmor,
-		OptionID: "cleric-armor-a",
+		OptionID: choices.ClericArmorScale,
 		Values: []shared.SelectionID{
-			shared.SelectionID("cleric-armor-a"),
+			shared.SelectionID(choices.ClericArmorScale),
 		},
 	})
 
@@ -96,9 +96,9 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Category: shared.ChoiceEquipment,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericSecondaryWeapon,
-		OptionID: "cleric-secondary-a",
+		OptionID: choices.ClericSecondaryShortbow,
 		Values: []shared.SelectionID{
-			shared.SelectionID("cleric-secondary-a"),
+			shared.SelectionID(choices.ClericSecondaryShortbow),
 		},
 	})
 
@@ -107,9 +107,9 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Category: shared.ChoiceEquipment,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericPack,
-		OptionID: "cleric-pack-a",
+		OptionID: choices.ClericPackPriest,
 		Values: []shared.SelectionID{
-			shared.SelectionID("cleric-pack-a"),
+			shared.SelectionID(choices.ClericPackPriest),
 		},
 	})
 
@@ -118,9 +118,9 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Category: shared.ChoiceEquipment,
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericHolySymbol,
-		OptionID: "cleric-holy-symbol",
+		OptionID: choices.ClericHolyAmulet,
 		Values: []shared.SelectionID{
-			shared.SelectionID("cleric-holy-symbol"),
+			shared.SelectionID(choices.ClericHolyAmulet),
 		},
 	})
 
