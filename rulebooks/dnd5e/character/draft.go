@@ -309,7 +309,7 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 				if req.ID == choiceID {
 					// Find the selected option
 					for _, opt := range req.Options {
-						if opt.ID == string(selectionID) {
+						if opt.ID == selectionID {
 							// Extract equipment IDs from this option
 							equipmentIDs := make([]shared.SelectionID, 0, len(opt.Items))
 							for _, item := range opt.Items {

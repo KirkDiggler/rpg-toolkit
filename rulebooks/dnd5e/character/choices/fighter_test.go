@@ -32,7 +32,7 @@ func TestFighterEquipmentChoices(t *testing.T) {
 
 	// Option A: Shield + 1 martial weapon
 	optionA := primaryWeaponChoice.Options[0]
-	assert.Equal(t, "fighter-weapon-a", optionA.ID)
+	assert.Equal(t, choices.FighterWeaponMartialShield, optionA.ID)
 	assert.Contains(t, optionA.Label, "martial weapon and a shield")
 
 	// Should have 1 concrete item (shield)
@@ -46,7 +46,7 @@ func TestFighterEquipmentChoices(t *testing.T) {
 
 	// Option B: 2 martial weapons
 	optionB := primaryWeaponChoice.Options[1]
-	assert.Equal(t, "fighter-weapon-b", optionB.ID)
+	assert.Equal(t, choices.FighterWeaponTwoMartial, optionB.ID)
 	assert.Contains(t, optionB.Label, "Two martial weapons")
 
 	// Should have no concrete items

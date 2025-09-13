@@ -53,11 +53,11 @@ func Example_gameplay() {
 }
 
 // Helper stubs for the example
-func loadCharacterData(_ string) interface{} { return nil }
-func loadRaceData(_ string) interface{}      { return nil }
-func loadClassData(_ string) interface{}     { return nil }
+func loadCharacterData(_ string) interface{}  { return nil }
+func loadRaceData(_ string) interface{}       { return nil }
+func loadClassData(_ string) interface{}      { return nil }
 func loadBackgroundData(_ string) interface{} { return nil }
-func saveCharacterData(_ interface{})        {}
+func saveCharacterData(_ interface{})         {}
 
 // TestEffectStacking demonstrates how effects will work once updated
 // func TestEffectStacking(_ *testing.T) {

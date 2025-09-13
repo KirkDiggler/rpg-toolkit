@@ -26,6 +26,19 @@ const (
 	Frostbite      Spell = "frostbite"
 	PrimalSavagery Spell = "primal-savagery"
 	Thornwhip      Spell = "thornwhip"
+	CreateBonfire  Spell = "create-bonfire"
+	Druidcraft     Spell = "druidcraft"
+	Infestation    Spell = "infestation"
+	MagicStone     Spell = "magic-stone"
+	MoldEarth      Spell = "mold-earth"
+	ShapeWater     Spell = "shape-water"
+
+	// Sorcerer Cantrips
+	BoomingBlade    Spell = "booming-blade"
+	ControlFlames   Spell = "control-flames"
+	GreenFlameBlade Spell = "green-flame-blade"
+	GustWind        Spell = "gust"
+	SwordBurst      Spell = "sword-burst"
 )
 
 // Utility Cantrips
@@ -38,6 +51,15 @@ const (
 	Resistance       Spell = "resistance"
 	Thaumaturgy      Spell = "thaumaturgy"
 	SpareTheDying    Spell = "spare-the-dying"
+
+	// Bard Cantrips
+	BladeWard      Spell = "blade-ward"
+	DancingLights  Spell = "dancing-lights"
+	Friends        Spell = "friends"
+	Mending        Spell = "mending"
+	Message        Spell = "message"
+	TrueStrike     Spell = "true-strike"
+	ViciousMockery Spell = "vicious-mockery"
 )
 
 // Level 1 Damage Spells
@@ -90,6 +112,35 @@ const (
 	FogCloud         Spell = "fog-cloud"
 	RayOfSickness    Spell = "ray-of-sickness"
 	SpeakWithAnimals Spell = "speak-with-animals"
+
+	// Bard Level 1 specific
+	ComprehendLanguages Spell = "comprehend-languages"
+	FeatherFall         Spell = "feather-fall"
+	Heroism             Spell = "heroism"
+	HideousLaughter     Spell = "hideous-laughter"
+	IllusoryScript      Spell = "illusory-script"
+	Longstrider         Spell = "longstrider"
+	SilentImage         Spell = "silent-image"
+	UnseenServant       Spell = "unseen-servant"
+
+	// Druid Level 1 specific
+	AbsorbElements Spell = "absorb-elements"
+	BeastBond      Spell = "beast-bond"
+	Entangle       Spell = "entangle"
+	GoodBerry      Spell = "goodberry"
+	JumpSpell      Spell = "jump"
+	PurifyFood     Spell = "purify-food-and-drink"
+
+	// Sorcerer Level 1 specific
+	CatapultSpell      Spell = "catapult"
+	CauseFear          Spell = "cause-fear"
+	ColorSpray         Spell = "color-spray"
+	DistortValue       Spell = "distort-value"
+	EarthTremor        Spell = "earth-tremor"
+	ExpeditiousRetreat Spell = "expeditious-retreat"
+
+	// Warlock Level 1 specific
+	ProtectionEvil Spell = "protection-from-evil-and-good"
 )
 
 // Level 2 Damage Spells
