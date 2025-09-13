@@ -6,6 +6,8 @@ import (
 
 // Data contains the mechanical data for a background
 type Data struct {
+	ID Background // The background this data represents
+
 	// Skill proficiencies
 	SkillCount int            // Number of skills to choose
 	Skills     []skills.Skill // Available skills to choose from
@@ -24,6 +26,7 @@ type Data struct {
 // BackgroundData maps backgrounds to their mechanical data
 var BackgroundData = map[Background]*Data{
 	Acolyte: {
+		ID:            Acolyte,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Insight, skills.Religion},
 		LanguageCount: 2,
@@ -31,6 +34,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Criminal: {
+		ID:            Criminal,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Deception, skills.Stealth},
 		LanguageCount: 0,
@@ -38,6 +42,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	FolkHero: {
+		ID:            FolkHero,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.AnimalHandling, skills.Survival},
 		LanguageCount: 0,
@@ -45,6 +50,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Noble: {
+		ID:            Noble,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.History, skills.Persuasion},
 		LanguageCount: 1,
@@ -52,6 +58,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Sage: {
+		ID:            Sage,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Arcana, skills.History},
 		LanguageCount: 2,
@@ -59,6 +66,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Soldier: {
+		ID:            Soldier,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Athletics, skills.Intimidation},
 		LanguageCount: 0,
@@ -66,6 +74,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Charlatan: {
+		ID:            Charlatan,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Deception, skills.SleightOfHand},
 		LanguageCount: 0,
@@ -73,6 +82,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Entertainer: {
+		ID:            Entertainer,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Acrobatics, skills.Performance},
 		LanguageCount: 0,
@@ -80,6 +90,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	GuildArtisan: {
+		ID:            GuildArtisan,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Insight, skills.Persuasion},
 		LanguageCount: 1,
@@ -87,6 +98,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Hermit: {
+		ID:            Hermit,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Medicine, skills.Religion},
 		LanguageCount: 1,
@@ -94,6 +106,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Outlander: {
+		ID:            Outlander,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Athletics, skills.Survival},
 		LanguageCount: 1,
@@ -101,6 +114,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Sailor: {
+		ID:            Sailor,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Athletics, skills.Perception},
 		LanguageCount: 0,
@@ -108,6 +122,7 @@ var BackgroundData = map[Background]*Data{
 	},
 
 	Urchin: {
+		ID:            Urchin,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.SleightOfHand, skills.Stealth},
 		LanguageCount: 0,
@@ -116,6 +131,7 @@ var BackgroundData = map[Background]*Data{
 
 	// Variants share data with their base backgrounds
 	Spy: {
+		ID:            Spy,
 		SkillCount:    2,
 		Skills:        []skills.Skill{skills.Deception, skills.Stealth},
 		LanguageCount: 0,
@@ -150,4 +166,14 @@ func GetData(bg Background) *Data {
 		return data
 	}
 	return nil
+}
+
+// Name returns the display name of the background
+func (d *Data) Name() string {
+	return d.ID.Name()
+}
+
+// Description returns the description of the background
+func (d *Data) Description() string {
+	return d.ID.Description()
 }

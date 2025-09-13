@@ -2,8 +2,16 @@ package classes
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
+
+// EquipmentItem represents an item with quantity
+type EquipmentItem struct {
+	ID       shared.EquipmentID `json:"id"`       // Equipment ID
+	Quantity int                `json:"quantity"` // How many (default 1)
+}
 
 // AutomaticGrants represents what a class automatically provides (not player choices)
 type AutomaticGrants struct {
@@ -15,6 +23,9 @@ type AutomaticGrants struct {
 	ArmorProficiencies  []proficiencies.Armor  // e.g., "light", "medium", "heavy", "shields"
 	WeaponProficiencies []proficiencies.Weapon // e.g., "simple", "martial"
 	ToolProficiencies   []proficiencies.Tool   // Some classes get tools (e.g., thieves' tools for rogue)
+
+	// Starting equipment that ALL members of this class get automatically
+	StartingEquipment []EquipmentItem // e.g., Monk gets 10 darts, Rogue gets leather armor + 2 daggers
 
 	// Note: Skill proficiencies are NOT here because they're choices, not grants
 	// They belong in Requirements, not Grants
@@ -112,6 +123,9 @@ func GetAutomaticGrants(classID Class) *AutomaticGrants {
 				proficiencies.WeaponSimple,
 				proficiencies.WeaponShortsword,
 			},
+			StartingEquipment: []EquipmentItem{
+				{ID: "dart", Quantity: 10}, // Monks always start with 10 darts
+			},
 		}
 
 	case Paladin:
@@ -158,6 +172,11 @@ func GetAutomaticGrants(classID Class) *AutomaticGrants {
 				proficiencies.WeaponShortsword,
 			},
 			ToolProficiencies: []proficiencies.Tool{proficiencies.ToolThieves},
+			StartingEquipment: []EquipmentItem{
+				{ID: "leather", Quantity: 1},       // Leather armor
+				{ID: "dagger", Quantity: 2},        // Two daggers
+				{ID: "thieves-tools", Quantity: 1}, // Thieves' tools
+			},
 		}
 
 	case Sorcerer:
@@ -191,6 +210,9 @@ func GetAutomaticGrants(classID Class) *AutomaticGrants {
 				proficiencies.WeaponSling,
 				proficiencies.WeaponQuarterstaff,
 				proficiencies.WeaponLightCrossbow,
+			},
+			StartingEquipment: []EquipmentItem{
+				{ID: items.Spellbook, Quantity: 1}, // Wizards always start with a spellbook
 			},
 		}
 

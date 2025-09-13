@@ -7,25 +7,25 @@ type Spell string
 // Damage Cantrips
 const (
 	// Wizard Cantrips
-	FireBolt         Spell = "fire-bolt"
-	RayOfFrost       Spell = "ray-of-frost"
-	ShockingGrasp    Spell = "shocking-grasp"
-	AcidSplash       Spell = "acid-splash"
-	PoisonSpray      Spell = "poison-spray"
-	ChillTouch       Spell = "chill-touch"
+	FireBolt      Spell = "fire-bolt"
+	RayOfFrost    Spell = "ray-of-frost"
+	ShockingGrasp Spell = "shocking-grasp"
+	AcidSplash    Spell = "acid-splash"
+	PoisonSpray   Spell = "poison-spray"
+	ChillTouch    Spell = "chill-touch"
 
 	// Cleric Cantrips
-	SacredFlame      Spell = "sacred-flame"
-	TollTheDead      Spell = "toll-the-dead"
-	WordOfRadiance   Spell = "word-of-radiance"
+	SacredFlame    Spell = "sacred-flame"
+	TollTheDead    Spell = "toll-the-dead"
+	WordOfRadiance Spell = "word-of-radiance"
 
 	// Warlock Cantrips
-	EldritchBlast    Spell = "eldritch-blast"
+	EldritchBlast Spell = "eldritch-blast"
 
 	// Druid Cantrips
-	Frostbite        Spell = "frostbite"
-	PrimalSavagery   Spell = "primal-savagery"
-	Thornwhip        Spell = "thornwhip"
+	Frostbite      Spell = "frostbite"
+	PrimalSavagery Spell = "primal-savagery"
+	Thornwhip      Spell = "thornwhip"
 )
 
 // Utility Cantrips
@@ -43,44 +43,53 @@ const (
 // Level 1 Damage Spells
 const (
 	// Wizard Level 1
-	MagicMissile     Spell = "magic-missile"
-	BurningHands     Spell = "burning-hands"
-	ChromaticOrb     Spell = "chromatic-orb"
-	Thunderwave      Spell = "thunderwave"
-	IceKnife         Spell = "ice-knife"
-	WitchBolt        Spell = "witch-bolt"
+	MagicMissile Spell = "magic-missile"
+	BurningHands Spell = "burning-hands"
+	ChromaticOrb Spell = "chromatic-orb"
+	Thunderwave  Spell = "thunderwave"
+	IceKnife     Spell = "ice-knife"
+	WitchBolt    Spell = "witch-bolt"
 
 	// Cleric Level 1
-	GuidingBolt      Spell = "guiding-bolt"
-	InflictWounds    Spell = "inflict-wounds"
+	GuidingBolt   Spell = "guiding-bolt"
+	InflictWounds Spell = "inflict-wounds"
 
 	// Ranger/Druid Level 1
-	HailOfThorns     Spell = "hail-of-thorns"
-	EnsnaringStrike  Spell = "ensnaring-strike"
+	HailOfThorns    Spell = "hail-of-thorns"
+	EnsnaringStrike Spell = "ensnaring-strike"
 
 	// Warlock Level 1
-	HellishRebuke    Spell = "hellish-rebuke"
-	ArmsOfHadar      Spell = "arms-of-hadar"
-	Hex              Spell = "hex"
+	HellishRebuke Spell = "hellish-rebuke"
+	ArmsOfHadar   Spell = "arms-of-hadar"
+	Hex           Spell = "hex"
 
 	// Paladin Level 1
-	SearingSmite     Spell = "searing-smite"
-	ThunderousSmite  Spell = "thunderous-smite"
-	WrathfulSmite    Spell = "wrathful-smite"
+	SearingSmite    Spell = "searing-smite"
+	ThunderousSmite Spell = "thunderous-smite"
+	WrathfulSmite   Spell = "wrathful-smite"
 )
 
 // Level 1 Utility Spells
 const (
-	Shield        Spell = "shield"
-	Sleep         Spell = "sleep"
-	CharmPerson   Spell = "charm-person"
-	DetectMagic   Spell = "detect-magic"
-	Identify      Spell = "identify"
-	CureWounds    Spell = "cure-wounds"
-	HealingWord   Spell = "healing-word"
-	Bless         Spell = "bless"
-	Bane          Spell = "bane"
-	ShieldOfFaith Spell = "shield-of-faith"
+	Shield           Spell = "shield"
+	Sleep            Spell = "sleep"
+	CharmPerson      Spell = "charm-person"
+	DetectMagic      Spell = "detect-magic"
+	Identify         Spell = "identify"
+	CureWounds       Spell = "cure-wounds"
+	HealingWord      Spell = "healing-word"
+	Bless            Spell = "bless"
+	Bane             Spell = "bane"
+	ShieldOfFaith    Spell = "shield-of-faith"
+	AnimalFriendship Spell = "animal-friendship"
+	Command          Spell = "command"
+	DisguiseSelf     Spell = "disguise-self"
+	DivineFavor      Spell = "divine-favor"
+	FaerieFire       Spell = "faerie-fire"
+	FalseLife        Spell = "false-life"
+	FogCloud         Spell = "fog-cloud"
+	RayOfSickness    Spell = "ray-of-sickness"
+	SpeakWithAnimals Spell = "speak-with-animals"
 )
 
 // Level 2 Damage Spells
@@ -93,14 +102,81 @@ const (
 	Moonbeam           Spell = "moonbeam"
 	SpiritualWeapon    Spell = "spiritual-weapon"
 	FlamingSphere      Spell = "flaming-sphere"
+	GustOfWind         Spell = "gust-of-wind"
+	RayOfEnfeeblement  Spell = "ray-of-enfeeblement"
+)
+
+// Level 2 Utility Spells
+const (
+	Augury            Spell = "augury"
+	Barkskin          Spell = "barkskin"
+	BlindnessDeafness Spell = "blindness-deafness"
+	LesserRestoration Spell = "lesser-restoration"
+	MagicWeapon       Spell = "magic-weapon"
+	MirrorImage       Spell = "mirror-image"
+	PassWithoutTrace  Spell = "pass-without-trace"
+	SpikeGrowth       Spell = "spike-growth"
+	Suggestion        Spell = "suggestion"
 )
 
 // Level 3 Damage Spells
 const (
-	Fireball      Spell = "fireball"
-	LightningBolt Spell = "lightning-bolt"
-	CallLightning Spell = "call-lightning"
-	VampiricTouch Spell = "vampiric-touch"
+	Fireball        Spell = "fireball"
+	LightningBolt   Spell = "lightning-bolt"
+	CallLightning   Spell = "call-lightning"
+	VampiricTouch   Spell = "vampiric-touch"
+	SleetStorm      Spell = "sleet-storm"
+	SpiritGuardians Spell = "spirit-guardians"
+)
+
+// Level 3 Utility Spells
+const (
+	AnimateDead     Spell = "animate-dead"
+	BeaconOfHope    Spell = "beacon-of-hope"
+	Blink           Spell = "blink"
+	CrusadersMantle Spell = "crusaders-mantle"
+	Daylight        Spell = "daylight"
+	DispelMagic     Spell = "dispel-magic"
+	Nondetection    Spell = "nondetection"
+	PlantGrowth     Spell = "plant-growth"
+	Revivify        Spell = "revivify"
+	SpeakWithDead   Spell = "speak-with-dead"
+	WindWall        Spell = "wind-wall"
+)
+
+// Level 4 Spells
+const (
+	ArcaneEye         Spell = "arcane-eye"
+	Blight            Spell = "blight"
+	Confusion         Spell = "confusion"
+	ControlWater      Spell = "control-water"
+	DeathWard         Spell = "death-ward"
+	DimensionDoor     Spell = "dimension-door"
+	DominateBeast     Spell = "dominate-beast"
+	FreedomOfMovement Spell = "freedom-of-movement"
+	GraspingVine      Spell = "grasping-vine"
+	GuardianOfFaith   Spell = "guardian-of-faith"
+	IceStorm          Spell = "ice-storm"
+	Polymorph         Spell = "polymorph"
+	Stoneskin         Spell = "stoneskin"
+	WallOfFire        Spell = "wall-of-fire"
+)
+
+// Level 5 Spells
+const (
+	AntiLifeShell   Spell = "antilife-shell"
+	Cloudkill       Spell = "cloudkill"
+	DestructiveWave Spell = "destructive-wave"
+	DominatePerson  Spell = "dominate-person"
+	FlameStrike     Spell = "flame-strike"
+	HoldMonster     Spell = "hold-monster"
+	InsectPlague    Spell = "insect-plague"
+	LegendLore      Spell = "legend-lore"
+	MassCureWounds  Spell = "mass-cure-wounds"
+	ModifyMemory    Spell = "modify-memory"
+	RaiseDead       Spell = "raise-dead"
+	Scrying         Spell = "scrying"
+	TreeStride      Spell = "tree-stride"
 )
 
 // Name returns the display name of the spell

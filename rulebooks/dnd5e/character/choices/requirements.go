@@ -5,19 +5,24 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // Requirements represents what choices need to be made
 type Requirements struct {
 	// Skills that need to be chosen
-	Skills *SkillRequirement `json:"skills,omitempty"`
+	Skills           *SkillRequirement   `json:"skills,omitempty"`
+	AdditionalSkills []*SkillRequirement `json:"additional_skills,omitempty"` // For subclass-granted skills
 
 	// Equipment choices
 	Equipment []*EquipmentRequirement `json:"equipment,omitempty"`
@@ -26,8 +31,8 @@ type Requirements struct {
 	EquipmentCategories []*EquipmentCategoryRequirement `json:"equipment_categories,omitempty"`
 
 	// Proficiency choices
-	Languages *LanguageRequirement `json:"languages,omitempty"`
-	Tools     *ToolRequirement     `json:"tools,omitempty"`
+	Languages []*LanguageRequirement `json:"languages,omitempty"` // Changed to array for multiple language choices
+	Tools     *ToolRequirement       `json:"tools,omitempty"`
 
 	// Class-specific choices
 	FightingStyle *FightingStyleRequirement `json:"fighting_style,omitempty"`
@@ -35,6 +40,10 @@ type Requirements struct {
 
 	// Subclass choice (required at specific levels)
 	Subclass *SubclassRequirement `json:"subclass,omitempty"`
+
+	// Spell choices
+	Cantrips  *CantripRequirement   `json:"cantrips,omitempty"`
+	Spellbook *SpellbookRequirement `json:"spellbook,omitempty"`
 }
 
 // SkillRequirement defines skill choice requirements
@@ -55,15 +64,24 @@ type EquipmentRequirement struct {
 
 // EquipmentOption represents one equipment choice option
 type EquipmentOption struct {
-	ID    string          `json:"id"`    // Unique identifier for this option
-	Items []EquipmentItem `json:"items"` // What you get if you choose this
-	Label string          `json:"label"` // e.g., "Chain mail"
+	ID              string                    `json:"id"`               // Unique identifier for this option
+	Items           []EquipmentItem           `json:"items"`            // What you get if you choose this
+	Label           string                    `json:"label"`            // e.g., "Chain mail"
+	CategoryChoices []EquipmentCategoryChoice `json:"category_choices"` // Category-based selections this option grants
 }
 
 // EquipmentItem represents an item in an equipment option
 type EquipmentItem struct {
 	ID       shared.EquipmentID `json:"id"`       // Equipment ID
 	Quantity int                `json:"quantity"` // How many (default 1)
+}
+
+// EquipmentCategoryChoice represents a category-based equipment selection within an option
+type EquipmentCategoryChoice struct {
+	Choose     int                        `json:"choose"`     // How many to choose (e.g., 1 or 2)
+	Type       shared.EquipmentType       `json:"type"`       // Equipment type (weapon, armor, etc.)
+	Categories []shared.EquipmentCategory `json:"categories"` // Categories to choose from
+	Label      string                     `json:"label"`      // e.g., "Choose a martial weapon"
 }
 
 // EquipmentCategoryRequirement defines equipment choices from categories (e.g., "choose 2 martial weapons")
@@ -112,6 +130,23 @@ type SubclassRequirement struct {
 	Label   string             `json:"label"`   // e.g., "Choose your Martial Archetype"
 }
 
+// CantripRequirement defines cantrip choice requirements
+type CantripRequirement struct {
+	ID      ChoiceID       `json:"id"`      // Unique identifier
+	Count   int            `json:"count"`   // How many cantrips to choose
+	Options []spells.Spell `json:"options"` // Available cantrips
+	Label   string         `json:"label"`   // e.g., "Choose 3 cantrips"
+}
+
+// SpellbookRequirement defines spellbook choice requirements
+type SpellbookRequirement struct {
+	ID         ChoiceID       `json:"id"`          // Unique identifier
+	Count      int            `json:"count"`       // How many spells to choose
+	SpellLevel int            `json:"spell_level"` // Level of spells to choose (1 for 1st level)
+	Options    []spells.Spell `json:"options"`     // Available spells
+	Label      string         `json:"label"`       // e.g., "Choose 6 1st-level spells for your spellbook"
+}
+
 // GetClassRequirements returns the requirements for a specific class at level 1
 func GetClassRequirements(classID classes.Class) *Requirements {
 	return GetClassRequirementsAtLevel(classID, 1)
@@ -136,27 +171,46 @@ func GetClassRequirementsAtLevel(classID classes.Class, level int) *Requirements
 
 // getBaseClassRequirements returns the base requirements for a class (without subclass)
 func getBaseClassRequirements(classID classes.Class) *Requirements {
-	classData := classes.ClassData[classID]
-	if classData == nil {
-		return &Requirements{}
-	}
-
-	reqs := &Requirements{}
-
-	// Add skill requirements if the class has skill choices
-	if classData.SkillCount > 0 && len(classData.SkillList) > 0 {
-		reqs.Skills = &SkillRequirement{
-			ID:      getSkillChoiceID(classID),
-			Count:   classData.SkillCount,
-			Options: classData.SkillList,
-			Label:   fmt.Sprintf("Choose %d skills", classData.SkillCount),
-		}
-	}
-
-	// Add class-specific requirements
+	// Get class-specific requirements
 	switch classID {
 	case classes.Fighter:
-		reqs.FightingStyle = &FightingStyleRequirement{
+		return getFighterRequirements()
+	case classes.Wizard:
+		return getWizardRequirements()
+	case classes.Rogue:
+		return getRogueRequirements()
+	case classes.Cleric:
+		return getClericRequirements()
+	default:
+		// For unimplemented classes, return basic skill requirements from class data
+		classData := classes.ClassData[classID]
+		if classData == nil {
+			return &Requirements{}
+		}
+
+		reqs := &Requirements{}
+		if classData.SkillCount > 0 && len(classData.SkillList) > 0 {
+			reqs.Skills = &SkillRequirement{
+				ID:      getSkillChoiceID(classID),
+				Count:   classData.SkillCount,
+				Options: classData.SkillList,
+				Label:   fmt.Sprintf("Choose %d skills", classData.SkillCount),
+			}
+		}
+		return reqs
+	}
+}
+
+func getFighterRequirements() *Requirements {
+	return &Requirements{
+		Skills: &SkillRequirement{
+			ID:      getSkillChoiceID(classes.Fighter),
+			Count:   classes.ClassData[classes.Fighter].SkillCount,
+			Options: classes.ClassData[classes.Fighter].SkillList,
+			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Fighter].SkillCount),
+		},
+		Equipment: getFighterEquipmentRequirements(),
+		FightingStyle: &FightingStyleRequirement{
 			ID: FighterFightingStyle,
 			Options: []fightingstyles.FightingStyle{
 				fightingstyles.Archery,
@@ -167,25 +221,110 @@ func getBaseClassRequirements(classID classes.Class) *Requirements {
 				fightingstyles.TwoWeaponFighting,
 			},
 			Label: "Choose a fighting style",
-		}
-		reqs.Equipment = getFighterEquipmentRequirements()
-		reqs.EquipmentCategories = getFighterEquipmentCategoryRequirements()
-	case classes.Rogue:
-		reqs.Equipment = getRogueEquipmentRequirements()
-		reqs.Expertise = &ExpertiseRequirement{
+		},
+	}
+}
+
+func getWizardRequirements() *Requirements {
+	return &Requirements{
+		Skills: &SkillRequirement{
+			ID:      getSkillChoiceID(classes.Wizard),
+			Count:   classes.ClassData[classes.Wizard].SkillCount,
+			Options: classes.ClassData[classes.Wizard].SkillList,
+			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Wizard].SkillCount),
+		},
+		Equipment: getWizardEquipmentRequirements(),
+		Cantrips: &CantripRequirement{
+			ID:    WizardCantrips1,
+			Count: 3,
+			Options: []spells.Spell{
+				// Damage cantrips
+				spells.FireBolt,
+				spells.RayOfFrost,
+				spells.ShockingGrasp,
+				spells.AcidSplash,
+				spells.PoisonSpray,
+				spells.ChillTouch,
+				// Utility cantrips
+				spells.MageHand,
+				spells.MinorIllusion,
+				spells.Prestidigitation,
+				spells.Light,
+			},
+			Label: "Choose 3 cantrips",
+		},
+		Spellbook: &SpellbookRequirement{
+			ID:         WizardSpells1,
+			Count:      6,
+			SpellLevel: 1,
+			Options: []spells.Spell{
+				// Damage spells
+				spells.MagicMissile,
+				spells.BurningHands,
+				spells.ChromaticOrb,
+				spells.Thunderwave,
+				spells.IceKnife,
+				spells.WitchBolt,
+				// Utility spells
+				spells.Shield,
+				spells.Sleep,
+				spells.CharmPerson,
+				spells.DetectMagic,
+				spells.Identify,
+				// Note: This is not the complete wizard spell list
+				// In a real implementation, we'd have a comprehensive list
+			},
+			Label: "Choose 6 1st-level spells for your spellbook",
+		},
+	}
+}
+
+func getRogueRequirements() *Requirements {
+	return &Requirements{
+		Skills: &SkillRequirement{
+			ID:      getSkillChoiceID(classes.Rogue),
+			Count:   classes.ClassData[classes.Rogue].SkillCount,
+			Options: classes.ClassData[classes.Rogue].SkillList,
+			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Rogue].SkillCount),
+		},
+		Equipment: getRogueEquipmentRequirements(),
+		Expertise: &ExpertiseRequirement{
 			ID:    RogueExpertise1,
 			Count: 2,
 			Label: "Choose 2 skills or thieves' tools for expertise",
-		}
-	case classes.Wizard:
-		reqs.Equipment = getWizardEquipmentRequirements()
-	case classes.Cleric:
-		reqs.Equipment = getClericEquipmentRequirements()
-	default:
-		// Add equipment requirements for other classes when implemented
+		},
 	}
+}
 
-	return reqs
+func getClericRequirements() *Requirements {
+	return &Requirements{
+		Skills: &SkillRequirement{
+			ID:      getSkillChoiceID(classes.Cleric),
+			Count:   classes.ClassData[classes.Cleric].SkillCount,
+			Options: classes.ClassData[classes.Cleric].SkillList,
+			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Cleric].SkillCount),
+		},
+		Equipment: getClericEquipmentRequirements(),
+		Cantrips: &CantripRequirement{
+			ID:    ClericCantrips1,
+			Count: 3,
+			Options: []spells.Spell{
+				// Damage cantrips
+				spells.SacredFlame,
+				spells.TollTheDead,
+				spells.WordOfRadiance,
+				// Utility cantrips
+				spells.Guidance,
+				spells.Light,
+				spells.Resistance,
+				spells.SpareTheDying,
+				spells.Thaumaturgy,
+			},
+			Label: "Choose 3 cantrips",
+		},
+		// Note: Clerics prepare spells, they don't have a spellbook
+		// Domain spells are automatically prepared and don't count against the limit
+	}
 }
 
 // getSkillChoiceID returns the appropriate ChoiceID for a class's skill selection
@@ -231,29 +370,35 @@ func GetRaceRequirements(raceID races.Race) *Requirements {
 				Options: nil, // Any skills
 				Label:   "Choose 2 skills",
 			},
-			Languages: &LanguageRequirement{
-				ID:      HalfElfLanguage,
-				Count:   1,
-				Options: nil, // Any language
-				Label:   "Choose 1 language",
+			Languages: []*LanguageRequirement{
+				{
+					ID:      HalfElfLanguage,
+					Count:   1,
+					Options: nil, // Any language
+					Label:   "Choose 1 language",
+				},
 			},
 		}
 	case races.Human:
 		return &Requirements{
-			Languages: &LanguageRequirement{
-				ID:      HumanLanguage,
-				Count:   1,
-				Options: nil, // Any language
-				Label:   "Choose 1 language",
+			Languages: []*LanguageRequirement{
+				{
+					ID:      HumanLanguage,
+					Count:   1,
+					Options: nil, // Any language
+					Label:   "Choose 1 language",
+				},
 			},
 		}
 	case races.HighElf:
 		return &Requirements{
-			Languages: &LanguageRequirement{
-				ID:      HighElfLanguage,
-				Count:   1,
-				Options: nil, // Any language
-				Label:   "Choose 1 language",
+			Languages: []*LanguageRequirement{
+				{
+					ID:      HighElfLanguage,
+					Count:   1,
+					Options: nil, // Any language
+					Label:   "Choose 1 language",
+				},
 			},
 		}
 	default:
@@ -272,16 +417,16 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-armor-a",
 					Label: "Chain mail",
 					Items: []EquipmentItem{
-						{ID: "chain-mail", Quantity: 1},
+						{ID: armor.ChainMail, Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-armor-b",
 					Label: "Leather armor, longbow, and 20 arrows",
 					Items: []EquipmentItem{
-						{ID: "leather", Quantity: 1},
-						{ID: "longbow", Quantity: 1},
-						{ID: "arrows-20", Quantity: 1},
+						{ID: armor.Leather, Quantity: 1},
+						{ID: weapons.Longbow, Quantity: 1},
+						{ID: weapons.Arrows20, Quantity: 1},
 					},
 				},
 			},
@@ -295,15 +440,33 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-weapon-a",
 					Label: "A martial weapon and a shield",
 					Items: []EquipmentItem{
-						// Martial weapon will be chosen via category requirement
-						{ID: "shield", Quantity: 1},
+						{ID: armor.Shield, Quantity: 1},
+					},
+					CategoryChoices: []EquipmentCategoryChoice{
+						{
+							Choose: 1,
+							Type:   shared.EquipmentTypeWeapon,
+							Categories: []shared.EquipmentCategory{
+								weapons.CategoryMartialMelee,
+								weapons.CategoryMartialRanged,
+							},
+							Label: "Choose a martial weapon",
+						},
 					},
 				},
 				{
 					ID:    "fighter-weapon-b",
 					Label: "Two martial weapons",
-					Items: []EquipmentItem{
-						// Both martial weapons will be chosen via category requirements
+					CategoryChoices: []EquipmentCategoryChoice{
+						{
+							Choose: 2,
+							Type:   shared.EquipmentTypeWeapon,
+							Categories: []shared.EquipmentCategory{
+								weapons.CategoryMartialMelee,
+								weapons.CategoryMartialRanged,
+							},
+							Label: "Choose two martial weapons",
+						},
 					},
 				},
 			},
@@ -317,15 +480,15 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-ranged-a",
 					Label: "A light crossbow and 20 bolts",
 					Items: []EquipmentItem{
-						{ID: "light-crossbow", Quantity: 1},
-						{ID: "bolts-20", Quantity: 1},
+						{ID: weapons.LightCrossbow, Quantity: 1},
+						{ID: weapons.Bolts20, Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-ranged-b",
 					Label: "Two handaxes",
 					Items: []EquipmentItem{
-						{ID: "handaxe", Quantity: 2},
+						{ID: weapons.Handaxe, Quantity: 2},
 					},
 				},
 			},
@@ -339,14 +502,14 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					ID:    "fighter-pack-a",
 					Label: "Dungeoneer's pack",
 					Items: []EquipmentItem{
-						{ID: "dungeoneer-pack", Quantity: 1},
+						{ID: packs.DungeoneerPack, Quantity: 1},
 					},
 				},
 				{
 					ID:    "fighter-pack-b",
 					Label: "Explorer's pack",
 					Items: []EquipmentItem{
-						{ID: "explorer-pack", Quantity: 1},
+						{ID: packs.ExplorerPack, Quantity: 1},
 					},
 				},
 			},
@@ -361,32 +524,207 @@ func getRogueEquipmentRequirements() []*EquipmentRequirement {
 }
 
 func getWizardEquipmentRequirements() []*EquipmentRequirement {
-	// Placeholder for wizard equipment
-	return []*EquipmentRequirement{}
+	return []*EquipmentRequirement{
+		{
+			ID:     WizardWeaponsPrimary,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "wizard-weapon-a",
+					Label: "Quarterstaff",
+					Items: []EquipmentItem{
+						{ID: weapons.Quarterstaff, Quantity: 1},
+					},
+				},
+				{
+					ID:    "wizard-weapon-b",
+					Label: "Dagger",
+					Items: []EquipmentItem{
+						{ID: weapons.Dagger, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your weapon",
+		},
+		{
+			ID:     WizardFocus,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "wizard-focus-a",
+					Label: "Component pouch",
+					Items: []EquipmentItem{
+						{ID: items.ComponentPouch, Quantity: 1},
+					},
+				},
+				{
+					ID:    "wizard-focus-b",
+					Label: "Arcane focus",
+					Items: []EquipmentItem{
+						{ID: items.ArcaneFocus, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your spellcasting focus",
+		},
+		{
+			ID:     WizardPack,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "wizard-pack-a",
+					Label: "Scholar's pack",
+					Items: []EquipmentItem{
+						{ID: packs.ScholarPack, Quantity: 1},
+					},
+				},
+				{
+					ID:    "wizard-pack-b",
+					Label: "Explorer's pack",
+					Items: []EquipmentItem{
+						{ID: packs.ExplorerPack, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your equipment pack",
+		},
+	}
 }
 
 func getClericEquipmentRequirements() []*EquipmentRequirement {
-	// Placeholder for cleric equipment
-	return []*EquipmentRequirement{}
+	return []*EquipmentRequirement{
+		{
+			ID:     ClericWeapons,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "cleric-weapon-a",
+					Label: "Mace",
+					Items: []EquipmentItem{
+						{ID: weapons.Mace, Quantity: 1},
+					},
+				},
+				{
+					ID:    "cleric-weapon-b",
+					Label: "Warhammer (if proficient)",
+					Items: []EquipmentItem{
+						{ID: weapons.Warhammer, Quantity: 1},
+					},
+					// Note: War Domain and some others grant martial weapon proficiency
+				},
+			},
+			Label: "Choose your weapon",
+		},
+		{
+			ID:     ClericArmor,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "cleric-armor-a",
+					Label: "Scale mail",
+					Items: []EquipmentItem{
+						{ID: armor.ScaleMail, Quantity: 1},
+					},
+				},
+				{
+					ID:    "cleric-armor-b",
+					Label: "Leather armor",
+					Items: []EquipmentItem{
+						{ID: armor.Leather, Quantity: 1},
+					},
+				},
+				{
+					ID:    "cleric-armor-c",
+					Label: "Chain mail (if proficient)",
+					Items: []EquipmentItem{
+						{ID: armor.ChainMail, Quantity: 1},
+					},
+					// Note: Life, Nature, Tempest, and War domains grant heavy armor proficiency
+				},
+			},
+			Label: "Choose your armor",
+		},
+		{
+			ID:     ClericSecondaryWeapon,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "cleric-secondary-a",
+					Label: "Light crossbow and 20 bolts",
+					Items: []EquipmentItem{
+						{ID: weapons.LightCrossbow, Quantity: 1},
+						{ID: weapons.Bolts20, Quantity: 1},
+					},
+				},
+				{
+					ID:    "cleric-secondary-b",
+					Label: "Any simple weapon",
+					CategoryChoices: []EquipmentCategoryChoice{
+						{
+							Choose: 1,
+							Type:   shared.EquipmentTypeWeapon,
+							Categories: []shared.EquipmentCategory{
+								weapons.CategorySimpleMelee,
+								weapons.CategorySimpleRanged,
+							},
+							Label: "Choose a simple weapon",
+						},
+					},
+				},
+			},
+			Label: "Choose your secondary weapon",
+		},
+		{
+			ID:     ClericPack,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "cleric-pack-a",
+					Label: "Priest's pack",
+					Items: []EquipmentItem{
+						{ID: packs.PriestPack, Quantity: 1},
+					},
+				},
+				{
+					ID:    "cleric-pack-b",
+					Label: "Explorer's pack",
+					Items: []EquipmentItem{
+						{ID: packs.ExplorerPack, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your equipment pack",
+		},
+		{
+			ID:     ClericHolySymbol,
+			Choose: 1,
+			Options: []EquipmentOption{
+				{
+					ID:    "cleric-holy-symbol",
+					Label: "Holy symbol",
+					Items: []EquipmentItem{
+						{ID: items.HolySymbol, Quantity: 1},
+					},
+				},
+			},
+			Label: "Choose your holy symbol",
+		},
+	}
 }
 
-// getFighterEquipmentCategoryRequirements returns category-based equipment choices for fighters
-func getFighterEquipmentCategoryRequirements() []*EquipmentCategoryRequirement {
-	// Fighter can choose martial weapons as part of their primary weapon selection
-	// This handles the "any martial weapon" part of the choice
-	return []*EquipmentCategoryRequirement{
-		{
-			ID:     FighterMartialWeapon1,
-			Choose: 1,
-			Type:   shared.EquipmentTypeWeapon,
-			Categories: []shared.EquipmentCategory{
-				weapons.CategoryMartialMelee,
-				weapons.CategoryMartialRanged,
-			},
-			Label: "Choose your first martial weapon",
-		},
-		// Note: Second martial weapon choice would be conditional based on
-		// whether they chose option B (two martial weapons)
-		// This might need to be handled dynamically based on the primary weapon choice
+// GetClassRequirementsWithSubclass returns requirements modified by the chosen subclass
+func GetClassRequirementsWithSubclass(class classes.Class, level int, subclass classes.Subclass) *Requirements {
+	// Start with base requirements for the level
+	reqs := GetClassRequirementsAtLevel(class, level)
+	if reqs == nil {
+		return nil
 	}
+
+	// Get subclass modifications
+	mods := GetSubclassModifications(subclass)
+
+	// Apply the modifications
+	ApplySubclassModifications(reqs, mods)
+
+	return reqs
 }

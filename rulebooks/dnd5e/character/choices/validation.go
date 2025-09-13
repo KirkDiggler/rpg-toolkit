@@ -49,6 +49,14 @@ func (v *Validator) Validate(requirements *Requirements, submissions *Submission
 		}
 	}
 
+	// Validate additional skills (from subclass)
+	for _, skillReq := range requirements.AdditionalSkills {
+		if err := v.validateSkills(skillReq, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+	}
+
 	// Validate equipment
 	for _, equipReq := range requirements.Equipment {
 		if err := v.validateEquipment(equipReq, submissions); err != nil {
@@ -67,15 +75,33 @@ func (v *Validator) Validate(requirements *Requirements, submissions *Submission
 
 	// Validate languages
 	if requirements.Languages != nil {
-		if err := v.validateLanguages(requirements.Languages, submissions); err != nil {
-			result.Valid = false
-			result.Errors = append(result.Errors, *err)
+		for _, langReq := range requirements.Languages {
+			if err := v.validateLanguages(langReq, submissions); err != nil {
+				result.Valid = false
+				result.Errors = append(result.Errors, *err)
+			}
 		}
 	}
 
 	// Validate tools
 	if requirements.Tools != nil {
 		if err := v.validateTools(requirements.Tools, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+	}
+
+	// Validate subclass
+	if requirements.Subclass != nil {
+		if err := v.validateSubclass(requirements.Subclass, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+	}
+
+	// Validate cantrips
+	if requirements.Cantrips != nil {
+		if err := v.validateCantrips(requirements.Cantrips, submissions); err != nil {
 			result.Valid = false
 			result.Errors = append(result.Errors, *err)
 		}
@@ -104,27 +130,58 @@ func (v *Validator) ValidateCharacterCreation(
 func (v *Validator) validateSkills(req *SkillRequirement, submissions *Submissions) *ValidationError {
 	// Find skill submissions
 	skillSubs := submissions.GetByCategory(shared.ChoiceSkills)
-	if len(skillSubs) == 0 {
-		return &ValidationError{
-			Category: shared.ChoiceSkills,
-			Message:  fmt.Sprintf("Must choose %d skills", req.Count),
+
+	// Count skills chosen for THIS specific requirement
+	totalChosen := 0
+	chosenSkills := make(map[string]bool)
+	found := false
+
+	for _, sub := range skillSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			totalChosen += len(sub.Values)
+			for _, skillID := range sub.Values {
+				chosenSkills[string(skillID)] = true
+			}
 		}
 	}
 
-	// Count total skills chosen
-	totalChosen := 0
-	for _, sub := range skillSubs {
-		totalChosen += len(sub.Values)
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceSkills,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose %d skills", req.Label, req.Count),
+		}
 	}
 
 	if totalChosen != req.Count {
 		return &ValidationError{
 			Category: shared.ChoiceSkills,
-			Message:  fmt.Sprintf("Must choose exactly %d skills, got %d", req.Count, totalChosen),
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s: Must choose exactly %d skills, got %d", req.Label, req.Count, totalChosen),
 		}
 	}
 
-	// TODO: Validate that chosen skills are in the allowed options
+	// If options are specified, validate against them
+	if req.Options != nil && len(req.Options) > 0 {
+		// Build allowed set for O(1) lookup
+		allowedSkills := make(map[string]bool)
+		for _, skill := range req.Options {
+			allowedSkills[string(skill)] = true
+		}
+
+		// Check each chosen skill is allowed
+		for skillID := range chosenSkills {
+			if !allowedSkills[skillID] {
+				return &ValidationError{
+					Category: shared.ChoiceSkills,
+					ChoiceID: req.ID,
+					Message:  fmt.Sprintf("Skill '%s' is not in the allowed options", skillID),
+				}
+			}
+		}
+	}
+	// If req.Options is nil, any skill is allowed (no validation needed)
 
 	return nil
 }
@@ -142,6 +199,24 @@ func (v *Validator) validateEquipment(req *EquipmentRequirement, submissions *Su
 					Category: shared.ChoiceEquipment,
 					ChoiceID: req.ID,
 					Message:  fmt.Sprintf("Must choose exactly %d options, got %d", req.Choose, len(sub.Values)),
+				}
+			}
+
+			// Validate that the option ID is valid
+			if sub.OptionID != "" {
+				validOption := false
+				for _, option := range req.Options {
+					if option.ID == sub.OptionID {
+						validOption = true
+						break
+					}
+				}
+				if !validOption {
+					return &ValidationError{
+						Category: shared.ChoiceEquipment,
+						ChoiceID: req.ID,
+						Message:  fmt.Sprintf("Invalid equipment option '%s'", sub.OptionID),
+					}
 				}
 			}
 		}
@@ -283,6 +358,104 @@ func (v *Validator) validateTools(req *ToolRequirement, submissions *Submissions
 	return nil
 }
 
+func (v *Validator) validateSubclass(req *SubclassRequirement, submissions *Submissions) *ValidationError {
+	// Find subclass submissions (using ChoiceClass category)
+	subclassSubs := submissions.GetByCategory(shared.ChoiceClass)
+
+	// Look for a submission with the subclass choice ID
+	found := false
+	for _, sub := range subclassSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			if len(sub.Values) != 1 {
+				return &ValidationError{
+					Category: shared.ChoiceClass,
+					ChoiceID: req.ID,
+					Message:  "Must choose exactly one subclass",
+				}
+			}
+
+			// Validate the chosen subclass is in the allowed options
+			if req.Options != nil && len(req.Options) > 0 {
+				chosenSubclass := string(sub.Values[0])
+				validSubclass := false
+				for _, option := range req.Options {
+					if string(option) == chosenSubclass {
+						validSubclass = true
+						break
+					}
+				}
+				if !validSubclass {
+					return &ValidationError{
+						Category: shared.ChoiceClass,
+						ChoiceID: req.ID,
+						Message:  fmt.Sprintf("Invalid subclass choice '%s'", chosenSubclass),
+					}
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceClass,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s required", req.Label),
+		}
+	}
+
+	return nil
+}
+
+func (v *Validator) validateCantrips(req *CantripRequirement, submissions *Submissions) *ValidationError {
+	// Find cantrip submissions
+	cantripSubs := submissions.GetByCategory(shared.ChoiceCantrips)
+
+	found := false
+	for _, sub := range cantripSubs {
+		if sub.ChoiceID == req.ID {
+			found = true
+			if len(sub.Values) != req.Count {
+				return &ValidationError{
+					Category: shared.ChoiceCantrips,
+					ChoiceID: req.ID,
+					Message:  fmt.Sprintf("Must choose exactly %d cantrips, got %d", req.Count, len(sub.Values)),
+				}
+			}
+
+			// Validate chosen cantrips are in the allowed options
+			if req.Options != nil && len(req.Options) > 0 {
+				allowedCantrips := make(map[string]bool)
+				for _, cantrip := range req.Options {
+					allowedCantrips[string(cantrip)] = true
+				}
+
+				for _, chosenCantrip := range sub.Values {
+					if !allowedCantrips[string(chosenCantrip)] {
+						return &ValidationError{
+							Category: shared.ChoiceCantrips,
+							ChoiceID: req.ID,
+							Message:  fmt.Sprintf("Cantrip '%s' is not in the allowed options", chosenCantrip),
+						}
+					}
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		return &ValidationError{
+			Category: shared.ChoiceCantrips,
+			ChoiceID: req.ID,
+			Message:  fmt.Sprintf("%s required", req.Label),
+		}
+	}
+
+	return nil
+}
+
 // mergeRequirements merges multiple requirement sets
 func mergeRequirements(reqs ...*Requirements) *Requirements {
 	merged := &Requirements{}
@@ -305,13 +478,9 @@ func mergeRequirements(reqs ...*Requirements) *Requirements {
 		// Merge equipment categories (append all)
 		merged.EquipmentCategories = append(merged.EquipmentCategories, req.EquipmentCategories...)
 
-		// Merge languages (sum the counts)
+		// Merge languages (append all)
 		if req.Languages != nil {
-			if merged.Languages == nil {
-				merged.Languages = req.Languages
-			} else {
-				merged.Languages.Count += req.Languages.Count
-			}
+			merged.Languages = append(merged.Languages, req.Languages...)
 		}
 
 		// Merge tools

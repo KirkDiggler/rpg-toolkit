@@ -56,6 +56,7 @@ const (
 )
 
 // All provides map lookup for base races only (no subraces)
+// Deprecated: Use RaceData directly - it now contains ID field and Name()/Description() methods
 var All = map[string]Race{
 	"human":      Human,
 	"elf":        Elf,
@@ -117,6 +118,58 @@ func GetByID(id string) (Race, error) {
 			rpgerr.WithMeta("valid_options", validRaces))
 	}
 	return race, nil
+}
+
+// Name is a human readable name for the race
+func (r Race) Name() string {
+	switch r {
+	case Human:
+		return "Human"
+	case Elf:
+		return "Elf"
+	case Dwarf:
+		return "Dwarf"
+	case Halfling:
+		return "Halfling"
+	case Dragonborn:
+		return "Dragonborn"
+	case Gnome:
+		return "Gnome"
+	case HalfElf:
+		return "Half-Elf"
+	case HalfOrc:
+		return "Half-Orc"
+	case Tiefling:
+		return "Tiefling"
+	default:
+		return "Unknown"
+	}
+}
+
+// Description is a brief description for a race
+func (r Race) Description() string {
+	switch r {
+	case Human:
+		return "Humans are the most common race in the world, with a diverse array of backgrounds and cultures."
+	case Elf:
+		return "Elves are a long-lived race with a deep connection to nature and a love of magic."
+	case Dwarf:
+		return "Dwarves are a hardy race with a love of mining and a deep connection to the earth."
+	case Halfling:
+		return "Halflings are a small race with a love of food and a deep connection to the land."
+	case Dragonborn:
+		return "Dragonborn are a powerful race with a love of magic and a deep connection to the earth."
+	case Gnome:
+		return "Gnomes are a small race with a love of magic and a deep connection to the earth."
+	case HalfElf:
+		return "Half-Elves are a powerful race with a love of magic and a deep connection to the earth."
+	case HalfOrc:
+		return "Half-Orcs are a powerful race with a love of magic and a deep connection to the earth."
+	case Tiefling:
+		return "Tieflings are a powerful race with a love of magic and a deep connection to the earth."
+	default:
+		return "Unknown race"
+	}
 }
 
 // IsSubrace returns true if this is a subrace

@@ -9,6 +9,7 @@ import (
 
 // Data contains all the game mechanics data for a race
 type Data struct {
+	ID               Race // The race this data represents
 	Speed            int
 	Size             string // "Small", "Medium", "Large"
 	AbilityIncreases map[abilities.Ability]int
@@ -57,6 +58,7 @@ type Choice struct {
 // RaceData is the lookup map for all race data
 var RaceData = map[Race]*Data{
 	Human: {
+		ID:    Human,
 		Speed: 30,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -79,6 +81,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	Dwarf: {
+		ID:    Dwarf,
 		Speed: 25,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -144,6 +147,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	Elf: {
+		ID:    Elf,
 		Speed: 30,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -218,6 +222,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	Halfling: {
+		ID:    Halfling,
 		Speed: 25,
 		Size:  "Small",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -273,6 +278,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	Dragonborn: {
+		ID:    Dragonborn,
 		Speed: 30,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -303,6 +309,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	Gnome: {
+		ID:    Gnome,
 		Speed: 25,
 		Size:  "Small",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -363,6 +370,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	HalfElf: {
+		ID:    HalfElf,
 		Speed: 30,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -405,6 +413,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	HalfOrc: {
+		ID:    HalfOrc,
 		Speed: 30,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -443,6 +452,7 @@ var RaceData = map[Race]*Data{
 	},
 
 	Tiefling: {
+		ID:    Tiefling,
 		Speed: 30,
 		Size:  "Medium",
 		AbilityIncreases: map[abilities.Ability]int{
@@ -485,4 +495,14 @@ func GetSubraceData(raceID Race, subraceID Subrace) *SubraceData {
 		return nil
 	}
 	return raceData.Subraces[subraceID]
+}
+
+// Name returns the display name of the race
+func (d *Data) Name() string {
+	return d.ID.Name()
+}
+
+// Description returns the description of the race
+func (d *Data) Description() string {
+	return d.ID.Description()
 }

@@ -40,10 +40,7 @@ const (
 	FighterWeaponsPrimary   ChoiceID = "fighter-weapons-primary"
 	FighterWeaponsSecondary ChoiceID = "fighter-weapons-secondary"
 	FighterPack             ChoiceID = "fighter-pack"
-
-	// Category-based equipment choices
-	FighterMartialWeapon1 ChoiceID = "fighter-martial-weapon-1"
-	FighterMartialWeapon2 ChoiceID = "fighter-martial-weapon-2"
+	// Martial weapon choices are now embedded in the equipment options
 )
 
 // Rogue equipment choice IDs
@@ -56,15 +53,17 @@ const (
 // Wizard equipment choice IDs
 const (
 	WizardWeaponsPrimary ChoiceID = "wizard-weapons-primary"
+	WizardFocus          ChoiceID = "wizard-focus"
 	WizardPack           ChoiceID = "wizard-pack"
 )
 
 // Cleric equipment choice IDs
 const (
-	ClericWeapons    ChoiceID = "cleric-weapons"
-	ClericArmor      ChoiceID = "cleric-armor"
-	ClericPack       ChoiceID = "cleric-pack"
-	ClericHolySymbol ChoiceID = "cleric-holy-symbol"
+	ClericWeapons         ChoiceID = "cleric-weapons"
+	ClericArmor           ChoiceID = "cleric-armor"
+	ClericSecondaryWeapon ChoiceID = "cleric-secondary-weapon"
+	ClericPack            ChoiceID = "cleric-pack"
+	ClericHolySymbol      ChoiceID = "cleric-holy-symbol"
 )
 
 // Race skill choice IDs

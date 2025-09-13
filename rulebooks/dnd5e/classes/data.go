@@ -8,6 +8,7 @@ import (
 
 // Data contains all the game mechanics data for a class
 type Data struct {
+	ID             Class // The class this data represents
 	HitDice        int
 	PrimaryAbility abilities.Ability
 	SavingThrows   []abilities.Ability
@@ -40,6 +41,7 @@ type Data struct {
 // ClassData is the lookup map for all class data
 var ClassData = map[Class]*Data{
 	Fighter: {
+		ID:             Fighter,
 		HitDice:        10,
 		PrimaryAbility: abilities.STR,
 		SavingThrows:   []abilities.Ability{abilities.STR, abilities.CON},
@@ -75,6 +77,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Wizard: {
+		ID:             Wizard,
 		HitDice:        6,
 		PrimaryAbility: abilities.INT,
 		SavingThrows:   []abilities.Ability{abilities.INT, abilities.WIS},
@@ -115,6 +118,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Cleric: {
+		ID:             Cleric,
 		HitDice:        8,
 		PrimaryAbility: abilities.WIS,
 		SavingThrows:   []abilities.Ability{abilities.WIS, abilities.CHA},
@@ -153,6 +157,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Rogue: {
+		ID:             Rogue,
 		HitDice:        8,
 		PrimaryAbility: abilities.DEX,
 		SavingThrows:   []abilities.Ability{abilities.DEX, abilities.INT},
@@ -194,6 +199,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Barbarian: {
+		ID:             Barbarian,
 		HitDice:        12,
 		PrimaryAbility: abilities.STR,
 		SavingThrows:   []abilities.Ability{abilities.STR, abilities.CON},
@@ -225,6 +231,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Bard: {
+		ID:             Bard,
 		HitDice:        8,
 		PrimaryAbility: abilities.CHA,
 		SavingThrows:   []abilities.Ability{abilities.DEX, abilities.CHA},
@@ -255,6 +262,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Druid: {
+		ID:             Druid,
 		HitDice:        8,
 		PrimaryAbility: abilities.WIS,
 		SavingThrows:   []abilities.Ability{abilities.INT, abilities.WIS},
@@ -304,6 +312,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Monk: {
+		ID:             Monk,
 		HitDice:        8,
 		PrimaryAbility: abilities.DEX,
 		SavingThrows:   []abilities.Ability{abilities.STR, abilities.DEX},
@@ -325,6 +334,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Paladin: {
+		ID:             Paladin,
 		HitDice:        10,
 		PrimaryAbility: abilities.STR,
 		SavingThrows:   []abilities.Ability{abilities.WIS, abilities.CHA},
@@ -355,6 +365,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Ranger: {
+		ID:             Ranger,
 		HitDice:        10,
 		PrimaryAbility: abilities.DEX,
 		SavingThrows:   []abilities.Ability{abilities.STR, abilities.DEX},
@@ -386,6 +397,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Sorcerer: {
+		ID:             Sorcerer,
 		HitDice:        6,
 		PrimaryAbility: abilities.CHA,
 		SavingThrows:   []abilities.Ability{abilities.CON, abilities.CHA},
@@ -413,6 +425,7 @@ var ClassData = map[Class]*Data{
 	},
 
 	Warlock: {
+		ID:             Warlock,
 		HitDice:        8,
 		PrimaryAbility: abilities.CHA,
 		SavingThrows:   []abilities.Ability{abilities.WIS, abilities.CHA},
@@ -442,4 +455,14 @@ var ClassData = map[Class]*Data{
 // GetData returns the class data for a given class ID
 func GetData(classID Class) *Data {
 	return ClassData[classID]
+}
+
+// Name returns the display name of the class
+func (d *Data) Name() string {
+	return d.ID.Name()
+}
+
+// Description returns the description of the class
+func (d *Data) Description() string {
+	return d.ID.Description()
 }
