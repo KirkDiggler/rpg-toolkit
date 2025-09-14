@@ -262,11 +262,19 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 	d.class = input.ClassID
 	d.subclass = input.SubclassID
 
+	// Get class requirements once for all choice recording
+	requirements := choices.GetClassRequirements(d.class)
+
 	// Record skill choices
 	if len(input.Choices.Skills) > 0 {
+		var choiceID choices.ChoiceID
+		if requirements.Skills != nil {
+			choiceID = requirements.Skills.ID
+		}
 		d.recordChoice(choices.ChoiceData{
 			Category:       shared.ChoiceSkills,
 			Source:         shared.SourceClass,
+			ChoiceID:       choiceID,
 			SkillSelection: input.Choices.Skills,
 		})
 	}
@@ -274,35 +282,48 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 	// Record fighting style (for Fighter, Paladin, etc.)
 	if input.Choices.FightingStyle != "" {
 		style := input.Choices.FightingStyle
+		var choiceID choices.ChoiceID
+		if requirements.FightingStyle != nil {
+			choiceID = requirements.FightingStyle.ID
+		}
 		d.recordChoice(choices.ChoiceData{
 			Category:               shared.ChoiceFightingStyle,
 			Source:                 shared.SourceClass,
+			ChoiceID:               choiceID,
 			FightingStyleSelection: &style,
 		})
 	}
 
 	// Record cantrips (for spellcasters)
 	if len(input.Choices.Cantrips) > 0 {
+		var choiceID choices.ChoiceID
+		if requirements.Cantrips != nil {
+			choiceID = requirements.Cantrips.ID
+		}
 		d.recordChoice(choices.ChoiceData{
 			Category:       shared.ChoiceCantrips,
 			Source:         shared.SourceClass,
+			ChoiceID:       choiceID,
 			SpellSelection: input.Choices.Cantrips,
 		})
 	}
 
 	// Record spells (for spellcasters)
 	if len(input.Choices.Spells) > 0 {
+		var choiceID choices.ChoiceID
+		if requirements.Spellbook != nil {
+			choiceID = requirements.Spellbook.ID
+		}
 		d.recordChoice(choices.ChoiceData{
 			Category:       shared.ChoiceSpells,
 			Source:         shared.SourceClass,
+			ChoiceID:       choiceID,
 			SpellSelection: input.Choices.Spells,
 		})
 	}
 
 	// Record equipment choices
 	if len(input.Choices.Equipment) > 0 {
-		requirements := choices.GetClassRequirements(d.class)
-
 		for choiceID, selectionID := range input.Choices.Equipment {
 			// Check if it's a regular equipment choice (with options)
 			for _, req := range requirements.Equipment {
