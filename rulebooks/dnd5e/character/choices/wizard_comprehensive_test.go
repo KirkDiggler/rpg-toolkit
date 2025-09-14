@@ -39,8 +39,8 @@ func (s *WizardCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ChoiceID("wizard-skills"),
 		Values: []shared.SelectionID{
-			shared.SelectionID(skills.Arcana),
-			shared.SelectionID(skills.Investigation),
+			skills.Arcana,
+			skills.Investigation,
 		},
 	})
 
@@ -51,7 +51,7 @@ func (s *WizardCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.WizardWeaponsPrimary,
 		OptionID: choices.WizardWeaponQuarterstaff,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.WizardWeaponQuarterstaff),
+			choices.WizardWeaponQuarterstaff,
 		},
 	})
 
@@ -62,7 +62,7 @@ func (s *WizardCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.WizardFocus,
 		OptionID: choices.WizardFocusComponent,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.WizardFocusComponent),
+			choices.WizardFocusComponent,
 		},
 	})
 
@@ -73,7 +73,7 @@ func (s *WizardCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.WizardPack,
 		OptionID: choices.WizardPackScholar,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.WizardPackScholar),
+			choices.WizardPackScholar,
 		},
 	})
 
@@ -83,9 +83,9 @@ func (s *WizardCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Source:   shared.SourceClass,
 		ChoiceID: choices.WizardCantrips1,
 		Values: []shared.SelectionID{
-			shared.SelectionID(spells.FireBolt),
-			shared.SelectionID(spells.MageHand),
-			shared.SelectionID(spells.Prestidigitation),
+			spells.FireBolt,
+			spells.MageHand,
+			spells.Prestidigitation,
 		},
 	})
 
@@ -95,12 +95,12 @@ func (s *WizardCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Source:   shared.SourceClass,
 		ChoiceID: choices.WizardSpells1,
 		Values: []shared.SelectionID{
-			shared.SelectionID(spells.MagicMissile),
-			shared.SelectionID(spells.Shield),
-			shared.SelectionID(spells.Sleep),
-			shared.SelectionID(spells.DetectMagic),
-			shared.SelectionID(spells.Identify),
-			shared.SelectionID(spells.CharmPerson),
+			spells.MagicMissile,
+			spells.Shield,
+			spells.Sleep,
+			spells.DetectMagic,
+			spells.Identify,
+			spells.CharmPerson,
 		},
 	})
 
@@ -139,8 +139,8 @@ func (s *WizardCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSkills {
 				// Try to choose a skill not in Wizard's list
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Arcana),
-					shared.SelectionID(skills.Athletics), // Not a Wizard skill
+					skills.Arcana,
+					skills.Athletics, // Not a Wizard skill
 				}
 			}
 			subs.Add(sub)
@@ -168,8 +168,8 @@ func (s *WizardCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceCantrips {
 				// Only choose 2 instead of 3
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(spells.FireBolt),
-					shared.SelectionID(spells.MageHand),
+					spells.FireBolt,
+					spells.MageHand,
 				}
 			}
 			subs.Add(sub)
@@ -197,10 +197,10 @@ func (s *WizardCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSpells {
 				// Only choose 4 instead of 6
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(spells.MagicMissile),
-					shared.SelectionID(spells.Shield),
-					shared.SelectionID(spells.Sleep),
-					shared.SelectionID(spells.DetectMagic),
+					spells.MagicMissile,
+					spells.Shield,
+					spells.Sleep,
+					spells.DetectMagic,
 				}
 			}
 			subs.Add(sub)
@@ -216,12 +216,12 @@ func (s *WizardCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSpells {
 				// Try to add a spell not in the wizard list
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(spells.MagicMissile),
-					shared.SelectionID(spells.Shield),
-					shared.SelectionID(spells.Sleep),
-					shared.SelectionID(spells.DetectMagic),
-					shared.SelectionID(spells.Identify),
-					shared.SelectionID(spells.CureWounds), // Cleric spell, not wizard
+					spells.MagicMissile,
+					spells.Shield,
+					spells.Sleep,
+					spells.DetectMagic,
+					spells.Identify,
+					spells.CureWounds, // Cleric spell, not wizard
 				}
 			}
 			subs.Add(sub)
@@ -326,7 +326,7 @@ func (s *WizardCompleteSuite) TestEquipmentChoices() {
 				// Choose dagger
 				sub.OptionID = choices.WizardWeaponDagger
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.WizardWeaponDagger),
+					choices.WizardWeaponDagger,
 				}
 			}
 			subs.Add(sub)
@@ -343,7 +343,7 @@ func (s *WizardCompleteSuite) TestEquipmentChoices() {
 				// Choose arcane staff
 				sub.OptionID = choices.WizardFocusStaff
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.WizardFocusStaff),
+					choices.WizardFocusStaff,
 				}
 			}
 			subs.Add(sub)
@@ -360,7 +360,7 @@ func (s *WizardCompleteSuite) TestEquipmentChoices() {
 				// Choose explorer's pack
 				sub.OptionID = choices.WizardPackExplorer
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.WizardPackExplorer),
+					choices.WizardPackExplorer,
 				}
 			}
 			subs.Add(sub)

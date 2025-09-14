@@ -169,9 +169,7 @@ func (c *Class) GetChoicesAtLevel(level int) []ChoiceData {
 	if level == 1 {
 		// Skills are always a choice at level 1
 		skillStrings := make([]string, len(c.data.SkillOptions))
-		for i, skill := range c.data.SkillOptions {
-			skillStrings[i] = string(skill)
-		}
+		copy(skillStrings, c.data.SkillOptions)
 		choices = append(choices, ChoiceData{
 			ID:     "class_skills",
 			Type:   "skill",

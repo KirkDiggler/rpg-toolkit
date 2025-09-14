@@ -128,7 +128,7 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 	},
 
 	classes.LightDomain: {
-		GrantedCantrips: []string{string(spells.Light)},
+		GrantedCantrips: []spells.Spell{spells.Light},
 		GrantedSpells: []SpellGrant{
 			{Level: 1, Spells: []spells.Spell{spells.BurningHands, spells.FaerieFire}},
 			{Level: 3, Spells: []spells.Spell{spells.FlamingSphere, spells.ScorchingRay}},

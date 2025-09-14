@@ -72,8 +72,8 @@ type Armor struct {
 }
 
 // EquipmentID returns the unique identifier for this armor
-func (a *Armor) EquipmentID() string {
-	return string(a.ID)
+func (a *Armor) EquipmentID() shared.EquipmentID {
+	return a.ID
 }
 
 // EquipmentType returns the equipment type (always TypeArmor)
@@ -256,12 +256,12 @@ var All = map[ArmorID]Armor{
 func GetByID(id ArmorID) (Armor, error) {
 	armor, ok := All[id]
 	if !ok {
-		validArmor := make([]string, 0, len(All))
+		validArmor := make([]ArmorID, 0, len(All))
 		for k := range All {
-			validArmor = append(validArmor, string(k))
+			validArmor = append(validArmor, k)
 		}
 		return Armor{}, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid armor",
-			rpgerr.WithMeta("provided", string(id)),
+			rpgerr.WithMeta("provided", id),
 			rpgerr.WithMeta("valid_options", validArmor))
 	}
 	return armor, nil

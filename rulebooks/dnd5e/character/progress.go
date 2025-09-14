@@ -11,11 +11,15 @@ const (
 	// ProgressNone indicates no steps completed
 	ProgressNone Progress = 0
 
-	// Core character creation steps
-	ProgressName          Progress = 1 << 0 // 0x01 - Character name set
-	ProgressRace          Progress = 1 << 1 // 0x02 - Race and race choices complete
-	ProgressClass         Progress = 1 << 2 // 0x04 - Class and all class choices complete
-	ProgressBackground    Progress = 1 << 3 // 0x08 - Background and background choices complete
+	// ProgressName indicates character name is set
+	ProgressName Progress = 1 << 0 // 0x01 - Character name set
+	// ProgressRace indicates race and race choices are complete
+	ProgressRace Progress = 1 << 1 // 0x02 - Race and race choices complete
+	// ProgressClass indicates class and class choices are complete
+	ProgressClass Progress = 1 << 2 // 0x04 - Class and all class choices complete
+	// ProgressBackground indicates background and background choices are complete
+	ProgressBackground Progress = 1 << 3 // 0x08 - Background and background choices complete
+	// ProgressAbilityScores indicates ability scores are assigned
 	ProgressAbilityScores Progress = 1 << 4 // 0x10 - Ability scores assigned
 
 	// ProgressComplete indicates all required steps are done

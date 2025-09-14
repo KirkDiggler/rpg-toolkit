@@ -130,7 +130,7 @@ func (c *CLI) createCharacterWizard() {
 	wis := c.getAbilityScoreInput("Wisdom: ")
 	cha := c.getAbilityScoreInput("Charisma: ")
 
-	// Background
+	// BackgroundData
 	fmt.Println("\nAssigning Soldier background (provides: Athletics, Intimidation)")
 	backgroundData := getSoldierBackgroundData()
 

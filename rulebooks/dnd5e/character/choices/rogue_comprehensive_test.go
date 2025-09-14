@@ -39,10 +39,10 @@ func (s *RogueCompleteSuite) createValidBaseSubmissions() *choices.Submissions {
 		Source:   shared.SourceClass,
 		ChoiceID: choices.RogueSkills,
 		Values: []shared.SelectionID{
-			shared.SelectionID(skills.Stealth),
-			shared.SelectionID(skills.Acrobatics),
-			shared.SelectionID(skills.Investigation),
-			shared.SelectionID(skills.Perception),
+			skills.Stealth,
+			skills.Acrobatics,
+			skills.Investigation,
+			skills.Perception,
 		},
 	})
 
@@ -53,7 +53,7 @@ func (s *RogueCompleteSuite) createValidBaseSubmissions() *choices.Submissions {
 		ChoiceID: choices.RogueWeaponsPrimary,
 		OptionID: choices.RogueWeaponRapier,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.RogueWeaponRapier),
+			choices.RogueWeaponRapier,
 		},
 	})
 
@@ -64,7 +64,7 @@ func (s *RogueCompleteSuite) createValidBaseSubmissions() *choices.Submissions {
 		ChoiceID: choices.RogueWeaponsSecondary,
 		OptionID: choices.RogueSecondaryShortbow,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.RogueSecondaryShortbow),
+			choices.RogueSecondaryShortbow,
 		},
 	})
 
@@ -75,7 +75,7 @@ func (s *RogueCompleteSuite) createValidBaseSubmissions() *choices.Submissions {
 		ChoiceID: choices.RoguePack,
 		OptionID: choices.RoguePackBurglar,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.RoguePackBurglar),
+			choices.RoguePackBurglar,
 		},
 	})
 
@@ -85,8 +85,8 @@ func (s *RogueCompleteSuite) createValidBaseSubmissions() *choices.Submissions {
 		Source:   shared.SourceClass,
 		ChoiceID: choices.RogueExpertise1,
 		Values: []shared.SelectionID{
-			shared.SelectionID(skills.Stealth),
-			shared.SelectionID(tools.ThievesTools),
+			skills.Stealth,
+			tools.ThievesTools,
 		},
 	})
 
@@ -125,8 +125,8 @@ func (s *RogueCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSkills {
 				// Only choose 2 instead of 4
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Stealth),
-					shared.SelectionID(skills.Acrobatics),
+					skills.Stealth,
+					skills.Acrobatics,
 				}
 			}
 			subs.Add(sub)
@@ -142,10 +142,10 @@ func (s *RogueCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSkills {
 				// Try to choose a skill not in Rogue's list
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Stealth),
-					shared.SelectionID(skills.Acrobatics),
-					shared.SelectionID(skills.Investigation),
-					shared.SelectionID(skills.Arcana), // Not a Rogue skill
+					skills.Stealth,
+					skills.Acrobatics,
+					skills.Investigation,
+					skills.Arcana, // Not a Rogue skill
 				}
 			}
 			subs.Add(sub)
@@ -173,7 +173,7 @@ func (s *RogueCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceExpertise {
 				// Only choose 1 instead of 2
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Stealth),
+					skills.Stealth,
 				}
 			}
 			subs.Add(sub)
@@ -239,7 +239,7 @@ func (s *RogueCompleteSuite) TestEquipmentChoices() {
 				// Choose shortsword
 				sub.OptionID = choices.RogueWeaponShortsword
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.RogueWeaponShortsword),
+					choices.RogueWeaponShortsword,
 				}
 			}
 			subs.Add(sub)
@@ -256,7 +256,7 @@ func (s *RogueCompleteSuite) TestEquipmentChoices() {
 				// Choose shortsword
 				sub.OptionID = choices.RogueSecondaryShortsword
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.RogueSecondaryShortsword),
+					choices.RogueSecondaryShortsword,
 				}
 			}
 			subs.Add(sub)
@@ -273,7 +273,7 @@ func (s *RogueCompleteSuite) TestEquipmentChoices() {
 				// Choose dungeoneer's pack
 				sub.OptionID = choices.RoguePackDungeoneer
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.RoguePackDungeoneer),
+					choices.RoguePackDungeoneer,
 				}
 			}
 			subs.Add(sub)
@@ -290,7 +290,7 @@ func (s *RogueCompleteSuite) TestEquipmentChoices() {
 				// Choose explorer's pack
 				sub.OptionID = choices.RoguePackExplorer
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.RoguePackExplorer),
+					choices.RoguePackExplorer,
 				}
 			}
 			subs.Add(sub)
@@ -311,8 +311,8 @@ func (s *RogueCompleteSuite) TestExpertiseOptions() {
 			if sub.Category == shared.ChoiceExpertise {
 				// Choose 2 skills
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Stealth),
-					shared.SelectionID(skills.Investigation),
+					skills.Stealth,
+					skills.Investigation,
 				}
 			}
 			subs.Add(sub)

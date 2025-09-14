@@ -210,33 +210,6 @@ func (s *APIValidationSuite) TestBarbarianAPIValidation() {
 	s.Assert().Nil(reqs.Spellbook, "Barbarian should not have spellbook")
 }
 
-// Helper to extract skill names from API data
-func (s *APIValidationSuite) extractSkillsFromAPI(profChoices []interface{}) []string {
-	skills := []string{}
-	if len(profChoices) > 0 {
-		if firstChoice, ok := profChoices[0].(map[string]interface{}); ok {
-			if from, ok := firstChoice["from"].(map[string]interface{}); ok {
-				if options, ok := from["options"].([]interface{}); ok {
-					for _, opt := range options {
-						if optMap, ok := opt.(map[string]interface{}); ok {
-							if item, ok := optMap["item"].(map[string]interface{}); ok {
-								if name, ok := item["name"].(string); ok {
-									// Extract skill name (e.g., "Skill: Athletics" -> "Athletics")
-									if strings.HasPrefix(name, "Skill: ") {
-										skillName := strings.TrimPrefix(name, "Skill: ")
-										skills = append(skills, skillName)
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return skills
-}
-
 // TestAllClassesHaveAPIData ensures we have API data for all classes
 func (s *APIValidationSuite) TestAllClassesHaveAPIData() {
 	classNames := []string{

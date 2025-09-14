@@ -1,8 +1,10 @@
 // Package fightingstyles provides D&D 5e fighting style definitions
 package fightingstyles
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+
 // FightingStyle represents a combat style that provides specific benefits
-type FightingStyle string
+type FightingStyle = shared.SelectionID
 
 // Fighting style constants
 const (
@@ -29,7 +31,7 @@ const (
 )
 
 // Name returns the display name of the fighting style
-func (f FightingStyle) Name() string {
+func Name(f FightingStyle) string {
 	switch f {
 	case Archery:
 		return "Archery"
@@ -44,25 +46,25 @@ func (f FightingStyle) Name() string {
 	case TwoWeaponFighting:
 		return "Two-Weapon Fighting"
 	default:
-		return string(f)
+		return f
 	}
 }
 
 // Description returns the mechanical description of the fighting style
-func (f FightingStyle) Description() string {
+func Description(f FightingStyle) string {
 	switch f {
 	case Archery:
 		return "You gain a +2 bonus to attack rolls you make with ranged weapons."
 	case Defense:
 		return "While you are wearing armor, you gain a +1 bonus to AC."
 	case Dueling:
-		return "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon."
+		return "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon." //nolint:lll
 	case GreatWeaponFighting:
-		return "When you roll a 1 or 2 on a damage die for an attack you make with a melee weapon that you are wielding with two hands, you can reroll the die and must use the new roll. The weapon must have the two-handed or versatile property."
+		return "When you roll a 1 or 2 on a damage die for an attack you make with a melee weapon that you are wielding with two hands, you can reroll the die and must use the new roll. The weapon must have the two-handed or versatile property." //nolint:lll
 	case Protection:
-		return "When a creature you can see attacks a target other than you that is within 5 feet of you, you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield."
+		return "When a creature you can see attacks a target other than you that is within 5 feet of you, you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield." //nolint:lll
 	case TwoWeaponFighting:
-		return "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack."
+		return "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack." //nolint:lll
 	default:
 		return ""
 	}

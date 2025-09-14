@@ -94,7 +94,7 @@ func (c *Character) GetProficiencyBonus() int {
 
 // GetSkillModifier returns the total modifier for a skill check
 func (c *Character) GetSkillModifier(skill skills.Skill) int {
-	ability := skill.Ability()
+	ability := skills.Ability(skill)
 	modifier := c.GetAbilityModifier(ability)
 
 	if level, hasProficiency := c.skills[skill]; hasProficiency {

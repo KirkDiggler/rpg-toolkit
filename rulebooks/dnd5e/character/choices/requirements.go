@@ -704,7 +704,7 @@ func getSkillChoiceID(classID classes.Class) ChoiceID {
 	case classes.Warlock:
 		return WarlockSkills
 	default:
-		return ChoiceID(fmt.Sprintf("%s-skills", strings.ToLower(string(classID))))
+		return ChoiceID(fmt.Sprintf("%s-skills", strings.ToLower(classID)))
 	}
 }
 

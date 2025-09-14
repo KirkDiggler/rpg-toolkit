@@ -38,10 +38,11 @@ func TestFighterCompleteRequirements(t *testing.T) {
 			assert.Len(t, eq.Options, 2, "Should have 2 primary weapon options")
 			// Check that martial weapon category choices are embedded
 			for _, opt := range eq.Options {
-				if opt.ID == "fighter-weapon-a" {
+				switch opt.ID {
+				case choices.FighterWeaponMartialShield:
 					assert.Len(t, opt.CategoryChoices, 1, "Option A should have 1 category choice")
 					assert.Equal(t, 1, opt.CategoryChoices[0].Choose, "Should choose 1 martial weapon")
-				} else if opt.ID == "fighter-weapon-b" {
+				case choices.FighterWeaponTwoMartial:
 					assert.Len(t, opt.CategoryChoices, 1, "Option B should have 1 category choice")
 					assert.Equal(t, 2, opt.CategoryChoices[0].Choose, "Should choose 2 martial weapons")
 				}

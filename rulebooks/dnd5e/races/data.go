@@ -357,7 +357,7 @@ var RaceData = map[Race]*Data{
 					{
 						ID:          "artificers-lore",
 						Name:        "Artificer's Lore",
-						Description: "Add twice your proficiency bonus to History checks related to magic items, alchemical objects, or technological devices",
+						Description: "Add twice your proficiency bonus to History checks related to magic items, alchemical objects, or technological devices", //nolint:lll
 					},
 					{
 						ID:          "tinker",
@@ -434,12 +434,12 @@ var RaceData = map[Race]*Data{
 			{
 				ID:          "relentless-endurance",
 				Name:        "Relentless Endurance",
-				Description: "When reduced to 0 hit points but not killed, you can drop to 1 hit point instead (once per long rest)",
+				Description: "When reduced to 0 hit points but not killed, you can drop to 1 hit point instead (once per long rest)", //nolint:lll
 			},
 			{
 				ID:          "savage-attacks",
 				Name:        "Savage Attacks",
-				Description: "When you score a critical hit with a melee weapon, roll one of the weapon's damage dice one additional time",
+				Description: "When you score a critical hit with a melee weapon, roll one of the weapon's damage dice one additional time", //nolint:lll
 			},
 		},
 		Skills: []skills.Skill{
@@ -473,7 +473,7 @@ var RaceData = map[Race]*Data{
 			{
 				ID:          "infernal-legacy",
 				Name:        "Infernal Legacy",
-				Description: "You know thaumaturgy cantrip. At 3rd level, cast hellish rebuke once per day. At 5th level, cast darkness once per day",
+				Description: "You know thaumaturgy cantrip. At 3rd level, cast hellish rebuke once per day. At 5th level, cast darkness once per day", //nolint:lll
 			},
 		},
 		Languages: []languages.Language{

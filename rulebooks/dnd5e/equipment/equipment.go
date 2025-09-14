@@ -31,27 +31,28 @@ type Equipment interface {
 	EquipmentDescription() string
 }
 
+// GetByID returns equipment by its ID
 func GetByID(id string) (Equipment, error) {
 	if id == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid equipment ID")
 	}
 
-	wep, ok := weapons.All[weapons.WeaponID(id)]
+	wep, ok := weapons.All[id]
 	if ok {
 		return &wep, nil
 	}
 
-	arm, ok := armor.All[armor.ArmorID(id)]
+	arm, ok := armor.All[id]
 	if ok {
 		return &arm, nil
 	}
 
-	tool, ok := tools.All[tools.ToolID(id)]
+	tool, ok := tools.All[id]
 	if ok {
 		return &tool, nil
 	}
 
-	pack, ok := packs.All[packs.PackID(id)]
+	pack, ok := packs.All[id]
 	if ok {
 		return &pack, nil
 	}
@@ -71,7 +72,7 @@ func GetByCategory(equipType shared.EquipmentType, categories []shared.Equipment
 	case shared.EquipmentTypeWeapon:
 		// Get weapons for each category
 		for _, cat := range categories {
-			weaponList := weapons.GetByCategory(weapons.WeaponCategory(cat))
+			weaponList := weapons.GetByCategory(cat)
 			for _, w := range weaponList {
 				wCopy := w // Create a copy to avoid pointer issues
 				result = append(result, &wCopy)
@@ -81,7 +82,7 @@ func GetByCategory(equipType shared.EquipmentType, categories []shared.Equipment
 	case shared.EquipmentTypeArmor:
 		// Get armor for each category
 		for _, cat := range categories {
-			armorList := armor.GetByCategory(armor.ArmorCategory(cat))
+			armorList := armor.GetByCategory(cat)
 			for _, a := range armorList {
 				aCopy := a // Create a copy to avoid pointer issues
 				result = append(result, &aCopy)

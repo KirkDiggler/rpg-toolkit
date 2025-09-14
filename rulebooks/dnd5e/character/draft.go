@@ -313,7 +313,7 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 							// Extract equipment IDs from this option
 							equipmentIDs := make([]shared.SelectionID, 0, len(opt.Items))
 							for _, item := range opt.Items {
-								equipmentIDs = append(equipmentIDs, shared.SelectionID(item.ID))
+								equipmentIDs = append(equipmentIDs, item.ID)
 							}
 
 							d.recordChoice(choices.ChoiceData{
@@ -475,7 +475,7 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 	maxHP := classData.HitDice + finalScores.Modifier(abilities.CON)
 
 	// Build proficiencies
-	skillProfs := d.compileSkills(raceData, classData)
+	skillProfs := d.compileSkills(raceData)
 	savingThrows := d.compileSavingThrows(classData)
 
 	// Create the character
@@ -519,9 +519,7 @@ func (d *Draft) ValidateChoices() error {
 		case shared.ChoiceSkills:
 			if len(choice.SkillSelection) > 0 {
 				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
-				for _, skill := range choice.SkillSelection {
-					skillValues = append(skillValues, shared.SelectionID(skill))
-				}
+				skillValues = append(skillValues, choice.SkillSelection...)
 				submissions.Add(choices.Submission{
 					Category: shared.ChoiceSkills,
 					Source:   choice.Source,
@@ -536,7 +534,7 @@ func (d *Draft) ValidateChoices() error {
 				values := choice.EquipmentSelection
 				if choice.OptionID != "" {
 					// This is a bundle choice - use the option ID as the single value
-					values = []shared.SelectionID{shared.SelectionID(choice.OptionID)}
+					values = []shared.SelectionID{choice.OptionID}
 				}
 				submissions.Add(choices.Submission{
 					Category: shared.ChoiceEquipment,
@@ -549,9 +547,7 @@ func (d *Draft) ValidateChoices() error {
 		case shared.ChoiceLanguages:
 			if len(choice.LanguageSelection) > 0 {
 				langValues := make([]shared.SelectionID, 0, len(choice.LanguageSelection))
-				for _, lang := range choice.LanguageSelection {
-					langValues = append(langValues, shared.SelectionID(lang))
-				}
+				langValues = append(langValues, choice.LanguageSelection...)
 				submissions.Add(choices.Submission{
 					Category: shared.ChoiceLanguages,
 					Source:   choice.Source,
@@ -624,8 +620,9 @@ func (d *Draft) recordChoice(choice choices.ChoiceData) {
 	d.choices = append(filtered, choice)
 }
 
+// TODO: check if class can grant skills or all they all chosen
 // compileSkills builds the skill proficiency map
-func (d *Draft) compileSkills(raceData *races.Data, classData *classes.Data) map[skills.Skill]shared.ProficiencyLevel {
+func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.ProficiencyLevel {
 	skills := make(map[skills.Skill]shared.ProficiencyLevel)
 
 	// Add racial skill proficiencies
@@ -793,7 +790,7 @@ func (d *Draft) getRaceSubmissions() *choices.Submissions {
 			if len(choice.SkillSelection) > 0 {
 				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
 				for _, skill := range choice.SkillSelection {
-					skillValues = append(skillValues, shared.SelectionID(skill))
+					skillValues = append(skillValues, skill)
 				}
 				subs.Add(choices.Submission{
 					Category: shared.ChoiceSkills,
@@ -806,9 +803,7 @@ func (d *Draft) getRaceSubmissions() *choices.Submissions {
 			// Handle language choices
 			if len(choice.LanguageSelection) > 0 {
 				langValues := make([]shared.SelectionID, 0, len(choice.LanguageSelection))
-				for _, lang := range choice.LanguageSelection {
-					langValues = append(langValues, shared.SelectionID(lang))
-				}
+				langValues = append(langValues, choice.LanguageSelection...)
 				// Map to correct ChoiceID based on race
 				var choiceID choices.ChoiceID
 				switch d.race {
@@ -852,7 +847,7 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 			if len(choice.SkillSelection) > 0 {
 				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
 				for _, skill := range choice.SkillSelection {
-					skillValues = append(skillValues, shared.SelectionID(skill))
+					skillValues = append(skillValues, skill)
 				}
 				// Map to correct ChoiceID based on class
 				var choiceID choices.ChoiceID
@@ -881,7 +876,7 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 				values := make([]shared.SelectionID, 0)
 				if choice.OptionID != "" {
 					// This is a bundle choice - use the option ID as the single value
-					values = append(values, shared.SelectionID(choice.OptionID))
+					values = append(values, choice.OptionID)
 				} else {
 					// Category-based choice - use the equipment IDs
 					values = choice.EquipmentSelection
@@ -901,7 +896,7 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 					Category: shared.ChoiceFightingStyle,
 					Source:   shared.SourceClass,
 					ChoiceID: choices.FighterFightingStyle, // Would need mapping for other classes
-					Values:   []shared.SelectionID{shared.SelectionID(*choice.FightingStyleSelection)},
+					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
 				})
 			}
 

@@ -227,19 +227,6 @@ func (s *RaceAPIValidationSuite) TestAllRacesHaveAPIData() {
 	}
 }
 
-// Helper to extract language names from API data
-func (s *RaceAPIValidationSuite) extractLanguagesFromAPI(languages []interface{}) []string {
-	langs := []string{}
-	for _, lang := range languages {
-		if langMap, ok := lang.(map[string]interface{}); ok {
-			if name, ok := langMap["name"].(string); ok {
-				langs = append(langs, name)
-			}
-		}
-	}
-	return langs
-}
-
 // TestRaceAPIValidationSuite runs the suite
 func TestRaceAPIValidationSuite(t *testing.T) {
 	suite.Run(t, new(RaceAPIValidationSuite))

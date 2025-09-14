@@ -30,7 +30,7 @@ type Data struct {
 	ClassID    classes.Class    `json:"class_id"`
 	SubclassID classes.Subclass `json:"subclass_id,omitempty"`
 
-	// Background
+	// BackgroundData
 	BackgroundID backgrounds.Background `json:"background_id"`
 
 	// Ability scores (final values including racial modifiers)

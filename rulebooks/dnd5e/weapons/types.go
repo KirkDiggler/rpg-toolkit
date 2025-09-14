@@ -60,8 +60,8 @@ type Weapon struct {
 }
 
 // EquipmentID returns the unique identifier for this weapon
-func (w *Weapon) EquipmentID() string {
-	return string(w.ID)
+func (w *Weapon) EquipmentID() shared.EquipmentID {
+	return w.ID
 }
 
 // EquipmentType returns the equipment type (always TypeWeapon)

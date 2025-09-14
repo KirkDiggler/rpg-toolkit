@@ -38,8 +38,8 @@ func (s *BarbarianCompleteSuite) createValidBaseSubmissions() *choices.Submissio
 		Source:   shared.SourceClass,
 		ChoiceID: choices.BarbarianSkills,
 		Values: []shared.SelectionID{
-			shared.SelectionID(skills.Athletics),
-			shared.SelectionID(skills.Survival),
+			skills.Athletics,
+			skills.Survival,
 		},
 	})
 
@@ -50,7 +50,7 @@ func (s *BarbarianCompleteSuite) createValidBaseSubmissions() *choices.Submissio
 		ChoiceID: choices.BarbarianWeaponsPrimary,
 		OptionID: choices.BarbarianWeaponGreataxe,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.BarbarianWeaponGreataxe),
+			choices.BarbarianWeaponGreataxe,
 		},
 	})
 
@@ -61,7 +61,7 @@ func (s *BarbarianCompleteSuite) createValidBaseSubmissions() *choices.Submissio
 		ChoiceID: choices.BarbarianWeaponsSecondary,
 		OptionID: choices.BarbarianSecondaryHandaxes,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.BarbarianSecondaryHandaxes),
+			choices.BarbarianSecondaryHandaxes,
 		},
 	})
 
@@ -72,7 +72,7 @@ func (s *BarbarianCompleteSuite) createValidBaseSubmissions() *choices.Submissio
 		ChoiceID: choices.BarbarianPack,
 		OptionID: choices.BarbarianPackExplorer,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.BarbarianPackExplorer),
+			choices.BarbarianPackExplorer,
 		},
 	})
 
@@ -111,7 +111,7 @@ func (s *BarbarianCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSkills {
 				// Only choose 1 instead of 2
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Athletics),
+					skills.Athletics,
 				}
 			}
 			subs.Add(sub)
@@ -127,8 +127,8 @@ func (s *BarbarianCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSkills {
 				// Try to choose a skill not in Barbarian's list
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Athletics),
-					shared.SelectionID(skills.Arcana), // Not a Barbarian skill
+					skills.Athletics,
+					skills.Arcana, // Not a Barbarian skill
 				}
 			}
 			subs.Add(sub)
@@ -217,7 +217,7 @@ func (s *BarbarianCompleteSuite) TestEquipmentChoices() {
 				// Choose martial weapon option
 				sub.OptionID = choices.BarbarianWeaponMartial
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.BarbarianWeaponMartial),
+					choices.BarbarianWeaponMartial,
 				}
 				// TODO: This would also need the actual weapon choice from the category
 			}
@@ -235,7 +235,7 @@ func (s *BarbarianCompleteSuite) TestEquipmentChoices() {
 				// Choose simple weapon option
 				sub.OptionID = choices.BarbarianSecondarySimple
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.BarbarianSecondarySimple),
+					choices.BarbarianSecondarySimple,
 				}
 				// TODO: This would also need the actual weapon choice from the category
 			}

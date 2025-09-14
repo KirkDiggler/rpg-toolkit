@@ -32,8 +32,6 @@ type (
 	AbilityScores = shared.AbilityScores
 	// ChoiceCategory represents types of character creation choices
 	ChoiceCategory = shared.ChoiceCategory
-	// Background represents character background
-	Background = shared.Background
 )
 
 // Character types from the character package

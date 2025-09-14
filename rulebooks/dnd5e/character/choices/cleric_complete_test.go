@@ -49,7 +49,8 @@ func (s *ClericCompleteSuite) SetupSubTest() {
 func (s *ClericCompleteSuite) loadAPIData() {
 	apiPath := filepath.Join("testdata", "api", "classes", "cleric.json")
 	if data, err := os.ReadFile(apiPath); err == nil {
-		json.Unmarshal(data, &s.apiData)
+		err := json.Unmarshal(data, &s.apiData)
+		s.NoError(err, "Failed to unmarshal API data")
 	}
 }
 
@@ -63,8 +64,8 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericSkills,
 		Values: []shared.SelectionID{
-			shared.SelectionID(skills.Insight),
-			shared.SelectionID(skills.Medicine),
+			skills.Insight,
+			skills.Medicine,
 		},
 	})
 
@@ -76,7 +77,7 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.ClericWeapons,
 		OptionID: choices.ClericWeaponMace,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.ClericWeaponMace), // The option chosen
+			choices.ClericWeaponMace, // The option chosen
 		},
 	})
 
@@ -87,7 +88,7 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.ClericArmor,
 		OptionID: choices.ClericArmorScale,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.ClericArmorScale),
+			choices.ClericArmorScale,
 		},
 	})
 
@@ -98,7 +99,7 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.ClericSecondaryWeapon,
 		OptionID: choices.ClericSecondaryShortbow,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.ClericSecondaryShortbow),
+			choices.ClericSecondaryShortbow,
 		},
 	})
 
@@ -109,7 +110,7 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.ClericPack,
 		OptionID: choices.ClericPackPriest,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.ClericPackPriest),
+			choices.ClericPackPriest,
 		},
 	})
 
@@ -120,7 +121,7 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		ChoiceID: choices.ClericHolySymbol,
 		OptionID: choices.ClericHolyAmulet,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.ClericHolyAmulet),
+			choices.ClericHolyAmulet,
 		},
 	})
 
@@ -130,9 +131,9 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ChoiceID("cleric-cantrips-1"),
 		Values: []shared.SelectionID{
-			shared.SelectionID(spells.SacredFlame),
-			shared.SelectionID(spells.Guidance),
-			shared.SelectionID(spells.Light),
+			spells.SacredFlame,
+			spells.Guidance,
+			spells.Light,
 		},
 	})
 
@@ -143,7 +144,7 @@ func (s *ClericCompleteSuite) createValidBaseSubmissions() *choices.Submissions 
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ClericDomain,
 		Values: []shared.SelectionID{
-			shared.SelectionID(classes.LifeDomain),
+			classes.LifeDomain,
 		},
 	})
 
@@ -190,7 +191,7 @@ func (s *ClericCompleteSuite) TestLifeDomain() {
 			ChoiceID: choices.ClericArmor,
 			OptionID: "cleric-armor-life",
 			Values: []shared.SelectionID{
-				shared.SelectionID(armor.ChainMail),
+				armor.ChainMail,
 			},
 		})
 
@@ -230,7 +231,7 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 			if sub.ChoiceID == choices.ClericDomain {
 				// Switch to Knowledge Domain
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(classes.KnowledgeDomain),
+					classes.KnowledgeDomain,
 				}
 			}
 			subs.Add(sub)
@@ -248,7 +249,7 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 		for _, sub := range s.validBase.Choices {
 			if sub.ChoiceID == choices.ClericDomain {
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(classes.KnowledgeDomain),
+					classes.KnowledgeDomain,
 				}
 			}
 			subs.Add(sub)
@@ -260,8 +261,8 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 			Source:   shared.SourceSubclass,
 			ChoiceID: choices.ChoiceID("cleric-knowledge-skills"),
 			Values: []shared.SelectionID{
-				shared.SelectionID(skills.Arcana),
-				shared.SelectionID(skills.History),
+				skills.Arcana,
+				skills.History,
 			},
 		})
 
@@ -271,8 +272,8 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 			Source:   shared.SourceSubclass,
 			ChoiceID: choices.ChoiceID("cleric-knowledge-languages"),
 			Values: []shared.SelectionID{
-				shared.SelectionID(languages.Elvish),
-				shared.SelectionID(languages.Dwarvish),
+				languages.Elvish,
+				languages.Dwarvish,
 			},
 		})
 
@@ -292,7 +293,7 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 		for _, sub := range s.validBase.Choices {
 			if sub.ChoiceID == choices.ClericDomain {
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(classes.KnowledgeDomain),
+					classes.KnowledgeDomain,
 				}
 			}
 			subs.Add(sub)
@@ -304,8 +305,8 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 			Source:   shared.SourceSubclass,
 			ChoiceID: choices.ChoiceID("cleric-knowledge-skills"),
 			Values: []shared.SelectionID{
-				shared.SelectionID(skills.Acrobatics), // Not valid for Knowledge
-				shared.SelectionID(skills.Athletics),  // Not valid for Knowledge
+				skills.Acrobatics, // Not valid for Knowledge
+				skills.Athletics,  // Not valid for Knowledge
 			},
 		})
 
@@ -315,8 +316,8 @@ func (s *ClericCompleteSuite) TestKnowledgeDomain() {
 			Source:   shared.SourceSubclass,
 			ChoiceID: choices.ChoiceID("cleric-knowledge-languages"),
 			Values: []shared.SelectionID{
-				shared.SelectionID(languages.Elvish),
-				shared.SelectionID(languages.Dwarvish),
+				languages.Elvish,
+				languages.Dwarvish,
 			},
 		})
 
@@ -337,7 +338,7 @@ func (s *ClericCompleteSuite) TestWarDomain() {
 		for _, sub := range s.validBase.Choices {
 			if sub.ChoiceID == choices.ClericDomain {
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(classes.WarDomain),
+					classes.WarDomain,
 				}
 				subs.Add(sub)
 			} else if sub.ChoiceID != choices.ClericWeapons {
@@ -352,7 +353,7 @@ func (s *ClericCompleteSuite) TestWarDomain() {
 			ChoiceID: choices.ClericWeapons,
 			OptionID: "cleric-weapon-war",
 			Values: []shared.SelectionID{
-				shared.SelectionID(weapons.Longsword),
+				weapons.Longsword,
 			},
 		})
 
@@ -367,7 +368,7 @@ func (s *ClericCompleteSuite) TestWarDomain() {
 		for _, sub := range s.validBase.Choices {
 			if sub.ChoiceID == choices.ClericDomain {
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(classes.WarDomain),
+					classes.WarDomain,
 				}
 				subs.Add(sub)
 			} else if sub.ChoiceID != choices.ClericArmor {
@@ -382,7 +383,7 @@ func (s *ClericCompleteSuite) TestWarDomain() {
 			ChoiceID: choices.ClericArmor,
 			OptionID: "cleric-armor-war",
 			Values: []shared.SelectionID{
-				shared.SelectionID(armor.ChainMail),
+				armor.ChainMail,
 			},
 		})
 
@@ -414,9 +415,9 @@ func (s *ClericCompleteSuite) TestInvalidSubmissions() {
 			if sub.ChoiceID == choices.ClericSkills {
 				// Try to choose 3 skills instead of 2
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.History),
-					shared.SelectionID(skills.Insight),
-					shared.SelectionID(skills.Medicine),
+					skills.History,
+					skills.Insight,
+					skills.Medicine,
 				}
 			}
 			subs.Add(sub)
@@ -432,8 +433,8 @@ func (s *ClericCompleteSuite) TestInvalidSubmissions() {
 			if sub.ChoiceID == choices.ClericSkills {
 				// Try to choose skills not in Cleric list
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Acrobatics),
-					shared.SelectionID(skills.Stealth),
+					skills.Acrobatics,
+					skills.Stealth,
 				}
 			}
 			subs.Add(sub)
@@ -462,7 +463,7 @@ func (s *ClericCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceCantrips {
 				// Only choose 1 cantrip instead of 3
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(spells.SacredFlame),
+					spells.SacredFlame,
 				}
 			}
 			subs.Add(sub)
@@ -501,7 +502,7 @@ func (s *ClericCompleteSuite) TestAllDomains() {
 	}
 
 	for _, domain := range domains {
-		s.Run(string(domain), func() {
+		s.Run(domain, func() {
 			// Get requirements with this domain
 			reqs := choices.GetClassRequirementsWithSubclass(classes.Cleric, 1, domain)
 			s.Assert().NotNil(reqs, "Should have requirements for %s", domain)

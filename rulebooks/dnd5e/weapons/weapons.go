@@ -434,10 +434,10 @@ func GetByID(id WeaponID) (Weapon, error) {
 	if !ok {
 		validWeapons := make([]string, 0, len(All))
 		for k := range All {
-			validWeapons = append(validWeapons, string(k))
+			validWeapons = append(validWeapons, k)
 		}
 		return Weapon{}, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid weapon",
-			rpgerr.WithMeta("provided", string(id)),
+			rpgerr.WithMeta("provided", id),
 			rpgerr.WithMeta("valid_options", validWeapons))
 	}
 	return w, nil

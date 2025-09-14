@@ -39,8 +39,8 @@ type Pack struct {
 }
 
 // EquipmentID returns the unique identifier for this pack
-func (p *Pack) EquipmentID() string {
-	return string(p.ID)
+func (p *Pack) EquipmentID() shared.EquipmentID {
+	return p.ID
 }
 
 // EquipmentType returns the equipment type (always TypePack)
@@ -213,10 +213,10 @@ func GetByID(id PackID) (Pack, error) {
 	if !ok {
 		validPacks := make([]string, 0, len(All))
 		for k := range All {
-			validPacks = append(validPacks, string(k))
+			validPacks = append(validPacks, k)
 		}
 		return Pack{}, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid pack",
-			rpgerr.WithMeta("provided", string(id)),
+			rpgerr.WithMeta("provided", id),
 			rpgerr.WithMeta("valid_options", validPacks))
 	}
 	return pack, nil

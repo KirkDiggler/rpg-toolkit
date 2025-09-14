@@ -8,6 +8,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // ValidationResult represents the result of validating choices
@@ -157,7 +159,7 @@ func (v *Validator) validateSkills(req *SkillRequirement, submissions *Submissio
 
 	// Count skills chosen for THIS specific requirement
 	totalChosen := 0
-	chosenSkills := make(map[string]bool)
+	chosenSkills := make(map[skills.Skill]bool)
 	found := false
 
 	for _, sub := range skillSubs {
@@ -165,7 +167,7 @@ func (v *Validator) validateSkills(req *SkillRequirement, submissions *Submissio
 			found = true
 			totalChosen += len(sub.Values)
 			for _, skillID := range sub.Values {
-				chosenSkills[string(skillID)] = true
+				chosenSkills[skillID] = true
 			}
 		}
 	}
@@ -187,11 +189,11 @@ func (v *Validator) validateSkills(req *SkillRequirement, submissions *Submissio
 	}
 
 	// If options are specified, validate against them
-	if req.Options != nil && len(req.Options) > 0 {
+	if len(req.Options) > 0 {
 		// Build allowed set for O(1) lookup
-		allowedSkills := make(map[string]bool)
+		allowedSkills := make(map[skills.Skill]bool)
 		for _, skill := range req.Options {
-			allowedSkills[string(skill)] = true
+			allowedSkills[skill] = true
 		}
 
 		// Check each chosen skill is allowed
@@ -400,11 +402,11 @@ func (v *Validator) validateSubclass(req *SubclassRequirement, submissions *Subm
 			}
 
 			// Validate the chosen subclass is in the allowed options
-			if req.Options != nil && len(req.Options) > 0 {
-				chosenSubclass := string(sub.Values[0])
+			if len(req.Options) > 0 {
+				chosenSubclass := sub.Values[0]
 				validSubclass := false
 				for _, option := range req.Options {
-					if string(option) == chosenSubclass {
+					if option == chosenSubclass {
 						validSubclass = true
 						break
 					}
@@ -449,14 +451,14 @@ func (v *Validator) validateCantrips(req *CantripRequirement, submissions *Submi
 			}
 
 			// Validate chosen cantrips are in the allowed options
-			if req.Options != nil && len(req.Options) > 0 {
-				allowedCantrips := make(map[string]bool)
+			if len(req.Options) > 0 {
+				allowedCantrips := make(map[spells.Spell]bool)
 				for _, cantrip := range req.Options {
-					allowedCantrips[string(cantrip)] = true
+					allowedCantrips[cantrip] = true
 				}
 
 				for _, chosenCantrip := range sub.Values {
-					if !allowedCantrips[string(chosenCantrip)] {
+					if !allowedCantrips[chosenCantrip] {
 						return &ValidationError{
 							Category: shared.ChoiceCantrips,
 							ChoiceID: req.ID,
@@ -497,11 +499,11 @@ func (v *Validator) validateFightingStyle(req *FightingStyleRequirement, submiss
 			}
 
 			// Validate the chosen style is in the allowed options
-			if req.Options != nil && len(req.Options) > 0 {
-				chosenStyle := string(sub.Values[0])
+			if len(req.Options) > 0 {
+				chosenStyle := sub.Values[0]
 				validStyle := false
 				for _, option := range req.Options {
-					if string(option) == chosenStyle {
+					if option == chosenStyle {
 						validStyle = true
 						break
 					}
@@ -573,14 +575,14 @@ func (v *Validator) validateSpellbook(req *SpellbookRequirement, submissions *Su
 			totalChosen += len(sub.Values)
 
 			// Validate chosen spells are in the allowed options
-			if req.Options != nil && len(req.Options) > 0 {
-				allowedSpells := make(map[string]bool)
+			if len(req.Options) > 0 {
+				allowedSpells := make(map[spells.Spell]bool)
 				for _, spell := range req.Options {
-					allowedSpells[string(spell)] = true
+					allowedSpells[spell] = true
 				}
 
 				for _, chosenSpell := range sub.Values {
-					if !allowedSpells[string(chosenSpell)] {
+					if !allowedSpells[chosenSpell] {
 						return &ValidationError{
 							Category: shared.ChoiceSpells,
 							ChoiceID: req.ID,

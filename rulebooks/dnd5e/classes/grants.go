@@ -245,7 +245,7 @@ func GetSavingThrows(classID Class) []abilities.Ability {
 // Returns nil if the subclassID is invalid
 func GetSubclassGrants(subclassID Subclass) *AutomaticGrants {
 	// Get base class grants
-	baseGrants := GetAutomaticGrants(subclassID.Parent())
+	baseGrants := GetAutomaticGrants(SubclassParent(subclassID))
 	if baseGrants == nil {
 		return nil
 	}

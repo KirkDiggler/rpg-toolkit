@@ -3,7 +3,7 @@ module github.com/KirkDiggler/rpg-toolkit/mechanics/spells
 go 1.24.1
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.3.0
+	github.com/KirkDiggler/rpg-toolkit/core v0.9.0
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/conditions v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.1.0

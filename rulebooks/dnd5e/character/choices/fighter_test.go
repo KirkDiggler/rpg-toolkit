@@ -37,7 +37,7 @@ func TestFighterEquipmentChoices(t *testing.T) {
 
 	// Should have 1 concrete item (shield)
 	assert.Len(t, optionA.Items, 1)
-	assert.Equal(t, "shield", string(optionA.Items[0].ID))
+	assert.Equal(t, "shield", optionA.Items[0].ID)
 
 	// Should have 1 category choice for 1 martial weapon
 	require.Len(t, optionA.CategoryChoices, 1)

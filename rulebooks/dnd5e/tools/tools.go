@@ -91,8 +91,8 @@ type Tool struct {
 }
 
 // EquipmentID returns the unique identifier for this tool
-func (t *Tool) EquipmentID() string {
-	return string(t.ID)
+func (t *Tool) EquipmentID() shared.EquipmentID {
+	return t.ID
 }
 
 // EquipmentType returns the equipment type (always TypeTool)
@@ -464,10 +464,10 @@ func GetByID(id ToolID) (Tool, error) {
 	if !ok {
 		validTools := make([]string, 0, len(All))
 		for k := range All {
-			validTools = append(validTools, string(k))
+			validTools = append(validTools, k)
 		}
 		return Tool{}, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid tool",
-			rpgerr.WithMeta("provided", string(id)),
+			rpgerr.WithMeta("provided", id),
 			rpgerr.WithMeta("valid_options", validTools))
 	}
 	return tool, nil

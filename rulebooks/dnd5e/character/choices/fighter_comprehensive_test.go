@@ -39,8 +39,8 @@ func (s *FighterCompleteSuite) createValidBaseSubmissions() *choices.Submissions
 		Source:   shared.SourceClass,
 		ChoiceID: choices.ChoiceID("fighter-skills"),
 		Values: []shared.SelectionID{
-			shared.SelectionID(skills.Athletics),
-			shared.SelectionID(skills.Survival),
+			skills.Athletics,
+			skills.Survival,
 		},
 	})
 
@@ -51,7 +51,7 @@ func (s *FighterCompleteSuite) createValidBaseSubmissions() *choices.Submissions
 		ChoiceID: choices.FighterArmor,
 		OptionID: choices.FighterArmorChainMail,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.FighterArmorChainMail),
+			choices.FighterArmorChainMail,
 		},
 	})
 
@@ -63,7 +63,7 @@ func (s *FighterCompleteSuite) createValidBaseSubmissions() *choices.Submissions
 		ChoiceID: choices.FighterWeaponsPrimary,
 		OptionID: choices.FighterWeaponMartialShield,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.FighterWeaponMartialShield),
+			choices.FighterWeaponMartialShield,
 		},
 		// TODO: Need to track the actual weapon choice separately
 	})
@@ -75,7 +75,7 @@ func (s *FighterCompleteSuite) createValidBaseSubmissions() *choices.Submissions
 		ChoiceID: choices.FighterWeaponsSecondary,
 		OptionID: choices.FighterRangedCrossbow,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.FighterRangedCrossbow),
+			choices.FighterRangedCrossbow,
 		},
 	})
 
@@ -86,7 +86,7 @@ func (s *FighterCompleteSuite) createValidBaseSubmissions() *choices.Submissions
 		ChoiceID: choices.FighterPack,
 		OptionID: choices.FighterPackDungeoneer,
 		Values: []shared.SelectionID{
-			shared.SelectionID(choices.FighterPackDungeoneer),
+			choices.FighterPackDungeoneer,
 		},
 	})
 
@@ -96,7 +96,7 @@ func (s *FighterCompleteSuite) createValidBaseSubmissions() *choices.Submissions
 		Source:   shared.SourceClass,
 		ChoiceID: choices.FighterFightingStyle,
 		Values: []shared.SelectionID{
-			shared.SelectionID(fightingstyles.Defense),
+			fightingstyles.Defense,
 		},
 	})
 
@@ -135,8 +135,8 @@ func (s *FighterCompleteSuite) TestInvalidSubmissions() {
 			if sub.Category == shared.ChoiceSkills {
 				// Try to choose a skill not in Fighter's list
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(skills.Athletics),
-					shared.SelectionID(skills.Arcana), // Not a Fighter skill
+					skills.Athletics,
+					skills.Arcana, // Not a Fighter skill
 				}
 			}
 			subs.Add(sub)
@@ -192,7 +192,7 @@ func (s *FighterCompleteSuite) TestEquipmentChoices() {
 				// Choose leather armor, longbow, and arrows
 				sub.OptionID = choices.FighterArmorLeather
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.FighterArmorLeather),
+					choices.FighterArmorLeather,
 				}
 			}
 			subs.Add(sub)
@@ -209,7 +209,7 @@ func (s *FighterCompleteSuite) TestEquipmentChoices() {
 				// Choose two martial weapons
 				sub.OptionID = choices.FighterWeaponTwoMartial
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.FighterWeaponTwoMartial),
+					choices.FighterWeaponTwoMartial,
 				}
 				// TODO: Need to handle category weapon choices
 			}
@@ -227,7 +227,7 @@ func (s *FighterCompleteSuite) TestEquipmentChoices() {
 				// Choose handaxes
 				sub.OptionID = choices.FighterRangedHandaxes
 				sub.Values = []shared.SelectionID{
-					shared.SelectionID(choices.FighterRangedHandaxes),
+					choices.FighterRangedHandaxes,
 				}
 			}
 			subs.Add(sub)
@@ -252,12 +252,12 @@ func (s *FighterCompleteSuite) TestFightingStyles() {
 	}
 
 	for _, style := range styles {
-		s.Run(string(style), func() {
+		s.Run(style, func() {
 			subs := choices.NewSubmissions()
 			for _, sub := range s.validBase.Choices {
 				if sub.Category == shared.ChoiceFightingStyle {
 					sub.Values = []shared.SelectionID{
-						shared.SelectionID(style),
+						style,
 					}
 				}
 				subs.Add(sub)

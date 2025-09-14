@@ -19,15 +19,24 @@ func (i InventoryItem) GetTotalWeight() float32 {
 type InventorySlot string
 
 const (
-	SlotMainHand  InventorySlot = "main_hand"
-	SlotOffHand   InventorySlot = "off_hand"
-	SlotArmor     InventorySlot = "armor"
-	SlotHelm      InventorySlot = "helm"
-	SlotGloves    InventorySlot = "gloves"
-	SlotBoots     InventorySlot = "boots"
-	SlotCloak     InventorySlot = "cloak"
-	SlotAmulet    InventorySlot = "amulet"
-	SlotRingLeft  InventorySlot = "ring_left"
+	// SlotMainHand represents the main hand
+	SlotMainHand InventorySlot = "main_hand"
+	// SlotOffHand represents the off hand
+	SlotOffHand InventorySlot = "off_hand"
+	// SlotArmor represents the armor
+	SlotArmor InventorySlot = "armor"
+	// SlotHelm represents the helm
+	SlotHelm InventorySlot = "helm"
+	// SlotBoots represents the boots
+	SlotBoots InventorySlot = "boots"
+	// SlotCloak represents the cloak
+	SlotCloak InventorySlot = "cloak"
+	// SlotAmulet represents the amulet
+	SlotAmulet InventorySlot = "amulet"
+	// SlotRingLeft represents the left ring
+	SlotRingLeft InventorySlot = "ring_left"
+	// SlotRingRight represents the right ring
 	SlotRingRight InventorySlot = "ring_right"
-	SlotBelt      InventorySlot = "belt"
+	// SlotBelt represents the belt
+	SlotBelt InventorySlot = "belt"
 )

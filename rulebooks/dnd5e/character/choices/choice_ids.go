@@ -185,7 +185,7 @@ const (
 	WarlockSpells1    ChoiceID = "warlock-spells-1"
 )
 
-// Background choice IDs
+// BackgroundData choice IDs
 const (
 	AcolyteLanguages     ChoiceID = "acolyte-languages"
 	CriminalTools        ChoiceID = "criminal-tools"

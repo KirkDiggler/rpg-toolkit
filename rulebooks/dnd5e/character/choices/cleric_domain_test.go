@@ -36,8 +36,8 @@ func TestClericWarDomain(t *testing.T) {
 			hasWarOption = true
 			assert.Equal(t, "martial weapon (War Domain)", opt.Label)
 			require.Len(t, opt.CategoryChoices, 1)
-			assert.Contains(t, opt.CategoryChoices[0].Categories, shared.EquipmentCategory(weapons.CategoryMartialMelee))
-			assert.Contains(t, opt.CategoryChoices[0].Categories, shared.EquipmentCategory(weapons.CategoryMartialRanged))
+			assert.Contains(t, opt.CategoryChoices[0].Categories, weapons.CategoryMartialMelee)
+			assert.Contains(t, opt.CategoryChoices[0].Categories, weapons.CategoryMartialRanged)
 			assert.Equal(t, shared.EquipmentTypeWeapon, opt.CategoryChoices[0].Type)
 			assert.Equal(t, 1, opt.CategoryChoices[0].Choose)
 			break

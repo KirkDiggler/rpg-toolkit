@@ -1,8 +1,10 @@
 // Package spells provides D&D 5e spell definitions and mechanics
 package spells
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+
 // Spell represents a specific spell or cantrip
-type Spell string
+type Spell = shared.SelectionID
 
 // Damage Cantrips
 const (
@@ -231,7 +233,7 @@ const (
 )
 
 // Name returns the display name of the spell
-func (s Spell) Name() string {
+func Name(s Spell) string {
 	switch s {
 	// Cantrips
 	case FireBolt:
@@ -358,12 +360,12 @@ func (s Spell) Name() string {
 	case VampiricTouch:
 		return "Vampiric Touch"
 	default:
-		return string(s)
+		return s
 	}
 }
 
 // Description returns a brief description of the spell's effect
-func (s Spell) Description() string {
+func Description(s Spell) string {
 	switch s {
 	// Damage Cantrips
 	case FireBolt:

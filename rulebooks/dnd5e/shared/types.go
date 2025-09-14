@@ -5,10 +5,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // SelectionID represents any selectable game content ID
@@ -226,30 +223,6 @@ type Proficiencies struct {
 type DeathSaves struct {
 	Successes int
 	Failures  int
-}
-
-// Background represents character background
-type Background struct {
-	ID          backgrounds.Background `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-
-	// Skill proficiencies (usually 2)
-	SkillProficiencies []skills.Skill `json:"skill_proficiencies"`
-
-	// Languages
-	Languages      []languages.Language `json:"languages,omitempty"`
-	LanguageChoice *ChoiceData          `json:"language_choice,omitempty"`
-
-	// Tool proficiencies
-	ToolProficiencies []proficiencies.Tool `json:"tool_proficiencies,omitempty"`
-	ToolChoice        *ChoiceData          `json:"tool_choice,omitempty"`
-
-	// Starting equipment
-	Equipment []string `json:"equipment"`
-
-	// Feature
-	Feature FeatureData `json:"feature"`
 }
 
 // ChoiceData represents any choice in character creation

@@ -61,7 +61,7 @@ func main() {
 }
 
 func createCharacter(raceData *race.Data, classData *class.Data,
-	backgroundData *shared.Background) *character.Character {
+	backgroundData *shared.BackgroundData) *character.Character {
 	char, err := character.NewFromCreationData(character.CreationData{
 		ID:             "char-ragnar-001",
 		Name:           "Ragnar",
@@ -174,7 +174,7 @@ func saveCharacter(char *character.Character) {
 	fmt.Printf("- Effects saved: %d\n", len(data.Effects))
 }
 
-func loadCharacter(raceData *race.Data, classData *class.Data, backgroundData *shared.Background) *character.Character {
+func loadCharacter(raceData *race.Data, classData *class.Data, backgroundData *shared.BackgroundData) *character.Character {
 	// In real app, load from database
 	jsonData, err := os.ReadFile("ragnar.json")
 	if err != nil {
@@ -197,7 +197,7 @@ func loadCharacter(raceData *race.Data, classData *class.Data, backgroundData *s
 }
 
 func loadCharacterFromFile(filename string, raceData *race.Data, classData *class.Data,
-	backgroundData *shared.Background) *character.Character {
+	backgroundData *shared.BackgroundData) *character.Character {
 	// #nosec G304 - This is an example CLI that accepts user-provided filenames
 	jsonData, err := os.ReadFile(filename)
 	if err != nil {
@@ -241,7 +241,7 @@ func saveCharacterToFile(char *character.Character, filename string) {
 	fmt.Printf("- Effects saved: %d\n", len(data.Effects))
 }
 
-func demonstrateBuilder(raceData *race.Data, classData *class.Data, backgroundData *shared.Background) {
+func demonstrateBuilder(raceData *race.Data, classData *class.Data, backgroundData *shared.BackgroundData) {
 	fmt.Println("Creating character step-by-step with builder...")
 
 	builder, err := dnd5e.NewCharacterBuilder("demo-builder-thorin")
@@ -267,11 +267,11 @@ func demonstrateBuilder(raceData *race.Data, classData *class.Data, backgroundDa
 	}
 	fmt.Println("✓ Class set")
 
-	// Step 4: Background
+	// Step 4: BackgroundData
 	if err := builder.SetBackgroundData(*backgroundData); err != nil {
 		log.Fatal("Failed to set background:", err)
 	}
-	fmt.Println("✓ Background set")
+	fmt.Println("✓ BackgroundData set")
 
 	// Step 5: Ability Scores
 	if err := builder.SetAbilityScores(shared.AbilityScores{
@@ -376,8 +376,8 @@ func getFighterClassData() *class.Data {
 	}
 }
 
-func getSoldierBackgroundData() *shared.Background {
-	return &shared.Background{
+func getSoldierBackgroundData() *shared.BackgroundData {
+	return &shared.BackgroundData{
 		ID:                 "soldier",
 		Name:               "Soldier",
 		Description:        "You have served in an army",
