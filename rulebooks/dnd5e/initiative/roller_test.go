@@ -21,7 +21,7 @@ func TestRollForOrder(t *testing.T) {
 	// Since map iteration is non-deterministic, we need to set up expectations
 	// that work regardless of iteration order. All entities get the same roll (10)
 	// so the order will be determined by modifiers alone
-	mockRoller.EXPECT().Roll(20).Return(10, nil).Times(3)
+	mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(10, nil).Times(3)
 
 	participants := map[core.Entity]int{
 		initiative.NewParticipant("ranger", dnd5e.EntityTypeCharacter): +3, // Total: 13
