@@ -387,38 +387,44 @@ func (v *Validator) validateTools(req *ToolRequirement, submissions *Submissions
 	return nil
 }
 
-func (v *Validator) validateSubclass(req *SubclassRequirement, submissions *Submissions) *ValidationError {
-	// Find subclass submissions (using ChoiceClass category)
-	subclassSubs := submissions.GetByCategory(shared.ChoiceClass)
+type validateSingleChoiceInput struct {
+	Submissions []Submission
+	ChoiceID    ChoiceID
+	Options     []shared.SelectionID
+	Label       string
+	Category    shared.ChoiceCategory
+	ItemName    string
+}
 
-	// Look for a submission with the subclass choice ID
+// validateSingleChoice validates that exactly one choice was made from allowed options
+func (v *Validator) validateSingleChoice(input validateSingleChoiceInput) *ValidationError {
 	found := false
-	for _, sub := range subclassSubs {
-		if sub.ChoiceID == req.ID {
+	for _, sub := range input.Submissions {
+		if sub.ChoiceID == input.ChoiceID {
 			found = true
 			if len(sub.Values) != 1 {
 				return &ValidationError{
-					Category: shared.ChoiceClass,
-					ChoiceID: req.ID,
-					Message:  "Must choose exactly one subclass",
+					Category: input.Category,
+					ChoiceID: input.ChoiceID,
+					Message:  fmt.Sprintf("Must choose exactly one %s", input.ItemName),
 				}
 			}
 
-			// Validate the chosen subclass is in the allowed options
-			if len(req.Options) > 0 {
-				chosenSubclass := sub.Values[0]
-				validSubclass := false
-				for _, option := range req.Options {
-					if option == chosenSubclass {
-						validSubclass = true
+			// Validate the chosen option is allowed
+			if len(input.Options) > 0 {
+				chosen := sub.Values[0]
+				validChoice := false
+				for _, option := range input.Options {
+					if option == chosen {
+						validChoice = true
 						break
 					}
 				}
-				if !validSubclass {
+				if !validChoice {
 					return &ValidationError{
-						Category: shared.ChoiceClass,
-						ChoiceID: req.ID,
-						Message:  fmt.Sprintf("Invalid subclass choice '%s'", chosenSubclass),
+						Category: input.Category,
+						ChoiceID: input.ChoiceID,
+						Message:  fmt.Sprintf("Invalid %s choice '%s'", input.ItemName, chosen),
 					}
 				}
 			}
@@ -428,110 +434,46 @@ func (v *Validator) validateSubclass(req *SubclassRequirement, submissions *Subm
 
 	if !found {
 		return &ValidationError{
-			Category: shared.ChoiceClass,
-			ChoiceID: req.ID,
-			Message:  fmt.Sprintf("%s required", req.Label),
+			Category: input.Category,
+			ChoiceID: input.ChoiceID,
+			Message:  fmt.Sprintf("%s required", input.Label),
 		}
 	}
 
 	return nil
+}
+
+func (v *Validator) validateSubclass(req *SubclassRequirement, submissions *Submissions) *ValidationError {
+	return v.validateSingleChoice(validateSingleChoiceInput{
+		Submissions: submissions.GetByCategory(shared.ChoiceClass),
+		ChoiceID:    req.ID,
+		Options:     req.Options,
+		Label:       req.Label,
+		Category:    shared.ChoiceClass,
+		ItemName:    "subclass",
+	})
 }
 
 func (v *Validator) validateCantrips(req *CantripRequirement, submissions *Submissions) *ValidationError {
-	// Find cantrip submissions
-	cantripSubs := submissions.GetByCategory(shared.ChoiceCantrips)
-
-	found := false
-	for _, sub := range cantripSubs {
-		if sub.ChoiceID == req.ID {
-			found = true
-			if len(sub.Values) != req.Count {
-				return &ValidationError{
-					Category: shared.ChoiceCantrips,
-					ChoiceID: req.ID,
-					Message:  fmt.Sprintf("Must choose exactly %d cantrips, got %d", req.Count, len(sub.Values)),
-				}
-			}
-
-			// Validate chosen cantrips are in the allowed options
-			if len(req.Options) > 0 {
-				allowedCantrips := make(map[spells.Spell]bool)
-				for _, cantrip := range req.Options {
-					allowedCantrips[cantrip] = true
-				}
-
-				for _, chosenCantrip := range sub.Values {
-					if !allowedCantrips[chosenCantrip] {
-						return &ValidationError{
-							Category: shared.ChoiceCantrips,
-							ChoiceID: req.ID,
-							Message:  fmt.Sprintf("Cantrip '%s' is not in the allowed options", chosenCantrip),
-						}
-					}
-				}
-			}
-			break
-		}
-	}
-
-	if !found {
-		return &ValidationError{
-			Category: shared.ChoiceCantrips,
-			ChoiceID: req.ID,
-			Message:  fmt.Sprintf("%s required", req.Label),
-		}
-	}
-
-	return nil
+	return v.validateSingleChoice(validateSingleChoiceInput{
+		Submissions: submissions.GetByCategory(shared.ChoiceCantrips),
+		ChoiceID:    req.ID,
+		Options:     req.Options,
+		Label:       req.Label,
+		Category:    shared.ChoiceCantrips,
+		ItemName:    "cantrip",
+	})
 }
 
 func (v *Validator) validateFightingStyle(req *FightingStyleRequirement, submissions *Submissions) *ValidationError {
-	// Find fighting style submissions
-	styleSubs := submissions.GetByCategory(shared.ChoiceFightingStyle)
-
-	found := false
-	for _, sub := range styleSubs {
-		if sub.ChoiceID == req.ID {
-			found = true
-			if len(sub.Values) != 1 {
-				return &ValidationError{
-					Category: shared.ChoiceFightingStyle,
-					ChoiceID: req.ID,
-					Message:  "Must choose exactly one fighting style",
-				}
-			}
-
-			// Validate the chosen style is in the allowed options
-			if len(req.Options) > 0 {
-				chosenStyle := sub.Values[0]
-				validStyle := false
-				for _, option := range req.Options {
-					if option == chosenStyle {
-						validStyle = true
-						break
-					}
-				}
-				if !validStyle {
-					return &ValidationError{
-						Category: shared.ChoiceFightingStyle,
-						ChoiceID: req.ID,
-						Message:  fmt.Sprintf("Invalid fighting style '%s'", chosenStyle),
-					}
-				}
-			}
-			break
-		}
-	}
-
-	if !found {
-		return &ValidationError{
-			Category: shared.ChoiceFightingStyle,
-			ChoiceID: req.ID,
-			Message:  fmt.Sprintf("%s required", req.Label),
-		}
-	}
-
-	return nil
+	return v.validateSingleChoice(validateSingleChoiceInput{
+		Submissions: submissions.GetByCategory(shared.ChoiceFightingStyle),
+		ChoiceID:    req.ID,
+		Options:     req.Options,
+		Label:       req.Label,
+		Category:    shared.ChoiceFightingStyle,
+		ItemName:    "fighting style",
+	})
 }
 
 func (v *Validator) validateExpertise(req *ExpertiseRequirement, submissions *Submissions) *ValidationError {

@@ -1,6 +1,9 @@
 package choices
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -187,50 +190,13 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 		},
 	},
 
-	classes.TempestDomain: {
-		GrantedProficiencies: GrantedProficiencies{
-			Weapons: []shared.EquipmentCategory{
-				weapons.CategoryMartialMelee,
-				weapons.CategoryMartialRanged,
-			},
-			Armor: []shared.EquipmentCategory{armor.CategoryHeavy},
-		},
-		AdditionalEquipmentOptions: map[ChoiceID][]EquipmentOption{
-			ClericWeapons: {
-				{
-					ID:    "cleric-weapon-tempest",
-					Label: "martial weapon (Tempest Domain)",
-					CategoryChoices: []EquipmentCategoryChoice{
-						{
-							Categories: []shared.EquipmentCategory{
-								weapons.CategoryMartialMelee,
-								weapons.CategoryMartialRanged,
-							},
-							Type:   shared.EquipmentTypeWeapon,
-							Choose: 1,
-							Label:  "Choose a martial weapon",
-						},
-					},
-				},
-			},
-			ClericArmor: {
-				{
-					ID:    "cleric-armor-tempest",
-					Label: "chain mail (Tempest Domain)",
-					Items: []EquipmentItem{
-						{ID: armor.ChainMail, Quantity: 1},
-					},
-				},
-			},
-		},
-		GrantedSpells: []SpellGrant{
-			{Level: 1, Spells: []spells.Spell{spells.FogCloud, spells.Thunderwave}},
-			{Level: 3, Spells: []spells.Spell{spells.GustOfWind, spells.Shatter}},
-			{Level: 5, Spells: []spells.Spell{spells.CallLightning, spells.SleetStorm}},
-			{Level: 7, Spells: []spells.Spell{spells.ControlWater, spells.IceStorm}},
-			{Level: 9, Spells: []spells.Spell{spells.DestructiveWave, spells.InsectPlague}},
-		},
-	},
+	classes.TempestDomain: createMartialDomainModifications("Tempest", []SpellGrant{
+		{Level: 1, Spells: []spells.Spell{spells.FogCloud, spells.Thunderwave}},
+		{Level: 3, Spells: []spells.Spell{spells.GustOfWind, spells.Shatter}},
+		{Level: 5, Spells: []spells.Spell{spells.CallLightning, spells.SleetStorm}},
+		{Level: 7, Spells: []spells.Spell{spells.ControlWater, spells.IceStorm}},
+		{Level: 9, Spells: []spells.Spell{spells.DestructiveWave, spells.InsectPlague}},
+	}),
 
 	classes.TrickeryDomain: {
 		GrantedSpells: []SpellGrant{
@@ -242,50 +208,13 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 		},
 	},
 
-	classes.WarDomain: {
-		GrantedProficiencies: GrantedProficiencies{
-			Weapons: []shared.EquipmentCategory{
-				weapons.CategoryMartialMelee,
-				weapons.CategoryMartialRanged,
-			},
-			Armor: []shared.EquipmentCategory{armor.CategoryHeavy},
-		},
-		AdditionalEquipmentOptions: map[ChoiceID][]EquipmentOption{
-			ClericWeapons: {
-				{
-					ID:    "cleric-weapon-war",
-					Label: "martial weapon (War Domain)",
-					CategoryChoices: []EquipmentCategoryChoice{
-						{
-							Categories: []shared.EquipmentCategory{
-								weapons.CategoryMartialMelee,
-								weapons.CategoryMartialRanged,
-							},
-							Type:   shared.EquipmentTypeWeapon,
-							Choose: 1,
-							Label:  "Choose a martial weapon",
-						},
-					},
-				},
-			},
-			ClericArmor: {
-				{
-					ID:    "cleric-armor-war",
-					Label: "chain mail (War Domain)",
-					Items: []EquipmentItem{
-						{ID: armor.ChainMail, Quantity: 1},
-					},
-				},
-			},
-		},
-		GrantedSpells: []SpellGrant{
-			{Level: 1, Spells: []spells.Spell{spells.DivineFavor, spells.ShieldOfFaith}},
-			{Level: 3, Spells: []spells.Spell{spells.MagicWeapon, spells.SpiritualWeapon}},
-			{Level: 5, Spells: []spells.Spell{spells.CrusadersMantle, spells.SpiritGuardians}},
-			{Level: 7, Spells: []spells.Spell{spells.FreedomOfMovement, spells.Stoneskin}},
-			{Level: 9, Spells: []spells.Spell{spells.FlameStrike, spells.HoldMonster}},
-		},
-	},
+	classes.WarDomain: createMartialDomainModifications("War", []SpellGrant{
+		{Level: 1, Spells: []spells.Spell{spells.DivineFavor, spells.ShieldOfFaith}},
+		{Level: 3, Spells: []spells.Spell{spells.MagicWeapon, spells.SpiritualWeapon}},
+		{Level: 5, Spells: []spells.Spell{spells.CrusadersMantle, spells.SpiritGuardians}},
+		{Level: 7, Spells: []spells.Spell{spells.FreedomOfMovement, spells.Stoneskin}},
+		{Level: 9, Spells: []spells.Spell{spells.FlameStrike, spells.HoldMonster}},
+	}),
 
 	classes.KnowledgeDomain: {
 		AdditionalSkills: &SkillRequirement{
@@ -334,4 +263,47 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 
 	// TODO: Add Fighter subclasses at level 3
 	// TODO: Add other class subclasses
+}
+
+func createMartialDomainModifications(domainName string, domainSpells []SpellGrant) *SubclassModifications {
+	domainLabel := strings.ToLower(domainName)
+
+	return &SubclassModifications{
+		GrantedProficiencies: GrantedProficiencies{
+			Weapons: []shared.EquipmentCategory{
+				weapons.CategoryMartialMelee,
+				weapons.CategoryMartialRanged,
+			},
+			Armor: []shared.EquipmentCategory{armor.CategoryHeavy},
+		},
+		AdditionalEquipmentOptions: map[ChoiceID][]EquipmentOption{
+			ClericWeapons: {
+				{
+					ID:    fmt.Sprintf("cleric-weapon-%s", domainLabel),
+					Label: fmt.Sprintf("martial weapon (%s Domain)", domainName),
+					CategoryChoices: []EquipmentCategoryChoice{
+						{
+							Categories: []shared.EquipmentCategory{
+								weapons.CategoryMartialMelee,
+								weapons.CategoryMartialRanged,
+							},
+							Type:   shared.EquipmentTypeWeapon,
+							Choose: 1,
+							Label:  "Choose a martial weapon",
+						},
+					},
+				},
+			},
+			ClericArmor: {
+				{
+					ID:    fmt.Sprintf("cleric-armor-%s", domainLabel),
+					Label: fmt.Sprintf("chain mail (%s Domain)", domainName),
+					Items: []EquipmentItem{
+						{ID: armor.ChainMail, Quantity: 1},
+					},
+				},
+			},
+		},
+		GrantedSpells: domainSpells,
+	}
 }
