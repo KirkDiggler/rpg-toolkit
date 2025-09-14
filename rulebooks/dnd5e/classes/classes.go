@@ -3,13 +3,19 @@ package classes
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // Class represents a D&D 5e character class
-type Class string
+type Class = shared.SelectionID
 
 // Subclass represents a D&D 5e character subclass/archetype
-type Subclass string
+type Subclass = shared.SelectionID
+
+// Subclass constants
+const (
+	SubclassNone Subclass = "none" // No subclass (for characters below subclass level)
+)
 
 // Fighter subclasses
 const (
@@ -125,6 +131,7 @@ const (
 )
 
 // All provides map lookup for classes
+// Deprecated: Use ClassData directly - it now contains ID field and Name()/Description() methods
 var All = map[string]Class{
 	"barbarian": Barbarian,
 	"bard":      Bard,
@@ -353,8 +360,8 @@ var subclassParents = map[Subclass]Class{
 	Transmutation: Wizard,
 }
 
-// String returns the display name of the class
-func (c Class) String() string {
+// Name returns the display name of the class
+func Name(c Class) string {
 	switch c {
 	case Barbarian:
 		return "Barbarian"
@@ -381,17 +388,12 @@ func (c Class) String() string {
 	case Wizard:
 		return "Wizard"
 	default:
-		return string(c)
+		return c
 	}
 }
 
-// Name returns the display name of the class
-func (c Class) Name() string {
-	return c.String()
-}
-
 // Description returns a brief description of the class
-func (c Class) Description() string {
+func Description(c Class) string {
 	switch c {
 	case Barbarian:
 		return "A fierce warrior of primitive background who can enter a battle rage"
@@ -422,30 +424,25 @@ func (c Class) Description() string {
 	}
 }
 
-// Parent returns the base class for a subclass
-func (s Subclass) Parent() Class {
+// SubclassParent returns the base class for a subclass
+func SubclassParent(s Subclass) Class {
 	if parent, ok := subclassParents[s]; ok {
 		return parent
 	}
 	return Invalid
 }
 
-// String returns the display name of the subclass
-func (s Subclass) String() string {
+// SubClassName returns the display name of the subclass
+func SubClassName(s Subclass) string {
 	if name, ok := subclassNames[s]; ok {
 		return name
 	}
 
-	return string(s)
+	return s
 }
 
-// Name returns the display name of the subclass
-func (s Subclass) Name() string {
-	return s.String()
-}
-
-// Description returns a brief description of the subclass
-func (s Subclass) Description() string {
+// SubClassDescription returns a brief description of the subclass
+func SubClassDescription(s Subclass) string {
 	if desc, ok := subclassDescriptions[s]; ok {
 		return desc
 	}

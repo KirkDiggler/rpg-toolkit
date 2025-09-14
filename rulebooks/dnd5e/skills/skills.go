@@ -4,10 +4,11 @@ package skills
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // Skill represents a D&D 5e skill
-type Skill string
+type Skill = shared.SelectionID
 
 // All D&D 5e skills
 const (
@@ -94,7 +95,7 @@ func List() []Skill {
 }
 
 // Ability returns the ability score this skill is based on
-func (s Skill) Ability() abilities.Ability {
+func Ability(s Skill) abilities.Ability {
 	switch s {
 	case Athletics:
 		return abilities.STR
@@ -112,7 +113,7 @@ func (s Skill) Ability() abilities.Ability {
 }
 
 // Display returns the human-readable name of the skill
-func (s Skill) Display() string {
+func Display(s Skill) string {
 	switch s {
 	case Acrobatics:
 		return "Acrobatics"
@@ -151,7 +152,7 @@ func (s Skill) Display() string {
 	case Survival:
 		return "Survival"
 	default:
-		return string(s)
+		return s
 	}
 }
 
@@ -159,7 +160,7 @@ func (s Skill) Display() string {
 func ByAbility(ability abilities.Ability) []Skill {
 	var result []Skill
 	for _, skill := range List() {
-		if skill.Ability() == ability {
+		if Ability(skill) == ability {
 			result = append(result, skill)
 		}
 	}

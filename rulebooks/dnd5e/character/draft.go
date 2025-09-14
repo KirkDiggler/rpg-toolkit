@@ -1,673 +1,906 @@
-// Package character provides D&D 5e character creation and management functionality
 package character
 
 import (
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// Draft represents a character in progress
+// Draft represents a character in the creation process
 type Draft struct {
+	id       string
+	playerID string
+
+	// Basic info
+	name string
+
+	// Core choices
+	race       races.Race
+	subrace    races.Subrace
+	class      classes.Class
+	subclass   classes.Subclass
+	background backgrounds.Background
+
+	// Ability scores (before racial modifiers)
+	baseAbilityScores shared.AbilityScores
+
+	// Player choices stored for validation
+	choices []choices.ChoiceData
+
+	// Progress tracking
+	progress Progress
+
+	// Tracking
+	createdAt time.Time
+	updatedAt time.Time
+}
+
+// DraftConfig holds configuration for creating a new draft
+type DraftConfig struct {
 	ID       string
 	PlayerID string
-	Name     string
-	Progress DraftProgress
-
-	// Core identity choices that need special handling
-	RaceChoice         RaceChoice             `json:"race_choice"`
-	ClassChoice        ClassChoice            `json:"class_choice"`
-	BackgroundChoice   backgrounds.Background `json:"background_choice"`
-	AbilityScoreChoice shared.AbilityScores   `json:"ability_score_choice"`
-
-	// All choices with source tracking
-	Choices []ChoiceData `json:"choices"`
-
-	// Validation state - populated by ValidateChoices()
-	ValidationWarnings []string `json:"validation_warnings,omitempty"`
-	ValidationErrors   []string `json:"validation_errors,omitempty"`
-	CanFinalize        bool     `json:"can_finalize"`
-
-	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
-// DraftProgress tracks completion of character creation steps
-type DraftProgress struct {
-	flags uint32
+// Validate ensures the config is valid
+func (c *DraftConfig) Validate() error {
+	if c.ID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "draft ID is required")
+	}
+	if c.PlayerID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "player ID is required")
+	}
+	return nil
 }
 
-// ToCharacter converts a completed draft into a playable character
-// This method validates the draft is complete and creates a fully initialized character
-func (d *Draft) ToCharacter(raceData *race.Data, classData *class.Data,
-	backgroundData *shared.Background) (*Character, error) {
-	// Validate we have all required data
-	if raceData == nil || classData == nil || backgroundData == nil {
-		return nil, errors.New("race, class, and background data are required")
+// NewDraft creates a new character draft
+func NewDraft(config *DraftConfig) (*Draft, error) {
+	if config == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "config is required")
 	}
 
-	// Check if draft is complete enough to build
-	if !d.isComplete() {
-		return nil, errors.New("draft is incomplete - missing required choices")
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
 
-	// Validate the draft with external data
-	validator := NewValidator()
-	errors := validator.ValidateDraft(d, raceData, classData, backgroundData)
-	if len(errors) > 0 {
-		return nil, fmt.Errorf("validation failed: %v", errors)
-	}
-
-	// Compile the character using the same logic as builder
-	return d.compileCharacter(raceData, classData, backgroundData)
-}
-
-// isComplete checks if the draft has all required fields to create a character
-func (d *Draft) isComplete() bool {
-	required := ProgressName | ProgressRace | ProgressClass | ProgressBackground | ProgressAbilityScores
-	return d.Progress.flags&required == required
-}
-
-// GetBackgroundProficiencies returns the proficiencies for a background
-func GetBackgroundProficiencies(backgroundData *shared.Background) (Proficiencies, error) {
-	if backgroundData == nil {
-		return Proficiencies{}, rpgerr.New(rpgerr.CodeInvalidArgument, "background data is required")
-	}
-
-	grants := backgrounds.GetAutomaticGrants(backgroundData.ID)
-
-	return Proficiencies{
-		Skills:    grants.Skills,
-		Tools:     backgroundData.ToolProficiencies,
-		Languages: backgroundData.Languages,
+	now := time.Now()
+	return &Draft{
+		id:                config.ID,
+		playerID:          config.PlayerID,
+		baseAbilityScores: make(shared.AbilityScores),
+		choices:           make([]choices.ChoiceData, 0),
+		progress:          ProgressNone,
+		createdAt:         now,
+		updatedAt:         now,
 	}, nil
 }
 
-// compileCharacter creates a character from the draft data
-func (d *Draft) compileCharacter(raceData *race.Data, classData *class.Data,
-	backgroundData *shared.Background) (*Character, error) {
-	// Start with base character data
-	charData := d.buildBaseCharacterData()
+// Getter methods
 
-	// Apply ability score improvements
-	d.applyAbilityScoreImprovements(&charData, raceData)
+// ID returns the draft ID
+func (d *Draft) ID() string {
+	return d.id
+}
 
-	// Calculate derived stats
-	charData.MaxHitPoints = classData.HitDice + charData.AbilityScores.Modifier(abilities.CON)
-	charData.HitPoints = charData.MaxHitPoints
-	charData.Speed = raceData.Speed
-	charData.Size = raceData.Size
+// PlayerID returns the player ID
+func (d *Draft) PlayerID() string {
+	return d.playerID
+}
 
-	// Get proficiencies from all sources
-	classProficiencies, err := d.ClassChoice.GetProficiencies()
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to get class proficiencies",
-			rpgerr.WithMeta("classID", d.ClassChoice.ClassID),
-			rpgerr.WithMeta("subclassID", d.ClassChoice.SubclassID))
+// Name returns the character name
+func (d *Draft) Name() string {
+	return d.name
+}
+
+// Race returns the selected race
+func (d *Draft) Race() races.Race {
+	return d.race
+}
+
+// Subrace returns the selected subrace
+func (d *Draft) Subrace() races.Subrace {
+	return d.subrace
+}
+
+// Class returns the selected class
+func (d *Draft) Class() classes.Class {
+	return d.class
+}
+
+// Subclass returns the selected subclass
+func (d *Draft) Subclass() classes.Subclass {
+	return d.subclass
+}
+
+// Background returns the selected background
+func (d *Draft) Background() backgrounds.Background {
+	return d.background
+}
+
+// BaseAbilityScores returns the base ability scores
+func (d *Draft) BaseAbilityScores() shared.AbilityScores {
+	return d.baseAbilityScores
+}
+
+// Choices returns the player's choices
+func (d *Draft) Choices() []choices.ChoiceData {
+	return d.choices
+}
+
+// Progress returns the draft progress
+func (d *Draft) Progress() Progress {
+	return d.progress
+}
+
+// CreatedAt returns when the draft was created
+func (d *Draft) CreatedAt() time.Time {
+	return d.createdAt
+}
+
+// UpdatedAt returns when the draft was last updated
+func (d *Draft) UpdatedAt() time.Time {
+	return d.updatedAt
+}
+
+// SetName sets the character's name
+func (d *Draft) SetName(input *SetNameInput) error {
+	if input == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
 	}
 
-	backgroundProficiencies, err := GetBackgroundProficiencies(backgroundData)
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to get background proficiencies",
-			rpgerr.WithMeta("backgroundID", d.BackgroundChoice))
+	if input.Name == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "name cannot be empty")
 	}
 
-	// Note: Race proficiencies (skills/languages) are handled separately in compileSkills/Languages
-	// Race weapon proficiencies come directly from raceData
+	d.name = input.Name
+	d.updatedAt = time.Now()
 
-	// Merge proficiencies - note that some need special handling
-	// Armor and saves only come from class
-	// Weapons come from class and race (race weapons come from raceData)
-	// Tools come from class and background
-	// Skills and languages need special handling due to player choices
+	// Record the choice
+	d.recordChoice(choices.ChoiceData{
+		Category:      shared.ChoiceName,
+		Source:        shared.SourcePlayer,
+		NameSelection: &input.Name,
+	})
 
-	// Compile skills (includes player choices + automatic grants)
-	charData.Skills = d.compileSkills(raceData, backgroundData)
+	// Update progress
+	d.progress.Set(ProgressName)
 
-	// Compile languages (includes player choices + automatic grants)
-	charData.Languages = d.compileLanguages(raceData, backgroundData)
+	return nil
+}
 
-	// Combine weapon proficiencies from class and race data
-	allWeapons := append([]proficiencies.Weapon{}, classProficiencies.Weapons...)
-	allWeapons = append(allWeapons, raceData.WeaponProficiencies...)
-
-	charData.Proficiencies = shared.Proficiencies{
-		Armor:   classProficiencies.Armor,
-		Weapons: allWeapons,
-		Tools:   append(classProficiencies.Tools, backgroundProficiencies.Tools...),
+// SetRace sets the character's race and subrace
+func (d *Draft) SetRace(input *SetRaceInput) error {
+	if input == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
 	}
 
-	// Saving throws (only from class)
-	charData.SavingThrows = make(map[abilities.Ability]shared.ProficiencyLevel)
-	for _, save := range classProficiencies.SavingThrows {
-		charData.SavingThrows[save] = shared.Proficient
+	// Validate race exists
+	raceData := races.GetData(input.RaceID)
+	if raceData == nil {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "unknown race: %s", input.RaceID)
 	}
 
-	// Compile all choices (fundamental and player-made)
-	charData.Choices = d.compileChoices()
+	d.race = input.RaceID
+	d.subrace = input.SubraceID
 
-	// Compile equipment
-	charData.Equipment = d.compileEquipment(classData, backgroundData)
-
-	// Initialize class resources
-	classResources := initializeClassResources(classData, 1, charData.AbilityScores)
-	resourcesData := make(map[shared.ClassResourceType]ResourceData)
-	for resType, res := range classResources {
-		resourcesData[resType] = ResourceData{
-			Type:    resType,
-			Name:    res.Name,
-			Max:     res.Max,
-			Current: res.Current,
-			Resets:  res.Resets,
+	// Record language choices if any
+	if len(input.Choices.Languages) > 0 {
+		// Map to correct ChoiceID based on race
+		var choiceID choices.ChoiceID
+		switch d.race {
+		case races.Human:
+			choiceID = choices.HumanLanguage
+		case races.HalfElf:
+			choiceID = choices.HalfElfLanguage
+		case races.Elf:
+			if d.subrace == races.HighElf {
+				choiceID = choices.HighElfLanguage
+			}
 		}
-	}
-	charData.ClassResources = resourcesData
-
-	// Initialize spell slots
-	spellSlots := initializeSpellSlots(classData, 1)
-	charData.SpellSlots = spellSlots
-
-	charData.CreatedAt = time.Now()
-	charData.UpdatedAt = time.Now()
-
-	// Create the character domain object
-	return LoadCharacterFromData(charData, raceData, classData, backgroundData)
-}
-
-// LoadDraftFromData creates a Draft from persistent data
-func LoadDraftFromData(data DraftData) (*Draft, error) {
-	if data.ID == "" {
-		return nil, errors.New("draft ID is required")
-	}
-
-	// Validate that class/race/background are valid constants
-	// This ensures we fail fast on bad data from the database
-	if data.ClassChoice.ClassID != "" {
-		if _, err := classes.GetByID(string(data.ClassChoice.ClassID)); err != nil {
-			return nil, fmt.Errorf("invalid class in draft data '%s': %w", data.ClassChoice.ClassID, err)
-		}
-	}
-
-	if data.RaceChoice.RaceID != "" {
-		if _, err := races.GetByID(string(data.RaceChoice.RaceID)); err != nil {
-			return nil, fmt.Errorf("invalid race in draft data '%s': %w", data.RaceChoice.RaceID, err)
-		}
-	}
-
-	if data.BackgroundChoice != "" {
-		if _, err := backgrounds.GetByID(string(data.BackgroundChoice)); err != nil {
-			return nil, fmt.Errorf("invalid background in draft data '%s': %w", data.BackgroundChoice, err)
-		}
-	}
-
-	draft := &Draft{
-		ID:       data.ID,
-		PlayerID: data.PlayerID,
-		Name:     data.Name,
-		Progress: DraftProgress{flags: data.ProgressFlags},
-
-		// Load core identity choices - now validated
-		RaceChoice:         data.RaceChoice,
-		ClassChoice:        data.ClassChoice,
-		BackgroundChoice:   data.BackgroundChoice,
-		AbilityScoreChoice: data.AbilityScoreChoice,
-
-		// Load choices with source tracking
-		Choices: data.Choices,
-
-		// Validation state is NOT loaded from persistence - it will be calculated
-		// on-demand to ensure it's always current with the rules
-
-		CreatedAt: data.CreatedAt,
-		UpdatedAt: data.UpdatedAt,
-	}
-
-	// Run validation to populate the validation state
-	// This ensures the draft always has current validation based on the latest rules
-	_, _ = draft.ValidateChoices()
-
-	return draft, nil
-}
-
-// ToData converts the draft to its persistent representation
-func (d *Draft) ToData() DraftData {
-	return DraftData{
-		ID:            d.ID,
-		PlayerID:      d.PlayerID,
-		Name:          d.Name,
-		ProgressFlags: d.Progress.flags,
-
-		// Save core identity choices
-		RaceChoice:         d.RaceChoice,
-		ClassChoice:        d.ClassChoice,
-		BackgroundChoice:   d.BackgroundChoice,
-		AbilityScoreChoice: d.AbilityScoreChoice,
-
-		// Save choices with source tracking
-		Choices: d.Choices,
-
-		// Note: Validation state is not saved - it's derived data that should be
-		// recalculated when needed to ensure it's always current with the rules
-
-		CreatedAt: d.CreatedAt,
-		UpdatedAt: d.UpdatedAt,
-	}
-}
-
-// GetProgress returns information about the draft's completion status
-func (d *Draft) GetProgress() DraftProgress {
-	return d.Progress
-}
-
-// IsComplete returns true if the draft has all required fields to create a character
-func (d *Draft) IsComplete() bool {
-	return d.isComplete()
-}
-
-// GetValidationStatus returns the current validation state of the draft
-func (d *Draft) GetValidationStatus() (warnings []string, errors []string, canFinalize bool) {
-	return d.ValidationWarnings, d.ValidationErrors, d.CanFinalize
-}
-
-// HasValidationIssues returns true if the draft has any validation errors or warnings
-func (d *Draft) HasValidationIssues() bool {
-	return len(d.ValidationErrors) > 0 || len(d.ValidationWarnings) > 0
-}
-
-// ValidateChoices validates the draft's choices using the new choices validation system
-// and updates the draft's validation state
-func (d *Draft) ValidateChoices() (*choices.ValidationResult, error) {
-	// Clear previous validation state
-	d.ValidationWarnings = nil
-	d.ValidationErrors = nil
-	d.CanFinalize = false
-
-	// Can only validate if we have class/race/background selected
-	if d.ClassChoice.ClassID == "" || d.RaceChoice.RaceID == "" {
-		return nil, errors.New("class and race must be selected before validating choices")
-	}
-
-	// Convert ChoiceData to TypedSubmissions
-	submissions := choices.NewTypedSubmissions()
-	for _, choice := range d.Choices {
-		// Convert shared types to choices types
-		source := convertChoiceSource(choice.Source)
-		field := convertChoiceCategory(choice.Category)
-		values := extractChoiceValues(choice)
-
-		if len(values) > 0 {
-			submissions.AddChoice(choices.ChoiceSubmission{
-				Source:   source,
-				Field:    field,
-				ChoiceID: choice.ChoiceID,
-				Values:   values,
-			})
-		}
-	}
-
-	// Check for missing subclass
-	if d.ClassChoice.MissingSubclass() {
-		// Create initial result with subclass error
-		result := choices.NewValidationResult()
-		result.AddIssue(choices.ValidationIssue{
-			Code:     choices.CodeRequiredChoiceMissing,
-			Severity: choices.SeverityError,
-			Field:    choices.Field("subclass"),
-			Message:  fmt.Sprintf("%s requires a subclass selection at level 1", d.ClassChoice.ClassID),
-			Source:   choices.SourceClass,
+		d.recordChoice(choices.ChoiceData{
+			Category:          shared.ChoiceLanguages,
+			Source:            shared.SourceRace,
+			ChoiceID:          choiceID,
+			LanguageSelection: input.Choices.Languages,
 		})
-		d.updateValidationState(result)
-		return result, nil
 	}
 
-	// Check for missing subrace
-	if d.RaceChoice.MissingRequiredSubrace() {
-		result := choices.NewValidationResult()
-		result.AddIssue(choices.ValidationIssue{
-			Code:     choices.CodeRequiredChoiceMissing,
-			Severity: choices.SeverityError,
-			Field:    choices.Field("subrace"),
-			Message:  fmt.Sprintf("%s requires a subrace selection", d.RaceChoice.RaceID),
-			Source:   choices.SourceRace,
+	// Record skill choices (for Half-Elf, etc.)
+	if len(input.Choices.Skills) > 0 {
+		d.recordChoice(choices.ChoiceData{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceRace,
+			SkillSelection: input.Choices.Skills,
 		})
-		d.updateValidationState(result)
-		return result, nil
 	}
 
-	// Build validation context using the rulebook's knowledge of automatic grants
-	context := d.buildValidationContextWithRulebookKnowledge()
-
-	// Create validator and validate with typed constants from the Draft
-	validator := choices.NewValidator(context)
-
-	// Use subclass-aware validation if subclass is selected
-	var result *choices.ValidationResult
-	if d.ClassChoice.SubclassID != "" {
-		result = validator.ValidateAllWithSubclass(
-			d.ClassChoice.ClassID,
-			d.ClassChoice.SubclassID,
-			d.RaceChoice.RaceID,
-			d.BackgroundChoice,
-			1, // Level 1 for now
-			submissions,
-		)
-	} else {
-		result = validator.ValidateAll(
-			d.ClassChoice.ClassID,
-			d.RaceChoice.RaceID,
-			d.BackgroundChoice,
-			1, // Level 1 for now
-			submissions,
-		)
+	// Record cantrip choices (for High Elf, etc.)
+	if len(input.Choices.Cantrips) > 0 {
+		d.recordChoice(choices.ChoiceData{
+			Category:       shared.ChoiceCantrips,
+			Source:         shared.SourceRace,
+			SpellSelection: input.Choices.Cantrips,
+		})
 	}
 
-	// Update draft's validation state from result
-	d.updateValidationState(result)
+	d.updatedAt = time.Now()
 
-	return result, nil
+	// Update progress if race choices are complete
+	if d.IsRaceComplete() {
+		d.progress.Set(ProgressRace)
+	}
+
+	return nil
 }
 
-// ValidateChoicesWithData is deprecated. Use ValidateChoices() which now uses the rulebook's knowledge.
-// This method will be removed before v1.0
-//
-// Deprecated: Use ValidateChoices instead
-func (d *Draft) ValidateChoicesWithData(_ *race.Data, _ *shared.Background) (*choices.ValidationResult, error) {
-	return d.ValidateChoices()
+// SetClass sets the character's class and subclass
+func (d *Draft) SetClass(input *SetClassInput) error {
+	if input == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+	}
+
+	// Validate class exists
+	classData := classes.GetData(input.ClassID)
+	if classData == nil {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "unknown class: %s", input.ClassID)
+	}
+
+	// Validate skill count
+	if len(input.Choices.Skills) != classData.SkillCount {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"must choose exactly %d skills, got %d",
+			classData.SkillCount, len(input.Choices.Skills))
+	}
+
+	d.class = input.ClassID
+	d.subclass = input.SubclassID
+
+	// Record skill choices
+	if len(input.Choices.Skills) > 0 {
+		d.recordChoice(choices.ChoiceData{
+			Category:       shared.ChoiceSkills,
+			Source:         shared.SourceClass,
+			SkillSelection: input.Choices.Skills,
+		})
+	}
+
+	// Record fighting style (for Fighter, Paladin, etc.)
+	if input.Choices.FightingStyle != "" {
+		style := input.Choices.FightingStyle
+		d.recordChoice(choices.ChoiceData{
+			Category:               shared.ChoiceFightingStyle,
+			Source:                 shared.SourceClass,
+			FightingStyleSelection: &style,
+		})
+	}
+
+	// Record cantrips (for spellcasters)
+	if len(input.Choices.Cantrips) > 0 {
+		d.recordChoice(choices.ChoiceData{
+			Category:       shared.ChoiceCantrips,
+			Source:         shared.SourceClass,
+			SpellSelection: input.Choices.Cantrips,
+		})
+	}
+
+	// Record spells (for spellcasters)
+	if len(input.Choices.Spells) > 0 {
+		d.recordChoice(choices.ChoiceData{
+			Category:       shared.ChoiceSpells,
+			Source:         shared.SourceClass,
+			SpellSelection: input.Choices.Spells,
+		})
+	}
+
+	// Record equipment choices
+	if len(input.Choices.Equipment) > 0 {
+		requirements := choices.GetClassRequirements(d.class)
+
+		for choiceID, selectionID := range input.Choices.Equipment {
+			// Check if it's a regular equipment choice (with options)
+			for _, req := range requirements.Equipment {
+				if req.ID == choiceID {
+					// Find the selected option
+					for _, opt := range req.Options {
+						if opt.ID == selectionID {
+							// Extract equipment IDs from this option
+							equipmentIDs := make([]shared.SelectionID, 0, len(opt.Items))
+							for _, item := range opt.Items {
+								equipmentIDs = append(equipmentIDs, item.ID)
+							}
+
+							d.recordChoice(choices.ChoiceData{
+								Category:           shared.ChoiceEquipment,
+								Source:             shared.SourceClass,
+								ChoiceID:           choiceID,
+								OptionID:           opt.ID,
+								EquipmentSelection: equipmentIDs,
+							})
+							break
+						}
+					}
+					break
+				}
+			}
+
+			// Check if it's a category-based choice
+			for _, catReq := range requirements.EquipmentCategories {
+				if catReq.ID == choiceID {
+					// For category choices, selectionID is the actual equipment ID
+					d.recordChoice(choices.ChoiceData{
+						Category:           shared.ChoiceEquipment,
+						Source:             shared.SourceClass,
+						ChoiceID:           choiceID,
+						EquipmentSelection: []shared.SelectionID{selectionID},
+					})
+					break
+				}
+			}
+		}
+	}
+
+	d.updatedAt = time.Now()
+
+	// Update progress if class choices are complete
+	if d.IsClassComplete() {
+		d.progress.Set(ProgressClass)
+	}
+
+	return nil
 }
 
-// updateValidationState updates the draft's validation fields from the validation result
-func (d *Draft) updateValidationState(result *choices.ValidationResult) {
-	// Collect error messages
-	for _, err := range result.Errors {
-		d.ValidationErrors = append(d.ValidationErrors, err.Message)
+// SetBackground sets the character's background
+func (d *Draft) SetBackground(input *SetBackgroundInput) error {
+	if input == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
 	}
 
-	// Collect incomplete messages as errors (they prevent finalization)
-	for _, inc := range result.Incomplete {
-		d.ValidationErrors = append(d.ValidationErrors, inc.Message)
+	// TODO: Validate background when we have internal background data
+	d.background = input.BackgroundID
+
+	// Record language choices
+	if len(input.Choices.Languages) > 0 {
+		d.recordChoice(choices.ChoiceData{
+			Category:          shared.ChoiceLanguages,
+			Source:            shared.SourceBackground,
+			LanguageSelection: input.Choices.Languages,
+		})
 	}
 
-	// Collect warning messages
-	for _, warn := range result.Warnings {
-		d.ValidationWarnings = append(d.ValidationWarnings, warn.Message)
+	d.updatedAt = time.Now()
+
+	// Update progress if background choices are complete
+	if d.IsBackgroundComplete() {
+		d.progress.Set(ProgressBackground)
 	}
 
-	// Update finalization status
-	d.CanFinalize = result.CanFinalize
+	return nil
 }
 
-// buildValidationContext creates a validation context from the draft's current state
-func (d *Draft) buildValidationContext() *choices.ValidationContext {
-	context := choices.NewValidationContext()
+// SetAbilityScores sets the character's base ability scores
+func (d *Draft) SetAbilityScores(input *SetAbilityScoresInput) error {
+	if input == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+	}
 
-	// Add skill proficiencies from all sources
-	for _, choice := range d.Choices {
+	// Validate all 6 scores are present
+	requiredAbilities := []abilities.Ability{
+		abilities.STR, abilities.DEX, abilities.CON,
+		abilities.INT, abilities.WIS, abilities.CHA,
+	}
+
+	for _, ability := range requiredAbilities {
+		score, ok := input.Scores[ability]
+		if !ok {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument, "missing score for %s", ability)
+		}
+
+		// Validate range (3-18 for base scores)
+		if score < 3 || score > 18 {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"%s score %d is outside valid range (3-18)", ability, score)
+		}
+	}
+
+	d.baseAbilityScores = input.Scores
+
+	// Record the choice with method
+	d.recordChoice(choices.ChoiceData{
+		Category:              shared.ChoiceAbilityScores,
+		Source:                shared.SourcePlayer,
+		AbilityScoreSelection: input.Scores,
+		Method:                input.Method,
+	})
+
+	d.updatedAt = time.Now()
+
+	// Update progress
+	d.progress.Set(ProgressAbilityScores)
+
+	return nil
+}
+
+// ToCharacter converts the draft to a playable character
+func (d *Draft) ToCharacter(characterID string) (*Character, error) {
+	// Validate we have all required data
+	if characterID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character ID is required")
+	}
+	if d.name == "" {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "character name is required")
+	}
+	if d.race == "" {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "character race is required")
+	}
+	if d.class == "" {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "character class is required")
+	}
+	if d.background == "" {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "character background is required")
+	}
+	if len(d.baseAbilityScores) != 6 {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "all ability scores must be set")
+	}
+
+	// Get race and class data
+	raceData := races.GetData(d.race)
+	if raceData == nil {
+		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "unknown race: %s", d.race)
+	}
+
+	classData := classes.GetData(d.class)
+	if classData == nil {
+		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "unknown class: %s", d.class)
+	}
+
+	// Calculate final ability scores (base + racial modifiers)
+	finalScores := make(shared.AbilityScores)
+	for ability, baseScore := range d.baseAbilityScores {
+		finalScores[ability] = baseScore
+	}
+
+	// Apply racial ability score improvements
+	for ability, bonus := range raceData.AbilityIncreases {
+		finalScores[ability] += bonus
+	}
+
+	// Calculate starting HP
+	maxHP := classData.HitDice + finalScores.Modifier(abilities.CON)
+
+	// Build proficiencies
+	skillProfs := d.compileSkills(raceData)
+	savingThrows := d.compileSavingThrows(classData)
+
+	// Create the character
+	char := &Character{
+		id:               characterID,
+		playerID:         d.playerID,
+		name:             d.name,
+		level:            1,
+		proficiencyBonus: 2,
+		raceID:           d.race,
+		subraceID:        d.subrace,
+		classID:          d.class,
+		subclassID:       d.subclass,
+		abilityScores:    finalScores,
+		hitPoints:        maxHP,
+		maxHitPoints:     maxHP,
+		armorClass:       10 + finalScores.Modifier(abilities.DEX), // Base AC
+		hitDice:          classData.HitDice,
+		skills:           skillProfs,
+		savingThrows:     savingThrows,
+		languages:        d.compileLanguages(raceData),
+		inventory:        d.compileInventory(),
+		spellSlots:       d.compileSpellSlots(classData),
+		classResources:   make(map[shared.ClassResourceType]ResourceData),
+	}
+
+	return char, nil
+}
+
+// ValidateChoices validates that all required choices have been made
+func (d *Draft) ValidateChoices() error {
+	// Create validator
+	validator := choices.NewValidator()
+
+	// Convert draft choices to submissions
+	submissions := choices.NewSubmissions()
+
+	// Process stored choices into submissions
+	for _, choice := range d.choices {
 		switch choice.Category {
 		case shared.ChoiceSkills:
-			for _, skill := range choice.SkillSelection {
-				context.AddProficiency(string(skill))
+			if len(choice.SkillSelection) > 0 {
+				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
+				skillValues = append(skillValues, choice.SkillSelection...)
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceSkills,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   skillValues,
+				})
 			}
-		case shared.ChoiceToolProficiency:
-			for _, tool := range choice.ToolProficiencySelection {
-				context.AddProficiency(tool)
+		case shared.ChoiceEquipment:
+			if len(choice.EquipmentSelection) > 0 {
+				// For equipment bundles with options, use the option ID as the value
+				// For category-based choices, use the actual equipment IDs
+				values := choice.EquipmentSelection
+				if choice.OptionID != "" {
+					// This is a bundle choice - use the option ID as the single value
+					values = []shared.SelectionID{choice.OptionID}
+				}
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceEquipment,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					OptionID: choice.OptionID,
+					Values:   values,
+				})
 			}
-		}
-	}
-
-	context.CharacterLevel = 1 // For now, always level 1
-	context.ClassLevel = 1
-
-	return context
-}
-
-// buildValidationContextWithGrants creates a validation context with automatic grants populated
-// This is used when we have the full race and background data available
-// buildValidationContextWithRulebookKnowledge uses the rulebook's knowledge to populate automatic grants
-func (d *Draft) buildValidationContextWithRulebookKnowledge() *choices.ValidationContext {
-	context := d.buildValidationContext()
-
-	// Get automatic grants from the race using rulebook knowledge
-	raceGrants := races.GetAutomaticGrants(d.RaceChoice.RaceID)
-
-	// Add automatic skill grants from race
-	for _, skill := range raceGrants.Skills {
-		context.AddAutomaticSkillGrant(skill, choices.SourceRace)
-	}
-
-	// Add automatic language grants from race
-	for _, lang := range raceGrants.Languages {
-		context.AddAutomaticLanguageGrant(lang, choices.SourceRace)
-	}
-
-	// Get automatic grants from the background using rulebook knowledge
-	bgGrants := backgrounds.GetAutomaticGrants(d.BackgroundChoice)
-
-	// Add automatic skill grants from background
-	for _, skill := range bgGrants.Skills {
-		context.AddAutomaticSkillGrant(skill, choices.SourceBackground)
-	}
-
-	// TODO: Add language and tool grants from background when they exist
-
-	return context
-}
-
-// Helper methods for DraftProgress
-
-func (p *DraftProgress) setFlag(flag uint32) {
-	p.flags |= flag
-}
-
-func (p *DraftProgress) hasFlag(flag uint32) bool {
-	return p.flags&flag != 0
-}
-
-// applyAbilityScoreIncreases applies ability score increases to the given scores
-func applyAbilityScoreIncreases(scores shared.AbilityScores, increases map[abilities.Ability]int) {
-	// Apply the increases directly - no conversion needed!
-	_ = scores.ApplyIncreases(increases) // Ignore errors about exceeding 20 during creation
-}
-
-// buildBaseCharacterData creates the base character data structure from draft
-func (d *Draft) buildBaseCharacterData() Data {
-	data := Data{
-		ID:            d.ID,
-		PlayerID:      d.PlayerID,
-		Name:          d.Name,
-		Level:         1, // Starting level
-		RaceID:        d.RaceChoice.RaceID,
-		ClassID:       d.ClassChoice.ClassID,
-		BackgroundID:  d.BackgroundChoice,
-		AbilityScores: d.AbilityScoreChoice,
-	}
-
-	// Set subrace ID if present
-	if d.RaceChoice.SubraceID != "" {
-		data.SubraceID = d.RaceChoice.SubraceID
-	}
-
-	// Set subclass ID if present
-	if d.ClassChoice.SubclassID != "" {
-		data.SubclassID = d.ClassChoice.SubclassID
-	}
-
-	return data
-}
-
-// applyAbilityScoreImprovements applies racial and subracial ability score improvements
-func (d *Draft) applyAbilityScoreImprovements(charData *Data, raceData *race.Data) {
-	// Apply racial ability score improvements
-	applyAbilityScoreIncreases(charData.AbilityScores, raceData.AbilityScoreIncreases)
-
-	// Apply subrace ability score improvements if applicable
-	if d.RaceChoice.SubraceID != "" {
-		// Find the subrace data
-		for _, subrace := range raceData.Subraces {
-			if subrace.ID == d.RaceChoice.SubraceID {
-				applyAbilityScoreIncreases(charData.AbilityScores, subrace.AbilityScoreIncreases)
-				break
+		case shared.ChoiceLanguages:
+			if len(choice.LanguageSelection) > 0 {
+				langValues := make([]shared.SelectionID, 0, len(choice.LanguageSelection))
+				langValues = append(langValues, choice.LanguageSelection...)
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceLanguages,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   langValues,
+				})
 			}
 		}
 	}
+
+	// Validate choices
+	result := validator.ValidateCharacterCreation(d.class, d.race, submissions)
+
+	if !result.Valid {
+		// Return first error as rpgerr
+		if len(result.Errors) > 0 {
+			err := result.Errors[0]
+			return rpgerr.New(rpgerr.CodeInvalidArgument, err.Message,
+				rpgerr.WithMeta("category", string(err.Category)),
+				rpgerr.WithMeta("source", string(err.Source)))
+		}
+	}
+
+	// If validation passed, update progress flags
+	if result.Valid {
+		// Check and update each progress flag
+		if d.name != "" {
+			d.progress.Set(ProgressName)
+		}
+		if d.IsRaceComplete() {
+			d.progress.Set(ProgressRace)
+		}
+		if d.IsClassComplete() {
+			d.progress.Set(ProgressClass)
+		}
+		if d.IsBackgroundComplete() {
+			d.progress.Set(ProgressBackground)
+		}
+		// Check if all ability scores are set (non-zero)
+		if d.baseAbilityScores[abilities.STR] > 0 &&
+			d.baseAbilityScores[abilities.DEX] > 0 &&
+			d.baseAbilityScores[abilities.CON] > 0 &&
+			d.baseAbilityScores[abilities.INT] > 0 &&
+			d.baseAbilityScores[abilities.WIS] > 0 &&
+			d.baseAbilityScores[abilities.CHA] > 0 {
+			d.progress.Set(ProgressAbilityScores)
+		}
+	}
+
+	return nil
 }
 
-// compileSkills combines chosen skills with automatic grants from race and background
-func (d *Draft) compileSkills(
-	raceData *race.Data, backgroundData *shared.Background,
-) map[skills.Skill]shared.ProficiencyLevel {
+// recordChoice adds or updates a choice in the draft
+func (d *Draft) recordChoice(choice choices.ChoiceData) {
+	// Remove any existing choice with the same choiceID (for equipment) or same category and source (for others)
+	filtered := make([]choices.ChoiceData, 0, len(d.choices))
+	for _, c := range d.choices {
+		// For equipment choices, check choiceID since we can have multiple equipment choices
+		if choice.Category == shared.ChoiceEquipment && c.Category == shared.ChoiceEquipment {
+			if c.ChoiceID != choice.ChoiceID {
+				filtered = append(filtered, c)
+			}
+		} else {
+			// For non-equipment choices, check category and source as before
+			if c.Category != choice.Category || c.Source != choice.Source {
+				filtered = append(filtered, c)
+			}
+		}
+	}
+	filtered = append(filtered, choice)
+
+	d.choices = filtered
+}
+
+// TODO: check if class can grant skills or all they all chosen
+// compileSkills builds the skill proficiency map
+func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.ProficiencyLevel {
 	skills := make(map[skills.Skill]shared.ProficiencyLevel)
 
-	// Extract chosen skills from Choices
-	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceSkills && choice.SkillSelection != nil {
+	// Add racial skill proficiencies
+	for _, skill := range raceData.Skills {
+		skills[skill] = shared.Proficient
+	}
+
+	// Add chosen skills from choices
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceSkills {
 			for _, skill := range choice.SkillSelection {
 				skills[skill] = shared.Proficient
 			}
 		}
 	}
 
-	// Add background skills (automatic grants)
-	// Note: If a skill is already proficient (e.g., Half-Orc gets Intimidation,
-	// player chooses Intimidation from Fighter), this is fine - you just don't
-	// get double proficiency. The map structure naturally handles this.
-	for _, skill := range backgroundData.SkillProficiencies {
-		skills[skill] = shared.Proficient
-	}
-
-	// Add any racial skill proficiencies
-	if raceData.SkillProficiencies != nil {
-		for _, skill := range raceData.SkillProficiencies {
-			skills[skill] = shared.Proficient
-		}
-	}
+	// TODO: Add background skills when we have internal background data
 
 	return skills
 }
 
-// compileLanguages combines chosen languages with automatic grants from race and background
-func (d *Draft) compileLanguages(raceData *race.Data, backgroundData *shared.Background) []string {
-	// Start with ensuring Common is always included
-	languageSet := make(map[string]bool)
-	languageSet[string(languages.Common)] = true
+// compileSavingThrows builds the saving throw proficiency map
+func (d *Draft) compileSavingThrows(classData *classes.Data) map[abilities.Ability]shared.ProficiencyLevel {
+	saves := make(map[abilities.Ability]shared.ProficiencyLevel)
 
-	// Add race languages (automatic grants)
-	for _, lang := range raceData.Languages {
-		languageSet[string(lang)] = true
+	for _, ability := range classData.SavingThrows {
+		saves[ability] = shared.Proficient
 	}
 
-	// Add background languages (automatic grants)
-	for _, lang := range backgroundData.Languages {
-		languageSet[string(lang)] = true
+	return saves
+}
+
+// compileLanguages builds the language list
+func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
+	langs := make([]languages.Language, 0)
+
+	// Add racial languages
+	langs = append(langs, raceData.Languages...)
+
+	// Add chosen languages
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceLanguages {
+			langs = append(langs, choice.LanguageSelection...)
+		}
 	}
 
-	// Extract chosen languages from Choices
-	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceLanguages && choice.LanguageSelection != nil {
-			for _, lang := range choice.LanguageSelection {
-				languageSet[string(lang)] = true
+	return langs
+}
+
+// compileInventory builds the inventory from equipment choices
+func (d *Draft) compileInventory() []InventoryItem {
+	inventory := make([]InventoryItem, 0)
+
+	// Add chosen equipment
+	// TODO: This currently uses string equipment selections from choices
+	// We need to convert these to proper Equipment items
+	// For now, return empty inventory since we don't have equipment data yet
+
+	// TODO: Add starting equipment from class and background
+	// TODO: Handle equipment packs (Explorer's Pack, etc.)
+	// TODO: Handle quantities (20 arrows, 2 handaxes, etc.)
+
+	return inventory
+}
+
+// compileSpellSlots determines starting spell slots
+func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData {
+	slots := make(map[int]SpellSlotData)
+
+	// Only spellcasters get spell slots
+	if classData.SpellcastingAbility == "" {
+		return slots
+	}
+
+	// Level 1 spell slots based on class
+	switch d.class {
+	case classes.Wizard, classes.Sorcerer, classes.Cleric, classes.Druid, classes.Bard:
+		slots[1] = SpellSlotData{Max: 2, Used: 0}
+	case classes.Warlock:
+		slots[1] = SpellSlotData{Max: 1, Used: 0}
+	case classes.Ranger, classes.Paladin:
+		// Half-casters don't get spells until level 2
+	}
+
+	return slots
+}
+
+// Progress validation methods
+
+// IsRaceComplete checks if race selection and all race choices are complete
+func (d *Draft) IsRaceComplete() bool {
+	if d.race == "" {
+		return false
+	}
+
+	// Get race requirements
+	reqs := choices.GetRaceRequirements(d.race)
+	if reqs == nil {
+		return true // No choices required
+	}
+
+	// Create submissions from draft choices
+	subs := d.getRaceSubmissions()
+
+	// Validate
+	validator := choices.NewValidator()
+	result := validator.Validate(reqs, subs)
+
+	return result.Valid
+}
+
+// IsClassComplete checks if class selection and all class choices are complete
+func (d *Draft) IsClassComplete() bool {
+	if d.class == "" {
+		return false
+	}
+
+	// Get class requirements (includes subclass if needed at level 1)
+	reqs := choices.GetClassRequirements(d.class)
+	if reqs == nil {
+		return true // No choices required
+	}
+
+	// Check if subclass is required at level 1
+	if needsSubclassAtLevel1(d.class) && d.subclass == "" {
+		return false
+	}
+
+	// Create submissions from draft choices
+	subs := d.getClassSubmissions()
+
+	// Validate
+	validator := choices.NewValidator()
+	result := validator.Validate(reqs, subs)
+
+	return result.Valid
+}
+
+// IsBackgroundComplete checks if background selection and choices are complete
+func (d *Draft) IsBackgroundComplete() bool {
+	if d.background == "" {
+		return false
+	}
+
+	// TODO: Get background requirements when we have background data
+	// For now, just check that background is set
+	return true
+}
+
+// Helper to check if class needs subclass at level 1
+func needsSubclassAtLevel1(classID classes.Class) bool {
+	classData := classes.ClassData[classID]
+	return classData != nil && classData.SubclassLevel == 1
+}
+
+// getRaceSubmissions extracts race-related submissions from draft choices
+func (d *Draft) getRaceSubmissions() *choices.Submissions {
+	subs := choices.NewSubmissions()
+
+	for _, choice := range d.choices {
+		if choice.Source == shared.SourceRace {
+			// Convert ChoiceData to Submission
+			// This would need proper mapping of choice data to submission format
+			// For now, simplified version
+			if len(choice.SkillSelection) > 0 {
+				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
+				skillValues = append(skillValues, choice.SkillSelection...)
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceSkills,
+					Source:   shared.SourceRace,
+					ChoiceID: choices.HalfElfSkills, // Would need to map based on race
+					Values:   skillValues,
+				})
 			}
+
+			// Handle language choices
+			if len(choice.LanguageSelection) > 0 {
+				langValues := make([]shared.SelectionID, 0, len(choice.LanguageSelection))
+				langValues = append(langValues, choice.LanguageSelection...)
+				// Map to correct ChoiceID based on race
+				var choiceID choices.ChoiceID
+				switch d.race {
+				case races.Human:
+					choiceID = choices.HumanLanguage
+				case races.HalfElf:
+					choiceID = choices.HalfElfLanguage
+				case races.Elf:
+					// Check if it's High Elf subrace
+					if d.subrace == races.HighElf {
+						choiceID = choices.HighElfLanguage
+					}
+				default:
+					// For other races that might have language choices
+					choiceID = choices.ChoiceID(string(d.race) + "-language")
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceLanguages,
+					Source:   shared.SourceRace,
+					ChoiceID: choiceID,
+					Values:   langValues,
+				})
+			}
+
+			// Add other choice types...
 		}
 	}
 
-	// Convert set to slice
-	languages := make([]string, 0, len(languageSet))
-	for lang := range languageSet {
-		languages = append(languages, lang)
-	}
-
-	return languages
+	return subs
 }
 
-// compileChoices creates the complete list of choices including fundamental choices
-func (d *Draft) compileChoices() []ChoiceData {
-	// Reserve capacity for fundamental choices (name, race, class, background, ability scores)
-	const fundamentalChoiceCount = 5
-	choices := make([]ChoiceData, 0, len(d.Choices)+fundamentalChoiceCount)
+// getClassSubmissions extracts class-related submissions from draft choices
+func (d *Draft) getClassSubmissions() *choices.Submissions {
+	subs := choices.NewSubmissions()
 
-	// Add fundamental choices that should always be tracked
-	if d.Name != "" {
-		choices = append(choices, ChoiceData{
-			Category:      shared.ChoiceName,
-			Source:        shared.SourcePlayer,
-			ChoiceID:      "character_name",
-			NameSelection: &d.Name,
-		})
-	}
+	for _, choice := range d.choices {
+		if choice.Source == shared.SourceClass {
+			// Convert ChoiceData to Submission
+			// This would need proper mapping of choice data to submission format
+			// For now, simplified version
+			if len(choice.SkillSelection) > 0 {
+				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
+				skillValues = append(skillValues, choice.SkillSelection...)
+				// Map to correct ChoiceID based on class
+				var choiceID choices.ChoiceID
+				switch d.class {
+				case classes.Fighter:
+					choiceID = choices.FighterSkills
+				case classes.Rogue:
+					choiceID = choices.RogueSkills
+				case classes.Wizard:
+					choiceID = choices.WizardSkills
+				case classes.Cleric:
+					choiceID = choices.ClericSkills
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceSkills,
+					Source:   shared.SourceClass,
+					ChoiceID: choiceID,
+					Values:   skillValues,
+				})
+			}
 
-	if d.RaceChoice.RaceID != "" {
-		choices = append(choices, ChoiceData{
-			Category:      shared.ChoiceRace,
-			Source:        shared.SourcePlayer,
-			ChoiceID:      "race_selection",
-			RaceSelection: &d.RaceChoice,
-		})
-	}
+			// Handle equipment choices
+			if len(choice.EquipmentSelection) > 0 {
+				// For equipment bundles with options, use the option ID as the value
+				// For category-based choices, use the actual equipment IDs
+				values := make([]shared.SelectionID, 0)
+				if choice.OptionID != "" {
+					// This is a bundle choice - use the option ID as the single value
+					values = append(values, choice.OptionID)
+				} else {
+					// Category-based choice - use the equipment IDs
+					values = choice.EquipmentSelection
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceEquipment,
+					Source:   shared.SourceClass,
+					ChoiceID: choice.ChoiceID,
+					OptionID: choice.OptionID,
+					Values:   values,
+				})
+			}
 
-	if d.ClassChoice.ClassID != "" {
-		choices = append(choices, ChoiceData{
-			Category:       shared.ChoiceClass,
-			Source:         shared.SourcePlayer,
-			ChoiceID:       "class_selection",
-			ClassSelection: &d.ClassChoice,
-		})
-	}
+			// Handle fighting style choices
+			if choice.FightingStyleSelection != nil {
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceFightingStyle,
+					Source:   shared.SourceClass,
+					ChoiceID: choices.FighterFightingStyle, // Would need mapping for other classes
+					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
+				})
+			}
 
-	if d.BackgroundChoice != "" {
-		choices = append(choices, ChoiceData{
-			Category:            shared.ChoiceBackground,
-			Source:              shared.SourcePlayer,
-			ChoiceID:            "background_selection",
-			BackgroundSelection: &d.BackgroundChoice,
-		})
-	}
-
-	if len(d.AbilityScoreChoice) > 0 {
-		choices = append(choices, ChoiceData{
-			Category:              shared.ChoiceAbilityScores,
-			Source:                shared.SourcePlayer,
-			ChoiceID:              "ability_scores",
-			AbilityScoreSelection: &d.AbilityScoreChoice,
-		})
-	}
-
-	// Add remaining choices from draft
-	choices = append(choices, d.Choices...)
-
-	return choices
-}
-
-// compileEquipment combines starting equipment with player choices
-func (d *Draft) compileEquipment(classData *class.Data, backgroundData *shared.Background) []string {
-	equipment := make([]string, 0)
-
-	// Add starting equipment from class
-	for _, eq := range classData.StartingEquipment {
-		equipment = append(equipment, formatEquipmentWithQuantity(eq.ItemID, eq.Quantity))
-	}
-
-	// Add equipment from background
-	equipment = append(equipment, backgroundData.Equipment...)
-
-	// Extract equipment choices from Choices
-	for _, choice := range d.Choices {
-		if choice.Category == shared.ChoiceEquipment && choice.EquipmentSelection != nil {
-			chosenEquipment := processEquipmentChoices(choice.EquipmentSelection)
-			equipment = append(equipment, chosenEquipment...)
+			// Add other choice types...
 		}
 	}
 
-	return equipment
+	return subs
 }

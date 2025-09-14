@@ -76,8 +76,8 @@ func TestSkillAbility(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(tt.skill), func(t *testing.T) {
-			assert.Equal(t, tt.ability, tt.skill.Ability())
+		t.Run(tt.skill, func(t *testing.T) {
+			assert.Equal(t, tt.ability, skills.Ability(tt.skill))
 		})
 	}
 }
@@ -93,8 +93,8 @@ func TestSkillDisplay(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(tt.skill), func(t *testing.T) {
-			assert.Equal(t, tt.display, tt.skill.Display())
+		t.Run(tt.skill, func(t *testing.T) {
+			assert.Equal(t, tt.display, skills.Display(tt.skill))
 		})
 	}
 }

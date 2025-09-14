@@ -3,10 +3,11 @@ package languages
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // Language represents a D&D 5e language
-type Language string
+type Language = shared.SelectionID
 
 // Standard languages that most characters can learn
 const (
@@ -117,7 +118,7 @@ func IsExotic(lang Language) bool {
 }
 
 // Display returns the human-readable name of the language
-func (l Language) Display() string {
+func Display(l Language) string {
 	switch l {
 	case Common:
 		return "Common"
@@ -152,6 +153,6 @@ func (l Language) Display() string {
 	case Undercommon:
 		return "Undercommon"
 	default:
-		return string(l)
+		return l
 	}
 }

@@ -2,18 +2,21 @@
 package armor
 
 import (
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// ArmorID represents unique identifier for armor
+// ArmorID represents unique identifier for armor (alias of shared.EquipmentID)
 //
 //nolint:revive // ArmorID is clearer than just ID in this context
-type ArmorID string
+type ArmorID = shared.EquipmentID
 
 // ArmorCategory represents armor weight classification
 //
 //nolint:revive // ArmorCategory is clearer than just Category in this context
-type ArmorCategory string
+type ArmorCategory = shared.EquipmentCategory
 
 const (
 	// CategoryLight represents light armor category
@@ -68,9 +71,48 @@ type Armor struct {
 	Cost                string // e.g., "5 gp"
 }
 
-// GetName returns the name of the armor
-func (a Armor) GetName() string {
+// EquipmentID returns the unique identifier for this armor
+func (a *Armor) EquipmentID() shared.EquipmentID {
+	return a.ID
+}
+
+// EquipmentType returns the equipment type (always TypeArmor)
+func (a *Armor) EquipmentType() shared.EquipmentType {
+	return shared.EquipmentTypeArmor
+}
+
+// EquipmentName returns the name of the armor
+func (a *Armor) EquipmentName() string {
 	return a.Name
+}
+
+// EquipmentWeight returns the weight in pounds
+func (a *Armor) EquipmentWeight() float32 {
+	return float32(a.Weight)
+}
+
+// EquipmentValue returns the value in copper pieces
+func (a *Armor) EquipmentValue() int {
+	// TODO: Parse cost string (e.g., "5 gp") and convert to copper
+	// For now, return a placeholder
+	return 0
+}
+
+// EquipmentDescription returns a description of the armor
+func (a *Armor) EquipmentDescription() string {
+	desc := fmt.Sprintf("AC %d", a.AC)
+	if a.MaxDexBonus != nil {
+		desc += fmt.Sprintf(" + Dex (max %d)", *a.MaxDexBonus)
+	} else {
+		desc += " + Dex"
+	}
+	if a.StealthDisadvantage {
+		desc += ", Stealth disadvantage"
+	}
+	if a.Strength > 0 {
+		desc += fmt.Sprintf(", Str %d required", a.Strength)
+	}
+	return desc
 }
 
 // All armor definitions
@@ -214,12 +256,12 @@ var All = map[ArmorID]Armor{
 func GetByID(id ArmorID) (Armor, error) {
 	armor, ok := All[id]
 	if !ok {
-		validArmor := make([]string, 0, len(All))
+		validArmor := make([]ArmorID, 0, len(All))
 		for k := range All {
-			validArmor = append(validArmor, string(k))
+			validArmor = append(validArmor, k)
 		}
 		return Armor{}, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid armor",
-			rpgerr.WithMeta("provided", string(id)),
+			rpgerr.WithMeta("provided", id),
 			rpgerr.WithMeta("valid_options", validArmor))
 	}
 	return armor, nil

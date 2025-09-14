@@ -32,8 +32,6 @@ type (
 	AbilityScores = shared.AbilityScores
 	// ChoiceCategory represents types of character creation choices
 	ChoiceCategory = shared.ChoiceCategory
-	// Background represents character background
-	Background = shared.Background
 )
 
 // Character types from the character package
@@ -42,22 +40,8 @@ type (
 	Character = character.Character
 	// CharacterData is the persistent character data structure
 	CharacterData = character.Data
-	// CharacterBuilder provides a step-by-step character creation process
-	CharacterBuilder = character.Builder
 	// CharacterDraft represents an in-progress character
 	CharacterDraft = character.Draft
-	// CharacterDraftData is the persistent draft data structure
-	CharacterDraftData = character.DraftData
-	// CreationData contains data for direct character creation
-	CreationData = character.CreationData
-)
-
-// Re-export key functions
-var (
-	NewCharacterBuilder   = character.NewCharacterBuilder
-	NewFromCreationData   = character.NewFromCreationData
-	LoadCharacterFromData = character.LoadCharacterFromData
-	LoadDraft             = character.LoadDraft
 )
 
 // Choice category constants for character creation

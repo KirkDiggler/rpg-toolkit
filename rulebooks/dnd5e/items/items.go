@@ -1,30 +1,38 @@
-// Package items provides a unified interface for accessing D&D 5e items
+// Package items provides D&D 5e miscellaneous items and equipment
 package items
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// Item represents any item in D&D 5e (weapons, armor, etc.)
-type Item interface {
-	GetName() string
-}
+// ItemID represents unique identifier for items (alias of shared.EquipmentID)
+type ItemID = shared.EquipmentID
 
-// GetByID retrieves an item by its ID from any item category
-func GetByID(id string) (Item, error) {
-	// Check if the item is a weapon (convert string to WeaponID)
-	if weapon, ok := weapons.All[weapons.WeaponID(id)]; ok {
-		return weapon, nil
-	}
+// Spellcasting focuses
+const (
+	ComponentPouch ItemID = "component-pouch"
+	ArcaneFocus    ItemID = "arcane-focus"
+	DruidicFocus   ItemID = "druidic-focus"
+	HolySymbol     ItemID = "holy-symbol"
+	Spellbook      ItemID = "spellbook"
+)
 
-	// Check if it is armor (convert string to ArmorID)
-	if armorItem, ok := armor.All[armor.ArmorID(id)]; ok {
-		return armorItem, nil
-	}
+// Adventuring gear
+const (
+	Backpack   ItemID = "backpack"
+	Bedroll    ItemID = "bedroll"
+	Blanket    ItemID = "blanket"
+	Crowbar    ItemID = "crowbar"
+	Hammer     ItemID = "hammer"
+	HempenRope ItemID = "hempen-rope"
+	Lantern    ItemID = "lantern"
+	Mess       ItemID = "mess-kit"
+	Oil        ItemID = "oil"
+	Piton      ItemID = "piton"
+	Rations    ItemID = "rations"
+	Tinderbox  ItemID = "tinderbox"
+	Torch      ItemID = "torch"
+	Waterskin  ItemID = "waterskin"
+)
 
-	// Item not found
-	return nil, rpgerr.New(rpgerr.CodeNotFound, "item not found",
-		rpgerr.WithMeta("item_id", id))
-}
+// TODO: Add more items as needed

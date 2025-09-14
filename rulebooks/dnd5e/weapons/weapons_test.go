@@ -56,7 +56,7 @@ func TestWeaponLookup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := weapons.GetByID(weapons.WeaponID(tt.weaponID))
+			got, err := weapons.GetByID(tt.weaponID)
 			if tt.wantOK {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.want, got)
@@ -75,15 +75,15 @@ func TestWeaponCategories(t *testing.T) {
 		// Check we have the expected weapons
 		ids := make(map[string]bool)
 		for _, w := range simple {
-			ids[string(w.ID)] = true
+			ids[w.ID] = true
 			assert.True(t, w.IsSimple())
 			assert.True(t, w.IsMelee())
 		}
 
-		assert.True(t, ids["club"])
-		assert.True(t, ids["dagger"])
-		assert.True(t, ids["handaxe"])
-		assert.True(t, ids["javelin"])
+		assert.True(t, ids[weapons.Club])
+		assert.True(t, ids[weapons.Dagger])
+		assert.True(t, ids[weapons.Handaxe])
+		assert.True(t, ids[weapons.Javelin])
 	})
 
 	t.Run("get martial melee weapons", func(t *testing.T) {
@@ -92,15 +92,15 @@ func TestWeaponCategories(t *testing.T) {
 
 		ids := make(map[string]bool)
 		for _, w := range martial {
-			ids[string(w.ID)] = true
+			ids[w.ID] = true
 			assert.True(t, w.IsMartial())
 			assert.True(t, w.IsMelee())
 		}
 
-		assert.True(t, ids["longsword"])
-		assert.True(t, ids["greatsword"])
-		assert.True(t, ids["rapier"])
-		assert.True(t, ids["shortsword"])
+		assert.True(t, ids[weapons.Longsword])
+		assert.True(t, ids[weapons.Greatsword])
+		assert.True(t, ids[weapons.Rapier])
+		assert.True(t, ids[weapons.Shortsword])
 	})
 
 	t.Run("get all simple weapons", func(t *testing.T) {
