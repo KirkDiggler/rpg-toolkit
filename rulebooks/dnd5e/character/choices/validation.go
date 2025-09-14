@@ -387,44 +387,56 @@ func (v *Validator) validateTools(req *ToolRequirement, submissions *Submissions
 	return nil
 }
 
-type validateSingleChoiceInput struct {
+type validateChoiceInput struct {
 	Submissions []Submission
 	ChoiceID    ChoiceID
 	Options     []shared.SelectionID
 	Label       string
 	Category    shared.ChoiceCategory
 	ItemName    string
+	Count       int // Expected number of selections (1 for single choice, >1 for multiple)
 }
 
-// validateSingleChoice validates that exactly one choice was made from allowed options
-func (v *Validator) validateSingleChoice(input validateSingleChoiceInput) *ValidationError {
+// validateChoice validates that the correct number of choices were made from allowed options
+func (v *Validator) validateChoice(input validateChoiceInput) *ValidationError {
+	// Default to 1 if not specified (for backward compatibility)
+	if input.Count == 0 {
+		input.Count = 1
+	}
+
 	found := false
 	for _, sub := range input.Submissions {
 		if sub.ChoiceID == input.ChoiceID {
 			found = true
-			if len(sub.Values) != 1 {
+			if len(sub.Values) != input.Count {
+				var message string
+				if input.Count == 1 {
+					message = fmt.Sprintf("Must choose exactly one %s", input.ItemName)
+				} else {
+					message = fmt.Sprintf("Must choose exactly %d %ss, got %d", input.Count, input.ItemName, len(sub.Values))
+				}
 				return &ValidationError{
 					Category: input.Category,
 					ChoiceID: input.ChoiceID,
-					Message:  fmt.Sprintf("Must choose exactly one %s", input.ItemName),
+					Message:  message,
 				}
 			}
 
-			// Validate the chosen option is allowed
+			// Validate all chosen options are allowed
 			if len(input.Options) > 0 {
-				chosen := sub.Values[0]
-				validChoice := false
+				// Build a map for O(1) lookups
+				allowedOptions := make(map[shared.SelectionID]bool)
 				for _, option := range input.Options {
-					if option == chosen {
-						validChoice = true
-						break
-					}
+					allowedOptions[option] = true
 				}
-				if !validChoice {
-					return &ValidationError{
-						Category: input.Category,
-						ChoiceID: input.ChoiceID,
-						Message:  fmt.Sprintf("Invalid %s choice '%s'", input.ItemName, chosen),
+
+				for _, chosen := range sub.Values {
+					if !allowedOptions[chosen] {
+						return &ValidationError{
+							Category: input.Category,
+							ChoiceID: input.ChoiceID,
+							Message:  fmt.Sprintf("Invalid %s choice '%s'", input.ItemName, chosen),
+						}
 					}
 				}
 			}
@@ -444,35 +456,38 @@ func (v *Validator) validateSingleChoice(input validateSingleChoiceInput) *Valid
 }
 
 func (v *Validator) validateSubclass(req *SubclassRequirement, submissions *Submissions) *ValidationError {
-	return v.validateSingleChoice(validateSingleChoiceInput{
+	return v.validateChoice(validateChoiceInput{
 		Submissions: submissions.GetByCategory(shared.ChoiceClass),
 		ChoiceID:    req.ID,
 		Options:     req.Options,
 		Label:       req.Label,
 		Category:    shared.ChoiceClass,
 		ItemName:    "subclass",
+		Count:       1,
 	})
 }
 
 func (v *Validator) validateCantrips(req *CantripRequirement, submissions *Submissions) *ValidationError {
-	return v.validateSingleChoice(validateSingleChoiceInput{
+	return v.validateChoice(validateChoiceInput{
 		Submissions: submissions.GetByCategory(shared.ChoiceCantrips),
 		ChoiceID:    req.ID,
 		Options:     req.Options,
 		Label:       req.Label,
 		Category:    shared.ChoiceCantrips,
 		ItemName:    "cantrip",
+		Count:       req.Count, // Use the actual count from requirements
 	})
 }
 
 func (v *Validator) validateFightingStyle(req *FightingStyleRequirement, submissions *Submissions) *ValidationError {
-	return v.validateSingleChoice(validateSingleChoiceInput{
+	return v.validateChoice(validateChoiceInput{
 		Submissions: submissions.GetByCategory(shared.ChoiceFightingStyle),
 		ChoiceID:    req.ID,
 		Options:     req.Options,
 		Label:       req.Label,
 		Category:    shared.ChoiceFightingStyle,
 		ItemName:    "fighting style",
+		Count:       1,
 	})
 }
 
