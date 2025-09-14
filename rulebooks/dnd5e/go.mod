@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.9.0
-	github.com/KirkDiggler/rpg-toolkit/dice v0.1.1-0.20250807211656-0f8ebffb7bf0
+	github.com/KirkDiggler/rpg-toolkit/dice v0.3.3-0.20250914062452-e2c6a0f32059
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
 	github.com/stretchr/testify v1.10.0

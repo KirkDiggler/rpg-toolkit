@@ -1,6 +1,7 @@
 package initiative
 
 import (
+	"context"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -17,9 +18,9 @@ type Roll struct {
 
 // RollForOrder rolls initiative and returns InitiativeRolls in turn order
 func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []Roll {
-	// Use default roller if none provided
+	// Use new roller if none provided
 	if roller == nil {
-		roller = dice.DefaultRoller
+		roller = dice.NewRoller()
 	}
 
 	// TODO(#285): Make iteration deterministic to ensure consistent ordering
@@ -27,8 +28,9 @@ func RollForOrder(entities map[core.Entity]int, roller dice.Roller) []Roll {
 	// Currently, map iteration is non-deterministic in Go.
 	// Roll for each entity
 	entries := make([]Roll, 0, len(entities))
+	ctx := context.Background()
 	for entity, modifier := range entities {
-		roll, _ := roller.Roll(20)
+		roll, _ := roller.Roll(ctx, 20)
 		entries = append(entries, Roll{
 			Entity:   entity,
 			Roll:     roll,
