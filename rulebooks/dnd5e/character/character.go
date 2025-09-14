@@ -44,22 +44,8 @@ type Character struct {
 
 	// Equipment and resources
 	inventory      []InventoryItem
-	spellSlots     map[int]SpellSlot
-	classResources map[shared.ClassResourceType]Resource
-}
-
-// SpellSlot tracks spell slot usage
-type SpellSlot struct {
-	Max  int
-	Used int
-}
-
-// Resource represents a class resource like Ki points or Superiority Dice
-type Resource struct {
-	Name    string
-	Max     int
-	Current int
-	Resets  shared.ResetType
+	spellSlots     map[int]SpellSlotData
+	classResources map[shared.ClassResourceType]ResourceData
 }
 
 // GetID returns the character's unique identifier

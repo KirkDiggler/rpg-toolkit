@@ -424,7 +424,7 @@ func Description(c Class) string {
 	}
 }
 
-// Parent returns the base class for a subclass
+// SubclassParent returns the base class for a subclass
 func SubclassParent(s Subclass) Class {
 	if parent, ok := subclassParents[s]; ok {
 		return parent
@@ -441,8 +441,8 @@ func SubClassName(s Subclass) string {
 	return s
 }
 
-// Description returns a brief description of the subclass
-func SubCLassDescription(s Subclass) string {
+// SubClassDescription returns a brief description of the subclass
+func SubClassDescription(s Subclass) string {
 	if desc, ok := subclassDescriptions[s]; ok {
 		return desc
 	}

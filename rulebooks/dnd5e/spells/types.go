@@ -232,249 +232,186 @@ const (
 	TreeStride      Spell = "tree-stride"
 )
 
+var spellName = map[Spell]string{
+	// Cantrips
+	FireBolt:       "Fire Bolt",
+	RayOfFrost:     "Ray of Frost",
+	ShockingGrasp:  "Shocking Grasp",
+	AcidSplash:     "Acid Splash",
+	PoisonSpray:    "Poison Spray",
+	ChillTouch:     "Chill Touch",
+	SacredFlame:    "Sacred Flame",
+	TollTheDead:    "Toll the Dead",
+	WordOfRadiance: "Word of Radiance",
+	EldritchBlast:  "Eldritch Blast",
+	Frostbite:      "Frostbite",
+	PrimalSavagery: "Primal Savagery",
+	Thornwhip:      "Thorn Whip",
+	// Utility Cantrips
+	MageHand:         "Mage Hand",
+	MinorIllusion:    "Minor Illusion",
+	Prestidigitation: "Prestidigitation",
+	Light:            "Light",
+	Guidance:         "Guidance",
+	Resistance:       "Resistance",
+	Thaumaturgy:      "Thaumaturgy",
+	SpareTheDying:    "Spare the Dying",
+	// Level 1 Damage
+	MagicMissile:    "Magic Missile",
+	BurningHands:    "Burning Hands",
+	ChromaticOrb:    "Chromatic Orb",
+	Thunderwave:     "Thunderwave",
+	IceKnife:        "Ice Knife",
+	WitchBolt:       "Witch Bolt",
+	GuidingBolt:     "Guiding Bolt",
+	InflictWounds:   "Inflict Wounds",
+	HailOfThorns:    "Hail of Thorns",
+	EnsnaringStrike: "Ensnaring Strike",
+	HellishRebuke:   "Hellish Rebuke",
+	ArmsOfHadar:     "Arms of Hadar",
+	Hex:             "Hex",
+	SearingSmite:    "Searing Smite",
+	ThunderousSmite: "Thunderous Smite",
+	WrathfulSmite:   "Wrathful Smite",
+	// Level 1 Utility
+	Shield:        "Shield",
+	Sleep:         "Sleep",
+	CharmPerson:   "Charm Person",
+	DetectMagic:   "Detect Magic",
+	Identify:      "Identify",
+	CureWounds:    "Cure Wounds",
+	HealingWord:   "Healing Word",
+	Bless:         "Bless",
+	Bane:          "Bane",
+	ShieldOfFaith: "Shield of Faith",
+	// Level 2 Damage
+	ScorchingRay:       "Scorching Ray",
+	Shatter:            "Shatter",
+	AganazzarsScorcher: "Aganazzar's Scorcher",
+	CloudOfDaggers:     "Cloud of Daggers",
+	MelfsAcidArrow:     "Melf's Acid Arrow",
+	Moonbeam:           "Moonbeam",
+	SpiritualWeapon:    "Spiritual Weapon",
+	FlamingSphere:      "Flaming Sphere",
+	// Level 3 Damage
+	Fireball:      "Fireball",
+	LightningBolt: "Lightning Bolt",
+	CallLightning: "Call Lightning",
+	VampiricTouch: "Vampiric Touch",
+	// Level 3 Utility
+	AnimateDead:     "Animate Dead",
+	BeaconOfHope:    "Beacon of Hope",
+	Blink:           "Blink",
+	CrusadersMantle: "Crusader's Mantle",
+	Daylight:        "Daylight",
+	DispelMagic:     "Dispel Magic",
+	Nondetection:    "Nondetection",
+	PlantGrowth:     "Plant Growth",
+	Revivify:        "Revivify",
+	SpeakWithDead:   "Speak with Dead",
+	WindWall:        "Wind Wall",
+	// Level 4 Damage
+	ArcaneEye:         "Arcane Eye",
+	Blight:            "Blight",
+	Confusion:         "Confusion",
+	ControlWater:      "Control Water",
+	DeathWard:         "Death Ward",
+	DimensionDoor:     "Dimension Door",
+	DominateBeast:     "Dominate Beast",
+	FreedomOfMovement: "Freedom of Movement",
+	GraspingVine:      "Grasping Vine",
+	GuardianOfFaith:   "Guardian of Faith",
+	IceStorm:          "Ice Storm",
+	Polymorph:         "Polymorph",
+	Stoneskin:         "Stoneskin",
+	WallOfFire:        "Wall of Fire",
+	// Level 5 Damage
+	AntiLifeShell:   "Anti-Life Shell",
+	Cloudkill:       "Cloudkill",
+	DestructiveWave: "Destructive Wave",
+	DominatePerson:  "Dominate Person",
+	FlameStrike:     "Flame Strike",
+	HoldMonster:     "Hold Monster",
+	InsectPlague:    "Insect Plague",
+	LegendLore:      "Legend Lore",
+	MassCureWounds:  "Mass Cure Wounds",
+	ModifyMemory:    "Modify Memory",
+	RaiseDead:       "Raise Dead",
+	Scrying:         "Scrying",
+	TreeStride:      "Tree Stride",
+}
+
 // Name returns the display name of the spell
 func Name(s Spell) string {
-	switch s {
-	// Cantrips
-	case FireBolt:
-		return "Fire Bolt"
-	case RayOfFrost:
-		return "Ray of Frost"
-	case ShockingGrasp:
-		return "Shocking Grasp"
-	case AcidSplash:
-		return "Acid Splash"
-	case PoisonSpray:
-		return "Poison Spray"
-	case ChillTouch:
-		return "Chill Touch"
-	case SacredFlame:
-		return "Sacred Flame"
-	case TollTheDead:
-		return "Toll the Dead"
-	case WordOfRadiance:
-		return "Word of Radiance"
-	case EldritchBlast:
-		return "Eldritch Blast"
-	case Frostbite:
-		return "Frostbite"
-	case PrimalSavagery:
-		return "Primal Savagery"
-	case Thornwhip:
-		return "Thorn Whip"
-	// Utility Cantrips
-	case MageHand:
-		return "Mage Hand"
-	case MinorIllusion:
-		return "Minor Illusion"
-	case Prestidigitation:
-		return "Prestidigitation"
-	case Light:
-		return "Light"
-	case Guidance:
-		return "Guidance"
-	case Resistance:
-		return "Resistance"
-	case Thaumaturgy:
-		return "Thaumaturgy"
-	case SpareTheDying:
-		return "Spare the Dying"
-	// Level 1 Damage
-	case MagicMissile:
-		return "Magic Missile"
-	case BurningHands:
-		return "Burning Hands"
-	case ChromaticOrb:
-		return "Chromatic Orb"
-	case Thunderwave:
-		return "Thunderwave"
-	case IceKnife:
-		return "Ice Knife"
-	case WitchBolt:
-		return "Witch Bolt"
-	case GuidingBolt:
-		return "Guiding Bolt"
-	case InflictWounds:
-		return "Inflict Wounds"
-	case HailOfThorns:
-		return "Hail of Thorns"
-	case EnsnaringStrike:
-		return "Ensnaring Strike"
-	case HellishRebuke:
-		return "Hellish Rebuke"
-	case ArmsOfHadar:
-		return "Arms of Hadar"
-	case Hex:
-		return "Hex"
-	case SearingSmite:
-		return "Searing Smite"
-	case ThunderousSmite:
-		return "Thunderous Smite"
-	case WrathfulSmite:
-		return "Wrathful Smite"
-	// Level 1 Utility
-	case Shield:
-		return "Shield"
-	case Sleep:
-		return "Sleep"
-	case CharmPerson:
-		return "Charm Person"
-	case DetectMagic:
-		return "Detect Magic"
-	case Identify:
-		return "Identify"
-	case CureWounds:
-		return "Cure Wounds"
-	case HealingWord:
-		return "Healing Word"
-	case Bless:
-		return "Bless"
-	case Bane:
-		return "Bane"
-	case ShieldOfFaith:
-		return "Shield of Faith"
-	// Level 2 Damage
-	case ScorchingRay:
-		return "Scorching Ray"
-	case Shatter:
-		return "Shatter"
-	case AganazzarsScorcher:
-		return "Aganazzar's Scorcher"
-	case CloudOfDaggers:
-		return "Cloud of Daggers"
-	case MelfsAcidArrow:
-		return "Melf's Acid Arrow"
-	case Moonbeam:
-		return "Moonbeam"
-	case SpiritualWeapon:
-		return "Spiritual Weapon"
-	case FlamingSphere:
-		return "Flaming Sphere"
-	// Level 3 Damage
-	case Fireball:
-		return "Fireball"
-	case LightningBolt:
-		return "Lightning Bolt"
-	case CallLightning:
-		return "Call Lightning"
-	case VampiricTouch:
-		return "Vampiric Touch"
-	default:
-		return s
+	if name, ok := spellName[s]; ok {
+		return name
 	}
+
+	return ""
+}
+
+var spellSlotDescription = map[Spell]string{
+	FireBolt:        "Hurl a mote of fire at a creature or object (1d10 fire damage)",
+	RayOfFrost:      "A frigid beam that deals 1d8 cold damage and reduces speed by 10 feet",
+	ShockingGrasp:   "Lightning springs from your hand dealing 1d8 lightning damage, advantage vs metal armor",
+	AcidSplash:      "Hurl a bubble of acid at creatures for 1d6 acid damage",
+	PoisonSpray:     "Project a puff of noxious gas dealing 1d12 poison damage",
+	ChillTouch:      "Assail with necrotic energy for 1d8 damage and prevent healing",
+	SacredFlame:     "Flame-like radiance descends for 1d8 radiant damage",
+	TollTheDead:     "Point at a creature and sound a dolorous bell for 1d8/1d12 necrotic damage",
+	WordOfRadiance:  "Burning radiance erupts from you for 1d6 radiant damage to nearby enemies",
+	EldritchBlast:   "A beam of crackling energy streaks toward a foe for 1d10 force damage",
+	Frostbite:       "Cause numbing frost for 1d6 cold damage and disadvantage on next weapon attack",
+	PrimalSavagery:  "Your teeth or nails sharpen for a 1d10 acid damage melee attack",
+	Thornwhip:       "A vine-like whip deals 1d6 piercing damage and pulls the target closer",
+	MagicMissile:    "Three darts of magical force, each dealing 1d4+1 damage, automatically hit",
+	BurningHands:    "Cone of fire from your hands deals 3d6 fire damage",
+	ChromaticOrb:    "Hurl a sphere of energy dealing 3d8 damage of a chosen type",
+	Thunderwave:     "A wave of thunderous force deals 2d8 thunder damage and pushes creatures",
+	IceKnife:        "Create a shard of ice that deals 1d10 piercing then explodes for 2d6 cold",
+	WitchBolt:       "A beam of crackling energy deals 1d12 lightning damage with sustained arc",
+	GuidingBolt:     "A flash of light deals 4d6 radiant damage and grants advantage on next attack",
+	InflictWounds:   "Touch deals 3d10 necrotic damage to a creature",
+	HailOfThorns:    "Next ranged attack deals extra 1d10 piercing damage in area",
+	EnsnaringStrike: "Your next weapon hit entangles the target with thorny vines",
+	HellishRebuke:   "Reactively engulf attacker in flames for 2d10 fire damage",
+	ArmsOfHadar:     "Dark tendrils erupt for 2d6 necrotic damage and prevent reactions",
+	Hex:             "Curse a target for extra 1d6 necrotic damage and disadvantage on ability checks",
+	SearingSmite:    "Next melee hit deals extra 1d6 fire damage and ignites the target",
+	ThunderousSmite: "Next melee hit deals extra 2d6 thunder damage and pushes the target",
+	WrathfulSmite:   "Next melee hit deals extra 1d6 psychic damage and frightens the target",
+	// Level 2 Damage
+	ScorchingRay:       "Create three rays of fire, each dealing 2d6 fire damage on hit",
+	Shatter:            "A sudden ringing noise deals 3d8 thunder damage in a 10-foot sphere",
+	AganazzarsScorcher: "A line of roaring flame 30 feet long deals 3d8 fire damage",
+	CloudOfDaggers:     "Fill the air with spinning daggers dealing 4d4 slashing damage",
+	MelfsAcidArrow:     "A shimmering arrow deals 4d4 acid damage immediately and 2d4 at end of next turn",
+	Moonbeam:           "A silvery beam of light deals 2d10 radiant damage each turn",
+	SpiritualWeapon:    "Create a floating weapon that attacks for 1d8+modifier force damage",
+	FlamingSphere:      "A 5-foot sphere of fire deals 2d6 damage and can be moved as bonus action",
+	// Level 3 Damage
+	Fireball:      "A bright streak explodes in a 20-foot sphere for 8d6 fire damage",
+	LightningBolt: "A stroke of lightning 100 feet long deals 8d6 lightning damage",
+	CallLightning: "Storm cloud strikes for 3d10 lightning damage, repeatable each turn",
+	VampiricTouch: "Touch deals 3d6 necrotic damage and you regain half as hit points",
+	// Utility spells
+	Shield:        "Invisible barrier grants +5 AC until start of your next turn",
+	Sleep:         "Send creatures into magical slumber (5d8 hit points affected)",
+	CharmPerson:   "Charm a humanoid to regard you as a friendly acquaintance",
+	DetectMagic:   "Sense the presence of magic within 30 feet",
+	Identify:      "Learn the properties of a magic item or spell affecting a creature",
+	CureWounds:    "Touch heals a creature for 1d8+modifier hit points",
+	HealingWord:   "Speak a word of healing to restore 1d4+modifier hit points at range",
+	Bless:         "Bless up to three creatures, adding 1d4 to attack rolls and saves",
+	Bane:          "Curse enemies to subtract 1d4 from attack rolls and saves",
+	ShieldOfFaith: "Shimmering field grants +2 AC for 10 minutes",
 }
 
 // Description returns a brief description of the spell's effect
 func Description(s Spell) string {
-	switch s {
-	// Damage Cantrips
-	case FireBolt:
-		return "Hurl a mote of fire at a creature or object (1d10 fire damage)"
-	case RayOfFrost:
-		return "A frigid beam that deals 1d8 cold damage and reduces speed by 10 feet"
-	case ShockingGrasp:
-		return "Lightning springs from your hand dealing 1d8 lightning damage, advantage vs metal armor"
-	case AcidSplash:
-		return "Hurl a bubble of acid at creatures for 1d6 acid damage"
-	case PoisonSpray:
-		return "Project a puff of noxious gas dealing 1d12 poison damage"
-	case ChillTouch:
-		return "Assail with necrotic energy for 1d8 damage and prevent healing"
-	case SacredFlame:
-		return "Flame-like radiance descends for 1d8 radiant damage"
-	case TollTheDead:
-		return "Point at a creature and sound a dolorous bell for 1d8/1d12 necrotic damage"
-	case WordOfRadiance:
-		return "Burning radiance erupts from you for 1d6 radiant damage to nearby enemies"
-	case EldritchBlast:
-		return "A beam of crackling energy streaks toward a foe for 1d10 force damage"
-	case Frostbite:
-		return "Cause numbing frost for 1d6 cold damage and disadvantage on next weapon attack"
-	case PrimalSavagery:
-		return "Your teeth or nails sharpen for a 1d10 acid damage melee attack"
-	case Thornwhip:
-		return "A vine-like whip deals 1d6 piercing damage and pulls the target closer"
-	// Level 1 Damage
-	case MagicMissile:
-		return "Three darts of magical force, each dealing 1d4+1 damage, automatically hit"
-	case BurningHands:
-		return "Cone of fire from your hands deals 3d6 fire damage"
-	case ChromaticOrb:
-		return "Hurl a sphere of energy dealing 3d8 damage of a chosen type"
-	case Thunderwave:
-		return "A wave of thunderous force deals 2d8 thunder damage and pushes creatures"
-	case IceKnife:
-		return "Create a shard of ice that deals 1d10 piercing then explodes for 2d6 cold"
-	case WitchBolt:
-		return "A beam of crackling energy deals 1d12 lightning damage with sustained arc"
-	case GuidingBolt:
-		return "A flash of light deals 4d6 radiant damage and grants advantage on next attack"
-	case InflictWounds:
-		return "Touch deals 3d10 necrotic damage to a creature"
-	case HailOfThorns:
-		return "Next ranged attack deals extra 1d10 piercing damage in area"
-	case EnsnaringStrike:
-		return "Your next weapon hit entangles the target with thorny vines"
-	case HellishRebuke:
-		return "Reactively engulf attacker in flames for 2d10 fire damage"
-	case ArmsOfHadar:
-		return "Dark tendrils erupt for 2d6 necrotic damage and prevent reactions"
-	case Hex:
-		return "Curse a target for extra 1d6 necrotic damage and disadvantage on ability checks"
-	case SearingSmite:
-		return "Next melee hit deals extra 1d6 fire damage and ignites the target"
-	case ThunderousSmite:
-		return "Next melee hit deals extra 2d6 thunder damage and pushes the target"
-	case WrathfulSmite:
-		return "Next melee hit deals extra 1d6 psychic damage and frightens the target"
-	// Level 2 Damage
-	case ScorchingRay:
-		return "Create three rays of fire, each dealing 2d6 fire damage on hit"
-	case Shatter:
-		return "A sudden ringing noise deals 3d8 thunder damage in a 10-foot sphere"
-	case AganazzarsScorcher:
-		return "A line of roaring flame 30 feet long deals 3d8 fire damage"
-	case CloudOfDaggers:
-		return "Fill the air with spinning daggers dealing 4d4 slashing damage"
-	case MelfsAcidArrow:
-		return "A shimmering arrow deals 4d4 acid damage immediately and 2d4 at end of next turn"
-	case Moonbeam:
-		return "A silvery beam of light deals 2d10 radiant damage each turn"
-	case SpiritualWeapon:
-		return "Create a floating weapon that attacks for 1d8+modifier force damage"
-	case FlamingSphere:
-		return "A 5-foot sphere of fire deals 2d6 damage and can be moved as bonus action"
-	// Level 3 Damage
-	case Fireball:
-		return "A bright streak explodes in a 20-foot sphere for 8d6 fire damage"
-	case LightningBolt:
-		return "A stroke of lightning 100 feet long deals 8d6 lightning damage"
-	case CallLightning:
-		return "Storm cloud strikes for 3d10 lightning damage, repeatable each turn"
-	case VampiricTouch:
-		return "Touch deals 3d6 necrotic damage and you regain half as hit points"
-	// Utility spells
-	case Shield:
-		return "Invisible barrier grants +5 AC until start of your next turn"
-	case Sleep:
-		return "Send creatures into magical slumber (5d8 hit points affected)"
-	case CharmPerson:
-		return "Charm a humanoid to regard you as a friendly acquaintance"
-	case DetectMagic:
-		return "Sense the presence of magic within 30 feet"
-	case Identify:
-		return "Learn the properties of a magic item or spell affecting a creature"
-	case CureWounds:
-		return "Touch heals a creature for 1d8+modifier hit points"
-	case HealingWord:
-		return "Speak a word of healing to restore 1d4+modifier hit points at range"
-	case Bless:
-		return "Bless up to three creatures, adding 1d4 to attack rolls and saves"
-	case Bane:
-		return "Curse enemies to subtract 1d4 from attack rolls and saves"
-	case ShieldOfFaith:
-		return "Shimmering field grants +2 AC for 10 minutes"
-	default:
-		return ""
+	if desc, ok := spellSlotDescription[s]; ok {
+		return desc
 	}
+
+	return ""
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -44,7 +45,7 @@ type Data struct {
 	// Proficiencies and skills
 	Skills       map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
 	SavingThrows map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"`
-	Languages    []string                                      `json:"languages"`
+	Languages    []languages.Language                          `json:"languages"`
 
 	// Equipment and resources
 	Inventory      []InventoryItemData                       `json:"inventory"`
@@ -116,29 +117,6 @@ func (d *Data) ToCharacter() *Character {
 			Equipment: equip,
 			Quantity:  itemData.Quantity,
 		})
-	}
-
-	// Convert languages (stored as strings) back to typed constants
-	// TODO: Implement proper language string to constant conversion
-
-	// Convert spell slots
-	char.spellSlots = make(map[int]SpellSlot)
-	for level, slot := range d.SpellSlots {
-		char.spellSlots[level] = SpellSlot{
-			Max:  slot.Max,
-			Used: slot.Used,
-		}
-	}
-
-	// Convert class resources
-	char.classResources = make(map[shared.ClassResourceType]Resource)
-	for resourceType, resource := range d.ClassResources {
-		char.classResources[resourceType] = Resource{
-			Name:    resource.Name,
-			Max:     resource.Max,
-			Current: resource.Current,
-			Resets:  resource.Resets,
-		}
 	}
 
 	return char

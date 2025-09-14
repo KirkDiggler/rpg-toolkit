@@ -499,7 +499,7 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 		languages:        d.compileLanguages(raceData),
 		inventory:        d.compileInventory(),
 		spellSlots:       d.compileSpellSlots(classData),
-		classResources:   make(map[shared.ClassResourceType]Resource),
+		classResources:   make(map[shared.ClassResourceType]ResourceData),
 	}
 
 	return char, nil
@@ -617,7 +617,9 @@ func (d *Draft) recordChoice(choice choices.ChoiceData) {
 			}
 		}
 	}
-	d.choices = append(filtered, choice)
+	filtered = append(filtered, choice)
+
+	d.choices = filtered
 }
 
 // TODO: check if class can grant skills or all they all chosen
@@ -689,8 +691,8 @@ func (d *Draft) compileInventory() []InventoryItem {
 }
 
 // compileSpellSlots determines starting spell slots
-func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlot {
-	slots := make(map[int]SpellSlot)
+func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData {
+	slots := make(map[int]SpellSlotData)
 
 	// Only spellcasters get spell slots
 	if classData.SpellcastingAbility == "" {
@@ -700,9 +702,9 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlot {
 	// Level 1 spell slots based on class
 	switch d.class {
 	case classes.Wizard, classes.Sorcerer, classes.Cleric, classes.Druid, classes.Bard:
-		slots[1] = SpellSlot{Max: 2, Used: 0}
+		slots[1] = SpellSlotData{Max: 2, Used: 0}
 	case classes.Warlock:
-		slots[1] = SpellSlot{Max: 1, Used: 0}
+		slots[1] = SpellSlotData{Max: 1, Used: 0}
 	case classes.Ranger, classes.Paladin:
 		// Half-casters don't get spells until level 2
 	}
@@ -789,9 +791,7 @@ func (d *Draft) getRaceSubmissions() *choices.Submissions {
 			// For now, simplified version
 			if len(choice.SkillSelection) > 0 {
 				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
-				for _, skill := range choice.SkillSelection {
-					skillValues = append(skillValues, skill)
-				}
+				skillValues = append(skillValues, choice.SkillSelection...)
 				subs.Add(choices.Submission{
 					Category: shared.ChoiceSkills,
 					Source:   shared.SourceRace,
@@ -846,9 +846,7 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 			// For now, simplified version
 			if len(choice.SkillSelection) > 0 {
 				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
-				for _, skill := range choice.SkillSelection {
-					skillValues = append(skillValues, skill)
-				}
+				skillValues = append(skillValues, choice.SkillSelection...)
 				// Map to correct ChoiceID based on class
 				var choiceID choices.ChoiceID
 				switch d.class {

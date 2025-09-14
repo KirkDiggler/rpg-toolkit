@@ -44,7 +44,7 @@ type ClassChoices struct {
 	FightingStyle fightingstyles.FightingStyle            `json:"fighting_style,omitempty"`
 	Cantrips      []spells.Spell                          `json:"cantrips,omitempty"`
 	Spells        []spells.Spell                          `json:"spells,omitempty"`
-	Equipment     map[choices.ChoiceID]shared.SelectionID `json:"equipment,omitempty"` // Maps choice ID to selected option/equipment ID
+	Equipment     map[choices.ChoiceID]shared.SelectionID `json:"equipment,omitempty"`
 }
 
 // SetBackgroundInput contains the input for setting a character's background

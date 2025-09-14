@@ -29,7 +29,7 @@ func (s *RaceAPIValidationSuite) SetupSuite() {
 // loadRaceAPIData loads API data for a specific race
 func (s *RaceAPIValidationSuite) loadRaceAPIData(raceName string) {
 	apiPath := filepath.Join("testdata", "api", "races", fmt.Sprintf("%s.json", strings.ToLower(raceName)))
-	data, err := os.ReadFile(apiPath)
+	data, err := os.ReadFile(apiPath) //nolint:gosec
 	if err != nil {
 		s.T().Skipf("No API data for %s: %v", raceName, err)
 	}
@@ -163,7 +163,7 @@ func (s *RaceAPIValidationSuite) TestHumanAPIValidation() {
 	if langOptions, ok := s.apiData["language_options"].(map[string]interface{}); ok {
 		apiLangCount := int(langOptions["choose"].(float64))
 		s.Assert().NotNil(reqs.Languages, "Human should have language choices")
-		if reqs.Languages != nil && len(reqs.Languages) > 0 {
+		if len(reqs.Languages) > 0 {
 			s.Assert().Equal(apiLangCount, reqs.Languages[0].Count, "Language count should match API")
 			s.Assert().Equal(1, apiLangCount, "Human should choose 1 extra language")
 

@@ -259,7 +259,10 @@ func (v *Validator) validateEquipment(req *EquipmentRequirement, submissions *Su
 	return nil
 }
 
-func (v *Validator) validateEquipmentCategory(req *EquipmentCategoryRequirement, submissions *Submissions) *ValidationError {
+func (v *Validator) validateEquipmentCategory(
+	req *EquipmentCategoryRequirement,
+	submissions *Submissions,
+) *ValidationError {
 	// Check if this equipment category choice was made
 	equipSubs := submissions.GetByCategory(shared.ChoiceEquipment)
 
