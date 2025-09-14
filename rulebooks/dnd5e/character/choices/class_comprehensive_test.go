@@ -333,7 +333,7 @@ func (s *ClassComprehensiveSuite) TestClericDomains() {
 
 			// Nature Domain gets an extra Druid cantrip
 			if domain == classes.NatureDomain {
-				// TODO: Nature Domain should grant a bonus Druid cantrip
+				// TODO(#308): Nature Domain should grant a bonus Druid cantrip
 				// but the requirements system doesn't handle this correctly yet
 				// Skip this test for now
 				s.T().Skip("Nature Domain cantrip requirements not fully implemented")
@@ -1506,7 +1506,7 @@ func (s *ClassComprehensiveSuite) createRangerValidBase() *choices.Submissions {
 		},
 	})
 
-	// TODO: BUG - Rangers should NOT have fighting style at level 1 (comes at level 2)
+	// TODO(#306): Rangers should NOT have fighting style at level 1 (comes at level 2)
 	// But the requirements currently expect it, so we add it to make the test pass
 	subs.Add(choices.Submission{
 		Category: shared.ChoiceFightingStyle,
@@ -1655,7 +1655,7 @@ func (s *ClassComprehensiveSuite) createSorcererValidBase() *choices.Submissions
 		},
 	})
 
-	// TODO: Sorcerers should have Sorcerous Origin at level 1
+	// TODO(#307): Sorcerers should have Sorcerous Origin at level 1
 	// But it's not currently in the requirements
 
 	return subs
@@ -1820,7 +1820,7 @@ func (s *ClassComprehensiveSuite) createWarlockValidBase() *choices.Submissions 
 		},
 	})
 
-	// TODO: Warlocks should have Patron at level 1
+	// TODO(#307): Warlocks should have Patron at level 1
 	// But it's not currently in the requirements
 
 	return subs

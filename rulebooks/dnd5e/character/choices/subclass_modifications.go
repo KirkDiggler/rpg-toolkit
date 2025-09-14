@@ -80,7 +80,7 @@ func ApplySubclassModifications(reqs *Requirements, mods *SubclassModifications)
 
 	// Add additional tool requirements
 	if mods.AdditionalTools != nil {
-		// TODO: Handle multiple tool requirements if needed
+		// TODO(#309): Handle multiple tool requirements if needed
 		// For now, we'll just replace if there's a conflict
 		if reqs.Tools == nil {
 			reqs.Tools = mods.AdditionalTools
@@ -159,7 +159,7 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 			}
 
 			// Add as additional cantrip requirement
-			// TODO: May need to handle multiple cantrip requirements better
+			// TODO(#308): May need to handle multiple cantrip requirements better
 			if reqs.Cantrips != nil {
 				// For now, increase the count
 				reqs.Cantrips.Count++
@@ -261,8 +261,8 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 		},
 	},
 
-	// TODO: Add Fighter subclasses at level 3
-	// TODO: Add other class subclasses
+	// TODO(#310): Add Fighter subclasses at level 3
+	// TODO(#310): Add other class subclasses
 }
 
 func createMartialDomainModifications(domainName string, domainSpells []SpellGrant) *SubclassModifications {
