@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
@@ -439,7 +440,7 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 
 	// Should have both crossbow and bolts
 	s.assertInventoryContains(inventory, weapons.LightCrossbow, 1, "Should have light crossbow")
-	s.assertInventoryContains(inventory, weapons.Bolts20, 1, "Should have crossbow bolts")
+	s.assertInventoryContains(inventory, ammunition.Bolts20, 1, "Should have crossbow bolts")
 }
 
 // Test: Invalid equipment ID validation catches errors early
@@ -614,7 +615,7 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsIsValidEquipment() {
 		Category:           shared.ChoiceEquipment,
 		Source:             shared.SourceClass,
 		ChoiceID:           "test-choice",
-		EquipmentSelection: []shared.SelectionID{weapons.Bolts20}, // Should be valid
+		EquipmentSelection: []shared.SelectionID{ammunition.Bolts20}, // Should be valid
 	})
 	draftWithBolts := character.LoadDraftFromData(draftData)
 

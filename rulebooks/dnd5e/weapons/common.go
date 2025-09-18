@@ -61,12 +61,6 @@ const (
 	Net           WeaponID = "net"
 )
 
-// Ammunition
-const (
-	Arrows20 WeaponID = "arrows-20"
-	Bolts20  WeaponID = "bolts-20"
-)
-
 // Category placeholders for choice requirements
 // These are used when a choice allows any weapon from a category
 const (

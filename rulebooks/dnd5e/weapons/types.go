@@ -2,6 +2,7 @@
 package weapons
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -48,15 +49,16 @@ const (
 
 // Weapon represents a D&D 5e weapon
 type Weapon struct {
-	ID         WeaponID
-	Name       string
-	Category   WeaponCategory
-	Cost       string      // "5 gp"
-	Damage     string      // "1d8"
-	DamageType damage.Type // "slashing"
-	Weight     float64
-	Properties []WeaponProperty
-	Range      *Range // nil for melee-only weapons
+	ID             WeaponID
+	Name           string
+	Category       WeaponCategory
+	Cost           string      // "5 gp"
+	Damage         string      // "1d8"
+	DamageType     damage.Type // "slashing"
+	Weight         float64
+	Properties     []WeaponProperty
+	Range          *Range          // nil for melee-only weapons
+	AmmunitionType ammunition.Type // Type of ammunition this weapon uses
 }
 
 // EquipmentID returns the unique identifier for this weapon
@@ -137,4 +139,18 @@ func (w Weapon) HasProperty(prop WeaponProperty) bool {
 		}
 	}
 	return false
+}
+
+// RequiresAmmunition returns true if this weapon needs ammunition to fire
+func (w Weapon) RequiresAmmunition() bool {
+	return w.HasProperty(PropertyAmmunition)
+}
+
+// GetAmmunitionType returns the type of ammunition this weapon uses
+// Returns empty string if weapon doesn't require ammunition
+func (w Weapon) GetAmmunitionType() ammunition.Type {
+	if w.RequiresAmmunition() {
+		return w.AmmunitionType
+	}
+	return ""
 }

@@ -3,6 +3,7 @@ package equipment
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -55,6 +56,12 @@ func GetByID(id shared.SelectionID) (Equipment, error) {
 	pack, ok := packs.All[id]
 	if ok {
 		return &pack, nil
+	}
+
+	// Check ammunition
+	ammo, ok := ammunition.StandardAmmunition[id]
+	if ok {
+		return ammo, nil
 	}
 
 	return nil, rpgerr.New(rpgerr.CodeNotFound, "equipment not found")
