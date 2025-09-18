@@ -32,7 +32,7 @@ type Equipment interface {
 }
 
 // GetByID returns equipment by its ID
-func GetByID(id string) (Equipment, error) {
+func GetByID(id shared.SelectionID) (Equipment, error) {
 	if id == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "invalid equipment ID")
 	}
