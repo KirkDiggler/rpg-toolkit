@@ -1,6 +1,7 @@
 package character
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -8,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -695,18 +697,52 @@ func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 	return langs
 }
 
-// compileInventory builds the inventory from equipment choices
+// compileInventory builds the inventory from equipment choices and grants
 func (d *Draft) compileInventory() []InventoryItem {
 	inventory := make([]InventoryItem, 0)
 
-	// Add chosen equipment
-	// TODO: This currently uses string equipment selections from choices
-	// We need to convert these to proper Equipment items
-	// For now, return empty inventory since we don't have equipment data yet
+	// Add starting equipment from class grants
+	if d.class != "" {
+		if classGrants := classes.GetAutomaticGrants(d.class); classGrants != nil {
+			for _, item := range classGrants.StartingEquipment {
+				equip, err := equipment.GetByID(item.ID)
+				if err != nil {
+					// This is a bug in our data - class grants should always have valid IDs
+					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
+				}
+				inventory = append(inventory, InventoryItem{
+					Equipment: equip,
+					Quantity:  item.Quantity,
+				})
+			}
+		}
+	}
 
-	// TODO: Add starting equipment from class and background
-	// TODO: Handle equipment packs (Explorer's Pack, etc.)
-	// TODO: Handle quantities (20 arrows, 2 handaxes, etc.)
+	// Add starting equipment from background grants
+	// TODO: Backgrounds don't currently have starting equipment in grants
+	// This would be added when background equipment is implemented
+
+	// Add equipment from choices (user selections)
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceEquipment {
+			for _, equipID := range choice.EquipmentSelection {
+				// Each selection is a separate item (no merging)
+				equip, err := equipment.GetByID(equipID)
+				if err != nil {
+					// This is a bug - validation should have caught invalid equipment IDs
+					panic(fmt.Sprintf("BUG: Invalid equipment ID passed validation: %s (choice: %s) - %v",
+						equipID, choice.ChoiceID, err))
+				}
+				inventory = append(inventory, InventoryItem{
+					Equipment: equip,
+					Quantity:  1, // Default quantity for choices
+				})
+			}
+		}
+	}
+
+	// Note: Packs are automatically expanded by equipment.GetByID
+	// It returns the pack as an Equipment item, which can be expanded later if needed
 
 	return inventory
 }
