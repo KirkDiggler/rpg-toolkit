@@ -333,9 +333,16 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 					// Find the selected option
 					for _, opt := range req.Options {
 						if opt.ID == selectionID {
-							// Extract equipment IDs from this option
+							// Extract equipment IDs from this option and validate them
 							equipmentIDs := make([]shared.SelectionID, 0, len(opt.Items))
 							for _, item := range opt.Items {
+								// Validate that the equipment exists
+								_, err := equipment.GetByID(item.ID)
+								if err != nil {
+									// Return error immediately - invalid equipment in class requirements
+									return rpgerr.Newf(rpgerr.CodeNotFound,
+										"invalid equipment ID '%s' in class requirements", item.ID)
+								}
 								equipmentIDs = append(equipmentIDs, item.ID)
 							}
 
@@ -357,6 +364,12 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 			for _, catReq := range requirements.EquipmentCategories {
 				if catReq.ID == choiceID {
 					// For category choices, selectionID is the actual equipment ID
+					// Validate the equipment ID exists
+					_, err := equipment.GetByID(selectionID)
+					if err != nil {
+						return rpgerr.Newf(rpgerr.CodeNotFound,
+							"invalid equipment ID '%s'", selectionID)
+					}
 					d.recordChoice(choices.ChoiceData{
 						Category:           shared.ChoiceEquipment,
 						Source:             shared.SourceClass,
@@ -552,6 +565,15 @@ func (d *Draft) ValidateChoices() error {
 			}
 		case shared.ChoiceEquipment:
 			if len(choice.EquipmentSelection) > 0 {
+				// Validate all equipment IDs exist before adding to submissions
+				for _, equipID := range choice.EquipmentSelection {
+					_, err := equipment.GetByID(equipID)
+					if err != nil {
+						return rpgerr.Newf(rpgerr.CodeNotFound,
+							"invalid equipment ID in stored choices: %s", equipID)
+					}
+				}
+
 				// For equipment bundles with options, use the option ID as the value
 				// For category-based choices, use the actual equipment IDs
 				values := choice.EquipmentSelection
@@ -707,7 +729,6 @@ func (d *Draft) compileInventory() []InventoryItem {
 			for _, item := range classGrants.StartingEquipment {
 				equip, err := equipment.GetByID(item.ID)
 				if err != nil {
-					// This is a bug in our data - class grants should always have valid IDs
 					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
 				}
 				inventory = append(inventory, InventoryItem{
@@ -729,9 +750,8 @@ func (d *Draft) compileInventory() []InventoryItem {
 				// Each selection is a separate item (no merging)
 				equip, err := equipment.GetByID(equipID)
 				if err != nil {
-					// This is a bug - validation should have caught invalid equipment IDs
-					panic(fmt.Sprintf("BUG: Invalid equipment ID passed validation: %s (choice: %s) - %v",
-						equipID, choice.ChoiceID, err))
+					// This should never happen if SetClass validation is working correctly
+					panic(fmt.Sprintf("BUG: Invalid equipment ID in draft choices: %s - %v", equipID, err))
 				}
 				inventory = append(inventory, InventoryItem{
 					Equipment: equip,

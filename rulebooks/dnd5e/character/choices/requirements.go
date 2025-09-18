@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
@@ -885,7 +886,7 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					Items: []EquipmentItem{
 						{ID: armor.Leather, Quantity: 1},
 						{ID: weapons.Longbow, Quantity: 1},
-						{ID: weapons.Arrows20, Quantity: 1},
+						{ID: ammunition.Arrows20, Quantity: 1},
 					},
 				},
 			},
@@ -940,7 +941,7 @@ func getFighterEquipmentRequirements() []*EquipmentRequirement {
 					Label: "A light crossbow and 20 bolts",
 					Items: []EquipmentItem{
 						{ID: weapons.LightCrossbow, Quantity: 1},
-						{ID: weapons.Bolts20, Quantity: 1},
+						{ID: ammunition.Bolts20, Quantity: 1},
 					},
 				},
 				{
@@ -1082,7 +1083,7 @@ func getRogueEquipmentRequirements() []*EquipmentRequirement {
 					Label: "Shortbow and quiver of 20 arrows",
 					Items: []EquipmentItem{
 						{ID: weapons.Shortbow, Quantity: 1},
-						{ID: weapons.Arrows20, Quantity: 1},
+						{ID: ammunition.Arrows20, Quantity: 1},
 					},
 				},
 				{
@@ -1258,7 +1259,7 @@ func getClericEquipmentRequirements() []*EquipmentRequirement {
 					Label: "Light crossbow and 20 bolts",
 					Items: []EquipmentItem{
 						{ID: weapons.LightCrossbow, Quantity: 1},
-						{ID: weapons.Bolts20, Quantity: 1},
+						{ID: ammunition.Bolts20, Quantity: 1},
 					},
 				},
 				{
@@ -1607,7 +1608,7 @@ func getSorcererEquipmentRequirements() []*EquipmentRequirement {
 					ID: SorcererWeaponCrossbow,
 					Items: []EquipmentItem{
 						{ID: weapons.LightCrossbow, Quantity: 1},
-						{ID: weapons.Bolts20, Quantity: 1},
+						{ID: ammunition.Bolts20, Quantity: 1},
 					},
 					Label: "Light crossbow and 20 bolts",
 				},
@@ -1680,7 +1681,7 @@ func getWarlockEquipmentRequirements() []*EquipmentRequirement {
 					ID: WarlockWeaponCrossbow,
 					Items: []EquipmentItem{
 						{ID: weapons.LightCrossbow, Quantity: 1},
-						{ID: weapons.Bolts20, Quantity: 1},
+						{ID: ammunition.Bolts20, Quantity: 1},
 					},
 					Label: "Light crossbow and 20 bolts",
 				},
