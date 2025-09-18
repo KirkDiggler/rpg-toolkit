@@ -416,31 +416,59 @@ func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
 	s.True(handaxeFound, "Should have handaxe entry")
 }
 
-// Test: Invalid equipment ID causes panic
-func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentPanics() {
-	// Add choice with invalid equipment ID using a valid choice ID but invalid option ID
-	err := s.testData.fighterDraft.SetClass(&character.SetClassInput{
+// Test: Ammunition items are handled correctly
+func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
+	// Create a fresh fighter draft for this test
+	draft := s.createFighterDraft()
+
+	// Fighter chooses crossbow option which includes bolts
+	err := draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
-			Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
 			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterPack: "invalid-option-id",
+				choices.FighterWeaponsSecondary: choices.FighterRangedCrossbow,
 			},
 		},
 	})
 	s.Require().NoError(err)
 
-	// The invalid option won't be found in requirements, so it won't be recorded
-	// and there should be no panic (the choice is simply ignored)
-	// Let's test with a raw choice that bypasses validation instead
+	char, err := draft.ToCharacter("char-fighter")
+	s.Require().NoError(err)
+	inventory := character.FromCharacter(char).Inventory
+
+	// Should have both crossbow and bolts
+	s.assertInventoryContains(inventory, weapons.LightCrossbow, 1, "Should have light crossbow")
+	s.assertInventoryContains(inventory, weapons.Bolts20, 1, "Should have crossbow bolts")
+}
+
+// Test: Invalid equipment ID validation catches errors early
+func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
+	// Test 1: SetClass should reject invalid equipment choice (category-based)
 	draft := s.createBaseDraft()
-	err = draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	err := draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
 	s.Require().NoError(err)
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
 		Choices:      character.BackgroundChoices{},
 	})
 	s.Require().NoError(err)
+
+	// Try to set class with invalid equipment option ID - this won't trigger validation
+	// because the option is not found in requirements, so the choice is simply ignored
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: map[choices.ChoiceID]shared.SelectionID{
+				choices.FighterPack: "invalid-option-id", // Invalid option ID - won't be found
+			},
+		},
+	})
+	s.Require().NoError(err, "SetClass succeeds when option isn't found (choice is ignored)")
+
+	// Test 2: ValidateChoices should catch invalid equipment if it somehow gets stored
+	// Create a valid draft first
 	err = draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
@@ -459,10 +487,148 @@ func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentPanics() {
 	})
 	draft = character.LoadDraftFromData(draftData)
 
-	// Should panic when trying to convert to character
-	s.Panics(func() {
-		_, _ = draft.ToCharacter("char-fighter")
-	}, "Invalid equipment ID should cause panic")
+	// ValidateChoices should catch the invalid equipment
+	err = draft.ValidateChoices()
+	s.Require().Error(err, "ValidateChoices should reject invalid equipment ID")
+	s.Contains(err.Error(), "invalid equipment ID", "Error should mention invalid equipment ID")
+
+	// Test 3: If invalid data somehow bypasses validation, compilation should panic
+	// This ensures we fail fast rather than silently corrupt data
+	s.Require().Panics(func() {
+		draft.ToCharacter("char-fighter")
+	}, "ToCharacter should panic on invalid equipment that bypassed validation")
+}
+
+// Test: Equipment validation catches invalid IDs early
+func (s *DraftTestSuite) TestCompileInventory_BoltsValidation() {
+	// Create a base draft and directly test the validation logic
+	draft := s.createBaseDraft()
+
+	// Set basic required fields
+	err := draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
+	s.Require().NoError(err)
+
+	err = draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 15, abilities.DEX: 14, abilities.CON: 13,
+			abilities.INT: 12, abilities.WIS: 10, abilities.CHA: 8,
+		},
+		Method: "manual",
+	})
+	s.Require().NoError(err)
+
+	// Test 1: Try to manually inject invalid equipment and test ValidateChoices directly
+	draftData := draft.ToData()
+	draftData.Choices = append(draftData.Choices, choices.ChoiceData{
+		Category:           shared.ChoiceEquipment,
+		Source:             shared.SourceClass,
+		ChoiceID:           "test-choice",
+		EquipmentSelection: []shared.SelectionID{"invalid-equipment-id"}, // Truly invalid ID
+	})
+	draftWithInvalidEquip := character.LoadDraftFromData(draftData)
+
+	// Test ValidateChoices - should catch equipment before other validation errors
+	err = draftWithInvalidEquip.ValidateChoices()
+	s.Require().Error(err, "ValidateChoices should reject invalid-equipment-id")
+	s.Contains(err.Error(), "invalid equipment ID", "Error should mention invalid equipment ID")
+	s.Contains(err.Error(), "invalid-equipment-id", "Error should mention the specific invalid ID")
+
+	// Test 2: Test ToCharacter panics on invalid equipment (simulates bypassed validation)
+	s.Require().Panics(func() {
+		draftWithInvalidEquip.ToCharacter("char-fighter")
+	}, "ToCharacter should panic on invalid-equipment-id")
+
+	// Test 3: Verify valid equipment doesn't cause issues
+	validDraftData := draft.ToData()
+	validDraftData.Choices = append(validDraftData.Choices, choices.ChoiceData{
+		Category:           shared.ChoiceEquipment,
+		Source:             shared.SourceClass,
+		ChoiceID:           "test-choice",
+		EquipmentSelection: []shared.SelectionID{weapons.Shortsword}, // Valid equipment ID
+	})
+	validDraft := character.LoadDraftFromData(validDraftData)
+
+	// This should fail validation for other reasons (missing armor choices)
+	// but NOT for invalid equipment
+	err = validDraft.ValidateChoices()
+	s.Require().Error(err, "Should fail validation for other reasons")
+	s.NotContains(err.Error(), "invalid equipment ID", "Should not fail for invalid equipment")
+}
+
+// Test: Verify that bolts-20 is actually a valid equipment ID
+func (s *DraftTestSuite) TestCompileInventory_BoltsIsValidEquipment() {
+	// The original issue mentioned "bolts-20" was causing panics
+	// This test verifies that bolts-20 is actually valid equipment
+	// and the issue was in validation, not in the equipment data
+
+	draft := s.createBaseDraft()
+	err := draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
+	s.Require().NoError(err)
+
+	err = draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 15, abilities.DEX: 14, abilities.CON: 13,
+			abilities.INT: 12, abilities.WIS: 10, abilities.CHA: 8,
+		},
+		Method: "manual",
+	})
+	s.Require().NoError(err)
+
+	// Test that bolts-20 is valid equipment and doesn't cause validation errors
+	draftData := draft.ToData()
+	draftData.Choices = append(draftData.Choices, choices.ChoiceData{
+		Category:           shared.ChoiceEquipment,
+		Source:             shared.SourceClass,
+		ChoiceID:           "test-choice",
+		EquipmentSelection: []shared.SelectionID{weapons.Bolts20}, // Should be valid
+	})
+	draftWithBolts := character.LoadDraftFromData(draftData)
+
+	// ValidateChoices should NOT reject bolts-20 (it's valid equipment)
+	err = draftWithBolts.ValidateChoices()
+	s.Require().Error(err, "Should fail validation for other reasons (missing armor)")
+	s.NotContains(err.Error(), "invalid equipment ID", "Should not fail for equipment validation")
+	s.NotContains(err.Error(), "bolts-20", "Bolts-20 should not be mentioned as invalid")
+
+	// Test that ToCharacter should not panic on bolts-20 (it's valid equipment)
+	// It might fail for other validation reasons, but not panic for invalid equipment
+	s.Require().NotPanics(func() {
+		_, err := draftWithBolts.ToCharacter("char-fighter")
+		// Error is okay (for missing choices), but no panic
+		_ = err
+	}, "ToCharacter should not panic on valid bolts-20 equipment")
 }
 
 // Test: Complete character build

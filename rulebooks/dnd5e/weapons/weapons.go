@@ -348,6 +348,18 @@ var SimpleRangedWeapons = map[WeaponID]Weapon{
 		Properties: []WeaponProperty{PropertyAmmunition},
 		Range:      &Range{Normal: 30, Long: 120},
 	},
+	// Ammunition items (treated as equipment in D&D 5e)
+	Bolts20: {
+		ID:         Bolts20,
+		Name:       "Crossbow Bolts (20)",
+		Category:   CategorySimpleRanged, // Ammunition is categorized as simple ranged
+		Cost:       "1 gp",
+		Damage:     "", // No damage on their own
+		DamageType: damage.Piercing,
+		Weight:     1.5,                // 20 bolts weigh about 1.5 lbs
+		Properties: []WeaponProperty{}, // No special properties
+		Range:      nil,                // No range on their own
+	},
 }
 
 // MartialRangedWeapons - fighter-accessible martial ranged weapons (for testing)
