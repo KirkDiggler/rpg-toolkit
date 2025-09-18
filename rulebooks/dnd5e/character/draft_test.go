@@ -495,7 +495,8 @@ func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
 	// Test 3: If invalid data somehow bypasses validation, compilation should panic
 	// This ensures we fail fast rather than silently corrupt data
 	s.Require().Panics(func() {
-		draft.ToCharacter("char-fighter")
+		_, err := draft.ToCharacter("char-fighter")
+		_ = err
 	}, "ToCharacter should panic on invalid equipment that bypassed validation")
 }
 
@@ -551,7 +552,8 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsValidation() {
 
 	// Test 2: Test ToCharacter panics on invalid equipment (simulates bypassed validation)
 	s.Require().Panics(func() {
-		draftWithInvalidEquip.ToCharacter("char-fighter")
+		_, err := draftWithInvalidEquip.ToCharacter("char-fighter")
+		_ = err
 	}, "ToCharacter should panic on invalid-equipment-id")
 
 	// Test 3: Verify valid equipment doesn't cause issues
