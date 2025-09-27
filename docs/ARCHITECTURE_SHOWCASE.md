@@ -177,7 +177,7 @@ relationshipMgr.CreateRelationship(
 relationshipMgr.CreateRelationship(
     RelationshipLinked,
     sorcerer,
-    []Condition{firebolt1, firebol2},  // Both hit or both miss
+    []Condition{firebolt1, firebolt2},  // Both hit or both miss
     nil,
 )
 ```
