@@ -26,8 +26,10 @@ Our original implementation was 2000+ lines of spaghetti code with:
 We discovered an elegant pattern that provides both type safety AND flexibility:
 
 ```go
-// BEFORE: Magic strings and runtime type assertions
-bus.Subscribe("combat.attack", func(e interface{}) error {
+// BEFORE: Even with constants, still had runtime type assertions
+const TopicAttack events.Topic = "combat.attack"
+
+bus.Subscribe(TopicAttack, func(e any) error {
     attack, ok := e.(*AttackEvent)  // Runtime type assertion
     if !ok {
         return errors.New("wrong event type")  // Runtime failure
@@ -36,6 +38,7 @@ bus.Subscribe("combat.attack", func(e interface{}) error {
 })
 
 // AFTER: Type-safe, IDE-friendly, beautiful
+// AttackTopic defined as: var AttackTopic = events.DefineTypedTopic[AttackEvent](TopicAttack)
 attacks := combat.AttackTopic.On(bus)
 attacks.Subscribe(ctx, func(ctx context.Context, e AttackEvent) error {
     // e is already typed correctly, no assertions needed

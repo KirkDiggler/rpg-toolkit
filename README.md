@@ -20,7 +20,7 @@ We discovered an elegant pattern that provides both type safety AND flexibility:
 
 ```go
 // Before: Magic strings and runtime type assertions everywhere
-bus.Subscribe("combat.attack", func(e interface{}) error {
+bus.Subscribe(combat.TopicAttack, func(e any) error {
     attack, ok := e.(*AttackEvent)  // Runtime type assertion
     if !ok {
         return errors.New("wrong event type")
@@ -29,6 +29,7 @@ bus.Subscribe("combat.attack", func(e interface{}) error {
 })
 
 // After: Type-safe, IDE-friendly, beautiful
+// combat.AttackTopic defined as: var AttackTopic = events.DefineTypedTopic[AttackEvent](TopicAttack)
 attacks := combat.AttackTopic.On(bus)
 attacks.Subscribe(ctx, func(ctx context.Context, e AttackEvent) error {
     // e is already typed correctly, no assertions needed
@@ -41,14 +42,14 @@ attacks.Subscribe(ctx, func(ctx context.Context, e AttackEvent) error {
 For complex mechanics like rage damage, we needed ordered processing. Our ChainedTopic pattern elegantly solves this:
 
 ```go
-// Define processing stages
+// AttackChain defined as: var AttackChain = events.DefineChainedTopic[AttackEvent](TopicAttackChain)
 attackChain := combat.AttackChain.On(bus)
 
 // Features add modifiers at specific stages
 attackChain.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, chain Chain) (Chain, error) {
-    if isRaging {
+    if character.HasFeature(features.Rage) && character.IsRaging() {
         // Rage bonus applies at Conditions stage, after Features but before Equipment
-        chain.Add(StageConditions, "rage", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
+        chain.Add(StageConditions, features.RageModifier, func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
             e.Damage += rageBonus
             return e, nil
         })
@@ -129,19 +130,29 @@ rpg-toolkit/
 ```bash
 # Install the toolkit
 go get github.com/KirkDiggler/rpg-toolkit
+```
 
-# Use typed topics in your code
+```go
 import "github.com/KirkDiggler/rpg-toolkit/events"
 
-// Define your event
+// Define topic constants - explicit and reusable
+const (
+    TopicDamage events.Topic = "combat.damage"
+    TopicHeal   events.Topic = "combat.heal"
+)
+
+// Define your event types
 type DamageEvent struct {
     TargetID string
     Amount   int
     Type     string
 }
 
-// Create a typed topic
-var DamageTopic = events.DefineTypedTopic[DamageEvent]("combat.damage")
+// Create typed topics using constants
+var (
+    DamageTopic = events.DefineTypedTopic[DamageEvent](TopicDamage)
+    HealTopic   = events.DefineTypedTopic[HealEvent](TopicHeal)
+)
 
 // Connect and use with full type safety
 func main() {
