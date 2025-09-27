@@ -4,6 +4,8 @@
 
 This document showcases the architectural achievements in RPG Toolkit - a Go-based game mechanics engine that demonstrates solving complex distributed systems problems through elegant design patterns.
 
+**Current Status**: The core architectural patterns are complete and proven. While we spent significant time perfecting character creation (which turned into its own architectural journey), the foundations shown here are solid and ready for the remaining implementation work.
+
 ---
 
 ## 🏆 Achievement 1: The Typed Topics Pattern
@@ -425,9 +427,15 @@ This isn't just another game engine - it's a masterclass in solving distributed 
 
 ---
 
+## See It In Action
+
+**→ [Patterns in Action: Complete Examples](PATTERNS_IN_ACTION.md)** - See how all these patterns work together in real combat scenarios, spell interactions, and complex game mechanics.
+
+**→ [Event Flow Diagrams: Visual Architecture](EVENT_FLOW_DIAGRAM.md)** - Visual representation of how events flow through the system, relationships connect, and patterns compose.
+
 ## Links
 
-- [Full Architecture Decision Records](docs/adr/)
-- [Design Journey Documents](docs/journey/)
-- [Implementation Guides](docs/guides/)
+- [Full Architecture Decision Records](../adr/)
+- [Design Journey Documents](../journey/)
+- [Implementation Guides](../guides/)
 - [GitHub Repository](https://github.com/KirkDiggler/rpg-toolkit)
