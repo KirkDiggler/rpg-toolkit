@@ -285,15 +285,34 @@ Most architectures are designed top-down, leading to:
 
 ### The Solution: Document the Journey
 
-We documented our design evolution in `/docs/journey/`:
+We documented our design evolution in `/docs/journey/` with 40+ decision documents:
 
-```
-024-typed-topics-discovery.md        → The event system breakthrough
-025-complex-dnd-mechanics-pipeline.md → Handling spell complexity
-026-pipelines-all-the-way-down.md    → Realizing everything is a pipeline
-027-rulebooks-own-pipelines.md       → Separation of concerns
-043-actions-effects-architecture.md  → The unifying pattern
-```
+#### Key Architectural Breakthroughs
+- [001-architectural-dragons.md](../journey/001-architectural-dragons.md) → Identifying the hard problems upfront
+- [007-typed-topics-design.md](../journey/007-typed-topics-design.md) → The typed event system design
+- [018-content-architecture-breakthrough.md](../journey/018-content-architecture-breakthrough.md) → Content provider pattern
+- [024-data-driven-runtime-architecture.md](../journey/024-data-driven-runtime-architecture.md) → Everything loads from data
+- [043-actions-effects-architecture.md](../journey/043-actions-effects-architecture.md) → The unifying pattern
+
+#### Event System Evolution
+- [003-event-participant-ecosystem.md](../journey/003-event-participant-ecosystem.md) → Event-driven architecture foundation
+- [014-event-bus-evolution.md](../journey/014-event-bus-evolution.md) → How the bus evolved
+- [022-event-system-typed-events.md](../journey/022-event-system-typed-events.md) → Type safety breakthrough
+- [041-event-bus-generics-exploration.md](../journey/041-event-bus-generics-exploration.md) → Generic patterns
+
+#### Complex Mechanics Solutions
+- [004-conditions-system.md](../journey/004-conditions-system.md) → Conditions and relationships design
+- [011-spell-system-design.md](../journey/011-spell-system-design.md) → Spells as Actions
+- [023-rage-implementation-lessons.md](../journey/023-rage-implementation-lessons.md) → Barbarian rage lessons
+- [025-complex-dnd-mechanics-pipeline.md](../journey/025-complex-dnd-mechanics-pipeline.md) → Handling spell complexity
+- [026-pipelines-all-the-way-down.md](../journey/026-pipelines-all-the-way-down.md) → Everything is a pipeline
+
+#### Architecture Patterns
+- [005-effect-composition.md](../journey/005-effect-composition.md) → Composable effects
+- [012-spatial-module-design.md](../journey/012-spatial-module-design.md) → Grid and positioning
+- [019-self-contained-entities.md](../journey/019-self-contained-entities.md) → Entity design philosophy
+- [020_extensible_registry_system.md](../journey/020_extensible_registry_system.md) → Registry patterns
+- [040-event-driven-combat-flow.md](../journey/040-event-driven-combat-flow.md) → Combat orchestration
 
 Each journey document captures:
 - The problem we faced
@@ -432,6 +451,8 @@ This isn't just another game engine - it's a masterclass in solving distributed 
 **→ [Patterns in Action: Complete Examples](PATTERNS_IN_ACTION.md)** - See how all these patterns work together in real combat scenarios, spell interactions, and complex game mechanics.
 
 **→ [Event Flow Diagrams: Visual Architecture](EVENT_FLOW_DIAGRAM.md)** - Visual representation of how events flow through the system, relationships connect, and patterns compose.
+
+**→ [Hidden Gems: Architectural Innovations](HIDDEN_GEMS.md)** - Lesser-known but equally impressive patterns and decisions throughout the codebase.
 
 ## Links
 
