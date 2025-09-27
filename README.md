@@ -72,6 +72,8 @@ The key insight: **"Features are dynamic, topics are static!"** This resolves th
 
 [Read the full architectural journey →](docs/adr/0024-typed-topics-pattern.md)
 
+📚 **[View Complete Architecture Showcase →](docs/ARCHITECTURE_SHOWCASE.md)** - Deep dive into all our architectural achievements
+
 ## Why RPG Toolkit Matters
 
 This isn't just another RPG library. It's a demonstration of solving hard architectural problems elegantly:
@@ -300,12 +302,17 @@ The typed topics pattern is complete and battle-tested. We're now building out t
 - 🔧 Equipment and inventory systems
 - 🔧 Enhanced conditions and features
 
-## The Journey
+## Documentation
 
+### 🏆 Portfolio & Architecture
+- **[Architecture Showcase](docs/ARCHITECTURE_SHOWCASE.md)** - Complete portfolio of architectural achievements
+- [ADR-0024: Typed Topics Pattern](docs/adr/0024-typed-topics-pattern.md) - The breakthrough event system design
+
+### 📖 The Journey
 Want to see how we got here? Check out our design evolution:
 - [Journey: The Typed Topics Discovery](docs/journey/024-typed-topics-discovery.md)
-- [ADR-0024: Typed Topics Pattern](docs/adr/0024-typed-topics-pattern.md)
-- [Full Journey Documentation](docs/journey/)
+- [Full Journey Documentation](docs/journey/) - All design decisions and evolution
+- [Architecture Decision Records](docs/adr/) - Formal architectural decisions
 
 ## Contributing
 
