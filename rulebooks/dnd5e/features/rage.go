@@ -146,7 +146,11 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 // ToJSON converts rage to JSON for persistence
 func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
-		Ref:     core.Ref{Value: "rage"},
+		Ref: core.Ref{
+			Module: "dnd5e",
+			Type:   "features",
+			Value:  "rage",
+		},
 		ID:      r.id,
 		Name:    r.name,
 		Level:   r.level,

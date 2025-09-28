@@ -1,12 +1,15 @@
 package character
 
 import (
+	"encoding/json"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -52,6 +55,9 @@ type Data struct {
 	SpellSlots     map[int]SpellSlotData                     `json:"spell_slots,omitempty"`
 	ClassResources map[shared.ClassResourceType]ResourceData `json:"class_resources,omitempty"`
 
+	// Features (rage, second wind, etc)
+	Features []json.RawMessage `json:"features,omitempty"`
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -78,8 +84,8 @@ type ResourceData struct {
 	Resets  shared.ResetType `json:"resets"`
 }
 
-// ToCharacter converts the data to a domain Character
-func (d *Data) ToCharacter() *Character {
+// LoadFromData creates a Character from persistent data
+func LoadFromData(d *Data) (*Character, error) {
 	char := &Character{
 		id:               d.ID,
 		playerID:         d.PlayerID,
@@ -119,62 +125,32 @@ func (d *Data) ToCharacter() *Character {
 		})
 	}
 
-	return char
-}
-
-// FromCharacter creates Data from a domain Character
-func FromCharacter(c *Character) *Data {
-	data := &Data{
-		ID:               c.id,
-		PlayerID:         c.playerID,
-		Name:             c.name,
-		Level:            c.level,
-		ProficiencyBonus: c.proficiencyBonus,
-		RaceID:           c.raceID,
-		SubraceID:        c.subraceID,
-		ClassID:          c.classID,
-		SubclassID:       c.subclassID,
-		AbilityScores:    c.abilityScores,
-		HitPoints:        c.hitPoints,
-		MaxHitPoints:     c.maxHitPoints,
-		ArmorClass:       c.armorClass,
-		Skills:           c.skills,
-		SavingThrows:     c.savingThrows,
-		UpdatedAt:        time.Now(),
-	}
-
-	// Convert inventory to data
-	data.Inventory = make([]InventoryItemData, 0, len(c.inventory))
-	for _, item := range c.inventory {
-		data.Inventory = append(data.Inventory, InventoryItemData{
-			Type:     item.Equipment.EquipmentType(),
-			ID:       item.Equipment.EquipmentID(),
-			Quantity: item.Quantity,
-		})
-	}
-
-	// Convert languages to strings
-	// TODO: Convert typed language constants to strings
-
-	// Convert spell slots
-	data.SpellSlots = make(map[int]SpellSlotData)
-	for level, slot := range c.spellSlots {
-		data.SpellSlots[level] = SpellSlotData{
-			Max:  slot.Max,
-			Used: slot.Used,
+	// Load features from persisted JSON data
+	char.features = make([]features.Feature, 0, len(d.Features))
+	for _, rawFeature := range d.Features {
+		// Peek at the ref to check module
+		var peek struct {
+			Ref core.Ref `json:"ref"`
 		}
-	}
-
-	// Convert class resources
-	data.ClassResources = make(map[shared.ClassResourceType]ResourceData)
-	for resourceType, resource := range c.classResources {
-		data.ClassResources[resourceType] = ResourceData{
-			Name:    resource.Name,
-			Max:     resource.Max,
-			Current: resource.Current,
-			Resets:  resource.Resets,
+		if err := json.Unmarshal(rawFeature, &peek); err != nil {
+			// Skip malformed features
+			continue
 		}
+
+		// Check if this is a dnd5e feature (for now, only module we support)
+		if peek.Ref.Module == "dnd5e" {
+			// Load the actual feature implementation
+			feature, err := features.LoadJSON(rawFeature)
+			if err != nil {
+				// Log error but continue loading other features
+				// TODO: Consider how to handle feature loading errors
+				continue
+			}
+			char.features = append(char.features, feature)
+		}
+		// Silently skip non-dnd5e features for now
+		// In the future, this would route to a module registry
 	}
 
-	return data
+	return char, nil
 }

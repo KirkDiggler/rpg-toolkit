@@ -15,6 +15,15 @@ func (i InventoryItem) GetTotalWeight() float32 {
 	return i.Equipment.EquipmentWeight() * float32(i.Quantity)
 }
 
+// ToData converts the inventory item to its persistent form
+func (i InventoryItem) ToData() InventoryItemData {
+	return InventoryItemData{
+		Type:     i.Equipment.EquipmentType(),
+		ID:       i.Equipment.EquipmentID(),
+		Quantity: i.Quantity,
+	}
+}
+
 // InventorySlot represents where an item can be equipped
 type InventorySlot string
 
