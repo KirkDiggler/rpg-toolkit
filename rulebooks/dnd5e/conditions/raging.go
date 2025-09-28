@@ -8,33 +8,8 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 )
-
-// Combat event types that conditions can subscribe to
-// These mirror the types in the main events.go but are defined here to avoid circular imports
-
-// AttackEvent represents a combat attack
-type AttackEvent struct {
-	AttackerID string
-	TargetID   string
-	WeaponRef  string
-	IsMelee    bool
-	Damage     int
-}
-
-// DamageReceivedEvent represents damage taken
-type DamageReceivedEvent struct {
-	TargetID   string
-	SourceID   string
-	Amount     int
-	DamageType string
-}
-
-// TurnEndEvent represents the end of a character's turn
-type TurnEndEvent struct {
-	CharacterID string
-	Round       int
-}
 
 // ConditionRemovedEvent is published when a condition ends
 type ConditionRemovedEvent struct {
@@ -73,7 +48,7 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	r.bus = bus
 
 	// Subscribe to attack events to track if we attacked
-	attacks := events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack").On(bus)
+	attacks := dnd5e.AttackTopic.On(bus)
 	subID1, err := attacks.Subscribe(ctx, r.onAttack)
 	if err != nil {
 		return err
@@ -81,7 +56,7 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	r.subscriptionIDs = append(r.subscriptionIDs, subID1)
 
 	// Subscribe to damage events to track if we were hit
-	damages := events.DefineTypedTopic[DamageReceivedEvent]("dnd5e.combat.damage.received").On(bus)
+	damages := dnd5e.DamageReceivedTopic.On(bus)
 	subID2, err := damages.Subscribe(ctx, r.onDamageReceived)
 	if err != nil {
 		return err
@@ -89,34 +64,37 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	r.subscriptionIDs = append(r.subscriptionIDs, subID2)
 
 	// Subscribe to turn end events to check if rage continues
-	turnEnds := events.DefineTypedTopic[TurnEndEvent]("dnd5e.turn.end").On(bus)
+	turnEnds := dnd5e.TurnEndTopic.On(bus)
 	subID3, err := turnEnds.Subscribe(ctx, r.onTurnEnd)
 	if err != nil {
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID3)
 
+	// Subscribe to condition applied events to check for unconscious
+	conditions := dnd5e.ConditionAppliedTopic.On(bus)
+	subID4, err := conditions.Subscribe(ctx, r.onConditionApplied)
+	if err != nil {
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID4)
+
 	return nil
 }
 
 // Remove unsubscribes this condition from events
-func (r *RagingCondition) Remove(_ context.Context, bus events.EventBus) error {
+func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error {
 	// Unsubscribe from all events we subscribed to in Apply()
 	if r.bus == nil {
 		return nil // Not applied, nothing to remove
 	}
 
-	// We know exactly what we subscribed to, so unsubscribe from those topics
-	attackTopic := events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack").On(bus)
-	damageTopic := events.DefineTypedTopic[DamageReceivedEvent]("dnd5e.combat.damage.received").On(bus)
-	turnEndTopic := events.DefineTypedTopic[TurnEndEvent]("dnd5e.turn.end").On(bus)
-
-	// TODO: Add Unsubscribe methods to typed topics when events package supports it
-	// See issue: https://github.com/KirkDiggler/rpg-toolkit/issues/XXX
-	// For now, the event bus will clean up subscriptions when it's destroyed
-	_ = attackTopic
-	_ = damageTopic
-	_ = turnEndTopic
+	for _, subID := range r.subscriptionIDs {
+		err := bus.Unsubscribe(ctx, subID)
+		if err != nil {
+			return err
+		}
+	}
 
 	r.subscriptionIDs = nil
 	r.bus = nil
@@ -137,7 +115,7 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 }
 
 // onAttack handles attack events to track if we attacked this turn
-func (r *RagingCondition) onAttack(_ context.Context, event AttackEvent) error {
+func (r *RagingCondition) onAttack(_ context.Context, event dnd5e.AttackEvent) error {
 	if event.AttackerID != r.CharacterID {
 		return nil
 	}
@@ -146,7 +124,7 @@ func (r *RagingCondition) onAttack(_ context.Context, event AttackEvent) error {
 }
 
 // onDamageReceived handles damage events to track if we were hit this turn
-func (r *RagingCondition) onDamageReceived(_ context.Context, event DamageReceivedEvent) error {
+func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5e.DamageReceivedEvent) error {
 	if event.TargetID != r.CharacterID {
 		return nil
 	}
@@ -155,7 +133,7 @@ func (r *RagingCondition) onDamageReceived(_ context.Context, event DamageReceiv
 }
 
 // onTurnEnd handles turn end events to check if rage continues
-func (r *RagingCondition) onTurnEnd(ctx context.Context, event TurnEndEvent) error {
+func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5e.TurnEndEvent) error {
 	if event.CharacterID != r.CharacterID {
 		return nil
 	}
@@ -198,6 +176,26 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event TurnEndEvent) err
 	r.DidAttackThisTurn = false
 	r.WasHitThisTurn = false
 
+	return nil
+}
+
+// onConditionApplied handles condition applied events to check for unconscious
+func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5e.ConditionAppliedEvent) error {
+	// Check if unconscious was applied to us
+	if event.Type == dnd5e.ConditionUnconscious && event.Target.GetID() == r.CharacterID {
+		// End rage immediately
+		if r.bus != nil {
+			removals := events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed").On(r.bus)
+			err := removals.Publish(ctx, ConditionRemovedEvent{
+				CharacterID:  r.CharacterID,
+				ConditionRef: "dnd5e:conditions:raging",
+				Reason:       "unconscious",
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
