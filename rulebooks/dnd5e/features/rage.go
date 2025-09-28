@@ -29,7 +29,7 @@ type Rage struct {
 // RageData is the JSON structure for persisting rage state
 type RageData struct {
 	Ref     core.Ref `json:"ref"`
-	ID      string   `json:"id"` // do we need this with ref?
+	ID      string   `json:"id"`
 	Name    string   `json:"name"`
 	Level   int      `json:"level"`
 	Uses    int      `json:"uses"`
