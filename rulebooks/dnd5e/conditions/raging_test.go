@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 )
 
@@ -46,13 +47,12 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksAttacks() {
 	s.False(raging.DidAttackThisTurn)
 
 	// Publish an attack event for this character
-	attackTopic := events.DefineTypedTopic[conditions.AttackEvent]("dnd5e.combat.attack").On(s.bus)
-	err = attackTopic.Publish(s.ctx, conditions.AttackEvent{
+	attackTopic := dnd5e.AttackTopic.On(s.bus)
+	err = attackTopic.Publish(s.ctx, dnd5e.AttackEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
 		WeaponRef:  "greatsword",
 		IsMelee:    true,
-		Damage:     10,
 	})
 	s.Require().NoError(err)
 
@@ -77,8 +77,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	s.False(raging.WasHitThisTurn)
 
 	// Publish a damage event for this character
-	damageTopic := events.DefineTypedTopic[conditions.DamageReceivedEvent]("dnd5e.combat.damage.received").On(s.bus)
-	err = damageTopic.Publish(s.ctx, conditions.DamageReceivedEvent{
+	damageTopic := dnd5e.DamageReceivedTopic.On(s.bus)
+	err = damageTopic.Publish(s.ctx, dnd5e.DamageReceivedEvent{
 		TargetID:   "barbarian-1",
 		SourceID:   "goblin-1",
 		Amount:     5,
@@ -113,8 +113,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 	s.Require().NoError(err)
 
 	// Publish turn end event without any combat activity
-	turnEndTopic := events.DefineTypedTopic[conditions.TurnEndEvent]("dnd5e.turn.end").On(s.bus)
-	err = turnEndTopic.Publish(s.ctx, conditions.TurnEndEvent{
+	turnEndTopic := dnd5e.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5e.TurnEndEvent{
 		CharacterID: "barbarian-1",
 		Round:       1,
 	})
@@ -150,19 +150,18 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	s.Require().NoError(err)
 
 	// Publish an attack event (combat activity)
-	attackTopic := events.DefineTypedTopic[conditions.AttackEvent]("dnd5e.combat.attack").On(s.bus)
-	err = attackTopic.Publish(s.ctx, conditions.AttackEvent{
+	attackTopic := dnd5e.AttackTopic.On(s.bus)
+	err = attackTopic.Publish(s.ctx, dnd5e.AttackEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
 		WeaponRef:  "greatsword",
 		IsMelee:    true,
-		Damage:     10,
 	})
 	s.Require().NoError(err)
 
 	// Publish turn end event
-	turnEndTopic := events.DefineTypedTopic[conditions.TurnEndEvent]("dnd5e.turn.end").On(s.bus)
-	err = turnEndTopic.Publish(s.ctx, conditions.TurnEndEvent{
+	turnEndTopic := dnd5e.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5e.TurnEndEvent{
 		CharacterID: "barbarian-1",
 		Round:       1,
 	})
@@ -199,23 +198,22 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	})
 	s.Require().NoError(err)
 
-	attackTopic := events.DefineTypedTopic[conditions.AttackEvent]("dnd5e.combat.attack").On(s.bus)
-	turnEndTopic := events.DefineTypedTopic[conditions.TurnEndEvent]("dnd5e.turn.end").On(s.bus)
+	attackTopic := dnd5e.AttackTopic.On(s.bus)
+	turnEndTopic := dnd5e.TurnEndTopic.On(s.bus)
 
 	// Simulate 10 rounds of combat with attacks
 	for round := 1; round <= 10; round++ {
 		// Attack each round to keep rage active
-		err = attackTopic.Publish(s.ctx, conditions.AttackEvent{
+		err = attackTopic.Publish(s.ctx, dnd5e.AttackEvent{
 			AttackerID: "barbarian-1",
 			TargetID:   "goblin-1",
 			WeaponRef:  "greatsword",
 			IsMelee:    true,
-			Damage:     10,
 		})
 		s.Require().NoError(err)
 
 		// End turn
-		err = turnEndTopic.Publish(s.ctx, conditions.TurnEndEvent{
+		err = turnEndTopic.Publish(s.ctx, dnd5e.TurnEndEvent{
 			CharacterID: "barbarian-1",
 			Round:       round,
 		})
