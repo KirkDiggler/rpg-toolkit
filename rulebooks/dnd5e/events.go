@@ -88,6 +88,13 @@ type ConditionAppliedEvent struct {
 	Data   any           // Condition-specific data (e.g., RageData)
 }
 
+// ConditionRemovedEvent is published when a condition ends
+type ConditionRemovedEvent struct {
+	CharacterID  string
+	ConditionRef string
+	Reason       string
+}
+
 // AttackEvent is published when a character makes an attack
 type AttackEvent struct {
 	AttackerID string // ID of the attacking character
@@ -109,6 +116,9 @@ var (
 
 	// ConditionAppliedTopic provides typed pub/sub for condition applied events
 	ConditionAppliedTopic = events.DefineTypedTopic[ConditionAppliedEvent]("dnd5e.condition.applied")
+
+	// ConditionRemovedTopic provides typed pub/sub for condition removed events
+	ConditionRemovedTopic = events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed")
 
 	// AttackTopic provides typed pub/sub for attack events
 	AttackTopic = events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack")

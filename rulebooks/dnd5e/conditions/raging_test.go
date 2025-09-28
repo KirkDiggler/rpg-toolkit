@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package conditions_test
+package conditions
 
 import (
 	"context"
@@ -11,8 +11,25 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 )
+
+// ragingConditionInput provides configuration for creating a raging condition
+type ragingConditionInput struct {
+	CharacterID string // ID of the raging character
+	DamageBonus int    // Bonus damage for rage
+	Level       int    // Barbarian level
+	Source      string // What triggered this (feature ID)
+}
+
+// newRagingCondition creates a raging condition from input
+func newRagingCondition(input ragingConditionInput) *RagingCondition {
+	return &RagingCondition{
+		CharacterID: input.CharacterID,
+		DamageBonus: input.DamageBonus,
+		Level:       input.Level,
+		Source:      input.Source,
+	}
+}
 
 // RagingConditionTestSuite tests the RagingCondition behavior
 type RagingConditionTestSuite struct {
@@ -32,7 +49,7 @@ func TestRagingConditionTestSuite(t *testing.T) {
 
 func (s *RagingConditionTestSuite) TestRagingConditionTracksAttacks() {
 	// Create a raging condition
-	raging := conditions.NewRagingCondition(conditions.RagingConditionInput{
+	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
@@ -62,7 +79,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksAttacks() {
 
 func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	// Create a raging condition
-	raging := conditions.NewRagingCondition(conditions.RagingConditionInput{
+	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
@@ -92,7 +109,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 
 func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity() {
 	// Create a raging condition
-	raging := conditions.NewRagingCondition(conditions.RagingConditionInput{
+	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
@@ -104,9 +121,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 	s.Require().NoError(err)
 
 	// Track if condition removed event is published
-	var removedEvent *conditions.ConditionRemovedEvent
-	removalTopic := events.DefineTypedTopic[conditions.ConditionRemovedEvent]("dnd5e.condition.removed").On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event conditions.ConditionRemovedEvent) error {
+	var removedEvent *dnd5e.ConditionRemovedEvent
+	removalTopic := dnd5e.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
@@ -129,7 +146,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 
 func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivity() {
 	// Create a raging condition
-	raging := conditions.NewRagingCondition(conditions.RagingConditionInput{
+	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
@@ -141,9 +158,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	s.Require().NoError(err)
 
 	// Track if condition removed event is published
-	var removedEvent *conditions.ConditionRemovedEvent
-	removalTopic := events.DefineTypedTopic[conditions.ConditionRemovedEvent]("dnd5e.condition.removed").On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event conditions.ConditionRemovedEvent) error {
+	var removedEvent *dnd5e.ConditionRemovedEvent
+	removalTopic := dnd5e.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
@@ -178,7 +195,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 
 func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	// Create a raging condition
-	raging := conditions.NewRagingCondition(conditions.RagingConditionInput{
+	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
@@ -190,9 +207,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	s.Require().NoError(err)
 
 	// Track if condition removed event is published
-	var removedEvent *conditions.ConditionRemovedEvent
-	removalTopic := events.DefineTypedTopic[conditions.ConditionRemovedEvent]("dnd5e.condition.removed").On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event conditions.ConditionRemovedEvent) error {
+	var removedEvent *dnd5e.ConditionRemovedEvent
+	removalTopic := dnd5e.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
