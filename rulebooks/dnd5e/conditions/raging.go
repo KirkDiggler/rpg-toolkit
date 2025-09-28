@@ -11,21 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 )
 
-// ConditionRemovedEvent is published when a condition ends
-type ConditionRemovedEvent struct {
-	CharacterID  string
-	ConditionRef string
-	Reason       string
-}
-
-// RagingConditionInput provides configuration for creating a raging condition
-type RagingConditionInput struct {
-	CharacterID string // ID of the raging character
-	DamageBonus int    // Bonus damage for rage
-	Level       int    // Barbarian level
-	Source      string // What triggered this (feature ID)
-}
-
 // RagingCondition represents the barbarian rage state.
 // It implements the Condition interface.
 type RagingCondition struct {
@@ -145,8 +130,8 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5e.TurnEndEven
 	if !r.DidAttackThisTurn && !r.WasHitThisTurn {
 		// Publish condition removed event
 		if r.bus != nil {
-			removals := events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed").On(r.bus)
-			err := removals.Publish(ctx, ConditionRemovedEvent{
+			removals := dnd5e.ConditionRemovedTopic.On(r.bus)
+			err := removals.Publish(ctx, dnd5e.ConditionRemovedEvent{
 				CharacterID:  r.CharacterID,
 				ConditionRef: "dnd5e:conditions:raging",
 				Reason:       "no_combat_activity",
@@ -160,8 +145,8 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5e.TurnEndEven
 	// Check if rage ends due to duration (10 rounds = 1 minute)
 	if r.TurnsActive >= 10 {
 		if r.bus != nil {
-			removals := events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed").On(r.bus)
-			err := removals.Publish(ctx, ConditionRemovedEvent{
+			removals := dnd5e.ConditionRemovedTopic.On(r.bus)
+			err := removals.Publish(ctx, dnd5e.ConditionRemovedEvent{
 				CharacterID:  r.CharacterID,
 				ConditionRef: "dnd5e:conditions:raging",
 				Reason:       "duration_expired",
@@ -185,8 +170,8 @@ func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5e.Co
 	if event.Type == dnd5e.ConditionUnconscious && event.Target.GetID() == r.CharacterID {
 		// End rage immediately
 		if r.bus != nil {
-			removals := events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed").On(r.bus)
-			err := removals.Publish(ctx, ConditionRemovedEvent{
+			removals := dnd5e.ConditionRemovedTopic.On(r.bus)
+			err := removals.Publish(ctx, dnd5e.ConditionRemovedEvent{
 				CharacterID:  r.CharacterID,
 				ConditionRef: "dnd5e:conditions:raging",
 				Reason:       "unconscious",
@@ -197,14 +182,4 @@ func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5e.Co
 		}
 	}
 	return nil
-}
-
-// NewRagingCondition creates a raging condition from input
-func NewRagingCondition(input RagingConditionInput) *RagingCondition {
-	return &RagingCondition{
-		CharacterID: input.CharacterID,
-		DamageBonus: input.DamageBonus,
-		Level:       input.Level,
-		Source:      input.Source,
-	}
 }

@@ -739,10 +739,6 @@ func (d *Draft) compileInventory() []InventoryItem {
 		}
 	}
 
-	// Add starting equipment from background grants
-	// TODO: Backgrounds don't currently have starting equipment in grants
-	// This would be added when background equipment is implemented
-
 	// Add equipment from choices (user selections)
 	for _, choice := range d.choices {
 		if choice.Category == shared.ChoiceEquipment {
@@ -760,9 +756,6 @@ func (d *Draft) compileInventory() []InventoryItem {
 			}
 		}
 	}
-
-	// Note: Packs are automatically expanded by equipment.GetByID
-	// It returns the pack as an Equipment item, which can be expanded later if needed
 
 	return inventory
 }
