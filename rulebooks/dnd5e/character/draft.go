@@ -517,6 +517,12 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 	skillProfs := d.compileSkills(raceData)
 	savingThrows := d.compileSavingThrows(classData)
 
+	// Compile features (can fail)
+	charFeatures, err := d.compileFeatures()
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to compile features")
+	}
+
 	// Create the character
 	char := &Character{
 		id:               characterID,
@@ -539,7 +545,7 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 		inventory:        d.compileInventory(),
 		spellSlots:       d.compileSpellSlots(classData),
 		classResources:   make(map[shared.ClassResourceType]ResourceData),
-		features:         d.compileFeatures(),
+		features:         charFeatures,
 	}
 
 	return char, nil
@@ -787,7 +793,7 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData
 }
 
 // compileFeatures returns the character's class features
-func (d *Draft) compileFeatures() []features.Feature {
+func (d *Draft) compileFeatures() ([]features.Feature, error) {
 	featureList := make([]features.Feature, 0)
 
 	// Level 1 barbarian gets rage
@@ -807,15 +813,21 @@ func (d *Draft) compileFeatures() []features.Feature {
 		}
 
 		// Create rage from JSON
-		jsonBytes, _ := json.Marshal(rageData)
-		if rage, err := features.LoadJSON(jsonBytes); err == nil {
-			featureList = append(featureList, rage)
+		jsonBytes, err := json.Marshal(rageData)
+		if err != nil {
+			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to marshal rage data")
 		}
+
+		rage, err := features.LoadJSON(jsonBytes)
+		if err != nil {
+			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to load rage feature")
+		}
+		featureList = append(featureList, rage)
 	}
 
 	// TODO: Add other class features (second wind for fighter, etc)
 
-	return featureList
+	return featureList, nil
 }
 
 // Progress validation methods
