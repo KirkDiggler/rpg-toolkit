@@ -2,8 +2,13 @@
 package character
 
 import (
+	"encoding/json"
+	"maps"
+	"time"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -46,6 +51,9 @@ type Character struct {
 	inventory      []InventoryItem
 	spellSlots     map[int]SpellSlotData
 	classResources map[shared.ClassResourceType]ResourceData
+
+	// Features (rage, second wind, etc)
+	features []features.Feature
 }
 
 // GetID returns the character's unique identifier
@@ -104,4 +112,72 @@ func (c *Character) GetSavingThrowModifier(ability abilities.Ability) int {
 	}
 
 	return modifier
+}
+
+// GetFeatures returns all character features
+func (c *Character) GetFeatures() []features.Feature {
+	return c.features
+}
+
+// GetFeature returns a specific feature by ID
+func (c *Character) GetFeature(id string) features.Feature {
+	for _, f := range c.features {
+		if f.GetID() == id {
+			return f
+		}
+	}
+	return nil
+}
+
+// ToData converts the character to its persistent data form
+func (c *Character) ToData() *Data {
+	data := &Data{
+		ID:               c.id,
+		PlayerID:         c.playerID,
+		Name:             c.name,
+		Level:            c.level,
+		ProficiencyBonus: c.proficiencyBonus,
+		RaceID:           c.raceID,
+		SubraceID:        c.subraceID,
+		ClassID:          c.classID,
+		SubclassID:       c.subclassID,
+		AbilityScores:    c.abilityScores,
+		HitPoints:        c.hitPoints,
+		MaxHitPoints:     c.maxHitPoints,
+		ArmorClass:       c.armorClass,
+		Skills:           maps.Clone(c.skills),
+		SavingThrows:     maps.Clone(c.savingThrows),
+		UpdatedAt:        time.Now(),
+	}
+
+	// Convert inventory to data
+	data.Inventory = make([]InventoryItemData, 0, len(c.inventory))
+	for _, item := range c.inventory {
+		data.Inventory = append(data.Inventory, item.ToData())
+	}
+
+	// Convert languages to strings
+	// TODO: Convert typed language constants to strings
+
+	// Copy spell slots map directly since SpellSlotData is already the data type
+	data.SpellSlots = maps.Clone(c.spellSlots)
+
+	// Copy class resources map directly since ResourceData is already the data type
+	data.ClassResources = maps.Clone(c.classResources)
+
+	// Convert features to persisted JSON
+	data.Features = make([]json.RawMessage, 0, len(c.features))
+	for _, feature := range c.features {
+		// Use the feature's ToJSON method to get the serialized form
+		jsonData, err := feature.ToJSON()
+		if err != nil {
+			// Skip features that can't be serialized
+			// TODO: Consider how to handle serialization errors
+			continue
+		}
+		// The feature's ToJSON already includes the fully qualified ref
+		data.Features = append(data.Features, jsonData)
+	}
+
+	return data
 }

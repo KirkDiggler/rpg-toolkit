@@ -2,7 +2,6 @@
 package dnd5e
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/class"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/race"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -32,16 +31,6 @@ type (
 	AbilityScores = shared.AbilityScores
 	// ChoiceCategory represents types of character creation choices
 	ChoiceCategory = shared.ChoiceCategory
-)
-
-// Character types from the character package
-type (
-	// Character represents a D&D 5e character
-	Character = character.Character
-	// CharacterData is the persistent character data structure
-	CharacterData = character.Data
-	// CharacterDraft represents an in-progress character
-	CharacterDraft = character.Draft
 )
 
 // Choice category constants for character creation

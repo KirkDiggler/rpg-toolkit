@@ -1,15 +1,18 @@
 package character
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -514,6 +517,12 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 	skillProfs := d.compileSkills(raceData)
 	savingThrows := d.compileSavingThrows(classData)
 
+	// Compile features (can fail)
+	charFeatures, err := d.compileFeatures()
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to compile features")
+	}
+
 	// Create the character
 	char := &Character{
 		id:               characterID,
@@ -536,6 +545,7 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 		inventory:        d.compileInventory(),
 		spellSlots:       d.compileSpellSlots(classData),
 		classResources:   make(map[shared.ClassResourceType]ResourceData),
+		features:         charFeatures,
 	}
 
 	return char, nil
@@ -780,6 +790,44 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData
 	}
 
 	return slots
+}
+
+// compileFeatures returns the character's class features
+func (d *Draft) compileFeatures() ([]features.Feature, error) {
+	featureList := make([]features.Feature, 0)
+
+	// Level 1 barbarian gets rage
+	if d.class == classes.Barbarian {
+		// Create rage feature with proper JSON data
+		rageData := map[string]interface{}{
+			"ref": core.Ref{
+				Module: "dnd5e",
+				Type:   "features",
+				Value:  "rage",
+			},
+			"id":       "rage",
+			"name":     "Rage",
+			"level":    1,
+			"uses":     2, // Level 1 has 2 uses
+			"max_uses": 2,
+		}
+
+		// Create rage from JSON
+		jsonBytes, err := json.Marshal(rageData)
+		if err != nil {
+			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to marshal rage data")
+		}
+
+		rage, err := features.LoadJSON(jsonBytes)
+		if err != nil {
+			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to load rage feature")
+		}
+		featureList = append(featureList, rage)
+	}
+
+	// TODO: Add other class features (second wind for fighter, etc)
+
+	return featureList, nil
 }
 
 // Progress validation methods

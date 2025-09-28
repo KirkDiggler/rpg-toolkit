@@ -252,7 +252,7 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	s.Require().NoError(err)
 
 	// Check inventory based on what Monk gets
-	inventory := character.FromCharacter(char).Inventory
+	inventory := char.ToData().Inventory
 	grants := classes.GetAutomaticGrants(classes.Monk)
 	if grants == nil || len(grants.StartingEquipment) == 0 {
 		s.Empty(inventory, "Monk with no grants should have no inventory")
@@ -267,7 +267,7 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 		// Fighter gets specific starting equipment from grants
 		char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
 		s.Require().NoError(err)
-		inventory := character.FromCharacter(char).Inventory
+		inventory := char.ToData().Inventory
 
 		// Fighter should have starting equipment (varies by class data)
 		// For now, just verify inventory is not empty if class has grants
@@ -297,7 +297,7 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 
 		char, err := draft.ToCharacter("char-monk")
 		s.Require().NoError(err)
-		inventory := character.FromCharacter(char).Inventory
+		inventory := char.ToData().Inventory
 
 		// Check for monk starting equipment
 		grants := classes.GetAutomaticGrants(classes.Monk)
@@ -323,7 +323,7 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 
 	char, err := draft.ToCharacter("char-fighter")
 	s.Require().NoError(err)
-	inventory := character.FromCharacter(char).Inventory
+	inventory := char.ToData().Inventory
 
 	// Check for background equipment
 	// Note: backgrounds don't currently have starting equipment
@@ -357,7 +357,7 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 
 		char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
 		s.Require().NoError(err)
-		inventory := character.FromCharacter(char).Inventory
+		inventory := char.ToData().Inventory
 
 		// Should have the shield from this option
 		s.assertInventoryContains(inventory, "shield", 1, "Fighter chose shield option")
@@ -378,7 +378,7 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 
 		char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
 		s.Require().NoError(err)
-		inventory := character.FromCharacter(char).Inventory
+		inventory := char.ToData().Inventory
 
 		// Should have the pack (not expanded)
 		s.assertInventoryContains(inventory, packs.ExplorerPack, 1, "Fighter chose explorer's pack")
@@ -401,7 +401,7 @@ func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
 
 	char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
 	s.Require().NoError(err)
-	inventory := character.FromCharacter(char).Inventory
+	inventory := char.ToData().Inventory
 
 	// Count handaxes - currently loses quantity info from option, so we get 1
 	// TODO: Fix SetClass to preserve quantity information from equipment options
@@ -436,7 +436,7 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 
 	char, err := draft.ToCharacter("char-fighter")
 	s.Require().NoError(err)
-	inventory := character.FromCharacter(char).Inventory
+	inventory := char.ToData().Inventory
 
 	// Should have both crossbow and bolts
 	s.assertInventoryContains(inventory, weapons.LightCrossbow, 1, "Should have light crossbow")
@@ -666,7 +666,7 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	// Convert to character
 	char, err := draft.ToCharacter("char-complete")
 	s.Require().NoError(err)
-	inventory := character.FromCharacter(char).Inventory
+	inventory := char.ToData().Inventory
 
 	// Should have items from all sources
 	s.NotEmpty(inventory, "Complete character should have inventory")
