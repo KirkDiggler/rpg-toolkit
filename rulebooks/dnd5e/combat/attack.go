@@ -190,116 +190,34 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 			return nil, rpgerr.Wrap(err, fmt.Sprintf("invalid weapon damage %s", input.Weapon.Damage))
 		}
 
-		// Double dice on critical (not bonuses)
+		// Roll damage dice (double for crits)
+		var damageRolls []int
 		if result.Critical {
-			// For crits, we need to roll the dice twice
-			// ParseNotation gives us a pool, we need to double the dice count
-			// This is a bit awkward - we'll roll twice and combine
-			damageResult1 := damagePool.RollContext(ctx, roller)
-			if damageResult1.Error() != nil {
-				return nil, rpgerr.Wrap(damageResult1.Error(), "failed to roll damage")
-			}
-			damageResult2 := damagePool.RollContext(ctx, roller)
-			if damageResult2.Error() != nil {
-				return nil, rpgerr.Wrap(damageResult2.Error(), "failed to roll damage")
-			}
-
-			// Flatten both roll results
-			var allRolls []int
-			for _, group := range damageResult1.Rolls() {
-				allRolls = append(allRolls, group...)
-			}
-			for _, group := range damageResult2.Rolls() {
-				allRolls = append(allRolls, group...)
-			}
-			result.DamageRolls = allRolls
-
-			// Base damage is the sum of both rolls (without modifiers)
-			baseDamage := 0
-			for _, roll := range allRolls {
-				baseDamage += roll
-			}
-
-			// Calculate base damage bonus (same ability modifier as attack)
-			baseDamageBonus := abilityMod
-
-			// Step 7: Fire damage chain event to collect modifiers
-			damageEvent := DamageChainEvent{
-				AttackerID:   input.Attacker.GetID(),
-				TargetID:     input.Defender.GetID(),
-				BaseDamage:   baseDamage,
-				DamageBonus:  baseDamageBonus,
-				DamageType:   string(input.Weapon.DamageType),
-				IsCritical:   result.Critical,
-				WeaponDamage: input.Weapon.Damage,
-			}
-
-			// Create damage chain
-			damageChain := events.NewStagedChain[DamageChainEvent](dnd5e.ModifierStages)
-			damages := DamageChain.On(input.EventBus)
-
-			// Publish through chain to collect modifiers
-			modifiedDamageChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
-			if err != nil {
-				return nil, rpgerr.Wrap(err, "failed to publish damage chain")
-			}
-
-			// Execute chain to get final damage event with all modifiers
-			finalDamageEvent, err := modifiedDamageChain.Execute(ctx, damageEvent)
-			if err != nil {
-				return nil, rpgerr.Wrap(err, "failed to execute damage chain")
-			}
-
-			// Update result with modified values
-			result.DamageBonus = finalDamageEvent.DamageBonus
-			result.TotalDamage = finalDamageEvent.BaseDamage + result.DamageBonus
+			// Critical: roll dice twice and combine
+			damageRolls, err = rollDamageDice(ctx, damagePool, roller, 2)
 		} else {
-			// Normal hit (not critical)
-			damageResult := damagePool.RollContext(ctx, roller)
-			if damageResult.Error() != nil {
-				return nil, rpgerr.Wrap(damageResult.Error(), "failed to roll damage")
-			}
-
-			// Flatten rolls
-			var allRolls []int
-			for _, group := range damageResult.Rolls() {
-				allRolls = append(allRolls, group...)
-			}
-			result.DamageRolls = allRolls
-
-			baseDamage := 0
-			for _, roll := range allRolls {
-				baseDamage += roll
-			}
-
-			baseDamageBonus := abilityMod
-
-			damageEvent := DamageChainEvent{
-				AttackerID:   input.Attacker.GetID(),
-				TargetID:     input.Defender.GetID(),
-				BaseDamage:   baseDamage,
-				DamageBonus:  baseDamageBonus,
-				DamageType:   string(input.Weapon.DamageType),
-				IsCritical:   result.Critical,
-				WeaponDamage: input.Weapon.Damage,
-			}
-
-			damageChain := events.NewStagedChain[DamageChainEvent](dnd5e.ModifierStages)
-			damages := DamageChain.On(input.EventBus)
-
-			modifiedDamageChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
-			if err != nil {
-				return nil, rpgerr.Wrap(err, "failed to publish damage chain")
-			}
-
-			finalDamageEvent, err := modifiedDamageChain.Execute(ctx, damageEvent)
-			if err != nil {
-				return nil, rpgerr.Wrap(err, "failed to execute damage chain")
-			}
-
-			result.DamageBonus = finalDamageEvent.DamageBonus
-			result.TotalDamage = finalDamageEvent.BaseDamage + result.DamageBonus
+			// Normal: roll dice once
+			damageRolls, err = rollDamageDice(ctx, damagePool, roller, 1)
 		}
+		if err != nil {
+			return nil, err
+		}
+		result.DamageRolls = damageRolls
+
+		// Sum base damage from dice
+		baseDamage := 0
+		for _, roll := range damageRolls {
+			baseDamage += roll
+		}
+
+		// Apply damage chain for modifiers
+		finalDamage, damageBonus, err := applyDamageChain(ctx, input, baseDamage, abilityMod, result.Critical)
+		if err != nil {
+			return nil, err
+		}
+
+		result.DamageBonus = damageBonus
+		result.TotalDamage = finalDamage
 
 		// Damage can't be negative
 		if result.TotalDamage < 0 {
@@ -320,6 +238,59 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	return result, nil
+}
+
+// rollDamageDice rolls the damage pool the specified number of times and combines results
+func rollDamageDice(ctx context.Context, pool *dice.Pool, roller dice.Roller, times int) ([]int, error) {
+	var allRolls []int
+	for i := 0; i < times; i++ {
+		result := pool.RollContext(ctx, roller)
+		if result.Error() != nil {
+			return nil, rpgerr.Wrap(result.Error(), "failed to roll damage")
+		}
+		// Flatten the roll groups
+		for _, group := range result.Rolls() {
+			allRolls = append(allRolls, group...)
+		}
+	}
+	return allRolls, nil
+}
+
+// applyDamageChain applies the damage modifier chain and returns final damage and bonus
+func applyDamageChain(
+	ctx context.Context,
+	input *AttackInput,
+	baseDamage int,
+	abilityMod int,
+	isCritical bool,
+) (finalDamage int, damageBonus int, err error) {
+	// Build damage chain event
+	damageEvent := DamageChainEvent{
+		AttackerID:   input.Attacker.GetID(),
+		TargetID:     input.Defender.GetID(),
+		BaseDamage:   baseDamage,
+		DamageBonus:  abilityMod,
+		DamageType:   string(input.Weapon.DamageType),
+		IsCritical:   isCritical,
+		WeaponDamage: input.Weapon.Damage,
+	}
+
+	// Create and publish through damage chain
+	damageChain := events.NewStagedChain[DamageChainEvent](dnd5e.ModifierStages)
+	damages := DamageChain.On(input.EventBus)
+
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	if err != nil {
+		return 0, 0, rpgerr.Wrap(err, "failed to publish damage chain")
+	}
+
+	// Execute chain to get final modifiers
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	if err != nil {
+		return 0, 0, rpgerr.Wrap(err, "failed to execute damage chain")
+	}
+
+	return finalEvent.BaseDamage + finalEvent.DamageBonus, finalEvent.DamageBonus, nil
 }
 
 // calculateAttackAbilityModifier determines which ability modifier to use for attack
