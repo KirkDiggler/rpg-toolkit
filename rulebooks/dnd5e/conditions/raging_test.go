@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // ragingConditionInput provides configuration for creating a raging condition
@@ -247,4 +248,73 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	s.Equal("barbarian-1", removedEvent.CharacterID)
 	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
 	s.Equal("duration_expired", removedEvent.Reason)
+}
+
+// executeDamageChain creates a damage chain event and executes it through the damage chain topic.
+// Returns the final event after all chain modifications have been applied.
+// This helper reduces duplication in tests that verify damage bonus modifications.
+func (s *RagingConditionTestSuite) executeDamageChain(
+	attackerID string,
+	baseDamage, damageBonus int,
+) (*combat.DamageChainEvent, error) {
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID:   attackerID,
+		TargetID:     "goblin-1",
+		BaseDamage:   baseDamage,
+		DamageBonus:  damageBonus,
+		DamageType:   "slashing",
+		IsCritical:   false,
+		WeaponDamage: "1d8",
+	}
+
+	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	damageTopic := combat.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	if err != nil {
+		return nil, err
+	}
+
+	return modifiedChain.Execute(s.ctx, damageEvent)
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
+	// Create a level 3 raging condition (+2 damage)
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       3,
+		Source:      "rage-feature",
+	})
+
+	// Apply it to subscribe to damage chain
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Execute damage chain for the raging barbarian
+	finalEvent, err := s.executeDamageChain("barbarian-1", 5, 3)
+	s.Require().NoError(err)
+
+	// Verify rage damage bonus was added (STR 3 + Rage 2 = 5)
+	s.Equal(5, finalEvent.DamageBonus, "Should include STR(+3) and rage(+2)")
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionOnlyAffectsOwnAttacks() {
+	// Create a raging condition for barbarian-1
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       3,
+		Source:      "rage-feature",
+	})
+
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Execute damage chain for a DIFFERENT attacker
+	finalEvent, err := s.executeDamageChain("barbarian-2", 5, 3)
+	s.Require().NoError(err)
+
+	// Verify NO rage bonus was added (only STR modifier)
+	s.Equal(3, finalEvent.DamageBonus, "Should only include STR(+3), no rage for other character")
 }
