@@ -1,8 +1,10 @@
 package character_test
 
 import (
+	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
@@ -20,6 +22,8 @@ import (
 // DraftTestSuite tests draft functionality including inventory compilation
 type DraftTestSuite struct {
 	suite.Suite
+	ctx       context.Context
+	bus       events.EventBus
 	baseDraft *character.Draft // Base draft with minimal setup
 
 	// Test data that gets reset in SetupSubTest
@@ -34,6 +38,12 @@ type DraftTestSuite struct {
 		fighterShieldChoice   choices.ChoiceData
 		wizardComponentChoice choices.ChoiceData
 	}
+}
+
+// SetupTest runs before each test function
+func (s *DraftTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
 }
 
 // SetupSubTest resets test data before each subtest
@@ -248,7 +258,7 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	s.Require().NoError(err)
 
 	// Convert to character (which calls compileInventory)
-	char, err := draft.ToCharacter("char-001")
+	char, err := draft.ToCharacter(s.ctx, "char-001", s.bus)
 	s.Require().NoError(err)
 
 	// Check inventory based on what Monk gets
@@ -265,7 +275,7 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 	s.Run("Fighter starting equipment", func() {
 		// Fighter gets specific starting equipment from grants
-		char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
+		char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
@@ -295,7 +305,7 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 		})
 		s.Require().NoError(err)
 
-		char, err := draft.ToCharacter("char-monk")
+		char, err := draft.ToCharacter(s.ctx, "char-monk", s.bus)
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
@@ -321,7 +331,7 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 	})
 	s.Require().NoError(err)
 
-	char, err := draft.ToCharacter("char-fighter")
+	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
 	inventory := char.ToData().Inventory
 
@@ -355,7 +365,7 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 		})
 		s.Require().NoError(err)
 
-		char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
+		char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
@@ -376,7 +386,7 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 		})
 		s.Require().NoError(err)
 
-		char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
+		char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
@@ -399,7 +409,7 @@ func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
 	})
 	s.Require().NoError(err)
 
-	char, err := s.testData.fighterDraft.ToCharacter("char-fighter")
+	char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
 	inventory := char.ToData().Inventory
 
@@ -434,7 +444,7 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 	})
 	s.Require().NoError(err)
 
-	char, err := draft.ToCharacter("char-fighter")
+	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
 	inventory := char.ToData().Inventory
 
@@ -496,7 +506,7 @@ func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
 	// Test 3: If invalid data somehow bypasses validation, compilation should panic
 	// This ensures we fail fast rather than silently corrupt data
 	s.Require().Panics(func() {
-		_, err := draft.ToCharacter("char-fighter")
+		_, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		_ = err
 	}, "ToCharacter should panic on invalid equipment that bypassed validation")
 }
@@ -553,7 +563,7 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsValidation() {
 
 	// Test 2: Test ToCharacter panics on invalid equipment (simulates bypassed validation)
 	s.Require().Panics(func() {
-		_, err := draftWithInvalidEquip.ToCharacter("char-fighter")
+		_, err := draftWithInvalidEquip.ToCharacter(s.ctx, "char-fighter", s.bus)
 		_ = err
 	}, "ToCharacter should panic on invalid-equipment-id")
 
@@ -628,7 +638,7 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsIsValidEquipment() {
 	// Test that ToCharacter should not panic on bolts-20 (it's valid equipment)
 	// It might fail for other validation reasons, but not panic for invalid equipment
 	s.Require().NotPanics(func() {
-		_, err := draftWithBolts.ToCharacter("char-fighter")
+		_, err := draftWithBolts.ToCharacter(s.ctx, "char-fighter", s.bus)
 		// Error is okay (for missing choices), but no panic
 		_ = err
 	}, "ToCharacter should not panic on valid bolts-20 equipment")
@@ -664,7 +674,7 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	s.Require().NoError(err)
 
 	// Convert to character
-	char, err := draft.ToCharacter("char-complete")
+	char, err := draft.ToCharacter(s.ctx, "char-complete", s.bus)
 	s.Require().NoError(err)
 	inventory := char.ToData().Inventory
 

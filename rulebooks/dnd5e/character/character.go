@@ -2,12 +2,17 @@
 package character
 
 import (
+	"context"
 	"encoding/json"
 	"maps"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -54,11 +59,23 @@ type Character struct {
 
 	// Features (rage, second wind, etc)
 	features []features.Feature
+
+	// Conditions (raging, poisoned, stunned, etc)
+	conditions []dnd5eEvents.ConditionBehavior
+
+	// Event handling
+	bus             events.EventBus
+	subscriptionIDs []string
 }
 
 // GetID returns the character's unique identifier
 func (c *Character) GetID() string {
 	return c.id
+}
+
+// GetType returns the entity type (implements core.Entity)
+func (c *Character) GetType() core.EntityType {
+	return "character"
 }
 
 // GetName returns the character's name
@@ -129,6 +146,11 @@ func (c *Character) GetFeature(id string) features.Feature {
 	return nil
 }
 
+// GetConditions returns all active conditions
+func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
+	return c.conditions
+}
+
 // ToData converts the character to its persistent data form
 func (c *Character) ToData() *Data {
 	data := &Data{
@@ -179,5 +201,87 @@ func (c *Character) ToData() *Data {
 		data.Features = append(data.Features, jsonData)
 	}
 
+	// Convert conditions to persisted JSON (following same pattern as features)
+	data.Conditions = make([]json.RawMessage, 0, len(c.conditions))
+	for _, condition := range c.conditions {
+		// Use the condition's ToJSON method to get the serialized form
+		jsonData, err := condition.ToJSON()
+		if err != nil {
+			// Skip conditions that can't be serialized
+			// TODO: Consider how to handle serialization errors
+			continue
+		}
+		data.Conditions = append(data.Conditions, jsonData)
+	}
+
 	return data
+}
+
+// subscribeToEvents subscribes the character to condition events
+func (c *Character) subscribeToEvents(ctx context.Context) error {
+	if c.bus == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
+	}
+
+	// Subscribe to condition applied events
+	appliedTopic := dnd5eEvents.ConditionAppliedTopic.On(c.bus)
+	subID, err := appliedTopic.Subscribe(ctx, c.onConditionApplied)
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to subscribe to condition applied")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, subID)
+
+	return nil
+}
+
+// onConditionApplied handles ConditionAppliedEvent
+func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+	// Only process events for this character
+	if event.Target.GetID() != c.id {
+		return nil
+	}
+
+	// Apply the condition (subscribes to events)
+	if err := event.Condition.Apply(ctx, c.bus); err != nil {
+		// Clean up any partial subscriptions to avoid resource leaks
+		_ = event.Condition.Remove(ctx, c.bus)
+		return rpgerr.Wrapf(err, "failed to apply condition")
+	}
+
+	// Store the condition
+	c.conditions = append(c.conditions, event.Condition)
+
+	return nil
+}
+
+// Cleanup unsubscribes from all events and removes all active conditions
+func (c *Character) Cleanup(ctx context.Context) error {
+	if c.bus == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// Remove all active conditions - collect errors but try to remove all
+	for _, cond := range c.conditions {
+		if err := cond.Remove(ctx, c.bus); err != nil {
+			errors = append(errors, rpgerr.Wrapf(err, "failed to remove condition"))
+		}
+	}
+	c.conditions = nil
+
+	// Unsubscribe from events - collect errors but try to unsubscribe all
+	for _, subID := range c.subscriptionIDs {
+		if err := c.bus.Unsubscribe(ctx, subID); err != nil {
+			errors = append(errors, rpgerr.Wrapf(err, "failed to unsubscribe"))
+		}
+	}
+	c.subscriptionIDs = nil
+
+	// Return first error if any occurred
+	if len(errors) > 0 {
+		return errors[0]
+	}
+
+	return nil
 }

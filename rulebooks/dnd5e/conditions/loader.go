@@ -8,11 +8,12 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // LoadJSON loads a condition from its JSON representation.
 // This is the big switch that knows how to unmarshal each condition type.
-func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
+func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 	// Peek at the ref to determine condition type
 	var peek struct {
 		Ref core.Ref `json:"ref"`

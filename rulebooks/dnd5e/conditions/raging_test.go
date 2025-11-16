@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // ragingConditionInput provides configuration for creating a raging condition
@@ -65,8 +66,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksAttacks() {
 	s.False(raging.DidAttackThisTurn)
 
 	// Publish an attack event for this character
-	attackTopic := dnd5e.AttackTopic.On(s.bus)
-	err = attackTopic.Publish(s.ctx, dnd5e.AttackEvent{
+	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
+	err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
 		WeaponRef:  "greatsword",
@@ -95,8 +96,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	s.False(raging.WasHitThisTurn)
 
 	// Publish a damage event for this character
-	damageTopic := dnd5e.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5e.DamageReceivedEvent{
+	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
+	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID:   "barbarian-1",
 		SourceID:   "goblin-1",
 		Amount:     5,
@@ -122,17 +123,17 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 	s.Require().NoError(err)
 
 	// Track if condition removed event is published
-	var removedEvent *dnd5e.ConditionRemovedEvent
-	removalTopic := dnd5e.ConditionRemovedTopic.On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionRemovedEvent) error {
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
 	s.Require().NoError(err)
 
 	// Publish turn end event without any combat activity
-	turnEndTopic := dnd5e.TurnEndTopic.On(s.bus)
-	err = turnEndTopic.Publish(s.ctx, dnd5e.TurnEndEvent{
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 		CharacterID: "barbarian-1",
 		Round:       1,
 	})
@@ -159,17 +160,17 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	s.Require().NoError(err)
 
 	// Track if condition removed event is published
-	var removedEvent *dnd5e.ConditionRemovedEvent
-	removalTopic := dnd5e.ConditionRemovedTopic.On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionRemovedEvent) error {
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
 	s.Require().NoError(err)
 
 	// Publish an attack event (combat activity)
-	attackTopic := dnd5e.AttackTopic.On(s.bus)
-	err = attackTopic.Publish(s.ctx, dnd5e.AttackEvent{
+	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
+	err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
 		WeaponRef:  "greatsword",
@@ -178,8 +179,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	s.Require().NoError(err)
 
 	// Publish turn end event
-	turnEndTopic := dnd5e.TurnEndTopic.On(s.bus)
-	err = turnEndTopic.Publish(s.ctx, dnd5e.TurnEndEvent{
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 		CharacterID: "barbarian-1",
 		Round:       1,
 	})
@@ -208,21 +209,21 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	s.Require().NoError(err)
 
 	// Track if condition removed event is published
-	var removedEvent *dnd5e.ConditionRemovedEvent
-	removalTopic := dnd5e.ConditionRemovedTopic.On(s.bus)
-	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionRemovedEvent) error {
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 		removedEvent = &event
 		return nil
 	})
 	s.Require().NoError(err)
 
-	attackTopic := dnd5e.AttackTopic.On(s.bus)
-	turnEndTopic := dnd5e.TurnEndTopic.On(s.bus)
+	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 
 	// Simulate 10 rounds of combat with attacks
 	for round := 1; round <= 10; round++ {
 		// Attack each round to keep rage active
-		err = attackTopic.Publish(s.ctx, dnd5e.AttackEvent{
+		err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
 			AttackerID: "barbarian-1",
 			TargetID:   "goblin-1",
 			WeaponRef:  "greatsword",
@@ -231,7 +232,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 		s.Require().NoError(err)
 
 		// End turn
-		err = turnEndTopic.Publish(s.ctx, dnd5e.TurnEndEvent{
+		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 			CharacterID: "barbarian-1",
 			Round:       round,
 		})

@@ -9,9 +9,9 @@ import (
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -182,20 +182,20 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil)
 
 	// Track events
-	var attackEvent *dnd5e.AttackEvent
-	var damageEvent *dnd5e.DamageReceivedEvent
+	var attackEvent *dnd5eEvents.AttackEvent
+	var damageEvent *dnd5eEvents.DamageReceivedEvent
 
 	// Subscribe to AttackEvent
-	attacks := dnd5e.AttackTopic.On(s.eventBus)
-	_, err := attacks.Subscribe(s.ctx, func(_ context.Context, e dnd5e.AttackEvent) error {
+	attacks := dnd5eEvents.AttackTopic.On(s.eventBus)
+	_, err := attacks.Subscribe(s.ctx, func(_ context.Context, e dnd5eEvents.AttackEvent) error {
 		attackEvent = &e
 		return nil
 	})
 	s.Require().NoError(err)
 
 	// Subscribe to DamageReceivedEvent
-	damages := dnd5e.DamageReceivedTopic.On(s.eventBus)
-	_, err = damages.Subscribe(s.ctx, func(_ context.Context, e dnd5e.DamageReceivedEvent) error {
+	damages := dnd5eEvents.DamageReceivedTopic.On(s.eventBus)
+	_, err = damages.Subscribe(s.ctx, func(_ context.Context, e dnd5eEvents.DamageReceivedEvent) error {
 		damageEvent = &e
 		return nil
 	})

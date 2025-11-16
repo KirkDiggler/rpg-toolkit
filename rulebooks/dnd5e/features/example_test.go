@@ -7,7 +7,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 )
 
@@ -34,14 +35,14 @@ func Example() {
 	feature, _ := features.LoadJSON(featureJSON)
 
 	// Listen for condition applications
-	topic := dnd5e.ConditionAppliedTopic.On(bus)
-	_, err := topic.Subscribe(ctx, func(_ context.Context, event dnd5e.ConditionAppliedEvent) error {
-		if event.Type == dnd5e.ConditionRaging {
-			// Type assert the data to get rage-specific info
-			if rageData, ok := event.Data.(features.RageEventData); ok {
+	topic := dnd5eEvents.ConditionAppliedTopic.On(bus)
+	_, err := topic.Subscribe(ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+		if event.Type == dnd5eEvents.ConditionRaging {
+			// Type assert the condition to get rage-specific info
+			if ragingCond, ok := event.Condition.(*conditions.RagingCondition); ok {
 				fmt.Printf("%s is now raging! Damage bonus: +%d\n",
 					event.Target.GetID(),
-					rageData.DamageBonus)
+					ragingCond.DamageBonus)
 			}
 		}
 
