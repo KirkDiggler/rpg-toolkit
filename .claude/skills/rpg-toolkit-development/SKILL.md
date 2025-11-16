@@ -18,33 +18,9 @@ Use this skill when working on the rpg-toolkit project to ensure consistency wit
 
 ## Core Principles
 
-### 1. Mock Behavior, Not Data
+**See also:** `/home/kirk/personal/.claude/agents/golang-architect/` for Go-generic patterns (pointers, testing, error handling)
 
-**❌ WRONG:**
-```go
-mockEntity := mock_core.NewMockEntity(ctrl)
-mockEntity.EXPECT().GetID().Return("test-1").AnyTimes()
-```
-
-**✅ CORRECT:**
-```go
-// Entities are just data - use real implementations
-entity := monster.New(monster.Config{
-    ID: "test-1",
-    Name: "Test Monster",
-    HP: 50,
-    AC: 15,
-    AbilityScores: scores,
-})
-
-// Only mock interfaces with complex behavior
-mockRoller := mock_dice.NewMockRoller(ctrl)
-mockRoller.EXPECT().Roll(ctx, 20).Return(15, nil)
-```
-
-**Why:** Data objects are simple to construct. Mocking adds complexity without benefit. Mock interfaces that encapsulate behavior (Roller, EventBus).
-
-### 2. Typed Constants Pattern
+### 1. Typed Constants Pattern
 
 **Low-level packages define types:**
 ```go
@@ -74,7 +50,7 @@ var ModifierStages = []chain.Stage{
 
 **Why:** No magic strings. Type safety. Game servers get well-defined constants. Clear ordering.
 
-### 3. Error Handling with rpgerr
+### 2. Error Handling with rpgerr
 
 **Always use rpgerr package:**
 ```go
@@ -103,7 +79,7 @@ func (ai *AttackInput) Validate() error {
 }
 ```
 
-### 4. Event-Driven Architecture
+### 3. Event-Driven Architecture
 
 **Event Flow Pattern:**
 ```
@@ -132,7 +108,7 @@ final, _ := modifiedChain.Execute(ctx, event)
 damageTopic.Publish(ctx, DamageReceivedEvent{...})
 ```
 
-### 5. Modifier Chain Usage
+### 4. Modifier Chain Usage
 
 **When to subscribe to chains:**
 ```go
@@ -161,7 +137,7 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 - `StageEquipment` - Item bonuses (magic weapons)
 - `StageFinal` - Final adjustments (resistance, caps)
 
-### 6. D&D 5e Combat Mechanics
+### 5. D### 6. D&D 5e Combat MechanicsD 5e Combat Mechanics
 
 **Attack Resolution Order:**
 1. Publish `AttackEvent` (before any rolls)
@@ -188,33 +164,40 @@ total := result.Total()
 rolls := result.Rolls() // [][]int - flattened for display
 ```
 
-### 7. Testing Patterns
+### 6. Testing Patterns
 
-**Use testify suite pattern:**
+**RPG Toolkit Specific:**
+- Use real entities (Monster, Character) - they're just data
+- Mock only complex behaviors (Roller, external services)
+- Don't mock EventBus - it's cheap to create real one for tests
+- Test event flows with real subscribers
+- Use testify suite for stateful tests
+
+**Example - Testing Event Chains:**
 ```go
-type MyTestSuite struct {
-    suite.Suite
-    ctrl *gomock.Controller
-    ctx  context.Context
-}
+func (s *CombatTestSuite) TestDamageChainFlow() {
+    // Use real event bus
+    bus := events.NewEventBus()
 
-func (s *MyTestSuite) SetupTest() {
-    s.ctrl = gomock.NewController(s.T())
-    s.ctx = context.Background()
-}
+    // Use real entity
+    attacker := monster.New(monster.Config{...})
 
-func (s *MyTestSuite) TearDownTest() {
-    s.ctrl.Finish()
+    // Mock only behavior
+    mockRoller := mock_dice.NewMockRoller(s.ctrl)
+    mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
+
+    // Test the flow
+    result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
+        Attacker: attacker,
+        Roller:   mockRoller,
+        EventBus: bus,
+    })
 }
 ```
 
-**Test organization:**
-- Unit tests in same package
-- Use real entities (Monster, Character)
-- Mock only behavior (Roller, EventBus if needed)
-- Test event publishing with subscribers
+**See also:** `/home/kirk/personal/.claude/agents/golang-architect/` for general Go testing patterns (table-driven, suite setup, etc.)
 
-### 8. Game Server Architecture
+### 7. Game Server Architecture
 
 **Game server is data-driven and generic:**
 ```go

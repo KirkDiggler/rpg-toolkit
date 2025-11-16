@@ -198,16 +198,16 @@ func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5e.Co
 // onDamageChain adds rage damage bonus to attacks made by the raging character
 func (r *RagingCondition) onDamageChain(
 	_ context.Context,
-	event combat.DamageChainEvent,
-	c chain.Chain[combat.DamageChainEvent],
-) (chain.Chain[combat.DamageChainEvent], error) {
+	event *combat.DamageChainEvent,
+	c chain.Chain[*combat.DamageChainEvent],
+) (chain.Chain[*combat.DamageChainEvent], error) {
 	// Only add bonus if we're the attacker
 	if event.AttackerID != r.CharacterID {
 		return c, nil
 	}
 
 	// Add rage damage modifier in the StageFeatures stage
-	err := c.Add(dnd5e.StageFeatures, "rage", func(_ context.Context, e combat.DamageChainEvent) (combat.DamageChainEvent, error) {
+	err := c.Add(dnd5e.StageFeatures, "rage", func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
 		e.DamageBonus += r.DamageBonus
 		return e, nil
 	})

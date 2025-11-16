@@ -85,6 +85,7 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
+	//nolint:gocritic // Math explanation for test assertion, not commented code
 	// Attack: 15 (roll) + 3 (STR) + 2 (prof) = 20
 	s.Equal(15, result.AttackRoll)
 	s.Equal(5, result.AttackBonus, "STR(+3) + proficiency(+2)")
@@ -92,6 +93,7 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 	s.True(result.Hit, "20 should hit AC 15")
 	s.False(result.Critical)
 
+	//nolint:gocritic // Math explanation for test assertion, not commented code
 	// Damage: 5 (roll) + 3 (STR) = 8
 	s.Equal([]int{5}, result.DamageRolls)
 	s.Equal(3, result.DamageBonus, "STR modifier")
@@ -148,6 +150,7 @@ func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
 	// Critical doubles damage dice: 2d8 instead of 1d8
 	s.Equal(2, len(result.DamageRolls), "critical should double damage dice")
 	s.Equal([]int{5, 5}, result.DamageRolls)
+	//nolint:gocritic // Math explanation for test assertion, not commented code
 	// Total: 5 + 5 (dice) + 0 (STR) = 10
 	s.Equal(10, result.TotalDamage)
 }

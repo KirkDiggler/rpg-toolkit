@@ -41,7 +41,7 @@ type DamageChainEvent struct {
 var AttackChain = events.DefineChainedTopic[AttackChainEvent]("dnd5e.combat.attack.chain")
 
 // DamageChain provides typed chained topic for damage modifiers
-var DamageChain = events.DefineChainedTopic[DamageChainEvent]("dnd5e.combat.damage.chain")
+var DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
 
 // AttackInput provides all information needed to resolve an attack
 type AttackInput struct {
@@ -99,6 +99,8 @@ type AttackResult struct {
 }
 
 // ResolveAttack performs a complete attack resolution using the event chain system
+//
+//nolint:gocyclo // Attack resolution requires orchestrating multiple game rules stages
 func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
@@ -119,7 +121,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	err := attackTopic.Publish(ctx, dnd5e.AttackEvent{
 		AttackerID: input.Attacker.GetID(),
 		TargetID:   input.Defender.GetID(),
-		WeaponRef:  string(input.Weapon.ID),
+		WeaponRef:  input.Weapon.ID,
 		IsMelee:    !input.Weapon.IsRanged(),
 	})
 	if err != nil {
@@ -263,9 +265,9 @@ func applyDamageChain(
 	baseDamage int,
 	abilityMod int,
 	isCritical bool,
-) (finalDamage int, damageBonus int, err error) {
+) (finalDamage, damageBonus int, err error) {
 	// Build damage chain event
-	damageEvent := DamageChainEvent{
+	damageEvent := &DamageChainEvent{
 		AttackerID:   input.Attacker.GetID(),
 		TargetID:     input.Defender.GetID(),
 		BaseDamage:   baseDamage,
@@ -276,7 +278,7 @@ func applyDamageChain(
 	}
 
 	// Create and publish through damage chain
-	damageChain := events.NewStagedChain[DamageChainEvent](dnd5e.ModifierStages)
+	damageChain := events.NewStagedChain[*DamageChainEvent](dnd5e.ModifierStages)
 	damages := DamageChain.On(input.EventBus)
 
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)

@@ -32,7 +32,7 @@ test:
 # Run linter
 lint:
 	@echo "Running linter..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1)
+	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.5.0)
 	@echo "→ Linting core module..."
 	cd core && golangci-lint run ./...
 	@echo "→ Linting events module..."
@@ -120,7 +120,7 @@ pre-commit:
 # Install development tools
 install-tools:
 	@echo "Installing development tools..."
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.5.0
 	go install golang.org/x/tools/cmd/goimports@latest
 	go install github.com/securego/gosec/v2/cmd/gosec@latest
 	@echo "✅ Tools installed successfully"
@@ -143,7 +143,7 @@ test-all:
 # Lint all modules (dynamic discovery)
 lint-all:
 	@echo "Running linter on all modules..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.2.1)
+	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Installing..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.5.0)
 	@find . -name "go.mod" -type f -not -path "./vendor/*" | while read -r modfile; do \
 		dir=$$(dirname "$$modfile"); \
 		echo "→ Linting $$dir..."; \
