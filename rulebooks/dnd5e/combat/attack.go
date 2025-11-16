@@ -173,11 +173,12 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	result.TotalAttack = attackRoll + result.AttackBonus
 
 	// Step 5: Determine hit/miss (natural 20 always hits, natural 1 always misses)
-	if result.IsNaturalOne {
+	switch {
+	case result.IsNaturalOne:
 		result.Hit = false
-	} else if result.IsNaturalTwenty {
+	case result.IsNaturalTwenty:
 		result.Hit = true
-	} else {
+	default:
 		result.Hit = result.TotalAttack >= input.DefenderAC
 	}
 
