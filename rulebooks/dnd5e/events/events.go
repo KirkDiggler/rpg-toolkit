@@ -1,6 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package events provides D&D 5e event system implementation
 package events
 
 import (
