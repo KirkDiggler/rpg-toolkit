@@ -7,8 +7,11 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // RagingCondition represents the barbarian rage state.
@@ -63,6 +66,14 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID4)
+
+	// Subscribe to damage chain to add rage damage bonus
+	damageChain := combat.DamageChain.On(bus)
+	subID5, err := damageChain.SubscribeWithChain(ctx, r.onDamageChain)
+	if err != nil {
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID5)
 
 	return nil
 }
@@ -137,7 +148,7 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5e.TurnEndEven
 				Reason:       "no_combat_activity",
 			})
 			if err != nil {
-				return err
+				return rpgerr.Wrapf(err, "error removing raging for character id %s", r.CharacterID)
 			}
 		}
 	}
@@ -152,7 +163,7 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5e.TurnEndEven
 				Reason:       "duration_expired",
 			})
 			if err != nil {
-				return err
+				return rpgerr.Wrapf(err, "error removing raging for character id %s", r.CharacterID)
 			}
 		}
 	}
@@ -177,9 +188,32 @@ func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5e.Co
 				Reason:       "unconscious",
 			})
 			if err != nil {
-				return err
+				return rpgerr.Wrapf(err, "error removing raging for character id %s", r.CharacterID)
 			}
 		}
 	}
 	return nil
+}
+
+// onDamageChain adds rage damage bonus to attacks made by the raging character
+func (r *RagingCondition) onDamageChain(
+	_ context.Context,
+	event combat.DamageChainEvent,
+	c chain.Chain[combat.DamageChainEvent],
+) (chain.Chain[combat.DamageChainEvent], error) {
+	// Only add bonus if we're the attacker
+	if event.AttackerID != r.CharacterID {
+		return c, nil
+	}
+
+	// Add rage damage modifier in the StageFeatures stage
+	err := c.Add(dnd5e.StageFeatures, "rage", func(_ context.Context, e combat.DamageChainEvent) (combat.DamageChainEvent, error) {
+		e.DamageBonus += r.DamageBonus
+		return e, nil
+	})
+	if err != nil {
+		return c, rpgerr.Wrapf(err, "error applying raging for character id %s", r.CharacterID)
+	}
+
+	return c, nil
 }
