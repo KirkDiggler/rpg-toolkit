@@ -136,15 +136,13 @@ func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.Co
 
     // Condition is already created! Just apply it
     if err := event.Condition.Apply(ctx, c.bus); err != nil {
+        // Clean up any partial subscriptions to avoid resource leaks
+        _ = event.Condition.Remove(ctx, c.bus)
         return rpgerr.Wrapf(err, "failed to apply condition")
     }
 
-    c.activeConditions[event.Type] = &ActiveCondition{
-        Behavior:  event.Condition,
-        Type:      event.Type,
-        Source:    event.Source,
-        AppliedAt: time.Now(),
-    }
+    // Store the condition (simple slice, no map)
+    c.conditions = append(c.conditions, event.Condition)
 
     return nil
 }

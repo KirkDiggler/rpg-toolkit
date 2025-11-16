@@ -243,6 +243,8 @@ func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.Co
 
 	// Apply the condition (subscribes to events)
 	if err := event.Condition.Apply(ctx, c.bus); err != nil {
+		// Clean up any partial subscriptions to avoid resource leaks
+		_ = event.Condition.Remove(ctx, c.bus)
 		return rpgerr.Wrapf(err, "failed to apply condition")
 	}
 
@@ -258,21 +260,28 @@ func (c *Character) Cleanup(ctx context.Context) error {
 		return nil
 	}
 
-	// Remove all active conditions
+	var errors []error
+
+	// Remove all active conditions - collect errors but try to remove all
 	for _, cond := range c.conditions {
 		if err := cond.Remove(ctx, c.bus); err != nil {
-			return rpgerr.Wrapf(err, "failed to remove condition")
+			errors = append(errors, rpgerr.Wrapf(err, "failed to remove condition"))
 		}
 	}
 	c.conditions = nil
 
-	// Unsubscribe from events
+	// Unsubscribe from events - collect errors but try to unsubscribe all
 	for _, subID := range c.subscriptionIDs {
 		if err := c.bus.Unsubscribe(ctx, subID); err != nil {
-			return rpgerr.Wrapf(err, "failed to unsubscribe")
+			errors = append(errors, rpgerr.Wrapf(err, "failed to unsubscribe"))
 		}
 	}
 	c.subscriptionIDs = nil
+
+	// Return first error if any occurred
+	if len(errors) > 0 {
+		return errors[0]
+	}
 
 	return nil
 }

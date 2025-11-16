@@ -179,6 +179,8 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 
 		// Re-apply the condition so it subscribes to events
 		if err := condition.Apply(ctx, bus); err != nil {
+			// Clean up any partial subscriptions to avoid resource leaks
+			_ = condition.Remove(ctx, bus)
 			// Log error but continue loading other conditions
 			// TODO: Consider how to handle condition apply errors
 			continue

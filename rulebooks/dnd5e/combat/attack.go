@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -117,8 +118,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	// Step 1: Publish AttackEvent (before any rolls)
-	attackTopic := dnd5e.AttackTopic.On(input.EventBus)
-	err := attackTopic.Publish(ctx, dnd5e.AttackEvent{
+	attackTopic := dnd5eEvents.AttackTopic.On(input.EventBus)
+	err := attackTopic.Publish(ctx, dnd5eEvents.AttackEvent{
 		AttackerID: input.Attacker.GetID(),
 		TargetID:   input.Defender.GetID(),
 		WeaponRef:  input.Weapon.ID,
@@ -227,8 +228,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		}
 
 		// Step 8: Publish DamageReceivedEvent
-		damageTopic := dnd5e.DamageReceivedTopic.On(input.EventBus)
-		err = damageTopic.Publish(ctx, dnd5e.DamageReceivedEvent{
+		damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
+		err = damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
 			TargetID:   input.Defender.GetID(),
 			SourceID:   input.Attacker.GetID(),
 			Amount:     result.TotalDamage,

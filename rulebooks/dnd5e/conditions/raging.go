@@ -48,6 +48,8 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	damages := dnd5eEvents.DamageReceivedTopic.On(bus)
 	subID2, err := damages.Subscribe(ctx, r.onDamageReceived)
 	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID2)
@@ -56,6 +58,8 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
 	subID3, err := turnEnds.Subscribe(ctx, r.onTurnEnd)
 	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID3)
@@ -64,6 +68,8 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	conditions := dnd5eEvents.ConditionAppliedTopic.On(bus)
 	subID4, err := conditions.Subscribe(ctx, r.onConditionApplied)
 	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID4)
@@ -72,6 +78,8 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	damageChain := combat.DamageChain.On(bus)
 	subID5, err := damageChain.SubscribeWithChain(ctx, r.onDamageChain)
 	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID5)
@@ -101,12 +109,15 @@ func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error
 // ToJSON converts the condition to JSON for persistence
 func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 	data := map[string]interface{}{
-		"ref":          "dnd5e:conditions:raging",
-		"type":         "raging",
-		"character_id": r.CharacterID,
-		"damage_bonus": r.DamageBonus,
-		"level":        r.Level,
-		"source":       r.Source,
+		"ref":                  "dnd5e:conditions:raging",
+		"type":                 "raging",
+		"character_id":         r.CharacterID,
+		"damage_bonus":         r.DamageBonus,
+		"level":                r.Level,
+		"source":               r.Source,
+		"turns_active":         r.TurnsActive,
+		"was_hit_this_turn":    r.WasHitThisTurn,
+		"did_attack_this_turn": r.DidAttackThisTurn,
 	}
 	return json.Marshal(data)
 }
