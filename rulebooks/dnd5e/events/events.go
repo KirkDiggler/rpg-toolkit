@@ -1,9 +1,12 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dnd5e
+package events
 
 import (
+	"context"
+	"encoding/json"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
@@ -58,6 +61,19 @@ const (
 	ConditionRaging ConditionType = "raging"
 )
 
+// ConditionBehavior represents the behavior of an active condition.
+// Conditions subscribe to events to modify game mechanics.
+type ConditionBehavior interface {
+	// Apply subscribes this condition to relevant events on the bus
+	Apply(ctx context.Context, bus events.EventBus) error
+
+	// Remove unsubscribes this condition from events
+	Remove(ctx context.Context, bus events.EventBus) error
+
+	// ToJSON converts the condition to JSON for persistence
+	ToJSON() (json.RawMessage, error)
+}
+
 // Event types for D&D 5e gameplay
 
 // TurnStartEvent is published when a character's turn begins
@@ -82,10 +98,10 @@ type DamageReceivedEvent struct {
 
 // ConditionAppliedEvent is published when a condition is applied to an entity
 type ConditionAppliedEvent struct {
-	Target    core.Entity   // Entity receiving the condition
-	Type      ConditionType // Type of condition being applied
-	Source    string        // What caused this condition
-	Condition any           // The condition behavior to apply (conditions.ConditionBehavior)
+	Target    core.Entity       // Entity receiving the condition
+	Type      ConditionType     // Type of condition being applied
+	Source    string            // What caused this condition
+	Condition ConditionBehavior // The condition behavior to apply
 }
 
 // ConditionRemovedEvent is published when a condition ends

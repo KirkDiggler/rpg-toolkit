@@ -1,14 +1,19 @@
 package character
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -58,6 +63,9 @@ type Data struct {
 	// Features (rage, second wind, etc)
 	Features []json.RawMessage `json:"features,omitempty"`
 
+	// Conditions (raging, poisoned, stunned, etc)
+	Conditions []json.RawMessage `json:"conditions,omitempty"`
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -85,7 +93,11 @@ type ResourceData struct {
 }
 
 // LoadFromData creates a Character from persistent data
-func LoadFromData(d *Data) (*Character, error) {
+func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character, error) {
+	if bus == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
+	}
+
 	char := &Character{
 		id:               d.ID,
 		playerID:         d.PlayerID,
@@ -102,6 +114,8 @@ func LoadFromData(d *Data) (*Character, error) {
 		armorClass:       d.ArmorClass,
 		skills:           d.Skills,
 		savingThrows:     d.SavingThrows,
+		bus:              bus,
+		subscriptionIDs:  make([]string, 0),
 	}
 
 	// Get hit dice from class data
@@ -150,6 +164,32 @@ func LoadFromData(d *Data) (*Character, error) {
 		}
 		// Silently skip non-dnd5e features for now
 		// In the future, this would route to a module registry
+	}
+
+	// Load conditions from persisted JSON data (following same pattern as features)
+	char.conditions = make([]dnd5eEvents.ConditionBehavior, 0, len(d.Conditions))
+	for _, rawCondition := range d.Conditions {
+		// Load the actual condition implementation
+		condition, err := conditions.LoadJSON(rawCondition)
+		if err != nil {
+			// Log error but continue loading other conditions
+			// TODO: Consider how to handle condition loading errors
+			continue
+		}
+
+		// Re-apply the condition so it subscribes to events
+		if err := condition.Apply(ctx, bus); err != nil {
+			// Log error but continue loading other conditions
+			// TODO: Consider how to handle condition apply errors
+			continue
+		}
+
+		char.conditions = append(char.conditions, condition)
+	}
+
+	// Subscribe to events - character comes out fully initialized
+	if err := char.subscribeToEvents(ctx); err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")
 	}
 
 	return char, nil

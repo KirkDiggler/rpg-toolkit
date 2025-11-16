@@ -7,7 +7,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -66,9 +67,9 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	owner := &StubEntity{id: "barbarian-1"}
 
 	// Track if condition was published
-	var receivedEvent *dnd5e.ConditionAppliedEvent
-	topic := dnd5e.ConditionAppliedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5e.ConditionAppliedEvent) error {
+	var receivedEvent *dnd5eEvents.ConditionAppliedEvent
+	topic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
 		receivedEvent = &event
 		return nil
 	})
@@ -81,14 +82,17 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	// Check that event was published
 	s.NotNil(receivedEvent)
 	s.Equal(owner, receivedEvent.Target)
-	s.Equal(dnd5e.ConditionRaging, receivedEvent.Type)
+	s.Equal(dnd5eEvents.ConditionRaging, receivedEvent.Type)
 	s.Equal("rage-feature", receivedEvent.Source)
 
-	// Check rage data
-	rageData, ok := receivedEvent.Data.(RageEventData)
-	s.True(ok, "Event data should be RageEventData")
-	s.Equal(2, rageData.DamageBonus) // Level 3 = +2 damage
-	s.Equal(3, rageData.Level)
+	// Check condition was created properly
+	ragingCond, ok := receivedEvent.Condition.(*conditions.RagingCondition)
+	s.True(ok, "Event condition should be *RagingCondition")
+	s.NotNil(ragingCond)
+	s.Equal("barbarian-1", ragingCond.CharacterID)
+	s.Equal(2, ragingCond.DamageBonus) // Level 3 = +2 damage
+	s.Equal(3, ragingCond.Level)
+	s.Equal("rage-feature", ragingCond.Source)
 }
 
 func (s *RageTestSuite) TestRageUsesPerLevel() {

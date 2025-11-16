@@ -1,17 +1,20 @@
 package character
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -467,10 +470,13 @@ func (d *Draft) SetAbilityScores(input *SetAbilityScoresInput) error {
 }
 
 // ToCharacter converts the draft to a playable character
-func (d *Draft) ToCharacter(characterID string) (*Character, error) {
+func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.EventBus) (*Character, error) {
 	// Validate we have all required data
 	if characterID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character ID is required")
+	}
+	if bus == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
 	if d.name == "" {
 		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "character name is required")
@@ -546,6 +552,14 @@ func (d *Draft) ToCharacter(characterID string) (*Character, error) {
 		spellSlots:       d.compileSpellSlots(classData),
 		classResources:   make(map[shared.ClassResourceType]ResourceData),
 		features:         charFeatures,
+		bus:              bus,
+		conditions:       make([]dnd5eEvents.ConditionBehavior, 0),
+		subscriptionIDs:  make([]string, 0),
+	}
+
+	// Subscribe to events - character comes out fully initialized
+	if err := char.subscribeToEvents(ctx); err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")
 	}
 
 	return char, nil

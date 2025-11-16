@@ -1,8 +1,10 @@
 package character
 
 import (
+	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -15,6 +17,13 @@ import (
 
 type FeaturesTestSuite struct {
 	suite.Suite
+	ctx context.Context
+	bus events.EventBus
+}
+
+func (s *FeaturesTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
 }
 
 func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
@@ -72,7 +81,7 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 	s.Require().NoError(err)
 
 	// Convert to character
-	character, err := draft.ToCharacter("char-1")
+	character, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 	s.Require().NotNil(character)
 
@@ -144,7 +153,7 @@ func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
 	s.Require().NoError(err)
 
 	// Convert to character
-	character, err := draft.ToCharacter("char-1")
+	character, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 	s.Require().NotNil(character)
 

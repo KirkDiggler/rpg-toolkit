@@ -8,14 +8,10 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
-
-// RageEventData contains rage-specific data for the ConditionAppliedEvent
-type RageEventData struct {
-	DamageBonus int `json:"damage_bonus"`
-	Level       int `json:"level"`
-}
 
 // Rage represents the barbarian rage feature.
 // It implements core.Action[FeatureInput] for activation.
@@ -85,7 +81,7 @@ func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) err
 
 	// Check if we have uses remaining
 	if !r.resource.IsAvailable() {
-		return fmt.Errorf("no rage uses remaining")
+		return rpgerr.New(rpgerr.CodeResourceExhausted, "no rage uses remaining")
 	}
 
 	return nil
@@ -101,24 +97,29 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	// Consume a use (unless level 20)
 	if r.level < 20 {
 		if err := r.resource.Use(1); err != nil {
-			return fmt.Errorf("failed to use rage: %w", err)
+			return rpgerr.Wrapf(err, "failed to use rage")
 		}
 	}
 
-	// Publish condition applied event
+	// Create the raging condition
+	ragingCondition := &conditions.RagingCondition{
+		CharacterID: owner.GetID(),
+		DamageBonus: calculateRageDamage(r.level),
+		Level:       r.level,
+		Source:      r.id,
+	}
+
+	// Publish condition applied event with the actual condition
 	if input.Bus != nil {
-		topic := dnd5e.ConditionAppliedTopic.On(input.Bus)
-		err := topic.Publish(ctx, dnd5e.ConditionAppliedEvent{
-			Target: owner,
-			Type:   dnd5e.ConditionRaging,
-			Source: r.id,
-			Data: RageEventData{
-				DamageBonus: calculateRageDamage(r.level),
-				Level:       r.level,
-			},
+		topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
+		err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+			Target:    owner,
+			Type:      dnd5eEvents.ConditionRaging,
+			Source:    r.id,
+			Condition: ragingCondition,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to publish rage condition: %w", err)
+			return rpgerr.Wrapf(err, "failed to publish rage condition")
 		}
 	}
 
