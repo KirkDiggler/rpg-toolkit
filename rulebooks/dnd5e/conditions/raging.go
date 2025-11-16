@@ -207,10 +207,11 @@ func (r *RagingCondition) onDamageChain(
 	}
 
 	// Add rage damage modifier in the StageFeatures stage
-	err := c.Add(dnd5e.StageFeatures, "rage", func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
 		e.DamageBonus += r.DamageBonus
 		return e, nil
-	})
+	}
+	err := c.Add(dnd5e.StageFeatures, "rage", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "error applying raging for character id %s", r.CharacterID)
 	}

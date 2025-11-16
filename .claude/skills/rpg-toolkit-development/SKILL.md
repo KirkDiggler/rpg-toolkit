@@ -16,9 +16,13 @@ Use this skill when working on the rpg-toolkit project to ensure consistency wit
 - Handling errors and validation
 - Working with modifier chains
 
-## Core Principles
+## Related Tools
 
-**See also:** `/home/kirk/personal/.claude/agents/golang-architect/` for Go-generic patterns (pointers, testing, error handling)
+**See also:**
+- `/home/kirk/personal/.claude/agents/golang-architect/` - Go patterns (pointers, testing, error handling)
+- `.claude/skills/lint-refactoring/` - Linter issue refactoring strategies
+
+## Core Principles
 
 ### 1. Typed Constants Pattern
 

@@ -253,7 +253,10 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 // executeDamageChain creates a damage chain event and executes it through the damage chain topic.
 // Returns the final event after all chain modifications have been applied.
 // This helper reduces duplication in tests that verify damage bonus modifications.
-func (s *RagingConditionTestSuite) executeDamageChain(attackerID string, baseDamage, damageBonus int) (*combat.DamageChainEvent, error) {
+func (s *RagingConditionTestSuite) executeDamageChain(
+	attackerID string,
+	baseDamage, damageBonus int,
+) (*combat.DamageChainEvent, error) {
 	damageEvent := &combat.DamageChainEvent{
 		AttackerID:   attackerID,
 		TargetID:     "goblin-1",
