@@ -45,7 +45,7 @@ func (m *mockEntity) GetType() core.EntityType {
 	return dnd5e.EntityTypeCharacter
 }
 
-//  mockRoller for predictable dice rolls
+// mockRoller for predictable dice rolls
 type mockRoller struct {
 	d20Roll int
 	d8Rolls []int

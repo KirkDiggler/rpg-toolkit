@@ -89,10 +89,10 @@ type AttackResult struct {
 	IsNaturalOne    bool // Natural 1
 
 	// Damage details
-	DamageRolls  []int  // Individual damage dice rolls
-	DamageBonus  int    // Total damage bonus
-	TotalDamage  int    // Final damage dealt
-	DamageType   string // Type of damage
+	DamageRolls []int  // Individual damage dice rolls
+	DamageBonus int    // Total damage bonus
+	TotalDamage int    // Final damage dealt
+	DamageType  string // Type of damage
 
 	// Modifier tracking
 	AttackModifiers []ModifierInfo
