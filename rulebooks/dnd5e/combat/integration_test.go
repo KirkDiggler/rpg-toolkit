@@ -92,7 +92,7 @@ func (s *CombatIntegrationSuite) createBarbarian() *character.Character {
 		MaxHitPoints: 15,
 		ArmorClass:   14,
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
-			skills.Athletics:   shared.Proficient,
+			skills.Athletics:    shared.Proficient,
 			skills.Intimidation: shared.Proficient,
 		},
 		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
@@ -169,8 +169,9 @@ func (s *CombatIntegrationSuite) TestBarbarianRageAddsDamageOnHit() {
 		s.T().Log("")
 
 		// Mock dice rolls: attack hits, damage is 8
-		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)     // Attack roll: 15 + 5 (STR+Prof) = 20 vs AC 13 → HIT
-		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{8}, nil).Times(1)  // Damage roll
+		// Attack roll: 15 + 5 (STR+Prof) = 20 vs AC 13 → HIT
+		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)
+		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{8}, nil).Times(1) // Damage roll
 
 		s.T().Log("→ Grog swings greataxe at Goblin Scout")
 
@@ -271,9 +272,9 @@ func (s *CombatIntegrationSuite) TestCriticalHitWithRage() {
 		s.T().Log("")
 
 		// Mock dice: natural 20, then damage rolls
-		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil).Times(1)         // Natural 20 → CRIT
-		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{6}, nil).Times(1)  // First damage die
-		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{8}, nil).Times(1)  // Crit extra die
+		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil).Times(1)           // Natural 20 → CRIT
+		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{6}, nil).Times(1) // First damage die
+		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{8}, nil).Times(1) // Crit extra die
 
 		s.T().Log("→ Grog swings greataxe at Goblin Scout")
 
