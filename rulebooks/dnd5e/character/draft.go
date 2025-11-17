@@ -977,24 +977,13 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 			// This would need proper mapping of choice data to submission format
 			// For now, simplified version
 			if len(choice.SkillSelection) > 0 {
+				// Use the choice ID that was stored when SetClass was called
 				skillValues := make([]shared.SelectionID, 0, len(choice.SkillSelection))
 				skillValues = append(skillValues, choice.SkillSelection...)
-				// Map to correct ChoiceID based on class
-				var choiceID choices.ChoiceID
-				switch d.class {
-				case classes.Fighter:
-					choiceID = choices.FighterSkills
-				case classes.Rogue:
-					choiceID = choices.RogueSkills
-				case classes.Wizard:
-					choiceID = choices.WizardSkills
-				case classes.Cleric:
-					choiceID = choices.ClericSkills
-				}
 				subs.Add(choices.Submission{
 					Category: shared.ChoiceSkills,
 					Source:   shared.SourceClass,
-					ChoiceID: choiceID,
+					ChoiceID: choice.ChoiceID, // Already stored correctly by SetClass
 					Values:   skillValues,
 				})
 			}
