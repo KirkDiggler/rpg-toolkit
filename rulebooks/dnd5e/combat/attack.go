@@ -36,6 +36,10 @@ type DamageChainEvent struct {
 	DamageType   string // Type of damage (slashing, piercing, etc.)
 	IsCritical   bool   // Double damage dice on crit
 	WeaponDamage string // Weapon damage dice (e.g., "1d8")
+
+	// Breakdown tracking
+	BonusSources map[string]int // Track sources of damage bonuses (e.g., "ability": 4, "rage": 2)
+	AbilityUsed  string         // Which ability was used ("STR" or "DEX")
 }
 
 // AttackChain provides typed chained topic for attack roll modifiers
@@ -81,6 +85,18 @@ func (ai *AttackInput) Validate() error {
 	return nil
 }
 
+// DamageBreakdown provides detailed component breakdown of damage calculation
+type DamageBreakdown struct {
+	BaseDamage      int    // Sum of weapon dice rolls
+	AbilityModifier int    // STR or DEX modifier applied
+	AbilityUsed     string // "STR" or "DEX"
+	RageBonus       int    // Bonus from Rage feature (0 if not raging)
+	OtherBonuses    int    // Other feature bonuses
+	TotalBonus      int    // Sum of all bonuses (ability + rage + other)
+	TotalDamage     int    // BaseDamage + TotalBonus
+	DiceRolls       []int  // Individual dice rolls for transparency
+}
+
 // AttackResult contains the complete outcome of an attack
 type AttackResult struct {
 	// Attack roll details
@@ -98,6 +114,9 @@ type AttackResult struct {
 	DamageBonus int    // Total damage bonus
 	TotalDamage int    // Final damage dealt
 	DamageType  string // Type of damage
+
+	// Detailed breakdown
+	Breakdown *DamageBreakdown // Detailed damage breakdown (nil if attack missed)
 }
 
 // ResolveAttack performs a complete attack resolution using the event chain system
@@ -215,8 +234,13 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 			baseDamage += roll
 		}
 
+		// Determine which ability was used
+		abilityUsed := determineAbilityUsed(input.Weapon, input.AttackerScores)
+
 		// Apply damage chain for modifiers
-		finalDamage, damageBonus, err := applyDamageChain(ctx, input, baseDamage, abilityMod, result.Critical)
+		finalDamage, damageBonus, damageEvent, err := applyDamageChain(
+			ctx, input, baseDamage, abilityMod, abilityUsed, result.Critical,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -228,6 +252,9 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		if result.TotalDamage < 0 {
 			result.TotalDamage = 0
 		}
+
+		// Build damage breakdown from chain event
+		result.Breakdown = buildDamageBreakdown(baseDamage, damageRolls, damageEvent)
 
 		// Step 8: Publish DamageReceivedEvent
 		damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
@@ -261,15 +288,16 @@ func rollDamageDice(ctx context.Context, pool *dice.Pool, roller dice.Roller, ti
 	return allRolls, nil
 }
 
-// applyDamageChain applies the damage modifier chain and returns final damage and bonus
+// applyDamageChain applies the damage modifier chain and returns final damage, bonus, and the final event
 func applyDamageChain(
 	ctx context.Context,
 	input *AttackInput,
 	baseDamage int,
 	abilityMod int,
+	abilityUsed string,
 	isCritical bool,
-) (finalDamage, damageBonus int, err error) {
-	// Build damage chain event
+) (finalDamage, damageBonus int, finalEvent *DamageChainEvent, err error) {
+	// Build damage chain event with bonus source tracking
 	damageEvent := &DamageChainEvent{
 		AttackerID:   input.Attacker.GetID(),
 		TargetID:     input.Defender.GetID(),
@@ -278,7 +306,12 @@ func applyDamageChain(
 		DamageType:   string(input.Weapon.DamageType),
 		IsCritical:   isCritical,
 		WeaponDamage: input.Weapon.Damage,
+		BonusSources: make(map[string]int),
+		AbilityUsed:  abilityUsed,
 	}
+
+	// Initialize with ability modifier
+	damageEvent.BonusSources["ability"] = abilityMod
 
 	// Create and publish through damage chain
 	damageChain := events.NewStagedChain[*DamageChainEvent](dnd5e.ModifierStages)
@@ -286,16 +319,68 @@ func applyDamageChain(
 
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	if err != nil {
-		return 0, 0, rpgerr.Wrap(err, "failed to publish damage chain")
+		return 0, 0, nil, rpgerr.Wrap(err, "failed to publish damage chain")
 	}
 
 	// Execute chain to get final modifiers
-	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	finalEvent, err = modifiedChain.Execute(ctx, damageEvent)
 	if err != nil {
-		return 0, 0, rpgerr.Wrap(err, "failed to execute damage chain")
+		return 0, 0, nil, rpgerr.Wrap(err, "failed to execute damage chain")
 	}
 
-	return finalEvent.BaseDamage + finalEvent.DamageBonus, finalEvent.DamageBonus, nil
+	return finalEvent.BaseDamage + finalEvent.DamageBonus, finalEvent.DamageBonus, finalEvent, nil
+}
+
+// buildDamageBreakdown creates a DamageBreakdown from the damage chain event
+func buildDamageBreakdown(baseDamage int, diceRolls []int, event *DamageChainEvent) *DamageBreakdown {
+	// Extract ability modifier from bonus sources
+	abilityMod := event.BonusSources["ability"]
+
+	// Extract rage bonus from bonus sources
+	rageBonus := event.BonusSources["rage"]
+
+	// Calculate other bonuses (everything except ability and rage)
+	otherBonuses := 0
+	for source, bonus := range event.BonusSources {
+		if source != "ability" && source != "rage" {
+			otherBonuses += bonus
+		}
+	}
+
+	// Calculate total bonus
+	totalBonus := event.DamageBonus
+
+	return &DamageBreakdown{
+		BaseDamage:      baseDamage,
+		AbilityModifier: abilityMod,
+		AbilityUsed:     event.AbilityUsed,
+		RageBonus:       rageBonus,
+		OtherBonuses:    otherBonuses,
+		TotalBonus:      totalBonus,
+		TotalDamage:     baseDamage + totalBonus,
+		DiceRolls:       diceRolls,
+	}
+}
+
+// determineAbilityUsed determines which ability is used for the attack
+func determineAbilityUsed(weapon *weapons.Weapon, scores shared.AbilityScores) string {
+	// Finesse weapons can use STR or DEX (use whichever is higher)
+	if weapon.HasProperty(weapons.PropertyFinesse) {
+		strMod := scores.Modifier(abilities.STR)
+		dexMod := scores.Modifier(abilities.DEX)
+		if dexMod > strMod {
+			return "DEX"
+		}
+		return "STR"
+	}
+
+	// Ranged weapons use DEX
+	if weapon.IsRanged() {
+		return "DEX"
+	}
+
+	// Melee weapons use STR
+	return "STR"
 }
 
 // calculateAttackAbilityModifier determines which ability modifier to use for attack

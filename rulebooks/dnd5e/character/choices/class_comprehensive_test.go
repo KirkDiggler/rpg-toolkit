@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
@@ -13,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
-	"github.com/stretchr/testify/suite"
 )
 
 // ClassTestData holds all test data for a specific class

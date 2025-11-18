@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 type LoaderTestSuite struct {

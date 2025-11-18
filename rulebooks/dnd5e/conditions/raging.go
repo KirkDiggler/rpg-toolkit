@@ -221,6 +221,13 @@ func (r *RagingCondition) onDamageChain(
 	// Add rage damage modifier in the StageFeatures stage
 	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
 		e.DamageBonus += r.DamageBonus
+
+		// Track rage bonus in sources map
+		if e.BonusSources == nil {
+			e.BonusSources = make(map[string]int)
+		}
+		e.BonusSources["rage"] = r.DamageBonus
+
 		return e, nil
 	}
 	err := c.Add(dnd5e.StageFeatures, "rage", modifyDamage)

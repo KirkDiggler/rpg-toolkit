@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
@@ -13,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
-	"github.com/stretchr/testify/suite"
 )
 
 // BarbarianFinalizeSuite tests the specific issue with Barbarian finalization
