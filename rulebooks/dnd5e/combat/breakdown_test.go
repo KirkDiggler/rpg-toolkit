@@ -88,20 +88,29 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_BasicMelee() {
 	// Verify damage breakdown exists
 	s.Require().NotNil(result.Breakdown, "Breakdown should be populated for hits")
 
-	// Verify base damage
-	s.Equal(5, result.Breakdown.BaseDamage, "BaseDamage should be sum of dice rolls")
-	s.Equal([]int{5}, result.Breakdown.DiceRolls, "DiceRolls should match rolled values")
+	// Verify ability used
+	s.Equal(abilities.STR, result.Breakdown.AbilityUsed, "AbilityUsed should be STR for melee")
 
-	// Verify ability modifier
-	s.Equal(3, result.Breakdown.AbilityModifier, "AbilityModifier should be STR +3")
-	s.Equal("STR", result.Breakdown.AbilityUsed, "AbilityUsed should be STR for melee")
+	// Verify components
+	s.Require().Len(result.Breakdown.Components, 2, "Should have weapon and ability components")
 
-	// Verify no other bonuses
-	s.Equal(0, result.Breakdown.RageBonus, "RageBonus should be 0 when not raging")
-	s.Equal(0, result.Breakdown.OtherBonuses, "OtherBonuses should be 0")
+	// Verify weapon component
+	weaponComp := result.Breakdown.Components[0]
+	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal([]int{5}, weaponComp.OriginalDiceRolls, "Original dice rolls should match")
+	s.Equal([]int{5}, weaponComp.FinalDiceRolls, "Final dice rolls should match (no rerolls)")
+	s.Equal(0, weaponComp.FlatBonus, "Weapon component has no flat bonus")
+	s.Equal(5, weaponComp.Total(), "Weapon damage should be 5")
 
-	// Verify totals
-	s.Equal(3, result.Breakdown.TotalBonus, "TotalBonus should equal ability modifier")
+	// Verify ability component
+	abilityComp := result.Breakdown.Components[1]
+	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Nil(abilityComp.OriginalDiceRolls, "Ability has no dice")
+	s.Nil(abilityComp.FinalDiceRolls, "Ability has no dice")
+	s.Equal(3, abilityComp.FlatBonus, "STR modifier is +3")
+	s.Equal(3, abilityComp.Total(), "Ability bonus should be 3")
+
+	// Verify total
 	s.Equal(8, result.Breakdown.TotalDamage, "TotalDamage should be 5 + 3 = 8")
 }
 
@@ -164,15 +173,33 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 	// Verify damage breakdown with rage
 	s.Require().NotNil(result.Breakdown)
 
-	s.Equal(6, result.Breakdown.BaseDamage)
-	s.Equal(3, result.Breakdown.AbilityModifier, "STR modifier +3")
-	s.Equal("STR", result.Breakdown.AbilityUsed)
-	s.Equal(2, result.Breakdown.RageBonus, "Rage adds +2 at level 1")
-	s.Equal(0, result.Breakdown.OtherBonuses)
+	// Verify ability used
+	s.Equal(abilities.STR, result.Breakdown.AbilityUsed)
 
-	// Total bonus should be ability + rage
-	s.Equal(5, result.Breakdown.TotalBonus, "TotalBonus = 3 (STR) + 2 (rage)")
-	s.Equal(11, result.Breakdown.TotalDamage, "TotalDamage = 6 (base) + 5 (bonus)")
+	// Should have weapon, ability, and rage components
+	s.Require().Len(result.Breakdown.Components, 3, "Should have weapon, ability, and rage components")
+
+	// Verify weapon component
+	weaponComp := result.Breakdown.Components[0]
+	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal(6, weaponComp.Total(), "Weapon damage should be 6")
+
+	// Verify ability component
+	abilityComp := result.Breakdown.Components[1]
+	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(3, abilityComp.FlatBonus, "STR modifier is +3")
+	s.Equal(3, abilityComp.Total(), "Ability bonus should be 3")
+
+	// Verify rage component
+	rageComp := result.Breakdown.Components[2]
+	s.Equal(combat.DamageSourceRage, rageComp.Source)
+	s.Equal(2, rageComp.FlatBonus, "Rage adds +2 at level 1")
+	s.Nil(rageComp.OriginalDiceRolls, "Rage has no dice")
+	s.Nil(rageComp.FinalDiceRolls, "Rage has no dice")
+	s.Equal(2, rageComp.Total(), "Rage bonus should be 2")
+
+	// Verify total
+	s.Equal(11, result.Breakdown.TotalDamage, "TotalDamage = 6 (weapon) + 3 (ability) + 2 (rage)")
 }
 
 func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_FinesseWeapon() {
@@ -225,10 +252,24 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_FinesseWeapon() {
 
 	// Verify finesse weapon uses DEX
 	s.Require().NotNil(result.Breakdown)
-	s.Equal(4, result.Breakdown.AbilityModifier, "Should use DEX +4, not STR +1")
-	s.Equal("DEX", result.Breakdown.AbilityUsed, "Finesse weapon should use DEX when higher")
-	s.Equal(5, result.Breakdown.BaseDamage)
-	s.Equal(9, result.Breakdown.TotalDamage, "5 (base) + 4 (DEX)")
+	s.Equal(abilities.DEX, result.Breakdown.AbilityUsed, "Finesse weapon should use DEX when higher")
+
+	// Verify components
+	s.Require().Len(result.Breakdown.Components, 2, "Should have weapon and ability components")
+
+	// Verify weapon component
+	weaponComp := result.Breakdown.Components[0]
+	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal(5, weaponComp.Total(), "Weapon damage should be 5")
+
+	// Verify ability component uses DEX
+	abilityComp := result.Breakdown.Components[1]
+	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(4, abilityComp.FlatBonus, "Should use DEX +4, not STR +1")
+	s.Equal(4, abilityComp.Total(), "Ability bonus should be 4")
+
+	// Verify total
+	s.Equal(9, result.Breakdown.TotalDamage, "5 (weapon) + 4 (DEX)")
 }
 
 func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_CriticalHit() {
@@ -277,11 +318,26 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_CriticalHit() {
 
 	// Verify critical doubles dice, not bonuses
 	s.Require().NotNil(result.Breakdown)
-	s.Equal(12, result.Breakdown.BaseDamage, "Critical: 6 + 6 = 12")
-	s.Equal([]int{6, 6}, result.Breakdown.DiceRolls, "Should have two dice rolls")
-	s.Equal(2, result.Breakdown.AbilityModifier, "STR modifier (not doubled)")
-	s.Equal("STR", result.Breakdown.AbilityUsed)
-	s.Equal(2, result.Breakdown.TotalBonus, "Bonuses are NOT doubled on crit")
+	s.Equal(abilities.STR, result.Breakdown.AbilityUsed)
+
+	// Verify components
+	s.Require().Len(result.Breakdown.Components, 2, "Should have weapon and ability components")
+
+	// Verify weapon component has doubled dice
+	weaponComp := result.Breakdown.Components[0]
+	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal([]int{6, 6}, weaponComp.FinalDiceRolls, "Should have two dice rolls for critical")
+	s.True(weaponComp.IsCritical, "Weapon component should be marked as critical")
+	s.Equal(12, weaponComp.Total(), "Critical: 6 + 6 = 12")
+
+	// Verify ability component is NOT doubled
+	abilityComp := result.Breakdown.Components[1]
+	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(2, abilityComp.FlatBonus, "STR modifier (not doubled)")
+	s.True(abilityComp.IsCritical, "Ability component should be marked as critical (even though not doubled)")
+	s.Equal(2, abilityComp.Total(), "Bonuses are NOT doubled on crit")
+
+	// Verify total
 	s.Equal(14, result.Breakdown.TotalDamage, "12 (doubled dice) + 2 (ability)")
 }
 
