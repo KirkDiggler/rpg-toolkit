@@ -87,6 +87,7 @@ type AttackResult struct {
 	AttackRoll      int  // The d20 roll
 	AttackBonus     int  // Total bonus applied
 	TotalAttack     int  // Roll + bonus
+	TargetAC        int  // Target's armor class
 	Hit             bool // Did the attack hit?
 	Critical        bool // Was it a critical hit?
 	IsNaturalTwenty bool // Natural 20
@@ -115,6 +116,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 
 	result := &AttackResult{
 		DamageType: string(input.Weapon.DamageType),
+		TargetAC:   input.DefenderAC,
 	}
 
 	// Step 1: Publish AttackEvent (before any rolls)
