@@ -220,7 +220,16 @@ func (r *RagingCondition) onDamageChain(
 
 	// Add rage damage modifier in the StageFeatures stage
 	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
-		e.DamageBonus += r.DamageBonus
+		// Append rage damage component
+		e.Components = append(e.Components, combat.DamageComponent{
+			Source:            combat.DamageSourceRage,
+			OriginalDiceRolls: nil, // No dice
+			FinalDiceRolls:    nil,
+			Rerolls:           nil,
+			FlatBonus:         r.DamageBonus,
+			DamageType:        e.DamageType, // Same as weapon damage type
+			IsCritical:        e.IsCritical,
+		})
 		return e, nil
 	}
 	err := c.Add(dnd5e.StageFeatures, "rage", modifyDamage)

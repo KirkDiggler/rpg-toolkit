@@ -258,14 +258,36 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 	attackerID string,
 	baseDamage, damageBonus int,
 ) (*combat.DamageChainEvent, error) {
+	// Create weapon component with base damage
+	weaponComp := combat.DamageComponent{
+		Source:            combat.DamageSourceWeapon,
+		OriginalDiceRolls: []int{baseDamage},
+		FinalDiceRolls:    []int{baseDamage},
+		Rerolls:           nil,
+		FlatBonus:         0,
+		DamageType:        "slashing",
+		IsCritical:        false,
+	}
+
+	// Create ability component with damage bonus (STR modifier)
+	abilityComp := combat.DamageComponent{
+		Source:            combat.DamageSourceAbility,
+		OriginalDiceRolls: nil,
+		FinalDiceRolls:    nil,
+		Rerolls:           nil,
+		FlatBonus:         damageBonus,
+		DamageType:        "slashing",
+		IsCritical:        false,
+	}
+
 	damageEvent := &combat.DamageChainEvent{
 		AttackerID:   attackerID,
 		TargetID:     "goblin-1",
-		BaseDamage:   baseDamage,
-		DamageBonus:  damageBonus,
+		Components:   []combat.DamageComponent{weaponComp, abilityComp},
 		DamageType:   "slashing",
 		IsCritical:   false,
 		WeaponDamage: "1d8",
+		AbilityUsed:  "str",
 	}
 
 	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
@@ -296,8 +318,28 @@ func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
 	finalEvent, err := s.executeDamageChain("barbarian-1", 5, 3)
 	s.Require().NoError(err)
 
-	// Verify rage damage bonus was added (STR 3 + Rage 2 = 5)
-	s.Equal(5, finalEvent.DamageBonus, "Should include STR(+3) and rage(+2)")
+	// Verify rage damage component was added
+	s.Require().Len(finalEvent.Components, 3, "Should have weapon, ability, and rage components")
+
+	// Verify weapon component
+	s.Equal(combat.DamageSourceWeapon, finalEvent.Components[0].Source)
+	s.Equal(5, finalEvent.Components[0].Total())
+
+	// Verify ability component
+	s.Equal(combat.DamageSourceAbility, finalEvent.Components[1].Source)
+	s.Equal(3, finalEvent.Components[1].Total())
+
+	// Verify rage component was added
+	s.Equal(combat.DamageSourceRage, finalEvent.Components[2].Source)
+	s.Equal(2, finalEvent.Components[2].FlatBonus, "Rage should add +2 damage")
+	s.Equal(2, finalEvent.Components[2].Total())
+
+	// Verify total damage
+	totalDamage := 0
+	for _, comp := range finalEvent.Components {
+		totalDamage += comp.Total()
+	}
+	s.Equal(10, totalDamage, "Total should be 5 (weapon) + 3 (ability) + 2 (rage)")
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionOnlyAffectsOwnAttacks() {
@@ -316,6 +358,21 @@ func (s *RagingConditionTestSuite) TestRagingConditionOnlyAffectsOwnAttacks() {
 	finalEvent, err := s.executeDamageChain("barbarian-2", 5, 3)
 	s.Require().NoError(err)
 
-	// Verify NO rage bonus was added (only STR modifier)
-	s.Equal(3, finalEvent.DamageBonus, "Should only include STR(+3), no rage for other character")
+	// Verify NO rage component was added (only weapon and ability)
+	s.Require().Len(finalEvent.Components, 2, "Should only have weapon and ability components, no rage")
+
+	// Verify weapon component
+	s.Equal(combat.DamageSourceWeapon, finalEvent.Components[0].Source)
+	s.Equal(5, finalEvent.Components[0].Total())
+
+	// Verify ability component
+	s.Equal(combat.DamageSourceAbility, finalEvent.Components[1].Source)
+	s.Equal(3, finalEvent.Components[1].Total())
+
+	// Verify total damage (no rage bonus)
+	totalDamage := 0
+	for _, comp := range finalEvent.Components {
+		totalDamage += comp.Total()
+	}
+	s.Equal(8, totalDamage, "Total should be 5 (weapon) + 3 (ability), no rage for other character")
 }

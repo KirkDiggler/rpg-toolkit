@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
-	"github.com/stretchr/testify/suite"
 )
 
 // RaceAPIValidationSuite validates our race implementation against the D&D 5e API
