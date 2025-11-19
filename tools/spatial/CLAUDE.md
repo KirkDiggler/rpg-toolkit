@@ -98,6 +98,41 @@ This allows:
 
 ## Data Persistence Pattern
 
+### Grid Type Constants
+
+The spatial module provides constants for grid types, including orientation-specific hex variants:
+
+```go
+const (
+    GridTypeSquare      = "square"       // Square grid (D&D 5e Chebyshev)
+    GridTypeHex         = "hex"          // Generic hex (use with HexOrientation field)
+    GridTypeHexPointy   = "hex_pointy"   // Pointy-top hex (orientation in type)
+    GridTypeHexFlat     = "hex_flat"     // Flat-top hex (orientation in type)
+    GridTypeGridless    = "gridless"     // Continuous positioning
+)
+```
+
+**Two ways to represent hex orientation**:
+
+1. **Composite representation** (internal persistence):
+   - GridType: `"hex"` (generic)
+   - HexOrientation: `*bool` (true=pointy, false=flat)
+   - Use when orientation is metadata separate from type
+
+2. **Flat representation** (external APIs like protos):
+   - GridType: `"hex_pointy"` or `"hex_flat"`
+   - Orientation encoded directly in the type string
+   - Use when external systems need simple enum values
+
+**Helper functions**:
+```go
+// Convert orientation boolean to type string
+gridType := spatial.GridTypeFromHexOrientation(true)  // Returns "hex_pointy"
+
+// Parse type string to orientation boolean
+pointyTop, err := spatial.ParseHexGridType("hex_flat")  // Returns false, nil
+```
+
 ### RoomData Structure
 
 Serializable room state for saving/loading:
@@ -105,13 +140,18 @@ Serializable room state for saving/loading:
 type RoomData struct {
     RoomID      string
     RoomType    string
-    GridType    string
+    GridType    string  // Can be "hex", "hex_pointy", or "hex_flat"
     Width       int
     Height      int
-    Orientation string  // For hex grids: "pointy" or "flat"
+    HexOrientation *bool  // Optional: only for generic "hex" type
     Entities    []PlaceableData
 }
 ```
+
+**Loading behavior**:
+- If `GridType` is `"hex_pointy"` or `"hex_flat"`, orientation comes from the type (HexOrientation field ignored)
+- If `GridType` is `"hex"`, orientation comes from HexOrientation field (defaults to pointy-top)
+- This allows both representation styles to coexist
 
 ### Loading Pattern
 

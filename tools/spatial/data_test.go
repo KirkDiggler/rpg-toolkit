@@ -498,3 +498,153 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 		s.Nil(data.HexOrientation)
 	})
 }
+
+// TestGridTypeFromHexOrientation tests the helper function that converts orientation to grid type
+func (s *RoomDataTestSuite) TestGridTypeFromHexOrientation() {
+	s.Run("pointy-top returns hex_pointy", func() {
+		gridType := GridTypeFromHexOrientation(true)
+		s.Equal(GridTypeHexPointy, gridType)
+		s.Equal("hex_pointy", gridType)
+	})
+
+	s.Run("flat-top returns hex_flat", func() {
+		gridType := GridTypeFromHexOrientation(false)
+		s.Equal(GridTypeHexFlat, gridType)
+		s.Equal("hex_flat", gridType)
+	})
+}
+
+// TestParseHexGridType tests parsing of hex grid type strings
+func (s *RoomDataTestSuite) TestParseHexGridType() {
+	s.Run("parse hex_pointy", func() {
+		orientation, err := ParseHexGridType(GridTypeHexPointy)
+		s.NoError(err)
+		s.True(orientation)
+	})
+
+	s.Run("parse hex_flat", func() {
+		orientation, err := ParseHexGridType(GridTypeHexFlat)
+		s.NoError(err)
+		s.False(orientation)
+	})
+
+	s.Run("parse generic hex defaults to pointy", func() {
+		orientation, err := ParseHexGridType(GridTypeHex)
+		s.NoError(err)
+		s.True(orientation, "Generic 'hex' should default to pointy-top for D&D 5e compatibility")
+	})
+
+	s.Run("error on non-hex grid type", func() {
+		_, err := ParseHexGridType(GridTypeSquare)
+		s.Error(err)
+		s.Contains(err.Error(), "not a hex grid type")
+	})
+
+	s.Run("error on gridless type", func() {
+		_, err := ParseHexGridType(GridTypeGridless)
+		s.Error(err)
+		s.Contains(err.Error(), "not a hex grid type")
+	})
+
+	s.Run("error on invalid type", func() {
+		_, err := ParseHexGridType("invalid")
+		s.Error(err)
+		s.Contains(err.Error(), "not a hex grid type: invalid")
+	})
+}
+
+// TestLoadRoomWithOrientationSpecificGridTypes tests loading rooms with hex_pointy and hex_flat
+func (s *RoomDataTestSuite) TestLoadRoomWithOrientationSpecificGridTypes() {
+	s.Run("load room with hex_pointy grid type", func() {
+		roomData := RoomData{
+			ID:       "pointy-hex-room",
+			Type:     "battlefield",
+			Width:    8,
+			Height:   8,
+			GridType: GridTypeHexPointy,
+			// Note: HexOrientation field is not set, orientation comes from GridType
+		}
+
+		gameCtx, err := game.NewContext(s.eventBus, roomData)
+		s.Require().NoError(err)
+		room, err := LoadRoomFromContext(context.Background(), gameCtx)
+		s.Require().NoError(err)
+
+		// Verify grid is hex with pointy-top orientation
+		grid := room.GetGrid()
+		s.Equal(GridShapeHex, grid.GetShape())
+		hexGrid, ok := grid.(*HexGrid)
+		s.Require().True(ok)
+		s.True(hexGrid.GetOrientation(), "hex_pointy should create pointy-top grid")
+	})
+
+	s.Run("load room with hex_flat grid type", func() {
+		roomData := RoomData{
+			ID:       "flat-hex-room",
+			Type:     "battlefield",
+			Width:    8,
+			Height:   8,
+			GridType: GridTypeHexFlat,
+			// Note: HexOrientation field is not set, orientation comes from GridType
+		}
+
+		gameCtx, err := game.NewContext(s.eventBus, roomData)
+		s.Require().NoError(err)
+		room, err := LoadRoomFromContext(context.Background(), gameCtx)
+		s.Require().NoError(err)
+
+		// Verify grid is hex with flat-top orientation
+		grid := room.GetGrid()
+		s.Equal(GridShapeHex, grid.GetShape())
+		hexGrid, ok := grid.(*HexGrid)
+		s.Require().True(ok)
+		s.False(hexGrid.GetOrientation(), "hex_flat should create flat-top grid")
+	})
+
+	s.Run("orientation-specific type overrides HexOrientation field", func() {
+		// GridType says pointy, but HexOrientation says flat - GridType wins
+		flatBool := false
+		roomData := RoomData{
+			ID:             "conflict-room",
+			Type:           "test",
+			Width:          6,
+			Height:         6,
+			GridType:       GridTypeHexPointy, // Says pointy
+			HexOrientation: &flatBool,         // Says flat
+		}
+
+		gameCtx, err := game.NewContext(s.eventBus, roomData)
+		s.Require().NoError(err)
+		room, err := LoadRoomFromContext(context.Background(), gameCtx)
+		s.Require().NoError(err)
+
+		// GridType should win
+		grid := room.GetGrid()
+		hexGrid, ok := grid.(*HexGrid)
+		s.Require().True(ok)
+		s.True(hexGrid.GetOrientation(), "GridType hex_pointy should override HexOrientation field")
+	})
+
+	s.Run("generic hex type still uses HexOrientation field", func() {
+		flatBool := false
+		roomData := RoomData{
+			ID:             "generic-hex-room",
+			Type:           "test",
+			Width:          6,
+			Height:         6,
+			GridType:       GridTypeHex, // Generic hex
+			HexOrientation: &flatBool,   // Specifies flat
+		}
+
+		gameCtx, err := game.NewContext(s.eventBus, roomData)
+		s.Require().NoError(err)
+		room, err := LoadRoomFromContext(context.Background(), gameCtx)
+		s.Require().NoError(err)
+
+		// HexOrientation field should be used for generic "hex"
+		grid := room.GetGrid()
+		hexGrid, ok := grid.(*HexGrid)
+		s.Require().True(ok)
+		s.False(hexGrid.GetOrientation(), "Generic 'hex' should use HexOrientation field")
+	})
+}

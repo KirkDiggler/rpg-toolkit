@@ -12,11 +12,49 @@ import (
 const (
 	// GridTypeSquare represents square grid type in room data
 	GridTypeSquare = "square"
-	// GridTypeHex represents hexagonal grid type in room data
+
+	// GridTypeHex represents hexagonal grid type in room data (generic)
+	// Use when orientation is specified separately via HexOrientation field
 	GridTypeHex = "hex"
+
+	// GridTypeHexPointy represents pointy-top hexagonal grid type
+	// Use when orientation needs to be explicit in the grid type string (e.g., proto enums)
+	GridTypeHexPointy = "hex_pointy"
+
+	// GridTypeHexFlat represents flat-top hexagonal grid type
+	// Use when orientation needs to be explicit in the grid type string (e.g., proto enums)
+	GridTypeHexFlat = "hex_flat"
+
 	// GridTypeGridless represents gridless type in room data
 	GridTypeGridless = "gridless"
 )
+
+// GridTypeFromHexOrientation returns the orientation-specific grid type string
+// for hex grids. Returns GridTypeHexPointy for pointyTop=true, GridTypeHexFlat for false.
+// Use this when you need to represent hex orientation as part of the grid type (e.g., proto enums).
+func GridTypeFromHexOrientation(pointyTop bool) string {
+	if pointyTop {
+		return GridTypeHexPointy
+	}
+	return GridTypeHexFlat
+}
+
+// ParseHexGridType parses an orientation-specific hex grid type string
+// and returns the orientation boolean. Returns error if not a hex grid type.
+// Supports both generic "hex" and orientation-specific "hex_pointy"/"hex_flat" formats.
+func ParseHexGridType(gridType string) (pointyTop bool, err error) {
+	switch gridType {
+	case GridTypeHexPointy:
+		return true, nil
+	case GridTypeHexFlat:
+		return false, nil
+	case GridTypeHex:
+		// Generic hex defaults to pointy-top for D&D 5e compatibility
+		return true, nil
+	default:
+		return false, fmt.Errorf("not a hex grid type: %s", gridType)
+	}
+}
 
 // RoomData contains all information needed to persist and reconstruct a room.
 // This follows the established data pattern for serialization and loading.
@@ -178,11 +216,18 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 			Width:  float64(data.Width),
 			Height: float64(data.Height),
 		})
-	case GridTypeHex:
-		// Default to pointy-top orientation for D&D 5e compatibility
-		hexOrientation := true // Default for D&D 5e
-		if data.HexOrientation != nil {
-			hexOrientation = *data.HexOrientation
+	case GridTypeHex, GridTypeHexPointy, GridTypeHexFlat:
+		// Determine orientation from grid type or HexOrientation field
+		var hexOrientation bool
+		if data.GridType == GridTypeHexPointy || data.GridType == GridTypeHexFlat {
+			// Orientation is explicit in grid type
+			hexOrientation = data.GridType == GridTypeHexPointy
+		} else {
+			// Generic "hex" type, check HexOrientation field
+			hexOrientation = true // Default for D&D 5e
+			if data.HexOrientation != nil {
+				hexOrientation = *data.HexOrientation
+			}
 		}
 		grid = NewHexGrid(HexGridConfig{
 			Width:     float64(data.Width),
