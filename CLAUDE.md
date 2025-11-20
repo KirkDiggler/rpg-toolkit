@@ -204,11 +204,26 @@ orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
 - **Cross-Cutting**: Event system, split-aware architecture, gridless room support, configuration validation
 
 ### Development Workflow Reminders
+
+**Git Workflow (see /home/kirk/personal/CLAUDE.md for full details):**
+```bash
+gcm                           # Switch to main
+gl                            # Pull latest changes
+gcb fix/issue-number          # Create new feature branch
+# ... make changes, run tests ...
+git add .
+git commit -m "Description"
+git push -u origin fix/issue-number
+gh pr create                  # Create PR
+```
+
+**Development checklist:**
 1. Always check existing patterns in similar modules
 2. Read Journey and ADR docs before implementing new features
 3. Never create files unless necessary - prefer editing existing ones
-4. When creating PRs, use gh CLI with proper formatting
-5. Run the full test suite before committing
+4. Run the full test suite before committing (`go test ./...`)
+5. Run linter before committing (`golangci-lint run ./...`)
+6. Use `gh pr create` for PRs with proper formatting
 
 ### Critical Module Isolation Rules
 **LEARNED FROM PR #76 TROUBLESHOOTING**
