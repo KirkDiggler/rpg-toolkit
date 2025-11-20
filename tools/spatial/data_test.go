@@ -407,8 +407,8 @@ func (s *RoomDataTestSuite) TestSpatialPropertiesPreserved() {
 	s.True(blocked, "Dragon should block line of sight")
 }
 
-// TestHexOrientationPersistence tests that hex orientation is properly persisted and loaded
-func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
+// TestHexFlatTopPersistence tests that hex orientation is properly persisted and loaded
+func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 	// Helper function to test hex orientation persistence
 	testHexOrientation := func(roomID, roomType string, width, height int, pointyTop bool, label string) {
 		// Create hex room with specified orientation
@@ -428,8 +428,8 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 
 		// Verify hex orientation is captured
 		s.Equal("hex", data.GridType)
-		s.Require().NotNil(data.HexOrientation)
-		s.Equal(pointyTop, *data.HexOrientation)
+		// HexFlatTop is opposite of pointyTop
+		s.Equal(!pointyTop, data.HexFlatTop)
 
 		// Load from data
 		gameCtx, err := game.NewContext(s.eventBus, data)
@@ -453,15 +453,15 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 		testHexOrientation("flat-hex", "campaign", 6, 6, false, "Loaded grid should be flat-top")
 	})
 
-	s.Run("legacy hex grid defaults to pointy-top", func() {
-		// Create room data without hex orientation (legacy format)
+	s.Run("hex grid defaults to pointy-top", func() {
+		// Create room data without HexFlatTop set (defaults to false = pointy-top)
 		roomData := RoomData{
-			ID:       "legacy-hex",
+			ID:       "default-hex",
 			Type:     "dungeon",
 			Width:    10,
 			Height:   10,
 			GridType: "hex",
-			// HexOrientation is nil (legacy)
+			// HexFlatTop omitted, defaults to false (pointy-top)
 		}
 
 		// Load from data
@@ -475,10 +475,10 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 		s.Equal(GridShapeHex, grid.GetShape())
 		hexGrid, ok := grid.(*HexGrid)
 		s.Require().True(ok)
-		s.True(hexGrid.GetOrientation(), "Legacy hex grid should default to pointy-top for D&D 5e")
+		s.True(hexGrid.GetOrientation(), "Hex grid should default to pointy-top")
 	})
 
-	s.Run("non-hex grids don't have orientation", func() {
+	s.Run("non-hex grids don't have HexFlatTop set", func() {
 		// Create square room
 		room := NewBasicRoom(BasicRoomConfig{
 			ID:   "square-room",
@@ -493,8 +493,8 @@ func (s *RoomDataTestSuite) TestHexOrientationPersistence() {
 		// Convert to data
 		data := room.ToData()
 
-		// Verify no hex orientation for square grid
+		// Verify HexFlatTop is false (default) for non-hex grids
 		s.Equal("square", data.GridType)
-		s.Nil(data.HexOrientation)
+		s.False(data.HexFlatTop)
 	})
 }
