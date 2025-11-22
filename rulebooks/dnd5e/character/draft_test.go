@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -693,4 +694,406 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 // TestDraftSuite runs the draft test suite
 func TestDraftSuite(t *testing.T) {
 	suite.Run(t, new(DraftTestSuite))
+}
+
+// ClassChangeTestSuite tests that changing class, race, or background
+// correctly clears old choices to fix issue #344
+type ClassChangeTestSuite struct {
+	suite.Suite
+	ctx       context.Context
+	bus       events.EventBus
+	baseDraft *character.Draft
+}
+
+// SetupTest runs before each test function
+func (s *ClassChangeTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+	s.baseDraft = s.createBaseDraft()
+}
+
+// Helper: Create a base draft with required fields
+func (s *ClassChangeTestSuite) createBaseDraft() *character.Draft {
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "change-test-001",
+		PlayerID: "player-001",
+	})
+
+	// Set basic required fields
+	err := draft.SetName(&character.SetNameInput{Name: "Test Character"})
+	s.Require().NoError(err)
+
+	// Set ability scores
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 15,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 12,
+			abilities.WIS: 10,
+			abilities.CHA: 8,
+		},
+	})
+	s.Require().NoError(err)
+
+	// Set race
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+	})
+	s.Require().NoError(err)
+
+	// Set background
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+	})
+	s.Require().NoError(err)
+
+	return draft
+}
+
+// Test #344: Class change clears old equipment choices
+func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
+	// This is the exact scenario from issue #344
+
+	// First set Fighter class with equipment choices
+	err := s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: map[choices.ChoiceID]shared.SelectionID{
+				choices.FighterWeaponsPrimary: choices.FighterWeaponMartialShield,
+				choices.FighterPack:           choices.FighterPackDungeoneer,
+			},
+		},
+	})
+	s.Require().NoError(err, "Setting Fighter class should succeed")
+
+	// Convert to character and check inventory
+	char, err := s.baseDraft.ToCharacter(s.ctx, "fighter-char", s.bus)
+	s.Require().NoError(err)
+	fighterInventory := char.ToData().Inventory
+
+	// Fighter should have shield and dungeoneer pack
+	fighterHasShield := false
+	fighterHasDungeoneerPack := false
+	for _, item := range fighterInventory {
+		if item.ID == "shield" {
+			fighterHasShield = true
+		}
+		if item.ID == packs.DungeoneerPack {
+			fighterHasDungeoneerPack = true
+		}
+	}
+	s.Assert().True(fighterHasShield, "Fighter should have shield from equipment choice")
+	s.Assert().True(fighterHasDungeoneerPack, "Fighter should have dungeoneer pack")
+
+	// Now change to Barbarian with different equipment choices
+	err = s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Survival},
+			Equipment: map[choices.ChoiceID]shared.SelectionID{
+				choices.BarbarianWeaponsPrimary:   choices.BarbarianWeaponGreataxe,
+				choices.BarbarianWeaponsSecondary: choices.BarbarianSecondaryHandaxes,
+				choices.BarbarianPack:             choices.BarbarianPackExplorer,
+			},
+		},
+	})
+	s.Require().NoError(err, "Changing to Barbarian should succeed")
+
+	// Convert to character again and check inventory
+	char, err = s.baseDraft.ToCharacter(s.ctx, "barbarian-char", s.bus)
+	s.Require().NoError(err)
+	barbarianInventory := char.ToData().Inventory
+
+	// Barbarian should NOT have Fighter equipment
+	for _, item := range barbarianInventory {
+		s.Assert().NotEqual("shield", item.ID,
+			"Barbarian should NOT have Fighter's shield after class change")
+		s.Assert().NotEqual(packs.DungeoneerPack, item.ID,
+			"Barbarian should NOT have Fighter's dungeoneer pack after class change")
+	}
+
+	// Barbarian SHOULD have their own equipment
+	hasGreataxe := false
+	hasHandaxes := false
+	hasExplorerPack := false
+	for _, item := range barbarianInventory {
+		if item.ID == weapons.Greataxe {
+			hasGreataxe = true
+		}
+		if item.ID == weapons.Handaxe {
+			hasHandaxes = true
+		}
+		if item.ID == packs.ExplorerPack {
+			hasExplorerPack = true
+		}
+	}
+	s.Assert().True(hasGreataxe, "Barbarian should have greataxe from equipment choice")
+	s.Assert().True(hasHandaxes, "Barbarian should have handaxes from equipment choice")
+	s.Assert().True(hasExplorerPack, "Barbarian should have explorer pack")
+}
+
+// Test: Class change clears old skill choices
+func (s *ClassChangeTestSuite) TestClassChange_ClearsOldSkillChoices() {
+	// Set Fighter with specific skills
+	err := s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Athletics},
+		},
+	})
+	s.Require().NoError(err, "Setting Fighter class should succeed")
+
+	// Check skills in character
+	char, err := s.baseDraft.ToCharacter(s.ctx, "fighter-char", s.bus)
+	s.Require().NoError(err)
+	fighterSkills := char.ToData().Skills
+
+	// Fighter should have chosen skills
+	_, hasAcrobatics := fighterSkills[skills.Acrobatics]
+	_, hasAthletics := fighterSkills[skills.Athletics]
+	s.Assert().True(hasAcrobatics, "Fighter should have Acrobatics")
+	s.Assert().True(hasAthletics, "Fighter should have Athletics")
+
+	// Change to Barbarian with different skills
+	err = s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Intimidation, skills.Survival},
+		},
+	})
+	s.Require().NoError(err, "Changing to Barbarian should succeed")
+
+	// Check skills after class change
+	char, err = s.baseDraft.ToCharacter(s.ctx, "barbarian-char", s.bus)
+	s.Require().NoError(err)
+	barbSkills := char.ToData().Skills
+
+	// Barbarian should NOT have Fighter skills
+	_, hasAcrobatics = barbSkills[skills.Acrobatics]
+	s.Assert().False(hasAcrobatics,
+		"Barbarian should NOT have Fighter's Acrobatics after class change")
+
+	// Barbarian SHOULD have their own skills
+	_, hasIntimidation := barbSkills[skills.Intimidation]
+	_, hasSurvival := barbSkills[skills.Survival]
+	s.Assert().True(hasIntimidation, "Barbarian should have Intimidation")
+	s.Assert().True(hasSurvival, "Barbarian should have Survival")
+}
+
+// Test: Race change clears old race choices (would test languages when implemented)
+func (s *ClassChangeTestSuite) TestRaceChange_ClearsOldRaceChoices() {
+	// Note: Language compilation is not yet implemented in Character.ToData()
+	// This test verifies that race choices are properly cleared in the draft
+
+	// Set Human race with language choices (stored in draft)
+	err := s.baseDraft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []shared.SelectionID{languages.Elvish},
+		},
+	})
+	s.Require().NoError(err, "Setting Human race should succeed")
+
+	// Set a class to make draft complete
+	err = s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+		},
+	})
+	s.Require().NoError(err)
+
+	// Verify the draft has Human race
+	s.Assert().Equal(races.Human, s.baseDraft.Race(), "Draft should have Human race")
+
+	// Get the draft data to check stored choices
+	draftData := s.baseDraft.ToData()
+
+	// Count language choices from Human in draft
+	humanLanguageChoices := 0
+	for _, choice := range draftData.Choices {
+		if choice.Source == shared.SourceRace && choice.Category == shared.ChoiceLanguages {
+			humanLanguageChoices++
+		}
+	}
+	s.Assert().Equal(1, humanLanguageChoices, "Should have one language choice from Human")
+
+	// Change to Elf (gets Elvish automatically, can choose another)
+	err = s.baseDraft.SetRace(&character.SetRaceInput{
+		RaceID: races.Elf,
+		Choices: character.RaceChoices{
+			Languages: []shared.SelectionID{languages.Dwarvish},
+		},
+	})
+	s.Require().NoError(err, "Changing to Elf should succeed")
+
+	// Verify the draft has Elf race
+	s.Assert().Equal(races.Elf, s.baseDraft.Race(), "Draft should have Elf race")
+
+	// Get updated draft data
+	draftData = s.baseDraft.ToData()
+
+	// Verify old Human language choices are cleared and only Elf choices remain
+	elfLanguageChoices := 0
+	hasElfDwarvishChoice := false
+	for _, choice := range draftData.Choices {
+		if choice.Source == shared.SourceRace && choice.Category == shared.ChoiceLanguages {
+			elfLanguageChoices++
+			// Check if it has the Dwarvish choice (Elf's choice)
+			for _, lang := range choice.LanguageSelection {
+				if lang == languages.Dwarvish {
+					hasElfDwarvishChoice = true
+				}
+			}
+		}
+	}
+
+	s.Assert().Equal(1, elfLanguageChoices, "Should have exactly one language choice from Elf")
+	s.Assert().True(hasElfDwarvishChoice, "Elf should have chosen Dwarvish")
+
+	// The key test: verify no Human choices remain
+	// If the fix works, there should be NO traces of the Human's Elvish choice
+	// since all SourceRace choices should have been cleared when changing race
+}
+
+// Test: Background change clears old background choices
+func (s *ClassChangeTestSuite) TestBackgroundChange_ClearsOldBackgroundChoices() {
+	// Note: Character doesn't store background in its data structure yet,
+	// but the Draft does track background and its choices.
+	// This test verifies the draft properly clears background choices.
+
+	// Set Soldier background
+	err := s.baseDraft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+		Choices:      character.BackgroundChoices{
+			// Soldier might have skill or language choices
+			// Adjust based on actual background data
+		},
+	})
+	s.Require().NoError(err, "Setting Soldier background should succeed")
+
+	// Verify background was set in draft
+	s.Assert().Equal(backgrounds.Soldier, s.baseDraft.Background(), "Draft should have Soldier background")
+
+	// Set class to complete draft
+	err = s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+		},
+	})
+	s.Require().NoError(err)
+
+	// Change to Criminal background
+	err = s.baseDraft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Criminal,
+		Choices:      character.BackgroundChoices{
+			// Criminal might have different choices
+		},
+	})
+	s.Require().NoError(err, "Changing to Criminal background should succeed")
+
+	// Verify background changed in draft
+	s.Assert().Equal(backgrounds.Criminal, s.baseDraft.Background(), "Draft should have Criminal background")
+
+	// If we had background choices (skills/languages), we would verify they were cleared here
+	// For now, we've verified the background itself changed correctly
+}
+
+// Test: Multiple class changes in sequence (Fighter → Barbarian → Rogue)
+func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain() {
+	// First: Fighter
+	err := s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: map[choices.ChoiceID]shared.SelectionID{
+				choices.FighterWeaponsPrimary: choices.FighterWeaponMartialShield,
+			},
+		},
+	})
+	s.Require().NoError(err, "Setting Fighter should succeed")
+
+	// Second: Barbarian
+	err = s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Nature, skills.Survival},
+			Equipment: map[choices.ChoiceID]shared.SelectionID{
+				choices.BarbarianWeaponsPrimary: choices.BarbarianWeaponGreataxe,
+			},
+		},
+	})
+	s.Require().NoError(err, "Changing to Barbarian should succeed")
+
+	// Third: Rogue
+	err = s.baseDraft.SetClass(&character.SetClassInput{
+		ClassID: classes.Rogue,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{
+				skills.Stealth, skills.Perception,
+				skills.Investigation, skills.Acrobatics,
+			},
+			Equipment: map[choices.ChoiceID]shared.SelectionID{
+				choices.RogueWeaponsPrimary: choices.RogueWeaponShortsword,
+				choices.RoguePack:           choices.RoguePackBurglar,
+			},
+		},
+	})
+	s.Require().NoError(err, "Changing to Rogue should succeed")
+
+	// Convert to character and verify
+	char, err := s.baseDraft.ToCharacter(s.ctx, "rogue-char", s.bus)
+	s.Require().NoError(err)
+
+	// Check skills - should only have Rogue skills
+	rogueSkills := char.ToData().Skills
+
+	// Should NOT have Fighter or Barbarian skills
+	_, hasIntimidation := rogueSkills[skills.Intimidation]
+	_, hasNature := rogueSkills[skills.Nature]
+	_, hasSurvival := rogueSkills[skills.Survival]
+	s.Assert().False(hasIntimidation, "Should NOT have Fighter's Intimidation")
+	s.Assert().False(hasNature, "Should NOT have Barbarian's Nature")
+	s.Assert().False(hasSurvival, "Should NOT have Barbarian's Survival")
+
+	// SHOULD have Rogue skills
+	_, hasStealth := rogueSkills[skills.Stealth]
+	_, hasPerception := rogueSkills[skills.Perception]
+	_, hasInvestigation := rogueSkills[skills.Investigation]
+	_, hasAcrobatics := rogueSkills[skills.Acrobatics]
+	s.Assert().True(hasStealth, "Should have Rogue's Stealth")
+	s.Assert().True(hasPerception, "Should have Rogue's Perception")
+	s.Assert().True(hasInvestigation, "Should have Rogue's Investigation")
+	s.Assert().True(hasAcrobatics, "Should have Rogue's Acrobatics")
+
+	// Check inventory - should only have Rogue equipment
+	inventory := char.ToData().Inventory
+
+	// Should NOT have Fighter or Barbarian equipment
+	for _, item := range inventory {
+		s.Assert().NotEqual("shield", item.ID, "Should NOT have Fighter's shield")
+		s.Assert().NotEqual(weapons.Greataxe, item.ID, "Should NOT have Barbarian's greataxe")
+	}
+
+	// SHOULD have Rogue equipment
+	hasShortsword := false
+	hasBurglarPack := false
+	for _, item := range inventory {
+		if item.ID == weapons.Shortsword {
+			hasShortsword = true
+		}
+		if item.ID == packs.BurglarPack {
+			hasBurglarPack = true
+		}
+	}
+	s.Assert().True(hasShortsword, "Should have Rogue's shortsword")
+	s.Assert().True(hasBurglarPack, "Should have Rogue's burglar pack")
+}
+
+// TestClassChangeTestSuite runs the class change test suite
+func TestClassChangeTestSuite(t *testing.T) {
+	suite.Run(t, new(ClassChangeTestSuite))
 }

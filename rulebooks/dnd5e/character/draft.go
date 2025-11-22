@@ -195,6 +195,10 @@ func (d *Draft) SetRace(input *SetRaceInput) error {
 		return rpgerr.Newf(rpgerr.CodeNotFound, "unknown race: %s", input.RaceID)
 	}
 
+	// Clear all existing race choices before recording new ones
+	// This prevents accumulation when changing races
+	d.clearChoicesBySource(shared.SourceRace)
+
 	d.race = input.RaceID
 	d.subrace = input.SubraceID
 
@@ -266,6 +270,10 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 			"must choose exactly %d skills, got %d",
 			classData.SkillCount, len(input.Choices.Skills))
 	}
+
+	// Clear all existing class choices before recording new ones
+	// This prevents accumulation when changing classes (e.g., Fighter to Barbarian)
+	d.clearChoicesBySource(shared.SourceClass)
 
 	d.class = input.ClassID
 	d.subclass = input.SubclassID
@@ -403,6 +411,10 @@ func (d *Draft) SetBackground(input *SetBackgroundInput) error {
 	if input == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
 	}
+
+	// Clear all existing background choices before recording new ones
+	// This prevents accumulation when changing backgrounds
+	d.clearChoicesBySource(shared.SourceBackground)
 
 	// TODO: Validate background when we have internal background data
 	d.background = input.BackgroundID
@@ -667,6 +679,21 @@ func (d *Draft) ValidateChoices() error {
 	}
 
 	return nil
+}
+
+// clearChoicesBySource removes all choices from the specified source.
+// This is used when changing class, race, or background to ensure old choices
+// don't accumulate. For example, when changing from Fighter to Barbarian,
+// this clears all Fighter equipment choices before recording Barbarian choices.
+func (d *Draft) clearChoicesBySource(source shared.ChoiceSource) {
+	filtered := make([]choices.ChoiceData, 0, len(d.choices))
+	for _, c := range d.choices {
+		// Keep choices that are NOT from the specified source
+		if c.Source != source {
+			filtered = append(filtered, c)
+		}
+	}
+	d.choices = filtered
 }
 
 // recordChoice adds or updates a choice in the draft
