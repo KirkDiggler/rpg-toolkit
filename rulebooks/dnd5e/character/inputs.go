@@ -40,11 +40,21 @@ type SetClassInput struct {
 
 // ClassChoices contains choices when selecting a class
 type ClassChoices struct {
-	Skills        []skills.Skill                          `json:"skills"`
-	FightingStyle fightingstyles.FightingStyle            `json:"fighting_style,omitempty"`
-	Cantrips      []spells.Spell                          `json:"cantrips,omitempty"`
-	Spells        []spells.Spell                          `json:"spells,omitempty"`
-	Equipment     map[choices.ChoiceID]shared.SelectionID `json:"equipment,omitempty"`
+	Skills        []skills.Skill               `json:"skills"`
+	FightingStyle fightingstyles.FightingStyle `json:"fighting_style,omitempty"`
+	Cantrips      []spells.Spell               `json:"cantrips,omitempty"`
+	Spells        []spells.Spell               `json:"spells,omitempty"`
+	Equipment     []EquipmentChoiceSelection   `json:"equipment,omitempty"`
+}
+
+// EquipmentChoiceSelection represents a player's choice for an equipment requirement
+type EquipmentChoiceSelection struct {
+	// The requirement being fulfilled (e.g., "barbarian-weapons-secondary")
+	ChoiceID choices.ChoiceID `json:"choice_id"`
+	// The option selected (e.g., "barbarian-secondary-b")
+	OptionID shared.SelectionID `json:"option_id"`
+	// Specific items chosen from CategoryChoices
+	CategorySelections []shared.EquipmentID `json:"category_selections,omitempty"`
 }
 
 // SetBackgroundInput contains the input for setting a character's background

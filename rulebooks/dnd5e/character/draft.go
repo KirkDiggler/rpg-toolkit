@@ -340,59 +340,109 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 
 	// Record equipment choices
 	if len(input.Choices.Equipment) > 0 {
-		for choiceID, selectionID := range input.Choices.Equipment {
-			// Check if it's a regular equipment choice (with options)
-			for _, req := range requirements.Equipment {
-				if req.ID == choiceID {
-					// Find the selected option
-					for _, opt := range req.Options {
-						if opt.ID == selectionID {
-							// Extract equipment IDs from this option and validate them
-							equipmentIDs := make([]shared.SelectionID, 0, len(opt.Items))
-							for _, item := range opt.Items {
-								// Validate that the equipment exists
-								_, err := equipment.GetByID(item.ID)
-								if err != nil {
-									// Return error immediately - invalid equipment in class requirements
-									return rpgerr.Newf(rpgerr.CodeNotFound,
-										"invalid equipment ID '%s' in class requirements", item.ID)
-								}
-								equipmentIDs = append(equipmentIDs, item.ID)
-							}
-
-							d.recordChoice(choices.ChoiceData{
-								Category:           shared.ChoiceEquipment,
-								Source:             shared.SourceClass,
-								ChoiceID:           choiceID,
-								OptionID:           opt.ID,
-								EquipmentSelection: equipmentIDs,
-							})
-							break
-						}
-					}
+		for _, selection := range input.Choices.Equipment {
+			// Find the requirement for this choice
+			var req *choices.EquipmentRequirement
+			for _, r := range requirements.Equipment {
+				if r.ID == selection.ChoiceID {
+					req = r
 					break
 				}
 			}
 
-			// Check if it's a category-based choice
-			for _, catReq := range requirements.EquipmentCategories {
-				if catReq.ID == choiceID {
-					// For category choices, selectionID is the actual equipment ID
-					// Validate the equipment ID exists
-					_, err := equipment.GetByID(selectionID)
+			if req == nil {
+				// Check if it's a top-level category choice
+				for _, catReq := range requirements.EquipmentCategories {
+					if catReq.ID == selection.ChoiceID {
+						// Top-level category choice - validate equipment IDs
+						if len(selection.CategorySelections) == 0 {
+							return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+								"category choice '%s' requires category selections", selection.ChoiceID)
+						}
+						for _, equipID := range selection.CategorySelections {
+							_, err := equipment.GetByID(equipID)
+							if err != nil {
+								return rpgerr.Newf(rpgerr.CodeNotFound,
+									"invalid equipment ID '%s'", equipID)
+							}
+						}
+						d.recordChoice(choices.ChoiceData{
+							Category:           shared.ChoiceEquipment,
+							Source:             shared.SourceClass,
+							ChoiceID:           selection.ChoiceID,
+							EquipmentSelection: selection.CategorySelections,
+						})
+						continue
+					}
+				}
+				return rpgerr.Newf(rpgerr.CodeNotFound,
+					"unknown equipment choice '%s'", selection.ChoiceID)
+			}
+
+			// Find the selected option
+			var selectedOption *choices.EquipmentOption
+			for _, opt := range req.Options {
+				if opt.ID == selection.OptionID {
+					selectedOption = &opt
+					break
+				}
+			}
+
+			if selectedOption == nil {
+				return rpgerr.Newf(rpgerr.CodeNotFound,
+					"unknown equipment option '%s' for choice '%s'",
+					selection.OptionID, selection.ChoiceID)
+			}
+
+			// Build final equipment list
+			equipmentIDs := make([]shared.SelectionID, 0)
+
+			// Add fixed items from the option
+			for _, item := range selectedOption.Items {
+				_, err := equipment.GetByID(item.ID)
+				if err != nil {
+					return rpgerr.Newf(rpgerr.CodeNotFound,
+						"invalid equipment ID '%s' in class requirements", item.ID)
+				}
+				equipmentIDs = append(equipmentIDs, item.ID)
+			}
+
+			// Add category-based selections
+			if len(selectedOption.CategoryChoices) > 0 {
+				if len(selection.CategorySelections) == 0 {
+					return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+						"option '%s' requires category selections", selection.OptionID)
+				}
+
+				// Validate count matches
+				totalRequired := 0
+				for _, catChoice := range selectedOption.CategoryChoices {
+					totalRequired += catChoice.Choose
+				}
+				if len(selection.CategorySelections) != totalRequired {
+					return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+						"option '%s' requires %d category selections, got %d",
+						selection.OptionID, totalRequired, len(selection.CategorySelections))
+				}
+
+				// Validate each selected equipment
+				for _, equipID := range selection.CategorySelections {
+					_, err := equipment.GetByID(equipID)
 					if err != nil {
 						return rpgerr.Newf(rpgerr.CodeNotFound,
-							"invalid equipment ID '%s'", selectionID)
+							"invalid equipment ID '%s'", equipID)
 					}
-					d.recordChoice(choices.ChoiceData{
-						Category:           shared.ChoiceEquipment,
-						Source:             shared.SourceClass,
-						ChoiceID:           choiceID,
-						EquipmentSelection: []shared.SelectionID{selectionID},
-					})
-					break
 				}
+				equipmentIDs = append(equipmentIDs, selection.CategorySelections...)
 			}
+
+			d.recordChoice(choices.ChoiceData{
+				Category:           shared.ChoiceEquipment,
+				Source:             shared.SourceClass,
+				ChoiceID:           selection.ChoiceID,
+				OptionID:           selectedOption.ID,
+				EquipmentSelection: equipmentIDs,
+			})
 		}
 	}
 
