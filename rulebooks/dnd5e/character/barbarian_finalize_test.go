@@ -65,10 +65,10 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 				skills.Athletics,
 				skills.Intimidation,
 			},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.BarbarianWeaponsPrimary:   choices.BarbarianWeaponGreataxe,    // "barbarian-weapon-a"
-				choices.BarbarianWeaponsSecondary: choices.BarbarianSecondaryHandaxes, // "barbarian-secondary-a"
-				choices.BarbarianPack:             choices.BarbarianPackExplorer,      // "barbarian-pack-a"
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe}, // "barbarian-weapon-a"
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer}, // "barbarian-pack-a"
 			},
 		},
 	})
@@ -157,10 +157,10 @@ func (s *BarbarianFinalizeSuite) TestBarbarianClassComplete() {
 				skills.Athletics,
 				skills.Intimidation,
 			},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.BarbarianWeaponsPrimary:   choices.BarbarianWeaponGreataxe,
-				choices.BarbarianWeaponsSecondary: choices.BarbarianSecondaryHandaxes,
-				choices.BarbarianPack:             choices.BarbarianPackExplorer,
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
 			},
 		},
 	})

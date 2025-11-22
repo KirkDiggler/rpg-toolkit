@@ -1,5 +1,14 @@
 # RPG Toolkit Development Guidelines
 
+## Slash Commands for Common Workflows
+
+Use these slash commands to follow structured workflows:
+
+- `/bugfix` - Complete bug fix workflow (branch creation, failing test, fix, PR)
+- `/feature` - Feature development workflow (TDD, implementation, documentation, PR)
+
+These commands guide you through best practices and ensure nothing is missed.
+
 ## Module Development Workflow
 
 **IMPORTANT: NO go.work FILES OR LOCAL REPLACE DIRECTIVES**

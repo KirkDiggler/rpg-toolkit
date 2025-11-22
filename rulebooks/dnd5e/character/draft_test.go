@@ -360,8 +360,12 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 			ClassID: classes.Fighter,
 			Choices: character.ClassChoices{
 				Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
-				Equipment: map[choices.ChoiceID]shared.SelectionID{
-					choices.FighterWeaponsPrimary: choices.FighterWeaponMartialShield,
+				Equipment: []character.EquipmentChoiceSelection{
+					{
+						ChoiceID:           choices.FighterWeaponsPrimary,
+						OptionID:           choices.FighterWeaponMartialShield,
+						CategorySelections: []shared.EquipmentID{weapons.Longsword},
+					},
 				},
 			},
 		})
@@ -381,8 +385,8 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 			ClassID: classes.Fighter,
 			Choices: character.ClassChoices{
 				Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
-				Equipment: map[choices.ChoiceID]shared.SelectionID{
-					choices.FighterPack: choices.FighterPackExplorer,
+				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackExplorer},
 				},
 			},
 		})
@@ -404,8 +408,8 @@ func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterWeaponsSecondary: choices.FighterRangedHandaxes,
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedHandaxes},
 			},
 		},
 	})
@@ -439,8 +443,8 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterWeaponsSecondary: choices.FighterRangedCrossbow,
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 			},
 		},
 	})
@@ -467,18 +471,19 @@ func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
 	})
 	s.Require().NoError(err)
 
-	// Try to set class with invalid equipment option ID - this won't trigger validation
-	// because the option is not found in requirements, so the choice is simply ignored
+	// Try to set class with invalid equipment option ID - should now return an error
+	// because our new validation is stricter
 	err = draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterPack: "invalid-option-id", // Invalid option ID - won't be found
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterPack, OptionID: "invalid-option-id"}, // Invalid option ID - won't be found
 			},
 		},
 	})
-	s.Require().NoError(err, "SetClass succeeds when option isn't found (choice is ignored)")
+	s.Require().Error(err, "SetClass should fail with invalid option ID")
+	s.Assert().Contains(err.Error(), "unknown equipment option")
 
 	// Test 2: ValidateChoices should catch invalid equipment if it somehow gets stored
 	// Create a valid draft first
@@ -667,9 +672,13 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Fighter needs 2 skills
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterWeaponsPrimary: choices.FighterWeaponMartialShield,
-				choices.FighterPack:           choices.FighterPackDungeoneer,
+			Equipment: []character.EquipmentChoiceSelection{
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
 		},
 	})
@@ -760,9 +769,13 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterWeaponsPrimary: choices.FighterWeaponMartialShield,
-				choices.FighterPack:           choices.FighterPackDungeoneer,
+			Equipment: []character.EquipmentChoiceSelection{
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
 		},
 	})
@@ -792,10 +805,10 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 		ClassID: classes.Barbarian,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Survival},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.BarbarianWeaponsPrimary:   choices.BarbarianWeaponGreataxe,
-				choices.BarbarianWeaponsSecondary: choices.BarbarianSecondaryHandaxes,
-				choices.BarbarianPack:             choices.BarbarianPackExplorer,
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
 			},
 		},
 	})
@@ -1009,8 +1022,12 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.FighterWeaponsPrimary: choices.FighterWeaponMartialShield,
+			Equipment: []character.EquipmentChoiceSelection{
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
 			},
 		},
 	})
@@ -1021,8 +1038,8 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 		ClassID: classes.Barbarian,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Nature, skills.Survival},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.BarbarianWeaponsPrimary: choices.BarbarianWeaponGreataxe,
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
 			},
 		},
 	})
@@ -1036,9 +1053,9 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 				skills.Stealth, skills.Perception,
 				skills.Investigation, skills.Acrobatics,
 			},
-			Equipment: map[choices.ChoiceID]shared.SelectionID{
-				choices.RogueWeaponsPrimary: choices.RogueWeaponShortsword,
-				choices.RoguePack:           choices.RoguePackBurglar,
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponShortsword},
+				{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
 			},
 		},
 	})
