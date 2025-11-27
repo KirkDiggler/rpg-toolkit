@@ -165,6 +165,76 @@ These run automatically on commit.
 2. **Composition Over Inheritance**: Use embedded structs and interfaces
 3. **Error Handling**: Always check errors in tests with require.NoError(t, err)
 4. **Event Naming**: Use dot notation (e.g., "resource.consumed", "condition.applied")
+5. **JSON Serialization Pattern**: See below
+
+### Feature/Condition Serialization Pattern
+
+**IMPORTANT: Typed Data Structs for JSON**
+
+Features and Conditions use a JSON-in/JSON-out pattern where:
+- The **game server (rpg-api)** stores conditions/features as **opaque JSON blobs** - it doesn't know internal structure
+- The **toolkit** is responsible for marshaling JSON into **strongly-typed structs**
+
+**Pattern:**
+```go
+// Data struct for serialization - uses core.Ref for routing
+type RagingData struct {
+    Ref               core.Ref `json:"ref"`
+    CharacterID       string   `json:"character_id"`
+    DamageBonus       int      `json:"damage_bonus"`
+    // ... other fields
+}
+
+// Runtime struct - no JSON tags needed
+type RagingCondition struct {
+    CharacterID string
+    DamageBonus int
+    // ... other fields + non-serialized runtime state
+}
+
+// ToJSON serializes to typed struct
+func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
+    data := RagingData{
+        Ref: core.Ref{Module: "dnd5e", Type: "conditions", Value: "raging"},
+        CharacterID: r.CharacterID,
+        // ...
+    }
+    return json.Marshal(data)
+}
+
+// loadJSON deserializes from typed struct
+func (r *RagingCondition) loadJSON(data json.RawMessage) error {
+    var ragingData RagingData
+    if err := json.Unmarshal(data, &ragingData); err != nil {
+        return err
+    }
+    r.CharacterID = ragingData.CharacterID
+    // ...
+    return nil
+}
+```
+
+**Loader routes by ref:**
+```go
+func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
+    var peek struct { Ref core.Ref `json:"ref"` }
+    json.Unmarshal(data, &peek)
+
+    switch peek.Ref.Value {
+    case "raging":
+        c := &RagingCondition{}
+        c.loadJSON(data)
+        return c, nil
+    // ...
+    }
+}
+```
+
+**Key Benefits:**
+- Type-safe serialization (not `map[string]interface{}`)
+- Clear separation between runtime and serialized state
+- Game server doesn't need to understand toolkit internals
+- Easy to add new condition/feature types
 
 ### Recent Architectural Decisions
 - **ADR-0005**: Extract shared effect infrastructure from conditions/proficiencies

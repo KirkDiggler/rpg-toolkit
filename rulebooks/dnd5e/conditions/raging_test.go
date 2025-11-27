@@ -49,7 +49,7 @@ func TestRagingConditionTestSuite(t *testing.T) {
 	suite.Run(t, new(RagingConditionTestSuite))
 }
 
-func (s *RagingConditionTestSuite) TestRagingConditionTracksAttacks() {
+func (s *RagingConditionTestSuite) TestRagingConditionTracksHits() {
 	// Create a raging condition
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
@@ -65,17 +65,12 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksAttacks() {
 	// Verify initial state
 	s.False(raging.DidAttackThisTurn)
 
-	// Publish an attack event for this character
-	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
-	err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
-		AttackerID: "barbarian-1",
-		TargetID:   "goblin-1",
-		WeaponRef:  "greatsword",
-		IsMelee:    true,
-	})
+	// Execute damage chain (simulates a successful hit)
+	// Note: DamageChain only fires when an attack hits
+	_, err = s.executeDamageChain("barbarian-1", 5, 3)
 	s.Require().NoError(err)
 
-	// Check that the condition tracked the attack
+	// Check that the condition tracked the successful hit
 	s.True(raging.DidAttackThisTurn)
 }
 
@@ -168,14 +163,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	})
 	s.Require().NoError(err)
 
-	// Publish an attack event (combat activity)
-	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
-	err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
-		AttackerID: "barbarian-1",
-		TargetID:   "goblin-1",
-		WeaponRef:  "greatsword",
-		IsMelee:    true,
-	})
+	// Execute damage chain (simulates a successful hit - combat activity)
+	// Note: DamageChain only fires when an attack hits
+	_, err = s.executeDamageChain("barbarian-1", 5, 3)
 	s.Require().NoError(err)
 
 	// Publish turn end event
@@ -217,18 +207,12 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	})
 	s.Require().NoError(err)
 
-	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 
-	// Simulate 10 rounds of combat with attacks
+	// Simulate 10 rounds of combat with successful hits
 	for round := 1; round <= 10; round++ {
-		// Attack each round to keep rage active
-		err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
-			AttackerID: "barbarian-1",
-			TargetID:   "goblin-1",
-			WeaponRef:  "greatsword",
-			IsMelee:    true,
-		})
+		// Execute damage chain each round to keep rage active (simulates successful hit)
+		_, err = s.executeDamageChain("barbarian-1", 5, 3)
 		s.Require().NoError(err)
 
 		// End turn
@@ -254,6 +238,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 // executeDamageChain creates a damage chain event and executes it through the damage chain topic.
 // Returns the final event after all chain modifications have been applied.
 // This helper reduces duplication in tests that verify damage bonus modifications.
+//
+//nolint:unparam // Parameters kept for consistency with other test helpers in this package
 func (s *RagingConditionTestSuite) executeDamageChain(
 	attackerID string,
 	baseDamage, damageBonus int,

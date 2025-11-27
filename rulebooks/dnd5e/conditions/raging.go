@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -15,18 +16,30 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
+// RagingData is the JSON structure for persisting raging condition state
+type RagingData struct {
+	Ref               core.Ref `json:"ref"`
+	CharacterID       string   `json:"character_id"`
+	DamageBonus       int      `json:"damage_bonus"`
+	Level             int      `json:"level"`
+	Source            string   `json:"source"`
+	TurnsActive       int      `json:"turns_active"`
+	WasHitThisTurn    bool     `json:"was_hit_this_turn"`
+	DidAttackThisTurn bool     `json:"did_attack_this_turn"`
+}
+
 // RagingCondition represents the barbarian rage state.
 // It implements the Condition interface.
 type RagingCondition struct {
-	CharacterID       string          `json:"character_id"`
-	DamageBonus       int             `json:"damage_bonus"`
-	Level             int             `json:"level"`
-	Source            string          `json:"source"`
-	TurnsActive       int             `json:"turns_active"`
-	WasHitThisTurn    bool            `json:"was_hit_this_turn"`
-	DidAttackThisTurn bool            `json:"did_attack_this_turn"`
-	subscriptionIDs   []string        `json:"-"` // Don't persist subscription IDs
-	bus               events.EventBus `json:"-"` // Don't persist bus reference
+	CharacterID       string
+	DamageBonus       int
+	Level             int
+	Source            string
+	TurnsActive       int
+	WasHitThisTurn    bool
+	DidAttackThisTurn bool
+	subscriptionIDs   []string
+	bus               events.EventBus
 }
 
 // Ensure RagingCondition implements dnd5eEvents.ConditionBehavior
@@ -36,17 +49,17 @@ var _ dnd5eEvents.ConditionBehavior = (*RagingCondition)(nil)
 func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	r.bus = bus
 
-	// Subscribe to attack events to track if we attacked
-	attacks := dnd5eEvents.AttackTopic.On(bus)
-	subID1, err := attacks.Subscribe(ctx, r.onAttack)
+	// Subscribe to damage events to track if we were hit
+	damages := dnd5eEvents.DamageReceivedTopic.On(bus)
+	subID1, err := damages.Subscribe(ctx, r.onDamageReceived)
 	if err != nil {
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID1)
 
-	// Subscribe to damage events to track if we were hit
-	damages := dnd5eEvents.DamageReceivedTopic.On(bus)
-	subID2, err := damages.Subscribe(ctx, r.onDamageReceived)
+	// Subscribe to turn end events to check if rage continues
+	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
+	subID2, err := turnEnds.Subscribe(ctx, r.onTurnEnd)
 	if err != nil {
 		// Rollback: unsubscribe from previous subscriptions
 		_ = r.Remove(ctx, bus)
@@ -54,9 +67,9 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID2)
 
-	// Subscribe to turn end events to check if rage continues
-	turnEnds := dnd5eEvents.TurnEndTopic.On(bus)
-	subID3, err := turnEnds.Subscribe(ctx, r.onTurnEnd)
+	// Subscribe to condition applied events to check for unconscious
+	conditions := dnd5eEvents.ConditionAppliedTopic.On(bus)
+	subID3, err := conditions.Subscribe(ctx, r.onConditionApplied)
 	if err != nil {
 		// Rollback: unsubscribe from previous subscriptions
 		_ = r.Remove(ctx, bus)
@@ -64,25 +77,15 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID3)
 
-	// Subscribe to condition applied events to check for unconscious
-	conditions := dnd5eEvents.ConditionAppliedTopic.On(bus)
-	subID4, err := conditions.Subscribe(ctx, r.onConditionApplied)
+	// Subscribe to damage chain to add rage damage bonus and track successful hits
+	damageChain := combat.DamageChain.On(bus)
+	subID4, err := damageChain.SubscribeWithChain(ctx, r.onDamageChain)
 	if err != nil {
 		// Rollback: unsubscribe from previous subscriptions
 		_ = r.Remove(ctx, bus)
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID4)
-
-	// Subscribe to damage chain to add rage damage bonus
-	damageChain := combat.DamageChain.On(bus)
-	subID5, err := damageChain.SubscribeWithChain(ctx, r.onDamageChain)
-	if err != nil {
-		// Rollback: unsubscribe from previous subscriptions
-		_ = r.Remove(ctx, bus)
-		return err
-	}
-	r.subscriptionIDs = append(r.subscriptionIDs, subID5)
 
 	return nil
 }
@@ -108,26 +111,38 @@ func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error
 
 // ToJSON converts the condition to JSON for persistence
 func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
-	data := map[string]interface{}{
-		"ref":                  "dnd5e:conditions:raging",
-		"type":                 "raging",
-		"character_id":         r.CharacterID,
-		"damage_bonus":         r.DamageBonus,
-		"level":                r.Level,
-		"source":               r.Source,
-		"turns_active":         r.TurnsActive,
-		"was_hit_this_turn":    r.WasHitThisTurn,
-		"did_attack_this_turn": r.DidAttackThisTurn,
+	data := RagingData{
+		Ref: core.Ref{
+			Module: "dnd5e",
+			Type:   "conditions",
+			Value:  "raging",
+		},
+		CharacterID:       r.CharacterID,
+		DamageBonus:       r.DamageBonus,
+		Level:             r.Level,
+		Source:            r.Source,
+		TurnsActive:       r.TurnsActive,
+		WasHitThisTurn:    r.WasHitThisTurn,
+		DidAttackThisTurn: r.DidAttackThisTurn,
 	}
 	return json.Marshal(data)
 }
 
-// onAttack handles attack events to track if we attacked this turn
-func (r *RagingCondition) onAttack(_ context.Context, event dnd5eEvents.AttackEvent) error {
-	if event.AttackerID != r.CharacterID {
-		return nil
+// loadJSON loads raging condition state from JSON
+func (r *RagingCondition) loadJSON(data json.RawMessage) error {
+	var ragingData RagingData
+	if err := json.Unmarshal(data, &ragingData); err != nil {
+		return rpgerr.Wrap(err, "failed to unmarshal raging data")
 	}
-	r.DidAttackThisTurn = true
+
+	r.CharacterID = ragingData.CharacterID
+	r.DamageBonus = ragingData.DamageBonus
+	r.Level = ragingData.Level
+	r.Source = ragingData.Source
+	r.TurnsActive = ragingData.TurnsActive
+	r.WasHitThisTurn = ragingData.WasHitThisTurn
+	r.DidAttackThisTurn = ragingData.DidAttackThisTurn
+
 	return nil
 }
 
@@ -151,33 +166,12 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 
 	// Check if rage ends due to no combat activity
 	if !r.DidAttackThisTurn && !r.WasHitThisTurn {
-		// Publish condition removed event
-		if r.bus != nil {
-			removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
-			err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				CharacterID:  r.CharacterID,
-				ConditionRef: "dnd5e:conditions:raging",
-				Reason:       "no_combat_activity",
-			})
-			if err != nil {
-				return rpgerr.Wrapf(err, "error removing raging for character id %s", r.CharacterID)
-			}
-		}
+		return r.endRage(ctx, "no_combat_activity")
 	}
 
 	// Check if rage ends due to duration (10 rounds = 1 minute)
 	if r.TurnsActive >= 10 {
-		if r.bus != nil {
-			removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
-			err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				CharacterID:  r.CharacterID,
-				ConditionRef: "dnd5e:conditions:raging",
-				Reason:       "duration_expired",
-			})
-			if err != nil {
-				return rpgerr.Wrapf(err, "error removing raging for character id %s", r.CharacterID)
-			}
-		}
+		return r.endRage(ctx, "duration_expired")
 	}
 
 	// Reset combat activity flags for next turn
@@ -191,23 +185,34 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
 	// Check if unconscious was applied to us
 	if event.Type == dnd5eEvents.ConditionUnconscious && event.Target.GetID() == r.CharacterID {
-		// End rage immediately
-		if r.bus != nil {
-			removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
-			err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				CharacterID:  r.CharacterID,
-				ConditionRef: "dnd5e:conditions:raging",
-				Reason:       "unconscious",
-			})
-			if err != nil {
-				return rpgerr.Wrapf(err, "error removing raging for character id %s", r.CharacterID)
-			}
-		}
+		return r.endRage(ctx, "unconscious")
 	}
 	return nil
 }
 
+// endRage publishes the removal event and unsubscribes from all events
+func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
+	if r.bus == nil {
+		return nil
+	}
+
+	// Publish condition removed event
+	removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
+	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  r.CharacterID,
+		ConditionRef: "dnd5e:conditions:raging",
+		Reason:       reason,
+	})
+	if err != nil {
+		return rpgerr.Wrapf(err, "error publishing rage removal for character id %s", r.CharacterID)
+	}
+
+	// Actually remove the condition (unsubscribe from events)
+	return r.Remove(ctx, r.bus)
+}
+
 // onDamageChain adds rage damage bonus to attacks made by the raging character
+// and tracks that we successfully hit an enemy this turn (for rage maintenance)
 func (r *RagingCondition) onDamageChain(
 	_ context.Context,
 	event *combat.DamageChainEvent,
@@ -217,6 +222,10 @@ func (r *RagingCondition) onDamageChain(
 	if event.AttackerID != r.CharacterID {
 		return c, nil
 	}
+
+	// Track that we successfully hit an enemy this turn
+	// (damage chain only fires when an attack hits)
+	r.DidAttackThisTurn = true
 
 	// Add rage damage modifier in the StageFeatures stage
 	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
