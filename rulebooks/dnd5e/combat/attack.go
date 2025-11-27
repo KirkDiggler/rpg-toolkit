@@ -27,6 +27,7 @@ const (
 	DamageSourceSneakAttack     DamageSourceType = "sneak_attack"
 	DamageSourceDivineSmite     DamageSourceType = "divine_smite"
 	DamageSourceElementalWeapon DamageSourceType = "elemental_weapon"
+	DamageSourceBrutalCritical  DamageSourceType = "brutal_critical"
 	// Add more as needed
 )
 
