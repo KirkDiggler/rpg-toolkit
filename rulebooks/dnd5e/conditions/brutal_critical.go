@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -21,16 +22,24 @@ import (
 // diceNotationRegex matches simple dice notation like "1d8", "2d6", etc.
 var diceNotationRegex = regexp.MustCompile(`^(\d*)[dD](\d+)`)
 
+// BrutalCriticalData is the JSON structure for persisting brutal critical condition state
+type BrutalCriticalData struct {
+	Ref         core.Ref `json:"ref"`
+	CharacterID string   `json:"character_id"`
+	Level       int      `json:"level"`
+	ExtraDice   int      `json:"extra_dice"`
+}
+
 // BrutalCriticalCondition represents the barbarian's brutal critical feature.
 // It adds extra weapon damage dice on critical hits based on barbarian level.
 // It implements the ConditionBehavior interface.
 type BrutalCriticalCondition struct {
-	CharacterID     string          `json:"character_id"`
-	Level           int             `json:"level"`
-	ExtraDice       int             `json:"extra_dice"`
-	subscriptionIDs []string        `json:"-"` // Don't persist subscription IDs
-	bus             events.EventBus `json:"-"` // Don't persist bus reference
-	roller          dice.Roller     `json:"-"` // Don't persist roller reference
+	CharacterID     string
+	Level           int
+	ExtraDice       int
+	subscriptionIDs []string
+	bus             events.EventBus
+	roller          dice.Roller
 }
 
 // Ensure BrutalCriticalCondition implements dnd5eEvents.ConditionBehavior
@@ -102,14 +111,31 @@ func (b *BrutalCriticalCondition) Remove(ctx context.Context, bus events.EventBu
 
 // ToJSON converts the condition to JSON for persistence
 func (b *BrutalCriticalCondition) ToJSON() (json.RawMessage, error) {
-	data := map[string]interface{}{
-		"ref":          "dnd5e:conditions:brutal_critical",
-		"type":         "brutal_critical",
-		"character_id": b.CharacterID,
-		"level":        b.Level,
-		"extra_dice":   b.ExtraDice,
+	data := BrutalCriticalData{
+		Ref: core.Ref{
+			Module: "dnd5e",
+			Type:   "conditions",
+			Value:  "brutal_critical",
+		},
+		CharacterID: b.CharacterID,
+		Level:       b.Level,
+		ExtraDice:   b.ExtraDice,
 	}
 	return json.Marshal(data)
+}
+
+// loadJSON loads brutal critical condition state from JSON
+func (b *BrutalCriticalCondition) loadJSON(data json.RawMessage) error {
+	var bcData BrutalCriticalData
+	if err := json.Unmarshal(data, &bcData); err != nil {
+		return rpgerr.Wrap(err, "failed to unmarshal brutal critical data")
+	}
+
+	b.CharacterID = bcData.CharacterID
+	b.Level = bcData.Level
+	b.ExtraDice = bcData.ExtraDice
+
+	return nil
 }
 
 // onDamageChain adds extra weapon damage dice on critical hits

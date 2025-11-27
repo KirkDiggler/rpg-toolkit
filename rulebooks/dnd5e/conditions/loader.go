@@ -5,14 +5,15 @@ package conditions
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // LoadJSON loads a condition from its JSON representation.
-// This is the big switch that knows how to unmarshal each condition type.
+// The game server stores conditions as opaque JSON blobs;
+// this function deserializes them into strongly-typed structs.
 func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 	// Peek at the ref to determine condition type
 	var peek struct {
@@ -20,19 +21,33 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 	}
 
 	if err := json.Unmarshal(data, &peek); err != nil {
-		return nil, fmt.Errorf("failed to peek at condition ref: %w", err)
+		return nil, rpgerr.Wrap(err, "failed to peek at condition ref")
 	}
 
-	// Big switch for all condition types
+	// Route based on ref value
 	switch peek.Ref.Value {
 	case "raging":
-		var raging RagingCondition
-		if err := json.Unmarshal(data, &raging); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal raging condition: %w", err)
+		raging := &RagingCondition{}
+		if err := raging.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load raging condition")
 		}
+		return raging, nil
 
-		return &raging, nil
+	case "brutal_critical":
+		brutal := &BrutalCriticalCondition{}
+		if err := brutal.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load brutal critical condition")
+		}
+		return brutal, nil
+
+	case "unarmored_defense":
+		unarmored := &UnarmoredDefenseCondition{}
+		if err := unarmored.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load unarmored defense condition")
+		}
+		return unarmored, nil
+
 	default:
-		return nil, fmt.Errorf("unknown condition ref: %s", peek.Ref)
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.Value)
 	}
 }

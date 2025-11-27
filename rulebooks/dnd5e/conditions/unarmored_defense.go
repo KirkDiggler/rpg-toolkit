@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -23,15 +25,23 @@ const (
 	UnarmoredDefenseMonk UnarmoredDefenseType = "monk"
 )
 
+// UnarmoredDefenseData is the JSON structure for persisting unarmored defense condition state
+type UnarmoredDefenseData struct {
+	Ref         core.Ref `json:"ref"`
+	Type        string   `json:"type"` // "barbarian" or "monk"
+	CharacterID string   `json:"character_id"`
+	Source      string   `json:"source"`
+}
+
 // UnarmoredDefenseCondition represents the Unarmored Defense feature.
 // Barbarian: AC = 10 + DEX modifier + CON modifier
 // Monk: AC = 10 + DEX modifier + WIS modifier
 // Only applies when not wearing armor. Shields can still be used.
 type UnarmoredDefenseCondition struct {
-	CharacterID string               `json:"character_id"`
-	Type        UnarmoredDefenseType `json:"type"`
-	Source      string               `json:"source"` // e.g., "barbarian:unarmored_defense"
-	bus         events.EventBus      `json:"-"`
+	CharacterID string
+	Type        UnarmoredDefenseType
+	Source      string // e.g., "barbarian:unarmored_defense"
+	bus         events.EventBus
 }
 
 // Ensure UnarmoredDefenseCondition implements dnd5eEvents.ConditionBehavior
@@ -69,13 +79,31 @@ func (u *UnarmoredDefenseCondition) Remove(_ context.Context, _ events.EventBus)
 
 // ToJSON converts the condition to JSON for persistence
 func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
-	data := map[string]interface{}{
-		"ref":          "dnd5e:conditions:unarmored_defense",
-		"type":         string(u.Type),
-		"character_id": u.CharacterID,
-		"source":       u.Source,
+	data := UnarmoredDefenseData{
+		Ref: core.Ref{
+			Module: "dnd5e",
+			Type:   "conditions",
+			Value:  "unarmored_defense",
+		},
+		Type:        string(u.Type),
+		CharacterID: u.CharacterID,
+		Source:      u.Source,
 	}
 	return json.Marshal(data)
+}
+
+// loadJSON loads unarmored defense condition state from JSON
+func (u *UnarmoredDefenseCondition) loadJSON(data json.RawMessage) error {
+	var udData UnarmoredDefenseData
+	if err := json.Unmarshal(data, &udData); err != nil {
+		return rpgerr.Wrap(err, "failed to unmarshal unarmored defense data")
+	}
+
+	u.CharacterID = udData.CharacterID
+	u.Type = UnarmoredDefenseType(udData.Type)
+	u.Source = udData.Source
+
+	return nil
 }
 
 // CalculateAC computes the AC for this unarmored defense type given ability scores.

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -15,18 +16,30 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
+// RagingData is the JSON structure for persisting raging condition state
+type RagingData struct {
+	Ref               core.Ref `json:"ref"`
+	CharacterID       string   `json:"character_id"`
+	DamageBonus       int      `json:"damage_bonus"`
+	Level             int      `json:"level"`
+	Source            string   `json:"source"`
+	TurnsActive       int      `json:"turns_active"`
+	WasHitThisTurn    bool     `json:"was_hit_this_turn"`
+	DidAttackThisTurn bool     `json:"did_attack_this_turn"`
+}
+
 // RagingCondition represents the barbarian rage state.
 // It implements the Condition interface.
 type RagingCondition struct {
-	CharacterID       string          `json:"character_id"`
-	DamageBonus       int             `json:"damage_bonus"`
-	Level             int             `json:"level"`
-	Source            string          `json:"source"`
-	TurnsActive       int             `json:"turns_active"`
-	WasHitThisTurn    bool            `json:"was_hit_this_turn"`
-	DidAttackThisTurn bool            `json:"did_attack_this_turn"`
-	subscriptionIDs   []string        `json:"-"` // Don't persist subscription IDs
-	bus               events.EventBus `json:"-"` // Don't persist bus reference
+	CharacterID       string
+	DamageBonus       int
+	Level             int
+	Source            string
+	TurnsActive       int
+	WasHitThisTurn    bool
+	DidAttackThisTurn bool
+	subscriptionIDs   []string
+	bus               events.EventBus
 }
 
 // Ensure RagingCondition implements dnd5eEvents.ConditionBehavior
@@ -98,18 +111,39 @@ func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error
 
 // ToJSON converts the condition to JSON for persistence
 func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
-	data := map[string]interface{}{
-		"ref":                  "dnd5e:conditions:raging",
-		"type":                 "raging",
-		"character_id":         r.CharacterID,
-		"damage_bonus":         r.DamageBonus,
-		"level":                r.Level,
-		"source":               r.Source,
-		"turns_active":         r.TurnsActive,
-		"was_hit_this_turn":    r.WasHitThisTurn,
-		"did_attack_this_turn": r.DidAttackThisTurn,
+	data := RagingData{
+		Ref: core.Ref{
+			Module: "dnd5e",
+			Type:   "conditions",
+			Value:  "raging",
+		},
+		CharacterID:       r.CharacterID,
+		DamageBonus:       r.DamageBonus,
+		Level:             r.Level,
+		Source:            r.Source,
+		TurnsActive:       r.TurnsActive,
+		WasHitThisTurn:    r.WasHitThisTurn,
+		DidAttackThisTurn: r.DidAttackThisTurn,
 	}
 	return json.Marshal(data)
+}
+
+// loadJSON loads raging condition state from JSON
+func (r *RagingCondition) loadJSON(data json.RawMessage) error {
+	var ragingData RagingData
+	if err := json.Unmarshal(data, &ragingData); err != nil {
+		return rpgerr.Wrap(err, "failed to unmarshal raging data")
+	}
+
+	r.CharacterID = ragingData.CharacterID
+	r.DamageBonus = ragingData.DamageBonus
+	r.Level = ragingData.Level
+	r.Source = ragingData.Source
+	r.TurnsActive = ragingData.TurnsActive
+	r.WasHitThisTurn = ragingData.WasHitThisTurn
+	r.DidAttackThisTurn = ragingData.DidAttackThisTurn
+
+	return nil
 }
 
 // onDamageReceived handles damage events to track if we were hit this turn
