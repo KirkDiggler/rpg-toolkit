@@ -58,6 +58,8 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 39. [Event Bus Evolution](014-event-bus-evolution.md) - Event system improvements
 40. [Typed Topics Design](007-typed-topics-design.md) - Type-safe event topics
 41. [Events Carry Actions, Not Objects](044-events-carry-actions-not-objects.md) - Event philosophy breakthrough
+42. [Circular Dependencies Events Subpackage](045-circular-dependencies-events-subpackage.md) - Solving import cycles
+43. [Feature Implementation Workflows](046-feature-implementation-workflows.md) - Patterns for adding class features
 
 ## Document Types
 
