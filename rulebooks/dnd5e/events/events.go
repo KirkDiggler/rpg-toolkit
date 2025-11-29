@@ -60,6 +60,19 @@ const (
 
 	// ConditionRaging is a class-specific condition for barbarians
 	ConditionRaging ConditionType = "raging"
+
+	// ConditionFightingStyle represents an active fighting style
+	ConditionFightingStyle ConditionType = "fighting_style"
+)
+
+// ConditionSource identifies where a condition originated
+type ConditionSource string
+
+const (
+	// ConditionSourceClass indicates condition from class choice (e.g., fighting style)
+	ConditionSourceClass ConditionSource = "class"
+	// ConditionSourceFeature indicates condition from feature activation (e.g., rage)
+	ConditionSourceFeature ConditionSource = "feature"
 )
 
 // ConditionBehavior represents the behavior of an active condition.
@@ -110,7 +123,7 @@ type HealingReceivedEvent struct {
 type ConditionAppliedEvent struct {
 	Target    core.Entity       // Entity receiving the condition
 	Type      ConditionType     // Type of condition being applied
-	Source    string            // What caused this condition
+	Source    ConditionSource   // What caused this condition
 	Condition ConditionBehavior // The condition behavior to apply
 }
 

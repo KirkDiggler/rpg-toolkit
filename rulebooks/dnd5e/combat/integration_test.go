@@ -489,7 +489,11 @@ func (s *CombatIntegrationSuite) TestArcheryFightingStyle() {
 		s.T().Log("")
 
 		// Apply Archery fighting style condition
-		archeryCondition := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
+		archeryCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+			CharacterID: "fighter-1",
+			Style:       fightingstyles.Archery,
+			Roller:      s.mockRoller,
+		})
 		err := archeryCondition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() {
@@ -556,7 +560,11 @@ func (s *CombatIntegrationSuite) TestGreatWeaponFighting() {
 		s.T().Log("")
 
 		// Apply GWF fighting style condition
-		gwfCondition := conditions.NewFightingStyleCondition("fighter-2", fightingstyles.GreatWeaponFighting, s.mockRoller)
+		gwfCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+			CharacterID: "fighter-2",
+			Style:       fightingstyles.GreatWeaponFighting,
+			Roller:      s.mockRoller,
+		})
 		err := gwfCondition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() {

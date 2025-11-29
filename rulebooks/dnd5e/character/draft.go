@@ -13,9 +13,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -155,6 +157,16 @@ func (d *Draft) CreatedAt() time.Time {
 // UpdatedAt returns when the draft was last updated
 func (d *Draft) UpdatedAt() time.Time {
 	return d.updatedAt
+}
+
+// GetFightingStyleSelection returns the selected fighting style, or nil if none chosen
+func (d *Draft) GetFightingStyleSelection() *fightingstyles.FightingStyle {
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceFightingStyle && choice.FightingStyleSelection != nil {
+			return choice.FightingStyleSelection
+		}
+	}
+	return nil
 }
 
 // SetName sets the character's name
@@ -521,6 +533,23 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")
 	}
 
+	// Apply conditions from choices (e.g., fighting styles)
+	initialConditions, err := d.compileConditions(characterID)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to compile conditions")
+	}
+	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(bus)
+	for _, cond := range initialConditions {
+		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+			Target:    char,
+			Type:      dnd5eEvents.ConditionFightingStyle,
+			Source:    dnd5eEvents.ConditionSourceClass,
+			Condition: cond,
+		}); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to apply initial condition")
+		}
+	}
+
 	return char, nil
 }
 
@@ -816,6 +845,27 @@ func (d *Draft) compileFeatures() ([]features.Feature, error) {
 	// TODO: Add other class features (second wind for fighter, etc)
 
 	return featureList, nil
+}
+
+// compileConditions creates conditions from draft choices (e.g., fighting styles)
+func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
+	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
+
+	// Check for fighting style
+	if style := d.GetFightingStyleSelection(); style != nil {
+		if !fightingstyles.IsImplemented(*style) {
+			return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
+				"fighting style %s is not yet implemented", *style)
+		}
+
+		fsCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+			CharacterID: characterID,
+			Style:       *style,
+		})
+		conditionList = append(conditionList, fsCondition)
+	}
+
+	return conditionList, nil
 }
 
 // Progress validation methods

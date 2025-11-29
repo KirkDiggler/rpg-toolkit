@@ -285,15 +285,18 @@ func parseWeaponDieSize(notation string) (int, error) {
 	return dieSize, nil
 }
 
-// NewFightingStyleCondition creates a new fighting style condition
-func NewFightingStyleCondition(
-	characterID string,
-	style fightingstyles.FightingStyle,
-	roller dice.Roller,
-) *FightingStyleCondition {
+// FightingStyleConditionConfig configures a fighting style condition
+type FightingStyleConditionConfig struct {
+	CharacterID string
+	Style       fightingstyles.FightingStyle
+	Roller      dice.Roller // optional, uses default if nil
+}
+
+// NewFightingStyleCondition creates a fighting style condition from config
+func NewFightingStyleCondition(cfg FightingStyleConditionConfig) *FightingStyleCondition {
 	return &FightingStyleCondition{
-		CharacterID: characterID,
-		Style:       style,
-		roller:      roller,
+		CharacterID: cfg.CharacterID,
+		Style:       cfg.Style,
+		roller:      cfg.Roller,
 	}
 }

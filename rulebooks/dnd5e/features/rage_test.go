@@ -84,7 +84,7 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	s.NotNil(receivedEvent)
 	s.Equal(owner, receivedEvent.Target)
 	s.Equal(dnd5eEvents.ConditionRaging, receivedEvent.Type)
-	s.Equal("rage-feature", receivedEvent.Source)
+	s.Equal(dnd5eEvents.ConditionSourceFeature, receivedEvent.Source)
 
 	// Check condition was created properly
 	ragingCond, ok := receivedEvent.Condition.(*conditions.RagingCondition)
