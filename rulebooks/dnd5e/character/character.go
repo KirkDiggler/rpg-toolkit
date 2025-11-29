@@ -151,6 +151,16 @@ func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return c.conditions
 }
 
+// GetHitPoints returns the character's current hit points
+func (c *Character) GetHitPoints() int {
+	return c.hitPoints
+}
+
+// GetMaxHitPoints returns the character's maximum hit points
+func (c *Character) GetMaxHitPoints() int {
+	return c.maxHitPoints
+}
+
 // ToData converts the character to its persistent data form
 func (c *Character) ToData() *Data {
 	data := &Data{
@@ -217,7 +227,7 @@ func (c *Character) ToData() *Data {
 	return data
 }
 
-// subscribeToEvents subscribes the character to condition events
+// subscribeToEvents subscribes the character to gameplay events
 func (c *Character) subscribeToEvents(ctx context.Context) error {
 	if c.bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
@@ -228,6 +238,14 @@ func (c *Character) subscribeToEvents(ctx context.Context) error {
 	subID, err := appliedTopic.Subscribe(ctx, c.onConditionApplied)
 	if err != nil {
 		return rpgerr.Wrapf(err, "failed to subscribe to condition applied")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, subID)
+
+	// Subscribe to healing received events
+	healingTopic := dnd5eEvents.HealingReceivedTopic.On(c.bus)
+	subID, err = healingTopic.Subscribe(ctx, c.onHealingReceived)
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to subscribe to healing received")
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, subID)
 
@@ -250,6 +268,22 @@ func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.Co
 
 	// Store the condition
 	c.conditions = append(c.conditions, event.Condition)
+
+	return nil
+}
+
+// onHealingReceived handles HealingReceivedEvent
+func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+	// Only process events for this character
+	if event.TargetID != c.id {
+		return nil
+	}
+
+	// Apply healing: add Amount to hitPoints, cap at maxHitPoints
+	c.hitPoints += event.Amount
+	if c.hitPoints > c.maxHitPoints {
+		c.hitPoints = c.maxHitPoints
+	}
 
 	return nil
 }

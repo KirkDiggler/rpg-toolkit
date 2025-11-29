@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -359,6 +360,110 @@ func (s *CombatIntegrationSuite) TestAttackWithoutRage() {
 		s.T().Log("✓ Integration test passed: No rage bonus when not active")
 
 		s.Equal(expectedDamage, result.TotalDamage, "Should NOT include rage damage")
+	})
+}
+
+// Test: Second Wind heals fighter and caps at max HP
+func (s *CombatIntegrationSuite) TestSecondWindIntegration() {
+	s.Run("Second Wind healing integration", func() {
+		s.T().Log("=== Second Wind Integration Test ===")
+
+		// Create a level 3 fighter with Second Wind feature
+		fighterData := &character.Data{
+			ID:               "fighter-1",
+			PlayerID:         "player-1",
+			Name:             "Roland",
+			Level:            3,
+			ProficiencyBonus: 2,
+			RaceID:           races.Human,
+			ClassID:          classes.Fighter,
+			AbilityScores: shared.AbilityScores{
+				abilities.STR: 16, // +3
+				abilities.DEX: 14, // +2
+				abilities.CON: 14, // +2
+				abilities.INT: 10, // +0
+				abilities.WIS: 12, // +1
+				abilities.CHA: 8,  // -1
+			},
+			HitPoints:    10, // Damaged
+			MaxHitPoints: 20,
+			ArmorClass:   16,
+			Features: []json.RawMessage{
+				json.RawMessage(`{
+					"ref": {
+						"module": "dnd5e",
+						"type":   "features",
+						"value":  "second_wind"
+					},
+					"id":       "second_wind",
+					"name":     "Second Wind",
+					"level":    3,
+					"uses":     1,
+					"max_uses": 1
+				}`),
+			},
+		}
+
+		fighter, err := character.LoadFromData(s.ctx, fighterData, s.bus)
+		s.Require().NoError(err)
+		s.Require().NotNil(fighter)
+		defer func() {
+			_ = fighter.Cleanup(s.ctx)
+		}()
+
+		s.T().Logf("Fighter: %s (Level %d, %d/%d HP)",
+			fighter.GetName(), fighter.GetLevel(), fighter.GetHitPoints(), fighter.GetMaxHitPoints())
+		s.T().Log("")
+
+		// Get Second Wind feature
+		secondWind := fighter.GetFeature("second_wind")
+		s.Require().NotNil(secondWind, "Fighter should have Second Wind feature")
+
+		// Track the healing event
+		var receivedEvent *dnd5eEvents.HealingReceivedEvent
+		topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
+		_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+			receivedEvent = &event
+			return nil
+		})
+		s.Require().NoError(err)
+
+		// Activate Second Wind
+		s.T().Logf("→ %s uses Second Wind!", fighter.GetName())
+		err = secondWind.Activate(s.ctx, fighter, features.FeatureInput{Bus: s.bus})
+		s.Require().NoError(err)
+
+		// Verify healing event was published
+		s.Require().NotNil(receivedEvent, "Healing event should be published")
+		s.Equal(fighter.GetID(), receivedEvent.TargetID)
+		s.Equal("second_wind", receivedEvent.Source)
+
+		// Verify roll and modifier
+		s.GreaterOrEqual(receivedEvent.Roll, 1, "Roll should be at least 1")
+		s.LessOrEqual(receivedEvent.Roll, 10, "Roll should be at most 10")
+		s.Equal(3, receivedEvent.Modifier, "Modifier should be fighter level (3)")
+
+		totalHealing := receivedEvent.Roll + receivedEvent.Modifier
+
+		s.T().Logf("  Roll: 1d10(%d) + Level(%d) = %d HP healed", receivedEvent.Roll, receivedEvent.Modifier, totalHealing)
+
+		// Verify HP was updated
+		expectedHP := 10 + totalHealing
+		if expectedHP > 20 {
+			expectedHP = 20
+		}
+		actualHP := fighter.GetHitPoints()
+
+		s.T().Logf("  HP: 10 → %d", actualHP)
+		if actualHP == 20 {
+			s.T().Log("  (capped at max)")
+		}
+		s.T().Log("")
+
+		s.Equal(expectedHP, actualHP, "HP should be updated with healing")
+		s.LessOrEqual(actualHP, 20, "HP should not exceed max")
+
+		s.T().Log("✓ Integration test passed")
 	})
 }
 
