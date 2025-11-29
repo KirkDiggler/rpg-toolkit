@@ -42,98 +42,81 @@ func TestFightingStyleSuite(t *testing.T) {
 	suite.Run(t, new(FightingStyleTestSuite))
 }
 
-// TestArcheryAddsToRangedAttacks verifies Archery adds +2 to ranged attack rolls
-func (s *FightingStyleTestSuite) TestArcheryAddsToRangedAttacks() {
-	// Create Archery fighting style condition
-	fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
-
-	// Apply the condition
-	err := fs.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	defer func() {
-		_ = fs.Remove(s.ctx, s.bus)
-	}()
-
-	// Publish an AttackEvent for a ranged attack
-	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
-	err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
-		AttackerID: "fighter-1",
-		TargetID:   "goblin-1",
-		WeaponRef:  "longbow",
-		IsMelee:    false, // Ranged attack
-	})
-	s.Require().NoError(err)
-
-	// Create attack chain event
-	attackEvent := combat.AttackChainEvent{
-		AttackerID:      "fighter-1",
-		TargetID:        "goblin-1",
-		AttackRoll:      15,
-		AttackBonus:     5, // Base: DEX(3) + Prof(2)
-		TargetAC:        13,
-		IsNaturalTwenty: false,
-		IsNaturalOne:    false,
+// TestArcheryBonusApplication verifies Archery adds +2 to ranged attacks only
+func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
+	testCases := []struct {
+		name               string
+		weaponRef          string
+		isMelee            bool
+		baseBonus          int
+		expectedFinalBonus int
+		description        string
+	}{
+		{
+			name:               "AddsToRangedAttacks",
+			weaponRef:          "longbow",
+			isMelee:            false,
+			baseBonus:          5, // DEX(3) + Prof(2)
+			expectedFinalBonus: 7, // 5 + 2 from Archery
+			description:        "Archery should add +2 to ranged attack bonus",
+		},
+		{
+			name:               "DoesNotAddToMeleeAttacks",
+			weaponRef:          "longsword",
+			isMelee:            true,
+			baseBonus:          5, // STR(3) + Prof(2)
+			expectedFinalBonus: 5, // No bonus from Archery
+			description:        "Archery should NOT add to melee attacks",
+		},
 	}
 
-	// Publish through attack chain
-	attackChain := events.NewStagedChain[combat.AttackChainEvent](dnd5e.ModifierStages)
-	attacks := combat.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
-	s.Require().NoError(err)
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			// Create Archery fighting style condition
+			fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
 
-	// Execute chain
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
-	s.Require().NoError(err)
+			// Apply the condition
+			err := fs.Apply(s.ctx, s.bus)
+			s.Require().NoError(err)
+			defer func() {
+				_ = fs.Remove(s.ctx, s.bus)
+			}()
 
-	// Verify +2 was added
-	s.Equal(7, finalEvent.AttackBonus, "Archery should add +2 to attack bonus (5 + 2 = 7)")
-}
+			// Publish an AttackEvent
+			attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
+			err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
+				AttackerID: "fighter-1",
+				TargetID:   "goblin-1",
+				WeaponRef:  tc.weaponRef,
+				IsMelee:    tc.isMelee,
+			})
+			s.Require().NoError(err)
 
-// TestArcheryDoesNotAddToMeleeAttacks verifies Archery does NOT add to melee attacks
-func (s *FightingStyleTestSuite) TestArcheryDoesNotAddToMeleeAttacks() {
-	// Create Archery fighting style condition
-	fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
+			// Create attack chain event
+			attackEvent := combat.AttackChainEvent{
+				AttackerID:      "fighter-1",
+				TargetID:        "goblin-1",
+				AttackRoll:      15,
+				AttackBonus:     tc.baseBonus,
+				TargetAC:        13,
+				IsNaturalTwenty: false,
+				IsNaturalOne:    false,
+			}
 
-	// Apply the condition
-	err := fs.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	defer func() {
-		_ = fs.Remove(s.ctx, s.bus)
-	}()
+			// Publish through attack chain
+			attackChain := events.NewStagedChain[combat.AttackChainEvent](dnd5e.ModifierStages)
+			attacks := combat.AttackChain.On(s.bus)
+			modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+			s.Require().NoError(err)
 
-	// Publish an AttackEvent for a melee attack
-	attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
-	err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
-		AttackerID: "fighter-1",
-		TargetID:   "goblin-1",
-		WeaponRef:  "longsword",
-		IsMelee:    true, // Melee attack
-	})
-	s.Require().NoError(err)
+			// Execute chain
+			finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+			s.Require().NoError(err)
 
-	// Create attack chain event
-	attackEvent := combat.AttackChainEvent{
-		AttackerID:      "fighter-1",
-		TargetID:        "goblin-1",
-		AttackRoll:      15,
-		AttackBonus:     5, // Base: STR(3) + Prof(2)
-		TargetAC:        13,
-		IsNaturalTwenty: false,
-		IsNaturalOne:    false,
+			// Verify expected bonus
+			s.Equal(tc.expectedFinalBonus, finalEvent.AttackBonus, tc.description)
+		})
 	}
-
-	// Publish through attack chain
-	attackChain := events.NewStagedChain[combat.AttackChainEvent](dnd5e.ModifierStages)
-	attacks := combat.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
-	s.Require().NoError(err)
-
-	// Execute chain
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
-	s.Require().NoError(err)
-
-	// Verify no bonus was added
-	s.Equal(5, finalEvent.AttackBonus, "Archery should NOT add to melee attacks")
 }
 
 // TestGreatWeaponFightingRerolls verifies GWF rerolls 1s and 2s on weapon damage
