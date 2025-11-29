@@ -241,6 +241,14 @@ func (c *Character) subscribeToEvents(ctx context.Context) error {
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, subID)
 
+	// Subscribe to condition removed events
+	removedTopic := dnd5eEvents.ConditionRemovedTopic.On(c.bus)
+	subID, err = removedTopic.Subscribe(ctx, c.onConditionRemoved)
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to subscribe to condition removed events")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, subID)
+
 	// Subscribe to healing received events
 	healingTopic := dnd5eEvents.HealingReceivedTopic.On(c.bus)
 	subID, err = healingTopic.Subscribe(ctx, c.onHealingReceived)
@@ -268,6 +276,40 @@ func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.Co
 
 	// Store the condition
 	c.conditions = append(c.conditions, event.Condition)
+
+	return nil
+}
+
+// onConditionRemoved handles ConditionRemovedEvent
+func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+	// Only process events for this character
+	if event.CharacterID != c.id {
+		return nil
+	}
+
+	// Remove the condition from our list by matching the ConditionRef
+	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
+	for _, cond := range c.conditions {
+		// Get the condition's ref by converting to JSON and parsing
+		jsonData, err := cond.ToJSON()
+		if err != nil {
+			return rpgerr.Wrapf(err, "failed to serialize condition for removal check")
+		}
+
+		// Parse the ref from JSON
+		var refData struct {
+			Ref core.Ref `json:"ref"`
+		}
+		if err := json.Unmarshal(jsonData, &refData); err != nil {
+			return rpgerr.Wrapf(err, "failed to parse condition ref from JSON")
+		}
+
+		// Keep condition if it doesn't match the removed ref
+		if refData.Ref.String() != event.ConditionRef {
+			filtered = append(filtered, cond)
+		}
+	}
+	c.conditions = filtered
 
 	return nil
 }
