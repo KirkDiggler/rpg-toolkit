@@ -60,6 +60,9 @@ const (
 
 	// ConditionRaging is a class-specific condition for barbarians
 	ConditionRaging ConditionType = "raging"
+
+	// ConditionFightingStyle represents an active fighting style
+	ConditionFightingStyle ConditionType = "fighting_style"
 )
 
 // ConditionBehavior represents the behavior of an active condition.
