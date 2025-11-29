@@ -288,6 +288,80 @@ func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 	s.Empty(charConditions, "Character without fighting style should have no conditions")
 }
 
+// TestFighterWithUnimplementedStyleFails tests that choosing an unimplemented
+// fighting style fails during finalization
+func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
+	// Create a new draft
+	draft, err := NewDraft(&DraftConfig{
+		ID:       "test-defense-fighter",
+		PlayerID: "player-4",
+	})
+	s.Require().NoError(err)
+
+	// Set name
+	err = draft.SetName(&SetNameInput{Name: "Defensive Fighter"})
+	s.Require().NoError(err)
+
+	// Set race
+	err = draft.SetRace(&SetRaceInput{
+		RaceID: races.Human,
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Common},
+		},
+	})
+	s.Require().NoError(err)
+
+	// Set class with Defense fighting style (not yet implemented)
+	err = draft.SetClass(&SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{
+				skills.Athletics,
+				skills.Perception,
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackExplorer},
+			},
+			FightingStyle: fightingstyles.Defense, // Not yet implemented!
+		},
+	})
+	s.Require().NoError(err)
+
+	// Set background
+	err = draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+	})
+	s.Require().NoError(err)
+
+	// Set ability scores
+	err = draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 15,
+			abilities.DEX: 14,
+			abilities.CON: 13,
+			abilities.INT: 12,
+			abilities.WIS: 10,
+			abilities.CHA: 8,
+		},
+		Method: "standard-array",
+	})
+	s.Require().NoError(err)
+
+	// Finalize should fail with "not yet implemented" error
+	char, err := draft.ToCharacter(context.Background(), "defense-fighter", s.eventBus)
+	s.Require().Error(err, "ToCharacter should fail for unimplemented fighting style")
+	s.Nil(char, "Character should not be created when finalization fails")
+	s.Contains(err.Error(), "not yet implemented", "Error should mention that style is not implemented")
+	s.Contains(err.Error(), "defense", "Error should mention the specific fighting style")
+}
+
 func TestFighterFinalizeSuite(t *testing.T) {
 	suite.Run(t, new(FighterFinalizeSuite))
 }

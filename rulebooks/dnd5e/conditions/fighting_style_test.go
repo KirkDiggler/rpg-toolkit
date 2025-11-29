@@ -73,7 +73,11 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			// Create Archery fighting style condition
-			fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
+			fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+				CharacterID: "fighter-1",
+				Style:       fightingstyles.Archery,
+				Roller:      s.mockRoller,
+			})
 
 			// Apply the condition
 			err := fs.Apply(s.ctx, s.bus)
@@ -122,7 +126,11 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 // TestGreatWeaponFightingRerolls verifies GWF rerolls 1s and 2s on weapon damage
 func (s *FightingStyleTestSuite) TestGreatWeaponFightingRerolls() {
 	// Create GWF fighting style condition
-	fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.GreatWeaponFighting, s.mockRoller)
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.GreatWeaponFighting,
+		Roller:      s.mockRoller,
+	})
 
 	// Apply the condition
 	err := fs.Apply(s.ctx, s.bus)
@@ -190,7 +198,11 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingRerolls() {
 // TestGreatWeaponFightingDoesNotRerollHighNumbers verifies GWF only rerolls 1s and 2s
 func (s *FightingStyleTestSuite) TestGreatWeaponFightingDoesNotRerollHighNumbers() {
 	// Create GWF fighting style condition
-	fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.GreatWeaponFighting, s.mockRoller)
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.GreatWeaponFighting,
+		Roller:      s.mockRoller,
+	})
 
 	// Apply the condition
 	err := fs.Apply(s.ctx, s.bus)
@@ -250,7 +262,11 @@ func (s *FightingStyleTestSuite) TestJSONRoundTrip() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			// Create original condition
-			original := conditions.NewFightingStyleCondition("fighter-1", tc.style, s.mockRoller)
+			original := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+				CharacterID: "fighter-1",
+				Style:       tc.style,
+				Roller:      s.mockRoller,
+			})
 
 			// Serialize to JSON
 			jsonData, err := original.ToJSON()
@@ -273,7 +289,11 @@ func (s *FightingStyleTestSuite) TestJSONRoundTrip() {
 
 // TestApplyAndRemove verifies the condition can be applied and removed
 func (s *FightingStyleTestSuite) TestApplyAndRemove() {
-	fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Archery,
+		Roller:      s.mockRoller,
+	})
 
 	// Apply should succeed
 	err := fs.Apply(s.ctx, s.bus)
@@ -291,7 +311,11 @@ func (s *FightingStyleTestSuite) TestApplyAndRemove() {
 // TestUnimplementedStyleReturnsError verifies unsupported styles return error
 func (s *FightingStyleTestSuite) TestUnimplementedStyleReturnsError() {
 	// Try to apply Defense (not yet implemented)
-	fs := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Defense, s.mockRoller)
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Defense,
+		Roller:      s.mockRoller,
+	})
 
 	// Apply should return error
 	err := fs.Apply(s.ctx, s.bus)

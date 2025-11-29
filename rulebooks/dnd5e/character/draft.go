@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -523,7 +524,10 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	}
 
 	// Apply conditions from choices (e.g., fighting styles)
-	initialConditions := d.compileConditions(characterID)
+	initialConditions, err := d.compileConditions(characterID)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to compile conditions")
+	}
 	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(bus)
 	for _, cond := range initialConditions {
 		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
@@ -834,23 +838,33 @@ func (d *Draft) compileFeatures() ([]features.Feature, error) {
 }
 
 // compileConditions creates conditions from draft choices (e.g., fighting styles)
-func (d *Draft) compileConditions(characterID string) []dnd5eEvents.ConditionBehavior {
+func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
 	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
 
 	// Look for fighting style choices
 	for _, choice := range d.choices {
 		if choice.Category == shared.ChoiceFightingStyle && choice.FightingStyleSelection != nil {
-			// Create fighting style condition (nil roller uses default)
-			fsCondition := conditions.NewFightingStyleCondition(
-				characterID,
-				*choice.FightingStyleSelection,
-				nil, // uses default roller
-			)
+			style := *choice.FightingStyleSelection
+
+			// Validate style is implemented
+			switch style {
+			case fightingstyles.Archery, fightingstyles.GreatWeaponFighting:
+				// OK - implemented
+			default:
+				return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
+					"fighting style %s is not yet implemented", style)
+			}
+
+			// Create fighting style condition
+			fsCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+				CharacterID: characterID,
+				Style:       style,
+			})
 			conditionList = append(conditionList, fsCondition)
 		}
 	}
 
-	return conditionList
+	return conditionList, nil
 }
 
 // Progress validation methods
