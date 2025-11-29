@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -521,6 +522,18 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")
 	}
 
+	// Apply conditions from choices (e.g., fighting styles)
+	initialConditions := d.compileConditions(characterID)
+	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(bus)
+	for _, cond := range initialConditions {
+		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+			Target:    char,
+			Condition: cond,
+		}); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to apply initial condition")
+		}
+	}
+
 	return char, nil
 }
 
@@ -816,6 +829,26 @@ func (d *Draft) compileFeatures() ([]features.Feature, error) {
 	// TODO: Add other class features (second wind for fighter, etc)
 
 	return featureList, nil
+}
+
+// compileConditions creates conditions from draft choices (e.g., fighting styles)
+func (d *Draft) compileConditions(characterID string) []dnd5eEvents.ConditionBehavior {
+	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
+
+	// Look for fighting style choices
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceFightingStyle && choice.FightingStyleSelection != nil {
+			// Create fighting style condition (nil roller uses default)
+			fsCondition := conditions.NewFightingStyleCondition(
+				characterID,
+				*choice.FightingStyleSelection,
+				nil, // uses default roller
+			)
+			conditionList = append(conditionList, fsCondition)
+		}
+	}
+
+	return conditionList
 }
 
 // Progress validation methods
