@@ -529,7 +529,7 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 			Target:    char,
 			Type:      dnd5eEvents.ConditionFightingStyle,
-			Source:    "class",
+			Source:    dnd5eEvents.ConditionSourceClass,
 			Condition: cond,
 		}); err != nil {
 			return nil, rpgerr.Wrapf(err, "failed to apply initial condition")
