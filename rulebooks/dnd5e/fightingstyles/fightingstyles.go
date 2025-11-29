@@ -89,3 +89,13 @@ func ValidStyles() []FightingStyle {
 	// Later could filter based on class (e.g., Rangers don't get Great Weapon Fighting)
 	return All()
 }
+
+// IsImplemented returns true if the fighting style has been implemented
+func IsImplemented(style FightingStyle) bool {
+	switch style {
+	case Archery, GreatWeaponFighting:
+		return true
+	default:
+		return false
+	}
+}

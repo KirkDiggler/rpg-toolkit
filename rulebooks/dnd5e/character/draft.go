@@ -159,6 +159,16 @@ func (d *Draft) UpdatedAt() time.Time {
 	return d.updatedAt
 }
 
+// GetFightingStyleSelection returns the selected fighting style, or nil if none chosen
+func (d *Draft) GetFightingStyleSelection() *fightingstyles.FightingStyle {
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceFightingStyle && choice.FightingStyleSelection != nil {
+			return choice.FightingStyleSelection
+		}
+	}
+	return nil
+}
+
 // SetName sets the character's name
 func (d *Draft) SetName(input *SetNameInput) error {
 	if input == nil {
@@ -841,27 +851,18 @@ func (d *Draft) compileFeatures() ([]features.Feature, error) {
 func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
 	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
 
-	// Look for fighting style choices
-	for _, choice := range d.choices {
-		if choice.Category == shared.ChoiceFightingStyle && choice.FightingStyleSelection != nil {
-			style := *choice.FightingStyleSelection
-
-			// Validate style is implemented
-			switch style {
-			case fightingstyles.Archery, fightingstyles.GreatWeaponFighting:
-				// OK - implemented
-			default:
-				return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
-					"fighting style %s is not yet implemented", style)
-			}
-
-			// Create fighting style condition
-			fsCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
-				CharacterID: characterID,
-				Style:       style,
-			})
-			conditionList = append(conditionList, fsCondition)
+	// Check for fighting style
+	if style := d.GetFightingStyleSelection(); style != nil {
+		if !fightingstyles.IsImplemented(*style) {
+			return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
+				"fighting style %s is not yet implemented", *style)
 		}
+
+		fsCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+			CharacterID: characterID,
+			Style:       *style,
+		})
+		conditionList = append(conditionList, fsCondition)
 	}
 
 	return conditionList, nil
