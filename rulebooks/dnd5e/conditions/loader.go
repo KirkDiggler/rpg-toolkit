@@ -47,6 +47,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return unarmored, nil
 
+	case "fighting_style":
+		fs := &FightingStyleCondition{}
+		if err := fs.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load fighting style condition")
+		}
+		return fs, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.Value)
 	}

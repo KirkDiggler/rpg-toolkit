@@ -15,8 +15,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -465,6 +467,181 @@ func (s *CombatIntegrationSuite) TestSecondWindIntegration() {
 
 		s.T().Log("✓ Integration test passed")
 	})
+}
+
+// Test: Archery fighting style adds +2 to ranged attack rolls
+func (s *CombatIntegrationSuite) TestArcheryFightingStyle() {
+	s.Run("Archery adds +2 to ranged attacks", func() {
+		s.T().Log("=== Archery Fighting Style Test ===")
+
+		// Create a fighter with Archery fighting style
+		fighterScores := shared.AbilityScores{
+			abilities.STR: 10, // +0
+			abilities.DEX: 16, // +3
+			abilities.CON: 14, // +2
+			abilities.INT: 10, // +0
+			abilities.WIS: 12, // +1
+			abilities.CHA: 8,  // -1
+		}
+
+		s.T().Log("Archer: Legolas (Level 1 Fighter, DEX +3)")
+		s.T().Log("Target: Goblin (AC 13)")
+		s.T().Log("")
+
+		// Apply Archery fighting style condition
+		archeryCondition := conditions.NewFightingStyleCondition("fighter-1", fightingstyles.Archery, s.mockRoller)
+		err := archeryCondition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() {
+			_ = archeryCondition.Remove(s.ctx, s.bus)
+		}()
+
+		// Get a longbow
+		longbow, err := weapons.GetByID(weapons.Longbow)
+		s.Require().NoError(err)
+
+		// Mock dice: attack roll of 14
+		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(14, nil).Times(1)
+		s.mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil).Times(1)
+
+		s.T().Log("→ Legolas fires longbow at Goblin")
+
+		// Create mock entities
+		fighter := &mockEntity{id: "fighter-1", name: "Legolas"}
+		goblin := &mockEntity{id: "goblin-1", name: "Goblin"}
+
+		// Execute attack
+		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
+			Attacker:         fighter,
+			Defender:         goblin,
+			Weapon:           &longbow,
+			AttackerScores:   fighterScores,
+			DefenderAC:       13,
+			ProficiencyBonus: 2,
+			EventBus:         s.bus,
+			Roller:           s.mockRoller,
+		})
+
+		s.Require().NoError(err)
+		s.True(result.Hit, "Attack should hit")
+
+		// Attack roll: 1d20(14) + DEX(3) + Prof(2) + Archery(2) = 21
+		expectedAttackBonus := 3 + 2 + 2 // DEX + Prof + Archery
+		s.Equal(expectedAttackBonus, result.AttackBonus, "Should include Archery +2 bonus")
+
+		s.T().Logf("  Attack roll: 1d20(%d) + DEX(%d) + Prof(%d) + Archery(%d) = %d",
+			14, 3, 2, 2, 14+expectedAttackBonus)
+		s.T().Logf("  vs AC %d → HIT!", 13)
+		s.T().Log("")
+		s.T().Log("✓ Integration test passed: Archery adds +2 to ranged attacks")
+	})
+}
+
+// Test: Great Weapon Fighting rerolls 1s and 2s on weapon damage
+func (s *CombatIntegrationSuite) TestGreatWeaponFighting() {
+	s.Run("GWF rerolls 1s and 2s", func() {
+		s.T().Log("=== Great Weapon Fighting Test ===")
+
+		fighterScores := shared.AbilityScores{
+			abilities.STR: 16, // +3
+			abilities.DEX: 10, // +0
+			abilities.CON: 14, // +2
+			abilities.INT: 10, // +0
+			abilities.WIS: 12, // +1
+			abilities.CHA: 8,  // -1
+		}
+
+		s.T().Log("Fighter: Conan (Level 1 Fighter, STR +3)")
+		s.T().Log("Target: Goblin (AC 13)")
+		s.T().Log("")
+
+		// Apply GWF fighting style condition
+		gwfCondition := conditions.NewFightingStyleCondition("fighter-2", fightingstyles.GreatWeaponFighting, s.mockRoller)
+		err := gwfCondition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() {
+			_ = gwfCondition.Remove(s.ctx, s.bus)
+		}()
+
+		// Get a greatsword
+		greatsword, err := weapons.GetByID(weapons.Greatsword)
+		s.Require().NoError(err)
+
+		// Mock dice: attack hits, damage has 1 and 2 which get rerolled
+		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)             // Attack roll
+		s.mockRoller.EXPECT().RollN(s.ctx, 2, 6).Return([]int{1, 4}, nil).Times(1) // Weapon damage: 1, 4
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(3, nil).Times(1)        // Reroll the 1 -> 3
+
+		s.T().Log("→ Conan swings greatsword at Goblin")
+
+		// Create mock entities
+		fighter := &mockEntity{id: "fighter-2", name: "Conan"}
+		goblin := &mockEntity{id: "goblin-2", name: "Goblin"}
+
+		// Execute attack
+		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
+			Attacker:         fighter,
+			Defender:         goblin,
+			Weapon:           &greatsword,
+			AttackerScores:   fighterScores,
+			DefenderAC:       13,
+			ProficiencyBonus: 2,
+			EventBus:         s.bus,
+			Roller:           s.mockRoller,
+		})
+
+		s.Require().NoError(err)
+		s.True(result.Hit, "Attack should hit")
+
+		s.T().Logf("  Attack roll: 1d20(%d) + STR(%d) + Prof(%d) = %d",
+			15, 3, 2, 15+3+2)
+		s.T().Logf("  vs AC %d → HIT!", 13)
+		s.T().Log("")
+
+		// Verify the breakdown includes reroll information
+		s.Require().NotNil(result.Breakdown)
+		s.Require().Greater(len(result.Breakdown.Components), 0)
+
+		weaponComp := result.Breakdown.Components[0]
+		s.T().Log("  Damage breakdown:")
+		s.T().Logf("    2d6 weapon damage: %v", weaponComp.OriginalDiceRolls)
+
+		if len(weaponComp.Rerolls) > 0 {
+			for _, reroll := range weaponComp.Rerolls {
+				s.T().Logf("      → Reroll die %d: was %d, now %d (Great Weapon Fighting)",
+					reroll.DieIndex, reroll.Before, reroll.After)
+			}
+			s.T().Logf("    Final rolls: %v = %d", weaponComp.FinalDiceRolls, sumDice(weaponComp.FinalDiceRolls))
+		}
+
+		s.T().Logf("    + STR modifier: %d", 3)
+		s.T().Logf("  = Total damage: %d", result.TotalDamage)
+		s.T().Log("")
+		s.T().Log("✓ Integration test passed: GWF rerolls 1s and 2s correctly")
+	})
+}
+
+// mockEntity is a simple entity for testing
+type mockEntity struct {
+	id   string
+	name string
+}
+
+func (m *mockEntity) GetID() string {
+	return m.id
+}
+
+func (m *mockEntity) GetType() core.EntityType {
+	return "character"
+}
+
+// sumDice sums a slice of dice rolls
+func sumDice(rolls []int) int {
+	sum := 0
+	for _, r := range rolls {
+		sum += r
+	}
+	return sum
 }
 
 func TestCombatIntegrationSuite(t *testing.T) {
