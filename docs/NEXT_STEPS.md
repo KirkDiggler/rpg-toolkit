@@ -1,9 +1,15 @@
 # Next Steps - Combat Vertical Slice
 
-**Last updated**: 2025-11-16  
-**Status**: Phase 1 Complete ✅, Ready for Phase 2
+**Last updated**: 2025-11-26
+**Status**: Phase 1 Complete ✅, Feature Implementation Workflow Established ✅
 
 ## What We Just Finished
+
+✅ **PR #357 - Feature Implementation Workflow**
+- Established skill for implementing D&D 5e features/spells/conditions
+- Created `.claude/skills/dnd5e-feature-implementation/SKILL.md`
+- Defines standard structure, definition of done, combat log output pattern
+- Integration tests print readable combat log for debugging/verification
 
 ✅ **PR #334 - Combat Integration Tests** (Issue #324)
 - Created comprehensive integration test suite
@@ -148,4 +154,114 @@ You can literally load a barbarian, activate rage, and attack a goblin in a test
 
 ---
 
-🤖 Last updated by Claude Code session ending 2025-11-16
+## Architecture Overview
+
+Understanding who uses what is critical for implementing features correctly.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  rpg-dnd5e-web (Discord Activity)                               │
+│  - Renders UI, calls API RPCs                                   │
+│  - Never knows game rules, just displays what API returns       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  rpg-api (Game Server / Orchestrator)                           │
+│  - Persists data (characters, encounters, features as JSON)     │
+│  - Orchestrates: loads data → calls toolkit → saves results     │
+│  - NEVER knows what "Rage" is - just loads/saves JSON blobs     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  rpg-toolkit/rulebooks/dnd5e (D&D 5e Rules)                     │
+│  - Implements game rules (Rage adds +2 damage)                  │
+│  - Data interfaces: ToJSON() / LoadJSON() for persistence       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  rpg-toolkit/core, events, dice, mechanics                      │
+│  - Generic infrastructure (not D&D specific)                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## GitHub Organization
+
+### Projects (cross-repo tracking)
+- **Phase 1: Level 1 Combat Encounters** - Current focus
+- **RPG Ecosystem Roadmap** - Big picture planning
+- **RPG Toolkit Development** - Toolkit-specific work
+
+### Issue Tracking Pattern
+Each feature typically spans multiple repos:
+1. **rpg-toolkit** - Feature implementation (rules logic)
+2. **rpg-api** - RPC endpoint + orchestration
+3. **rpg-dnd5e-web** - UI to trigger and display
+
+Link issues across repos and track in Projects.
+
+---
+
+## Feature Implementation Workflow
+
+We've established a pattern for implementing D&D 5e features efficiently using focused agents.
+
+**Skill:** `.claude/skills/dnd5e-feature-implementation/SKILL.md`
+
+### The Workflow
+
+1. **Main context** stays high-level - tracks what needs to be done, reviews results
+2. **Agents** do the implementation - use the `dnd5e-feature-implementation` skill
+3. **Integration tests** prove it works - print combat log output with `-v`
+
+### Definition of Done
+
+A feature is COMPLETE when:
+- [ ] Unit tests pass
+- [ ] Lint passes
+- [ ] Integration test prints combat log (run with `-v`)
+- [ ] Example test documents event subscription pattern
+- [ ] All data is trackable (dice rolls, rerolls, modifiers)
+- [ ] JSON round-trips correctly (game server can persist/reload)
+
+### Dispatching an Agent
+
+```
+Implement [Feature Name] for D&D 5e following the dnd5e-feature-implementation skill.
+
+Requirements:
+- [Specific behavior from D&D 5e rules]
+- [Level scaling if any]
+
+Use rage.go and raging.go as templates.
+Integration test should print combat log showing all tracked data.
+Ensure ToJSON/loadJSON round-trip works for game server persistence.
+```
+
+### Open Feature Issues (rpg-toolkit)
+
+| Issue | Feature | Class | Priority |
+|-------|---------|-------|----------|
+| #352 | Fighting Style | Fighter | High |
+| #353 | Second Wind | Fighter | High |
+| #354 | Unarmored Defense | Monk | High |
+| #355 | Martial Arts | Monk | High |
+
+### Running Integration Tests
+
+```bash
+# See all combat log output
+cd rpg-toolkit/rulebooks/dnd5e
+go test -v ./combat -run TestCombatIntegrationSuite
+
+# Run specific feature test
+go test -v ./combat -run TestCombatIntegrationSuite/TestBarbarianRageAddsDamageOnHit
+```
+
+---
+
+🤖 Last updated by Claude Code session ending 2025-11-26

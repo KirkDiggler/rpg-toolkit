@@ -97,6 +97,15 @@ type DamageReceivedEvent struct {
 	DamageType string // Type of damage (slashing, fire, etc)
 }
 
+// HealingReceivedEvent is published when a character receives healing
+type HealingReceivedEvent struct {
+	TargetID string // ID of the character receiving healing
+	Amount   int    // Amount of healing
+	Roll     int    // The dice roll result (before modifiers)
+	Modifier int    // Any modifier added to the roll (e.g., fighter level)
+	Source   string // What caused this healing (e.g., "second_wind")
+}
+
 // ConditionAppliedEvent is published when a condition is applied to an entity
 type ConditionAppliedEvent struct {
 	Target    core.Entity       // Entity receiving the condition
@@ -130,6 +139,9 @@ var (
 
 	// DamageReceivedTopic provides typed pub/sub for damage received events
 	DamageReceivedTopic = events.DefineTypedTopic[DamageReceivedEvent]("dnd5e.combat.damage.received")
+
+	// HealingReceivedTopic provides typed pub/sub for healing received events
+	HealingReceivedTopic = events.DefineTypedTopic[HealingReceivedEvent]("dnd5e.combat.healing.received")
 
 	// ConditionAppliedTopic provides typed pub/sub for condition applied events
 	ConditionAppliedTopic = events.DefineTypedTopic[ConditionAppliedEvent]("dnd5e.condition.applied")

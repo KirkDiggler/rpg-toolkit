@@ -32,6 +32,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return rage, nil
+	case "second_wind":
+		secondWind := &SecondWind{}
+		if err := secondWind.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load second wind: %w", err)
+		}
+
+		return secondWind, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.Value)
 	}
