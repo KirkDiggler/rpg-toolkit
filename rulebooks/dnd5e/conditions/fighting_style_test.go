@@ -322,3 +322,21 @@ func (s *FightingStyleTestSuite) TestUnimplementedStyleReturnsError() {
 	s.Require().Error(err)
 	s.Contains(err.Error(), "not yet implemented")
 }
+
+// TestRejectsDoubleApply verifies that applying the same condition twice returns error
+func (s *FightingStyleTestSuite) TestRejectsDoubleApply() {
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Archery,
+		Roller:      s.mockRoller,
+	})
+
+	// First apply should succeed
+	err := fs.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Second apply should fail
+	err = fs.Apply(s.ctx, s.bus)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "already applied")
+}

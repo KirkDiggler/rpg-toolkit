@@ -45,8 +45,16 @@ type RagingCondition struct {
 // Ensure RagingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*RagingCondition)(nil)
 
+// IsApplied returns true if this condition is currently applied
+func (r *RagingCondition) IsApplied() bool {
+	return r.bus != nil
+}
+
 // Apply subscribes this condition to relevant combat events
 func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error {
+	if r.IsApplied() {
+		return rpgerr.New(rpgerr.CodeAlreadyExists, "raging condition already applied")
+	}
 	r.bus = bus
 
 	// Subscribe to damage events to track if we were hit

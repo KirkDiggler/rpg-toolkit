@@ -46,8 +46,16 @@ var _ dnd5eEvents.ConditionBehavior = (*FightingStyleCondition)(nil)
 // diceRegex matches dice notation like "1d8", "2d6", etc.
 var diceRegex = regexp.MustCompile(`(\d+)[dD](\d+)`)
 
+// IsApplied returns true if this condition is currently applied
+func (f *FightingStyleCondition) IsApplied() bool {
+	return f.bus != nil
+}
+
 // Apply subscribes this condition to relevant combat events based on the fighting style
 func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus) error {
+	if f.IsApplied() {
+		return rpgerr.New(rpgerr.CodeAlreadyExists, "fighting style condition already applied")
+	}
 	f.bus = bus
 
 	switch f.Style {

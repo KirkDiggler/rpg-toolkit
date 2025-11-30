@@ -78,6 +78,10 @@ const (
 // ConditionBehavior represents the behavior of an active condition.
 // Conditions subscribe to events to modify game mechanics.
 type ConditionBehavior interface {
+	// IsApplied returns true if this condition is currently applied.
+	// Note: Some conditions may allow stacking (multiple applies), others may not.
+	IsApplied() bool
+
 	// Apply subscribes this condition to relevant events on the bus
 	Apply(ctx context.Context, bus events.EventBus) error
 
