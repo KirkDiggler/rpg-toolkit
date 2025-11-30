@@ -30,7 +30,8 @@ type UnarmoredDefenseData struct {
 	Ref         core.Ref `json:"ref"`
 	Type        string   `json:"type"`         // "barbarian" or "monk"
 	CharacterID string   `json:"character_id"` // ID of the character
-	Source      string   `json:"source"`       // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
+	// Source is a ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
+	Source string `json:"source"`
 }
 
 // UnarmoredDefenseCondition represents the Unarmored Defense feature.

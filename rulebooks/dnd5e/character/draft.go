@@ -846,7 +846,7 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 
 	// Get conditions from class grants
 	grants := classes.GetGrantsForLevel(d.class, 1)
-	classSourceRef := "dnd5e:classes:" + string(d.class)
+	classSourceRef := "dnd5e:classes:" + d.class
 	for _, grant := range grants {
 		for _, condRef := range grant.Conditions {
 			output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
