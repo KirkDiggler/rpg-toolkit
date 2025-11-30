@@ -120,7 +120,7 @@ func (b *BrutalCriticalCondition) ToJSON() (json.RawMessage, error) {
 		Ref: core.Ref{
 			Module: "dnd5e",
 			Type:   "conditions",
-			Value:  "brutal_critical",
+			ID:     "brutal_critical",
 		},
 		CharacterID: b.CharacterID,
 		Level:       b.Level,

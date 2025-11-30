@@ -820,7 +820,7 @@ func (d *Draft) compileFeatures() ([]features.Feature, error) {
 			"ref": core.Ref{
 				Module: "dnd5e",
 				Type:   "features",
-				Value:  "rage",
+				ID:     "rage",
 			},
 			"id":       "rage",
 			"name":     "Rage",

@@ -120,7 +120,7 @@ func (f *FightingStyleCondition) ToJSON() (json.RawMessage, error) {
 		Ref: core.Ref{
 			Module: "dnd5e",
 			Type:   "conditions",
-			Value:  "fighting_style",
+			ID:     "fighting_style",
 		},
 		Name:        fightingstyles.Name(f.Style),
 		CharacterID: f.CharacterID,

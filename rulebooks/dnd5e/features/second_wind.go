@@ -121,7 +121,7 @@ func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 		Ref: core.Ref{
 			Module: "dnd5e",
 			Type:   "features",
-			Value:  "second_wind",
+			ID:     "second_wind",
 		},
 		ID:      s.id,
 		Name:    s.name,
