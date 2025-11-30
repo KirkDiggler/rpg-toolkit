@@ -23,8 +23,8 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		return nil, fmt.Errorf("failed to extract feature ID: %w", err)
 	}
 
-	// Route based on Ref value
-	switch metadata.Ref.Value {
+	// Route based on Ref ID
+	switch metadata.Ref.ID {
 	case "rage":
 		rage := &Rage{}
 		if err := rage.loadJSON(data); err != nil {
@@ -40,6 +40,6 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 
 		return secondWind, nil
 	default:
-		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.Value)
+		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}
 }

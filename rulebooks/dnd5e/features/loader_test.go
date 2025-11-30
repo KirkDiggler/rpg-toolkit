@@ -23,7 +23,7 @@ func (s *LoaderTestSuite) SetupTest() {
 
 func (s *LoaderTestSuite) TestLoadRageFeature() {
 	jsonData := json.RawMessage(`{
-		"ref": {"value": "rage"},
+		"ref": {"module": "dnd5e", "type": "features", "id": "rage"},
 		"id": "rage",
 		"name": "Rage",
 		"level": 5,

@@ -107,7 +107,7 @@ func (s *CombatIntegrationSuite) createBarbarian() *character.Character {
 				"ref": {
 					"module": "dnd5e",
 					"type":   "features",
-					"value":  "rage"
+					"id":     "rage"
 				},
 				"id":       "rage",
 				"name":     "Rage",
@@ -395,7 +395,7 @@ func (s *CombatIntegrationSuite) TestSecondWindIntegration() {
 					"ref": {
 						"module": "dnd5e",
 						"type":   "features",
-						"value":  "second_wind"
+						"id":     "second_wind"
 					},
 					"id":       "second_wind",
 					"name":     "Second Wind",

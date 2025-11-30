@@ -24,8 +24,8 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		return nil, rpgerr.Wrap(err, "failed to peek at condition ref")
 	}
 
-	// Route based on ref value
-	switch peek.Ref.Value {
+	// Route based on ref ID
+	switch peek.Ref.ID {
 	case "raging":
 		raging := &RagingCondition{}
 		if err := raging.loadJSON(data); err != nil {
@@ -55,6 +55,6 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		return fs, nil
 
 	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.Value)
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}
 }

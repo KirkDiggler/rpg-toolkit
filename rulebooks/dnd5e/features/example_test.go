@@ -23,7 +23,7 @@ func Example() {
 
 	// Server has stored feature JSON
 	featureJSON := json.RawMessage(`{
-		"ref": {"value": "rage"},
+		"ref": {"module": "dnd5e", "type": "features", "id": "rage"},
 		"id": "rage",
 		"name": "Rage",
 		"level": 5,
