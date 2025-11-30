@@ -151,6 +151,111 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 	s.Empty(char.GetConditions(), "Character should ignore conditions for other characters")
 }
 
+func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
+	// Create a barbarian with rage feature
+	draft := LoadDraftFromData(&DraftData{
+		ID:       "test-barbarian",
+		PlayerID: "player1",
+	})
+
+	// Setup character
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+		Choices:      BackgroundChoices{},
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
+		},
+	}))
+
+	// Convert to character with event bus
+	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
+	s.Require().NoError(err)
+
+	// Get rage feature and activate it
+	rageFeature := char.GetFeature("rage")
+	s.Require().NotNil(rageFeature)
+	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
+	s.Require().NoError(err)
+
+	// Verify character has raging condition
+	s.Len(char.GetConditions(), 1, "Character should have raging condition")
+
+	// Simulate rage expiring by publishing turn end event without combat activity
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		CharacterID: "char-1",
+		Round:       1,
+	})
+	s.Require().NoError(err)
+
+	// Verify condition was removed from character's list
+	s.Empty(char.GetConditions(), "Character should have no conditions after rage expires")
+}
+
+func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemovals() {
+	// Create a barbarian
+	draft := LoadDraftFromData(&DraftData{
+		ID:       "test-barbarian",
+		PlayerID: "player1",
+	})
+
+	// Setup character
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+		Choices:      BackgroundChoices{},
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
+		},
+	}))
+
+	// Convert to character with event bus
+	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
+	s.Require().NoError(err)
+
+	// Activate rage
+	rageFeature := char.GetFeature("rage")
+	s.Require().NotNil(rageFeature)
+	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
+	s.Require().NoError(err)
+
+	// Verify character has raging condition
+	s.Len(char.GetConditions(), 1, "Character should have raging condition")
+
+	// Publish removal event for a DIFFERENT character
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	err = removalTopic.Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  "char-2",
+		ConditionRef: "dnd5e:conditions:raging",
+		Reason:       "test",
+	})
+	s.Require().NoError(err)
+
+	// Verify our character still has the condition
+	s.Len(char.GetConditions(), 1, "Character should still have raging condition")
+}
+
 // DummyEntity implements core.Entity for testing
 type DummyEntity struct {
 	id string
