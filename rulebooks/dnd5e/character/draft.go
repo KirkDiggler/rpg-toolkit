@@ -851,7 +851,7 @@ func (d *Draft) compileFeatures() ([]features.Feature, error) {
 func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
 	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
 
-	// Check for fighting style
+	// Check for fighting style (Fighter, Paladin, Ranger)
 	if style := d.GetFightingStyleSelection(); style != nil {
 		if !fightingstyles.IsImplemented(*style) {
 			return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
@@ -863,6 +863,24 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 			Style:       *style,
 		})
 		conditionList = append(conditionList, fsCondition)
+	}
+
+	// Monk gets Unarmored Defense (WIS-based) and Martial Arts at level 1
+	if d.class == classes.Monk {
+		// Add Unarmored Defense (Monk uses WIS modifier)
+		udCondition := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
+			CharacterID: characterID,
+			Type:        conditions.UnarmoredDefenseMonk,
+			Source:      "monk:unarmored_defense",
+		})
+		conditionList = append(conditionList, udCondition)
+
+		// Add Martial Arts
+		maCondition := conditions.NewMartialArtsCondition(conditions.MartialArtsConditionConfig{
+			CharacterID: characterID,
+			Level:       1, // Character level at creation
+		})
+		conditionList = append(conditionList, maCondition)
 	}
 
 	return conditionList, nil
