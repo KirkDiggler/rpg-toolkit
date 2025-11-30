@@ -99,7 +99,7 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 	s.Equal(rageFeature, features[0])
 }
 
-func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
+func (s *FeaturesTestSuite) TestFighterGetsSecondWindFeature() {
 	// Create a draft
 	draft, err := NewDraft(&DraftConfig{
 		ID:       "test-fighter",
@@ -158,10 +158,14 @@ func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
 	s.Require().NoError(err)
 	s.Require().NotNil(character)
 
-	// Check that the fighter has no features yet
-	// TODO: Fighter should have Second Wind at level 1
+	// Check that the fighter has Second Wind feature at level 1
 	features := character.GetFeatures()
-	s.Len(features, 0, "Fighter has no features implemented yet")
+	s.Require().Len(features, 1, "Fighter should have 1 feature at level 1")
+
+	// Verify the second wind feature
+	secondWindFeature := character.GetFeature("second_wind")
+	s.Require().NotNil(secondWindFeature)
+	s.Equal("second_wind", secondWindFeature.GetID())
 }
 
 func TestFeaturesTestSuite(t *testing.T) {
