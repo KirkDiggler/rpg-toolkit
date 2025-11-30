@@ -63,6 +63,11 @@ func NewUnarmoredDefenseCondition(input UnarmoredDefenseInput) *UnarmoredDefense
 	}
 }
 
+// IsApplied returns true if this condition is currently applied
+func (u *UnarmoredDefenseCondition) IsApplied() bool {
+	return u.bus != nil
+}
+
 // Apply registers this condition with the event bus.
 // Unarmored Defense is a passive feature that doesn't subscribe to events,
 // but we store the bus reference for consistency with the interface.

@@ -362,3 +362,22 @@ func (s *RagingConditionTestSuite) TestRagingConditionOnlyAffectsOwnAttacks() {
 	}
 	s.Equal(8, totalDamage, "Total should be 5 (weapon) + 3 (ability), no rage for other character")
 }
+
+func (s *RagingConditionTestSuite) TestRagingConditionRejectsDoubleApply() {
+	// Create a raging condition
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "rage-feature",
+	})
+
+	// Apply it once - should succeed
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Apply it again - should fail
+	err = raging.Apply(s.ctx, s.bus)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "already applied")
+}

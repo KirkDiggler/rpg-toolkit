@@ -76,6 +76,11 @@ func calculateExtraDice(level int) int {
 	}
 }
 
+// IsApplied returns true if this condition is currently applied
+func (b *BrutalCriticalCondition) IsApplied() bool {
+	return b.bus != nil
+}
+
 // Apply subscribes this condition to relevant combat events
 func (b *BrutalCriticalCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	b.bus = bus
