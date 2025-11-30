@@ -73,8 +73,11 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	s.Require().NoError(err)
 	s.Require().NotNil(char)
 
-	// Verify character has no conditions initially
-	s.Empty(char.GetConditions(), "Character should start with no conditions")
+	// Verify character starts with Unarmored Defense condition from grants
+	initialConds := char.GetConditions()
+	s.Len(initialConds, 1, "Barbarian should start with Unarmored Defense condition from grants")
+	_, isUnarmoredDefense := initialConds[0].(*conditions.UnarmoredDefenseCondition)
+	s.True(isUnarmoredDefense, "Initial condition should be Unarmored Defense")
 
 	// Get rage feature
 	rageFeature := char.GetFeature("rage")
@@ -84,14 +87,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
 	s.Require().NoError(err)
 
-	// Verify character now has the raging condition
+	// Verify character now has both conditions (Unarmored Defense + Raging)
 	conds := char.GetConditions()
-	s.Len(conds, 1, "Character should have one condition after rage")
+	s.Len(conds, 2, "Character should have two conditions after rage (Unarmored Defense + Raging)")
 
-	// Type assert to verify it's the raging condition
-	ragingCond, ok := conds[0].(*conditions.RagingCondition)
-	s.True(ok, "Condition should be *RagingCondition")
-	s.NotNil(ragingCond)
+	// Find and verify the raging condition
+	var ragingCond *conditions.RagingCondition
+	for _, cond := range conds {
+		if rc, ok := cond.(*conditions.RagingCondition); ok {
+			ragingCond = rc
+			break
+		}
+	}
+	s.NotNil(ragingCond, "Should have a RagingCondition")
 	s.Equal("char-1", ragingCond.CharacterID)
 	s.Equal(2, ragingCond.DamageBonus) // Level 1 barbarian = +2 rage damage
 	s.Equal("rage", ragingCond.Source)
@@ -182,14 +190,17 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 
+	// Barbarian starts with 1 condition (Unarmored Defense from grants)
+	s.Len(char.GetConditions(), 1, "Barbarian should start with Unarmored Defense condition")
+
 	// Get rage feature and activate it
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
 	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
 	s.Require().NoError(err)
 
-	// Verify character has raging condition
-	s.Len(char.GetConditions(), 1, "Character should have raging condition")
+	// Verify character has 2 conditions (Unarmored Defense + Raging)
+	s.Len(char.GetConditions(), 2, "Character should have two conditions (Unarmored Defense + Raging)")
 
 	// Simulate rage expiring by publishing turn end event without combat activity
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
@@ -199,8 +210,8 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	})
 	s.Require().NoError(err)
 
-	// Verify condition was removed from character's list
-	s.Empty(char.GetConditions(), "Character should have no conditions after rage expires")
+	// Verify raging condition was removed, but Unarmored Defense remains
+	s.Len(char.GetConditions(), 1, "Character should have only Unarmored Defense after rage expires")
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemovals() {
@@ -234,14 +245,17 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 
+	// Barbarian starts with 1 condition (Unarmored Defense from grants)
+	s.Len(char.GetConditions(), 1, "Barbarian should start with Unarmored Defense condition")
+
 	// Activate rage
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
 	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
 	s.Require().NoError(err)
 
-	// Verify character has raging condition
-	s.Len(char.GetConditions(), 1, "Character should have raging condition")
+	// Verify character has 2 conditions (Unarmored Defense + Raging)
+	s.Len(char.GetConditions(), 2, "Character should have two conditions (Unarmored Defense + Raging)")
 
 	// Publish removal event for a DIFFERENT character
 	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
@@ -252,8 +266,8 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	})
 	s.Require().NoError(err)
 
-	// Verify our character still has the condition
-	s.Len(char.GetConditions(), 1, "Character should still have raging condition")
+	// Verify our character still has both conditions (removal was for different character)
+	s.Len(char.GetConditions(), 2, "Character should still have both conditions")
 }
 
 // DummyEntity implements core.Entity for testing
