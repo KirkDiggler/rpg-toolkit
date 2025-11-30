@@ -28,9 +28,9 @@ const (
 // UnarmoredDefenseData is the JSON structure for persisting unarmored defense condition state
 type UnarmoredDefenseData struct {
 	Ref         core.Ref `json:"ref"`
-	Type        string   `json:"type"` // "barbarian" or "monk"
-	CharacterID string   `json:"character_id"`
-	Source      string   `json:"source"`
+	Type        string   `json:"type"`         // "barbarian" or "monk"
+	CharacterID string   `json:"character_id"` // ID of the character
+	Source      string   `json:"source"`       // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 }
 
 // UnarmoredDefenseCondition represents the Unarmored Defense feature.
@@ -40,7 +40,7 @@ type UnarmoredDefenseData struct {
 type UnarmoredDefenseCondition struct {
 	CharacterID string
 	Type        UnarmoredDefenseType
-	Source      string // e.g., "barbarian:unarmored_defense"
+	Source      string // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 	bus         events.EventBus
 }
 
@@ -51,7 +51,7 @@ var _ dnd5eEvents.ConditionBehavior = (*UnarmoredDefenseCondition)(nil)
 type UnarmoredDefenseInput struct {
 	CharacterID string               // ID of the character
 	Type        UnarmoredDefenseType // Barbarian (CON) or Monk (WIS)
-	Source      string               // What granted this feature
+	Source      string               // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 }
 
 // NewUnarmoredDefenseCondition creates an unarmored defense condition from input

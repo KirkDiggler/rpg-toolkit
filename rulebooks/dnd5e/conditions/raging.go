@@ -22,7 +22,7 @@ type RagingData struct {
 	CharacterID       string   `json:"character_id"`
 	DamageBonus       int      `json:"damage_bonus"`
 	Level             int      `json:"level"`
-	Source            string   `json:"source"`
+	Source            string   `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 	TurnsActive       int      `json:"turns_active"`
 	WasHitThisTurn    bool     `json:"was_hit_this_turn"`
 	DidAttackThisTurn bool     `json:"did_attack_this_turn"`
@@ -34,7 +34,7 @@ type RagingCondition struct {
 	CharacterID       string
 	DamageBonus       int
 	Level             int
-	Source            string
+	Source            string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 	TurnsActive       int
 	WasHitThisTurn    bool
 	DidAttackThisTurn bool

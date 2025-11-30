@@ -25,7 +25,7 @@ const (
 // Condition represents an active condition on a character
 type Condition struct {
 	Type         dnd5eEvents.ConditionType `json:"type"`
-	Source       string                    `json:"source,omitempty"`        // What caused this - TODO: find proper type
+	Source       string                    `json:"source,omitempty"`        // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 	SourceEntity core.Entity               `json:"source_entity,omitempty"` // Entity that applied it
 	Duration     string                    `json:"duration,omitempty"`      // "1_hour", "until_rest", etc
 	DurationType DurationType              `json:"duration_type,omitempty"` // How duration is tracked

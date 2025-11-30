@@ -20,6 +20,10 @@ type CreateFromRefInput struct {
 	Config json.RawMessage
 	// CharacterID is the ID of the character this condition applies to
 	CharacterID string
+	// SourceRef is the ref of what granted this condition in "module:type:value" format
+	// e.g., "dnd5e:classes:barbarian" for class-granted conditions
+	// e.g., "dnd5e:features:rage" for feature-activated conditions
+	SourceRef string
 }
 
 // CreateFromRefOutput provides the result of creating a condition from a ref
@@ -63,9 +67,9 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 
 	switch ref.Value {
 	case "unarmored_defense":
-		condition, err = createUnarmoredDefense(input.Config, input.CharacterID)
+		condition, err = createUnarmoredDefense(input.Config, input.CharacterID, input.SourceRef)
 	case "raging":
-		condition, err = createRaging(input.Config, input.CharacterID)
+		condition, err = createRaging(input.Config, input.CharacterID, input.SourceRef)
 	case "brutal_critical":
 		condition, err = createBrutalCritical(input.Config, input.CharacterID)
 	case "fighting_style":
@@ -87,7 +91,7 @@ type unarmoredDefenseConfig struct {
 }
 
 // createUnarmoredDefense creates an unarmored defense condition from config
-func createUnarmoredDefense(config json.RawMessage, characterID string) (*UnarmoredDefenseCondition, error) {
+func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef string) (*UnarmoredDefenseCondition, error) {
 	var cfg unarmoredDefenseConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -104,7 +108,7 @@ func createUnarmoredDefense(config json.RawMessage, characterID string) (*Unarmo
 	return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: characterID,
 		Type:        variant,
-		Source:      "class",
+		Source:      sourceRef,
 	}), nil
 }
 
@@ -115,7 +119,7 @@ type ragingConfig struct {
 }
 
 // createRaging creates a raging condition from config
-func createRaging(config json.RawMessage, characterID string) (*RagingCondition, error) {
+func createRaging(config json.RawMessage, characterID, sourceRef string) (*RagingCondition, error) {
 	var cfg ragingConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -129,11 +133,17 @@ func createRaging(config json.RawMessage, characterID string) (*RagingCondition,
 		damageBonus = 2
 	}
 
+	// Default to rage feature ref if not specified
+	source := sourceRef
+	if source == "" {
+		source = "dnd5e:features:rage"
+	}
+
 	return &RagingCondition{
 		CharacterID: characterID,
 		DamageBonus: damageBonus,
 		Level:       cfg.Level,
-		Source:      "rage_feature",
+		Source:      source,
 	}, nil
 }
 
