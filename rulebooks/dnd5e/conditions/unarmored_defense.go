@@ -84,11 +84,22 @@ func (u *UnarmoredDefenseCondition) Remove(_ context.Context, _ events.EventBus)
 
 // ToJSON converts the condition to JSON for persistence
 func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
+	// Use the appropriate ID based on the type
+	var refID core.ID
+	switch u.Type {
+	case UnarmoredDefenseBarbarian:
+		refID = UnarmoredDefenseBarbarianID
+	case UnarmoredDefenseMonk:
+		refID = UnarmoredDefenseMonkID
+	default:
+		refID = UnarmoredDefenseBarbarianID // fallback
+	}
+
 	data := UnarmoredDefenseData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "conditions",
-			ID:     "unarmored_defense",
+			Type:   Type,
+			ID:     refID,
 		},
 		Type:        string(u.Type),
 		CharacterID: u.CharacterID,

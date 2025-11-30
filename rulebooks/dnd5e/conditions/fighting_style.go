@@ -119,8 +119,8 @@ func (f *FightingStyleCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "conditions",
-			ID:     "fighting_style",
+			Type:   Type,
+			ID:     FightingStyleID,
 		},
 		Name:        fightingstyles.Name(f.Style),
 		CharacterID: f.CharacterID,

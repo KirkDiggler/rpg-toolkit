@@ -122,8 +122,8 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 	data := RagingData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "conditions",
-			ID:     "raging",
+			Type:   Type,
+			ID:     RagingID,
 		},
 		CharacterID:       r.CharacterID,
 		DamageBonus:       r.DamageBonus,

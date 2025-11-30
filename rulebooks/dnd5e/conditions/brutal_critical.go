@@ -119,8 +119,8 @@ func (b *BrutalCriticalCondition) ToJSON() (json.RawMessage, error) {
 	data := BrutalCriticalData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "conditions",
-			ID:     "brutal_critical",
+			Type:   Type,
+			ID:     BrutalCriticalID,
 		},
 		CharacterID: b.CharacterID,
 		Level:       b.Level,
