@@ -12,6 +12,14 @@ import (
 // (e.g., classes.Class, features.Feature, skills.Skill).
 type ID = string
 
+// Module identifies which module defined content (e.g., "dnd5e", "wildemount").
+// Domain packages define their module constant using this type.
+type Module = string
+
+// Type categorizes content within a module (e.g., "features", "conditions", "classes").
+// Domain packages define their type constant using this type.
+type Type = string
+
 const (
 	// separatorChar is the character used to separate identifier parts
 	separatorChar = ":"
@@ -58,11 +66,11 @@ type SourcedRef struct {
 // It's designed to be extensible - external modules can create new IDs
 // while core modules provide type-safe constructors for known IDs.
 type Ref struct {
-	// Module identifies which module defined this Ref ("core", "artificer", etc.)
-	Module string `json:"module"`
+	// Module identifies which module defined this Ref ("dnd5e", "wildemount", etc.)
+	Module Module `json:"module"`
 
-	// Type categorizes the identifier ("feature", "proficiency", "skill", etc.)
-	Type string `json:"type"`
+	// Type categorizes the identifier ("features", "conditions", "classes", etc.)
+	Type Type `json:"type"`
 
 	// ID is the unique identifier within the module namespace
 	ID ID `json:"id"`
