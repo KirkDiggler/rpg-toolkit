@@ -23,6 +23,7 @@ import (
 // FightingStyleData is the JSON structure for persisting fighting style condition state
 type FightingStyleData struct {
 	Ref         core.Ref                     `json:"ref"`
+	Name        string                       `json:"name"`
 	CharacterID string                       `json:"character_id"`
 	Style       fightingstyles.FightingStyle `json:"style"`
 }
@@ -121,6 +122,7 @@ func (f *FightingStyleCondition) ToJSON() (json.RawMessage, error) {
 			Type:   "conditions",
 			Value:  "fighting_style",
 		},
+		Name:        fightingstyles.Name(f.Style),
 		CharacterID: f.CharacterID,
 		Style:       f.Style,
 	}
