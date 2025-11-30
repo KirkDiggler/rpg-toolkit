@@ -1,0 +1,190 @@
+// Copyright (C) 2024 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package conditions
+
+import (
+	"encoding/json"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+)
+
+// CreateFromRefInput provides input for creating a condition from a ref string
+type CreateFromRefInput struct {
+	// Ref is the condition reference in "module:type:value" format
+	// e.g., "dnd5e:conditions:unarmored_defense"
+	Ref string
+	// Config is condition-specific configuration as JSON
+	Config json.RawMessage
+	// CharacterID is the ID of the character this condition applies to
+	CharacterID string
+}
+
+// CreateFromRefOutput provides the result of creating a condition from a ref
+type CreateFromRefOutput struct {
+	// Condition is the created condition
+	Condition dnd5eEvents.ConditionBehavior
+}
+
+// CreateFromRef creates a condition from a ref string and configuration.
+// The ref is parsed to determine which condition type to create, and
+// the config is parsed by each condition's specific factory logic.
+func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is nil")
+	}
+
+	if input.Ref == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "ref is required")
+	}
+
+	if input.CharacterID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character_id is required")
+	}
+
+	// Parse the ref to get the condition type
+	ref, err := core.ParseString(input.Ref)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse ref: %s", input.Ref)
+	}
+
+	// Validate module and type
+	if ref.Module != "dnd5e" {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported module: %s", ref.Module)
+	}
+	if ref.Type != "conditions" {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'conditions')", ref.Type)
+	}
+
+	// Create the condition based on the value
+	var condition dnd5eEvents.ConditionBehavior
+
+	switch ref.Value {
+	case "unarmored_defense":
+		condition, err = createUnarmoredDefense(input.Config, input.CharacterID)
+	case "raging":
+		condition, err = createRaging(input.Config, input.CharacterID)
+	case "brutal_critical":
+		condition, err = createBrutalCritical(input.Config, input.CharacterID)
+	case "fighting_style":
+		condition, err = createFightingStyle(input.Config, input.CharacterID)
+	default:
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.Value)
+	}
+
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", ref.Value)
+	}
+
+	return &CreateFromRefOutput{Condition: condition}, nil
+}
+
+// unarmoredDefenseConfig is the config structure for unarmored defense
+type unarmoredDefenseConfig struct {
+	Variant string `json:"variant"` // "barbarian" or "monk"
+}
+
+// createUnarmoredDefense creates an unarmored defense condition from config
+func createUnarmoredDefense(config json.RawMessage, characterID string) (*UnarmoredDefenseCondition, error) {
+	var cfg unarmoredDefenseConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse unarmored defense config")
+		}
+	}
+
+	// Default to barbarian variant if not specified
+	variant := UnarmoredDefenseBarbarian
+	if cfg.Variant == "monk" {
+		variant = UnarmoredDefenseMonk
+	}
+
+	return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
+		CharacterID: characterID,
+		Type:        variant,
+		Source:      "class",
+	}), nil
+}
+
+// ragingConfig is the config structure for raging condition
+type ragingConfig struct {
+	DamageBonus int `json:"damage_bonus"`
+	Level       int `json:"level"`
+}
+
+// createRaging creates a raging condition from config
+func createRaging(config json.RawMessage, characterID string) (*RagingCondition, error) {
+	var cfg ragingConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse raging config")
+		}
+	}
+
+	// Default damage bonus to 2 if not specified
+	damageBonus := cfg.DamageBonus
+	if damageBonus == 0 {
+		damageBonus = 2
+	}
+
+	return &RagingCondition{
+		CharacterID: characterID,
+		DamageBonus: damageBonus,
+		Level:       cfg.Level,
+		Source:      "rage_feature",
+	}, nil
+}
+
+// brutalCriticalConfig is the config structure for brutal critical
+type brutalCriticalConfig struct {
+	Level int `json:"level"` // Barbarian level (9+ for 1 die, 13+ for 2, 17+ for 3)
+}
+
+// createBrutalCritical creates a brutal critical condition from config
+func createBrutalCritical(config json.RawMessage, characterID string) (*BrutalCriticalCondition, error) {
+	var cfg brutalCriticalConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse brutal critical config")
+		}
+	}
+
+	// Level determines extra dice via calculateExtraDice in the constructor
+	// Default to level 9 if not specified (minimum level for brutal critical)
+	level := cfg.Level
+	if level == 0 {
+		level = 9
+	}
+
+	return NewBrutalCriticalCondition(BrutalCriticalInput{
+		CharacterID: characterID,
+		Level:       level,
+	}), nil
+}
+
+// fightingStyleConfig is the config structure for fighting style
+type fightingStyleConfig struct {
+	Style string `json:"style"`
+}
+
+// createFightingStyle creates a fighting style condition from config
+func createFightingStyle(config json.RawMessage, characterID string) (*FightingStyleCondition, error) {
+	var cfg fightingStyleConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse fighting style config")
+		}
+	}
+
+	if cfg.Style == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "fighting style config requires 'style' field")
+	}
+
+	// FightingStyle is a string type alias, so we can assign directly
+	return NewFightingStyleCondition(FightingStyleConditionConfig{
+		CharacterID: characterID,
+		Style:       cfg.Style,
+	}), nil
+}
