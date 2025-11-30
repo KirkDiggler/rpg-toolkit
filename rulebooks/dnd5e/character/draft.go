@@ -748,10 +748,11 @@ func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 func (d *Draft) compileInventory() []InventoryItem {
 	inventory := make([]InventoryItem, 0)
 
-	// Add starting equipment from class grants
+	// Add starting equipment from class grants (new Grant system)
 	if d.class != "" {
-		if classGrants := classes.GetAutomaticGrants(d.class); classGrants != nil {
-			for _, item := range classGrants.StartingEquipment {
+		grants := classes.GetGrantsForLevel(d.class, 1)
+		for _, grant := range grants {
+			for _, item := range grant.Equipment {
 				equip, err := equipment.GetByID(item.ID)
 				if err != nil {
 					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))

@@ -4,24 +4,23 @@ package classes
 import (
 	"encoding/json"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// Grant represents anything that can be granted at a level.
+// Grant represents what a character receives at a given level.
 // Used by classes, races, backgrounds, and subclasses.
 // One shape for everything - proficiencies, conditions, features, spells, equipment, languages.
+//
+// For intrinsic class properties (hit dice, saving throws), see classes.Data.
+// Grant = "what you get" (features, conditions, proficiencies granted at levels)
+// Data = "what you are" (intrinsic properties like hit dice, saving throws)
 type Grant struct {
 	// Level indicates when this grant is given (1 = character creation, 2+ = level up)
 	Level int
 
-	// Core mechanics
-	HitDice int // The die size (6, 8, 10, 12) - only meaningful at level 1
-
 	// Proficiencies
-	SavingThrows        []abilities.Ability
 	ArmorProficiencies  []proficiencies.Armor
 	WeaponProficiencies []proficiencies.Weapon
 	ToolProficiencies   []proficiencies.Tool
@@ -77,22 +76,21 @@ func GetGrants(classID Class) []Grant {
 		return getFighterGrants()
 	case Barbarian:
 		return getBarbarianGrants()
+	case Monk:
+		return getMonkGrants()
 	default:
-		// For classes not yet migrated, return grants from AutomaticGrants
-		return getGrantsFromAutomatic(classID)
+		// Unmigrated classes return nil - add them explicitly above
+		return nil
 	}
 }
 
-// getFighterGrants returns all grants for the Fighter class
+// getFighterGrants returns all grants for the Fighter class.
+// Note: HitDice and SavingThrows are intrinsic class properties in classes.Data,
+// not level-based grants.
 func getFighterGrants() []Grant {
 	return []Grant{
 		{
-			Level:   1,
-			HitDice: 10,
-			SavingThrows: []abilities.Ability{
-				abilities.STR,
-				abilities.CON,
-			},
+			Level: 1,
 			ArmorProficiencies: []proficiencies.Armor{
 				proficiencies.ArmorLight,
 				proficiencies.ArmorMedium,
@@ -115,16 +113,13 @@ func getFighterGrants() []Grant {
 	}
 }
 
-// getBarbarianGrants returns all grants for the Barbarian class
+// getBarbarianGrants returns all grants for the Barbarian class.
+// Note: HitDice and SavingThrows are intrinsic class properties in classes.Data,
+// not level-based grants.
 func getBarbarianGrants() []Grant {
 	return []Grant{
 		{
-			Level:   1,
-			HitDice: 12,
-			SavingThrows: []abilities.Ability{
-				abilities.STR,
-				abilities.CON,
-			},
+			Level: 1,
 			ArmorProficiencies: []proficiencies.Armor{
 				proficiencies.ArmorLight,
 				proficiencies.ArmorMedium,
@@ -153,26 +148,28 @@ func getBarbarianGrants() []Grant {
 	}
 }
 
-// getGrantsFromAutomatic converts legacy AutomaticGrants to the new Grant format.
-// This allows backward compatibility while migrating classes one at a time.
-func getGrantsFromAutomatic(classID Class) []Grant {
-	automatic := GetAutomaticGrants(classID)
-	if automatic == nil {
-		return nil
-	}
-
-	equipment := make([]EquipmentItem, len(automatic.StartingEquipment))
-	copy(equipment, automatic.StartingEquipment)
-
+// getMonkGrants returns all grants for the Monk class.
+// Note: HitDice and SavingThrows are intrinsic class properties in classes.Data,
+// not level-based grants.
+func getMonkGrants() []Grant {
 	return []Grant{
 		{
-			Level:               1,
-			HitDice:             automatic.HitDice,
-			SavingThrows:        automatic.SavingThrows,
-			ArmorProficiencies:  automatic.ArmorProficiencies,
-			WeaponProficiencies: automatic.WeaponProficiencies,
-			ToolProficiencies:   automatic.ToolProficiencies,
-			Equipment:           equipment,
+			Level: 1,
+			// Monks have NO armor proficiencies (they don't wear armor)
+			ArmorProficiencies: []proficiencies.Armor{},
+			WeaponProficiencies: []proficiencies.Weapon{
+				proficiencies.WeaponSimple,
+				proficiencies.WeaponShortsword,
+			},
+			// Note: Tool proficiency (artisan's tool OR musical instrument) is a CHOICE, not a grant
+			// Note: Martial Arts feature does not exist yet in the codebase
+			// Unarmored Defense condition (monk variant - uses WIS instead of CON)
+			Conditions: []ConditionRef{
+				{
+					Ref:    "dnd5e:conditions:unarmored_defense",
+					Config: json.RawMessage(`{"variant": "monk"}`),
+				},
+			},
 		},
 	}
 }
@@ -195,9 +192,10 @@ func GetGrantsForLevel(classID Class, level int) []Grant {
 }
 
 // MergedGrants holds combined grants from multiple sources for character compilation.
+// Note: HitDice and SavingThrows are not included here - they are intrinsic class
+// properties available via classes.GetData(classID). This struct only contains
+// "what you get" (things granted at levels), not "what you are" (intrinsic properties).
 type MergedGrants struct {
-	HitDice             int
-	SavingThrows        []abilities.Ability
 	ArmorProficiencies  []proficiencies.Armor
 	WeaponProficiencies []proficiencies.Weapon
 	ToolProficiencies   []proficiencies.Tool
@@ -210,15 +208,14 @@ type MergedGrants struct {
 }
 
 // MergeGrants combines multiple grants into a single merged structure.
-// The first grant's HitDice is used (typically level 1 grant).
+// Note: HitDice and SavingThrows are not merged - use classes.GetData(classID)
+// to get these intrinsic class properties.
 func MergeGrants(grants []Grant) *MergedGrants {
 	if len(grants) == 0 {
 		return nil
 	}
 
 	result := &MergedGrants{
-		HitDice:             grants[0].HitDice,
-		SavingThrows:        make([]abilities.Ability, 0),
 		ArmorProficiencies:  make([]proficiencies.Armor, 0),
 		WeaponProficiencies: make([]proficiencies.Weapon, 0),
 		ToolProficiencies:   make([]proficiencies.Tool, 0),
@@ -231,7 +228,6 @@ func MergeGrants(grants []Grant) *MergedGrants {
 	}
 
 	for _, grant := range grants {
-		result.SavingThrows = append(result.SavingThrows, grant.SavingThrows...)
 		result.ArmorProficiencies = append(result.ArmorProficiencies, grant.ArmorProficiencies...)
 		result.WeaponProficiencies = append(result.WeaponProficiencies, grant.WeaponProficiencies...)
 		result.ToolProficiencies = append(result.ToolProficiencies, grant.ToolProficiencies...)
