@@ -104,6 +104,6 @@ func GetGrants(race Race) *Grant {
 
 	default:
 		// Unknown race or one without grants
-		return &Grant{}
+		return nil
 	}
 }
