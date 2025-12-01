@@ -124,7 +124,7 @@ func (s *LoaderTestSuite) TestLoadMonkUnarmoredDefense() {
 
 func (s *LoaderTestSuite) TestLoadUnknownCondition() {
 	// Test loading unknown condition ref
-	jsonData := []byte(`{"ref":{"module":"dnd5e","type":"conditions","value":"unknown"}}`)
+	jsonData := []byte(`{"ref":{"module":"dnd5e","type":"conditions","id":"unknown"}}`)
 
 	_, err := LoadJSON(jsonData)
 	s.Error(err)

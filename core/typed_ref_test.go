@@ -11,7 +11,7 @@ func TestTypedRef(t *testing.T) {
 		ref := core.MustNewRef(core.RefInput{
 			Module: "combat",
 			Type:   "attack",
-			Value:  "melee",
+			ID:     "melee",
 		})
 		typed := core.TypedRef[AttackEvent]{Ref: ref}
 
@@ -41,7 +41,7 @@ func TestTypedRef(t *testing.T) {
 			Ref: core.MustNewRef(core.RefInput{
 				Module: "combat",
 				Type:   "event",
-				Value:  "attack",
+				ID:     "attack",
 			}),
 		}
 
@@ -49,7 +49,7 @@ func TestTypedRef(t *testing.T) {
 			Ref: core.MustNewRef(core.RefInput{
 				Module: "combat",
 				Type:   "event",
-				Value:  "damage",
+				ID:     "damage",
 			}),
 		}
 
@@ -74,7 +74,7 @@ func TestTypedRef(t *testing.T) {
 		sharedRef := core.MustNewRef(core.RefInput{
 			Module: "game",
 			Type:   "event",
-			Value:  "turn_end",
+			ID:     "turn_end",
 		})
 
 		// Same ref, but typed for different event structures

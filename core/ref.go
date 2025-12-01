@@ -7,6 +7,19 @@ import (
 	"unicode"
 )
 
+// ID is the base type for all game content identifiers.
+// Domain packages alias this type for their specific content types
+// (e.g., classes.Class, features.Feature, skills.Skill).
+type ID = string
+
+// Module identifies which module defined content (e.g., "dnd5e", "wildemount").
+// Domain packages define their module constant using this type.
+type Module = string
+
+// Type categorizes content within a module (e.g., "features", "conditions", "classes").
+// Domain packages define their type constant using this type.
+type Type = string
+
 const (
 	// separatorChar is the character used to separate identifier parts
 	separatorChar = ":"
@@ -53,19 +66,19 @@ type SourcedRef struct {
 // It's designed to be extensible - external modules can create new IDs
 // while core modules provide type-safe constructors for known IDs.
 type Ref struct {
-	// Value is the unique identifier within the module namespace
-	Value string `json:"value"`
+	// Module identifies which module defined this Ref ("dnd5e", "wildemount", etc.)
+	Module Module `json:"module"`
 
-	// Module identifies which module defined this Ref ("core", "artificer", etc.)
-	Module string `json:"module"`
+	// Type categorizes the identifier ("features", "conditions", "classes", etc.)
+	Type Type `json:"type"`
 
-	// Type categorizes the identifier ("feature", "proficiency", "skill", etc.)
-	Type string `json:"type"`
+	// ID is the unique identifier within the module namespace
+	ID ID `json:"id"`
 }
 
-// String returns the full identifier as module:type:value
+// String returns the full identifier as module:type:id
 func (id *Ref) String() string {
-	return fmt.Sprintf("%s:%s:%s", id.Module, id.Type, id.Value)
+	return fmt.Sprintf("%s:%s:%s", id.Module, id.Type, id.ID)
 }
 
 // ParseString parses the string format with detailed error reporting
@@ -91,7 +104,7 @@ func ParseString(s string) (*Ref, error) {
 	id := &Ref{
 		Module: segments[0],
 		Type:   segments[1],
-		Value:  segments[2],
+		ID:     segments[2],
 	}
 
 	// Validate the Ref
@@ -124,7 +137,7 @@ func (id *Ref) Equals(other *Ref) bool {
 	}
 	return id.Module == other.Module &&
 		id.Type == other.Type &&
-		id.Value == other.Value
+		id.ID == other.ID
 }
 
 // IsValid checks if the identifier has all required fields
@@ -141,8 +154,8 @@ func (id *Ref) validate() error {
 	if id.Type == "" {
 		return NewValidationError("type", id.Type, "cannot be empty", ErrEmptyComponent)
 	}
-	if id.Value == "" {
-		return NewValidationError("value", id.Value, "cannot be empty", ErrEmptyComponent)
+	if id.ID == "" {
+		return NewValidationError("id", id.ID, "cannot be empty", ErrEmptyComponent)
 	}
 
 	// Validate characters in each component
@@ -156,8 +169,8 @@ func (id *Ref) validate() error {
 			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
 			ErrInvalidCharacters)
 	}
-	if !isValidIdentifierPart(id.Value) {
-		return NewValidationError("value", id.Value,
+	if !isValidIdentifierPart(id.ID) {
+		return NewValidationError("id", id.ID,
 			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
 			ErrInvalidCharacters)
 	}
@@ -199,7 +212,7 @@ func (id *Ref) UnmarshalJSON(data []byte) error {
 type RefInput struct {
 	Module string // e.g., "dnd5e", "core"
 	Type   string // e.g., "spell", "feature", "skill"
-	Value  string // e.g., "charm_person", "rage", "acrobatics"
+	ID     ID     // e.g., "charm_person", "rage", "acrobatics"
 }
 
 // NewRef creates a new identifier with validation using RefInput
@@ -211,14 +224,14 @@ func NewRef(input RefInput) (*Ref, error) {
 	if input.Type == "" {
 		return nil, fmt.Errorf("type cannot be empty")
 	}
-	if input.Value == "" {
-		return nil, fmt.Errorf("value cannot be empty")
+	if input.ID == "" {
+		return nil, fmt.Errorf("id cannot be empty")
 	}
 
 	id := &Ref{
 		Module: input.Module,
 		Type:   input.Type,
-		Value:  input.Value,
+		ID:     input.ID,
 	}
 
 	if err := id.IsValid(); err != nil {

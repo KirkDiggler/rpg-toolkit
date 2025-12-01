@@ -150,7 +150,7 @@ func (r *Rage) ToJSON() (json.RawMessage, error) {
 		Ref: core.Ref{
 			Module: "dnd5e",
 			Type:   "features",
-			Value:  "rage",
+			ID:     "rage",
 		},
 		ID:      r.id,
 		Name:    r.name,

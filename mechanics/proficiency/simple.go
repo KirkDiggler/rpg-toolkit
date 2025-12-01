@@ -75,7 +75,7 @@ func NewSimpleProficiency(cfg SimpleProficiencyConfig) *SimpleProficiency {
 func (p *SimpleProficiency) GetID() string { return p.core.GetID() }
 
 // GetType implements core.Entity
-func (p *SimpleProficiency) GetType() string { return p.core.GetType() }
+func (p *SimpleProficiency) GetType() string { return string(p.core.GetType()) }
 
 // Owner returns the entity that has this proficiency
 func (p *SimpleProficiency) Owner() core.Entity { return p.owner }
@@ -107,8 +107,9 @@ func (p *SimpleProficiency) Remove(bus events.EventBus) error {
 	return p.core.Remove(bus)
 }
 
-// AddSubscription tracks an event subscription for cleanup
-// Deprecated: This is now handled internally by Core
+// AddSubscription tracks an event subscription for cleanup.
+//
+// Deprecated: This is now handled internally by Core.
 func (p *SimpleProficiency) AddSubscription(_ string) {
 	// No-op for backward compatibility
 	// Core handles subscription tracking internally

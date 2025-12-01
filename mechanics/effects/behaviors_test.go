@@ -30,7 +30,7 @@ func TestBehaviorComposition(t *testing.T) {
 	assert.True(t, bless.IsActive())
 
 	// Verify it has the expected behaviors
-	assert.Equal(t, "condition.bless", bless.GetType())
+	assert.Equal(t, core.EntityType("condition.bless"), bless.GetType())
 	assert.Equal(t, character, bless.Owner())
 
 	// Test that it adds dice to attack rolls
@@ -406,5 +406,5 @@ type MockEntity struct {
 	typ string
 }
 
-func (m *MockEntity) GetID() string   { return m.id }
-func (m *MockEntity) GetType() string { return m.typ }
+func (m *MockEntity) GetID() string            { return m.id }
+func (m *MockEntity) GetType() core.EntityType { return core.EntityType(m.typ) }

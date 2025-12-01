@@ -49,7 +49,7 @@
 //	var Rage = core.MustNewRef(core.RefInput{
 //		Module: "core",
 //		Type:   "feature",
-//		Value:  "rage",
+//		ID:     "rage",
 //	})
 //
 //	// Track where features come from

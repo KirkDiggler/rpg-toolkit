@@ -123,7 +123,7 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 		Ref: core.Ref{
 			Module: "dnd5e",
 			Type:   "conditions",
-			Value:  "raging",
+			ID:     "raging",
 		},
 		CharacterID:       r.CharacterID,
 		DamageBonus:       r.DamageBonus,

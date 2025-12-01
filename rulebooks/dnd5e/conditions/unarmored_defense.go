@@ -89,7 +89,7 @@ func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
 		Ref: core.Ref{
 			Module: "dnd5e",
 			Type:   "conditions",
-			Value:  "unarmored_defense",
+			ID:     "unarmored_defense",
 		},
 		Type:        string(u.Type),
 		CharacterID: u.CharacterID,
