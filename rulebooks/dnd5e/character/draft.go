@@ -2,11 +2,9 @@ package character
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -495,7 +493,7 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	savingThrows := d.compileSavingThrows(classData)
 
 	// Compile features (can fail)
-	charFeatures, err := d.compileFeatures()
+	charFeatures, err := d.compileFeatures(characterID)
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to compile features")
 	}
@@ -750,10 +748,11 @@ func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 func (d *Draft) compileInventory() []InventoryItem {
 	inventory := make([]InventoryItem, 0)
 
-	// Add starting equipment from class grants
+	// Add starting equipment from class grants (new Grant system)
 	if d.class != "" {
-		if classGrants := classes.GetAutomaticGrants(d.class); classGrants != nil {
-			for _, item := range classGrants.StartingEquipment {
+		grants := classes.GetGrantsForLevel(d.class, 1)
+		for _, grant := range grants {
+			for _, item := range grant.Equipment {
 				equip, err := equipment.GetByID(item.ID)
 				if err != nil {
 					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
@@ -809,49 +808,62 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData
 	return slots
 }
 
-// compileFeatures returns the character's class features
-func (d *Draft) compileFeatures() ([]features.Feature, error) {
+// compileFeatures returns the character's class features using the unified grant system.
+// Features are created from FeatureRef grants defined in classes/grant.go.
+func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) {
 	featureList := make([]features.Feature, 0)
 
-	// Level 1 barbarian gets rage
-	if d.class == classes.Barbarian {
-		// Create rage feature with proper JSON data
-		rageData := map[string]interface{}{
-			"ref": core.Ref{
-				Module: "dnd5e",
-				Type:   "features",
-				ID:     "rage",
-			},
-			"id":       "rage",
-			"name":     "Rage",
-			"level":    1,
-			"uses":     2, // Level 1 has 2 uses
-			"max_uses": 2,
-		}
-
-		// Create rage from JSON
-		jsonBytes, err := json.Marshal(rageData)
-		if err != nil {
-			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to marshal rage data")
-		}
-
-		rage, err := features.LoadJSON(jsonBytes)
-		if err != nil {
-			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to load rage feature")
-		}
-		featureList = append(featureList, rage)
+	// Get grants for the class at level 1 (character creation)
+	grants := classes.GetGrantsForLevel(d.class, 1)
+	if grants == nil {
+		return featureList, nil
 	}
 
-	// TODO: Add other class features (second wind for fighter, etc)
+	// Create features from each grant's FeatureRefs
+	for _, grant := range grants {
+		for _, featureRef := range grant.Features {
+			output, err := features.CreateFromRef(&features.CreateFromRefInput{
+				Ref:         featureRef.Ref,
+				Config:      featureRef.Config,
+				CharacterID: characterID,
+			})
+			if err != nil {
+				return nil, rpgerr.Wrapf(err, "failed to create feature from ref %s", featureRef.Ref)
+			}
+			featureList = append(featureList, output.Feature)
+		}
+	}
 
 	return featureList, nil
 }
 
-// compileConditions creates conditions from draft choices (e.g., fighting styles)
+// compileConditions creates conditions from grants and draft choices (e.g., fighting styles).
+// Conditions can come from two sources:
+// 1. Class grants (e.g., Barbarian's Unarmored Defense)
+// 2. Player choices (e.g., Fighter's chosen Fighting Style)
 func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
 	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
 
-	// Check for fighting style
+	// Get conditions from class grants
+	grants := classes.GetGrantsForLevel(d.class, 1)
+	classSourceRef := "dnd5e:classes:" + d.class
+	for _, grant := range grants {
+		for _, condRef := range grant.Conditions {
+			output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
+				Ref:         condRef.Ref,
+				Config:      condRef.Config,
+				CharacterID: characterID,
+				SourceRef:   classSourceRef,
+			})
+			if err != nil {
+				return nil, rpgerr.Wrapf(err, "failed to create condition from ref %s", condRef.Ref)
+			}
+			conditionList = append(conditionList, output.Condition)
+		}
+	}
+
+	// Add conditions from player choices (e.g., fighting styles)
+	// Fighting styles are CHOICES, not grants, so they're handled separately
 	if style := d.GetFightingStyleSelection(); style != nil {
 		if !fightingstyles.IsImplemented(*style) {
 			return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,

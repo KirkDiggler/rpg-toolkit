@@ -25,14 +25,14 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 
 	// Route based on Ref ID
 	switch metadata.Ref.ID {
-	case "rage":
+	case RageID:
 		rage := &Rage{}
 		if err := rage.loadJSON(data); err != nil {
 			return nil, fmt.Errorf("failed to load rage: %w", err)
 		}
 
 		return rage, nil
-	case "second_wind":
+	case SecondWindID:
 		secondWind := &SecondWind{}
 		if err := secondWind.loadJSON(data); err != nil {
 			return nil, fmt.Errorf("failed to load second wind: %w", err)

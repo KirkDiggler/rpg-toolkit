@@ -35,7 +35,7 @@ func (s *UnarmoredDefenseTestSuite) TestBarbarianUnarmoredDefenseAC() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 
 	// DEX 14 (+2), CON 16 (+3) = 10 + 2 + 3 = 15
@@ -57,7 +57,7 @@ func (s *UnarmoredDefenseTestSuite) TestMonkUnarmoredDefenseAC() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "monk-1",
 		Type:        UnarmoredDefenseMonk,
-		Source:      "monk:unarmored_defense",
+		Source:      "dnd5e:classes:monk",
 	})
 
 	// DEX 16 (+3), WIS 14 (+2) = 10 + 3 + 2 = 15
@@ -79,7 +79,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseWithNegativeModifiers() 
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 
 	// DEX 8 (-1), CON 8 (-1) = 10 + (-1) + (-1) = 8
@@ -101,7 +101,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseMaxStats() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 
 	// DEX 20 (+5), CON 20 (+5) = 10 + 5 + 5 = 20
@@ -122,14 +122,14 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseSecondaryAbility() {
 	barbarianUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 	s.Equal(abilities.CON, barbarianUD.SecondaryAbility(), "Barbarian should use CON")
 
 	monkUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "monk-1",
 		Type:        UnarmoredDefenseMonk,
-		Source:      "monk:unarmored_defense",
+		Source:      "dnd5e:classes:monk",
 	})
 	s.Equal(abilities.WIS, monkUD.SecondaryAbility(), "Monk should use WIS")
 }
@@ -138,7 +138,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseApplyRemove() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 
 	// Apply should succeed
@@ -154,7 +154,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseToJSON() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 
 	jsonData, err := ud.ToJSON()
@@ -163,7 +163,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseToJSON() {
 	// Verify JSON contains expected fields
 	s.Contains(string(jsonData), `"character_id":"barbarian-1"`)
 	s.Contains(string(jsonData), `"type":"barbarian"`)
-	s.Contains(string(jsonData), `"source":"barbarian:unarmored_defense"`)
+	s.Contains(string(jsonData), `"source":"dnd5e:classes:barbarian"`)
 	s.Contains(string(jsonData), `"id":"unarmored_defense"`)
 	s.Contains(string(jsonData), `"module":"dnd5e"`)
 }

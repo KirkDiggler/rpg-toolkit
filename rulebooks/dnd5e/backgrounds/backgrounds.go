@@ -45,8 +45,9 @@ const (
 	GuildMerchant Background = "guild-merchant" // Variant of Guild Artisan
 )
 
-// All provides map lookup for backgrounds
-// Deprecated: Use BackgroundData directly - it now contains ID field and Name()/Description() methods
+// All provides map lookup for backgrounds.
+//
+// Deprecated: Use BackgroundData directly - it now contains ID field and Name()/Description() methods.
 var All = map[string]Background{
 	"acolyte":       Acolyte,
 	"criminal":      Criminal,

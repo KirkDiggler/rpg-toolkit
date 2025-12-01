@@ -26,28 +26,28 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 
 	// Route based on ref ID
 	switch peek.Ref.ID {
-	case "raging":
+	case RagingID:
 		raging := &RagingCondition{}
 		if err := raging.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load raging condition")
 		}
 		return raging, nil
 
-	case "brutal_critical":
+	case BrutalCriticalID:
 		brutal := &BrutalCriticalCondition{}
 		if err := brutal.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load brutal critical condition")
 		}
 		return brutal, nil
 
-	case "unarmored_defense":
+	case UnarmoredDefenseID:
 		unarmored := &UnarmoredDefenseCondition{}
 		if err := unarmored.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load unarmored defense condition")
 		}
 		return unarmored, nil
 
-	case "fighting_style":
+	case FightingStyleID:
 		fs := &FightingStyleCondition{}
 		if err := fs.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load fighting style condition")

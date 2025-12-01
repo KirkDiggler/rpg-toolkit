@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -20,7 +19,7 @@ type ragingConditionInput struct {
 	CharacterID string // ID of the raging character
 	DamageBonus int    // Bonus damage for rage
 	Level       int    // Barbarian level
-	Source      string // What triggered this (feature ID)
+	Source      string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 }
 
 // newRagingCondition creates a raging condition from input
@@ -55,7 +54,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksHits() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it to subscribe to events
@@ -80,7 +79,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it to subscribe to events
@@ -110,7 +109,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it to subscribe to events
@@ -147,7 +146,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it to subscribe to events
@@ -191,7 +190,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it to subscribe to events
@@ -276,7 +275,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damageTopic := combat.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
@@ -293,7 +292,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       3,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it to subscribe to damage chain
@@ -334,7 +333,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionOnlyAffectsOwnAttacks() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       3,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	err := raging.Apply(s.ctx, s.bus)
@@ -369,7 +368,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionRejectsDoubleApply() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "rage-feature",
+		Source:      "dnd5e:features:rage",
 	})
 
 	// Apply it once - should succeed

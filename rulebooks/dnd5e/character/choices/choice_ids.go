@@ -138,7 +138,6 @@ const (
 	HumanLanguage   ChoiceID = "human-language"
 	HalfElfLanguage ChoiceID = "half-elf-language"
 	HighElfLanguage ChoiceID = "high-elf-language"
-	DwarfLanguage   ChoiceID = "dwarf-language"
 )
 
 // Race cantrip choice IDs

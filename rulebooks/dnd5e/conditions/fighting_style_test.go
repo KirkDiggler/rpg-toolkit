@@ -12,7 +12,6 @@ import (
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -108,7 +107,7 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 			}
 
 			// Publish through attack chain
-			attackChain := events.NewStagedChain[combat.AttackChainEvent](dnd5e.ModifierStages)
+			attackChain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
 			attacks := combat.AttackChain.On(s.bus)
 			modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
 			s.Require().NoError(err)
@@ -166,7 +165,7 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingRerolls() {
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damages := combat.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
@@ -234,7 +233,7 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingDoesNotRerollHighNumbers
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damages := combat.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)

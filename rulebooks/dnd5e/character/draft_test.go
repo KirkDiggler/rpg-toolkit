@@ -263,11 +263,18 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	char, err := draft.ToCharacter(s.ctx, "char-001", s.bus)
 	s.Require().NoError(err)
 
-	// Check inventory based on what Monk gets
+	// Check inventory based on what Monk gets from the new Grant system
 	inventory := char.ToData().Inventory
-	grants := classes.GetAutomaticGrants(classes.Monk)
-	if grants == nil || len(grants.StartingEquipment) == 0 {
-		s.Empty(inventory, "Monk with no grants should have no inventory")
+	grants := classes.GetGrantsForLevel(classes.Monk, 1)
+	hasEquipment := false
+	for _, grant := range grants {
+		if len(grant.Equipment) > 0 {
+			hasEquipment = true
+			break
+		}
+	}
+	if !hasEquipment {
+		s.Empty(inventory, "Monk with no equipment grants should have no inventory")
 	} else {
 		s.NotEmpty(inventory, "Monk should have starting equipment")
 	}
@@ -283,14 +290,21 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 
 		// Fighter should have starting equipment (varies by class data)
 		// For now, just verify inventory is not empty if class has grants
-		grants := classes.GetAutomaticGrants(classes.Fighter)
-		if grants != nil && len(grants.StartingEquipment) > 0 {
+		grants := classes.GetGrantsForLevel(classes.Fighter, 1)
+		hasEquipment := false
+		for _, grant := range grants {
+			if len(grant.Equipment) > 0 {
+				hasEquipment = true
+				break
+			}
+		}
+		if hasEquipment {
 			s.NotEmpty(inventory, "Fighter should have starting equipment from grants")
 		}
 	})
 
 	s.Run("Monk starting equipment", func() {
-		// Monk specifically gets 10 darts
+		// Monk specifically gets 10 darts (when migrated to Grant system)
 		draft := s.createBaseDraft()
 		err := draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
 		s.Require().NoError(err)
@@ -311,11 +325,18 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
-		// Check for monk starting equipment
-		grants := classes.GetAutomaticGrants(classes.Monk)
-		if grants != nil && len(grants.StartingEquipment) > 0 {
+		// Check for monk starting equipment from new Grant system
+		grants := classes.GetGrantsForLevel(classes.Monk, 1)
+		hasEquipment := false
+		for _, grant := range grants {
+			if len(grant.Equipment) > 0 {
+				hasEquipment = true
+				break
+			}
+		}
+		if hasEquipment {
 			s.NotEmpty(inventory, "Monk should have starting equipment")
-			// Monk gets 10 darts
+			// Monk gets 10 darts (when Monk grants are fully migrated)
 			s.assertInventoryContains(inventory, "dart", 10, "Monk gets 10 darts")
 		}
 	})
@@ -342,9 +363,9 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 	expectedItems := 0
 
 	// Should have items from both class and background
-	classGrants := classes.GetAutomaticGrants(classes.Fighter)
-	if classGrants != nil {
-		expectedItems += len(classGrants.StartingEquipment)
+	grants := classes.GetGrantsForLevel(classes.Fighter, 1)
+	for _, grant := range grants {
+		expectedItems += len(grant.Equipment)
 	}
 
 	if expectedItems > 0 {

@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -22,7 +21,7 @@ type RagingData struct {
 	CharacterID       string   `json:"character_id"`
 	DamageBonus       int      `json:"damage_bonus"`
 	Level             int      `json:"level"`
-	Source            string   `json:"source"`
+	Source            string   `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 	TurnsActive       int      `json:"turns_active"`
 	WasHitThisTurn    bool     `json:"was_hit_this_turn"`
 	DidAttackThisTurn bool     `json:"did_attack_this_turn"`
@@ -34,7 +33,7 @@ type RagingCondition struct {
 	CharacterID       string
 	DamageBonus       int
 	Level             int
-	Source            string
+	Source            string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 	TurnsActive       int
 	WasHitThisTurn    bool
 	DidAttackThisTurn bool
@@ -122,8 +121,8 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 	data := RagingData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "conditions",
-			ID:     "raging",
+			Type:   Type,
+			ID:     RagingID,
 		},
 		CharacterID:       r.CharacterID,
 		DamageBonus:       r.DamageBonus,
@@ -249,7 +248,7 @@ func (r *RagingCondition) onDamageChain(
 		})
 		return e, nil
 	}
-	err := c.Add(dnd5e.StageFeatures, "rage", modifyDamage)
+	err := c.Add(combat.StageFeatures, "rage", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "error applying raging for character id %s", r.CharacterID)
 	}

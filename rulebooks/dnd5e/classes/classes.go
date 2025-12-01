@@ -130,8 +130,9 @@ const (
 	Wizard    Class = "wizard"
 )
 
-// All provides map lookup for classes
-// Deprecated: Use ClassData directly - it now contains ID field and Name()/Description() methods
+// All provides map lookup for classes.
+//
+// Deprecated: Use ClassData directly - it now contains ID field and Name()/Description() methods.
 var All = map[string]Class{
 	"barbarian": Barbarian,
 	"bard":      Bard,
