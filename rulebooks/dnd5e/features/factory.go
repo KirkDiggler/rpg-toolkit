@@ -56,20 +56,20 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'features')", ref.Type)
 	}
 
-	// Create the feature based on the value
+	// Create the feature based on the ID
 	var feature Feature
 
-	switch ref.Value {
-	case "rage":
+	switch ref.ID {
+	case RageID:
 		feature, err = createRage(input.Config, input.CharacterID)
-	case "second_wind":
+	case SecondWindID:
 		feature, err = createSecondWind(input.Config, input.CharacterID)
 	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.Value)
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
 
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to create feature: %s", ref.Value)
+		return nil, rpgerr.Wrapf(err, "failed to create feature: %s", ref.ID)
 	}
 
 	return &CreateFromRefOutput{Feature: feature}, nil

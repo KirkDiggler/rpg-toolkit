@@ -1,5 +1,5 @@
-github.com/KirkDiggler/rpg-toolkit/core v0.9.3 h1:u85NwPaikKCrdfzDD4BS8GRXl+W13zfwsR4LuE8oocI=
-github.com/KirkDiggler/rpg-toolkit/core v0.9.3/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
+github.com/KirkDiggler/rpg-toolkit/core v0.9.5 h1:E8oOYJEix6KSrwwgll83fgJRIT4LkR4B2XJdga1MNhQ=
+github.com/KirkDiggler/rpg-toolkit/core v0.9.5/go.mod h1:XFQXYViPZUTYu/a8jdRadI3rGnKk4r7tRtPm++vSUV0=
 github.com/KirkDiggler/rpg-toolkit/dice v0.3.3-0.20250914062452-e2c6a0f32059 h1:74OW0fnq459g28p2JpyrB20tjno4FlF18+cHJ2xiTes=
 github.com/KirkDiggler/rpg-toolkit/dice v0.3.3-0.20250914062452-e2c6a0f32059/go.mod h1:JEWKuYBi+h9f8jFAcE2MI2yVDFV6ldOVx36y5fbc6p4=
 github.com/KirkDiggler/rpg-toolkit/events v0.6.0 h1:7tAo5ddnaBk2nLeLY3wwa5zVx93ntA5FOgi+NNF4rmk=

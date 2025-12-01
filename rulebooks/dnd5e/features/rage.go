@@ -149,8 +149,8 @@ func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "features",
-			ID:     "rage",
+			Type:   Type,
+			ID:     RageID,
 		},
 		ID:      r.id,
 		Name:    r.name,

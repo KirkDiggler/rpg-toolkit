@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -276,7 +275,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damageTopic := combat.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)

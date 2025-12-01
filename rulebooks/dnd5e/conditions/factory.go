@@ -62,24 +62,24 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'conditions')", ref.Type)
 	}
 
-	// Create the condition based on the value
+	// Create the condition based on the ID
 	var condition dnd5eEvents.ConditionBehavior
 
-	switch ref.Value {
-	case "unarmored_defense":
+	switch ref.ID {
+	case UnarmoredDefenseID:
 		condition, err = createUnarmoredDefense(input.Config, input.CharacterID, input.SourceRef)
-	case "raging":
+	case RagingID:
 		condition, err = createRaging(input.Config, input.CharacterID, input.SourceRef)
-	case "brutal_critical":
+	case BrutalCriticalID:
 		condition, err = createBrutalCritical(input.Config, input.CharacterID)
-	case "fighting_style":
+	case FightingStyleID:
 		condition, err = createFightingStyle(input.Config, input.CharacterID)
 	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.Value)
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
 
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", ref.Value)
+		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", ref.ID)
 	}
 
 	return &CreateFromRefOutput{Condition: condition}, nil
