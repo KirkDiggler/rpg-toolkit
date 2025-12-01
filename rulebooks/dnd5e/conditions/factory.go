@@ -43,13 +43,13 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	conditionID := parts[2]
 
 	switch conditionID {
-	case "unarmored_defense":
+	case UnarmoredDefenseID:
 		return createUnarmoredDefense(input)
-	case "raging":
+	case RagingID:
 		return createRaging(input)
-	case "brutal_critical":
+	case BrutalCriticalID:
 		return createBrutalCritical(input)
-	case "fighting_style":
+	case FightingStyleID:
 		return createFightingStyle(input)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "unknown condition: %s", conditionID)

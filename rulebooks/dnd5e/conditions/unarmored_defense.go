@@ -87,8 +87,8 @@ func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
 	data := UnarmoredDefenseData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "conditions",
-			ID:     "unarmored_defense",
+			Type:   Type,
+			ID:     UnarmoredDefenseID,
 		},
 		Type:        string(u.Type),
 		CharacterID: u.CharacterID,

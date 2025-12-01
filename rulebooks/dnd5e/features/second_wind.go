@@ -120,8 +120,8 @@ func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 	data := SecondWindData{
 		Ref: core.Ref{
 			Module: "dnd5e",
-			Type:   "features",
-			ID:     "second_wind",
+			Type:   Type,
+			ID:     SecondWindID,
 		},
 		ID:      s.id,
 		Name:    s.name,

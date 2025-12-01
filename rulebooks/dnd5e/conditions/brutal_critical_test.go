@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
@@ -80,7 +79,7 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damageTopic := combat.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
@@ -227,7 +226,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damageTopic := combat.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
@@ -274,7 +273,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](dnd5e.ModifierStages)
+	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
 	damageTopic := combat.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)

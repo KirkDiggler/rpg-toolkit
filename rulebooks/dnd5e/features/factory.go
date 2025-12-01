@@ -48,9 +48,9 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	}
 
 	switch featureID {
-	case "rage":
+	case RageID:
 		return createRage(level)
-	case "second_wind":
+	case SecondWindID:
 		return createSecondWind(level)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "unknown feature: %s", featureID)
