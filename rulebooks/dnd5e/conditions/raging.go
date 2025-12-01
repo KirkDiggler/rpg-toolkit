@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -249,7 +248,7 @@ func (r *RagingCondition) onDamageChain(
 		})
 		return e, nil
 	}
-	err := c.Add(dnd5e.StageFeatures, "rage", modifyDamage)
+	err := c.Add(combat.StageFeatures, "rage", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "error applying raging for character id %s", r.CharacterID)
 	}

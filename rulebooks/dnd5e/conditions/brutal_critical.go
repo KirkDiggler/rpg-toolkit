@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -193,7 +192,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 		return e, nil
 	}
 
-	err = c.Add(dnd5e.StageFeatures, "brutal_critical", modifyDamage)
+	err = c.Add(combat.StageFeatures, "brutal_critical", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to add brutal critical modifier for character %s", b.CharacterID)
 	}

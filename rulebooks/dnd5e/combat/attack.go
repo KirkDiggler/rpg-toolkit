@@ -9,7 +9,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -211,7 +210,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	// Create attack chain
-	attackChain := events.NewStagedChain[AttackChainEvent](dnd5e.ModifierStages)
+	attackChain := events.NewStagedChain[AttackChainEvent](ModifierStages)
 	attacks := AttackChain.On(input.EventBus)
 
 	// Publish through chain to collect modifiers
@@ -385,7 +384,7 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 	}
 
 	// Create and publish through damage chain
-	damageChain := events.NewStagedChain[*DamageChainEvent](dnd5e.ModifierStages)
+	damageChain := events.NewStagedChain[*DamageChainEvent](ModifierStages)
 	damages := DamageChain.On(input.AttackInput.EventBus)
 
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)

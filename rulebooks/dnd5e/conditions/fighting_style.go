@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
@@ -178,7 +177,7 @@ func (f *FightingStyleCondition) onAttackChain(
 		return e, nil
 	}
 
-	err := c.Add(dnd5e.StageFeatures, "archery", modifyAttack)
+	err := c.Add(combat.StageFeatures, "archery", modifyAttack)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply archery bonus for character %s", f.CharacterID)
 	}
@@ -271,7 +270,7 @@ func (f *FightingStyleCondition) onDamageChain(
 		return e, nil
 	}
 
-	err := c.Add(dnd5e.StageFeatures, "great_weapon_fighting", modifyDamage)
+	err := c.Add(combat.StageFeatures, "great_weapon_fighting", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply great weapon fighting for character %s", f.CharacterID)
 	}
