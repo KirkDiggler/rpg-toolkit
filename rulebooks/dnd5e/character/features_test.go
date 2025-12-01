@@ -158,10 +158,13 @@ func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
 	s.Require().NoError(err)
 	s.Require().NotNil(character)
 
-	// Check that the fighter has no features yet
-	// TODO: Fighter should have Second Wind at level 1
+	// Fighter now gets Second Wind from the grant system
 	features := character.GetFeatures()
-	s.Len(features, 0, "Fighter has no features implemented yet")
+	s.Len(features, 1, "Fighter should have Second Wind feature from grants")
+
+	// Verify the feature is Second Wind
+	secondWind := character.GetFeature("second_wind")
+	s.NotNil(secondWind, "Fighter should have second_wind feature")
 }
 
 func TestFeaturesTestSuite(t *testing.T) {

@@ -265,8 +265,8 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 
 	// Check inventory based on what Monk gets
 	inventory := char.ToData().Inventory
-	grants := classes.GetAutomaticGrants(classes.Monk)
-	if grants == nil || len(grants.StartingEquipment) == 0 {
+	grants := classes.GetGrantsForLevel(classes.Monk, 1)
+	if len(grants) == 0 || len(grants[0].Equipment) == 0 {
 		s.Empty(inventory, "Monk with no grants should have no inventory")
 	} else {
 		s.NotEmpty(inventory, "Monk should have starting equipment")
@@ -283,8 +283,8 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 
 		// Fighter should have starting equipment (varies by class data)
 		// For now, just verify inventory is not empty if class has grants
-		grants := classes.GetAutomaticGrants(classes.Fighter)
-		if grants != nil && len(grants.StartingEquipment) > 0 {
+		grants := classes.GetGrantsForLevel(classes.Fighter, 1)
+		if len(grants) > 0 && len(grants[0].Equipment) > 0 {
 			s.NotEmpty(inventory, "Fighter should have starting equipment from grants")
 		}
 	})
@@ -312,8 +312,8 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 		inventory := char.ToData().Inventory
 
 		// Check for monk starting equipment
-		grants := classes.GetAutomaticGrants(classes.Monk)
-		if grants != nil && len(grants.StartingEquipment) > 0 {
+		grants := classes.GetGrantsForLevel(classes.Monk, 1)
+		if len(grants) > 0 && len(grants[0].Equipment) > 0 {
 			s.NotEmpty(inventory, "Monk should have starting equipment")
 			// Monk gets 10 darts
 			s.assertInventoryContains(inventory, "dart", 10, "Monk gets 10 darts")
@@ -342,9 +342,9 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 	expectedItems := 0
 
 	// Should have items from both class and background
-	classGrants := classes.GetAutomaticGrants(classes.Fighter)
-	if classGrants != nil {
-		expectedItems += len(classGrants.StartingEquipment)
+	classGrants := classes.GetGrantsForLevel(classes.Fighter, 1)
+	for _, grant := range classGrants {
+		expectedItems += len(grant.Equipment)
 	}
 
 	if expectedItems > 0 {

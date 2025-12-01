@@ -2,13 +2,12 @@ package character
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	dnd5e "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
@@ -750,10 +749,11 @@ func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 func (d *Draft) compileInventory() []InventoryItem {
 	inventory := make([]InventoryItem, 0)
 
-	// Add starting equipment from class grants
+	// Add starting equipment from class grants (new grant system)
 	if d.class != "" {
-		if classGrants := classes.GetAutomaticGrants(d.class); classGrants != nil {
-			for _, item := range classGrants.StartingEquipment {
+		grants := classes.GetGrantsForLevel(d.class, 1)
+		for _, grant := range grants {
+			for _, item := range grant.Equipment {
 				equip, err := equipment.GetByID(item.ID)
 				if err != nil {
 					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
@@ -809,49 +809,60 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData
 	return slots
 }
 
-// compileFeatures returns the character's class features
+// compileFeatures returns the character's class features using the grant system
 func (d *Draft) compileFeatures() ([]features.Feature, error) {
 	featureList := make([]features.Feature, 0)
 
-	// Level 1 barbarian gets rage
-	if d.class == classes.Barbarian {
-		// Create rage feature with proper JSON data
-		rageData := map[string]interface{}{
-			"ref": core.Ref{
-				Module: "dnd5e",
-				Type:   "features",
-				ID:     "rage",
-			},
-			"id":       "rage",
-			"name":     "Rage",
-			"level":    1,
-			"uses":     2, // Level 1 has 2 uses
-			"max_uses": 2,
-		}
-
-		// Create rage from JSON
-		jsonBytes, err := json.Marshal(rageData)
-		if err != nil {
-			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to marshal rage data")
-		}
-
-		rage, err := features.LoadJSON(jsonBytes)
-		if err != nil {
-			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to load rage feature")
-		}
-		featureList = append(featureList, rage)
+	// Get level 1 grants for the class
+	grants := classes.GetGrantsForLevel(d.class, 1)
+	if grants == nil {
+		// Class not yet implemented in grant system, return empty
+		return featureList, nil
 	}
 
-	// TODO: Add other class features (second wind for fighter, etc)
+	// Create features from grants
+	for _, grant := range grants {
+		for _, featureRef := range grant.Features {
+			output, err := features.CreateFromRef(&features.CreateFromRefInput{
+				Ref:   featureRef.Ref,
+				Level: 1, // Character is level 1 at creation
+			})
+			if err != nil {
+				return nil, rpgerr.Wrapf(err, "failed to create feature from ref %s", featureRef.Ref)
+			}
+			featureList = append(featureList, output.Feature)
+		}
+	}
 
 	return featureList, nil
 }
 
-// compileConditions creates conditions from draft choices (e.g., fighting styles)
+// compileConditions creates conditions from draft choices and class grants
 func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
 	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
 
-	// Check for fighting style
+	// Build source ref for this class
+	classSourceRef := dnd5e.ClassRef(d.class)
+
+	// Get level 1 grants for the class
+	grants := classes.GetGrantsForLevel(d.class, 1)
+	// Create conditions from grants
+	for _, grant := range grants {
+		for _, conditionRef := range grant.Conditions {
+			output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
+				Ref:         conditionRef.Ref,
+				Config:      conditionRef.Config,
+				CharacterID: characterID,
+				SourceRef:   classSourceRef.String(),
+			})
+			if err != nil {
+				return nil, rpgerr.Wrapf(err, "failed to create condition from ref %s", conditionRef.Ref)
+			}
+			conditionList = append(conditionList, output.Condition)
+		}
+	}
+
+	// Check for fighting style (player choice, not a grant)
 	if style := d.GetFightingStyleSelection(); style != nil {
 		if !fightingstyles.IsImplemented(*style) {
 			return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
