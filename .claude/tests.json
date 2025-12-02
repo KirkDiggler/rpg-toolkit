@@ -4,36 +4,36 @@
       "id": "refs-features-rage",
       "feature": "refs-package",
       "prompt": "refs.Features.Rage() returns *core.Ref{Module: 'dnd5e', Type: 'features', ID: 'rage'}",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-02"
     },
     {
       "id": "refs-conditions-raging",
       "feature": "refs-package",
       "prompt": "refs.Conditions.Raging() returns *core.Ref{Module: 'dnd5e', Type: 'conditions', ID: 'raging'}",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-02"
     },
     {
       "id": "refs-classes-barbarian",
       "feature": "refs-package",
       "prompt": "refs.Classes.Barbarian() returns *core.Ref{Module: 'dnd5e', Type: 'classes', ID: 'barbarian'}",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-02"
     },
     {
       "id": "no-import-cycles",
       "feature": "refs-package",
       "prompt": "All dnd5e sub-packages can import refs without import cycles",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-02"
     },
     {
       "id": "all-tests-pass",
       "feature": "refs-package",
       "prompt": "go test ./... passes for rulebooks/dnd5e module",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-02"
     }
   ]
 }
