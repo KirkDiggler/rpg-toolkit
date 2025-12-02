@@ -93,7 +93,10 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	s.Equal("barbarian-1", ragingCond.CharacterID)
 	s.Equal(2, ragingCond.DamageBonus) // Level 3 = +2 damage
 	s.Equal(3, ragingCond.Level)
-	s.Equal("rage-feature", ragingCond.Source)
+	s.NotNil(ragingCond.Source)
+	s.Equal("dnd5e", ragingCond.Source.Module)
+	s.Equal(Type, ragingCond.Source.Type)
+	s.Equal("rage-feature", ragingCond.Source.ID)
 }
 
 func (s *RageTestSuite) TestRageUsesPerLevel() {

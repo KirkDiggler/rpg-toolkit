@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -135,7 +136,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       1,
-		Source:      "class",
+		Source:      &core.Ref{Module: "dnd5e", Type: "classes", ID: "barbarian"},
 	}
 	err := raging.Apply(s.ctx, s.eventBus)
 	s.Require().NoError(err)

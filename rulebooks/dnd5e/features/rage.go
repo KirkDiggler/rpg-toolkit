@@ -101,12 +101,16 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		}
 	}
 
-	// Create the raging condition
+	// Create the raging condition with source ref pointing to this feature
 	ragingCondition := &conditions.RagingCondition{
 		CharacterID: owner.GetID(),
 		DamageBonus: calculateRageDamage(r.level),
 		Level:       r.level,
-		Source:      r.id,
+		Source: &core.Ref{
+			Module: "dnd5e",
+			Type:   Type,
+			ID:     r.id,
+		},
 	}
 
 	// Publish condition applied event with the actual condition

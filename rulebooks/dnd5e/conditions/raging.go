@@ -16,14 +16,14 @@ import (
 
 // RagingData is the JSON structure for persisting raging condition state
 type RagingData struct {
-	Ref               core.Ref `json:"ref"`
-	CharacterID       string   `json:"character_id"`
-	DamageBonus       int      `json:"damage_bonus"`
-	Level             int      `json:"level"`
-	Source            string   `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
-	TurnsActive       int      `json:"turns_active"`
-	WasHitThisTurn    bool     `json:"was_hit_this_turn"`
-	DidAttackThisTurn bool     `json:"did_attack_this_turn"`
+	Ref               core.Ref  `json:"ref"`
+	CharacterID       string    `json:"character_id"`
+	DamageBonus       int       `json:"damage_bonus"`
+	Level             int       `json:"level"`
+	Source            *core.Ref `json:"source"` // What granted this condition (e.g., "dnd5e:features:rage")
+	TurnsActive       int       `json:"turns_active"`
+	WasHitThisTurn    bool      `json:"was_hit_this_turn"`
+	DidAttackThisTurn bool      `json:"did_attack_this_turn"`
 }
 
 // RagingCondition represents the barbarian rage state.
@@ -32,7 +32,7 @@ type RagingCondition struct {
 	CharacterID       string
 	DamageBonus       int
 	Level             int
-	Source            string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
+	Source            *core.Ref // What granted this condition (e.g., "dnd5e:features:rage")
 	TurnsActive       int
 	WasHitThisTurn    bool
 	DidAttackThisTurn bool

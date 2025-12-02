@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
 // LoaderTestSuite tests the condition loader functionality
@@ -24,7 +26,7 @@ func (s *LoaderTestSuite) TestLoadRagingCondition() {
 		CharacterID:       "barbarian-1",
 		DamageBonus:       2,
 		Level:             5,
-		Source:            "dnd5e:features:rage",
+		Source:            &core.Ref{Module: "dnd5e", Type: "features", ID: "rage"},
 		TurnsActive:       3,
 		WasHitThisTurn:    true,
 		DidAttackThisTurn: true,

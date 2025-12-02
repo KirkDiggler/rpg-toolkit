@@ -136,7 +136,7 @@
         {
           "id": "3.1",
           "description": "Convert RagingCondition.Source and RagingData.Source to core.Ref",
-          "status": "pending",
+          "status": "completed",
           "file": "rulebooks/dnd5e/conditions/raging.go",
           "test": "go test ./conditions/..."
         },

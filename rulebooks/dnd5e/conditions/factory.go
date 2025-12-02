@@ -133,10 +133,14 @@ func createRaging(config json.RawMessage, characterID, sourceRef string) (*Ragin
 		damageBonus = 2
 	}
 
-	// Default to rage feature ref if not specified
-	source := sourceRef
-	if source == "" {
-		source = "dnd5e:features:rage"
+	// Parse source ref, default to rage feature ref if not specified
+	sourceRefStr := sourceRef
+	if sourceRefStr == "" {
+		sourceRefStr = "dnd5e:features:rage"
+	}
+	source, err := core.ParseString(sourceRefStr)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse source ref: %s", sourceRefStr)
 	}
 
 	return &RagingCondition{

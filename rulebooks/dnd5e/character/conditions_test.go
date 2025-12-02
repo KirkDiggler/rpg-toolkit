@@ -102,7 +102,10 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	s.Require().NotNil(ragingCond, "Should have raging condition")
 	s.Equal("char-1", ragingCond.CharacterID)
 	s.Equal(2, ragingCond.DamageBonus) // Level 1 barbarian = +2 rage damage
-	s.Equal("rage", ragingCond.Source)
+	s.Require().NotNil(ragingCond.Source)
+	s.Equal("dnd5e", ragingCond.Source.Module)
+	s.Equal(features.Type, ragingCond.Source.Type)
+	s.Equal("rage", ragingCond.Source.ID)
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditions() {
@@ -143,7 +146,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 		CharacterID: "char-2",
 		DamageBonus: 2,
 		Level:       5,
-		Source:      "test",
+		Source:      &core.Ref{Module: "test", Type: "features", ID: "test-rage"},
 	}
 
 	topic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
