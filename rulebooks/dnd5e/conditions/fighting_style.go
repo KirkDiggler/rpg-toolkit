@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 )
@@ -69,7 +68,7 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 		f.subscriptionIDs = append(f.subscriptionIDs, subID1)
 
 		// Subscribe to AttackChain to add +2 bonus for ranged attacks
-		attackChain := combat.AttackChain.On(bus)
+		attackChain := dnd5eEvents.AttackChain.On(bus)
 		subID2, err := attackChain.SubscribeWithChain(ctx, f.onAttackChain)
 		if err != nil {
 			// Rollback
@@ -80,7 +79,7 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 
 	case fightingstyles.GreatWeaponFighting:
 		// Subscribe to DamageChain to reroll 1s and 2s
-		damageChain := combat.DamageChain.On(bus)
+		damageChain := dnd5eEvents.DamageChain.On(bus)
 		subID, err := damageChain.SubscribeWithChain(ctx, f.onDamageChain)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to subscribe to damage chain")
@@ -158,9 +157,9 @@ func (f *FightingStyleCondition) onAttackEvent(_ context.Context, event dnd5eEve
 // onAttackChain adds +2 to attack rolls for ranged weapons (Archery fighting style)
 func (f *FightingStyleCondition) onAttackChain(
 	_ context.Context,
-	event combat.AttackChainEvent,
-	c chain.Chain[combat.AttackChainEvent],
-) (chain.Chain[combat.AttackChainEvent], error) {
+	event dnd5eEvents.AttackChainEvent,
+	c chain.Chain[dnd5eEvents.AttackChainEvent],
+) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Only modify attacks by this character
 	if event.AttackerID != f.CharacterID {
 		return c, nil
@@ -172,12 +171,12 @@ func (f *FightingStyleCondition) onAttackChain(
 	}
 
 	// Add +2 to attack bonus at StageFeatures
-	modifyAttack := func(_ context.Context, e combat.AttackChainEvent) (combat.AttackChainEvent, error) {
+	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		e.AttackBonus += 2
 		return e, nil
 	}
 
-	err := c.Add(combat.StageFeatures, "archery", modifyAttack)
+	err := c.Add(dnd5eEvents.StageFeatures, "archery", modifyAttack)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply archery bonus for character %s", f.CharacterID)
 	}
@@ -188,9 +187,9 @@ func (f *FightingStyleCondition) onAttackChain(
 // onDamageChain rerolls 1s and 2s on weapon damage dice (Great Weapon Fighting)
 func (f *FightingStyleCondition) onDamageChain(
 	_ context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
 	if event.AttackerID != f.CharacterID {
 		return c, nil
@@ -204,7 +203,7 @@ func (f *FightingStyleCondition) onDamageChain(
 	}
 
 	weaponComponent := &event.Components[0]
-	if weaponComponent.Source != combat.DamageSourceWeapon {
+	if weaponComponent.Source != dnd5eEvents.DamageSourceWeapon {
 		return c, nil // First component isn't weapon damage
 	}
 
@@ -219,11 +218,11 @@ func (f *FightingStyleCondition) onDamageChain(
 	// For proper implementation, we need to track the weapon being used
 	// Let's add a modifier that rerolls at the StageFeatures stage
 
-	modifyDamage := func(modCtx context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Find weapon component
 		for i := range e.Components {
 			component := &e.Components[i]
-			if component.Source != combat.DamageSourceWeapon {
+			if component.Source != dnd5eEvents.DamageSourceWeapon {
 				continue
 			}
 
@@ -252,7 +251,7 @@ func (f *FightingStyleCondition) onDamageChain(
 					}
 
 					// Track reroll
-					component.Rerolls = append(component.Rerolls, combat.RerollEvent{
+					component.Rerolls = append(component.Rerolls, dnd5eEvents.RerollEvent{
 						DieIndex: idx,
 						Before:   roll,
 						After:    newRoll,
@@ -270,7 +269,7 @@ func (f *FightingStyleCondition) onDamageChain(
 		return e, nil
 	}
 
-	err := c.Add(combat.StageFeatures, "great_weapon_fighting", modifyDamage)
+	err := c.Add(dnd5eEvents.StageFeatures, "great_weapon_fighting", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply great weapon fighting for character %s", f.CharacterID)
 	}

@@ -10,7 +10,7 @@ import (
 const Type core.Type = "races"
 
 // Race represents a D&D 5e player race
-type Race string
+type Race = core.ID
 
 // Subrace is an alias for Race (subraces are just specific race variants)
 type Subrace = Race
@@ -60,7 +60,6 @@ const (
 )
 
 // All provides map lookup for base races only (no subraces)
-// Deprecated: Use RaceData directly - it now contains ID field and Name()/Description() methods
 var All = map[string]Race{
 	"human":      Human,
 	"elf":        Elf,
@@ -124,8 +123,8 @@ func GetByID(id string) (Race, error) {
 	return race, nil
 }
 
-// Name is a human readable name for the race
-func (r Race) Name() string {
+// Name returns a human readable name for the race
+func Name(r Race) string {
 	switch r {
 	case Human:
 		return "Human"
@@ -150,8 +149,8 @@ func (r Race) Name() string {
 	}
 }
 
-// Description is a brief description for a race
-func (r Race) Description() string {
+// Description returns a brief description for a race
+func Description(r Race) string {
 	switch r {
 	case Human:
 		return "Humans are the most common race in the world, with a diverse array of backgrounds and cultures."
@@ -177,7 +176,7 @@ func (r Race) Description() string {
 }
 
 // IsSubrace returns true if this is a subrace
-func (r Race) IsSubrace() bool {
+func IsSubrace(r Race) bool {
 	switch r {
 	case HighElf, WoodElf, DarkElf,
 		MountainDwarf, HillDwarf,
@@ -190,7 +189,7 @@ func (r Race) IsSubrace() bool {
 }
 
 // ParentRace returns the parent race for subraces
-func (r Race) ParentRace() Race {
+func ParentRace(r Race) Race {
 	switch r {
 	case HighElf, WoodElf, DarkElf:
 		return Elf

@@ -15,77 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// DamageSourceType categorizes where damage bonuses come from
-type DamageSourceType string
-
-// Damage source type constants
-const (
-	DamageSourceWeapon          DamageSourceType = "weapon"
-	DamageSourceAbility         DamageSourceType = "ability"
-	DamageSourceRage            DamageSourceType = "rage"
-	DamageSourceSneakAttack     DamageSourceType = "sneak_attack"
-	DamageSourceDivineSmite     DamageSourceType = "divine_smite"
-	DamageSourceElementalWeapon DamageSourceType = "elemental_weapon"
-	DamageSourceBrutalCritical  DamageSourceType = "brutal_critical"
-	// Add more as needed
-)
-
-// RerollEvent tracks a single die reroll
-type RerollEvent struct {
-	DieIndex int    // Which die was rerolled (0-based in OriginalDiceRolls)
-	Before   int    // Value before reroll
-	After    int    // Value after reroll
-	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
-}
-
-// DamageComponent represents damage from one source
-type DamageComponent struct {
-	Source            DamageSourceType
-	OriginalDiceRolls []int         // As first rolled
-	FinalDiceRolls    []int         // After all rerolls
-	Rerolls           []RerollEvent // History of rerolls
-	FlatBonus         int           // Flat modifier (0 if none)
-	DamageType        string        // "slashing", "fire", etc.
-	IsCritical        bool          // Was this doubled for crit?
-}
-
-// Total returns the total damage for this component
-func (dc *DamageComponent) Total() int {
-	total := dc.FlatBonus
-	for _, roll := range dc.FinalDiceRolls {
-		total += roll
-	}
-	return total
-}
-
-// AttackChainEvent represents an attack flowing through the modifier chain
-type AttackChainEvent struct {
-	AttackerID      string
-	TargetID        string
-	AttackRoll      int  // The d20 roll
-	AttackBonus     int  // Base bonus before modifiers
-	TargetAC        int  // Target's armor class
-	IsNaturalTwenty bool // Natural 20 always hits
-	IsNaturalOne    bool // Natural 1 always misses
-}
-
-// DamageChainEvent represents damage flowing through the modifier chain
-type DamageChainEvent struct {
-	AttackerID   string
-	TargetID     string
-	Components   []DamageComponent // All damage sources
-	DamageType   string            // Type of damage (slashing, piercing, etc.)
-	IsCritical   bool              // Double damage dice on crit
-	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
-	AbilityUsed  abilities.Ability // Which ability was used
-}
-
-// AttackChain provides typed chained topic for attack roll modifiers
-var AttackChain = events.DefineChainedTopic[AttackChainEvent]("dnd5e.combat.attack.chain")
-
-// DamageChain provides typed chained topic for damage modifiers
-var DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
-
 // AttackInput provides all information needed to resolve an attack
 type AttackInput struct {
 	Attacker         core.Entity
@@ -125,8 +54,8 @@ func (ai *AttackInput) Validate() error {
 
 // DamageBreakdown provides detailed component breakdown of damage calculation
 type DamageBreakdown struct {
-	Components  []DamageComponent
-	AbilityUsed abilities.Ability // Use abilities.Ability type, not string
+	Components  []dnd5eEvents.DamageComponent
+	AbilityUsed abilities.Ability
 	TotalDamage int
 }
 
@@ -199,7 +128,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	baseBonus := abilityMod + input.ProficiencyBonus
 
 	// Step 4: Fire attack chain event to collect modifiers
-	attackEvent := AttackChainEvent{
+	attackEvent := dnd5eEvents.AttackChainEvent{
 		AttackerID:      input.Attacker.GetID(),
 		TargetID:        input.Defender.GetID(),
 		AttackRoll:      attackRoll,
@@ -210,8 +139,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	// Create attack chain
-	attackChain := events.NewStagedChain[AttackChainEvent](ModifierStages)
-	attacks := AttackChain.On(input.EventBus)
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](dnd5eEvents.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(input.EventBus)
 
 	// Publish through chain to collect modifiers
 	modifiedAttackChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
@@ -351,8 +280,8 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 	}
 
 	// Create weapon damage component
-	weaponComponent := DamageComponent{
-		Source:            DamageSourceWeapon,
+	weaponComponent := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: input.DiceRolls,
 		FinalDiceRolls:    input.DiceRolls, // No rerolls yet
 		Rerolls:           nil,
@@ -362,8 +291,8 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 	}
 
 	// Create ability modifier component
-	abilityComponent := DamageComponent{
-		Source:            DamageSourceAbility,
+	abilityComponent := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceAbility,
 		OriginalDiceRolls: nil, // No dice
 		FinalDiceRolls:    nil,
 		Rerolls:           nil,
@@ -373,10 +302,10 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 	}
 
 	// Build damage chain event with initial components
-	damageEvent := &DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   input.AttackInput.Attacker.GetID(),
 		TargetID:     input.AttackInput.Defender.GetID(),
-		Components:   []DamageComponent{weaponComponent, abilityComponent},
+		Components:   []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
 		DamageType:   string(input.AttackInput.Weapon.DamageType),
 		IsCritical:   input.IsCritical,
 		WeaponDamage: input.AttackInput.Weapon.Damage,
@@ -384,8 +313,8 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 	}
 
 	// Create and publish through damage chain
-	damageChain := events.NewStagedChain[*DamageChainEvent](ModifierStages)
-	damages := DamageChain.On(input.AttackInput.EventBus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eEvents.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(input.AttackInput.EventBus)
 
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	if err != nil {

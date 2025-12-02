@@ -170,10 +170,10 @@ func GetData(bg Background) *Data {
 
 // Name returns the display name of the background
 func (d *Data) Name() string {
-	return d.ID.Name()
+	return Name(d.ID)
 }
 
 // Description returns the description of the background
 func (d *Data) Description() string {
-	return d.ID.Description()
+	return Description(d.ID)
 }

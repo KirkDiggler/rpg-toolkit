@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -85,7 +84,7 @@ func (b *BrutalCriticalCondition) Apply(ctx context.Context, bus events.EventBus
 	b.bus = bus
 
 	// Subscribe to damage chain to add extra dice on crits
-	damageChain := combat.DamageChain.On(bus)
+	damageChain := dnd5eEvents.DamageChain.On(bus)
 	subID, err := damageChain.SubscribeWithChain(ctx, b.onDamageChain)
 	if err != nil {
 		return rpgerr.Wrap(err, "failed to subscribe to damage chain")
@@ -145,9 +144,9 @@ func (b *BrutalCriticalCondition) loadJSON(data json.RawMessage) error {
 // onDamageChain adds extra weapon damage dice on critical hits
 func (b *BrutalCriticalCondition) onDamageChain(
 	_ context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only add extra dice if:
 	// 1. We're the attacker
 	// 2. This is a critical hit
@@ -167,7 +166,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 	}
 
 	// Add brutal critical modifier at StageFeatures
-	modifyDamage := func(modCtx context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Roll extra dice
 		roller := b.roller
 		if roller == nil {
@@ -180,8 +179,8 @@ func (b *BrutalCriticalCondition) onDamageChain(
 		}
 
 		// Append brutal critical damage component
-		e.Components = append(e.Components, combat.DamageComponent{
-			Source:            combat.DamageSourceBrutalCritical,
+		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+			Source:            dnd5eEvents.DamageSourceBrutalCritical,
 			OriginalDiceRolls: extraRolls,
 			FinalDiceRolls:    extraRolls,
 			Rerolls:           nil,
@@ -192,7 +191,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 		return e, nil
 	}
 
-	err = c.Add(combat.StageFeatures, "brutal_critical", modifyDamage)
+	err = c.Add(dnd5eEvents.StageFeatures, "brutal_critical", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to add brutal critical modifier for character %s", b.CharacterID)
 	}

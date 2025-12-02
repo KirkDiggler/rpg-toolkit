@@ -499,10 +499,10 @@ func GetSubraceData(raceID Race, subraceID Subrace) *SubraceData {
 
 // Name returns the display name of the race
 func (d *Data) Name() string {
-	return d.ID.Name()
+	return Name(d.ID)
 }
 
 // Description returns the description of the race
 func (d *Data) Description() string {
-	return d.ID.Description()
+	return Description(d.ID)
 }

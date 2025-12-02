@@ -12,7 +12,6 @@ import (
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
@@ -96,7 +95,7 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 			s.Require().NoError(err)
 
 			// Create attack chain event
-			attackEvent := combat.AttackChainEvent{
+			attackEvent := dnd5eEvents.AttackChainEvent{
 				AttackerID:      "fighter-1",
 				TargetID:        "goblin-1",
 				AttackRoll:      15,
@@ -107,8 +106,8 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 			}
 
 			// Publish through attack chain
-			attackChain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-			attacks := combat.AttackChain.On(s.bus)
+			attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](dnd5eEvents.ModifierStages)
+			attacks := dnd5eEvents.AttackChain.On(s.bus)
 			modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
 			s.Require().NoError(err)
 
@@ -145,12 +144,12 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingRerolls() {
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil).Times(1) // Reroll second die
 
 	// Create damage chain event with weapon damage containing 1s and 2s
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1, 2, 6}, // Two dice need rerolling
 				FinalDiceRolls:    []int{1, 2, 6},
 				Rerolls:           nil,
@@ -165,8 +164,8 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingRerolls() {
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eEvents.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -213,12 +212,12 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingDoesNotRerollHighNumbers
 	// No mock expectations because nothing should be rerolled
 
 	// Create damage chain event with all high rolls
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{5, 6}, // No rerolls needed
 				FinalDiceRolls:    []int{5, 6},
 				Rerolls:           nil,
@@ -233,8 +232,8 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingDoesNotRerollHighNumbers
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eEvents.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 

@@ -10,7 +10,7 @@ import (
 const Type core.Type = "backgrounds"
 
 // Background represents a D&D 5e character background
-type Background string
+type Background = core.ID
 
 // Core backgrounds from Player's Handbook
 const (
@@ -50,7 +50,6 @@ const (
 )
 
 // All provides map lookup for backgrounds
-// Deprecated: Use BackgroundData directly - it now contains ID field and Name()/Description() methods
 var All = map[string]Background{
 	"acolyte":       Acolyte,
 	"criminal":      Criminal,
@@ -88,7 +87,7 @@ func GetByID(id string) (Background, error) {
 }
 
 // Name returns the display name of the background
-func (b Background) Name() string {
+func Name(b Background) string {
 	switch b {
 	case Acolyte:
 		return "Acolyte"
@@ -126,12 +125,12 @@ func (b Background) Name() string {
 	case GuildMerchant:
 		return "Guild Merchant"
 	default:
-		return string(b)
+		return b
 	}
 }
 
 // Description returns a brief description of the background
-func (b Background) Description() string {
+func Description(b Background) string {
 	switch b {
 	case Acolyte:
 		return "You have spent your life in the service of a temple"
@@ -174,7 +173,7 @@ func (b Background) Description() string {
 }
 
 // IsVariant returns true if this is a variant background
-func (b Background) IsVariant() bool {
+func IsVariant(b Background) bool {
 	switch b {
 	case Spy, Pirate, Knight, GuildMerchant:
 		return true
@@ -184,7 +183,7 @@ func (b Background) IsVariant() bool {
 }
 
 // BaseBackground returns the base background for variants
-func (b Background) BaseBackground() Background {
+func BaseBackground(b Background) Background {
 	switch b {
 	case Spy:
 		return Criminal

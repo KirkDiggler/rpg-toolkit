@@ -7,7 +7,7 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Entity type constants for D&D 5e
 const (
-	Module = "dnd5e"
+	Module core.Module = "dnd5e"
 
 	EntityTypeCondition core.EntityType = "condition"
 	EntityTypeCharacter core.EntityType = "character"
