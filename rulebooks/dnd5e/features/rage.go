@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Rage represents the barbarian rage feature.
@@ -147,11 +148,7 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 // ToJSON converts rage to JSON for persistence
 func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
-		Ref: core.Ref{
-			Module: "dnd5e",
-			Type:   Type,
-			ID:     RageID,
-		},
+		Ref:     *refs.Features.Rage(),
 		ID:      r.id,
 		Name:    r.name,
 		Level:   r.level,
