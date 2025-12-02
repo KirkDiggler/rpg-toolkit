@@ -2,8 +2,12 @@
 package races
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 )
+
+// Type is the content type for races in refs (e.g., "dnd5e:races:human")
+const Type core.Type = "races"
 
 // Race represents a D&D 5e player race
 type Race string

@@ -4,12 +4,14 @@ package shared
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 )
 
-// SelectionID represents any selectable game content ID
-type SelectionID = string
+// SelectionID represents any selectable game content ID.
+// This is an alias for core.ID, connecting our domain types to the ref system.
+type SelectionID = core.ID
 
 // AbilityScores maps ability constants to their scores (includes all bonuses)
 type AbilityScores map[abilities.Ability]int

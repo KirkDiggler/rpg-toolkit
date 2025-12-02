@@ -2,8 +2,12 @@
 package backgrounds
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 )
+
+// Type is the content type for backgrounds in refs (e.g., "dnd5e:backgrounds:soldier")
+const Type core.Type = "backgrounds"
 
 // Background represents a D&D 5e character background
 type Background string

@@ -2,10 +2,14 @@
 package skills
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
+
+// Type is the content type for skills in refs (e.g., "dnd5e:skills:athletics")
+const Type core.Type = "skills"
 
 // Skill represents a D&D 5e skill
 type Skill = shared.SelectionID

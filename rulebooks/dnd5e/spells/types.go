@@ -1,7 +1,13 @@
 // Package spells provides D&D 5e spell definitions and mechanics
 package spells
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+)
+
+// Type is the content type for spells in refs (e.g., "dnd5e:spells:fireball")
+const Type core.Type = "spells"
 
 // Spell represents a specific spell or cantrip
 type Spell = shared.SelectionID

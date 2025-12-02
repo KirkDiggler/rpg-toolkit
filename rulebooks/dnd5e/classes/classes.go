@@ -2,9 +2,13 @@
 package classes
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
+
+// Type is the content type for classes in refs (e.g., "dnd5e:classes:barbarian")
+const Type core.Type = "classes"
 
 // Class represents a D&D 5e character class
 type Class = shared.SelectionID
