@@ -262,7 +262,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
 	err = removalTopic.Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
 		CharacterID:  "char-2",
-		ConditionRef: "dnd5e:conditions:raging",
+		ConditionRef: &core.Ref{Module: "dnd5e", Type: conditions.Type, ID: conditions.RagingID},
 		Reason:       "test",
 	})
 	s.Require().NoError(err)

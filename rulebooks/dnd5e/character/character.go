@@ -305,7 +305,7 @@ func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.Cond
 		}
 
 		// Keep condition if it doesn't match the removed ref
-		if refData.Ref.String() != event.ConditionRef {
+		if !refData.Ref.Equals(event.ConditionRef) {
 			filtered = append(filtered, cond)
 		}
 	}

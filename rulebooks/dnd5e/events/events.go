@@ -134,7 +134,7 @@ type ConditionAppliedEvent struct {
 // ConditionRemovedEvent is published when a condition ends
 type ConditionRemovedEvent struct {
 	CharacterID  string
-	ConditionRef string
+	ConditionRef *core.Ref // The condition that was removed (e.g., "dnd5e:conditions:raging")
 	Reason       string
 }
 
