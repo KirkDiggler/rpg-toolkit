@@ -104,24 +104,25 @@
       "id": 2,
       "name": "Audit Magic Strings",
       "description": "Find all Source string fields that should be core.Ref",
-      "status": "pending",
+      "status": "completed",
+      "completed_at": "2025-12-01",
       "tasks": [
         {
           "id": "2.1",
           "description": "Search for 'Source string' fields in conditions/",
-          "status": "pending",
+          "status": "completed",
           "test": "grep -r 'Source.*string' conditions/"
         },
         {
           "id": "2.2",
           "description": "Search for string fields containing module:type:id patterns",
-          "status": "pending",
+          "status": "completed",
           "test": "grep -r 'dnd5e:' ."
         },
         {
           "id": "2.3",
           "description": "Document findings in audit.md",
-          "status": "pending",
+          "status": "completed",
           "file": "docs/design/eliminate-magic-strings/audit.md"
         }
       ]
@@ -130,8 +131,71 @@
       "id": 3,
       "name": "Convert to core.Ref",
       "description": "Change Source string to Source core.Ref where appropriate",
-      "status": "pending",
-      "tasks": []
+      "status": "in_progress",
+      "tasks": [
+        {
+          "id": "3.1",
+          "description": "Convert RagingCondition.Source and RagingData.Source to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/raging.go",
+          "test": "go test ./conditions/..."
+        },
+        {
+          "id": "3.2",
+          "description": "Convert UnarmoredDefenseCondition.Source and UnarmoredDefenseData.Source to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/unarmored_defense.go",
+          "test": "go test ./conditions/..."
+        },
+        {
+          "id": "3.3",
+          "description": "Convert ActiveCondition.Source to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/types.go",
+          "test": "go test ./conditions/..."
+        },
+        {
+          "id": "3.4",
+          "description": "Convert ConditionRemovedEvent.ConditionRef to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/events/events.go",
+          "test": "go build ./events/..."
+        },
+        {
+          "id": "3.5",
+          "description": "Convert ConditionGrant.Ref, FeatureGrant.Ref, SpellGrant.Ref to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/classes/grant.go",
+          "test": "go test ./classes/..."
+        },
+        {
+          "id": "3.6",
+          "description": "Convert ConditionFactoryInput.Ref and SourceRef to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/factory.go",
+          "test": "go test ./conditions/..."
+        },
+        {
+          "id": "3.7",
+          "description": "Convert FeatureFactoryInput.Ref to core.Ref",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/features/factory.go",
+          "test": "go test ./features/..."
+        },
+        {
+          "id": "3.8",
+          "description": "Create ref helper functions in dnd5e package",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/refs.go",
+          "test": "go test ./..."
+        },
+        {
+          "id": "3.9",
+          "description": "Replace magic string literals with helper functions",
+          "status": "pending",
+          "test": "go build ./... && go test ./..."
+        }
+      ]
     },
     {
       "id": 4,
