@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -85,7 +84,7 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	r.subscriptionIDs = append(r.subscriptionIDs, subID3)
 
 	// Subscribe to damage chain to add rage damage bonus and track successful hits
-	damageChain := combat.DamageChain.On(bus)
+	damageChain := dnd5eEvents.DamageChain.On(bus)
 	subID4, err := damageChain.SubscribeWithChain(ctx, r.onDamageChain)
 	if err != nil {
 		// Rollback: unsubscribe from previous subscriptions
@@ -222,9 +221,9 @@ func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
 // and tracks that we successfully hit an enemy this turn (for rage maintenance)
 func (r *RagingCondition) onDamageChain(
 	_ context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only add bonus if we're the attacker
 	if event.AttackerID != r.CharacterID {
 		return c, nil
@@ -235,10 +234,10 @@ func (r *RagingCondition) onDamageChain(
 	r.DidAttackThisTurn = true
 
 	// Add rage damage modifier in the StageFeatures stage
-	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Append rage damage component
-		e.Components = append(e.Components, combat.DamageComponent{
-			Source:            combat.DamageSourceRage,
+		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+			Source:            dnd5eEvents.DamageSourceRage,
 			OriginalDiceRolls: nil, // No dice
 			FinalDiceRolls:    nil,
 			Rerolls:           nil,
@@ -248,7 +247,7 @@ func (r *RagingCondition) onDamageChain(
 		})
 		return e, nil
 	}
-	err := c.Add(combat.StageFeatures, "rage", modifyDamage)
+	err := c.Add(dnd5eEvents.StageFeatures, "rage", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "error applying raging for character id %s", r.CharacterID)
 	}

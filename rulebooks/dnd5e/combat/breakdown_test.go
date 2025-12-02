@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -96,7 +97,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_BasicMelee() {
 
 	// Verify weapon component
 	weaponComp := result.Breakdown.Components[0]
-	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceWeapon, weaponComp.Source)
 	s.Equal([]int{5}, weaponComp.OriginalDiceRolls, "Original dice rolls should match")
 	s.Equal([]int{5}, weaponComp.FinalDiceRolls, "Final dice rolls should match (no rerolls)")
 	s.Equal(0, weaponComp.FlatBonus, "Weapon component has no flat bonus")
@@ -104,7 +105,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_BasicMelee() {
 
 	// Verify ability component
 	abilityComp := result.Breakdown.Components[1]
-	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceAbility, abilityComp.Source)
 	s.Nil(abilityComp.OriginalDiceRolls, "Ability has no dice")
 	s.Nil(abilityComp.FinalDiceRolls, "Ability has no dice")
 	s.Equal(3, abilityComp.FlatBonus, "STR modifier is +3")
@@ -181,18 +182,18 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 
 	// Verify weapon component
 	weaponComp := result.Breakdown.Components[0]
-	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceWeapon, weaponComp.Source)
 	s.Equal(6, weaponComp.Total(), "Weapon damage should be 6")
 
 	// Verify ability component
 	abilityComp := result.Breakdown.Components[1]
-	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceAbility, abilityComp.Source)
 	s.Equal(3, abilityComp.FlatBonus, "STR modifier is +3")
 	s.Equal(3, abilityComp.Total(), "Ability bonus should be 3")
 
 	// Verify rage component
 	rageComp := result.Breakdown.Components[2]
-	s.Equal(combat.DamageSourceRage, rageComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceRage, rageComp.Source)
 	s.Equal(2, rageComp.FlatBonus, "Rage adds +2 at level 1")
 	s.Nil(rageComp.OriginalDiceRolls, "Rage has no dice")
 	s.Nil(rageComp.FinalDiceRolls, "Rage has no dice")
@@ -259,12 +260,12 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_FinesseWeapon() {
 
 	// Verify weapon component
 	weaponComp := result.Breakdown.Components[0]
-	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceWeapon, weaponComp.Source)
 	s.Equal(5, weaponComp.Total(), "Weapon damage should be 5")
 
 	// Verify ability component uses DEX
 	abilityComp := result.Breakdown.Components[1]
-	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceAbility, abilityComp.Source)
 	s.Equal(4, abilityComp.FlatBonus, "Should use DEX +4, not STR +1")
 	s.Equal(4, abilityComp.Total(), "Ability bonus should be 4")
 
@@ -325,14 +326,14 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_CriticalHit() {
 
 	// Verify weapon component has doubled dice
 	weaponComp := result.Breakdown.Components[0]
-	s.Equal(combat.DamageSourceWeapon, weaponComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceWeapon, weaponComp.Source)
 	s.Equal([]int{6, 6}, weaponComp.FinalDiceRolls, "Should have two dice rolls for critical")
 	s.True(weaponComp.IsCritical, "Weapon component should be marked as critical")
 	s.Equal(12, weaponComp.Total(), "Critical: 6 + 6 = 12")
 
 	// Verify ability component is NOT doubled
 	abilityComp := result.Breakdown.Components[1]
-	s.Equal(combat.DamageSourceAbility, abilityComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceAbility, abilityComp.Source)
 	s.Equal(2, abilityComp.FlatBonus, "STR modifier (not doubled)")
 	s.True(abilityComp.IsCritical, "Ability component should be marked as critical (even though not doubled)")
 	s.Equal(2, abilityComp.Total(), "Bonuses are NOT doubled on crit")

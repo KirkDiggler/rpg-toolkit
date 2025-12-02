@@ -13,7 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // BrutalCriticalTestSuite tests the BrutalCriticalCondition behavior
@@ -48,10 +48,10 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 	attackerID string,
 	weaponDamage string,
 	isCritical bool,
-) (*combat.DamageChainEvent, error) {
+) (*dnd5eEvents.DamageChainEvent, error) {
 	// Create weapon component with base damage (already doubled for crit in real flow)
-	weaponComp := combat.DamageComponent{
-		Source:            combat.DamageSourceWeapon,
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: []int{6, 4}, // 2d8 rolled (crit doubles dice)
 		FinalDiceRolls:    []int{6, 4},
 		FlatBonus:         0,
@@ -60,8 +60,8 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 	}
 
 	// Create ability component
-	abilityComp := combat.DamageComponent{
-		Source:            combat.DamageSourceAbility,
+	abilityComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceAbility,
 		OriginalDiceRolls: nil,
 		FinalDiceRolls:    nil,
 		FlatBonus:         4, // STR modifier
@@ -69,18 +69,18 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 		IsCritical:        isCritical,
 	}
 
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   attackerID,
 		TargetID:     "goblin-1",
-		Components:   []combat.DamageComponent{weaponComp, abilityComp},
+		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		DamageType:   "slashing",
 		IsCritical:   isCritical,
 		WeaponDamage: weaponDamage,
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damageTopic := combat.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eEvents.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
 	if err != nil {
@@ -116,7 +116,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 
 	// Verify brutal critical component
 	brutalComp := finalEvent.Components[2]
-	s.Equal(combat.DamageSourceBrutalCritical, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceBrutalCritical, brutalComp.Source)
 	s.Equal([]int{5}, brutalComp.FinalDiceRolls, "Should have rolled 1 extra d8")
 	s.Equal(5, brutalComp.Total(), "Brutal critical should add 5 damage")
 }
@@ -143,7 +143,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 	s.Require().Len(finalEvent.Components, 3)
 
 	brutalComp := finalEvent.Components[2]
-	s.Equal(combat.DamageSourceBrutalCritical, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceBrutalCritical, brutalComp.Source)
 	s.Equal([]int{5, 7}, brutalComp.FinalDiceRolls, "Should have rolled 2 extra d8s")
 	s.Equal(12, brutalComp.Total(), "Brutal critical should add 12 damage (5+7)")
 }
@@ -170,7 +170,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 	s.Require().Len(finalEvent.Components, 3)
 
 	brutalComp := finalEvent.Components[2]
-	s.Equal(combat.DamageSourceBrutalCritical, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceBrutalCritical, brutalComp.Source)
 	s.Equal([]int{3, 6, 8}, brutalComp.FinalDiceRolls, "Should have rolled 3 extra d8s")
 	s.Equal(17, brutalComp.Total(), "Brutal critical should add 17 damage (3+6+8)")
 }
@@ -208,26 +208,26 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 	// No mock expectation - RollN should NOT be called for other characters
 
 	// Create critical damage chain for a DIFFERENT attacker
-	weaponComp := combat.DamageComponent{
-		Source:            combat.DamageSourceWeapon,
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: []int{6, 4},
 		FinalDiceRolls:    []int{6, 4},
 		DamageType:        "slashing",
 		IsCritical:        true,
 	}
 
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   "barbarian-2", // Different character
 		TargetID:     "goblin-1",
-		Components:   []combat.DamageComponent{weaponComp},
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
 		DamageType:   "slashing",
 		IsCritical:   true,
 		WeaponDamage: "1d8",
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damageTopic := combat.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eEvents.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
 	s.Require().NoError(err)
@@ -255,26 +255,26 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 		Return([]int{10}, nil)
 
 	// Use a greataxe (1d12)
-	weaponComp := combat.DamageComponent{
-		Source:            combat.DamageSourceWeapon,
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: []int{8, 11}, // 2d12 for crit
 		FinalDiceRolls:    []int{8, 11},
 		DamageType:        "slashing",
 		IsCritical:        true,
 	}
 
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   "barbarian-1",
 		TargetID:     "goblin-1",
-		Components:   []combat.DamageComponent{weaponComp},
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
 		DamageType:   "slashing",
 		IsCritical:   true,
 		WeaponDamage: "1d12", // Greataxe
 		AbilityUsed:  "str",
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damageTopic := combat.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eEvents.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
 	s.Require().NoError(err)
@@ -285,7 +285,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 	s.Require().Len(finalEvent.Components, 2)
 
 	brutalComp := finalEvent.Components[1]
-	s.Equal(combat.DamageSourceBrutalCritical, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceBrutalCritical, brutalComp.Source)
 	s.Equal([]int{10}, brutalComp.FinalDiceRolls, "Should roll extra d12 for greataxe")
 }
 
