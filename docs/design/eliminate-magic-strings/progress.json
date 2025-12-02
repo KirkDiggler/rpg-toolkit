@@ -131,7 +131,8 @@
       "id": 3,
       "name": "Convert to core.Ref",
       "description": "Change Source string to Source core.Ref where appropriate",
-      "status": "in_progress",
+      "status": "completed",
+      "completed_at": "2025-12-02",
       "tasks": [
         {
           "id": "3.1",
@@ -157,42 +158,43 @@
         {
           "id": "3.4",
           "description": "Convert ConditionRemovedEvent.ConditionRef to core.Ref",
-          "status": "pending",
+          "status": "completed",
           "file": "rulebooks/dnd5e/events/events.go",
           "test": "go build ./events/..."
         },
         {
           "id": "3.5",
           "description": "Convert ConditionGrant.Ref, FeatureGrant.Ref, SpellGrant.Ref to core.Ref",
-          "status": "pending",
+          "status": "completed",
           "file": "rulebooks/dnd5e/classes/grant.go",
           "test": "go test ./classes/..."
         },
         {
           "id": "3.6",
           "description": "Convert ConditionFactoryInput.Ref and SourceRef to core.Ref",
-          "status": "pending",
+          "status": "completed",
           "file": "rulebooks/dnd5e/conditions/factory.go",
           "test": "go test ./conditions/..."
         },
         {
           "id": "3.7",
           "description": "Convert FeatureFactoryInput.Ref to core.Ref",
-          "status": "pending",
+          "status": "completed",
           "file": "rulebooks/dnd5e/features/factory.go",
           "test": "go test ./features/..."
         },
         {
           "id": "3.8",
           "description": "Create ref helper functions in dnd5e package",
-          "status": "pending",
+          "status": "completed",
           "file": "rulebooks/dnd5e/refs.go",
           "test": "go test ./..."
         },
         {
           "id": "3.9",
           "description": "Replace magic string literals with helper functions",
-          "status": "pending",
+          "status": "completed",
+          "note": "Sub-packages cannot use helpers due to import cycles, but now use typed core.Ref directly",
           "test": "go build ./... && go test ./..."
         }
       ]
