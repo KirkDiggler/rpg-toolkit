@@ -4,6 +4,7 @@ package classes
 import (
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -41,9 +42,8 @@ type Grant struct {
 // ConditionRef references a condition with optional configuration.
 // The config is parsed by the condition itself via its factory.
 type ConditionRef struct {
-	// Ref is the condition reference in "module:type:value" format
-	// e.g., "dnd5e:conditions:unarmored_defense"
-	Ref string `json:"ref"`
+	// Ref is the typed condition reference (e.g., dnd5e:conditions:unarmored_defense)
+	Ref *core.Ref `json:"ref"`
 	// Config is condition-specific configuration parsed by the condition factory
 	Config json.RawMessage `json:"config,omitempty"`
 }
@@ -51,18 +51,16 @@ type ConditionRef struct {
 // FeatureRef references a feature with optional configuration.
 // The config is parsed by the feature itself via its factory.
 type FeatureRef struct {
-	// Ref is the feature reference in "module:type:value" format
-	// e.g., "dnd5e:features:rage"
-	Ref string `json:"ref"`
+	// Ref is the typed feature reference (e.g., dnd5e:features:rage)
+	Ref *core.Ref `json:"ref"`
 	// Config is feature-specific configuration parsed by the feature factory
 	Config json.RawMessage `json:"config,omitempty"`
 }
 
 // SpellRef references a spell grant.
 type SpellRef struct {
-	// Ref is the spell reference in "module:type:value" format
-	// e.g., "dnd5e:spells:bless"
-	Ref string `json:"ref"`
+	// Ref is the typed spell reference (e.g., dnd5e:spells:bless)
+	Ref *core.Ref `json:"ref"`
 	// SpellLevel is the spell's level (0 = cantrip)
 	SpellLevel int `json:"spell_level"`
 }
@@ -105,7 +103,7 @@ func getFighterGrants() []Grant {
 			// Note: Second Wind is granted but handled as a feature
 			Features: []FeatureRef{
 				{
-					Ref:    "dnd5e:features:second_wind",
+					Ref:    &core.Ref{Module: "dnd5e", Type: "features", ID: "second_wind"},
 					Config: json.RawMessage(`{"uses": 1}`),
 				},
 			},
@@ -133,14 +131,14 @@ func getBarbarianGrants() []Grant {
 			// Rage feature with level 1 config
 			Features: []FeatureRef{
 				{
-					Ref:    "dnd5e:features:rage",
+					Ref:    &core.Ref{Module: "dnd5e", Type: "features", ID: "rage"},
 					Config: json.RawMessage(`{"uses": 2, "damage_bonus": 2}`),
 				},
 			},
 			// Unarmored Defense condition (always active)
 			Conditions: []ConditionRef{
 				{
-					Ref:    "dnd5e:conditions:unarmored_defense",
+					Ref:    &core.Ref{Module: "dnd5e", Type: "conditions", ID: "unarmored_defense"},
 					Config: json.RawMessage(`{"variant": "barbarian"}`),
 				},
 			},
@@ -166,7 +164,7 @@ func getMonkGrants() []Grant {
 			// Unarmored Defense condition (monk variant - uses WIS instead of CON)
 			Conditions: []ConditionRef{
 				{
-					Ref:    "dnd5e:conditions:unarmored_defense",
+					Ref:    &core.Ref{Module: "dnd5e", Type: "conditions", ID: "unarmored_defense"},
 					Config: json.RawMessage(`{"variant": "monk"}`),
 				},
 			},

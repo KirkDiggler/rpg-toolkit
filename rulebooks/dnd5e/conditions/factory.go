@@ -11,19 +11,18 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// CreateFromRefInput provides input for creating a condition from a ref string
+// CreateFromRefInput provides input for creating a condition from a ref
 type CreateFromRefInput struct {
-	// Ref is the condition reference in "module:type:value" format
-	// e.g., "dnd5e:conditions:unarmored_defense"
-	Ref string
+	// Ref is the typed condition reference (e.g., dnd5e:conditions:unarmored_defense)
+	Ref *core.Ref
 	// Config is condition-specific configuration as JSON
 	Config json.RawMessage
 	// CharacterID is the ID of the character this condition applies to
 	CharacterID string
-	// SourceRef is the ref of what granted this condition in "module:type:value" format
-	// e.g., "dnd5e:classes:barbarian" for class-granted conditions
-	// e.g., "dnd5e:features:rage" for feature-activated conditions
-	SourceRef string
+	// SourceRef is the ref of what granted this condition
+	// e.g., dnd5e:classes:barbarian for class-granted conditions
+	// e.g., dnd5e:features:rage for feature-activated conditions
+	SourceRef *core.Ref
 }
 
 // CreateFromRefOutput provides the result of creating a condition from a ref
@@ -32,15 +31,15 @@ type CreateFromRefOutput struct {
 	Condition dnd5eEvents.ConditionBehavior
 }
 
-// CreateFromRef creates a condition from a ref string and configuration.
-// The ref is parsed to determine which condition type to create, and
+// CreateFromRef creates a condition from a ref and configuration.
+// The ref determines which condition type to create, and
 // the config is parsed by each condition's specific factory logic.
 func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	if input == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is nil")
 	}
 
-	if input.Ref == "" {
+	if input.Ref == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "ref is required")
 	}
 
@@ -48,24 +47,19 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character_id is required")
 	}
 
-	// Parse the ref to get the condition type
-	ref, err := core.ParseString(input.Ref)
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to parse ref: %s", input.Ref)
-	}
-
 	// Validate module and type
-	if ref.Module != "dnd5e" {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported module: %s", ref.Module)
+	if input.Ref.Module != "dnd5e" {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported module: %s", input.Ref.Module)
 	}
-	if ref.Type != "conditions" {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'conditions')", ref.Type)
+	if input.Ref.Type != "conditions" {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'conditions')", input.Ref.Type)
 	}
 
 	// Create the condition based on the ID
 	var condition dnd5eEvents.ConditionBehavior
+	var err error
 
-	switch ref.ID {
+	switch input.Ref.ID {
 	case UnarmoredDefenseID:
 		condition, err = createUnarmoredDefense(input.Config, input.CharacterID, input.SourceRef)
 	case RagingID:
@@ -75,11 +69,11 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	case FightingStyleID:
 		condition, err = createFightingStyle(input.Config, input.CharacterID)
 	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", input.Ref.ID)
 	}
 
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", ref.ID)
+		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", input.Ref.ID)
 	}
 
 	return &CreateFromRefOutput{Condition: condition}, nil
@@ -91,7 +85,7 @@ type unarmoredDefenseConfig struct {
 }
 
 // createUnarmoredDefense creates an unarmored defense condition from config
-func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef string) (*UnarmoredDefenseCondition, error) {
+func createUnarmoredDefense(config json.RawMessage, characterID string, sourceRef *core.Ref) (*UnarmoredDefenseCondition, error) {
 	var cfg unarmoredDefenseConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -105,18 +99,14 @@ func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef strin
 		variant = UnarmoredDefenseMonk
 	}
 
-	// Parse source ref, default based on variant
-	sourceRefStr := sourceRef
-	if sourceRefStr == "" {
+	// Use provided source ref, or default based on variant
+	source := sourceRef
+	if source == nil {
 		if variant == UnarmoredDefenseBarbarian {
-			sourceRefStr = "dnd5e:classes:barbarian"
+			source = &core.Ref{Module: "dnd5e", Type: "classes", ID: "barbarian"}
 		} else {
-			sourceRefStr = "dnd5e:classes:monk"
+			source = &core.Ref{Module: "dnd5e", Type: "classes", ID: "monk"}
 		}
-	}
-	source, err := core.ParseString(sourceRefStr)
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to parse source ref: %s", sourceRefStr)
 	}
 
 	return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
@@ -133,7 +123,7 @@ type ragingConfig struct {
 }
 
 // createRaging creates a raging condition from config
-func createRaging(config json.RawMessage, characterID, sourceRef string) (*RagingCondition, error) {
+func createRaging(config json.RawMessage, characterID string, sourceRef *core.Ref) (*RagingCondition, error) {
 	var cfg ragingConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -147,14 +137,10 @@ func createRaging(config json.RawMessage, characterID, sourceRef string) (*Ragin
 		damageBonus = 2
 	}
 
-	// Parse source ref, default to rage feature ref if not specified
-	sourceRefStr := sourceRef
-	if sourceRefStr == "" {
-		sourceRefStr = "dnd5e:features:rage"
-	}
-	source, err := core.ParseString(sourceRefStr)
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to parse source ref: %s", sourceRefStr)
+	// Use provided source ref, or default to rage feature ref
+	source := sourceRef
+	if source == nil {
+		source = &core.Ref{Module: "dnd5e", Type: "features", ID: "rage"}
 	}
 
 	return &RagingCondition{

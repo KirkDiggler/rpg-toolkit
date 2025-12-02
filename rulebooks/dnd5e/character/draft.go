@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -828,7 +829,7 @@ func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) 
 				CharacterID: characterID,
 			})
 			if err != nil {
-				return nil, rpgerr.Wrapf(err, "failed to create feature from ref %s", featureRef.Ref)
+				return nil, rpgerr.Wrapf(err, "failed to create feature from ref %s", featureRef.Ref.String())
 			}
 			featureList = append(featureList, output.Feature)
 		}
@@ -846,7 +847,7 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 
 	// Get conditions from class grants
 	grants := classes.GetGrantsForLevel(d.class, 1)
-	classSourceRef := "dnd5e:classes:" + d.class
+	classSourceRef := &core.Ref{Module: "dnd5e", Type: "classes", ID: d.class}
 	for _, grant := range grants {
 		for _, condRef := range grant.Conditions {
 			output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
@@ -856,7 +857,7 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 				SourceRef:   classSourceRef,
 			})
 			if err != nil {
-				return nil, rpgerr.Wrapf(err, "failed to create condition from ref %s", condRef.Ref)
+				return nil, rpgerr.Wrapf(err, "failed to create condition from ref %s", condRef.Ref.String())
 			}
 			conditionList = append(conditionList, output.Condition)
 		}
