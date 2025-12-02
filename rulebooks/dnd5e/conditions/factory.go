@@ -105,10 +105,24 @@ func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef strin
 		variant = UnarmoredDefenseMonk
 	}
 
+	// Parse source ref, default based on variant
+	sourceRefStr := sourceRef
+	if sourceRefStr == "" {
+		if variant == UnarmoredDefenseBarbarian {
+			sourceRefStr = "dnd5e:classes:barbarian"
+		} else {
+			sourceRefStr = "dnd5e:classes:monk"
+		}
+	}
+	source, err := core.ParseString(sourceRefStr)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to parse source ref: %s", sourceRefStr)
+	}
+
 	return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: characterID,
 		Type:        variant,
-		Source:      sourceRef,
+		Source:      source,
 	}), nil
 }
 

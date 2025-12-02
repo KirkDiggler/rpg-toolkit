@@ -84,7 +84,7 @@ func (s *LoaderTestSuite) TestLoadUnarmoredDefenseCondition() {
 	original := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      &core.Ref{Module: "dnd5e", Type: "classes", ID: "barbarian"},
 	})
 
 	// Serialize to JSON
@@ -110,7 +110,7 @@ func (s *LoaderTestSuite) TestLoadMonkUnarmoredDefense() {
 	original := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "monk-1",
 		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		Source:      &core.Ref{Module: "dnd5e", Type: "classes", ID: "monk"},
 	})
 
 	jsonData, err := original.ToJSON()

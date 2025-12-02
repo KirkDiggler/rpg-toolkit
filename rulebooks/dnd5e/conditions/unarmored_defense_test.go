@@ -9,9 +9,16 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+)
+
+// test helpers for source refs
+var (
+	testBarbarianClassRef = &core.Ref{Module: "dnd5e", Type: "classes", ID: "barbarian"}
+	testMonkClassRef      = &core.Ref{Module: "dnd5e", Type: "classes", ID: "monk"}
 )
 
 // UnarmoredDefenseTestSuite tests the UnarmoredDefenseCondition behavior
@@ -35,7 +42,7 @@ func (s *UnarmoredDefenseTestSuite) TestBarbarianUnarmoredDefenseAC() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      testBarbarianClassRef,
 	})
 
 	// DEX 14 (+2), CON 16 (+3) = 10 + 2 + 3 = 15
@@ -57,7 +64,7 @@ func (s *UnarmoredDefenseTestSuite) TestMonkUnarmoredDefenseAC() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "monk-1",
 		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		Source:      testMonkClassRef,
 	})
 
 	// DEX 16 (+3), WIS 14 (+2) = 10 + 3 + 2 = 15
@@ -79,7 +86,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseWithNegativeModifiers() 
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      testBarbarianClassRef,
 	})
 
 	// DEX 8 (-1), CON 8 (-1) = 10 + (-1) + (-1) = 8
@@ -101,7 +108,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseMaxStats() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      testBarbarianClassRef,
 	})
 
 	// DEX 20 (+5), CON 20 (+5) = 10 + 5 + 5 = 20
@@ -122,14 +129,14 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseSecondaryAbility() {
 	barbarianUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      testBarbarianClassRef,
 	})
 	s.Equal(abilities.CON, barbarianUD.SecondaryAbility(), "Barbarian should use CON")
 
 	monkUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "monk-1",
 		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		Source:      testMonkClassRef,
 	})
 	s.Equal(abilities.WIS, monkUD.SecondaryAbility(), "Monk should use WIS")
 }
@@ -138,7 +145,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseApplyRemove() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      testBarbarianClassRef,
 	})
 
 	// Apply should succeed
@@ -154,7 +161,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseToJSON() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		Source:      testBarbarianClassRef,
 	})
 
 	jsonData, err := ud.ToJSON()
@@ -191,10 +198,15 @@ func (s *UnarmoredDefenseTestSuite) TestDifferentScoreCombinations() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
+			// Pick the appropriate source ref based on type
+			sourceRef := testBarbarianClassRef
+			if tc.udType == UnarmoredDefenseMonk {
+				sourceRef = testMonkClassRef
+			}
 			ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 				CharacterID: "test-char",
 				Type:        tc.udType,
-				Source:      "test",
+				Source:      sourceRef,
 			})
 
 			scores := shared.AbilityScores{
