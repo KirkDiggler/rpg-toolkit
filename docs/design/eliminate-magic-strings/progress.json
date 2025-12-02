@@ -1,0 +1,166 @@
+{
+  "goal": "Eliminate magic strings and use typed core.Ref system throughout dnd5e",
+  "branch": "refactor/eliminate-magic-strings",
+  "created": "2025-12-01",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Break Import Cycle",
+      "description": "Move chain types from combat/ to events/chains.go",
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "1.1",
+          "description": "Create events/chains.go with stage constants",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/events/chains.go",
+          "test": "go build ./events/..."
+        },
+        {
+          "id": "1.2",
+          "description": "Add DamageSourceType and constants to events/chains.go",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/events/chains.go",
+          "test": "go build ./events/..."
+        },
+        {
+          "id": "1.3",
+          "description": "Add RerollEvent and DamageComponent structs",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/events/chains.go",
+          "test": "go build ./events/..."
+        },
+        {
+          "id": "1.4",
+          "description": "Add AttackChainEvent and DamageChainEvent structs",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/events/chains.go",
+          "test": "go build ./events/..."
+        },
+        {
+          "id": "1.5",
+          "description": "Add AttackChain and DamageChain typed topics",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/events/chains.go",
+          "test": "go build ./events/..."
+        },
+        {
+          "id": "1.6",
+          "description": "Update combat/attack.go to import from events/",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/combat/attack.go",
+          "test": "go test ./combat/..."
+        },
+        {
+          "id": "1.7",
+          "description": "Update conditions/raging.go to import from events/",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/raging.go",
+          "test": "go build ./conditions/..."
+        },
+        {
+          "id": "1.8",
+          "description": "Update conditions/fighting_style.go to import from events/",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/fighting_style.go",
+          "test": "go build ./conditions/..."
+        },
+        {
+          "id": "1.9",
+          "description": "Update conditions/brutal_critical.go to import from events/",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/conditions/brutal_critical.go",
+          "test": "go build ./conditions/..."
+        },
+        {
+          "id": "1.10",
+          "description": "Update all condition test files",
+          "status": "pending",
+          "files": [
+            "rulebooks/dnd5e/conditions/raging_test.go",
+            "rulebooks/dnd5e/conditions/fighting_style_test.go",
+            "rulebooks/dnd5e/conditions/brutal_critical_test.go"
+          ],
+          "test": "go test ./conditions/..."
+        },
+        {
+          "id": "1.11",
+          "description": "Update combat/breakdown_test.go",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/combat/breakdown_test.go",
+          "test": "go test ./combat/..."
+        },
+        {
+          "id": "1.12",
+          "description": "Delete combat/stages.go (moved to events/)",
+          "status": "pending",
+          "file": "rulebooks/dnd5e/combat/stages.go",
+          "test": "go build ./... && go test ./..."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Audit Magic Strings",
+      "description": "Find all Source string fields that should be core.Ref",
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "2.1",
+          "description": "Search for 'Source string' fields in conditions/",
+          "status": "pending",
+          "test": "grep -r 'Source.*string' conditions/"
+        },
+        {
+          "id": "2.2",
+          "description": "Search for string fields containing module:type:id patterns",
+          "status": "pending",
+          "test": "grep -r 'dnd5e:' ."
+        },
+        {
+          "id": "2.3",
+          "description": "Document findings in audit.md",
+          "status": "pending",
+          "file": "docs/design/eliminate-magic-strings/audit.md"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Convert to core.Ref",
+      "description": "Change Source string to Source core.Ref where appropriate",
+      "status": "pending",
+      "tasks": []
+    },
+    {
+      "id": 4,
+      "name": "Verify Type Constants",
+      "description": "Ensure all packages use canonical Type constants",
+      "status": "pending",
+      "tasks": []
+    }
+  ],
+  "agent_instructions": {
+    "wake_up": [
+      "pwd",
+      "git branch --show-current",
+      "git log --oneline -3",
+      "cat docs/design/eliminate-magic-strings/progress.json"
+    ],
+    "before_edit": [
+      "Read the file you're about to edit",
+      "Understand current state"
+    ],
+    "after_edit": [
+      "Run the test command for that task",
+      "If pass: commit with detailed message",
+      "Update progress.json status to 'completed'",
+      "Commit progress.json update"
+    ],
+    "on_error": [
+      "Do NOT proceed to next task",
+      "Update progress.json with error details",
+      "Exit and report"
+    ]
+  }
+}
