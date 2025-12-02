@@ -1,0 +1,14 @@
+{
+  "branch": "refactor/refs-package",
+  "issues": [],
+  "goal": "Create refs package for discoverable, type-safe references. Developer experience: refs.Features.Rage() returns *core.Ref",
+  "sessions": [],
+  "next_steps": [
+    "Create refs/module.go with Module and Type constants",
+    "Create refs/features.go with Features namespace (Rage, SecondWind)",
+    "Create refs/conditions.go with Conditions namespace (Raging, UnarmoredDefense, BrutalCritical, FightingStyle)",
+    "Create refs/classes.go with Classes namespace (all 12 PHB classes)",
+    "Build and test the refs package",
+    "Migrate existing code to use refs package"
+  ]
+}
