@@ -149,8 +149,8 @@
         },
         {
           "id": "3.3",
-          "description": "Convert ActiveCondition.Source to core.Ref",
-          "status": "pending",
+          "description": "Convert Condition.Source to core.Ref",
+          "status": "completed",
           "file": "rulebooks/dnd5e/conditions/types.go",
           "test": "go test ./conditions/..."
         },
