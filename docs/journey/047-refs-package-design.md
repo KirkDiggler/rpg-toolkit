@@ -85,6 +85,125 @@ Instead of the verbose object format:
 {"ref": {"module": "dnd5e", "type": "conditions", "id": "brutal_critical"}, "character_id": "barbarian-1"}
 ```
 
+## Alternative Pattern: Singleton Refs with Identity
+
+During brainstorming, we explored a more advanced pattern that wasn't needed here but is worth documenting for future use.
+
+### The Limitation of Current Approach
+
+Pointers don't fully solve validity:
+```go
+var ref *core.Ref = nil           // Obviously missing - good!
+var ref *core.Ref = &core.Ref{}   // Pointer exists but empty strings - still invalid!
+```
+
+### Singleton Pattern for Identity
+
+The idea: refs are created once at package init, and every call returns the SAME pointer.
+
+```go
+// Package-level singletons - created once
+var (
+    _rage       = &core.Ref{Module: Module, Type: TypeFeatures, ID: "rage"}
+    _secondWind = &core.Ref{Module: Module, Type: TypeFeatures, ID: "second_wind"}
+)
+
+func (featuresNS) Rage() *core.Ref       { return _rage }
+func (featuresNS) SecondWind() *core.Ref { return _secondWind }
+```
+
+**What this enables:**
+```go
+// Pointer equality = identity check
+if someRef == refs.Features.Rage() {
+    // This IS the rage ref, not just something that looks like it
+}
+
+// Use as map keys by pointer (not string)
+handlers := map[*core.Ref]Handler{
+    refs.Features.Rage(): rageHandler,
+    refs.Features.SecondWind(): secondWindHandler,
+}
+```
+
+### Even Further: Registered Refs
+
+For maximum control, refs could be registered through a central registry:
+
+```go
+// In core package
+type Ref struct {
+    module Module
+    typ    Type
+    id     ID
+}
+
+var registry = map[string]*Ref{}
+
+// Only way to create refs - guarantees uniqueness
+func Register(module Module, typ Type, id ID) *Ref {
+    key := fmt.Sprintf("%s:%s:%s", module, typ, id)
+    if existing, ok := registry[key]; ok {
+        return existing  // Same ref every time
+    }
+    ref := &Ref{module, typ, id}
+    registry[key] = ref
+    return ref
+}
+
+// In refs package - registered at init
+var _rage = core.Register("dnd5e", "features", "rage")
+
+func (featuresNS) Rage() *core.Ref { return _rage }
+```
+
+**Benefits:**
+- **Identity**: Pointer equality works
+- **Canonicalization**: Only one instance per ref exists
+- **Validation**: Can't create arbitrary refs without going through Register
+- **Discoverability**: Registry could be queried for all known refs
+
+### Simplest Alternative: Ref as String Type
+
+If we wanted maximum simplicity:
+
+```go
+type Ref string
+
+const (
+    RageFeature     Ref = "dnd5e:features:rage"
+    RagingCondition Ref = "dnd5e:conditions:raging"
+)
+
+func (r Ref) Module() Module { return Module(strings.Split(string(r), ":")[0]) }
+func (r Ref) Type() Type     { return Type(strings.Split(string(r), ":")[1]) }
+func (r Ref) ID() ID         { return ID(strings.Split(string(r), ":")[2]) }
+```
+
+**Benefits:**
+- Constants are true constants (compile-time)
+- Identity via `==` works naturally
+- Zero allocation
+- Can be map keys directly
+
+**Drawbacks:**
+- Parsing on every accessor call (could cache)
+- Less structured than a proper struct
+- No IDE autocomplete for `refs.Features.<tab>`
+
+### Why We Didn't Use These (Yet)
+
+For our current needs:
+1. We compare by `.String()` or `.ID` which works fine
+2. We don't use refs as map keys by pointer
+3. The namespace pattern (`refs.Features.Rage()`) gives us IDE discoverability
+
+But these patterns are valuable to know for:
+- Error types (like `rpgerr` where `Is` checks matter)
+- Enum-like constants that need identity
+- High-performance scenarios where allocation matters
+- Plugin systems where refs need central registration
+
 ## Lessons Learned
 
 1. **Brainstorming is valuable** - We went full circle from "use pointers" to "maybe values" back to "use pointers" but with better reasoning.
