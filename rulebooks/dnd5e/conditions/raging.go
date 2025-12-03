@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // RagingData is the JSON structure for persisting raging condition state
@@ -119,11 +120,7 @@ func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error
 // ToJSON converts the condition to JSON for persistence
 func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 	data := RagingData{
-		Ref: core.Ref{
-			Module: "dnd5e",
-			Type:   Type,
-			ID:     RagingID,
-		},
+		Ref:               *refs.Conditions.Raging(),
 		CharacterID:       r.CharacterID,
 		DamageBonus:       r.DamageBonus,
 		Level:             r.Level,
@@ -207,7 +204,7 @@ func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
 	removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
 		CharacterID:  r.CharacterID,
-		ConditionRef: "dnd5e:conditions:raging",
+		ConditionRef: refs.Conditions.Raging().String(),
 		Reason:       reason,
 	})
 	if err != nil {

@@ -1,0 +1,19 @@
+package refs
+
+import "github.com/KirkDiggler/rpg-toolkit/core"
+
+// Features provides type-safe, discoverable references to D&D 5e features.
+// Use IDE autocomplete: refs.Features.<tab> to discover available features.
+var Features = featuresNS{}
+
+type featuresNS struct{}
+
+// Rage returns a reference to the Barbarian's Rage feature.
+func (featuresNS) Rage() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "rage"}
+}
+
+// SecondWind returns a reference to the Fighter's Second Wind feature.
+func (featuresNS) SecondWind() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "second_wind"}
+}

@@ -1,0 +1,32 @@
+// Package refs provides discoverable, type-safe references for D&D 5e content.
+//
+// Usage:
+//
+//	import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+//
+//	// Type refs.<tab> to discover namespaces: Features, Conditions, Classes, etc.
+//	// Type refs.Features.<tab> to discover features: Rage, SecondWind, etc.
+//
+//	source := refs.Features.Rage()        // *core.Ref for the Rage feature
+//	condition := refs.Conditions.Raging() // *core.Ref for the Raging condition
+//	class := refs.Classes.Barbarian()     // *core.Ref for the Barbarian class
+//
+// This package is a leaf package - it only imports core to ensure all other
+// dnd5e packages can import it without cycles.
+package refs
+
+import "github.com/KirkDiggler/rpg-toolkit/core"
+
+// Module is the module identifier for D&D 5e content
+const Module core.Module = "dnd5e"
+
+// Type constants for different content categories
+const (
+	TypeFeatures   core.Type = "features"
+	TypeConditions core.Type = "conditions"
+	TypeClasses    core.Type = "classes"
+	TypeRaces      core.Type = "races"
+	TypeWeapons    core.Type = "weapons"
+	TypeSpells     core.Type = "spells"
+	TypeEquipment  core.Type = "equipment"
+)

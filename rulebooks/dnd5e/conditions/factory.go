@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // CreateFromRefInput provides input for creating a condition from a ref string
@@ -55,11 +56,12 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	}
 
 	// Validate module and type
-	if ref.Module != "dnd5e" {
+	if ref.Module != refs.Module {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported module: %s", ref.Module)
 	}
-	if ref.Type != "conditions" {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'conditions')", ref.Type)
+	if ref.Type != refs.TypeConditions {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"unsupported type: %s (expected '%s')", ref.Type, refs.TypeConditions)
 	}
 
 	// Create the condition based on the ID
@@ -136,7 +138,7 @@ func createRaging(config json.RawMessage, characterID, sourceRef string) (*Ragin
 	// Default to rage feature ref if not specified
 	source := sourceRef
 	if source == "" {
-		source = "dnd5e:features:rage"
+		source = refs.Features.Rage().String()
 	}
 
 	return &RagingCondition{

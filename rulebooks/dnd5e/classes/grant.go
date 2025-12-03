@@ -6,6 +6,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
@@ -105,7 +106,7 @@ func getFighterGrants() []Grant {
 			// Note: Second Wind is granted but handled as a feature
 			Features: []FeatureRef{
 				{
-					Ref:    "dnd5e:features:second_wind",
+					Ref:    refs.Features.SecondWind().String(),
 					Config: json.RawMessage(`{"uses": 1}`),
 				},
 			},
@@ -133,14 +134,14 @@ func getBarbarianGrants() []Grant {
 			// Rage feature with level 1 config
 			Features: []FeatureRef{
 				{
-					Ref:    "dnd5e:features:rage",
+					Ref:    refs.Features.Rage().String(),
 					Config: json.RawMessage(`{"uses": 2, "damage_bonus": 2}`),
 				},
 			},
 			// Unarmored Defense condition (always active)
 			Conditions: []ConditionRef{
 				{
-					Ref:    "dnd5e:conditions:unarmored_defense",
+					Ref:    refs.Conditions.UnarmoredDefense().String(),
 					Config: json.RawMessage(`{"variant": "barbarian"}`),
 				},
 			},
@@ -166,7 +167,7 @@ func getMonkGrants() []Grant {
 			// Unarmored Defense condition (monk variant - uses WIS instead of CON)
 			Conditions: []ConditionRef{
 				{
-					Ref:    "dnd5e:conditions:unarmored_defense",
+					Ref:    refs.Conditions.UnarmoredDefense().String(),
 					Config: json.RawMessage(`{"variant": "monk"}`),
 				},
 			},
