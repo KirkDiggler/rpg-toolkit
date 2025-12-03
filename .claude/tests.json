@@ -1,0 +1,46 @@
+{
+  "tests": [
+    {
+      "id": "no-duplicate-feature-ids",
+      "feature": "refs-cleanup",
+      "prompt": "Verify features/types.go has no RageID or SecondWindID constants",
+      "passes": true,
+      "last_checked": "2025-12-02"
+    },
+    {
+      "id": "no-duplicate-condition-ids",
+      "feature": "refs-cleanup",
+      "prompt": "Verify conditions/types.go has no RagingID, BrutalCriticalID, UnarmoredDefenseID, or FightingStyleID constants",
+      "passes": true,
+      "last_checked": "2025-12-02"
+    },
+    {
+      "id": "features-factory-uses-refs-module",
+      "feature": "refs-cleanup",
+      "prompt": "Verify features/factory.go uses refs.Module instead of \"dnd5e\" string literal",
+      "passes": true,
+      "last_checked": "2025-12-02"
+    },
+    {
+      "id": "features-factory-uses-refs-type",
+      "feature": "refs-cleanup",
+      "prompt": "Verify features/factory.go uses refs.TypeFeatures instead of \"features\" string literal",
+      "passes": true,
+      "last_checked": "2025-12-02"
+    },
+    {
+      "id": "all-tests-pass",
+      "feature": "refs-cleanup",
+      "prompt": "Run go test ./rulebooks/dnd5e/... and verify all tests pass",
+      "passes": true,
+      "last_checked": "2025-12-02"
+    },
+    {
+      "id": "pre-commit-passes",
+      "feature": "refs-cleanup",
+      "prompt": "Run golangci-lint and verify it passes for dnd5e",
+      "passes": true,
+      "last_checked": "2025-12-02"
+    }
+  ]
+}

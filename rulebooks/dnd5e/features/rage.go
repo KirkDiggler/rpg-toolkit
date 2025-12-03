@@ -25,12 +25,12 @@ type Rage struct {
 
 // RageData is the JSON structure for persisting rage state
 type RageData struct {
-	Ref     core.Ref `json:"ref"`
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Level   int      `json:"level"`
-	Uses    int      `json:"uses"`
-	MaxUses int      `json:"max_uses"`
+	Ref     *core.Ref `json:"ref"`
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Level   int       `json:"level"`
+	Uses    int       `json:"uses"`
+	MaxUses int       `json:"max_uses"`
 }
 
 // calculateRageUses determines max rage uses based on barbarian level
@@ -139,7 +139,7 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 	r.level = rageData.Level
 
 	// Set up resource with current and max uses
-	r.resource = resources.NewResource("rage", rageData.MaxUses)
+	r.resource = resources.NewResource(refs.Features.Rage().ID, rageData.MaxUses)
 	r.resource.SetCurrent(rageData.Uses)
 
 	return nil
@@ -148,7 +148,7 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 // ToJSON converts rage to JSON for persistence
 func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
-		Ref:     *refs.Features.Rage(),
+		Ref:     refs.Features.Rage(),
 		ID:      r.id,
 		Name:    r.name,
 		Level:   r.level,

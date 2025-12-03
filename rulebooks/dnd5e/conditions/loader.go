@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // LoadJSON loads a condition from its JSON representation.
@@ -26,28 +27,28 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 
 	// Route based on ref ID
 	switch peek.Ref.ID {
-	case RagingID:
+	case refs.Conditions.Raging().ID:
 		raging := &RagingCondition{}
 		if err := raging.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load raging condition")
 		}
 		return raging, nil
 
-	case BrutalCriticalID:
+	case refs.Conditions.BrutalCritical().ID:
 		brutal := &BrutalCriticalCondition{}
 		if err := brutal.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load brutal critical condition")
 		}
 		return brutal, nil
 
-	case UnarmoredDefenseID:
+	case refs.Conditions.UnarmoredDefense().ID:
 		unarmored := &UnarmoredDefenseCondition{}
 		if err := unarmored.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load unarmored defense condition")
 		}
 		return unarmored, nil
 
-	case FightingStyleID:
+	case refs.Conditions.FightingStyle().ID:
 		fs := &FightingStyleCondition{}
 		if err := fs.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load fighting style condition")

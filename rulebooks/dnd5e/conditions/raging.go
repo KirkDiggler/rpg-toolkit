@@ -18,14 +18,14 @@ import (
 
 // RagingData is the JSON structure for persisting raging condition state
 type RagingData struct {
-	Ref               core.Ref `json:"ref"`
-	CharacterID       string   `json:"character_id"`
-	DamageBonus       int      `json:"damage_bonus"`
-	Level             int      `json:"level"`
-	Source            string   `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
-	TurnsActive       int      `json:"turns_active"`
-	WasHitThisTurn    bool     `json:"was_hit_this_turn"`
-	DidAttackThisTurn bool     `json:"did_attack_this_turn"`
+	Ref               *core.Ref `json:"ref"`
+	CharacterID       string    `json:"character_id"`
+	DamageBonus       int       `json:"damage_bonus"`
+	Level             int       `json:"level"`
+	Source            string    `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
+	TurnsActive       int       `json:"turns_active"`
+	WasHitThisTurn    bool      `json:"was_hit_this_turn"`
+	DidAttackThisTurn bool      `json:"did_attack_this_turn"`
 }
 
 // RagingCondition represents the barbarian rage state.
@@ -120,7 +120,7 @@ func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error
 // ToJSON converts the condition to JSON for persistence
 func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 	data := RagingData{
-		Ref:               *refs.Conditions.Raging(),
+		Ref:               refs.Conditions.Raging(),
 		CharacterID:       r.CharacterID,
 		DamageBonus:       r.DamageBonus,
 		Level:             r.Level,

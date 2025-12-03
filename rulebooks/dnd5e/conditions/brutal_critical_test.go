@@ -327,9 +327,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalToJSON() {
 	s.Contains(string(jsonData), `"character_id":"barbarian-1"`)
 	s.Contains(string(jsonData), `"level":13`)
 	s.Contains(string(jsonData), `"extra_dice":2`)
-	s.Contains(string(jsonData), `"id":"brutal_critical"`)
-	s.Contains(string(jsonData), `"module":"dnd5e"`)
-	s.Contains(string(jsonData), `"type":"conditions"`)
+	s.Contains(string(jsonData), `"ref":"dnd5e:conditions:brutal_critical"`)
 }
 
 func (s *BrutalCriticalTestSuite) TestCalculateExtraDice() {

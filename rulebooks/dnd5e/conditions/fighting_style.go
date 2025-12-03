@@ -17,11 +17,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // FightingStyleData is the JSON structure for persisting fighting style condition state
 type FightingStyleData struct {
-	Ref         core.Ref                     `json:"ref"`
+	Ref         *core.Ref                    `json:"ref"`
 	Name        string                       `json:"name"`
 	CharacterID string                       `json:"character_id"`
 	Style       fightingstyles.FightingStyle `json:"style"`
@@ -116,11 +117,7 @@ func (f *FightingStyleCondition) Remove(ctx context.Context, bus events.EventBus
 // ToJSON converts the condition to JSON for persistence
 func (f *FightingStyleCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleData{
-		Ref: core.Ref{
-			Module: "dnd5e",
-			Type:   Type,
-			ID:     FightingStyleID,
-		},
+		Ref:         refs.Conditions.FightingStyle(),
 		Name:        fightingstyles.Name(f.Style),
 		CharacterID: f.CharacterID,
 		Style:       f.Style,

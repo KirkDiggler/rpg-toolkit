@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // SecondWind represents the fighter's Second Wind feature.
@@ -24,12 +25,12 @@ type SecondWind struct {
 
 // SecondWindData is the JSON structure for persisting Second Wind state
 type SecondWindData struct {
-	Ref     core.Ref `json:"ref"`
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Level   int      `json:"level"`
-	Uses    int      `json:"uses"`
-	MaxUses int      `json:"max_uses"`
+	Ref     *core.Ref `json:"ref"`
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Level   int       `json:"level"`
+	Uses    int       `json:"uses"`
+	MaxUses int       `json:"max_uses"`
 }
 
 // GetID implements core.Entity
@@ -87,7 +88,7 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 			Amount:   totalHealing,
 			Roll:     roll,
 			Modifier: modifier,
-			Source:   "second_wind",
+			Source:   refs.Features.SecondWind().ID,
 		})
 		if err != nil {
 			return rpgerr.Wrapf(err, "failed to publish healing event")
@@ -109,7 +110,7 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 	s.level = secondWindData.Level
 
 	// Set up resource with current and max uses
-	s.resource = resources.NewResource("second_wind", secondWindData.MaxUses)
+	s.resource = resources.NewResource(refs.Features.SecondWind().ID, secondWindData.MaxUses)
 	s.resource.SetCurrent(secondWindData.Uses)
 
 	return nil
@@ -118,11 +119,7 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 // ToJSON converts Second Wind to JSON for persistence
 func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 	data := SecondWindData{
-		Ref: core.Ref{
-			Module: "dnd5e",
-			Type:   Type,
-			ID:     SecondWindID,
-		},
+		Ref:     refs.Features.SecondWind(),
 		ID:      s.id,
 		Name:    s.name,
 		Level:   s.level,

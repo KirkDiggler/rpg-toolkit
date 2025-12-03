@@ -68,13 +68,13 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	var condition dnd5eEvents.ConditionBehavior
 
 	switch ref.ID {
-	case UnarmoredDefenseID:
+	case refs.Conditions.UnarmoredDefense().ID:
 		condition, err = createUnarmoredDefense(input.Config, input.CharacterID, input.SourceRef)
-	case RagingID:
+	case refs.Conditions.Raging().ID:
 		condition, err = createRaging(input.Config, input.CharacterID, input.SourceRef)
-	case BrutalCriticalID:
+	case refs.Conditions.BrutalCritical().ID:
 		condition, err = createBrutalCritical(input.Config, input.CharacterID)
-	case FightingStyleID:
+	case refs.Conditions.FightingStyle().ID:
 		condition, err = createFightingStyle(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
