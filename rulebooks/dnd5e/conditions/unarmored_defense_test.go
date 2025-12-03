@@ -164,8 +164,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseToJSON() {
 	s.Contains(string(jsonData), `"character_id":"barbarian-1"`)
 	s.Contains(string(jsonData), `"type":"barbarian"`)
 	s.Contains(string(jsonData), `"source":"dnd5e:classes:barbarian"`)
-	s.Contains(string(jsonData), `"id":"unarmored_defense"`)
-	s.Contains(string(jsonData), `"module":"dnd5e"`)
+	s.Contains(string(jsonData), `"ref":"dnd5e:conditions:unarmored_defense"`)
 }
 
 func (s *UnarmoredDefenseTestSuite) TestDifferentScoreCombinations() {

@@ -28,9 +28,9 @@ const (
 
 // UnarmoredDefenseData is the JSON structure for persisting unarmored defense condition state
 type UnarmoredDefenseData struct {
-	Ref         core.Ref `json:"ref"`
-	Type        string   `json:"type"`         // "barbarian" or "monk"
-	CharacterID string   `json:"character_id"` // ID of the character
+	Ref         *core.Ref `json:"ref"`
+	Type        string    `json:"type"`         // "barbarian" or "monk"
+	CharacterID string    `json:"character_id"` // ID of the character
 	// Source is a ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 	Source string `json:"source"`
 }
@@ -87,7 +87,7 @@ func (u *UnarmoredDefenseCondition) Remove(_ context.Context, _ events.EventBus)
 // ToJSON converts the condition to JSON for persistence
 func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
 	data := UnarmoredDefenseData{
-		Ref:         *refs.Conditions.UnarmoredDefense(),
+		Ref:         refs.Conditions.UnarmoredDefense(),
 		Type:        string(u.Type),
 		CharacterID: u.CharacterID,
 		Source:      u.Source,

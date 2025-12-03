@@ -24,10 +24,10 @@ var diceNotationRegex = regexp.MustCompile(`^(\d*)[dD](\d+)`)
 
 // BrutalCriticalData is the JSON structure for persisting brutal critical condition state
 type BrutalCriticalData struct {
-	Ref         core.Ref `json:"ref"`
-	CharacterID string   `json:"character_id"`
-	Level       int      `json:"level"`
-	ExtraDice   int      `json:"extra_dice"`
+	Ref         *core.Ref `json:"ref"`
+	CharacterID string    `json:"character_id"`
+	Level       int       `json:"level"`
+	ExtraDice   int       `json:"extra_dice"`
 }
 
 // BrutalCriticalCondition represents the barbarian's brutal critical feature.
@@ -117,7 +117,7 @@ func (b *BrutalCriticalCondition) Remove(ctx context.Context, bus events.EventBu
 // ToJSON converts the condition to JSON for persistence
 func (b *BrutalCriticalCondition) ToJSON() (json.RawMessage, error) {
 	data := BrutalCriticalData{
-		Ref:         *refs.Conditions.BrutalCritical(),
+		Ref:         refs.Conditions.BrutalCritical(),
 		CharacterID: b.CharacterID,
 		Level:       b.Level,
 		ExtraDice:   b.ExtraDice,

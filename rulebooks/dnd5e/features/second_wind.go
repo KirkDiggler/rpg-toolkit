@@ -25,12 +25,12 @@ type SecondWind struct {
 
 // SecondWindData is the JSON structure for persisting Second Wind state
 type SecondWindData struct {
-	Ref     core.Ref `json:"ref"`
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Level   int      `json:"level"`
-	Uses    int      `json:"uses"`
-	MaxUses int      `json:"max_uses"`
+	Ref     *core.Ref `json:"ref"`
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Level   int       `json:"level"`
+	Uses    int       `json:"uses"`
+	MaxUses int       `json:"max_uses"`
 }
 
 // GetID implements core.Entity
@@ -119,7 +119,7 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 // ToJSON converts Second Wind to JSON for persistence
 func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 	data := SecondWindData{
-		Ref:     *refs.Features.SecondWind(),
+		Ref:     refs.Features.SecondWind(),
 		ID:      s.id,
 		Name:    s.name,
 		Level:   s.level,
