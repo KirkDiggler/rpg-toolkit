@@ -16,13 +16,24 @@
       ],
       "commit": "0b2a381",
       "notes": "Phase 1 complete - refs package created with all tests passing"
+    },
+    {
+      "id": "2025-12-02-002",
+      "task": "Migrate existing code to use refs package",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/classes/grant.go",
+        "rulebooks/dnd5e/conditions/factory.go",
+        "rulebooks/dnd5e/conditions/raging.go",
+        "rulebooks/dnd5e/features/rage.go"
+      ],
+      "commit": "261e481",
+      "notes": "Phase 2 complete - migrated 4 files to use refs package instead of magic strings"
     }
   ],
   "next_steps": [
-    "Migrate classes/grant.go to use refs package",
-    "Migrate conditions/factory.go to use refs",
-    "Migrate conditions/raging.go to use refs",
-    "Migrate features/rage.go to use refs",
-    "Migrate character/draft.go to use refs"
+    "Add additional namespaces as needed (Races, Weapons, Spells, Equipment)",
+    "Remove old dnd5e/refs.go helper file if it exists",
+    "Update any remaining magic strings found via grep"
   ]
 }
