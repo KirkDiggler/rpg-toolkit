@@ -20,7 +20,7 @@
         "rulebooks/dnd5e/conditions/fighting_style.go",
         "rulebooks/dnd5e/conditions/types.go"
       ],
-      "commit": null,
+      "commit": "86d8c2f",
       "notes": "Deleted RageID, SecondWindID from features/types.go and RagingID, BrutalCriticalID, UnarmoredDefenseID, FightingStyleID from conditions/types.go. Updated all switch statements, ToJSON methods, and resource creation to use refs.Features.X().ID and refs.Conditions.X().ID. Also replaced magic strings 'dnd5e' and 'features' with refs.Module and refs.TypeFeatures."
     }
   ],
