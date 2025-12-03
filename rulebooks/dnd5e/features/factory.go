@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // CreateFromRefInput provides input for creating a feature from a ref string
@@ -49,20 +50,21 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	}
 
 	// Validate module and type
-	if ref.Module != "dnd5e" {
+	if ref.Module != refs.Module {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported module: %s", ref.Module)
 	}
-	if ref.Type != "features" {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported type: %s (expected 'features')", ref.Type)
+	if ref.Type != refs.TypeFeatures {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"unsupported type: %s (expected '%s')", ref.Type, refs.TypeFeatures)
 	}
 
 	// Create the feature based on the ID
 	var feature Feature
 
 	switch ref.ID {
-	case RageID:
+	case refs.Features.Rage().ID:
 		feature, err = createRage(input.Config, input.CharacterID)
-	case SecondWindID:
+	case refs.Features.SecondWind().ID:
 		feature, err = createSecondWind(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
@@ -104,10 +106,10 @@ func createRage(config json.RawMessage, _ string) (*Rage, error) {
 	}
 
 	// Create resource for tracking uses
-	resource := resources.NewResource("rage", uses)
+	resource := resources.NewResource(refs.Features.Rage().ID, uses)
 
 	return &Rage{
-		id:       "rage",
+		id:       refs.Features.Rage().ID,
 		name:     "Rage",
 		level:    level,
 		resource: resource,
@@ -142,10 +144,10 @@ func createSecondWind(config json.RawMessage, _ string) (*SecondWind, error) {
 	}
 
 	// Create resource for tracking uses
-	resource := resources.NewResource("second_wind", uses)
+	resource := resources.NewResource(refs.Features.SecondWind().ID, uses)
 
 	return &SecondWind{
-		id:       "second_wind",
+		id:       refs.Features.SecondWind().ID,
 		name:     "Second Wind",
 		level:    level,
 		resource: resource,

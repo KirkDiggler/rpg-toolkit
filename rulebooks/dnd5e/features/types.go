@@ -7,13 +7,8 @@ import (
 )
 
 // Type is the content type for features within the dnd5e module
+// NOTE: Prefer using refs.TypeFeatures for consistency with the refs package
 const Type core.Type = "features"
-
-// Feature ID constants for type-safe references
-const (
-	RageID       core.ID = "rage"
-	SecondWindID core.ID = "second_wind"
-)
 
 // Grant represents a feature granted to a character (e.g., from a class level)
 type Grant struct {

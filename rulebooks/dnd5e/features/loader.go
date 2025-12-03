@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Feature represents a class feature that can be activated
@@ -25,14 +26,14 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 
 	// Route based on Ref ID
 	switch metadata.Ref.ID {
-	case RageID:
+	case refs.Features.Rage().ID:
 		rage := &Rage{}
 		if err := rage.loadJSON(data); err != nil {
 			return nil, fmt.Errorf("failed to load rage: %w", err)
 		}
 
 		return rage, nil
-	case SecondWindID:
+	case refs.Features.SecondWind().ID:
 		secondWind := &SecondWind{}
 		if err := secondWind.loadJSON(data); err != nil {
 			return nil, fmt.Errorf("failed to load second wind: %w", err)

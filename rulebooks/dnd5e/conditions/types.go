@@ -7,15 +7,8 @@ import (
 )
 
 // Type is the content type for conditions within the dnd5e module
+// NOTE: Prefer using refs.TypeConditions for consistency with the refs package
 const Type core.Type = "conditions"
-
-// Condition ID constants for type-safe references
-const (
-	RagingID           core.ID = "raging"
-	BrutalCriticalID   core.ID = "brutal_critical"
-	UnarmoredDefenseID core.ID = "unarmored_defense"
-	FightingStyleID    core.ID = "fighting_style"
-)
 
 // Grant represents a condition granted to a character (e.g., from a class level)
 type Grant struct {

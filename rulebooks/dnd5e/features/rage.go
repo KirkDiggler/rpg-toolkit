@@ -139,7 +139,7 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 	r.level = rageData.Level
 
 	// Set up resource with current and max uses
-	r.resource = resources.NewResource("rage", rageData.MaxUses)
+	r.resource = resources.NewResource(refs.Features.Rage().ID, rageData.MaxUses)
 	r.resource.SetCurrent(rageData.Uses)
 
 	return nil

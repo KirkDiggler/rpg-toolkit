@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -86,11 +87,7 @@ func (u *UnarmoredDefenseCondition) Remove(_ context.Context, _ events.EventBus)
 // ToJSON converts the condition to JSON for persistence
 func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
 	data := UnarmoredDefenseData{
-		Ref: core.Ref{
-			Module: "dnd5e",
-			Type:   Type,
-			ID:     UnarmoredDefenseID,
-		},
+		Ref:         *refs.Conditions.UnarmoredDefense(),
 		Type:        string(u.Type),
 		CharacterID: u.CharacterID,
 		Source:      u.Source,
