@@ -1,0 +1,46 @@
+{
+  "tests": [
+    {
+      "id": "no-duplicate-feature-ids",
+      "feature": "refs-cleanup",
+      "prompt": "Verify features/types.go has no RageID or SecondWindID constants",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "no-duplicate-condition-ids",
+      "feature": "refs-cleanup",
+      "prompt": "Verify conditions/types.go has no RagingID, BrutalCriticalID, UnarmoredDefenseID, or FightingStyleID constants",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "features-factory-uses-refs-module",
+      "feature": "refs-cleanup",
+      "prompt": "Verify features/factory.go uses refs.Module instead of \"dnd5e\" string literal",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "features-factory-uses-refs-type",
+      "feature": "refs-cleanup",
+      "prompt": "Verify features/factory.go uses refs.TypeFeatures instead of \"features\" string literal",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "all-tests-pass",
+      "feature": "refs-cleanup",
+      "prompt": "Run go test ./rulebooks/dnd5e/... and verify all tests pass",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "pre-commit-passes",
+      "feature": "refs-cleanup",
+      "prompt": "Run make pre-commit and verify it passes",
+      "passes": false,
+      "last_checked": null
+    }
+  ]
+}

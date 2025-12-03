@@ -1,0 +1,15 @@
+{
+  "branch": "refactor/refs-single-source-of-truth",
+  "issues": ["#380"],
+  "goal": "Remove duplicate ID constants from features/types.go and conditions/types.go - use refs package as single source of truth for all IDs",
+  "sessions": [],
+  "next_steps": [
+    "Find all usages of RageID, SecondWindID in features package",
+    "Find all usages of RagingID, BrutalCriticalID, UnarmoredDefenseID, FightingStyleID in conditions package",
+    "Update usages to refs.Features.X().ID / refs.Conditions.X().ID",
+    "Delete the duplicate constants from types.go files",
+    "Replace magic strings in features/factory.go (dnd5e, features)",
+    "Replace magic strings in resource creation and event sources",
+    "Run make pre-commit"
+  ]
+}
