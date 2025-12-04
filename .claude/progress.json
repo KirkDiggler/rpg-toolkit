@@ -1,28 +1,12 @@
 {
-  "branch": "refactor/refs-single-source-of-truth",
-  "issues": ["#380"],
-  "goal": "Remove duplicate ID constants from features/types.go and conditions/types.go - use refs package as single source of truth for all IDs",
-  "sessions": [
-    {
-      "id": "2025-12-02-001",
-      "task": "Remove duplicate ID constants and update all usages to refs package",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/features/loader.go",
-        "rulebooks/dnd5e/features/factory.go",
-        "rulebooks/dnd5e/features/second_wind.go",
-        "rulebooks/dnd5e/features/rage.go",
-        "rulebooks/dnd5e/features/types.go",
-        "rulebooks/dnd5e/conditions/loader.go",
-        "rulebooks/dnd5e/conditions/factory.go",
-        "rulebooks/dnd5e/conditions/brutal_critical.go",
-        "rulebooks/dnd5e/conditions/unarmored_defense.go",
-        "rulebooks/dnd5e/conditions/fighting_style.go",
-        "rulebooks/dnd5e/conditions/types.go"
-      ],
-      "commit": "86d8c2f",
-      "notes": "Deleted RageID, SecondWindID from features/types.go and RagingID, BrutalCriticalID, UnarmoredDefenseID, FightingStyleID from conditions/types.go. Updated all switch statements, ToJSON methods, and resource creation to use refs.Features.X().ID and refs.Conditions.X().ID. Also replaced magic strings 'dnd5e' and 'features' with refs.Module and refs.TypeFeatures."
-    }
-  ],
-  "next_steps": []
+  "branch": "feature/gamectx-382",
+  "issues": ["#382"],
+  "goal": "Implement gamectx package for condition context requirements - enables Dueling fighting style and future conditions to query loaded game state (equipment, spatial data) without bloating event objects",
+  "sessions": [],
+  "next_steps": [
+    "Create core GameContext struct and context wrapping (gamectx.go, require.go)",
+    "Implement CharacterRegistry with weapon queries (characters.go)",
+    "Update Dueling fighting style to use gamectx for eligibility checks",
+    "Add doc.go and final verification"
+  ]
 }
