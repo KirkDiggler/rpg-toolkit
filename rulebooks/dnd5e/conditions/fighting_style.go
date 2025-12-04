@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -85,6 +86,15 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 		subID, err := damageChain.SubscribeWithChain(ctx, f.onDamageChain)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to subscribe to damage chain")
+		}
+		f.subscriptionIDs = append(f.subscriptionIDs, subID)
+
+	case fightingstyles.Dueling:
+		// Subscribe to DamageChain to add +2 to damage when wielding one-handed weapon with no off-hand weapon
+		damageChain := combat.DamageChain.On(bus)
+		subID, err := damageChain.SubscribeWithChain(ctx, f.onDuelingDamageChain)
+		if err != nil {
+			return rpgerr.Wrap(err, "failed to subscribe to damage chain for dueling")
 		}
 		f.subscriptionIDs = append(f.subscriptionIDs, subID)
 
@@ -270,6 +280,81 @@ func (f *FightingStyleCondition) onDamageChain(
 	err := c.Add(combat.StageFeatures, "great_weapon_fighting", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply great weapon fighting for character %s", f.CharacterID)
+	}
+
+	return c, nil
+}
+
+// onDuelingDamageChain adds +2 to damage when wielding one-handed weapon with no off-hand weapon
+func (f *FightingStyleCondition) onDuelingDamageChain(
+	ctx context.Context,
+	event *combat.DamageChainEvent,
+	c chain.Chain[*combat.DamageChainEvent],
+) (chain.Chain[*combat.DamageChainEvent], error) {
+	// Only modify damage for attacks by this character
+	if event.AttackerID != f.CharacterID {
+		return c, nil
+	}
+
+	// Get character registry from context
+	registry, ok := gamectx.Characters(ctx)
+	if !ok {
+		// No character registry available, can't check eligibility
+		return c, nil
+	}
+
+	// Get character weapons
+	charData := registry.GetCharacter(f.CharacterID)
+	if charData == nil {
+		// Character not found in registry
+		return c, nil
+	}
+
+	// Type assert to CharacterWeapons
+	weapons, ok := charData.(*gamectx.CharacterWeapons)
+	if !ok {
+		// Character data is not CharacterWeapons
+		return c, nil
+	}
+
+	// Check Dueling eligibility:
+	// 1. Must have a main hand weapon
+	// 2. Main hand weapon must be melee and not two-handed
+	// 3. Must NOT have an off-hand weapon (shields are OK)
+	mainHand := weapons.MainHand()
+	if mainHand == nil {
+		return c, nil // No main hand weapon
+	}
+
+	if !mainHand.IsMelee {
+		return c, nil // Not a melee weapon
+	}
+
+	if mainHand.IsTwoHanded {
+		return c, nil // Two-handed weapon
+	}
+
+	offHand := weapons.OffHand()
+	if offHand != nil {
+		return c, nil // Has an off-hand weapon (not eligible)
+	}
+
+	// Character is eligible for Dueling bonus - add +2 to damage at StageFeatures
+	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+		// Add +2 to the weapon damage component
+		for i := range e.Components {
+			component := &e.Components[i]
+			if component.Source == combat.DamageSourceWeapon {
+				component.FlatBonus += 2
+				break
+			}
+		}
+		return e, nil
+	}
+
+	err := c.Add(combat.StageFeatures, "dueling", modifyDamage)
+	if err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply dueling bonus for character %s", f.CharacterID)
 	}
 
 	return c, nil

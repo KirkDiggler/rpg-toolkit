@@ -12,6 +12,7 @@ import (
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -338,4 +339,316 @@ func (s *FightingStyleTestSuite) TestRejectsDoubleApply() {
 	err = fs.Apply(s.ctx, s.bus)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "already applied")
+}
+
+// TestDuelingBonusWithOneHandedWeapon verifies Dueling adds +2 to damage with one-handed melee weapon
+func (s *FightingStyleTestSuite) TestDuelingBonusWithOneHandedWeapon() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with one-handed melee weapon, no off-hand
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "longsword-1",
+		Name:        "Longsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons(mainHand, nil)
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Dueling fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Dueling,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create damage chain event with weapon damage
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{6},
+				FinalDiceRolls:    []int{6},
+				Rerolls:           nil,
+				FlatBonus:         3, // STR modifier
+				DamageType:        "slashing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "slashing",
+		IsCritical:   false,
+		WeaponDamage: "1d8",
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify +2 bonus was added to weapon damage
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(5, weaponComponent.FlatBonus, "Should add +2 Dueling bonus to base STR modifier of 3")
+}
+
+// TestDuelingBonusWithShield verifies Dueling adds +2 when wielding shield
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestDuelingBonusWithShield() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with one-handed melee weapon and shield
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "longsword-1",
+		Name:        "Longsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	shield := &gamectx.EquippedWeapon{
+		ID:          "shield-1",
+		Name:        "Shield",
+		Slot:        "off_hand",
+		IsShield:    true,
+		IsTwoHanded: false,
+		IsMelee:     false,
+	}
+	weapons := gamectx.NewCharacterWeapons(mainHand, shield)
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Dueling fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Dueling,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create damage chain event with weapon damage
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{6},
+				FinalDiceRolls:    []int{6},
+				Rerolls:           nil,
+				FlatBonus:         3, // STR modifier
+				DamageType:        "slashing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "slashing",
+		IsCritical:   false,
+		WeaponDamage: "1d8",
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify +2 bonus was added (shields don't count as weapons)
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(5, weaponComponent.FlatBonus, "Should add +2 Dueling bonus even with shield")
+}
+
+// TestDuelingNoBonusWithTwoHandedWeapon verifies Dueling does NOT add bonus with two-handed weapon
+func (s *FightingStyleTestSuite) TestDuelingNoBonusWithTwoHandedWeapon() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with two-handed weapon
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "greatsword-1",
+		Name:        "Greatsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: true,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons(mainHand, nil)
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Dueling fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Dueling,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create damage chain event with weapon damage
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{6, 5},
+				FinalDiceRolls:    []int{6, 5},
+				Rerolls:           nil,
+				FlatBonus:         3, // STR modifier
+				DamageType:        "slashing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "slashing",
+		IsCritical:   false,
+		WeaponDamage: "2d6",
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify NO bonus was added
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(3, weaponComponent.FlatBonus, "Should NOT add Dueling bonus with two-handed weapon")
+}
+
+// TestDuelingNoBonusWithDualWield verifies Dueling does NOT add bonus when dual-wielding
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestDuelingNoBonusWithDualWield() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with weapon in each hand
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-1",
+		Name:        "Shortsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	offHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-2",
+		Name:        "Shortsword",
+		Slot:        "off_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons(mainHand, offHand)
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Dueling fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Dueling,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create damage chain event with weapon damage
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{5},
+				FinalDiceRolls:    []int{5},
+				Rerolls:           nil,
+				FlatBonus:         3, // STR modifier
+				DamageType:        "piercing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "piercing",
+		IsCritical:   false,
+		WeaponDamage: "1d6",
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify NO bonus was added
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(3, weaponComponent.FlatBonus, "Should NOT add Dueling bonus when dual-wielding")
 }
