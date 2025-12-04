@@ -4,8 +4,8 @@
       "id": "empty-game-context",
       "feature": "gamectx-core",
       "prompt": "Verify you can create an empty GameContext and it has a valid CharacterRegistry (not nil)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "add-character-to-registry",
@@ -18,8 +18,8 @@
       "id": "context-wrapping",
       "feature": "gamectx-core",
       "prompt": "Verify WithGameContext wraps a context.Context and Characters()/RequireCharacters() can retrieve the registry",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "main-hand-weapon-query",
