@@ -58,10 +58,31 @@
         "dueling-ineligible-two-handed",
         "dueling-ineligible-dual-wield"
       ]
+    },
+    {
+      "id": 4,
+      "date": "2024-12-03",
+      "title": "Final polish and doc.go",
+      "completed": true,
+      "commit": "3d398f8",
+      "summary": "Created comprehensive package documentation in gamectx/doc.go. Explains the problem (conditions need game state without bloating events), solution (context wrapping with queryable registries), usage patterns with Dueling fighting style example. Verified all gamectx tests passing, linter clean, and Dueling integration tests still passing. Feature complete and ready for merge after gamectx is published.",
+      "files_added": [
+        "gamectx/doc.go"
+      ],
+      "tests_passing": [
+        "all-gamectx-tests",
+        "all-dueling-tests",
+        "golangci-lint-clean"
+      ]
     }
   ],
-  "next_steps": [
-    "Add doc.go and final verification",
-    "Remove replace directive once gamectx is published"
+  "status": "complete",
+  "merge_prerequisites": [
+    "Push gamectx module to origin",
+    "Tag gamectx with version (e.g., v0.1.0)",
+    "Update rulebooks/dnd5e/go.mod to use published gamectx version",
+    "Remove replace directive in rulebooks/dnd5e/go.mod",
+    "Run go mod tidy in rulebooks/dnd5e",
+    "Verify all tests still pass with published version"
   ]
 }
