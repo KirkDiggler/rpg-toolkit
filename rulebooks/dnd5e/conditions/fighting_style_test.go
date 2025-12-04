@@ -356,7 +356,7 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithOneHandedWeapon() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(mainHand, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
 	registry.Add("fighter-1", weapons)
 
 	// Wrap context with character registry
@@ -439,7 +439,7 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithShield() {
 		IsTwoHanded: false,
 		IsMelee:     false,
 	}
-	weapons := gamectx.NewCharacterWeapons(mainHand, shield)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, shield})
 	registry.Add("fighter-1", weapons)
 
 	// Wrap context with character registry
@@ -512,7 +512,7 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithTwoHandedWeapon() {
 		IsTwoHanded: true,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(mainHand, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
 	registry.Add("fighter-1", weapons)
 
 	// Wrap context with character registry
@@ -595,7 +595,7 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithDualWield() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(mainHand, offHand)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
 	registry.Add("fighter-1", weapons)
 
 	// Wrap context with character registry

@@ -31,7 +31,7 @@ func (s *CharacterRegistryTestSuite) TestAddAndRetrieveCharacter() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 
 	// Add to registry
 	s.registry.Add("hero-1", weapons)
@@ -60,7 +60,7 @@ func (s *CharacterRegistryTestSuite) TestGetCharacterInterface() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 	s.registry.Add("hero-1", weapons)
 
 	// Retrieve via interface method
@@ -89,7 +89,7 @@ func (s *CharacterRegistryTestSuite) TestReplaceCharacterWeapons() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons1 := gamectx.NewCharacterWeapons(longsword, nil)
+	weapons1 := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 	s.registry.Add("hero-1", weapons1)
 
 	// Replace with different weapons
@@ -101,7 +101,7 @@ func (s *CharacterRegistryTestSuite) TestReplaceCharacterWeapons() {
 		IsTwoHanded: true,
 		IsMelee:     true,
 	}
-	weapons2 := gamectx.NewCharacterWeapons(greataxe, nil)
+	weapons2 := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{greataxe})
 	s.registry.Add("hero-1", weapons2)
 
 	// Verify replacement
@@ -128,7 +128,7 @@ func (s *CharacterWeaponsTestSuite) TestMainHandReturnsMainHandWeapon() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 
 	mainHand := weapons.MainHand()
 	s.Require().NotNil(mainHand)
@@ -140,7 +140,7 @@ func (s *CharacterWeaponsTestSuite) TestMainHandReturnsMainHandWeapon() {
 }
 
 func (s *CharacterWeaponsTestSuite) TestMainHandReturnsNilWhenEmpty() {
-	weapons := gamectx.NewCharacterWeapons(nil, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
 
 	mainHand := weapons.MainHand()
 	s.Nil(mainHand, "MainHand should return nil when no weapon equipped")
@@ -163,7 +163,7 @@ func (s *CharacterWeaponsTestSuite) TestOffHandReturnsOffHandWeapon() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, dagger)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword, dagger})
 
 	offHand := weapons.OffHand()
 	s.Require().NotNil(offHand)
@@ -187,7 +187,7 @@ func (s *CharacterWeaponsTestSuite) TestOffHandReturnsNilForShield() {
 		Slot:     "off_hand",
 		IsShield: true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, shield)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword, shield})
 
 	offHand := weapons.OffHand()
 	s.Nil(offHand, "OffHand should return nil when shield is equipped")
@@ -202,7 +202,7 @@ func (s *CharacterWeaponsTestSuite) TestOffHandReturnsNilWhenEmpty() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 
 	offHand := weapons.OffHand()
 	s.Nil(offHand, "OffHand should return nil when no off-hand item equipped")
@@ -217,7 +217,7 @@ func (s *CharacterWeaponsTestSuite) TestAllEquippedReturnsSingleWeapon() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 
 	allWeapons := weapons.AllEquipped()
 	s.Require().Len(allWeapons, 1)
@@ -241,7 +241,7 @@ func (s *CharacterWeaponsTestSuite) TestAllEquippedReturnsTwoWeapons() {
 		IsTwoHanded: false,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, dagger)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword, dagger})
 
 	allWeapons := weapons.AllEquipped()
 	s.Require().Len(allWeapons, 2)
@@ -264,7 +264,7 @@ func (s *CharacterWeaponsTestSuite) TestAllEquippedExcludesShield() {
 		Slot:     "off_hand",
 		IsShield: true,
 	}
-	weapons := gamectx.NewCharacterWeapons(longsword, shield)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword, shield})
 
 	allWeapons := weapons.AllEquipped()
 	s.Require().Len(allWeapons, 1, "AllEquipped should exclude shields")
@@ -272,7 +272,7 @@ func (s *CharacterWeaponsTestSuite) TestAllEquippedExcludesShield() {
 }
 
 func (s *CharacterWeaponsTestSuite) TestAllEquippedReturnsEmptyWhenNoWeapons() {
-	weapons := gamectx.NewCharacterWeapons(nil, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
 
 	allWeapons := weapons.AllEquipped()
 	s.Require().NotNil(allWeapons, "AllEquipped should return empty slice, not nil")
@@ -286,7 +286,7 @@ func (s *CharacterWeaponsTestSuite) TestAllEquippedReturnsEmptyWithOnlyShield() 
 		Slot:     "main_hand",
 		IsShield: true,
 	}
-	weapons := gamectx.NewCharacterWeapons(shield, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{shield})
 
 	allWeapons := weapons.AllEquipped()
 	s.Require().NotNil(allWeapons)
@@ -302,7 +302,7 @@ func (s *CharacterWeaponsTestSuite) TestTwoHandedWeapon() {
 		IsTwoHanded: true,
 		IsMelee:     true,
 	}
-	weapons := gamectx.NewCharacterWeapons(greataxe, nil)
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{greataxe})
 
 	mainHand := weapons.MainHand()
 	s.Require().NotNil(mainHand)

@@ -3,6 +3,12 @@
 
 package gamectx
 
+// Slot constants for weapon equipment positions
+const (
+	SlotMainHand = "main_hand"
+	SlotOffHand  = "off_hand"
+)
+
 // EquippedWeapon represents a weapon equipped by a character.
 // Purpose: Provides weapon information needed for combat calculations and
 // feature eligibility checks (e.g., Dueling fighting style).
@@ -34,13 +40,23 @@ type CharacterWeapons struct {
 	offHand  *EquippedWeapon
 }
 
-// NewCharacterWeapons creates a new CharacterWeapons with the specified weapons.
-// Either weapon parameter may be nil if that slot is empty.
-func NewCharacterWeapons(mainHand, offHand *EquippedWeapon) *CharacterWeapons {
-	return &CharacterWeapons{
-		mainHand: mainHand,
-		offHand:  offHand,
+// NewCharacterWeapons creates a new CharacterWeapons from a slice of equipped weapons.
+// Weapons are assigned to main hand or off hand based on their Slot field.
+// If multiple weapons target the same slot, the last one wins.
+func NewCharacterWeapons(weapons []*EquippedWeapon) *CharacterWeapons {
+	cw := &CharacterWeapons{}
+	for _, w := range weapons {
+		if w == nil {
+			continue
+		}
+		switch w.Slot {
+		case SlotMainHand:
+			cw.mainHand = w
+		case SlotOffHand:
+			cw.offHand = w
+		}
 	}
+	return cw
 }
 
 // MainHand returns the weapon equipped in the main hand slot.
