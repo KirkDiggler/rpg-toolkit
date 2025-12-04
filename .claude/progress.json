@@ -38,10 +38,30 @@
         "off-hand-weapon-query",
         "all-equipped-weapons-query"
       ]
+    },
+    {
+      "id": 3,
+      "date": "2024-12-03",
+      "title": "Dueling fighting style integration",
+      "completed": true,
+      "commit": "6e7468b",
+      "summary": "Integrated Dueling fighting style with gamectx. Added gamectx dependency to rulebooks/dnd5e with replace directive. Implemented Dueling in fighting_style.go with weapon eligibility checks via gamectx.Characters(). Added 4 comprehensive tests covering all scenarios. Updated IsImplemented(). All tests passing, linter clean.",
+      "files_modified": [
+        "rulebooks/dnd5e/conditions/fighting_style.go",
+        "rulebooks/dnd5e/conditions/fighting_style_test.go",
+        "rulebooks/dnd5e/fightingstyles/fightingstyles.go",
+        "rulebooks/dnd5e/go.mod"
+      ],
+      "tests_passing": [
+        "dueling-eligible-one-handed-no-offhand",
+        "dueling-eligible-one-handed-with-shield",
+        "dueling-ineligible-two-handed",
+        "dueling-ineligible-dual-wield"
+      ]
     }
   ],
   "next_steps": [
-    "Update Dueling fighting style to use gamectx for eligibility checks",
-    "Add doc.go and final verification"
+    "Add doc.go and final verification",
+    "Remove replace directive once gamectx is published"
   ]
 }

@@ -46,29 +46,29 @@
       "id": "dueling-eligible-one-handed-no-offhand",
       "feature": "dueling-integration",
       "prompt": "Character with one-handed melee weapon and no off-hand item should be Dueling eligible (+2 damage)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "dueling-eligible-one-handed-with-shield",
       "feature": "dueling-integration",
       "prompt": "Character with one-handed melee weapon and shield should be Dueling eligible (+2 damage)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "dueling-ineligible-two-handed",
       "feature": "dueling-integration",
       "prompt": "Character with two-handed weapon should NOT be Dueling eligible (no damage bonus)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "dueling-ineligible-dual-wield",
       "feature": "dueling-integration",
       "prompt": "Character with weapon in each hand should NOT be Dueling eligible (no damage bonus)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "all-tests-pass",
