@@ -11,8 +11,8 @@
       "id": "add-character-to-registry",
       "feature": "gamectx-characters",
       "prompt": "Verify you can add a character with equipped weapons to the registry and retrieve it by ID",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "context-wrapping",
@@ -25,22 +25,22 @@
       "id": "main-hand-weapon-query",
       "feature": "gamectx-characters",
       "prompt": "Verify CharacterWeapons.MainHand() returns the equipped main hand weapon",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "off-hand-weapon-query",
       "feature": "gamectx-characters",
       "prompt": "Verify CharacterWeapons.OffHand() returns the equipped off-hand weapon (or nil if none/shield)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "all-equipped-weapons-query",
       "feature": "gamectx-characters",
       "prompt": "Verify CharacterWeapons.AllEquipped() returns all equipped weapons",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "dueling-eligible-one-handed-no-offhand",
@@ -74,8 +74,8 @@
       "id": "all-tests-pass",
       "feature": "verification",
       "prompt": "Run go test ./gamectx/... and verify all tests pass",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "pre-commit-passes",

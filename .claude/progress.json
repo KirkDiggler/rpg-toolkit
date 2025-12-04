@@ -20,10 +20,27 @@
         "empty-game-context",
         "context-wrapping"
       ]
+    },
+    {
+      "id": 2,
+      "date": "2024-12-03",
+      "title": "CharacterRegistry with weapon queries",
+      "completed": true,
+      "commit": "d5b2216",
+      "summary": "Implemented BasicCharacterRegistry with weapon query methods. Created EquippedWeapon struct and CharacterWeapons with MainHand(), OffHand(), and AllEquipped() methods. Comprehensive test coverage with all tests passing, linter clean.",
+      "files_added": [
+        "gamectx/characters.go",
+        "gamectx/characters_test.go"
+      ],
+      "tests_passing": [
+        "add-character-to-registry",
+        "main-hand-weapon-query",
+        "off-hand-weapon-query",
+        "all-equipped-weapons-query"
+      ]
     }
   ],
   "next_steps": [
-    "Implement CharacterRegistry with weapon queries (characters.go)",
     "Update Dueling fighting style to use gamectx for eligibility checks",
     "Add doc.go and final verification"
   ]
