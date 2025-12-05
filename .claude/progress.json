@@ -1,110 +1,15 @@
 {
-  "branch": "feature/shared-combat-infra-387",
-  "issues": ["#387"],
-  "goal": "Implement shared combat infrastructure needed by Fighter (#388) and Monk (#389): BusEffect interface, RestEvent, RecoverableResource, Character.GetResource(), ActionEconomy, HealChain, and ResourceConsumedEvent",
-  "sessions": [
-    {
-      "date": "2025-12-04",
-      "task": "ActionEconomy struct implementation",
-      "changes": [
-        "Created rulebooks/dnd5e/combat/action_economy.go with ActionEconomy struct",
-        "Implemented NewActionEconomy() returning 1/1/1 default values",
-        "Implemented CanUseAction/BonusAction/Reaction() methods for checking availability",
-        "Implemented UseAction/BonusAction/Reaction() methods that consume and return rpgerr.ResourceExhausted when depleted",
-        "Implemented Reset() to restore all to 1/1/1",
-        "Implemented GrantExtraAction/BonusAction() for features like Action Surge",
-        "Created comprehensive test suite in action_economy_test.go using testify suite pattern",
-        "Added SetupSubTest() for clean state between subtests",
-        "Tested all methods including edge cases, Action Surge scenario, and independence of action types",
-        "Added nolint:dupl directives for intentional test duplication across action types",
-        "All tests passing, linter clean"
-      ],
-      "commit": "9177144",
-      "notes": "ActionEconomy fully implemented with comprehensive tests. Uses rpgerr.ResourceExhausted for depleted resources following established combat code patterns."
-    },
-    {
-      "date": "2025-12-04",
-      "task": "RestEvent + RestTopic implementation + HealChain",
-      "changes": [
-        "Added RestEvent struct to rulebooks/dnd5e/events/events.go with RestType (resources.ResetType) and CharacterID fields",
-        "Added RestTopic as TypedTopic with topic name 'dnd5e.rest'",
-        "Added import for core/resources to use existing ResetType",
-        "Implemented HealChain in rulebooks/dnd5e/combat/healing.go following DamageChain pattern",
-        "Created HealingSourceType constants (spell, potion, feature, second_wind, lay_on_hands, song_of_rest, hit_dice, long_rest)",
-        "Created HealingComponent struct with Source, DiceRolls, FlatBonus, HealingMod",
-        "Created HealingChainEvent struct with HealerID, TargetID, Components",
-        "Implemented Total() and TotalHealing() helper methods",
-        "Defined HealChain as ChainedTopic[*HealingChainEvent]",
-        "Verified build and linting passes"
-      ],
-      "commit": "0f3daeb",
-      "notes": "Both RestEvent and HealChain completed in this commit"
-    },
-    {
-      "date": "2025-12-04",
-      "task": "BusEffect interface in events package",
-      "changes": [
-        "Created events/bus_effect.go with BusEffect interface",
-        "Added Apply(ctx context.Context, bus EventBus) error method",
-        "Added Remove(ctx context.Context, bus EventBus) error method",
-        "Added IsApplied() bool method",
-        "Added comprehensive doc comments explaining the pattern and lifecycle",
-        "Tagged events module as v0.6.2 with BusEffect"
-      ],
-      "commit": "82b2506",
-      "notes": "Interface follows ConditionBehavior pattern. Defined in events package (not core) to avoid circular dependency."
-    },
-    {
-      "date": "2025-12-04",
-      "task": "ResourceConsumedEvent and ResourceConsumedTopic implementation",
-      "changes": [
-        "Added ResourceConsumedEvent struct to rulebooks/dnd5e/events/events.go",
-        "Included CharacterID, ResourceKey (from core/resources), Amount, and Remaining fields",
-        "Added ResourceConsumedTopic as TypedTopic with topic name 'dnd5e.resource.consumed'",
-        "Verified build and linting passes with go build and golangci-lint"
-      ],
-      "commit": "a6d3a75",
-      "notes": "ResourceConsumedEvent provides observability for resource consumption. Following existing TypedTopic pattern in events.go."
-    },
-    {
-      "date": "2025-12-04",
-      "task": "RecoverableResource implementing BusEffect with self-managed recovery",
-      "changes": [
-        "Created rulebooks/dnd5e/combat/recoverable_resource.go with RecoverableResource struct",
-        "Uses composition (Resource field) not embedding for cleaner API",
-        "Implements events.BusEffect interface (Apply/Remove/IsApplied)",
-        "Added CharacterID field to filter rest events by character",
-        "Added ResetType field to match specific rest types (short_rest, long_rest, etc)",
-        "Apply() subscribes to RestTopic and stores subscription ID",
-        "onRest() handler filters by CharacterID and ResetType, calls RestoreToFull() on match",
-        "Remove() unsubscribes from RestTopic using stored subscription ID",
-        "NewRecoverableResource() constructor with RecoverableResourceConfig pattern",
-        "Created comprehensive test suite using testify suite pattern",
-        "All tests passing, linter clean"
-      ],
-      "commit": "baad897",
-      "notes": "RecoverableResource fully implemented following RagingCondition pattern for subscription management. Self-manages recovery by subscribing to RestTopic."
-    },
-    {
-      "date": "2025-12-04",
-      "task": "Character resource storage with GetResource() and serialization",
-      "changes": [
-        "Added resources map[ResourceKey]*RecoverableResource to Character struct in character.go",
-        "Added GetResource(key ResourceKey) method returning *RecoverableResource (returns empty resource if not found)",
-        "Added AddResource(key, resource) method with automatic map initialization",
-        "Created RecoverableResourceData struct in data.go for serialization with Current, Maximum, ResetType fields",
-        "Added GetResourceData() method to serialize resources to RecoverableResourceData map",
-        "Added LoadResourceData() method to deserialize resources from data and Apply to bus",
-        "Updated ToData() in character.go to serialize resources map",
-        "Updated LoadFromData() in data.go to deserialize and restore resources",
-        "Updated Finalize() in draft.go to initialize empty resources map on character creation",
-        "Created comprehensive test suite in character_test.go (11 test cases)",
-        "All tests passing, linter clean"
-      ],
-      "commit": "76c54d7",
-      "notes": "Character resource storage fully implemented with complete serialization/deserialization. Resources maintain their current values across save/load cycles."
-    }
-  ],
-  "completed": true,
-  "summary": "All shared combat infrastructure implemented: BusEffect interface in events, ActionEconomy for turn-based action tracking, RestEvent for resource recovery, RecoverableResource implementing self-managed recovery via BusEffect, HealChain for modifiable healing, ResourceConsumedEvent for observability, and Character.GetResource() with full serialization support."
+  "branch": "feature/fighter-levels-1-3-388",
+  "issues": ["#388"],
+  "goal": "Implement Fighter class levels 1-3: Defense and Two-Weapon Fighting styles, verify Second Wind, implement Action Surge, and Improved Critical (Champion subclass)",
+  "sessions": [],
+  "completed": false,
+  "next_steps": [
+    "Implement Defense fighting style (+1 AC when wearing armor)",
+    "Implement Two-Weapon Fighting style (add ability mod to off-hand damage)",
+    "Verify Second Wind integration with RecoverableResource",
+    "Implement Action Surge feature",
+    "Implement Improved Critical (Champion subclass)",
+    "Standardize damage event reference format"
+  ]
 }
