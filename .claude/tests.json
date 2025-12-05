@@ -1,81 +1,109 @@
 {
   "tests": [
     {
-      "id": "empty-game-context",
-      "feature": "gamectx-core",
-      "prompt": "Verify you can create an empty GameContext and it has a valid CharacterRegistry (not nil)",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "bus-effect-interface",
+      "feature": "bus-effect",
+      "prompt": "Verify core.BusEffect interface exists with Apply(ctx, bus) and Remove(ctx, bus) methods",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "add-character-to-registry",
-      "feature": "gamectx-characters",
-      "prompt": "Verify you can add a character with equipped weapons to the registry and retrieve it by ID",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "rest-event-defined",
+      "feature": "rest-event",
+      "prompt": "Verify RestEvent struct exists with RestType field (short_rest, long_rest) and RestTopic is defined",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "context-wrapping",
-      "feature": "gamectx-core",
-      "prompt": "Verify WithGameContext wraps a context.Context and Characters()/RequireCharacters() can retrieve the registry",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "recoverable-resource-implements-bus-effect",
+      "feature": "recoverable-resource",
+      "prompt": "Verify RecoverableResource wraps mechanics/resources.Resource and implements BusEffect",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "main-hand-weapon-query",
-      "feature": "gamectx-characters",
-      "prompt": "Verify CharacterWeapons.MainHand() returns the equipped main hand weapon",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "recoverable-resource-subscribes-to-rest",
+      "feature": "recoverable-resource",
+      "prompt": "When RecoverableResource.Apply() is called, it subscribes to RestTopic and restores on matching ResetType",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "off-hand-weapon-query",
-      "feature": "gamectx-characters",
-      "prompt": "Verify CharacterWeapons.OffHand() returns the equipped off-hand weapon (or nil if none/shield)",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "character-get-resource",
+      "feature": "character-resources",
+      "prompt": "Character.GetResource(key ResourceKey) returns *RecoverableResource or nil",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "all-equipped-weapons-query",
-      "feature": "gamectx-characters",
-      "prompt": "Verify CharacterWeapons.AllEquipped() returns all equipped weapons",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "character-resource-serialization",
+      "feature": "character-resources",
+      "prompt": "Character resources serialize to/from ResourceData with Current, Maximum, ResetType fields",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "dueling-eligible-one-handed-no-offhand",
-      "feature": "dueling-integration",
-      "prompt": "Character with one-handed melee weapon and no off-hand item should be Dueling eligible (+2 damage)",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "action-economy-creation",
+      "feature": "action-economy",
+      "prompt": "NewActionEconomy() returns ActionEconomy with 1 action, 1 bonus action, 1 reaction",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "dueling-eligible-one-handed-with-shield",
-      "feature": "dueling-integration",
-      "prompt": "Character with one-handed melee weapon and shield should be Dueling eligible (+2 damage)",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "action-economy-use-action",
+      "feature": "action-economy",
+      "prompt": "UseAction() decrements ActionsRemaining; returns error when 0",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "dueling-ineligible-two-handed",
-      "feature": "dueling-integration",
-      "prompt": "Character with two-handed weapon should NOT be Dueling eligible (no damage bonus)",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "action-economy-use-bonus-action",
+      "feature": "action-economy",
+      "prompt": "UseBonusAction() decrements BonusActionsRemaining; returns error when 0",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "dueling-ineligible-dual-wield",
-      "feature": "dueling-integration",
-      "prompt": "Character with weapon in each hand should NOT be Dueling eligible (no damage bonus)",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "action-economy-use-reaction",
+      "feature": "action-economy",
+      "prompt": "UseReaction() decrements ReactionsRemaining; returns error when 0",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "all-tests-pass",
-      "feature": "verification",
-      "prompt": "Run go test ./gamectx/... and verify all tests pass",
-      "passes": true,
-      "last_checked": "2024-12-03"
+      "id": "action-economy-reset",
+      "feature": "action-economy",
+      "prompt": "Reset() restores all to default (1 each)",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "action-economy-grant-extra",
+      "feature": "action-economy",
+      "prompt": "GrantExtraAction() increments ActionsRemaining (for Action Surge)",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "heal-chain-defined",
+      "feature": "heal-chain",
+      "prompt": "HealChain is a ChainedTopic for HealingChainEvent with Components slice",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "heal-chain-modifiers",
+      "feature": "heal-chain",
+      "prompt": "Effects can subscribe to HealChain and add HealingComponent modifiers",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "resource-consumed-event",
+      "feature": "resource-consumed",
+      "prompt": "ResourceConsumedEvent exists with ResourceKey, Amount, CharacterID fields and ResourceConsumedTopic is defined",
+      "passes": false,
+      "last_checked": null
     },
     {
       "id": "pre-commit-passes",
