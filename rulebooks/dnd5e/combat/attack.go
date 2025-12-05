@@ -27,7 +27,7 @@ const (
 	DamageSourceDivineSmite     DamageSourceType = "divine_smite"
 	DamageSourceElementalWeapon DamageSourceType = "elemental_weapon"
 	DamageSourceBrutalCritical  DamageSourceType = "dnd5e:conditions:brutal_critical"
-	DamageSourceDueling         DamageSourceType = "dnd5e:conditions:fighting_style:dueling"
+	DamageSourceDueling         DamageSourceType = "dnd5e:conditions:fighting_style_dueling"
 	// Add more as needed
 )
 
