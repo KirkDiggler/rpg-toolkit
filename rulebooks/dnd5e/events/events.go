@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
 
@@ -146,6 +147,12 @@ type AttackEvent struct {
 	IsMelee    bool   // True for melee attacks, false for ranged
 }
 
+// RestEvent is published when a character takes a rest
+type RestEvent struct {
+	RestType    resources.ResetType // Type of rest (short_rest, long_rest, etc)
+	CharacterID string              // ID of the character resting
+}
+
 // Topic definitions for typed event system
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
@@ -168,4 +175,7 @@ var (
 
 	// AttackTopic provides typed pub/sub for attack events
 	AttackTopic = events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack")
+
+	// RestTopic provides typed pub/sub for rest events
+	RestTopic = events.DefineTypedTopic[RestEvent]("dnd5e.rest")
 )
