@@ -2,14 +2,101 @@
   "branch": "feature/shared-combat-infra-387",
   "issues": ["#387"],
   "goal": "Implement shared combat infrastructure needed by Fighter (#388) and Monk (#389): BusEffect interface, RestEvent, RecoverableResource, Character.GetResource(), ActionEconomy, HealChain, and ResourceConsumedEvent",
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-12-04",
+      "task": "ActionEconomy struct implementation",
+      "changes": [
+        "Created rulebooks/dnd5e/combat/action_economy.go with ActionEconomy struct",
+        "Implemented NewActionEconomy() returning 1/1/1 default values",
+        "Implemented CanUseAction/BonusAction/Reaction() methods for checking availability",
+        "Implemented UseAction/BonusAction/Reaction() methods that consume and return rpgerr.ResourceExhausted when depleted",
+        "Implemented Reset() to restore all to 1/1/1",
+        "Implemented GrantExtraAction/BonusAction() for features like Action Surge",
+        "Created comprehensive test suite in action_economy_test.go using testify suite pattern",
+        "Added SetupSubTest() for clean state between subtests",
+        "Tested all methods including edge cases, Action Surge scenario, and independence of action types",
+        "Added nolint:dupl directives for intentional test duplication across action types",
+        "All tests passing, linter clean"
+      ],
+      "commit": "9177144",
+      "notes": "ActionEconomy fully implemented with comprehensive tests. Uses rpgerr.ResourceExhausted for depleted resources following established combat code patterns."
+    },
+    {
+      "date": "2025-12-04",
+      "task": "RestEvent + RestTopic implementation + HealChain",
+      "changes": [
+        "Added RestEvent struct to rulebooks/dnd5e/events/events.go with RestType (resources.ResetType) and CharacterID fields",
+        "Added RestTopic as TypedTopic with topic name 'dnd5e.rest'",
+        "Added import for core/resources to use existing ResetType",
+        "Implemented HealChain in rulebooks/dnd5e/combat/healing.go following DamageChain pattern",
+        "Created HealingSourceType constants (spell, potion, feature, second_wind, lay_on_hands, song_of_rest, hit_dice, long_rest)",
+        "Created HealingComponent struct with Source, DiceRolls, FlatBonus, HealingMod",
+        "Created HealingChainEvent struct with HealerID, TargetID, Components",
+        "Implemented Total() and TotalHealing() helper methods",
+        "Defined HealChain as ChainedTopic[*HealingChainEvent]",
+        "Verified build and linting passes"
+      ],
+      "commit": "0f3daeba3147c313bc4521abef3c30af75e5195a",
+      "notes": "Both RestEvent and HealChain completed in this commit"
+    },
+    {
+      "date": "2025-12-04",
+      "task": "BusEffect interface in core/",
+      "changes": [
+        "Created core/bus_effect.go with BusEffect interface",
+        "Added Apply(ctx context.Context, bus events.EventBus) error method",
+        "Added Remove(ctx context.Context, bus events.EventBus) error method",
+        "Added IsApplied() bool method",
+        "Added comprehensive doc comments explaining the pattern and lifecycle",
+        "Added events module dependency to core/go.mod (v0.6.1)",
+        "Verified compilation with go build ./..."
+      ],
+      "commit": "b691ca7",
+      "notes": "Interface follows ConditionBehavior pattern from dnd5e/events but is defined at core level for use across all game systems"
+    },
+    {
+      "date": "2025-12-04",
+      "task": "ResourceConsumedEvent and ResourceConsumedTopic implementation",
+      "changes": [
+        "Added ResourceConsumedEvent struct to rulebooks/dnd5e/events/events.go",
+        "Included CharacterID, ResourceKey (from core/resources), Amount, and Remaining fields",
+        "Added ResourceConsumedTopic as TypedTopic with topic name 'dnd5e.resource.consumed'",
+        "Verified build and linting passes with go build and golangci-lint"
+      ],
+      "commit": "a6d3a75",
+      "notes": "ResourceConsumedEvent provides observability for resource consumption. Following existing TypedTopic pattern in events.go. Ready for use in RecoverableResource implementation."
+    },
+    {
+      "date": "2025-12-04",
+      "task": "RecoverableResource implementing BusEffect with self-managed recovery",
+      "changes": [
+        "Created rulebooks/dnd5e/combat/recoverable_resource.go with RecoverableResource struct",
+        "Embeds mechanics/resources.Resource for current/maximum tracking",
+        "Implements core.BusEffect interface (Apply/Remove/IsApplied)",
+        "Added CharacterID field to filter rest events by character",
+        "Added ResetType field to match specific rest types (short_rest, long_rest, etc)",
+        "Apply() subscribes to RestTopic and stores subscription ID",
+        "onRest() handler filters by CharacterID and ResetType, calls RestoreToFull() on match",
+        "Remove() unsubscribes from RestTopic using stored subscription ID",
+        "NewRecoverableResource() constructor with RecoverableResourceConfig pattern",
+        "Created comprehensive test suite using testify suite pattern",
+        "Tests Apply/Remove lifecycle and IsApplied() state",
+        "Tests matching rest events restore resource to full",
+        "Tests non-matching CharacterID doesn't trigger restore",
+        "Tests non-matching ResetType doesn't trigger restore (short vs long rest)",
+        "Tests multiple resources with different reset types restore independently",
+        "Tests unapplied resources don't respond to rest events",
+        "Tests embedded Resource methods still work (Use, Restore, IsFull, etc)",
+        "Pushed core module changes with BusEffect to feature branch",
+        "Updated dnd5e go.mod to use commit with BusEffect (v0.9.6-0.20251205065638-a6d3a75d2297)",
+        "All tests passing, linter clean"
+      ],
+      "commit": "1ba0fda",
+      "notes": "RecoverableResource fully implemented following RagingCondition pattern for subscription management. Self-manages recovery by subscribing to RestTopic. Can be used for any resource that recovers on rest (spell slots, ki points, rage uses, etc)."
+    }
+  ],
   "next_steps": [
-    "BusEffect interface in core/",
-    "RestEvent + RestTopic in rulebooks/dnd5e/events",
-    "RecoverableResource implementing BusEffect with self-managed recovery",
-    "Character.GetResource() + ResourceData serialization",
-    "ActionEconomy struct in rulebooks/dnd5e/combat",
-    "HealChain (ChainedTopic pattern like DamageChain)",
-    "ResourceConsumedEvent (TypedTopic)"
+    "Character.GetResource() + ResourceData serialization"
   ]
 }
