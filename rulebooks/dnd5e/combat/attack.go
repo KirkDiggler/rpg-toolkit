@@ -22,11 +22,12 @@ type DamageSourceType string
 const (
 	DamageSourceWeapon          DamageSourceType = "weapon"
 	DamageSourceAbility         DamageSourceType = "ability"
-	DamageSourceRage            DamageSourceType = "rage"
+	DamageSourceRage            DamageSourceType = "dnd5e:conditions:raging"
 	DamageSourceSneakAttack     DamageSourceType = "sneak_attack"
 	DamageSourceDivineSmite     DamageSourceType = "divine_smite"
 	DamageSourceElementalWeapon DamageSourceType = "elemental_weapon"
-	DamageSourceBrutalCritical  DamageSourceType = "brutal_critical"
+	DamageSourceBrutalCritical  DamageSourceType = "dnd5e:conditions:brutal_critical"
+	DamageSourceDueling         DamageSourceType = "dnd5e:conditions:fighting_style:dueling"
 	// Add more as needed
 )
 

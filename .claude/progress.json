@@ -1,28 +1,88 @@
 {
-  "branch": "refactor/refs-single-source-of-truth",
-  "issues": ["#380"],
-  "goal": "Remove duplicate ID constants from features/types.go and conditions/types.go - use refs package as single source of truth for all IDs",
+  "branch": "feature/gamectx-382",
+  "issues": ["#382"],
+  "goal": "Implement gamectx package for condition context requirements - enables Dueling fighting style and future conditions to query loaded game state (equipment, spatial data) without bloating event objects",
   "sessions": [
     {
-      "id": "2025-12-02-001",
-      "task": "Remove duplicate ID constants and update all usages to refs package",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/features/loader.go",
-        "rulebooks/dnd5e/features/factory.go",
-        "rulebooks/dnd5e/features/second_wind.go",
-        "rulebooks/dnd5e/features/rage.go",
-        "rulebooks/dnd5e/features/types.go",
-        "rulebooks/dnd5e/conditions/loader.go",
-        "rulebooks/dnd5e/conditions/factory.go",
-        "rulebooks/dnd5e/conditions/brutal_critical.go",
-        "rulebooks/dnd5e/conditions/unarmored_defense.go",
-        "rulebooks/dnd5e/conditions/fighting_style.go",
-        "rulebooks/dnd5e/conditions/types.go"
+      "id": 1,
+      "date": "2024-12-03",
+      "title": "Core GameContext + context wrapping",
+      "completed": true,
+      "commit": "f03cf0f",
+      "summary": "Created gamectx package with GameContext struct, CharacterRegistry interface, and context wrapping helpers (WithGameContext, Characters, RequireCharacters). All tests passing, linter clean.",
+      "files_added": [
+        "gamectx/gamectx.go",
+        "gamectx/require.go",
+        "gamectx/gamectx_test.go",
+        "gamectx/go.mod"
       ],
-      "commit": "86d8c2f",
-      "notes": "Deleted RageID, SecondWindID from features/types.go and RagingID, BrutalCriticalID, UnarmoredDefenseID, FightingStyleID from conditions/types.go. Updated all switch statements, ToJSON methods, and resource creation to use refs.Features.X().ID and refs.Conditions.X().ID. Also replaced magic strings 'dnd5e' and 'features' with refs.Module and refs.TypeFeatures."
+      "tests_passing": [
+        "empty-game-context",
+        "context-wrapping"
+      ]
+    },
+    {
+      "id": 2,
+      "date": "2024-12-03",
+      "title": "CharacterRegistry with weapon queries",
+      "completed": true,
+      "commit": "d5b2216",
+      "summary": "Implemented BasicCharacterRegistry with weapon query methods. Created EquippedWeapon struct and CharacterWeapons with MainHand(), OffHand(), and AllEquipped() methods. Comprehensive test coverage with all tests passing, linter clean.",
+      "files_added": [
+        "gamectx/characters.go",
+        "gamectx/characters_test.go"
+      ],
+      "tests_passing": [
+        "add-character-to-registry",
+        "main-hand-weapon-query",
+        "off-hand-weapon-query",
+        "all-equipped-weapons-query"
+      ]
+    },
+    {
+      "id": 3,
+      "date": "2024-12-03",
+      "title": "Dueling fighting style integration",
+      "completed": true,
+      "commit": "6e7468b",
+      "summary": "Integrated Dueling fighting style with gamectx. Added gamectx dependency to rulebooks/dnd5e with replace directive. Implemented Dueling in fighting_style.go with weapon eligibility checks via gamectx.Characters(). Added 4 comprehensive tests covering all scenarios. Updated IsImplemented(). All tests passing, linter clean.",
+      "files_modified": [
+        "rulebooks/dnd5e/conditions/fighting_style.go",
+        "rulebooks/dnd5e/conditions/fighting_style_test.go",
+        "rulebooks/dnd5e/fightingstyles/fightingstyles.go",
+        "rulebooks/dnd5e/go.mod"
+      ],
+      "tests_passing": [
+        "dueling-eligible-one-handed-no-offhand",
+        "dueling-eligible-one-handed-with-shield",
+        "dueling-ineligible-two-handed",
+        "dueling-ineligible-dual-wield"
+      ]
+    },
+    {
+      "id": 4,
+      "date": "2024-12-03",
+      "title": "Final polish and doc.go",
+      "completed": true,
+      "commit": "3d398f8",
+      "summary": "Created comprehensive package documentation in gamectx/doc.go. Explains the problem (conditions need game state without bloating events), solution (context wrapping with queryable registries), usage patterns with Dueling fighting style example. Verified all gamectx tests passing, linter clean, and Dueling integration tests still passing. Feature complete and ready for merge after gamectx is published.",
+      "files_added": [
+        "gamectx/doc.go"
+      ],
+      "tests_passing": [
+        "all-gamectx-tests",
+        "all-dueling-tests",
+        "golangci-lint-clean"
+      ]
     }
   ],
-  "next_steps": []
+  "status": "complete",
+  "merge_prerequisites": [
+    "Push gamectx module to origin",
+    "Tag gamectx with version (e.g., v0.1.0)",
+    "Update rulebooks/dnd5e/go.mod to use published gamectx version",
+    "Remove replace directive in rulebooks/dnd5e/go.mod",
+    "Run go mod tidy in rulebooks/dnd5e",
+    "Verify all tests still pass with published version"
+  ]
 }

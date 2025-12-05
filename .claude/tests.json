@@ -1,46 +1,88 @@
 {
   "tests": [
     {
-      "id": "no-duplicate-feature-ids",
-      "feature": "refs-cleanup",
-      "prompt": "Verify features/types.go has no RageID or SecondWindID constants",
+      "id": "empty-game-context",
+      "feature": "gamectx-core",
+      "prompt": "Verify you can create an empty GameContext and it has a valid CharacterRegistry (not nil)",
       "passes": true,
-      "last_checked": "2025-12-02"
+      "last_checked": "2024-12-03"
     },
     {
-      "id": "no-duplicate-condition-ids",
-      "feature": "refs-cleanup",
-      "prompt": "Verify conditions/types.go has no RagingID, BrutalCriticalID, UnarmoredDefenseID, or FightingStyleID constants",
+      "id": "add-character-to-registry",
+      "feature": "gamectx-characters",
+      "prompt": "Verify you can add a character with equipped weapons to the registry and retrieve it by ID",
       "passes": true,
-      "last_checked": "2025-12-02"
+      "last_checked": "2024-12-03"
     },
     {
-      "id": "features-factory-uses-refs-module",
-      "feature": "refs-cleanup",
-      "prompt": "Verify features/factory.go uses refs.Module instead of \"dnd5e\" string literal",
+      "id": "context-wrapping",
+      "feature": "gamectx-core",
+      "prompt": "Verify WithGameContext wraps a context.Context and Characters()/RequireCharacters() can retrieve the registry",
       "passes": true,
-      "last_checked": "2025-12-02"
+      "last_checked": "2024-12-03"
     },
     {
-      "id": "features-factory-uses-refs-type",
-      "feature": "refs-cleanup",
-      "prompt": "Verify features/factory.go uses refs.TypeFeatures instead of \"features\" string literal",
+      "id": "main-hand-weapon-query",
+      "feature": "gamectx-characters",
+      "prompt": "Verify CharacterWeapons.MainHand() returns the equipped main hand weapon",
       "passes": true,
-      "last_checked": "2025-12-02"
+      "last_checked": "2024-12-03"
+    },
+    {
+      "id": "off-hand-weapon-query",
+      "feature": "gamectx-characters",
+      "prompt": "Verify CharacterWeapons.OffHand() returns the equipped off-hand weapon (or nil if none/shield)",
+      "passes": true,
+      "last_checked": "2024-12-03"
+    },
+    {
+      "id": "all-equipped-weapons-query",
+      "feature": "gamectx-characters",
+      "prompt": "Verify CharacterWeapons.AllEquipped() returns all equipped weapons",
+      "passes": true,
+      "last_checked": "2024-12-03"
+    },
+    {
+      "id": "dueling-eligible-one-handed-no-offhand",
+      "feature": "dueling-integration",
+      "prompt": "Character with one-handed melee weapon and no off-hand item should be Dueling eligible (+2 damage)",
+      "passes": true,
+      "last_checked": "2024-12-03"
+    },
+    {
+      "id": "dueling-eligible-one-handed-with-shield",
+      "feature": "dueling-integration",
+      "prompt": "Character with one-handed melee weapon and shield should be Dueling eligible (+2 damage)",
+      "passes": true,
+      "last_checked": "2024-12-03"
+    },
+    {
+      "id": "dueling-ineligible-two-handed",
+      "feature": "dueling-integration",
+      "prompt": "Character with two-handed weapon should NOT be Dueling eligible (no damage bonus)",
+      "passes": true,
+      "last_checked": "2024-12-03"
+    },
+    {
+      "id": "dueling-ineligible-dual-wield",
+      "feature": "dueling-integration",
+      "prompt": "Character with weapon in each hand should NOT be Dueling eligible (no damage bonus)",
+      "passes": true,
+      "last_checked": "2024-12-03"
     },
     {
       "id": "all-tests-pass",
-      "feature": "refs-cleanup",
-      "prompt": "Run go test ./rulebooks/dnd5e/... and verify all tests pass",
+      "feature": "verification",
+      "prompt": "Run go test ./gamectx/... and verify all tests pass",
       "passes": true,
-      "last_checked": "2025-12-02"
+      "last_checked": "2024-12-03"
     },
     {
       "id": "pre-commit-passes",
-      "feature": "refs-cleanup",
-      "prompt": "Run golangci-lint and verify it passes for dnd5e",
-      "passes": true,
-      "last_checked": "2025-12-02"
+      "feature": "verification",
+      "prompt": "Run make pre-commit and verify it passes",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }
