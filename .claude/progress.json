@@ -94,9 +94,44 @@
       ],
       "commit": "1ba0fda",
       "notes": "RecoverableResource fully implemented following RagingCondition pattern for subscription management. Self-manages recovery by subscribing to RestTopic. Can be used for any resource that recovers on rest (spell slots, ki points, rage uses, etc)."
+    },
+    {
+      "date": "2025-12-04",
+      "task": "Character resource storage with GetResource() and serialization",
+      "changes": [
+        "Added resources map[ResourceKey]*RecoverableResource to Character struct in character.go",
+        "Added GetResource(key ResourceKey) method returning *RecoverableResource or nil",
+        "Added AddResource(key, resource) method with automatic map initialization",
+        "Created RecoverableResourceData struct in data.go for serialization with Current, Maximum, ResetType fields",
+        "Added GetResourceData() method to serialize resources to RecoverableResourceData map",
+        "Added LoadResourceData() method to deserialize resources from data",
+        "Updated ToData() in character.go to serialize resources map",
+        "Updated LoadFromData() in data.go to deserialize and restore resources with correct current values",
+        "Updated Finalize() in draft.go to initialize empty resources map on character creation",
+        "Added imports for core/resources and combat packages in character.go, data.go, and draft.go",
+        "Created comprehensive test suite in character_test.go:",
+        "  - TestAddResourceAndGetResource: Tests adding and retrieving resources",
+        "  - TestGetResourceReturnsNilForUnknownKey: Tests nil return for missing keys",
+        "  - TestGetResourceReturnsNilWhenMapIsNil: Tests nil map handling",
+        "  - TestAddResourceInitializesMapIfNil: Tests automatic map initialization",
+        "  - TestGetResourceDataReturnsCorrectValues: Tests serialization of full and partially-used resources",
+        "  - TestGetResourceDataReturnsNilWhenResourcesNil: Tests nil map serialization",
+        "  - TestLoadResourceDataRestoresResources: Tests deserialization with correct current/maximum values",
+        "  - TestLoadResourceDataWithFullResources: Tests full resource restoration",
+        "  - TestLoadResourceDataHandlesNilData: Tests nil data handling",
+        "  - TestLoadResourceDataInitializesMapIfNil: Tests map initialization during load",
+        "  - TestRoundTripSerialization: Tests full serialize/deserialize cycle",
+        "All tests passing (11 test cases)",
+        "Fixed linting issues: removed redundant nil check, formatted data.go",
+        "Linter clean (golangci-lint)",
+        "All character package tests passing"
+      ],
+      "commit": "76c54d7",
+      "notes": "Character resource storage fully implemented with complete serialization/deserialization. Resources maintain their current values across save/load cycles. GetResource() provides nil-safe access. Ready for use by Fighter and Monk features that need to track limited-use resources like Second Wind, Action Surge, Ki Points, etc."
     }
   ],
   "next_steps": [
-    "Character.GetResource() + ResourceData serialization"
+    "All tasks complete! Feature branch ready for PR.",
+    "Implemented: BusEffect, RestEvent, RecoverableResource, Character.GetResource(), ActionEconomy, HealChain, ResourceConsumedEvent"
   ]
 }
