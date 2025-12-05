@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -520,6 +522,7 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		inventory:        d.compileInventory(),
 		spellSlots:       d.compileSpellSlots(classData),
 		classResources:   make(map[shared.ClassResourceType]ResourceData),
+		resources:        make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 		features:         charFeatures,
 		bus:              bus,
 		conditions:       make([]dnd5eEvents.ConditionBehavior, 0),
