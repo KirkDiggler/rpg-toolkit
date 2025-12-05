@@ -96,19 +96,34 @@ func (r *RecoverableResource) IsApplied() bool {
 }
 
 // onRest handles rest events and restores the resource if the event matches
-// our CharacterID and ResetType
+// our CharacterID and the rest type satisfies our ResetType
 func (r *RecoverableResource) onRest(_ context.Context, event dnd5eEvents.RestEvent) error {
 	// Only restore if the rest is for our character
 	if event.CharacterID != r.CharacterID {
 		return nil
 	}
 
-	// Only restore if the rest type matches our reset type
-	if event.RestType != r.ResetType {
+	// Only restore if the rest type satisfies our reset type
+	if !satisfiesReset(event.RestType, r.ResetType) {
 		return nil
 	}
 
 	// Restore resource to full
 	r.RestoreToFull()
 	return nil
+}
+
+// satisfiesReset checks if the given rest type satisfies the required reset type.
+// In D&D 5e, a long rest provides all benefits of a short rest, so:
+//   - long_rest satisfies both long_rest and short_rest requirements
+//   - short_rest only satisfies short_rest requirements
+func satisfiesReset(restType, resetType coreResources.ResetType) bool {
+	if restType == resetType {
+		return true
+	}
+	// Long rest satisfies short rest requirements (D&D 5e PHB p. 186)
+	if restType == coreResources.ResetLongRest && resetType == coreResources.ResetShortRest {
+		return true
+	}
+	return false
 }

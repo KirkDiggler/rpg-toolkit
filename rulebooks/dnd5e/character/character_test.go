@@ -1,9 +1,11 @@
 package character
 
 import (
+	"context"
 	"testing"
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/stretchr/testify/suite"
 )
@@ -12,9 +14,13 @@ import (
 type CharacterResourceTestSuite struct {
 	suite.Suite
 	character *Character
+	bus       events.EventBus
+	ctx       context.Context
 }
 
 func (s *CharacterResourceTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
 	s.character = &Character{
 		id:        "test-char",
 		resources: make(map[coreResources.ResourceKey]*combat.RecoverableResource),
@@ -142,7 +148,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataRestoresResources() {
 	}
 
 	// Load it
-	s.character.LoadResourceData(data)
+	s.character.LoadResourceData(s.ctx, s.bus, data)
 
 	// Verify resources were loaded correctly
 	s.Assert().Equal(2, len(s.character.resources))
@@ -153,6 +159,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataRestoresResources() {
 	s.Assert().Equal(1, rage.Current)
 	s.Assert().Equal(2, rage.Maximum)
 	s.Assert().Equal(coreResources.ResetLongRest, rage.ResetType)
+	s.Assert().True(rage.IsApplied()) // Should be applied to bus
 
 	// Check ki
 	ki := s.character.GetResource("ki")
@@ -160,6 +167,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataRestoresResources() {
 	s.Assert().Equal(3, ki.Current)
 	s.Assert().Equal(5, ki.Maximum)
 	s.Assert().Equal(coreResources.ResetShortRest, ki.ResetType)
+	s.Assert().True(ki.IsApplied()) // Should be applied to bus
 }
 
 func (s *CharacterResourceTestSuite) TestLoadResourceDataWithFullResources() {
@@ -173,7 +181,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataWithFullResources() {
 	}
 
 	// Load it
-	s.character.LoadResourceData(data)
+	s.character.LoadResourceData(s.ctx, s.bus, data)
 
 	// Verify resource is at full
 	rage := s.character.GetResource("rage")
@@ -181,10 +189,11 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataWithFullResources() {
 	s.Assert().Equal(2, rage.Current)
 	s.Assert().Equal(2, rage.Maximum)
 	s.Assert().True(rage.IsFull())
+	s.Assert().True(rage.IsApplied())
 }
 
 func (s *CharacterResourceTestSuite) TestLoadResourceDataHandlesNilData() {
-	s.character.LoadResourceData(nil)
+	s.character.LoadResourceData(s.ctx, s.bus, nil)
 	// Should not panic, resources should remain as initialized
 	s.Assert().NotNil(s.character.resources)
 	s.Assert().Equal(0, len(s.character.resources))
@@ -204,7 +213,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataInitializesMapIfNil() {
 		},
 	}
 
-	char.LoadResourceData(data)
+	char.LoadResourceData(s.ctx, s.bus, data)
 
 	s.Assert().NotNil(char.resources)
 	s.Assert().Equal(1, len(char.resources))
@@ -237,7 +246,7 @@ func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
 		id:        "test-char",
 		resources: make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
-	newChar.LoadResourceData(data)
+	newChar.LoadResourceData(s.ctx, s.bus, data)
 
 	// Verify resources match
 	rage := newChar.GetResource("rage")
@@ -245,12 +254,14 @@ func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
 	s.Assert().Equal(1, rage.Current)
 	s.Assert().Equal(2, rage.Maximum)
 	s.Assert().Equal(coreResources.ResetLongRest, rage.ResetType)
+	s.Assert().True(rage.IsApplied())
 
 	ki := newChar.GetResource("ki")
 	s.Require().NotNil(ki)
 	s.Assert().Equal(5, ki.Current)
 	s.Assert().Equal(5, ki.Maximum)
 	s.Assert().Equal(coreResources.ResetShortRest, ki.ResetType)
+	s.Assert().True(ki.IsApplied())
 }
 
 func TestCharacterResourceSuite(t *testing.T) {

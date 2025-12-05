@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package combat
 
 import "github.com/KirkDiggler/rpg-toolkit/rpgerr"

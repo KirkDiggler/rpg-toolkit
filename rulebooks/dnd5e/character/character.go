@@ -197,8 +197,13 @@ func (c *Character) GetResourceData() map[coreResources.ResourceKey]RecoverableR
 	return data
 }
 
-// LoadResourceData loads resources from serialized data
-func (c *Character) LoadResourceData(data map[coreResources.ResourceKey]RecoverableResourceData) {
+// LoadResourceData loads resources from serialized data and applies them to the event bus.
+// Resources are applied so they subscribe to rest events for automatic recovery.
+func (c *Character) LoadResourceData(
+	ctx context.Context,
+	bus events.EventBus,
+	data map[coreResources.ResourceKey]RecoverableResourceData,
+) {
 	if data == nil {
 		return
 	}
@@ -219,6 +224,13 @@ func (c *Character) LoadResourceData(data map[coreResources.ResourceKey]Recovera
 		if resData.Current != resData.Maximum {
 			deficit := resData.Maximum - resData.Current
 			_ = resource.Use(deficit) // Ignore error - we know the value is valid
+		}
+
+		// Apply resource to subscribe to rest events
+		if err := resource.Apply(ctx, bus); err != nil {
+			// Clean up on failure and skip this resource
+			_ = resource.Remove(ctx, bus)
+			continue
 		}
 
 		c.resources[key] = resource

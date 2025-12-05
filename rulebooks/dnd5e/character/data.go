@@ -215,6 +215,15 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 			_ = resource.Use(deficit) // Ignore error - we know the value is valid
 		}
 
+		// Apply resource to subscribe to rest events
+		if err := resource.Apply(ctx, bus); err != nil {
+			// Clean up on failure
+			_ = resource.Remove(ctx, bus)
+			// Log error but continue loading other resources
+			// TODO: Consider how to handle resource apply errors
+			continue
+		}
+
 		char.resources[key] = resource
 	}
 

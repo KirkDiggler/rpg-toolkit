@@ -174,27 +174,27 @@ func (s *RecoverableResourceTestSuite) TestOnRest_NonMatchingCharacterID() {
 	})
 }
 
-func (s *RecoverableResourceTestSuite) TestOnRest_NonMatchingResetType() {
-	s.Run("does not restore for different reset type", func() {
+func (s *RecoverableResourceTestSuite) TestOnRest_LongRestRestoresShortRestResource() {
+	s.Run("long rest restores short rest resource (D&D 5e rule)", func() {
 		// Apply to subscribe to events
 		err := s.resource.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
-		// Use some of the resource
+		// Use some of the resource (short rest resource)
 		err = s.resource.Use(2)
 		s.Require().NoError(err)
 		s.Equal(1, s.resource.Current)
 
-		// Publish rest event with different reset type
+		// Publish long rest event - should restore short rest resource too
 		rests := dnd5eEvents.RestTopic.On(s.bus)
 		err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
-			RestType:    coreResources.ResetLongRest, // Long rest, but resource needs short rest
+			RestType:    coreResources.ResetLongRest,
 			CharacterID: "char-1",
 		})
 		s.Require().NoError(err)
 
-		// Resource should NOT be restored
-		s.Equal(1, s.resource.Current, "resource should not be restored for different reset type")
+		// Resource SHOULD be restored (long rest satisfies short rest)
+		s.Equal(3, s.resource.Current, "long rest should restore short rest resources (D&D 5e PHB p. 186)")
 	})
 }
 
