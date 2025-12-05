@@ -164,12 +164,24 @@ func (c *Character) GetMaxHitPoints() int {
 	return c.maxHitPoints
 }
 
-// GetResource returns the resource for the given key, or nil if not found
+// emptyResource is returned when a resource doesn't exist.
+// It has 0 maximum and 0 current, so IsEmpty() returns true.
+var emptyResource = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+	ID:      "",
+	Maximum: 0,
+})
+
+// GetResource returns the resource for the given key.
+// If the resource doesn't exist, returns an empty resource (not nil).
+// Use IsEmpty() to check if the resource exists and has uses available.
 func (c *Character) GetResource(key coreResources.ResourceKey) *combat.RecoverableResource {
 	if c.resources == nil {
-		return nil
+		return emptyResource
 	}
-	return c.resources[key]
+	if r, ok := c.resources[key]; ok {
+		return r
+	}
+	return emptyResource
 }
 
 // AddResource adds a new recoverable resource to the character
@@ -189,8 +201,8 @@ func (c *Character) GetResourceData() map[coreResources.ResourceKey]RecoverableR
 	data := make(map[coreResources.ResourceKey]RecoverableResourceData, len(c.resources))
 	for key, resource := range c.resources {
 		data[key] = RecoverableResourceData{
-			Current:   resource.Current,
-			Maximum:   resource.Maximum,
+			Current:   resource.Current(),
+			Maximum:   resource.Maximum(),
 			ResetType: resource.ResetType,
 		}
 	}
@@ -278,8 +290,8 @@ func (c *Character) ToData() *Data {
 		data.Resources = make(map[coreResources.ResourceKey]RecoverableResourceData, len(c.resources))
 		for key, resource := range c.resources {
 			data.Resources[key] = RecoverableResourceData{
-				Current:   resource.Current,
-				Maximum:   resource.Maximum,
+				Current:   resource.Current(),
+				Maximum:   resource.Maximum(),
 				ResetType: resource.ResetType,
 			}
 		}

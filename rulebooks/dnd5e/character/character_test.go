@@ -42,23 +42,26 @@ func (s *CharacterResourceTestSuite) TestAddResourceAndGetResource() {
 	// Retrieve it
 	retrieved := s.character.GetResource("rage")
 	s.Require().NotNil(retrieved)
-	s.Assert().Equal(2, retrieved.Maximum)
-	s.Assert().Equal(2, retrieved.Current)
+	s.Assert().Equal(2, retrieved.Maximum())
+	s.Assert().Equal(2, retrieved.Current())
 	s.Assert().Equal(coreResources.ResetLongRest, retrieved.ResetType)
 }
 
-func (s *CharacterResourceTestSuite) TestGetResourceReturnsNilForUnknownKey() {
+func (s *CharacterResourceTestSuite) TestGetResourceReturnsEmptyForUnknownKey() {
 	retrieved := s.character.GetResource("nonexistent")
-	s.Assert().Nil(retrieved)
+	s.Assert().NotNil(retrieved, "should return empty resource, not nil")
+	s.Assert().True(retrieved.IsEmpty(), "empty resource should be empty")
+	s.Assert().Equal(0, retrieved.Maximum(), "empty resource should have 0 maximum")
 }
 
-func (s *CharacterResourceTestSuite) TestGetResourceReturnsNilWhenMapIsNil() {
+func (s *CharacterResourceTestSuite) TestGetResourceReturnsEmptyWhenMapIsNil() {
 	char := &Character{
 		id:        "test-char",
 		resources: nil,
 	}
 	retrieved := char.GetResource("anything")
-	s.Assert().Nil(retrieved)
+	s.Assert().NotNil(retrieved, "should return empty resource, not nil")
+	s.Assert().True(retrieved.IsEmpty(), "empty resource should be empty")
 }
 
 func (s *CharacterResourceTestSuite) TestAddResourceInitializesMapIfNil() {
@@ -80,7 +83,7 @@ func (s *CharacterResourceTestSuite) TestAddResourceInitializesMapIfNil() {
 	s.Assert().Equal(1, len(char.resources))
 	retrieved := char.GetResource("ki")
 	s.Require().NotNil(retrieved)
-	s.Assert().Equal(3, retrieved.Maximum)
+	s.Assert().Equal(3, retrieved.Maximum())
 }
 
 func (s *CharacterResourceTestSuite) TestGetResourceDataReturnsCorrectValues() {
@@ -156,16 +159,16 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataRestoresResources() {
 	// Check rage
 	rage := s.character.GetResource("rage")
 	s.Require().NotNil(rage)
-	s.Assert().Equal(1, rage.Current)
-	s.Assert().Equal(2, rage.Maximum)
+	s.Assert().Equal(1, rage.Current())
+	s.Assert().Equal(2, rage.Maximum())
 	s.Assert().Equal(coreResources.ResetLongRest, rage.ResetType)
 	s.Assert().True(rage.IsApplied()) // Should be applied to bus
 
 	// Check ki
 	ki := s.character.GetResource("ki")
 	s.Require().NotNil(ki)
-	s.Assert().Equal(3, ki.Current)
-	s.Assert().Equal(5, ki.Maximum)
+	s.Assert().Equal(3, ki.Current())
+	s.Assert().Equal(5, ki.Maximum())
 	s.Assert().Equal(coreResources.ResetShortRest, ki.ResetType)
 	s.Assert().True(ki.IsApplied()) // Should be applied to bus
 }
@@ -186,8 +189,8 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataWithFullResources() {
 	// Verify resource is at full
 	rage := s.character.GetResource("rage")
 	s.Require().NotNil(rage)
-	s.Assert().Equal(2, rage.Current)
-	s.Assert().Equal(2, rage.Maximum)
+	s.Assert().Equal(2, rage.Current())
+	s.Assert().Equal(2, rage.Maximum())
 	s.Assert().True(rage.IsFull())
 	s.Assert().True(rage.IsApplied())
 }
@@ -251,15 +254,15 @@ func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
 	// Verify resources match
 	rage := newChar.GetResource("rage")
 	s.Require().NotNil(rage)
-	s.Assert().Equal(1, rage.Current)
-	s.Assert().Equal(2, rage.Maximum)
+	s.Assert().Equal(1, rage.Current())
+	s.Assert().Equal(2, rage.Maximum())
 	s.Assert().Equal(coreResources.ResetLongRest, rage.ResetType)
 	s.Assert().True(rage.IsApplied())
 
 	ki := newChar.GetResource("ki")
 	s.Require().NotNil(ki)
-	s.Assert().Equal(5, ki.Current)
-	s.Assert().Equal(5, ki.Maximum)
+	s.Assert().Equal(5, ki.Current())
+	s.Assert().Equal(5, ki.Maximum())
 	s.Assert().Equal(coreResources.ResetShortRest, ki.ResetType)
 	s.Assert().True(ki.IsApplied())
 }

@@ -56,9 +56,9 @@ func (s *RecoverableResourceTestSuite) TestNewRecoverableResource() {
 		resource := NewRecoverableResource(config)
 
 		s.Require().NotNil(resource)
-		s.Equal("spell-slots", resource.ID)
-		s.Equal(4, resource.Maximum)
-		s.Equal(4, resource.Current, "should start at full")
+		s.Equal("spell-slots", resource.ID())
+		s.Equal(4, resource.Maximum())
+		s.Equal(4, resource.Current(), "should start at full")
 		s.Equal("wizard-1", resource.CharacterID)
 		s.Equal(coreResources.ResetLongRest, resource.ResetType)
 		s.False(resource.IsApplied(), "should not be applied initially")
@@ -135,7 +135,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_MatchingEvent() {
 		// Use some of the resource
 		err = s.resource.Use(2)
 		s.Require().NoError(err)
-		s.Equal(1, s.resource.Current)
+		s.Equal(1, s.resource.Current())
 
 		// Publish matching rest event
 		rests := dnd5eEvents.RestTopic.On(s.bus)
@@ -146,7 +146,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_MatchingEvent() {
 		s.Require().NoError(err)
 
 		// Resource should be restored
-		s.Equal(3, s.resource.Current, "resource should be restored to maximum")
+		s.Equal(3, s.resource.Current(), "resource should be restored to maximum")
 	})
 }
 
@@ -159,7 +159,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_NonMatchingCharacterID() {
 		// Use some of the resource
 		err = s.resource.Use(2)
 		s.Require().NoError(err)
-		s.Equal(1, s.resource.Current)
+		s.Equal(1, s.resource.Current())
 
 		// Publish rest event for different character
 		rests := dnd5eEvents.RestTopic.On(s.bus)
@@ -170,7 +170,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_NonMatchingCharacterID() {
 		s.Require().NoError(err)
 
 		// Resource should NOT be restored
-		s.Equal(1, s.resource.Current, "resource should not be restored for different character")
+		s.Equal(1, s.resource.Current(), "resource should not be restored for different character")
 	})
 }
 
@@ -183,7 +183,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_LongRestRestoresShortRestResou
 		// Use some of the resource (short rest resource)
 		err = s.resource.Use(2)
 		s.Require().NoError(err)
-		s.Equal(1, s.resource.Current)
+		s.Equal(1, s.resource.Current())
 
 		// Publish long rest event - should restore short rest resource too
 		rests := dnd5eEvents.RestTopic.On(s.bus)
@@ -194,7 +194,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_LongRestRestoresShortRestResou
 		s.Require().NoError(err)
 
 		// Resource SHOULD be restored (long rest satisfies short rest)
-		s.Equal(3, s.resource.Current, "long rest should restore short rest resources (D&D 5e PHB p. 186)")
+		s.Equal(3, s.resource.Current(), "long rest should restore short rest resources (D&D 5e PHB p. 186)")
 	})
 }
 
@@ -215,7 +215,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_ShortRestDoesNotRestoreLongRes
 		// Use some of the resource
 		err = longRestResource.Use(3)
 		s.Require().NoError(err)
-		s.Equal(2, longRestResource.Current)
+		s.Equal(2, longRestResource.Current())
 
 		// Publish short rest event
 		rests := dnd5eEvents.RestTopic.On(s.bus)
@@ -226,7 +226,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_ShortRestDoesNotRestoreLongRes
 		s.Require().NoError(err)
 
 		// Resource should NOT be restored
-		s.Equal(2, longRestResource.Current, "long rest resource should not restore on short rest")
+		s.Equal(2, longRestResource.Current(), "long rest resource should not restore on short rest")
 	})
 }
 
@@ -259,8 +259,8 @@ func (s *RecoverableResourceTestSuite) TestOnRest_MultipleResources() {
 		err = longRestResource.Use(3)
 		s.Require().NoError(err)
 
-		s.Equal(1, shortRestResource.Current)
-		s.Equal(2, longRestResource.Current)
+		s.Equal(1, shortRestResource.Current())
+		s.Equal(2, longRestResource.Current())
 
 		// Publish short rest event
 		rests := dnd5eEvents.RestTopic.On(s.bus)
@@ -271,8 +271,8 @@ func (s *RecoverableResourceTestSuite) TestOnRest_MultipleResources() {
 		s.Require().NoError(err)
 
 		// Only short rest resource should be restored
-		s.Equal(3, shortRestResource.Current, "short rest resource should be restored")
-		s.Equal(2, longRestResource.Current, "long rest resource should not be restored")
+		s.Equal(3, shortRestResource.Current(), "short rest resource should be restored")
+		s.Equal(2, longRestResource.Current(), "long rest resource should not be restored")
 	})
 }
 
@@ -283,7 +283,7 @@ func (s *RecoverableResourceTestSuite) TestOnRest_NotApplied() {
 		// Use some of the resource
 		err := s.resource.Use(2)
 		s.Require().NoError(err)
-		s.Equal(1, s.resource.Current)
+		s.Equal(1, s.resource.Current())
 
 		// Publish matching rest event
 		rests := dnd5eEvents.RestTopic.On(s.bus)
@@ -294,31 +294,31 @@ func (s *RecoverableResourceTestSuite) TestOnRest_NotApplied() {
 		s.Require().NoError(err)
 
 		// Resource should NOT be restored (not subscribed)
-		s.Equal(1, s.resource.Current, "resource should not restore when not applied")
+		s.Equal(1, s.resource.Current(), "resource should not restore when not applied")
 	})
 }
 
 func (s *RecoverableResourceTestSuite) TestResourceFunctionality() {
-	s.Run("retains embedded resource functionality", func() {
-		// Test that we can still use the embedded Resource methods
-		s.Equal(3, s.resource.Maximum)
-		s.Equal(3, s.resource.Current)
+	s.Run("retains composed resource functionality", func() {
+		// Test that we can still use the wrapper methods for Resource
+		s.Equal(3, s.resource.Maximum())
+		s.Equal(3, s.resource.Current())
 		s.True(s.resource.IsFull())
 
 		// Use resource
 		err := s.resource.Use(2)
 		s.Require().NoError(err)
-		s.Equal(1, s.resource.Current)
+		s.Equal(1, s.resource.Current())
 		s.False(s.resource.IsFull())
 		s.True(s.resource.IsAvailable())
 
 		// Restore manually
 		s.resource.Restore(1)
-		s.Equal(2, s.resource.Current)
+		s.Equal(2, s.resource.Current())
 
 		// RestoreToFull
 		s.resource.RestoreToFull()
-		s.Equal(3, s.resource.Current)
+		s.Equal(3, s.resource.Current())
 		s.True(s.resource.IsFull())
 	})
 }

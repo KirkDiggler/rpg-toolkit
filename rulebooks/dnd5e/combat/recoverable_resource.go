@@ -24,11 +24,57 @@ import (
 // Example: A Fighter's Second Wind feature that recovers on a short rest,
 // or a Wizard's spell slots that recover on a long rest.
 type RecoverableResource struct {
-	*resources.Resource                         // Embedded resource for tracking current/maximum
-	CharacterID         string                  // Filter rest events by character
-	ResetType           coreResources.ResetType // When to restore (short_rest, long_rest, etc)
-	subscriptionID      string                  // Track subscription for removal
-	applied             bool                    // Track if subscribed
+	Resource       *resources.Resource     // The underlying resource (use explicit field, not embedding)
+	CharacterID    string                  // Filter rest events by character
+	ResetType      coreResources.ResetType // When to restore (short_rest, long_rest, etc)
+	subscriptionID string                  // Track subscription for removal
+	applied        bool                    // Track if subscribed
+}
+
+// Use consumes the specified amount from the resource.
+// Returns an error if there isn't enough available.
+func (r *RecoverableResource) Use(amount int) error {
+	return r.Resource.Use(amount)
+}
+
+// Restore adds the specified amount back to the resource (up to maximum).
+func (r *RecoverableResource) Restore(amount int) {
+	r.Resource.Restore(amount)
+}
+
+// RestoreToFull restores the resource to its maximum value.
+func (r *RecoverableResource) RestoreToFull() {
+	r.Resource.RestoreToFull()
+}
+
+// IsEmpty returns true if the resource has no uses remaining.
+func (r *RecoverableResource) IsEmpty() bool {
+	return r.Resource.IsEmpty()
+}
+
+// IsFull returns true if the resource is at maximum capacity.
+func (r *RecoverableResource) IsFull() bool {
+	return r.Resource.IsFull()
+}
+
+// Current returns the current amount available.
+func (r *RecoverableResource) Current() int {
+	return r.Resource.Current
+}
+
+// Maximum returns the maximum capacity.
+func (r *RecoverableResource) Maximum() int {
+	return r.Resource.Maximum
+}
+
+// ID returns the resource identifier.
+func (r *RecoverableResource) ID() string {
+	return r.Resource.ID
+}
+
+// IsAvailable returns true if any resource is available.
+func (r *RecoverableResource) IsAvailable() bool {
+	return r.Resource.IsAvailable()
 }
 
 // Ensure RecoverableResource implements events.BusEffect
