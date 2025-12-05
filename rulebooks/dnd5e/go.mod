@@ -6,7 +6,6 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.9.5
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.3-0.20250914062452-e2c6a0f32059
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.0
-	github.com/KirkDiggler/rpg-toolkit/gamectx v0.0.0-00010101000000-000000000000
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
 	github.com/stretchr/testify v1.10.0
@@ -18,5 +17,3 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/KirkDiggler/rpg-toolkit/gamectx => ./gamectx
