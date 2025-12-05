@@ -2,14 +2,30 @@
   "branch": "feature/fighter-levels-1-3-388",
   "issues": ["#388"],
   "goal": "Implement Fighter class levels 1-3: Defense and Two-Weapon Fighting styles, verify Second Wind, implement Action Surge, and Improved Critical (Champion subclass)",
+  "analysis": {
+    "already_implemented": [
+      "Fighting Styles: Archery, Dueling, Great Weapon Fighting",
+      "SecondWind feature (but uses old resources.Resource, not RecoverableResource)",
+      "ActionEconomy with GrantExtraAction()",
+      "RecoverableResource with automatic recovery on rest",
+      "FightingStyleCondition infrastructure"
+    ],
+    "infrastructure_gaps": [
+      "No AC calculation chain - needed for Defense style",
+      "AttackEvent lacks IsOffHand field - needed for Two-Weapon Fighting",
+      "No critical threshold modifier system - needed for Improved Critical"
+    ]
+  },
   "sessions": [],
   "completed": false,
   "next_steps": [
-    "Implement Defense fighting style (+1 AC when wearing armor)",
-    "Implement Two-Weapon Fighting style (add ability mod to off-hand damage)",
-    "Verify Second Wind integration with RecoverableResource",
-    "Implement Action Surge feature",
-    "Implement Improved Critical (Champion subclass)",
-    "Standardize damage event reference format"
+    "Task 1: Add IsOffHand to AttackEvent and AttackInput for Two-Weapon Fighting detection",
+    "Task 2: Implement Two-Weapon Fighting style (add ability mod to off-hand damage)",
+    "Task 3: Create ACChain for AC modifiers (like AttackChain/DamageChain)",
+    "Task 4: Implement Defense fighting style using ACChain",
+    "Task 5: Refactor SecondWind to use RecoverableResource for automatic recovery",
+    "Task 6: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
+    "Task 7: Add critical threshold to AttackChainEvent for Improved Critical",
+    "Task 8: Implement Improved Critical (Champion subclass) condition"
   ]
 }
