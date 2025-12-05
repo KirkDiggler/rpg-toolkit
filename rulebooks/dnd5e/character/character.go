@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -56,6 +58,7 @@ type Character struct {
 	inventory      []InventoryItem
 	spellSlots     map[int]SpellSlotData
 	classResources map[shared.ClassResourceType]ResourceData
+	resources      map[coreResources.ResourceKey]*combat.RecoverableResource
 
 	// Features (rage, second wind, etc)
 	features []features.Feature
@@ -161,6 +164,67 @@ func (c *Character) GetMaxHitPoints() int {
 	return c.maxHitPoints
 }
 
+// GetResource returns the resource for the given key, or nil if not found
+func (c *Character) GetResource(key coreResources.ResourceKey) *combat.RecoverableResource {
+	if c.resources == nil {
+		return nil
+	}
+	return c.resources[key]
+}
+
+// AddResource adds a new recoverable resource to the character
+func (c *Character) AddResource(key coreResources.ResourceKey, resource *combat.RecoverableResource) {
+	if c.resources == nil {
+		c.resources = make(map[coreResources.ResourceKey]*combat.RecoverableResource)
+	}
+	c.resources[key] = resource
+}
+
+// GetResourceData returns serializable resource data for persistence
+func (c *Character) GetResourceData() map[coreResources.ResourceKey]RecoverableResourceData {
+	if c.resources == nil {
+		return nil
+	}
+
+	data := make(map[coreResources.ResourceKey]RecoverableResourceData, len(c.resources))
+	for key, resource := range c.resources {
+		data[key] = RecoverableResourceData{
+			Current:   resource.Current,
+			Maximum:   resource.Maximum,
+			ResetType: resource.ResetType,
+		}
+	}
+	return data
+}
+
+// LoadResourceData loads resources from serialized data
+func (c *Character) LoadResourceData(data map[coreResources.ResourceKey]RecoverableResourceData) {
+	if data == nil {
+		return
+	}
+
+	if c.resources == nil {
+		c.resources = make(map[coreResources.ResourceKey]*combat.RecoverableResource)
+	}
+
+	for key, resData := range data {
+		resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(key),
+			Maximum:     resData.Maximum,
+			CharacterID: c.id,
+			ResetType:   resData.ResetType,
+		})
+
+		// Set current value if different from maximum
+		if resData.Current != resData.Maximum {
+			deficit := resData.Maximum - resData.Current
+			_ = resource.Use(deficit) // Ignore error - we know the value is valid
+		}
+
+		c.resources[key] = resource
+	}
+}
+
 // ToData converts the character to its persistent data form
 func (c *Character) ToData() *Data {
 	data := &Data{
@@ -196,6 +260,18 @@ func (c *Character) ToData() *Data {
 
 	// Copy class resources map directly since ResourceData is already the data type
 	data.ClassResources = maps.Clone(c.classResources)
+
+	// Convert resources to data
+	if len(c.resources) > 0 {
+		data.Resources = make(map[coreResources.ResourceKey]RecoverableResourceData, len(c.resources))
+		for key, resource := range c.resources {
+			data.Resources[key] = RecoverableResourceData{
+				Current:   resource.Current,
+				Maximum:   resource.Maximum,
+				ResetType: resource.ResetType,
+			}
+		}
+	}
 
 	// Convert features to persisted JSON
 	data.Features = make([]json.RawMessage, 0, len(c.features))
