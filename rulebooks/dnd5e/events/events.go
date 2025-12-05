@@ -153,6 +153,14 @@ type RestEvent struct {
 	CharacterID string              // ID of the character resting
 }
 
+// ResourceConsumedEvent is published when a character uses a resource
+type ResourceConsumedEvent struct {
+	CharacterID string                // ID of the character consuming the resource
+	ResourceKey resources.ResourceKey // Which resource was consumed
+	Amount      int                   // How much was consumed
+	Remaining   int                   // How much is left after consumption
+}
+
 // Topic definitions for typed event system
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
@@ -178,4 +186,7 @@ var (
 
 	// RestTopic provides typed pub/sub for rest events
 	RestTopic = events.DefineTypedTopic[RestEvent]("dnd5e.rest")
+
+	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
+	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
 )
