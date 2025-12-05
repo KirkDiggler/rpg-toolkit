@@ -12,7 +12,7 @@ import (
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -409,9 +409,15 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithOneHandedWeapon() {
 	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 	s.Require().NoError(err)
 
-	// Verify +2 bonus was added to weapon damage
+	// Verify weapon component is unchanged
 	weaponComponent := finalEvent.Components[0]
-	s.Equal(5, weaponComponent.FlatBonus, "Should add +2 Dueling bonus to base STR modifier of 3")
+	s.Equal(3, weaponComponent.FlatBonus, "Weapon component should have original STR modifier")
+
+	// Verify Dueling added a separate component
+	s.Require().Len(finalEvent.Components, 2, "Should have weapon + dueling components")
+	duelingComponent := finalEvent.Components[1]
+	s.Equal(combat.DamageSourceDueling, duelingComponent.Source, "Second component should be from Dueling")
+	s.Equal(2, duelingComponent.FlatBonus, "Dueling should add +2 damage")
 }
 
 // TestDuelingBonusWithShield verifies Dueling adds +2 when wielding shield
@@ -492,9 +498,15 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithShield() {
 	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 	s.Require().NoError(err)
 
-	// Verify +2 bonus was added (shields don't count as weapons)
+	// Verify weapon component is unchanged
 	weaponComponent := finalEvent.Components[0]
-	s.Equal(5, weaponComponent.FlatBonus, "Should add +2 Dueling bonus even with shield")
+	s.Equal(3, weaponComponent.FlatBonus, "Weapon component should have original STR modifier")
+
+	// Verify Dueling added a separate component (shields don't count as weapons)
+	s.Require().Len(finalEvent.Components, 2, "Should have weapon + dueling components")
+	duelingComponent := finalEvent.Components[1]
+	s.Equal(combat.DamageSourceDueling, duelingComponent.Source, "Second component should be from Dueling")
+	s.Equal(2, duelingComponent.FlatBonus, "Dueling should add +2 damage even with shield")
 }
 
 // TestDuelingNoBonusWithTwoHandedWeapon verifies Dueling does NOT add bonus with two-handed weapon
@@ -565,7 +577,8 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithTwoHandedWeapon() {
 	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 	s.Require().NoError(err)
 
-	// Verify NO bonus was added
+	// Verify NO Dueling component was added (only weapon component)
+	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Dueling")
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(3, weaponComponent.FlatBonus, "Should NOT add Dueling bonus with two-handed weapon")
 }
@@ -648,7 +661,8 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithDualWield() {
 	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 	s.Require().NoError(err)
 
-	// Verify NO bonus was added
+	// Verify NO Dueling component was added (only weapon component)
+	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Dueling")
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(3, weaponComponent.FlatBonus, "Should NOT add Dueling bonus when dual-wielding")
 }

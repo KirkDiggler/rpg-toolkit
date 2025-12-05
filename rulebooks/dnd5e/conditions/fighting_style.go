@@ -13,7 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -304,16 +304,9 @@ func (f *FightingStyleCondition) onDuelingDamageChain(
 	}
 
 	// Get character weapons
-	charData := registry.GetCharacter(f.CharacterID)
-	if charData == nil {
+	weapons := registry.GetCharacterWeapons(f.CharacterID)
+	if weapons == nil {
 		// Character not found in registry
-		return c, nil
-	}
-
-	// Type assert to CharacterWeapons
-	weapons, ok := charData.(*gamectx.CharacterWeapons)
-	if !ok {
-		// Character data is not CharacterWeapons
 		return c, nil
 	}
 
@@ -341,14 +334,16 @@ func (f *FightingStyleCondition) onDuelingDamageChain(
 
 	// Character is eligible for Dueling bonus - add +2 to damage at StageFeatures
 	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
-		// Add +2 to the weapon damage component
-		for i := range e.Components {
-			component := &e.Components[i]
-			if component.Source == combat.DamageSourceWeapon {
-				component.FlatBonus += 2
-				break
-			}
-		}
+		// Append dueling damage component (like Rage does)
+		e.Components = append(e.Components, combat.DamageComponent{
+			Source:            combat.DamageSourceDueling,
+			OriginalDiceRolls: nil, // No dice
+			FinalDiceRolls:    nil,
+			Rerolls:           nil,
+			FlatBonus:         2,
+			DamageType:        e.DamageType, // Same as weapon damage type
+			IsCritical:        e.IsCritical,
+		})
 		return e, nil
 	}
 

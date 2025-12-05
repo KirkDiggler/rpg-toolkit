@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
 // CharacterRegistryTestSuite tests the BasicCharacterRegistry implementation
@@ -50,7 +50,7 @@ func (s *CharacterRegistryTestSuite) TestGetNonexistentCharacter() {
 	s.Nil(retrieved)
 }
 
-func (s *CharacterRegistryTestSuite) TestGetCharacterInterface() {
+func (s *CharacterRegistryTestSuite) TestGetCharacterWeaponsInterface() {
 	// Test the CharacterRegistry interface method
 	longsword := &gamectx.EquippedWeapon{
 		ID:          "longsword-1",
@@ -63,19 +63,15 @@ func (s *CharacterRegistryTestSuite) TestGetCharacterInterface() {
 	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
 	s.registry.Add("hero-1", weapons)
 
-	// Retrieve via interface method
-	retrieved := s.registry.GetCharacter("hero-1")
+	// Retrieve via interface method - returns *CharacterWeapons directly
+	retrieved := s.registry.GetCharacterWeapons("hero-1")
 	s.Require().NotNil(retrieved)
-
-	// Type assert to CharacterWeapons
-	characterWeapons, ok := retrieved.(*gamectx.CharacterWeapons)
-	s.Require().True(ok, "Retrieved value should be *CharacterWeapons")
-	s.Equal(longsword, characterWeapons.MainHand())
+	s.Equal(longsword, retrieved.MainHand())
 }
 
-func (s *CharacterRegistryTestSuite) TestGetCharacterInterfaceNotFound() {
+func (s *CharacterRegistryTestSuite) TestGetCharacterWeaponsNotFound() {
 	// Test the CharacterRegistry interface method with nonexistent character
-	retrieved := s.registry.GetCharacter("nonexistent")
+	retrieved := s.registry.GetCharacterWeapons("nonexistent")
 	s.Nil(retrieved)
 }
 

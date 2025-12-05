@@ -9,26 +9,26 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
 // mockCharacterRegistry is a test implementation of CharacterRegistry
 type mockCharacterRegistry struct {
-	characters map[string]interface{}
+	characters map[string]*gamectx.CharacterWeapons
 }
 
 func newMockCharacterRegistry() *mockCharacterRegistry {
 	return &mockCharacterRegistry{
-		characters: make(map[string]interface{}),
+		characters: make(map[string]*gamectx.CharacterWeapons),
 	}
 }
 
-func (m *mockCharacterRegistry) GetCharacter(id string) interface{} {
+func (m *mockCharacterRegistry) GetCharacterWeapons(id string) *gamectx.CharacterWeapons {
 	return m.characters[id]
 }
 
-func (m *mockCharacterRegistry) addCharacter(id string, character interface{}) {
-	m.characters[id] = character
+func (m *mockCharacterRegistry) addCharacter(id string, weapons *gamectx.CharacterWeapons) {
+	m.characters[id] = weapons
 }
 
 // GameContextTestSuite tests GameContext creation and CharacterRegistry access
@@ -44,15 +44,20 @@ func (s *GameContextTestSuite) TestEmptyGameContext() {
 	s.Require().NotNil(gameCtx.Characters())
 
 	// Empty registry should return nil for any character lookup
-	character := gameCtx.Characters().GetCharacter("any-id")
+	character := gameCtx.Characters().GetCharacterWeapons("any-id")
 	s.Nil(character)
 }
 
 func (s *GameContextTestSuite) TestGameContextWithRegistry() {
 	// Create a mock registry with a test character
 	mockRegistry := newMockCharacterRegistry()
-	testCharacter := map[string]string{"name": "Hero"}
-	mockRegistry.addCharacter("hero-1", testCharacter)
+	longsword := &gamectx.EquippedWeapon{
+		ID:   "longsword-1",
+		Name: "Longsword",
+		Slot: gamectx.SlotMainHand,
+	}
+	testWeapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{longsword})
+	mockRegistry.addCharacter("hero-1", testWeapons)
 
 	// Create GameContext with the registry
 	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
@@ -63,11 +68,12 @@ func (s *GameContextTestSuite) TestGameContextWithRegistry() {
 	s.Require().NotNil(gameCtx.Characters())
 
 	// Verify we can retrieve the character
-	retrievedChar := gameCtx.Characters().GetCharacter("hero-1")
-	s.Equal(testCharacter, retrievedChar)
+	retrievedWeapons := gameCtx.Characters().GetCharacterWeapons("hero-1")
+	s.Require().NotNil(retrievedWeapons)
+	s.Equal("longsword-1", retrievedWeapons.MainHand().ID)
 
 	// Verify non-existent character returns nil
-	notFound := gameCtx.Characters().GetCharacter("not-found")
+	notFound := gameCtx.Characters().GetCharacterWeapons("not-found")
 	s.Nil(notFound)
 }
 
@@ -88,8 +94,13 @@ func (s *ContextWrappingTestSuite) SetupTest() {
 func (s *ContextWrappingTestSuite) TestWithGameContext() {
 	// Create a GameContext with a mock registry
 	mockRegistry := newMockCharacterRegistry()
-	testCharacter := map[string]string{"name": "Warrior"}
-	mockRegistry.addCharacter("warrior-1", testCharacter)
+	axe := &gamectx.EquippedWeapon{
+		ID:   "greataxe-1",
+		Name: "Greataxe",
+		Slot: gamectx.SlotMainHand,
+	}
+	testWeapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{axe})
+	mockRegistry.addCharacter("warrior-1", testWeapons)
 
 	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: mockRegistry,
@@ -106,8 +117,13 @@ func (s *ContextWrappingTestSuite) TestWithGameContext() {
 func (s *ContextWrappingTestSuite) TestCharactersRetrievalSuccess() {
 	// Create and wrap GameContext
 	mockRegistry := newMockCharacterRegistry()
-	testCharacter := map[string]string{"name": "Mage"}
-	mockRegistry.addCharacter("mage-1", testCharacter)
+	staff := &gamectx.EquippedWeapon{
+		ID:   "staff-1",
+		Name: "Quarterstaff",
+		Slot: gamectx.SlotMainHand,
+	}
+	testWeapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{staff})
+	mockRegistry.addCharacter("mage-1", testWeapons)
 
 	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: mockRegistry,
@@ -120,8 +136,9 @@ func (s *ContextWrappingTestSuite) TestCharactersRetrievalSuccess() {
 	s.Require().NotNil(registry)
 
 	// Verify we can use the registry
-	retrievedChar := registry.GetCharacter("mage-1")
-	s.Equal(testCharacter, retrievedChar)
+	retrievedWeapons := registry.GetCharacterWeapons("mage-1")
+	s.Require().NotNil(retrievedWeapons)
+	s.Equal("staff-1", retrievedWeapons.MainHand().ID)
 }
 
 func (s *ContextWrappingTestSuite) TestCharactersRetrievalNotFound() {
@@ -134,8 +151,13 @@ func (s *ContextWrappingTestSuite) TestCharactersRetrievalNotFound() {
 func (s *ContextWrappingTestSuite) TestRequireCharactersSuccess() {
 	// Create and wrap GameContext
 	mockRegistry := newMockCharacterRegistry()
-	testCharacter := map[string]string{"name": "Rogue"}
-	mockRegistry.addCharacter("rogue-1", testCharacter)
+	dagger := &gamectx.EquippedWeapon{
+		ID:   "dagger-1",
+		Name: "Dagger",
+		Slot: gamectx.SlotMainHand,
+	}
+	testWeapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{dagger})
+	mockRegistry.addCharacter("rogue-1", testWeapons)
 
 	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: mockRegistry,
@@ -147,8 +169,9 @@ func (s *ContextWrappingTestSuite) TestRequireCharactersSuccess() {
 	s.Require().NotNil(registry)
 
 	// Verify we can use the registry
-	retrievedChar := registry.GetCharacter("rogue-1")
-	s.Equal(testCharacter, retrievedChar)
+	retrievedWeapons := registry.GetCharacterWeapons("rogue-1")
+	s.Require().NotNil(retrievedWeapons)
+	s.Equal("dagger-1", retrievedWeapons.MainHand().ID)
 }
 
 func (s *ContextWrappingTestSuite) TestRequireCharactersPanics() {
@@ -161,7 +184,13 @@ func (s *ContextWrappingTestSuite) TestRequireCharactersPanics() {
 func (s *ContextWrappingTestSuite) TestMultipleContextLayers() {
 	// Test that we can wrap and re-wrap contexts
 	mockRegistry1 := newMockCharacterRegistry()
-	mockRegistry1.addCharacter("char-1", "first")
+	sword := &gamectx.EquippedWeapon{
+		ID:   "sword-1",
+		Name: "Shortsword",
+		Slot: gamectx.SlotMainHand,
+	}
+	weapons1 := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{sword})
+	mockRegistry1.addCharacter("char-1", weapons1)
 
 	gameCtx1 := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: mockRegistry1,
@@ -171,11 +200,18 @@ func (s *ContextWrappingTestSuite) TestMultipleContextLayers() {
 	// Verify first wrapping works
 	registry1, ok := gamectx.Characters(wrappedCtx1)
 	s.Require().True(ok)
-	s.Equal("first", registry1.GetCharacter("char-1"))
+	s.Require().NotNil(registry1.GetCharacterWeapons("char-1"))
+	s.Equal("sword-1", registry1.GetCharacterWeapons("char-1").MainHand().ID)
 
 	// Re-wrap with a different GameContext
 	mockRegistry2 := newMockCharacterRegistry()
-	mockRegistry2.addCharacter("char-2", "second")
+	axe := &gamectx.EquippedWeapon{
+		ID:   "axe-2",
+		Name: "Handaxe",
+		Slot: gamectx.SlotMainHand,
+	}
+	weapons2 := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{axe})
+	mockRegistry2.addCharacter("char-2", weapons2)
 
 	gameCtx2 := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: mockRegistry2,
@@ -185,8 +221,9 @@ func (s *ContextWrappingTestSuite) TestMultipleContextLayers() {
 	// Verify the newer context takes precedence
 	registry2, ok := gamectx.Characters(wrappedCtx2)
 	s.Require().True(ok)
-	s.Equal("second", registry2.GetCharacter("char-2"))
-	s.Nil(registry2.GetCharacter("char-1"), "Should not find char-1 in new context")
+	s.Require().NotNil(registry2.GetCharacterWeapons("char-2"))
+	s.Equal("axe-2", registry2.GetCharacterWeapons("char-2").MainHand().ID)
+	s.Nil(registry2.GetCharacterWeapons("char-1"), "Should not find char-1 in new context")
 }
 
 func TestContextWrappingSuite(t *testing.T) {

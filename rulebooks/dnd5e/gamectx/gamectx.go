@@ -6,13 +6,13 @@
 // characters, spatial data) without bloating event objects with all possible data.
 package gamectx
 
-// CharacterRegistry provides access to character state during event processing.
-// Purpose: Allows conditions and features to query equipped items, weapons, and other
-// character state without bloating event objects with all possible data.
+// CharacterRegistry provides access to character weapon state during event processing.
+// Purpose: Allows conditions and features to query equipped weapons for eligibility
+// checks (e.g., Dueling fighting style requires one-handed melee weapon only).
 type CharacterRegistry interface {
-	// GetCharacter retrieves a character by ID
-	// Returns nil if character is not found
-	GetCharacter(id string) interface{}
+	// GetCharacterWeapons retrieves weapon information for a character by ID.
+	// Returns nil if character is not found.
+	GetCharacterWeapons(id string) *CharacterWeapons
 }
 
 // GameContext carries game state through context.Context for use during event processing.
@@ -55,7 +55,7 @@ func (g *GameContext) Characters() CharacterRegistry {
 // emptyCharacterRegistry is a default implementation that returns nil for all lookups.
 type emptyCharacterRegistry struct{}
 
-// GetCharacter always returns nil for the empty registry.
-func (e *emptyCharacterRegistry) GetCharacter(_ string) interface{} {
+// GetCharacterWeapons always returns nil for the empty registry.
+func (e *emptyCharacterRegistry) GetCharacterWeapons(_ string) *CharacterWeapons {
 	return nil
 }

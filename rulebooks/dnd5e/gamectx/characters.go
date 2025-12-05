@@ -119,13 +119,9 @@ func (r *BasicCharacterRegistry) Get(characterID string) (*CharacterWeapons, boo
 	return weapons, ok
 }
 
-// GetCharacter retrieves a character by ID.
-// Returns the CharacterWeapons as an interface{} if found, nil otherwise.
+// GetCharacterWeapons retrieves weapon information for a character by ID.
+// Returns nil if the character is not found.
 // Purpose: Implements the CharacterRegistry interface.
-func (r *BasicCharacterRegistry) GetCharacter(id string) interface{} {
-	weapons, ok := r.characters[id]
-	if !ok {
-		return nil
-	}
-	return weapons
+func (r *BasicCharacterRegistry) GetCharacterWeapons(id string) *CharacterWeapons {
+	return r.characters[id]
 }
