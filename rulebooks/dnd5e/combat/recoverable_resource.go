@@ -7,7 +7,6 @@ package combat
 import (
 	"context"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
@@ -16,7 +15,7 @@ import (
 )
 
 // RecoverableResource wraps a mechanics/resources.Resource and implements
-// core.BusEffect to automatically restore resources based on rest events.
+// events.BusEffect to automatically restore resources based on rest events.
 //
 // Purpose: Provides self-managing resource recovery tied to the event system.
 // When applied, it subscribes to rest events and automatically restores the
@@ -32,8 +31,8 @@ type RecoverableResource struct {
 	applied             bool                    // Track if subscribed
 }
 
-// Ensure RecoverableResource implements core.BusEffect
-var _ core.BusEffect = (*RecoverableResource)(nil)
+// Ensure RecoverableResource implements events.BusEffect
+var _ events.BusEffect = (*RecoverableResource)(nil)
 
 // RecoverableResourceConfig provides configuration for creating a recoverable resource
 type RecoverableResourceConfig struct {

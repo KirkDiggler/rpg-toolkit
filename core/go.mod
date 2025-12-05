@@ -6,8 +6,7 @@ go 1.24
 // Licensed under GPL-3.0-or-later
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/events v0.6.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.9.0
 	go.uber.org/mock v0.5.2
 )
 
