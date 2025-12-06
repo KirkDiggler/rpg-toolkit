@@ -7,6 +7,7 @@
       "Fighting Styles: Archery, Dueling, Great Weapon Fighting, Two-Weapon Fighting, Defense",
       "ACChain for AC calculation modifiers",
       "SecondWind with RecoverableResource (auto-recovery on short rest)",
+      "ActionSurge with RecoverableResource (auto-recovery on short rest)",
       "ActionEconomy with GrantExtraAction()",
       "RecoverableResource with automatic recovery on rest",
       "FightingStyleCondition infrastructure",
@@ -18,7 +19,7 @@
     ],
     "patterns_to_follow": [
       "Use gamectx.Characters(ctx) to get weapon info (see Dueling implementation)",
-      "Use RecoverableResource for features that recover on rest (see SecondWind)",
+      "Use RecoverableResource for features that recover on rest (see SecondWind, ActionSurge)",
       "Follow FightingStyleCondition pattern for new fighting styles",
       "Use ACChain for AC modifiers (see Defense implementation)"
     ]
@@ -30,33 +31,27 @@
       "changes": [
         "Added DamageSourceTwoWeaponFighting constant to combat/attack.go",
         "Added WeaponRef field to DamageChainEvent for weapon identification",
-        "Implemented onTwoWeaponFightingDamageChain handler in fighting_style.go",
-        "Uses gamectx to detect off-hand attacks by comparing WeaponRef with OffHand().ID",
-        "Added TwoWeaponFighting case to FightingStyleCondition.Apply()",
-        "Updated fightingstyles.IsImplemented() to include TwoWeaponFighting"
+        "Implemented onTwoWeaponFightingDamageChain handler in fighting_style.go"
       ],
       "commit": "1e640ef",
-      "notes": "Ability modifier is hardcoded to 3 for testing - gamectx doesn't have ability scores yet."
+      "notes": "Ability modifier hardcoded to 3 for testing."
     },
     {
       "date": "2025-12-05",
       "task": "Create ACChain infrastructure for AC modifiers",
       "changes": [
         "Created combat/ac.go with ACChainEvent struct",
-        "ACChainEvent has CharacterID, BaseAC, IsWearingArmor, ArmorType, FinalAC fields",
-        "Defined ACChain as ChainedTopic following AttackChain/DamageChain pattern"
+        "Defined ACChain as ChainedTopic"
       ],
       "commit": "1d26b0c",
-      "notes": "Infrastructure ready for Defense fighting style implementation."
+      "notes": "Infrastructure ready for Defense style."
     },
     {
       "date": "2025-12-05",
       "task": "Implement Defense fighting style",
       "changes": [
         "Added Defense case to FightingStyleCondition.Apply()",
-        "Implemented onDefenseACChain handler that subscribes to ACChain",
-        "Checks IsWearingArmor and adds +1 to FinalAC at StageFeatures",
-        "Updated fightingstyles.IsImplemented() to include Defense"
+        "Implemented onDefenseACChain handler"
       ],
       "commit": "4aa00e5",
       "notes": "All Fighter fighting styles now implemented."
@@ -66,19 +61,29 @@
       "task": "Refactor SecondWind to use RecoverableResource",
       "changes": [
         "Replaced mechanics/resources.Resource with combat.RecoverableResource",
-        "Added characterID field for rest event filtering",
-        "Implemented Apply/Remove for BusEffect interface",
-        "SecondWind now auto-recovers on short rest via RestTopic",
-        "Removed manual RestoreOnShortRest() method",
-        "Added comprehensive tests for automatic recovery"
+        "SecondWind now auto-recovers on short rest via RestTopic"
       ],
       "commit": "f48a987",
-      "notes": "SecondWind now follows the same pattern as other recoverable resources."
+      "notes": "SecondWind now follows RecoverableResource pattern."
+    },
+    {
+      "date": "2025-12-05",
+      "task": "Implement Action Surge feature",
+      "changes": [
+        "Created features/action_surge.go following SecondWind pattern",
+        "Uses RecoverableResource with ResetShortRest",
+        "Implements core.Action interface",
+        "Activates via ActionEconomy.GrantExtraAction()",
+        "Added ActionEconomy field to FeatureInput",
+        "Registered in factory.go, loader.go, and refs/features.go",
+        "Created comprehensive test suite"
+      ],
+      "commit": "10d0b56",
+      "notes": "ActionSurge follows same pattern as SecondWind."
     }
   ],
   "completed": false,
   "next_steps": [
-    "Task 5: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
     "Task 6: Add critical threshold to AttackChainEvent for Improved Critical",
     "Task 7: Implement Improved Critical (Champion subclass) condition"
   ]
