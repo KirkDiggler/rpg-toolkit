@@ -1,42 +1,56 @@
 {
   "branch": "feature/monk-levels-1-3-389",
   "issues": ["#389"],
-  "goal": "Implement Monk class levels 1-3: Martial Arts (DEX for unarmed/monk weapons, scaling damage), Ki points with recovery, Flurry of Blows, Patient Defense, Step of the Wind, Unarmored Movement, and Deflect Missiles",
-  "analysis": {
-    "already_implemented": [
-      "RecoverableResource with automatic recovery on short/long rest",
-      "ActionEconomy with GrantBonusAction()",
-      "ACChain for AC calculation modifiers (used by Unarmored Defense)",
-      "AttackChain for attack roll modifiers",
-      "DamageChain for damage modifiers",
-      "UnarmoredDefenseCondition for Barbarian (can reference for Monk version)",
-      "gamectx.CharacterRegistry for weapon/armor info",
-      "FightingStyleCondition pattern for weapon-related conditions"
-    ],
-    "infrastructure_gaps": [
-      "No MartialArts condition for DEX usage and damage scaling",
-      "No Ki resource type (need new RecoverableResource instance pattern)",
-      "No bonus action unarmed strike mechanism",
-      "No speed modifier system for Unarmored Movement",
-      "No reaction damage reduction for Deflect Missiles"
-    ],
-    "patterns_to_follow": [
-      "Use RecoverableResource for Ki points (see SecondWind, ActionSurge)",
-      "Use ACChain for Unarmored Defense (see Barbarian implementation)",
-      "Use AttackChain for modifying attack ability usage",
-      "Use DamageChain for modifying unarmed damage dice",
-      "Follow FightingStyleCondition pattern for MartialArts condition"
-    ]
+  "goal": "Implement Monk class levels 1-3: Ki resource, Martial Arts, Ki abilities (Flurry/Patient Defense/Step of Wind), Unarmored Movement, Deflect Missiles",
+  "design": {
+    "ki_architecture": "Ki is a resource on Character (not a feature). Lives in Character.resources[ResourceKeyKi]. Features consume via char.GetResource(Ki).Use(n). Recovery handled by RecoverableResource subscribing to RestTopic.",
+    "consumption_pattern": "feature.Activate() casts owner to *Character, calls GetResource(Ki).Use(amount)",
+    "recovery_pattern": "LoadResourceData() creates RecoverableResource and calls Apply(ctx, bus) which subscribes to rest events"
   },
   "sessions": [],
   "completed": false,
-  "next_steps": [
-    "Implement Ki resource feature (RecoverableResource, short rest recovery)",
-    "Implement MartialArts condition (DEX for attacks, scaling damage)",
-    "Implement Flurry of Blows feature (2 unarmed strikes, costs 1 Ki)",
-    "Implement Patient Defense feature (Dodge as bonus action, costs 1 Ki)",
-    "Implement Step of the Wind feature (Disengage/Dash as bonus action, costs 1 Ki)",
-    "Implement Unarmored Movement condition (+10 ft speed)",
-    "Implement Deflect Missiles feature (reduce ranged damage)"
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Add Ki Resource Key",
+      "description": "Create rulebooks/dnd5e/resources/keys.go with Ki constant",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "name": "Martial Arts Condition",
+      "description": "DEX for unarmed/monk weapons via AttackChain, scaling damage via DamageChain, isMonkWeapon helper",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "name": "Flurry of Blows Feature",
+      "description": "Consume 1 Ki, grant two bonus action unarmed strikes",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "name": "Patient Defense Feature",
+      "description": "Consume 1 Ki, apply Dodging condition (attackers have disadvantage)",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "name": "Step of the Wind Feature",
+      "description": "Consume 1 Ki, grant Disengage or Dash as bonus action",
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "name": "Unarmored Movement Condition",
+      "description": "+10 ft speed when not wearing armor or shield",
+      "status": "pending"
+    },
+    {
+      "id": 7,
+      "name": "Deflect Missiles Feature",
+      "description": "Reaction to reduce ranged weapon damage by 1d10 + DEX + monk level",
+      "status": "pending"
+    }
   ]
 }
