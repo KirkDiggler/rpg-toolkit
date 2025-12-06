@@ -69,6 +69,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return ma, nil
 
+	case refs.Conditions.UnarmoredMovement().ID:
+		um := &UnarmoredMovementCondition{}
+		if err := um.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load unarmored movement condition")
+		}
+		return um, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}

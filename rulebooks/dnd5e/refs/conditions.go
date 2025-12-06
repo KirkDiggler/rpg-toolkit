@@ -37,3 +37,8 @@ func (conditionsNS) ImprovedCritical() *core.Ref {
 func (conditionsNS) MartialArts() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeConditions, ID: "martial_arts"}
 }
+
+// UnarmoredMovement returns a reference to the Unarmored Movement condition (Monk class feature).
+func (conditionsNS) UnarmoredMovement() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_movement"}
+}
