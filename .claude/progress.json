@@ -4,7 +4,7 @@
   "goal": "Implement Fighter class levels 1-3: Defense and Two-Weapon Fighting styles, verify Second Wind, implement Action Surge, and Improved Critical (Champion subclass)",
   "analysis": {
     "already_implemented": [
-      "Fighting Styles: Archery, Dueling, Great Weapon Fighting, Two-Weapon Fighting",
+      "Fighting Styles: Archery, Dueling, Great Weapon Fighting, Two-Weapon Fighting, Defense",
       "ACChain for AC calculation modifiers",
       "SecondWind feature (but uses old resources.Resource, not RecoverableResource)",
       "ActionEconomy with GrantExtraAction()",
@@ -20,7 +20,7 @@
       "Use gamectx.Characters(ctx) to get weapon info (see Dueling implementation)",
       "Compare DamageChainEvent.WeaponRef with OffHand().ID to detect off-hand attacks",
       "Follow FightingStyleCondition pattern for new fighting styles",
-      "Use ACChain for AC modifiers (see combat/ac.go)"
+      "Use ACChain for AC modifiers (see Defense implementation)"
     ]
   },
   "sessions": [
@@ -51,11 +51,24 @@
       ],
       "commit": "1d26b0c",
       "notes": "Infrastructure ready for Defense fighting style implementation."
+    },
+    {
+      "date": "2025-12-05",
+      "task": "Implement Defense fighting style",
+      "changes": [
+        "Added Defense case to FightingStyleCondition.Apply()",
+        "Implemented onDefenseACChain handler that subscribes to ACChain",
+        "Checks IsWearingArmor and adds +1 to FinalAC at StageFeatures",
+        "Updated fightingstyles.IsImplemented() to include Defense",
+        "Created tests: TestDefenseACBonus, TestDefenseNoArmorNoBonus",
+        "Updated existing tests to use Protection for unimplemented style tests"
+      ],
+      "commit": "4aa00e5",
+      "notes": "All Fighter fighting styles now implemented (Archery, Defense, Dueling, GWF, TWF)."
     }
   ],
   "completed": false,
   "next_steps": [
-    "Task 3: Implement Defense fighting style using ACChain",
     "Task 4: Refactor SecondWind to use RecoverableResource for automatic recovery",
     "Task 5: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
     "Task 6: Add critical threshold to AttackChainEvent for Improved Critical",
