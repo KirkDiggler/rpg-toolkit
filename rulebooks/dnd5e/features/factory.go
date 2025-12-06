@@ -72,6 +72,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createActionSurge(input.Config, input.CharacterID)
 	case refs.Features.FlurryOfBlows().ID:
 		feature, err = createFlurryOfBlows(input.Config, input.CharacterID)
+	case refs.Features.PatientDefense().ID:
+		feature, err = createPatientDefense(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
@@ -220,6 +222,28 @@ func createFlurryOfBlows(config json.RawMessage, characterID string) (*FlurryOfB
 	return &FlurryOfBlows{
 		id:          refs.Features.FlurryOfBlows().ID,
 		name:        "Flurry of Blows",
+		characterID: characterID,
+	}, nil
+}
+
+// patientDefenseConfig is the config structure for patient defense feature
+type patientDefenseConfig struct {
+	// Patient Defense doesn't have its own uses - it consumes Ki from the character
+	// No config needed, but we keep the struct for consistency
+}
+
+// createPatientDefense creates a patient defense feature from config
+func createPatientDefense(config json.RawMessage, characterID string) (*PatientDefense, error) {
+	var cfg patientDefenseConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse patient defense config")
+		}
+	}
+
+	return &PatientDefense{
+		id:          refs.Features.PatientDefense().ID,
+		name:        "Patient Defense",
 		characterID: characterID,
 	}, nil
 }

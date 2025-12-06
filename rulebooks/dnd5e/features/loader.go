@@ -54,6 +54,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return flurryOfBlows, nil
+	case refs.Features.PatientDefense().ID:
+		patientDefense := &PatientDefense{}
+		if err := patientDefense.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load patient defense: %w", err)
+		}
+
+		return patientDefense, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}

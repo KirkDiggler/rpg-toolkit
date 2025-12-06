@@ -27,3 +27,8 @@ func (featuresNS) ActionSurge() *core.Ref {
 func (featuresNS) FlurryOfBlows() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "flurry_of_blows"}
 }
+
+// PatientDefense returns a reference to the Monk's Patient Defense feature.
+func (featuresNS) PatientDefense() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "patient_defense"}
+}

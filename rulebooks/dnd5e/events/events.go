@@ -168,6 +168,12 @@ type FlurryOfBlowsActivatedEvent struct {
 	Source         string // Feature that triggered this (refs.Features.FlurryOfBlows().ID)
 }
 
+// PatientDefenseActivatedEvent is published when a monk activates Patient Defense
+type PatientDefenseActivatedEvent struct {
+	CharacterID string // ID of the monk activating the feature
+	Source      string // Feature that triggered this (refs.Features.PatientDefense().ID)
+}
+
 // Topic definitions for typed event system
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
@@ -199,4 +205,7 @@ var (
 
 	// FlurryOfBlowsActivatedTopic provides typed pub/sub for flurry of blows activation events
 	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent]("dnd5e.feature.flurry_of_blows.activated")
+
+	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
+	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent]("dnd5e.feature.patient_defense.activated")
 )
