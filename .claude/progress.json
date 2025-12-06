@@ -5,6 +5,7 @@
   "analysis": {
     "already_implemented": [
       "Fighting Styles: Archery, Dueling, Great Weapon Fighting, Two-Weapon Fighting",
+      "ACChain for AC calculation modifiers",
       "SecondWind feature (but uses old resources.Resource, not RecoverableResource)",
       "ActionEconomy with GrantExtraAction()",
       "RecoverableResource with automatic recovery on rest",
@@ -12,14 +13,14 @@
       "gamectx.CharacterRegistry with GetCharacterWeapons() for weapon slot info"
     ],
     "infrastructure_gaps": [
-      "No AC calculation chain - needed for Defense style",
       "No critical threshold modifier system - needed for Improved Critical",
       "gamectx lacks ability scores - Two-Weapon Fighting uses hardcoded modifier (future work)"
     ],
     "patterns_to_follow": [
       "Use gamectx.Characters(ctx) to get weapon info (see Dueling implementation)",
       "Compare DamageChainEvent.WeaponRef with OffHand().ID to detect off-hand attacks",
-      "Follow FightingStyleCondition pattern for new fighting styles"
+      "Follow FightingStyleCondition pattern for new fighting styles",
+      "Use ACChain for AC modifiers (see combat/ac.go)"
     ]
   },
   "sessions": [
@@ -36,12 +37,24 @@
         "Created comprehensive tests: TestTwoWeaponFightingOffHandBonus, TestTwoWeaponFightingNoMainHandBonus"
       ],
       "commit": "1e640ef",
-      "notes": "Ability modifier is hardcoded to 3 for testing - gamectx doesn't have ability scores yet. Pattern is correct, actual values need registry extension."
+      "notes": "Ability modifier is hardcoded to 3 for testing - gamectx doesn't have ability scores yet."
+    },
+    {
+      "date": "2025-12-05",
+      "task": "Create ACChain infrastructure for AC modifiers",
+      "changes": [
+        "Created combat/ac.go with ACChainEvent struct",
+        "ACChainEvent has CharacterID, BaseAC, IsWearingArmor, ArmorType, FinalAC fields",
+        "Defined ACChain as ChainedTopic following AttackChain/DamageChain pattern",
+        "Created comprehensive tests in combat/ac_test.go",
+        "Tests cover basic modification, no-armor-no-bonus, and multiple modifiers stacking"
+      ],
+      "commit": "1d26b0c",
+      "notes": "Infrastructure ready for Defense fighting style implementation."
     }
   ],
   "completed": false,
   "next_steps": [
-    "Task 2: Create ACChain for AC modifiers (like AttackChain/DamageChain)",
     "Task 3: Implement Defense fighting style using ACChain",
     "Task 4: Refactor SecondWind to use RecoverableResource for automatic recovery",
     "Task 5: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
