@@ -6,7 +6,7 @@
     "already_implemented": [
       "Fighting Styles: Archery, Dueling, Great Weapon Fighting, Two-Weapon Fighting, Defense",
       "ACChain for AC calculation modifiers",
-      "SecondWind feature (but uses old resources.Resource, not RecoverableResource)",
+      "SecondWind with RecoverableResource (auto-recovery on short rest)",
       "ActionEconomy with GrantExtraAction()",
       "RecoverableResource with automatic recovery on rest",
       "FightingStyleCondition infrastructure",
@@ -18,7 +18,7 @@
     ],
     "patterns_to_follow": [
       "Use gamectx.Characters(ctx) to get weapon info (see Dueling implementation)",
-      "Compare DamageChainEvent.WeaponRef with OffHand().ID to detect off-hand attacks",
+      "Use RecoverableResource for features that recover on rest (see SecondWind)",
       "Follow FightingStyleCondition pattern for new fighting styles",
       "Use ACChain for AC modifiers (see Defense implementation)"
     ]
@@ -33,8 +33,7 @@
         "Implemented onTwoWeaponFightingDamageChain handler in fighting_style.go",
         "Uses gamectx to detect off-hand attacks by comparing WeaponRef with OffHand().ID",
         "Added TwoWeaponFighting case to FightingStyleCondition.Apply()",
-        "Updated fightingstyles.IsImplemented() to include TwoWeaponFighting",
-        "Created comprehensive tests: TestTwoWeaponFightingOffHandBonus, TestTwoWeaponFightingNoMainHandBonus"
+        "Updated fightingstyles.IsImplemented() to include TwoWeaponFighting"
       ],
       "commit": "1e640ef",
       "notes": "Ability modifier is hardcoded to 3 for testing - gamectx doesn't have ability scores yet."
@@ -45,9 +44,7 @@
       "changes": [
         "Created combat/ac.go with ACChainEvent struct",
         "ACChainEvent has CharacterID, BaseAC, IsWearingArmor, ArmorType, FinalAC fields",
-        "Defined ACChain as ChainedTopic following AttackChain/DamageChain pattern",
-        "Created comprehensive tests in combat/ac_test.go",
-        "Tests cover basic modification, no-armor-no-bonus, and multiple modifiers stacking"
+        "Defined ACChain as ChainedTopic following AttackChain/DamageChain pattern"
       ],
       "commit": "1d26b0c",
       "notes": "Infrastructure ready for Defense fighting style implementation."
@@ -59,17 +56,28 @@
         "Added Defense case to FightingStyleCondition.Apply()",
         "Implemented onDefenseACChain handler that subscribes to ACChain",
         "Checks IsWearingArmor and adds +1 to FinalAC at StageFeatures",
-        "Updated fightingstyles.IsImplemented() to include Defense",
-        "Created tests: TestDefenseACBonus, TestDefenseNoArmorNoBonus",
-        "Updated existing tests to use Protection for unimplemented style tests"
+        "Updated fightingstyles.IsImplemented() to include Defense"
       ],
       "commit": "4aa00e5",
-      "notes": "All Fighter fighting styles now implemented (Archery, Defense, Dueling, GWF, TWF)."
+      "notes": "All Fighter fighting styles now implemented."
+    },
+    {
+      "date": "2025-12-05",
+      "task": "Refactor SecondWind to use RecoverableResource",
+      "changes": [
+        "Replaced mechanics/resources.Resource with combat.RecoverableResource",
+        "Added characterID field for rest event filtering",
+        "Implemented Apply/Remove for BusEffect interface",
+        "SecondWind now auto-recovers on short rest via RestTopic",
+        "Removed manual RestoreOnShortRest() method",
+        "Added comprehensive tests for automatic recovery"
+      ],
+      "commit": "f48a987",
+      "notes": "SecondWind now follows the same pattern as other recoverable resources."
     }
   ],
   "completed": false,
   "next_steps": [
-    "Task 4: Refactor SecondWind to use RecoverableResource for automatic recovery",
     "Task 5: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
     "Task 6: Add critical threshold to AttackChainEvent for Improved Critical",
     "Task 7: Implement Improved Critical (Champion subclass) condition"
