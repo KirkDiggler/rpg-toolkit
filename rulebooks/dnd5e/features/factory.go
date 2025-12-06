@@ -76,6 +76,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createPatientDefense(input.Config, input.CharacterID)
 	case refs.Features.StepOfTheWind().ID:
 		feature, err = createStepOfTheWind(input.Config, input.CharacterID)
+	case refs.Features.DeflectMissiles().ID:
+		feature, err = createDeflectMissiles(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
@@ -269,5 +271,41 @@ func createStepOfTheWind(config json.RawMessage, characterID string) (*StepOfThe
 		id:          refs.Features.StepOfTheWind().ID,
 		name:        "Step of the Wind",
 		characterID: characterID,
+	}, nil
+}
+
+// deflectMissilesConfig is the config structure for deflect missiles feature
+type deflectMissilesConfig struct {
+	MonkLevel   int `json:"monk_level"`   // Monk level (for damage reduction calculation)
+	DexModifier int `json:"dex_modifier"` // Dexterity modifier (for damage reduction calculation)
+}
+
+// createDeflectMissiles creates a deflect missiles feature from config
+func createDeflectMissiles(config json.RawMessage, characterID string) (*DeflectMissiles, error) {
+	var cfg deflectMissilesConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse deflect missiles config")
+		}
+	}
+
+	// Default monk level to 3 (when feature is gained) if not specified
+	monkLevel := cfg.MonkLevel
+	if monkLevel == 0 {
+		monkLevel = 3
+	}
+
+	// Default dex modifier to +3 if not specified
+	dexModifier := cfg.DexModifier
+	if dexModifier == 0 {
+		dexModifier = 3
+	}
+
+	return &DeflectMissiles{
+		id:          refs.Features.DeflectMissiles().ID,
+		name:        "Deflect Missiles",
+		characterID: characterID,
+		monkLevel:   monkLevel,
+		dexModifier: dexModifier,
 	}, nil
 }

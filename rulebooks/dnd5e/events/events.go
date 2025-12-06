@@ -181,6 +181,21 @@ type StepOfTheWindActivatedEvent struct {
 	Source      string // Feature that triggered this (refs.Features.StepOfTheWind().ID)
 }
 
+// DeflectMissilesTriggerEvent is published when a monk deflects a ranged weapon attack
+type DeflectMissilesTriggerEvent struct {
+	CharacterID      string // ID of the monk deflecting
+	OriginalDamage   int    // Damage before reduction
+	Reduction        int    // Amount reduced (1d10 + DEX + monk level)
+	DamageReducedTo0 bool   // If true, monk can spend 1 Ki to throw it back
+	Source           string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+}
+
+// DeflectMissilesThrowEvent is published when a monk throws a deflected missile back
+type DeflectMissilesThrowEvent struct {
+	CharacterID string // ID of the monk throwing the missile
+	Source      string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+}
+
 // Topic definitions for typed event system
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
@@ -218,4 +233,10 @@ var (
 
 	// StepOfTheWindActivatedTopic provides typed pub/sub for step of the wind activation events
 	StepOfTheWindActivatedTopic = events.DefineTypedTopic[StepOfTheWindActivatedEvent]("dnd5e.feature.step_of_the_wind.activated")
+
+	// DeflectMissilesTriggerTopic provides typed pub/sub for deflect missiles trigger events
+	DeflectMissilesTriggerTopic = events.DefineTypedTopic[DeflectMissilesTriggerEvent]("dnd5e.feature.deflect_missiles.triggered")
+
+	// DeflectMissilesThrowTopic provides typed pub/sub for deflect missiles throw events
+	DeflectMissilesThrowTopic = events.DefineTypedTopic[DeflectMissilesThrowEvent]("dnd5e.feature.deflect_missiles.throw")
 )

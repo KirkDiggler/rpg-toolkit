@@ -37,3 +37,8 @@ func (featuresNS) PatientDefense() *core.Ref {
 func (featuresNS) StepOfTheWind() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "step_of_the_wind"}
 }
+
+// DeflectMissiles returns a reference to the Monk's Deflect Missiles feature.
+func (featuresNS) DeflectMissiles() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "deflect_missiles"}
+}

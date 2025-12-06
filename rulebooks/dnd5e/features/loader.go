@@ -68,6 +68,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return stepOfTheWind, nil
+	case refs.Features.DeflectMissiles().ID:
+		deflectMissiles := &DeflectMissiles{}
+		if err := deflectMissiles.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load deflect missiles: %w", err)
+		}
+
+		return deflectMissiles, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}
