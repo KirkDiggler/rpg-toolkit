@@ -4,7 +4,7 @@
   "goal": "Implement Fighter class levels 1-3: Defense and Two-Weapon Fighting styles, verify Second Wind, implement Action Surge, and Improved Critical (Champion subclass)",
   "analysis": {
     "already_implemented": [
-      "Fighting Styles: Archery, Dueling, Great Weapon Fighting",
+      "Fighting Styles: Archery, Dueling, Great Weapon Fighting, Two-Weapon Fighting",
       "SecondWind feature (but uses old resources.Resource, not RecoverableResource)",
       "ActionEconomy with GrantExtraAction()",
       "RecoverableResource with automatic recovery on rest",
@@ -13,18 +13,34 @@
     ],
     "infrastructure_gaps": [
       "No AC calculation chain - needed for Defense style",
-      "No critical threshold modifier system - needed for Improved Critical"
+      "No critical threshold modifier system - needed for Improved Critical",
+      "gamectx lacks ability scores - Two-Weapon Fighting uses hardcoded modifier (future work)"
     ],
     "patterns_to_follow": [
       "Use gamectx.Characters(ctx) to get weapon info (see Dueling implementation)",
-      "Compare AttackEvent.WeaponRef with OffHand().ID to detect off-hand attacks",
+      "Compare DamageChainEvent.WeaponRef with OffHand().ID to detect off-hand attacks",
       "Follow FightingStyleCondition pattern for new fighting styles"
     ]
   },
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-12-05",
+      "task": "Implement Two-Weapon Fighting style",
+      "changes": [
+        "Added DamageSourceTwoWeaponFighting constant to combat/attack.go",
+        "Added WeaponRef field to DamageChainEvent for weapon identification",
+        "Implemented onTwoWeaponFightingDamageChain handler in fighting_style.go",
+        "Uses gamectx to detect off-hand attacks by comparing WeaponRef with OffHand().ID",
+        "Added TwoWeaponFighting case to FightingStyleCondition.Apply()",
+        "Updated fightingstyles.IsImplemented() to include TwoWeaponFighting",
+        "Created comprehensive tests: TestTwoWeaponFightingOffHandBonus, TestTwoWeaponFightingNoMainHandBonus"
+      ],
+      "commit": "1e640ef",
+      "notes": "Ability modifier is hardcoded to 3 for testing - gamectx doesn't have ability scores yet. Pattern is correct, actual values need registry extension."
+    }
+  ],
   "completed": false,
   "next_steps": [
-    "Task 1: Implement Two-Weapon Fighting style (use gamectx to detect off-hand attacks)",
     "Task 2: Create ACChain for AC modifiers (like AttackChain/DamageChain)",
     "Task 3: Implement Defense fighting style using ACChain",
     "Task 4: Refactor SecondWind to use RecoverableResource for automatic recovery",
