@@ -107,6 +107,15 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 		}
 		f.subscriptionIDs = append(f.subscriptionIDs, subID)
 
+	case fightingstyles.Defense:
+		// Subscribe to ACChain to add +1 to AC when wearing armor
+		acChain := combat.ACChain.On(bus)
+		subID, err := acChain.SubscribeWithChain(ctx, f.onDefenseACChain)
+		if err != nil {
+			return rpgerr.Wrap(err, "failed to subscribe to AC chain for defense")
+		}
+		f.subscriptionIDs = append(f.subscriptionIDs, subID)
+
 	default:
 		// Other fighting styles not yet implemented
 		return rpgerr.Newf(rpgerr.CodeNotAllowed, "fighting style %s not yet implemented", f.Style)
@@ -427,6 +436,36 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 	err := c.Add(combat.StageFeatures, "two_weapon_fighting", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply two-weapon fighting bonus for character %s", f.CharacterID)
+	}
+
+	return c, nil
+}
+
+// onDefenseACChain adds +1 to AC when wearing armor (Defense fighting style)
+func (f *FightingStyleCondition) onDefenseACChain(
+	_ context.Context,
+	event combat.ACChainEvent,
+	c chain.Chain[combat.ACChainEvent],
+) (chain.Chain[combat.ACChainEvent], error) {
+	// Only modify AC for this character
+	if event.CharacterID != f.CharacterID {
+		return c, nil
+	}
+
+	// Only apply bonus when wearing armor
+	if !event.IsWearingArmor {
+		return c, nil
+	}
+
+	// Add +1 to AC at StageFeatures
+	modifyAC := func(_ context.Context, e combat.ACChainEvent) (combat.ACChainEvent, error) {
+		e.FinalAC++
+		return e, nil
+	}
+
+	err := c.Add(combat.StageFeatures, "defense", modifyAC)
+	if err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply defense bonus for character %s", f.CharacterID)
 	}
 
 	return c, nil

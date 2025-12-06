@@ -310,10 +310,10 @@ func (s *FightingStyleTestSuite) TestApplyAndRemove() {
 
 // TestUnimplementedStyleReturnsError verifies unsupported styles return error
 func (s *FightingStyleTestSuite) TestUnimplementedStyleReturnsError() {
-	// Try to apply Defense (not yet implemented)
+	// Try to apply Protection (not yet implemented)
 	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
 		CharacterID: "fighter-1",
-		Style:       fightingstyles.Defense,
+		Style:       fightingstyles.Protection,
 		Roller:      s.mockRoller,
 	})
 
@@ -840,4 +840,86 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
 	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Two-Weapon Fighting bonus")
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(3, weaponComponent.FlatBonus, "Main hand should keep original ability modifier")
+}
+
+// TestDefenseACBonus verifies Defense fighting style adds +1 to AC when wearing armor
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestDefenseACBonus() {
+	// Create Defense fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Defense,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(s.ctx, s.bus)
+	}()
+
+	// Create AC chain event for a character wearing armor
+	acEvent := combat.ACChainEvent{
+		CharacterID:    "fighter-1",
+		BaseAC:         16, // Chain mail
+		IsWearingArmor: true,
+		ArmorType:      "heavy",
+		FinalAC:        16,
+	}
+
+	// Publish through AC chain
+	acChain := events.NewStagedChain[combat.ACChainEvent](combat.ModifierStages)
+	acs := combat.ACChain.On(s.bus)
+	modifiedChain, err := acs.PublishWithChain(s.ctx, acEvent, acChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(s.ctx, acEvent)
+	s.Require().NoError(err)
+
+	// Verify Defense added +1 to AC
+	s.Equal(17, finalEvent.FinalAC, "Defense should add +1 to AC when wearing armor")
+}
+
+// TestDefenseNoArmorNoBonus verifies Defense fighting style doesn't add bonus when not wearing armor
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestDefenseNoArmorNoBonus() {
+	// Create Defense fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Defense,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(s.ctx, s.bus)
+	}()
+
+	// Create AC chain event for a character NOT wearing armor
+	acEvent := combat.ACChainEvent{
+		CharacterID:    "fighter-1",
+		BaseAC:         13, // 10 + DEX modifier
+		IsWearingArmor: false,
+		ArmorType:      "",
+		FinalAC:        13,
+	}
+
+	// Publish through AC chain
+	acChain := events.NewStagedChain[combat.ACChainEvent](combat.ModifierStages)
+	acs := combat.ACChain.On(s.bus)
+	modifiedChain, err := acs.PublishWithChain(s.ctx, acEvent, acChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(s.ctx, acEvent)
+	s.Require().NoError(err)
+
+	// Verify Defense did NOT add any bonus
+	s.Equal(13, finalEvent.FinalAC, "Defense should NOT add bonus when not wearing armor")
 }
