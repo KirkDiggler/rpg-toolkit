@@ -27,3 +27,8 @@ func (conditionsNS) UnarmoredDefense() *core.Ref {
 func (conditionsNS) FightingStyle() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeConditions, ID: "fighting_style"}
 }
+
+// ImprovedCritical returns a reference to the Improved Critical condition (Champion subclass feature).
+func (conditionsNS) ImprovedCritical() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
+}

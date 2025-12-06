@@ -55,6 +55,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return fs, nil
 
+	case refs.Conditions.ImprovedCritical().ID:
+		ic := &ImprovedCriticalCondition{}
+		if err := ic.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load improved critical condition")
+		}
+		return ic, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}
