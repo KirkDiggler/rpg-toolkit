@@ -20,14 +20,15 @@ type DamageSourceType string
 
 // Damage source type constants
 const (
-	DamageSourceWeapon          DamageSourceType = "weapon"
-	DamageSourceAbility         DamageSourceType = "ability"
-	DamageSourceRage            DamageSourceType = "dnd5e:conditions:raging"
-	DamageSourceSneakAttack     DamageSourceType = "sneak_attack"
-	DamageSourceDivineSmite     DamageSourceType = "divine_smite"
-	DamageSourceElementalWeapon DamageSourceType = "elemental_weapon"
-	DamageSourceBrutalCritical  DamageSourceType = "dnd5e:conditions:brutal_critical"
-	DamageSourceDueling         DamageSourceType = "dnd5e:conditions:fighting_style_dueling"
+	DamageSourceWeapon            DamageSourceType = "weapon"
+	DamageSourceAbility           DamageSourceType = "ability"
+	DamageSourceRage              DamageSourceType = "dnd5e:conditions:raging"
+	DamageSourceSneakAttack       DamageSourceType = "sneak_attack"
+	DamageSourceDivineSmite       DamageSourceType = "divine_smite"
+	DamageSourceElementalWeapon   DamageSourceType = "elemental_weapon"
+	DamageSourceBrutalCritical    DamageSourceType = "dnd5e:conditions:brutal_critical"
+	DamageSourceDueling           DamageSourceType = "dnd5e:conditions:fighting_style_dueling"
+	DamageSourceTwoWeaponFighting DamageSourceType = "dnd5e:conditions:fighting_style_two_weapon_fighting"
 	// Add more as needed
 )
 
@@ -79,6 +80,7 @@ type DamageChainEvent struct {
 	IsCritical   bool              // Double damage dice on crit
 	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
 	AbilityUsed  abilities.Ability // Which ability was used
+	WeaponRef    string            // Reference to the weapon used (for off-hand detection, etc.)
 }
 
 // AttackChain provides typed chained topic for attack roll modifiers
@@ -382,6 +384,7 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 		IsCritical:   input.IsCritical,
 		WeaponDamage: input.AttackInput.Weapon.Damage,
 		AbilityUsed:  input.AbilityUsed,
+		WeaponRef:    input.AttackInput.Weapon.ID,
 	}
 
 	// Create and publish through damage chain

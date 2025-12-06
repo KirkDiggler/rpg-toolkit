@@ -666,3 +666,178 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithDualWield() {
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(3, weaponComponent.FlatBonus, "Should NOT add Dueling bonus when dual-wielding")
 }
+
+// TestTwoWeaponFightingOffHandBonus verifies Two-Weapon Fighting adds ability modifier to off-hand attacks
+func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with dual-wielding weapons
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-1",
+		Name:        "Shortsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	offHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-2",
+		Name:        "Shortsword",
+		Slot:        "off_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Two-Weapon Fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.TwoWeaponFighting,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Import abilities for testing
+	// Create damage chain event for off-hand attack (using DEX, modifier +3)
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{5},
+				FinalDiceRolls:    []int{5},
+				Rerolls:           nil,
+				FlatBonus:         0, // Normally off-hand doesn't get ability modifier
+				DamageType:        "piercing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "piercing",
+		IsCritical:   false,
+		WeaponDamage: "1d6",
+		AbilityUsed:  "dex", // DEX is used for finesse weapons
+		WeaponRef:    "shortsword-2",
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify weapon component is unchanged
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(0, weaponComponent.FlatBonus, "Weapon component should have no ability modifier initially")
+
+	// Verify Two-Weapon Fighting added a separate component with ability modifier
+	s.Require().Len(finalEvent.Components, 2, "Should have weapon + two-weapon fighting components")
+	twfComponent := finalEvent.Components[1]
+	s.Equal(combat.DamageSourceTwoWeaponFighting, twfComponent.Source,
+		"Second component should be from Two-Weapon Fighting")
+	s.Equal(3, twfComponent.FlatBonus, "Two-Weapon Fighting should add +3 (DEX modifier)")
+}
+
+// TestTwoWeaponFightingNoMainHandBonus verifies Two-Weapon Fighting doesn't add to main-hand attacks
+func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with dual-wielding weapons
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-1",
+		Name:        "Shortsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	offHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-2",
+		Name:        "Shortsword",
+		Slot:        "off_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Two-Weapon Fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.TwoWeaponFighting,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create damage chain event for MAIN-hand attack
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{5},
+				FinalDiceRolls:    []int{5},
+				Rerolls:           nil,
+				FlatBonus:         3, // Main hand already gets ability modifier
+				DamageType:        "piercing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "piercing",
+		IsCritical:   false,
+		WeaponDamage: "1d6",
+		AbilityUsed:  "dex",
+		WeaponRef:    "shortsword-1", // MAIN HAND weapon
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify NO Two-Weapon Fighting component was added (only weapon component)
+	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Two-Weapon Fighting bonus")
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(3, weaponComponent.FlatBonus, "Main hand should keep original ability modifier")
+}

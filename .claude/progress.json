@@ -8,24 +8,28 @@
       "SecondWind feature (but uses old resources.Resource, not RecoverableResource)",
       "ActionEconomy with GrantExtraAction()",
       "RecoverableResource with automatic recovery on rest",
-      "FightingStyleCondition infrastructure"
+      "FightingStyleCondition infrastructure",
+      "gamectx.CharacterRegistry with GetCharacterWeapons() for weapon slot info"
     ],
     "infrastructure_gaps": [
       "No AC calculation chain - needed for Defense style",
-      "AttackEvent lacks IsOffHand field - needed for Two-Weapon Fighting",
       "No critical threshold modifier system - needed for Improved Critical"
+    ],
+    "patterns_to_follow": [
+      "Use gamectx.Characters(ctx) to get weapon info (see Dueling implementation)",
+      "Compare AttackEvent.WeaponRef with OffHand().ID to detect off-hand attacks",
+      "Follow FightingStyleCondition pattern for new fighting styles"
     ]
   },
   "sessions": [],
   "completed": false,
   "next_steps": [
-    "Task 1: Add IsOffHand to AttackEvent and AttackInput for Two-Weapon Fighting detection",
-    "Task 2: Implement Two-Weapon Fighting style (add ability mod to off-hand damage)",
-    "Task 3: Create ACChain for AC modifiers (like AttackChain/DamageChain)",
-    "Task 4: Implement Defense fighting style using ACChain",
-    "Task 5: Refactor SecondWind to use RecoverableResource for automatic recovery",
-    "Task 6: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
-    "Task 7: Add critical threshold to AttackChainEvent for Improved Critical",
-    "Task 8: Implement Improved Critical (Champion subclass) condition"
+    "Task 1: Implement Two-Weapon Fighting style (use gamectx to detect off-hand attacks)",
+    "Task 2: Create ACChain for AC modifiers (like AttackChain/DamageChain)",
+    "Task 3: Implement Defense fighting style using ACChain",
+    "Task 4: Refactor SecondWind to use RecoverableResource for automatic recovery",
+    "Task 5: Implement Action Surge feature using ActionEconomy.GrantExtraAction()",
+    "Task 6: Add critical threshold to AttackChainEvent for Improved Critical",
+    "Task 7: Implement Improved Critical (Champion subclass) condition"
   ]
 }

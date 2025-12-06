@@ -93,7 +93,7 @@ func ValidStyles() []FightingStyle {
 // IsImplemented returns true if the fighting style has been implemented
 func IsImplemented(style FightingStyle) bool {
 	switch style {
-	case Archery, GreatWeaponFighting, Dueling:
+	case Archery, GreatWeaponFighting, Dueling, TwoWeaponFighting:
 		return true
 	default:
 		return false
