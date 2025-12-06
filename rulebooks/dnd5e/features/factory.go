@@ -70,6 +70,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createSecondWind(input.Config, input.CharacterID)
 	case refs.Features.ActionSurge().ID:
 		feature, err = createActionSurge(input.Config, input.CharacterID)
+	case refs.Features.FlurryOfBlows().ID:
+		feature, err = createFlurryOfBlows(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
@@ -197,5 +199,27 @@ func createActionSurge(config json.RawMessage, characterID string) (*ActionSurge
 		name:        "Action Surge",
 		characterID: characterID,
 		resource:    resource,
+	}, nil
+}
+
+// flurryOfBlowsConfig is the config structure for flurry of blows feature
+type flurryOfBlowsConfig struct {
+	// Flurry of Blows doesn't have its own uses - it consumes Ki from the character
+	// No config needed, but we keep the struct for consistency
+}
+
+// createFlurryOfBlows creates a flurry of blows feature from config
+func createFlurryOfBlows(config json.RawMessage, characterID string) (*FlurryOfBlows, error) {
+	var cfg flurryOfBlowsConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse flurry of blows config")
+		}
+	}
+
+	return &FlurryOfBlows{
+		id:          refs.Features.FlurryOfBlows().ID,
+		name:        "Flurry of Blows",
+		characterID: characterID,
 	}, nil
 }

@@ -22,3 +22,8 @@ func (featuresNS) SecondWind() *core.Ref {
 func (featuresNS) ActionSurge() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "action_surge"}
 }
+
+// FlurryOfBlows returns a reference to the Monk's Flurry of Blows feature.
+func (featuresNS) FlurryOfBlows() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "flurry_of_blows"}
+}

@@ -161,6 +161,13 @@ type ResourceConsumedEvent struct {
 	Remaining   int                   // How much is left after consumption
 }
 
+// FlurryOfBlowsActivatedEvent is published when a monk activates Flurry of Blows
+type FlurryOfBlowsActivatedEvent struct {
+	CharacterID    string // ID of the monk activating the feature
+	UnarmedStrikes int    // Number of unarmed strikes granted (always 2)
+	Source         string // Feature that triggered this (refs.Features.FlurryOfBlows().ID)
+}
+
 // Topic definitions for typed event system
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
@@ -189,4 +196,7 @@ var (
 
 	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
 	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
+
+	// FlurryOfBlowsActivatedTopic provides typed pub/sub for flurry of blows activation events
+	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent]("dnd5e.feature.flurry_of_blows.activated")
 )

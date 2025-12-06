@@ -47,6 +47,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return actionSurge, nil
+	case refs.Features.FlurryOfBlows().ID:
+		flurryOfBlows := &FlurryOfBlows{}
+		if err := flurryOfBlows.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load flurry of blows: %w", err)
+		}
+
+		return flurryOfBlows, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}
