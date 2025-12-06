@@ -11,10 +11,11 @@
       "ActionEconomy with GrantExtraAction()",
       "RecoverableResource with automatic recovery on rest",
       "FightingStyleCondition infrastructure",
-      "gamectx.CharacterRegistry with GetCharacterWeapons() for weapon slot info"
+      "gamectx.CharacterRegistry with GetCharacterWeapons() for weapon slot info",
+      "CriticalThreshold in AttackChainEvent for modifiable critical hit range",
+      "ImprovedCriticalCondition for Champion subclass feature"
     ],
     "infrastructure_gaps": [
-      "No critical threshold modifier system - needed for Improved Critical",
       "gamectx lacks ability scores - Two-Weapon Fighting uses hardcoded modifier (future work)"
     ],
     "patterns_to_follow": [
@@ -80,11 +81,21 @@
       ],
       "commit": "10d0b56",
       "notes": "ActionSurge follows same pattern as SecondWind."
+    },
+    {
+      "date": "2025-12-05",
+      "task": "Add critical threshold infrastructure and Improved Critical condition",
+      "changes": [
+        "Added CriticalThreshold field to AttackChainEvent (default 20)",
+        "Updated ResolveAttack to use CriticalThreshold for determining crits",
+        "Created conditions/improved_critical.go following FightingStyleCondition pattern",
+        "Implemented comprehensive test suite for Improved Critical",
+        "Registered in loader.go, factory.go, and refs/conditions.go"
+      ],
+      "commit": "5b594e6",
+      "notes": "Critical threshold can be modified via attack chain. Improved Critical sets threshold to 19 for Champion level 3. Only lowers threshold, never raises it (supports stacking for future Superior Critical)."
     }
   ],
-  "completed": false,
-  "next_steps": [
-    "Task 6: Add critical threshold to AttackChainEvent for Improved Critical",
-    "Task 7: Implement Improved Critical (Champion subclass) condition"
-  ]
+  "completed": true,
+  "next_steps": []
 }
