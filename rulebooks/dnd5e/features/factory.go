@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -123,7 +125,7 @@ type secondWindConfig struct {
 }
 
 // createSecondWind creates a second wind feature from config
-func createSecondWind(config json.RawMessage, _ string) (*SecondWind, error) {
+func createSecondWind(config json.RawMessage, characterID string) (*SecondWind, error) {
 	var cfg secondWindConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -143,13 +145,19 @@ func createSecondWind(config json.RawMessage, _ string) (*SecondWind, error) {
 		uses = 1
 	}
 
-	// Create resource for tracking uses
-	resource := resources.NewResource(refs.Features.SecondWind().ID, uses)
+	// Create recoverable resource for tracking uses
+	resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          refs.Features.SecondWind().ID,
+		Maximum:     uses,
+		CharacterID: characterID,
+		ResetType:   coreResources.ResetShortRest,
+	})
 
 	return &SecondWind{
-		id:       refs.Features.SecondWind().ID,
-		name:     "Second Wind",
-		level:    level,
-		resource: resource,
+		id:          refs.Features.SecondWind().ID,
+		name:        "Second Wind",
+		level:       level,
+		characterID: characterID,
+		resource:    resource,
 	}, nil
 }
