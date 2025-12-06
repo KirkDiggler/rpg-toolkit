@@ -32,3 +32,8 @@ func (conditionsNS) FightingStyle() *core.Ref {
 func (conditionsNS) ImprovedCritical() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
 }
+
+// MartialArts returns a reference to the Martial Arts condition (Monk class feature).
+func (conditionsNS) MartialArts() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeConditions, ID: "martial_arts"}
+}

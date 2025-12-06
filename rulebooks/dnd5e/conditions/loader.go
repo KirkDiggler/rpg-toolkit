@@ -62,6 +62,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return ic, nil
 
+	case refs.Conditions.MartialArts().ID:
+		ma := &MartialArtsCondition{}
+		if err := ma.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load martial arts condition")
+		}
+		return ma, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}

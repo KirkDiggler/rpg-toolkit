@@ -14,17 +14,23 @@ import (
 
 // mockCharacterRegistry is a test implementation of CharacterRegistry
 type mockCharacterRegistry struct {
-	characters map[string]*gamectx.CharacterWeapons
+	characters    map[string]*gamectx.CharacterWeapons
+	abilityScores map[string]gamectx.AbilityScores
 }
 
 func newMockCharacterRegistry() *mockCharacterRegistry {
 	return &mockCharacterRegistry{
-		characters: make(map[string]*gamectx.CharacterWeapons),
+		characters:    make(map[string]*gamectx.CharacterWeapons),
+		abilityScores: make(map[string]gamectx.AbilityScores),
 	}
 }
 
 func (m *mockCharacterRegistry) GetCharacterWeapons(id string) *gamectx.CharacterWeapons {
 	return m.characters[id]
+}
+
+func (m *mockCharacterRegistry) GetCharacterAbilityScores(id string) gamectx.AbilityScores {
+	return m.abilityScores[id]
 }
 
 func (m *mockCharacterRegistry) addCharacter(id string, weapons *gamectx.CharacterWeapons) {
