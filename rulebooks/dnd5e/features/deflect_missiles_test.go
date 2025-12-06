@@ -130,7 +130,7 @@ func (s *DeflectMissilesTestSuite) TestOnDamageReceived_PublishesDeflectEvent() 
 
 	var receivedEvent *dnd5eEvents.DeflectMissilesTriggerEvent
 	topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus)
-	_, err = topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
+	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
 		receivedEvent = &event
 		return nil
 	})
@@ -167,7 +167,7 @@ func (s *DeflectMissilesTestSuite) TestOnDamageReceived_DamageReducedToZero() {
 
 	var receivedEvent *dnd5eEvents.DeflectMissilesTriggerEvent
 	topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus)
-	_, err = topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
+	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
 		receivedEvent = &event
 		return nil
 	})
@@ -198,7 +198,7 @@ func (s *DeflectMissilesTestSuite) TestOnDamageReceived_IgnoresOtherCharacters()
 
 	var receivedEvent *dnd5eEvents.DeflectMissilesTriggerEvent
 	topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus)
-	_, err = topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
+	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
 		receivedEvent = &event
 		return nil
 	})
@@ -222,7 +222,7 @@ func (s *DeflectMissilesTestSuite) TestActivate_PublishesThrowEvent() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.DeflectMissilesThrowEvent
 	topic := dnd5eEvents.DeflectMissilesThrowTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.DeflectMissilesThrowEvent) error {
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesThrowEvent) error {
 		receivedEvent = &event
 		return nil
 	})

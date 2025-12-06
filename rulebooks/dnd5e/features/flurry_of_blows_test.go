@@ -141,7 +141,7 @@ func (s *FlurryOfBlowsTestSuite) TestActivate_PublishesEvent() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.FlurryOfBlowsActivatedEvent
 	topic := dnd5eEvents.FlurryOfBlowsActivatedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.FlurryOfBlowsActivatedEvent) error {
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.FlurryOfBlowsActivatedEvent) error {
 		receivedEvent = &event
 		return nil
 	})

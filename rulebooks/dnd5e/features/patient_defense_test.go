@@ -103,7 +103,7 @@ func (s *PatientDefenseTestSuite) TestActivate_PublishesEvent() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.PatientDefenseActivatedEvent
 	topic := dnd5eEvents.PatientDefenseActivatedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.PatientDefenseActivatedEvent) error {
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.PatientDefenseActivatedEvent) error {
 		receivedEvent = &event
 		return nil
 	})

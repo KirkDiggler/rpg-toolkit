@@ -104,7 +104,7 @@ func (s *StepOfTheWindTestSuite) TestActivate_PublishesEvent_Disengage() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent
 	topic := dnd5eEvents.StepOfTheWindActivatedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
 		receivedEvent = &event
 		return nil
 	})
@@ -128,7 +128,7 @@ func (s *StepOfTheWindTestSuite) TestActivate_PublishesEvent_Dash() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent
 	topic := dnd5eEvents.StepOfTheWindActivatedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
 		receivedEvent = &event
 		return nil
 	})
@@ -152,7 +152,7 @@ func (s *StepOfTheWindTestSuite) TestActivate_DefaultsToDisengage() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent
 	topic := dnd5eEvents.StepOfTheWindActivatedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
 		receivedEvent = &event
 		return nil
 	})

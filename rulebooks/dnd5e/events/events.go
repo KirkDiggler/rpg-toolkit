@@ -226,16 +226,20 @@ var (
 	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
 
 	// FlurryOfBlowsActivatedTopic provides typed pub/sub for flurry of blows activation events
-	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent]("dnd5e.feature.flurry_of_blows.activated")
+	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent](
+		"dnd5e.feature.flurry_of_blows.activated")
 
 	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
-	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent]("dnd5e.feature.patient_defense.activated")
+	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](
+		"dnd5e.feature.patient_defense.activated")
 
 	// StepOfTheWindActivatedTopic provides typed pub/sub for step of the wind activation events
-	StepOfTheWindActivatedTopic = events.DefineTypedTopic[StepOfTheWindActivatedEvent]("dnd5e.feature.step_of_the_wind.activated")
+	StepOfTheWindActivatedTopic = events.DefineTypedTopic[StepOfTheWindActivatedEvent](
+		"dnd5e.feature.step_of_the_wind.activated")
 
 	// DeflectMissilesTriggerTopic provides typed pub/sub for deflect missiles trigger events
-	DeflectMissilesTriggerTopic = events.DefineTypedTopic[DeflectMissilesTriggerEvent]("dnd5e.feature.deflect_missiles.triggered")
+	DeflectMissilesTriggerTopic = events.DefineTypedTopic[DeflectMissilesTriggerEvent](
+		"dnd5e.feature.deflect_missiles.triggered")
 
 	// DeflectMissilesThrowTopic provides typed pub/sub for deflect missiles throw events
 	DeflectMissilesThrowTopic = events.DefineTypedTopic[DeflectMissilesThrowEvent]("dnd5e.feature.deflect_missiles.throw")
