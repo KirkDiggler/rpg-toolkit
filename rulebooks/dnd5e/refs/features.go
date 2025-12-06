@@ -32,3 +32,8 @@ func (featuresNS) FlurryOfBlows() *core.Ref {
 func (featuresNS) PatientDefense() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "patient_defense"}
 }
+
+// StepOfTheWind returns a reference to the Monk's Step of the Wind feature.
+func (featuresNS) StepOfTheWind() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "step_of_the_wind"}
+}

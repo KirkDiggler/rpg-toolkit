@@ -29,5 +29,6 @@ type FeatureInput struct {
 	// ActionEconomy is provided for features that grant extra actions (e.g., Action Surge)
 	ActionEconomy *combat.ActionEconomy `json:"-"`
 
-	// Possible Future: Choice string `json:"choice,omitempty"` for features with options
+	// Action is provided for features with action choices (e.g., Step of the Wind: "disengage" or "dash")
+	Action string `json:"action,omitempty"`
 }

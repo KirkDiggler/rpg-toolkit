@@ -74,6 +74,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createFlurryOfBlows(input.Config, input.CharacterID)
 	case refs.Features.PatientDefense().ID:
 		feature, err = createPatientDefense(input.Config, input.CharacterID)
+	case refs.Features.StepOfTheWind().ID:
+		feature, err = createStepOfTheWind(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
@@ -244,6 +246,28 @@ func createPatientDefense(config json.RawMessage, characterID string) (*PatientD
 	return &PatientDefense{
 		id:          refs.Features.PatientDefense().ID,
 		name:        "Patient Defense",
+		characterID: characterID,
+	}, nil
+}
+
+// stepOfTheWindConfig is the config structure for step of the wind feature
+type stepOfTheWindConfig struct {
+	// Step of the Wind doesn't have its own uses - it consumes Ki from the character
+	// No config needed, but we keep the struct for consistency
+}
+
+// createStepOfTheWind creates a step of the wind feature from config
+func createStepOfTheWind(config json.RawMessage, characterID string) (*StepOfTheWind, error) {
+	var cfg stepOfTheWindConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse step of the wind config")
+		}
+	}
+
+	return &StepOfTheWind{
+		id:          refs.Features.StepOfTheWind().ID,
+		name:        "Step of the Wind",
 		characterID: characterID,
 	}, nil
 }

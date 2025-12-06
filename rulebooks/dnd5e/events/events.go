@@ -174,6 +174,13 @@ type PatientDefenseActivatedEvent struct {
 	Source      string // Feature that triggered this (refs.Features.PatientDefense().ID)
 }
 
+// StepOfTheWindActivatedEvent is published when a monk activates Step of the Wind
+type StepOfTheWindActivatedEvent struct {
+	CharacterID string // ID of the monk activating the feature
+	Action      string // Action taken: "disengage" or "dash"
+	Source      string // Feature that triggered this (refs.Features.StepOfTheWind().ID)
+}
+
 // Topic definitions for typed event system
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
@@ -208,4 +215,7 @@ var (
 
 	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
 	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent]("dnd5e.feature.patient_defense.activated")
+
+	// StepOfTheWindActivatedTopic provides typed pub/sub for step of the wind activation events
+	StepOfTheWindActivatedTopic = events.DefineTypedTopic[StepOfTheWindActivatedEvent]("dnd5e.feature.step_of_the_wind.activated")
 )

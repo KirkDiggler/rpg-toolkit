@@ -61,6 +61,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return patientDefense, nil
+	case refs.Features.StepOfTheWind().ID:
+		stepOfTheWind := &StepOfTheWind{}
+		if err := stepOfTheWind.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load step of the wind: %w", err)
+		}
+
+		return stepOfTheWind, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}
