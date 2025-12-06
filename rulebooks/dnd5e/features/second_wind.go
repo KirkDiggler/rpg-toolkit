@@ -44,7 +44,7 @@ func (s *SecondWind) GetID() string {
 
 // GetType implements core.Entity
 func (s *SecondWind) GetType() core.EntityType {
-	return "feature"
+	return EntityTypeFeature
 }
 
 // CanActivate implements core.Action[FeatureInput]

@@ -68,6 +68,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createRage(input.Config, input.CharacterID)
 	case refs.Features.SecondWind().ID:
 		feature, err = createSecondWind(input.Config, input.CharacterID)
+	case refs.Features.ActionSurge().ID:
+		feature, err = createActionSurge(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
@@ -157,6 +159,42 @@ func createSecondWind(config json.RawMessage, characterID string) (*SecondWind, 
 		id:          refs.Features.SecondWind().ID,
 		name:        "Second Wind",
 		level:       level,
+		characterID: characterID,
+		resource:    resource,
+	}, nil
+}
+
+// actionSurgeConfig is the config structure for action surge feature
+type actionSurgeConfig struct {
+	Uses int `json:"uses"` // Number of uses (default 1)
+}
+
+// createActionSurge creates an action surge feature from config
+func createActionSurge(config json.RawMessage, characterID string) (*ActionSurge, error) {
+	var cfg actionSurgeConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse action surge config")
+		}
+	}
+
+	// Default uses to 1 (restores on short rest)
+	uses := cfg.Uses
+	if uses == 0 {
+		uses = 1
+	}
+
+	// Create recoverable resource for tracking uses
+	resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          refs.Features.ActionSurge().ID,
+		Maximum:     uses,
+		CharacterID: characterID,
+		ResetType:   coreResources.ResetShortRest,
+	})
+
+	return &ActionSurge{
+		id:          refs.Features.ActionSurge().ID,
+		name:        "Action Surge",
 		characterID: characterID,
 		resource:    resource,
 	}, nil

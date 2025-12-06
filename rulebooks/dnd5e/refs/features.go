@@ -17,3 +17,8 @@ func (featuresNS) Rage() *core.Ref {
 func (featuresNS) SecondWind() *core.Ref {
 	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "second_wind"}
 }
+
+// ActionSurge returns a reference to the Fighter's Action Surge feature.
+func (featuresNS) ActionSurge() *core.Ref {
+	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "action_surge"}
+}

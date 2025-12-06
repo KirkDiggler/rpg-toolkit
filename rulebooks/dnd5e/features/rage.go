@@ -70,7 +70,7 @@ func (r *Rage) GetID() string {
 
 // GetType implements core.Entity
 func (r *Rage) GetType() core.EntityType {
-	return "feature"
+	return EntityTypeFeature
 }
 
 // CanActivate implements core.Action[FeatureInput]
