@@ -293,13 +293,13 @@ func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	// Create a new draft
 	draft, err := NewDraft(&DraftConfig{
-		ID:       "test-defense-fighter",
+		ID:       "test-protection-fighter",
 		PlayerID: "player-4",
 	})
 	s.Require().NoError(err)
 
 	// Set name
-	err = draft.SetName(&SetNameInput{Name: "Defensive Fighter"})
+	err = draft.SetName(&SetNameInput{Name: "Protective Fighter"})
 	s.Require().NoError(err)
 
 	// Set race
@@ -311,7 +311,7 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	})
 	s.Require().NoError(err)
 
-	// Set class with Defense fighting style (not yet implemented)
+	// Set class with Protection fighting style (not yet implemented)
 	err = draft.SetClass(&SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: ClassChoices{
@@ -329,7 +329,7 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackExplorer},
 			},
-			FightingStyle: fightingstyles.Defense, // Not yet implemented!
+			FightingStyle: fightingstyles.Protection, // Not yet implemented!
 		},
 	})
 	s.Require().NoError(err)
@@ -355,11 +355,11 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	s.Require().NoError(err)
 
 	// Finalize should fail with "not yet implemented" error
-	char, err := draft.ToCharacter(context.Background(), "defense-fighter", s.eventBus)
+	char, err := draft.ToCharacter(context.Background(), "protection-fighter", s.eventBus)
 	s.Require().Error(err, "ToCharacter should fail for unimplemented fighting style")
 	s.Nil(char, "Character should not be created when finalization fails")
 	s.Contains(err.Error(), "not yet implemented", "Error should mention that style is not implemented")
-	s.Contains(err.Error(), "defense", "Error should mention the specific fighting style")
+	s.Contains(err.Error(), "protection", "Error should mention the specific fighting style")
 }
 
 func TestFighterFinalizeSuite(t *testing.T) {

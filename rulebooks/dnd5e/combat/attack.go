@@ -20,14 +20,15 @@ type DamageSourceType string
 
 // Damage source type constants
 const (
-	DamageSourceWeapon          DamageSourceType = "weapon"
-	DamageSourceAbility         DamageSourceType = "ability"
-	DamageSourceRage            DamageSourceType = "dnd5e:conditions:raging"
-	DamageSourceSneakAttack     DamageSourceType = "sneak_attack"
-	DamageSourceDivineSmite     DamageSourceType = "divine_smite"
-	DamageSourceElementalWeapon DamageSourceType = "elemental_weapon"
-	DamageSourceBrutalCritical  DamageSourceType = "dnd5e:conditions:brutal_critical"
-	DamageSourceDueling         DamageSourceType = "dnd5e:conditions:fighting_style_dueling"
+	DamageSourceWeapon            DamageSourceType = "weapon"
+	DamageSourceAbility           DamageSourceType = "ability"
+	DamageSourceRage              DamageSourceType = "dnd5e:conditions:raging"
+	DamageSourceSneakAttack       DamageSourceType = "sneak_attack"
+	DamageSourceDivineSmite       DamageSourceType = "divine_smite"
+	DamageSourceElementalWeapon   DamageSourceType = "elemental_weapon"
+	DamageSourceBrutalCritical    DamageSourceType = "dnd5e:conditions:brutal_critical"
+	DamageSourceDueling           DamageSourceType = "dnd5e:conditions:fighting_style_dueling"
+	DamageSourceTwoWeaponFighting DamageSourceType = "dnd5e:conditions:fighting_style_two_weapon_fighting"
 	// Add more as needed
 )
 
@@ -61,13 +62,14 @@ func (dc *DamageComponent) Total() int {
 
 // AttackChainEvent represents an attack flowing through the modifier chain
 type AttackChainEvent struct {
-	AttackerID      string
-	TargetID        string
-	AttackRoll      int  // The d20 roll
-	AttackBonus     int  // Base bonus before modifiers
-	TargetAC        int  // Target's armor class
-	IsNaturalTwenty bool // Natural 20 always hits
-	IsNaturalOne    bool // Natural 1 always misses
+	AttackerID        string
+	TargetID          string
+	AttackRoll        int  // The d20 roll
+	AttackBonus       int  // Base bonus before modifiers
+	TargetAC          int  // Target's armor class
+	IsNaturalTwenty   bool // Natural 20 always hits
+	IsNaturalOne      bool // Natural 1 always misses
+	CriticalThreshold int  // Roll >= this value is a critical hit (default 20)
 }
 
 // DamageChainEvent represents damage flowing through the modifier chain
@@ -79,6 +81,7 @@ type DamageChainEvent struct {
 	IsCritical   bool              // Double damage dice on crit
 	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
 	AbilityUsed  abilities.Ability // Which ability was used
+	WeaponRef    string            // Reference to the weapon used (for off-hand detection, etc.)
 }
 
 // AttackChain provides typed chained topic for attack roll modifiers
@@ -193,7 +196,6 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	result.AttackRoll = attackRoll
 	result.IsNaturalTwenty = (attackRoll == 20)
 	result.IsNaturalOne = (attackRoll == 1)
-	result.Critical = result.IsNaturalTwenty
 
 	// Step 3: Calculate base attack bonus (ability modifier + proficiency)
 	abilityMod := calculateAttackAbilityModifier(input.Weapon, input.AttackerScores)
@@ -201,13 +203,14 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 
 	// Step 4: Fire attack chain event to collect modifiers
 	attackEvent := AttackChainEvent{
-		AttackerID:      input.Attacker.GetID(),
-		TargetID:        input.Defender.GetID(),
-		AttackRoll:      attackRoll,
-		AttackBonus:     baseBonus,
-		TargetAC:        input.DefenderAC,
-		IsNaturalTwenty: result.IsNaturalTwenty,
-		IsNaturalOne:    result.IsNaturalOne,
+		AttackerID:        input.Attacker.GetID(),
+		TargetID:          input.Defender.GetID(),
+		AttackRoll:        attackRoll,
+		AttackBonus:       baseBonus,
+		TargetAC:          input.DefenderAC,
+		IsNaturalTwenty:   result.IsNaturalTwenty,
+		IsNaturalOne:      result.IsNaturalOne,
+		CriticalThreshold: 20, // Default threshold (can be modified by conditions)
 	}
 
 	// Create attack chain
@@ -229,6 +232,9 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	// Update result with modified values
 	result.AttackBonus = finalAttackEvent.AttackBonus
 	result.TotalAttack = attackRoll + result.AttackBonus
+
+	// Determine critical hit based on threshold (modified by conditions like Improved Critical)
+	result.Critical = attackRoll >= finalAttackEvent.CriticalThreshold
 
 	// Step 5: Determine hit/miss (natural 20 always hits, natural 1 always misses)
 	switch {
@@ -382,6 +388,7 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 		IsCritical:   input.IsCritical,
 		WeaponDamage: input.AttackInput.Weapon.Damage,
 		AbilityUsed:  input.AbilityUsed,
+		WeaponRef:    input.AttackInput.Weapon.ID,
 	}
 
 	// Create and publish through damage chain

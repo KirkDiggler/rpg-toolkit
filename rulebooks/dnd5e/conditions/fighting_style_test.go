@@ -310,10 +310,10 @@ func (s *FightingStyleTestSuite) TestApplyAndRemove() {
 
 // TestUnimplementedStyleReturnsError verifies unsupported styles return error
 func (s *FightingStyleTestSuite) TestUnimplementedStyleReturnsError() {
-	// Try to apply Defense (not yet implemented)
+	// Try to apply Protection (not yet implemented)
 	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
 		CharacterID: "fighter-1",
-		Style:       fightingstyles.Defense,
+		Style:       fightingstyles.Protection,
 		Roller:      s.mockRoller,
 	})
 
@@ -665,4 +665,261 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithDualWield() {
 	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Dueling")
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(3, weaponComponent.FlatBonus, "Should NOT add Dueling bonus when dual-wielding")
+}
+
+// TestTwoWeaponFightingOffHandBonus verifies Two-Weapon Fighting adds ability modifier to off-hand attacks
+func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with dual-wielding weapons
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-1",
+		Name:        "Shortsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	offHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-2",
+		Name:        "Shortsword",
+		Slot:        "off_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Two-Weapon Fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.TwoWeaponFighting,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Import abilities for testing
+	// Create damage chain event for off-hand attack (using DEX, modifier +3)
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{5},
+				FinalDiceRolls:    []int{5},
+				Rerolls:           nil,
+				FlatBonus:         0, // Normally off-hand doesn't get ability modifier
+				DamageType:        "piercing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "piercing",
+		IsCritical:   false,
+		WeaponDamage: "1d6",
+		AbilityUsed:  "dex", // DEX is used for finesse weapons
+		WeaponRef:    "shortsword-2",
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify weapon component is unchanged
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(0, weaponComponent.FlatBonus, "Weapon component should have no ability modifier initially")
+
+	// Verify Two-Weapon Fighting added a separate component with ability modifier
+	s.Require().Len(finalEvent.Components, 2, "Should have weapon + two-weapon fighting components")
+	twfComponent := finalEvent.Components[1]
+	s.Equal(combat.DamageSourceTwoWeaponFighting, twfComponent.Source,
+		"Second component should be from Two-Weapon Fighting")
+	s.Equal(3, twfComponent.FlatBonus, "Two-Weapon Fighting should add +3 (DEX modifier)")
+}
+
+// TestTwoWeaponFightingNoMainHandBonus verifies Two-Weapon Fighting doesn't add to main-hand attacks
+func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
+	// Import gamectx
+	ctx := s.ctx
+
+	// Create character registry with dual-wielding weapons
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-1",
+		Name:        "Shortsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	offHand := &gamectx.EquippedWeapon{
+		ID:          "shortsword-2",
+		Name:        "Shortsword",
+		Slot:        "off_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
+	registry.Add("fighter-1", weapons)
+
+	// Wrap context with character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+	// Create Two-Weapon Fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.TwoWeaponFighting,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create damage chain event for MAIN-hand attack
+	damageEvent := &combat.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []combat.DamageComponent{
+			{
+				Source:            combat.DamageSourceWeapon,
+				OriginalDiceRolls: []int{5},
+				FinalDiceRolls:    []int{5},
+				Rerolls:           nil,
+				FlatBonus:         3, // Main hand already gets ability modifier
+				DamageType:        "piercing",
+				IsCritical:        false,
+			},
+		},
+		DamageType:   "piercing",
+		IsCritical:   false,
+		WeaponDamage: "1d6",
+		AbilityUsed:  "dex",
+		WeaponRef:    "shortsword-1", // MAIN HAND weapon
+	}
+
+	// Publish through damage chain
+	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damages := combat.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Verify NO Two-Weapon Fighting component was added (only weapon component)
+	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Two-Weapon Fighting bonus")
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(3, weaponComponent.FlatBonus, "Main hand should keep original ability modifier")
+}
+
+// TestDefenseACBonus verifies Defense fighting style adds +1 to AC when wearing armor
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestDefenseACBonus() {
+	// Create Defense fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Defense,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(s.ctx, s.bus)
+	}()
+
+	// Create AC chain event for a character wearing armor
+	acEvent := combat.ACChainEvent{
+		CharacterID:    "fighter-1",
+		BaseAC:         16, // Chain mail
+		IsWearingArmor: true,
+		ArmorType:      "heavy",
+		FinalAC:        16,
+	}
+
+	// Publish through AC chain
+	acChain := events.NewStagedChain[combat.ACChainEvent](combat.ModifierStages)
+	acs := combat.ACChain.On(s.bus)
+	modifiedChain, err := acs.PublishWithChain(s.ctx, acEvent, acChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(s.ctx, acEvent)
+	s.Require().NoError(err)
+
+	// Verify Defense added +1 to AC
+	s.Equal(17, finalEvent.FinalAC, "Defense should add +1 to AC when wearing armor")
+}
+
+// TestDefenseNoArmorNoBonus verifies Defense fighting style doesn't add bonus when not wearing armor
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestDefenseNoArmorNoBonus() {
+	// Create Defense fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Defense,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err := fs.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(s.ctx, s.bus)
+	}()
+
+	// Create AC chain event for a character NOT wearing armor
+	acEvent := combat.ACChainEvent{
+		CharacterID:    "fighter-1",
+		BaseAC:         13, // 10 + DEX modifier
+		IsWearingArmor: false,
+		ArmorType:      "",
+		FinalAC:        13,
+	}
+
+	// Publish through AC chain
+	acChain := events.NewStagedChain[combat.ACChainEvent](combat.ModifierStages)
+	acs := combat.ACChain.On(s.bus)
+	modifiedChain, err := acs.PublishWithChain(s.ctx, acEvent, acChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(s.ctx, acEvent)
+	s.Require().NoError(err)
+
+	// Verify Defense did NOT add any bonus
+	s.Equal(13, finalEvent.FinalAC, "Defense should NOT add bonus when not wearing armor")
 }

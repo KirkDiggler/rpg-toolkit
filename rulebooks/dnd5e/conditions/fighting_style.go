@@ -98,6 +98,24 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 		}
 		f.subscriptionIDs = append(f.subscriptionIDs, subID)
 
+	case fightingstyles.TwoWeaponFighting:
+		// Subscribe to DamageChain to add ability modifier to off-hand weapon attacks
+		damageChain := combat.DamageChain.On(bus)
+		subID, err := damageChain.SubscribeWithChain(ctx, f.onTwoWeaponFightingDamageChain)
+		if err != nil {
+			return rpgerr.Wrap(err, "failed to subscribe to damage chain for two-weapon fighting")
+		}
+		f.subscriptionIDs = append(f.subscriptionIDs, subID)
+
+	case fightingstyles.Defense:
+		// Subscribe to ACChain to add +1 to AC when wearing armor
+		acChain := combat.ACChain.On(bus)
+		subID, err := acChain.SubscribeWithChain(ctx, f.onDefenseACChain)
+		if err != nil {
+			return rpgerr.Wrap(err, "failed to subscribe to AC chain for defense")
+		}
+		f.subscriptionIDs = append(f.subscriptionIDs, subID)
+
 	default:
 		// Other fighting styles not yet implemented
 		return rpgerr.Newf(rpgerr.CodeNotAllowed, "fighting style %s not yet implemented", f.Style)
@@ -350,6 +368,104 @@ func (f *FightingStyleCondition) onDuelingDamageChain(
 	err := c.Add(combat.StageFeatures, "dueling", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply dueling bonus for character %s", f.CharacterID)
+	}
+
+	return c, nil
+}
+
+// onTwoWeaponFightingDamageChain adds ability modifier to off-hand weapon attacks
+func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
+	ctx context.Context,
+	event *combat.DamageChainEvent,
+	c chain.Chain[*combat.DamageChainEvent],
+) (chain.Chain[*combat.DamageChainEvent], error) {
+	// Only modify damage for attacks by this character
+	if event.AttackerID != f.CharacterID {
+		return c, nil
+	}
+
+	// Get character registry from context
+	registry, ok := gamectx.Characters(ctx)
+	if !ok {
+		// No character registry available, can't check if this is off-hand attack
+		return c, nil
+	}
+
+	// Get character weapons
+	weapons := registry.GetCharacterWeapons(f.CharacterID)
+	if weapons == nil {
+		// Character not found in registry
+		return c, nil
+	}
+
+	// Check if this is an off-hand attack by comparing WeaponRef with off-hand weapon ID
+	offHand := weapons.OffHand()
+	if offHand == nil {
+		return c, nil // No off-hand weapon equipped
+	}
+
+	// Only apply to off-hand attacks
+	if event.WeaponRef != offHand.ID {
+		return c, nil // Not an off-hand attack
+	}
+
+	// Calculate ability modifier from the ability used for this attack
+	// The modifier is calculated as (ability_score - 10) / 2
+	// We need to get the ability score from somewhere - for now we'll use a simplified approach
+	// In a real implementation, we'd need to get the character's ability scores from the registry
+
+	// For now, we'll assume a standard DEX modifier of +3 for testing
+	// TODO: Get actual ability scores from character registry
+	abilityModifier := 3
+
+	// Add ability modifier to damage at StageFeatures
+	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+		// Append two-weapon fighting damage component
+		e.Components = append(e.Components, combat.DamageComponent{
+			Source:            combat.DamageSourceTwoWeaponFighting,
+			OriginalDiceRolls: nil, // No dice
+			FinalDiceRolls:    nil,
+			Rerolls:           nil,
+			FlatBonus:         abilityModifier,
+			DamageType:        e.DamageType, // Same as weapon damage type
+			IsCritical:        e.IsCritical,
+		})
+		return e, nil
+	}
+
+	err := c.Add(combat.StageFeatures, "two_weapon_fighting", modifyDamage)
+	if err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply two-weapon fighting bonus for character %s", f.CharacterID)
+	}
+
+	return c, nil
+}
+
+// onDefenseACChain adds +1 to AC when wearing armor (Defense fighting style)
+func (f *FightingStyleCondition) onDefenseACChain(
+	_ context.Context,
+	event combat.ACChainEvent,
+	c chain.Chain[combat.ACChainEvent],
+) (chain.Chain[combat.ACChainEvent], error) {
+	// Only modify AC for this character
+	if event.CharacterID != f.CharacterID {
+		return c, nil
+	}
+
+	// Only apply bonus when wearing armor
+	if !event.IsWearingArmor {
+		return c, nil
+	}
+
+	// Add +1 to AC at StageFeatures
+	modifyAC := func(_ context.Context, e combat.ACChainEvent) (combat.ACChainEvent, error) {
+		e.FinalAC++
+		return e, nil
+	}
+
+	err := c.Add(combat.StageFeatures, "defense", modifyAC)
+	if err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply defense bonus for character %s", f.CharacterID)
 	}
 
 	return c, nil

@@ -1,100 +1,100 @@
 {
   "tests": [
     {
-      "id": "bus-effect-interface",
-      "feature": "bus-effect",
-      "prompt": "Verify events.BusEffect interface exists with Apply(ctx, bus) and Remove(ctx, bus) methods",
+      "id": "defense-ac-bonus",
+      "feature": "fighting-style-defense",
+      "prompt": "Create a Fighter with Defense style wearing armor. Verify AC calculation includes +1 bonus from Defense.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "rest-event-defined",
-      "feature": "rest-event",
-      "prompt": "Verify RestEvent struct exists with RestType field (short_rest, long_rest) and RestTopic is defined",
+      "id": "defense-no-armor-no-bonus",
+      "feature": "fighting-style-defense",
+      "prompt": "Create a Fighter with Defense style NOT wearing armor. Verify no AC bonus is applied.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "recoverable-resource-implements-bus-effect",
-      "feature": "recoverable-resource",
-      "prompt": "Verify RecoverableResource wraps mechanics/resources.Resource and implements events.BusEffect",
+      "id": "two-weapon-fighting-offhand-damage",
+      "feature": "fighting-style-two-weapon",
+      "prompt": "Create a Fighter with Two-Weapon Fighting style. Make an off-hand attack. Verify ability modifier is added to damage.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "recoverable-resource-subscribes-to-rest",
-      "feature": "recoverable-resource",
-      "prompt": "When RecoverableResource.Apply() is called, it subscribes to RestTopic and restores on matching ResetType",
+      "id": "two-weapon-fighting-detection",
+      "feature": "fighting-style-two-weapon",
+      "prompt": "Verify system can detect when an attack is an off-hand attack vs main-hand attack.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "character-get-resource",
-      "feature": "character-resources",
-      "prompt": "Character.GetResource(key ResourceKey) returns *RecoverableResource (empty resource if not found)",
+      "id": "second-wind-heals",
+      "feature": "second-wind",
+      "prompt": "Activate Second Wind on a Fighter. Verify healing event is published with 1d10 + fighter level.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "character-resource-serialization",
-      "feature": "character-resources",
-      "prompt": "Character resources serialize to/from ResourceData with Current, Maximum, ResetType fields",
+      "id": "second-wind-resource-tracking",
+      "feature": "second-wind",
+      "prompt": "Use Second Wind. Verify resource is consumed. Try to use again. Verify it fails with resource exhausted.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "action-economy-creation",
-      "feature": "action-economy",
-      "prompt": "NewActionEconomy() returns ActionEconomy with 1 action, 1 bonus action, 1 reaction",
+      "id": "second-wind-short-rest-recovery",
+      "feature": "second-wind",
+      "prompt": "Use Second Wind, then take a short rest. Verify Second Wind use is restored.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "action-economy-use-action",
-      "feature": "action-economy",
-      "prompt": "UseAction() decrements ActionsRemaining; returns error when 0",
+      "id": "action-surge-grants-extra-action",
+      "feature": "action-surge",
+      "prompt": "Activate Action Surge. Verify ActionEconomy.ActionsRemaining is incremented.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "action-economy-use-bonus-action",
-      "feature": "action-economy",
-      "prompt": "UseBonusAction() decrements BonusActionsRemaining; returns error when 0",
+      "id": "action-surge-resource-tracking",
+      "feature": "action-surge",
+      "prompt": "Use Action Surge. Verify resource is consumed. Try to use again. Verify it fails.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "action-economy-use-reaction",
-      "feature": "action-economy",
-      "prompt": "UseReaction() decrements ReactionsRemaining; returns error when 0",
+      "id": "action-surge-short-rest-recovery",
+      "feature": "action-surge",
+      "prompt": "Use Action Surge, then take a short rest. Verify Action Surge use is restored.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "action-economy-reset",
-      "feature": "action-economy",
-      "prompt": "Reset() restores all to default (1 each)",
+      "id": "improved-critical-19-20",
+      "feature": "improved-critical",
+      "prompt": "Champion Fighter (level 3) rolls a 19 on attack. Verify it's treated as a critical hit.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "action-economy-grant-extra",
-      "feature": "action-economy",
-      "prompt": "GrantExtraAction() increments ActionsRemaining (for Action Surge)",
+      "id": "improved-critical-champion-only",
+      "feature": "improved-critical",
+      "prompt": "Non-Champion Fighter rolls a 19. Verify it's NOT treated as critical (only 20 is critical).",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "heal-chain-defined",
-      "feature": "heal-chain",
-      "prompt": "HealChain is a ChainedTopic for HealingChainEvent with Components slice",
+      "id": "fighting-style-serialization",
+      "feature": "serialization",
+      "prompt": "Save and load a Fighter with Defense fighting style. Verify style persists correctly.",
       "passes": true,
       "last_checked": "2025-12-05"
     },
     {
-      "id": "resource-consumed-event",
-      "feature": "resource-consumed",
-      "prompt": "ResourceConsumedEvent exists with ResourceKey, Amount, CharacterID fields and ResourceConsumedTopic is defined",
+      "id": "action-surge-serialization",
+      "feature": "serialization",
+      "prompt": "Use Action Surge, save character, reload. Verify Action Surge resource state persists.",
       "passes": true,
       "last_checked": "2025-12-05"
     },

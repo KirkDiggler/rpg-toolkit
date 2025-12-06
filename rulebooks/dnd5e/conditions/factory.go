@@ -76,6 +76,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createBrutalCritical(input.Config, input.CharacterID)
 	case refs.Conditions.FightingStyle().ID:
 		condition, err = createFightingStyle(input.Config, input.CharacterID)
+	case refs.Conditions.ImprovedCritical().ID:
+		condition, err = createImprovedCritical(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -198,5 +200,31 @@ func createFightingStyle(config json.RawMessage, characterID string) (*FightingS
 	return NewFightingStyleCondition(FightingStyleConditionConfig{
 		CharacterID: characterID,
 		Style:       cfg.Style,
+	}), nil
+}
+
+// improvedCriticalConfig is the config structure for improved critical
+type improvedCriticalConfig struct {
+	Threshold int `json:"threshold"` // Critical threshold (default 19)
+}
+
+// createImprovedCritical creates an improved critical condition from config
+func createImprovedCritical(config json.RawMessage, characterID string) (*ImprovedCriticalCondition, error) {
+	var cfg improvedCriticalConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse improved critical config")
+		}
+	}
+
+	// Default to 19 if not specified
+	threshold := cfg.Threshold
+	if threshold == 0 {
+		threshold = 19
+	}
+
+	return NewImprovedCriticalCondition(ImprovedCriticalInput{
+		CharacterID: characterID,
+		Threshold:   threshold,
 	}), nil
 }

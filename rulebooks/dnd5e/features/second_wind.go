@@ -7,30 +7,34 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // SecondWind represents the fighter's Second Wind feature.
-// It implements core.Action[FeatureInput] for activation.
+// It implements core.Action[FeatureInput] for activation and events.BusEffect for resource management.
 type SecondWind struct {
-	id       string
-	name     string
-	level    int                 // Fighter level for healing calculation
-	resource *resources.Resource // Tracks second wind uses (1 per short/long rest)
+	id          string
+	name        string
+	level       int                         // Fighter level for healing calculation
+	characterID string                      // Character this feature belongs to
+	resource    *combat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
 }
 
 // SecondWindData is the JSON structure for persisting Second Wind state
 type SecondWindData struct {
-	Ref     *core.Ref `json:"ref"`
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Level   int       `json:"level"`
-	Uses    int       `json:"uses"`
-	MaxUses int       `json:"max_uses"`
+	Ref         *core.Ref `json:"ref"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Level       int       `json:"level"`
+	CharacterID string    `json:"character_id"`
+	Uses        int       `json:"uses"`
+	MaxUses     int       `json:"max_uses"`
 }
 
 // GetID implements core.Entity
@@ -40,7 +44,7 @@ func (s *SecondWind) GetID() string {
 
 // GetType implements core.Entity
 func (s *SecondWind) GetType() core.EntityType {
-	return "feature"
+	return EntityTypeFeature
 }
 
 // CanActivate implements core.Action[FeatureInput]
@@ -51,6 +55,18 @@ func (s *SecondWind) CanActivate(_ context.Context, _ core.Entity, _ FeatureInpu
 	}
 
 	return nil
+}
+
+// Apply subscribes the recoverable resource to the event bus for automatic rest recovery.
+// This should be called when the feature is granted to a character.
+func (s *SecondWind) Apply(ctx context.Context, bus events.EventBus) error {
+	return s.resource.Apply(ctx, bus)
+}
+
+// Remove unsubscribes the recoverable resource from the event bus.
+// This should be called when the feature is removed from a character.
+func (s *SecondWind) Remove(ctx context.Context, bus events.EventBus) error {
+	return s.resource.Remove(ctx, bus)
 }
 
 // Activate implements core.Action[FeatureInput]
@@ -108,10 +124,21 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 	s.id = secondWindData.ID
 	s.name = secondWindData.Name
 	s.level = secondWindData.Level
+	s.characterID = secondWindData.CharacterID
 
-	// Set up resource with current and max uses
-	s.resource = resources.NewResource(refs.Features.SecondWind().ID, secondWindData.MaxUses)
-	s.resource.SetCurrent(secondWindData.Uses)
+	// Set up recoverable resource with current and max uses
+	s.resource = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          refs.Features.SecondWind().ID,
+		Maximum:     secondWindData.MaxUses,
+		CharacterID: secondWindData.CharacterID,
+		ResetType:   coreResources.ResetShortRest,
+	})
+	// Restore to the saved state
+	if secondWindData.Uses < secondWindData.MaxUses {
+		if err := s.resource.Use(secondWindData.MaxUses - secondWindData.Uses); err != nil {
+			return fmt.Errorf("failed to set resource uses: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -119,12 +146,13 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 // ToJSON converts Second Wind to JSON for persistence
 func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 	data := SecondWindData{
-		Ref:     refs.Features.SecondWind(),
-		ID:      s.id,
-		Name:    s.name,
-		Level:   s.level,
-		Uses:    s.resource.Current,
-		MaxUses: s.resource.Maximum,
+		Ref:         refs.Features.SecondWind(),
+		ID:          s.id,
+		Name:        s.name,
+		Level:       s.level,
+		CharacterID: s.characterID,
+		Uses:        s.resource.Current(),
+		MaxUses:     s.resource.Maximum(),
 	}
 
 	bytes, err := json.Marshal(data)
@@ -133,9 +161,4 @@ func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
-}
-
-// RestoreOnShortRest restores second wind use on a short or long rest
-func (s *SecondWind) RestoreOnShortRest() {
-	s.resource.RestoreToFull()
 }

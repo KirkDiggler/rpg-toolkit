@@ -40,6 +40,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return secondWind, nil
+	case refs.Features.ActionSurge().ID:
+		actionSurge := &ActionSurge{}
+		if err := actionSurge.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load action surge: %w", err)
+		}
+
+		return actionSurge, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}
