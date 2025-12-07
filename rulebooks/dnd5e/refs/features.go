@@ -4,21 +4,10 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Features provides type-safe, discoverable references to D&D 5e features.
 // Use IDE autocomplete: refs.Features.<tab> to discover available features.
-var Features = featuresNS{}
+var Features = featuresNS{ns{TypeFeatures}}
 
-type featuresNS struct{}
+type featuresNS struct{ ns }
 
-// Rage returns a reference to the Barbarian's Rage feature.
-func (featuresNS) Rage() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "rage"}
-}
-
-// SecondWind returns a reference to the Fighter's Second Wind feature.
-func (featuresNS) SecondWind() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "second_wind"}
-}
-
-// ActionSurge returns a reference to the Fighter's Action Surge feature.
-func (featuresNS) ActionSurge() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeFeatures, ID: "action_surge"}
-}
+func (n featuresNS) Rage() *core.Ref        { return n.ref("rage") }
+func (n featuresNS) SecondWind() *core.Ref  { return n.ref("second_wind") }
+func (n featuresNS) ActionSurge() *core.Ref { return n.ref("action_surge") }

@@ -4,36 +4,13 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Abilities provides type-safe, discoverable references to D&D 5e abilities.
 // Use IDE autocomplete: refs.Abilities.<tab> to discover available abilities.
-var Abilities = abilitiesNS{}
+var Abilities = abilitiesNS{ns{TypeAbilities}}
 
-type abilitiesNS struct{}
+type abilitiesNS struct{ ns }
 
-// Strength returns a reference to the Strength ability.
-func (abilitiesNS) Strength() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeAbilities, ID: "str"}
-}
-
-// Dexterity returns a reference to the Dexterity ability.
-func (abilitiesNS) Dexterity() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeAbilities, ID: "dex"}
-}
-
-// Constitution returns a reference to the Constitution ability.
-func (abilitiesNS) Constitution() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeAbilities, ID: "con"}
-}
-
-// Intelligence returns a reference to the Intelligence ability.
-func (abilitiesNS) Intelligence() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeAbilities, ID: "int"}
-}
-
-// Wisdom returns a reference to the Wisdom ability.
-func (abilitiesNS) Wisdom() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeAbilities, ID: "wis"}
-}
-
-// Charisma returns a reference to the Charisma ability.
-func (abilitiesNS) Charisma() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeAbilities, ID: "cha"}
-}
+func (n abilitiesNS) Strength() *core.Ref     { return n.ref("str") }
+func (n abilitiesNS) Dexterity() *core.Ref    { return n.ref("dex") }
+func (n abilitiesNS) Constitution() *core.Ref { return n.ref("con") }
+func (n abilitiesNS) Intelligence() *core.Ref { return n.ref("int") }
+func (n abilitiesNS) Wisdom() *core.Ref       { return n.ref("wis") }
+func (n abilitiesNS) Charisma() *core.Ref     { return n.ref("cha") }

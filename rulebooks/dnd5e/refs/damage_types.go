@@ -4,77 +4,25 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // DamageTypes provides type-safe, discoverable references to D&D 5e damage types.
 // Use IDE autocomplete: refs.DamageTypes.<tab> to discover available damage types.
-var DamageTypes = damageTypesNS{}
+var DamageTypes = damageTypesNS{ns{TypeDamageTypes}}
 
-type damageTypesNS struct{}
+type damageTypesNS struct{ ns }
 
 // Physical Damage Types
-
-// Bludgeoning returns a reference to the Bludgeoning damage type.
-func (damageTypesNS) Bludgeoning() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "bludgeoning"}
-}
-
-// Piercing returns a reference to the Piercing damage type.
-func (damageTypesNS) Piercing() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "piercing"}
-}
-
-// Slashing returns a reference to the Slashing damage type.
-func (damageTypesNS) Slashing() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "slashing"}
-}
+func (n damageTypesNS) Bludgeoning() *core.Ref { return n.ref("bludgeoning") }
+func (n damageTypesNS) Piercing() *core.Ref    { return n.ref("piercing") }
+func (n damageTypesNS) Slashing() *core.Ref    { return n.ref("slashing") }
 
 // Elemental Damage Types
-
-// Acid returns a reference to the Acid damage type.
-func (damageTypesNS) Acid() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "acid"}
-}
-
-// Cold returns a reference to the Cold damage type.
-func (damageTypesNS) Cold() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "cold"}
-}
-
-// Fire returns a reference to the Fire damage type.
-func (damageTypesNS) Fire() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "fire"}
-}
-
-// Lightning returns a reference to the Lightning damage type.
-func (damageTypesNS) Lightning() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "lightning"}
-}
-
-// Thunder returns a reference to the Thunder damage type.
-func (damageTypesNS) Thunder() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "thunder"}
-}
+func (n damageTypesNS) Acid() *core.Ref      { return n.ref("acid") }
+func (n damageTypesNS) Cold() *core.Ref      { return n.ref("cold") }
+func (n damageTypesNS) Fire() *core.Ref      { return n.ref("fire") }
+func (n damageTypesNS) Lightning() *core.Ref { return n.ref("lightning") }
+func (n damageTypesNS) Thunder() *core.Ref   { return n.ref("thunder") }
 
 // Magical Damage Types
-
-// Force returns a reference to the Force damage type.
-func (damageTypesNS) Force() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "force"}
-}
-
-// Necrotic returns a reference to the Necrotic damage type.
-func (damageTypesNS) Necrotic() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "necrotic"}
-}
-
-// Poison returns a reference to the Poison damage type.
-func (damageTypesNS) Poison() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "poison"}
-}
-
-// Psychic returns a reference to the Psychic damage type.
-func (damageTypesNS) Psychic() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "psychic"}
-}
-
-// Radiant returns a reference to the Radiant damage type.
-func (damageTypesNS) Radiant() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeDamageTypes, ID: "radiant"}
-}
+func (n damageTypesNS) Force() *core.Ref    { return n.ref("force") }
+func (n damageTypesNS) Necrotic() *core.Ref { return n.ref("necrotic") }
+func (n damageTypesNS) Poison() *core.Ref   { return n.ref("poison") }
+func (n damageTypesNS) Psychic() *core.Ref  { return n.ref("psychic") }
+func (n damageTypesNS) Radiant() *core.Ref  { return n.ref("radiant") }

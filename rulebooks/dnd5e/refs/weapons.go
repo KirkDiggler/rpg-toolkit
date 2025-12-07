@@ -4,216 +4,56 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Weapons provides type-safe, discoverable references to D&D 5e weapons.
 // Use IDE autocomplete: refs.Weapons.<tab> to discover available weapons.
-var Weapons = weaponsNS{}
+var Weapons = weaponsNS{ns{TypeWeapons}}
 
-type weaponsNS struct{}
+type weaponsNS struct{ ns }
 
 // Simple Melee Weapons
-
-// Club returns a reference to the Club weapon.
-func (weaponsNS) Club() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "club"}
-}
-
-// Dagger returns a reference to the Dagger weapon.
-func (weaponsNS) Dagger() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "dagger"}
-}
-
-// Greatclub returns a reference to the Greatclub weapon.
-func (weaponsNS) Greatclub() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "greatclub"}
-}
-
-// Handaxe returns a reference to the Handaxe weapon.
-func (weaponsNS) Handaxe() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "handaxe"}
-}
-
-// Javelin returns a reference to the Javelin weapon.
-func (weaponsNS) Javelin() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "javelin"}
-}
-
-// LightHammer returns a reference to the Light Hammer weapon.
-func (weaponsNS) LightHammer() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "light-hammer"}
-}
-
-// Mace returns a reference to the Mace weapon.
-func (weaponsNS) Mace() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "mace"}
-}
-
-// Quarterstaff returns a reference to the Quarterstaff weapon.
-func (weaponsNS) Quarterstaff() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "quarterstaff"}
-}
-
-// Sickle returns a reference to the Sickle weapon.
-func (weaponsNS) Sickle() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "sickle"}
-}
-
-// Spear returns a reference to the Spear weapon.
-func (weaponsNS) Spear() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "spear"}
-}
+func (n weaponsNS) Club() *core.Ref         { return n.ref("club") }
+func (n weaponsNS) Dagger() *core.Ref       { return n.ref("dagger") }
+func (n weaponsNS) Greatclub() *core.Ref    { return n.ref("greatclub") }
+func (n weaponsNS) Handaxe() *core.Ref      { return n.ref("handaxe") }
+func (n weaponsNS) Javelin() *core.Ref      { return n.ref("javelin") }
+func (n weaponsNS) LightHammer() *core.Ref  { return n.ref("light-hammer") }
+func (n weaponsNS) Mace() *core.Ref         { return n.ref("mace") }
+func (n weaponsNS) Quarterstaff() *core.Ref { return n.ref("quarterstaff") }
+func (n weaponsNS) Sickle() *core.Ref       { return n.ref("sickle") }
+func (n weaponsNS) Spear() *core.Ref        { return n.ref("spear") }
 
 // Simple Ranged Weapons
-
-// LightCrossbow returns a reference to the Light Crossbow weapon.
-func (weaponsNS) LightCrossbow() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "light-crossbow"}
-}
-
-// Dart returns a reference to the Dart weapon.
-func (weaponsNS) Dart() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "dart"}
-}
-
-// Shortbow returns a reference to the Shortbow weapon.
-func (weaponsNS) Shortbow() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "shortbow"}
-}
-
-// Sling returns a reference to the Sling weapon.
-func (weaponsNS) Sling() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "sling"}
-}
+func (n weaponsNS) LightCrossbow() *core.Ref { return n.ref("light-crossbow") }
+func (n weaponsNS) Dart() *core.Ref          { return n.ref("dart") }
+func (n weaponsNS) Shortbow() *core.Ref      { return n.ref("shortbow") }
+func (n weaponsNS) Sling() *core.Ref         { return n.ref("sling") }
 
 // Martial Melee Weapons
-
-// Battleaxe returns a reference to the Battleaxe weapon.
-func (weaponsNS) Battleaxe() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "battleaxe"}
-}
-
-// Flail returns a reference to the Flail weapon.
-func (weaponsNS) Flail() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "flail"}
-}
-
-// Glaive returns a reference to the Glaive weapon.
-func (weaponsNS) Glaive() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "glaive"}
-}
-
-// Greataxe returns a reference to the Greataxe weapon.
-func (weaponsNS) Greataxe() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "greataxe"}
-}
-
-// Greatsword returns a reference to the Greatsword weapon.
-func (weaponsNS) Greatsword() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "greatsword"}
-}
-
-// Halberd returns a reference to the Halberd weapon.
-func (weaponsNS) Halberd() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "halberd"}
-}
-
-// Lance returns a reference to the Lance weapon.
-func (weaponsNS) Lance() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "lance"}
-}
-
-// Longsword returns a reference to the Longsword weapon.
-func (weaponsNS) Longsword() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "longsword"}
-}
-
-// Maul returns a reference to the Maul weapon.
-func (weaponsNS) Maul() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "maul"}
-}
-
-// Morningstar returns a reference to the Morningstar weapon.
-func (weaponsNS) Morningstar() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "morningstar"}
-}
-
-// Pike returns a reference to the Pike weapon.
-func (weaponsNS) Pike() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "pike"}
-}
-
-// Rapier returns a reference to the Rapier weapon.
-func (weaponsNS) Rapier() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "rapier"}
-}
-
-// Scimitar returns a reference to the Scimitar weapon.
-func (weaponsNS) Scimitar() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "scimitar"}
-}
-
-// Shortsword returns a reference to the Shortsword weapon.
-func (weaponsNS) Shortsword() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "shortsword"}
-}
-
-// Trident returns a reference to the Trident weapon.
-func (weaponsNS) Trident() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "trident"}
-}
-
-// WarPick returns a reference to the War Pick weapon.
-func (weaponsNS) WarPick() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "war-pick"}
-}
-
-// Warhammer returns a reference to the Warhammer weapon.
-func (weaponsNS) Warhammer() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "warhammer"}
-}
-
-// Whip returns a reference to the Whip weapon.
-func (weaponsNS) Whip() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "whip"}
-}
+func (n weaponsNS) Battleaxe() *core.Ref   { return n.ref("battleaxe") }
+func (n weaponsNS) Flail() *core.Ref       { return n.ref("flail") }
+func (n weaponsNS) Glaive() *core.Ref      { return n.ref("glaive") }
+func (n weaponsNS) Greataxe() *core.Ref    { return n.ref("greataxe") }
+func (n weaponsNS) Greatsword() *core.Ref  { return n.ref("greatsword") }
+func (n weaponsNS) Halberd() *core.Ref     { return n.ref("halberd") }
+func (n weaponsNS) Lance() *core.Ref       { return n.ref("lance") }
+func (n weaponsNS) Longsword() *core.Ref   { return n.ref("longsword") }
+func (n weaponsNS) Maul() *core.Ref        { return n.ref("maul") }
+func (n weaponsNS) Morningstar() *core.Ref { return n.ref("morningstar") }
+func (n weaponsNS) Pike() *core.Ref        { return n.ref("pike") }
+func (n weaponsNS) Rapier() *core.Ref      { return n.ref("rapier") }
+func (n weaponsNS) Scimitar() *core.Ref    { return n.ref("scimitar") }
+func (n weaponsNS) Shortsword() *core.Ref  { return n.ref("shortsword") }
+func (n weaponsNS) Trident() *core.Ref     { return n.ref("trident") }
+func (n weaponsNS) WarPick() *core.Ref     { return n.ref("war-pick") }
+func (n weaponsNS) Warhammer() *core.Ref   { return n.ref("warhammer") }
+func (n weaponsNS) Whip() *core.Ref        { return n.ref("whip") }
 
 // Martial Ranged Weapons
-
-// Blowgun returns a reference to the Blowgun weapon.
-func (weaponsNS) Blowgun() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "blowgun"}
-}
-
-// HandCrossbow returns a reference to the Hand Crossbow weapon.
-func (weaponsNS) HandCrossbow() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "hand-crossbow"}
-}
-
-// HeavyCrossbow returns a reference to the Heavy Crossbow weapon.
-func (weaponsNS) HeavyCrossbow() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "heavy-crossbow"}
-}
-
-// Longbow returns a reference to the Longbow weapon.
-func (weaponsNS) Longbow() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "longbow"}
-}
-
-// Net returns a reference to the Net weapon.
-func (weaponsNS) Net() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "net"}
-}
+func (n weaponsNS) Blowgun() *core.Ref       { return n.ref("blowgun") }
+func (n weaponsNS) HandCrossbow() *core.Ref  { return n.ref("hand-crossbow") }
+func (n weaponsNS) HeavyCrossbow() *core.Ref { return n.ref("heavy-crossbow") }
+func (n weaponsNS) Longbow() *core.Ref       { return n.ref("longbow") }
+func (n weaponsNS) Net() *core.Ref           { return n.ref("net") }
 
 // Category placeholders
-
-// AnySimpleWeapon returns a reference for any simple weapon.
-func (weaponsNS) AnySimpleWeapon() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "simple-weapon"}
-}
-
-// AnyMartialWeapon returns a reference for any martial weapon.
-func (weaponsNS) AnyMartialWeapon() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "martial-weapon"}
-}
-
-// AnyWeapon returns a reference for any weapon.
-func (weaponsNS) AnyWeapon() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeWeapons, ID: "any-weapon"}
-}
+func (n weaponsNS) AnySimpleWeapon() *core.Ref  { return n.ref("simple-weapon") }
+func (n weaponsNS) AnyMartialWeapon() *core.Ref { return n.ref("martial-weapon") }
+func (n weaponsNS) AnyWeapon() *core.Ref        { return n.ref("any-weapon") }

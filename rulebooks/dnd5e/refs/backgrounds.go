@@ -4,91 +4,27 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Backgrounds provides type-safe, discoverable references to D&D 5e backgrounds.
 // Use IDE autocomplete: refs.Backgrounds.<tab> to discover available backgrounds.
-var Backgrounds = backgroundsNS{}
+var Backgrounds = backgroundsNS{ns{TypeBackgrounds}}
 
-type backgroundsNS struct{}
+type backgroundsNS struct{ ns }
 
-// Acolyte returns a reference to the Acolyte background.
-func (backgroundsNS) Acolyte() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "acolyte"}
-}
+// Base Backgrounds
+func (n backgroundsNS) Acolyte() *core.Ref      { return n.ref("acolyte") }
+func (n backgroundsNS) Charlatan() *core.Ref    { return n.ref("charlatan") }
+func (n backgroundsNS) Criminal() *core.Ref     { return n.ref("criminal") }
+func (n backgroundsNS) Entertainer() *core.Ref  { return n.ref("entertainer") }
+func (n backgroundsNS) FolkHero() *core.Ref     { return n.ref("folk-hero") }
+func (n backgroundsNS) GuildArtisan() *core.Ref { return n.ref("guild-artisan") }
+func (n backgroundsNS) Hermit() *core.Ref       { return n.ref("hermit") }
+func (n backgroundsNS) Noble() *core.Ref        { return n.ref("noble") }
+func (n backgroundsNS) Outlander() *core.Ref    { return n.ref("outlander") }
+func (n backgroundsNS) Sage() *core.Ref         { return n.ref("sage") }
+func (n backgroundsNS) Sailor() *core.Ref       { return n.ref("sailor") }
+func (n backgroundsNS) Soldier() *core.Ref      { return n.ref("soldier") }
+func (n backgroundsNS) Urchin() *core.Ref       { return n.ref("urchin") }
 
-// Charlatan returns a reference to the Charlatan background.
-func (backgroundsNS) Charlatan() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "charlatan"}
-}
-
-// Criminal returns a reference to the Criminal background.
-func (backgroundsNS) Criminal() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "criminal"}
-}
-
-// Entertainer returns a reference to the Entertainer background.
-func (backgroundsNS) Entertainer() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "entertainer"}
-}
-
-// FolkHero returns a reference to the Folk Hero background.
-func (backgroundsNS) FolkHero() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "folk-hero"}
-}
-
-// GuildArtisan returns a reference to the Guild Artisan background.
-func (backgroundsNS) GuildArtisan() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "guild-artisan"}
-}
-
-// Hermit returns a reference to the Hermit background.
-func (backgroundsNS) Hermit() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "hermit"}
-}
-
-// Noble returns a reference to the Noble background.
-func (backgroundsNS) Noble() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "noble"}
-}
-
-// Outlander returns a reference to the Outlander background.
-func (backgroundsNS) Outlander() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "outlander"}
-}
-
-// Sage returns a reference to the Sage background.
-func (backgroundsNS) Sage() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "sage"}
-}
-
-// Sailor returns a reference to the Sailor background.
-func (backgroundsNS) Sailor() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "sailor"}
-}
-
-// Soldier returns a reference to the Soldier background.
-func (backgroundsNS) Soldier() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "soldier"}
-}
-
-// Urchin returns a reference to the Urchin background.
-func (backgroundsNS) Urchin() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "urchin"}
-}
-
-// Spy returns a reference to the Spy background variant (Criminal).
-func (backgroundsNS) Spy() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "spy"}
-}
-
-// Pirate returns a reference to the Pirate background variant (Sailor).
-func (backgroundsNS) Pirate() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "pirate"}
-}
-
-// Knight returns a reference to the Knight background variant (Noble).
-func (backgroundsNS) Knight() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "knight"}
-}
-
-// GuildMerchant returns a reference to the Guild Merchant background variant (Guild Artisan).
-func (backgroundsNS) GuildMerchant() *core.Ref {
-	return &core.Ref{Module: Module, Type: TypeBackgrounds, ID: "guild-merchant"}
-}
+// Variants
+func (n backgroundsNS) Spy() *core.Ref           { return n.ref("spy") }
+func (n backgroundsNS) Pirate() *core.Ref        { return n.ref("pirate") }
+func (n backgroundsNS) Knight() *core.Ref        { return n.ref("knight") }
+func (n backgroundsNS) GuildMerchant() *core.Ref { return n.ref("guild-merchant") }
