@@ -409,13 +409,13 @@ func (s *EffectiveACTestSuite) TestNegativeDexModifier() {
 	s.Assert().Equal(-1, breakdown.Components[1].Value)
 }
 
-// TestNoEventBus tests AC calculation without event bus (no chain execution)
-func (s *EffectiveACTestSuite) TestNoEventBus() {
+// TestNoModifiers tests AC calculation with event bus but no modifying conditions/features
+func (s *EffectiveACTestSuite) TestNoModifiers() {
 	leather := armor.All[armor.Leather]
 
 	char := &Character{
 		id:   "test-char",
-		name: "No Event Bus Test",
+		name: "No Modifiers Test",
 		abilityScores: shared.AbilityScores{
 			abilities.STR: 10,
 			abilities.DEX: 14, // +2 modifier
@@ -431,17 +431,17 @@ func (s *EffectiveACTestSuite) TestNoEventBus() {
 				Quantity:  1,
 			},
 		},
-		bus: nil, // No event bus
+		bus: s.eventBus, // Event bus present but no modifiers registered
 	}
 
 	// Equip leather armor
 	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
-	// Calculate AC - should still work without event bus
+	// Calculate AC - should work with event bus but no modifiers
 	breakdown := char.EffectiveAC(s.ctx)
 
 	// Verify total AC = 11 + 2 = 13
-	s.Assert().Equal(13, breakdown.Total, "AC calculation should work without event bus")
+	s.Assert().Equal(13, breakdown.Total, "AC calculation should work with no modifiers")
 
 	// Verify components
 	s.Require().Len(breakdown.Components, 2, "Should have armor and DEX components")

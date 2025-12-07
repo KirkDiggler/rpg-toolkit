@@ -462,8 +462,8 @@ func (f *FightingStyleCondition) onDefenseACChain(
 		e.Breakdown.AddComponent(combat.ACComponent{
 			Type: combat.ACSourceFeature,
 			Source: &core.Ref{
-				Module: "dnd5e",
-				Type:   "feature",
+				Module: refs.Module,
+				Type:   refs.TypeFeatures,
 				ID:     "fighting_style_defense",
 			},
 			Value: 1,
