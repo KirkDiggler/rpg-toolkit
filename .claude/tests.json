@@ -1,37 +1,58 @@
 {
   "tests": [
     {
-      "id": "race-default-languages",
-      "feature": "languages",
-      "prompt": "Create a Human character. Verify they have Common language in their data after finalization.",
+      "id": "equipment-slots-struct",
+      "feature": "equipment-slots",
+      "prompt": "EquipmentSlots struct exists with MainHand, OffHand, Armor, and accessory slots",
       "passes": true,
       "last_checked": "2025-12-06"
     },
     {
-      "id": "race-language-choice",
-      "feature": "languages",
-      "prompt": "Create a Human character with Elvish as their language choice. Verify they have both Common and Elvish.",
+      "id": "equipped-item-wrapper",
+      "feature": "equipment-slots",
+      "prompt": "EquippedItem wrapper exists with Item field (composition) and AsArmor(), AsWeapon() methods",
       "passes": true,
       "last_checked": "2025-12-06"
     },
     {
-      "id": "language-serialization",
-      "feature": "languages",
-      "prompt": "Finalize a character, call ToData(), verify Languages field is populated.",
+      "id": "character-has-slots",
+      "feature": "equipment-slots",
+      "prompt": "Character struct has equipmentSlots field and Data has EquipmentSlots for persistence",
       "passes": true,
       "last_checked": "2025-12-06"
     },
     {
-      "id": "language-deserialization",
-      "feature": "languages",
-      "prompt": "Call LoadFromData() with language data. Verify the character has the languages restored.",
+      "id": "get-equipped-slot",
+      "feature": "equipment-slots",
+      "prompt": "GetEquippedSlot(slot) resolves slot ID → inventory item → EquippedItem",
       "passes": true,
       "last_checked": "2025-12-06"
     },
     {
-      "id": "elf-languages",
-      "feature": "languages",
-      "prompt": "Create an Elf character. Verify they have Common and Elvish languages.",
+      "id": "equip-unequip",
+      "feature": "equipment-slots",
+      "prompt": "EquipItem(slot, itemID) and UnequipItem(slot) methods work correctly",
+      "passes": true,
+      "last_checked": "2025-12-06"
+    },
+    {
+      "id": "as-armor-works",
+      "feature": "equipment-slots",
+      "prompt": "AsArmor() returns *armor.Armor when armor equipped, nil otherwise",
+      "passes": true,
+      "last_checked": "2025-12-06"
+    },
+    {
+      "id": "as-weapon-works",
+      "feature": "equipment-slots",
+      "prompt": "AsWeapon() returns *weapons.Weapon when weapon equipped, nil otherwise",
+      "passes": true,
+      "last_checked": "2025-12-06"
+    },
+    {
+      "id": "persistence-roundtrip",
+      "feature": "equipment-slots",
+      "prompt": "Equipment slots survive ToData() → LoadFromData() roundtrip",
       "passes": true,
       "last_checked": "2025-12-06"
     }

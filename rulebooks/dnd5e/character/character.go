@@ -60,6 +60,7 @@ type Character struct {
 
 	// Equipment and resources
 	inventory      []InventoryItem
+	equipmentSlots EquipmentSlots
 	spellSlots     map[int]SpellSlotData
 	classResources map[shared.ClassResourceType]ResourceData
 	resources      map[coreResources.ResourceKey]*combat.RecoverableResource
@@ -253,6 +254,54 @@ func (c *Character) LoadResourceData(
 	}
 }
 
+// GetEquippedSlot returns the equipped item for a slot.
+// Resolves the slot's item ID to the actual equipment from inventory.
+// Returns nil if nothing is equipped in that slot or item not found in inventory.
+func (c *Character) GetEquippedSlot(slot InventorySlot) *EquippedItem {
+	itemID := c.equipmentSlots.Get(slot)
+	if itemID == "" {
+		return nil
+	}
+
+	// Find the item in inventory
+	for _, invItem := range c.inventory {
+		if invItem.Equipment.EquipmentID() == itemID {
+			return &EquippedItem{Item: invItem.Equipment}
+		}
+	}
+
+	return nil
+}
+
+// EquipItem equips an inventory item to the specified slot.
+// Returns error if the item is not in inventory.
+func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
+	// Verify item exists in inventory
+	found := false
+	for _, invItem := range c.inventory {
+		if invItem.Equipment.EquipmentID() == itemID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return rpgerr.New(rpgerr.CodeNotFound, "item not found in inventory")
+	}
+
+	// Initialize map if nil
+	if c.equipmentSlots == nil {
+		c.equipmentSlots = make(EquipmentSlots)
+	}
+	c.equipmentSlots.Set(slot, itemID)
+	return nil
+}
+
+// UnequipItem removes the item from the specified slot.
+func (c *Character) UnequipItem(slot InventorySlot) {
+	c.equipmentSlots.Clear(slot)
+}
+
 // ToData converts the character to its persistent data form
 func (c *Character) ToData() *Data {
 	data := &Data{
@@ -282,6 +331,9 @@ func (c *Character) ToData() *Data {
 	for _, item := range c.inventory {
 		data.Inventory = append(data.Inventory, item.ToData())
 	}
+
+	// Copy equipment slots
+	data.EquipmentSlots = c.equipmentSlots
 
 	// Copy languages slice
 	data.Languages = c.languages
