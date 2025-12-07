@@ -31,7 +31,7 @@
         "All tests passing: unarmored, heavy armor, medium armor DEX cap, light armor, shield bonus, breakdown transparency"
       ],
       "tests_passing": true,
-      "commit": "pending"
+      "commit": "31836d4"
     }
   ],
   "next_steps": [
