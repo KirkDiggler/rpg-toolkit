@@ -25,11 +25,22 @@
         "rulebooks/dnd5e/character/character.go",
         "rulebooks/dnd5e/character/data.go"
       ],
-      "commit": null,
-      "notes": "Added EquipmentSlots struct, EquippedItem wrapper with AsArmor()/AsWeapon(), GetEquippedSlot(), EquipItem(), UnequipItem() methods. 23 tests all passing."
+      "commit": "1936eff",
+      "notes": "Added EquipmentSlots map[InventorySlot]string, EquippedItem wrapper with AsArmor()/AsWeapon(), GetEquippedSlot(), EquipItem(), UnequipItem() methods. Changed from struct to map after feedback - combat slots only (MainHand, OffHand, Armor)."
+    },
+    {
+      "id": "2025-12-06-003",
+      "task": "Add JSON roundtrip test and verify persistence",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/character/equipment_slots_test.go"
+      ],
+      "commit": "6afb67c",
+      "notes": "Added TestEquipmentSlots_JSONRoundtrip to verify map with typed keys serializes correctly. 25 tests all passing. PR #402 ready for review."
     }
   ],
   "next_steps": [
-    "Create PR for review"
+    "Await PR review and merge",
+    "After merge: Implement #397 AC Calculation System"
   ]
 }
