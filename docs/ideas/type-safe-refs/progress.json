@@ -23,8 +23,8 @@
     "design": {
       "status": "completed",
       "date": "2025-12-07",
-      "files": ["design-protos.md"],
-      "notes": "SourceRef with oneof, ConditionId enum, no homebrew escape hatch"
+      "files": ["design-protos.md", "design-toolkit.md", "design-web.md"],
+      "notes": "SourceRef with oneof, ConditionId enum, no homebrew escape hatch. Full designs for protos, toolkit, and React components."
     },
     "issues": {
       "status": "completed",
@@ -77,19 +77,22 @@
     {
       "project": "rpg-toolkit",
       "changes": [
-        "Update DamageSourceType constants to map to ConditionId",
-        "Conversion helpers for proto SourceRef"
+        "Add SourceWeapon/SourceAbility fields to DamageComponent",
+        "Add ToProtoSourceRef() conversion method",
+        "Map DamageSourceType constants to ConditionId"
       ],
-      "design": null,
+      "design": "design-toolkit.md",
       "issue": null
     },
     {
       "project": "rpg-dnd5e-web",
       "changes": [
-        "Enum display component for ConditionId",
-        "DamageSourceBadge component using oneof pattern"
+        "Enum display maps (WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY)",
+        "WeaponDisplay, AbilityDisplay, ConditionDisplay components",
+        "DamageSourceBadge component using oneof pattern",
+        "DamageBreakdown component for combat UI"
       ],
-      "design": null,
+      "design": "design-web.md",
       "issue": null
     }
   ]

@@ -28,6 +28,8 @@ Building the combat UI revealed that damage sources need to be displayable ("War
 | Use Cases | [use-cases.md](./use-cases.md) | Why we need this, UI consumption patterns |
 | Brainstorm | [brainstorm.md](./brainstorm.md) | Flat enum vs oneof exploration |
 | Design | [design-protos.md](./design-protos.md) | Proto changes (SourceRef, ConditionId) |
+| Design | [design-toolkit.md](./design-toolkit.md) | Toolkit DamageComponent changes |
+| Design | [design-web.md](./design-web.md) | React enum display components |
 
 ## Affected Projects
 
