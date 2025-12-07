@@ -17,6 +17,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -50,9 +51,12 @@ type Character struct {
 	hitDice      int // Size of hit die (d6, d8, d10, d12)
 
 	// Proficiencies and skills
-	skills       map[skills.Skill]shared.ProficiencyLevel
-	savingThrows map[abilities.Ability]shared.ProficiencyLevel
-	languages    []languages.Language
+	skills              map[skills.Skill]shared.ProficiencyLevel
+	savingThrows        map[abilities.Ability]shared.ProficiencyLevel
+	languages           []languages.Language
+	armorProficiencies  []proficiencies.Armor
+	weaponProficiencies []proficiencies.Weapon
+	toolProficiencies   []proficiencies.Tool
 
 	// Equipment and resources
 	inventory      []InventoryItem
@@ -252,22 +256,25 @@ func (c *Character) LoadResourceData(
 // ToData converts the character to its persistent data form
 func (c *Character) ToData() *Data {
 	data := &Data{
-		ID:               c.id,
-		PlayerID:         c.playerID,
-		Name:             c.name,
-		Level:            c.level,
-		ProficiencyBonus: c.proficiencyBonus,
-		RaceID:           c.raceID,
-		SubraceID:        c.subraceID,
-		ClassID:          c.classID,
-		SubclassID:       c.subclassID,
-		AbilityScores:    c.abilityScores,
-		HitPoints:        c.hitPoints,
-		MaxHitPoints:     c.maxHitPoints,
-		ArmorClass:       c.armorClass,
-		Skills:           maps.Clone(c.skills),
-		SavingThrows:     maps.Clone(c.savingThrows),
-		UpdatedAt:        time.Now(),
+		ID:                  c.id,
+		PlayerID:            c.playerID,
+		Name:                c.name,
+		Level:               c.level,
+		ProficiencyBonus:    c.proficiencyBonus,
+		RaceID:              c.raceID,
+		SubraceID:           c.subraceID,
+		ClassID:             c.classID,
+		SubclassID:          c.subclassID,
+		AbilityScores:       c.abilityScores,
+		HitPoints:           c.hitPoints,
+		MaxHitPoints:        c.maxHitPoints,
+		ArmorClass:          c.armorClass,
+		Skills:              maps.Clone(c.skills),
+		SavingThrows:        maps.Clone(c.savingThrows),
+		ArmorProficiencies:  c.armorProficiencies,
+		WeaponProficiencies: c.weaponProficiencies,
+		ToolProficiencies:   c.toolProficiencies,
+		UpdatedAt:           time.Now(),
 	}
 
 	// Convert inventory to data
