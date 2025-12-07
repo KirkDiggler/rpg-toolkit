@@ -32,11 +32,40 @@
       ],
       "tests_passing": true,
       "commit": "31836d4"
+    },
+    {
+      "date": "2025-12-07",
+      "completed": [
+        "Fixed all lint issues in AC calculation implementation",
+        "Created shieldCategory constant for repeated 'shield' string (goconst)",
+        "Removed 15 unnecessary string() conversions for ArmorID (unconvert)",
+        "Removed unused createTestArmor helper function (unused)",
+        "Removed unused equipment package import (goimports)",
+        "All tests still passing after lint fixes"
+      ],
+      "tests_passing": true,
+      "commit": "bb095c5"
+    },
+    {
+      "date": "2025-12-07",
+      "completed": [
+        "Addressed PR review feedback for AC calculation",
+        "Replaced hardcoded 'dnd5e' with refs.Module constant in character.go (2 occurrences)",
+        "Replaced hardcoded 'dnd5e' and 'feature' with refs.Module and refs.TypeFeatures in fighting_style.go",
+        "Extracted helper functions for better readability:",
+        "  - calculateArmorAC: Creates AC component for equipped armor",
+        "  - calculateDexModifier: Calculates DEX modifier respecting armor's MaxDexBonus cap",
+        "  - calculateShieldAC: Creates AC component for equipped shield",
+        "Removed defensive bus nil check in EffectiveAC - fail fast if bus is missing",
+        "Updated TestNoEventBus to TestNoModifiers - now uses event bus but no registered modifiers",
+        "All tests passing, gofmt and lint clean"
+      ],
+      "tests_passing": true,
+      "commit": "8ed4262"
     }
   ],
   "next_steps": [
-    "Commit and push implementation",
-    "Update tests.json to mark all AC tests as passing",
+    "Ready for PR merge after review approval",
     "Consider adding AC modifier features (Defense fighting style, Unarmored Defense, etc.)"
   ],
   "design_notes": {
@@ -51,7 +80,8 @@
       "HasArmor/HasShield flags replace IsWearingArmor/ArmorType for simpler API",
       "MaxDexBonus: nil = unlimited, 0 = no DEX, 2 = capped at +2",
       "DEX components only added if modifier != 0 (cleaner breakdown)",
-      "Shield detection: check Category == 'shield' to distinguish from weapons in off-hand"
+      "Shield detection: check Category == 'shield' to distinguish from weapons in off-hand",
+      "ArmorID is alias chain: ArmorID -> EquipmentID -> SelectionID -> string (no conversion needed)"
     ]
   }
 }
