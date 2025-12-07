@@ -42,3 +42,4 @@ Phases can be marked as:
 | Idea | Status | Summary |
 |------|--------|---------|
 | [action-economy-history](./action-economy-history/) | Issues Created | Track what actions were taken, not just how many remain |
+| [type-safe-refs](./type-safe-refs/) | Design Complete | Replace loose string damage sources with type-safe enums |
