@@ -32,7 +32,7 @@ func (n spellsNS) ShapeWater() *core.Ref      { return n.ref("shape-water") }
 func (n spellsNS) BoomingBlade() *core.Ref    { return n.ref("booming-blade") }
 func (n spellsNS) ControlFlames() *core.Ref   { return n.ref("control-flames") }
 func (n spellsNS) GreenFlameBlade() *core.Ref { return n.ref("green-flame-blade") }
-func (n spellsNS) Gust() *core.Ref             { return n.ref("gust") }
+func (n spellsNS) Gust() *core.Ref            { return n.ref("gust") }
 func (n spellsNS) SwordBurst() *core.Ref      { return n.ref("sword-burst") }
 
 // Cantrips - Utility
