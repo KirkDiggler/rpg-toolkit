@@ -1,6 +1,6 @@
 {
   "idea": "type-safe-refs",
-  "status": "design_complete",
+  "status": "in_progress",
   "summary": "Replace loose string damage sources with type-safe enums and structured references",
   "trigger": "Combat UI needs displayable damage breakdowns; loose strings prevent this",
   "phases": {
@@ -23,16 +23,19 @@
     "design": {
       "status": "completed",
       "date": "2025-12-07",
-      "files": ["design-protos.md", "design-toolkit.md", "design-web.md"],
-      "notes": "SourceRef with oneof, ConditionId enum, no homebrew escape hatch. Full designs for protos, toolkit, and React components."
+      "files": ["design-protos.md", "design-toolkit.md", "design-api.md", "design-web.md"],
+      "notes": "SourceRef with oneof, ConditionId/FeatureId enums, Spell support. Full designs for protos, toolkit, api, and React components."
     },
     "issues": {
       "status": "completed",
       "date": "2025-12-07",
       "links": [
-        "https://github.com/KirkDiggler/rpg-api-protos/issues/83"
+        "https://github.com/KirkDiggler/rpg-api-protos/issues/83",
+        "https://github.com/KirkDiggler/rpg-api-protos/pull/84",
+        "https://github.com/KirkDiggler/rpg-toolkit/issues/401",
+        "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/231"
       ],
-      "notes": "Design comment added to issue with full rationale"
+      "notes": "All three projects have issues/PRs linked"
     }
   },
   "decisions": [
@@ -48,13 +51,23 @@
     },
     {
       "question": "Separate FeatureId and ConditionId enums?",
-      "answer": "ConditionId only for now",
-      "reason": "Damage comes from active conditions (raging, brutal_critical), not passive features. Features activate conditions. Only add FeatureId when use case requires it."
+      "answer": "Yes - both needed",
+      "reason": "ConditionId for damage modifiers (rage bonus, sneak attack dice). FeatureId for features that directly deal damage when activated (breath weapon, radiance of dawn). Different use cases."
+    },
+    {
+      "question": "Include Spell in SourceRef?",
+      "answer": "Yes",
+      "reason": "Spells are a primary damage source. Spell enum already exists in protos. Fireball damage needs source attribution."
     },
     {
       "question": "What conditions to include in ConditionId?",
       "answer": "Only ones with concrete use cases from toolkit's DamageSourceType",
       "reason": "YAGNI - raging, brutal_critical, fighting_style_dueling, fighting_style_two_weapon_fighting, sneak_attack, divine_smite"
+    },
+    {
+      "question": "What features to include in FeatureId?",
+      "answer": "Features that directly deal damage when activated",
+      "reason": "breath_weapon, hellish_rebuke, radiance_of_dawn, wrath_of_the_storm, destructive_wrath, deflect_missiles, starry_form_archer"
     },
     {
       "question": "Where does SourceRef message live?",
@@ -68,32 +81,49 @@
       "project": "rpg-api-protos",
       "changes": [
         "ConditionId enum in enums.proto",
-        "SourceRef message in common.proto with oneof",
-        "DamageComponent.source changes from string to SourceRef"
+        "FeatureId enum in enums.proto",
+        "SourceRef message in common.proto with oneof (weapon, ability, condition, feature, spell)",
+        "DamageComponent.source_ref added, source string deprecated"
       ],
       "design": "design-protos.md",
-      "issue": "https://github.com/KirkDiggler/rpg-api-protos/issues/83"
+      "issue": "https://github.com/KirkDiggler/rpg-api-protos/issues/83",
+      "pr": "https://github.com/KirkDiggler/rpg-api-protos/pull/84",
+      "status": "in_review"
     },
     {
       "project": "rpg-toolkit",
       "changes": [
-        "Add SourceWeapon/SourceAbility fields to DamageComponent",
-        "Add ToProtoSourceRef() conversion method",
-        "Map DamageSourceType constants to ConditionId"
+        "Add SourceRef *core.Ref to DamageComponent",
+        "Populate SourceRef during damage calculations",
+        "rpg-api converts core.Ref to proto SourceRef"
       ],
       "design": "design-toolkit.md",
-      "issue": null
+      "issue": "https://github.com/KirkDiggler/rpg-toolkit/issues/401",
+      "status": "open"
+    },
+    {
+      "project": "rpg-api",
+      "changes": [
+        "toProtoDamageComponent conversion with SourceRef",
+        "toProtoWeapon, toProtoAbility, toProtoConditionId helpers",
+        "Pass weapon/ability context through orchestrators",
+        "Backwards compatibility: populate both source and source_ref during migration"
+      ],
+      "design": "design-api.md",
+      "issue": null,
+      "status": "pending"
     },
     {
       "project": "rpg-dnd5e-web",
       "changes": [
-        "Enum display maps (WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY)",
-        "WeaponDisplay, AbilityDisplay, ConditionDisplay components",
+        "Enum display maps (WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY, FEATURE_DISPLAY, SPELL_DISPLAY)",
+        "WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay components",
         "DamageSourceBadge component using oneof pattern",
         "DamageBreakdown component for combat UI"
       ],
       "design": "design-web.md",
-      "issue": null
+      "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/231",
+      "status": "open"
     }
   ]
 }
