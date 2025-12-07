@@ -22,7 +22,7 @@ func (n spellsNS) WordOfRadiance() *core.Ref  { return n.ref("word-of-radiance")
 func (n spellsNS) EldritchBlast() *core.Ref   { return n.ref("eldritch-blast") }
 func (n spellsNS) Frostbite() *core.Ref       { return n.ref("frostbite") }
 func (n spellsNS) PrimalSavagery() *core.Ref  { return n.ref("primal-savagery") }
-func (n spellsNS) Thornwhip() *core.Ref       { return n.ref("thornwhip") }
+func (n spellsNS) ThornWhip() *core.Ref       { return n.ref("thorn-whip") }
 func (n spellsNS) CreateBonfire() *core.Ref   { return n.ref("create-bonfire") }
 func (n spellsNS) Druidcraft() *core.Ref      { return n.ref("druidcraft") }
 func (n spellsNS) Infestation() *core.Ref     { return n.ref("infestation") }
@@ -32,7 +32,7 @@ func (n spellsNS) ShapeWater() *core.Ref      { return n.ref("shape-water") }
 func (n spellsNS) BoomingBlade() *core.Ref    { return n.ref("booming-blade") }
 func (n spellsNS) ControlFlames() *core.Ref   { return n.ref("control-flames") }
 func (n spellsNS) GreenFlameBlade() *core.Ref { return n.ref("green-flame-blade") }
-func (n spellsNS) GustWind() *core.Ref        { return n.ref("gust") }
+func (n spellsNS) Gust() *core.Ref             { return n.ref("gust") }
 func (n spellsNS) SwordBurst() *core.Ref      { return n.ref("sword-burst") }
 
 // Cantrips - Utility
@@ -101,10 +101,10 @@ func (n spellsNS) UnseenServant() *core.Ref       { return n.ref("unseen-servant
 func (n spellsNS) AbsorbElements() *core.Ref      { return n.ref("absorb-elements") }
 func (n spellsNS) BeastBond() *core.Ref           { return n.ref("beast-bond") }
 func (n spellsNS) Entangle() *core.Ref            { return n.ref("entangle") }
-func (n spellsNS) GoodBerry() *core.Ref           { return n.ref("goodberry") }
-func (n spellsNS) JumpSpell() *core.Ref           { return n.ref("jump") }
+func (n spellsNS) Goodberry() *core.Ref           { return n.ref("goodberry") }
+func (n spellsNS) Jump() *core.Ref                { return n.ref("jump") }
 func (n spellsNS) PurifyFood() *core.Ref          { return n.ref("purify-food-and-drink") }
-func (n spellsNS) CatapultSpell() *core.Ref       { return n.ref("catapult") }
+func (n spellsNS) Catapult() *core.Ref            { return n.ref("catapult") }
 func (n spellsNS) CauseFear() *core.Ref           { return n.ref("cause-fear") }
 func (n spellsNS) ColorSpray() *core.Ref          { return n.ref("color-spray") }
 func (n spellsNS) DistortValue() *core.Ref        { return n.ref("distort-value") }
