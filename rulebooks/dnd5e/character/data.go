@@ -128,6 +128,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		armorClass:          d.ArmorClass,
 		skills:              d.Skills,
 		savingThrows:        d.SavingThrows,
+		languages:           d.Languages,
 		armorProficiencies:  d.ArmorProficiencies,
 		weaponProficiencies: d.WeaponProficiencies,
 		toolProficiencies:   d.ToolProficiencies,
