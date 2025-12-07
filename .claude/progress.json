@@ -1,45 +1,87 @@
 {
-  "branch": "feat/complete-refs-404",
-  "issues": ["#404"],
-  "goal": "Complete refs package with all D&D 5e type namespaces for IDE-discoverable, type-safe references",
+  "branch": "feat/ac-calculation-397",
+  "issues": ["#397"],
+  "goal": "AC Calculation System - event-driven armor class with modifiers, returning ACBreakdown for UI transparency",
   "sessions": [
     {
-      "date": "2025-12-07",
+      "date": "2025-12-06",
       "completed": [
-        "Phase 1: Added Type constants to module.go (TypeAbilities, TypeSkills, TypeBackgrounds, TypeLanguages, TypeFightingStyles, TypeDamageTypes, TypeTools, TypeArmor)",
-        "Phase 1: Created refs/abilities.go with all 6 abilities (str, dex, con, int, wis, cha)",
-        "Phase 1: Created refs/weapons.go with all 37 weapons from weapons/common.go",
-        "Phase 1: Created refs/armor.go with all 13 armor types from armor/armor.go",
-        "Phase 1: Created refs/damage_types.go with all 13 damage types from damage/damage.go"
+        "Created ACSourceType constants (base, armor, shield, ability, feature, spell, item, condition)",
+        "Implemented ACComponent struct with Type, Source (*core.Ref), Value (int, can be negative)",
+        "Implemented ACBreakdown struct with Total, Components, and AddComponent method",
+        "Created ACChainEvent struct with CharacterID, Breakdown, HasArmor, HasShield",
+        "Defined ACChain topic using events.DefineChainedTopic[*ACChainEvent]",
+        "Updated Defense fighting style to use new ACBreakdown pattern",
+        "Added comprehensive tests for ACBreakdown and AC chain event system"
       ],
       "tests_passing": true,
-      "commit": "c9c909f"
+      "commit": "705c20f"
     },
     {
       "date": "2025-12-07",
       "completed": [
-        "Phase 2: Created refs/races.go with 9 base races + 9 subraces (18 total)",
-        "Phase 2: Created refs/skills.go with all 18 D&D 5e skills",
-        "Phase 2: Created refs/backgrounds.go with 13 base backgrounds + 4 variants (17 total)",
-        "Phase 2: Created refs/languages.go with 8 standard + 8 exotic languages (16 total)"
+        "Implemented Character.EffectiveAC(ctx context.Context) *combat.ACBreakdown method",
+        "AC calculation checks equipped armor via GetEquippedSlot(SlotArmor).AsArmor()",
+        "AC calculation checks equipped shield via GetEquippedSlot(SlotOffHand).AsArmor()",
+        "Unarmored calculation: base 10 + full DEX modifier",
+        "Armored calculation: armor.AC + DEX (respecting armor.MaxDexBonus cap)",
+        "Shield bonus: adds shield.AC (typically +2) when equipped in off-hand",
+        "ACChain event execution allows conditions/features to modify breakdown",
+        "Created comprehensive test suite in effective_ac_test.go covering all scenarios",
+        "All tests passing: unarmored, heavy armor, medium armor DEX cap, light armor, shield bonus, breakdown transparency"
       ],
       "tests_passing": true,
-      "commit": "ab9b847"
+      "commit": "31836d4"
     },
     {
       "date": "2025-12-07",
       "completed": [
-        "Phase 3: Created refs/fighting_styles.go with 6 fighting styles (Archery, Defense, Dueling, GreatWeaponFighting, Protection, TwoWeaponFighting)",
-        "Phase 3: Created refs/tools.go with 35 tools (17 artisan, 4 gaming, 10 musical, 4 other)",
-        "Phase 3: Created refs/spells.go with 133 spells (41 cantrips, 92 leveled spells levels 1-5)"
+        "Fixed all lint issues in AC calculation implementation",
+        "Created shieldCategory constant for repeated 'shield' string (goconst)",
+        "Removed 15 unnecessary string() conversions for ArmorID (unconvert)",
+        "Removed unused createTestArmor helper function (unused)",
+        "Removed unused equipment package import (goimports)",
+        "All tests still passing after lint fixes"
       ],
       "tests_passing": true,
-      "commit": "486a7ab"
+      "commit": "bb095c5"
+    },
+    {
+      "date": "2025-12-07",
+      "completed": [
+        "Addressed PR review feedback for AC calculation",
+        "Replaced hardcoded 'dnd5e' with refs.Module constant in character.go (2 occurrences)",
+        "Replaced hardcoded 'dnd5e' and 'feature' with refs.Module and refs.TypeFeatures in fighting_style.go",
+        "Extracted helper functions for better readability:",
+        "  - calculateArmorAC: Creates AC component for equipped armor",
+        "  - calculateDexModifier: Calculates DEX modifier respecting armor's MaxDexBonus cap",
+        "  - calculateShieldAC: Creates AC component for equipped shield",
+        "Removed defensive bus nil check in EffectiveAC - fail fast if bus is missing",
+        "Updated TestNoEventBus to TestNoModifiers - now uses event bus but no registered modifiers",
+        "All tests passing, gofmt and lint clean"
+      ],
+      "tests_passing": true,
+      "commit": "8ed4262"
     }
   ],
   "next_steps": [
-    "Phase 4: Expand refs/features.go with missing features",
-    "Phase 4: Expand refs/conditions.go with missing conditions",
-    "Add tests for all new namespaces"
-  ]
+    "Ready for PR merge after review approval",
+    "Consider adding AC modifier features (Defense fighting style, Unarmored Defense, etc.)"
+  ],
+  "design_notes": {
+    "location": "Types in combat/, method on Character",
+    "pattern": "Same as DamageBreakdown - types in combat, entity method returns breakdown",
+    "key_decisions": [
+      "Type = category (ACSourceArmor, ACSourceFeature, etc.)",
+      "Source = specific *core.Ref (dnd5e:armor:chain_mail)",
+      "Value can be negative for debuffs",
+      "Chain execution allows conditions to add components",
+      "ACChainEvent uses pointer type for mutability in chain",
+      "HasArmor/HasShield flags replace IsWearingArmor/ArmorType for simpler API",
+      "MaxDexBonus: nil = unlimited, 0 = no DEX, 2 = capped at +2",
+      "DEX components only added if modifier != 0 (cleaner breakdown)",
+      "Shield detection: check Category == 'shield' to distinguish from weapons in off-hand",
+      "ArmorID is alias chain: ArmorID -> EquipmentID -> SelectionID -> string (no conversion needed)"
+    ]
+  }
 }

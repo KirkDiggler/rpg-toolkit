@@ -1,95 +1,67 @@
 {
   "tests": [
     {
-      "id": "abilities-refs",
-      "feature": "refs/abilities",
-      "prompt": "Verify refs.Abilities.Strength() returns *core.Ref{Module: 'dnd5e', Type: 'abilities', ID: 'str'}. Test all 6 abilities.",
-      "passes": false,
-      "last_checked": null
+      "id": "ac-types-exist",
+      "feature": "ac-calculation",
+      "prompt": "ACSourceType, ACComponent, ACBreakdown types exist in combat/ac.go with proper Type/Source separation",
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
-      "id": "weapons-refs",
-      "feature": "refs/weapons",
-      "prompt": "Verify refs.Weapons.Longsword() returns *core.Ref{Module: 'dnd5e', Type: 'weapons', ID: 'longsword'}. Test all weapons from weapons/common.go.",
-      "passes": false,
-      "last_checked": null
+      "id": "ac-chain-exists",
+      "feature": "ac-calculation",
+      "prompt": "ACChainEvent and ACChain topic exist for condition modifiers to subscribe",
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
-      "id": "armor-refs",
-      "feature": "refs/armor",
-      "prompt": "Verify refs.Armor.Plate() returns *core.Ref{Module: 'dnd5e', Type: 'armor', ID: 'plate'}. Test all armor from armor/armor.go.",
-      "passes": false,
-      "last_checked": null
+      "id": "effective-ac-method",
+      "feature": "ac-calculation",
+      "prompt": "Character.EffectiveAC() method exists and returns *combat.ACBreakdown",
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
-      "id": "damage-types-refs",
-      "feature": "refs/damage_types",
-      "prompt": "Verify refs.DamageTypes.Slashing() returns *core.Ref{Module: 'dnd5e', Type: 'damage_types', ID: 'slashing'}. Test all damage types.",
-      "passes": false,
-      "last_checked": null
+      "id": "unarmored-base-ac",
+      "feature": "ac-calculation",
+      "prompt": "Unarmored character gets base 10 + DEX modifier",
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
-      "id": "races-refs",
-      "feature": "refs/races",
-      "prompt": "Verify refs.Races.Human() returns *core.Ref{Module: 'dnd5e', Type: 'races', ID: 'human'}. Test all races from races/races.go.",
-      "passes": false,
-      "last_checked": null
+      "id": "armor-ac",
+      "feature": "ac-calculation",
+      "prompt": "Character with chain mail gets AC 16 (heavy armor, no DEX)",
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
-      "id": "skills-refs",
-      "feature": "refs/skills",
-      "prompt": "Verify refs.Skills.Acrobatics() returns *core.Ref{Module: 'dnd5e', Type: 'skills', ID: 'acrobatics'}. Test all 17 skills.",
-      "passes": false,
-      "last_checked": null
+      "id": "armor-dex-cap",
+      "feature": "ac-calculation",
+      "prompt": "Character with medium armor gets AC capped by MaxDexBonus",
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
-      "id": "backgrounds-refs",
-      "feature": "refs/backgrounds",
-      "prompt": "Verify refs.Backgrounds.Acolyte() returns *core.Ref{Module: 'dnd5e', Type: 'backgrounds', ID: 'acolyte'}. Test all backgrounds.",
-      "passes": false,
-      "last_checked": null
+      "id": "shield-bonus",
+      "feature": "ac-calculation",
+      "prompt": "Shield in off-hand adds +2 to AC",
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
-      "id": "languages-refs",
-      "feature": "refs/languages",
-      "prompt": "Verify refs.Languages.Common() returns *core.Ref{Module: 'dnd5e', Type: 'languages', ID: 'common'}. Test all languages.",
-      "passes": false,
-      "last_checked": null
+      "id": "breakdown-transparency",
+      "feature": "ac-calculation",
+      "prompt": "ACBreakdown.Components shows each source (armor, shield, dex) with Type and Source ref",
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
-      "id": "fighting-styles-refs",
-      "feature": "refs/fighting_styles",
-      "prompt": "Verify refs.FightingStyles.Dueling() returns *core.Ref{Module: 'dnd5e', Type: 'fighting_styles', ID: 'dueling'}. Test all 6 styles.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "tools-refs",
-      "feature": "refs/tools",
-      "prompt": "Verify refs.Tools.ThievesTools() returns *core.Ref{Module: 'dnd5e', Type: 'tools', ID: 'thieves-tools'}. Test all tools.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "spells-refs",
-      "feature": "refs/spells",
-      "prompt": "Verify refs.Spells.Fireball() returns *core.Ref{Module: 'dnd5e', Type: 'spells', ID: 'fireball'}. Test representative spells.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "all-tests-pass",
-      "feature": "full-suite",
-      "prompt": "Run go test ./rulebooks/dnd5e/refs/... -v and verify all tests pass.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "lint-passes",
-      "feature": "ci",
-      "prompt": "Run make pre-commit and verify it passes (fmt, lint, tests).",
-      "passes": false,
-      "last_checked": null
+      "id": "negative-modifiers",
+      "feature": "ac-calculation",
+      "prompt": "ACComponent.Value can be negative for debuffs",
+      "passes": true,
+      "last_checked": "2025-12-06"
     }
   ]
 }
