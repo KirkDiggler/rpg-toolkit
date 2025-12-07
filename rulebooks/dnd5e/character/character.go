@@ -284,8 +284,7 @@ func (c *Character) ToData() *Data {
 	}
 
 	// Copy languages slice
-	data.Languages = make([]languages.Language, len(c.languages))
-	copy(data.Languages, c.languages)
+	data.Languages = c.languages
 
 	// Copy spell slots map directly since SpellSlotData is already the data type
 	data.SpellSlots = maps.Clone(c.spellSlots)
