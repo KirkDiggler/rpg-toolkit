@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -861,16 +862,26 @@ func (s *FightingStyleTestSuite) TestDefenseACBonus() {
 	}()
 
 	// Create AC chain event for a character wearing armor
-	acEvent := combat.ACChainEvent{
-		CharacterID:    "fighter-1",
-		BaseAC:         16, // Chain mail
-		IsWearingArmor: true,
-		ArmorType:      "heavy",
-		FinalAC:        16,
+	breakdown := &combat.ACBreakdown{
+		Total: 16,
+		Components: []combat.ACComponent{
+			{Type: combat.ACSourceBase, Source: nil, Value: 10},
+			{Type: combat.ACSourceArmor, Source: &core.Ref{
+				Module: "dnd5e",
+				Type:   "armor",
+				ID:     "chain_mail",
+			}, Value: 6},
+		},
+	}
+	acEvent := &combat.ACChainEvent{
+		CharacterID: "fighter-1",
+		Breakdown:   breakdown,
+		HasArmor:    true,
+		HasShield:   false,
 	}
 
 	// Publish through AC chain
-	acChain := events.NewStagedChain[combat.ACChainEvent](combat.ModifierStages)
+	acChain := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
 	acs := combat.ACChain.On(s.bus)
 	modifiedChain, err := acs.PublishWithChain(s.ctx, acEvent, acChain)
 	s.Require().NoError(err)
@@ -880,7 +891,7 @@ func (s *FightingStyleTestSuite) TestDefenseACBonus() {
 	s.Require().NoError(err)
 
 	// Verify Defense added +1 to AC
-	s.Equal(17, finalEvent.FinalAC, "Defense should add +1 to AC when wearing armor")
+	s.Equal(17, finalEvent.Breakdown.Total, "Defense should add +1 to AC when wearing armor")
 }
 
 // TestDefenseNoArmorNoBonus verifies Defense fighting style doesn't add bonus when not wearing armor
@@ -902,16 +913,22 @@ func (s *FightingStyleTestSuite) TestDefenseNoArmorNoBonus() {
 	}()
 
 	// Create AC chain event for a character NOT wearing armor
-	acEvent := combat.ACChainEvent{
-		CharacterID:    "fighter-1",
-		BaseAC:         13, // 10 + DEX modifier
-		IsWearingArmor: false,
-		ArmorType:      "",
-		FinalAC:        13,
+	breakdown := &combat.ACBreakdown{
+		Total: 13,
+		Components: []combat.ACComponent{
+			{Type: combat.ACSourceBase, Source: nil, Value: 10},
+			{Type: combat.ACSourceAbility, Source: nil, Value: 3},
+		},
+	}
+	acEvent := &combat.ACChainEvent{
+		CharacterID: "fighter-1",
+		Breakdown:   breakdown,
+		HasArmor:    false,
+		HasShield:   false,
 	}
 
 	// Publish through AC chain
-	acChain := events.NewStagedChain[combat.ACChainEvent](combat.ModifierStages)
+	acChain := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
 	acs := combat.ACChain.On(s.bus)
 	modifiedChain, err := acs.PublishWithChain(s.ctx, acEvent, acChain)
 	s.Require().NoError(err)
@@ -921,5 +938,5 @@ func (s *FightingStyleTestSuite) TestDefenseNoArmorNoBonus() {
 	s.Require().NoError(err)
 
 	// Verify Defense did NOT add any bonus
-	s.Equal(13, finalEvent.FinalAC, "Defense should NOT add bonus when not wearing armor")
+	s.Equal(13, finalEvent.Breakdown.Total, "Defense should NOT add bonus when not wearing armor")
 }

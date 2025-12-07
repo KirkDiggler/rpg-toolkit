@@ -444,22 +444,30 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 // onDefenseACChain adds +1 to AC when wearing armor (Defense fighting style)
 func (f *FightingStyleCondition) onDefenseACChain(
 	_ context.Context,
-	event combat.ACChainEvent,
-	c chain.Chain[combat.ACChainEvent],
-) (chain.Chain[combat.ACChainEvent], error) {
+	event *combat.ACChainEvent,
+	c chain.Chain[*combat.ACChainEvent],
+) (chain.Chain[*combat.ACChainEvent], error) {
 	// Only modify AC for this character
 	if event.CharacterID != f.CharacterID {
 		return c, nil
 	}
 
 	// Only apply bonus when wearing armor
-	if !event.IsWearingArmor {
+	if !event.HasArmor {
 		return c, nil
 	}
 
 	// Add +1 to AC at StageFeatures
-	modifyAC := func(_ context.Context, e combat.ACChainEvent) (combat.ACChainEvent, error) {
-		e.FinalAC++
+	modifyAC := func(_ context.Context, e *combat.ACChainEvent) (*combat.ACChainEvent, error) {
+		e.Breakdown.AddComponent(combat.ACComponent{
+			Type: combat.ACSourceFeature,
+			Source: &core.Ref{
+				Module: "dnd5e",
+				Type:   "feature",
+				ID:     "fighting_style_defense",
+			},
+			Value: 1,
+		})
 		return e, nil
 	}
 
