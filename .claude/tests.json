@@ -1,109 +1,32 @@
 {
   "tests": [
     {
-      "id": "defense-ac-bonus",
-      "feature": "fighting-style-defense",
-      "prompt": "Create a Fighter with Defense style wearing armor. Verify AC calculation includes +1 bonus from Defense.",
-      "passes": true,
-      "last_checked": "2025-12-05"
+      "id": "fighter-proficiencies",
+      "feature": "proficiencies",
+      "prompt": "Create a Fighter character. Verify character.Data includes armor proficiencies (light, medium, heavy, shields) and weapon proficiencies (simple, martial).",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "defense-no-armor-no-bonus",
-      "feature": "fighting-style-defense",
-      "prompt": "Create a Fighter with Defense style NOT wearing armor. Verify no AC bonus is applied.",
-      "passes": true,
-      "last_checked": "2025-12-05"
+      "id": "barbarian-proficiencies",
+      "feature": "proficiencies",
+      "prompt": "Create a Barbarian character. Verify character.Data includes armor proficiencies (light, medium, shields - NOT heavy) and weapon proficiencies (simple, martial).",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "two-weapon-fighting-offhand-damage",
-      "feature": "fighting-style-two-weapon",
-      "prompt": "Create a Fighter with Two-Weapon Fighting style. Make an off-hand attack. Verify ability modifier is added to damage.",
-      "passes": true,
-      "last_checked": "2025-12-05"
+      "id": "monk-proficiencies",
+      "feature": "proficiencies",
+      "prompt": "Create a Monk character. Verify character.Data includes NO armor proficiencies and weapon proficiencies (simple, shortsword).",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "two-weapon-fighting-detection",
-      "feature": "fighting-style-two-weapon",
-      "prompt": "Verify system can detect when an attack is an off-hand attack vs main-hand attack.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "second-wind-heals",
-      "feature": "second-wind",
-      "prompt": "Activate Second Wind on a Fighter. Verify healing event is published with 1d10 + fighter level.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "second-wind-resource-tracking",
-      "feature": "second-wind",
-      "prompt": "Use Second Wind. Verify resource is consumed. Try to use again. Verify it fails with resource exhausted.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "second-wind-short-rest-recovery",
-      "feature": "second-wind",
-      "prompt": "Use Second Wind, then take a short rest. Verify Second Wind use is restored.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "action-surge-grants-extra-action",
-      "feature": "action-surge",
-      "prompt": "Activate Action Surge. Verify ActionEconomy.ActionsRemaining is incremented.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "action-surge-resource-tracking",
-      "feature": "action-surge",
-      "prompt": "Use Action Surge. Verify resource is consumed. Try to use again. Verify it fails.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "action-surge-short-rest-recovery",
-      "feature": "action-surge",
-      "prompt": "Use Action Surge, then take a short rest. Verify Action Surge use is restored.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "improved-critical-19-20",
-      "feature": "improved-critical",
-      "prompt": "Champion Fighter (level 3) rolls a 19 on attack. Verify it's treated as a critical hit.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "improved-critical-champion-only",
-      "feature": "improved-critical",
-      "prompt": "Non-Champion Fighter rolls a 19. Verify it's NOT treated as critical (only 20 is critical).",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "fighting-style-serialization",
-      "feature": "serialization",
-      "prompt": "Save and load a Fighter with Defense fighting style. Verify style persists correctly.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "action-surge-serialization",
-      "feature": "serialization",
-      "prompt": "Use Action Surge, save character, reload. Verify Action Surge resource state persists.",
-      "passes": true,
-      "last_checked": "2025-12-05"
-    },
-    {
-      "id": "all-tests-pass",
-      "feature": "verification",
-      "prompt": "All unit tests pass (go test ./...)",
-      "passes": true,
-      "last_checked": "2025-12-05"
+      "id": "json-roundtrip",
+      "feature": "proficiencies",
+      "prompt": "Create a Fighter, serialize to JSON via ToData(), reload via LoadFromData(). Verify proficiencies are preserved.",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }
