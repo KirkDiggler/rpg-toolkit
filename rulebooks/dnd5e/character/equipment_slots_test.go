@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -326,6 +327,35 @@ func (s *EquipmentSlotsTestSuite) TestEquippedItem_ArmorProperties() {
 		s.Assert().Equal(armor.CategoryShield, armorItem.Category)
 		s.Assert().Equal(2, armorItem.AC) // +2 AC
 	})
+}
+
+// Test JSON serialization roundtrip
+
+func (s *EquipmentSlotsTestSuite) TestEquipmentSlots_JSONRoundtrip() {
+	slots := EquipmentSlots{
+		SlotMainHand: "longsword",
+		SlotOffHand:  "shield",
+		SlotArmor:    "chain-mail",
+	}
+
+	// Marshal to JSON
+	data, err := json.Marshal(slots)
+	s.Require().NoError(err)
+
+	// Verify JSON structure is a simple object with string keys
+	s.Assert().Contains(string(data), `"main_hand":"longsword"`)
+	s.Assert().Contains(string(data), `"off_hand":"shield"`)
+	s.Assert().Contains(string(data), `"armor":"chain-mail"`)
+
+	// Unmarshal back
+	var loaded EquipmentSlots
+	err = json.Unmarshal(data, &loaded)
+	s.Require().NoError(err)
+
+	// Verify values restored
+	s.Assert().Equal("longsword", loaded[SlotMainHand])
+	s.Assert().Equal("shield", loaded[SlotOffHand])
+	s.Assert().Equal("chain-mail", loaded[SlotArmor])
 }
 
 // Test typed slot constants
