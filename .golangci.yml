@@ -110,6 +110,11 @@ issues:
         - goconst
         - gosec
         - gocyclo
+
+    # Exclude refs directory from dupl - namespace pattern is intentionally similar for IDE discoverability
+    - path: refs/
+      linters:
+        - dupl
     
     # Exclude from example files
     - path: example_test\.go
