@@ -1,60 +1,67 @@
 {
   "tests": [
     {
-      "id": "equipment-slots-struct",
-      "feature": "equipment-slots",
-      "prompt": "EquipmentSlots struct exists with MainHand, OffHand, Armor, and accessory slots",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "ac-types-exist",
+      "feature": "ac-calculation",
+      "prompt": "ACSourceType, ACComponent, ACBreakdown types exist in combat/ac.go with proper Type/Source separation",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "equipped-item-wrapper",
-      "feature": "equipment-slots",
-      "prompt": "EquippedItem wrapper exists with Item field (composition) and AsArmor(), AsWeapon() methods",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "ac-chain-exists",
+      "feature": "ac-calculation",
+      "prompt": "ACChainEvent and ACChain topic exist for condition modifiers to subscribe",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "character-has-slots",
-      "feature": "equipment-slots",
-      "prompt": "Character struct has equipmentSlots field and Data has EquipmentSlots for persistence",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "effective-ac-method",
+      "feature": "ac-calculation",
+      "prompt": "Character.EffectiveAC() method exists and returns *combat.ACBreakdown",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "get-equipped-slot",
-      "feature": "equipment-slots",
-      "prompt": "GetEquippedSlot(slot) resolves slot ID → inventory item → EquippedItem",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "unarmored-base-ac",
+      "feature": "ac-calculation",
+      "prompt": "Unarmored character gets base 10 + DEX modifier",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "equip-unequip",
-      "feature": "equipment-slots",
-      "prompt": "EquipItem(slot, itemID) and UnequipItem(slot) methods work correctly",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "armor-ac",
+      "feature": "ac-calculation",
+      "prompt": "Character with chain mail gets AC 16 (heavy armor, no DEX)",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "as-armor-works",
-      "feature": "equipment-slots",
-      "prompt": "AsArmor() returns *armor.Armor when armor equipped, nil otherwise",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "armor-dex-cap",
+      "feature": "ac-calculation",
+      "prompt": "Character with medium armor gets AC capped by MaxDexBonus",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "as-weapon-works",
-      "feature": "equipment-slots",
-      "prompt": "AsWeapon() returns *weapons.Weapon when weapon equipped, nil otherwise",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "shield-bonus",
+      "feature": "ac-calculation",
+      "prompt": "Shield in off-hand adds +2 to AC",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "persistence-roundtrip",
-      "feature": "equipment-slots",
-      "prompt": "Equipment slots survive ToData() → LoadFromData() roundtrip",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "breakdown-transparency",
+      "feature": "ac-calculation",
+      "prompt": "ACBreakdown.Components shows each source (armor, shield, dex) with Type and Source ref",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "negative-modifiers",
+      "feature": "ac-calculation",
+      "prompt": "ACComponent.Value can be negative for debuffs",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }

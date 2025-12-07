@@ -1,46 +1,21 @@
 {
-  "branch": "feat/equipment-slots-348",
-  "issues": ["#348"],
-  "goal": "Add EquipmentSlots to Character - self-contained equipment tracking with typed accessors",
-  "sessions": [
-    {
-      "id": "2025-12-06-001",
-      "task": "Design brainstorming and artifact setup",
-      "status": "completed",
-      "artifacts": [
-        "docs/plans/2025-12-06-ac-system-design.md",
-        ".claude/progress.json",
-        ".claude/tests.json"
-      ],
-      "commit": "1a2fb1c",
-      "notes": "Designed EquippedItem wrapper with composition (Item field, not interface embedding). Character is self-contained - resolves slot → inventory → EquippedItem. AsArmor()/AsWeapon() typed accessors abstract runtime casts."
-    },
-    {
-      "id": "2025-12-06-002",
-      "task": "Implement EquipmentSlots and EquippedItem",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/character/equipment_slots.go",
-        "rulebooks/dnd5e/character/equipment_slots_test.go",
-        "rulebooks/dnd5e/character/character.go",
-        "rulebooks/dnd5e/character/data.go"
-      ],
-      "commit": "1936eff",
-      "notes": "Added EquipmentSlots map[InventorySlot]string, EquippedItem wrapper with AsArmor()/AsWeapon(), GetEquippedSlot(), EquipItem(), UnequipItem() methods. Changed from struct to map after feedback - combat slots only (MainHand, OffHand, Armor)."
-    },
-    {
-      "id": "2025-12-06-003",
-      "task": "Add JSON roundtrip test and verify persistence",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/character/equipment_slots_test.go"
-      ],
-      "commit": "6afb67c",
-      "notes": "Added TestEquipmentSlots_JSONRoundtrip to verify map with typed keys serializes correctly. 25 tests all passing. PR #402 ready for review."
-    }
-  ],
+  "branch": "feat/ac-calculation-397",
+  "issues": ["#397"],
+  "goal": "AC Calculation System - event-driven armor class with modifiers, returning ACBreakdown for UI transparency",
+  "sessions": [],
   "next_steps": [
-    "Await PR review and merge",
-    "After merge: Implement #397 AC Calculation System"
-  ]
+    "Create AC types in combat/ac.go (ACSourceType, ACComponent, ACBreakdown, ACChainEvent)",
+    "Implement Character.EffectiveAC() method",
+    "Wire up chain execution for condition modifiers"
+  ],
+  "design_notes": {
+    "location": "Types in combat/, method on Character",
+    "pattern": "Same as DamageBreakdown - types in combat, entity method returns breakdown",
+    "key_decisions": [
+      "Type = category (ACSourceArmor, ACSourceFeature, etc.)",
+      "Source = specific *core.Ref (dnd5e:armor:chain_mail)",
+      "Value can be negative for debuffs",
+      "Chain execution allows conditions to add components"
+    ]
+  }
 }
