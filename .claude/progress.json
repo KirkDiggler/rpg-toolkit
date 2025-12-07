@@ -2,11 +2,42 @@
   "branch": "feat/ac-calculation-397",
   "issues": ["#397"],
   "goal": "AC Calculation System - event-driven armor class with modifiers, returning ACBreakdown for UI transparency",
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-12-06",
+      "completed": [
+        "Created ACSourceType constants (base, armor, shield, ability, feature, spell, item, condition)",
+        "Implemented ACComponent struct with Type, Source (*core.Ref), Value (int, can be negative)",
+        "Implemented ACBreakdown struct with Total, Components, and AddComponent method",
+        "Created ACChainEvent struct with CharacterID, Breakdown, HasArmor, HasShield",
+        "Defined ACChain topic using events.DefineChainedTopic[*ACChainEvent]",
+        "Updated Defense fighting style to use new ACBreakdown pattern",
+        "Added comprehensive tests for ACBreakdown and AC chain event system"
+      ],
+      "tests_passing": true,
+      "commit": "705c20f"
+    },
+    {
+      "date": "2025-12-07",
+      "completed": [
+        "Implemented Character.EffectiveAC(ctx context.Context) *combat.ACBreakdown method",
+        "AC calculation checks equipped armor via GetEquippedSlot(SlotArmor).AsArmor()",
+        "AC calculation checks equipped shield via GetEquippedSlot(SlotOffHand).AsArmor()",
+        "Unarmored calculation: base 10 + full DEX modifier",
+        "Armored calculation: armor.AC + DEX (respecting armor.MaxDexBonus cap)",
+        "Shield bonus: adds shield.AC (typically +2) when equipped in off-hand",
+        "ACChain event execution allows conditions/features to modify breakdown",
+        "Created comprehensive test suite in effective_ac_test.go covering all scenarios",
+        "All tests passing: unarmored, heavy armor, medium armor DEX cap, light armor, shield bonus, breakdown transparency"
+      ],
+      "tests_passing": true,
+      "commit": "pending"
+    }
+  ],
   "next_steps": [
-    "Create AC types in combat/ac.go (ACSourceType, ACComponent, ACBreakdown, ACChainEvent)",
-    "Implement Character.EffectiveAC() method",
-    "Wire up chain execution for condition modifiers"
+    "Commit and push implementation",
+    "Update tests.json to mark all AC tests as passing",
+    "Consider adding AC modifier features (Defense fighting style, Unarmored Defense, etc.)"
   ],
   "design_notes": {
     "location": "Types in combat/, method on Character",
@@ -15,7 +46,12 @@
       "Type = category (ACSourceArmor, ACSourceFeature, etc.)",
       "Source = specific *core.Ref (dnd5e:armor:chain_mail)",
       "Value can be negative for debuffs",
-      "Chain execution allows conditions to add components"
+      "Chain execution allows conditions to add components",
+      "ACChainEvent uses pointer type for mutability in chain",
+      "HasArmor/HasShield flags replace IsWearingArmor/ArmorType for simpler API",
+      "MaxDexBonus: nil = unlimited, 0 = no DEX, 2 = capped at +2",
+      "DEX components only added if modifier != 0 (cleaner breakdown)",
+      "Shield detection: check Category == 'shield' to distinguish from weapons in off-hand"
     ]
   }
 }

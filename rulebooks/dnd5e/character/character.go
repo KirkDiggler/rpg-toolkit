@@ -520,3 +520,104 @@ func (c *Character) Cleanup(ctx context.Context) error {
 
 	return nil
 }
+
+// EffectiveAC calculates the character's armor class with detailed breakdown
+func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
+	breakdown := &combat.ACBreakdown{
+		Total:      0,
+		Components: []combat.ACComponent{},
+	}
+
+	// Check for equipped armor
+	equippedArmor := c.GetEquippedSlot(SlotArmor)
+	armorItem := equippedArmor.AsArmor()
+
+	// Check for equipped shield (shields are armor type in off-hand)
+	equippedShield := c.GetEquippedSlot(SlotOffHand)
+	shieldItem := equippedShield.AsArmor()
+
+	// Calculate base AC
+	if armorItem != nil {
+		// Wearing armor: use armor's AC
+		breakdown.AddComponent(combat.ACComponent{
+			Type: combat.ACSourceArmor,
+			Source: &core.Ref{
+				Module: "dnd5e",
+				Type:   "armor",
+				ID:     string(armorItem.ID),
+			},
+			Value: armorItem.AC,
+		})
+
+		// Add DEX modifier, respecting armor's MaxDexBonus cap
+		dexMod := c.abilityScores.Modifier(abilities.DEX)
+		if armorItem.MaxDexBonus != nil {
+			// Cap DEX modifier
+			if dexMod > *armorItem.MaxDexBonus {
+				dexMod = *armorItem.MaxDexBonus
+			}
+		}
+		// Only add DEX component if it's non-zero
+		if dexMod != 0 {
+			breakdown.AddComponent(combat.ACComponent{
+				Type:   combat.ACSourceAbility,
+				Source: nil, // Ability modifiers don't have specific refs
+				Value:  dexMod,
+			})
+		}
+	} else {
+		// Unarmored: base 10 + full DEX
+		breakdown.AddComponent(combat.ACComponent{
+			Type:   combat.ACSourceBase,
+			Source: nil,
+			Value:  10,
+		})
+
+		dexMod := c.abilityScores.Modifier(abilities.DEX)
+		if dexMod != 0 {
+			breakdown.AddComponent(combat.ACComponent{
+				Type:   combat.ACSourceAbility,
+				Source: nil,
+				Value:  dexMod,
+			})
+		}
+	}
+
+	// Add shield bonus if equipped
+	if shieldItem != nil && shieldItem.Category == "shield" {
+		breakdown.AddComponent(combat.ACComponent{
+			Type: combat.ACSourceShield,
+			Source: &core.Ref{
+				Module: "dnd5e",
+				Type:   "armor",
+				ID:     string(shieldItem.ID),
+			},
+			Value: shieldItem.AC, // Shield AC is a bonus (typically +2)
+		})
+	}
+
+	// Fire ACChain event for conditions and features to modify
+	if c.bus != nil {
+		acEvent := &combat.ACChainEvent{
+			CharacterID: c.id,
+			Breakdown:   breakdown,
+			HasArmor:    armorItem != nil,
+			HasShield:   shieldItem != nil && shieldItem.Category == "shield",
+		}
+
+		// Create and publish through AC chain
+		acChain := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
+		acTopic := combat.ACChain.On(c.bus)
+
+		modifiedChain, err := acTopic.PublishWithChain(ctx, acEvent, acChain)
+		if err == nil {
+			// Execute chain to get final AC with all modifiers
+			finalEvent, err := modifiedChain.Execute(ctx, acEvent)
+			if err == nil {
+				breakdown = finalEvent.Breakdown
+			}
+		}
+	}
+
+	return breakdown
+}

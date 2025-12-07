@@ -18,43 +18,43 @@
       "id": "effective-ac-method",
       "feature": "ac-calculation",
       "prompt": "Character.EffectiveAC() method exists and returns *combat.ACBreakdown",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
       "id": "unarmored-base-ac",
       "feature": "ac-calculation",
       "prompt": "Unarmored character gets base 10 + DEX modifier",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
       "id": "armor-ac",
       "feature": "ac-calculation",
       "prompt": "Character with chain mail gets AC 16 (heavy armor, no DEX)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
       "id": "armor-dex-cap",
       "feature": "ac-calculation",
       "prompt": "Character with medium armor gets AC capped by MaxDexBonus",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
       "id": "shield-bonus",
       "feature": "ac-calculation",
       "prompt": "Shield in off-hand adds +2 to AC",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
       "id": "breakdown-transparency",
       "feature": "ac-calculation",
       "prompt": "ACBreakdown.Components shows each source (armor, shield, dex) with Type and Source ref",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-07"
     },
     {
       "id": "negative-modifiers",
