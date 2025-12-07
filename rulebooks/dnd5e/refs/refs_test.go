@@ -1,3 +1,4 @@
+//nolint:dupl // Test functions follow same table-driven pattern
 package refs_test
 
 import (

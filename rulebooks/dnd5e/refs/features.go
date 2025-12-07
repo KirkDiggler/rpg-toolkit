@@ -1,3 +1,4 @@
+//nolint:dupl // Namespace pattern intentional for IDE discoverability
 package refs
 
 import "github.com/KirkDiggler/rpg-toolkit/core"
