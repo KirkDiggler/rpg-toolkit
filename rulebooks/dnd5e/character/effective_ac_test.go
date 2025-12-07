@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
 )
@@ -87,7 +86,7 @@ func (s *EffectiveACTestSuite) TestHeavyArmor() {
 	}
 
 	// Equip chain mail
-	char.equipmentSlots.Set(SlotArmor, string(armor.ChainMail))
+	char.equipmentSlots.Set(SlotArmor, armor.ChainMail)
 
 	// Calculate AC
 	breakdown := char.EffectiveAC(s.ctx)
@@ -102,7 +101,7 @@ func (s *EffectiveACTestSuite) TestHeavyArmor() {
 	s.Assert().NotNil(breakdown.Components[0].Source)
 	s.Assert().Equal("dnd5e", breakdown.Components[0].Source.Module)
 	s.Assert().Equal("armor", breakdown.Components[0].Source.Type)
-	s.Assert().Equal(string(armor.ChainMail), breakdown.Components[0].Source.ID)
+	s.Assert().Equal(armor.ChainMail, breakdown.Components[0].Source.ID)
 }
 
 // TestMediumArmorDexCap tests medium armor with DEX cap
@@ -159,7 +158,7 @@ func (s *EffectiveACTestSuite) TestMediumArmorDexCap() {
 			}
 
 			// Equip scale mail
-			char.equipmentSlots.Set(SlotArmor, string(armor.ScaleMail))
+			char.equipmentSlots.Set(SlotArmor, armor.ScaleMail)
 
 			// Calculate AC
 			breakdown := char.EffectiveAC(s.ctx)
@@ -205,7 +204,7 @@ func (s *EffectiveACTestSuite) TestLightArmor() {
 	}
 
 	// Equip leather armor
-	char.equipmentSlots.Set(SlotArmor, string(armor.Leather))
+	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
 	// Calculate AC
 	breakdown := char.EffectiveAC(s.ctx)
@@ -253,8 +252,8 @@ func (s *EffectiveACTestSuite) TestShieldBonus() {
 	}
 
 	// Equip leather armor and shield
-	char.equipmentSlots.Set(SlotArmor, string(armor.Leather))
-	char.equipmentSlots.Set(SlotOffHand, string(armor.Shield))
+	char.equipmentSlots.Set(SlotArmor, armor.Leather)
+	char.equipmentSlots.Set(SlotOffHand, armor.Shield)
 
 	// Calculate AC
 	breakdown := char.EffectiveAC(s.ctx)
@@ -273,7 +272,7 @@ func (s *EffectiveACTestSuite) TestShieldBonus() {
 	s.Assert().NotNil(breakdown.Components[2].Source)
 	s.Assert().Equal("dnd5e", breakdown.Components[2].Source.Module)
 	s.Assert().Equal("armor", breakdown.Components[2].Source.Type)
-	s.Assert().Equal(string(armor.Shield), breakdown.Components[2].Source.ID)
+	s.Assert().Equal(armor.Shield, breakdown.Components[2].Source.ID)
 }
 
 // TestBreakdownTransparency tests that breakdown shows all sources
@@ -307,8 +306,8 @@ func (s *EffectiveACTestSuite) TestBreakdownTransparency() {
 	}
 
 	// Equip chain mail and shield
-	char.equipmentSlots.Set(SlotArmor, string(armor.ChainMail))
-	char.equipmentSlots.Set(SlotOffHand, string(armor.Shield))
+	char.equipmentSlots.Set(SlotArmor, armor.ChainMail)
+	char.equipmentSlots.Set(SlotOffHand, armor.Shield)
 
 	// Calculate AC
 	breakdown := char.EffectiveAC(s.ctx)
@@ -326,7 +325,7 @@ func (s *EffectiveACTestSuite) TestBreakdownTransparency() {
 	s.Require().NotNil(armorComp.Source)
 	s.Assert().Equal("dnd5e", armorComp.Source.Module)
 	s.Assert().Equal("armor", armorComp.Source.Type)
-	s.Assert().Equal(string(armor.ChainMail), armorComp.Source.ID)
+	s.Assert().Equal(armor.ChainMail, armorComp.Source.ID)
 
 	// Shield component
 	shieldComp := breakdown.Components[1]
@@ -335,7 +334,7 @@ func (s *EffectiveACTestSuite) TestBreakdownTransparency() {
 	s.Require().NotNil(shieldComp.Source)
 	s.Assert().Equal("dnd5e", shieldComp.Source.Module)
 	s.Assert().Equal("armor", shieldComp.Source.Type)
-	s.Assert().Equal(string(armor.Shield), shieldComp.Source.ID)
+	s.Assert().Equal(armor.Shield, shieldComp.Source.ID)
 }
 
 // TestNoEquipment tests character with no equipment
@@ -394,7 +393,7 @@ func (s *EffectiveACTestSuite) TestNegativeDexModifier() {
 	}
 
 	// Equip leather armor
-	char.equipmentSlots.Set(SlotArmor, string(armor.Leather))
+	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
 	// Calculate AC
 	breakdown := char.EffectiveAC(s.ctx)
@@ -436,7 +435,7 @@ func (s *EffectiveACTestSuite) TestNoEventBus() {
 	}
 
 	// Equip leather armor
-	char.equipmentSlots.Set(SlotArmor, string(armor.Leather))
+	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
 	// Calculate AC - should still work without event bus
 	breakdown := char.EffectiveAC(s.ctx)
@@ -446,12 +445,6 @@ func (s *EffectiveACTestSuite) TestNoEventBus() {
 
 	// Verify components
 	s.Require().Len(breakdown.Components, 2, "Should have armor and DEX components")
-}
-
-// Helper function to create test equipment
-func createTestArmor(armorID armor.ArmorID) equipment.Equipment {
-	a := armor.All[armorID]
-	return &a
 }
 
 func TestEffectiveACTestSuite(t *testing.T) {

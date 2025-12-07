@@ -23,6 +23,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
+const (
+	// shieldCategory is the category value for shield items
+	shieldCategory = "shield"
+)
+
 // Character represents a playable D&D 5e character
 // This is the domain model used during gameplay
 type Character struct {
@@ -544,7 +549,7 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 			Source: &core.Ref{
 				Module: "dnd5e",
 				Type:   "armor",
-				ID:     string(armorItem.ID),
+				ID:     armorItem.ID,
 			},
 			Value: armorItem.AC,
 		})
@@ -584,13 +589,13 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 	}
 
 	// Add shield bonus if equipped
-	if shieldItem != nil && shieldItem.Category == "shield" {
+	if shieldItem != nil && shieldItem.Category == shieldCategory {
 		breakdown.AddComponent(combat.ACComponent{
 			Type: combat.ACSourceShield,
 			Source: &core.Ref{
 				Module: "dnd5e",
 				Type:   "armor",
-				ID:     string(shieldItem.ID),
+				ID:     shieldItem.ID,
 			},
 			Value: shieldItem.AC, // Shield AC is a bonus (typically +2)
 		})
@@ -602,7 +607,7 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 			CharacterID: c.id,
 			Breakdown:   breakdown,
 			HasArmor:    armorItem != nil,
-			HasShield:   shieldItem != nil && shieldItem.Category == "shield",
+			HasShield:   shieldItem != nil && shieldItem.Category == shieldCategory,
 		}
 
 		// Create and publish through AC chain
