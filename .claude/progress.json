@@ -1,33 +1,28 @@
 {
-  "branch": "feat/issue-396-populate-languages",
-  "issues": ["#396"],
-  "goal": "Populate Languages on character.Data during Finalize - ensure languages serialize and deserialize correctly",
+  "branch": "feat/equipment-slots-348",
+  "issues": ["#348"],
+  "goal": "Add EquipmentSlots to Character - self-contained equipment tracking with typed accessors",
   "sessions": [
     {
       "id": "2025-12-06-001",
-      "task": "Initial exploration and artifact setup",
+      "task": "Design brainstorming and artifact setup",
       "status": "completed",
       "artifacts": [
+        "docs/plans/2025-12-06-ac-system-design.md",
         ".claude/progress.json",
         ".claude/tests.json"
       ],
-      "commit": "d8e2e08",
-      "notes": "Explored codebase. Found: compileLanguages() works correctly, ToData() has TODO and doesn't serialize languages, LoadFromData() doesn't restore languages field"
-    },
-    {
-      "id": "2025-12-06-002",
-      "task": "Fix ToData() to include languages and LoadFromData() to restore them",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/character/character.go",
-        "rulebooks/dnd5e/character/data.go",
-        "rulebooks/dnd5e/character/languages_test.go"
-      ],
       "commit": null,
-      "notes": "Updated ToData() to copy languages slice instead of TODO comment. Updated LoadFromData() to restore languages field. Added comprehensive test suite covering Human, Elf, Dwarf, Half-Elf language scenarios plus round-trip serialization."
+      "notes": "Designed EquippedItem wrapper with composition (Item field, not interface embedding). Character is self-contained - resolves slot → inventory → EquippedItem. AsArmor()/AsWeapon() typed accessors abstract runtime casts."
     }
   ],
   "next_steps": [
-    "Create PR for review"
+    "Add EquipmentSlots struct to character package",
+    "Add EquippedItem wrapper with AsArmor/AsWeapon",
+    "Add equipmentSlots field to Character",
+    "Add EquipmentSlots to Data for persistence",
+    "Implement GetEquippedSlot(slot) method",
+    "Implement EquipItem/UnequipItem methods",
+    "Write tests"
   ]
 }
