@@ -302,7 +302,8 @@ gh pr create                  # Create PR
 3. Never create files unless necessary - prefer editing existing ones
 4. Run the full test suite before committing (`go test ./...`)
 5. Run linter before committing (`golangci-lint run ./...`)
-6. Use `gh pr create` for PRs with proper formatting
+6. **Run `go fmt ./...` and `go mod tidy` before committing** - CI checks for diffs
+7. Use `gh pr create` for PRs with proper formatting
 
 ### Critical Module Isolation Rules
 **LEARNED FROM PR #76 TROUBLESHOOTING**

@@ -1,46 +1,45 @@
 {
-  "branch": "feat/equipment-slots-348",
-  "issues": ["#348"],
-  "goal": "Add EquipmentSlots to Character - self-contained equipment tracking with typed accessors",
+  "branch": "feat/complete-refs-404",
+  "issues": ["#404"],
+  "goal": "Complete refs package with all D&D 5e type namespaces for IDE-discoverable, type-safe references",
   "sessions": [
     {
-      "id": "2025-12-06-001",
-      "task": "Design brainstorming and artifact setup",
-      "status": "completed",
-      "artifacts": [
-        "docs/plans/2025-12-06-ac-system-design.md",
-        ".claude/progress.json",
-        ".claude/tests.json"
+      "date": "2025-12-07",
+      "completed": [
+        "Phase 1: Added Type constants to module.go (TypeAbilities, TypeSkills, TypeBackgrounds, TypeLanguages, TypeFightingStyles, TypeDamageTypes, TypeTools, TypeArmor)",
+        "Phase 1: Created refs/abilities.go with all 6 abilities (str, dex, con, int, wis, cha)",
+        "Phase 1: Created refs/weapons.go with all 37 weapons from weapons/common.go",
+        "Phase 1: Created refs/armor.go with all 13 armor types from armor/armor.go",
+        "Phase 1: Created refs/damage_types.go with all 13 damage types from damage/damage.go"
       ],
-      "commit": "1a2fb1c",
-      "notes": "Designed EquippedItem wrapper with composition (Item field, not interface embedding). Character is self-contained - resolves slot → inventory → EquippedItem. AsArmor()/AsWeapon() typed accessors abstract runtime casts."
+      "tests_passing": true,
+      "commit": "c9c909f"
     },
     {
-      "id": "2025-12-06-002",
-      "task": "Implement EquipmentSlots and EquippedItem",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/character/equipment_slots.go",
-        "rulebooks/dnd5e/character/equipment_slots_test.go",
-        "rulebooks/dnd5e/character/character.go",
-        "rulebooks/dnd5e/character/data.go"
+      "date": "2025-12-07",
+      "completed": [
+        "Phase 2: Created refs/races.go with 9 base races + 9 subraces (18 total)",
+        "Phase 2: Created refs/skills.go with all 18 D&D 5e skills",
+        "Phase 2: Created refs/backgrounds.go with 13 base backgrounds + 4 variants (17 total)",
+        "Phase 2: Created refs/languages.go with 8 standard + 8 exotic languages (16 total)"
       ],
-      "commit": "1936eff",
-      "notes": "Added EquipmentSlots map[InventorySlot]string, EquippedItem wrapper with AsArmor()/AsWeapon(), GetEquippedSlot(), EquipItem(), UnequipItem() methods. Changed from struct to map after feedback - combat slots only (MainHand, OffHand, Armor)."
+      "tests_passing": true,
+      "commit": "ab9b847"
     },
     {
-      "id": "2025-12-06-003",
-      "task": "Add JSON roundtrip test and verify persistence",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/character/equipment_slots_test.go"
+      "date": "2025-12-07",
+      "completed": [
+        "Phase 3: Created refs/fighting_styles.go with 6 fighting styles (Archery, Defense, Dueling, GreatWeaponFighting, Protection, TwoWeaponFighting)",
+        "Phase 3: Created refs/tools.go with 35 tools (17 artisan, 4 gaming, 10 musical, 4 other)",
+        "Phase 3: Created refs/spells.go with 133 spells (41 cantrips, 92 leveled spells levels 1-5)"
       ],
-      "commit": "6afb67c",
-      "notes": "Added TestEquipmentSlots_JSONRoundtrip to verify map with typed keys serializes correctly. 25 tests all passing. PR #402 ready for review."
+      "tests_passing": true,
+      "commit": "486a7ab"
     }
   ],
   "next_steps": [
-    "Await PR review and merge",
-    "After merge: Implement #397 AC Calculation System"
+    "Phase 4: Expand refs/features.go with missing features",
+    "Phase 4: Expand refs/conditions.go with missing conditions",
+    "Add tests for all new namespaces"
   ]
 }

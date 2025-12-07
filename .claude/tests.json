@@ -1,60 +1,95 @@
 {
   "tests": [
     {
-      "id": "equipment-slots-struct",
-      "feature": "equipment-slots",
-      "prompt": "EquipmentSlots struct exists with MainHand, OffHand, Armor, and accessory slots",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "abilities-refs",
+      "feature": "refs/abilities",
+      "prompt": "Verify refs.Abilities.Strength() returns *core.Ref{Module: 'dnd5e', Type: 'abilities', ID: 'str'}. Test all 6 abilities.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "equipped-item-wrapper",
-      "feature": "equipment-slots",
-      "prompt": "EquippedItem wrapper exists with Item field (composition) and AsArmor(), AsWeapon() methods",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "weapons-refs",
+      "feature": "refs/weapons",
+      "prompt": "Verify refs.Weapons.Longsword() returns *core.Ref{Module: 'dnd5e', Type: 'weapons', ID: 'longsword'}. Test all weapons from weapons/common.go.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "character-has-slots",
-      "feature": "equipment-slots",
-      "prompt": "Character struct has equipmentSlots field and Data has EquipmentSlots for persistence",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "armor-refs",
+      "feature": "refs/armor",
+      "prompt": "Verify refs.Armor.Plate() returns *core.Ref{Module: 'dnd5e', Type: 'armor', ID: 'plate'}. Test all armor from armor/armor.go.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "get-equipped-slot",
-      "feature": "equipment-slots",
-      "prompt": "GetEquippedSlot(slot) resolves slot ID → inventory item → EquippedItem",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "damage-types-refs",
+      "feature": "refs/damage_types",
+      "prompt": "Verify refs.DamageTypes.Slashing() returns *core.Ref{Module: 'dnd5e', Type: 'damage_types', ID: 'slashing'}. Test all damage types.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "equip-unequip",
-      "feature": "equipment-slots",
-      "prompt": "EquipItem(slot, itemID) and UnequipItem(slot) methods work correctly",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "races-refs",
+      "feature": "refs/races",
+      "prompt": "Verify refs.Races.Human() returns *core.Ref{Module: 'dnd5e', Type: 'races', ID: 'human'}. Test all races from races/races.go.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "as-armor-works",
-      "feature": "equipment-slots",
-      "prompt": "AsArmor() returns *armor.Armor when armor equipped, nil otherwise",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "skills-refs",
+      "feature": "refs/skills",
+      "prompt": "Verify refs.Skills.Acrobatics() returns *core.Ref{Module: 'dnd5e', Type: 'skills', ID: 'acrobatics'}. Test all 17 skills.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "as-weapon-works",
-      "feature": "equipment-slots",
-      "prompt": "AsWeapon() returns *weapons.Weapon when weapon equipped, nil otherwise",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "backgrounds-refs",
+      "feature": "refs/backgrounds",
+      "prompt": "Verify refs.Backgrounds.Acolyte() returns *core.Ref{Module: 'dnd5e', Type: 'backgrounds', ID: 'acolyte'}. Test all backgrounds.",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "persistence-roundtrip",
-      "feature": "equipment-slots",
-      "prompt": "Equipment slots survive ToData() → LoadFromData() roundtrip",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "languages-refs",
+      "feature": "refs/languages",
+      "prompt": "Verify refs.Languages.Common() returns *core.Ref{Module: 'dnd5e', Type: 'languages', ID: 'common'}. Test all languages.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "fighting-styles-refs",
+      "feature": "refs/fighting_styles",
+      "prompt": "Verify refs.FightingStyles.Dueling() returns *core.Ref{Module: 'dnd5e', Type: 'fighting_styles', ID: 'dueling'}. Test all 6 styles.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "tools-refs",
+      "feature": "refs/tools",
+      "prompt": "Verify refs.Tools.ThievesTools() returns *core.Ref{Module: 'dnd5e', Type: 'tools', ID: 'thieves-tools'}. Test all tools.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "spells-refs",
+      "feature": "refs/spells",
+      "prompt": "Verify refs.Spells.Fireball() returns *core.Ref{Module: 'dnd5e', Type: 'spells', ID: 'fireball'}. Test representative spells.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "all-tests-pass",
+      "feature": "full-suite",
+      "prompt": "Run go test ./rulebooks/dnd5e/refs/... -v and verify all tests pass.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "lint-passes",
+      "feature": "ci",
+      "prompt": "Run make pre-commit and verify it passes (fmt, lint, tests).",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }
