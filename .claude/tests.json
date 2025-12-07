@@ -4,36 +4,36 @@
       "id": "race-default-languages",
       "feature": "languages",
       "prompt": "Create a Human character. Verify they have Common language in their data after finalization.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "race-language-choice",
       "feature": "languages",
       "prompt": "Create a Human character with Elvish as their language choice. Verify they have both Common and Elvish.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "language-serialization",
       "feature": "languages",
       "prompt": "Finalize a character, call ToData(), verify Languages field is populated.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "language-deserialization",
       "feature": "languages",
       "prompt": "Call LoadFromData() with language data. Verify the character has the languages restored.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "elf-languages",
       "feature": "languages",
       "prompt": "Create an Elf character. Verify they have Common and Elvish languages.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     }
   ]
 }

@@ -11,22 +11,23 @@
         ".claude/progress.json",
         ".claude/tests.json"
       ],
-      "commit": null,
+      "commit": "d8e2e08",
       "notes": "Explored codebase. Found: compileLanguages() works correctly, ToData() has TODO and doesn't serialize languages, LoadFromData() doesn't restore languages field"
     },
     {
       "id": "2025-12-06-002",
       "task": "Fix ToData() to include languages and LoadFromData() to restore them",
-      "status": "in_progress",
-      "artifacts": [],
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/character/character.go",
+        "rulebooks/dnd5e/character/data.go",
+        "rulebooks/dnd5e/character/languages_test.go"
+      ],
       "commit": null,
-      "notes": null
+      "notes": "Updated ToData() to copy languages slice instead of TODO comment. Updated LoadFromData() to restore languages field. Added comprehensive test suite covering Human, Elf, Dwarf, Half-Elf language scenarios plus round-trip serialization."
     }
   ],
   "next_steps": [
-    "Update ToData() to serialize languages",
-    "Update LoadFromData() to restore languages",
-    "Write tests verifying language serialization round-trip",
-    "Run pre-commit and create PR"
+    "Create PR for review"
   ]
 }

@@ -283,8 +283,9 @@ func (c *Character) ToData() *Data {
 		data.Inventory = append(data.Inventory, item.ToData())
 	}
 
-	// Convert languages to strings
-	// TODO: Convert typed language constants to strings
+	// Copy languages slice
+	data.Languages = make([]languages.Language, len(c.languages))
+	copy(data.Languages, c.languages)
 
 	// Copy spell slots map directly since SpellSlotData is already the data type
 	data.SpellSlots = maps.Clone(c.spellSlots)
