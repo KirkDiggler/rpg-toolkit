@@ -63,6 +63,7 @@ type Data struct {
 
 	// Equipment and resources
 	Inventory      []InventoryItemData                                   `json:"inventory"`
+	EquipmentSlots EquipmentSlots                                        `json:"equipment_slots,omitempty"`
 	SpellSlots     map[int]SpellSlotData                                 `json:"spell_slots,omitempty"`
 	ClassResources map[shared.ClassResourceType]ResourceData             `json:"class_resources,omitempty"`
 	Resources      map[coreResources.ResourceKey]RecoverableResourceData `json:"resources,omitempty"`
@@ -132,6 +133,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		armorProficiencies:  d.ArmorProficiencies,
 		weaponProficiencies: d.WeaponProficiencies,
 		toolProficiencies:   d.ToolProficiencies,
+		equipmentSlots:      d.EquipmentSlots,
 		bus:                 bus,
 		subscriptionIDs:     make([]string, 0),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),

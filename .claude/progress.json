@@ -12,17 +12,24 @@
         ".claude/progress.json",
         ".claude/tests.json"
       ],
-      "commit": null,
+      "commit": "1a2fb1c",
       "notes": "Designed EquippedItem wrapper with composition (Item field, not interface embedding). Character is self-contained - resolves slot → inventory → EquippedItem. AsArmor()/AsWeapon() typed accessors abstract runtime casts."
+    },
+    {
+      "id": "2025-12-06-002",
+      "task": "Implement EquipmentSlots and EquippedItem",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/character/equipment_slots.go",
+        "rulebooks/dnd5e/character/equipment_slots_test.go",
+        "rulebooks/dnd5e/character/character.go",
+        "rulebooks/dnd5e/character/data.go"
+      ],
+      "commit": null,
+      "notes": "Added EquipmentSlots struct, EquippedItem wrapper with AsArmor()/AsWeapon(), GetEquippedSlot(), EquipItem(), UnequipItem() methods. 23 tests all passing."
     }
   ],
   "next_steps": [
-    "Add EquipmentSlots struct to character package",
-    "Add EquippedItem wrapper with AsArmor/AsWeapon",
-    "Add equipmentSlots field to Character",
-    "Add EquipmentSlots to Data for persistence",
-    "Implement GetEquippedSlot(slot) method",
-    "Implement EquipItem/UnequipItem methods",
-    "Write tests"
+    "Create PR for review"
   ]
 }

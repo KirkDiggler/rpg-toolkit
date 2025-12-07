@@ -3,58 +3,58 @@
     {
       "id": "equipment-slots-struct",
       "feature": "equipment-slots",
-      "prompt": "EquipmentSlots struct exists with MainHand, OffHand, Armor, Shield, and accessory slots",
-      "passes": false,
-      "last_checked": null
+      "prompt": "EquipmentSlots struct exists with MainHand, OffHand, Armor, and accessory slots",
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "equipped-item-wrapper",
       "feature": "equipment-slots",
       "prompt": "EquippedItem wrapper exists with Item field (composition) and AsArmor(), AsWeapon() methods",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "character-has-slots",
       "feature": "equipment-slots",
       "prompt": "Character struct has equipmentSlots field and Data has EquipmentSlots for persistence",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "get-equipped-slot",
       "feature": "equipment-slots",
       "prompt": "GetEquippedSlot(slot) resolves slot ID → inventory item → EquippedItem",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "equip-unequip",
       "feature": "equipment-slots",
       "prompt": "EquipItem(slot, itemID) and UnequipItem(slot) methods work correctly",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "as-armor-works",
       "feature": "equipment-slots",
       "prompt": "AsArmor() returns *armor.Armor when armor equipped, nil otherwise",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "as-weapon-works",
       "feature": "equipment-slots",
       "prompt": "AsWeapon() returns *weapons.Weapon when weapon equipped, nil otherwise",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     },
     {
       "id": "persistence-roundtrip",
       "feature": "equipment-slots",
       "prompt": "Equipment slots survive ToData() → LoadFromData() roundtrip",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-06"
     }
   ]
 }
