@@ -9,6 +9,15 @@ var Features = featuresNS{ns{TypeFeatures}}
 
 type featuresNS struct{ ns }
 
-func (n featuresNS) Rage() *core.Ref        { return n.ref("rage") }
+// Barbarian
+func (n featuresNS) Rage() *core.Ref { return n.ref("rage") }
+
+// Fighter
 func (n featuresNS) SecondWind() *core.Ref  { return n.ref("second_wind") }
 func (n featuresNS) ActionSurge() *core.Ref { return n.ref("action_surge") }
+
+// Rogue
+func (n featuresNS) SneakAttack() *core.Ref { return n.ref("sneak_attack") }
+
+// Paladin
+func (n featuresNS) DivineSmite() *core.Ref { return n.ref("divine_smite") }
