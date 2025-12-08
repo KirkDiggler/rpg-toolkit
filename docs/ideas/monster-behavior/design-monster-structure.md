@@ -142,13 +142,40 @@ type MonsterAction interface {
 }
 ```
 
+### Action Refs (Typed Constants)
+
+Like other refs in the codebase, monster actions should have typed constants:
+
+```go
+// In rulebooks/dnd5e/refs/monster_actions.go
+type MonsterActionsRef struct{}
+
+var MonsterActions = MonsterActionsRef{}
+
+func (MonsterActionsRef) Scimitar() core.Ref {
+    return core.Ref{Module: "dnd5e", Type: "monster-actions", Value: "scimitar"}
+}
+
+func (MonsterActionsRef) Shortbow() core.Ref {
+    return core.Ref{Module: "dnd5e", Type: "monster-actions", Value: "shortbow"}
+}
+
+func (MonsterActionsRef) NimbleEscapeDisengage() core.Ref {
+    return core.Ref{Module: "dnd5e", Type: "monster-actions", Value: "nimble-escape-disengage"}
+}
+
+func (MonsterActionsRef) NimbleEscapeHide() core.Ref {
+    return core.Ref{Module: "dnd5e", Type: "monster-actions", Value: "nimble-escape-hide"}
+}
+```
+
 ### Action Data (Persistence)
 
 What gets saved - just a ref to load the action, plus config:
 
 ```go
 type ActionData struct {
-    Ref    core.Ref        `json:"ref"`    // "dnd5e:monster-actions:scimitar"
+    Ref    core.Ref        `json:"ref"`    // refs.MonsterActions.Scimitar()
     Config json.RawMessage `json:"config"` // Action-specific config
 }
 ```
