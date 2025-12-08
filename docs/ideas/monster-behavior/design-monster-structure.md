@@ -165,7 +165,7 @@ type ScimitarAction struct {
 }
 
 // Implement core.Entity
-func (s *ScimitarAction) GetID() string           { return s.id }
+func (s *ScimitarAction) GetID() string            { return s.id }
 func (s *ScimitarAction) GetType() core.EntityType { return "monster-action" }
 
 // Implement core.Action[MonsterActionInput]
@@ -175,8 +175,10 @@ func (s *ScimitarAction) CanActivate(ctx context.Context, owner core.Entity, inp
         return rpgerr.New(rpgerr.CodeInvalidArgument, "no target")
     }
 
-    // Target must be adjacent (5ft reach)
-    dist := input.Perception.DistanceTo(input.Target.GetID())
+    // Target must be adjacent (5ft reach) - use GameCtx.Room for distance
+    targetPos := input.GameCtx.Room.GetPosition(input.Target.GetID())
+    myPos := input.GameCtx.Room.GetPosition(owner.GetID())
+    dist := spatial.Distance(myPos, targetPos)
     if dist > 5 {
         return rpgerr.New(rpgerr.CodeOutOfRange, "target not in melee range")
     }
@@ -191,40 +193,34 @@ func (s *ScimitarAction) Activate(ctx context.Context, owner core.Entity, input 
 
     monster := owner.(*Monster)
 
-    // Check for raging condition - bonus damage!
-    bonusDamage := 0
-    for _, cond := range input.Conditions {
-        if cond.GetType() == "raging" {
-            bonusDamage = 2  // or get from condition
-        }
-    }
-
     // Use existing attack resolution
+    // NOTE: Raging bonus is NOT added here - the RagingCondition subscribes
+    // to DamageChain and adds its bonus via chain.Add(StageFeatures, ...)
+    // This is the same pattern as characters.
     result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
-        Attacker:         monster,
-        Defender:         input.Target,
-        AttackBonus:      s.attackBonus,
-        DamageDice:       s.damageDice,
-        DamageType:       s.damageType,
-        BonusDamage:      bonusDamage,
-        EventBus:         input.Bus,
-        Roller:           input.Roller,
+        Attacker:    monster,
+        Defender:    input.Target,
+        AttackBonus: s.attackBonus,
+        DamageDice:  s.damageDice,
+        DamageType:  s.damageType,
+        EventBus:    input.Bus,
+        Roller:      input.Roller,
     })
     if err != nil {
         return err
     }
 
-    // Publish attack event
-    // ...
+    // Consume action from economy
+    input.ActionEconomy.UseAction()
 
     return nil
 }
 
 // Implement MonsterAction
-func (s *ScimitarAction) Cost() ActionCost { return CostAction }
+func (s *ScimitarAction) Cost() ActionCost     { return CostAction }
 func (s *ScimitarAction) ActionType() ActionType { return TypeMeleeAttack }
 
-func (s *ScimitarAction) Score(monster *Monster, perception PerceptionData) int {
+func (s *ScimitarAction) Score(monster *Monster, perception *PerceptionData) int {
     score := s.scoring.BaseScore  // 50
 
     // Bonus if target adjacent
@@ -235,6 +231,8 @@ func (s *ScimitarAction) Score(monster *Monster, perception PerceptionData) int 
     return score
 }
 ```
+
+**Important:** Conditions like Raging modify damage via event chain subscription, not by the action checking for conditions. This is the same pattern used for characters.
 
 ### Example: Nimble Escape (Disengage)
 
@@ -454,6 +452,103 @@ func (m *Monster) subscribeToEvents(ctx context.Context) error {
     m.subscriptionIDs = append(m.subscriptionIDs, subID)
 
     return nil
+}
+```
+
+---
+
+## Initiative and Turn Order
+
+Monsters are added to initiative the same way as characters.
+
+### Adding Monsters to Turn Order
+
+```go
+// In encounter orchestrator - creating dungeon/starting combat
+func (o *Orchestrator) CreateDungeon(ctx context.Context, input *CreateDungeonInput) (*CreateDungeonOutput, error) {
+    entities := make(map[core.Entity]int)
+
+    // Add characters
+    for _, charID := range input.CharacterIDs {
+        char, _ := o.charRepo.Get(ctx, charrepo.GetInput{ID: charID})
+        dexMod := char.AbilityScores.Modifier(abilities.DEX)
+        participant := initiative.NewParticipant(charID, "character")
+        entities[participant] = dexMod
+    }
+
+    // Add monsters - same pattern
+    for _, monsterData := range input.Monsters {
+        monster, _ := monster.LoadFromData(ctx, monsterData, bus)
+        dexMod := monster.AbilityScores().Modifier(abilities.DEX)
+        participant := initiative.NewParticipant(monster.GetID(), "monster")
+        entities[participant] = dexMod
+    }
+
+    // Roll initiative for everyone
+    rolls := initiative.RollForOrder(entities, dice.NewRoller())
+    initiativeOrder := extractOrder(rolls)
+    tracker := initiative.New(initiativeOrder)
+
+    // Store tracker data
+    trackerData := tracker.ToData()
+    // ... persist ...
+}
+```
+
+### Turn Flow
+
+```go
+// EndTurn advances to next entity
+func (o *Orchestrator) EndTurn(ctx context.Context, input *EndTurnInput) (*EndTurnOutput, error) {
+    // Load initiative tracker
+    tracker := initiative.FromData(encounterData.InitiativeData)
+
+    // Advance to next entity
+    nextEntity := tracker.Next()
+
+    // Reset action economy for new turn
+    movementRemaining := defaultMovementSpeed  // 30 feet
+
+    // Persist updated state
+    o.encRepo.Update(ctx, &encounterrepo.UpdateInput{
+        InitiativeData:    tracker.ToData(),
+        MovementRemaining: &movementRemaining,
+    })
+
+    return &EndTurnOutput{
+        NextEntityID: nextEntity.GetID(),
+        EntityType:   nextEntity.GetType(),  // "character" or "monster"
+        Round:        tracker.Round(),
+    }
+}
+```
+
+### Monster Turn Detection
+
+When `EndTurn` returns a monster, the orchestrator calls `TakeTurn`:
+
+```go
+// After EndTurn, check if it's a monster's turn
+output, _ := o.EndTurn(ctx, input)
+
+if output.EntityType == "monster" {
+    // Load the monster
+    monsterData := o.loadMonsterData(ctx, output.NextEntityID)
+    monster, _ := monster.LoadFromData(ctx, monsterData, bus)
+
+    // Create turn input
+    turnInput := &monster.TurnInput{
+        Bus:           bus,
+        ActionEconomy: combat.NewActionEconomy(),  // Fresh 1/1/1
+        GameCtx:       &GameContext{Room: room},
+        Roller:        dice.NewRoller(),
+    }
+
+    // Execute monster turn
+    result, _ := monster.TakeTurn(ctx, turnInput)
+
+    // Auto-advance to next turn (monsters don't wait for player input)
+    o.EndTurn(ctx, &EndTurnInput{EncounterID: encounterID})
 }
 ```
 
