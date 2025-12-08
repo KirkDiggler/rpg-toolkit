@@ -397,16 +397,13 @@ func calculateAttackAbilityModifier(weapon *weapons.Weapon, scores shared.Abilit
 	return scores.Modifier(abilities.STR)
 }
 
-// weaponToRef converts a weapon to its core.Ref
+// weaponToRef converts a weapon to its singleton core.Ref.
+// Returns the singleton ref for pointer identity comparison, or nil if weapon is nil.
 func weaponToRef(weapon *weapons.Weapon) *core.Ref {
 	if weapon == nil {
 		return nil
 	}
-	return &core.Ref{
-		Module: refs.Module,
-		Type:   refs.TypeWeapons,
-		ID:     weapon.ID,
-	}
+	return refs.Weapons.ByID(weapon.ID)
 }
 
 // abilityToRef converts an ability to its core.Ref
