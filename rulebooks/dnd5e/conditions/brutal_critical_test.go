@@ -118,7 +118,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 
 	// Verify brutal critical component
 	brutalComp := finalEvent.Components[2]
-	s.Equal(dnd5eEvents.DamageSourceCondition, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
 	s.Equal([]int{5}, brutalComp.FinalDiceRolls, "Should have rolled 1 extra d8")
 	s.Equal(5, brutalComp.Total(), "Brutal critical should add 5 damage")
 }
@@ -145,7 +145,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 	s.Require().Len(finalEvent.Components, 3)
 
 	brutalComp := finalEvent.Components[2]
-	s.Equal(dnd5eEvents.DamageSourceCondition, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
 	s.Equal([]int{5, 7}, brutalComp.FinalDiceRolls, "Should have rolled 2 extra d8s")
 	s.Equal(12, brutalComp.Total(), "Brutal critical should add 12 damage (5+7)")
 }
@@ -172,7 +172,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 	s.Require().Len(finalEvent.Components, 3)
 
 	brutalComp := finalEvent.Components[2]
-	s.Equal(dnd5eEvents.DamageSourceCondition, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
 	s.Equal([]int{3, 6, 8}, brutalComp.FinalDiceRolls, "Should have rolled 3 extra d8s")
 	s.Equal(17, brutalComp.Total(), "Brutal critical should add 17 damage (3+6+8)")
 }
@@ -286,7 +286,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 	s.Require().Len(finalEvent.Components, 2)
 
 	brutalComp := finalEvent.Components[1]
-	s.Equal(dnd5eEvents.DamageSourceCondition, brutalComp.Source)
+	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
 	s.Equal([]int{10}, brutalComp.FinalDiceRolls, "Should roll extra d12 for greataxe")
 }
 
