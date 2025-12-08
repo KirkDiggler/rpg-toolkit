@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -25,7 +26,7 @@ func TestWeaponLookup(t *testing.T) {
 				Category:   weapons.CategoryMartialMelee,
 				Cost:       "15 gp",
 				Damage:     "1d8",
-				DamageType: "slashing",
+				DamageType: damage.Slashing,
 				Weight:     3,
 				Properties: []weapons.WeaponProperty{weapons.PropertyVersatile},
 			},
@@ -40,7 +41,7 @@ func TestWeaponLookup(t *testing.T) {
 				Category:   weapons.CategorySimpleMelee,
 				Cost:       "2 gp",
 				Damage:     "1d4",
-				DamageType: "piercing",
+				DamageType: damage.Piercing,
 				Weight:     1,
 				Properties: []weapons.WeaponProperty{weapons.PropertyFinesse, weapons.PropertyLight, weapons.PropertyThrown},
 				Range:      &weapons.Range{Normal: 20, Long: 60},
