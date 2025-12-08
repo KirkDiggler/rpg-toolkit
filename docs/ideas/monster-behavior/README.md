@@ -2,11 +2,13 @@
 
 > Make monsters fight back with simple, extensible behavior
 
-## Status: Brainstorming
+## Status: Design Complete
+
+Ready for implementation.
 
 ## Trigger
 
-We have a goblin in a demo room that does nothing but get beat up. Can we build something simple and extensibly?
+Demo goblin just stands there getting beat up. Can we make it fight back simply and extensibly?
 
 ## Goals
 
@@ -19,35 +21,46 @@ We have a goblin in a demo room that does nothing but get beat up. Can we build 
 
 | Question | Answer |
 |----------|--------|
-| Are monsters special? | No — same systems as characters (action economy, features, conditions) |
-| What are special abilities? | Features — Nimble Escape works like Rage or Second Wind |
-| How select actions? | Utility scoring — each action scored, highest valid wins |
-| What are actions? | Rich objects with cost, range, triggers, effects |
+| Are monsters special? | No — same systems as characters |
+| What are special abilities? | Features — same pattern |
+| How select actions? | Utility scoring |
+| What are monster actions? | `core.Action[MonsterActionInput]` |
+| How does movement work? | Part of action execution via GameCtx.Room |
+| How find targets? | Build perception from room queries |
+
+## Architecture
+
+```
+Game Server (rpg-api)
+    │
+    ├─ Creates EventBus, wires entities
+    │
+    └─ On monster's turn:
+        └─ monster.TakeTurn(ctx, TurnInput)
+            ├─ Build perception from room
+            ├─ Score actions, pick best
+            └─ Execute via core.Action[T]
+```
 
 ## Documents
 
 | Document | Purpose |
 |----------|---------|
-| [brainstorm.md](brainstorm.md) | All ideas - practical, dreamy, crazy |
-| [use-cases.md](use-cases.md) | Concrete scenarios end-to-end |
+| [brainstorm.md](brainstorm.md) | Initial ideas and exploration |
+| [use-cases.md](use-cases.md) | 5 concrete scenarios |
+| [design-monster-structure.md](design-monster-structure.md) | Full technical design |
 | [goblin.json](goblin.json) | Reference data from dnd5eapi |
 | progress.json | Structured tracking |
 
-## Architecture
+## Implementation Steps
 
-```
-rpg-api (orchestrator) → dnd5e rulebook (game logic) → toolkit (infrastructure)
-                              ↑
-                        Goblin behavior lives here
-```
-
-## Use Cases
-
-1. **Basic Melee Attack** — Move toward player, attack with scimitar
-2. **Ranged Preference** — Stay at distance, use shortbow, hide behind cover
-3. **Tactical Retreat** — Low HP + surrounded → Disengage and flee
-4. **Ambush Setup** — Hide behind cover for advantage on next attack
-5. **Healing Potion** — Critically wounded → prioritize survival
+1. Create `monster` package in `rulebooks/dnd5e/monster/`
+2. Implement `Data` struct and `LoadFromData`
+3. Create `MonsterAction` interface and `MonsterActionInput`
+4. Implement `ScimitarAction` with `Score()`
+5. Implement `TakeTurn` behavior loop
+6. Wire up to encounter orchestrator in rpg-api
+7. Test: goblin finds target, moves, attacks
 
 ## References
 
