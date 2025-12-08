@@ -178,8 +178,8 @@ func (b *BrutalCriticalCondition) onDamageChain(
 
 		// Append brutal critical damage component
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceCondition,
-			SourceRef:         refs.Conditions.BrutalCritical(),
+			Source:            dnd5eEvents.DamageSourceFeature,
+			SourceRef:         refs.Features.BrutalCritical(),
 			OriginalDiceRolls: extraRolls,
 			FinalDiceRolls:    extraRolls,
 			Rerolls:           nil,

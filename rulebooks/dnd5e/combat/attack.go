@@ -297,10 +297,10 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 		IsCritical:        input.IsCritical,
 	}
 
-	// Create ability modifier component (no ref needed - ability is simple string)
+	// Create ability modifier component
 	abilityComponent := dnd5eEvents.DamageComponent{
 		Source:            dnd5eEvents.DamageSourceAbility,
-		SourceRef:         nil, // Ability is tracked via AbilityUsed field
+		SourceRef:         abilityToRef(input.AbilityUsed),
 		OriginalDiceRolls: nil, // No dice
 		FinalDiceRolls:    nil,
 		Rerolls:           nil,
@@ -406,5 +406,25 @@ func weaponToRef(weapon *weapons.Weapon) *core.Ref {
 		Module: refs.Module,
 		Type:   refs.TypeWeapons,
 		ID:     weapon.ID,
+	}
+}
+
+// abilityToRef converts an ability to its core.Ref
+func abilityToRef(ability abilities.Ability) *core.Ref {
+	switch ability {
+	case abilities.STR:
+		return refs.Abilities.Strength()
+	case abilities.DEX:
+		return refs.Abilities.Dexterity()
+	case abilities.CON:
+		return refs.Abilities.Constitution()
+	case abilities.INT:
+		return refs.Abilities.Intelligence()
+	case abilities.WIS:
+		return refs.Abilities.Wisdom()
+	case abilities.CHA:
+		return refs.Abilities.Charisma()
+	default:
+		return nil
 	}
 }
