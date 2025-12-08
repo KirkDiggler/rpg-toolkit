@@ -379,3 +379,301 @@ These use cases exercise:
 3. **Scoring needs tuning** — The numbers will need playtesting
 4. **Personality could vary** — Some goblins might be braver (lower weight on flee behaviors)
 5. **Resource tracking** — Potions, uses of abilities need to be tracked
+
+---
+
+## rpg-api Use Cases
+
+These use cases focus on the game server orchestration layer.
+
+---
+
+## Use Case 6: Player Ends Turn, Monsters Execute
+
+**Scenario:** Player ends turn, multiple monsters take their turns automatically.
+
+**Initial State:**
+- Initiative order: [Goblin-1, Goblin-2, Player-1, Goblin-3]
+- `activeIndex: 2` (Player-1's turn)
+- Player has completed their actions
+
+**Flow:**
+
+```
+1. Player calls EndTurn(encounter_id)
+
+2. Server advances activeIndex to 3 (Goblin-3)
+
+3. Server detects monster turn, executes:
+   - Load Goblin-3 from encounter.Monsters
+   - Call monster.TakeTurn(ctx, turnInput)
+   - Record MonsterTurnResult
+
+4. Server advances activeIndex to 0 (Goblin-1, round 2)
+
+5. Server detects monster turn, executes:
+   - Load Goblin-1
+   - Call monster.TakeTurn(ctx, turnInput)
+   - Record MonsterTurnResult
+
+6. Server advances activeIndex to 1 (Goblin-2)
+
+7. Server detects monster turn, executes:
+   - Load Goblin-2
+   - Call monster.TakeTurn(ctx, turnInput)
+   - Record MonsterTurnResult
+
+8. Server advances activeIndex to 2 (Player-1)
+
+9. Server detects player turn, stops execution
+
+10. Return EndTurnResponse:
+    - combat_state: { activeIndex: 2, round: 2 }
+    - monster_turns: [goblin3_result, goblin1_result, goblin2_result]
+```
+
+**Response:**
+```json
+{
+  "combat_state": {
+    "round": 2,
+    "activeIndex": 2,
+    "turnOrder": [...],
+    "currentTurn": { "entityId": "player-1", ... }
+  },
+  "monster_turns": [
+    {
+      "monster_id": "goblin-3",
+      "actions": [{"action_id": "scimitar", "target_id": "player-1", "success": true}],
+      "movement_path": [{"x": 5, "y": 5}, {"x": 4, "y": 5}]
+    },
+    {
+      "monster_id": "goblin-1",
+      "actions": [{"action_id": "shortbow", "target_id": "player-1", "success": false}],
+      "movement_path": []
+    },
+    {
+      "monster_id": "goblin-2",
+      "actions": [{"action_id": "scimitar", "target_id": "player-1", "success": true}],
+      "movement_path": [{"x": 8, "y": 3}, {"x": 5, "y": 5}]
+    }
+  ]
+}
+```
+
+**Client Processing:**
+UI animates through monster_turns sequentially:
+1. Show Goblin-3 moving and attacking
+2. Show Goblin-1 shooting (miss)
+3. Show Goblin-2 moving and attacking
+4. Display "Your turn" for Player-1
+
+---
+
+## Use Case 7: Dead Monster Skipped
+
+**Scenario:** Monster dies before its turn, gets skipped in initiative.
+
+**Initial State:**
+- Initiative order: [Goblin-1 (dead), Goblin-2, Player-1]
+- `activeIndex: 2` (Player-1's turn)
+- Goblin-1 was killed earlier this round
+
+**Flow:**
+
+```
+1. Player calls EndTurn(encounter_id)
+
+2. Server advances activeIndex to 0 (Goblin-1)
+
+3. Server checks: Goblin-1.HP <= 0? YES
+
+4. Server removes Goblin-1 from initiative order
+   - New order: [Goblin-2, Player-1]
+   - activeIndex adjusted to 0
+
+5. Server detects monster turn (Goblin-2), executes normally
+
+6. Server advances to Player-1, stops
+
+7. Return response with updated initiative order
+```
+
+**Key Points:**
+- Dead monsters are removed from `turnOrder`, not just skipped
+- Initiative order in response reflects removal
+- `hasActed` is irrelevant for dead monsters
+
+---
+
+## Use Case 8: Monster Drops Player to 0 HP
+
+**Scenario:** Monster attack reduces player to 0 HP during monster turns.
+
+**Initial State:**
+- Initiative order: [Goblin-1, Goblin-2, Player-1]
+- Player-1 has 3 HP remaining
+- `activeIndex: 2` (Player-1 just ended turn)
+
+**Flow:**
+
+```
+1. Player calls EndTurn(encounter_id)
+
+2. Server executes Goblin-1's turn:
+   - Scimitar attack hits for 5 damage
+   - Player-1 HP: 3 → 0 (unconscious)
+   - Event published: PlayerDownEvent
+
+3. Server completes Goblin-1's turn (bonus action, etc.)
+
+4. Server executes Goblin-2's turn:
+   - Player-1 is down but still valid target
+   - Goblin-2 attacks unconscious player (auto-crit, 2 death save failures)
+
+5. Server advances to Player-1's turn
+
+6. Server detects: Player-1.HP == 0, needs death saves
+
+7. Return response:
+   - combat_state shows Player-1's turn
+   - monster_turns includes both goblin actions
+   - Player-1 condition: unconscious, 2 death save failures
+```
+
+**Client Processing:**
+1. Animate Goblin-1 attacking, player drops
+2. Animate Goblin-2 attacking downed player
+3. Prompt player for death saving throw
+
+**Key Points:**
+- Monster turns continue even after player drops
+- Attacks on unconscious players cause death save failures (D&D rules)
+- Player's turn comes up for death saves
+
+---
+
+## Use Case 9: All Players Down (TPK)
+
+**Scenario:** Last conscious player drops, combat ends.
+
+**Initial State:**
+- Initiative order: [Goblin-1, Player-1 (unconscious), Player-2]
+- Player-2 has 2 HP remaining
+- Only Player-2 is conscious
+
+**Flow:**
+
+```
+1. Player-2 calls EndTurn(encounter_id)
+
+2. Server executes Goblin-1's turn:
+   - Attacks Player-2 for 4 damage
+   - Player-2 HP: 2 → 0 (unconscious)
+
+3. Server checks: Any conscious players? NO
+
+4. Server triggers EncounterEndedEvent:
+   - Reason: "all_players_down"
+   - Winner: "monsters"
+
+5. Server sets encounter.combatEnded = true
+
+6. Return response:
+   - combat_state.combatEnded: true
+   - monster_turns: [goblin1_result]
+   - Special field: encounter_result: "defeat"
+```
+
+**Client Processing:**
+1. Animate final goblin attack
+2. Display "Defeat" screen
+3. Offer options: restart encounter, return to menu
+
+**Key Points:**
+- Combat ends immediately when all players unconscious
+- No need to continue monster turns
+- Run is effectively over
+
+---
+
+## Use Case 10: Combat Start with Monster First
+
+**Scenario:** Monster wins initiative, takes turn before any player acts.
+
+**Initial State:**
+- DungeonStart called
+- Initiative rolled: Goblin-1 (18), Player-1 (12)
+- `activeIndex: 0` (Goblin-1 first)
+
+**Flow:**
+
+```
+1. DungeonStart rolls initiative
+
+2. Server detects first entity is monster
+
+3. Server executes Goblin-1's turn immediately:
+   - Build perception, score actions
+   - Execute attack if player in range
+   - Record result
+
+4. Server advances to Player-1
+
+5. DungeonStart returns:
+   - combat_state: { activeIndex: 1, round: 1 }
+   - monster_turns: [goblin1_result]  // Monster already acted!
+```
+
+**Key Points:**
+- DungeonStart may include monster turns if monsters go first
+- Player sees what happened before their first turn
+- Same monster_turns field used
+
+---
+
+## Use Case 11: Monster with No Valid Actions
+
+**Scenario:** Monster can't reach any targets and has no ranged attacks.
+
+**Initial State:**
+- Goblin at (0, 0)
+- All players at (20, 20) — 140 feet away
+- Goblin has only Scimitar (5ft reach)
+- Movement: 30ft
+
+**Flow:**
+
+```
+1. Goblin's TakeTurn executes
+
+2. Build perception:
+   - Enemies: [{player, dist:140ft, adjacent:false}]
+
+3. Score actions:
+   - Scimitar: target not reachable (140ft > 30ft movement + 5ft reach)
+   - All actions fail CanActivate
+
+4. TakeTurn returns with no actions:
+   - MonsterID: "goblin-1"
+   - Actions: []  // Empty
+   - Movement: [{0,0}, {6,6}]  // Moved toward enemy
+```
+
+**Key Points:**
+- Monster may just move toward enemies
+- Empty actions array is valid
+- Movement still recorded
+
+---
+
+## rpg-api Integration Points
+
+| Use Case | Components Exercised |
+|----------|---------------------|
+| UC6: Multiple Monsters | executeMonsterTurns loop, batch response |
+| UC7: Dead Monster | Initiative order management, skip logic |
+| UC8: Player Downed | Death save triggers, combat continuation |
+| UC9: TPK | Encounter end detection, run termination |
+| UC10: Monster First | DungeonStart monster execution |
+| UC11: No Actions | Edge case handling, movement-only turns |

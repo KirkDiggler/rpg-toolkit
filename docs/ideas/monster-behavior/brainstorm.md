@@ -242,6 +242,169 @@ The numbers are tunable. The *system* is what matters.
 
 ---
 
+## rpg-api Integration
+
+> Brainstormed after toolkit implementation was complete. Focus: how does the game server orchestrate monster turns?
+
+### The Core Flow
+
+When a player ends their turn:
+1. Server advances to next entity in initiative
+2. If monster → auto-execute `TakeTurn`, record result, advance again
+3. Repeat until reaching a player's turn
+4. Return `CombatState` (pointing to player) + all `MonsterTurnResults`
+
+**Key insight:** Streaming vs batch doesn't change architecture. UI can animate through batch results sequentially ("goblin moves... goblin attacks..."). Streaming is a future optimization, not a design change.
+
+### Monster Storage
+
+**Decision: Monsters live in the encounter.**
+
+Monsters are ephemeral - they spawn, fight, die. Characters persist across encounters. Different lifecycles = different storage.
+
+```go
+Encounter {
+    ID: "enc-1"
+    Monsters: []MonsterData  // stored inline, loaded with encounter
+    Characters: []string     // just IDs, loaded from character repo
+}
+```
+
+No separate monster repository needed.
+
+### Perception Building
+
+**Decision: Toolkit builds perception from Room/GameContext.**
+
+The game server stays thin - just passes the room. Toolkit does the work:
+
+```go
+// rpg-api orchestrator (thin)
+monster.TakeTurn(ctx, &TurnInput{
+    Bus:           bus,
+    ActionEconomy: economy,
+    GameCtx:       &GameContext{Room: room},
+    Roller:        roller,
+})
+
+// Toolkit builds perception internally
+func (m *Monster) TakeTurn(ctx, input) {
+    perception := m.buildPerception(input.GameCtx.Room)
+    // ... behavior loop
+}
+```
+
+**Why:** Less game server responsibility. GameContext is already the pattern (sneak attack will need spatial too). Room should be mockable in tests - if not, fix it.
+
+### Enemy Detection
+
+**Decision: Entity type for MVP.**
+
+Simple rule: `character` type = enemy, `monster` type = ally.
+
+```go
+if entity.GetType() == "character" {
+    perception.Enemies = append(...)
+}
+```
+
+Faction system is future work (charmed monsters, PvP, monster infighting).
+
+### CombatState Always Returned
+
+**Decision: Every combat call returns CombatState.**
+
+No separate `next_entity_id` fields. CombatState is the source of truth:
+
+```go
+EndTurnResponse {
+    CombatState    // Always returned - includes whose turn it is
+    MonsterTurns   // What happened before next player turn
+}
+
+AttackResponse {
+    CombatState    // Always returned
+    Result         // Attack outcome
+}
+```
+
+Client always knows current state from CombatState.
+
+### Orchestrator Structure
+
+**Decision: Extract monster turn execution to helper method.**
+
+Keeps `EndTurn` focused:
+
+```go
+func (o *Orchestrator) EndTurn(ctx, input) (*EndTurnOutput, error) {
+    o.advanceTurn(...)
+    monsterResults := o.executeMonsterTurns(ctx, encounter)
+    return &EndTurnOutput{
+        CombatState:  encounter.CombatState,
+        MonsterTurns: monsterResults,
+    }
+}
+
+func (o *Orchestrator) executeMonsterTurns(ctx, encounter) []MonsterTurnResult {
+    var results []MonsterTurnResult
+    for isMonsterTurn(encounter) {
+        monster := loadMonster(encounter, currentEntityID)
+        result := monster.TakeTurn(ctx, buildTurnInput(...))
+        results = append(results, result)
+        advanceToNextEntity(encounter)
+    }
+    return results
+}
+```
+
+### Edge Cases
+
+Captured for use cases doc:
+
+1. **Dead monster's turn** → Skip, remove from initiative order
+2. **Player drops to 0 HP** → Complete current monster turn, then player's turn for death saves
+3. **All players down** → Encounter stopped event, run is over
+4. **Monster kills monster** (future) → Dead monsters removed from initiative
+
+### Proto Changes Needed
+
+New messages:
+```protobuf
+message MonsterTurnResult {
+    string monster_id = 1;
+    repeated MonsterExecutedAction actions = 2;
+    repeated Position movement_path = 3;
+}
+
+message MonsterExecutedAction {
+    string action_id = 1;
+    string action_type = 2;  // "melee_attack", "ranged_attack", etc.
+    string target_id = 3;
+    bool success = 4;
+    oneof details {
+        AttackResult attack_result = 5;
+        HealResult heal_result = 6;
+    }
+}
+```
+
+Update EndTurnResponse:
+```protobuf
+message EndTurnResponse {
+    CombatState combat_state = 1;
+    repeated MonsterTurnResult monster_turns = 2;
+}
+```
+
+### Open Questions (API-side)
+
+1. **Room mock pattern** — How do we stub Room in orchestrator tests? Need to verify this is clean.
+2. **Event bus per encounter** — Is there one bus per encounter, or shared? Monster needs to wire to it.
+3. **Monster data in proto** — Do we need `Monster` proto message for client display (HP, name, position)?
+
+---
+
 ## References
 
 - [ADR-0016: Behavior System Architecture](../adr/0016-behavior-system-architecture.md)
