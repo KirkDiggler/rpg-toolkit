@@ -1,87 +1,33 @@
 {
-  "branch": "feat/ac-calculation-397",
-  "issues": ["#397"],
-  "goal": "AC Calculation System - event-driven armor class with modifiers, returning ACBreakdown for UI transparency",
+  "branch": "ideas/monster-behavior",
+  "issues": ["PR #414"],
+  "goal": "Implement monster behavior - goblin can take a turn: find closest enemy, move toward it, attack with scimitar",
   "sessions": [
     {
-      "date": "2025-12-06",
-      "completed": [
-        "Created ACSourceType constants (base, armor, shield, ability, feature, spell, item, condition)",
-        "Implemented ACComponent struct with Type, Source (*core.Ref), Value (int, can be negative)",
-        "Implemented ACBreakdown struct with Total, Components, and AddComponent method",
-        "Created ACChainEvent struct with CharacterID, Breakdown, HasArmor, HasShield",
-        "Defined ACChain topic using events.DefineChainedTopic[*ACChainEvent]",
-        "Updated Defense fighting style to use new ACBreakdown pattern",
-        "Added comprehensive tests for ACBreakdown and AC chain event system"
-      ],
-      "tests_passing": true,
-      "commit": "705c20f"
-    },
-    {
-      "date": "2025-12-07",
-      "completed": [
-        "Implemented Character.EffectiveAC(ctx context.Context) *combat.ACBreakdown method",
-        "AC calculation checks equipped armor via GetEquippedSlot(SlotArmor).AsArmor()",
-        "AC calculation checks equipped shield via GetEquippedSlot(SlotOffHand).AsArmor()",
-        "Unarmored calculation: base 10 + full DEX modifier",
-        "Armored calculation: armor.AC + DEX (respecting armor.MaxDexBonus cap)",
-        "Shield bonus: adds shield.AC (typically +2) when equipped in off-hand",
-        "ACChain event execution allows conditions/features to modify breakdown",
-        "Created comprehensive test suite in effective_ac_test.go covering all scenarios",
-        "All tests passing: unarmored, heavy armor, medium armor DEX cap, light armor, shield bonus, breakdown transparency"
-      ],
-      "tests_passing": true,
-      "commit": "31836d4"
-    },
-    {
-      "date": "2025-12-07",
-      "completed": [
-        "Fixed all lint issues in AC calculation implementation",
-        "Created shieldCategory constant for repeated 'shield' string (goconst)",
-        "Removed 15 unnecessary string() conversions for ArmorID (unconvert)",
-        "Removed unused createTestArmor helper function (unused)",
-        "Removed unused equipment package import (goimports)",
-        "All tests still passing after lint fixes"
-      ],
-      "tests_passing": true,
-      "commit": "bb095c5"
-    },
-    {
-      "date": "2025-12-07",
-      "completed": [
-        "Addressed PR review feedback for AC calculation",
-        "Replaced hardcoded 'dnd5e' with refs.Module constant in character.go (2 occurrences)",
-        "Replaced hardcoded 'dnd5e' and 'feature' with refs.Module and refs.TypeFeatures in fighting_style.go",
-        "Extracted helper functions for better readability:",
-        "  - calculateArmorAC: Creates AC component for equipped armor",
-        "  - calculateDexModifier: Calculates DEX modifier respecting armor's MaxDexBonus cap",
-        "  - calculateShieldAC: Creates AC component for equipped shield",
-        "Removed defensive bus nil check in EffectiveAC - fail fast if bus is missing",
-        "Updated TestNoEventBus to TestNoModifiers - now uses event bus but no registered modifiers",
-        "All tests passing, gofmt and lint clean"
-      ],
-      "tests_passing": true,
-      "commit": "8ed4262"
+      "id": "2025-12-08-001",
+      "task": "Create monster package with Data struct and LoadFromData",
+      "status": "in_progress",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Following character pattern: Data for persistence, LoadFromData to wire to bus"
     }
   ],
   "next_steps": [
-    "Ready for PR merge after review approval",
-    "Consider adding AC modifier features (Defense fighting style, Unarmored Defense, etc.)"
+    "Create monster package in rulebooks/dnd5e/monster/",
+    "Implement Data struct with monster stats, actions, features",
+    "Implement LoadFromData to create Monster from Data",
+    "Create MonsterActionInput type",
+    "Implement ScimitarAction with Score() method",
+    "Implement TakeTurn behavior loop",
+    "Write tests"
   ],
   "design_notes": {
-    "location": "Types in combat/, method on Character",
-    "pattern": "Same as DamageBreakdown - types in combat, entity method returns breakdown",
-    "key_decisions": [
-      "Type = category (ACSourceArmor, ACSourceFeature, etc.)",
-      "Source = specific *core.Ref (dnd5e:armor:chain_mail)",
-      "Value can be negative for debuffs",
-      "Chain execution allows conditions to add components",
-      "ACChainEvent uses pointer type for mutability in chain",
-      "HasArmor/HasShield flags replace IsWearingArmor/ArmorType for simpler API",
-      "MaxDexBonus: nil = unlimited, 0 = no DEX, 2 = capped at +2",
-      "DEX components only added if modifier != 0 (cleaner breakdown)",
-      "Shield detection: check Category == 'shield' to distinguish from weapons in off-hand",
-      "ArmorID is alias chain: ArmorID -> EquipmentID -> SelectionID -> string (no conversion needed)"
+    "location": "docs/ideas/monster-behavior/",
+    "key_patterns": [
+      "Monster uses same Data/LoadFromData pattern as character",
+      "Actions implement core.Action[MonsterActionInput] with Score() for behavior",
+      "Conditions modify via chain subscription, not action checking",
+      "Use typed refs: refs.MonsterActions.Scimitar()"
     ]
   }
 }

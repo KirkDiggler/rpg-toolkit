@@ -1,67 +1,46 @@
 {
   "tests": [
     {
-      "id": "ac-types-exist",
-      "feature": "ac-calculation",
-      "prompt": "ACSourceType, ACComponent, ACBreakdown types exist in combat/ac.go with proper Type/Source separation",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "monster-data-struct",
+      "feature": "monster-behavior",
+      "prompt": "Monster Data struct exists with ID, Name, MonsterType, HitPoints, MaxHitPoints, ArmorClass, AbilityScores, Speed, Actions",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "ac-chain-exists",
-      "feature": "ac-calculation",
-      "prompt": "ACChainEvent and ACChain topic exist for condition modifiers to subscribe",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "monster-load-from-data",
+      "feature": "monster-behavior",
+      "prompt": "monster.LoadFromData(ctx, data, bus) creates Monster from Data and wires to event bus",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "effective-ac-method",
-      "feature": "ac-calculation",
-      "prompt": "Character.EffectiveAC() method exists and returns *combat.ACBreakdown",
-      "passes": true,
-      "last_checked": "2025-12-07"
+      "id": "monster-action-input",
+      "feature": "monster-behavior",
+      "prompt": "MonsterActionInput exists with Bus, Perception, ActionEconomy, Target, Roller fields",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "unarmored-base-ac",
-      "feature": "ac-calculation",
-      "prompt": "Unarmored character gets base 10 + DEX modifier",
-      "passes": true,
-      "last_checked": "2025-12-07"
+      "id": "scimitar-action",
+      "feature": "monster-behavior",
+      "prompt": "ScimitarAction implements core.Action[MonsterActionInput] with Score() that returns higher when target is adjacent",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "armor-ac",
-      "feature": "ac-calculation",
-      "prompt": "Character with chain mail gets AC 16 (heavy armor, no DEX)",
-      "passes": true,
-      "last_checked": "2025-12-07"
+      "id": "take-turn-loop",
+      "feature": "monster-behavior",
+      "prompt": "Monster.TakeTurn loops: scores actions, picks best, executes, consumes action economy, repeats until no resources",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "armor-dex-cap",
-      "feature": "ac-calculation",
-      "prompt": "Character with medium armor gets AC capped by MaxDexBonus",
-      "passes": true,
-      "last_checked": "2025-12-07"
-    },
-    {
-      "id": "shield-bonus",
-      "feature": "ac-calculation",
-      "prompt": "Shield in off-hand adds +2 to AC",
-      "passes": true,
-      "last_checked": "2025-12-07"
-    },
-    {
-      "id": "breakdown-transparency",
-      "feature": "ac-calculation",
-      "prompt": "ACBreakdown.Components shows each source (armor, shield, dex) with Type and Source ref",
-      "passes": true,
-      "last_checked": "2025-12-07"
-    },
-    {
-      "id": "negative-modifiers",
-      "feature": "ac-calculation",
-      "prompt": "ACComponent.Value can be negative for debuffs",
-      "passes": true,
-      "last_checked": "2025-12-06"
+      "id": "goblin-takes-turn",
+      "feature": "monster-behavior",
+      "prompt": "Goblin with scimitar finds closest enemy, moves toward it, attacks - integration test passes",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }
