@@ -13,8 +13,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -98,7 +100,7 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 			s.Require().NoError(err)
 
 			// Create attack chain event
-			attackEvent := combat.AttackChainEvent{
+			attackEvent := dnd5eEvents.AttackChainEvent{
 				AttackerID:      "fighter-1",
 				TargetID:        "goblin-1",
 				AttackRoll:      15,
@@ -109,8 +111,8 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 			}
 
 			// Publish through attack chain
-			attackChain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-			attacks := combat.AttackChain.On(s.bus)
+			attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+			attacks := dnd5eEvents.AttackChain.On(s.bus)
 			modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
 			s.Require().NoError(err)
 
@@ -147,28 +149,28 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingRerolls() {
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil).Times(1) // Reroll second die
 
 	// Create damage chain event with weapon damage containing 1s and 2s
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1, 2, 6}, // Two dice need rerolling
 				FinalDiceRolls:    []int{1, 2, 6},
 				Rerolls:           nil,
 				FlatBonus:         0,
-				DamageType:        "slashing",
+				DamageType:        damage.Slashing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "slashing",
+		DamageType:   damage.Slashing,
 		IsCritical:   false,
 		WeaponDamage: "2d6", // Greatsword
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -215,28 +217,28 @@ func (s *FightingStyleTestSuite) TestGreatWeaponFightingDoesNotRerollHighNumbers
 	// No mock expectations because nothing should be rerolled
 
 	// Create damage chain event with all high rolls
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{5, 6}, // No rerolls needed
 				FinalDiceRolls:    []int{5, 6},
 				Rerolls:           nil,
 				FlatBonus:         0,
-				DamageType:        "slashing",
+				DamageType:        damage.Slashing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "slashing",
+		DamageType:   damage.Slashing,
 		IsCritical:   false,
 		WeaponDamage: "2d6",
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -381,28 +383,28 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithOneHandedWeapon() {
 	}()
 
 	// Create damage chain event with weapon damage
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 				Rerolls:           nil,
 				FlatBonus:         3, // STR modifier
-				DamageType:        "slashing",
+				DamageType:        damage.Slashing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "slashing",
+		DamageType:   damage.Slashing,
 		IsCritical:   false,
 		WeaponDamage: "1d8",
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -417,7 +419,7 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithOneHandedWeapon() {
 	// Verify Dueling added a separate component
 	s.Require().Len(finalEvent.Components, 2, "Should have weapon + dueling components")
 	duelingComponent := finalEvent.Components[1]
-	s.Equal(combat.DamageSourceDueling, duelingComponent.Source, "Second component should be from Dueling")
+	s.Equal(dnd5eEvents.DamageSourceCondition, duelingComponent.Source, "Second component should be from Dueling")
 	s.Equal(2, duelingComponent.FlatBonus, "Dueling should add +2 damage")
 }
 
@@ -470,28 +472,28 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithShield() {
 	}()
 
 	// Create damage chain event with weapon damage
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 				Rerolls:           nil,
 				FlatBonus:         3, // STR modifier
-				DamageType:        "slashing",
+				DamageType:        damage.Slashing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "slashing",
+		DamageType:   damage.Slashing,
 		IsCritical:   false,
 		WeaponDamage: "1d8",
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -506,7 +508,7 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithShield() {
 	// Verify Dueling added a separate component (shields don't count as weapons)
 	s.Require().Len(finalEvent.Components, 2, "Should have weapon + dueling components")
 	duelingComponent := finalEvent.Components[1]
-	s.Equal(combat.DamageSourceDueling, duelingComponent.Source, "Second component should be from Dueling")
+	s.Equal(dnd5eEvents.DamageSourceCondition, duelingComponent.Source, "Second component should be from Dueling")
 	s.Equal(2, duelingComponent.FlatBonus, "Dueling should add +2 damage even with shield")
 }
 
@@ -549,28 +551,28 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithTwoHandedWeapon() {
 	}()
 
 	// Create damage chain event with weapon damage
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{6, 5},
 				FinalDiceRolls:    []int{6, 5},
 				Rerolls:           nil,
 				FlatBonus:         3, // STR modifier
-				DamageType:        "slashing",
+				DamageType:        damage.Slashing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "slashing",
+		DamageType:   damage.Slashing,
 		IsCritical:   false,
 		WeaponDamage: "2d6",
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -633,28 +635,28 @@ func (s *FightingStyleTestSuite) TestDuelingNoBonusWithDualWield() {
 	}()
 
 	// Create damage chain event with weapon damage
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{5},
 				FinalDiceRolls:    []int{5},
 				Rerolls:           nil,
 				FlatBonus:         3, // STR modifier
-				DamageType:        "piercing",
+				DamageType:        damage.Piercing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "piercing",
+		DamageType:   damage.Piercing,
 		IsCritical:   false,
 		WeaponDamage: "1d6",
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -714,32 +716,31 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
 		_ = fs.Remove(ctx, s.bus)
 	}()
 
-	// Import abilities for testing
 	// Create damage chain event for off-hand attack (using DEX, modifier +3)
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{5},
 				FinalDiceRolls:    []int{5},
 				Rerolls:           nil,
 				FlatBonus:         0, // Normally off-hand doesn't get ability modifier
-				DamageType:        "piercing",
+				DamageType:        damage.Piercing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "piercing",
+		DamageType:   damage.Piercing,
 		IsCritical:   false,
 		WeaponDamage: "1d6",
-		AbilityUsed:  "dex", // DEX is used for finesse weapons
-		WeaponRef:    "shortsword-2",
+		AbilityUsed:  abilities.DEX, // DEX is used for finesse weapons
+		WeaponRef:    &core.Ref{ID: core.ID("shortsword-2")},
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
@@ -754,7 +755,7 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
 	// Verify Two-Weapon Fighting added a separate component with ability modifier
 	s.Require().Len(finalEvent.Components, 2, "Should have weapon + two-weapon fighting components")
 	twfComponent := finalEvent.Components[1]
-	s.Equal(combat.DamageSourceTwoWeaponFighting, twfComponent.Source,
+	s.Equal(dnd5eEvents.DamageSourceCondition, twfComponent.Source,
 		"Second component should be from Two-Weapon Fighting")
 	s.Equal(3, twfComponent.FlatBonus, "Two-Weapon Fighting should add +3 (DEX modifier)")
 }
@@ -806,30 +807,30 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
 	}()
 
 	// Create damage chain event for MAIN-hand attack
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{5},
 				FinalDiceRolls:    []int{5},
 				Rerolls:           nil,
 				FlatBonus:         3, // Main hand already gets ability modifier
-				DamageType:        "piercing",
+				DamageType:        damage.Piercing,
 				IsCritical:        false,
 			},
 		},
-		DamageType:   "piercing",
+		DamageType:   damage.Piercing,
 		IsCritical:   false,
 		WeaponDamage: "1d6",
-		AbilityUsed:  "dex",
-		WeaponRef:    "shortsword-1", // MAIN HAND weapon
+		AbilityUsed:  abilities.DEX,
+		WeaponRef:    &core.Ref{ID: core.ID("shortsword-1")}, // MAIN HAND weapon
 	}
 
 	// Publish through damage chain
-	damageChain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damages := combat.DamageChain.On(s.bus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 

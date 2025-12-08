@@ -11,6 +11,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 )
 
 // ConditionType represents D&D 5e conditions
@@ -93,7 +95,88 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
-// Event types for D&D 5e gameplay
+// =============================================================================
+// Damage Source Types
+// =============================================================================
+
+// DamageSourceType categorizes where damage bonuses come from.
+// This is the category only - use SourceRef for the specific reference.
+type DamageSourceType string
+
+// Damage source category constants
+const (
+	DamageSourceWeapon    DamageSourceType = "weapon"    // Damage from a weapon
+	DamageSourceAbility   DamageSourceType = "ability"   // Damage from ability modifier
+	DamageSourceCondition DamageSourceType = "condition" // Damage from an active condition (rage, etc.)
+	DamageSourceFeature   DamageSourceType = "feature"   // Damage from a class/racial feature
+	DamageSourceSpell     DamageSourceType = "spell"     // Damage from a spell
+	DamageSourceItem      DamageSourceType = "item"      // Damage from a magic item
+)
+
+// =============================================================================
+// Damage Components
+// =============================================================================
+
+// RerollEvent tracks a single die reroll
+type RerollEvent struct {
+	DieIndex int    // Which die was rerolled (0-based in OriginalDiceRolls)
+	Before   int    // Value before reroll
+	After    int    // Value after reroll
+	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
+}
+
+// DamageComponent represents damage from one source
+type DamageComponent struct {
+	Source            DamageSourceType // Category: weapon, ability, condition, etc.
+	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
+	OriginalDiceRolls []int            // As first rolled
+	FinalDiceRolls    []int            // After all rerolls
+	Rerolls           []RerollEvent    // History of rerolls
+	FlatBonus         int              // Flat modifier (0 if none)
+	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
+	IsCritical        bool             // Was this doubled for crit?
+}
+
+// Total returns the total damage for this component
+func (dc *DamageComponent) Total() int {
+	total := dc.FlatBonus
+	for _, roll := range dc.FinalDiceRolls {
+		total += roll
+	}
+	return total
+}
+
+// =============================================================================
+// Chain Events (modifier chains)
+// =============================================================================
+
+// AttackChainEvent represents an attack flowing through the modifier chain
+type AttackChainEvent struct {
+	AttackerID        string
+	TargetID          string
+	AttackRoll        int  // The d20 roll
+	AttackBonus       int  // Base bonus before modifiers
+	TargetAC          int  // Target's armor class
+	IsNaturalTwenty   bool // Natural 20 always hits
+	IsNaturalOne      bool // Natural 1 always misses
+	CriticalThreshold int  // Roll >= this value is a critical hit (default 20)
+}
+
+// DamageChainEvent represents damage flowing through the modifier chain
+type DamageChainEvent struct {
+	AttackerID   string
+	TargetID     string
+	Components   []DamageComponent // All damage sources
+	DamageType   damage.Type       // Type of damage (slashing, piercing, etc.)
+	IsCritical   bool              // Double damage dice on crit
+	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
+	AbilityUsed  abilities.Ability // Which ability was used (str, dex, etc.)
+	WeaponRef    *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
+}
+
+// =============================================================================
+// Simple Events (pub/sub notifications)
+// =============================================================================
 
 // TurnStartEvent is published when a character's turn begins
 type TurnStartEvent struct {
@@ -109,10 +192,11 @@ type TurnEndEvent struct {
 
 // DamageReceivedEvent is published when a character takes damage
 type DamageReceivedEvent struct {
-	TargetID   string // ID of the character taking damage
-	SourceID   string // ID of the damage source
-	Amount     int    // Amount of damage
-	DamageType string // Type of damage (slashing, fire, etc)
+	TargetID   string      // ID of the character taking damage
+	SourceID   string      // ID of the attacker/source entity
+	SourceRef  *core.Ref   // What caused the damage (weapon, spell, condition ref)
+	Amount     int         // Amount of damage
+	DamageType damage.Type // Type of damage (slashing, fire, etc)
 }
 
 // HealingReceivedEvent is published when a character receives healing
@@ -139,7 +223,7 @@ type ConditionRemovedEvent struct {
 	Reason       string
 }
 
-// AttackEvent is published when a character makes an attack
+// AttackEvent is published when a character makes an attack (before rolls)
 type AttackEvent struct {
 	AttackerID string // ID of the attacking character
 	TargetID   string // ID of the target
@@ -161,7 +245,11 @@ type ResourceConsumedEvent struct {
 	Remaining   int                   // How much is left after consumption
 }
 
-// Topic definitions for typed event system
+// =============================================================================
+// Topic Definitions
+// =============================================================================
+
+// Simple pub/sub topics
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
 	TurnStartTopic = events.DefineTypedTopic[TurnStartEvent]("dnd5e.turn.start")
@@ -189,4 +277,13 @@ var (
 
 	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
 	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
+)
+
+// Chain topics (for modifier chains)
+var (
+	// AttackChain provides typed chained topic for attack roll modifiers
+	AttackChain = events.DefineChainedTopic[AttackChainEvent]("dnd5e.combat.attack.chain")
+
+	// DamageChain provides typed chained topic for damage modifiers
+	DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
 )

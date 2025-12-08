@@ -71,7 +71,7 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 		f.subscriptionIDs = append(f.subscriptionIDs, subID1)
 
 		// Subscribe to AttackChain to add +2 bonus for ranged attacks
-		attackChain := combat.AttackChain.On(bus)
+		attackChain := dnd5eEvents.AttackChain.On(bus)
 		subID2, err := attackChain.SubscribeWithChain(ctx, f.onAttackChain)
 		if err != nil {
 			// Rollback
@@ -82,7 +82,7 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 
 	case fightingstyles.GreatWeaponFighting:
 		// Subscribe to DamageChain to reroll 1s and 2s
-		damageChain := combat.DamageChain.On(bus)
+		damageChain := dnd5eEvents.DamageChain.On(bus)
 		subID, err := damageChain.SubscribeWithChain(ctx, f.onDamageChain)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to subscribe to damage chain")
@@ -91,7 +91,7 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 
 	case fightingstyles.Dueling:
 		// Subscribe to DamageChain to add +2 to damage when wielding one-handed weapon with no off-hand weapon
-		damageChain := combat.DamageChain.On(bus)
+		damageChain := dnd5eEvents.DamageChain.On(bus)
 		subID, err := damageChain.SubscribeWithChain(ctx, f.onDuelingDamageChain)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to subscribe to damage chain for dueling")
@@ -100,7 +100,7 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 
 	case fightingstyles.TwoWeaponFighting:
 		// Subscribe to DamageChain to add ability modifier to off-hand weapon attacks
-		damageChain := combat.DamageChain.On(bus)
+		damageChain := dnd5eEvents.DamageChain.On(bus)
 		subID, err := damageChain.SubscribeWithChain(ctx, f.onTwoWeaponFightingDamageChain)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to subscribe to damage chain for two-weapon fighting")
@@ -183,9 +183,9 @@ func (f *FightingStyleCondition) onAttackEvent(_ context.Context, event dnd5eEve
 // onAttackChain adds +2 to attack rolls for ranged weapons (Archery fighting style)
 func (f *FightingStyleCondition) onAttackChain(
 	_ context.Context,
-	event combat.AttackChainEvent,
-	c chain.Chain[combat.AttackChainEvent],
-) (chain.Chain[combat.AttackChainEvent], error) {
+	event dnd5eEvents.AttackChainEvent,
+	c chain.Chain[dnd5eEvents.AttackChainEvent],
+) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Only modify attacks by this character
 	if event.AttackerID != f.CharacterID {
 		return c, nil
@@ -197,7 +197,7 @@ func (f *FightingStyleCondition) onAttackChain(
 	}
 
 	// Add +2 to attack bonus at StageFeatures
-	modifyAttack := func(_ context.Context, e combat.AttackChainEvent) (combat.AttackChainEvent, error) {
+	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		e.AttackBonus += 2
 		return e, nil
 	}
@@ -213,9 +213,9 @@ func (f *FightingStyleCondition) onAttackChain(
 // onDamageChain rerolls 1s and 2s on weapon damage dice (Great Weapon Fighting)
 func (f *FightingStyleCondition) onDamageChain(
 	_ context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
 	if event.AttackerID != f.CharacterID {
 		return c, nil
@@ -229,7 +229,7 @@ func (f *FightingStyleCondition) onDamageChain(
 	}
 
 	weaponComponent := &event.Components[0]
-	if weaponComponent.Source != combat.DamageSourceWeapon {
+	if weaponComponent.Source != dnd5eEvents.DamageSourceWeapon {
 		return c, nil // First component isn't weapon damage
 	}
 
@@ -244,11 +244,11 @@ func (f *FightingStyleCondition) onDamageChain(
 	// For proper implementation, we need to track the weapon being used
 	// Let's add a modifier that rerolls at the StageFeatures stage
 
-	modifyDamage := func(modCtx context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Find weapon component
 		for i := range e.Components {
 			component := &e.Components[i]
-			if component.Source != combat.DamageSourceWeapon {
+			if component.Source != dnd5eEvents.DamageSourceWeapon {
 				continue
 			}
 
@@ -277,7 +277,7 @@ func (f *FightingStyleCondition) onDamageChain(
 					}
 
 					// Track reroll
-					component.Rerolls = append(component.Rerolls, combat.RerollEvent{
+					component.Rerolls = append(component.Rerolls, dnd5eEvents.RerollEvent{
 						DieIndex: idx,
 						Before:   roll,
 						After:    newRoll,
@@ -306,9 +306,9 @@ func (f *FightingStyleCondition) onDamageChain(
 // onDuelingDamageChain adds +2 to damage when wielding one-handed weapon with no off-hand weapon
 func (f *FightingStyleCondition) onDuelingDamageChain(
 	ctx context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
 	if event.AttackerID != f.CharacterID {
 		return c, nil
@@ -351,10 +351,11 @@ func (f *FightingStyleCondition) onDuelingDamageChain(
 	}
 
 	// Character is eligible for Dueling bonus - add +2 to damage at StageFeatures
-	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Append dueling damage component (like Rage does)
-		e.Components = append(e.Components, combat.DamageComponent{
-			Source:            combat.DamageSourceDueling,
+		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+			Source:            dnd5eEvents.DamageSourceCondition,
+			SourceRef:         refs.FightingStyles.Dueling(),
 			OriginalDiceRolls: nil, // No dice
 			FinalDiceRolls:    nil,
 			Rerolls:           nil,
@@ -376,9 +377,9 @@ func (f *FightingStyleCondition) onDuelingDamageChain(
 // onTwoWeaponFightingDamageChain adds ability modifier to off-hand weapon attacks
 func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 	ctx context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
 	if event.AttackerID != f.CharacterID {
 		return c, nil
@@ -405,7 +406,7 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 	}
 
 	// Only apply to off-hand attacks
-	if event.WeaponRef != offHand.ID {
+	if event.WeaponRef == nil || event.WeaponRef.ID != offHand.ID {
 		return c, nil // Not an off-hand attack
 	}
 
@@ -419,10 +420,11 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 	abilityModifier := 3
 
 	// Add ability modifier to damage at StageFeatures
-	modifyDamage := func(_ context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Append two-weapon fighting damage component
-		e.Components = append(e.Components, combat.DamageComponent{
-			Source:            combat.DamageSourceTwoWeaponFighting,
+		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+			Source:            dnd5eEvents.DamageSourceCondition,
+			SourceRef:         refs.FightingStyles.TwoWeaponFighting(),
 			OriginalDiceRolls: nil, // No dice
 			FinalDiceRolls:    nil,
 			Rerolls:           nil,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -92,7 +93,7 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 	s.Require().NoError(err)
 
 	s.Run("lowers threshold to 19 for champion attacks", func() {
-		event := combat.AttackChainEvent{
+		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
 			AttackRoll:        19,
@@ -104,8 +105,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		}
 
 		// Create and execute chain
-		chain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-		attackChain := combat.AttackChain.On(s.bus)
+		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
 		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
 		s.Require().NoError(err)
@@ -118,7 +119,7 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 	})
 
 	s.Run("does not modify attacks by other characters", func() {
-		event := combat.AttackChainEvent{
+		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "other-fighter",
 			TargetID:          "goblin",
 			AttackRoll:        19,
@@ -129,8 +130,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 			CriticalThreshold: 20,
 		}
 
-		chain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-		attackChain := combat.AttackChain.On(s.bus)
+		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
 		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
 		s.Require().NoError(err)
@@ -161,7 +162,7 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 			_ = s.condition.Apply(ctx, s.bus)
 		}()
 
-		event := combat.AttackChainEvent{
+		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
 			AttackRoll:        18,
@@ -172,8 +173,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 			CriticalThreshold: 20,
 		}
 
-		chain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-		attackChain := combat.AttackChain.On(s.bus)
+		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
 		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
 		s.Require().NoError(err)
@@ -290,7 +291,7 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 	s.Require().NoError(err)
 
 	s.Run("roll of 19 becomes critical for champion", func() {
-		event := combat.AttackChainEvent{
+		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
 			AttackRoll:        19,
@@ -301,8 +302,8 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 			CriticalThreshold: 20,
 		}
 
-		chain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-		attackChain := combat.AttackChain.On(s.bus)
+		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
 		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
 		s.Require().NoError(err)
@@ -317,7 +318,7 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 	})
 
 	s.Run("roll of 18 is not critical for improved critical", func() {
-		event := combat.AttackChainEvent{
+		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
 			AttackRoll:        18,
@@ -328,8 +329,8 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 			CriticalThreshold: 20,
 		}
 
-		chain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-		attackChain := combat.AttackChain.On(s.bus)
+		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
 		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
 		s.Require().NoError(err)
@@ -342,7 +343,7 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 	})
 
 	s.Run("roll of 20 is still critical", func() {
-		event := combat.AttackChainEvent{
+		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
 			AttackRoll:        20,
@@ -353,8 +354,8 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 			CriticalThreshold: 20,
 		}
 
-		chain := events.NewStagedChain[combat.AttackChainEvent](combat.ModifierStages)
-		attackChain := combat.AttackChain.On(s.bus)
+		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
 		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
 		s.Require().NoError(err)

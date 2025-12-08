@@ -48,7 +48,7 @@ func (ic *ImprovedCriticalCondition) Apply(ctx context.Context, bus events.Event
 	ic.bus = bus
 
 	// Subscribe to AttackChain to modify critical threshold
-	attackChain := combat.AttackChain.On(bus)
+	attackChain := dnd5eEvents.AttackChain.On(bus)
 	subID, err := attackChain.SubscribeWithChain(ctx, ic.onAttackChain)
 	if err != nil {
 		return rpgerr.Wrap(err, "failed to subscribe to attack chain")
@@ -109,16 +109,16 @@ func (ic *ImprovedCriticalCondition) loadJSON(data json.RawMessage) error {
 // onAttackChain modifies the critical threshold for attacks by this character
 func (ic *ImprovedCriticalCondition) onAttackChain(
 	_ context.Context,
-	event combat.AttackChainEvent,
-	c chain.Chain[combat.AttackChainEvent],
-) (chain.Chain[combat.AttackChainEvent], error) {
+	event dnd5eEvents.AttackChainEvent,
+	c chain.Chain[dnd5eEvents.AttackChainEvent],
+) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Only modify attacks by this character
 	if event.AttackerID != ic.CharacterID {
 		return c, nil
 	}
 
 	// Modify critical threshold at StageFeatures
-	modifyThreshold := func(_ context.Context, e combat.AttackChainEvent) (combat.AttackChainEvent, error) {
+	modifyThreshold := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		// Only lower the threshold, never raise it
 		if ic.Threshold < e.CriticalThreshold {
 			e.CriticalThreshold = ic.Threshold

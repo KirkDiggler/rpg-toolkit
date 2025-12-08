@@ -10,85 +10,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
-
-// DamageSourceType categorizes where damage bonuses come from
-type DamageSourceType string
-
-// Damage source type constants
-const (
-	DamageSourceWeapon            DamageSourceType = "weapon"
-	DamageSourceAbility           DamageSourceType = "ability"
-	DamageSourceRage              DamageSourceType = "dnd5e:conditions:raging"
-	DamageSourceSneakAttack       DamageSourceType = "sneak_attack"
-	DamageSourceDivineSmite       DamageSourceType = "divine_smite"
-	DamageSourceElementalWeapon   DamageSourceType = "elemental_weapon"
-	DamageSourceBrutalCritical    DamageSourceType = "dnd5e:conditions:brutal_critical"
-	DamageSourceDueling           DamageSourceType = "dnd5e:conditions:fighting_style_dueling"
-	DamageSourceTwoWeaponFighting DamageSourceType = "dnd5e:conditions:fighting_style_two_weapon_fighting"
-	// Add more as needed
-)
-
-// RerollEvent tracks a single die reroll
-type RerollEvent struct {
-	DieIndex int    // Which die was rerolled (0-based in OriginalDiceRolls)
-	Before   int    // Value before reroll
-	After    int    // Value after reroll
-	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
-}
-
-// DamageComponent represents damage from one source
-type DamageComponent struct {
-	Source            DamageSourceType
-	OriginalDiceRolls []int         // As first rolled
-	FinalDiceRolls    []int         // After all rerolls
-	Rerolls           []RerollEvent // History of rerolls
-	FlatBonus         int           // Flat modifier (0 if none)
-	DamageType        string        // "slashing", "fire", etc.
-	IsCritical        bool          // Was this doubled for crit?
-}
-
-// Total returns the total damage for this component
-func (dc *DamageComponent) Total() int {
-	total := dc.FlatBonus
-	for _, roll := range dc.FinalDiceRolls {
-		total += roll
-	}
-	return total
-}
-
-// AttackChainEvent represents an attack flowing through the modifier chain
-type AttackChainEvent struct {
-	AttackerID        string
-	TargetID          string
-	AttackRoll        int  // The d20 roll
-	AttackBonus       int  // Base bonus before modifiers
-	TargetAC          int  // Target's armor class
-	IsNaturalTwenty   bool // Natural 20 always hits
-	IsNaturalOne      bool // Natural 1 always misses
-	CriticalThreshold int  // Roll >= this value is a critical hit (default 20)
-}
-
-// DamageChainEvent represents damage flowing through the modifier chain
-type DamageChainEvent struct {
-	AttackerID   string
-	TargetID     string
-	Components   []DamageComponent // All damage sources
-	DamageType   string            // Type of damage (slashing, piercing, etc.)
-	IsCritical   bool              // Double damage dice on crit
-	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
-	AbilityUsed  abilities.Ability // Which ability was used
-	WeaponRef    string            // Reference to the weapon used (for off-hand detection, etc.)
-}
-
-// AttackChain provides typed chained topic for attack roll modifiers
-var AttackChain = events.DefineChainedTopic[AttackChainEvent]("dnd5e.combat.attack.chain")
-
-// DamageChain provides typed chained topic for damage modifiers
-var DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
 
 // AttackInput provides all information needed to resolve an attack
 type AttackInput struct {
@@ -129,7 +56,7 @@ func (ai *AttackInput) Validate() error {
 
 // DamageBreakdown provides detailed component breakdown of damage calculation
 type DamageBreakdown struct {
-	Components  []DamageComponent
+	Components  []dnd5eEvents.DamageComponent
 	AbilityUsed abilities.Ability // Use abilities.Ability type, not string
 	TotalDamage int
 }
@@ -147,10 +74,10 @@ type AttackResult struct {
 	IsNaturalOne    bool // Natural 1
 
 	// Damage details
-	DamageRolls []int  // Individual damage dice rolls (flattened)
-	DamageBonus int    // Total damage bonus
-	TotalDamage int    // Final damage dealt
-	DamageType  string // Type of damage
+	DamageRolls []int       // Individual damage dice rolls (flattened)
+	DamageBonus int         // Total damage bonus
+	TotalDamage int         // Final damage dealt
+	DamageType  damage.Type // Type of damage
 
 	// Detailed breakdown
 	Breakdown *DamageBreakdown // Detailed damage breakdown (nil if attack missed)
@@ -171,7 +98,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	result := &AttackResult{
-		DamageType: string(input.Weapon.DamageType),
+		DamageType: input.Weapon.DamageType,
 		TargetAC:   input.DefenderAC,
 	}
 
@@ -202,7 +129,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	baseBonus := abilityMod + input.ProficiencyBonus
 
 	// Step 4: Fire attack chain event to collect modifiers
-	attackEvent := AttackChainEvent{
+	attackEvent := dnd5eEvents.AttackChainEvent{
 		AttackerID:        input.Attacker.GetID(),
 		TargetID:          input.Defender.GetID(),
 		AttackRoll:        attackRoll,
@@ -214,8 +141,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	// Create attack chain
-	attackChain := events.NewStagedChain[AttackChainEvent](ModifierStages)
-	attacks := AttackChain.On(input.EventBus)
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(input.EventBus)
 
 	// Publish through chain to collect modifiers
 	modifiedAttackChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
@@ -302,13 +229,14 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		// Set breakdown from chain output
 		result.Breakdown = chainOutput.Breakdown
 
-		// Step 8: Publish DamageReceivedEvent
+		// Step 8: Publish DamageReceivedEvent with proper source info
 		damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
 		err = damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
 			TargetID:   input.Defender.GetID(),
 			SourceID:   input.Attacker.GetID(),
+			SourceRef:  weaponToRef(input.Weapon),
 			Amount:     result.TotalDamage,
-			DamageType: string(input.Weapon.DamageType),
+			DamageType: input.Weapon.DamageType,
 		})
 		if err != nil {
 			return nil, rpgerr.Wrap(err, "failed to publish damage received event")
@@ -358,42 +286,44 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 	}
 
 	// Create weapon damage component
-	weaponComponent := DamageComponent{
-		Source:            DamageSourceWeapon,
+	weaponComponent := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		SourceRef:         weaponToRef(input.AttackInput.Weapon),
 		OriginalDiceRolls: input.DiceRolls,
 		FinalDiceRolls:    input.DiceRolls, // No rerolls yet
 		Rerolls:           nil,
 		FlatBonus:         0,
-		DamageType:        string(input.AttackInput.Weapon.DamageType),
+		DamageType:        input.AttackInput.Weapon.DamageType,
 		IsCritical:        input.IsCritical,
 	}
 
-	// Create ability modifier component
-	abilityComponent := DamageComponent{
-		Source:            DamageSourceAbility,
+	// Create ability modifier component (no ref needed - ability is simple string)
+	abilityComponent := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceAbility,
+		SourceRef:         nil, // Ability is tracked via AbilityUsed field
 		OriginalDiceRolls: nil, // No dice
 		FinalDiceRolls:    nil,
 		Rerolls:           nil,
 		FlatBonus:         input.AbilityMod,
-		DamageType:        string(input.AttackInput.Weapon.DamageType), // Same as weapon
+		DamageType:        input.AttackInput.Weapon.DamageType, // Same as weapon
 		IsCritical:        input.IsCritical,
 	}
 
 	// Build damage chain event with initial components
-	damageEvent := &DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   input.AttackInput.Attacker.GetID(),
 		TargetID:     input.AttackInput.Defender.GetID(),
-		Components:   []DamageComponent{weaponComponent, abilityComponent},
-		DamageType:   string(input.AttackInput.Weapon.DamageType),
+		Components:   []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
+		DamageType:   input.AttackInput.Weapon.DamageType,
 		IsCritical:   input.IsCritical,
 		WeaponDamage: input.AttackInput.Weapon.Damage,
 		AbilityUsed:  input.AbilityUsed,
-		WeaponRef:    input.AttackInput.Weapon.ID,
+		WeaponRef:    weaponToRef(input.AttackInput.Weapon),
 	}
 
 	// Create and publish through damage chain
-	damageChain := events.NewStagedChain[*DamageChainEvent](ModifierStages)
-	damages := DamageChain.On(input.AttackInput.EventBus)
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(input.AttackInput.EventBus)
 
 	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
 	if err != nil {
@@ -465,4 +395,16 @@ func calculateAttackAbilityModifier(weapon *weapons.Weapon, scores shared.Abilit
 
 	// Melee weapons use STR
 	return scores.Modifier(abilities.STR)
+}
+
+// weaponToRef converts a weapon to its core.Ref
+func weaponToRef(weapon *weapons.Weapon) *core.Ref {
+	if weapon == nil {
+		return nil
+	}
+	return &core.Ref{
+		Module: refs.Module,
+		Type:   refs.TypeWeapons,
+		ID:     weapon.ID,
+	}
 }

@@ -98,7 +98,7 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 	s.Equal([]int{5}, result.DamageRolls)
 	s.Equal(3, result.DamageBonus, "STR modifier")
 	s.Equal(8, result.TotalDamage)
-	s.Equal("slashing", result.DamageType)
+	s.Equal(damage.Slashing, result.DamageType)
 }
 
 func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
@@ -227,5 +227,5 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 	s.Equal("goblin-1", damageEvent.TargetID)
 	s.Equal("barbarian-1", damageEvent.SourceID)
 	s.Equal(8, damageEvent.Amount)
-	s.Equal("slashing", damageEvent.DamageType)
+	s.Equal(damage.Slashing, damageEvent.DamageType)
 }

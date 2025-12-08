@@ -10,7 +10,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -95,7 +97,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 		TargetID:   "barbarian-1",
 		SourceID:   "goblin-1",
 		Amount:     5,
-		DamageType: "slashing",
+		DamageType: damage.Slashing,
 	})
 	s.Require().NoError(err)
 
@@ -242,41 +244,41 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 func (s *RagingConditionTestSuite) executeDamageChain(
 	attackerID string,
 	baseDamage, damageBonus int,
-) (*combat.DamageChainEvent, error) {
+) (*dnd5eEvents.DamageChainEvent, error) {
 	// Create weapon component with base damage
-	weaponComp := combat.DamageComponent{
-		Source:            combat.DamageSourceWeapon,
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: []int{baseDamage},
 		FinalDiceRolls:    []int{baseDamage},
 		Rerolls:           nil,
 		FlatBonus:         0,
-		DamageType:        "slashing",
+		DamageType:        damage.Slashing,
 		IsCritical:        false,
 	}
 
 	// Create ability component with damage bonus (STR modifier)
-	abilityComp := combat.DamageComponent{
-		Source:            combat.DamageSourceAbility,
+	abilityComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceAbility,
 		OriginalDiceRolls: nil,
 		FinalDiceRolls:    nil,
 		Rerolls:           nil,
 		FlatBonus:         damageBonus,
-		DamageType:        "slashing",
+		DamageType:        damage.Slashing,
 		IsCritical:        false,
 	}
 
-	damageEvent := &combat.DamageChainEvent{
+	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   attackerID,
 		TargetID:     "goblin-1",
-		Components:   []combat.DamageComponent{weaponComp, abilityComp},
-		DamageType:   "slashing",
+		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		DamageType:   damage.Slashing,
 		IsCritical:   false,
 		WeaponDamage: "1d8",
-		AbilityUsed:  "str",
+		AbilityUsed:  abilities.STR,
 	}
 
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
-	damageTopic := combat.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
 	if err != nil {
@@ -307,15 +309,15 @@ func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
 	s.Require().Len(finalEvent.Components, 3, "Should have weapon, ability, and rage components")
 
 	// Verify weapon component
-	s.Equal(combat.DamageSourceWeapon, finalEvent.Components[0].Source)
+	s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
 	s.Equal(5, finalEvent.Components[0].Total())
 
 	// Verify ability component
-	s.Equal(combat.DamageSourceAbility, finalEvent.Components[1].Source)
+	s.Equal(dnd5eEvents.DamageSourceAbility, finalEvent.Components[1].Source)
 	s.Equal(3, finalEvent.Components[1].Total())
 
 	// Verify rage component was added
-	s.Equal(combat.DamageSourceRage, finalEvent.Components[2].Source)
+	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
 	s.Equal(2, finalEvent.Components[2].FlatBonus, "Rage should add +2 damage")
 	s.Equal(2, finalEvent.Components[2].Total())
 
@@ -347,11 +349,11 @@ func (s *RagingConditionTestSuite) TestRagingConditionOnlyAffectsOwnAttacks() {
 	s.Require().Len(finalEvent.Components, 2, "Should only have weapon and ability components, no rage")
 
 	// Verify weapon component
-	s.Equal(combat.DamageSourceWeapon, finalEvent.Components[0].Source)
+	s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
 	s.Equal(5, finalEvent.Components[0].Total())
 
 	// Verify ability component
-	s.Equal(combat.DamageSourceAbility, finalEvent.Components[1].Source)
+	s.Equal(dnd5eEvents.DamageSourceAbility, finalEvent.Components[1].Source)
 	s.Equal(3, finalEvent.Components[1].Total())
 
 	// Verify total damage (no rage bonus)
