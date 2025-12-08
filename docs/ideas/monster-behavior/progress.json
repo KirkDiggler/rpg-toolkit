@@ -1,0 +1,87 @@
+{
+  "idea": "monster-behavior",
+  "status": "brainstorming",
+  "summary": "Make monsters fight back with simple, extensible behavior",
+  "trigger": "Demo goblin just stands there getting beat up - can we make it fight back simply and extensibly?",
+  "phases": {
+    "brainstorm": {
+      "status": "in_progress",
+      "date": "2025-12-07",
+      "file": "brainstorm.md",
+      "notes": "Core decisions made: monsters are entities, utility scoring for action selection"
+    },
+    "use_cases": {
+      "status": "in_progress",
+      "date": "2025-12-07",
+      "file": "use-cases.md",
+      "notes": "5 scenarios covering basic attack, ranged, disengage, hide, and healing"
+    },
+    "architecture": {
+      "status": "pending",
+      "notes": "May reference existing ADR-0016 and planning docs"
+    },
+    "design": {
+      "status": "pending"
+    },
+    "issues": {
+      "status": "pending"
+    }
+  },
+  "goals": {
+    "primary": "Goblin picks closest enemy, moves toward, attacks, uses Nimble Escape",
+    "stretch": "Goblin chooses Disengage vs Hide based on conditions (HP, allies nearby)"
+  },
+  "decisions": [
+    {
+      "question": "Are monsters different from characters?",
+      "answer": "No - monsters are entities using the same systems",
+      "reason": "Action economy, features, conditions all work identically. Healing potions and poison work on monsters the same as characters."
+    },
+    {
+      "question": "What are special abilities?",
+      "answer": "Features - same as character features",
+      "reason": "Nimble Escape is a Feature that subscribes to events and modifies behavior, just like Rage or Second Wind."
+    },
+    {
+      "question": "How should monsters select actions?",
+      "answer": "Utility scoring - each action gets a score, highest valid score wins",
+      "reason": "Simple, tunable, extensible. State machines can be integrated later as a proper toolkit tool."
+    },
+    {
+      "question": "What are monster actions?",
+      "answer": "Rich objects with type, cost, range, triggers, and effects",
+      "reason": "Actions aren't just attacks - they include drinking potions, using abilities, etc. Each has behavioral metadata."
+    }
+  ],
+  "open_questions": [
+    "Where does pathfinding live? Toolkit infrastructure or rulebook?",
+    "How do we detect cover for Hide decisions?",
+    "What's the action template format? Struct, proto, or JSON?"
+  ],
+  "affected_projects": [
+    {
+      "project": "rpg-toolkit",
+      "changes": ["behavior package infrastructure", "action scoring system"],
+      "notes": "Infrastructure only - no D&D specifics"
+    },
+    {
+      "project": "rpg-toolkit/rulebooks/dnd5e",
+      "changes": ["Goblin behavior implementation", "Nimble Escape feature", "Monster action definitions"],
+      "notes": "Game-specific behavior logic"
+    },
+    {
+      "project": "rpg-api",
+      "changes": ["Orchestration of behavior execution", "Monster turn handling"],
+      "notes": "Data orchestrator role"
+    }
+  ],
+  "references": {
+    "adr": "docs/adr/0016-behavior-system-architecture.md",
+    "planning": [
+      "docs/archive/planning/encounter-system-implementation.md",
+      "docs/archive/planning/rulebook-behavior-integration.md"
+    ],
+    "journey": "docs/journey/017-encounter-system-design.md",
+    "examples": "docs/ideas/monster-behavior/goblin.json"
+  }
+}
