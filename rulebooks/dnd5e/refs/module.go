@@ -38,13 +38,3 @@ const (
 	TypeTools          core.Type = "tools"
 	TypeArmor          core.Type = "armor"
 )
-
-// ns is a helper for building namespace refs. Embed this in namespace structs
-// to get a ref() method that creates refs with the correct module and type.
-type ns struct {
-	t core.Type
-}
-
-func (n ns) ref(id core.ID) *core.Ref {
-	return &core.Ref{Module: Module, Type: n.t, ID: id}
-}

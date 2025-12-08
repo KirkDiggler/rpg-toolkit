@@ -3,15 +3,26 @@ package refs
 
 import "github.com/KirkDiggler/rpg-toolkit/core"
 
+// FightingStyle singletons - unexported for controlled access via methods
+var (
+	fightingStyleArchery             = &core.Ref{Module: Module, Type: TypeFightingStyles, ID: "archery"}
+	fightingStyleDefense             = &core.Ref{Module: Module, Type: TypeFightingStyles, ID: "defense"}
+	fightingStyleDueling             = &core.Ref{Module: Module, Type: TypeFightingStyles, ID: "dueling"}
+	fightingStyleGreatWeaponFighting = &core.Ref{Module: Module, Type: TypeFightingStyles, ID: "great_weapon_fighting"}
+	fightingStyleProtection          = &core.Ref{Module: Module, Type: TypeFightingStyles, ID: "protection"}
+	fightingStyleTwoWeaponFighting   = &core.Ref{Module: Module, Type: TypeFightingStyles, ID: "two_weapon_fighting"}
+)
+
 // FightingStyles provides type-safe, discoverable references to D&D 5e fighting styles.
 // Use IDE autocomplete: refs.FightingStyles.<tab> to discover available fighting styles.
-var FightingStyles = fightingStylesNS{ns{TypeFightingStyles}}
+// Methods return singleton pointers enabling identity comparison (ref == refs.FightingStyles.Dueling()).
+var FightingStyles = fightingStylesNS{}
 
-type fightingStylesNS struct{ ns }
+type fightingStylesNS struct{}
 
-func (n fightingStylesNS) Archery() *core.Ref             { return n.ref("archery") }
-func (n fightingStylesNS) Defense() *core.Ref             { return n.ref("defense") }
-func (n fightingStylesNS) Dueling() *core.Ref             { return n.ref("dueling") }
-func (n fightingStylesNS) GreatWeaponFighting() *core.Ref { return n.ref("great_weapon_fighting") }
-func (n fightingStylesNS) Protection() *core.Ref          { return n.ref("protection") }
-func (n fightingStylesNS) TwoWeaponFighting() *core.Ref   { return n.ref("two_weapon_fighting") }
+func (n fightingStylesNS) Archery() *core.Ref             { return fightingStyleArchery }
+func (n fightingStylesNS) Defense() *core.Ref             { return fightingStyleDefense }
+func (n fightingStylesNS) Dueling() *core.Ref             { return fightingStyleDueling }
+func (n fightingStylesNS) GreatWeaponFighting() *core.Ref { return fightingStyleGreatWeaponFighting }
+func (n fightingStylesNS) Protection() *core.Ref          { return fightingStyleProtection }
+func (n fightingStylesNS) TwoWeaponFighting() *core.Ref   { return fightingStyleTwoWeaponFighting }

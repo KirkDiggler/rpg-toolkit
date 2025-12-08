@@ -390,3 +390,109 @@ func TestExpandedConditionsNamespace(t *testing.T) {
 		})
 	}
 }
+
+// TestSingletonIdentity verifies that refs return the same pointer instance
+// enabling pointer comparison (ref == refs.Abilities.Strength())
+func TestSingletonIdentity(t *testing.T) {
+	t.Run("Abilities return same pointer", func(t *testing.T) {
+		ref1 := refs.Abilities.Strength()
+		ref2 := refs.Abilities.Strength()
+		assert.Same(t, ref1, ref2, "Strength() should return the same pointer")
+
+		ref3 := refs.Abilities.Dexterity()
+		ref4 := refs.Abilities.Dexterity()
+		assert.Same(t, ref3, ref4, "Dexterity() should return the same pointer")
+
+		// Different refs should be different pointers
+		assert.NotSame(t, ref1, ref3, "Strength and Dexterity should be different pointers")
+	})
+
+	t.Run("Weapons return same pointer", func(t *testing.T) {
+		ref1 := refs.Weapons.Longsword()
+		ref2 := refs.Weapons.Longsword()
+		assert.Same(t, ref1, ref2, "Longsword() should return the same pointer")
+
+		ref3 := refs.Weapons.Greataxe()
+		ref4 := refs.Weapons.Greataxe()
+		assert.Same(t, ref3, ref4, "Greataxe() should return the same pointer")
+	})
+
+	t.Run("Conditions return same pointer", func(t *testing.T) {
+		ref1 := refs.Conditions.Raging()
+		ref2 := refs.Conditions.Raging()
+		assert.Same(t, ref1, ref2, "Raging() should return the same pointer")
+	})
+
+	t.Run("Features return same pointer", func(t *testing.T) {
+		ref1 := refs.Features.Rage()
+		ref2 := refs.Features.Rage()
+		assert.Same(t, ref1, ref2, "Rage() should return the same pointer")
+	})
+
+	t.Run("Classes return same pointer", func(t *testing.T) {
+		ref1 := refs.Classes.Fighter()
+		ref2 := refs.Classes.Fighter()
+		assert.Same(t, ref1, ref2, "Fighter() should return the same pointer")
+	})
+
+	t.Run("Spells return same pointer", func(t *testing.T) {
+		ref1 := refs.Spells.Fireball()
+		ref2 := refs.Spells.Fireball()
+		assert.Same(t, ref1, ref2, "Fireball() should return the same pointer")
+	})
+}
+
+// TestSingletonSwitchPattern demonstrates the intended usage pattern
+func TestSingletonSwitchPattern(t *testing.T) {
+	// This test demonstrates how singletons enable switch on ref directly
+	ref := refs.Abilities.Strength()
+
+	var matched bool
+	switch ref {
+	case refs.Abilities.Strength():
+		matched = true
+	case refs.Abilities.Dexterity():
+		matched = false
+	default:
+		matched = false
+	}
+
+	assert.True(t, matched, "Switch on singleton ref should work via pointer comparison")
+}
+
+// TestWeaponsByID verifies the ByID lookup returns singleton refs
+func TestWeaponsByID(t *testing.T) {
+	t.Run("ByID returns same pointer as named method", func(t *testing.T) {
+		// This is the critical test: ByID must return the SAME singleton
+		// that the named method returns, enabling pointer comparison
+		longswordByID := refs.Weapons.ByID("longsword")
+		longswordNamed := refs.Weapons.Longsword()
+		assert.Same(t, longswordByID, longswordNamed, "ByID should return same singleton as named method")
+
+		greataxeByID := refs.Weapons.ByID("greataxe")
+		greataxeNamed := refs.Weapons.Greataxe()
+		assert.Same(t, greataxeByID, greataxeNamed, "ByID should return same singleton as named method")
+	})
+
+	t.Run("ByID returns nil for unknown weapon", func(t *testing.T) {
+		unknown := refs.Weapons.ByID("unknown-weapon-id")
+		assert.Nil(t, unknown, "ByID should return nil for unknown weapon ID")
+	})
+
+	t.Run("ByID enables weapon pointer comparison in converters", func(t *testing.T) {
+		// Simulates the weaponToRef helper usage
+		weaponID := "longsword"
+		ref := refs.Weapons.ByID(weaponID)
+
+		// This should work via pointer comparison
+		var matched bool
+		switch ref {
+		case refs.Weapons.Longsword():
+			matched = true
+		default:
+			matched = false
+		}
+
+		assert.True(t, matched, "ByID ref should match singleton in switch")
+	})
+}
