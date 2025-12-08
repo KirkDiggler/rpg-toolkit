@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -149,12 +148,13 @@ func (s *SneakAttackCondition) onDamageChain(
 	// - event.HasAdvantage == true, OR
 	// - An ally is within 5 feet of the target
 
-	// Roll sneak attack dice
-	if s.roller == nil {
-		return c, rpgerr.New(rpgerr.CodeInvalidArgument, "no roller configured for sneak attack")
+	// Roll sneak attack dice (use default roller if none configured, e.g., after JSON load)
+	roller := s.roller
+	if roller == nil {
+		roller = dice.NewRoller()
 	}
 
-	sneakDice, err := s.roller.RollN(ctx, s.DamageDice, 6)
+	sneakDice, err := roller.RollN(ctx, s.DamageDice, 6)
 	if err != nil {
 		return c, rpgerr.Wrap(err, "failed to roll sneak attack dice")
 	}
@@ -168,7 +168,7 @@ func (s *SneakAttackCondition) onDamageChain(
 			FinalDiceRolls:    sneakDice,
 			Rerolls:           nil,
 			FlatBonus:         0,
-			DamageType:        damage.Piercing, // Sneak attack uses weapon's damage type
+			DamageType:        e.DamageType, // Sneak attack uses weapon's damage type
 			IsCritical:        event.IsCritical,
 		})
 		return e, nil
