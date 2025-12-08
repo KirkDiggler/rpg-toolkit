@@ -352,9 +352,9 @@ func (f *FightingStyleCondition) onDuelingDamageChain(
 
 	// Character is eligible for Dueling bonus - add +2 to damage at StageFeatures
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		// Append dueling damage component (like Rage does)
+		// Append dueling damage component
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceCondition,
+			Source:            dnd5eEvents.DamageSourceFeature,
 			SourceRef:         refs.FightingStyles.Dueling(),
 			OriginalDiceRolls: nil, // No dice
 			FinalDiceRolls:    nil,
@@ -423,7 +423,7 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		// Append two-weapon fighting damage component
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceCondition,
+			Source:            dnd5eEvents.DamageSourceFeature,
 			SourceRef:         refs.FightingStyles.TwoWeaponFighting(),
 			OriginalDiceRolls: nil, // No dice
 			FinalDiceRolls:    nil,

@@ -419,7 +419,7 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithOneHandedWeapon() {
 	// Verify Dueling added a separate component
 	s.Require().Len(finalEvent.Components, 2, "Should have weapon + dueling components")
 	duelingComponent := finalEvent.Components[1]
-	s.Equal(dnd5eEvents.DamageSourceCondition, duelingComponent.Source, "Second component should be from Dueling")
+	s.Equal(dnd5eEvents.DamageSourceFeature, duelingComponent.Source, "Second component should be from Dueling")
 	s.Equal(2, duelingComponent.FlatBonus, "Dueling should add +2 damage")
 }
 
@@ -508,7 +508,7 @@ func (s *FightingStyleTestSuite) TestDuelingBonusWithShield() {
 	// Verify Dueling added a separate component (shields don't count as weapons)
 	s.Require().Len(finalEvent.Components, 2, "Should have weapon + dueling components")
 	duelingComponent := finalEvent.Components[1]
-	s.Equal(dnd5eEvents.DamageSourceCondition, duelingComponent.Source, "Second component should be from Dueling")
+	s.Equal(dnd5eEvents.DamageSourceFeature, duelingComponent.Source, "Second component should be from Dueling")
 	s.Equal(2, duelingComponent.FlatBonus, "Dueling should add +2 damage even with shield")
 }
 
@@ -755,7 +755,7 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
 	// Verify Two-Weapon Fighting added a separate component with ability modifier
 	s.Require().Len(finalEvent.Components, 2, "Should have weapon + two-weapon fighting components")
 	twfComponent := finalEvent.Components[1]
-	s.Equal(dnd5eEvents.DamageSourceCondition, twfComponent.Source,
+	s.Equal(dnd5eEvents.DamageSourceFeature, twfComponent.Source,
 		"Second component should be from Two-Weapon Fighting")
 	s.Equal(3, twfComponent.FlatBonus, "Two-Weapon Fighting should add +3 (DEX modifier)")
 }
