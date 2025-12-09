@@ -124,10 +124,11 @@ func (r *BasicRoom) PlaceEntity(entity core.Entity, pos Position) error {
 	// Emit placement event
 	if r.entityPlacements != nil {
 		_ = r.entityPlacements.Publish(context.Background(), EntityPlacedEvent{
-			EntityID: entity.GetID(),
-			Position: pos,
-			RoomID:   r.id,
-			GridType: gridShapeToString(r.grid.GetShape()),
+			EntityID:     entity.GetID(),
+			Position:     pos,
+			CubePosition: r.getCubePosition(pos),
+			RoomID:       r.id,
+			GridType:     gridShapeToString(r.grid.GetShape()),
 		})
 	}
 
@@ -169,11 +170,13 @@ func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 	// Emit movement event
 	if r.entityMovements != nil {
 		_ = r.entityMovements.Publish(context.Background(), EntityMovedEvent{
-			EntityID:     entity.GetID(),
-			FromPosition: oldPos,
-			ToPosition:   newPos,
-			RoomID:       r.id,
-			MovementType: "normal", // Could be "teleport", "forced" based on context
+			EntityID:         entity.GetID(),
+			FromPosition:     oldPos,
+			ToPosition:       newPos,
+			FromCubePosition: r.getCubePosition(oldPos),
+			ToCubePosition:   r.getCubePosition(newPos),
+			RoomID:           r.id,
+			MovementType:     "normal", // Could be "teleport", "forced" based on context
 		})
 	}
 
@@ -242,6 +245,19 @@ func (r *BasicRoom) GetEntityPosition(entityID string) (Position, bool) {
 
 	pos, exists := r.positions[entityID]
 	return pos, exists
+}
+
+// GetEntityCubePosition returns the cube coordinate position of an entity
+// Returns nil if the entity doesn't exist or the grid is not a hex grid
+func (r *BasicRoom) GetEntityCubePosition(entityID string) *CubeCoordinate {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	pos, exists := r.positions[entityID]
+	if !exists {
+		return nil
+	}
+	return r.getCubePosition(pos)
 }
 
 // GetAllEntities returns all entities in the room
@@ -415,4 +431,14 @@ func gridShapeToString(shape GridShape) string {
 	default:
 		return "unknown"
 	}
+}
+
+// getCubePosition returns the cube coordinate for a position if the grid is a hex grid
+// Returns nil for non-hex grids
+func (r *BasicRoom) getCubePosition(pos Position) *CubeCoordinate {
+	if hexGrid, ok := r.grid.(*HexGrid); ok {
+		cube := hexGrid.OffsetToCube(pos)
+		return &cube
+	}
+	return nil
 }

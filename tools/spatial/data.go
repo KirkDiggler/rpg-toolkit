@@ -121,9 +121,9 @@ func (r *BasicRoom) ToData() RoomData {
 		gridType = GridTypeHex
 		// Hex grid shape will always be *HexGrid
 		hexGrid := r.grid.(*HexGrid)
-		// HexGrid.GetOrientation() returns true for pointy-top, false for flat-top
-		// We want HexFlatTop, so invert it
-		hexFlatTop = !hexGrid.GetOrientation()
+		// HexGrid.GetOrientation() returns HexOrientation type
+		// We want hexFlatTop to be true when orientation is flat-top
+		hexFlatTop = hexGrid.GetOrientation() == HexOrientationFlatTop
 	case GridShapeGridless:
 		gridType = GridTypeGridless
 	default:
@@ -181,11 +181,14 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 		})
 	case GridTypeHex:
 		// HexFlatTop: false = pointy-top (default), true = flat-top
-		// HexGrid.PointyTop is opposite of HexFlatTop
+		orientation := HexOrientationPointyTop
+		if data.HexFlatTop {
+			orientation = HexOrientationFlatTop
+		}
 		grid = NewHexGrid(HexGridConfig{
-			Width:     float64(data.Width),
-			Height:    float64(data.Height),
-			PointyTop: !data.HexFlatTop,
+			Width:       float64(data.Width),
+			Height:      float64(data.Height),
+			Orientation: orientation,
 		})
 	case GridTypeGridless:
 		grid = NewGridlessRoom(GridlessConfig{
