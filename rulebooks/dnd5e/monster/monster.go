@@ -121,7 +121,7 @@ func (m *Monster) IsAlive() bool {
 
 // NewGoblin creates a standard goblin (CR 1/4, D&D 5e SRD stats)
 func NewGoblin(id string) *Monster {
-	return New(Config{
+	m := New(Config{
 		ID:   id,
 		Name: "Goblin",
 		HP:   7,  // 2d6 average
@@ -135,6 +135,17 @@ func NewGoblin(id string) *Monster {
 			abilities.CHA: 8,  // -1
 		},
 	})
+
+	// Add default goblin actions (SRD stats)
+	m.AddAction(NewScimitarAction(ScimitarConfig{
+		AttackBonus: 4,       // +2 DEX + 2 proficiency
+		DamageDice:  "1d6+2", // 1d6 + DEX
+	}))
+
+	// Set default goblin speed
+	m.speed = SpeedData{Walk: 30}
+
+	return m
 }
 
 // HPPercent returns current HP as a percentage of max HP
@@ -160,8 +171,8 @@ func (m *Monster) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return m.conditions
 }
 
-// GetActions returns all monster actions
-func (m *Monster) GetActions() []MonsterAction {
+// Actions returns all monster actions
+func (m *Monster) Actions() []MonsterAction {
 	return m.actions
 }
 
@@ -278,6 +289,9 @@ func (m *Monster) TakeTurn(ctx context.Context, input *TurnInput) (*TurnResult, 
 		Movement:  make([]Position, 0),
 	}
 
+	// Move toward closest enemy if not adjacent
+	m.moveTowardEnemy(input, result)
+
 	// Keep selecting actions until resources exhausted
 	for m.hasResources(input.ActionEconomy) {
 		// Score all valid actions and pick the best
@@ -306,10 +320,16 @@ func (m *Monster) TakeTurn(ctx context.Context, input *TurnInput) (*TurnResult, 
 			Roller:        input.Roller,
 		}
 
+		// Check if action can be activated (target in range, etc.)
+		if err := best.CanActivate(ctx, m, actionInput); err != nil {
+			// Action can't be used right now - try to find another or end turn
+			break
+		}
+
 		// Execute the action
 		err := best.Activate(ctx, m, actionInput)
 
-		// Record the result
+		// Record the result (only if we actually attempted it)
 		targetID := ""
 		if target != nil {
 			targetID = target.GetID()
@@ -404,6 +424,92 @@ func (m *Monster) selectTarget(action MonsterAction, perception *PerceptionData)
 	return nil
 }
 
+// moveTowardEnemy moves the monster toward the closest enemy if not already adjacent.
+// Updates perception data to reflect new position after movement.
+func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
+	if input.Perception == nil || len(input.Perception.Enemies) == 0 {
+		return
+	}
+
+	closest := input.Perception.ClosestEnemy()
+	if closest == nil || closest.Adjacent {
+		// Already adjacent or no enemy - no movement needed
+		return
+	}
+
+	// Calculate how far we can move (use input speed, fall back to monster's speed)
+	speed := input.Speed
+	if speed == 0 {
+		speed = m.speed.Walk
+	}
+	if speed == 0 {
+		return // Can't move
+	}
+
+	// Calculate direction vector toward enemy
+	myPos := input.Perception.MyPosition
+	targetPos := closest.Position
+
+	dx := targetPos.X - myPos.X
+	dy := targetPos.Y - myPos.Y
+
+	// Calculate actual distance (simplified: use larger of dx/dy for grid movement)
+	distanceToMove := closest.Distance - 5 // Stop at 5ft (adjacent)
+	if distanceToMove <= 0 {
+		return // Already close enough
+	}
+
+	// Cap at our speed
+	if distanceToMove > speed {
+		distanceToMove = speed
+	}
+
+	// Calculate new position (move directly toward target)
+	// Using simple linear interpolation
+	totalDist := closest.Distance
+	if totalDist == 0 {
+		return
+	}
+
+	ratio := float64(distanceToMove) / float64(totalDist)
+	newX := myPos.X + int(float64(dx)*ratio)
+	newY := myPos.Y + int(float64(dy)*ratio)
+
+	newPos := Position{X: newX, Y: newY}
+
+	// Record the movement
+	result.Movement = append(result.Movement, myPos)  // Start position
+	result.Movement = append(result.Movement, newPos) // End position
+
+	// Update perception with new position
+	input.Perception.MyPosition = newPos
+
+	// Recalculate distances and adjacency for enemies
+	for i := range input.Perception.Enemies {
+		enemy := &input.Perception.Enemies[i]
+		newDx := enemy.Position.X - newPos.X
+		newDy := enemy.Position.Y - newPos.Y
+
+		// Simple distance calculation (could use proper Euclidean or grid distance)
+		if abs(newDx) > abs(newDy) {
+			enemy.Distance = abs(newDx)
+		} else {
+			enemy.Distance = abs(newDy)
+		}
+
+		// Adjacent if within 5 feet
+		enemy.Adjacent = enemy.Distance <= 5
+	}
+}
+
+// abs returns the absolute value of an integer
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 // ToData converts the monster to its persistent data form
 func (m *Monster) ToData() *Data {
 	data := &Data{
@@ -418,6 +524,11 @@ func (m *Monster) ToData() *Data {
 		Senses:        m.senses,
 		Actions:       make([]ActionData, 0, len(m.actions)),
 		Proficiencies: make([]ProficiencyData, 0, len(m.proficiencies)),
+	}
+
+	// Convert actions
+	for _, action := range m.actions {
+		data.Actions = append(data.Actions, action.ToData())
 	}
 
 	// Convert proficiencies

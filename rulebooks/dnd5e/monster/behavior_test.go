@@ -82,7 +82,7 @@ func (s *BehaviorTestSuite) TestLoadFromData() {
 	s.Equal(60, monster.Senses().Darkvision)
 
 	// Verify action was loaded
-	actions := monster.GetActions()
+	actions := monster.Actions()
 	s.Require().Len(actions, 1)
 	s.Equal("scimitar", actions[0].GetID())
 }
@@ -393,4 +393,189 @@ func (s *BehaviorTestSuite) TestCleanup() {
 	// Double cleanup should also be fine
 	err = monster.Cleanup(s.ctx)
 	s.NoError(err)
+}
+
+func (s *BehaviorTestSuite) TestNewGoblinHasDefaultActions() {
+	goblin := NewGoblin("goblin-1")
+
+	// Goblin should have default scimitar action
+	actions := goblin.Actions()
+	s.Require().Len(actions, 1)
+	s.Equal("scimitar", actions[0].GetID())
+	s.Equal(TypeMeleeAttack, actions[0].ActionType())
+
+	// Should have default speed
+	s.Equal(30, goblin.Speed().Walk)
+}
+
+func (s *BehaviorTestSuite) TestActionRoundTrip() {
+	// Create a goblin with the factory (includes scimitar)
+	original := NewGoblin("goblin-1")
+
+	// Verify original has action
+	s.Require().Len(original.Actions(), 1)
+
+	// Convert to data
+	data := original.ToData()
+
+	// Verify action was serialized
+	s.Require().Len(data.Actions, 1)
+	s.Equal("scimitar", data.Actions[0].Ref.ID)
+
+	// Load from data
+	loaded, err := LoadFromData(s.ctx, data, s.bus)
+	s.Require().NoError(err)
+
+	// Verify action was deserialized
+	actions := loaded.Actions()
+	s.Require().Len(actions, 1)
+	s.Equal("scimitar", actions[0].GetID())
+	s.Equal(TypeMeleeAttack, actions[0].ActionType())
+
+	// The action should be functional - verify it can be serialized again
+	reData := loaded.ToData()
+	s.Require().Len(reData.Actions, 1)
+	s.Equal("scimitar", reData.Actions[0].Ref.ID)
+}
+
+func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
+	// Create a goblin at position (0, 0)
+	goblin := NewGoblin("goblin-1")
+	goblin.bus = s.bus
+
+	// Enemy is 35 feet away (outside movement range but within speed+melee)
+	perception := &PerceptionData{
+		MyPosition: Position{X: 0, Y: 0},
+		Enemies: []PerceivedEntity{
+			{
+				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
+				Position: Position{X: 35, Y: 0},
+				Distance: 35, // 35 feet away
+				Adjacent: false,
+			},
+		},
+	}
+
+	input := &TurnInput{
+		Bus:           s.bus,
+		ActionEconomy: combat.NewActionEconomy(),
+		Perception:    perception,
+		Roller:        dice.NewRoller(),
+		Speed:         30, // Goblin speed
+	}
+
+	// Execute turn
+	result, err := goblin.TakeTurn(s.ctx, input)
+
+	s.Require().NoError(err)
+	s.T().Logf("Turn result: MonsterID=%s", result.MonsterID)
+
+	// Should have moved
+	s.Require().Len(result.Movement, 2, "Expected start and end positions")
+	s.T().Logf("Movement: from (%d,%d) to (%d,%d)",
+		result.Movement[0].X, result.Movement[0].Y,
+		result.Movement[1].X, result.Movement[1].Y)
+
+	// Started at origin
+	s.Equal(0, result.Movement[0].X)
+	s.Equal(0, result.Movement[0].Y)
+
+	// Moved toward enemy (should stop at 5ft = adjacent)
+	// With 30ft speed and enemy at 35ft, we move 30ft to end up at 30ft (5ft away = adjacent)
+	s.Equal(30, result.Movement[1].X)
+	s.Equal(0, result.Movement[1].Y)
+
+	// Perception should be updated - now adjacent
+	s.True(perception.HasAdjacentEnemy(), "Should be adjacent after moving")
+	s.T().Logf("After move: distance=%d, adjacent=%v",
+		perception.Enemies[0].Distance, perception.Enemies[0].Adjacent)
+
+	// Should have attacked (now that we're adjacent)
+	s.Require().Len(result.Actions, 1, "Expected one attack action")
+	s.Equal("scimitar", result.Actions[0].ActionID)
+	s.Equal(TypeMeleeAttack, result.Actions[0].ActionType)
+	s.Equal("fighter-1", result.Actions[0].TargetID)
+	s.T().Logf("Attack: action=%s, target=%s, success=%v",
+		result.Actions[0].ActionID, result.Actions[0].TargetID, result.Actions[0].Success)
+}
+
+func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {
+	// Create a goblin already adjacent to enemy
+	goblin := NewGoblin("goblin-1")
+	goblin.bus = s.bus
+
+	// Enemy is 5 feet away (already adjacent)
+	perception := &PerceptionData{
+		MyPosition: Position{X: 0, Y: 0},
+		Enemies: []PerceivedEntity{
+			{
+				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
+				Position: Position{X: 5, Y: 0},
+				Distance: 5,
+				Adjacent: true,
+			},
+		},
+	}
+
+	input := &TurnInput{
+		Bus:           s.bus,
+		ActionEconomy: combat.NewActionEconomy(),
+		Perception:    perception,
+		Roller:        dice.NewRoller(),
+		Speed:         30,
+	}
+
+	result, err := goblin.TakeTurn(s.ctx, input)
+
+	s.Require().NoError(err)
+
+	// Should NOT have moved (already adjacent)
+	s.Len(result.Movement, 0, "Should not move when already adjacent")
+
+	// Should have attacked
+	s.Require().Len(result.Actions, 1)
+	s.Equal("scimitar", result.Actions[0].ActionID)
+}
+
+func (s *BehaviorTestSuite) TestTakeTurnEnemyTooFar() {
+	// Create a goblin with enemy very far away
+	goblin := NewGoblin("goblin-1")
+	goblin.bus = s.bus
+
+	// Enemy is 100 feet away - can move toward but not attack
+	perception := &PerceptionData{
+		MyPosition: Position{X: 0, Y: 0},
+		Enemies: []PerceivedEntity{
+			{
+				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
+				Position: Position{X: 100, Y: 0},
+				Distance: 100,
+				Adjacent: false,
+			},
+		},
+	}
+
+	input := &TurnInput{
+		Bus:           s.bus,
+		ActionEconomy: combat.NewActionEconomy(),
+		Perception:    perception,
+		Roller:        dice.NewRoller(),
+		Speed:         30,
+	}
+
+	result, err := goblin.TakeTurn(s.ctx, input)
+
+	s.Require().NoError(err)
+
+	// Should have moved full speed toward enemy
+	s.Require().Len(result.Movement, 2)
+	s.Equal(30, result.Movement[1].X) // Moved 30 feet
+
+	// Should NOT have attacked (still too far)
+	s.Len(result.Actions, 0, "Should not attack when still too far")
+
+	// Verify perception updated - still not adjacent
+	s.False(perception.HasAdjacentEnemy())
+	s.T().Logf("After move: distance=%d (still too far to attack)",
+		perception.Enemies[0].Distance)
 }
