@@ -51,6 +51,9 @@ type MonsterAction interface {
 
 	// ActionType returns the category of action for target selection
 	ActionType() ActionType
+
+	// ToData converts the action to its serializable form for persistence
+	ToData() ActionData
 }
 
 // PerceptionData represents what the monster perceives about the battlefield.
@@ -115,6 +118,7 @@ type TurnInput struct {
 	ActionEconomy *combat.ActionEconomy
 	Perception    *PerceptionData
 	Roller        dice.Roller
+	Speed         int // Movement speed in feet (typically 30 for most creatures)
 }
 
 // TurnResult represents the outcome of a monster's turn

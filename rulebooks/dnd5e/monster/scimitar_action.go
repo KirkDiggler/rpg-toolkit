@@ -5,10 +5,12 @@ package monster
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 const scimitarActionID = "scimitar"
@@ -116,4 +118,20 @@ func (s *ScimitarAction) Activate(ctx context.Context, owner core.Entity, input 
 	}
 
 	return nil
+}
+
+// ToData converts the action to its serializable form
+func (s *ScimitarAction) ToData() ActionData {
+	config := ScimitarConfig{
+		ID:          s.id,
+		AttackBonus: s.attackBonus,
+		DamageDice:  s.damageDice,
+		DamageBonus: s.damageBonus,
+	}
+	configJSON, _ := json.Marshal(config)
+
+	return ActionData{
+		Ref:    *refs.MonsterActions.Scimitar(),
+		Config: configJSON,
+	}
 }
