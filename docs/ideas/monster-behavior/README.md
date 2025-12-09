@@ -8,7 +8,7 @@ Ready for implementation.
 
 ## Trigger
 
-Demo goblin just stands there getting beat up. Can we make it fight back simply and extensibly?
+Demo goblin just stands there getting beat up. Can we build something simple and extensible?
 
 ## Goals
 

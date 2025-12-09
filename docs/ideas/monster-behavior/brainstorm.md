@@ -407,7 +407,7 @@ message EndTurnResponse {
 
 ## References
 
-- [ADR-0016: Behavior System Architecture](../adr/0016-behavior-system-architecture.md)
-- [Journey 017: Encounter System Design](../journey/017-encounter-system-design.md)
-- [Encounter System Implementation Plan](../archive/planning/encounter-system-implementation.md)
-- [Rulebook-Behavior Integration](../archive/planning/rulebook-behavior-integration.md)
+- [ADR-0016: Behavior System Architecture](../../adr/0016-behavior-system-architecture.md)
+- [Journey 017: Encounter System Design](../../journey/017-encounter-system-design.md)
+- [Encounter System Implementation Plan](../../archive/planning/encounter-system-implementation.md)
+- [Rulebook-Behavior Integration](../../archive/planning/rulebook-behavior-integration.md)
