@@ -41,19 +41,22 @@ var (
 
 // EntityPlacedEvent contains data for entity placement events
 type EntityPlacedEvent struct {
-	EntityID string   `json:"entity_id"`
-	Position Position `json:"position"`
-	RoomID   string   `json:"room_id"`
-	GridType string   `json:"grid_type"` // "square", "hex", "gridless"
+	EntityID     string          `json:"entity_id"`
+	Position     Position        `json:"position"`
+	CubePosition *CubeCoordinate `json:"cube_position,omitempty"` // Only set for hex grids
+	RoomID       string          `json:"room_id"`
+	GridType     string          `json:"grid_type"` // "square", "hex", "gridless"
 }
 
 // EntityMovedEvent contains data for entity movement events
 type EntityMovedEvent struct {
-	EntityID     string   `json:"entity_id"`
-	FromPosition Position `json:"from_position"`
-	ToPosition   Position `json:"to_position"`
-	RoomID       string   `json:"room_id"`
-	MovementType string   `json:"movement_type"` // "normal", "teleport", "forced"
+	EntityID         string          `json:"entity_id"`
+	FromPosition     Position        `json:"from_position"`
+	ToPosition       Position        `json:"to_position"`
+	FromCubePosition *CubeCoordinate `json:"from_cube_position,omitempty"` // Only set for hex grids
+	ToCubePosition   *CubeCoordinate `json:"to_cube_position,omitempty"`   // Only set for hex grids
+	RoomID           string          `json:"room_id"`
+	MovementType     string          `json:"movement_type"` // "normal", "teleport", "forced"
 }
 
 // EntityRemovedEvent contains data for entity removal events

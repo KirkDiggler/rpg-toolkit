@@ -314,6 +314,123 @@ func (s *RoomTestSuite) TestMultipleEntities() {
 	})
 }
 
+// TestHexRoomCubeCoordinates tests cube coordinate functionality for hex grids
+func (s *RoomTestSuite) TestHexRoomCubeCoordinates() {
+	// Create a hex room for cube coordinate tests
+	hexGrid := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width:       10,
+		Height:      10,
+		Orientation: spatial.HexOrientationPointyTop,
+	})
+
+	hexRoom := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "hex-room",
+		Type: "hex",
+		Grid: hexGrid,
+	})
+	hexRoom.ConnectToEventBus(s.eventBus)
+
+	s.Run("GetEntityCubePosition returns cube coordinates for hex grid", func() {
+		entity := NewMockEntity("hero", "character")
+		pos := spatial.Position{X: 3, Y: 2}
+
+		err := hexRoom.PlaceEntity(entity, pos)
+		s.Require().NoError(err)
+
+		// Get cube position
+		cubePos := hexRoom.GetEntityCubePosition("hero")
+		s.Require().NotNil(cubePos, "Cube position should not be nil for hex grid")
+
+		// Verify the cube coordinate constraint: x + y + z = 0
+		s.Assert().Equal(0, cubePos.X+cubePos.Y+cubePos.Z, "Cube coordinates must satisfy x + y + z = 0")
+
+		// Verify the conversion is consistent with the grid's OffsetToCube
+		expectedCube := hexGrid.OffsetToCube(pos)
+		s.Assert().Equal(expectedCube.X, cubePos.X)
+		s.Assert().Equal(expectedCube.Y, cubePos.Y)
+		s.Assert().Equal(expectedCube.Z, cubePos.Z)
+	})
+
+	s.Run("GetEntityCubePosition returns nil for non-existent entity", func() {
+		cubePos := hexRoom.GetEntityCubePosition("non-existent")
+		s.Assert().Nil(cubePos, "Cube position should be nil for non-existent entity")
+	})
+
+	s.Run("GetEntityCubePosition returns nil for square grid", func() {
+		// Use the default square room from SetupTest
+		entity := NewMockEntity("square-hero", "character")
+		err := s.room.PlaceEntity(entity, spatial.Position{X: 5, Y: 5})
+		s.Require().NoError(err)
+
+		cubePos := s.room.GetEntityCubePosition("square-hero")
+		s.Assert().Nil(cubePos, "Cube position should be nil for square grid")
+	})
+
+	s.Run("entity placed event includes cube position for hex grid", func() {
+		var receivedEvent spatial.EntityPlacedEvent
+		eventReceived := false
+
+		_, err := spatial.EntityPlacedTopic.On(s.eventBus).Subscribe(
+			context.Background(),
+			func(_ context.Context, event spatial.EntityPlacedEvent) error {
+				if event.EntityID == "cube-test-entity" {
+					receivedEvent = event
+					eventReceived = true
+				}
+				return nil
+			})
+		s.Require().NoError(err)
+
+		entity := NewMockEntity("cube-test-entity", "character")
+		err = hexRoom.PlaceEntity(entity, spatial.Position{X: 4, Y: 3})
+		s.Require().NoError(err)
+
+		s.Require().True(eventReceived, "Should have received entity placed event")
+		s.Assert().NotNil(receivedEvent.CubePosition, "Event should include cube position for hex grid")
+		s.Assert().Equal("hex", receivedEvent.GridType)
+
+		// Verify cube coordinate constraint
+		s.Assert().Equal(0, receivedEvent.CubePosition.X+receivedEvent.CubePosition.Y+receivedEvent.CubePosition.Z)
+	})
+
+	s.Run("entity moved event includes cube positions for hex grid", func() {
+		var receivedEvent spatial.EntityMovedEvent
+		eventReceived := false
+
+		_, err := spatial.EntityMovedTopic.On(s.eventBus).Subscribe(
+			context.Background(),
+			func(_ context.Context, event spatial.EntityMovedEvent) error {
+				if event.EntityID == "move-test-entity" {
+					receivedEvent = event
+					eventReceived = true
+				}
+				return nil
+			})
+		s.Require().NoError(err)
+
+		// Place entity first
+		entity := NewMockEntity("move-test-entity", "character")
+		err = hexRoom.PlaceEntity(entity, spatial.Position{X: 2, Y: 2})
+		s.Require().NoError(err)
+
+		// Move entity
+		err = hexRoom.MoveEntity("move-test-entity", spatial.Position{X: 3, Y: 3})
+		s.Require().NoError(err)
+
+		s.Require().True(eventReceived, "Should have received entity moved event")
+		s.Assert().NotNil(receivedEvent.FromCubePosition, "Event should include from cube position")
+		s.Assert().NotNil(receivedEvent.ToCubePosition, "Event should include to cube position")
+
+		// Verify both cube coordinates satisfy the constraint x + y + z = 0
+		fromSum := receivedEvent.FromCubePosition.X + receivedEvent.FromCubePosition.Y +
+			receivedEvent.FromCubePosition.Z
+		s.Assert().Equal(0, fromSum)
+		toSum := receivedEvent.ToCubePosition.X + receivedEvent.ToCubePosition.Y +
+			receivedEvent.ToCubePosition.Z
+		s.Assert().Equal(0, toSum)
+	})
+}
+
 // Run the test suite
 func TestRoomSuite(t *testing.T) {
 	suite.Run(t, new(RoomTestSuite))
