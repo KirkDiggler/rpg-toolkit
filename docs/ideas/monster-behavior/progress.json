@@ -1,0 +1,114 @@
+{
+  "idea": "monster-behavior",
+  "status": "design_complete",
+  "summary": "Make monsters fight back with simple, extensible behavior",
+  "trigger": "Demo goblin just stands there getting beat up - can we make it fight back simply and extensibly?",
+  "phases": {
+    "brainstorm": {
+      "status": "completed",
+      "date": "2025-12-07",
+      "file": "brainstorm.md",
+      "notes": "Core decisions made: monsters are entities, utility scoring for action selection"
+    },
+    "use_cases": {
+      "status": "completed",
+      "date": "2025-12-07",
+      "file": "use-cases.md",
+      "notes": "5 scenarios covering basic attack, ranged, disengage, hide, and healing"
+    },
+    "architecture": {
+      "status": "completed",
+      "notes": "Follows existing patterns: Data/LoadFromData, core.Action[T], event bus wiring"
+    },
+    "design": {
+      "status": "completed",
+      "date": "2025-12-07",
+      "files": ["design-monster-structure.md"],
+      "notes": "Full design: Data struct, LoadFromData, MonsterAction, TakeTurn behavior loop"
+    },
+    "issues": {
+      "status": "pending"
+    }
+  },
+  "goals": {
+    "primary": "Goblin picks closest enemy, moves toward, attacks, uses Nimble Escape",
+    "stretch": "Goblin chooses Disengage vs Hide based on conditions (HP, allies nearby)"
+  },
+  "decisions": [
+    {
+      "question": "Are monsters different from characters?",
+      "answer": "No - monsters are entities using the same systems",
+      "reason": "Action economy, features, conditions all work identically. Healing potions and poison work on monsters the same as characters."
+    },
+    {
+      "question": "What are special abilities?",
+      "answer": "Features - same as character features",
+      "reason": "Nimble Escape is a Feature that subscribes to events and modifies behavior, just like Rage or Second Wind."
+    },
+    {
+      "question": "How should monsters select actions?",
+      "answer": "Utility scoring - each action gets a score, highest valid score wins",
+      "reason": "Simple, tunable, extensible. State machines can be integrated later as a proper toolkit tool."
+    },
+    {
+      "question": "What are monster actions?",
+      "answer": "Implementations of core.Action[MonsterActionInput]",
+      "reason": "Same pattern as features. Actions can do anything - apply conditions, deal damage, check if raging, etc."
+    },
+    {
+      "question": "How does movement work?",
+      "answer": "Part of action execution, uses spatial module via GameCtx.Room",
+      "reason": "Actions decide how to use movement. Scimitar closes gap, Disengage moves away."
+    },
+    {
+      "question": "How does monster find targets?",
+      "answer": "Builds perception from GameCtx.Room queries",
+      "reason": "Room has all entities with positions. Monster queries room to find enemies, distances, etc."
+    },
+    {
+      "question": "What about senses like darkvision?",
+      "answer": "Keep simple for now - just perception range",
+      "reason": "Darkvision is complex (light levels, gating) for small gain. Simplify to perception range."
+    }
+  ],
+  "open_questions": [
+    "How does isEnemy() work? Team/faction system?",
+    "How do we query for nearby cover for Hide scoring?",
+    "ToData() for serializing monster back to storage"
+  ],
+  "affected_projects": [
+    {
+      "project": "rpg-toolkit",
+      "changes": ["monster package with Data, LoadFromData, TakeTurn", "MonsterAction interface", "MonsterActionInput type"],
+      "notes": "In rulebooks/dnd5e/monster/"
+    },
+    {
+      "project": "rpg-toolkit/rulebooks/dnd5e",
+      "changes": ["Goblin actions: Scimitar, Shortbow, NimbleEscape", "Scoring configs"],
+      "notes": "Game-specific action implementations"
+    },
+    {
+      "project": "rpg-api",
+      "changes": ["Call monster.TakeTurn on monster's turn", "Provide TurnInput with bus, economy, GameCtx"],
+      "notes": "Orchestrates monster turns"
+    }
+  ],
+  "references": {
+    "adr": "docs/adr/0016-behavior-system-architecture.md",
+    "planning": [
+      "docs/archive/planning/encounter-system-implementation.md",
+      "docs/archive/planning/rulebook-behavior-integration.md"
+    ],
+    "journey": "docs/journey/017-encounter-system-design.md",
+    "examples": "docs/ideas/monster-behavior/goblin.json"
+  },
+  "implementation_steps": [
+    "Create monster package in rulebooks/dnd5e/monster/",
+    "Implement Data struct and LoadFromData",
+    "Create MonsterAction interface and MonsterActionInput",
+    "Implement ScimitarAction with Score()",
+    "Implement TakeTurn behavior loop",
+    "Wire up to encounter orchestrator in rpg-api",
+    "Test: goblin finds target, moves, attacks"
+  ]
+}

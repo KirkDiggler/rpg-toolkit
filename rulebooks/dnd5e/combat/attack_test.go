@@ -7,15 +7,27 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
+
+// testEntity is a simple entity for testing attacks without importing monster
+type testEntity struct {
+	id   string
+	name string
+	hp   int
+	ac   int
+}
+
+func (t *testEntity) GetID() string            { return t.id }
+func (t *testEntity) GetType() core.EntityType { return "test-entity" }
+func (t *testEntity) AC() int                  { return t.ac }
 
 type AttackTestSuite struct {
 	suite.Suite
@@ -45,16 +57,20 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 		abilities.DEX: 10, // +0 modifier
 	}
 
-	attacker := monster.New(monster.Config{
-		ID:            "barbarian-1",
-		Name:          "Barbarian",
-		HP:            50,
-		AC:            15,
-		AbilityScores: attackerScores,
-	})
+	attacker := &testEntity{
+		id:   "barbarian-1",
+		name: "Barbarian",
+		hp:   50,
+		ac:   15,
+	}
 
-	// Create goblin target
-	goblin := monster.NewGoblin("goblin-1")
+	// Create goblin target (AC 15 per SRD)
+	goblin := &testEntity{
+		id:   "goblin-1",
+		name: "Goblin",
+		hp:   7,
+		ac:   15,
+	}
 
 	// Longsword
 	longsword := &weapons.Weapon{
@@ -106,15 +122,19 @@ func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
 		abilities.STR: 10, // +0 modifier
 	}
 
-	attacker := monster.New(monster.Config{
-		ID:            "barbarian-1",
-		Name:          "Barbarian",
-		HP:            50,
-		AC:            15,
-		AbilityScores: attackerScores,
-	})
+	attacker := &testEntity{
+		id:   "barbarian-1",
+		name: "Barbarian",
+		hp:   50,
+		ac:   15,
+	}
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := &testEntity{
+		id:   "goblin-1",
+		name: "Goblin",
+		hp:   7,
+		ac:   15,
+	}
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -160,15 +180,19 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 		abilities.STR: 16, // +3
 	}
 
-	attacker := monster.New(monster.Config{
-		ID:            "barbarian-1",
-		Name:          "Barbarian",
-		HP:            50,
-		AC:            15,
-		AbilityScores: attackerScores,
-	})
+	attacker := &testEntity{
+		id:   "barbarian-1",
+		name: "Barbarian",
+		hp:   50,
+		ac:   15,
+	}
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := &testEntity{
+		id:   "goblin-1",
+		name: "Goblin",
+		hp:   7,
+		ac:   15,
+	}
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
