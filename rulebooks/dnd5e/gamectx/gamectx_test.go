@@ -16,17 +16,23 @@ import (
 
 // mockCharacterRegistry is a test implementation of CharacterRegistry
 type mockCharacterRegistry struct {
-	characters map[string]*gamectx.CharacterWeapons
+	characters    map[string]*gamectx.CharacterWeapons
+	abilityScores map[string]*gamectx.AbilityScores
 }
 
 func newMockCharacterRegistry() *mockCharacterRegistry {
 	return &mockCharacterRegistry{
-		characters: make(map[string]*gamectx.CharacterWeapons),
+		characters:    make(map[string]*gamectx.CharacterWeapons),
+		abilityScores: make(map[string]*gamectx.AbilityScores),
 	}
 }
 
 func (m *mockCharacterRegistry) GetCharacterWeapons(id string) *gamectx.CharacterWeapons {
 	return m.characters[id]
+}
+
+func (m *mockCharacterRegistry) GetCharacterAbilityScores(id string) *gamectx.AbilityScores {
+	return m.abilityScores[id]
 }
 
 func (m *mockCharacterRegistry) addCharacter(id string, weapons *gamectx.CharacterWeapons) {
@@ -528,9 +534,8 @@ func (s *IntegrationTestSuite) TestFeatureCanQueryAbilityModifiers() {
 	registry, ok := gamectx.Characters(ctx)
 	s.Require().True(ok, "Registry should be accessible")
 
-	// BasicCharacterRegistry implements GetCharacterAbilityScores
-	basicRegistry := registry.(*gamectx.BasicCharacterRegistry)
-	abilityScores := basicRegistry.GetCharacterAbilityScores("fighter-1")
+	// GetCharacterAbilityScores is now part of the CharacterRegistry interface
+	abilityScores := registry.GetCharacterAbilityScores("fighter-1")
 	s.Require().NotNil(abilityScores, "Ability scores should be found")
 
 	// Verify DEX modifier is +3
@@ -563,11 +568,10 @@ func (s *IntegrationTestSuite) TestCombinedContextAccess() {
 	s.True(found)
 	s.Equal(float64(3), pos.X)
 
-	// Access ability scores
+	// Access ability scores via interface
 	registry, ok := gamectx.Characters(ctx)
 	s.Require().True(ok)
-	basicRegistry := registry.(*gamectx.BasicCharacterRegistry)
-	abilityScores := basicRegistry.GetCharacterAbilityScores("hero-1")
+	abilityScores := registry.GetCharacterAbilityScores("hero-1")
 	s.Equal(2, abilityScores.DexterityMod())
 }
 
