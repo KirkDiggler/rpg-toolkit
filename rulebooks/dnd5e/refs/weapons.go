@@ -54,6 +54,9 @@ var (
 	weaponAnySimple  = &core.Ref{Module: Module, Type: TypeWeapons, ID: "simple-weapon"}
 	weaponAnyMartial = &core.Ref{Module: Module, Type: TypeWeapons, ID: "martial-weapon"}
 	weaponAny        = &core.Ref{Module: Module, Type: TypeWeapons, ID: "any-weapon"}
+
+	// Special weapons
+	weaponUnarmedStrike = &core.Ref{Module: Module, Type: TypeWeapons, ID: "unarmed-strike"}
 )
 
 // Weapons provides type-safe, discoverable references to D&D 5e weapons.
@@ -113,6 +116,9 @@ func (n weaponsNS) AnySimpleWeapon() *core.Ref  { return weaponAnySimple }
 func (n weaponsNS) AnyMartialWeapon() *core.Ref { return weaponAnyMartial }
 func (n weaponsNS) AnyWeapon() *core.Ref        { return weaponAny }
 
+// Special weapons
+func (n weaponsNS) UnarmedStrike() *core.Ref { return weaponUnarmedStrike }
+
 // weaponByID maps weapon ID strings to singleton refs for O(1) lookup
 var weaponByID = map[string]*core.Ref{
 	// Simple Melee Weapons
@@ -160,6 +166,8 @@ var weaponByID = map[string]*core.Ref{
 	"simple-weapon":  weaponAnySimple,
 	"martial-weapon": weaponAnyMartial,
 	"any-weapon":     weaponAny,
+	// Special weapons
+	"unarmed-strike": weaponUnarmedStrike,
 }
 
 // ByID returns the singleton ref for the given weapon ID, or nil if not found.

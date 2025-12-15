@@ -6,11 +6,13 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 // Condition singletons - unexported for controlled access via methods
 var (
 	// Class-based conditions
-	conditionRaging           = &core.Ref{Module: Module, Type: TypeConditions, ID: "raging"}
-	conditionBrutalCritical   = &core.Ref{Module: Module, Type: TypeConditions, ID: "brutal_critical"}
-	conditionUnarmoredDefense = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_defense"}
-	conditionFightingStyle    = &core.Ref{Module: Module, Type: TypeConditions, ID: "fighting_style"}
-	conditionImprovedCritical = &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
+	conditionRaging            = &core.Ref{Module: Module, Type: TypeConditions, ID: "raging"}
+	conditionBrutalCritical    = &core.Ref{Module: Module, Type: TypeConditions, ID: "brutal_critical"}
+	conditionUnarmoredDefense  = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_defense"}
+	conditionFightingStyle     = &core.Ref{Module: Module, Type: TypeConditions, ID: "fighting_style"}
+	conditionImprovedCritical  = &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
+	conditionMartialArts       = &core.Ref{Module: Module, Type: TypeConditions, ID: "martial_arts"}
+	conditionUnarmoredMovement = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_movement"}
 
 	// Standard D&D 5e Conditions
 	conditionBlinded       = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
@@ -38,11 +40,13 @@ var Conditions = conditionsNS{}
 type conditionsNS struct{}
 
 // Class-based conditions
-func (n conditionsNS) Raging() *core.Ref           { return conditionRaging }
-func (n conditionsNS) BrutalCritical() *core.Ref   { return conditionBrutalCritical }
-func (n conditionsNS) UnarmoredDefense() *core.Ref { return conditionUnarmoredDefense }
-func (n conditionsNS) FightingStyle() *core.Ref    { return conditionFightingStyle }
-func (n conditionsNS) ImprovedCritical() *core.Ref { return conditionImprovedCritical }
+func (n conditionsNS) Raging() *core.Ref            { return conditionRaging }
+func (n conditionsNS) BrutalCritical() *core.Ref    { return conditionBrutalCritical }
+func (n conditionsNS) UnarmoredDefense() *core.Ref  { return conditionUnarmoredDefense }
+func (n conditionsNS) FightingStyle() *core.Ref     { return conditionFightingStyle }
+func (n conditionsNS) ImprovedCritical() *core.Ref  { return conditionImprovedCritical }
+func (n conditionsNS) MartialArts() *core.Ref       { return conditionMartialArts }
+func (n conditionsNS) UnarmoredMovement() *core.Ref { return conditionUnarmoredMovement }
 
 // Standard D&D 5e Conditions
 func (n conditionsNS) Blinded() *core.Ref       { return conditionBlinded }

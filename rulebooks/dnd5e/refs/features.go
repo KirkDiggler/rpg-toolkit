@@ -13,6 +13,12 @@ var (
 	featureSecondWind  = &core.Ref{Module: Module, Type: TypeFeatures, ID: "second_wind"}
 	featureActionSurge = &core.Ref{Module: Module, Type: TypeFeatures, ID: "action_surge"}
 
+	// Monk
+	featureFlurryOfBlows   = &core.Ref{Module: Module, Type: TypeFeatures, ID: "flurry_of_blows"}
+	featurePatientDefense  = &core.Ref{Module: Module, Type: TypeFeatures, ID: "patient_defense"}
+	featureStepOfTheWind   = &core.Ref{Module: Module, Type: TypeFeatures, ID: "step_of_the_wind"}
+	featureDeflectMissiles = &core.Ref{Module: Module, Type: TypeFeatures, ID: "deflect_missiles"}
+
 	// Rogue
 	featureSneakAttack = &core.Ref{Module: Module, Type: TypeFeatures, ID: "sneak_attack"}
 
@@ -34,6 +40,12 @@ func (n featuresNS) BrutalCritical() *core.Ref { return featureBrutalCritical }
 // Fighter
 func (n featuresNS) SecondWind() *core.Ref  { return featureSecondWind }
 func (n featuresNS) ActionSurge() *core.Ref { return featureActionSurge }
+
+// Monk
+func (n featuresNS) FlurryOfBlows() *core.Ref   { return featureFlurryOfBlows }
+func (n featuresNS) PatientDefense() *core.Ref  { return featurePatientDefense }
+func (n featuresNS) StepOfTheWind() *core.Ref   { return featureStepOfTheWind }
+func (n featuresNS) DeflectMissiles() *core.Ref { return featureDeflectMissiles }
 
 // Rogue
 func (n featuresNS) SneakAttack() *core.Ref { return featureSneakAttack }

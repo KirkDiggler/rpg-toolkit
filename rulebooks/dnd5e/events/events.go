@@ -246,6 +246,45 @@ type ResourceConsumedEvent struct {
 }
 
 // =============================================================================
+// Monk Feature Events
+// =============================================================================
+
+// FlurryOfBlowsActivatedEvent is published when a monk activates Flurry of Blows
+type FlurryOfBlowsActivatedEvent struct {
+	CharacterID    string // ID of the monk activating the feature
+	UnarmedStrikes int    // Number of unarmed strikes granted (always 2)
+	Source         string // Feature that triggered this (refs.Features.FlurryOfBlows().ID)
+}
+
+// PatientDefenseActivatedEvent is published when a monk activates Patient Defense
+type PatientDefenseActivatedEvent struct {
+	CharacterID string // ID of the monk activating the feature
+	Source      string // Feature that triggered this (refs.Features.PatientDefense().ID)
+}
+
+// StepOfTheWindActivatedEvent is published when a monk activates Step of the Wind
+type StepOfTheWindActivatedEvent struct {
+	CharacterID string // ID of the monk activating the feature
+	Action      string // Action taken: "disengage" or "dash"
+	Source      string // Feature that triggered this (refs.Features.StepOfTheWind().ID)
+}
+
+// DeflectMissilesTriggerEvent is published when a monk deflects a ranged weapon attack
+type DeflectMissilesTriggerEvent struct {
+	CharacterID      string // ID of the monk deflecting
+	OriginalDamage   int    // Damage before reduction
+	Reduction        int    // Amount reduced (1d10 + DEX + monk level)
+	DamageReducedTo0 bool   // If true, monk can spend 1 Ki to throw it back
+	Source           string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+}
+
+// DeflectMissilesThrowEvent is published when a monk throws a deflected missile back
+type DeflectMissilesThrowEvent struct {
+	CharacterID string // ID of the monk throwing the missile
+	Source      string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+}
+
+// =============================================================================
 // Topic Definitions
 // =============================================================================
 
@@ -277,6 +316,25 @@ var (
 
 	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
 	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
+
+	// FlurryOfBlowsActivatedTopic provides typed pub/sub for flurry of blows activation events
+	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent](
+		"dnd5e.feature.flurry_of_blows.activated")
+
+	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
+	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](
+		"dnd5e.feature.patient_defense.activated")
+
+	// StepOfTheWindActivatedTopic provides typed pub/sub for step of the wind activation events
+	StepOfTheWindActivatedTopic = events.DefineTypedTopic[StepOfTheWindActivatedEvent](
+		"dnd5e.feature.step_of_the_wind.activated")
+
+	// DeflectMissilesTriggerTopic provides typed pub/sub for deflect missiles trigger events
+	DeflectMissilesTriggerTopic = events.DefineTypedTopic[DeflectMissilesTriggerEvent](
+		"dnd5e.feature.deflect_missiles.triggered")
+
+	// DeflectMissilesThrowTopic provides typed pub/sub for deflect missiles throw events
+	DeflectMissilesThrowTopic = events.DefineTypedTopic[DeflectMissilesThrowEvent]("dnd5e.feature.deflect_missiles.throw")
 )
 
 // Chain topics (for modifier chains)

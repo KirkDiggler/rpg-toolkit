@@ -78,6 +78,10 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createFightingStyle(input.Config, input.CharacterID)
 	case refs.Conditions.ImprovedCritical().ID:
 		condition, err = createImprovedCritical(input.Config, input.CharacterID)
+	case refs.Conditions.MartialArts().ID:
+		condition, err = createMartialArts(input.Config, input.CharacterID)
+	case refs.Conditions.UnarmoredMovement().ID:
+		condition, err = createUnarmoredMovement(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -226,5 +230,55 @@ func createImprovedCritical(config json.RawMessage, characterID string) (*Improv
 	return NewImprovedCriticalCondition(ImprovedCriticalInput{
 		CharacterID: characterID,
 		Threshold:   threshold,
+	}), nil
+}
+
+// martialArtsConfig is the config structure for martial arts
+type martialArtsConfig struct {
+	MonkLevel int `json:"monk_level"`
+}
+
+// createMartialArts creates a martial arts condition from config
+func createMartialArts(config json.RawMessage, characterID string) (*MartialArtsCondition, error) {
+	var cfg martialArtsConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse martial arts config")
+		}
+	}
+
+	// Monk level is required
+	if cfg.MonkLevel == 0 {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "martial arts config requires 'monk_level' field")
+	}
+
+	return NewMartialArtsCondition(MartialArtsInput{
+		CharacterID: characterID,
+		MonkLevel:   cfg.MonkLevel,
+	}), nil
+}
+
+// unarmoredMovementConfig is the config structure for unarmored movement
+type unarmoredMovementConfig struct {
+	MonkLevel int `json:"monk_level"`
+}
+
+// createUnarmoredMovement creates an unarmored movement condition from config
+func createUnarmoredMovement(config json.RawMessage, characterID string) (*UnarmoredMovementCondition, error) {
+	var cfg unarmoredMovementConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse unarmored movement config")
+		}
+	}
+
+	// Monk level is required
+	if cfg.MonkLevel == 0 {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "unarmored movement config requires 'monk_level' field")
+	}
+
+	return NewUnarmoredMovementCondition(UnarmoredMovementInput{
+		CharacterID: characterID,
+		MonkLevel:   cfg.MonkLevel,
 	}), nil
 }

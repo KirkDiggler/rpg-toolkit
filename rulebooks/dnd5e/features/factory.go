@@ -70,6 +70,14 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createSecondWind(input.Config, input.CharacterID)
 	case refs.Features.ActionSurge().ID:
 		feature, err = createActionSurge(input.Config, input.CharacterID)
+	case refs.Features.FlurryOfBlows().ID:
+		feature, err = createFlurryOfBlows(input.Config, input.CharacterID)
+	case refs.Features.PatientDefense().ID:
+		feature, err = createPatientDefense(input.Config, input.CharacterID)
+	case refs.Features.StepOfTheWind().ID:
+		feature, err = createStepOfTheWind(input.Config, input.CharacterID)
+	case refs.Features.DeflectMissiles().ID:
+		feature, err = createDeflectMissiles(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown feature: %s", ref.ID)
 	}
@@ -197,5 +205,107 @@ func createActionSurge(config json.RawMessage, characterID string) (*ActionSurge
 		name:        "Action Surge",
 		characterID: characterID,
 		resource:    resource,
+	}, nil
+}
+
+// flurryOfBlowsConfig is the config structure for flurry of blows feature
+type flurryOfBlowsConfig struct {
+	// Flurry of Blows doesn't have its own uses - it consumes Ki from the character
+	// No config needed, but we keep the struct for consistency
+}
+
+// createFlurryOfBlows creates a flurry of blows feature from config
+func createFlurryOfBlows(config json.RawMessage, characterID string) (*FlurryOfBlows, error) {
+	var cfg flurryOfBlowsConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse flurry of blows config")
+		}
+	}
+
+	return &FlurryOfBlows{
+		id:          refs.Features.FlurryOfBlows().ID,
+		name:        "Flurry of Blows",
+		characterID: characterID,
+	}, nil
+}
+
+// patientDefenseConfig is the config structure for patient defense feature
+type patientDefenseConfig struct {
+	// Patient Defense doesn't have its own uses - it consumes Ki from the character
+	// No config needed, but we keep the struct for consistency
+}
+
+// createPatientDefense creates a patient defense feature from config
+func createPatientDefense(config json.RawMessage, characterID string) (*PatientDefense, error) {
+	var cfg patientDefenseConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse patient defense config")
+		}
+	}
+
+	return &PatientDefense{
+		id:          refs.Features.PatientDefense().ID,
+		name:        "Patient Defense",
+		characterID: characterID,
+	}, nil
+}
+
+// stepOfTheWindConfig is the config structure for step of the wind feature
+type stepOfTheWindConfig struct {
+	// Step of the Wind doesn't have its own uses - it consumes Ki from the character
+	// No config needed, but we keep the struct for consistency
+}
+
+// createStepOfTheWind creates a step of the wind feature from config
+func createStepOfTheWind(config json.RawMessage, characterID string) (*StepOfTheWind, error) {
+	var cfg stepOfTheWindConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse step of the wind config")
+		}
+	}
+
+	return &StepOfTheWind{
+		id:          refs.Features.StepOfTheWind().ID,
+		name:        "Step of the Wind",
+		characterID: characterID,
+	}, nil
+}
+
+// deflectMissilesConfig is the config structure for deflect missiles feature
+type deflectMissilesConfig struct {
+	MonkLevel   int `json:"monk_level"`   // Monk level (for damage reduction calculation)
+	DexModifier int `json:"dex_modifier"` // Dexterity modifier (for damage reduction calculation)
+}
+
+// createDeflectMissiles creates a deflect missiles feature from config
+func createDeflectMissiles(config json.RawMessage, characterID string) (*DeflectMissiles, error) {
+	var cfg deflectMissilesConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse deflect missiles config")
+		}
+	}
+
+	// Default monk level to 3 (when feature is gained) if not specified
+	monkLevel := cfg.MonkLevel
+	if monkLevel == 0 {
+		monkLevel = 3
+	}
+
+	// Default dex modifier to +3 if not specified
+	dexModifier := cfg.DexModifier
+	if dexModifier == 0 {
+		dexModifier = 3
+	}
+
+	return &DeflectMissiles{
+		id:          refs.Features.DeflectMissiles().ID,
+		name:        "Deflect Missiles",
+		characterID: characterID,
+		monkLevel:   monkLevel,
+		dexModifier: dexModifier,
 	}, nil
 }

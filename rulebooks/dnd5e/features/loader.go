@@ -47,6 +47,34 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return actionSurge, nil
+	case refs.Features.FlurryOfBlows().ID:
+		flurryOfBlows := &FlurryOfBlows{}
+		if err := flurryOfBlows.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load flurry of blows: %w", err)
+		}
+
+		return flurryOfBlows, nil
+	case refs.Features.PatientDefense().ID:
+		patientDefense := &PatientDefense{}
+		if err := patientDefense.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load patient defense: %w", err)
+		}
+
+		return patientDefense, nil
+	case refs.Features.StepOfTheWind().ID:
+		stepOfTheWind := &StepOfTheWind{}
+		if err := stepOfTheWind.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load step of the wind: %w", err)
+		}
+
+		return stepOfTheWind, nil
+	case refs.Features.DeflectMissiles().ID:
+		deflectMissiles := &DeflectMissiles{}
+		if err := deflectMissiles.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load deflect missiles: %w", err)
+		}
+
+		return deflectMissiles, nil
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", metadata.Ref.ID)
 	}

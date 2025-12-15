@@ -62,6 +62,20 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return ic, nil
 
+	case refs.Conditions.MartialArts().ID:
+		ma := &MartialArtsCondition{}
+		if err := ma.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load martial arts condition")
+		}
+		return ma, nil
+
+	case refs.Conditions.UnarmoredMovement().ID:
+		um := &UnarmoredMovementCondition{}
+		if err := um.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load unarmored movement condition")
+		}
+		return um, nil
+
 	case refs.Features.SneakAttack().ID:
 		sneak := &SneakAttackCondition{}
 		if err := sneak.loadJSON(data); err != nil {
