@@ -96,13 +96,15 @@ func (cw *CharacterWeapons) AllEquipped() []*EquippedWeapon {
 // BasicCharacterRegistry is a concrete implementation of CharacterRegistry.
 // Purpose: Provides in-memory storage for character state during event processing.
 type BasicCharacterRegistry struct {
-	characters map[string]*CharacterWeapons
+	characters    map[string]*CharacterWeapons
+	abilityScores map[string]*AbilityScores
 }
 
 // NewBasicCharacterRegistry creates a new BasicCharacterRegistry.
 func NewBasicCharacterRegistry() *BasicCharacterRegistry {
 	return &BasicCharacterRegistry{
-		characters: make(map[string]*CharacterWeapons),
+		characters:    make(map[string]*CharacterWeapons),
+		abilityScores: make(map[string]*AbilityScores),
 	}
 }
 
@@ -124,4 +126,17 @@ func (r *BasicCharacterRegistry) Get(characterID string) (*CharacterWeapons, boo
 // Purpose: Implements the CharacterRegistry interface.
 func (r *BasicCharacterRegistry) GetCharacterWeapons(id string) *CharacterWeapons {
 	return r.characters[id]
+}
+
+// AddAbilityScores registers a character's ability scores.
+// If the character already has scores, they are replaced.
+func (r *BasicCharacterRegistry) AddAbilityScores(characterID string, scores *AbilityScores) {
+	r.abilityScores[characterID] = scores
+}
+
+// GetCharacterAbilityScores retrieves ability scores for a character by ID.
+// Returns nil if the character is not found.
+// Purpose: Allows features to query ability modifiers (e.g., Two-Weapon Fighting).
+func (r *BasicCharacterRegistry) GetCharacterAbilityScores(id string) *AbilityScores {
+	return r.abilityScores[id]
 }
