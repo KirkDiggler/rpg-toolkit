@@ -64,14 +64,17 @@ type DamageBreakdown struct {
 // AttackResult contains the complete outcome of an attack
 type AttackResult struct {
 	// Attack roll details
-	AttackRoll      int  // The d20 roll
-	AttackBonus     int  // Total bonus applied
-	TotalAttack     int  // Roll + bonus
-	TargetAC        int  // Target's armor class
-	Hit             bool // Did the attack hit?
-	Critical        bool // Was it a critical hit?
-	IsNaturalTwenty bool // Natural 20
-	IsNaturalOne    bool // Natural 1
+	AttackRoll      int   // The d20 roll (final result after advantage/disadvantage)
+	AttackBonus     int   // Total bonus applied
+	TotalAttack     int   // Roll + bonus
+	TargetAC        int   // Target's armor class
+	Hit             bool  // Did the attack hit?
+	Critical        bool  // Was it a critical hit?
+	IsNaturalTwenty bool  // Natural 20
+	IsNaturalOne    bool  // Natural 1
+	AllRolls        []int // All d20 rolls (2 if advantage/disadvantage, 1 otherwise)
+	HasAdvantage    bool  // True if rolled with advantage
+	HasDisadvantage bool  // True if rolled with disadvantage
 
 	// Damage details
 	DamageRolls []int       // Individual damage dice rolls (flattened)
@@ -102,42 +105,22 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		TargetAC:   input.DefenderAC,
 	}
 
-	// Step 1: Publish AttackEvent (before any rolls)
-	attackTopic := dnd5eEvents.AttackTopic.On(input.EventBus)
-	err := attackTopic.Publish(ctx, dnd5eEvents.AttackEvent{
-		AttackerID: input.Attacker.GetID(),
-		TargetID:   input.Defender.GetID(),
-		WeaponRef:  input.Weapon.ID,
-		IsMelee:    !input.Weapon.IsRanged(),
-	})
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to publish attack event")
-	}
-
-	// Step 2: Roll attack (1d20)
-	attackRoll, err := roller.Roll(ctx, 20)
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to roll attack")
-	}
-
-	result.AttackRoll = attackRoll
-	result.IsNaturalTwenty = (attackRoll == 20)
-	result.IsNaturalOne = (attackRoll == 1)
-
-	// Step 3: Calculate base attack bonus (ability modifier + proficiency)
+	// Step 1: Calculate base attack bonus (ability modifier + proficiency)
 	abilityMod := calculateAttackAbilityModifier(input.Weapon, input.AttackerScores)
 	baseBonus := abilityMod + input.ProficiencyBonus
 
-	// Step 4: Fire attack chain event to collect modifiers
+	// Step 2: Fire attack chain BEFORE the roll to collect advantage/disadvantage and modifiers
 	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:        input.Attacker.GetID(),
-		TargetID:          input.Defender.GetID(),
-		AttackRoll:        attackRoll,
-		AttackBonus:       baseBonus,
-		TargetAC:          input.DefenderAC,
-		IsNaturalTwenty:   result.IsNaturalTwenty,
-		IsNaturalOne:      result.IsNaturalOne,
-		CriticalThreshold: 20, // Default threshold (can be modified by conditions)
+		AttackerID:          input.Attacker.GetID(),
+		TargetID:            input.Defender.GetID(),
+		WeaponRef:           weaponToRef(input.Weapon),
+		IsMelee:             !input.Weapon.IsRanged(),
+		AdvantageSources:    nil,
+		DisadvantageSources: nil,
+		AttackBonus:         baseBonus,
+		TargetAC:            input.DefenderAC,
+		CriticalThreshold:   20, // Default threshold (can be modified by conditions)
+		ReactionsConsumed:   nil,
 	}
 
 	// Create attack chain
@@ -156,12 +139,73 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		return nil, rpgerr.Wrap(err, "failed to execute attack chain")
 	}
 
-	// Update result with modified values
+	// Step 3: Determine advantage/disadvantage and roll
+	// D&D 5e rule: any advantage + any disadvantage = cancel out to normal roll
+	hasAdvantage := len(finalAttackEvent.AdvantageSources) > 0
+	hasDisadvantage := len(finalAttackEvent.DisadvantageSources) > 0
+
+	var attackRoll int
+	var allRolls []int
+
+	switch {
+	case hasAdvantage && hasDisadvantage:
+		// They cancel out - roll normally
+		attackRoll, err = roller.Roll(ctx, 20)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to roll attack")
+		}
+		allRolls = []int{attackRoll}
+		// Clear both flags since they cancelled
+		hasAdvantage = false
+		hasDisadvantage = false
+	case hasAdvantage:
+		// D&D 5e advantage: roll 2d20, take higher
+		allRolls, err = roller.RollN(ctx, 2, 20)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to roll attack with advantage")
+		}
+		attackRoll = max(allRolls[0], allRolls[1])
+	case hasDisadvantage:
+		// D&D 5e disadvantage: roll 2d20, take lower
+		allRolls, err = roller.RollN(ctx, 2, 20)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to roll attack with disadvantage")
+		}
+		attackRoll = min(allRolls[0], allRolls[1])
+	default:
+		// Normal roll
+		attackRoll, err = roller.Roll(ctx, 20)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to roll attack")
+		}
+		allRolls = []int{attackRoll}
+	}
+
+	result.AttackRoll = attackRoll
+	result.AllRolls = allRolls
+	result.HasAdvantage = hasAdvantage
+	result.HasDisadvantage = hasDisadvantage
+	result.IsNaturalTwenty = (attackRoll == 20)
+	result.IsNaturalOne = (attackRoll == 1)
+
+	// Update result with modified values from chain
 	result.AttackBonus = finalAttackEvent.AttackBonus
 	result.TotalAttack = attackRoll + result.AttackBonus
 
 	// Determine critical hit based on threshold (modified by conditions like Improved Critical)
 	result.Critical = attackRoll >= finalAttackEvent.CriticalThreshold
+
+	// Step 4: Publish ReactionUsedEvents for any reactions consumed during the chain
+	if len(finalAttackEvent.ReactionsConsumed) > 0 {
+		reactionTopic := dnd5eEvents.ReactionUsedTopic.On(input.EventBus)
+		for _, reaction := range finalAttackEvent.ReactionsConsumed {
+			// ReactionConsumption has same structure as ReactionUsedEvent
+			err = reactionTopic.Publish(ctx, dnd5eEvents.ReactionUsedEvent(reaction))
+			if err != nil {
+				return nil, rpgerr.Wrap(err, "failed to publish reaction used event")
+			}
+		}
+	}
 
 	// Step 5: Determine hit/miss (natural 20 always hits, natural 1 always misses)
 	switch {
@@ -206,11 +250,12 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 
 		// Apply damage chain for modifiers
 		chainInput := &ApplyDamageChainInput{
-			AttackInput: input,
-			DiceRolls:   damageRolls,
-			AbilityMod:  abilityMod,
-			AbilityUsed: abilityUsed,
-			IsCritical:  result.Critical,
+			AttackInput:  input,
+			DiceRolls:    damageRolls,
+			AbilityMod:   abilityMod,
+			AbilityUsed:  abilityUsed,
+			IsCritical:   result.Critical,
+			HasAdvantage: result.HasAdvantage,
 		}
 
 		chainOutput, err := applyDamageChain(ctx, chainInput)
@@ -264,11 +309,12 @@ func rollDamageDice(ctx context.Context, pool *dice.Pool, roller dice.Roller, ti
 
 // ApplyDamageChainInput provides all information needed to apply the damage chain
 type ApplyDamageChainInput struct {
-	AttackInput *AttackInput
-	DiceRolls   []int
-	AbilityMod  int
-	AbilityUsed abilities.Ability
-	IsCritical  bool
+	AttackInput  *AttackInput
+	DiceRolls    []int
+	AbilityMod   int
+	AbilityUsed  abilities.Ability
+	IsCritical   bool
+	HasAdvantage bool // True if attack was made with advantage (for sneak attack, etc.)
 }
 
 // ApplyDamageChainOutput contains the results of applying the damage chain
@@ -316,6 +362,7 @@ func applyDamageChain(ctx context.Context, input *ApplyDamageChainInput) (*Apply
 		Components:   []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
 		DamageType:   input.AttackInput.Weapon.DamageType,
 		IsCritical:   input.IsCritical,
+		HasAdvantage: input.HasAdvantage,
 		WeaponDamage: input.AttackInput.Weapon.Damage,
 		AbilityUsed:  input.AbilityUsed,
 		WeaponRef:    weaponToRef(input.AttackInput.Weapon),
