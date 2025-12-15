@@ -1,33 +1,12 @@
 {
-  "branch": "ideas/monster-behavior",
-  "issues": ["PR #414"],
-  "goal": "Implement monster behavior - goblin can take a turn: find closest enemy, move toward it, attack with scimitar",
-  "sessions": [
-    {
-      "id": "2025-12-08-001",
-      "task": "Create monster package with Data struct and LoadFromData",
-      "status": "in_progress",
-      "artifacts": [],
-      "commit": null,
-      "notes": "Following character pattern: Data for persistence, LoadFromData to wire to bus"
-    }
-  ],
+  "branch": "feature/issue-420-gamectx-audit",
+  "issues": ["#420"],
+  "goal": "Add Room accessor, ability scores accessor, and ally position query to GameCtx",
+  "sessions": [],
   "next_steps": [
-    "Create monster package in rulebooks/dnd5e/monster/",
-    "Implement Data struct with monster stats, actions, features",
-    "Implement LoadFromData to create Monster from Data",
-    "Create MonsterActionInput type",
-    "Implement ScimitarAction with Score() method",
-    "Implement TakeTurn behavior loop",
-    "Write tests"
-  ],
-  "design_notes": {
-    "location": "docs/ideas/monster-behavior/",
-    "key_patterns": [
-      "Monster uses same Data/LoadFromData pattern as character",
-      "Actions implement core.Action[MonsterActionInput] with Score() for behavior",
-      "Conditions modify via chain subscription, not action checking",
-      "Use typed refs: refs.MonsterActions.Scimitar()"
-    ]
-  }
+    "Add Room context key and accessor functions (room.go)",
+    "Extend CharacterRegistry with GetCharacterAbilityScores",
+    "Add AbilityScores struct with modifier calculation",
+    "Write integration tests for all three capabilities"
+  ]
 }

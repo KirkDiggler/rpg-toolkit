@@ -1,44 +1,23 @@
 {
   "tests": [
     {
-      "id": "monster-data-struct",
-      "feature": "monster-behavior",
-      "prompt": "Monster Data struct exists with ID, Name, MonsterType, HitPoints, MaxHitPoints, ArmorClass, AbilityScores, Speed, Actions",
+      "id": "room-accessible",
+      "feature": "gamectx-room",
+      "prompt": "Create a GameContext with a Room. Verify Room(ctx) returns the room.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "monster-load-from-data",
-      "feature": "monster-behavior",
-      "prompt": "monster.LoadFromData(ctx, data, bus) creates Monster from Data and wires to event bus",
+      "id": "ability-scores-accessible",
+      "feature": "gamectx-ability-scores",
+      "prompt": "Create a CharacterRegistry with ability scores. Verify GetCharacterAbilityScores returns scores with correct modifiers (e.g., DEX 16 = +3 modifier).",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "monster-action-input",
-      "feature": "monster-behavior",
-      "prompt": "MonsterActionInput exists with Bus, Perception, ActionEconomy, Target, Roller fields",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "scimitar-action",
-      "feature": "monster-behavior",
-      "prompt": "ScimitarAction implements core.Action[MonsterActionInput] with Score() that returns higher when target is adjacent",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "take-turn-loop",
-      "feature": "monster-behavior",
-      "prompt": "Monster.TakeTurn loops: scores actions, picks best, executes, consumes action economy, repeats until no resources",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "goblin-takes-turn",
-      "feature": "monster-behavior",
-      "prompt": "Goblin with scimitar finds closest enemy, moves toward it, attacks - integration test passes",
+      "id": "ally-position-query",
+      "feature": "gamectx-ally-query",
+      "prompt": "Place two entities in a Room. Query entities within 5ft of one entity. Verify the other entity is found when within range, not found when outside range.",
       "passes": false,
       "last_checked": null
     }
