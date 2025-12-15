@@ -89,25 +89,14 @@ func (s *FightingStyleTestSuite) TestArcheryBonusApplication() {
 				_ = fs.Remove(s.ctx, s.bus)
 			}()
 
-			// Publish an AttackEvent
-			attackTopic := dnd5eEvents.AttackTopic.On(s.bus)
-			err = attackTopic.Publish(s.ctx, dnd5eEvents.AttackEvent{
-				AttackerID: "fighter-1",
-				TargetID:   "goblin-1",
-				WeaponRef:  tc.weaponRef,
-				IsMelee:    tc.isMelee,
-			})
-			s.Require().NoError(err)
-
-			// Create attack chain event
+			// Create attack chain event with IsMelee directly set
 			attackEvent := dnd5eEvents.AttackChainEvent{
-				AttackerID:      "fighter-1",
-				TargetID:        "goblin-1",
-				AttackRoll:      15,
-				AttackBonus:     tc.baseBonus,
-				TargetAC:        13,
-				IsNaturalTwenty: false,
-				IsNaturalOne:    false,
+				AttackerID:        "fighter-1",
+				TargetID:          "goblin-1",
+				IsMelee:           tc.isMelee,
+				AttackBonus:       tc.baseBonus,
+				TargetAC:          13,
+				CriticalThreshold: 20,
 			}
 
 			// Publish through attack chain

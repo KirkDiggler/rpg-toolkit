@@ -96,11 +96,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
-			AttackRoll:        19,
 			AttackBonus:       5,
 			TargetAC:          15,
-			IsNaturalTwenty:   false,
-			IsNaturalOne:      false,
 			CriticalThreshold: 20, // Default threshold
 		}
 
@@ -122,11 +119,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "other-fighter",
 			TargetID:          "goblin",
-			AttackRoll:        19,
 			AttackBonus:       5,
 			TargetAC:          15,
-			IsNaturalTwenty:   false,
-			IsNaturalOne:      false,
 			CriticalThreshold: 20,
 		}
 
@@ -165,11 +159,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
-			AttackRoll:        18,
 			AttackBonus:       5,
 			TargetAC:          15,
-			IsNaturalTwenty:   false,
-			IsNaturalOne:      false,
 			CriticalThreshold: 20,
 		}
 
@@ -284,21 +275,19 @@ func (s *ImprovedCriticalTestSuite) TestFactory() {
 	})
 }
 
-// TestIntegrationWithAttackChain verifies the condition works in attack resolution
+// TestIntegrationWithAttackChain verifies the condition modifies threshold correctly
+// Note: Actual crit determination (roll >= threshold) happens in ResolveAttack after the chain
 func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 	ctx := context.Background()
 	err := s.condition.Apply(ctx, s.bus)
 	s.Require().NoError(err)
 
-	s.Run("roll of 19 becomes critical for champion", func() {
+	s.Run("threshold is lowered so roll of 19 would be critical", func() {
 		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
-			AttackRoll:        19,
 			AttackBonus:       5,
 			TargetAC:          15,
-			IsNaturalTwenty:   false,
-			IsNaturalOne:      false,
 			CriticalThreshold: 20,
 		}
 
@@ -311,21 +300,16 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 		finalEvent, err := modifiedChain.Execute(ctx, event)
 		s.Require().NoError(err)
 
-		// With threshold 19, a roll of 19 should be a critical
+		// Threshold lowered to 19, so a roll of 19 would be critical (19 >= 19)
 		s.Assert().Equal(19, finalEvent.CriticalThreshold)
-		// The ResolveAttack function would check: attackRoll >= CriticalThreshold
-		s.Assert().True(finalEvent.AttackRoll >= finalEvent.CriticalThreshold, "roll of 19 should meet threshold of 19")
 	})
 
-	s.Run("roll of 18 is not critical for improved critical", func() {
+	s.Run("threshold is lowered but roll of 18 would not be critical", func() {
 		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
-			AttackRoll:        18,
 			AttackBonus:       5,
 			TargetAC:          15,
-			IsNaturalTwenty:   false,
-			IsNaturalOne:      false,
 			CriticalThreshold: 20,
 		}
 
@@ -338,19 +322,16 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 		finalEvent, err := modifiedChain.Execute(ctx, event)
 		s.Require().NoError(err)
 
+		// Threshold lowered to 19, so a roll of 18 would NOT be critical (18 < 19)
 		s.Assert().Equal(19, finalEvent.CriticalThreshold)
-		s.Assert().False(finalEvent.AttackRoll >= finalEvent.CriticalThreshold, "roll of 18 should not meet threshold of 19")
 	})
 
-	s.Run("roll of 20 is still critical", func() {
+	s.Run("threshold modification still allows roll of 20 to be critical", func() {
 		event := dnd5eEvents.AttackChainEvent{
 			AttackerID:        "champion-fighter",
 			TargetID:          "goblin",
-			AttackRoll:        20,
 			AttackBonus:       5,
 			TargetAC:          15,
-			IsNaturalTwenty:   true,
-			IsNaturalOne:      false,
 			CriticalThreshold: 20,
 		}
 
@@ -363,8 +344,8 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 		finalEvent, err := modifiedChain.Execute(ctx, event)
 		s.Require().NoError(err)
 
+		// Threshold lowered to 19, so a roll of 20 would still be critical (20 >= 19)
 		s.Assert().Equal(19, finalEvent.CriticalThreshold)
-		s.Assert().True(finalEvent.AttackRoll >= finalEvent.CriticalThreshold, "roll of 20 should always be critical")
 	})
 }
 

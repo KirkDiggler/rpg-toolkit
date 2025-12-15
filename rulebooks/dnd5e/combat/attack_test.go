@@ -8,6 +8,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -206,15 +207,23 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil)
 
 	// Track events
-	var attackEvent *dnd5eEvents.AttackEvent
+	var attackChainFired bool
 	var damageEvent *dnd5eEvents.DamageReceivedEvent
 
-	// Subscribe to AttackEvent
-	attacks := dnd5eEvents.AttackTopic.On(s.eventBus)
-	_, err := attacks.Subscribe(s.ctx, func(_ context.Context, e dnd5eEvents.AttackEvent) error {
-		attackEvent = &e
-		return nil
-	})
+	// Subscribe to AttackChain (fires before roll to collect modifiers)
+	attackChainTopic := dnd5eEvents.AttackChain.On(s.eventBus)
+	onAttack := func(
+		_ context.Context,
+		e dnd5eEvents.AttackChainEvent,
+		c chain.Chain[dnd5eEvents.AttackChainEvent],
+	) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+		attackChainFired = true
+		s.Equal("barbarian-1", e.AttackerID)
+		s.Equal("goblin-1", e.TargetID)
+		s.True(e.IsMelee)
+		return c, nil
+	}
+	_, err := attackChainTopic.SubscribeWithChain(s.ctx, onAttack)
 	s.Require().NoError(err)
 
 	// Subscribe to DamageReceivedEvent
@@ -240,11 +249,8 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 	s.Require().NoError(err)
 	s.True(result.Hit)
 
-	// Verify AttackEvent was published
-	s.Require().NotNil(attackEvent, "AttackEvent should be published")
-	s.Equal("barbarian-1", attackEvent.AttackerID)
-	s.Equal("goblin-1", attackEvent.TargetID)
-	s.True(attackEvent.IsMelee)
+	// Verify AttackChain was fired
+	s.True(attackChainFired, "AttackChain should be fired before the roll")
 
 	// Verify DamageReceivedEvent was published
 	s.Require().NotNil(damageEvent, "DamageReceivedEvent should be published")

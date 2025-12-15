@@ -37,9 +37,6 @@ type FightingStyleCondition struct {
 	subscriptionIDs []string
 	bus             events.EventBus
 	roller          dice.Roller
-
-	// Track current attack weapon for Archery
-	currentAttackIsMelee bool
 }
 
 // Ensure FightingStyleCondition implements dnd5eEvents.ConditionBehavior
@@ -62,23 +59,14 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 
 	switch f.Style {
 	case fightingstyles.Archery:
-		// Subscribe to AttackEvent to track weapon type
-		attackTopic := dnd5eEvents.AttackTopic.On(bus)
-		subID1, err := attackTopic.Subscribe(ctx, f.onAttackEvent)
-		if err != nil {
-			return rpgerr.Wrap(err, "failed to subscribe to attack events")
-		}
-		f.subscriptionIDs = append(f.subscriptionIDs, subID1)
-
 		// Subscribe to AttackChain to add +2 bonus for ranged attacks
+		// AttackChainEvent has IsMelee field so we can check directly
 		attackChain := dnd5eEvents.AttackChain.On(bus)
-		subID2, err := attackChain.SubscribeWithChain(ctx, f.onAttackChain)
+		subID, err := attackChain.SubscribeWithChain(ctx, f.onAttackChain)
 		if err != nil {
-			// Rollback
-			_ = f.Remove(ctx, bus)
 			return rpgerr.Wrap(err, "failed to subscribe to attack chain")
 		}
-		f.subscriptionIDs = append(f.subscriptionIDs, subID2)
+		f.subscriptionIDs = append(f.subscriptionIDs, subID)
 
 	case fightingstyles.GreatWeaponFighting:
 		// Subscribe to DamageChain to reroll 1s and 2s
@@ -168,18 +156,6 @@ func (f *FightingStyleCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onAttackEvent tracks whether the current attack is melee or ranged (for Archery)
-func (f *FightingStyleCondition) onAttackEvent(_ context.Context, event dnd5eEvents.AttackEvent) error {
-	// Only track attacks by this character
-	if event.AttackerID != f.CharacterID {
-		return nil
-	}
-
-	// Track whether this attack is melee or ranged
-	f.currentAttackIsMelee = event.IsMelee
-	return nil
-}
-
 // onAttackChain adds +2 to attack rolls for ranged weapons (Archery fighting style)
 func (f *FightingStyleCondition) onAttackChain(
 	_ context.Context,
@@ -191,8 +167,8 @@ func (f *FightingStyleCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Only apply to ranged attacks (tracked from AttackEvent)
-	if f.currentAttackIsMelee {
+	// Only apply to ranged attacks (IsMelee is directly in the event)
+	if event.IsMelee {
 		return c, nil
 	}
 

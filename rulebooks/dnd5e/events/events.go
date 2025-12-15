@@ -147,19 +147,49 @@ func (dc *DamageComponent) Total() int {
 }
 
 // =============================================================================
+// Attack Modifier Types
+// =============================================================================
+
+// AttackModifierSource tracks the source of an advantage or disadvantage modifier.
+// Used by features like Protection fighting style to record what caused the modifier.
+type AttackModifierSource struct {
+	SourceRef *core.Ref // Reference to the feature/condition (e.g., refs.FightingStyles.Protection())
+	SourceID  string    // ID of the entity that provided the modifier
+	Reason    string    // Human-readable explanation
+}
+
+// ReactionConsumption tracks a reaction consumed during an attack chain.
+// Processed after chain execution to update game state.
+type ReactionConsumption struct {
+	CharacterID string    // Who used their reaction
+	FeatureRef  *core.Ref // What feature consumed it
+	Reason      string    // Human-readable explanation
+}
+
+// =============================================================================
 // Chain Events (modifier chains)
 // =============================================================================
 
-// AttackChainEvent represents an attack flowing through the modifier chain
+// AttackChainEvent represents an attack flowing through the modifier chain.
+// This event fires BEFORE the d20 roll to allow advantage/disadvantage to be collected.
 type AttackChainEvent struct {
-	AttackerID        string
-	TargetID          string
-	AttackRoll        int  // The d20 roll
-	AttackBonus       int  // Base bonus before modifiers
-	TargetAC          int  // Target's armor class
-	IsNaturalTwenty   bool // Natural 20 always hits
-	IsNaturalOne      bool // Natural 1 always misses
-	CriticalThreshold int  // Roll >= this value is a critical hit (default 20)
+	// Identity
+	AttackerID string    // ID of the attacking character
+	TargetID   string    // ID of the target
+	WeaponRef  *core.Ref // Reference to the weapon used
+	IsMelee    bool      // True for melee attacks, false for ranged
+
+	// Advantage/Disadvantage (inputs to the roll)
+	AdvantageSources    []AttackModifierSource // Sources granting advantage
+	DisadvantageSources []AttackModifierSource // Sources imposing disadvantage
+
+	// Modifiers (applied to attack roll)
+	AttackBonus       int // Base bonus before modifiers (can be modified by chain)
+	TargetAC          int // Target's armor class (for reference)
+	CriticalThreshold int // Roll >= this value is a critical hit (default 20, can be lowered)
+
+	// Side effects (processed after chain execution)
+	ReactionsConsumed []ReactionConsumption // Reactions used during this attack
 }
 
 // DamageChainEvent represents damage flowing through the modifier chain
@@ -230,6 +260,14 @@ type AttackEvent struct {
 	TargetID   string // ID of the target
 	WeaponRef  string // Reference to the weapon used
 	IsMelee    bool   // True for melee attacks, false for ranged
+}
+
+// ReactionUsedEvent is published when a character uses their reaction.
+// Game server listens to update ActionEconomy.
+type ReactionUsedEvent struct {
+	CharacterID string    // ID of the character who used their reaction
+	FeatureRef  *core.Ref // What feature consumed the reaction
+	Reason      string    // Human-readable explanation
 }
 
 // RestEvent is published when a character takes a rest
@@ -311,6 +349,9 @@ var (
 
 	// AttackTopic provides typed pub/sub for attack events
 	AttackTopic = events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack")
+
+	// ReactionUsedTopic provides typed pub/sub for reaction used events
+	ReactionUsedTopic = events.DefineTypedTopic[ReactionUsedEvent]("dnd5e.combat.reaction.used")
 
 	// RestTopic provides typed pub/sub for rest events
 	RestTopic = events.DefineTypedTopic[RestEvent]("dnd5e.rest")
