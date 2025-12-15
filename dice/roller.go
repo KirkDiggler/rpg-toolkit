@@ -23,16 +23,6 @@ type Roller interface {
 	// Returns a slice containing each individual roll result.
 	// Returns an error if size <= 0 or count < 0.
 	RollN(ctx context.Context, count, size int) ([]int, error)
-
-	// RollWithAdvantage rolls twice and returns the higher result.
-	// Returns the chosen result, both individual rolls, and any error.
-	// D&D 5e rule: roll 2d20, take the higher.
-	RollWithAdvantage(ctx context.Context, size int) (result int, rolls []int, err error)
-
-	// RollWithDisadvantage rolls twice and returns the lower result.
-	// Returns the chosen result, both individual rolls, and any error.
-	// D&D 5e rule: roll 2d20, take the lower.
-	RollWithDisadvantage(ctx context.Context, size int) (result int, rolls []int, err error)
 }
 
 // CryptoRoller implements Roller using crypto/rand for cryptographically secure randomness.
@@ -77,34 +67,4 @@ func (c *CryptoRoller) RollN(ctx context.Context, count, size int) ([]int, error
 		results[i] = roll
 	}
 	return results, nil
-}
-
-// RollWithAdvantage rolls twice and returns the higher result.
-func (c *CryptoRoller) RollWithAdvantage(ctx context.Context, size int) (int, []int, error) {
-	rolls, err := c.RollN(ctx, 2, size)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	result := rolls[0]
-	if rolls[1] > result {
-		result = rolls[1]
-	}
-
-	return result, rolls, nil
-}
-
-// RollWithDisadvantage rolls twice and returns the lower result.
-func (c *CryptoRoller) RollWithDisadvantage(ctx context.Context, size int) (int, []int, error) {
-	rolls, err := c.RollN(ctx, 2, size)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	result := rolls[0]
-	if rolls[1] < result {
-		result = rolls[1]
-	}
-
-	return result, rolls, nil
 }

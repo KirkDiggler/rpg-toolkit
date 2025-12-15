@@ -140,6 +140,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	// Step 3: Determine advantage/disadvantage and roll
+	// D&D 5e rule: any advantage + any disadvantage = cancel out to normal roll
 	hasAdvantage := len(finalAttackEvent.AdvantageSources) > 0
 	hasDisadvantage := len(finalAttackEvent.DisadvantageSources) > 0
 
@@ -158,17 +159,19 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		hasAdvantage = false
 		hasDisadvantage = false
 	case hasAdvantage:
-		// Roll twice, take higher
-		attackRoll, allRolls, err = roller.RollWithAdvantage(ctx, 20)
+		// D&D 5e advantage: roll 2d20, take higher
+		allRolls, err = roller.RollN(ctx, 2, 20)
 		if err != nil {
 			return nil, rpgerr.Wrap(err, "failed to roll attack with advantage")
 		}
+		attackRoll = max(allRolls[0], allRolls[1])
 	case hasDisadvantage:
-		// Roll twice, take lower
-		attackRoll, allRolls, err = roller.RollWithDisadvantage(ctx, 20)
+		// D&D 5e disadvantage: roll 2d20, take lower
+		allRolls, err = roller.RollN(ctx, 2, 20)
 		if err != nil {
 			return nil, rpgerr.Wrap(err, "failed to roll attack with disadvantage")
 		}
+		attackRoll = min(allRolls[0], allRolls[1])
 	default:
 		// Normal roll
 		attackRoll, err = roller.Roll(ctx, 20)
