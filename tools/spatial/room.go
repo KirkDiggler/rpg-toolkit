@@ -434,10 +434,11 @@ func gridShapeToString(shape GridShape) string {
 }
 
 // getCubePosition returns the cube coordinate for a position if the grid is a hex grid
+// Position is interpreted as native cube: Position.X = cube.x, Position.Y = cube.z
 // Returns nil for non-hex grids
 func (r *BasicRoom) getCubePosition(pos Position) *CubeCoordinate {
 	if hexGrid, ok := r.grid.(*HexGrid); ok {
-		cube := hexGrid.OffsetToCube(pos)
+		cube := hexGrid.PositionToCube(pos)
 		return &cube
 	}
 	return nil

@@ -344,8 +344,8 @@ func (s *RoomTestSuite) TestHexRoomCubeCoordinates() {
 		// Verify the cube coordinate constraint: x + y + z = 0
 		s.Assert().Equal(0, cubePos.X+cubePos.Y+cubePos.Z, "Cube coordinates must satisfy x + y + z = 0")
 
-		// Verify the conversion is consistent with the grid's OffsetToCube
-		expectedCube := hexGrid.OffsetToCube(pos)
+		// Verify the conversion is consistent with the grid's PositionToCube
+		expectedCube := hexGrid.PositionToCube(pos)
 		s.Assert().Equal(expectedCube.X, cubePos.X)
 		s.Assert().Equal(expectedCube.Y, cubePos.Y)
 		s.Assert().Equal(expectedCube.Z, cubePos.Z)

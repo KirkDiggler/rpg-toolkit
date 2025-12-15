@@ -37,7 +37,8 @@ func (s *HexGridTestSuite) TestIsValidPosition() {
 	spatial.RunPositionValidationTests(s.T(), s.grid)
 }
 
-// TestHexDistance tests hex distance calculations using cube coordinates
+// TestHexDistance tests hex distance calculations using native cube coordinates
+// Position is interpreted as: X = cube.x, Y = cube.z, cube.y = -x - z (derived)
 func (s *HexGridTestSuite) TestHexDistance() {
 	testCases := []struct {
 		name     string
@@ -46,13 +47,16 @@ func (s *HexGridTestSuite) TestHexDistance() {
 		expected float64
 	}{
 		{"same position", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 5, Y: 5}, 0},
-		{"adjacent horizontal", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 5}, 1},
-		{"adjacent vertical", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 5, Y: 6}, 1},
-		{"two hexes away", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 7, Y: 5}, 2},
-		{"three hexes away", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 8, Y: 5}, 3},
-		// Hex grids have different diagonal behavior than square grids
-		{"diagonal movement", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 6}, 1},
-		{"longer diagonal", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 7, Y: 7}, 3},
+		// In native cube: moving +1 in x only is distance 1
+		{"adjacent x-direction", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 5}, 1},
+		// In native cube: moving +1 in z only is distance 1
+		{"adjacent z-direction", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 5, Y: 6}, 1},
+		{"two hexes in x", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 7, Y: 5}, 2},
+		{"three hexes in x", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 8, Y: 5}, 3},
+		// In native cube: moving +1 in both x AND z is distance 2 (not 1)
+		// because cube.y changes by -2 when both x and z increase by 1
+		{"diagonal x+z movement", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 6, Y: 6}, 2},
+		{"longer diagonal", spatial.Position{X: 5, Y: 5}, spatial.Position{X: 7, Y: 7}, 4},
 	}
 
 	for _, tc := range testCases {
@@ -357,18 +361,23 @@ func (s *HexGridTestSuite) TestGetOrientation() {
 	})
 }
 
-// TestCoordinateConversionMethods tests the new helper methods
+// TestCoordinateConversionMethods tests the native cube coordinate methods
 func (s *HexGridTestSuite) TestCoordinateConversionMethods() {
+	// Position is native cube: X = cube.x, Y = cube.z
 	center := spatial.Position{X: 5, Y: 5}
 
-	s.Run("OffsetToCube", func() {
-		cube := s.grid.OffsetToCube(center)
+	s.Run("PositionToCube", func() {
+		cube := s.grid.PositionToCube(center)
 		s.Assert().True(cube.IsValid()) // Should be valid cube coordinate
+		// Verify native cube interpretation: X=5 (cube.x), Y=5 (cube.z), derived y = -5-5 = -10
+		s.Assert().Equal(5, cube.X)
+		s.Assert().Equal(-10, cube.Y)
+		s.Assert().Equal(5, cube.Z)
 	})
 
-	s.Run("CubeToOffset round-trip", func() {
-		cube := s.grid.OffsetToCube(center)
-		converted := s.grid.CubeToOffset(cube)
+	s.Run("CubeToPosition round-trip", func() {
+		cube := s.grid.PositionToCube(center)
+		converted := s.grid.CubeToPosition(cube)
 		s.Assert().Equal(center, converted)
 	})
 
@@ -387,7 +396,7 @@ func (s *HexGridTestSuite) TestCoordinateConversionMethods() {
 
 		// Each cube neighbor should convert to a valid position neighbor
 		for _, cube := range cubeNeighbors {
-			pos := s.grid.CubeToOffset(cube)
+			pos := s.grid.CubeToPosition(cube)
 			if s.grid.IsValidPosition(pos) {
 				s.Assert().Contains(positionNeighbors, pos)
 			}

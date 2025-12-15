@@ -55,7 +55,14 @@ type EntityPlacement struct {
 	EntityType string `json:"entity_type"`
 
 	// Position is where the entity is placed in the room
+	// For hex grids: Position.X = cube.x, Position.Y = cube.z (native cube coordinates)
+	// For square/gridless grids: Position.X and Position.Y are the coordinates
 	Position Position `json:"position"`
+
+	// CubePosition is the full cube coordinate for hex grids (includes derived Y)
+	// This is populated automatically by ToData() when GridType is "hex"
+	// For non-hex grids, this will be nil
+	CubePosition *CubeCoordinate `json:"cube_position,omitempty"`
 
 	// Size is how many grid spaces the entity occupies (default 1)
 	Size int `json:"size,omitempty"`
@@ -65,6 +72,28 @@ type EntityPlacement struct {
 
 	// BlocksLineOfSight indicates if this entity blocks line of sight
 	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+}
+
+// EnsureCubePositions populates CubePosition for all entities in a hex grid RoomData.
+// Position is interpreted as native cube coordinates: Position.X = cube.x, Position.Y = cube.z
+// This should be called after manually creating RoomData with entities.
+// For non-hex grids, this is a no-op.
+func (r *RoomData) EnsureCubePositions() {
+	if r.GridType != GridTypeHex {
+		return
+	}
+
+	for id, placement := range r.Entities {
+		if placement.CubePosition == nil {
+			// Native cube: Position.X = cube.x, Position.Y = cube.z, derive cube.y
+			x := int(placement.Position.X)
+			z := int(placement.Position.Y)
+			y := -x - z // Derived from x + y + z = 0
+			cube := CubeCoordinate{X: x, Y: y, Z: z}
+			placement.CubePosition = &cube
+			r.Entities[id] = placement
+		}
+	}
 }
 
 // PlaceableData is a minimal implementation of Placeable for spatial queries.
@@ -141,6 +170,16 @@ func (r *BasicRoom) ToData() RoomData {
 				EntityID:   entity.GetID(),
 				EntityType: string(entity.GetType()),
 				Position:   pos,
+			}
+
+			// For hex grids, populate full cube coordinates
+			// Position is native cube: Position.X = cube.x, Position.Y = cube.z
+			if gridType == GridTypeHex {
+				x := int(pos.X)
+				z := int(pos.Y)
+				y := -x - z // Derived from x + y + z = 0
+				cube := CubeCoordinate{X: x, Y: y, Z: z}
+				placement.CubePosition = &cube
 			}
 
 			// Check if entity implements Placeable to get spatial properties
