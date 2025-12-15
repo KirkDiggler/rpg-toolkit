@@ -39,7 +39,6 @@ type SneakAttackTestSuite struct {
 	bus    events.EventBus
 	roller *mock_dice.MockRoller
 	room   spatial.Room
-	teams  *gamectx.BasicTeamRegistry
 }
 
 func (s *SneakAttackTestSuite) SetupTest() {
@@ -58,9 +57,6 @@ func (s *SneakAttackTestSuite) SetupTest() {
 		Type: "dungeon",
 		Grid: grid,
 	})
-
-	// Set up team registry
-	s.teams = gamectx.NewBasicTeamRegistry()
 }
 
 func (s *SneakAttackTestSuite) TearDownTest() {
@@ -358,30 +354,24 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAdvantage() {
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
-	// Set up teams - rogue and fighter are allies, goblin is enemy
-	s.teams.SetTeam("rogue-1", gamectx.TeamPlayers)
-	s.teams.SetTeam("fighter-1", gamectx.TeamPlayers)
-	s.teams.SetTeam("goblin-1", gamectx.TeamEnemies)
-
 	// Place entities in room
 	// Rogue at (2, 2) - not adjacent to goblin
 	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
 	err := s.room.PlaceEntity(rogue, spatial.Position{X: 2, Y: 2})
 	s.Require().NoError(err)
 
-	// Goblin (target) at (5, 5)
+	// Goblin (target) at (5, 5) - monster type
 	goblin := &mockEntity{id: "goblin-1", entityType: "monster"}
 	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
 	s.Require().NoError(err)
 
-	// Fighter (ally) at (5, 6) - adjacent to goblin (within 5ft)
+	// Fighter (ally) at (5, 6) - adjacent to goblin, character type = ally
 	fighter := &mockEntity{id: "fighter-1", entityType: "character"}
 	err = s.room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 6})
 	s.Require().NoError(err)
 
-	// Create context with room and teams
+	// Create context with room
 	ctx := gamectx.WithRoom(s.ctx, s.room)
-	ctx = gamectx.WithTeams(ctx, s.teams)
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		CharacterID: "rogue-1",
@@ -457,11 +447,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() 
 
 //nolint:dupl // Test functions intentionally similar - different entity positions
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
-	// Set up teams
-	s.teams.SetTeam("rogue-1", gamectx.TeamPlayers)
-	s.teams.SetTeam("fighter-1", gamectx.TeamPlayers)
-	s.teams.SetTeam("goblin-1", gamectx.TeamEnemies)
-
 	// Place entities in room
 	// Rogue at (2, 2)
 	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
@@ -473,14 +458,13 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
 	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
 	s.Require().NoError(err)
 
-	// Fighter (ally) at (10, 10) - NOT adjacent to goblin
+	// Fighter (ally) at (10, 10) - NOT adjacent to goblin (too far)
 	fighter := &mockEntity{id: "fighter-1", entityType: "character"}
 	err = s.room.PlaceEntity(fighter, spatial.Position{X: 10, Y: 10})
 	s.Require().NoError(err)
 
-	// Create context with room and teams
+	// Create context with room
 	ctx := gamectx.WithRoom(s.ctx, s.room)
-	ctx = gamectx.WithTeams(ctx, s.teams)
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		CharacterID: "rogue-1",
@@ -528,10 +512,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
 
 //nolint:dupl // Test functions intentionally similar - different entity positions
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenOnlyEnemyAdjacent() {
-	// Sneak attack should NOT trigger if the only nearby entity is an enemy
-	s.teams.SetTeam("rogue-1", gamectx.TeamPlayers)
-	s.teams.SetTeam("goblin-1", gamectx.TeamEnemies)
-	s.teams.SetTeam("goblin-2", gamectx.TeamEnemies) // Another enemy
+	// Sneak attack should NOT trigger if the only nearby entity is an enemy (monster type)
 
 	// Rogue at (2, 2)
 	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
@@ -543,13 +524,12 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenOnlyEnemyAdjacen
 	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
 	s.Require().NoError(err)
 
-	// Another enemy goblin at (5, 6) - adjacent to target but NOT an ally
+	// Another enemy goblin at (5, 6) - adjacent to target but monster type = NOT an ally
 	goblin2 := &mockEntity{id: "goblin-2", entityType: "monster"}
 	err = s.room.PlaceEntity(goblin2, spatial.Position{X: 5, Y: 6})
 	s.Require().NoError(err)
 
 	ctx := gamectx.WithRoom(s.ctx, s.room)
-	ctx = gamectx.WithTeams(ctx, s.teams)
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		CharacterID: "rogue-1",

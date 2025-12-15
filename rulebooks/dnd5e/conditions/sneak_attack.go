@@ -188,7 +188,7 @@ func (s *SneakAttackCondition) onDamageChain(
 // checkSneakAttackConditions checks if sneak attack conditions are met.
 // Returns true if:
 // - Attacker has advantage on the attack roll, OR
-// - An ally of the attacker is within 5ft of the target
+// - An ally (another "character" type entity) is within 5ft of the target
 func (s *SneakAttackCondition) checkSneakAttackConditions(
 	ctx context.Context,
 	event *dnd5eEvents.DamageChainEvent,
@@ -199,12 +199,10 @@ func (s *SneakAttackCondition) checkSneakAttackConditions(
 	}
 
 	// Condition 2: Ally within 5ft of target
-	// Need both Room and Teams context to check ally positions
+	// Need Room context to check positions
 	room, hasRoom := gamectx.Room(ctx)
-	teams, hasTeams := gamectx.Teams(ctx)
-
-	if !hasRoom || !hasTeams {
-		// Without spatial/team context, can't verify ally adjacent
+	if !hasRoom {
+		// Without spatial context, can't verify ally adjacent
 		return false
 	}
 
@@ -217,7 +215,7 @@ func (s *SneakAttackCondition) checkSneakAttackConditions(
 	// Query entities within 5ft (1 square = 5ft, use radius 1.5 to include diagonals)
 	entitiesNearTarget := room.GetEntitiesInRange(targetPos, 1.5)
 
-	// Check if any entity near target is an ally of the attacker
+	// Check if any "character" type entity (ally) is near the target
 	for _, entity := range entitiesNearTarget {
 		entityID := entity.GetID()
 
@@ -231,8 +229,8 @@ func (s *SneakAttackCondition) checkSneakAttackConditions(
 			continue
 		}
 
-		// Check if this entity is an ally of the attacker
-		if teams.AreAllies(s.CharacterID, entityID) {
+		// Allies are "character" type entities (players/NPCs, not monsters)
+		if entity.GetType() == "character" {
 			return true
 		}
 	}
