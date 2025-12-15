@@ -2,20 +2,31 @@
   "branch": "feature/monk-levels-1-3-389",
   "issues": ["#421", "#389"],
   "goal": "Merge Monk level 1-3 features from PR #394 into main",
+  "pr": "#434",
   "sessions": [
     {
       "id": "2025-12-15-001",
       "task": "Resolve merge conflicts with main",
-      "status": "in_progress",
-      "artifacts": [],
-      "commit": null,
-      "notes": "Conflicts in loader.go, events.go, refs/conditions.go, refs/features.go - all additive (monk additions)"
+      "status": "completed",
+      "artifacts": ["d412045"],
+      "commit": "d412045",
+      "notes": "Merged main, resolved conflicts in loader.go, events.go, refs/conditions.go, refs/features.go. Fixed API type changes (DamageChain moved to events, WeaponRef changed to *core.Ref). Added UnarmedStrike ref. Fixed linter issues."
     }
   ],
   "next_steps": [
-    "Resolve all merge conflicts",
-    "Verify Ki resource system works",
-    "Run full test suite",
-    "Create PR"
-  ]
+    "Await CI results on PR #434",
+    "Merge PR once approved"
+  ],
+  "verification": {
+    "tests_pass": true,
+    "linter_pass": true,
+    "monk_features_verified": [
+      "MartialArts condition (DEX for monk weapons, scaling damage)",
+      "Flurry of Blows (1 ki, 2 unarmed strikes)",
+      "Patient Defense (1 ki, Dodge as bonus action)",
+      "Step of the Wind (1 ki, Disengage/Dash)",
+      "Deflect Missiles (reduce ranged damage)",
+      "Unarmored Movement (+10 ft speed)"
+    ]
+  }
 }
