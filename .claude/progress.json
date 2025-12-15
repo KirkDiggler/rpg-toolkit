@@ -13,13 +13,14 @@
         "rulebooks/dnd5e/conditions/sneak_attack.go",
         "rulebooks/dnd5e/conditions/sneak_attack_test.go"
       ],
-      "commit": null,
+      "commit": "63b323d",
       "notes": "Added HasAdvantage to DamageChainEvent, created team system for ally detection, implemented checkSneakAttackConditions method"
     }
   ],
+  "pr": "#435",
   "next_steps": [
-    "Commit changes",
-    "Create PR"
+    "Await CI results",
+    "Merge PR once approved"
   ],
   "verification": {
     "tests_pass": true,
