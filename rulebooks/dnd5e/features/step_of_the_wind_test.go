@@ -100,6 +100,7 @@ func (s *StepOfTheWindTestSuite) TestActivate_ConsumesKi() {
 	s.Assert().Equal(2, ki.Current(), "Should consume 1 Ki point")
 }
 
+//nolint:dupl // Test functions intentionally similar - different action parameter
 func (s *StepOfTheWindTestSuite) TestActivate_PublishesEvent_Disengage() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent
@@ -124,6 +125,7 @@ func (s *StepOfTheWindTestSuite) TestActivate_PublishesEvent_Disengage() {
 	s.Assert().Equal(refs.Features.StepOfTheWind().ID, receivedEvent.Source)
 }
 
+//nolint:dupl // Test functions intentionally similar - different action parameter
 func (s *StepOfTheWindTestSuite) TestActivate_PublishesEvent_Dash() {
 	// Arrange
 	var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent

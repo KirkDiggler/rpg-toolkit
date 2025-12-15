@@ -11,6 +11,14 @@
       "artifacts": ["d412045"],
       "commit": "d412045",
       "notes": "Merged main, resolved conflicts in loader.go, events.go, refs/conditions.go, refs/features.go. Fixed API type changes (DamageChain moved to events, WeaponRef changed to *core.Ref). Added UnarmedStrike ref. Fixed linter issues."
+    },
+    {
+      "id": "2025-12-15-002",
+      "task": "Second merge with latest main (pointer changes)",
+      "status": "completed",
+      "artifacts": ["909e308"],
+      "commit": "909e308",
+      "notes": "Main moved forward with AbilityScores pointer changes. Resolved conflicts in gamectx package (characters.go, gamectx.go, gamectx_test.go). Fixed martial_arts_test.go to use *gamectx.AbilityScores directly instead of shared.NewAbilityScores. All tests pass."
     }
   ],
   "next_steps": [
