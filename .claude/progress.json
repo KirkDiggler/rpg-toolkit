@@ -13,7 +13,7 @@
         "rulebooks/dnd5e/gamectx/characters.go (extended)",
         "rulebooks/dnd5e/gamectx/gamectx_test.go (extended)"
       ],
-      "commit": null,
+      "commit": "a428813",
       "notes": "Added Room context accessor (WithRoom, Room, RequireRoom), AbilityScores struct with D&D 5e modifier calculation (floor division for negatives), extended BasicCharacterRegistry with ability scores, and integration tests showing ally position query capability"
     }
   ],
