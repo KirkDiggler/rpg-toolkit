@@ -69,3 +69,35 @@ func (mr *MockRollerMockRecorder) RollN(ctx, count, size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RollN", reflect.TypeOf((*MockRoller)(nil).RollN), ctx, count, size)
 }
+
+// RollWithAdvantage mocks base method.
+func (m *MockRoller) RollWithAdvantage(ctx context.Context, size int) (int, []int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RollWithAdvantage", ctx, size)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].([]int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// RollWithAdvantage indicates an expected call of RollWithAdvantage.
+func (mr *MockRollerMockRecorder) RollWithAdvantage(ctx, size any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RollWithAdvantage", reflect.TypeOf((*MockRoller)(nil).RollWithAdvantage), ctx, size)
+}
+
+// RollWithDisadvantage mocks base method.
+func (m *MockRoller) RollWithDisadvantage(ctx context.Context, size int) (int, []int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RollWithDisadvantage", ctx, size)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].([]int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// RollWithDisadvantage indicates an expected call of RollWithDisadvantage.
+func (mr *MockRollerMockRecorder) RollWithDisadvantage(ctx, size any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RollWithDisadvantage", reflect.TypeOf((*MockRoller)(nil).RollWithDisadvantage), ctx, size)
+}
