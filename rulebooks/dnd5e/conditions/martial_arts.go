@@ -148,8 +148,8 @@ func (ma *MartialArtsCondition) onDamageChain(
 
 	// Add modifier to scale unarmed damage and ensure DEX is used when beneficial
 	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		dexMod := abilityScores.Modifier(abilities.DEX)
-		strMod := abilityScores.Modifier(abilities.STR)
+		dexMod := abilityScores.DexterityMod()
+		strMod := abilityScores.StrengthMod()
 
 		// For unarmed strikes, we need to replace the weapon damage dice with martial arts dice
 		if isUnarmed {

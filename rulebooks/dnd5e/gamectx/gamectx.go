@@ -6,14 +6,9 @@
 // characters, spatial data) without bloating event objects with all possible data.
 package gamectx
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-
-// AbilityScores is an alias for shared.AbilityScores
-type AbilityScores = shared.AbilityScores
-
-// CharacterRegistry provides access to character weapon state during event processing.
-// Purpose: Allows conditions and features to query equipped weapons for eligibility
-// checks (e.g., Dueling fighting style requires one-handed melee weapon only).
+// CharacterRegistry provides access to character state during event processing.
+// Purpose: Allows conditions and features to query equipped weapons and ability scores
+// for eligibility checks (e.g., Dueling fighting style, Two-Weapon Fighting modifier).
 type CharacterRegistry interface {
 	// GetCharacterWeapons retrieves weapon information for a character by ID.
 	// Returns nil if character is not found.
@@ -21,8 +16,7 @@ type CharacterRegistry interface {
 
 	// GetCharacterAbilityScores retrieves ability scores for a character by ID.
 	// Returns nil if character is not found.
-	// Purpose: Allows conditions to make ability-based decisions (e.g., Martial Arts using DEX vs STR).
-	GetCharacterAbilityScores(id string) AbilityScores
+	GetCharacterAbilityScores(id string) *AbilityScores
 }
 
 // GameContext carries game state through context.Context for use during event processing.
@@ -71,6 +65,6 @@ func (e *emptyCharacterRegistry) GetCharacterWeapons(_ string) *CharacterWeapons
 }
 
 // GetCharacterAbilityScores always returns nil for the empty registry.
-func (e *emptyCharacterRegistry) GetCharacterAbilityScores(_ string) AbilityScores {
+func (e *emptyCharacterRegistry) GetCharacterAbilityScores(_ string) *AbilityScores {
 	return nil
 }

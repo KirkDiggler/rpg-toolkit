@@ -18,7 +18,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -44,15 +43,14 @@ func (s *MartialArtsTestSuite) SetupTest() {
 
 	// Set up registry with ability scores
 	s.registry = gamectx.NewBasicCharacterRegistry()
-	scores, err := shared.NewAbilityScores(&shared.AbilityScoreConfig{
-		STR: 10, // +0 modifier
-		DEX: 16, // +3 modifier
-		CON: 14,
-		INT: 10,
-		WIS: 15,
-		CHA: 8,
-	})
-	s.Require().NoError(err)
+	scores := &gamectx.AbilityScores{
+		Strength:     10, // +0 modifier
+		Dexterity:    16, // +3 modifier
+		Constitution: 14,
+		Intelligence: 10,
+		Wisdom:       15,
+		Charisma:     8,
+	}
 	s.registry.AddAbilityScores(s.characterID, scores)
 
 	// Set up context with game context
@@ -329,15 +327,14 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 	s.Run("STR higher than DEX - use STR", func() {
 		// Create a monk with higher STR than DEX
 		strongMonk := "monk-str"
-		scores, err := shared.NewAbilityScores(&shared.AbilityScoreConfig{
-			STR: 16, // +3 modifier
-			DEX: 14, // +2 modifier
-			CON: 14,
-			INT: 10,
-			WIS: 15,
-			CHA: 8,
-		})
-		s.Require().NoError(err)
+		scores := &gamectx.AbilityScores{
+			Strength:     16, // +3 modifier
+			Dexterity:    14, // +2 modifier
+			Constitution: 14,
+			Intelligence: 10,
+			Wisdom:       15,
+			Charisma:     8,
+		}
 		s.registry.AddAbilityScores(strongMonk, scores)
 
 		condition := NewMartialArtsCondition(MartialArtsInput{
@@ -345,7 +342,7 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			MonkLevel:   1,
 		})
 
-		err = condition.Apply(s.ctx, s.bus)
+		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() {
 			_ = condition.Remove(s.ctx, s.bus)
