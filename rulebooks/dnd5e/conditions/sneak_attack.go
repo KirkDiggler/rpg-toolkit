@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -142,11 +143,10 @@ func (s *SneakAttackCondition) onDamageChain(
 		return c, nil
 	}
 
-	// TODO: Check for advantage or adjacent ally
-	// For now, assume sneak attack conditions are met if using a finesse weapon
-	// In a full implementation, this would check:
-	// - event.HasAdvantage == true, OR
-	// - An ally is within 5 feet of the target
+	// Check sneak attack conditions: advantage OR ally within 5ft of target
+	if !s.checkSneakAttackConditions(ctx, event) {
+		return c, nil
+	}
 
 	// Roll sneak attack dice (use default roller if none configured, e.g., after JSON load)
 	roller := s.roller
@@ -183,6 +183,59 @@ func (s *SneakAttackCondition) onDamageChain(
 	}
 
 	return c, nil
+}
+
+// checkSneakAttackConditions checks if sneak attack conditions are met.
+// Returns true if:
+// - Attacker has advantage on the attack roll, OR
+// - An ally (another "character" type entity) is within 5ft of the target
+func (s *SneakAttackCondition) checkSneakAttackConditions(
+	ctx context.Context,
+	event *dnd5eEvents.DamageChainEvent,
+) bool {
+	// Condition 1: Has advantage
+	if event.HasAdvantage {
+		return true
+	}
+
+	// Condition 2: Ally within 5ft of target
+	// Need Room context to check positions
+	room, hasRoom := gamectx.Room(ctx)
+	if !hasRoom {
+		// Without spatial context, can't verify ally adjacent
+		return false
+	}
+
+	// Get target position
+	targetPos, found := room.GetEntityPosition(event.TargetID)
+	if !found {
+		return false
+	}
+
+	// Query entities within 5ft (1 square = 5ft, use radius 1.5 to include diagonals)
+	entitiesNearTarget := room.GetEntitiesInRange(targetPos, 1.5)
+
+	// Check if any "character" type entity (ally) is near the target
+	for _, entity := range entitiesNearTarget {
+		entityID := entity.GetID()
+
+		// Skip the target itself
+		if entityID == event.TargetID {
+			continue
+		}
+
+		// Skip the attacker (they might be adjacent but don't count as "ally")
+		if entityID == event.AttackerID {
+			continue
+		}
+
+		// Allies are "character" type entities (players/NPCs, not monsters)
+		if entity.GetType() == "character" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ToJSON converts the condition to JSON for persistence

@@ -1,48 +1,35 @@
 {
-  "branch": "feature/monk-levels-1-3-389",
-  "issues": ["#421", "#389"],
-  "goal": "Merge Monk level 1-3 features from PR #394 into main",
-  "pr": "#434",
+  "branch": "fix/sneak-attack-ally-check-422",
+  "issues": ["#422"],
+  "goal": "Add advantage and ally position checks to Sneak Attack",
   "sessions": [
     {
       "id": "2025-12-15-001",
-      "task": "Resolve merge conflicts with main",
+      "task": "Implement sneak attack conditions (advantage OR ally within 5ft)",
       "status": "completed",
-      "artifacts": ["d412045"],
-      "commit": "d412045",
-      "notes": "Merged main, resolved conflicts in loader.go, events.go, refs/conditions.go, refs/features.go. Fixed API type changes (DamageChain moved to events, WeaponRef changed to *core.Ref). Added UnarmedStrike ref. Fixed linter issues."
-    },
-    {
-      "id": "2025-12-15-002",
-      "task": "Second merge with latest main (pointer changes)",
-      "status": "completed",
-      "artifacts": ["909e308"],
-      "commit": "909e308",
-      "notes": "Main moved forward with AbilityScores pointer changes. Resolved conflicts in gamectx package (characters.go, gamectx.go, gamectx_test.go). Fixed martial_arts_test.go to use *gamectx.AbilityScores directly instead of shared.NewAbilityScores. All tests pass."
-    },
-    {
-      "id": "2025-12-15-003",
-      "task": "Fix CI linter failures",
-      "status": "completed",
-      "artifacts": ["dea3c9e"],
-      "commit": "dea3c9e",
-      "notes": "Added //nolint:dupl annotations to step_of_the_wind_test.go for TestActivate_PublishesEvent_Disengage and TestActivate_PublishesEvent_Dash - intentionally similar test functions."
+      "artifacts": [
+        "rulebooks/dnd5e/events/events.go",
+        "rulebooks/dnd5e/gamectx/teams.go",
+        "rulebooks/dnd5e/conditions/sneak_attack.go",
+        "rulebooks/dnd5e/conditions/sneak_attack_test.go"
+      ],
+      "commit": "63b323d",
+      "notes": "Added HasAdvantage to DamageChainEvent, created team system for ally detection, implemented checkSneakAttackConditions method"
     }
   ],
+  "pr": "#435",
   "next_steps": [
-    "Await CI results on PR #434",
+    "Await CI results",
     "Merge PR once approved"
   ],
   "verification": {
     "tests_pass": true,
     "linter_pass": true,
-    "monk_features_verified": [
-      "MartialArts condition (DEX for monk weapons, scaling damage)",
-      "Flurry of Blows (1 ki, 2 unarmed strikes)",
-      "Patient Defense (1 ki, Dodge as bonus action)",
-      "Step of the Wind (1 ki, Disengage/Dash)",
-      "Deflect Missiles (reduce ranged damage)",
-      "Unarmored Movement (+10 ft speed)"
+    "features_verified": [
+      "Sneak Attack triggers with advantage",
+      "Sneak Attack triggers with ally within 5ft of target",
+      "Sneak Attack does NOT trigger without either condition",
+      "Sneak Attack requires finesse/DEX weapon"
     ]
   }
 }
