@@ -1,35 +1,35 @@
 {
-  "branch": "fix/sneak-attack-ally-check-422",
-  "issues": ["#422"],
-  "goal": "Add advantage and ally position checks to Sneak Attack",
+  "branch": "feature/attack-chain-advantage-436",
+  "issues": ["#436"],
+  "goal": "Add advantage/disadvantage tracking to AttackChain",
   "sessions": [
     {
-      "id": "2025-12-15-001",
-      "task": "Implement sneak attack conditions (advantage OR ally within 5ft)",
+      "id": "2025-12-15-002",
+      "task": "Design attack chain advantage/disadvantage system",
       "status": "completed",
       "artifacts": [
-        "rulebooks/dnd5e/events/events.go",
-        "rulebooks/dnd5e/gamectx/teams.go",
-        "rulebooks/dnd5e/conditions/sneak_attack.go",
-        "rulebooks/dnd5e/conditions/sneak_attack_test.go"
+        "docs/plans/2025-12-15-attack-chain-advantage-design.md"
       ],
-      "commit": "63b323d",
-      "notes": "Added HasAdvantage to DamageChainEvent, created team system for ally detection, implemented checkSneakAttackConditions method"
+      "commit": "08910f2",
+      "notes": "Designed AttackModifierSource, ReactionConsumption, enhanced AttackChainEvent structure. Chain fires before roll, ReactionsConsumed processed after."
     }
   ],
-  "pr": "#435",
   "next_steps": [
-    "Await CI results",
-    "Merge PR once approved"
+    "Add AttackModifierSource and ReactionConsumption to events/events.go",
+    "Enhance AttackChainEvent with new fields",
+    "Add RollWithAdvantage/RollWithDisadvantage to dice.Roller",
+    "Update attack.go to fire chain before roll",
+    "Add ReactionUsedEvent topic",
+    "Update existing AttackChain subscribers",
+    "Write tests"
   ],
   "verification": {
-    "tests_pass": true,
-    "linter_pass": true,
-    "features_verified": [
-      "Sneak Attack triggers with advantage",
-      "Sneak Attack triggers with ally within 5ft of target",
-      "Sneak Attack does NOT trigger without either condition",
-      "Sneak Attack requires finesse/DEX weapon"
-    ]
+    "tests_pass": null,
+    "linter_pass": null,
+    "features_verified": []
+  },
+  "related_issues": {
+    "blocks": ["#423"],
+    "blocked_by": []
   }
 }
