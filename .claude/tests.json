@@ -4,22 +4,22 @@
       "id": "room-accessible",
       "feature": "gamectx-room",
       "prompt": "Create a GameContext with a Room. Verify Room(ctx) returns the room.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-15"
     },
     {
       "id": "ability-scores-accessible",
       "feature": "gamectx-ability-scores",
       "prompt": "Create a CharacterRegistry with ability scores. Verify GetCharacterAbilityScores returns scores with correct modifiers (e.g., DEX 16 = +3 modifier).",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-15"
     },
     {
       "id": "ally-position-query",
       "feature": "gamectx-ally-query",
       "prompt": "Place two entities in a Room. Query entities within 5ft of one entity. Verify the other entity is found when within range, not found when outside range.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-15"
     }
   ]
 }
