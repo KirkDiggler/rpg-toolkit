@@ -19,6 +19,14 @@
       "artifacts": ["909e308"],
       "commit": "909e308",
       "notes": "Main moved forward with AbilityScores pointer changes. Resolved conflicts in gamectx package (characters.go, gamectx.go, gamectx_test.go). Fixed martial_arts_test.go to use *gamectx.AbilityScores directly instead of shared.NewAbilityScores. All tests pass."
+    },
+    {
+      "id": "2025-12-15-003",
+      "task": "Fix CI linter failures",
+      "status": "completed",
+      "artifacts": ["dea3c9e"],
+      "commit": "dea3c9e",
+      "notes": "Added //nolint:dupl annotations to step_of_the_wind_test.go for TestActivate_PublishesEvent_Disengage and TestActivate_PublishesEvent_Dash - intentionally similar test functions."
     }
   ],
   "next_steps": [
