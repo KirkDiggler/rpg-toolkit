@@ -53,7 +53,7 @@ func (ma *MartialArtsCondition) Apply(ctx context.Context, bus events.EventBus) 
 	ma.bus = bus
 
 	// Subscribe to DamageChain to modify unarmed strike damage and ensure DEX is used
-	damageChain := combat.DamageChain.On(bus)
+	damageChain := dnd5eEvents.DamageChain.On(bus)
 	subID, err := damageChain.SubscribeWithChain(ctx, ma.onDamageChain)
 	if err != nil {
 		return rpgerr.Wrap(err, "failed to subscribe to damage chain")
@@ -109,9 +109,9 @@ func (ma *MartialArtsCondition) loadJSON(data json.RawMessage) error {
 // onDamageChain modifies damage to scale unarmed strike damage and use DEX when appropriate
 func (ma *MartialArtsCondition) onDamageChain(
 	ctx context.Context,
-	event *combat.DamageChainEvent,
-	c chain.Chain[*combat.DamageChainEvent],
-) (chain.Chain[*combat.DamageChainEvent], error) {
+	event *dnd5eEvents.DamageChainEvent,
+	c chain.Chain[*dnd5eEvents.DamageChainEvent],
+) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
 	if event.AttackerID != ma.CharacterID {
 		return c, nil
@@ -130,12 +130,12 @@ func (ma *MartialArtsCondition) onDamageChain(
 	}
 
 	// Check if this is an unarmed strike or monk weapon
-	isUnarmed := event.WeaponRef == "unarmed" || event.WeaponRef == "unarmed-strike"
+	isUnarmed := event.WeaponRef == nil || event.WeaponRef == refs.Weapons.UnarmedStrike()
 	isMonkWeaponAttack := false
 
-	if !isUnarmed {
+	if !isUnarmed && event.WeaponRef != nil {
 		// Try to get the weapon to check if it's a monk weapon
-		weapon, err := weapons.GetByID(weapons.WeaponID(event.WeaponRef))
+		weapon, err := weapons.GetByID(event.WeaponRef.ID)
 		if err == nil {
 			isMonkWeaponAttack = isMonkWeapon(&weapon)
 		}
@@ -147,7 +147,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 	}
 
 	// Add modifier to scale unarmed damage and ensure DEX is used when beneficial
-	modifyDamage := func(modCtx context.Context, e *combat.DamageChainEvent) (*combat.DamageChainEvent, error) {
+	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		dexMod := abilityScores.Modifier(abilities.DEX)
 		strMod := abilityScores.Modifier(abilities.STR)
 
@@ -188,7 +188,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 			// Find and update the weapon component with new rolls
 			for i := range e.Components {
 				component := &e.Components[i]
-				if component.Source == combat.DamageSourceWeapon {
+				if component.Source == dnd5eEvents.DamageSourceWeapon {
 					component.OriginalDiceRolls = newRolls
 					component.FinalDiceRolls = newRolls
 					break
@@ -203,7 +203,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 		if dexMod > strMod {
 			for i := range e.Components {
 				component := &e.Components[i]
-				if component.Source == combat.DamageSourceAbility {
+				if component.Source == dnd5eEvents.DamageSourceAbility {
 					// Replace STR modifier with DEX modifier
 					component.FlatBonus = dexMod
 					// Update the ability used in the event

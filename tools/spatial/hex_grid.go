@@ -6,27 +6,30 @@ import (
 
 // HexGrid implements a hexagonal grid system using cube coordinates
 type HexGrid struct {
-	dimensions Dimensions
-	// Hex grids can be pointy-top or flat-top oriented
-	pointyTop bool
+	dimensions  Dimensions
+	orientation HexOrientation
 }
 
 // HexGridConfig holds configuration for creating a hex grid
 type HexGridConfig struct {
-	Width     float64
-	Height    float64
-	PointyTop bool // true for pointy-top, false for flat-top
+	Width       float64
+	Height      float64
+	PointyTop   bool           // Deprecated: use Orientation instead. true for pointy-top, false for flat-top
+	Orientation HexOrientation // The hex orientation (pointy-top or flat-top)
 }
 
 // NewHexGrid creates a new hex grid with the given dimensions
 // Defaults to pointy-top orientation for D&D 5e compatibility
 func NewHexGrid(config HexGridConfig) *HexGrid {
+	// Use the Orientation field directly - it defaults to pointy-top (zero value)
+	// The legacy PointyTop field is ignored in favor of the clearer Orientation field
+	// Callers using the old API should migrate to: Orientation: HexOrientationFlatTop
 	return &HexGrid{
 		dimensions: Dimensions{
 			Width:  config.Width,
 			Height: config.Height,
 		},
-		pointyTop: config.PointyTop,
+		orientation: config.Orientation,
 	}
 }
 
@@ -35,9 +38,14 @@ func (hg *HexGrid) GetShape() GridShape {
 	return GridShapeHex
 }
 
-// GetOrientation returns true for pointy-top, false for flat-top orientation
-func (hg *HexGrid) GetOrientation() bool {
-	return hg.pointyTop
+// GetOrientation returns the hex grid orientation (pointy-top or flat-top)
+func (hg *HexGrid) GetOrientation() HexOrientation {
+	return hg.orientation
+}
+
+// IsPointyTop returns true if the grid uses pointy-top orientation
+func (hg *HexGrid) IsPointyTop() bool {
+	return hg.orientation == HexOrientationPointyTop
 }
 
 // IsValidPosition checks if a position is valid within the grid bounds
@@ -54,19 +62,19 @@ func (hg *HexGrid) GetDimensions() Dimensions {
 // Distance calculates the distance between two positions using hex grid rules
 // Converts to cube coordinates and uses hex distance formula
 func (hg *HexGrid) Distance(from, to Position) float64 {
-	fromCube := OffsetCoordinateToCube(from)
-	toCube := OffsetCoordinateToCube(to)
+	fromCube := OffsetCoordinateToCubeWithOrientation(from, hg.orientation)
+	toCube := OffsetCoordinateToCubeWithOrientation(to, hg.orientation)
 	return float64(fromCube.Distance(toCube))
 }
 
 // GetNeighbors returns all 6 adjacent positions in hex grid
 func (hg *HexGrid) GetNeighbors(pos Position) []Position {
-	cube := OffsetCoordinateToCube(pos)
+	cube := OffsetCoordinateToCubeWithOrientation(pos, hg.orientation)
 	neighborCubes := cube.GetNeighbors()
 
 	neighbors := make([]Position, 0, 6)
 	for _, neighborCube := range neighborCubes {
-		neighborPos := neighborCube.ToOffsetCoordinate()
+		neighborPos := neighborCube.ToOffsetCoordinateWithOrientation(hg.orientation)
 		if hg.IsValidPosition(neighborPos) {
 			neighbors = append(neighbors, neighborPos)
 		}
@@ -87,8 +95,8 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 		return []Position{from}
 	}
 
-	fromCube := OffsetCoordinateToCube(from)
-	toCube := OffsetCoordinateToCube(to)
+	fromCube := OffsetCoordinateToCubeWithOrientation(from, hg.orientation)
+	toCube := OffsetCoordinateToCubeWithOrientation(to, hg.orientation)
 
 	distance := fromCube.Distance(toCube)
 	positions := make([]Position, 0, distance+1)
@@ -97,7 +105,7 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 		t := float64(i) / float64(distance)
 		lerpedCube := hg.lerpCube(fromCube, toCube, t)
 		roundedCube := hg.roundCube(lerpedCube)
-		pos := roundedCube.ToOffsetCoordinate()
+		pos := roundedCube.ToOffsetCoordinateWithOrientation(hg.orientation)
 
 		if hg.IsValidPosition(pos) {
 			positions = append(positions, pos)
@@ -110,7 +118,7 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 // GetPositionsInRange returns all positions within a given range using hex distance
 func (hg *HexGrid) GetPositionsInRange(center Position, radius float64) []Position {
 	positions := make([]Position, 0)
-	centerCube := OffsetCoordinateToCube(center)
+	centerCube := OffsetCoordinateToCubeWithOrientation(center, hg.orientation)
 
 	// Calculate bounding box in cube coordinates
 	iRadius := int(radius)
@@ -120,7 +128,7 @@ func (hg *HexGrid) GetPositionsInRange(center Position, radius float64) []Positi
 			cube := CubeCoordinate{X: centerCube.X + x, Y: centerCube.Y + int(y), Z: centerCube.Z + z}
 
 			if cube.Distance(centerCube) <= iRadius {
-				pos := cube.ToOffsetCoordinate()
+				pos := cube.ToOffsetCoordinateWithOrientation(hg.orientation)
 				if hg.IsValidPosition(pos) {
 					positions = append(positions, pos)
 				}
@@ -169,7 +177,7 @@ func (hg *HexGrid) GetPositionsInCone(origin Position, direction Position, lengt
 	positions := make([]Position, 0)
 
 	// Convert to cube coordinates for easier math
-	_ = OffsetCoordinateToCube(origin)
+	_ = OffsetCoordinateToCubeWithOrientation(origin, hg.orientation)
 
 	// Normalize direction vector
 	dirLength := math.Sqrt(direction.X*direction.X + direction.Y*direction.Y)
@@ -219,14 +227,14 @@ func (hg *HexGrid) GetHexRing(center Position, radius int) []Position {
 	}
 
 	positions := make([]Position, 0)
-	centerCube := OffsetCoordinateToCube(center)
+	centerCube := OffsetCoordinateToCubeWithOrientation(center, hg.orientation)
 
 	// Simple approach: get all positions at exactly the specified distance
 	for x := int(center.X) - radius; x <= int(center.X)+radius; x++ {
 		for y := int(center.Y) - radius; y <= int(center.Y)+radius; y++ {
 			pos := Position{X: float64(x), Y: float64(y)}
 			if hg.IsValidPosition(pos) {
-				posCube := OffsetCoordinateToCube(pos)
+				posCube := OffsetCoordinateToCubeWithOrientation(pos, hg.orientation)
 				if centerCube.Distance(posCube) == radius {
 					positions = append(positions, pos)
 				}
@@ -250,19 +258,19 @@ func (hg *HexGrid) GetHexSpiral(center Position, radius int) []Position {
 	return positions
 }
 
-// OffsetToCube converts an offset coordinate to cube coordinate using this grid's settings
+// OffsetToCube converts an offset coordinate to cube coordinate using this grid's orientation
 func (hg *HexGrid) OffsetToCube(pos Position) CubeCoordinate {
-	return OffsetCoordinateToCube(pos)
+	return OffsetCoordinateToCubeWithOrientation(pos, hg.orientation)
 }
 
-// CubeToOffset converts a cube coordinate to offset coordinate using this grid's settings
+// CubeToOffset converts a cube coordinate to offset coordinate using this grid's orientation
 func (hg *HexGrid) CubeToOffset(cube CubeCoordinate) Position {
-	return cube.ToOffsetCoordinate()
+	return cube.ToOffsetCoordinateWithOrientation(hg.orientation)
 }
 
 // GetCubeNeighbors returns the 6 cube coordinate neighbors of a position
 func (hg *HexGrid) GetCubeNeighbors(pos Position) []CubeCoordinate {
-	cube := OffsetCoordinateToCube(pos)
+	cube := OffsetCoordinateToCubeWithOrientation(pos, hg.orientation)
 	return cube.GetNeighbors()
 }
 

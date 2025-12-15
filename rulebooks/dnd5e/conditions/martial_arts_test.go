@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -23,13 +24,12 @@ import (
 
 type MartialArtsTestSuite struct {
 	suite.Suite
-	ctrl           *gomock.Controller
-	bus            events.EventBus
-	ctx            context.Context
-	condition      *MartialArtsCondition
-	mockRoller     *mock_dice.MockRoller
-	characterID    string
-	registry       *gamectx.BasicCharacterRegistry
+	ctrl        *gomock.Controller
+	bus         events.EventBus
+	ctx         context.Context
+	mockRoller  *mock_dice.MockRoller
+	characterID string
+	registry    *gamectx.BasicCharacterRegistry
 }
 
 func TestMartialArtsTestSuite(t *testing.T) {
@@ -161,12 +161,12 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 				Return(tc.expectedRolls, nil)
 
 			// Create damage chain event for unarmed strike
-			event := &combat.DamageChainEvent{
+			event := &dnd5eEvents.DamageChainEvent{
 				AttackerID: s.characterID,
 				TargetID:   "target-1",
-				Components: []combat.DamageComponent{
+				Components: []dnd5eEvents.DamageComponent{
 					{
-						Source:            combat.DamageSourceWeapon,
+						Source:            dnd5eEvents.DamageSourceWeapon,
 						OriginalDiceRolls: []int{1}, // Will be replaced
 						FinalDiceRolls:    []int{1},
 						FlatBonus:         0,
@@ -174,7 +174,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 						IsCritical:        false,
 					},
 					{
-						Source:     combat.DamageSourceAbility,
+						Source:     dnd5eEvents.DamageSourceAbility,
 						FlatBonus:  0, // Will be replaced with DEX modifier
 						DamageType: "bludgeoning",
 					},
@@ -183,12 +183,12 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 				IsCritical:   false,
 				WeaponDamage: "1", // Will be replaced with martial arts dice
 				AbilityUsed:  abilities.STR,
-				WeaponRef:    "unarmed",
+				WeaponRef:    refs.Weapons.UnarmedStrike(),
 			}
 
 			// Publish through damage chain
-			damageChain := combat.DamageChain.On(s.bus)
-			chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+			damageChain := dnd5eEvents.DamageChain.On(s.bus)
+			chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 			modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 			s.Require().NoError(err)
@@ -236,12 +236,12 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 		Return([]int{4}, nil)
 
 	// Create critical damage chain event
-	event := &combat.DamageChainEvent{
+	event := &dnd5eEvents.DamageChainEvent{
 		AttackerID: s.characterID,
 		TargetID:   "target-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1}, // Will be replaced
 				FinalDiceRolls:    []int{1},
 				FlatBonus:         0,
@@ -249,7 +249,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 				IsCritical:        true,
 			},
 			{
-				Source:     combat.DamageSourceAbility,
+				Source:     dnd5eEvents.DamageSourceAbility,
 				FlatBonus:  0,
 				DamageType: "bludgeoning",
 				IsCritical: true,
@@ -259,12 +259,12 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 		IsCritical:   true,
 		WeaponDamage: "1",
 		AbilityUsed:  abilities.STR,
-		WeaponRef:    "unarmed",
+		WeaponRef:    refs.Weapons.UnarmedStrike(),
 	}
 
 	// Publish through damage chain
-	damageChain := combat.DamageChain.On(s.bus)
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 	s.Require().NoError(err)
@@ -278,6 +278,8 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 }
 
 // TestDEXModifierReplacement tests that DEX replaces STR when DEX > STR
+//
+//nolint:dupl // Test cases require similar setup code
 func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 	s.Run("DEX higher than STR - use DEX", func() {
 		// Registry already has DEX=16 (+3), STR=10 (+0)
@@ -292,26 +294,26 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			_ = condition.Remove(s.ctx, s.bus)
 		}()
 
-		event := &combat.DamageChainEvent{
+		event := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.characterID,
 			TargetID:   "target-1",
-			Components: []combat.DamageComponent{
+			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            combat.DamageSourceWeapon,
+					Source:            dnd5eEvents.DamageSourceWeapon,
 					OriginalDiceRolls: []int{3},
 					FinalDiceRolls:    []int{3},
 				},
 				{
-					Source:    combat.DamageSourceAbility,
+					Source:    dnd5eEvents.DamageSourceAbility,
 					FlatBonus: 0, // STR modifier
 				},
 			},
 			AbilityUsed: abilities.STR,
-			WeaponRef:   "unarmed",
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
 		}
 
-		damageChain := combat.DamageChain.On(s.bus)
-		chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+		damageChain := dnd5eEvents.DamageChain.On(s.bus)
+		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 		modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 		s.Require().NoError(err)
@@ -349,26 +351,26 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			_ = condition.Remove(s.ctx, s.bus)
 		}()
 
-		event := &combat.DamageChainEvent{
+		event := &dnd5eEvents.DamageChainEvent{
 			AttackerID: strongMonk,
 			TargetID:   "target-1",
-			Components: []combat.DamageComponent{
+			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            combat.DamageSourceWeapon,
+					Source:            dnd5eEvents.DamageSourceWeapon,
 					OriginalDiceRolls: []int{3},
 					FinalDiceRolls:    []int{3},
 				},
 				{
-					Source:    combat.DamageSourceAbility,
+					Source:    dnd5eEvents.DamageSourceAbility,
 					FlatBonus: 3, // STR modifier
 				},
 			},
 			AbilityUsed: abilities.STR,
-			WeaponRef:   "unarmed",
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
 		}
 
-		damageChain := combat.DamageChain.On(s.bus)
-		chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+		damageChain := dnd5eEvents.DamageChain.On(s.bus)
+		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 		modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 		s.Require().NoError(err)
@@ -428,6 +430,8 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDetection() {
 }
 
 // TestMonkWeaponDEXUsage tests that monk weapons can use DEX
+//
+//nolint:dupl // Test cases require similar setup code
 func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
 		CharacterID: s.characterID,
@@ -441,26 +445,26 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 	}()
 
 	// Test with quarterstaff (monk weapon)
-	event := &combat.DamageChainEvent{
+	event := &dnd5eEvents.DamageChainEvent{
 		AttackerID: s.characterID,
 		TargetID:   "target-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 			},
 			{
-				Source:    combat.DamageSourceAbility,
+				Source:    dnd5eEvents.DamageSourceAbility,
 				FlatBonus: 0, // Will be replaced with DEX
 			},
 		},
 		AbilityUsed: abilities.STR,
-		WeaponRef:   string(weapons.Quarterstaff),
+		WeaponRef:   refs.Weapons.Quarterstaff(),
 	}
 
-	damageChain := combat.DamageChain.On(s.bus)
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 	s.Require().NoError(err)
@@ -474,6 +478,8 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 }
 
 // TestNonMonkWeaponNotModified tests that non-monk weapons are not modified
+//
+//nolint:dupl // Test cases require similar setup code
 func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
 		CharacterID: s.characterID,
@@ -487,26 +493,26 @@ func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 	}()
 
 	// Test with greatsword (not a monk weapon)
-	event := &combat.DamageChainEvent{
+	event := &dnd5eEvents.DamageChainEvent{
 		AttackerID: s.characterID,
 		TargetID:   "target-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{10},
 				FinalDiceRolls:    []int{10},
 			},
 			{
-				Source:    combat.DamageSourceAbility,
+				Source:    dnd5eEvents.DamageSourceAbility,
 				FlatBonus: 0, // Should stay 0 (not modified)
 			},
 		},
 		AbilityUsed: abilities.STR,
-		WeaponRef:   string(weapons.Greatsword),
+		WeaponRef:   refs.Weapons.Greatsword(),
 	}
 
-	damageChain := combat.DamageChain.On(s.bus)
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 	s.Require().NoError(err)
@@ -562,27 +568,27 @@ func (s *MartialArtsTestSuite) TestOtherCharacterNotModified() {
 	}()
 
 	// Attack by different character
-	event := &combat.DamageChainEvent{
+	event := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "other-character",
 		TargetID:   "target-1",
-		Components: []combat.DamageComponent{
+		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            combat.DamageSourceWeapon,
+				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1},
 				FinalDiceRolls:    []int{1},
 			},
 			{
-				Source:    combat.DamageSourceAbility,
+				Source:    dnd5eEvents.DamageSourceAbility,
 				FlatBonus: 2,
 			},
 		},
-		WeaponRef: "unarmed",
+		WeaponRef: refs.Weapons.UnarmedStrike(),
 	}
 
 	originalEvent := *event
 
-	damageChain := combat.DamageChain.On(s.bus)
-	chain := events.NewStagedChain[*combat.DamageChainEvent](combat.ModifierStages)
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
 	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
 	s.Require().NoError(err)

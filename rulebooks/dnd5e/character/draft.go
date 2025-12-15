@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -493,6 +494,7 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	// Build proficiencies
 	skillProfs := d.compileSkills(raceData)
 	savingThrows := d.compileSavingThrows(classData)
+	armorProfs, weaponProfs, toolProfs := d.compileProficiencies()
 
 	// Compile features (can fail)
 	charFeatures, err := d.compileFeatures(characterID)
@@ -502,31 +504,34 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 
 	// Create the character
 	char := &Character{
-		id:               characterID,
-		playerID:         d.playerID,
-		name:             d.name,
-		level:            1,
-		proficiencyBonus: 2,
-		raceID:           d.race,
-		subraceID:        d.subrace,
-		classID:          d.class,
-		subclassID:       d.subclass,
-		abilityScores:    finalScores,
-		hitPoints:        maxHP,
-		maxHitPoints:     maxHP,
-		armorClass:       10 + finalScores.Modifier(abilities.DEX), // Base AC
-		hitDice:          classData.HitDice,
-		skills:           skillProfs,
-		savingThrows:     savingThrows,
-		languages:        d.compileLanguages(raceData),
-		inventory:        d.compileInventory(),
-		spellSlots:       d.compileSpellSlots(classData),
-		classResources:   make(map[shared.ClassResourceType]ResourceData),
-		resources:        make(map[coreResources.ResourceKey]*combat.RecoverableResource),
-		features:         charFeatures,
-		bus:              bus,
-		conditions:       make([]dnd5eEvents.ConditionBehavior, 0),
-		subscriptionIDs:  make([]string, 0),
+		id:                  characterID,
+		playerID:            d.playerID,
+		name:                d.name,
+		level:               1,
+		proficiencyBonus:    2,
+		raceID:              d.race,
+		subraceID:           d.subrace,
+		classID:             d.class,
+		subclassID:          d.subclass,
+		abilityScores:       finalScores,
+		hitPoints:           maxHP,
+		maxHitPoints:        maxHP,
+		armorClass:          10 + finalScores.Modifier(abilities.DEX), // Base AC
+		hitDice:             classData.HitDice,
+		skills:              skillProfs,
+		savingThrows:        savingThrows,
+		armorProficiencies:  armorProfs,
+		weaponProficiencies: weaponProfs,
+		toolProficiencies:   toolProfs,
+		languages:           d.compileLanguages(raceData),
+		inventory:           d.compileInventory(),
+		spellSlots:          d.compileSpellSlots(classData),
+		classResources:      make(map[shared.ClassResourceType]ResourceData),
+		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+		features:            charFeatures,
+		bus:                 bus,
+		conditions:          make([]dnd5eEvents.ConditionBehavior, 0),
+		subscriptionIDs:     make([]string, 0),
 	}
 
 	// Subscribe to events - character comes out fully initialized
@@ -728,6 +733,36 @@ func (d *Draft) compileSavingThrows(classData *classes.Data) map[abilities.Abili
 	}
 
 	return saves
+}
+
+// compileProficiencies collects armor, weapon, and tool proficiencies from class and race grants
+func (d *Draft) compileProficiencies() ([]proficiencies.Armor, []proficiencies.Weapon, []proficiencies.Tool) {
+	armorProfs := make([]proficiencies.Armor, 0)
+	weaponProfs := make([]proficiencies.Weapon, 0)
+	toolProfs := make([]proficiencies.Tool, 0)
+
+	// Collect from class grants
+	if d.class != "" {
+		grants := classes.GetGrantsForLevel(d.class, 1)
+		for _, grant := range grants {
+			armorProfs = append(armorProfs, grant.ArmorProficiencies...)
+			weaponProfs = append(weaponProfs, grant.WeaponProficiencies...)
+			toolProfs = append(toolProfs, grant.ToolProficiencies...)
+		}
+	}
+
+	// Collect from race grants
+	if d.race != "" {
+		if grant := races.GetGrants(d.race); grant != nil {
+			armorProfs = append(armorProfs, grant.ArmorProficiencies...)
+			weaponProfs = append(weaponProfs, grant.WeaponProficiencies...)
+			toolProfs = append(toolProfs, grant.ToolProficiencies...)
+		}
+	}
+
+	// TODO: Collect from background grants when implemented
+
+	return armorProfs, weaponProfs, toolProfs
 }
 
 // compileLanguages builds the language list

@@ -1,68 +1,21 @@
 {
   "branch": "feature/monk-levels-1-3-389",
-  "issues": ["#389"],
-  "goal": "Implement Monk class levels 1-3: Ki resource, Martial Arts, Ki abilities (Flurry/Patient Defense/Step of Wind), Unarmored Movement, Deflect Missiles",
-  "design": {
-    "ki_architecture": "Ki is a resource on Character (not a feature). Lives in Character.resources[ResourceKeyKi]. Features consume via char.GetResource(Ki).Use(n). Recovery handled by RecoverableResource subscribing to RestTopic.",
-    "consumption_pattern": "feature.Activate() casts owner to ResourceAccessor interface, calls GetResource(Ki).Use(amount)",
-    "recovery_pattern": "LoadResourceData() creates RecoverableResource and calls Apply(ctx, bus) which subscribes to rest events"
-  },
+  "issues": ["#421", "#389"],
+  "goal": "Merge Monk level 1-3 features from PR #394 into main",
   "sessions": [
     {
-      "date": "2025-12-06",
-      "task": "Design Ki resource architecture",
-      "notes": "Ki is a resource on Character, not a feature. Features use ResourceAccessor interface to avoid circular imports."
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Add Ki Resource Key",
-      "commit": "cbbd84b",
-      "files": ["rulebooks/dnd5e/resources/keys.go"]
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Implement Martial Arts Condition",
-      "commit": "6772ce9",
-      "files": ["conditions/martial_arts.go", "conditions/martial_arts_test.go", "gamectx extensions"]
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Implement Flurry of Blows Feature",
-      "commit": "d02b347",
-      "files": ["features/flurry_of_blows.go", "features/flurry_of_blows_test.go", "events/events.go"]
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Implement Patient Defense Feature",
-      "commit": "5a6b30e",
-      "files": ["features/patient_defense.go", "features/patient_defense_test.go"]
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Implement Step of the Wind Feature",
-      "commit": "bc59bd2",
-      "files": ["features/step_of_the_wind.go", "features/step_of_the_wind_test.go", "features/types.go"]
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Implement Unarmored Movement Condition",
-      "commit": "1ebb162",
-      "files": ["conditions/unarmored_movement.go", "conditions/unarmored_movement_test.go"]
-    },
-    {
-      "date": "2025-12-06",
-      "task": "Implement Deflect Missiles Feature",
-      "files": ["features/deflect_missiles.go", "features/deflect_missiles_test.go"]
+      "id": "2025-12-15-001",
+      "task": "Resolve merge conflicts with main",
+      "status": "in_progress",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Conflicts in loader.go, events.go, refs/conditions.go, refs/features.go - all additive (monk additions)"
     }
   ],
-  "completed": true,
-  "tasks": [
-    {"id": 1, "name": "Add Ki Resource Key", "status": "completed"},
-    {"id": 2, "name": "Martial Arts Condition", "status": "completed"},
-    {"id": 3, "name": "Flurry of Blows Feature", "status": "completed"},
-    {"id": 4, "name": "Patient Defense Feature", "status": "completed"},
-    {"id": 5, "name": "Step of the Wind Feature", "status": "completed"},
-    {"id": 6, "name": "Unarmored Movement Condition", "status": "completed"},
-    {"id": 7, "name": "Deflect Missiles Feature", "status": "completed"}
+  "next_steps": [
+    "Resolve all merge conflicts",
+    "Verify Ki resource system works",
+    "Run full test suite",
+    "Create PR"
   ]
 }

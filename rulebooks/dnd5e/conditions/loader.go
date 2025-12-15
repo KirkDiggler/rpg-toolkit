@@ -76,6 +76,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return um, nil
 
+	case refs.Features.SneakAttack().ID:
+		sneak := &SneakAttackCondition{}
+		if err := sneak.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load sneak attack condition")
+		}
+		return sneak, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}

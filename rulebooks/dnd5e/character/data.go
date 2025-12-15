@@ -18,6 +18,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -53,12 +54,16 @@ type Data struct {
 	ArmorClass   int `json:"armor_class"`
 
 	// Proficiencies and skills
-	Skills       map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
-	SavingThrows map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"`
-	Languages    []languages.Language                          `json:"languages"`
+	Skills              map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
+	SavingThrows        map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"`
+	Languages           []languages.Language                          `json:"languages"`
+	ArmorProficiencies  []proficiencies.Armor                         `json:"armor_proficiencies"`
+	WeaponProficiencies []proficiencies.Weapon                        `json:"weapon_proficiencies"`
+	ToolProficiencies   []proficiencies.Tool                          `json:"tool_proficiencies"`
 
 	// Equipment and resources
 	Inventory      []InventoryItemData                                   `json:"inventory"`
+	EquipmentSlots EquipmentSlots                                        `json:"equipment_slots,omitempty"`
 	SpellSlots     map[int]SpellSlotData                                 `json:"spell_slots,omitempty"`
 	ClassResources map[shared.ClassResourceType]ResourceData             `json:"class_resources,omitempty"`
 	Resources      map[coreResources.ResourceKey]RecoverableResourceData `json:"resources,omitempty"`
@@ -109,24 +114,29 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 	}
 
 	char := &Character{
-		id:               d.ID,
-		playerID:         d.PlayerID,
-		name:             d.Name,
-		level:            d.Level,
-		proficiencyBonus: d.ProficiencyBonus,
-		raceID:           d.RaceID,
-		subraceID:        d.SubraceID,
-		classID:          d.ClassID,
-		subclassID:       d.SubclassID,
-		abilityScores:    d.AbilityScores,
-		hitPoints:        d.HitPoints,
-		maxHitPoints:     d.MaxHitPoints,
-		armorClass:       d.ArmorClass,
-		skills:           d.Skills,
-		savingThrows:     d.SavingThrows,
-		bus:              bus,
-		subscriptionIDs:  make([]string, 0),
-		resources:        make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+		id:                  d.ID,
+		playerID:            d.PlayerID,
+		name:                d.Name,
+		level:               d.Level,
+		proficiencyBonus:    d.ProficiencyBonus,
+		raceID:              d.RaceID,
+		subraceID:           d.SubraceID,
+		classID:             d.ClassID,
+		subclassID:          d.SubclassID,
+		abilityScores:       d.AbilityScores,
+		hitPoints:           d.HitPoints,
+		maxHitPoints:        d.MaxHitPoints,
+		armorClass:          d.ArmorClass,
+		skills:              d.Skills,
+		savingThrows:        d.SavingThrows,
+		languages:           d.Languages,
+		armorProficiencies:  d.ArmorProficiencies,
+		weaponProficiencies: d.WeaponProficiencies,
+		toolProficiencies:   d.ToolProficiencies,
+		equipmentSlots:      d.EquipmentSlots,
+		bus:                 bus,
+		subscriptionIDs:     make([]string, 0),
+		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
 
 	// Get hit dice from class data

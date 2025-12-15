@@ -410,15 +410,15 @@ func (s *RoomDataTestSuite) TestSpatialPropertiesPreserved() {
 // TestHexFlatTopPersistence tests that hex orientation is properly persisted and loaded
 func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 	// Helper function to test hex orientation persistence
-	testHexOrientation := func(roomID, roomType string, width, height int, pointyTop bool, label string) {
+	testHexOrientation := func(roomID, roomType string, width, height int, orientation HexOrientation, label string) {
 		// Create hex room with specified orientation
 		room := NewBasicRoom(BasicRoomConfig{
 			ID:   roomID,
 			Type: roomType,
 			Grid: NewHexGrid(HexGridConfig{
-				Width:     float64(width),
-				Height:    float64(height),
-				PointyTop: pointyTop,
+				Width:       float64(width),
+				Height:      float64(height),
+				Orientation: orientation,
 			}),
 		})
 		room.ConnectToEventBus(s.eventBus)
@@ -428,8 +428,8 @@ func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 
 		// Verify hex orientation is captured
 		s.Equal("hex", data.GridType)
-		// HexFlatTop is opposite of pointyTop
-		s.Equal(!pointyTop, data.HexFlatTop)
+		// HexFlatTop should be true when orientation is flat-top
+		s.Equal(orientation == HexOrientationFlatTop, data.HexFlatTop)
 
 		// Load from data
 		gameCtx, err := game.NewContext(s.eventBus, data)
@@ -442,15 +442,15 @@ func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 		s.Equal(GridShapeHex, grid.GetShape())
 		hexGrid, ok := grid.(*HexGrid)
 		s.Require().True(ok)
-		s.Equal(pointyTop, hexGrid.GetOrientation(), label)
+		s.Equal(orientation, hexGrid.GetOrientation(), label)
 	}
 
 	s.Run("pointy-top hex grid persistence", func() {
-		testHexOrientation("pointy-hex", "battlefield", 8, 8, true, "Loaded grid should be pointy-top")
+		testHexOrientation("pointy-hex", "battlefield", 8, 8, HexOrientationPointyTop, "Loaded grid should be pointy-top")
 	})
 
 	s.Run("flat-top hex grid persistence", func() {
-		testHexOrientation("flat-hex", "campaign", 6, 6, false, "Loaded grid should be flat-top")
+		testHexOrientation("flat-hex", "campaign", 6, 6, HexOrientationFlatTop, "Loaded grid should be flat-top")
 	})
 
 	s.Run("hex grid defaults to pointy-top", func() {
@@ -475,7 +475,7 @@ func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 		s.Equal(GridShapeHex, grid.GetShape())
 		hexGrid, ok := grid.(*HexGrid)
 		s.Require().True(ok)
-		s.True(hexGrid.GetOrientation(), "Hex grid should default to pointy-top")
+		s.Equal(HexOrientationPointyTop, hexGrid.GetOrientation(), "Hex grid should default to pointy-top")
 	})
 
 	s.Run("non-hex grids don't have HexFlatTop set", func() {
