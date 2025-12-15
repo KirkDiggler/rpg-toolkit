@@ -169,6 +169,7 @@ type DamageChainEvent struct {
 	Components   []DamageComponent // All damage sources
 	DamageType   damage.Type       // Type of damage (slashing, piercing, etc.)
 	IsCritical   bool              // Double damage dice on crit
+	HasAdvantage bool              // True if attacker had advantage on the attack roll
 	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
 	AbilityUsed  abilities.Ability // Which ability was used (str, dex, etc.)
 	WeaponRef    *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -17,7 +18,18 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+// mockEntity implements core.Entity for testing
+type mockEntity struct {
+	id         string
+	entityType core.EntityType
+}
+
+func (m *mockEntity) GetID() string            { return m.id }
+func (m *mockEntity) GetType() core.EntityType { return m.entityType }
 
 // SneakAttackTestSuite tests the SneakAttackCondition behavior
 type SneakAttackTestSuite struct {
@@ -26,6 +38,8 @@ type SneakAttackTestSuite struct {
 	ctx    context.Context
 	bus    events.EventBus
 	roller *mock_dice.MockRoller
+	room   spatial.Room
+	teams  *gamectx.BasicTeamRegistry
 }
 
 func (s *SneakAttackTestSuite) SetupTest() {
@@ -33,6 +47,20 @@ func (s *SneakAttackTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 	s.roller = mock_dice.NewMockRoller(s.ctrl)
+
+	// Set up room for spatial tests
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
+		Width:  20,
+		Height: 20,
+	})
+	s.room = spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "dungeon",
+		Grid: grid,
+	})
+
+	// Set up team registry
+	s.teams = gamectx.NewBasicTeamRegistry()
 }
 
 func (s *SneakAttackTestSuite) TearDownTest() {
@@ -43,11 +71,16 @@ func TestSneakAttackTestSuite(t *testing.T) {
 	suite.Run(t, new(SneakAttackTestSuite))
 }
 
+// damageChainInput holds parameters for executeDamageChain
+type damageChainInput struct {
+	attackerID   string
+	targetID     string
+	abilityUsed  abilities.Ability
+	hasAdvantage bool
+}
+
 // executeDamageChain creates a damage chain event and executes it.
-func (s *SneakAttackTestSuite) executeDamageChain(
-	attackerID string,
-	abilityUsed abilities.Ability,
-) (*dnd5eEvents.DamageChainEvent, error) {
+func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5eEvents.DamageChainEvent, error) {
 	weaponComp := dnd5eEvents.DamageComponent{
 		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: []int{5},
@@ -56,14 +89,20 @@ func (s *SneakAttackTestSuite) executeDamageChain(
 		IsCritical:        false,
 	}
 
+	targetID := input.targetID
+	if targetID == "" {
+		targetID = "goblin-1"
+	}
+
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   attackerID,
-		TargetID:     "goblin-1",
+		AttackerID:   input.attackerID,
+		TargetID:     targetID,
 		Components:   []dnd5eEvents.DamageComponent{weaponComp},
 		DamageType:   damage.Piercing,
 		IsCritical:   false,
+		HasAdvantage: input.hasAdvantage,
 		WeaponDamage: "1d6",
-		AbilityUsed:  abilityUsed,
+		AbilityUsed:  input.abilityUsed,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -75,6 +114,20 @@ func (s *SneakAttackTestSuite) executeDamageChain(
 	}
 
 	return modifiedChain.Execute(s.ctx, damageEvent)
+}
+
+// executeDamageChainSimple is a convenience wrapper for simple test cases
+//
+//nolint:unparam // abilityUsed is intentionally fixed to DEX for most tests
+func (s *SneakAttackTestSuite) executeDamageChainSimple(
+	attackerID string,
+	abilityUsed abilities.Ability,
+) (*dnd5eEvents.DamageChainEvent, error) {
+	return s.executeDamageChain(damageChainInput{
+		attackerID:   attackerID,
+		abilityUsed:  abilityUsed,
+		hasAdvantage: true, // Default to true so existing tests pass
+	})
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
@@ -93,8 +146,8 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 		RollN(gomock.Any(), 1, 6).
 		Return([]int{4}, nil)
 
-	// Execute damage chain with DEX (finesse weapon)
-	finalEvent, err := s.executeDamageChain("rogue-1", abilities.DEX)
+	// Execute damage chain with DEX (finesse weapon) and advantage
+	finalEvent, err := s.executeDamageChainSimple("rogue-1", abilities.DEX)
 	s.Require().NoError(err)
 
 	// Should have weapon + sneak attack components
@@ -123,7 +176,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
 		RollN(gomock.Any(), 3, 6).
 		Return([]int{3, 5, 6}, nil)
 
-	finalEvent, err := s.executeDamageChain("rogue-1", abilities.DEX)
+	finalEvent, err := s.executeDamageChainSimple("rogue-1", abilities.DEX)
 	s.Require().NoError(err)
 
 	s.Require().Len(finalEvent.Components, 2)
@@ -149,14 +202,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackOnlyOncePerTurn() {
 		RollN(gomock.Any(), 1, 6).
 		Return([]int{4}, nil)
 
-	finalEvent, err := s.executeDamageChain("rogue-1", abilities.DEX)
+	finalEvent, err := s.executeDamageChainSimple("rogue-1", abilities.DEX)
 	s.Require().NoError(err)
 	s.Require().Len(finalEvent.Components, 2, "First attack should have sneak attack")
 
 	// Second attack - NO sneak attack (already used this turn)
 	// No roller expectation - RollN should NOT be called
 
-	finalEvent2, err := s.executeDamageChain("rogue-1", abilities.DEX)
+	finalEvent2, err := s.executeDamageChainSimple("rogue-1", abilities.DEX)
 	s.Require().NoError(err)
 	s.Require().Len(finalEvent2.Components, 1, "Second attack should NOT have sneak attack")
 }
@@ -176,7 +229,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 		RollN(gomock.Any(), 1, 6).
 		Return([]int{4}, nil)
 
-	_, err = s.executeDamageChain("rogue-1", abilities.DEX)
+	_, err = s.executeDamageChainSimple("rogue-1", abilities.DEX)
 	s.Require().NoError(err)
 
 	// End turn
@@ -192,7 +245,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 		RollN(gomock.Any(), 1, 6).
 		Return([]int{6}, nil)
 
-	finalEvent, err := s.executeDamageChain("rogue-1", abilities.DEX)
+	finalEvent, err := s.executeDamageChainSimple("rogue-1", abilities.DEX)
 	s.Require().NoError(err)
 	s.Require().Len(finalEvent.Components, 2, "Should have sneak attack after turn reset")
 }
@@ -209,8 +262,12 @@ func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 
 	// No roller expectation - attack with STR should not trigger sneak attack
 
-	// Attack with STR (non-finesse weapon)
-	finalEvent, err := s.executeDamageChain("rogue-1", abilities.STR)
+	// Attack with STR (non-finesse weapon) - even with advantage
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID:   "rogue-1",
+		abilityUsed:  abilities.STR,
+		hasAdvantage: true,
+	})
 	s.Require().NoError(err)
 
 	// Should only have weapon component (no sneak attack)
@@ -230,7 +287,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackOnlyAffectsOwnAttacks() {
 	// No roller expectation - different attacker should not trigger
 
 	// Different character attacks
-	finalEvent, err := s.executeDamageChain("rogue-2", abilities.DEX)
+	finalEvent, err := s.executeDamageChainSimple("rogue-2", abilities.DEX)
 	s.Require().NoError(err)
 
 	// Should only have weapon component
@@ -266,6 +323,275 @@ func (s *SneakAttackTestSuite) TestCalculateSneakAttackDice() {
 		})
 		s.Equal(tc.damageDice, sneak.DamageDice, "Level %d should have %dd6", tc.level, tc.damageDice)
 	}
+}
+
+// =============================================================================
+// Sneak Attack Condition Tests (Advantage OR Ally Adjacent)
+// =============================================================================
+
+func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAdvantage() {
+	// Sneak attack should trigger when attacker has advantage
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+
+	err := sneak.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Expect sneak attack dice to be rolled
+	s.roller.EXPECT().
+		RollN(gomock.Any(), 1, 6).
+		Return([]int{4}, nil)
+
+	// Attack with advantage (no ally nearby)
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID:   "rogue-1",
+		abilityUsed:  abilities.DEX,
+		hasAdvantage: true,
+	})
+	s.Require().NoError(err)
+
+	// Should have sneak attack
+	s.Require().Len(finalEvent.Components, 2, "Should have sneak attack with advantage")
+}
+
+func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
+	// Set up teams - rogue and fighter are allies, goblin is enemy
+	s.teams.SetTeam("rogue-1", gamectx.TeamPlayers)
+	s.teams.SetTeam("fighter-1", gamectx.TeamPlayers)
+	s.teams.SetTeam("goblin-1", gamectx.TeamEnemies)
+
+	// Place entities in room
+	// Rogue at (2, 2) - not adjacent to goblin
+	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
+	err := s.room.PlaceEntity(rogue, spatial.Position{X: 2, Y: 2})
+	s.Require().NoError(err)
+
+	// Goblin (target) at (5, 5)
+	goblin := &mockEntity{id: "goblin-1", entityType: "monster"}
+	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	// Fighter (ally) at (5, 6) - adjacent to goblin (within 5ft)
+	fighter := &mockEntity{id: "fighter-1", entityType: "character"}
+	err = s.room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 6})
+	s.Require().NoError(err)
+
+	// Create context with room and teams
+	ctx := gamectx.WithRoom(s.ctx, s.room)
+	ctx = gamectx.WithTeams(ctx, s.teams)
+
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+
+	err = sneak.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Expect sneak attack dice to be rolled
+	s.roller.EXPECT().
+		RollN(gomock.Any(), 1, 6).
+		Return([]int{5}, nil)
+
+	// Execute damage chain WITHOUT advantage but WITH ally adjacent
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		OriginalDiceRolls: []int{5},
+		FinalDiceRolls:    []int{5},
+		DamageType:        damage.Piercing,
+		IsCritical:        false,
+	}
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   "rogue-1",
+		TargetID:     "goblin-1",
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
+		DamageType:   damage.Piercing,
+		IsCritical:   false,
+		HasAdvantage: false, // No advantage
+		WeaponDamage: "1d6",
+		AbilityUsed:  abilities.DEX,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, chain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Should have sneak attack due to ally adjacent
+	s.Require().Len(finalEvent.Components, 2, "Should have sneak attack with ally adjacent")
+}
+
+func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() {
+	// Sneak attack should NOT trigger without advantage OR ally adjacent
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+
+	err := sneak.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// No roller expectation - sneak attack should NOT be rolled
+
+	// Attack without advantage and without ally adjacent (no room/teams context)
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID:   "rogue-1",
+		abilityUsed:  abilities.DEX,
+		hasAdvantage: false, // No advantage
+	})
+	s.Require().NoError(err)
+
+	// Should NOT have sneak attack
+	s.Require().Len(finalEvent.Components, 1, "Should NOT have sneak attack without conditions")
+}
+
+//nolint:dupl // Test functions intentionally similar - different entity positions
+func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
+	// Set up teams
+	s.teams.SetTeam("rogue-1", gamectx.TeamPlayers)
+	s.teams.SetTeam("fighter-1", gamectx.TeamPlayers)
+	s.teams.SetTeam("goblin-1", gamectx.TeamEnemies)
+
+	// Place entities in room
+	// Rogue at (2, 2)
+	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
+	err := s.room.PlaceEntity(rogue, spatial.Position{X: 2, Y: 2})
+	s.Require().NoError(err)
+
+	// Goblin (target) at (5, 5)
+	goblin := &mockEntity{id: "goblin-1", entityType: "monster"}
+	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	// Fighter (ally) at (10, 10) - NOT adjacent to goblin
+	fighter := &mockEntity{id: "fighter-1", entityType: "character"}
+	err = s.room.PlaceEntity(fighter, spatial.Position{X: 10, Y: 10})
+	s.Require().NoError(err)
+
+	// Create context with room and teams
+	ctx := gamectx.WithRoom(s.ctx, s.room)
+	ctx = gamectx.WithTeams(ctx, s.teams)
+
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+
+	err = sneak.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+
+	// No roller expectation - sneak attack should NOT trigger
+
+	// Execute damage chain WITHOUT advantage and ally too far
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		OriginalDiceRolls: []int{5},
+		FinalDiceRolls:    []int{5},
+		DamageType:        damage.Piercing,
+		IsCritical:        false,
+	}
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   "rogue-1",
+		TargetID:     "goblin-1",
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
+		DamageType:   damage.Piercing,
+		IsCritical:   false,
+		HasAdvantage: false,
+		WeaponDamage: "1d6",
+		AbilityUsed:  abilities.DEX,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, chain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Should NOT have sneak attack - ally is too far
+	s.Require().Len(finalEvent.Components, 1, "Should NOT have sneak attack when ally too far")
+}
+
+//nolint:dupl // Test functions intentionally similar - different entity positions
+func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenOnlyEnemyAdjacent() {
+	// Sneak attack should NOT trigger if the only nearby entity is an enemy
+	s.teams.SetTeam("rogue-1", gamectx.TeamPlayers)
+	s.teams.SetTeam("goblin-1", gamectx.TeamEnemies)
+	s.teams.SetTeam("goblin-2", gamectx.TeamEnemies) // Another enemy
+
+	// Rogue at (2, 2)
+	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
+	err := s.room.PlaceEntity(rogue, spatial.Position{X: 2, Y: 2})
+	s.Require().NoError(err)
+
+	// Target goblin at (5, 5)
+	goblin := &mockEntity{id: "goblin-1", entityType: "monster"}
+	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	// Another enemy goblin at (5, 6) - adjacent to target but NOT an ally
+	goblin2 := &mockEntity{id: "goblin-2", entityType: "monster"}
+	err = s.room.PlaceEntity(goblin2, spatial.Position{X: 5, Y: 6})
+	s.Require().NoError(err)
+
+	ctx := gamectx.WithRoom(s.ctx, s.room)
+	ctx = gamectx.WithTeams(ctx, s.teams)
+
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+
+	err = sneak.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+
+	// No roller expectation
+
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		OriginalDiceRolls: []int{5},
+		FinalDiceRolls:    []int{5},
+		DamageType:        damage.Piercing,
+		IsCritical:        false,
+	}
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   "rogue-1",
+		TargetID:     "goblin-1",
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
+		DamageType:   damage.Piercing,
+		IsCritical:   false,
+		HasAdvantage: false,
+		WeaponDamage: "1d6",
+		AbilityUsed:  abilities.DEX,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, chain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+
+	// Should NOT have sneak attack - adjacent entity is enemy not ally
+	s.Require().Len(finalEvent.Components, 1, "Should NOT have sneak attack when only enemy adjacent")
 }
 
 // Suppress unused import warning
