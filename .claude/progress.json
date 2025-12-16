@@ -11,17 +11,16 @@
         "rulebooks/dnd5e/conditions/fighting_style.go",
         "rulebooks/dnd5e/conditions/fighting_style_test.go"
       ],
-      "commit": null,
+      "commit": "54590c7",
       "notes": "Replaced hardcoded abilityModifier := 3 with registry.GetCharacterAbilityScores().DexterityMod(). Added table-driven tests for DEX 16/14/10/8. Updated existing TWF tests to register ability scores."
     }
   ],
-  "next_steps": [
-    "Commit and create PR"
-  ],
+  "next_steps": [],
   "verification": {
     "tests_pass": true,
     "linter_pass": true,
-    "features_verified": ["two_weapon_fighting_ability_modifier"]
+    "features_verified": ["two_weapon_fighting_ability_modifier"],
+    "pr": "#440"
   },
   "related_issues": {
     "blocks": [],
