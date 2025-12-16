@@ -80,6 +80,9 @@ type Character struct {
 	// Conditions (raging, poisoned, stunned, etc)
 	conditions []dnd5eEvents.ConditionBehavior
 
+	// Death saves (tracked when at 0 HP)
+	deathSaveState *saves.DeathSaveState
+
 	// Event handling
 	bus             events.EventBus
 	subscriptionIDs []string
@@ -183,6 +186,84 @@ func (c *Character) MakeSavingThrow(
 		HasAdvantage:    input.HasAdvantage,
 		HasDisadvantage: input.HasDisadvantage,
 	})
+}
+
+// MakeDeathSaveInput contains parameters for a character death saving throw
+type MakeDeathSaveInput struct {
+	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
+	// Pass a mock roller here for testing.
+	Roller dice.Roller
+}
+
+// MakeDeathSave makes a death saving throw for this character.
+// The character's death save state is automatically updated based on the roll.
+// Returns the result including the updated state.
+func (c *Character) MakeDeathSave(
+	ctx context.Context, input *MakeDeathSaveInput,
+) (*saves.DeathSaveResult, error) {
+	// Initialize death save state if nil
+	if c.deathSaveState == nil {
+		c.deathSaveState = &saves.DeathSaveState{}
+	}
+
+	result, err := saves.MakeDeathSave(ctx, &saves.DeathSaveInput{
+		Roller: input.Roller,
+		State:  c.deathSaveState,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the character's state with the result
+	c.deathSaveState = result.State
+
+	return result, nil
+}
+
+// TakeDamageWhileUnconsciousInput contains parameters for taking damage at 0 HP
+type TakeDamageWhileUnconsciousInput struct {
+	// IsCritical is true if the damage was from a critical hit (adds 2 failures instead of 1)
+	IsCritical bool
+}
+
+// TakeDamageWhileUnconscious handles taking damage while at 0 HP.
+// Adds 1 failure for normal damage, 2 for critical hits.
+// Returns the result including the updated state.
+func (c *Character) TakeDamageWhileUnconscious(
+	ctx context.Context, input *TakeDamageWhileUnconsciousInput,
+) (*saves.DamageWhileUnconsciousResult, error) {
+	// Initialize death save state if nil
+	if c.deathSaveState == nil {
+		c.deathSaveState = &saves.DeathSaveState{}
+	}
+
+	result, err := saves.TakeDamageWhileUnconscious(ctx, &saves.DamageWhileUnconsciousInput{
+		State:      c.deathSaveState,
+		IsCritical: input.IsCritical,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the character's state with the result
+	c.deathSaveState = result.State
+
+	return result, nil
+}
+
+// GetDeathSaveState returns the character's current death save state.
+// Returns an empty state if the character has never made death saves.
+func (c *Character) GetDeathSaveState() *saves.DeathSaveState {
+	if c.deathSaveState == nil {
+		return &saves.DeathSaveState{}
+	}
+	return c.deathSaveState
+}
+
+// ResetDeathSaveState clears the character's death save state.
+// Call this when the character is healed above 0 HP or regains consciousness.
+func (c *Character) ResetDeathSaveState() {
+	c.deathSaveState = &saves.DeathSaveState{}
 }
 
 // GetFeatures returns all character features
@@ -364,6 +445,7 @@ func (c *Character) ToData() *Data {
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
 		ArmorClass:          c.armorClass,
+		DeathSaveState:      c.deathSaveState,
 		Skills:              maps.Clone(c.skills),
 		SavingThrows:        maps.Clone(c.savingThrows),
 		ArmorProficiencies:  c.armorProficiencies,

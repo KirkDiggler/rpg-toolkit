@@ -1,31 +1,57 @@
 {
-  "branch": "feature/saving-throws-462",
-  "issues": ["#462"],
-  "goal": "Implement saving throw mechanics as a core D&D 5e feature - d20 + modifier vs DC with advantage/disadvantage support",
+  "branch": "feature/death-saves-463",
+  "issues": ["#463"],
+  "goal": "Implement death saving throws - specialized saving throw mechanic for characters at 0 HP with unique roll interpretation, success/failure tracking, and damage handling",
   "sessions": [
     {
       "date": "2025-12-16",
-      "summary": "Implemented complete saving throw mechanics following TDD approach",
+      "summary": "Implemented complete death saving throws mechanics following TDD approach",
       "completed": [
-        "Created rulebooks/dnd5e/saves/ package",
-        "Implemented SavingThrowInput struct with Ability, DC, Modifier, HasAdvantage, HasDisadvantage",
-        "Implemented SavingThrowResult struct with Roll, Total, DC, Success, IsNat1, IsNat20",
-        "Implemented MakeSavingThrow function with full advantage/disadvantage logic",
-        "Added D&D 5e rule: advantage and disadvantage cancel each other",
-        "Wrote 11 comprehensive test cases using testify suite pattern",
-        "All tests passing with mock dice roller",
-        "Fixed linter issues (switch statement, renamed max/min to maxInt/minInt)",
-        "Updated tests.json to mark all tests as passing",
-        "Committed changes: 79cb98b"
+        "Created DeathSaveState struct with Successes, Failures, Stabilized, Dead fields",
+        "Created DeathSaveInput struct with Roller and State",
+        "Created DeathSaveResult struct with Roll, State, IsCriticalFail, IsCriticalSuccess, RegainedConsciousness, HPRestored",
+        "Created DamageWhileUnconsciousInput struct with State and IsCritical",
+        "Created DamageWhileUnconsciousResult struct with State and FailuresAdded",
+        "Implemented MakeDeathSave() with D&D 5e roll interpretation",
+        "Implemented TakeDamageWhileUnconscious()",
+        "Wrote 19 comprehensive tests covering all roll outcomes and edge cases"
       ],
-      "tests_passing": "11/11",
+      "tests_passing": "31/31",
       "linter_issues": "0",
-      "commit": "79cb98b"
+      "commit": "46687fb"
+    },
+    {
+      "date": "2025-12-16",
+      "summary": "Added Character helper methods for death saves",
+      "completed": [
+        "Added deathSaveState field to Character struct",
+        "Implemented Character.MakeDeathSave() helper method",
+        "Implemented Character.TakeDamageWhileUnconscious() helper method",
+        "Implemented Character.GetDeathSaveState() accessor",
+        "Implemented Character.ResetDeathSaveState() to clear state",
+        "Created MakeDeathSaveInput and TakeDamageWhileUnconsciousInput types",
+        "Wrote 7 tests for Character death save functionality"
+      ],
+      "tests_passing": "7/7 new + all existing",
+      "linter_issues": "0",
+      "commit": "601160d"
+    },
+    {
+      "date": "2025-12-16",
+      "summary": "Added persistence for death save state",
+      "completed": [
+        "Added DeathSaveState field to Data struct with omitempty",
+        "Updated ToData() to include deathSaveState in serialization",
+        "Updated LoadFromData() to restore deathSaveState from data",
+        "Added round-trip serialization test",
+        "All 8 death save tests passing"
+      ],
+      "tests_passing": "8/8",
+      "linter_issues": "0"
     }
   ],
   "next_steps": [
-    "Feature implementation complete - ready for review",
-    "Consider integration with character sheet for saving throw proficiencies",
-    "Consider event system integration for modifiers from conditions/features"
+    "Commit persistence changes",
+    "Update PR"
   ]
 }
