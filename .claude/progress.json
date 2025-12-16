@@ -55,9 +55,28 @@
         "Pack Tactics is placeholder - full spatial logic deferred until spatial integration",
         "All tests pass (immunity, vulnerability, undead fortitude, pack tactics)"
       ]
+    },
+    {
+      "date": "2025-12-16",
+      "commit": "e517caa",
+      "completed": "#449",
+      "summary": "Created 9 monster factories for dungeon themes using shared actions and traits",
+      "details": [
+        "Created monster/monsters/ subdirectory for factory functions",
+        "Added SetSpeed() method to Monster struct for external factory use",
+        "Crypt Theme: Skeleton (shortsword + shortbow, vulnerability + immunity), Zombie (slam, Undead Fortitude), Ghoul (multiattack bite + claws)",
+        "Cave Theme: Giant Rat (bite, Pack Tactics), Wolf (bite with knockdown, Pack Tactics, TargetLowestHP), Brown Bear (multiattack bite + claws, climb speed)",
+        "Bandit Theme: Bandit melee (scimitar), Bandit ranged (light crossbow), Thug (multiattack 2x mace, Pack Tactics)",
+        "All factories use actions from monster/actions/ (MeleeAction, RangedAction, BiteAction, MultiattackAction)",
+        "Monsters configured with correct CR, HP, AC, ability scores, and speeds per D&D 5e SRD",
+        "Comprehensive test coverage: 8 test suites with 24 tests for factory functions",
+        "All 67 tests pass across entire monster package (monster/, monster/actions/, monster/monsters/)",
+        "Traits (Pack Tactics, Undead Fortitude, Vulnerability, Immunity) noted but applied later when loaded into combat",
+        "Follows established pattern: factories create base monsters, traits applied via LoadFromData with event bus"
+      ]
     }
   ],
   "next_steps": [
-    "#449: Monster Factories - 9 monsters for dungeon themes using actions and traits"
+    "All issues (#446-#449) complete for feature branch feature/issue-425-monster-additions"
   ]
 }
