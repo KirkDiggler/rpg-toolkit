@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -21,6 +22,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -144,6 +146,41 @@ func (c *Character) GetSavingThrowModifier(ability abilities.Ability) int {
 	}
 
 	return modifier
+}
+
+// MakeSavingThrowInput contains parameters for a character saving throw
+type MakeSavingThrowInput struct {
+	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
+	// Pass a mock roller here for testing.
+	Roller dice.Roller
+
+	// Ability is the ability score being tested (STR, DEX, CON, INT, WIS, CHA)
+	Ability abilities.Ability
+
+	// DC is the Difficulty Class that must be met or exceeded
+	DC int
+
+	// HasAdvantage indicates the character has advantage on this save
+	HasAdvantage bool
+
+	// HasDisadvantage indicates the character has disadvantage on this save
+	HasDisadvantage bool
+}
+
+// MakeSavingThrow makes a saving throw for this character.
+// The character's ability modifier and proficiency bonus (if proficient) are automatically applied.
+// Returns the result including whether the save succeeded.
+func (c *Character) MakeSavingThrow(ctx context.Context, input *MakeSavingThrowInput) (*saves.SavingThrowResult, error) {
+	modifier := c.GetSavingThrowModifier(input.Ability)
+
+	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
+		Roller:          input.Roller,
+		Ability:         input.Ability,
+		DC:              input.DC,
+		Modifier:        modifier,
+		HasAdvantage:    input.HasAdvantage,
+		HasDisadvantage: input.HasDisadvantage,
+	})
 }
 
 // GetFeatures returns all character features
