@@ -35,10 +35,29 @@
         "Tests cover all three strategies, edge cases, and serialization",
         "All 9 targeting tests pass, all existing tests still pass"
       ]
+    },
+    {
+      "date": "2025-12-16",
+      "commit": "faed125",
+      "completed": "#448",
+      "summary": "Implemented monster traits package with passive combat behaviors",
+      "details": [
+        "Created monstertraits/ package as sibling to conditions/ (avoids import cycles)",
+        "Implemented Immunity trait: reduces specific damage type to 0 in StageFinal",
+        "Implemented Vulnerability trait: doubles specific damage type in StageFinal",
+        "Implemented Undead Fortitude trait: CON save to stay at 1 HP when dropped to 0",
+        "Implemented Pack Tactics trait: framework for advantage when ally adjacent",
+        "All traits implement ConditionBehavior interface from events package",
+        "Added refs/monster_traits.go with namespace pattern (Immunity, Vulnerability, etc.)",
+        "Added TypeMonsterTraits constant to refs/module.go",
+        "Created loader.go for JSON deserialization routing by ref ID",
+        "All traits include comprehensive TDD test coverage using testify suites",
+        "Pack Tactics is placeholder - full spatial logic deferred until spatial integration",
+        "All tests pass (immunity, vulnerability, undead fortitude, pack tactics)"
+      ]
     }
   ],
   "next_steps": [
-    "#448: Monster Conditions - Pack Tactics, Undead Fortitude, Vulnerability/Immunity",
-    "#449: Monster Factories - 9 monsters for dungeon themes"
+    "#449: Monster Factories - 9 monsters for dungeon themes using actions and traits"
   ]
 }
