@@ -1,6 +1,48 @@
 {
   "tests": [
     {
+      "id": "protection-triggers-on-ally-attack",
+      "feature": "protection",
+      "prompt": "Fighter with Protection fighting style and shield. Ally within 5ft is attacked by melee attack. Verify disadvantage is imposed on the attack roll.",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
+      "id": "protection-consumes-reaction",
+      "feature": "protection",
+      "prompt": "Protection triggers. Verify the fighter's reaction is consumed and ReactionUsedEvent is published.",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
+      "id": "protection-requires-shield",
+      "feature": "protection",
+      "prompt": "Fighter with Protection but no shield equipped. Ally within 5ft is attacked. Verify Protection does NOT trigger.",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
+      "id": "protection-requires-reaction",
+      "feature": "protection",
+      "prompt": "Fighter with Protection already used reaction this round. Ally within 5ft is attacked. Verify Protection does NOT trigger.",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
+      "id": "protection-only-allies-not-self",
+      "feature": "protection",
+      "prompt": "Fighter with Protection is attacked directly. Verify Protection does NOT trigger (only protects others).",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
+      "id": "protection-requires-5ft-range",
+      "feature": "protection",
+      "prompt": "Ally is 10ft away from Protection fighter. Ally is attacked. Verify Protection does NOT trigger.",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
       "id": "martial-arts-dex-unarmed",
       "feature": "martial-arts",
       "prompt": "Create a Monk with higher DEX than STR. Make an unarmed strike. Verify DEX modifier is used for attack and damage.",

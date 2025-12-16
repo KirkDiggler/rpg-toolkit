@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -33,6 +34,10 @@ func (m *mockCharacterRegistry) GetCharacterWeapons(id string) *gamectx.Characte
 
 func (m *mockCharacterRegistry) GetCharacterAbilityScores(id string) *gamectx.AbilityScores {
 	return m.abilityScores[id]
+}
+
+func (m *mockCharacterRegistry) GetCharacterActionEconomy(_ string) *combat.ActionEconomy {
+	return nil
 }
 
 func (m *mockCharacterRegistry) addCharacter(id string, weapons *gamectx.CharacterWeapons) {

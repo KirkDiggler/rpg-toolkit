@@ -289,17 +289,17 @@ func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 }
 
 // TestFighterWithUnimplementedStyleFails tests that choosing an unimplemented
-// fighting style fails during finalization
+// fighting style (like Unspecified) fails during finalization
 func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	// Create a new draft
 	draft, err := NewDraft(&DraftConfig{
-		ID:       "test-protection-fighter",
+		ID:       "test-unspecified-style-fighter",
 		PlayerID: "player-4",
 	})
 	s.Require().NoError(err)
 
 	// Set name
-	err = draft.SetName(&SetNameInput{Name: "Protective Fighter"})
+	err = draft.SetName(&SetNameInput{Name: "Unspecified Style Fighter"})
 	s.Require().NoError(err)
 
 	// Set race
@@ -311,7 +311,7 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	})
 	s.Require().NoError(err)
 
-	// Set class with Protection fighting style (not yet implemented)
+	// Set class with a fake unimplemented fighting style
 	err = draft.SetClass(&SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: ClassChoices{
@@ -329,7 +329,7 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackExplorer},
 			},
-			FightingStyle: fightingstyles.Protection, // Not yet implemented!
+			FightingStyle: "mariner", // Fake style that doesn't exist
 		},
 	})
 	s.Require().NoError(err)
@@ -355,11 +355,11 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	s.Require().NoError(err)
 
 	// Finalize should fail with "not yet implemented" error
-	char, err := draft.ToCharacter(context.Background(), "protection-fighter", s.eventBus)
+	char, err := draft.ToCharacter(context.Background(), "fake-style-fighter", s.eventBus)
 	s.Require().Error(err, "ToCharacter should fail for unimplemented fighting style")
 	s.Nil(char, "Character should not be created when finalization fails")
 	s.Contains(err.Error(), "not yet implemented", "Error should mention that style is not implemented")
-	s.Contains(err.Error(), "protection", "Error should mention the specific fighting style")
+	s.Contains(err.Error(), "mariner", "Error should mention the specific fighting style")
 }
 
 func TestFighterFinalizeSuite(t *testing.T) {

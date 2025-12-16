@@ -3,6 +3,8 @@
 
 package gamectx
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+
 // Slot constants for weapon equipment positions
 const (
 	SlotMainHand = "main_hand"
@@ -75,6 +77,12 @@ func (cw *CharacterWeapons) OffHand() *EquippedWeapon {
 	return cw.offHand
 }
 
+// HasShield returns true if a shield is equipped in the off-hand slot.
+// Purpose: Allows features like Protection fighting style to check shield requirement.
+func (cw *CharacterWeapons) HasShield() bool {
+	return cw.offHand != nil && cw.offHand.IsShield
+}
+
 // AllEquipped returns all equipped weapons (both main hand and off-hand).
 // Excludes shields from the result.
 // Always returns a non-nil slice, even if empty.
@@ -96,15 +104,17 @@ func (cw *CharacterWeapons) AllEquipped() []*EquippedWeapon {
 // BasicCharacterRegistry is a concrete implementation of CharacterRegistry.
 // Purpose: Provides in-memory storage for character state during event processing.
 type BasicCharacterRegistry struct {
-	characters    map[string]*CharacterWeapons
-	abilityScores map[string]*AbilityScores
+	characters      map[string]*CharacterWeapons
+	abilityScores   map[string]*AbilityScores
+	actionEconomies map[string]*combat.ActionEconomy
 }
 
 // NewBasicCharacterRegistry creates a new BasicCharacterRegistry.
 func NewBasicCharacterRegistry() *BasicCharacterRegistry {
 	return &BasicCharacterRegistry{
-		characters:    make(map[string]*CharacterWeapons),
-		abilityScores: make(map[string]*AbilityScores),
+		characters:      make(map[string]*CharacterWeapons),
+		abilityScores:   make(map[string]*AbilityScores),
+		actionEconomies: make(map[string]*combat.ActionEconomy),
 	}
 }
 
@@ -139,4 +149,17 @@ func (r *BasicCharacterRegistry) AddAbilityScores(characterID string, scores *Ab
 // Purpose: Allows features to query ability modifiers (e.g., Two-Weapon Fighting).
 func (r *BasicCharacterRegistry) GetCharacterAbilityScores(id string) *AbilityScores {
 	return r.abilityScores[id]
+}
+
+// AddActionEconomy registers a character's action economy state.
+// If the character already has action economy, it is replaced.
+func (r *BasicCharacterRegistry) AddActionEconomy(characterID string, economy *combat.ActionEconomy) {
+	r.actionEconomies[characterID] = economy
+}
+
+// GetCharacterActionEconomy retrieves action economy state for a character by ID.
+// Returns nil if the character is not found.
+// Purpose: Allows features like Protection to check reaction availability.
+func (r *BasicCharacterRegistry) GetCharacterActionEconomy(id string) *combat.ActionEconomy {
+	return r.actionEconomies[id]
 }

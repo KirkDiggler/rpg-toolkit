@@ -1,7 +1,7 @@
 {
   "branch": "feature/attack-chain-advantage-436",
-  "issues": ["#436"],
-  "goal": "Add advantage/disadvantage tracking to AttackChain",
+  "issues": ["#436", "#423"],
+  "goal": "Implement attack chain advantage/disadvantage and Protection fighting style",
   "sessions": [
     {
       "id": "2025-12-15-002",
@@ -12,24 +12,46 @@
       ],
       "commit": "08910f2",
       "notes": "Designed AttackModifierSource, ReactionConsumption, enhanced AttackChainEvent structure. Chain fires before roll, ReactionsConsumed processed after."
+    },
+    {
+      "id": "2025-12-15-003",
+      "task": "Implement attack chain advantage/disadvantage (#436)",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/combat/attack.go",
+        "rulebooks/dnd5e/events/events.go",
+        "rulebooks/dnd5e/combat/attack_test.go"
+      ],
+      "commit": null,
+      "notes": "Implementation complete. Used RollN+max/min instead of adding D&D-specific methods to dice roller (better architecture). All 7 attack tests pass. Code review verified."
+    },
+    {
+      "id": "2025-12-15-004",
+      "task": "Implement Protection fighting style (#423)",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/conditions/fighting_style.go",
+        "rulebooks/dnd5e/conditions/fighting_style_test.go",
+        "rulebooks/dnd5e/gamectx/characters.go",
+        "rulebooks/dnd5e/gamectx/gamectx.go",
+        "rulebooks/dnd5e/fightingstyles/fightingstyles.go"
+      ],
+      "commit": null,
+      "notes": "Protection fighting style fully implemented. Added HasShield() to CharacterWeapons, GetCharacterActionEconomy to CharacterRegistry interface, onProtectionAttackChain handler. Uses Grid.Distance() for 5ft range check. All 6 Protection tests pass."
     }
   ],
   "next_steps": [
-    "Add AttackModifierSource and ReactionConsumption to events/events.go",
-    "Enhance AttackChainEvent with new fields",
-    "Add RollWithAdvantage/RollWithDisadvantage to dice.Roller",
-    "Update attack.go to fire chain before roll",
-    "Add ReactionUsedEvent topic",
-    "Update existing AttackChain subscribers",
-    "Write tests"
+    "Run make pre-commit",
+    "Commit changes",
+    "Create PR for #436 and #423"
   ],
   "verification": {
-    "tests_pass": null,
+    "tests_pass": true,
     "linter_pass": null,
-    "features_verified": []
+    "features_verified": ["attack_chain_advantage_disadvantage", "protection_fighting_style"]
   },
   "related_issues": {
-    "blocks": ["#423"],
+    "blocks": [],
     "blocked_by": []
   }
 }
