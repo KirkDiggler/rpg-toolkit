@@ -27,6 +27,20 @@
       "prompt": "Character with DEX 8 using Two-Weapon Fighting should add -1 modifier to off-hand damage (floor division)",
       "passes": true,
       "last_checked": "2025-12-15"
+    },
+    {
+      "id": "twf-str-16-modifier",
+      "feature": "two-weapon-fighting",
+      "prompt": "Character with STR 16 using Two-Weapon Fighting with STR-based attack should add +3 modifier",
+      "passes": true,
+      "last_checked": "2025-12-15"
+    },
+    {
+      "id": "twf-str-14-modifier",
+      "feature": "two-weapon-fighting",
+      "prompt": "Character with STR 14 using Two-Weapon Fighting with STR-based attack should add +2 modifier",
+      "passes": true,
+      "last_checked": "2025-12-15"
     }
   ]
 }

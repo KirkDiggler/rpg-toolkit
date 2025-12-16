@@ -3,6 +3,8 @@
 
 package gamectx
 
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+
 // AbilityScores holds the six ability scores for a character.
 // Purpose: Provides ability score values and modifier calculations for
 // features that need to check ability modifiers (e.g., Two-Weapon Fighting).
@@ -55,4 +57,25 @@ func (a *AbilityScores) WisdomMod() int {
 // CharismaMod returns the Charisma modifier.
 func (a *AbilityScores) CharismaMod() int {
 	return abilityModifier(a.Charisma)
+}
+
+// Modifier returns the modifier for the specified ability.
+// Returns 0 for unknown abilities.
+func (a *AbilityScores) Modifier(ability abilities.Ability) int {
+	switch ability {
+	case abilities.STR:
+		return a.StrengthMod()
+	case abilities.DEX:
+		return a.DexterityMod()
+	case abilities.CON:
+		return a.ConstitutionMod()
+	case abilities.INT:
+		return a.IntelligenceMod()
+	case abilities.WIS:
+		return a.WisdomMod()
+	case abilities.CHA:
+		return a.CharismaMod()
+	default:
+		return 0
+	}
 }

@@ -854,32 +854,57 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
 	s.Equal(3, weaponComponent.FlatBonus, "Main hand should keep original ability modifier")
 }
 
-// TestTwoWeaponFightingAbilityModifier verifies Two-Weapon Fighting uses actual DEX modifier
+// TestTwoWeaponFightingAbilityModifier verifies Two-Weapon Fighting uses the correct ability modifier
+// based on which ability was used for the attack (STR or DEX)
 func (s *FightingStyleTestSuite) TestTwoWeaponFightingAbilityModifier() {
 	testCases := []struct {
 		name             string
+		strength         int
 		dexterity        int
+		abilityUsed      abilities.Ability
 		expectedModifier int
 	}{
 		{
 			name:             "DEX16_PlusThree",
+			strength:         10,
 			dexterity:        16,
+			abilityUsed:      abilities.DEX,
 			expectedModifier: 3, // (16 - 10) / 2 = 3
 		},
 		{
 			name:             "DEX14_PlusTwo",
+			strength:         10,
 			dexterity:        14,
+			abilityUsed:      abilities.DEX,
 			expectedModifier: 2, // (14 - 10) / 2 = 2
 		},
 		{
 			name:             "DEX10_Zero",
+			strength:         10,
 			dexterity:        10,
+			abilityUsed:      abilities.DEX,
 			expectedModifier: 0, // (10 - 10) / 2 = 0
 		},
 		{
 			name:             "DEX8_MinusOne",
+			strength:         10,
 			dexterity:        8,
+			abilityUsed:      abilities.DEX,
 			expectedModifier: -1, // (8 - 10) / 2 = -1 (floor division)
+		},
+		{
+			name:             "STR16_PlusThree",
+			strength:         16,
+			dexterity:        10,
+			abilityUsed:      abilities.STR,
+			expectedModifier: 3, // (16 - 10) / 2 = 3
+		},
+		{
+			name:             "STR14_PlusTwo",
+			strength:         14,
+			dexterity:        10,
+			abilityUsed:      abilities.STR,
+			expectedModifier: 2, // (14 - 10) / 2 = 2
 		},
 	}
 
@@ -908,9 +933,9 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingAbilityModifier() {
 			weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
 			registry.Add("fighter-1", weapons)
 
-			// Add ability scores with the test case's DEX value
+			// Add ability scores with the test case's STR and DEX values
 			registry.AddAbilityScores("fighter-1", &gamectx.AbilityScores{
-				Strength:     10,
+				Strength:     tc.strength,
 				Dexterity:    tc.dexterity,
 				Constitution: 10,
 				Intelligence: 10,
@@ -938,7 +963,7 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingAbilityModifier() {
 				_ = fs.Remove(ctx, s.bus)
 			}()
 
-			// Create damage chain event for off-hand attack
+			// Create damage chain event for off-hand attack using the test case's ability
 			damageEvent := &dnd5eEvents.DamageChainEvent{
 				AttackerID: "fighter-1",
 				TargetID:   "goblin-1",
@@ -956,7 +981,7 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingAbilityModifier() {
 				DamageType:   damage.Piercing,
 				IsCritical:   false,
 				WeaponDamage: "1d6",
-				AbilityUsed:  abilities.DEX,
+				AbilityUsed:  tc.abilityUsed,
 				WeaponRef:    &core.Ref{ID: core.ID("shortsword-2")}, // Off-hand weapon
 			}
 
@@ -976,7 +1001,7 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingAbilityModifier() {
 			s.Equal(dnd5eEvents.DamageSourceFeature, twfComponent.Source,
 				"Second component should be from Two-Weapon Fighting")
 			s.Equal(tc.expectedModifier, twfComponent.FlatBonus,
-				"Two-Weapon Fighting should add DEX modifier %d for DEX %d", tc.expectedModifier, tc.dexterity)
+				"Two-Weapon Fighting should add %s modifier %d", tc.abilityUsed, tc.expectedModifier)
 		})
 	}
 }

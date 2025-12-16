@@ -401,8 +401,8 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 		return c, nil // Can't calculate without ability scores
 	}
 
-	// Use DEX modifier for off-hand attacks (finesse weapons typical for TWF)
-	abilityModifier := abilityScores.DexterityMod()
+	// Use the same ability modifier that was used for the attack (STR or DEX)
+	abilityModifier := abilityScores.Modifier(event.AbilityUsed)
 
 	// Add ability modifier to damage at StageFeatures
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
