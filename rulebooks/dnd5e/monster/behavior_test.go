@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -40,52 +39,7 @@ func (m *mockTarget) GetID() string            { return m.id }
 func (m *mockTarget) GetType() core.EntityType { return "character" }
 func (m *mockTarget) GetName() string          { return m.name }
 
-func (s *BehaviorTestSuite) TestLoadFromData() {
-	data := &Data{
-		ID:           "goblin-1",
-		Name:         "Goblin",
-		MonsterType:  "goblin",
-		HitPoints:    7,
-		MaxHitPoints: 7,
-		ArmorClass:   15,
-		AbilityScores: shared.AbilityScores{
-			abilities.STR: 8,
-			abilities.DEX: 14,
-			abilities.CON: 10,
-			abilities.INT: 10,
-			abilities.WIS: 8,
-			abilities.CHA: 8,
-		},
-		Speed:  SpeedData{Walk: 30},
-		Senses: SensesData{Darkvision: 60, PassivePerception: 9},
-		Actions: []ActionData{
-			{
-				Ref:    *refs.MonsterActions.Scimitar(),
-				Config: []byte(`{"attack_bonus": 4, "damage_dice": "1d6+2"}`),
-			},
-		},
-		Proficiencies: []ProficiencyData{
-			{Skill: "stealth", Bonus: 6},
-		},
-	}
-
-	monster, err := LoadFromData(s.ctx, data, s.bus)
-
-	s.Require().NoError(err)
-	s.Require().NotNil(monster)
-	s.Equal("goblin-1", monster.GetID())
-	s.Equal("Goblin", monster.Name())
-	s.Equal(7, monster.HP())
-	s.Equal(7, monster.MaxHP())
-	s.Equal(15, monster.AC())
-	s.Equal(30, monster.Speed().Walk)
-	s.Equal(60, monster.Senses().Darkvision)
-
-	// Verify action was loaded
-	actions := monster.Actions()
-	s.Require().Len(actions, 1)
-	s.Equal("scimitar", actions[0].GetID())
-}
+// TestLoadFromData moved to actions/integration_test.go to avoid import cycle
 
 func (s *BehaviorTestSuite) TestLoadFromDataNoBus() {
 	data := &Data{
@@ -408,35 +362,7 @@ func (s *BehaviorTestSuite) TestNewGoblinHasDefaultActions() {
 	s.Equal(30, goblin.Speed().Walk)
 }
 
-func (s *BehaviorTestSuite) TestActionRoundTrip() {
-	// Create a goblin with the factory (includes scimitar)
-	original := NewGoblin("goblin-1")
-
-	// Verify original has action
-	s.Require().Len(original.Actions(), 1)
-
-	// Convert to data
-	data := original.ToData()
-
-	// Verify action was serialized
-	s.Require().Len(data.Actions, 1)
-	s.Equal("scimitar", data.Actions[0].Ref.ID)
-
-	// Load from data
-	loaded, err := LoadFromData(s.ctx, data, s.bus)
-	s.Require().NoError(err)
-
-	// Verify action was deserialized
-	actions := loaded.Actions()
-	s.Require().Len(actions, 1)
-	s.Equal("scimitar", actions[0].GetID())
-	s.Equal(TypeMeleeAttack, actions[0].ActionType())
-
-	// The action should be functional - verify it can be serialized again
-	reData := loaded.ToData()
-	s.Require().Len(reData.Actions, 1)
-	s.Equal("scimitar", reData.Actions[0].Ref.ID)
-}
+// TestActionRoundTrip moved to actions/integration_test.go to avoid import cycle
 
 func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 	// Create a goblin at position (0, 0)

@@ -205,15 +205,14 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, 
 		proficiencies:   make(map[string]int),
 	}
 
-	// Load actions (convert from data to runtime)
-	for _, actionData := range d.Actions {
-		action, err := LoadAction(actionData)
-		if err != nil {
-			// Skip invalid actions but continue loading
-			continue
-		}
-		m.actions = append(m.actions, action)
-	}
+	// Actions must be loaded by the caller to avoid import cycles.
+	// The monster package cannot import monster/actions because actions imports monster.
+	// Use LoadMonsterActions helper to load actions after creating the monster.
+	// Example:
+	//   monster, err := LoadFromData(ctx, data, bus)
+	//   if err := LoadMonsterActions(monster, data.Actions); err != nil {
+	//       // handle error
+	//   }
 
 	// Load proficiencies
 	for _, prof := range d.Proficiencies {
