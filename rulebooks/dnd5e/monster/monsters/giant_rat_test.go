@@ -1,6 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//nolint:dupl // Monster factory tests intentionally follow same structure with different values
 package monsters
 
 import (

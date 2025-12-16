@@ -1,6 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+// Package monsters provides factory functions for creating D&D 5e monster stat blocks
 package monsters
 
 import (

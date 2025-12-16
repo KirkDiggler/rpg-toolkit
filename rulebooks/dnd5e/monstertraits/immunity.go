@@ -1,6 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//nolint:dupl // Immunity and Vulnerability implement same interface with similar structure but different behavior
 package monstertraits
 
 import (

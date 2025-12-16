@@ -1,6 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//nolint:dupl // Trait tests follow same event-driven pattern with different conditions
 package monstertraits
 
 import (
@@ -32,7 +33,7 @@ func (m *mockRoller) Roll(_ context.Context, _ int) (int, error) {
 	return m.nextRoll, nil
 }
 
-func (m *mockRoller) RollN(ctx context.Context, count, size int) ([]int, error) {
+func (m *mockRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
 	results := make([]int, count)
 	for i := 0; i < count; i++ {
 		results[i] = m.nextRoll

@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const multiattackActionID = "multiattack"
+
 type BrownBearTestSuite struct {
 	suite.Suite
 }
@@ -52,7 +54,7 @@ func (s *BrownBearTestSuite) TestNewBrownBear() {
 	var hasMultiattack, hasBite, hasClaw bool
 	for _, action := range actions {
 		switch action.GetID() {
-		case "multiattack":
+		case multiattackActionID:
 			hasMultiattack = true
 		case "bite":
 			hasBite = true
