@@ -742,7 +742,74 @@ func (s *CharacterHitDiceTestSuite) TestSpendHitDice() {
 
 		s.Error(err)
 		s.Nil(result)
-		s.Contains(err.Error(), "no hit dice")
+		s.Contains(err.Error(), "character has no hit dice resource configured")
+	})
+
+	s.Run("returns error when input is nil", func() {
+		result, err := s.character.SpendHitDice(s.ctx, nil)
+
+		s.Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "input cannot be nil")
+	})
+
+	s.Run("handles negative CON modifier correctly", func() {
+		// Create character with 6 CON (-2 modifier)
+		s.character.abilityScores[abilities.CON] = 6
+
+		// Setup: Add hit dice resource
+		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.HitDice),
+			Maximum:     4,
+			CharacterID: "test-fighter",
+			ResetType:   coreResources.ResetLongRest,
+		})
+		s.character.AddResource(resources.HitDice, hitDiceResource)
+
+		// Use mock roller that returns 3 for each die
+		// 3 (roll) + (-2) (CON mod) = 1 per die, 2 total
+		mockRoller := &mockHitDiceRoller{rolls: []int{3, 3}}
+
+		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
+			Count:  2,
+			Roller: mockRoller,
+		})
+
+		s.Require().NoError(err)
+		s.Require().NotNil(result)
+		s.Equal(-2, result.CONModifier, "CON 6 = -2 modifier")
+		s.Equal(2, result.TotalHealing, "2 * (3 + -2) = 2")
+		s.Equal(17, s.character.GetHitPoints(), "15 + 2 = 17")
+	})
+
+	s.Run("clamps total healing to 0 with very negative CON", func() {
+		// Create character with 4 CON (-3 modifier)
+		s.character.abilityScores[abilities.CON] = 4
+
+		// Setup: Add hit dice resource
+		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.HitDice),
+			Maximum:     4,
+			CharacterID: "test-fighter",
+			ResetType:   coreResources.ResetLongRest,
+		})
+		s.character.AddResource(resources.HitDice, hitDiceResource)
+
+		// Use mock roller that returns 1 for each die
+		// 1 (roll) + (-3) (CON mod) = -2 per die, -4 total -> clamped to 0
+		mockRoller := &mockHitDiceRoller{rolls: []int{1, 1}}
+
+		initialHP := s.character.GetHitPoints()
+		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
+			Count:  2,
+			Roller: mockRoller,
+		})
+
+		s.Require().NoError(err)
+		s.Require().NotNil(result)
+		s.Equal(-3, result.CONModifier, "CON 4 = -3 modifier")
+		s.Equal(0, result.TotalHealing, "negative total should be clamped to 0")
+		s.Equal(initialHP, s.character.GetHitPoints(), "HP should not change with 0 healing")
 	})
 }
 

@@ -293,6 +293,9 @@ type SpendHitDiceOutput struct {
 // and heals the character by the total amount (capped at max HP).
 func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) (*SpendHitDiceOutput, error) {
 	// Validate input
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+	}
 	if input.Count < 1 {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "must spend at least 1 hit die")
 	}
@@ -300,7 +303,7 @@ func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) 
 	// Get hit dice resource
 	hitDiceResource := c.GetResource(resources.HitDice)
 	if hitDiceResource.IsEmpty() && hitDiceResource.Maximum() == 0 {
-		return nil, rpgerr.New(rpgerr.CodeNotFound, "no hit dice available")
+		return nil, rpgerr.New(rpgerr.CodeNotFound, "character has no hit dice resource configured")
 	}
 
 	// Check if we have enough hit dice
