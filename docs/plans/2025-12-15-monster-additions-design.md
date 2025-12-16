@@ -78,38 +78,36 @@ m.AddAction(NewBiteAction(BiteConfig{
 }))
 ```
 
-### Conditions (Passive - subscribed to event bus)
+### Monster Traits (Passive - subscribed to event bus)
 
-Conditions listen to events and modify them:
+Monster traits live in `rulebooks/dnd5e/monstertraits/` as a sibling package to `conditions/`.
+This avoids import cycles: `monster` → `monstertraits` → `events` (one-way).
+
+Traits implement `ConditionBehavior` and listen to events:
 
 ```go
-// Pack Tactics - advantage if ally adjacent to target
-func PackTactics() ConditionBehavior {
-    return &packTacticsCondition{}
+// In rulebooks/dnd5e/monstertraits/pack_tactics.go
+
+// PackTactics - advantage if ally adjacent to target
+func PackTactics(ownerID string) dnd5eEvents.ConditionBehavior {
+    return &packTacticsCondition{ownerID: ownerID}
 }
 
-func (p *packTacticsCondition) Subscribe(ctx context.Context, bus events.EventBus, ownerID string) error {
-    topic := dnd5eEvents.AttackChainTopic.On(bus)
-    _, err := topic.Subscribe(ctx, func(ctx context.Context, event dnd5eEvents.AttackChainEvent) error {
-        if event.AttackerID != ownerID {
-            return nil
-        }
-        room, _ := gamectx.Room(ctx)
-        if room.HasAllyAdjacentTo(ownerID, event.TargetID) {
-            event.AddAdvantage("pack_tactics")
-        }
-        return nil
-    })
-    return err
+func (p *packTacticsCondition) Apply(ctx context.Context, bus events.EventBus) error {
+    // Subscribe to attack events, grant advantage when ally adjacent to target
 }
 
 // Undead Fortitude - CON save to stay at 1 HP when dropped to 0
-func UndeadFortitude() ConditionBehavior
+func UndeadFortitude(ownerID string, conModifier int) dnd5eEvents.ConditionBehavior
 
 // Vulnerability/Immunity - modify incoming damage
-func Vulnerability(damageType damage.Type) ConditionBehavior
-func Immunity(damageType damage.Type) ConditionBehavior
+func Vulnerability(ownerID string, damageType damage.Type) dnd5eEvents.ConditionBehavior
+func Immunity(ownerID string, damageType damage.Type) dnd5eEvents.ConditionBehavior
 ```
+
+**Architecture note:** Character feature behaviors live in `conditions/`, monster trait
+behaviors live in `monstertraits/`. Both implement `ConditionBehavior`. Future shared
+status effects (Poisoned, Prone) will go in a `statuses/` package.
 
 ### Targeting Strategies
 
@@ -165,45 +163,55 @@ func NewWolf(id string) *Monster {
 ## File Structure
 
 ```
-rulebooks/dnd5e/monster/
-├── monster.go              # Core Monster struct (exists)
-├── data.go                 # Serialization (exists)
-├── action.go               # MonsterAction interface (exists)
-├── action_loader.go        # LoadAction factory (exists)
+rulebooks/dnd5e/
+├── monstertraits/              # NEW: Monster-specific behaviors (sibling to conditions/)
+│   ├── pack_tactics.go         # Advantage if ally adjacent to target
+│   ├── undead_fortitude.go     # CON save to stay at 1 HP
+│   ├── vulnerability.go        # Damage vulnerability modifier
+│   ├── immunity.go             # Damage immunity modifier
+│   └── loader.go               # LoadJSON for trait deserialization
 │
-├── actions/
-│   ├── melee.go            # Generic melee attack action
-│   ├── ranged.go           # Generic ranged attack action
-│   ├── multiattack.go      # Multiattack action (for bosses)
-│   └── bite.go             # Bite with knockdown (wolves, bears)
-│
-├── conditions/
-│   ├── pack_tactics.go     # Advantage if ally adjacent to target
-│   ├── undead_fortitude.go # CON save to stay at 1 HP
-│   └── vulnerability.go    # Damage type modifiers
-│
-├── targeting.go            # TargetingStrategy enum + selection logic
-│
-├── monsters/
-│   ├── skeleton.go
-│   ├── zombie.go
-│   ├── ghoul.go
-│   ├── giant_rat.go
-│   ├── wolf.go
-│   ├── brown_bear.go
-│   ├── bandit.go           # Melee and ranged variants
-│   └── thug.go
-│
-└── goblin.go               # Existing (consider moving to monsters/)
+├── monster/
+│   ├── monster.go              # Core Monster struct (exists)
+│   ├── data.go                 # Serialization (exists)
+│   ├── action.go               # MonsterAction interface (exists)
+│   ├── action_loader.go        # LoadAction factory (exists)
+│   │
+│   ├── actions/                # NEW: Generic action building blocks
+│   │   ├── melee.go            # Generic melee attack action
+│   │   ├── ranged.go           # Generic ranged attack action
+│   │   ├── multiattack.go      # Multiattack action (for bosses)
+│   │   └── bite.go             # Bite with knockdown (wolves, bears)
+│   │
+│   ├── targeting.go            # NEW: TargetingStrategy enum + selection logic
+│   │
+│   ├── monsters/               # NEW: Monster factory functions
+│   │   ├── skeleton.go
+│   │   ├── zombie.go
+│   │   ├── ghoul.go
+│   │   ├── giant_rat.go
+│   │   ├── wolf.go
+│   │   ├── brown_bear.go
+│   │   ├── bandit.go           # Melee and ranged variants
+│   │   └── thug.go
+│   │
+│   └── goblin.go               # Existing (consider moving to monsters/)
+```
+
+**Import graph (no cycles):**
+```
+events ← monstertraits
+events ← monster
+monstertraits ← monster/monsters (factories use traits)
+monster/actions ← monster/monsters (factories use actions)
 ```
 
 ## Implementation Order
 
-1. **Actions** - Melee, Ranged, Multiattack, Bite generics
-2. **Targeting** - Add strategy enum + selection logic to TakeTurn
-3. **Conditions** - Pack Tactics, Undead Fortitude, Vulnerability/Immunity
-4. **Monsters** - Create factories using building blocks
-5. **Tests** - Verify each monster works in combat simulation
+1. **Actions** (#446) - Melee, Ranged, Multiattack, Bite in `monster/actions/`
+2. **Targeting** (#447) - Strategy enum + selection logic in `monster/targeting.go`
+3. **Monster Traits** (#448) - Pack Tactics, Undead Fortitude, Vulnerability/Immunity in `monstertraits/`
+4. **Monsters** (#449) - Factory functions in `monster/monsters/` using building blocks
 
 ## Definition of Done
 

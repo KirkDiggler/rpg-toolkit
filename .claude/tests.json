@@ -58,7 +58,7 @@
     },
     {
       "id": "pack-tactics",
-      "feature": "conditions",
+      "feature": "monstertraits",
       "issue": "#448",
       "prompt": "Monster with Pack Tactics gains advantage when ally is adjacent to target.",
       "passes": false,
@@ -66,7 +66,7 @@
     },
     {
       "id": "undead-fortitude",
-      "feature": "conditions",
+      "feature": "monstertraits",
       "issue": "#448",
       "prompt": "Zombie with Undead Fortitude can make CON save to stay at 1 HP when dropped to 0.",
       "passes": false,
@@ -74,7 +74,7 @@
     },
     {
       "id": "vulnerability",
-      "feature": "conditions",
+      "feature": "monstertraits",
       "issue": "#448",
       "prompt": "Skeleton takes double damage from bludgeoning attacks.",
       "passes": false,
@@ -82,7 +82,7 @@
     },
     {
       "id": "immunity",
-      "feature": "conditions",
+      "feature": "monstertraits",
       "issue": "#448",
       "prompt": "Skeleton takes no damage from poison attacks.",
       "passes": false,
