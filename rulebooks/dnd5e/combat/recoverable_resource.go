@@ -14,6 +14,10 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
+// RecoveryFunc defines a custom recovery behavior for a resource.
+// If nil, the default behavior (RestoreToFull) is used.
+type RecoveryFunc func(r *RecoverableResource)
+
 // RecoverableResource wraps a mechanics/resources.Resource and implements
 // events.BusEffect to automatically restore resources based on rest events.
 //
@@ -23,10 +27,12 @@ import (
 //
 // Example: A Fighter's Second Wind feature that recovers on a short rest,
 // or a Wizard's spell slots that recover on a long rest.
+// Hit dice use a custom RecoveryFunc to restore only half (minimum 1) on long rest.
 type RecoverableResource struct {
 	Resource       *resources.Resource     // The underlying resource (use explicit field, not embedding)
 	CharacterID    string                  // Filter rest events by character
 	ResetType      coreResources.ResetType // When to restore (short_rest, long_rest, etc)
+	recoveryFunc   RecoveryFunc            // Custom recovery behavior (nil = RestoreToFull)
 	subscriptionID string                  // Track subscription for removal
 	applied        bool                    // Track if subscribed
 }
@@ -82,20 +88,23 @@ var _ events.BusEffect = (*RecoverableResource)(nil)
 
 // RecoverableResourceConfig provides configuration for creating a recoverable resource
 type RecoverableResourceConfig struct {
-	ID          string                  // Unique identifier for the resource
-	Maximum     int                     // Maximum value for the resource
-	CharacterID string                  // Character this resource belongs to
-	ResetType   coreResources.ResetType // When the resource recovers
+	ID           string                  // Unique identifier for the resource
+	Maximum      int                     // Maximum value for the resource
+	CharacterID  string                  // Character this resource belongs to
+	ResetType    coreResources.ResetType // When the resource recovers
+	RecoveryFunc RecoveryFunc            // Optional custom recovery behavior (nil = RestoreToFull)
 }
 
 // NewRecoverableResource creates a new recoverable resource with the given configuration.
 // The resource starts at full capacity (Current = Maximum).
+// If RecoveryFunc is nil, the resource will restore to full on matching rest events.
 func NewRecoverableResource(config RecoverableResourceConfig) *RecoverableResource {
 	return &RecoverableResource{
-		Resource:    resources.NewResource(config.ID, config.Maximum),
-		CharacterID: config.CharacterID,
-		ResetType:   config.ResetType,
-		applied:     false,
+		Resource:     resources.NewResource(config.ID, config.Maximum),
+		CharacterID:  config.CharacterID,
+		ResetType:    config.ResetType,
+		recoveryFunc: config.RecoveryFunc,
+		applied:      false,
 	}
 }
 
@@ -154,8 +163,12 @@ func (r *RecoverableResource) onRest(_ context.Context, event dnd5eEvents.RestEv
 		return nil
 	}
 
-	// Restore resource to full
-	r.RestoreToFull()
+	// Use custom recovery function if provided, otherwise restore to full
+	if r.recoveryFunc != nil {
+		r.recoveryFunc(r)
+	} else {
+		r.RestoreToFull()
+	}
 	return nil
 }
 
