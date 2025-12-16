@@ -287,7 +287,7 @@ func (t *BasicTable[T]) Select(ctx SelectionContext) (T, error) {
 	}
 
 	// Perform weighted random selection
-	rollValue, err := roller.Roll(totalWeight)
+	rollValue, err := roller.Roll(context.Background(), totalWeight)
 	if err != nil {
 		selectionErr := NewSelectionError("select", t.id, ctx, err)
 		if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
@@ -498,7 +498,7 @@ func (t *BasicTable[T]) SelectUnique(ctx SelectionContext, count int) ([]T, erro
 
 		// Perform selection
 		roller := ctx.GetDiceRoller()
-		rollValue, err := roller.Roll(totalWeight)
+		rollValue, err := roller.Roll(context.Background(), totalWeight)
 		if err != nil {
 			selectionErr := NewSelectionError("select_unique", t.id, ctx, err)
 			if t.config.EnableEvents && t.connectedTopics.selectionFailed != nil {
@@ -736,12 +736,13 @@ func (t *BasicTable[T]) clearWeightCache() {
 func (t *BasicTable[T]) parseDiceExpression(expression string, roller dice.Roller) (int, error) {
 	// Very simple parser for basic dice expressions
 	// More sophisticated parsing can be added later
+	ctx := context.Background()
 
 	// Handle simple cases first
 	switch expression {
 	case "1d1-1":
 		// Special case: 1d1-1 could result in 0, but we ensure minimum of 1
-		result, err := roller.Roll(1)
+		result, err := roller.Roll(ctx, 1)
 		if err != nil {
 			return 0, err
 		}
@@ -751,25 +752,25 @@ func (t *BasicTable[T]) parseDiceExpression(expression string, roller dice.Rolle
 		}
 		return result, nil
 	case "1d4":
-		return roller.Roll(4)
+		return roller.Roll(ctx, 4)
 	case "1d6":
-		return roller.Roll(6)
+		return roller.Roll(ctx, 6)
 	case "1d8":
-		return roller.Roll(8)
+		return roller.Roll(ctx, 8)
 	case "1d10":
-		return roller.Roll(10)
+		return roller.Roll(ctx, 10)
 	case "1d10+2":
-		result, err := roller.Roll(10)
+		result, err := roller.Roll(ctx, 10)
 		if err != nil {
 			return 0, err
 		}
 		return result + 2, nil
 	case "1d12":
-		return roller.Roll(12)
+		return roller.Roll(ctx, 12)
 	case "1d20":
-		return roller.Roll(20)
+		return roller.Roll(ctx, 20)
 	case "2d4":
-		results, err := roller.RollN(2, 4)
+		results, err := roller.RollN(ctx, 2, 4)
 		if err != nil {
 			return 0, err
 		}
@@ -779,7 +780,7 @@ func (t *BasicTable[T]) parseDiceExpression(expression string, roller dice.Rolle
 		}
 		return sum, nil
 	case "2d6":
-		results, err := roller.RollN(2, 6)
+		results, err := roller.RollN(ctx, 2, 6)
 		if err != nil {
 			return 0, err
 		}
@@ -789,7 +790,7 @@ func (t *BasicTable[T]) parseDiceExpression(expression string, roller dice.Rolle
 		}
 		return sum, nil
 	case "3d6":
-		results, err := roller.RollN(3, 6)
+		results, err := roller.RollN(ctx, 3, 6)
 		if err != nil {
 			return 0, err
 		}
