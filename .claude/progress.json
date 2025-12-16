@@ -19,10 +19,25 @@
         "Updated refs/monster_actions.go with new action refs",
         "All tests pass with full TDD coverage"
       ]
+    },
+    {
+      "date": "2025-12-16",
+      "commit": "bd517b8",
+      "completed": "#447",
+      "summary": "Implemented targeting strategies for monster AI decision-making",
+      "details": [
+        "Created TargetingStrategy enum: TargetClosest, TargetLowestHP, TargetLowestAC",
+        "Extended PerceivedEntity with HP and AC fields for strategy decisions",
+        "Refactored selectTarget() to apply strategies via selectTargetByStrategy()",
+        "Added SetTargeting() and Targeting() methods to Monster struct",
+        "Integrated targeting into Data serialization (ToData/LoadFromData)",
+        "Created comprehensive targeting_test.go with testify suite",
+        "Tests cover all three strategies, edge cases, and serialization",
+        "All 9 targeting tests pass, all existing tests still pass"
+      ]
     }
   ],
   "next_steps": [
-    "#447: Targeting Strategies - Closest, Lowest HP, Lowest AC",
     "#448: Monster Conditions - Pack Tactics, Undead Fortitude, Vulnerability/Immunity",
     "#449: Monster Factories - 9 monsters for dungeon themes"
   ]
