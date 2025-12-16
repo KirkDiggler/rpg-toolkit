@@ -4,71 +4,71 @@
       "id": "death-save-types-defined",
       "feature": "death-saves",
       "prompt": "DeathSaveState and DeathSaveResult types exist in rulebooks/dnd5e/saves/ with all required fields (successes, failures, stabilized, dead, conscious flags)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "roll-1-two-failures",
       "feature": "death-saves",
       "prompt": "Rolling a 1 on a death save adds 2 failures to DeathSaveState",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "roll-2-9-one-failure",
       "feature": "death-saves",
       "prompt": "Rolling 2-9 on a death save adds 1 failure to DeathSaveState",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "roll-10-19-one-success",
       "feature": "death-saves",
       "prompt": "Rolling 10-19 on a death save adds 1 success to DeathSaveState",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "roll-20-regain-consciousness",
       "feature": "death-saves",
       "prompt": "Rolling a 20 on a death save sets conscious=true and result indicates regaining 1 HP",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "three-failures-death",
       "feature": "death-saves",
       "prompt": "Accumulating 3 failures sets dead=true on DeathSaveState",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "three-successes-stabilized",
       "feature": "death-saves",
       "prompt": "Accumulating 3 successes sets stabilized=true on DeathSaveState",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "damage-while-unconscious",
       "feature": "death-saves",
       "prompt": "TakeDamageWhileUnconscious adds 1 failure for normal damage",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "crit-damage-while-unconscious",
       "feature": "death-saves",
       "prompt": "TakeDamageWhileUnconscious adds 2 failures for critical hit damage",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "unit-tests-pass",
       "feature": "death-saves",
       "prompt": "All unit tests for death saves pass with go test",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     }
   ]
 }
