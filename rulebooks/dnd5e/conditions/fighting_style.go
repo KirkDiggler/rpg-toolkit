@@ -395,14 +395,14 @@ func (f *FightingStyleCondition) onTwoWeaponFightingDamageChain(
 		return c, nil // Not an off-hand attack
 	}
 
-	// Calculate ability modifier from the ability used for this attack
-	// The modifier is calculated as (ability_score - 10) / 2
-	// We need to get the ability score from somewhere - for now we'll use a simplified approach
-	// In a real implementation, we'd need to get the character's ability scores from the registry
+	// Get ability scores to calculate modifier
+	abilityScores := registry.GetCharacterAbilityScores(f.CharacterID)
+	if abilityScores == nil {
+		return c, nil // Can't calculate without ability scores
+	}
 
-	// For now, we'll assume a standard DEX modifier of +3 for testing
-	// TODO: Get actual ability scores from character registry
-	abilityModifier := 3
+	// Use the same ability modifier that was used for the attack (STR or DEX)
+	abilityModifier := abilityScores.Modifier(event.AbilityUsed)
 
 	// Add ability modifier to damage at StageFeatures
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
