@@ -170,7 +170,9 @@ type MakeSavingThrowInput struct {
 // MakeSavingThrow makes a saving throw for this character.
 // The character's ability modifier and proficiency bonus (if proficient) are automatically applied.
 // Returns the result including whether the save succeeded.
-func (c *Character) MakeSavingThrow(ctx context.Context, input *MakeSavingThrowInput) (*saves.SavingThrowResult, error) {
+func (c *Character) MakeSavingThrow(
+	ctx context.Context, input *MakeSavingThrowInput,
+) (*saves.SavingThrowResult, error) {
 	modifier := c.GetSavingThrowModifier(input.Ability)
 
 	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{

@@ -283,7 +283,9 @@ func (s *CharacterSavingThrowTestSuite) SetupTest() {
 	s.ctx = context.Background()
 }
 
-func (s *CharacterSavingThrowTestSuite) createTestCharacter(abilityScores map[string]int, proficientSaves []string) *Character {
+func (s *CharacterSavingThrowTestSuite) createTestCharacter(
+	abilityScores map[string]int, proficientSaves []string,
+) *Character {
 	// Build ability scores
 	scores := make(shared.AbilityScores)
 	for ability, score := range abilityScores {
