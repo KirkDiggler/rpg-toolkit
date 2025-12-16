@@ -2,6 +2,7 @@ package saves
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -66,7 +67,7 @@ func (s *DeathSaveTestSuite) TestRoll2To9AddsOneFailure() {
 	testCases := []int{2, 5, 9}
 
 	for _, roll := range testCases {
-		s.Run("roll_"+string(rune('0'+roll)), func() {
+		s.Run(fmt.Sprintf("roll_%d", roll), func() {
 			s.SetupTest() // Reset mock for each subtest
 			s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(roll, nil)
 
@@ -94,7 +95,7 @@ func (s *DeathSaveTestSuite) TestRoll10To19AddsOneSuccess() {
 	testCases := []int{10, 15, 19}
 
 	for _, roll := range testCases {
-		s.Run("roll_"+string(rune('0'+roll/10))+string(rune('0'+roll%10)), func() {
+		s.Run(fmt.Sprintf("roll_%d", roll), func() {
 			s.SetupTest() // Reset mock for each subtest
 			s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(roll, nil)
 
