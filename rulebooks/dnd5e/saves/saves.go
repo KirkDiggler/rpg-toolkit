@@ -77,14 +77,14 @@ func MakeSavingThrow(ctx context.Context, roller dice.Roller, input *SavingThrow
 		if rollErr != nil {
 			return nil, rollErr
 		}
-		roll = maxInt(rolls[0], rolls[1])
+		roll = max(rolls[0], rolls[1])
 	case hasDisadvantage:
 		// Roll with disadvantage: 2d20, take lower
 		rolls, rollErr := roller.RollN(ctx, 2, 20)
 		if rollErr != nil {
 			return nil, rollErr
 		}
-		roll = minInt(rolls[0], rolls[1])
+		roll = min(rolls[0], rolls[1])
 	default:
 		// Normal roll: 1d20
 		roll, err = roller.Roll(ctx, 20)
@@ -111,20 +111,4 @@ func MakeSavingThrow(ctx context.Context, roller dice.Roller, input *SavingThrow
 		IsNat1:  isNat1,
 		IsNat20: isNat20,
 	}, nil
-}
-
-// maxInt returns the larger of two integers
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// minInt returns the smaller of two integers
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
