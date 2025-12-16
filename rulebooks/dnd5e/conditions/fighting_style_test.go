@@ -20,6 +20,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type FightingStyleTestSuite struct {
@@ -302,10 +303,10 @@ func (s *FightingStyleTestSuite) TestApplyAndRemove() {
 
 // TestUnimplementedStyleReturnsError verifies unsupported styles return error
 func (s *FightingStyleTestSuite) TestUnimplementedStyleReturnsError() {
-	// Try to apply Protection (not yet implemented)
+	// Try to apply an unspecified style
 	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
 		CharacterID: "fighter-1",
-		Style:       fightingstyles.Protection,
+		Style:       fightingstyles.Unspecified,
 		Roller:      s.mockRoller,
 	})
 
@@ -929,4 +930,492 @@ func (s *FightingStyleTestSuite) TestDefenseNoArmorNoBonus() {
 
 	// Verify Defense did NOT add any bonus
 	s.Equal(13, finalEvent.Breakdown.Total, "Defense should NOT add bonus when not wearing armor")
+}
+
+// testEntity is a simple entity for testing
+type testEntity struct {
+	id   string
+	kind string
+}
+
+func (e *testEntity) GetID() string            { return e.id }
+func (e *testEntity) GetType() core.EntityType { return core.EntityType(e.kind) }
+
+// TestProtectionImposesDisadvantage verifies Protection imposes disadvantage on attacks against nearby allies
+func (s *FightingStyleTestSuite) TestProtectionImposesDisadvantage() {
+	ctx := s.ctx
+
+	// Create a room with entities
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	// Place entities: fighter at (5,5), ally at (6,5) (adjacent), enemy at (4,5)
+	fighter := &testEntity{id: "fighter-1", kind: "character"}
+	ally := &testEntity{id: "ally-1", kind: "character"}
+	enemy := &testEntity{id: "enemy-1", kind: "monster"}
+
+	err := room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(ally, spatial.Position{X: 6, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(enemy, spatial.Position{X: 4, Y: 5})
+	s.Require().NoError(err)
+
+	// Create character registry with shield equipped and reaction available
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "longsword-1",
+		Name:        "Longsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	shield := &gamectx.EquippedWeapon{
+		ID:       "shield-1",
+		Name:     "Shield",
+		Slot:     "off_hand",
+		IsShield: true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, shield})
+	registry.Add("fighter-1", weapons)
+
+	// Add action economy with reaction available
+	actionEconomy := combat.NewActionEconomy()
+	registry.AddActionEconomy("fighter-1", actionEconomy)
+
+	// Wrap context with room and character registry
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+
+	// Create Protection fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Protection,
+		Roller:      s.mockRoller,
+	})
+
+	// Apply the condition
+	err = fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create attack chain event: enemy attacks ally (melee)
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "enemy-1",
+		TargetID:          "ally-1",
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	// Publish through attack chain
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	// Execute chain
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// Verify disadvantage was imposed
+	s.Require().Len(finalEvent.DisadvantageSources, 1, "Protection should add disadvantage source")
+	s.Equal("fighter-1", finalEvent.DisadvantageSources[0].SourceID)
+	s.Contains(finalEvent.DisadvantageSources[0].Reason, "Protection")
+
+	// Verify reaction was consumed
+	s.Require().Len(finalEvent.ReactionsConsumed, 1, "Protection should consume reaction")
+	s.Equal("fighter-1", finalEvent.ReactionsConsumed[0].CharacterID)
+}
+
+// TestProtectionRequiresShield verifies Protection doesn't trigger without a shield
+func (s *FightingStyleTestSuite) TestProtectionRequiresShield() {
+	ctx := s.ctx
+
+	// Create a room with entities
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	// Place entities adjacent to each other
+	fighter := &testEntity{id: "fighter-1", kind: "character"}
+	ally := &testEntity{id: "ally-1", kind: "character"}
+
+	err := room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(ally, spatial.Position{X: 6, Y: 5})
+	s.Require().NoError(err)
+
+	// Create character registry WITHOUT shield
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:          "longsword-1",
+		Name:        "Longsword",
+		Slot:        "main_hand",
+		IsShield:    false,
+		IsTwoHanded: false,
+		IsMelee:     true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
+	registry.Add("fighter-1", weapons)
+	registry.AddActionEconomy("fighter-1", combat.NewActionEconomy())
+
+	// Wrap context
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+
+	// Create Protection fighting style condition
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Protection,
+		Roller:      s.mockRoller,
+	})
+
+	err = fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Create attack on ally
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "enemy-1",
+		TargetID:          "ally-1",
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// Verify NO disadvantage was imposed (no shield)
+	s.Empty(finalEvent.DisadvantageSources, "Protection should NOT trigger without shield")
+	s.Empty(finalEvent.ReactionsConsumed, "No reaction should be consumed without shield")
+}
+
+// TestProtectionRequiresReaction verifies Protection doesn't trigger without reaction available
+func (s *FightingStyleTestSuite) TestProtectionRequiresReaction() {
+	ctx := s.ctx
+
+	// Create a room with entities
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	fighter := &testEntity{id: "fighter-1", kind: "character"}
+	ally := &testEntity{id: "ally-1", kind: "character"}
+
+	err := room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(ally, spatial.Position{X: 6, Y: 5})
+	s.Require().NoError(err)
+
+	// Create character registry with shield but reaction already used
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:      "longsword-1",
+		Name:    "Longsword",
+		Slot:    "main_hand",
+		IsMelee: true,
+	}
+	shield := &gamectx.EquippedWeapon{
+		ID:       "shield-1",
+		Name:     "Shield",
+		Slot:     "off_hand",
+		IsShield: true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, shield})
+	registry.Add("fighter-1", weapons)
+
+	// Action economy with reaction already used
+	actionEconomy := combat.NewActionEconomy()
+	_ = actionEconomy.UseReaction() // Consume the reaction
+	registry.AddActionEconomy("fighter-1", actionEconomy)
+
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Protection,
+		Roller:      s.mockRoller,
+	})
+
+	err = fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "enemy-1",
+		TargetID:          "ally-1",
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// Verify NO disadvantage (no reaction available)
+	s.Empty(finalEvent.DisadvantageSources, "Protection should NOT trigger without reaction")
+}
+
+// TestProtectionDoesNotTriggerForSelf verifies Protection doesn't trigger when the fighter is attacked
+func (s *FightingStyleTestSuite) TestProtectionDoesNotTriggerForSelf() {
+	ctx := s.ctx
+
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	fighter := &testEntity{id: "fighter-1", kind: "character"}
+	err := room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:      "longsword-1",
+		Slot:    "main_hand",
+		IsMelee: true,
+	}
+	shield := &gamectx.EquippedWeapon{
+		ID:       "shield-1",
+		Slot:     "off_hand",
+		IsShield: true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, shield})
+	registry.Add("fighter-1", weapons)
+	registry.AddActionEconomy("fighter-1", combat.NewActionEconomy())
+
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Protection,
+		Roller:      s.mockRoller,
+	})
+
+	err = fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// Attack the FIGHTER themselves (not an ally)
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "enemy-1",
+		TargetID:          "fighter-1", // Attacking self
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// Verify NO disadvantage (can't protect self)
+	s.Empty(finalEvent.DisadvantageSources, "Protection should NOT trigger for attacks on self")
+}
+
+// TestProtectionOnlyMeleeAttacks verifies Protection only triggers on melee attacks
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestProtectionOnlyMeleeAttacks() {
+	ctx := s.ctx
+
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	fighter := &testEntity{id: "fighter-1", kind: "character"}
+	ally := &testEntity{id: "ally-1", kind: "character"}
+
+	err := room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(ally, spatial.Position{X: 6, Y: 5})
+	s.Require().NoError(err)
+
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:      "longsword-1",
+		Slot:    "main_hand",
+		IsMelee: true,
+	}
+	shield := &gamectx.EquippedWeapon{
+		ID:       "shield-1",
+		Slot:     "off_hand",
+		IsShield: true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, shield})
+	registry.Add("fighter-1", weapons)
+	registry.AddActionEconomy("fighter-1", combat.NewActionEconomy())
+
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Protection,
+		Roller:      s.mockRoller,
+	})
+
+	err = fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	// RANGED attack on ally
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "enemy-1",
+		TargetID:          "ally-1",
+		IsMelee:           false, // Ranged attack
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// Verify NO disadvantage (ranged attack)
+	s.Empty(finalEvent.DisadvantageSources, "Protection should NOT trigger for ranged attacks")
+}
+
+// TestProtectionRequiresTargetWithin5ft verifies Protection only triggers for nearby allies
+//
+//nolint:dupl // Test duplication acceptable for clarity
+func (s *FightingStyleTestSuite) TestProtectionRequiresTargetWithin5ft() {
+	ctx := s.ctx
+
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 20, Height: 20})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	// Place fighter at (5,5) and ally at (8,5) - 3 squares away (15ft)
+	fighter := &testEntity{id: "fighter-1", kind: "character"}
+	ally := &testEntity{id: "ally-1", kind: "character"}
+
+	err := room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(ally, spatial.Position{X: 8, Y: 5}) // 3 squares = 15ft
+	s.Require().NoError(err)
+
+	registry := gamectx.NewBasicCharacterRegistry()
+	mainHand := &gamectx.EquippedWeapon{
+		ID:      "longsword-1",
+		Slot:    "main_hand",
+		IsMelee: true,
+	}
+	shield := &gamectx.EquippedWeapon{
+		ID:       "shield-1",
+		Slot:     "off_hand",
+		IsShield: true,
+	}
+	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, shield})
+	registry.Add("fighter-1", weapons)
+	registry.AddActionEconomy("fighter-1", combat.NewActionEconomy())
+
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx = gamectx.WithGameContext(ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+
+	fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+		CharacterID: "fighter-1",
+		Style:       fightingstyles.Protection,
+		Roller:      s.mockRoller,
+	})
+
+	err = fs.Apply(ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() {
+		_ = fs.Remove(ctx, s.bus)
+	}()
+
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "enemy-1",
+		TargetID:          "ally-1",
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// Verify NO disadvantage (ally too far away)
+	s.Empty(finalEvent.DisadvantageSources, "Protection should NOT trigger for allies beyond 5ft")
 }

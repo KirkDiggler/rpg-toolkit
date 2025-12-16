@@ -104,6 +104,15 @@ func (f *FightingStyleCondition) Apply(ctx context.Context, bus events.EventBus)
 		}
 		f.subscriptionIDs = append(f.subscriptionIDs, subID)
 
+	case fightingstyles.Protection:
+		// Subscribe to AttackChain to impose disadvantage on attacks against nearby allies
+		attackChain := dnd5eEvents.AttackChain.On(bus)
+		subID, err := attackChain.SubscribeWithChain(ctx, f.onProtectionAttackChain)
+		if err != nil {
+			return rpgerr.Wrap(err, "failed to subscribe to attack chain for protection")
+		}
+		f.subscriptionIDs = append(f.subscriptionIDs, subID)
+
 	default:
 		// Other fighting styles not yet implemented
 		return rpgerr.Newf(rpgerr.CodeNotAllowed, "fighting style %s not yet implemented", f.Style)
@@ -452,6 +461,94 @@ func (f *FightingStyleCondition) onDefenseACChain(
 	err := c.Add(combat.StageFeatures, "defense", modifyAC)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply defense bonus for character %s", f.CharacterID)
+	}
+
+	return c, nil
+}
+
+// onProtectionAttackChain imposes disadvantage on attacks against nearby allies (Protection fighting style)
+// Requirements:
+// - Attack must target someone OTHER than the Protection user (protecting allies, not self)
+// - Attack must be a melee attack
+// - Target must be within 5ft of the Protection user
+// - Protection user must have a shield equipped
+// - Protection user must have their reaction available
+func (f *FightingStyleCondition) onProtectionAttackChain(
+	ctx context.Context,
+	event dnd5eEvents.AttackChainEvent,
+	c chain.Chain[dnd5eEvents.AttackChainEvent],
+) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+	// Only react to attacks on others (can't protect self)
+	if event.TargetID == f.CharacterID {
+		return c, nil
+	}
+
+	// Only react to melee attacks
+	if !event.IsMelee {
+		return c, nil
+	}
+
+	// Get room for spatial queries
+	room, ok := gamectx.Room(ctx)
+	if !ok {
+		// No room available, can't check distance
+		return c, nil
+	}
+
+	// Get target's position
+	targetPos, exists := room.GetEntityPosition(event.TargetID)
+	if !exists {
+		return c, nil
+	}
+
+	// Get protector's position
+	protectorPos, exists := room.GetEntityPosition(f.CharacterID)
+	if !exists {
+		return c, nil
+	}
+
+	// Check if protector is within 5ft of target (5ft = 1 grid square in D&D 5e)
+	// Using radius of 1.5 to account for adjacent squares including diagonals
+	distance := room.GetGrid().Distance(targetPos, protectorPos)
+	if distance > 1.5 {
+		return c, nil
+	}
+
+	// Check if shield is equipped
+	registry, ok := gamectx.Characters(ctx)
+	if !ok {
+		return c, nil
+	}
+
+	weapons := registry.GetCharacterWeapons(f.CharacterID)
+	if weapons == nil || !weapons.HasShield() {
+		return c, nil
+	}
+
+	// Check if reaction is available
+	actionEconomy := registry.GetCharacterActionEconomy(f.CharacterID)
+	if actionEconomy == nil || !actionEconomy.CanUseReaction() {
+		return c, nil
+	}
+
+	// All conditions met - impose disadvantage and consume reaction
+	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
+			SourceRef: refs.FightingStyles.Protection(),
+			SourceID:  f.CharacterID,
+			Reason:    "Protection fighting style reaction",
+		})
+		e.ReactionsConsumed = append(e.ReactionsConsumed, dnd5eEvents.ReactionConsumption{
+			CharacterID: f.CharacterID,
+			FeatureRef:  refs.FightingStyles.Protection(),
+			Reason:      "Imposed disadvantage on attack against nearby ally",
+		})
+		return e, nil
+	}
+
+	err := c.Add(combat.StageFeatures, "protection", modifyAttack)
+	if err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply protection for character %s", f.CharacterID)
 	}
 
 	return c, nil
