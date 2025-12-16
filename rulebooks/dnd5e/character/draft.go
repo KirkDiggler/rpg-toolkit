@@ -351,6 +351,25 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 		})
 	}
 
+	// Record tool proficiency choices (for Monk, Bard, etc.)
+	if len(input.Choices.Tools) > 0 {
+		var choiceID choices.ChoiceID
+		if requirements.Tools != nil {
+			choiceID = requirements.Tools.ID
+		}
+		// Convert shared.SelectionID to proficiencies.Tool
+		toolSelection := make([]proficiencies.Tool, len(input.Choices.Tools))
+		for i, t := range input.Choices.Tools {
+			toolSelection[i] = proficiencies.Tool(t)
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:      shared.ChoiceToolProficiency,
+			Source:        shared.SourceClass,
+			ChoiceID:      choiceID,
+			ToolSelection: toolSelection,
+		})
+	}
+
 	// Record equipment choices
 	if err := d.recordEquipmentChoices(input.Choices.Equipment, requirements); err != nil {
 		return err
@@ -616,6 +635,19 @@ func (d *Draft) ValidateChoices() error {
 					Source:   choice.Source,
 					ChoiceID: choice.ChoiceID,
 					Values:   langValues,
+				})
+			}
+		case shared.ChoiceToolProficiency:
+			if len(choice.ToolSelection) > 0 {
+				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
+				for i, t := range choice.ToolSelection {
+					toolValues[i] = shared.SelectionID(t)
+				}
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceToolProficiency,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   toolValues,
 				})
 			}
 		}
@@ -1090,6 +1122,20 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 					Source:   shared.SourceClass,
 					ChoiceID: choices.FighterFightingStyle, // Would need mapping for other classes
 					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
+				})
+			}
+
+			// Handle tool proficiency choices
+			if len(choice.ToolSelection) > 0 {
+				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
+				for i, t := range choice.ToolSelection {
+					toolValues[i] = shared.SelectionID(t)
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceToolProficiency,
+					Source:   shared.SourceClass,
+					ChoiceID: choice.ChoiceID,
+					Values:   toolValues,
 				})
 			}
 
