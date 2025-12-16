@@ -6,7 +6,9 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -269,4 +271,128 @@ func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
 
 func TestCharacterResourceSuite(t *testing.T) {
 	suite.Run(t, new(CharacterResourceTestSuite))
+}
+
+// CharacterSavingThrowTestSuite tests saving throw functionality
+type CharacterSavingThrowTestSuite struct {
+	suite.Suite
+	ctx context.Context
+}
+
+func (s *CharacterSavingThrowTestSuite) SetupTest() {
+	s.ctx = context.Background()
+}
+
+func (s *CharacterSavingThrowTestSuite) createTestCharacter(
+	abilityScores map[string]int, proficientSaves []string,
+) *Character {
+	// Build ability scores
+	scores := make(shared.AbilityScores)
+	for ability, score := range abilityScores {
+		switch ability {
+		case "str":
+			scores[abilities.STR] = score
+		case "dex":
+			scores[abilities.DEX] = score
+		case "con":
+			scores[abilities.CON] = score
+		case "int":
+			scores[abilities.INT] = score
+		case "wis":
+			scores[abilities.WIS] = score
+		case "cha":
+			scores[abilities.CHA] = score
+		}
+	}
+
+	// Build saving throw proficiencies
+	savingThrows := make(map[abilities.Ability]shared.ProficiencyLevel)
+	for _, save := range proficientSaves {
+		switch save {
+		case "str":
+			savingThrows[abilities.STR] = shared.Proficient
+		case "dex":
+			savingThrows[abilities.DEX] = shared.Proficient
+		case "con":
+			savingThrows[abilities.CON] = shared.Proficient
+		case "int":
+			savingThrows[abilities.INT] = shared.Proficient
+		case "wis":
+			savingThrows[abilities.WIS] = shared.Proficient
+		case "cha":
+			savingThrows[abilities.CHA] = shared.Proficient
+		}
+	}
+
+	return &Character{
+		id:               "test-char",
+		level:            1,
+		proficiencyBonus: 2, // Level 1 proficiency bonus
+		abilityScores:    scores,
+		savingThrows:     savingThrows,
+	}
+}
+
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowWithProficiency() {
+	// Create a character with 14 CON (+2 modifier) and proficiency in CON saves
+	char := s.createTestCharacter(
+		map[string]int{"con": 14},
+		[]string{"con"},
+	)
+
+	// Make a saving throw - the character calculates modifier automatically
+	// We're not mocking the roller, so we just verify the modifier was applied correctly
+	// by checking GetSavingThrowModifier
+	modifier := char.GetSavingThrowModifier(abilities.CON)
+	s.Equal(4, modifier, "should be +2 (ability) + 2 (proficiency) = +4")
+}
+
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowWithoutProficiency() {
+	// Create a character with 14 DEX (+2 modifier) but NOT proficient in DEX saves
+	char := s.createTestCharacter(
+		map[string]int{"dex": 14},
+		[]string{}, // No proficiencies
+	)
+
+	modifier := char.GetSavingThrowModifier(abilities.DEX)
+	s.Equal(2, modifier, "should be +2 (ability only, no proficiency)")
+}
+
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowNegativeModifier() {
+	// Create a character with 8 INT (-1 modifier)
+	char := s.createTestCharacter(
+		map[string]int{"int": 8},
+		[]string{},
+	)
+
+	modifier := char.GetSavingThrowModifier(abilities.INT)
+	s.Equal(-1, modifier, "should be -1 (8 INT = -1 modifier)")
+}
+
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
+	// Verify the MakeSavingThrow function works end-to-end
+	char := s.createTestCharacter(
+		map[string]int{"wis": 16}, // +3 modifier
+		[]string{"wis"},           // Proficient
+	)
+
+	// Make a saving throw against DC 15
+	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
+		Ability: abilities.WIS,
+		DC:      15,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	// Result should have DC set correctly
+	s.Equal(15, result.DC)
+
+	// Total should be roll + 5 (+3 ability + 2 proficiency)
+	expectedTotal := result.Roll + 5
+	s.Equal(expectedTotal, result.Total, "total should be roll + modifier")
+}
+
+func TestCharacterSavingThrowSuite(t *testing.T) {
+	suite.Run(t, new(CharacterSavingThrowTestSuite))
 }

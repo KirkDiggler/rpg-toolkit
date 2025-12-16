@@ -1,164 +1,46 @@
 {
   "tests": [
     {
-      "id": "melee-action",
-      "feature": "actions",
-      "issue": "#446",
-      "prompt": "Create a monster with a melee action (e.g., shortsword). Verify it can attack an adjacent target and deal damage.",
-      "passes": false,
-      "last_checked": null
+      "id": "types-defined",
+      "feature": "saving-throws",
+      "prompt": "SavingThrowInput and SavingThrowResult types exist in rulebooks/dnd5e/saves/ with all required fields",
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
-      "id": "ranged-action",
-      "feature": "actions",
-      "issue": "#446",
-      "prompt": "Create a monster with a ranged action (e.g., shortbow). Verify it can attack a distant target within range.",
-      "passes": false,
-      "last_checked": null
+      "id": "basic-success-failure",
+      "feature": "saving-throws",
+      "prompt": "A roll of 10 with +3 modifier succeeds against DC 13 (10+3=13 >= 13). A roll of 9 with +3 fails against DC 13.",
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
-      "id": "multiattack-action",
-      "feature": "actions",
-      "issue": "#446",
-      "prompt": "Create a boss monster with multiattack. Verify it makes multiple attacks in one turn.",
-      "passes": false,
-      "last_checked": null
+      "id": "advantage-rolls-higher",
+      "feature": "saving-throws",
+      "prompt": "With advantage, MakeSavingThrow rolls two dice and uses the higher result",
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
-      "id": "bite-knockdown",
-      "feature": "actions",
-      "issue": "#446",
-      "prompt": "Create a wolf with bite attack. Verify bite can knock target prone on failed STR save.",
-      "passes": false,
-      "last_checked": null
+      "id": "disadvantage-rolls-lower",
+      "feature": "saving-throws",
+      "prompt": "With disadvantage, MakeSavingThrow rolls two dice and uses the lower result",
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
-      "id": "targeting-closest",
-      "feature": "targeting",
-      "issue": "#447",
-      "prompt": "Monster with TargetClosest selects the nearest enemy.",
-      "passes": false,
-      "last_checked": null
+      "id": "natural-1-20-detected",
+      "feature": "saving-throws",
+      "prompt": "IsNat1 is true when roll is 1, IsNat20 is true when roll is 20, regardless of success/failure",
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
-      "id": "targeting-lowest-hp",
-      "feature": "targeting",
-      "issue": "#447",
-      "prompt": "Monster with TargetLowestHP selects the enemy with lowest current HP.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "targeting-lowest-ac",
-      "feature": "targeting",
-      "issue": "#447",
-      "prompt": "Monster with TargetLowestAC selects the enemy with lowest AC.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "pack-tactics",
-      "feature": "monstertraits",
-      "issue": "#448",
-      "prompt": "Monster with Pack Tactics gains advantage when ally is adjacent to target.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "undead-fortitude",
-      "feature": "monstertraits",
-      "issue": "#448",
-      "prompt": "Zombie with Undead Fortitude can make CON save to stay at 1 HP when dropped to 0.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "vulnerability",
-      "feature": "monstertraits",
-      "issue": "#448",
-      "prompt": "Skeleton takes double damage from bludgeoning attacks.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "immunity",
-      "feature": "monstertraits",
-      "issue": "#448",
-      "prompt": "Skeleton takes no damage from poison attacks.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-skeleton",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewSkeleton() creates a CR 1/4 skeleton with shortsword, vulnerability to bludgeoning, immunity to poison.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-zombie",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewZombie() creates a CR 1/4 zombie with slam attack and Undead Fortitude.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-ghoul",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewGhoul() creates a CR 1 ghoul with multiattack (bite + claws) and paralyzing touch.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-giant-rat",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewGiantRat() creates a CR 1/8 giant rat with bite and Pack Tactics.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-wolf",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewWolf() creates a CR 1/4 wolf with bite (knockdown), Pack Tactics, TargetLowestHP.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-brown-bear",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewBrownBear() creates a CR 1 brown bear with multiattack (bite + claws).",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-bandit-melee",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewBanditMelee() creates a CR 1/8 bandit with scimitar.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-bandit-ranged",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewBanditRanged() creates a CR 1/8 bandit with light crossbow.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "monster-thug",
-      "feature": "monsters",
-      "issue": "#449",
-      "prompt": "NewThug() creates a CR 1 thug with multiattack and Pack Tactics.",
-      "passes": false,
-      "last_checked": null
+      "id": "unit-tests-pass",
+      "feature": "saving-throws",
+      "prompt": "All unit tests in rulebooks/dnd5e/saves/ pass with go test",
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     }
   ]
 }

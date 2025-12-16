@@ -1,82 +1,31 @@
 {
-  "branch": "feature/issue-425-monster-additions",
-  "issues": ["#425", "#446", "#447", "#448", "#449"],
-  "goal": "Add monsters for 3 dungeon themes (crypt, cave, bandit lair) using factory functions with shared actions and conditions",
+  "branch": "feature/saving-throws-462",
+  "issues": ["#462"],
+  "goal": "Implement saving throw mechanics as a core D&D 5e feature - d20 + modifier vs DC with advantage/disadvantage support",
   "sessions": [
     {
       "date": "2025-12-16",
-      "commit": "f89782c",
-      "completed": "#446",
-      "summary": "Implemented generic monster actions in monster/actions/ subdirectory",
-      "details": [
-        "Created MeleeAction with configurable reach, damage dice, and damage type",
-        "Created RangedAction with normal/long range and disadvantage scoring when adjacent",
-        "Created MultiattackAction for boss monsters to chain multiple attacks",
-        "Created BiteAction with knockdown effect (STR save or prone)",
-        "Added LoadMonsterActions helper to resolve import cycle issues",
-        "Moved action loader from parent package to actions/loader.go",
-        "Added integration tests for action serialization/deserialization",
-        "Updated refs/monster_actions.go with new action refs",
-        "All tests pass with full TDD coverage"
-      ]
-    },
-    {
-      "date": "2025-12-16",
-      "commit": "bd517b8",
-      "completed": "#447",
-      "summary": "Implemented targeting strategies for monster AI decision-making",
-      "details": [
-        "Created TargetingStrategy enum: TargetClosest, TargetLowestHP, TargetLowestAC",
-        "Extended PerceivedEntity with HP and AC fields for strategy decisions",
-        "Refactored selectTarget() to apply strategies via selectTargetByStrategy()",
-        "Added SetTargeting() and Targeting() methods to Monster struct",
-        "Integrated targeting into Data serialization (ToData/LoadFromData)",
-        "Created comprehensive targeting_test.go with testify suite",
-        "Tests cover all three strategies, edge cases, and serialization",
-        "All 9 targeting tests pass, all existing tests still pass"
-      ]
-    },
-    {
-      "date": "2025-12-16",
-      "commit": "faed125",
-      "completed": "#448",
-      "summary": "Implemented monster traits package with passive combat behaviors",
-      "details": [
-        "Created monstertraits/ package as sibling to conditions/ (avoids import cycles)",
-        "Implemented Immunity trait: reduces specific damage type to 0 in StageFinal",
-        "Implemented Vulnerability trait: doubles specific damage type in StageFinal",
-        "Implemented Undead Fortitude trait: CON save to stay at 1 HP when dropped to 0",
-        "Implemented Pack Tactics trait: framework for advantage when ally adjacent",
-        "All traits implement ConditionBehavior interface from events package",
-        "Added refs/monster_traits.go with namespace pattern (Immunity, Vulnerability, etc.)",
-        "Added TypeMonsterTraits constant to refs/module.go",
-        "Created loader.go for JSON deserialization routing by ref ID",
-        "All traits include comprehensive TDD test coverage using testify suites",
-        "Pack Tactics is placeholder - full spatial logic deferred until spatial integration",
-        "All tests pass (immunity, vulnerability, undead fortitude, pack tactics)"
-      ]
-    },
-    {
-      "date": "2025-12-16",
-      "commit": "e517caa",
-      "completed": "#449",
-      "summary": "Created 9 monster factories for dungeon themes using shared actions and traits",
-      "details": [
-        "Created monster/monsters/ subdirectory for factory functions",
-        "Added SetSpeed() method to Monster struct for external factory use",
-        "Crypt Theme: Skeleton (shortsword + shortbow, vulnerability + immunity), Zombie (slam, Undead Fortitude), Ghoul (multiattack bite + claws)",
-        "Cave Theme: Giant Rat (bite, Pack Tactics), Wolf (bite with knockdown, Pack Tactics, TargetLowestHP), Brown Bear (multiattack bite + claws, climb speed)",
-        "Bandit Theme: Bandit melee (scimitar), Bandit ranged (light crossbow), Thug (multiattack 2x mace, Pack Tactics)",
-        "All factories use actions from monster/actions/ (MeleeAction, RangedAction, BiteAction, MultiattackAction)",
-        "Monsters configured with correct CR, HP, AC, ability scores, and speeds per D&D 5e SRD",
-        "Comprehensive test coverage: 8 test suites with 24 tests for factory functions",
-        "All 67 tests pass across entire monster package (monster/, monster/actions/, monster/monsters/)",
-        "Traits (Pack Tactics, Undead Fortitude, Vulnerability, Immunity) noted but applied later when loaded into combat",
-        "Follows established pattern: factories create base monsters, traits applied via LoadFromData with event bus"
-      ]
+      "summary": "Implemented complete saving throw mechanics following TDD approach",
+      "completed": [
+        "Created rulebooks/dnd5e/saves/ package",
+        "Implemented SavingThrowInput struct with Ability, DC, Modifier, HasAdvantage, HasDisadvantage",
+        "Implemented SavingThrowResult struct with Roll, Total, DC, Success, IsNat1, IsNat20",
+        "Implemented MakeSavingThrow function with full advantage/disadvantage logic",
+        "Added D&D 5e rule: advantage and disadvantage cancel each other",
+        "Wrote 11 comprehensive test cases using testify suite pattern",
+        "All tests passing with mock dice roller",
+        "Fixed linter issues (switch statement, renamed max/min to maxInt/minInt)",
+        "Updated tests.json to mark all tests as passing",
+        "Committed changes: 79cb98b"
+      ],
+      "tests_passing": "11/11",
+      "linter_issues": "0",
+      "commit": "79cb98b"
     }
   ],
   "next_steps": [
-    "All issues (#446-#449) complete for feature branch feature/issue-425-monster-additions"
+    "Feature implementation complete - ready for review",
+    "Consider integration with character sheet for saving throw proficiencies",
+    "Consider event system integration for modifiers from conditions/features"
   ]
 }
