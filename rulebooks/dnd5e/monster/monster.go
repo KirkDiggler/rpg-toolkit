@@ -164,6 +164,11 @@ func (m *Monster) Speed() SpeedData {
 	return m.speed
 }
 
+// SetSpeed sets the monster's movement speeds
+func (m *Monster) SetSpeed(speed SpeedData) {
+	m.speed = speed
+}
+
 // Senses returns the monster's sensory capabilities
 func (m *Monster) Senses() SensesData {
 	return m.senses
