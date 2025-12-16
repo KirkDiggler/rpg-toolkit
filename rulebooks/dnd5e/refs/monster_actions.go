@@ -13,6 +13,12 @@ var (
 	monsterActionShortbow              = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "shortbow"}
 	monsterActionNimbleEscapeDisengage = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "nimble_escape_disengage"}
 	monsterActionNimbleEscapeHide      = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "nimble_escape_hide"}
+
+	// Generic actions
+	monsterActionMelee       = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "melee"}
+	monsterActionRanged      = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "ranged"}
+	monsterActionMultiattack = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "multiattack"}
+	monsterActionBite        = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "bite"}
 )
 
 // MonsterActions provides type-safe, discoverable references to D&D 5e monster actions.
@@ -35,3 +41,15 @@ func (n monsterActionsNS) NimbleEscapeDisengage() *core.Ref {
 
 // NimbleEscapeHide returns the ref for the Nimble Escape (Hide) action
 func (n monsterActionsNS) NimbleEscapeHide() *core.Ref { return monsterActionNimbleEscapeHide }
+
+// Melee returns the ref for a generic melee attack
+func (n monsterActionsNS) Melee() *core.Ref { return monsterActionMelee }
+
+// Ranged returns the ref for a generic ranged attack
+func (n monsterActionsNS) Ranged() *core.Ref { return monsterActionRanged }
+
+// Multiattack returns the ref for a multiattack action
+func (n monsterActionsNS) Multiattack() *core.Ref { return monsterActionMultiattack }
+
+// Bite returns the ref for a bite attack with knockdown
+func (n monsterActionsNS) Bite() *core.Ref { return monsterActionBite }

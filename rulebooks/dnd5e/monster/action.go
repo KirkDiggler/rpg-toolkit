@@ -81,6 +81,8 @@ type PerceivedEntity struct {
 	Position Position
 	Distance int  // Distance in feet
 	Adjacent bool // Within 5 feet
+	HP       int  // Current hit points (for TargetLowestHP strategy)
+	AC       int  // Armor class (for TargetLowestAC strategy)
 }
 
 // HasAdjacentEnemy returns true if any enemy is within melee range

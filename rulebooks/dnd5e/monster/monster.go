@@ -40,6 +40,9 @@ type Monster struct {
 	// Proficiencies
 	proficiencies map[string]int // skill -> bonus
 
+	// AI behavior
+	targeting TargetingStrategy
+
 	// Event bus wiring
 	bus             events.EventBus
 	subscriptionIDs []string
@@ -161,6 +164,11 @@ func (m *Monster) Speed() SpeedData {
 	return m.speed
 }
 
+// SetSpeed sets the monster's movement speeds
+func (m *Monster) SetSpeed(speed SpeedData) {
+	m.speed = speed
+}
+
 // Senses returns the monster's sensory capabilities
 func (m *Monster) Senses() SensesData {
 	return m.senses
@@ -199,21 +207,21 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, 
 		abilityScores:   d.AbilityScores,
 		speed:           d.Speed,
 		senses:          d.Senses,
+		targeting:       d.Targeting,
 		bus:             bus,
 		subscriptionIDs: make([]string, 0),
 		actions:         make([]MonsterAction, 0, len(d.Actions)),
 		proficiencies:   make(map[string]int),
 	}
 
-	// Load actions (convert from data to runtime)
-	for _, actionData := range d.Actions {
-		action, err := LoadAction(actionData)
-		if err != nil {
-			// Skip invalid actions but continue loading
-			continue
-		}
-		m.actions = append(m.actions, action)
-	}
+	// Actions must be loaded by the caller to avoid import cycles.
+	// The monster package cannot import monster/actions because actions imports monster.
+	// Use LoadMonsterActions helper to load actions after creating the monster.
+	// Example:
+	//   monster, err := LoadFromData(ctx, data, bus)
+	//   if err := LoadMonsterActions(monster, data.Actions); err != nil {
+	//       // handle error
+	//   }
 
 	// Load proficiencies
 	for _, prof := range d.Proficiencies {
@@ -398,30 +406,69 @@ func (m *Monster) canAfford(economy *combat.ActionEconomy, cost ActionCost) bool
 	}
 }
 
-// selectTarget picks an appropriate target based on action type
+// selectTarget picks an appropriate target based on action type and targeting strategy
 func (m *Monster) selectTarget(action MonsterAction, perception *PerceptionData) core.Entity {
 	switch action.ActionType() {
 	case TypeMeleeAttack:
-		// Closest enemy for melee
-		if len(perception.Enemies) > 0 {
-			return perception.Enemies[0].Entity
-		}
+		return m.selectTargetByStrategy(perception.Enemies)
 	case TypeRangedAttack:
-		// Closest enemy not adjacent (to avoid disadvantage)
+		// For ranged attacks, prefer non-adjacent enemies (to avoid disadvantage)
+		nonAdjacent := make([]PerceivedEntity, 0)
 		for _, e := range perception.Enemies {
 			if !e.Adjacent {
-				return e.Entity
+				nonAdjacent = append(nonAdjacent, e)
 			}
 		}
-		// Fall back to closest
-		if len(perception.Enemies) > 0 {
-			return perception.Enemies[0].Entity
+		// If we have non-adjacent enemies, pick from those
+		if len(nonAdjacent) > 0 {
+			return m.selectTargetByStrategy(nonAdjacent)
 		}
+		// Otherwise fall back to all enemies (including adjacent)
+		return m.selectTargetByStrategy(perception.Enemies)
 	case TypeHeal:
 		// Self
 		return m
 	}
 	return nil
+}
+
+// selectTargetByStrategy applies the monster's targeting strategy to select from available enemies
+func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity {
+	if len(enemies) == 0 {
+		return nil
+	}
+
+	switch m.targeting {
+	case TargetLowestHP:
+		// Find enemy with lowest HP
+		lowestIdx := 0
+		lowestHP := enemies[0].HP
+		for i, e := range enemies {
+			if e.HP < lowestHP {
+				lowestHP = e.HP
+				lowestIdx = i
+			}
+		}
+		return enemies[lowestIdx].Entity
+
+	case TargetLowestAC:
+		// Find enemy with lowest AC
+		lowestIdx := 0
+		lowestAC := enemies[0].AC
+		for i, e := range enemies {
+			if e.AC < lowestAC {
+				lowestAC = e.AC
+				lowestIdx = i
+			}
+		}
+		return enemies[lowestIdx].Entity
+
+	case TargetClosest:
+		fallthrough
+	default:
+		// Default behavior: pick closest (first in list, as Enemies is sorted by distance)
+		return enemies[0].Entity
+	}
 }
 
 // moveTowardEnemy moves the monster toward the closest enemy if not already adjacent.
@@ -522,6 +569,7 @@ func (m *Monster) ToData() *Data {
 		AbilityScores: m.abilityScores,
 		Speed:         m.speed,
 		Senses:        m.senses,
+		Targeting:     m.targeting,
 		Actions:       make([]ActionData, 0, len(m.actions)),
 		Proficiencies: make([]ProficiencyData, 0, len(m.proficiencies)),
 	}

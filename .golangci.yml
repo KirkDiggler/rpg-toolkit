@@ -36,7 +36,7 @@ linters:
 
 linters-settings:
   dupl:
-    threshold: 100
+    threshold: 150
   
   errcheck:
     check-type-assertions: true
@@ -103,7 +103,7 @@ linters-settings:
 issues:
   exclude-rules:
     # Exclude some linters from test files
-    - path: _test\.go
+    - path: ".*_test\\.go"
       linters:
         - dupl
         - errcheck

@@ -46,6 +46,9 @@ type Data struct {
 
 	// Proficiencies (for skill checks like Stealth)
 	Proficiencies []ProficiencyData `json:"proficiencies,omitempty"`
+
+	// AI behavior
+	Targeting TargetingStrategy `json:"targeting,omitempty"`
 }
 
 // SpeedData represents monster movement speeds in feet
