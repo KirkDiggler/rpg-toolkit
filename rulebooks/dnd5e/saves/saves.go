@@ -10,6 +10,10 @@ import (
 
 // SavingThrowInput contains all parameters needed to make a saving throw
 type SavingThrowInput struct {
+	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
+	// Pass a mock roller here for testing.
+	Roller dice.Roller
+
 	// Ability is the ability score being tested (STR, DEX, CON, INT, WIS, CHA)
 	Ability abilities.Ability
 
@@ -52,7 +56,7 @@ type SavingThrowResult struct {
 	IsNat20 bool
 }
 
-// MakeSavingThrow executes a saving throw using the provided roller and input parameters
+// MakeSavingThrow executes a saving throw using the input parameters
 //
 // The function handles:
 //   - Normal rolls (single d20)
@@ -61,8 +65,14 @@ type SavingThrowResult struct {
 //   - Advantage + Disadvantage cancellation (single d20)
 //   - Natural 1 and natural 20 detection
 //
+// If input.Roller is nil, a default CryptoRoller is used.
 // Returns an error if the dice roller fails.
-func MakeSavingThrow(ctx context.Context, roller dice.Roller, input *SavingThrowInput) (*SavingThrowResult, error) {
+func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrowResult, error) {
+	roller := input.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
+
 	var roll int
 	var err error
 

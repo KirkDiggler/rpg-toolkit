@@ -38,12 +38,13 @@ func (s *SavingThrowTestSuite) TestBasicSuccess() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(10, nil)
 
 	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
 		Ability:  abilities.CON,
 		DC:       13,
 		Modifier: 3,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -61,12 +62,13 @@ func (s *SavingThrowTestSuite) TestBasicFailure() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(9, nil)
 
 	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
 		Ability:  abilities.CON,
 		DC:       13,
 		Modifier: 3,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -84,13 +86,14 @@ func (s *SavingThrowTestSuite) TestAdvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
 
 	input := &SavingThrowInput{
+		Roller:       s.mockRoller,
 		Ability:      abilities.WIS,
 		DC:           12,
 		Modifier:     2,
 		HasAdvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -108,13 +111,14 @@ func (s *SavingThrowTestSuite) TestDisadvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
 
 	input := &SavingThrowInput{
+		Roller:          s.mockRoller,
 		Ability:         abilities.DEX,
 		DC:              15,
 		Modifier:        4,
 		HasDisadvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -132,12 +136,13 @@ func (s *SavingThrowTestSuite) TestNatural1() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(1, nil)
 
 	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
 		Ability:  abilities.STR,
 		DC:       5,
 		Modifier: 10, // Even with a huge modifier, nat 1 is still detected
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -155,12 +160,13 @@ func (s *SavingThrowTestSuite) TestNatural20() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil)
 
 	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
 		Ability:  abilities.INT,
 		DC:       30,
 		Modifier: -2, // Even with a negative modifier, nat 20 is still detected
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -178,13 +184,14 @@ func (s *SavingThrowTestSuite) TestNatural20WithAdvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{12, 20}, nil)
 
 	input := &SavingThrowInput{
+		Roller:       s.mockRoller,
 		Ability:      abilities.CHA,
 		DC:           15,
 		Modifier:     1,
 		HasAdvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -201,13 +208,14 @@ func (s *SavingThrowTestSuite) TestNatural1WithDisadvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{15, 1}, nil)
 
 	input := &SavingThrowInput{
+		Roller:          s.mockRoller,
 		Ability:         abilities.CON,
 		DC:              10,
 		Modifier:        3,
 		HasDisadvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -223,12 +231,13 @@ func (s *SavingThrowTestSuite) TestNegativeModifier() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(12, nil)
 
 	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
 		Ability:  abilities.INT,
 		DC:       10,
 		Modifier: -2,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -243,12 +252,13 @@ func (s *SavingThrowTestSuite) TestZeroModifier() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(14, nil)
 
 	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
 		Ability:  abilities.WIS,
 		DC:       14,
 		Modifier: 0,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -264,6 +274,7 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(11, nil)
 
 	input := &SavingThrowInput{
+		Roller:          s.mockRoller,
 		Ability:         abilities.DEX,
 		DC:              15,
 		Modifier:        2,
@@ -271,7 +282,7 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 		HasDisadvantage: true,
 	}
 
-	result, err := MakeSavingThrow(s.ctx, s.mockRoller, input)
+	result, err := MakeSavingThrow(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
