@@ -45,6 +45,7 @@ type ClassChoices struct {
 	Cantrips      []spells.Spell               `json:"cantrips,omitempty"`
 	Spells        []spells.Spell               `json:"spells,omitempty"`
 	Equipment     []EquipmentChoiceSelection   `json:"equipment,omitempty"`
+	Tools         []shared.SelectionID         `json:"tools,omitempty"` // Tool proficiency choices (Monk, Bard)
 }
 
 // EquipmentChoiceSelection represents a player's choice for an equipment requirement

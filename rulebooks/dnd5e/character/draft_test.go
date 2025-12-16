@@ -1135,3 +1135,146 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 func TestClassChangeTestSuite(t *testing.T) {
 	suite.Run(t, new(ClassChangeTestSuite))
 }
+
+// MonkToolProficiencyTestSuite tests Monk tool proficiency choices (issue #439)
+type MonkToolProficiencyTestSuite struct {
+	suite.Suite
+	ctx context.Context
+	bus events.EventBus
+}
+
+// SetupTest runs before each test function
+func (s *MonkToolProficiencyTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+}
+
+// Test #439: Monk can choose tool proficiency
+func (s *MonkToolProficiencyTestSuite) TestMonkToolProficiencyChoice() {
+	// Create a draft
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "monk-tool-test",
+		PlayerID: "player-001",
+	})
+
+	// Set basic required fields
+	err := draft.SetName(&character.SetNameInput{Name: "Test Monk"})
+	s.Require().NoError(err)
+
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 14,
+			abilities.CHA: 8,
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Hermit,
+	})
+	s.Require().NoError(err)
+
+	// Set Monk class WITH tool proficiency choice
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Monk,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			Tools:  []shared.SelectionID{"brewers-supplies"}, // Monk chooses 1 artisan tool or instrument
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+		},
+	})
+	s.Require().NoError(err, "SetClass should accept tool proficiency choice")
+
+	// Verify the choice was recorded
+	draftChoices := draft.Choices()
+	foundToolChoice := false
+	for _, choice := range draftChoices {
+		if choice.Category == shared.ChoiceToolProficiency {
+			foundToolChoice = true
+			s.Require().Len(choice.ToolSelection, 1, "Should have 1 tool selected")
+			s.Equal("brewers-supplies", string(choice.ToolSelection[0]))
+		}
+	}
+	s.True(foundToolChoice, "Should have tool proficiency choice recorded")
+
+	// Validate that the draft is complete with tool choice
+	err = draft.ValidateChoices()
+	s.NoError(err, "ValidateChoices should pass with tool proficiency")
+}
+
+// Test #439: Monk without tool choice fails validation
+func (s *MonkToolProficiencyTestSuite) TestMonkWithoutToolProficiency_FailsValidation() {
+	// Create a draft
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "monk-no-tool-test",
+		PlayerID: "player-001",
+	})
+
+	// Set basic required fields
+	err := draft.SetName(&character.SetNameInput{Name: "Test Monk"})
+	s.Require().NoError(err)
+
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 14,
+			abilities.CHA: 8,
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Hermit,
+	})
+	s.Require().NoError(err)
+
+	// Set Monk class WITHOUT tool proficiency choice
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Monk,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			// No Tools - this should cause validation to fail
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+		},
+	})
+	s.Require().NoError(err)
+
+	// Validate should fail because tool choice is missing
+	err = draft.ValidateChoices()
+	s.Error(err, "ValidateChoices should fail without tool proficiency")
+	s.Contains(err.Error(), "tool", "Error should mention missing tool choice")
+}
+
+// TestMonkToolProficiencyTestSuite runs the Monk tool proficiency test suite
+func TestMonkToolProficiencyTestSuite(t *testing.T) {
+	suite.Run(t, new(MonkToolProficiencyTestSuite))
+}
