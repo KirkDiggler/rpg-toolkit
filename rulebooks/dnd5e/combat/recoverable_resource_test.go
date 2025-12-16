@@ -322,3 +322,105 @@ func (s *RecoverableResourceTestSuite) TestResourceFunctionality() {
 		s.True(s.resource.IsFull())
 	})
 }
+
+// halfRecoveryFunc is a test recovery function that restores half of maximum (min 1)
+func halfRecoveryFunc(r *RecoverableResource) {
+	amount := r.Maximum() / 2
+	if amount < 1 {
+		amount = 1
+	}
+	r.Restore(amount)
+}
+
+func (s *RecoverableResourceTestSuite) TestCustomRecoveryFunc() {
+	s.Run("uses custom recovery function instead of RestoreToFull", func() {
+		resource := NewRecoverableResource(RecoverableResourceConfig{
+			ID:           "hit-dice",
+			Maximum:      8, // Level 8 character
+			CharacterID:  "char-1",
+			ResetType:    coreResources.ResetLongRest,
+			RecoveryFunc: halfRecoveryFunc,
+		})
+
+		// Apply to subscribe to events
+		err := resource.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+
+		// Use all hit dice
+		err = resource.Use(8)
+		s.Require().NoError(err)
+		s.Equal(0, resource.Current())
+
+		// Publish long rest event
+		rests := dnd5eEvents.RestTopic.On(s.bus)
+		err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+			RestType:    coreResources.ResetLongRest,
+			CharacterID: "char-1",
+		})
+		s.Require().NoError(err)
+
+		// Should recover half (4), not full (8)
+		s.Equal(4, resource.Current(), "should recover half of maximum on long rest")
+	})
+
+	s.Run("custom recovery respects minimum of 1", func() {
+		resource := NewRecoverableResource(RecoverableResourceConfig{
+			ID:           "hit-dice",
+			Maximum:      1, // Level 1 character
+			CharacterID:  "char-1",
+			ResetType:    coreResources.ResetLongRest,
+			RecoveryFunc: halfRecoveryFunc,
+		})
+
+		// Apply to subscribe to events
+		err := resource.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+
+		// Use the one hit die
+		err = resource.Use(1)
+		s.Require().NoError(err)
+		s.Equal(0, resource.Current())
+
+		// Publish long rest event
+		rests := dnd5eEvents.RestTopic.On(s.bus)
+		err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+			RestType:    coreResources.ResetLongRest,
+			CharacterID: "char-1",
+		})
+		s.Require().NoError(err)
+
+		// Should recover 1 (minimum), not 0 (half of 1 rounded down)
+		s.Equal(1, resource.Current(), "should recover minimum of 1 on long rest")
+	})
+
+	s.Run("nil recovery func defaults to RestoreToFull", func() {
+		// Create resource without custom recovery (existing behavior)
+		resource := NewRecoverableResource(RecoverableResourceConfig{
+			ID:          "spell-slots",
+			Maximum:     4,
+			CharacterID: "char-1",
+			ResetType:   coreResources.ResetLongRest,
+			// No RecoveryFunc - should default to RestoreToFull
+		})
+
+		// Apply to subscribe to events
+		err := resource.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+
+		// Use all spell slots
+		err = resource.Use(4)
+		s.Require().NoError(err)
+		s.Equal(0, resource.Current())
+
+		// Publish long rest event
+		rests := dnd5eEvents.RestTopic.On(s.bus)
+		err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+			RestType:    coreResources.ResetLongRest,
+			CharacterID: "char-1",
+		})
+		s.Require().NoError(err)
+
+		// Should recover full (4) - default behavior
+		s.Equal(4, resource.Current(), "should recover to full when no custom recovery func")
+	})
+}

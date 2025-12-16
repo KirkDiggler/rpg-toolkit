@@ -22,6 +22,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -258,6 +259,105 @@ func (c *Character) GetDeathSaveState() *saves.DeathSaveState {
 		return &saves.DeathSaveState{}
 	}
 	return c.deathSaveState
+}
+
+// SpendHitDiceInput contains parameters for spending hit dice during a short rest
+type SpendHitDiceInput struct {
+	// Count is the number of hit dice to spend (must be >= 1)
+	Count int
+
+	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
+	Roller dice.Roller
+}
+
+// SpendHitDiceOutput contains the result of spending hit dice
+type SpendHitDiceOutput struct {
+	// DiceSpent is the number of hit dice that were spent
+	DiceSpent int
+
+	// Rolls is the individual die roll results
+	Rolls []int
+
+	// CONModifier is the Constitution modifier applied per die
+	CONModifier int
+
+	// TotalHealing is the total HP healed (sum of rolls + CON mod per die)
+	TotalHealing int
+
+	// Remaining is the number of hit dice remaining after spending
+	Remaining int
+}
+
+// SpendHitDice spends hit dice during a short rest to heal the character.
+// Rolls the character's hit die for each die spent, adds CON modifier per die,
+// and heals the character by the total amount (capped at max HP).
+func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) (*SpendHitDiceOutput, error) {
+	// Validate input
+	if input.Count < 1 {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "must spend at least 1 hit die")
+	}
+
+	// Get hit dice resource
+	hitDiceResource := c.GetResource(resources.HitDice)
+	if hitDiceResource.IsEmpty() && hitDiceResource.Maximum() == 0 {
+		return nil, rpgerr.New(rpgerr.CodeNotFound, "no hit dice available")
+	}
+
+	// Check if we have enough hit dice
+	if hitDiceResource.Current() < input.Count {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"not enough hit dice: have %d, need %d", hitDiceResource.Current(), input.Count)
+	}
+
+	// Use default roller if none provided
+	roller := input.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
+
+	// Roll the dice
+	rolls, err := roller.RollN(ctx, input.Count, c.hitDice)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to roll hit dice")
+	}
+
+	// Calculate healing: sum of rolls + CON modifier per die
+	conMod := c.GetAbilityModifier(abilities.CON)
+	totalHealing := 0
+	for _, roll := range rolls {
+		totalHealing += roll + conMod
+	}
+
+	// Ensure minimum healing is 0 (can't heal negative even with negative CON)
+	if totalHealing < 0 {
+		totalHealing = 0
+	}
+
+	// Use the hit dice resource
+	if err := hitDiceResource.Use(input.Count); err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to use hit dice")
+	}
+
+	// Publish healing event (character's onHealingReceived will handle HP update)
+	healingTopic := dnd5eEvents.HealingReceivedTopic.On(c.bus)
+	err = healingTopic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: c.id,
+		Amount:   totalHealing,
+		Roll:     totalHealing - (conMod * input.Count), // Sum of dice rolls
+		Modifier: conMod * input.Count,                  // Total CON modifier
+		Source:   "hit_dice",
+	})
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to publish healing event")
+	}
+
+	return &SpendHitDiceOutput{
+		DiceSpent:    input.Count,
+		Rolls:        rolls,
+		CONModifier:  conMod,
+		TotalHealing: totalHealing,
+		Remaining:    hitDiceResource.Current(),
+	}, nil
 }
 
 // ResetDeathSaveState clears the character's death save state.
