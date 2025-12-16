@@ -4,43 +4,43 @@
       "id": "types-defined",
       "feature": "saving-throws",
       "prompt": "SavingThrowInput and SavingThrowResult types exist in rulebooks/dnd5e/saves/ with all required fields",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "basic-success-failure",
       "feature": "saving-throws",
       "prompt": "A roll of 10 with +3 modifier succeeds against DC 13 (10+3=13 >= 13). A roll of 9 with +3 fails against DC 13.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "advantage-rolls-higher",
       "feature": "saving-throws",
       "prompt": "With advantage, MakeSavingThrow rolls two dice and uses the higher result",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "disadvantage-rolls-lower",
       "feature": "saving-throws",
       "prompt": "With disadvantage, MakeSavingThrow rolls two dice and uses the lower result",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "natural-1-20-detected",
       "feature": "saving-throws",
       "prompt": "IsNat1 is true when roll is 1, IsNat20 is true when roll is 20, regardless of success/failure",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     },
     {
       "id": "unit-tests-pass",
       "feature": "saving-throws",
       "prompt": "All unit tests in rulebooks/dnd5e/saves/ pass with go test",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-16T00:00:00Z"
     }
   ]
 }
