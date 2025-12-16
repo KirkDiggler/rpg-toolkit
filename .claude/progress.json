@@ -16,15 +16,33 @@
         "Implemented TakeDamageWhileUnconscious() (1 failure for normal, 2 for crit)",
         "Wrote 19 comprehensive tests covering all roll outcomes and edge cases",
         "All tests passing (19/19 death save tests + 12 existing saving throw tests)",
-        "Fixed linter issues (unused parameter, line length)"
+        "Fixed linter issues (unused parameter, line length)",
+        "Committed: 46687fb"
       ],
       "tests_passing": "31/31",
+      "linter_issues": "0",
+      "commit": "46687fb"
+    },
+    {
+      "date": "2025-12-16",
+      "summary": "Added Character helper methods for death saves",
+      "completed": [
+        "Added deathSaveState field to Character struct",
+        "Implemented Character.MakeDeathSave() helper method",
+        "Implemented Character.TakeDamageWhileUnconscious() helper method",
+        "Implemented Character.GetDeathSaveState() accessor",
+        "Implemented Character.ResetDeathSaveState() to clear state",
+        "Created MakeDeathSaveInput and TakeDamageWhileUnconsciousInput types",
+        "Wrote 7 tests for Character death save functionality",
+        "All tests passing"
+      ],
+      "tests_passing": "7/7 new + all existing",
       "linter_issues": "0"
     }
   ],
   "next_steps": [
-    "Commit and create PR",
-    "Consider integration with character state management",
-    "Consider event system integration for death save results"
+    "Commit character helper changes",
+    "Update PR with new changes",
+    "Consider serialization for deathSaveState persistence"
   ]
 }

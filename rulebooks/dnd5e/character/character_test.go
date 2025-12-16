@@ -396,3 +396,132 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
 func TestCharacterSavingThrowSuite(t *testing.T) {
 	suite.Run(t, new(CharacterSavingThrowTestSuite))
 }
+
+// CharacterDeathSaveTestSuite tests death saving throw functionality
+type CharacterDeathSaveTestSuite struct {
+	suite.Suite
+	ctx       context.Context
+	character *Character
+}
+
+func (s *CharacterDeathSaveTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.character = &Character{
+		id:             "test-char",
+		hitPoints:      0, // At 0 HP for death saves
+		maxHitPoints:   10,
+		deathSaveState: nil, // Will be initialized by methods
+	}
+}
+
+func (s *CharacterDeathSaveTestSuite) TestGetDeathSaveStateReturnsEmptyStateInitially() {
+	state := s.character.GetDeathSaveState()
+	s.Require().NotNil(state)
+	s.Equal(0, state.Successes)
+	s.Equal(0, state.Failures)
+	s.False(state.Stabilized)
+	s.False(state.Dead)
+}
+
+func (s *CharacterDeathSaveTestSuite) TestMakeDeathSaveUpdatesState() {
+	// Make a death save (result depends on roll, but state should be updated)
+	result, err := s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	// State should have been updated (either success or failure added)
+	state := s.character.GetDeathSaveState()
+	s.True(state.Successes > 0 || state.Failures > 0, "state should have been updated")
+}
+
+func (s *CharacterDeathSaveTestSuite) TestMakeDeathSaveWithMockRoller() {
+	// Use a mock roller to test specific outcomes
+	mockRoller := &mockDeathSaveRoller{rollValue: 15}
+
+	result, err := s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{
+		Roller: mockRoller,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(15, result.Roll)
+	s.Equal(1, result.State.Successes, "roll 15 should add 1 success")
+	s.Equal(0, result.State.Failures)
+}
+
+func (s *CharacterDeathSaveTestSuite) TestTakeDamageWhileUnconsciousAddsFailure() {
+	result, err := s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
+		IsCritical: false,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(1, result.FailuresAdded)
+	state := s.character.GetDeathSaveState()
+	s.Equal(1, state.Failures)
+}
+
+func (s *CharacterDeathSaveTestSuite) TestTakeCriticalDamageWhileUnconsciousAddsTwoFailures() {
+	result, err := s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
+		IsCritical: true,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(2, result.FailuresAdded)
+	state := s.character.GetDeathSaveState()
+	s.Equal(2, state.Failures)
+}
+
+func (s *CharacterDeathSaveTestSuite) TestResetDeathSaveStateClearsState() {
+	// Add some failures first
+	_, _ = s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
+		IsCritical: false,
+	})
+
+	// Verify state has failures
+	state := s.character.GetDeathSaveState()
+	s.Equal(1, state.Failures)
+
+	// Reset the state
+	s.character.ResetDeathSaveState()
+
+	// Verify state is cleared
+	state = s.character.GetDeathSaveState()
+	s.Equal(0, state.Successes)
+	s.Equal(0, state.Failures)
+	s.False(state.Stabilized)
+	s.False(state.Dead)
+}
+
+func (s *CharacterDeathSaveTestSuite) TestDeathSaveStatePersistsAcrossCalls() {
+	// Make multiple death saves and verify state accumulates
+	mockRoller := &mockDeathSaveRoller{rollValue: 5} // Failure
+
+	_, _ = s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{Roller: mockRoller})
+	_, _ = s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{Roller: mockRoller})
+
+	state := s.character.GetDeathSaveState()
+	s.Equal(2, state.Failures, "failures should accumulate")
+}
+
+func TestCharacterDeathSaveSuite(t *testing.T) {
+	suite.Run(t, new(CharacterDeathSaveTestSuite))
+}
+
+// mockDeathSaveRoller is a simple mock for testing death saves
+type mockDeathSaveRoller struct {
+	rollValue int
+}
+
+func (m *mockDeathSaveRoller) Roll(_ context.Context, _ int) (int, error) {
+	return m.rollValue, nil
+}
+
+func (m *mockDeathSaveRoller) RollN(_ context.Context, n, _ int) ([]int, error) {
+	result := make([]int, n)
+	for i := range result {
+		result[i] = m.rollValue
+	}
+	return result, nil
+}
