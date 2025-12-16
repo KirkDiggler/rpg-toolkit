@@ -1,29 +1,12 @@
 {
-  "branch": "fix/two-weapon-fighting-ability-424",
-  "issues": ["#424"],
-  "goal": "Two-Weapon Fighting: Use actual ability modifier instead of hardcoded +3",
-  "sessions": [
-    {
-      "id": "2025-12-15-005",
-      "task": "Implement actual ability modifier for Two-Weapon Fighting (#424)",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/conditions/fighting_style.go",
-        "rulebooks/dnd5e/conditions/fighting_style_test.go"
-      ],
-      "commit": "54590c7",
-      "notes": "Replaced hardcoded abilityModifier := 3 with registry.GetCharacterAbilityScores().DexterityMod(). Added table-driven tests for DEX 16/14/10/8. Updated existing TWF tests to register ability scores."
-    }
-  ],
-  "next_steps": [],
-  "verification": {
-    "tests_pass": true,
-    "linter_pass": true,
-    "features_verified": ["two_weapon_fighting_ability_modifier"],
-    "pr": "#440"
-  },
-  "related_issues": {
-    "blocks": [],
-    "blocked_by": []
-  }
+  "branch": "feature/issue-425-monster-additions",
+  "issues": ["#425", "#446", "#447", "#448", "#449"],
+  "goal": "Add monsters for 3 dungeon themes (crypt, cave, bandit lair) using factory functions with shared actions and conditions",
+  "sessions": [],
+  "next_steps": [
+    "#446: Generic Monster Actions - Melee, Ranged, Multiattack, Bite",
+    "#447: Targeting Strategies - Closest, Lowest HP, Lowest AC",
+    "#448: Monster Conditions - Pack Tactics, Undead Fortitude, Vulnerability/Immunity",
+    "#449: Monster Factories - 9 monsters for dungeon themes"
+  ]
 }
