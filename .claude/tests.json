@@ -1,46 +1,74 @@
 {
   "tests": [
     {
-      "id": "types-defined",
-      "feature": "saving-throws",
-      "prompt": "SavingThrowInput and SavingThrowResult types exist in rulebooks/dnd5e/saves/ with all required fields",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "id": "death-save-types-defined",
+      "feature": "death-saves",
+      "prompt": "DeathSaveState and DeathSaveResult types exist in rulebooks/dnd5e/saves/ with all required fields (successes, failures, stabilized, dead, conscious flags)",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "basic-success-failure",
-      "feature": "saving-throws",
-      "prompt": "A roll of 10 with +3 modifier succeeds against DC 13 (10+3=13 >= 13). A roll of 9 with +3 fails against DC 13.",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "id": "roll-1-two-failures",
+      "feature": "death-saves",
+      "prompt": "Rolling a 1 on a death save adds 2 failures to DeathSaveState",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "advantage-rolls-higher",
-      "feature": "saving-throws",
-      "prompt": "With advantage, MakeSavingThrow rolls two dice and uses the higher result",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "id": "roll-2-9-one-failure",
+      "feature": "death-saves",
+      "prompt": "Rolling 2-9 on a death save adds 1 failure to DeathSaveState",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "disadvantage-rolls-lower",
-      "feature": "saving-throws",
-      "prompt": "With disadvantage, MakeSavingThrow rolls two dice and uses the lower result",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "id": "roll-10-19-one-success",
+      "feature": "death-saves",
+      "prompt": "Rolling 10-19 on a death save adds 1 success to DeathSaveState",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "natural-1-20-detected",
-      "feature": "saving-throws",
-      "prompt": "IsNat1 is true when roll is 1, IsNat20 is true when roll is 20, regardless of success/failure",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "id": "roll-20-regain-consciousness",
+      "feature": "death-saves",
+      "prompt": "Rolling a 20 on a death save sets conscious=true and result indicates regaining 1 HP",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "three-failures-death",
+      "feature": "death-saves",
+      "prompt": "Accumulating 3 failures sets dead=true on DeathSaveState",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "three-successes-stabilized",
+      "feature": "death-saves",
+      "prompt": "Accumulating 3 successes sets stabilized=true on DeathSaveState",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "damage-while-unconscious",
+      "feature": "death-saves",
+      "prompt": "TakeDamageWhileUnconscious adds 1 failure for normal damage",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "crit-damage-while-unconscious",
+      "feature": "death-saves",
+      "prompt": "TakeDamageWhileUnconscious adds 2 failures for critical hit damage",
+      "passes": false,
+      "last_checked": null
     },
     {
       "id": "unit-tests-pass",
-      "feature": "saving-throws",
-      "prompt": "All unit tests in rulebooks/dnd5e/saves/ pass with go test",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "feature": "death-saves",
+      "prompt": "All unit tests for death saves pass with go test",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }
