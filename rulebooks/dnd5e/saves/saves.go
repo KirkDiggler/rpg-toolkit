@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 )
 
@@ -68,6 +69,10 @@ type SavingThrowResult struct {
 // If input.Roller is nil, a default CryptoRoller is used.
 // Returns an error if the dice roller fails.
 func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrowResult, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+	}
+
 	roller := input.Roller
 	if roller == nil {
 		roller = dice.NewRoller()

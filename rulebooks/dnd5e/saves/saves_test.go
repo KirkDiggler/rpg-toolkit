@@ -290,3 +290,11 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 	s.Equal(13, result.Total, "total should be 11 + 2 = 13")
 	s.False(result.Success, "13 should fail against DC 15")
 }
+
+// TestNilInput tests that nil input returns an error
+func (s *SavingThrowTestSuite) TestNilInput() {
+	result, err := MakeSavingThrow(s.ctx, nil)
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "input cannot be nil")
+}
