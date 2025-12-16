@@ -1,151 +1,32 @@
 {
   "tests": [
     {
-      "id": "protection-triggers-on-ally-attack",
-      "feature": "protection",
-      "prompt": "Fighter with Protection fighting style and shield. Ally within 5ft is attacked by melee attack. Verify disadvantage is imposed on the attack roll.",
+      "id": "twf-dex-16-modifier",
+      "feature": "two-weapon-fighting",
+      "prompt": "Character with DEX 16 using Two-Weapon Fighting should add +3 modifier to off-hand damage",
       "passes": true,
       "last_checked": "2025-12-15"
     },
     {
-      "id": "protection-consumes-reaction",
-      "feature": "protection",
-      "prompt": "Protection triggers. Verify the fighter's reaction is consumed and ReactionUsedEvent is published.",
+      "id": "twf-dex-14-modifier",
+      "feature": "two-weapon-fighting",
+      "prompt": "Character with DEX 14 using Two-Weapon Fighting should add +2 modifier to off-hand damage",
       "passes": true,
       "last_checked": "2025-12-15"
     },
     {
-      "id": "protection-requires-shield",
-      "feature": "protection",
-      "prompt": "Fighter with Protection but no shield equipped. Ally within 5ft is attacked. Verify Protection does NOT trigger.",
+      "id": "twf-dex-10-modifier",
+      "feature": "two-weapon-fighting",
+      "prompt": "Character with DEX 10 using Two-Weapon Fighting should add +0 modifier to off-hand damage",
       "passes": true,
       "last_checked": "2025-12-15"
     },
     {
-      "id": "protection-requires-reaction",
-      "feature": "protection",
-      "prompt": "Fighter with Protection already used reaction this round. Ally within 5ft is attacked. Verify Protection does NOT trigger.",
+      "id": "twf-dex-8-modifier",
+      "feature": "two-weapon-fighting",
+      "prompt": "Character with DEX 8 using Two-Weapon Fighting should add -1 modifier to off-hand damage (floor division)",
       "passes": true,
       "last_checked": "2025-12-15"
-    },
-    {
-      "id": "protection-only-allies-not-self",
-      "feature": "protection",
-      "prompt": "Fighter with Protection is attacked directly. Verify Protection does NOT trigger (only protects others).",
-      "passes": true,
-      "last_checked": "2025-12-15"
-    },
-    {
-      "id": "protection-requires-5ft-range",
-      "feature": "protection",
-      "prompt": "Ally is 10ft away from Protection fighter. Ally is attacked. Verify Protection does NOT trigger.",
-      "passes": true,
-      "last_checked": "2025-12-15"
-    },
-    {
-      "id": "martial-arts-dex-unarmed",
-      "feature": "martial-arts",
-      "prompt": "Create a Monk with higher DEX than STR. Make an unarmed strike. Verify DEX modifier is used for attack and damage.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "martial-arts-dex-monk-weapon",
-      "feature": "martial-arts",
-      "prompt": "Create a Monk attacking with a shortsword (monk weapon). Verify DEX modifier can be used for attack and damage.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "martial-arts-damage-scaling-level-1",
-      "feature": "martial-arts",
-      "prompt": "Create a level 1 Monk. Make an unarmed strike. Verify damage is 1d4 + modifier.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "martial-arts-bonus-unarmed",
-      "feature": "martial-arts",
-      "prompt": "Monk uses Attack action with unarmed strike or monk weapon. Verify bonus action unarmed strike is available.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "ki-points-equal-to-level",
-      "feature": "ki",
-      "prompt": "Create a level 2 Monk. Verify Ki points equals 2 (monk level).",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "ki-short-rest-recovery",
-      "feature": "ki",
-      "prompt": "Spend Ki points, then take a short rest. Verify Ki points are fully restored.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "flurry-of-blows-two-strikes",
-      "feature": "flurry-of-blows",
-      "prompt": "Activate Flurry of Blows after Attack action. Verify two unarmed strikes are granted as bonus action and 1 Ki is spent.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "patient-defense-dodge",
-      "feature": "patient-defense",
-      "prompt": "Activate Patient Defense. Verify Dodge is granted as bonus action and 1 Ki is spent. Attackers should have disadvantage.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "step-of-wind-disengage",
-      "feature": "step-of-wind",
-      "prompt": "Activate Step of the Wind for Disengage. Verify Disengage is granted as bonus action and 1 Ki is spent.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "unarmored-movement-speed-bonus",
-      "feature": "unarmored-movement",
-      "prompt": "Create a level 3 Monk not wearing armor. Verify +10 ft speed bonus is applied.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "unarmored-movement-armor-disables",
-      "feature": "unarmored-movement",
-      "prompt": "Create a Monk wearing armor. Verify Unarmored Movement bonus is NOT applied.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "deflect-missiles-reduces-damage",
-      "feature": "deflect-missiles",
-      "prompt": "Monk is hit by a ranged weapon attack. Use reaction to Deflect Missiles. Verify damage is reduced by 1d10 + DEX + monk level.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "ki-serialization",
-      "feature": "serialization",
-      "prompt": "Spend Ki points, save character, reload. Verify Ki point state persists correctly.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "martial-arts-serialization",
-      "feature": "serialization",
-      "prompt": "Save and load a Monk with Martial Arts condition. Verify condition persists and functions correctly.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "all-tests-pass",
-      "feature": "verification",
-      "prompt": "All unit tests pass (go test ./...)",
-      "passes": false,
-      "last_checked": null
     }
   ]
 }

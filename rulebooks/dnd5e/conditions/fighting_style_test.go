@@ -686,6 +686,16 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
 	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
 	registry.Add("fighter-1", weapons)
 
+	// Add ability scores (DEX 16 = +3 modifier)
+	registry.AddAbilityScores("fighter-1", &gamectx.AbilityScores{
+		Strength:     10,
+		Dexterity:    16, // +3 modifier
+		Constitution: 10,
+		Intelligence: 10,
+		Wisdom:       10,
+		Charisma:     10,
+	})
+
 	// Wrap context with character registry
 	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: registry,
@@ -706,7 +716,7 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingOffHandBonus() {
 		_ = fs.Remove(ctx, s.bus)
 	}()
 
-	// Create damage chain event for off-hand attack (using DEX, modifier +3)
+	// Create damage chain event for off-hand attack (using DEX 16 = +3 modifier)
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
@@ -776,6 +786,16 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
 	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
 	registry.Add("fighter-1", weapons)
 
+	// Add ability scores (DEX 16 = +3 modifier)
+	registry.AddAbilityScores("fighter-1", &gamectx.AbilityScores{
+		Strength:     10,
+		Dexterity:    16, // +3 modifier
+		Constitution: 10,
+		Intelligence: 10,
+		Wisdom:       10,
+		Charisma:     10,
+	})
+
 	// Wrap context with character registry
 	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
 		CharacterRegistry: registry,
@@ -832,6 +852,133 @@ func (s *FightingStyleTestSuite) TestTwoWeaponFightingNoMainHandBonus() {
 	s.Len(finalEvent.Components, 1, "Should only have weapon component, no Two-Weapon Fighting bonus")
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(3, weaponComponent.FlatBonus, "Main hand should keep original ability modifier")
+}
+
+// TestTwoWeaponFightingAbilityModifier verifies Two-Weapon Fighting uses actual DEX modifier
+func (s *FightingStyleTestSuite) TestTwoWeaponFightingAbilityModifier() {
+	testCases := []struct {
+		name             string
+		dexterity        int
+		expectedModifier int
+	}{
+		{
+			name:             "DEX16_PlusThree",
+			dexterity:        16,
+			expectedModifier: 3, // (16 - 10) / 2 = 3
+		},
+		{
+			name:             "DEX14_PlusTwo",
+			dexterity:        14,
+			expectedModifier: 2, // (14 - 10) / 2 = 2
+		},
+		{
+			name:             "DEX10_Zero",
+			dexterity:        10,
+			expectedModifier: 0, // (10 - 10) / 2 = 0
+		},
+		{
+			name:             "DEX8_MinusOne",
+			dexterity:        8,
+			expectedModifier: -1, // (8 - 10) / 2 = -1 (floor division)
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			ctx := s.ctx
+
+			// Create character registry with dual-wielding weapons
+			registry := gamectx.NewBasicCharacterRegistry()
+			mainHand := &gamectx.EquippedWeapon{
+				ID:          "shortsword-1",
+				Name:        "Shortsword",
+				Slot:        "main_hand",
+				IsShield:    false,
+				IsTwoHanded: false,
+				IsMelee:     true,
+			}
+			offHand := &gamectx.EquippedWeapon{
+				ID:          "shortsword-2",
+				Name:        "Shortsword",
+				Slot:        "off_hand",
+				IsShield:    false,
+				IsTwoHanded: false,
+				IsMelee:     true,
+			}
+			weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
+			registry.Add("fighter-1", weapons)
+
+			// Add ability scores with the test case's DEX value
+			registry.AddAbilityScores("fighter-1", &gamectx.AbilityScores{
+				Strength:     10,
+				Dexterity:    tc.dexterity,
+				Constitution: 10,
+				Intelligence: 10,
+				Wisdom:       10,
+				Charisma:     10,
+			})
+
+			// Wrap context with character registry
+			gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+				CharacterRegistry: registry,
+			})
+			ctx = gamectx.WithGameContext(ctx, gameCtx)
+
+			// Create Two-Weapon Fighting style condition
+			fs := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
+				CharacterID: "fighter-1",
+				Style:       fightingstyles.TwoWeaponFighting,
+				Roller:      s.mockRoller,
+			})
+
+			// Apply the condition
+			err := fs.Apply(ctx, s.bus)
+			s.Require().NoError(err)
+			defer func() {
+				_ = fs.Remove(ctx, s.bus)
+			}()
+
+			// Create damage chain event for off-hand attack
+			damageEvent := &dnd5eEvents.DamageChainEvent{
+				AttackerID: "fighter-1",
+				TargetID:   "goblin-1",
+				Components: []dnd5eEvents.DamageComponent{
+					{
+						Source:            dnd5eEvents.DamageSourceWeapon,
+						OriginalDiceRolls: []int{5},
+						FinalDiceRolls:    []int{5},
+						Rerolls:           nil,
+						FlatBonus:         0, // Off-hand doesn't get ability modifier normally
+						DamageType:        damage.Piercing,
+						IsCritical:        false,
+					},
+				},
+				DamageType:   damage.Piercing,
+				IsCritical:   false,
+				WeaponDamage: "1d6",
+				AbilityUsed:  abilities.DEX,
+				WeaponRef:    &core.Ref{ID: core.ID("shortsword-2")}, // Off-hand weapon
+			}
+
+			// Publish through damage chain
+			damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+			damages := dnd5eEvents.DamageChain.On(s.bus)
+			modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+			s.Require().NoError(err)
+
+			// Execute chain
+			finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+			s.Require().NoError(err)
+
+			// Verify Two-Weapon Fighting added correct ability modifier
+			s.Require().Len(finalEvent.Components, 2, "Should have weapon + TWF components")
+			twfComponent := finalEvent.Components[1]
+			s.Equal(dnd5eEvents.DamageSourceFeature, twfComponent.Source,
+				"Second component should be from Two-Weapon Fighting")
+			s.Equal(tc.expectedModifier, twfComponent.FlatBonus,
+				"Two-Weapon Fighting should add DEX modifier %d for DEX %d", tc.expectedModifier, tc.dexterity)
+		})
+	}
 }
 
 // TestDefenseACBonus verifies Defense fighting style adds +1 to AC when wearing armor

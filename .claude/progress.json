@@ -1,54 +1,27 @@
 {
-  "branch": "feature/attack-chain-advantage-436",
-  "issues": ["#436", "#423"],
-  "goal": "Implement attack chain advantage/disadvantage and Protection fighting style",
+  "branch": "fix/two-weapon-fighting-ability-424",
+  "issues": ["#424"],
+  "goal": "Two-Weapon Fighting: Use actual ability modifier instead of hardcoded +3",
   "sessions": [
     {
-      "id": "2025-12-15-002",
-      "task": "Design attack chain advantage/disadvantage system",
-      "status": "completed",
-      "artifacts": [
-        "docs/plans/2025-12-15-attack-chain-advantage-design.md"
-      ],
-      "commit": "08910f2",
-      "notes": "Designed AttackModifierSource, ReactionConsumption, enhanced AttackChainEvent structure. Chain fires before roll, ReactionsConsumed processed after."
-    },
-    {
-      "id": "2025-12-15-003",
-      "task": "Implement attack chain advantage/disadvantage (#436)",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/combat/attack.go",
-        "rulebooks/dnd5e/events/events.go",
-        "rulebooks/dnd5e/combat/attack_test.go"
-      ],
-      "commit": null,
-      "notes": "Implementation complete. Used RollN+max/min instead of adding D&D-specific methods to dice roller (better architecture). All 7 attack tests pass. Code review verified."
-    },
-    {
-      "id": "2025-12-15-004",
-      "task": "Implement Protection fighting style (#423)",
+      "id": "2025-12-15-005",
+      "task": "Implement actual ability modifier for Two-Weapon Fighting (#424)",
       "status": "completed",
       "artifacts": [
         "rulebooks/dnd5e/conditions/fighting_style.go",
-        "rulebooks/dnd5e/conditions/fighting_style_test.go",
-        "rulebooks/dnd5e/gamectx/characters.go",
-        "rulebooks/dnd5e/gamectx/gamectx.go",
-        "rulebooks/dnd5e/fightingstyles/fightingstyles.go"
+        "rulebooks/dnd5e/conditions/fighting_style_test.go"
       ],
       "commit": null,
-      "notes": "Protection fighting style fully implemented. Added HasShield() to CharacterWeapons, GetCharacterActionEconomy to CharacterRegistry interface, onProtectionAttackChain handler. Uses Grid.Distance() for 5ft range check. All 6 Protection tests pass."
+      "notes": "Replaced hardcoded abilityModifier := 3 with registry.GetCharacterAbilityScores().DexterityMod(). Added table-driven tests for DEX 16/14/10/8. Updated existing TWF tests to register ability scores."
     }
   ],
   "next_steps": [
-    "Run make pre-commit",
-    "Commit changes",
-    "Create PR for #436 and #423"
+    "Commit and create PR"
   ],
   "verification": {
     "tests_pass": true,
-    "linter_pass": null,
-    "features_verified": ["attack_chain_advantage_disadvantage", "protection_fighting_style"]
+    "linter_pass": true,
+    "features_verified": ["two_weapon_fighting_ability_modifier"]
   },
   "related_issues": {
     "blocks": [],
