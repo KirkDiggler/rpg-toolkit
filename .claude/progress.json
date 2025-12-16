@@ -2,9 +2,26 @@
   "branch": "feature/issue-425-monster-additions",
   "issues": ["#425", "#446", "#447", "#448", "#449"],
   "goal": "Add monsters for 3 dungeon themes (crypt, cave, bandit lair) using factory functions with shared actions and conditions",
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-12-16",
+      "commit": "f89782c",
+      "completed": "#446",
+      "summary": "Implemented generic monster actions in monster/actions/ subdirectory",
+      "details": [
+        "Created MeleeAction with configurable reach, damage dice, and damage type",
+        "Created RangedAction with normal/long range and disadvantage scoring when adjacent",
+        "Created MultiattackAction for boss monsters to chain multiple attacks",
+        "Created BiteAction with knockdown effect (STR save or prone)",
+        "Added LoadMonsterActions helper to resolve import cycle issues",
+        "Moved action loader from parent package to actions/loader.go",
+        "Added integration tests for action serialization/deserialization",
+        "Updated refs/monster_actions.go with new action refs",
+        "All tests pass with full TDD coverage"
+      ]
+    }
+  ],
   "next_steps": [
-    "#446: Generic Monster Actions - Melee, Ranged, Multiattack, Bite",
     "#447: Targeting Strategies - Closest, Lowest HP, Lowest AC",
     "#448: Monster Conditions - Pack Tactics, Undead Fortitude, Vulnerability/Immunity",
     "#449: Monster Factories - 9 monsters for dungeon themes"
