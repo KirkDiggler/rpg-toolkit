@@ -505,6 +505,33 @@ func (s *CharacterDeathSaveTestSuite) TestDeathSaveStatePersistsAcrossCalls() {
 	s.Equal(2, state.Failures, "failures should accumulate")
 }
 
+func (s *CharacterDeathSaveTestSuite) TestDeathSaveStateSerializationRoundTrip() {
+	// Add some death save state
+	mockRoller := &mockDeathSaveRoller{rollValue: 5} // Failure
+	_, _ = s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{Roller: mockRoller})
+	_, _ = s.character.TakeDamageWhileUnconscious(s.ctx, &TakeDamageWhileUnconsciousInput{
+		IsCritical: false,
+	})
+
+	// Serialize to Data
+	data := s.character.ToData()
+	s.Require().NotNil(data.DeathSaveState)
+	s.Equal(2, data.DeathSaveState.Failures, "serialized state should have 2 failures")
+
+	// Load from Data
+	bus := events.NewEventBus()
+	loaded, err := LoadFromData(s.ctx, data, bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(loaded)
+
+	// Verify state was restored
+	loadedState := loaded.GetDeathSaveState()
+	s.Equal(2, loadedState.Failures, "loaded state should have 2 failures")
+	s.Equal(0, loadedState.Successes, "loaded state should have 0 successes")
+	s.False(loadedState.Dead)
+	s.False(loadedState.Stabilized)
+}
+
 func TestCharacterDeathSaveSuite(t *testing.T) {
 	suite.Run(t, new(CharacterDeathSaveTestSuite))
 }

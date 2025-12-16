@@ -12,12 +12,9 @@
         "Created DeathSaveResult struct with Roll, State, IsCriticalFail, IsCriticalSuccess, RegainedConsciousness, HPRestored",
         "Created DamageWhileUnconsciousInput struct with State and IsCritical",
         "Created DamageWhileUnconsciousResult struct with State and FailuresAdded",
-        "Implemented MakeDeathSave() with D&D 5e roll interpretation (1=2 failures, 2-9=1 failure, 10-19=1 success, 20=regain consciousness)",
-        "Implemented TakeDamageWhileUnconscious() (1 failure for normal, 2 for crit)",
-        "Wrote 19 comprehensive tests covering all roll outcomes and edge cases",
-        "All tests passing (19/19 death save tests + 12 existing saving throw tests)",
-        "Fixed linter issues (unused parameter, line length)",
-        "Committed: 46687fb"
+        "Implemented MakeDeathSave() with D&D 5e roll interpretation",
+        "Implemented TakeDamageWhileUnconscious()",
+        "Wrote 19 comprehensive tests covering all roll outcomes and edge cases"
       ],
       "tests_passing": "31/31",
       "linter_issues": "0",
@@ -33,16 +30,28 @@
         "Implemented Character.GetDeathSaveState() accessor",
         "Implemented Character.ResetDeathSaveState() to clear state",
         "Created MakeDeathSaveInput and TakeDamageWhileUnconsciousInput types",
-        "Wrote 7 tests for Character death save functionality",
-        "All tests passing"
+        "Wrote 7 tests for Character death save functionality"
       ],
       "tests_passing": "7/7 new + all existing",
+      "linter_issues": "0",
+      "commit": "601160d"
+    },
+    {
+      "date": "2025-12-16",
+      "summary": "Added persistence for death save state",
+      "completed": [
+        "Added DeathSaveState field to Data struct with omitempty",
+        "Updated ToData() to include deathSaveState in serialization",
+        "Updated LoadFromData() to restore deathSaveState from data",
+        "Added round-trip serialization test",
+        "All 8 death save tests passing"
+      ],
+      "tests_passing": "8/8",
       "linter_issues": "0"
     }
   ],
   "next_steps": [
-    "Commit character helper changes",
-    "Update PR with new changes",
-    "Consider serialization for deathSaveState persistence"
+    "Commit persistence changes",
+    "Update PR"
   ]
 }

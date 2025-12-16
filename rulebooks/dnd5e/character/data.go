@@ -20,6 +20,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -52,6 +53,9 @@ type Data struct {
 	HitPoints    int `json:"hit_points"`
 	MaxHitPoints int `json:"max_hit_points"`
 	ArmorClass   int `json:"armor_class"`
+
+	// Death saves (only persisted if character is at 0 HP making death saves)
+	DeathSaveState *saves.DeathSaveState `json:"death_save_state,omitempty"`
 
 	// Proficiencies and skills
 	Skills              map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
@@ -127,6 +131,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		hitPoints:           d.HitPoints,
 		maxHitPoints:        d.MaxHitPoints,
 		armorClass:          d.ArmorClass,
+		deathSaveState:      d.DeathSaveState,
 		skills:              d.Skills,
 		savingThrows:        d.SavingThrows,
 		languages:           d.Languages,
