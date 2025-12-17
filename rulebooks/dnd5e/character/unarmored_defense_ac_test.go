@@ -33,6 +33,11 @@ func (s *UnarmoredDefenseACTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 }
 
+// SetupSubTest creates a fresh event bus for each subtest in table-driven tests
+func (s *UnarmoredDefenseACTestSuite) SetupSubTest() {
+	s.bus = events.NewEventBus()
+}
+
 func TestUnarmoredDefenseACTestSuite(t *testing.T) {
 	suite.Run(t, new(UnarmoredDefenseACTestSuite))
 }

@@ -268,6 +268,67 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	s.Len(char.GetConditions(), 2, "Character should still have both conditions")
 }
 
+func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
+	// Create a monk
+	draft := LoadDraftFromData(&DraftData{
+		ID:       "test-monk",
+		PlayerID: "player1",
+	})
+
+	// Setup character
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Sensei"}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Monk,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Hermit,
+		Choices:      BackgroundChoices{},
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16, // +3
+			abilities.CON: 12, // +1
+			abilities.INT: 10,
+			abilities.WIS: 14, // +2
+			abilities.CHA: 8,
+		},
+	}))
+
+	// Convert to character with event bus
+	char, err := draft.ToCharacter(s.ctx, "char-monk", s.bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	// Verify character has both Unarmored Defense and Martial Arts conditions
+	conds := char.GetConditions()
+	s.Require().Len(conds, 2, "Monk should start with Unarmored Defense and Martial Arts conditions")
+
+	// Find the conditions
+	var hasUnarmoredDefense, hasMartialArts bool
+	var martialArtsCond *conditions.MartialArtsCondition
+	for _, cond := range conds {
+		if _, ok := cond.(*conditions.UnarmoredDefenseCondition); ok {
+			hasUnarmoredDefense = true
+		}
+		if ma, ok := cond.(*conditions.MartialArtsCondition); ok {
+			hasMartialArts = true
+			martialArtsCond = ma
+		}
+	}
+
+	s.True(hasUnarmoredDefense, "Monk should have Unarmored Defense condition")
+	s.True(hasMartialArts, "Monk should have Martial Arts condition")
+
+	// Verify Martial Arts is configured for level 1
+	s.Require().NotNil(martialArtsCond)
+	s.Equal(1, martialArtsCond.MonkLevel, "Martial Arts should be configured for monk level 1")
+}
+
 // DummyEntity implements core.Entity for testing
 type DummyEntity struct {
 	id string
