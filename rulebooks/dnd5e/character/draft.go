@@ -563,6 +563,17 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to compile conditions")
 	}
+
+	// Check for Unarmored Defense condition and apply its AC calculation
+	// Barbarian: AC = 10 + DEX + CON
+	// Monk: AC = 10 + DEX + WIS
+	for _, cond := range initialConditions {
+		if ud, ok := cond.(*conditions.UnarmoredDefenseCondition); ok {
+			char.armorClass = ud.CalculateAC(finalScores)
+			break
+		}
+	}
+
 	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(bus)
 	for _, cond := range initialConditions {
 		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
