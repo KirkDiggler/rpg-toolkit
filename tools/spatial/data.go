@@ -282,6 +282,13 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 		}
 
 		for _, placement := range data.CubeEntities {
+			// Validate cube coordinate before conversion
+			if !placement.CubePosition.IsValid() {
+				// Skip invalid cube coordinates (x + y + z != 0)
+				// This catches data corruption early rather than causing incorrect positions
+				continue
+			}
+
 			// Create a minimal placeable entity with just spatial properties
 			entity := &PlaceableData{
 				id:                placement.EntityID,

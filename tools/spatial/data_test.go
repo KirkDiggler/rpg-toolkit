@@ -315,6 +315,55 @@ func (s *RoomDataTestSuite) TestLoadRoomFromContextHex() {
 	s.NotNil(pos)
 }
 
+func (s *RoomDataTestSuite) TestLoadRoomFromContextHexInvalidCubeCoordinate() {
+	// Create hex room data with an invalid cube coordinate (x + y + z != 0)
+	roomData := RoomData{
+		ID:       "hex-invalid",
+		Type:     "wilderness",
+		Width:    10,
+		Height:   10,
+		GridType: "hex",
+		CubeEntities: map[string]EntityCubePlacement{
+			"valid-entity": {
+				EntityID:          "valid-entity",
+				EntityType:        "character",
+				CubePosition:      CubeCoordinate{X: 2, Y: -4, Z: 2}, // Valid: 2 + -4 + 2 = 0
+				Size:              1,
+				BlocksMovement:    true,
+				BlocksLineOfSight: false,
+			},
+			"invalid-entity": {
+				EntityID:          "invalid-entity",
+				EntityType:        "monster",
+				CubePosition:      CubeCoordinate{X: 1, Y: 2, Z: 3}, // Invalid: 1 + 2 + 3 = 6 != 0
+				Size:              1,
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			},
+		},
+	}
+
+	// Create game context
+	gameCtx, err := game.NewContext(s.eventBus, roomData)
+	s.Require().NoError(err)
+
+	// Load room from context
+	room, err := LoadRoomFromContext(context.Background(), gameCtx)
+	s.Require().NoError(err)
+
+	// Only the valid entity should be loaded
+	entities := room.GetAllEntities()
+	s.Len(entities, 1, "Only valid cube coordinates should be loaded")
+
+	// Verify the valid entity was loaded
+	_, exists := entities["valid-entity"]
+	s.True(exists, "Valid entity should be loaded")
+
+	// Verify the invalid entity was skipped
+	_, exists = entities["invalid-entity"]
+	s.False(exists, "Invalid cube coordinate entity should be skipped")
+}
+
 func (s *RoomDataTestSuite) TestLoadRoomFromContextGridless() {
 	// Create gridless room data
 	roomData := RoomData{
