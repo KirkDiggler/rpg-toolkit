@@ -372,15 +372,39 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 
 	// Record expertise choices (for Rogue L1/L6, Bard L3/L10)
 	if len(input.Choices.Expertise) > 0 {
-		// Validate expertise skills are in the chosen skill list
-		chosenSkills := make(map[skills.Skill]bool)
+		// Validate expertise skills are from ANY proficient skill source (class, race, background)
+		proficientSkills := make(map[skills.Skill]bool)
+
+		// Add class skills from this input
 		for _, skill := range input.Choices.Skills {
-			chosenSkills[skill] = true
+			proficientSkills[skill] = true
 		}
+
+		// Add racial skill proficiencies
+		if d.race != "" {
+			raceData := races.GetData(d.race)
+			if raceData != nil {
+				for _, skill := range raceData.Skills {
+					proficientSkills[skill] = true
+				}
+			}
+		}
+
+		// Add skills from previous race choices (e.g., Half-Elf skill choices)
+		for _, choice := range d.choices {
+			if choice.Source == shared.SourceRace && choice.Category == shared.ChoiceSkills {
+				for _, skill := range choice.SkillSelection {
+					proficientSkills[skill] = true
+				}
+			}
+		}
+
+		// TODO: Add background skills when background data is implemented
+
 		for _, expertiseSkill := range input.Choices.Expertise {
-			if !chosenSkills[expertiseSkill] {
+			if !proficientSkills[expertiseSkill] {
 				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"expertise skill %s must be from chosen skills", expertiseSkill)
+					"expertise skill %s must be from a proficient skill (class, race, or background)", expertiseSkill)
 			}
 		}
 

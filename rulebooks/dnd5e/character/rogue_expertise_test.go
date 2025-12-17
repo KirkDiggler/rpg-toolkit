@@ -129,8 +129,96 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseDoublesSkillBonus() {
 	s.Equal(4, deceptionMod, "Deception without expertise should be CHA (+2) + prof (+2) = +4")
 }
 
+// TestRogueExpertiseCanUseRacialSkill tests that expertise can be applied to skills
+// gained from race (not just class skills)
+func (s *RogueExpertiseSuite) TestRogueExpertiseCanUseRacialSkill() {
+	ctx := context.Background()
+
+	// Create a new draft
+	draft, err := NewDraft(&DraftConfig{
+		ID:       "test-rogue-racial-expertise",
+		PlayerID: "player-1",
+	})
+	s.Require().NoError(err)
+
+	// Set name
+	err = draft.SetName(&SetNameInput{Name: "Shadowmere"})
+	s.Require().NoError(err)
+
+	// Set race (Elf - grants Perception skill proficiency)
+	err = draft.SetRace(&SetRaceInput{
+		RaceID:    races.Elf,
+		SubraceID: races.HighElf,
+		Choices:   RaceChoices{
+			// High Elf gets a cantrip choice, but we'll skip that for this test
+		},
+	})
+	s.Require().NoError(err)
+
+	// Set class (Rogue) - choose 4 skills that DON'T include Perception
+	// Then set expertise in Perception (from race) - this should work!
+	err = draft.SetClass(&SetClassInput{
+		ClassID: classes.Rogue,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{
+				skills.Stealth,
+				skills.SleightOfHand,
+				skills.Deception,
+				skills.Acrobatics,
+			},
+			Expertise: []skills.Skill{
+				skills.Stealth,    // From class
+				skills.Perception, // From race (Elf) - should be valid!
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponRapier},
+				{ChoiceID: choices.RogueWeaponsSecondary, OptionID: choices.RogueSecondaryShortbow},
+				{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
+			},
+		},
+	})
+	s.Require().NoError(err, "Expertise in racial skill (Perception from Elf) should be allowed")
+
+	// Set background
+	err = draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Criminal,
+	})
+	s.Require().NoError(err)
+
+	// Set ability scores (base scores before racial bonuses)
+	// Elf gets +2 DEX, so base 14 DEX becomes 16 DEX (+3 modifier)
+	err = draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 14, // +2 from Elf = 16 (+3 modifier)
+			abilities.CON: 12,
+			abilities.INT: 14, // +1 from High Elf = 15 (+2 modifier)
+			abilities.WIS: 14, // +2 modifier for Perception
+			abilities.CHA: 10,
+		},
+		Method: "standard",
+	})
+	s.Require().NoError(err)
+
+	// Convert to character
+	char, err := draft.ToCharacter(ctx, "char-elf-rogue", s.eventBus)
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	// Verify DEX is 16 after racial bonus (14 base + 2 Elf)
+	s.Equal(16, char.GetAbilityScore(abilities.DEX), "DEX should be 16 (14 base + 2 Elf)")
+
+	// Perception (expertise from racial skill): WIS (+2) + double proficiency (+4) = +6
+	perceptionMod := char.GetSkillModifier(skills.Perception)
+	s.Equal(6, perceptionMod, "Perception with expertise should be WIS (+2) + double prof (+4) = +6")
+
+	// Stealth (expertise from class skill): DEX (+3) + double proficiency (+4) = +7
+	stealthMod := char.GetSkillModifier(skills.Stealth)
+	s.Equal(7, stealthMod, "Stealth with expertise should be DEX (+3) + double prof (+4) = +7")
+}
+
 // TestRogueExpertiseMustBeFromProficientSkills tests that expertise can only be applied
-// to skills the character is proficient in
+// to skills the character is proficient in (from any source)
 func (s *RogueExpertiseSuite) TestRogueExpertiseMustBeFromProficientSkills() {
 	// Create a new draft
 	draft, err := NewDraft(&DraftConfig{
