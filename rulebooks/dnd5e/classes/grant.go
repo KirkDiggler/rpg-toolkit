@@ -163,12 +163,16 @@ func getMonkGrants() []Grant {
 				proficiencies.WeaponShortsword,
 			},
 			// Note: Tool proficiency (artisan's tool OR musical instrument) is a CHOICE, not a grant
-			// Note: Martial Arts feature does not exist yet in the codebase
 			// Unarmored Defense condition (monk variant - uses WIS instead of CON)
+			// Martial Arts condition (grants DEX for unarmed/monk weapons, scales damage)
 			Conditions: []ConditionRef{
 				{
 					Ref:    refs.Conditions.UnarmoredDefense().String(),
 					Config: json.RawMessage(`{"variant": "monk"}`),
+				},
+				{
+					Ref:    refs.Conditions.MartialArts().String(),
+					Config: json.RawMessage(`{"monk_level": 1}`),
 				},
 			},
 		},
