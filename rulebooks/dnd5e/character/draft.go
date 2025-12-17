@@ -370,6 +370,56 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 		})
 	}
 
+	// Record expertise choices (for Rogue L1/L6, Bard L3/L10)
+	if len(input.Choices.Expertise) > 0 {
+		// Validate expertise skills are from ANY proficient skill source (class, race, background)
+		proficientSkills := make(map[skills.Skill]bool)
+
+		// Add class skills from this input
+		for _, skill := range input.Choices.Skills {
+			proficientSkills[skill] = true
+		}
+
+		// Add racial skill proficiencies
+		if d.race != "" {
+			raceData := races.GetData(d.race)
+			if raceData != nil {
+				for _, skill := range raceData.Skills {
+					proficientSkills[skill] = true
+				}
+			}
+		}
+
+		// Add skills from previous race choices (e.g., Half-Elf skill choices)
+		for _, choice := range d.choices {
+			if choice.Source == shared.SourceRace && choice.Category == shared.ChoiceSkills {
+				for _, skill := range choice.SkillSelection {
+					proficientSkills[skill] = true
+				}
+			}
+		}
+
+		// TODO: Add background skills when background data is implemented
+
+		for _, expertiseSkill := range input.Choices.Expertise {
+			if !proficientSkills[expertiseSkill] {
+				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"expertise skill %s must be from a proficient skill (class, race, or background)", expertiseSkill)
+			}
+		}
+
+		var choiceID choices.ChoiceID
+		if requirements.Expertise != nil {
+			choiceID = requirements.Expertise.ID
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:           shared.ChoiceExpertise,
+			Source:             shared.SourceClass,
+			ChoiceID:           choiceID,
+			ExpertiseSelection: input.Choices.Expertise,
+		})
+	}
+
 	// Record equipment choices
 	if err := d.recordEquipmentChoices(input.Choices.Equipment, requirements); err != nil {
 		return err
@@ -746,25 +796,37 @@ func (d *Draft) recordChoice(choice choices.ChoiceData) {
 // TODO: check if class can grant skills or all they all chosen
 // compileSkills builds the skill proficiency map
 func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.ProficiencyLevel {
-	skills := make(map[skills.Skill]shared.ProficiencyLevel)
+	skillMap := make(map[skills.Skill]shared.ProficiencyLevel)
 
 	// Add racial skill proficiencies
 	for _, skill := range raceData.Skills {
-		skills[skill] = shared.Proficient
+		skillMap[skill] = shared.Proficient
 	}
 
 	// Add chosen skills from choices
 	for _, choice := range d.choices {
 		if choice.Category == shared.ChoiceSkills {
 			for _, skill := range choice.SkillSelection {
-				skills[skill] = shared.Proficient
+				skillMap[skill] = shared.Proficient
+			}
+		}
+	}
+
+	// Apply expertise - upgrade proficient skills to expert
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceExpertise {
+			for _, skill := range choice.ExpertiseSelection {
+				// Only upgrade if already proficient (validation should catch this earlier)
+				if _, hasProficiency := skillMap[skill]; hasProficiency {
+					skillMap[skill] = shared.Expert
+				}
 			}
 		}
 	}
 
 	// TODO: Add background skills when we have internal background data
 
-	return skills
+	return skillMap
 }
 
 // compileSavingThrows builds the saving throw proficiency map
