@@ -126,6 +126,9 @@ func (s *LanguagesSuite) TestDwarfDefaultLanguages() {
 	s.Require().NoError(draft.SetRace(&SetRaceInput{
 		RaceID:    races.Dwarf,
 		SubraceID: races.HillDwarf,
+		Choices: RaceChoices{
+			Tools: []shared.SelectionID{"smiths-tools"}, // Dwarves choose 1 artisan's tool
+		},
 	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,

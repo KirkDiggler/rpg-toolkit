@@ -255,6 +255,7 @@ func (s *ProficienciesSuite) TestMonkProficiencies() {
 				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
 				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackExplorer},
 			},
+			Tools: []shared.SelectionID{"brewers-supplies"},
 		},
 	}))
 

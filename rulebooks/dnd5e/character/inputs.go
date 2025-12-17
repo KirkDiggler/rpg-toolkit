@@ -29,6 +29,7 @@ type RaceChoices struct {
 	Languages []languages.Language `json:"languages,omitempty"`
 	Skills    []skills.Skill       `json:"skills,omitempty"`
 	Cantrips  []spells.Spell       `json:"cantrips,omitempty"`
+	Tools     []shared.SelectionID `json:"tools,omitempty"` // Tool proficiency choices (Dwarf)
 }
 
 // SetClassInput contains the input for setting a character's class

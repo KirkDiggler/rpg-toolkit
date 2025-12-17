@@ -255,6 +255,25 @@ func (d *Draft) SetRace(input *SetRaceInput) error {
 		})
 	}
 
+	// Record tool proficiency choices (for Dwarf, etc.)
+	if len(input.Choices.Tools) > 0 {
+		var choiceID choices.ChoiceID
+		if d.race == races.Dwarf {
+			choiceID = choices.DwarfToolProficiency
+		}
+		// Convert SelectionID to proficiencies.Tool
+		toolSelection := make([]proficiencies.Tool, 0, len(input.Choices.Tools))
+		for _, t := range input.Choices.Tools {
+			toolSelection = append(toolSelection, proficiencies.Tool(t))
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:      shared.ChoiceToolProficiency,
+			Source:        shared.SourceRace,
+			ChoiceID:      choiceID,
+			ToolSelection: toolSelection,
+		})
+	}
+
 	d.updatedAt = time.Now()
 
 	// Update progress if race choices are complete
@@ -535,6 +554,11 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "all ability scores must be set")
 	}
 
+	// Validate all required choices have been made
+	if err := d.ValidateChoices(); err != nil {
+		return nil, err
+	}
+
 	// Get race and class data
 	raceData := races.GetData(d.race)
 	if raceData == nil {
@@ -639,7 +663,10 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	return char, nil
 }
 
-// ValidateChoices validates that all required choices have been made
+// ValidateChoices validates that all required choices have been made.
+// Complexity is inherent due to handling multiple choice categories.
+//
+//nolint:gocyclo // Complexity is inherent due to handling multiple choice categories
 func (d *Draft) ValidateChoices() error {
 	// Create validator
 	validator := choices.NewValidator()
@@ -709,6 +736,26 @@ func (d *Draft) ValidateChoices() error {
 					Source:   choice.Source,
 					ChoiceID: choice.ChoiceID,
 					Values:   toolValues,
+				})
+			}
+		case shared.ChoiceFightingStyle:
+			if choice.FightingStyleSelection != nil {
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceFightingStyle,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
+				})
+			}
+		case shared.ChoiceExpertise:
+			if len(choice.ExpertiseSelection) > 0 {
+				expertiseValues := make([]shared.SelectionID, len(choice.ExpertiseSelection))
+				copy(expertiseValues, choice.ExpertiseSelection)
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceExpertise,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   expertiseValues,
 				})
 			}
 		}
@@ -1139,7 +1186,27 @@ func (d *Draft) getRaceSubmissions() *choices.Submissions {
 				})
 			}
 
-			// Add other choice types...
+			// Handle tool proficiency choices (for Dwarf, etc.)
+			if len(choice.ToolSelection) > 0 {
+				// Convert proficiencies.Tool to shared.SelectionID
+				toolValues := make([]shared.SelectionID, 0, len(choice.ToolSelection))
+				for _, t := range choice.ToolSelection {
+					toolValues = append(toolValues, shared.SelectionID(t))
+				}
+				var choiceID choices.ChoiceID
+				switch d.race {
+				case races.Dwarf:
+					choiceID = choices.DwarfToolProficiency
+				default:
+					choiceID = choices.ChoiceID(string(d.race) + "-tool-proficiency")
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceToolProficiency,
+					Source:   shared.SourceRace,
+					ChoiceID: choiceID,
+					Values:   toolValues,
+				})
+			}
 		}
 	}
 
@@ -1212,7 +1279,17 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 				})
 			}
 
-			// Add other choice types...
+			// Handle expertise choices (Rogue L1/L6, Bard L3/L10)
+			if len(choice.ExpertiseSelection) > 0 {
+				expertiseValues := make([]shared.SelectionID, len(choice.ExpertiseSelection))
+				copy(expertiseValues, choice.ExpertiseSelection)
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceExpertise,
+					Source:   shared.SourceClass,
+					ChoiceID: choice.ChoiceID,
+					Values:   expertiseValues,
+				})
+			}
 		}
 	}
 

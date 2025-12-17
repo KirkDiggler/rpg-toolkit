@@ -10,10 +10,14 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 type FeaturesTestSuite struct {
@@ -43,7 +47,9 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 	err = draft.SetRace(&SetRaceInput{
 		RaceID:    races.Human,
 		SubraceID: "", // Human has no subrace
-		Choices:   RaceChoices{},
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -54,7 +60,12 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 			Skills: []skills.Skill{
 				skills.Athletics,
 				skills.Survival,
-			}, // Barbarian needs to choose 2 skills
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	})
 	s.Require().NoError(err)
@@ -115,7 +126,9 @@ func (s *FeaturesTestSuite) TestFighterGetsSecondWindFeature() {
 	err = draft.SetRace(&SetRaceInput{
 		RaceID:    races.Human,
 		SubraceID: "",
-		Choices:   RaceChoices{},
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -126,7 +139,18 @@ func (s *FeaturesTestSuite) TestFighterGetsSecondWindFeature() {
 			Skills: []skills.Skill{
 				skills.Athletics,
 				skills.History,
-			}, // Fighter needs to choose 2 skills
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err)
