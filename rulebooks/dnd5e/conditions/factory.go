@@ -82,6 +82,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createMartialArts(input.Config, input.CharacterID)
 	case refs.Conditions.UnarmoredMovement().ID:
 		condition, err = createUnarmoredMovement(input.Config, input.CharacterID)
+	case refs.Conditions.SneakAttack().ID:
+		condition, err = createSneakAttack(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -280,5 +282,32 @@ func createUnarmoredMovement(config json.RawMessage, characterID string) (*Unarm
 	return NewUnarmoredMovementCondition(UnarmoredMovementInput{
 		CharacterID: characterID,
 		MonkLevel:   cfg.MonkLevel,
+	}), nil
+}
+
+// sneakAttackConfig is the config structure for sneak attack
+type sneakAttackConfig struct {
+	RogueLevel int `json:"rogue_level"`
+}
+
+// createSneakAttack creates a sneak attack condition from config
+func createSneakAttack(config json.RawMessage, characterID string) (*SneakAttackCondition, error) {
+	var cfg sneakAttackConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse sneak attack config")
+		}
+	}
+
+	// Default to level 1 if not specified
+	level := cfg.RogueLevel
+	if level == 0 {
+		level = 1
+	}
+
+	return NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: characterID,
+		Level:       level,
+		// Roller is nil - will use default roller when needed
 	}), nil
 }

@@ -34,24 +34,30 @@ const (
 	Undercommon Language = "undercommon"
 )
 
+// Secret languages known only to specific classes or groups
+const (
+	ThievesCant Language = "thieves-cant" // Secret rogue language of signs, symbols, and slang
+)
+
 // All contains all languages mapped by ID for O(1) lookup
 var All = map[string]Language{
-	"common":      Common,
-	"dwarvish":    Dwarvish,
-	"elvish":      Elvish,
-	"giant":       Giant,
-	"gnomish":     Gnomish,
-	"goblin":      Goblin,
-	"halfling":    Halfling,
-	"orc":         Orc,
-	"abyssal":     Abyssal,
-	"celestial":   Celestial,
-	"draconic":    Draconic,
-	"deep-speech": DeepSpeech,
-	"infernal":    Infernal,
-	"primordial":  Primordial,
-	"sylvan":      Sylvan,
-	"undercommon": Undercommon,
+	"common":       Common,
+	"dwarvish":     Dwarvish,
+	"elvish":       Elvish,
+	"giant":        Giant,
+	"gnomish":      Gnomish,
+	"goblin":       Goblin,
+	"halfling":     Halfling,
+	"orc":          Orc,
+	"abyssal":      Abyssal,
+	"celestial":    Celestial,
+	"draconic":     Draconic,
+	"deep-speech":  DeepSpeech,
+	"infernal":     Infernal,
+	"primordial":   Primordial,
+	"sylvan":       Sylvan,
+	"undercommon":  Undercommon,
+	"thieves-cant": ThievesCant,
 }
 
 // StandardLanguages returns all standard languages
@@ -152,6 +158,8 @@ func Display(l Language) string {
 		return "Sylvan"
 	case Undercommon:
 		return "Undercommon"
+	case ThievesCant:
+		return "Thieves' Cant"
 	default:
 		return l
 	}

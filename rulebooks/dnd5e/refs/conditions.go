@@ -13,6 +13,7 @@ var (
 	conditionImprovedCritical  = &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
 	conditionMartialArts       = &core.Ref{Module: Module, Type: TypeConditions, ID: "martial_arts"}
 	conditionUnarmoredMovement = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_movement"}
+	conditionSneakAttack       = &core.Ref{Module: Module, Type: TypeConditions, ID: "sneak_attack"}
 
 	// Standard D&D 5e Conditions
 	conditionBlinded       = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
@@ -47,6 +48,7 @@ func (n conditionsNS) FightingStyle() *core.Ref     { return conditionFightingSt
 func (n conditionsNS) ImprovedCritical() *core.Ref  { return conditionImprovedCritical }
 func (n conditionsNS) MartialArts() *core.Ref       { return conditionMartialArts }
 func (n conditionsNS) UnarmoredMovement() *core.Ref { return conditionUnarmoredMovement }
+func (n conditionsNS) SneakAttack() *core.Ref       { return conditionSneakAttack }
 
 // Standard D&D 5e Conditions
 func (n conditionsNS) Blinded() *core.Ref       { return conditionBlinded }

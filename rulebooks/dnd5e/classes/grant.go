@@ -79,6 +79,8 @@ func GetGrants(classID Class) []Grant {
 		return getBarbarianGrants()
 	case Monk:
 		return getMonkGrants()
+	case Rogue:
+		return getRogueGrants()
 	default:
 		// Unmigrated classes return nil - add them explicitly above
 		return nil
@@ -175,6 +177,42 @@ func getMonkGrants() []Grant {
 					Config: json.RawMessage(`{"monk_level": 1}`),
 				},
 			},
+		},
+	}
+}
+
+// getRogueGrants returns all grants for the Rogue class.
+// Note: HitDice and SavingThrows are intrinsic class properties in classes.Data,
+// not level-based grants.
+func getRogueGrants() []Grant {
+	return []Grant{
+		{
+			Level: 1,
+			ArmorProficiencies: []proficiencies.Armor{
+				proficiencies.ArmorLight,
+			},
+			WeaponProficiencies: []proficiencies.Weapon{
+				proficiencies.WeaponSimple,
+				proficiencies.WeaponHandCrossbow,
+				proficiencies.WeaponLongsword,
+				proficiencies.WeaponRapier,
+				proficiencies.WeaponShortsword,
+			},
+			ToolProficiencies: []proficiencies.Tool{
+				proficiencies.ToolThieves,
+			},
+			// Sneak Attack condition (scales with rogue level)
+			Conditions: []ConditionRef{
+				{
+					Ref:    refs.Conditions.SneakAttack().String(),
+					Config: json.RawMessage(`{"rogue_level": 1}`),
+				},
+			},
+			// Thieves' Cant - secret rogue language
+			Languages: []languages.Language{
+				languages.ThievesCant,
+			},
+			// Note: Expertise is a CHOICE, not a grant - handled separately
 		},
 	}
 }

@@ -425,14 +425,19 @@ func (s *CharacterDeathSaveTestSuite) TestGetDeathSaveStateReturnsEmptyStateInit
 }
 
 func (s *CharacterDeathSaveTestSuite) TestMakeDeathSaveUpdatesState() {
-	// Make a death save (result depends on roll, but state should be updated)
-	result, err := s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{})
+	// Use mock roller for deterministic test
+	mockRoller := &mockDeathSaveRoller{rollValue: 12} // Success case (10-19)
+
+	result, err := s.character.MakeDeathSave(s.ctx, &MakeDeathSaveInput{
+		Roller: mockRoller,
+	})
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
-	// State should have been updated (either success or failure added)
+	s.Equal(12, result.Roll)
 	state := s.character.GetDeathSaveState()
-	s.True(state.Successes > 0 || state.Failures > 0, "state should have been updated")
+	s.Equal(1, state.Successes, "roll 12 should add 1 success")
+	s.Equal(0, state.Failures)
 }
 
 func (s *CharacterDeathSaveTestSuite) TestMakeDeathSaveWithMockRoller() {
