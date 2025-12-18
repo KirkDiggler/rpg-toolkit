@@ -12,10 +12,14 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // UnarmoredDefenseACTestSuite tests that Unarmored Defense is correctly applied
@@ -47,17 +51,24 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 	testCases := []struct {
 		name          string
 		class         classes.Class
-		classSkills   []skills.Skill
+		classChoices  ClassChoices
 		background    backgrounds.Background
 		scores        shared.AbilityScores
 		expectedAC    int
 		acExplanation string
 	}{
 		{
-			name:        "Barbarian gets CON bonus to AC",
-			class:       classes.Barbarian,
-			classSkills: []skills.Skill{skills.Athletics, skills.Intimidation},
-			background:  backgrounds.Soldier,
+			name:  "Barbarian gets CON bonus to AC",
+			class: classes.Barbarian,
+			classChoices: ClassChoices{
+				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+				Equipment: []EquipmentChoiceSelection{
+					{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+					{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+					{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+				},
+			},
+			background: backgrounds.Soldier,
 			scores: shared.AbilityScores{
 				abilities.STR: 15,
 				abilities.DEX: 14, // +2 modifier
@@ -70,10 +81,17 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 			acExplanation: "10 + DEX (+2) + CON (+3) = 15",
 		},
 		{
-			name:        "Monk gets WIS bonus to AC",
-			class:       classes.Monk,
-			classSkills: []skills.Skill{skills.Acrobatics, skills.Stealth},
-			background:  backgrounds.Hermit,
+			name:  "Monk gets WIS bonus to AC",
+			class: classes.Monk,
+			classChoices: ClassChoices{
+				Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+				Equipment: []EquipmentChoiceSelection{
+					{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+					{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+				},
+				Tools: []shared.SelectionID{"brewers-supplies"},
+			},
+			background: backgrounds.Hermit,
 			scores: shared.AbilityScores{
 				abilities.STR: 10,
 				abilities.DEX: 16, // +3 modifier
@@ -86,10 +104,23 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 			acExplanation: "10 + DEX (+3) + WIS (+2) = 15",
 		},
 		{
-			name:        "Fighter uses base AC (no Unarmored Defense)",
-			class:       classes.Fighter,
-			classSkills: []skills.Skill{skills.Athletics, skills.Intimidation},
-			background:  backgrounds.Soldier,
+			name:  "Fighter uses base AC (no Unarmored Defense)",
+			class: classes.Fighter,
+			classChoices: ClassChoices{
+				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+				Equipment: []EquipmentChoiceSelection{
+					{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+					{
+						ChoiceID:           choices.FighterWeaponsPrimary,
+						OptionID:           choices.FighterWeaponMartialShield,
+						CategorySelections: []shared.EquipmentID{weapons.Longsword},
+					},
+					{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+				},
+				FightingStyle: fightingstyles.Defense,
+			},
+			background: backgrounds.Soldier,
 			scores: shared.AbilityScores{
 				abilities.STR: 16,
 				abilities.DEX: 14, // +2 modifier
@@ -112,10 +143,15 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 			})
 
 			s.Require().NoError(draft.SetName(&SetNameInput{Name: "Test Character"}))
-			s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+			s.Require().NoError(draft.SetRace(&SetRaceInput{
+				RaceID: races.Human,
+				Choices: RaceChoices{
+					Languages: []languages.Language{languages.Elvish},
+				},
+			}))
 			s.Require().NoError(draft.SetClass(&SetClassInput{
 				ClassID: tc.class,
-				Choices: ClassChoices{Skills: tc.classSkills},
+				Choices: tc.classChoices,
 			}))
 			s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
 				BackgroundID: tc.background,

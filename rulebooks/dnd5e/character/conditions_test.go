@@ -13,13 +13,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 type CharacterConditionsTestSuite struct {
@@ -46,11 +50,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -114,11 +126,25 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 
 	// Minimal setup
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Test"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -134,6 +160,11 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
+
+	// Capture initial conditions - Fighter has a FightingStyleCondition from choosing Defense
+	initialConditions := char.GetConditions()
+	initialCount := len(initialConditions)
+	s.Require().Equal(1, initialCount, "Fighter should have 1 condition (FightingStyleCondition) at start")
 
 	// Publish a condition for a DIFFERENT character
 	differentChar := &DummyEntity{id: "char-2"}
@@ -155,9 +186,15 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 	})
 	s.Require().NoError(err)
 
-	// Verify our character did NOT receive the condition (it should still be empty for Fighter)
-	// Fighter has no starting conditions from grants
-	s.Empty(char.GetConditions(), "Character should ignore conditions for other characters")
+	// Verify our character did NOT receive the raging condition
+	// It should still only have its initial FightingStyleCondition
+	s.Len(char.GetConditions(), initialCount, "Character should ignore conditions for other characters")
+
+	// Verify no raging condition was added
+	for _, cond := range char.GetConditions() {
+		_, isRaging := cond.(*conditions.RagingCondition)
+		s.False(isRaging, "Character should NOT have raging condition from another character")
+	}
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
@@ -169,11 +206,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -224,11 +269,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -277,11 +330,19 @@ func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Sensei"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Monk,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+			Tools: []shared.SelectionID{"brewers-supplies"},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{

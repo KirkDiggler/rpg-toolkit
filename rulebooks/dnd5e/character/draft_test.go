@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -50,6 +51,9 @@ func (s *DraftTestSuite) SetupTest() {
 
 // SetupSubTest resets test data before each subtest
 func (s *DraftTestSuite) SetupSubTest() {
+	// Create fresh event bus for each subtest to avoid condition conflicts
+	s.bus = events.NewEventBus()
+
 	// Create fresh base draft
 	s.baseDraft = s.createBaseDraft()
 
@@ -119,9 +123,12 @@ func (s *DraftTestSuite) createBaseDraft() *character.Draft {
 func (s *DraftTestSuite) createFighterDraft() *character.Draft {
 	draft := s.createBaseDraft()
 
-	// Set race
+	// Set race - Human requires language choice
 	err := draft.SetRace(&character.SetRaceInput{
 		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -132,11 +139,22 @@ func (s *DraftTestSuite) createFighterDraft() *character.Draft {
 	})
 	s.Require().NoError(err)
 
-	// Set class with required skill choices
+	// Set class with required skill choices, equipment, and fighting style
 	err = draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
-			Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Fighter needs 2 skills
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err)
@@ -236,9 +254,12 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	// Create minimal draft with all required fields but no equipment choices
 	draft := s.createBaseDraft()
 
-	// Set race (no equipment grants)
+	// Set race (no equipment grants) - Human requires language choice
 	err := draft.SetRace(&character.SetRaceInput{
 		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -254,7 +275,12 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	err = draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Monk,
 		Choices: character.ClassChoices{
-			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth}, // Monk needs 2 skills
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+			Tools: []shared.SelectionID{"brewers-supplies"},
 		},
 	})
 	s.Require().NoError(err)
@@ -263,21 +289,12 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	char, err := draft.ToCharacter(s.ctx, "char-001", s.bus)
 	s.Require().NoError(err)
 
-	// Check inventory based on what Monk gets from the new Grant system
+	// Check inventory - should have equipment from choices (shortsword + dungeoneer pack)
 	inventory := char.ToData().Inventory
-	grants := classes.GetGrantsForLevel(classes.Monk, 1)
-	hasEquipment := false
-	for _, grant := range grants {
-		if len(grant.Equipment) > 0 {
-			hasEquipment = true
-			break
-		}
-	}
-	if !hasEquipment {
-		s.Empty(inventory, "Monk with no equipment grants should have no inventory")
-	} else {
-		s.NotEmpty(inventory, "Monk should have starting equipment")
-	}
+	s.NotEmpty(inventory, "Monk should have inventory from equipment choices")
+	// Verify specific equipment from choices
+	s.assertInventoryContains(inventory, "shortsword", 1, "Should have shortsword from choice")
+	s.assertInventoryContains(inventory, packs.DungeoneerPack, 1, "Should have dungeoneer pack from choice")
 }
 
 // Test: Class grants only
@@ -306,7 +323,12 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 	s.Run("Monk starting equipment", func() {
 		// Monk specifically gets 10 darts (when migrated to Grant system)
 		draft := s.createBaseDraft()
-		err := draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+		err := draft.SetRace(&character.SetRaceInput{
+			RaceID: races.Human,
+			Choices: character.RaceChoices{
+				Languages: []languages.Language{languages.Elvish},
+			},
+		})
 		s.Require().NoError(err)
 		err = draft.SetBackground(&character.SetBackgroundInput{
 			BackgroundID: backgrounds.Hermit,
@@ -316,7 +338,12 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 		err = draft.SetClass(&character.SetClassInput{
 			ClassID: classes.Monk,
 			Choices: character.ClassChoices{
-				Skills: []skills.Skill{skills.Acrobatics, skills.Stealth}, // Monk needs 2 skills
+				Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+					{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+				},
+				Tools: []shared.SelectionID{"brewers-supplies"},
 			},
 		})
 		s.Require().NoError(err)
@@ -376,23 +403,30 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 // Test: Equipment choices
 func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 	s.Run("Simple weapon choice", func() {
-		// Add a weapon choice - Fighter chooses martial weapon + shield option
-		err := s.testData.fighterDraft.SetClass(&character.SetClassInput{
+		// Create a fresh draft for this subtest
+		draft := s.createFighterDraft()
+
+		// Re-set class with shield option
+		err := draft.SetClass(&character.SetClassInput{
 			ClassID: classes.Fighter,
 			Choices: character.ClassChoices{
-				Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
+				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
 				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
 					{
 						ChoiceID:           choices.FighterWeaponsPrimary,
 						OptionID:           choices.FighterWeaponMartialShield,
 						CategorySelections: []shared.EquipmentID{weapons.Longsword},
 					},
+					{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 				},
+				FightingStyle: fightingstyles.Defense,
 			},
 		})
 		s.Require().NoError(err)
 
-		char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
+		char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
@@ -401,19 +435,30 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 	})
 
 	s.Run("Pack choice", func() {
-		// Add explorer's pack choice
-		err := s.testData.fighterDraft.SetClass(&character.SetClassInput{
+		// Create a fresh draft for this subtest
+		draft := s.createFighterDraft()
+
+		// Re-set class with explorer's pack
+		err := draft.SetClass(&character.SetClassInput{
 			ClassID: classes.Fighter,
 			Choices: character.ClassChoices{
-				Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
+				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
 				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+					{
+						ChoiceID:           choices.FighterWeaponsPrimary,
+						OptionID:           choices.FighterWeaponMartialShield,
+						CategorySelections: []shared.EquipmentID{weapons.Longsword},
+					},
+					{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackExplorer},
 				},
+				FightingStyle: fightingstyles.Defense,
 			},
 		})
 		s.Require().NoError(err)
 
-		char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
+		char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
 		inventory := char.ToData().Inventory
 
@@ -424,19 +469,30 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 
 // Test: Multiple same items (no merging)
 func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
+	// Create a fresh draft for this test
+	draft := s.createFighterDraft()
+
 	// Fighter chooses two handaxes as secondary weapon
-	err := s.testData.fighterDraft.SetClass(&character.SetClassInput{
+	err := draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
-			Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Keep required skills
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
 			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
 				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedHandaxes},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err)
 
-	char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
+	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
 	inventory := char.ToData().Inventory
 
@@ -465,8 +521,16 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
 			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
 				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err)
@@ -484,7 +548,12 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
 	// Test 1: SetClass should reject invalid equipment choice (category-based)
 	draft := s.createBaseDraft()
-	err := draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	err := draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
 	s.Require().NoError(err)
 	err = draft.SetBackground(&character.SetBackgroundInput{
 		BackgroundID: backgrounds.Soldier,
@@ -531,12 +600,11 @@ func (s *DraftTestSuite) TestCompileInventory_InvalidEquipmentValidation() {
 	s.Require().Error(err, "ValidateChoices should reject invalid equipment ID")
 	s.Contains(err.Error(), "invalid equipment ID", "Error should mention invalid equipment ID")
 
-	// Test 3: If invalid data somehow bypasses validation, compilation should panic
-	// This ensures we fail fast rather than silently corrupt data
-	s.Require().Panics(func() {
-		_, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
-		_ = err
-	}, "ToCharacter should panic on invalid equipment that bypassed validation")
+	// Test 3: ToCharacter now calls ValidateChoices first, so it returns an error
+	// instead of panicking. This is the desired behavior - validation catches errors early.
+	_, err = draft.ToCharacter(s.ctx, "char-fighter", s.bus)
+	s.Require().Error(err, "ToCharacter should return error on invalid equipment")
+	s.Contains(err.Error(), "invalid equipment ID", "Error should mention invalid equipment ID")
 }
 
 // Test: Equipment validation catches invalid IDs early
@@ -548,7 +616,12 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsValidation() {
 	err := draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
 	s.Require().NoError(err)
 
-	err = draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
 	s.Require().NoError(err)
 
 	err = draft.SetBackground(&character.SetBackgroundInput{
@@ -589,11 +662,11 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsValidation() {
 	s.Contains(err.Error(), "invalid equipment ID", "Error should mention invalid equipment ID")
 	s.Contains(err.Error(), "invalid-equipment-id", "Error should mention the specific invalid ID")
 
-	// Test 2: Test ToCharacter panics on invalid equipment (simulates bypassed validation)
-	s.Require().Panics(func() {
-		_, err := draftWithInvalidEquip.ToCharacter(s.ctx, "char-fighter", s.bus)
-		_ = err
-	}, "ToCharacter should panic on invalid-equipment-id")
+	// Test 2: ToCharacter now calls ValidateChoices first, so it returns an error
+	// instead of panicking. This is the desired behavior - validation catches errors early.
+	_, err = draftWithInvalidEquip.ToCharacter(s.ctx, "char-fighter", s.bus)
+	s.Require().Error(err, "ToCharacter should return error on invalid equipment")
+	s.Contains(err.Error(), "invalid equipment ID", "Error should mention invalid equipment ID")
 
 	// Test 3: Verify valid equipment doesn't cause issues
 	validDraftData := draft.ToData()
@@ -622,7 +695,12 @@ func (s *DraftTestSuite) TestCompileInventory_BoltsIsValidEquipment() {
 	err := draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
 	s.Require().NoError(err)
 
-	err = draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
 	s.Require().NoError(err)
 
 	err = draft.SetBackground(&character.SetBackgroundInput{
@@ -677,8 +755,13 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	// Build complete fighter
 	draft := s.createBaseDraft()
 
-	// Set race
-	err := draft.SetRace(&character.SetRaceInput{RaceID: races.Human})
+	// Set race - Human requires language choice
+	err := draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
 	s.Require().NoError(err)
 
 	// Set background
@@ -688,19 +771,22 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	})
 	s.Require().NoError(err)
 
-	// Set class with equipment choices
+	// Set class with complete equipment choices and fighting style
 	err = draft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation}, // Fighter needs 2 skills
 			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
 				{
 					ChoiceID:           choices.FighterWeaponsPrimary,
 					OptionID:           choices.FighterWeaponMartialShield,
 					CategorySelections: []shared.EquipmentID{weapons.Longsword},
 				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err)
@@ -766,9 +852,12 @@ func (s *ClassChangeTestSuite) createBaseDraft() *character.Draft {
 	})
 	s.Require().NoError(err)
 
-	// Set race
+	// Set race - Human requires language choice
 	err = draft.SetRace(&character.SetRaceInput{
 		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -785,19 +874,22 @@ func (s *ClassChangeTestSuite) createBaseDraft() *character.Draft {
 func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 	// This is the exact scenario from issue #344
 
-	// First set Fighter class with equipment choices
+	// First set Fighter class with all required equipment choices
 	err := s.baseDraft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
 			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
 				{
 					ChoiceID:           choices.FighterWeaponsPrimary,
 					OptionID:           choices.FighterWeaponMartialShield,
 					CategorySelections: []shared.EquipmentID{weapons.Longsword},
 				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err, "Setting Fighter class should succeed")
@@ -870,11 +962,22 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 
 // Test: Class change clears old skill choices
 func (s *ClassChangeTestSuite) TestClassChange_ClearsOldSkillChoices() {
-	// Set Fighter with specific skills
+	// Set Fighter with specific skills and all required choices
 	err := s.baseDraft.SetClass(&character.SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Acrobatics, skills.Athletics},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err, "Setting Fighter class should succeed")
@@ -895,6 +998,11 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldSkillChoices() {
 		ClassID: classes.Barbarian,
 		Choices: character.ClassChoices{
 			Skills: []skills.Skill{skills.Intimidation, skills.Survival},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	})
 	s.Require().NoError(err, "Changing to Barbarian should succeed")
@@ -1061,12 +1169,14 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 			Skills: []skills.Skill{skills.Nature, skills.Survival},
 			Equipment: []character.EquipmentChoiceSelection{
 				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
 			},
 		},
 	})
 	s.Require().NoError(err, "Changing to Barbarian should succeed")
 
-	// Third: Rogue
+	// Third: Rogue (with all required choices)
 	err = s.baseDraft.SetClass(&character.SetClassInput{
 		ClassID: classes.Rogue,
 		Choices: character.ClassChoices{
@@ -1074,8 +1184,12 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 				skills.Stealth, skills.Perception,
 				skills.Investigation, skills.Acrobatics,
 			},
+			Expertise: []skills.Skill{
+				skills.Stealth, skills.Perception,
+			},
 			Equipment: []character.EquipmentChoiceSelection{
 				{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponShortsword},
+				{ChoiceID: choices.RogueWeaponsSecondary, OptionID: choices.RogueSecondaryShortbow},
 				{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
 			},
 		},
