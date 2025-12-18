@@ -10,7 +10,13 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+// cubePos creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
+func cubePos(x int) spatial.CubeCoordinate {
+	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
+}
 
 // mockEntity implements core.Entity for testing
 type mockEntity struct {
@@ -53,29 +59,30 @@ func (s *TargetingTestSuite) SetupTest() {
 	})
 
 	// Create test perception data with multiple enemies
+	// Using hex distances: 1 = adjacent, 2 = 2 hexes away, etc.
 	s.perception = &PerceptionData{
-		MyPosition: Position{X: 0, Y: 0},
+		MyPosition: cubePos(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockEntity{id: "enemy-1", hp: 25, ac: 15},
-				Position: Position{X: 5, Y: 0},
-				Distance: 5,
+				Position: cubePos(1),
+				Distance: 1, // 1 hex = adjacent
 				Adjacent: true,
 				HP:       25,
 				AC:       15,
 			},
 			{
 				Entity:   &mockEntity{id: "enemy-2", hp: 10, ac: 18},
-				Position: Position{X: 10, Y: 0},
-				Distance: 10,
+				Position: cubePos(2),
+				Distance: 2, // 2 hexes away
 				Adjacent: false,
 				HP:       10,
 				AC:       18,
 			},
 			{
 				Entity:   &mockEntity{id: "enemy-3", hp: 30, ac: 12},
-				Position: Position{X: 15, Y: 0},
-				Distance: 15,
+				Position: cubePos(3),
+				Distance: 3, // 3 hexes away
 				Adjacent: false,
 				HP:       30,
 				AC:       12,
@@ -156,13 +163,13 @@ func (s *TargetingTestSuite) TestTargetingWithTies() {
 		s.perception.Enemies = []PerceivedEntity{
 			{
 				Entity:   &mockEntity{id: "enemy-1", hp: 10, ac: 15},
-				Distance: 5,
+				Distance: 1,
 				HP:       10,
 				AC:       15,
 			},
 			{
 				Entity:   &mockEntity{id: "enemy-2", hp: 10, ac: 18},
-				Distance: 10,
+				Distance: 2,
 				HP:       10,
 				AC:       18,
 			},
@@ -181,13 +188,13 @@ func (s *TargetingTestSuite) TestTargetingWithTies() {
 		s.perception.Enemies = []PerceivedEntity{
 			{
 				Entity:   &mockEntity{id: "enemy-1", hp: 25, ac: 12},
-				Distance: 5,
+				Distance: 1,
 				HP:       25,
 				AC:       12,
 			},
 			{
 				Entity:   &mockEntity{id: "enemy-2", hp: 10, ac: 12},
-				Distance: 10,
+				Distance: 2,
 				HP:       10,
 				AC:       12,
 			},

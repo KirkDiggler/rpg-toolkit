@@ -12,7 +12,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+// cubeAt creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
+func cubeAt(x int) spatial.CubeCoordinate {
+	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
+}
 
 type BehaviorTestSuite struct {
 	suite.Suite
@@ -65,12 +71,12 @@ func (s *BehaviorTestSuite) TestScimitarActionScore() {
 
 	s.Run("higher score when adjacent", func() {
 		perception := &PerceptionData{
-			MyPosition: Position{X: 5, Y: 5},
+			MyPosition: cubeAt(0),
 			Enemies: []PerceivedEntity{
 				{
 					Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-					Position: Position{X: 5, Y: 6},
-					Distance: 5,
+					Position: cubeAt(1), // 1 hex away
+					Distance: 1,
 					Adjacent: true,
 				},
 			},
@@ -82,12 +88,12 @@ func (s *BehaviorTestSuite) TestScimitarActionScore() {
 
 	s.Run("base score when not adjacent", func() {
 		perception := &PerceptionData{
-			MyPosition: Position{X: 0, Y: 0},
+			MyPosition: cubeAt(0),
 			Enemies: []PerceivedEntity{
 				{
 					Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-					Position: Position{X: 6, Y: 0},
-					Distance: 30,
+					Position: cubeAt(6), // 6 hexes away
+					Distance: 6,
 					Adjacent: false,
 				},
 			},
@@ -117,14 +123,14 @@ func (s *BehaviorTestSuite) TestTakeTurnSelectsAndExecutesAction() {
 	goblin.AddAction(scimitar)
 	goblin.bus = s.bus
 
-	// Create perception with adjacent enemy
+	// Create perception with adjacent enemy (1 hex away)
 	perception := &PerceptionData{
-		MyPosition: Position{X: 5, Y: 5},
+		MyPosition: cubeAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-				Position: Position{X: 5, Y: 6},
-				Distance: 5,
+				Position: cubeAt(1),
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -162,7 +168,7 @@ func (s *BehaviorTestSuite) TestTakeTurnNoEnemies() {
 
 	// No enemies
 	perception := &PerceptionData{
-		MyPosition: Position{X: 5, Y: 5},
+		MyPosition: cubeAt(0),
 		Enemies:    []PerceivedEntity{},
 	}
 
@@ -188,14 +194,14 @@ func (s *BehaviorTestSuite) TestTakeTurnExhaustsActions() {
 	goblin.AddAction(scimitar)
 	goblin.bus = s.bus
 
-	// Adjacent enemy
+	// Adjacent enemy (1 hex away)
 	perception := &PerceptionData{
-		MyPosition: Position{X: 5, Y: 5},
+		MyPosition: cubeAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-				Position: Position{X: 5, Y: 6},
-				Distance: 5,
+				Position: cubeAt(1),
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -254,8 +260,8 @@ func (s *BehaviorTestSuite) TestPerceptionHelpers() {
 
 		perception := &PerceptionData{
 			Enemies: []PerceivedEntity{
-				{Entity: enemy1, Distance: 10},
-				{Entity: enemy2, Distance: 20},
+				{Entity: enemy1, Distance: 2},
+				{Entity: enemy2, Distance: 4},
 			},
 		}
 		closest := perception.ClosestEnemy()
@@ -300,7 +306,7 @@ func (s *BehaviorTestSuite) TestToData() {
 			abilities.WIS: 8,
 			abilities.CHA: 8,
 		},
-		Speed:  SpeedData{Walk: 30},
+		Speed:  SpeedData{Walk: 6}, // 6 hexes (was 30 feet)
 		Senses: SensesData{Darkvision: 60},
 		Proficiencies: []ProficiencyData{
 			{Skill: "stealth", Bonus: 6},
@@ -322,7 +328,7 @@ func (s *BehaviorTestSuite) TestToData() {
 	s.Equal(4, outputData.HitPoints) // 7 - 3 = 4
 	s.Equal(7, outputData.MaxHitPoints)
 	s.Equal(15, outputData.ArmorClass)
-	s.Equal(30, outputData.Speed.Walk)
+	s.Equal(6, outputData.Speed.Walk) // 6 hexes
 	s.Equal(60, outputData.Senses.Darkvision)
 
 	// Check proficiencies preserved
@@ -358,7 +364,7 @@ func (s *BehaviorTestSuite) TestNewGoblinHasDefaultActions() {
 	s.Equal("scimitar", actions[0].GetID())
 	s.Equal(TypeMeleeAttack, actions[0].ActionType())
 
-	// Should have default speed
+	// Should have default speed (6 hexes = 30 feet)
 	s.Equal(30, goblin.Speed().Walk)
 }
 
@@ -369,14 +375,15 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 	goblin := NewGoblin("goblin-1")
 	goblin.bus = s.bus
 
-	// Enemy is 35 feet away (outside movement range but within speed+melee)
+	// Enemy is 7 hexes away (outside movement range but within speed+melee)
+	// Goblin speed is 6 hexes, so can move 6 and end up 1 hex away (adjacent)
 	perception := &PerceptionData{
-		MyPosition: Position{X: 0, Y: 0},
+		MyPosition: cubeAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
-				Position: Position{X: 35, Y: 0},
-				Distance: 35, // 35 feet away
+				Position: cubeAt(7), // 7 hexes away
+				Distance: 7,
 				Adjacent: false,
 			},
 		},
@@ -387,7 +394,7 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 		ActionEconomy: combat.NewActionEconomy(),
 		Perception:    perception,
 		Roller:        dice.NewRoller(),
-		Speed:         30, // Goblin speed
+		Speed:         6, // Goblin speed in hexes
 	}
 
 	// Execute turn
@@ -396,20 +403,18 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 	s.Require().NoError(err)
 	s.T().Logf("Turn result: MonsterID=%s", result.MonsterID)
 
-	// Should have moved
-	s.Require().Len(result.Movement, 2, "Expected start and end positions")
-	s.T().Logf("Movement: from (%d,%d) to (%d,%d)",
-		result.Movement[0].X, result.Movement[0].Y,
-		result.Movement[1].X, result.Movement[1].Y)
+	// Should have moved - full path recorded (start + 6 steps)
+	s.Require().Len(result.Movement, 7, "Expected start position + 6 hex moves")
+	s.T().Logf("Movement: from %v to %v (path length: %d)",
+		result.Movement[0], result.Movement[len(result.Movement)-1], len(result.Movement))
 
 	// Started at origin
-	s.Equal(0, result.Movement[0].X)
-	s.Equal(0, result.Movement[0].Y)
+	s.True(result.Movement[0].Equals(cubeAt(0)))
 
-	// Moved toward enemy (should stop at 5ft = adjacent)
-	// With 30ft speed and enemy at 35ft, we move 30ft to end up at 30ft (5ft away = adjacent)
-	s.Equal(30, result.Movement[1].X)
-	s.Equal(0, result.Movement[1].Y)
+	// Ended up adjacent to enemy (1 hex away from (7,0) = at (6,0))
+	finalPos := result.Movement[len(result.Movement)-1]
+	enemyPos := cubeAt(7)
+	s.Equal(1, finalPos.Distance(enemyPos), "Should end up 1 hex away from enemy")
 
 	// Perception should be updated - now adjacent
 	s.True(perception.HasAdjacentEnemy(), "Should be adjacent after moving")
@@ -430,14 +435,14 @@ func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {
 	goblin := NewGoblin("goblin-1")
 	goblin.bus = s.bus
 
-	// Enemy is 5 feet away (already adjacent)
+	// Enemy is 1 hex away (already adjacent)
 	perception := &PerceptionData{
-		MyPosition: Position{X: 0, Y: 0},
+		MyPosition: cubeAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
-				Position: Position{X: 5, Y: 0},
-				Distance: 5,
+				Position: cubeAt(1),
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -448,7 +453,7 @@ func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {
 		ActionEconomy: combat.NewActionEconomy(),
 		Perception:    perception,
 		Roller:        dice.NewRoller(),
-		Speed:         30,
+		Speed:         6,
 	}
 
 	result, err := goblin.TakeTurn(s.ctx, input)
@@ -468,14 +473,14 @@ func (s *BehaviorTestSuite) TestTakeTurnEnemyTooFar() {
 	goblin := NewGoblin("goblin-1")
 	goblin.bus = s.bus
 
-	// Enemy is 100 feet away - can move toward but not attack
+	// Enemy is 20 hexes away - can move toward but not attack
 	perception := &PerceptionData{
-		MyPosition: Position{X: 0, Y: 0},
+		MyPosition: cubeAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
-				Position: Position{X: 100, Y: 0},
-				Distance: 100,
+				Position: cubeAt(20),
+				Distance: 20,
 				Adjacent: false,
 			},
 		},
@@ -486,16 +491,17 @@ func (s *BehaviorTestSuite) TestTakeTurnEnemyTooFar() {
 		ActionEconomy: combat.NewActionEconomy(),
 		Perception:    perception,
 		Roller:        dice.NewRoller(),
-		Speed:         30,
+		Speed:         6,
 	}
 
 	result, err := goblin.TakeTurn(s.ctx, input)
 
 	s.Require().NoError(err)
 
-	// Should have moved full speed toward enemy
-	s.Require().Len(result.Movement, 2)
-	s.Equal(30, result.Movement[1].X) // Moved 30 feet
+	// Should have moved full speed toward enemy (start + 6 steps)
+	s.Require().Len(result.Movement, 7)
+	finalPos := result.Movement[len(result.Movement)-1]
+	s.Equal(6, finalPos.X) // Moved 6 hexes toward target at X=20
 
 	// Should NOT have attacked (still too far)
 	s.Len(result.Actions, 0, "Should not attack when still too far")

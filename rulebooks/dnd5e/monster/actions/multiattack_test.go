@@ -7,14 +7,21 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/stretchr/testify/suite"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+// multiHex creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
+func multiHex(x int) spatial.CubeCoordinate {
+	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
+}
 
 type MultiattackActionTestSuite struct {
 	suite.Suite
@@ -106,25 +113,25 @@ func (s *MultiattackActionTestSuite) TestCanActivate_Valid() {
 		Name:        "bite",
 		AttackBonus: 5,
 		DamageDice:  "1d8+3",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	}))
 	m.AddAction(NewMeleeAction(MeleeConfig{
 		Name:        "claw",
 		AttackBonus: 5,
 		DamageDice:  "1d6+3",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Slashing,
 	}))
 
 	target := &mockEntity{id: "hero-1"}
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: multiHex(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 1, Y: 0},
-				Distance: 5,
+				Position: multiHex(1), // 1 hex = adjacent
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -159,25 +166,25 @@ func (s *MultiattackActionTestSuite) TestActivate_ExecutesMultipleAttacks() {
 		Name:        "bite",
 		AttackBonus: 5,
 		DamageDice:  "1d8+3",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	}))
 	m.AddAction(NewMeleeAction(MeleeConfig{
 		Name:        "claw",
 		AttackBonus: 5,
 		DamageDice:  "1d6+3",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Slashing,
 	}))
 
 	target := &mockEntity{id: "hero-1"}
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: multiHex(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 1, Y: 0},
-				Distance: 5,
+				Position: multiHex(1),
+				Distance: 1,
 				Adjacent: true,
 			},
 		},

@@ -7,14 +7,21 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/stretchr/testify/suite"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+// rangedHex creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
+func rangedHex(x int) spatial.CubeCoordinate {
+	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
+}
 
 type RangedActionTestSuite struct {
 	suite.Suite
@@ -37,8 +44,8 @@ func (s *RangedActionTestSuite) TestNewRangedAction() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16, // 16 hexes (80 feet / 5)
+		RangeLong:   64, // 64 hexes (320 feet / 5)
 		DamageType:  damage.Piercing,
 	}
 
@@ -59,8 +66,8 @@ func (s *RangedActionTestSuite) TestCanActivate_NoTarget() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -83,8 +90,8 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetOutOfRange() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -92,12 +99,12 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetOutOfRange() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: rangedHex(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 400, Y: 0},
-				Distance: 400,
+				Position: rangedHex(80), // 80 hexes away (way beyond long range)
+				Distance: 80,
 				Adjacent: false,
 			},
 		},
@@ -122,8 +129,8 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInNormalRange() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -131,12 +138,12 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInNormalRange() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: rangedHex(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 60, Y: 0},
-				Distance: 60,
+				Position: rangedHex(12), // 12 hexes away (within normal range)
+				Distance: 12,
 				Adjacent: false,
 			},
 		},
@@ -160,8 +167,8 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInLongRange() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -169,12 +176,12 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInLongRange() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: rangedHex(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 200, Y: 0},
-				Distance: 200,
+				Position: rangedHex(40), // 40 hexes away (in long range)
+				Distance: 40,
 				Adjacent: false,
 			},
 		},
@@ -198,8 +205,8 @@ func (s *RangedActionTestSuite) TestActivate_PublishesAttackEvent() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -207,12 +214,12 @@ func (s *RangedActionTestSuite) TestActivate_PublishesAttackEvent() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: rangedHex(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 60, Y: 0},
-				Distance: 60,
+				Position: rangedHex(12),
+				Distance: 12,
 				Adjacent: false,
 			},
 		},
@@ -253,8 +260,8 @@ func (s *RangedActionTestSuite) TestScore_NoAdjacentEnemy() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -266,7 +273,7 @@ func (s *RangedActionTestSuite) TestScore_NoAdjacentEnemy() {
 	})
 	perception := &monster.PerceptionData{
 		Enemies: []monster.PerceivedEntity{
-			{Adjacent: false, Distance: 30},
+			{Adjacent: false, Distance: 6}, // 6 hexes away
 		},
 	}
 
@@ -283,8 +290,8 @@ func (s *RangedActionTestSuite) TestScore_AdjacentEnemy() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	})
 
@@ -313,8 +320,8 @@ func (s *RangedActionTestSuite) TestToData() {
 		Name:        "shortbow",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		RangeNormal: 80,
-		RangeLong:   320,
+		RangeNormal: 16,
+		RangeLong:   64,
 		DamageType:  damage.Piercing,
 	}
 	action := NewRangedAction(config)

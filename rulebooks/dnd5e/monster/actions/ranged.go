@@ -20,8 +20,8 @@ type RangedConfig struct {
 	Name        string      `json:"name"`         // e.g., "shortbow", "light crossbow"
 	AttackBonus int         `json:"attack_bonus"` // e.g., +4
 	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
-	RangeNormal int         `json:"range_normal"` // in feet, typically 80
-	RangeLong   int         `json:"range_long"`   // in feet, typically 320
+	RangeNormal int         `json:"range_normal"` // in hexes, typically 16 (80ft / 5)
+	RangeLong   int         `json:"range_long"`   // in hexes, typically 64 (320ft / 5)
 	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing
 }
 

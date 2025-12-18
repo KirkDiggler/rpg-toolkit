@@ -97,11 +97,11 @@ func (b *BiteAction) CanActivate(_ context.Context, _ core.Entity, input monster
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "no perception data")
 	}
 
-	// Check if target is within reach
+	// Check if target is within reach (bite is always adjacent/1 hex)
 	targetInReach := false
 	for _, enemy := range input.Perception.Enemies {
 		if enemy.Entity.GetID() == input.Target.GetID() {
-			if enemy.Distance <= 5 {
+			if enemy.Adjacent {
 				targetInReach = true
 				break
 			}
