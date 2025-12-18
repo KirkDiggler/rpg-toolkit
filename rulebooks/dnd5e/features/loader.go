@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -12,6 +13,7 @@ import (
 type Feature interface {
 	core.Action[FeatureInput] // Can be activated
 	ToJSON() (json.RawMessage, error)
+	ActionType() combat.ActionType // Returns action economy cost to activate
 }
 
 // LoadJSON loads a feature from JSON based on its ref

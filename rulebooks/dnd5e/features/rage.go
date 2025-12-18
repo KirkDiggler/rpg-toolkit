@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -167,4 +168,9 @@ func (r *Rage) ToJSON() (json.RawMessage, error) {
 // RestoreOnLongRest restores all rage uses on a long rest
 func (r *Rage) RestoreOnLongRest() {
 	r.resource.RestoreToFull()
+}
+
+// ActionType returns the action economy cost to activate rage (bonus action)
+func (r *Rage) ActionType() combat.ActionType {
+	return combat.ActionBonus
 }

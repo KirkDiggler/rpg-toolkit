@@ -7,9 +7,10 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -17,7 +18,7 @@ import (
 
 // ResourceAccessor provides access to character resources without circular import
 type ResourceAccessor interface {
-	GetResource(key coreResources.ResourceKey) *combat.RecoverableResource
+	GetResource(key coreResources.ResourceKey) *dnd5eCombat.RecoverableResource
 }
 
 // FlurryOfBlows represents the monk's Flurry of Blows feature.
@@ -129,4 +130,9 @@ func (f *FlurryOfBlows) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
+}
+
+// ActionType returns the action economy cost to activate flurry of blows (bonus action)
+func (f *FlurryOfBlows) ActionType() combat.ActionType {
+	return combat.ActionBonus
 }

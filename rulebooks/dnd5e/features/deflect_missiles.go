@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -208,4 +209,9 @@ func (d *DeflectMissiles) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
+}
+
+// ActionType returns the action economy cost to activate deflect missiles (reaction)
+func (d *DeflectMissiles) ActionType() combat.ActionType {
+	return combat.ActionReaction
 }

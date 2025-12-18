@@ -7,11 +7,12 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -21,9 +22,9 @@ import (
 type SecondWind struct {
 	id          string
 	name        string
-	level       int                         // Fighter level for healing calculation
-	characterID string                      // Character this feature belongs to
-	resource    *combat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
+	level       int                              // Fighter level for healing calculation
+	characterID string                           // Character this feature belongs to
+	resource    *dnd5eCombat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
 }
 
 // SecondWindData is the JSON structure for persisting Second Wind state
@@ -127,7 +128,7 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 	s.characterID = secondWindData.CharacterID
 
 	// Set up recoverable resource with current and max uses
-	s.resource = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+	s.resource = dnd5eCombat.NewRecoverableResource(dnd5eCombat.RecoverableResourceConfig{
 		ID:          refs.Features.SecondWind().ID,
 		Maximum:     secondWindData.MaxUses,
 		CharacterID: secondWindData.CharacterID,
@@ -161,4 +162,9 @@ func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
+}
+
+// ActionType returns the action economy cost to activate second wind (bonus action)
+func (s *SecondWind) ActionType() combat.ActionType {
+	return combat.ActionBonus
 }
