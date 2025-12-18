@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // MonsterActionInput provides everything a monster action needs to execute.
@@ -59,28 +60,26 @@ type MonsterAction interface {
 // PerceptionData represents what the monster perceives about the battlefield.
 // Built from room/spatial data at the start of each turn.
 type PerceptionData struct {
-	// Monster's current position
-	MyPosition Position
+	// Monster's current position in cube coordinates
+	MyPosition spatial.CubeCoordinate
 
 	// Perceived enemies sorted by distance (closest first)
 	Enemies []PerceivedEntity
 
 	// Perceived allies
 	Allies []PerceivedEntity
-}
 
-// Position represents a point in the combat space
-type Position struct {
-	X int `json:"x"`
-	Y int `json:"y"`
+	// BlockedHexes contains hexes that cannot be moved through (walls, obstacles)
+	// Used for pathfinding. Currently ignored by greedy movement algorithm.
+	BlockedHexes []spatial.CubeCoordinate
 }
 
 // PerceivedEntity represents an entity the monster can perceive
 type PerceivedEntity struct {
 	Entity   core.Entity
-	Position Position
-	Distance int  // Distance in feet
-	Adjacent bool // Within 5 feet
+	Position spatial.CubeCoordinate
+	Distance int  // Distance in hex count
+	Adjacent bool // Distance == 1 (one hex away)
 	HP       int  // Current hit points (for TargetLowestHP strategy)
 	AC       int  // Armor class (for TargetLowestAC strategy)
 }
@@ -120,14 +119,14 @@ type TurnInput struct {
 	ActionEconomy *combat.ActionEconomy
 	Perception    *PerceptionData
 	Roller        dice.Roller
-	Speed         int // Movement speed in feet (typically 30 for most creatures)
+	Speed         int // Movement speed in hexes (typically 6 for most creatures)
 }
 
 // TurnResult represents the outcome of a monster's turn
 type TurnResult struct {
 	MonsterID string
 	Actions   []ExecutedAction
-	Movement  []Position
+	Movement  []spatial.CubeCoordinate // Full path of every hex crossed
 }
 
 // ExecutedAction records a single action taken during a turn

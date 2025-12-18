@@ -7,13 +7,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/stretchr/testify/suite"
 )
 
 type BiteActionTestSuite struct {
@@ -86,12 +87,12 @@ func (s *BiteActionTestSuite) TestCanActivate_TargetOutOfReach() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 10, Y: 0},
-				Distance: 10,
+				Position: hexAt(2), // 2 hexes away
+				Distance: 2,
 				Adjacent: false,
 			},
 		},
@@ -123,12 +124,12 @@ func (s *BiteActionTestSuite) TestCanActivate_TargetInReach() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 1, Y: 0},
-				Distance: 5,
+				Position: hexAt(1), // 1 hex away = adjacent
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -159,12 +160,12 @@ func (s *BiteActionTestSuite) TestActivate_PublishesAttackEvent() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 1, Y: 0},
-				Distance: 5,
+				Position: hexAt(1),
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -244,7 +245,7 @@ func (s *BiteActionTestSuite) TestScore_NoAdjacentEnemy() {
 	})
 	perception := &monster.PerceptionData{
 		Enemies: []monster.PerceivedEntity{
-			{Adjacent: false, Distance: 30},
+			{Adjacent: false, Distance: 6}, // 6 hexes away
 		},
 	}
 

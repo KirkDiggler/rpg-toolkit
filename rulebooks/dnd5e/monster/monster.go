@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // Monster represents a hostile creature for combat encounters.
@@ -294,7 +295,7 @@ func (m *Monster) TakeTurn(ctx context.Context, input *TurnInput) (*TurnResult, 
 	result := &TurnResult{
 		MonsterID: m.id,
 		Actions:   make([]ExecutedAction, 0),
-		Movement:  make([]Position, 0),
+		Movement:  make([]spatial.CubeCoordinate, 0),
 	}
 
 	// Move toward closest enemy if not adjacent
@@ -472,6 +473,7 @@ func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity 
 }
 
 // moveTowardEnemy moves the monster toward the closest enemy if not already adjacent.
+// Uses greedy hex neighbor selection to build the movement path.
 // Updates perception data to reflect new position after movement.
 func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 	if input.Perception == nil || len(input.Perception.Enemies) == 0 {
@@ -493,68 +495,63 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 		return // Can't move
 	}
 
-	// Calculate direction vector toward enemy
-	myPos := input.Perception.MyPosition
-	targetPos := closest.Position
-
-	dx := targetPos.X - myPos.X
-	dy := targetPos.Y - myPos.Y
-
-	// Calculate actual distance (simplified: use larger of dx/dy for grid movement)
-	distanceToMove := closest.Distance - 5 // Stop at 5ft (adjacent)
-	if distanceToMove <= 0 {
+	// Calculate hexes to move (stop 1 hex away = adjacent)
+	hexesToMove := closest.Distance - 1
+	if hexesToMove <= 0 {
 		return // Already close enough
 	}
 
 	// Cap at our speed
-	if distanceToMove > speed {
-		distanceToMove = speed
+	if hexesToMove > speed {
+		hexesToMove = speed
 	}
 
-	// Calculate new position (move directly toward target)
-	// Using simple linear interpolation
-	totalDist := closest.Distance
-	if totalDist == 0 {
-		return
+	// Build path via greedy neighbor selection
+	current := input.Perception.MyPosition
+	target := closest.Position
+	path := []spatial.CubeCoordinate{current}
+
+	for i := 0; i < hexesToMove; i++ {
+		neighbors := current.GetNeighbors()
+		bestDist := current.Distance(target)
+		var bestNeighbor spatial.CubeCoordinate
+		found := false
+
+		for _, n := range neighbors {
+			dist := n.Distance(target)
+			if dist < bestDist {
+				bestDist = dist
+				bestNeighbor = n
+				found = true
+			}
+		}
+
+		if !found {
+			break // Can't get closer, stop
+		}
+		current = bestNeighbor
+		path = append(path, current)
 	}
 
-	ratio := float64(distanceToMove) / float64(totalDist)
-	newX := myPos.X + int(float64(dx)*ratio)
-	newY := myPos.Y + int(float64(dy)*ratio)
-
-	newPos := Position{X: newX, Y: newY}
-
-	// Record the movement
-	result.Movement = append(result.Movement, myPos)  // Start position
-	result.Movement = append(result.Movement, newPos) // End position
+	// Record full path (every hex crossed)
+	result.Movement = path
 
 	// Update perception with new position
-	input.Perception.MyPosition = newPos
+	input.Perception.MyPosition = current
 
 	// Recalculate distances and adjacency for enemies
 	for i := range input.Perception.Enemies {
 		enemy := &input.Perception.Enemies[i]
-		newDx := enemy.Position.X - newPos.X
-		newDy := enemy.Position.Y - newPos.Y
-
-		// Simple distance calculation (could use proper Euclidean or grid distance)
-		if abs(newDx) > abs(newDy) {
-			enemy.Distance = abs(newDx)
-		} else {
-			enemy.Distance = abs(newDy)
-		}
-
-		// Adjacent if within 5 feet
-		enemy.Adjacent = enemy.Distance <= 5
+		enemy.Distance = current.Distance(enemy.Position)
+		enemy.Adjacent = enemy.Distance == 1
 	}
-}
 
-// abs returns the absolute value of an integer
-func abs(x int) int {
-	if x < 0 {
-		return -x
+	// Recalculate distances and adjacency for allies
+	for i := range input.Perception.Allies {
+		ally := &input.Perception.Allies[i]
+		ally.Distance = current.Distance(ally.Position)
+		ally.Adjacent = ally.Distance == 1
 	}
-	return x
 }
 
 // ToData converts the monster to its persistent data form

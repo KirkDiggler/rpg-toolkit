@@ -20,7 +20,7 @@ type MeleeConfig struct {
 	Name        string      `json:"name"`         // e.g., "shortsword", "greataxe"
 	AttackBonus int         `json:"attack_bonus"` // e.g., +4
 	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
-	Reach       int         `json:"reach"`        // in feet, typically 5 or 10
+	Reach       int         `json:"reach"`        // in hexes, typically 1 (5ft) or 2 (10ft reach)
 	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing, slashing
 }
 

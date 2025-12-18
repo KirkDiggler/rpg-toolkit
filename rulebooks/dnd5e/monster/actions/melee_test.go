@@ -7,6 +7,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -14,7 +16,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/stretchr/testify/suite"
 )
 
 type MeleeActionTestSuite struct {
@@ -38,7 +39,7 @@ func (s *MeleeActionTestSuite) TestNewMeleeAction() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	}
 
@@ -59,7 +60,7 @@ func (s *MeleeActionTestSuite) TestCanActivate_NoTarget() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	})
 
@@ -82,7 +83,7 @@ func (s *MeleeActionTestSuite) TestCanActivate_TargetOutOfReach() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	})
 
@@ -90,12 +91,12 @@ func (s *MeleeActionTestSuite) TestCanActivate_TargetOutOfReach() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 10, Y: 0},
-				Distance: 10,
+				Position: hexAt(2), // 2 hexes away
+				Distance: 2,
 				Adjacent: false,
 			},
 		},
@@ -120,7 +121,7 @@ func (s *MeleeActionTestSuite) TestCanActivate_TargetInReach() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	})
 
@@ -128,12 +129,12 @@ func (s *MeleeActionTestSuite) TestCanActivate_TargetInReach() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 1, Y: 0},
-				Distance: 5,
+				Position: hexAt(1), // 1 hex = adjacent
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -157,7 +158,7 @@ func (s *MeleeActionTestSuite) TestActivate_PublishesAttackEvent() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	})
 
@@ -165,12 +166,12 @@ func (s *MeleeActionTestSuite) TestActivate_PublishesAttackEvent() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: monster.Position{X: 0, Y: 0},
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: monster.Position{X: 1, Y: 0},
-				Distance: 5,
+				Position: hexAt(1),
+				Distance: 1,
 				Adjacent: true,
 			},
 		},
@@ -211,7 +212,7 @@ func (s *MeleeActionTestSuite) TestScore_AdjacentEnemy() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	})
 
@@ -240,7 +241,7 @@ func (s *MeleeActionTestSuite) TestScore_NoAdjacentEnemy() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	})
 
@@ -252,7 +253,7 @@ func (s *MeleeActionTestSuite) TestScore_NoAdjacentEnemy() {
 	})
 	perception := &monster.PerceptionData{
 		Enemies: []monster.PerceivedEntity{
-			{Adjacent: false, Distance: 30},
+			{Adjacent: false, Distance: 6}, // 6 hexes away
 		},
 	}
 
@@ -269,7 +270,7 @@ func (s *MeleeActionTestSuite) TestToData() {
 		Name:        "shortsword",
 		AttackBonus: 4,
 		DamageDice:  "1d6+2",
-		Reach:       5,
+		Reach:       1, // 1 hex = 5 feet
 		DamageType:  damage.Piercing,
 	}
 	action := NewMeleeAction(config)
