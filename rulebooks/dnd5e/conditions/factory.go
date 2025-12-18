@@ -74,8 +74,18 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createRaging(input.Config, input.CharacterID, input.SourceRef)
 	case refs.Conditions.BrutalCritical().ID:
 		condition, err = createBrutalCritical(input.Config, input.CharacterID)
-	case refs.Conditions.FightingStyle().ID:
-		condition, err = createFightingStyle(input.Config, input.CharacterID)
+	case refs.Conditions.FightingStyleArchery().ID:
+		condition = NewFightingStyleArcheryCondition(input.CharacterID)
+	case refs.Conditions.FightingStyleDefense().ID:
+		condition = NewFightingStyleDefenseCondition(input.CharacterID)
+	case refs.Conditions.FightingStyleDueling().ID:
+		condition = NewFightingStyleDuelingCondition(input.CharacterID)
+	case refs.Conditions.FightingStyleGreatWeaponFighting().ID:
+		condition = NewFightingStyleGreatWeaponFightingCondition(input.CharacterID, nil)
+	case refs.Conditions.FightingStyleProtection().ID:
+		condition = NewFightingStyleProtectionCondition(input.CharacterID)
+	case refs.Conditions.FightingStyleTwoWeaponFighting().ID:
+		condition = NewFightingStyleTwoWeaponFightingCondition(input.CharacterID)
 	case refs.Conditions.ImprovedCritical().ID:
 		condition, err = createImprovedCritical(input.Config, input.CharacterID)
 	case refs.Conditions.MartialArts().ID:
@@ -181,31 +191,6 @@ func createBrutalCritical(config json.RawMessage, characterID string) (*BrutalCr
 	return NewBrutalCriticalCondition(BrutalCriticalInput{
 		CharacterID: characterID,
 		Level:       level,
-	}), nil
-}
-
-// fightingStyleConfig is the config structure for fighting style
-type fightingStyleConfig struct {
-	Style string `json:"style"`
-}
-
-// createFightingStyle creates a fighting style condition from config
-func createFightingStyle(config json.RawMessage, characterID string) (*FightingStyleCondition, error) {
-	var cfg fightingStyleConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse fighting style config")
-		}
-	}
-
-	if cfg.Style == "" {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "fighting style config requires 'style' field")
-	}
-
-	// FightingStyle is a string type alias, so we can assign directly
-	return NewFightingStyleCondition(FightingStyleConditionConfig{
-		CharacterID: characterID,
-		Style:       cfg.Style,
 	}), nil
 }
 

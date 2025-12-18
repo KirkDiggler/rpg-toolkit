@@ -153,7 +153,7 @@ func (dc *DamageComponent) Total() int {
 // AttackModifierSource tracks the source of an advantage or disadvantage modifier.
 // Used by features like Protection fighting style to record what caused the modifier.
 type AttackModifierSource struct {
-	SourceRef *core.Ref // Reference to the feature/condition (e.g., refs.FightingStyles.Protection())
+	SourceRef *core.Ref // Reference to the feature/condition (e.g., refs.Conditions.FightingStyleProtection())
 	SourceID  string    // ID of the entity that provided the modifier
 	Reason    string    // Human-readable explanation
 }
@@ -194,15 +194,17 @@ type AttackChainEvent struct {
 
 // DamageChainEvent represents damage flowing through the modifier chain
 type DamageChainEvent struct {
-	AttackerID   string
-	TargetID     string
-	Components   []DamageComponent // All damage sources
-	DamageType   damage.Type       // Type of damage (slashing, piercing, etc.)
-	IsCritical   bool              // Double damage dice on crit
-	HasAdvantage bool              // True if attacker had advantage on the attack roll
-	WeaponDamage string            // Weapon damage dice (e.g., "1d8")
-	AbilityUsed  abilities.Ability // Which ability was used (str, dex, etc.)
-	WeaponRef    *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
+	AttackerID      string
+	TargetID        string
+	Components      []DamageComponent // All damage sources
+	DamageType      damage.Type       // Type of damage (slashing, piercing, etc.)
+	IsCritical      bool              // Double damage dice on crit
+	HasAdvantage    bool              // True if attacker had advantage on the attack roll
+	WeaponDamage    string            // Weapon damage dice (e.g., "1d8")
+	AbilityUsed     abilities.Ability // Which ability was used (str, dex, etc.)
+	WeaponRef       *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
+	IsOffHandAttack bool              // True for bonus action off-hand attacks (two-weapon fighting)
+	AbilityModifier int               // The ability modifier (STR/DEX) for this attack
 }
 
 // =============================================================================

@@ -18,7 +18,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -489,11 +488,7 @@ func (s *CombatIntegrationSuite) TestArcheryFightingStyle() {
 		s.T().Log("")
 
 		// Apply Archery fighting style condition
-		archeryCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
-			CharacterID: "fighter-1",
-			Style:       fightingstyles.Archery,
-			Roller:      s.mockRoller,
-		})
+		archeryCondition := conditions.NewFightingStyleArcheryCondition("fighter-1")
 		err := archeryCondition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() {
@@ -560,11 +555,7 @@ func (s *CombatIntegrationSuite) TestGreatWeaponFighting() {
 		s.T().Log("")
 
 		// Apply GWF fighting style condition
-		gwfCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
-			CharacterID: "fighter-2",
-			Style:       fightingstyles.GreatWeaponFighting,
-			Roller:      s.mockRoller,
-		})
+		gwfCondition := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-2", s.mockRoller)
 		err := gwfCondition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() {

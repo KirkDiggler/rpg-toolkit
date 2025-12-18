@@ -9,11 +9,30 @@ var (
 	conditionRaging            = &core.Ref{Module: Module, Type: TypeConditions, ID: "raging"}
 	conditionBrutalCritical    = &core.Ref{Module: Module, Type: TypeConditions, ID: "brutal_critical"}
 	conditionUnarmoredDefense  = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_defense"}
-	conditionFightingStyle     = &core.Ref{Module: Module, Type: TypeConditions, ID: "fighting_style"}
 	conditionImprovedCritical  = &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
 	conditionMartialArts       = &core.Ref{Module: Module, Type: TypeConditions, ID: "martial_arts"}
 	conditionUnarmoredMovement = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_movement"}
 	conditionSneakAttack       = &core.Ref{Module: Module, Type: TypeConditions, ID: "sneak_attack"}
+
+	// Fighting style conditions
+	conditionFightingStyleArchery = &core.Ref{
+		Module: Module, Type: TypeConditions, ID: "fighting_style_archery",
+	}
+	conditionFightingStyleDefense = &core.Ref{
+		Module: Module, Type: TypeConditions, ID: "fighting_style_defense",
+	}
+	conditionFightingStyleDueling = &core.Ref{
+		Module: Module, Type: TypeConditions, ID: "fighting_style_dueling",
+	}
+	conditionFightingStyleGreatWeaponFighting = &core.Ref{
+		Module: Module, Type: TypeConditions, ID: "fighting_style_great_weapon_fighting",
+	}
+	conditionFightingStyleProtection = &core.Ref{
+		Module: Module, Type: TypeConditions, ID: "fighting_style_protection",
+	}
+	conditionFightingStyleTwoWeaponFighting = &core.Ref{
+		Module: Module, Type: TypeConditions, ID: "fighting_style_two_weapon_fighting",
+	}
 
 	// Standard D&D 5e Conditions
 	conditionBlinded       = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
@@ -44,11 +63,22 @@ type conditionsNS struct{}
 func (n conditionsNS) Raging() *core.Ref            { return conditionRaging }
 func (n conditionsNS) BrutalCritical() *core.Ref    { return conditionBrutalCritical }
 func (n conditionsNS) UnarmoredDefense() *core.Ref  { return conditionUnarmoredDefense }
-func (n conditionsNS) FightingStyle() *core.Ref     { return conditionFightingStyle }
 func (n conditionsNS) ImprovedCritical() *core.Ref  { return conditionImprovedCritical }
 func (n conditionsNS) MartialArts() *core.Ref       { return conditionMartialArts }
 func (n conditionsNS) UnarmoredMovement() *core.Ref { return conditionUnarmoredMovement }
 func (n conditionsNS) SneakAttack() *core.Ref       { return conditionSneakAttack }
+
+// Fighting style conditions
+func (n conditionsNS) FightingStyleArchery() *core.Ref { return conditionFightingStyleArchery }
+func (n conditionsNS) FightingStyleDefense() *core.Ref { return conditionFightingStyleDefense }
+func (n conditionsNS) FightingStyleDueling() *core.Ref { return conditionFightingStyleDueling }
+func (n conditionsNS) FightingStyleGreatWeaponFighting() *core.Ref {
+	return conditionFightingStyleGreatWeaponFighting
+}
+func (n conditionsNS) FightingStyleProtection() *core.Ref { return conditionFightingStyleProtection }
+func (n conditionsNS) FightingStyleTwoWeaponFighting() *core.Ref {
+	return conditionFightingStyleTwoWeaponFighting
+}
 
 // Standard D&D 5e Conditions
 func (n conditionsNS) Blinded() *core.Ref       { return conditionBlinded }
