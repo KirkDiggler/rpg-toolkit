@@ -15,13 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// hexAt creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
-func hexAt(x int) spatial.CubeCoordinate {
-	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
-}
 
 type BiteActionTestSuite struct {
 	suite.Suite

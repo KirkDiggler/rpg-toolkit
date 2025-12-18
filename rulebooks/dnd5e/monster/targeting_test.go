@@ -10,13 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// cubePos creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
-func cubePos(x int) spatial.CubeCoordinate {
-	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
-}
 
 // mockEntity implements core.Entity for testing
 type mockEntity struct {
@@ -61,11 +55,11 @@ func (s *TargetingTestSuite) SetupTest() {
 	// Create test perception data with multiple enemies
 	// Using hex distances: 1 = adjacent, 2 = 2 hexes away, etc.
 	s.perception = &PerceptionData{
-		MyPosition: cubePos(0),
+		MyPosition: hexAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockEntity{id: "enemy-1", hp: 25, ac: 15},
-				Position: cubePos(1),
+				Position: hexAt(1),
 				Distance: 1, // 1 hex = adjacent
 				Adjacent: true,
 				HP:       25,
@@ -73,7 +67,7 @@ func (s *TargetingTestSuite) SetupTest() {
 			},
 			{
 				Entity:   &mockEntity{id: "enemy-2", hp: 10, ac: 18},
-				Position: cubePos(2),
+				Position: hexAt(2),
 				Distance: 2, // 2 hexes away
 				Adjacent: false,
 				HP:       10,
@@ -81,7 +75,7 @@ func (s *TargetingTestSuite) SetupTest() {
 			},
 			{
 				Entity:   &mockEntity{id: "enemy-3", hp: 30, ac: 12},
-				Position: cubePos(3),
+				Position: hexAt(3),
 				Distance: 3, // 3 hexes away
 				Adjacent: false,
 				HP:       30,

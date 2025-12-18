@@ -12,13 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// cubeAt creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
-func cubeAt(x int) spatial.CubeCoordinate {
-	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
-}
 
 type BehaviorTestSuite struct {
 	suite.Suite
@@ -71,11 +65,11 @@ func (s *BehaviorTestSuite) TestScimitarActionScore() {
 
 	s.Run("higher score when adjacent", func() {
 		perception := &PerceptionData{
-			MyPosition: cubeAt(0),
+			MyPosition: hexAt(0),
 			Enemies: []PerceivedEntity{
 				{
 					Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-					Position: cubeAt(1), // 1 hex away
+					Position: hexAt(1), // 1 hex away
 					Distance: 1,
 					Adjacent: true,
 				},
@@ -88,11 +82,11 @@ func (s *BehaviorTestSuite) TestScimitarActionScore() {
 
 	s.Run("base score when not adjacent", func() {
 		perception := &PerceptionData{
-			MyPosition: cubeAt(0),
+			MyPosition: hexAt(0),
 			Enemies: []PerceivedEntity{
 				{
 					Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-					Position: cubeAt(6), // 6 hexes away
+					Position: hexAt(6), // 6 hexes away
 					Distance: 6,
 					Adjacent: false,
 				},
@@ -125,11 +119,11 @@ func (s *BehaviorTestSuite) TestTakeTurnSelectsAndExecutesAction() {
 
 	// Create perception with adjacent enemy (1 hex away)
 	perception := &PerceptionData{
-		MyPosition: cubeAt(0),
+		MyPosition: hexAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-				Position: cubeAt(1),
+				Position: hexAt(1),
 				Distance: 1,
 				Adjacent: true,
 			},
@@ -168,7 +162,7 @@ func (s *BehaviorTestSuite) TestTakeTurnNoEnemies() {
 
 	// No enemies
 	perception := &PerceptionData{
-		MyPosition: cubeAt(0),
+		MyPosition: hexAt(0),
 		Enemies:    []PerceivedEntity{},
 	}
 
@@ -196,11 +190,11 @@ func (s *BehaviorTestSuite) TestTakeTurnExhaustsActions() {
 
 	// Adjacent enemy (1 hex away)
 	perception := &PerceptionData{
-		MyPosition: cubeAt(0),
+		MyPosition: hexAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "target-1", name: "Fighter"},
-				Position: cubeAt(1),
+				Position: hexAt(1),
 				Distance: 1,
 				Adjacent: true,
 			},
@@ -364,7 +358,7 @@ func (s *BehaviorTestSuite) TestNewGoblinHasDefaultActions() {
 	s.Equal("scimitar", actions[0].GetID())
 	s.Equal(TypeMeleeAttack, actions[0].ActionType())
 
-	// Should have default speed (6 hexes = 30 feet)
+	// Should have default speed (30 feet, see #481 for hex conversion)
 	s.Equal(30, goblin.Speed().Walk)
 }
 
@@ -378,11 +372,11 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 	// Enemy is 7 hexes away (outside movement range but within speed+melee)
 	// Goblin speed is 6 hexes, so can move 6 and end up 1 hex away (adjacent)
 	perception := &PerceptionData{
-		MyPosition: cubeAt(0),
+		MyPosition: hexAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
-				Position: cubeAt(7), // 7 hexes away
+				Position: hexAt(7), // 7 hexes away
 				Distance: 7,
 				Adjacent: false,
 			},
@@ -409,11 +403,11 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 		result.Movement[0], result.Movement[len(result.Movement)-1], len(result.Movement))
 
 	// Started at origin
-	s.True(result.Movement[0].Equals(cubeAt(0)))
+	s.True(result.Movement[0].Equals(hexAt(0)))
 
 	// Ended up adjacent to enemy (1 hex away from (7,0) = at (6,0))
 	finalPos := result.Movement[len(result.Movement)-1]
-	enemyPos := cubeAt(7)
+	enemyPos := hexAt(7)
 	s.Equal(1, finalPos.Distance(enemyPos), "Should end up 1 hex away from enemy")
 
 	// Perception should be updated - now adjacent
@@ -437,11 +431,11 @@ func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {
 
 	// Enemy is 1 hex away (already adjacent)
 	perception := &PerceptionData{
-		MyPosition: cubeAt(0),
+		MyPosition: hexAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
-				Position: cubeAt(1),
+				Position: hexAt(1),
 				Distance: 1,
 				Adjacent: true,
 			},
@@ -475,11 +469,11 @@ func (s *BehaviorTestSuite) TestTakeTurnEnemyTooFar() {
 
 	// Enemy is 20 hexes away - can move toward but not attack
 	perception := &PerceptionData{
-		MyPosition: cubeAt(0),
+		MyPosition: hexAt(0),
 		Enemies: []PerceivedEntity{
 			{
 				Entity:   &mockTarget{id: "fighter-1", name: "Fighter"},
-				Position: cubeAt(20),
+				Position: hexAt(20),
 				Distance: 20,
 				Adjacent: false,
 			},

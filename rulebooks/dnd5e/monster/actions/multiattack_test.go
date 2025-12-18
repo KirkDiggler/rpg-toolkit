@@ -15,13 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// multiHex creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
-func multiHex(x int) spatial.CubeCoordinate {
-	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
-}
 
 type MultiattackActionTestSuite struct {
 	suite.Suite
@@ -126,11 +120,11 @@ func (s *MultiattackActionTestSuite) TestCanActivate_Valid() {
 
 	target := &mockEntity{id: "hero-1"}
 	perception := &monster.PerceptionData{
-		MyPosition: multiHex(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: multiHex(1), // 1 hex = adjacent
+				Position: hexAt(1), // 1 hex = adjacent
 				Distance: 1,
 				Adjacent: true,
 			},
@@ -179,11 +173,11 @@ func (s *MultiattackActionTestSuite) TestActivate_ExecutesMultipleAttacks() {
 
 	target := &mockEntity{id: "hero-1"}
 	perception := &monster.PerceptionData{
-		MyPosition: multiHex(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: multiHex(1),
+				Position: hexAt(1),
 				Distance: 1,
 				Adjacent: true,
 			},

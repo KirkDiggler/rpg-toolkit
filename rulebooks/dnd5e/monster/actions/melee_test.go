@@ -16,13 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// cubeCoord creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
-func cubeCoord(x int) spatial.CubeCoordinate {
-	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
-}
 
 type MeleeActionTestSuite struct {
 	suite.Suite
@@ -97,11 +91,11 @@ func (s *MeleeActionTestSuite) TestCanActivate_TargetOutOfReach() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: cubeCoord(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: cubeCoord(2), // 2 hexes away
+				Position: hexAt(2), // 2 hexes away
 				Distance: 2,
 				Adjacent: false,
 			},
@@ -135,11 +129,11 @@ func (s *MeleeActionTestSuite) TestCanActivate_TargetInReach() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: cubeCoord(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: cubeCoord(1), // 1 hex = adjacent
+				Position: hexAt(1), // 1 hex = adjacent
 				Distance: 1,
 				Adjacent: true,
 			},
@@ -172,11 +166,11 @@ func (s *MeleeActionTestSuite) TestActivate_PublishesAttackEvent() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: cubeCoord(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: cubeCoord(1),
+				Position: hexAt(1),
 				Distance: 1,
 				Adjacent: true,
 			},

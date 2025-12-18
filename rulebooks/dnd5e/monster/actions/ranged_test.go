@@ -15,13 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// rangedHex creates a CubeCoordinate from X (z defaults to 0), deriving Y = -X
-func rangedHex(x int) spatial.CubeCoordinate {
-	return spatial.CubeCoordinate{X: x, Y: -x, Z: 0}
-}
 
 type RangedActionTestSuite struct {
 	suite.Suite
@@ -99,11 +93,11 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetOutOfRange() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: rangedHex(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: rangedHex(80), // 80 hexes away (way beyond long range)
+				Position: hexAt(80), // 80 hexes away (way beyond long range)
 				Distance: 80,
 				Adjacent: false,
 			},
@@ -138,11 +132,11 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInNormalRange() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: rangedHex(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: rangedHex(12), // 12 hexes away (within normal range)
+				Position: hexAt(12), // 12 hexes away (within normal range)
 				Distance: 12,
 				Adjacent: false,
 			},
@@ -176,11 +170,11 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInLongRange() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: rangedHex(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: rangedHex(40), // 40 hexes away (in long range)
+				Position: hexAt(40), // 40 hexes away (in long range)
 				Distance: 40,
 				Adjacent: false,
 			},
@@ -214,11 +208,11 @@ func (s *RangedActionTestSuite) TestActivate_PublishesAttackEvent() {
 	target := &mockEntity{id: "hero-1"}
 
 	perception := &monster.PerceptionData{
-		MyPosition: rangedHex(0),
+		MyPosition: hexAt(0),
 		Enemies: []monster.PerceivedEntity{
 			{
 				Entity:   target,
-				Position: rangedHex(12),
+				Position: hexAt(12),
 				Distance: 12,
 				Adjacent: false,
 			},
