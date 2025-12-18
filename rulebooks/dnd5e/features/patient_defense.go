@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -121,4 +122,9 @@ func (p *PatientDefense) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
+}
+
+// ActionType returns the action economy cost to activate patient defense (bonus action)
+func (p *PatientDefense) ActionType() combat.ActionType {
+	return combat.ActionBonus
 }

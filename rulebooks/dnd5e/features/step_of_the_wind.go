@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -133,4 +134,9 @@ func (s *StepOfTheWind) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
+}
+
+// ActionType returns the action economy cost to activate step of the wind (bonus action)
+func (s *StepOfTheWind) ActionType() combat.ActionType {
+	return combat.ActionBonus
 }

@@ -7,7 +7,9 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type LoaderTestSuite struct {
@@ -79,6 +81,62 @@ func (s *LoaderTestSuite) TestRoundTripThroughJSON() {
 	s.Equal(originalRage.level, loadedRage.level)
 	s.Equal(originalRage.resource.Current, loadedRage.resource.Current)
 	s.Equal(originalRage.resource.Maximum, loadedRage.resource.Maximum)
+}
+
+func (s *LoaderTestSuite) TestActionTypes() {
+	// Test that each feature returns the correct action type per D&D 5e rules
+	testCases := []struct {
+		name       string
+		ref        string
+		wantAction combat.ActionType
+	}{
+		{
+			name:       "Rage is bonus action",
+			ref:        refs.Features.Rage().String(),
+			wantAction: combat.ActionBonus,
+		},
+		{
+			name:       "Second Wind is bonus action",
+			ref:        refs.Features.SecondWind().String(),
+			wantAction: combat.ActionBonus,
+		},
+		{
+			name:       "Action Surge is free (grants extra action)",
+			ref:        refs.Features.ActionSurge().String(),
+			wantAction: combat.ActionFree,
+		},
+		{
+			name:       "Flurry of Blows is bonus action",
+			ref:        refs.Features.FlurryOfBlows().String(),
+			wantAction: combat.ActionBonus,
+		},
+		{
+			name:       "Patient Defense is bonus action",
+			ref:        refs.Features.PatientDefense().String(),
+			wantAction: combat.ActionBonus,
+		},
+		{
+			name:       "Step of the Wind is bonus action",
+			ref:        refs.Features.StepOfTheWind().String(),
+			wantAction: combat.ActionBonus,
+		},
+		{
+			name:       "Deflect Missiles is reaction",
+			ref:        refs.Features.DeflectMissiles().String(),
+			wantAction: combat.ActionReaction,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			output, err := CreateFromRef(&CreateFromRefInput{
+				Ref:         tc.ref,
+				CharacterID: "test-char",
+			})
+			s.Require().NoError(err)
+			s.Equal(tc.wantAction, output.Feature.ActionType())
+		})
+	}
 }
 
 func TestLoaderTestSuite(t *testing.T) {

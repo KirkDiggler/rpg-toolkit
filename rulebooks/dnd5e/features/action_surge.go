@@ -7,10 +7,11 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -19,8 +20,8 @@ import (
 type ActionSurge struct {
 	id          string
 	name        string
-	characterID string                      // Character this feature belongs to
-	resource    *combat.RecoverableResource // Tracks action surge uses (1 per short/long rest)
+	characterID string                           // Character this feature belongs to
+	resource    *dnd5eCombat.RecoverableResource // Tracks action surge uses (1 per short/long rest)
 }
 
 // ActionSurgeData is the JSON structure for persisting Action Surge state
@@ -100,7 +101,7 @@ func (a *ActionSurge) loadJSON(data json.RawMessage) error {
 	a.characterID = actionSurgeData.CharacterID
 
 	// Set up recoverable resource with current and max uses
-	a.resource = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+	a.resource = dnd5eCombat.NewRecoverableResource(dnd5eCombat.RecoverableResourceConfig{
 		ID:          refs.Features.ActionSurge().ID,
 		Maximum:     actionSurgeData.MaxUses,
 		CharacterID: actionSurgeData.CharacterID,
@@ -133,4 +134,9 @@ func (a *ActionSurge) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
+}
+
+// ActionType returns the action economy cost to activate action surge (free - it grants an extra action)
+func (a *ActionSurge) ActionType() combat.ActionType {
+	return combat.ActionFree
 }
