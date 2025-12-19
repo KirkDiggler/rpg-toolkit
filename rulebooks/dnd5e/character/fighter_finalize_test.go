@@ -125,11 +125,10 @@ func (s *FighterFinalizeSuite) TestFighterWithArcheryFightingStyle() {
 	charConditions := char.GetConditions()
 	s.Require().Len(charConditions, 1, "Character should have exactly 1 condition (Archery)")
 
-	// Verify it's a FightingStyleCondition with Archery
-	fsCondition, ok := charConditions[0].(*conditions.FightingStyleCondition)
-	s.Require().True(ok, "Condition should be FightingStyleCondition")
-	s.Equal(fightingstyles.Archery, fsCondition.Style)
-	s.Equal("fighter-1", fsCondition.CharacterID)
+	// Verify it's a FightingStyleArcheryCondition
+	archeryCondition, ok := charConditions[0].(*conditions.FightingStyleArcheryCondition)
+	s.Require().True(ok, "Condition should be FightingStyleArcheryCondition")
+	s.Equal("fighter-1", archeryCondition.CharacterID)
 }
 
 // TestFighterWithGWFFightingStyle tests Great Weapon Fighting style application
@@ -206,10 +205,10 @@ func (s *FighterFinalizeSuite) TestFighterWithGWFFightingStyle() {
 	charConditions := char.GetConditions()
 	s.Require().Len(charConditions, 1, "Character should have exactly 1 condition (GWF)")
 
-	// Verify it's GWF
-	fsCondition, ok := charConditions[0].(*conditions.FightingStyleCondition)
-	s.Require().True(ok, "Condition should be FightingStyleCondition")
-	s.Equal(fightingstyles.GreatWeaponFighting, fsCondition.Style)
+	// Verify it's FightingStyleGreatWeaponFightingCondition
+	gwfCondition, ok := charConditions[0].(*conditions.FightingStyleGreatWeaponFightingCondition)
+	s.Require().True(ok, "Condition should be FightingStyleGreatWeaponFightingCondition")
+	s.Equal("gwf-fighter", gwfCondition.CharacterID)
 }
 
 // TestFighterWithoutFightingStyle tests that a Fighter cannot be created without

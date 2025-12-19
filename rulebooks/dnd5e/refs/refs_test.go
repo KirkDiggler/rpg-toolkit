@@ -46,13 +46,6 @@ func TestConditionsNamespace(t *testing.T) {
 		assert.Equal(t, core.Type("conditions"), ref.Type)
 		assert.Equal(t, core.ID("unarmored_defense"), ref.ID)
 	})
-
-	t.Run("FightingStyle returns correct ref", func(t *testing.T) {
-		ref := refs.Conditions.FightingStyle()
-		assert.Equal(t, core.Module("dnd5e"), ref.Module)
-		assert.Equal(t, core.Type("conditions"), ref.Type)
-		assert.Equal(t, core.ID("fighting_style"), ref.ID)
-	})
 }
 
 func TestClassesNamespace(t *testing.T) {
@@ -284,25 +277,31 @@ func TestLanguagesNamespace(t *testing.T) {
 	}
 }
 
-func TestFightingStylesNamespace(t *testing.T) {
+func TestFightingStyleConditions(t *testing.T) {
 	tests := []struct {
 		name     string
 		refFunc  func() *core.Ref
 		expected core.ID
 	}{
-		{"Archery", refs.FightingStyles.Archery, "archery"},
-		{"Defense", refs.FightingStyles.Defense, "defense"},
-		{"Dueling", refs.FightingStyles.Dueling, "dueling"},
-		{"GreatWeaponFighting", refs.FightingStyles.GreatWeaponFighting, "great_weapon_fighting"},
-		{"Protection", refs.FightingStyles.Protection, "protection"},
-		{"TwoWeaponFighting", refs.FightingStyles.TwoWeaponFighting, "two_weapon_fighting"},
+		{"FightingStyleArchery", refs.Conditions.FightingStyleArchery,
+			"fighting_style_archery"},
+		{"FightingStyleDefense", refs.Conditions.FightingStyleDefense,
+			"fighting_style_defense"},
+		{"FightingStyleDueling", refs.Conditions.FightingStyleDueling,
+			"fighting_style_dueling"},
+		{"FightingStyleGreatWeaponFighting", refs.Conditions.FightingStyleGreatWeaponFighting,
+			"fighting_style_great_weapon_fighting"},
+		{"FightingStyleProtection", refs.Conditions.FightingStyleProtection,
+			"fighting_style_protection"},
+		{"FightingStyleTwoWeaponFighting", refs.Conditions.FightingStyleTwoWeaponFighting,
+			"fighting_style_two_weapon_fighting"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ref := tc.refFunc()
 			assert.Equal(t, core.Module("dnd5e"), ref.Module)
-			assert.Equal(t, core.Type("fighting_styles"), ref.Type)
+			assert.Equal(t, core.Type("conditions"), ref.Type)
 			assert.Equal(t, tc.expected, ref.ID)
 		})
 	}

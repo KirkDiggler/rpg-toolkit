@@ -48,12 +48,47 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return unarmored, nil
 
-	case refs.Conditions.FightingStyle().ID:
-		fs := &FightingStyleCondition{}
-		if err := fs.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load fighting style condition")
+	case refs.Conditions.FightingStyleArchery().ID:
+		archery := NewFightingStyleArcheryCondition("")
+		if err := archery.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load archery fighting style condition")
 		}
-		return fs, nil
+		return archery, nil
+
+	case refs.Conditions.FightingStyleDefense().ID:
+		defense := NewFightingStyleDefenseCondition("")
+		if err := defense.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load defense fighting style condition")
+		}
+		return defense, nil
+
+	case refs.Conditions.FightingStyleDueling().ID:
+		dueling := NewFightingStyleDuelingCondition("")
+		if err := dueling.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load dueling fighting style condition")
+		}
+		return dueling, nil
+
+	case refs.Conditions.FightingStyleGreatWeaponFighting().ID:
+		gwf := NewFightingStyleGreatWeaponFightingCondition("", nil)
+		if err := gwf.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load great weapon fighting style condition")
+		}
+		return gwf, nil
+
+	case refs.Conditions.FightingStyleProtection().ID:
+		protection := NewFightingStyleProtectionCondition("")
+		if err := protection.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load protection fighting style condition")
+		}
+		return protection, nil
+
+	case refs.Conditions.FightingStyleTwoWeaponFighting().ID:
+		twf := NewFightingStyleTwoWeaponFightingCondition("")
+		if err := twf.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load two-weapon fighting style condition")
+		}
+		return twf, nil
 
 	case refs.Conditions.ImprovedCritical().ID:
 		ic := &ImprovedCriticalCondition{}
