@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -16,6 +17,7 @@ func NewGhoul(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
 		Name: "Ghoul",
+		Ref:  refs.Monsters.Ghoul(),
 		HP:   22, // 5d8
 		AC:   12, // Natural armor
 		AbilityScores: shared.AbilityScores{

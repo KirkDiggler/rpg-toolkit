@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -23,6 +24,7 @@ type Monster struct {
 	id          string
 	name        string
 	monsterType string
+	ref         *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
 
 	// Stats
 	hp            int
@@ -53,6 +55,7 @@ type Monster struct {
 type Config struct {
 	ID            string
 	Name          string
+	Ref           *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
 	HP            int
 	AC            int
 	AbilityScores shared.AbilityScores
@@ -63,6 +66,7 @@ func New(config Config) *Monster {
 	return &Monster{
 		id:            config.ID,
 		name:          config.Name,
+		ref:           config.Ref,
 		hp:            config.HP,
 		maxHP:         config.HP,
 		ac:            config.AC,
@@ -83,6 +87,11 @@ func (m *Monster) GetType() core.EntityType {
 // Name returns the monster's name
 func (m *Monster) Name() string {
 	return m.name
+}
+
+// Ref returns the monster's type reference (e.g., refs.Monsters.Skeleton())
+func (m *Monster) Ref() *core.Ref {
+	return m.ref
 }
 
 // HP returns current hit points
@@ -128,6 +137,7 @@ func NewGoblin(id string) *Monster {
 	m := New(Config{
 		ID:   id,
 		Name: "Goblin",
+		Ref:  refs.Monsters.Goblin(),
 		HP:   7,  // 2d6 average
 		AC:   15, // Leather armor + DEX
 		AbilityScores: shared.AbilityScores{

@@ -37,4 +37,5 @@ const (
 	TypeTools         core.Type = "tools"
 	TypeArmor         core.Type = "armor"
 	TypeMonsterTraits core.Type = "monster_traits"
+	TypeMonsters      core.Type = "monsters"
 )
