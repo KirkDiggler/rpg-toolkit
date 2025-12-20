@@ -496,9 +496,10 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 	}
 
 	// Calculate how far we can move (use input speed, fall back to monster's speed)
+	// input.Speed is already in hexes, but m.speed.Walk is in feet (5 feet per hex)
 	speed := input.Speed
 	if speed == 0 {
-		speed = m.speed.Walk
+		speed = m.speed.Walk / 5 // Convert feet to hexes
 	}
 	if speed == 0 {
 		return // Can't move
