@@ -36,7 +36,7 @@ func (s *IntegrationTestSuite) TestLoadFromData() {
 	data := &monster.Data{
 		ID:           "goblin-1",
 		Name:         "Goblin",
-		MonsterType:  "goblin",
+		Ref:          refs.Monsters.Goblin(),
 		HitPoints:    7,
 		MaxHitPoints: 7,
 		ArmorClass:   15,

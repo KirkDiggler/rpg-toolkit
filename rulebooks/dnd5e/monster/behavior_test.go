@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -288,7 +289,7 @@ func (s *BehaviorTestSuite) TestToData() {
 	data := &Data{
 		ID:           "goblin-1",
 		Name:         "Goblin",
-		MonsterType:  "goblin",
+		Ref:          refs.Monsters.Goblin(),
 		HitPoints:    7,
 		MaxHitPoints: 7,
 		ArmorClass:   15,
@@ -318,7 +319,7 @@ func (s *BehaviorTestSuite) TestToData() {
 
 	s.Equal("goblin-1", outputData.ID)
 	s.Equal("Goblin", outputData.Name)
-	s.Equal("goblin", outputData.MonsterType)
+	s.Equal("goblin", outputData.Ref.ID)
 	s.Equal(4, outputData.HitPoints) // 7 - 3 = 4
 	s.Equal(7, outputData.MaxHitPoints)
 	s.Equal(15, outputData.ArmorClass)
