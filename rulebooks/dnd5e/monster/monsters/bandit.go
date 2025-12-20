@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -17,6 +18,7 @@ func NewBanditMelee(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
 		Name: "Bandit",
+		Ref:  refs.Monsters.Bandit(),
 		HP:   11, // 2d8+2
 		AC:   12, // Leather armor
 		AbilityScores: shared.AbilityScores{
@@ -49,6 +51,7 @@ func NewBanditRanged(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
 		Name: "Bandit",
+		Ref:  refs.Monsters.BanditArcher(),
 		HP:   11, // 2d8+2
 		AC:   12, // Leather armor
 		AbilityScores: shared.AbilityScores{

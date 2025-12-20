@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -16,6 +17,7 @@ func NewZombie(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
 		Name: "Zombie",
+		Ref:  refs.Monsters.Zombie(),
 		HP:   22, // 3d8+9
 		AC:   8,  // No armor
 		AbilityScores: shared.AbilityScores{

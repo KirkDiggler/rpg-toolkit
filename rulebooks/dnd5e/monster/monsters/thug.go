@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -16,6 +17,7 @@ func NewThug(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
 		Name: "Thug",
+		Ref:  refs.Monsters.Thug(),
 		HP:   32, // 5d8+10
 		AC:   11, // Leather armor
 		AbilityScores: shared.AbilityScores{
