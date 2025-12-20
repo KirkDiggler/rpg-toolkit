@@ -21,10 +21,9 @@ import (
 // This is the runtime representation with event bus wiring.
 type Monster struct {
 	// Identity
-	id          string
-	name        string
-	monsterType string
-	ref         *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
+	id   string
+	name string
+	ref  *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
 
 	// Stats
 	hp            int
@@ -211,7 +210,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, 
 	m := &Monster{
 		id:              d.ID,
 		name:            d.Name,
-		monsterType:     d.MonsterType,
+		ref:             d.Ref,
 		hp:              d.HitPoints,
 		maxHP:           d.MaxHitPoints,
 		ac:              d.ArmorClass,
@@ -569,7 +568,7 @@ func (m *Monster) ToData() *Data {
 	data := &Data{
 		ID:            m.id,
 		Name:          m.name,
-		MonsterType:   m.monsterType,
+		Ref:           m.ref,
 		HitPoints:     m.hp,
 		MaxHitPoints:  m.maxHP,
 		ArmorClass:    m.ac,

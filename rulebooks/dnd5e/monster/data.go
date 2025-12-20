@@ -14,11 +14,9 @@ import (
 // This is what gets stored in the database - pure JSON, no logic.
 type Data struct {
 	// Identity
-	ID   string `json:"id"`
-	Name string `json:"name"`
-
-	// What kind of monster (for behavior lookup, display, etc.)
-	MonsterType string `json:"monster_type"` // "goblin", "orc", "dragon"
+	ID   string    `json:"id"`
+	Name string    `json:"name"`
+	Ref  *core.Ref `json:"ref,omitempty"` // Type reference (e.g., refs.Monsters.Skeleton())
 
 	// Core stats
 	HitPoints     int                  `json:"hit_points"`
