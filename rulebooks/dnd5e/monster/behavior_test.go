@@ -301,7 +301,7 @@ func (s *BehaviorTestSuite) TestToData() {
 			abilities.WIS: 8,
 			abilities.CHA: 8,
 		},
-		Speed:  SpeedData{Walk: 6}, // 6 hexes (was 30 feet)
+		Speed:  SpeedData{Walk: 30}, // 30 feet = 6 hexes
 		Senses: SensesData{Darkvision: 60},
 		Proficiencies: []ProficiencyData{
 			{Skill: "stealth", Bonus: 6},
@@ -323,7 +323,7 @@ func (s *BehaviorTestSuite) TestToData() {
 	s.Equal(4, outputData.HitPoints) // 7 - 3 = 4
 	s.Equal(7, outputData.MaxHitPoints)
 	s.Equal(15, outputData.ArmorClass)
-	s.Equal(6, outputData.Speed.Walk) // 6 hexes
+	s.Equal(30, outputData.Speed.Walk) // 30 feet = 6 hexes
 	s.Equal(60, outputData.Senses.Darkvision)
 
 	// Check proficiencies preserved
