@@ -131,7 +131,7 @@ func (i *immunityCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onDamageChain reduces damage to 0 if the damage type matches the immunity
+// onDamageChain adds an immunity multiplier component if damage type matches
 func (i *immunityCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
@@ -142,30 +142,32 @@ func (i *immunityCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Modify damage components to reduce immune damage to 0
-	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		for idx := range e.Components {
-			// If this component matches our immune damage type, reduce to 0
-			if e.Components[idx].DamageType == i.damageType {
-				// Zero out all dice rolls
-				for j := range e.Components[idx].FinalDiceRolls {
-					e.Components[idx].FinalDiceRolls[j] = 0
-				}
-				// Zero out flat bonus
-				e.Components[idx].FlatBonus = 0
-				// Track the modifier for combat log display
-				e.Components[idx].Modifiers = append(e.Components[idx].Modifiers, dnd5eEvents.DamageModifier{
-					Type:      dnd5eEvents.DamageModifierImmunity,
-					SourceRef: refs.MonsterTraits.Immunity(),
-					OwnerID:   i.ownerID,
-				})
-			}
+	// Check if any component has our immune damage type
+	hasImmuneDamage := false
+	for idx := range event.Components {
+		if event.Components[idx].DamageType == i.damageType {
+			hasImmuneDamage = true
+			break
 		}
+	}
+
+	if !hasImmuneDamage {
+		return c, nil
+	}
+
+	// Add immunity multiplier component (0 = negate all damage of this type)
+	addMultiplier := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+			Source:     dnd5eEvents.DamageSourceMonsterTrait,
+			SourceRef:  refs.MonsterTraits.Immunity(),
+			DamageType: i.damageType,
+			Multiplier: 0, // Multiply by 0 = no damage
+		})
 		return e, nil
 	}
 
 	// Add to chain - process in final stage (for resistance/vulnerability/immunity)
-	err := c.Add(combat.StageFinal, "immunity", modifyDamage)
+	err := c.Add(combat.StageFinal, "immunity", addMultiplier)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "error applying immunity for owner %s", i.ownerID)
 	}

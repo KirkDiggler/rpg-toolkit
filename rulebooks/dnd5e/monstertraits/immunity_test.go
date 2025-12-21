@@ -32,7 +32,7 @@ func (s *ImmunityTestSuite) SetupTest() {
 	s.immunity = nil // Will be created in each test
 }
 
-func (s *ImmunityTestSuite) TestImmunityReducesDamageToZero() {
+func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 	// Create immunity to poison
 	s.immunity = Immunity("monster-1", damage.Poison).(*immunityCondition)
 
@@ -66,14 +66,18 @@ func (s *ImmunityTestSuite) TestImmunityReducesDamageToZero() {
 	result, err := modifiedChain.Execute(s.ctx, event)
 	s.Require().NoError(err)
 
-	// Verify damage was reduced to 0
-	s.Require().Len(result.Components, 1)
-	s.Assert().Equal(0, result.Components[0].Total())
+	// Verify original component unchanged + immunity multiplier component added
+	s.Require().Len(result.Components, 2)
 
-	// Verify modifier was tracked for combat log
-	s.Require().Len(result.Components[0].Modifiers, 1)
-	s.Assert().Equal(dnd5eEvents.DamageModifierImmunity, result.Components[0].Modifiers[0].Type)
-	s.Assert().Equal("monster-1", result.Components[0].Modifiers[0].OwnerID)
+	// First component: original damage unchanged
+	s.Assert().Equal(9, result.Components[0].Total())
+	s.Assert().Equal([]int{3, 4}, result.Components[0].FinalDiceRolls)
+	s.Assert().Equal(2, result.Components[0].FlatBonus)
+
+	// Second component: immunity multiplier (0 = negate damage)
+	s.Assert().Equal(dnd5eEvents.DamageSourceMonsterTrait, result.Components[1].Source)
+	s.Assert().Equal(damage.Poison, result.Components[1].DamageType)
+	s.Assert().Equal(0.0, result.Components[1].Multiplier)
 }
 
 func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {
@@ -110,9 +114,10 @@ func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {
 	result, err := modifiedChain.Execute(s.ctx, event)
 	s.Require().NoError(err)
 
-	// Verify damage was NOT modified
+	// Verify no multiplier component was added (only original component)
 	s.Require().Len(result.Components, 1)
 	s.Assert().Equal(9, result.Components[0].Total())
+	s.Assert().Equal(dnd5eEvents.DamageSourceWeapon, result.Components[0].Source)
 }
 
 func (s *ImmunityTestSuite) TestImmunityIgnoresOtherTargets() {
@@ -149,9 +154,10 @@ func (s *ImmunityTestSuite) TestImmunityIgnoresOtherTargets() {
 	result, err := modifiedChain.Execute(s.ctx, event)
 	s.Require().NoError(err)
 
-	// Verify damage was NOT modified (wrong target)
+	// Verify no multiplier component was added (wrong target)
 	s.Require().Len(result.Components, 1)
 	s.Assert().Equal(9, result.Components[0].Total())
+	s.Assert().Equal(dnd5eEvents.DamageSourceWeapon, result.Components[0].Source)
 }
 
 func (s *ImmunityTestSuite) TestImmunityCanBeRemoved() {

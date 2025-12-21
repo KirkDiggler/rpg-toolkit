@@ -105,12 +105,13 @@ type DamageSourceType string
 
 // Damage source category constants
 const (
-	DamageSourceWeapon    DamageSourceType = "weapon"    // Damage from a weapon
-	DamageSourceAbility   DamageSourceType = "ability"   // Damage from ability modifier
-	DamageSourceCondition DamageSourceType = "condition" // Damage from an active condition (rage, etc.)
-	DamageSourceFeature   DamageSourceType = "feature"   // Damage from a class/racial feature
-	DamageSourceSpell     DamageSourceType = "spell"     // Damage from a spell
-	DamageSourceItem      DamageSourceType = "item"      // Damage from a magic item
+	DamageSourceWeapon       DamageSourceType = "weapon"        // Damage from a weapon
+	DamageSourceAbility      DamageSourceType = "ability"       // Damage from ability modifier
+	DamageSourceCondition    DamageSourceType = "condition"     // Damage from an active condition (rage, etc.)
+	DamageSourceFeature      DamageSourceType = "feature"       // Damage from a class/racial feature
+	DamageSourceSpell        DamageSourceType = "spell"         // Damage from a spell
+	DamageSourceItem         DamageSourceType = "item"          // Damage from a magic item
+	DamageSourceMonsterTrait DamageSourceType = "monster_trait" // Modifier from monster trait (vulnerability, etc.)
 )
 
 // =============================================================================
@@ -125,34 +126,21 @@ type RerollEvent struct {
 	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
 }
 
-// DamageModifierType categorizes damage modifications
-type DamageModifierType string
-
-// Damage modifier type constants
-const (
-	DamageModifierVulnerability DamageModifierType = "vulnerability" // Double damage
-	DamageModifierResistance    DamageModifierType = "resistance"    // Half damage
-	DamageModifierImmunity      DamageModifierType = "immunity"      // No damage
-)
-
-// DamageModifier tracks a modification to damage (vulnerability, resistance, immunity)
-type DamageModifier struct {
-	Type      DamageModifierType // vulnerability, resistance, immunity
-	SourceRef *core.Ref          // e.g., refs.MonsterTraits.Vulnerability()
-	OwnerID   string             // Entity that has this trait
-}
-
 // DamageComponent represents damage from one source
 type DamageComponent struct {
-	Source            DamageSourceType   // Category: weapon, ability, condition, etc.
-	SourceRef         *core.Ref          // Specific reference (e.g., refs.Weapons.Longsword())
-	OriginalDiceRolls []int              // As first rolled
-	FinalDiceRolls    []int              // After all rerolls
-	Rerolls           []RerollEvent      // History of rerolls
-	FlatBonus         int                // Flat modifier (0 if none)
-	DamageType        damage.Type        // damage.Slashing, damage.Fire, etc.
-	IsCritical        bool               // Was this doubled for crit?
-	Modifiers         []DamageModifier   // Track what modified this damage (vulnerability, etc.)
+	Source            DamageSourceType // Category: weapon, ability, condition, etc.
+	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
+	OriginalDiceRolls []int            // As first rolled
+	FinalDiceRolls    []int            // After all rerolls
+	Rerolls           []RerollEvent    // History of rerolls
+	FlatBonus         int              // Flat modifier (0 if none)
+	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
+	IsCritical        bool             // Was this doubled for crit?
+	// Multiplier for this component (0 means 1.0/no multiplier).
+	// Used for vulnerability (2.0), resistance (0.5), or immunity (0.0 to negate).
+	// When non-zero, this component represents a multiplier to apply to other
+	// components of the same damage type, not additional damage itself.
+	Multiplier float64
 }
 
 // Total returns the total damage for this component
