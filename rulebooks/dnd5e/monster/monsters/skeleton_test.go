@@ -4,9 +4,16 @@
 package monsters
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -62,16 +69,76 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 }
 
 func (s *SkeletonTestSuite) TestSkeletonTraits() {
-	// Test that skeleton can be created
-	// Note: Traits (vulnerability to bludgeoning, immunity to poison) are applied
-	// when the monster is loaded into combat with an event bus.
-	// This test just verifies the factory creates a valid monster.
 	skeleton := NewSkeleton("skeleton-1")
 	s.Require().NotNil(skeleton)
 
 	// Verify basic trait expectations via stats
-	// Skeletons should have CON 15 (+2) but low CHA (undead)
 	scores := skeleton.AbilityScores()
 	s.Assert().Equal(15, scores[abilities.CON], "skeletons have good CON")
 	s.Assert().Equal(5, scores[abilities.CHA], "skeletons have very low CHA")
+}
+
+func (s *SkeletonTestSuite) TestSkeletonTraitsIncludedInData() {
+	// Create skeleton - factory should add trait data
+	skeleton := NewSkeleton("skeleton-1")
+	s.Require().NotNil(skeleton)
+
+	// Convert to Data - should include traits
+	data := skeleton.ToData()
+	s.Require().NotNil(data)
+
+	// Should have 2 conditions: vulnerability to bludgeoning, immunity to poison
+	s.Require().Len(data.Conditions, 2, "skeleton should have 2 trait conditions")
+
+	// Verify the traits by peeking at the refs
+	// Refs are serialized as strings like "dnd5e:monster_traits:vulnerability"
+	var hasVulnerability, hasImmunity bool
+	for _, condJSON := range data.Conditions {
+		var peek struct {
+			Ref        string      `json:"ref"`
+			DamageType damage.Type `json:"damage_type"`
+		}
+		err := json.Unmarshal(condJSON, &peek)
+		s.Require().NoError(err)
+
+		if peek.Ref == refs.MonsterTraits.Vulnerability().String() {
+			hasVulnerability = true
+			s.Assert().Equal(damage.Bludgeoning, peek.DamageType, "vulnerability should be to bludgeoning")
+		}
+		if peek.Ref == refs.MonsterTraits.Immunity().String() {
+			hasImmunity = true
+			s.Assert().Equal(damage.Poison, peek.DamageType, "immunity should be to poison")
+		}
+	}
+
+	s.Assert().True(hasVulnerability, "skeleton should have vulnerability trait")
+	s.Assert().True(hasImmunity, "skeleton should have immunity trait")
+}
+
+func (s *SkeletonTestSuite) TestSkeletonTraitsLoadedFromData() {
+	ctx := context.Background()
+
+	// Create skeleton and get its data
+	skeleton := NewSkeleton("skeleton-1")
+	data := skeleton.ToData()
+
+	// Create event bus and load from data
+	bus := events.NewEventBus()
+	loaded, err := monster.LoadFromData(ctx, data, bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(loaded)
+	defer func() { _ = loaded.Cleanup(ctx) }()
+
+	// Load conditions using the helper (this applies them to the bus)
+	err = monstertraits.LoadMonsterConditions(ctx, loaded, data.Conditions, bus, nil)
+	s.Require().NoError(err)
+
+	// Verify conditions were applied
+	conditions := loaded.GetConditions()
+	s.Assert().Len(conditions, 2, "loaded skeleton should have 2 conditions applied")
+
+	// Verify all conditions are applied (subscribed to bus)
+	for _, cond := range conditions {
+		s.Assert().True(cond.IsApplied(), "condition should be applied to bus")
+	}
 }
