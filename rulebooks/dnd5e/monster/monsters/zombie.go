@@ -8,11 +8,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewZombie creates a CR 1/4 zombie with slam attack and Undead Fortitude
+// NewZombie creates a CR 1/4 zombie with slam attack, immunity to poison, and Undead Fortitude
 func NewZombie(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -42,9 +43,14 @@ func NewZombie(id string) *monster.Monster {
 	// Set movement speed (zombies are slow)
 	m.SetSpeed(monster.SpeedData{Walk: 20})
 
+	// Add immunity to poison damage (D&D 5e SRD)
+	if immuneJSON, err := monstertraits.ImmunityJSON(id, damage.Poison); err == nil {
+		m.AddTraitData(immuneJSON)
+	}
+
 	// Note: Undead Fortitude trait (CON save to stay at 1 HP when dropped to 0)
-	// is applied when the monster is loaded into combat via LoadFromData with an event bus.
-	// The zombie has CON modifier +3 for the save.
+	// requires a dice roller and is applied when the monster is loaded into combat
+	// via LoadFromData with LoadMonsterConditions. The zombie has CON modifier +3.
 
 	return m
 }

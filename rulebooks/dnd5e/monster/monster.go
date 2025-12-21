@@ -3,6 +3,7 @@ package monster
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -38,6 +39,11 @@ type Monster struct {
 
 	// Conditions (wired to bus)
 	conditions []dnd5eEvents.ConditionBehavior
+
+	// Trait data (unapplied - for serialization before bus is available)
+	// This is populated by factory functions and serialized to Data.Conditions.
+	// When LoadFromData is called, these get applied via LoadMonsterConditions.
+	traitData []json.RawMessage
 
 	// Proficiencies
 	proficiencies map[string]int // skill -> bonus
@@ -199,6 +205,20 @@ func (m *Monster) AddAction(action MonsterAction) {
 	m.actions = append(m.actions, action)
 }
 
+// AddCondition adds a condition/trait to the monster's active conditions.
+// The condition should already be applied to the event bus before adding.
+func (m *Monster) AddCondition(condition dnd5eEvents.ConditionBehavior) {
+	m.conditions = append(m.conditions, condition)
+}
+
+// AddTraitData adds raw trait JSON data to the monster.
+// This is used by factory functions to store trait data before a bus is available.
+// The traits will be serialized to Data.Conditions and applied when LoadFromData
+// is called with LoadMonsterConditions.
+func (m *Monster) AddTraitData(data json.RawMessage) {
+	m.traitData = append(m.traitData, data)
+}
+
 // LoadFromData creates a Monster from persistent data and wires it to the bus.
 // This follows the same pattern as character.LoadFromData.
 func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, error) {
@@ -238,10 +258,15 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, 
 		m.proficiencies[prof.Skill] = prof.Bonus
 	}
 
-	// Load and apply conditions
+	// Conditions must be loaded by the caller to avoid import cycles.
+	// The monster package cannot import monstertraits because traits need monster types.
+	// Use LoadMonsterConditions helper to load conditions after creating the monster.
+	// Example:
+	//   monster, err := LoadFromData(ctx, data, bus)
+	//   if err := monstertraits.LoadMonsterConditions(ctx, monster, data.Conditions, bus, roller); err != nil {
+	//       // handle error
+	//   }
 	m.conditions = make([]dnd5eEvents.ConditionBehavior, 0, len(d.Conditions))
-	// NOTE: Condition loading would go here if we had conditions to load
-	// For now, monsters start with no conditions
 
 	// Subscribe to events
 	if err := m.subscribeToEvents(ctx); err != nil {
@@ -598,6 +623,24 @@ func (m *Monster) ToData() *Data {
 	sort.Slice(data.Proficiencies, func(i, j int) bool {
 		return data.Proficiencies[i].Skill < data.Proficiencies[j].Skill
 	})
+
+	// Convert conditions to persisted JSON
+	// Include both applied conditions and unapplied trait data
+	totalConditions := len(m.conditions) + len(m.traitData)
+	data.Conditions = make([]json.RawMessage, 0, totalConditions)
+
+	// First, add applied conditions
+	for _, condition := range m.conditions {
+		condJSON, err := condition.ToJSON()
+		if err != nil {
+			// Skip conditions that can't be serialized
+			continue
+		}
+		data.Conditions = append(data.Conditions, condJSON)
+	}
+
+	// Then, add unapplied trait data (from factory functions)
+	data.Conditions = append(data.Conditions, m.traitData...)
 
 	return data
 }

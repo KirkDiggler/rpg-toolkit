@@ -45,6 +45,17 @@ func Immunity(ownerID string, damageType damage.Type) dnd5eEvents.ConditionBehav
 	}
 }
 
+// ImmunityJSON creates the JSON representation of an immunity trait.
+// This is used by factory functions to add trait data before a bus is available.
+func ImmunityJSON(ownerID string, damageType damage.Type) (json.RawMessage, error) {
+	data := ImmunityData{
+		Ref:        refs.MonsterTraits.Immunity(),
+		OwnerID:    ownerID,
+		DamageType: damageType,
+	}
+	return json.Marshal(data)
+}
+
 // IsApplied returns true if this condition is currently applied
 func (i *immunityCondition) IsApplied() bool {
 	return i.bus != nil

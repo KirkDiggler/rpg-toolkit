@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -52,9 +53,15 @@ func NewSkeleton(id string) *monster.Monster {
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
-	// Note: Traits (Vulnerability to bludgeoning, Immunity to poison) are applied
-	// when the monster is loaded into combat via LoadFromData with an event bus.
-	// The factory just creates the base monster structure.
+	// Add vulnerability to bludgeoning damage (D&D 5e SRD)
+	if vulnJSON, err := monstertraits.VulnerabilityJSON(id, damage.Bludgeoning); err == nil {
+		m.AddTraitData(vulnJSON)
+	}
+
+	// Add immunity to poison damage (D&D 5e SRD)
+	if immuneJSON, err := monstertraits.ImmunityJSON(id, damage.Poison); err == nil {
+		m.AddTraitData(immuneJSON)
+	}
 
 	return m
 }

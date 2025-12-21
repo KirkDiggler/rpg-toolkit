@@ -4,11 +4,15 @@
 package monstertraits
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -65,4 +69,39 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown monster trait ref: %s", peek.Ref.ID)
 	}
+}
+
+// LoadMonsterConditions is a helper function that loads conditions/traits from JSON data
+// and applies them to a monster. This is needed because the monster package
+// cannot import the monstertraits package directly (import cycle).
+//
+// Usage:
+//
+//	mon, err := monster.LoadFromData(ctx, data, bus)
+//	if err := monstertraits.LoadMonsterConditions(ctx, mon, data.Conditions, bus, roller); err != nil {
+//	    // handle error
+//	}
+func LoadMonsterConditions(
+	ctx context.Context,
+	m *monster.Monster,
+	conditionData []json.RawMessage,
+	bus events.EventBus,
+	roller dice.Roller,
+) error {
+	for _, data := range conditionData {
+		condition, err := LoadJSON(data, roller)
+		if err != nil {
+			return rpgerr.Wrap(err, "failed to load monster condition")
+		}
+
+		// Apply the condition so it subscribes to events
+		if err := condition.Apply(ctx, bus); err != nil {
+			// Clean up any partial subscriptions
+			_ = condition.Remove(ctx, bus)
+			return rpgerr.Wrap(err, "failed to apply monster condition")
+		}
+
+		m.AddCondition(condition)
+	}
+	return nil
 }
