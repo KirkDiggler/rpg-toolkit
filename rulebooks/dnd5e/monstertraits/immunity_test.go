@@ -69,6 +69,11 @@ func (s *ImmunityTestSuite) TestImmunityReducesDamageToZero() {
 	// Verify damage was reduced to 0
 	s.Require().Len(result.Components, 1)
 	s.Assert().Equal(0, result.Components[0].Total())
+
+	// Verify modifier was tracked for combat log
+	s.Require().Len(result.Components[0].Modifiers, 1)
+	s.Assert().Equal(dnd5eEvents.DamageModifierImmunity, result.Components[0].Modifiers[0].Type)
+	s.Assert().Equal("monster-1", result.Components[0].Modifiers[0].OwnerID)
 }
 
 func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {

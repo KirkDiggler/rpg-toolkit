@@ -153,6 +153,12 @@ func (i *immunityCondition) onDamageChain(
 				}
 				// Zero out flat bonus
 				e.Components[idx].FlatBonus = 0
+				// Track the modifier for combat log display
+				e.Components[idx].Modifiers = append(e.Components[idx].Modifiers, dnd5eEvents.DamageModifier{
+					Type:      dnd5eEvents.DamageModifierImmunity,
+					SourceRef: refs.MonsterTraits.Immunity(),
+					OwnerID:   i.ownerID,
+				})
 			}
 		}
 		return e, nil

@@ -125,16 +125,34 @@ type RerollEvent struct {
 	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
 }
 
+// DamageModifierType categorizes damage modifications
+type DamageModifierType string
+
+// Damage modifier type constants
+const (
+	DamageModifierVulnerability DamageModifierType = "vulnerability" // Double damage
+	DamageModifierResistance    DamageModifierType = "resistance"    // Half damage
+	DamageModifierImmunity      DamageModifierType = "immunity"      // No damage
+)
+
+// DamageModifier tracks a modification to damage (vulnerability, resistance, immunity)
+type DamageModifier struct {
+	Type      DamageModifierType // vulnerability, resistance, immunity
+	SourceRef *core.Ref          // e.g., refs.MonsterTraits.Vulnerability()
+	OwnerID   string             // Entity that has this trait
+}
+
 // DamageComponent represents damage from one source
 type DamageComponent struct {
-	Source            DamageSourceType // Category: weapon, ability, condition, etc.
-	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
-	OriginalDiceRolls []int            // As first rolled
-	FinalDiceRolls    []int            // After all rerolls
-	Rerolls           []RerollEvent    // History of rerolls
-	FlatBonus         int              // Flat modifier (0 if none)
-	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
-	IsCritical        bool             // Was this doubled for crit?
+	Source            DamageSourceType   // Category: weapon, ability, condition, etc.
+	SourceRef         *core.Ref          // Specific reference (e.g., refs.Weapons.Longsword())
+	OriginalDiceRolls []int              // As first rolled
+	FinalDiceRolls    []int              // After all rerolls
+	Rerolls           []RerollEvent      // History of rerolls
+	FlatBonus         int                // Flat modifier (0 if none)
+	DamageType        damage.Type        // damage.Slashing, damage.Fire, etc.
+	IsCritical        bool               // Was this doubled for crit?
+	Modifiers         []DamageModifier   // Track what modified this damage (vulnerability, etc.)
 }
 
 // Total returns the total damage for this component
