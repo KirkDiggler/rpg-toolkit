@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -409,7 +410,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsOnRest() {
 	// Publish a rest event for this character
 	restTopic := dnd5eEvents.RestTopic.On(s.bus)
 	err = restTopic.Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType:    "long_rest",
+		RestType:    coreResources.ResetLongRest,
 		CharacterID: "barbarian-1",
 	})
 	s.Require().NoError(err)
@@ -450,7 +451,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterRest(
 	// Publish a rest event for a DIFFERENT character
 	restTopic := dnd5eEvents.RestTopic.On(s.bus)
 	err = restTopic.Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType:    "long_rest",
+		RestType:    coreResources.ResetLongRest,
 		CharacterID: "barbarian-2", // Different character
 	})
 	s.Require().NoError(err)

@@ -381,8 +381,8 @@ func (c *Character) LongRest(ctx context.Context) error {
 	// Restore HP to maximum
 	c.hitPoints = c.maxHitPoints
 
-	// Clear death save state
-	c.deathSaveState = nil
+	// Clear death save state (use empty struct for consistency with ResetDeathSaveState)
+	c.deathSaveState = &saves.DeathSaveState{}
 
 	// Publish RestEvent - resources and conditions react automatically via subscriptions
 	restTopic := dnd5eEvents.RestTopic.On(c.bus)
