@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -381,4 +382,83 @@ func (s *RagingConditionTestSuite) TestRagingConditionRejectsDoubleApply() {
 	err = raging.Apply(s.ctx, s.bus)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "already applied")
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionEndsOnRest() {
+	// Create a raging condition
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to events
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	s.True(raging.IsApplied(), "rage should be applied")
+
+	// Track if condition removed event is published
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish a rest event for this character
+	restTopic := dnd5eEvents.RestTopic.On(s.bus)
+	err = restTopic.Publish(s.ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "barbarian-1",
+	})
+	s.Require().NoError(err)
+
+	// Verify condition published removal event
+	s.Require().NotNil(removedEvent, "rage should be removed on rest")
+	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
+	s.Equal("rest", removedEvent.Reason)
+
+	// Verify condition is no longer applied
+	s.False(raging.IsApplied(), "rage should no longer be applied after rest")
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterRest() {
+	// Create a raging condition for barbarian-1
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to events
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	s.True(raging.IsApplied(), "rage should be applied")
+
+	// Track if condition removed event is published
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish a rest event for a DIFFERENT character
+	restTopic := dnd5eEvents.RestTopic.On(s.bus)
+	err = restTopic.Publish(s.ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "barbarian-2", // Different character
+	})
+	s.Require().NoError(err)
+
+	// Verify condition did NOT publish removal event
+	s.Nil(removedEvent, "rage should NOT be removed when another character rests")
+
+	// Verify condition is still applied
+	s.True(raging.IsApplied(), "rage should still be applied")
 }

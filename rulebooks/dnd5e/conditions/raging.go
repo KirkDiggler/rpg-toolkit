@@ -95,6 +95,16 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID4)
 
+	// Subscribe to rest events - rage ends on any rest
+	restTopic := dnd5eEvents.RestTopic.On(bus)
+	subID5, err := restTopic.Subscribe(ctx, r.onRest)
+	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID5)
+
 	return nil
 }
 
@@ -192,6 +202,15 @@ func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5eEve
 		return r.endRage(ctx, "unconscious")
 	}
 	return nil
+}
+
+// onRest handles rest events - rage ends on any rest
+func (r *RagingCondition) onRest(ctx context.Context, event dnd5eEvents.RestEvent) error {
+	// Only end rage if this is our character
+	if event.CharacterID != r.CharacterID {
+		return nil
+	}
+	return r.endRage(ctx, "rest")
 }
 
 // endRage publishes the removal event and unsubscribes from all events
