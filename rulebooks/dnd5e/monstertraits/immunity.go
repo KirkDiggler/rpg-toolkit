@@ -56,6 +56,17 @@ func ImmunityJSON(ownerID string, damageType damage.Type) (json.RawMessage, erro
 	return json.Marshal(data)
 }
 
+// MustImmunityJSON creates the JSON representation of an immunity trait.
+// It panics if JSON marshaling fails (which should never happen with valid inputs).
+// Use this in factory functions where errors indicate programming bugs, not runtime issues.
+func MustImmunityJSON(ownerID string, damageType damage.Type) json.RawMessage {
+	data, err := ImmunityJSON(ownerID, damageType)
+	if err != nil {
+		panic("monstertraits: failed to marshal immunity JSON: " + err.Error())
+	}
+	return data
+}
+
 // IsApplied returns true if this condition is currently applied
 func (i *immunityCondition) IsApplied() bool {
 	return i.bus != nil

@@ -54,14 +54,10 @@ func NewSkeleton(id string) *monster.Monster {
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
 	// Add vulnerability to bludgeoning damage (D&D 5e SRD)
-	if vulnJSON, err := monstertraits.VulnerabilityJSON(id, damage.Bludgeoning); err == nil {
-		m.AddTraitData(vulnJSON)
-	}
+	m.AddTraitData(monstertraits.MustVulnerabilityJSON(id, damage.Bludgeoning))
 
 	// Add immunity to poison damage (D&D 5e SRD)
-	if immuneJSON, err := monstertraits.ImmunityJSON(id, damage.Poison); err == nil {
-		m.AddTraitData(immuneJSON)
-	}
+	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Poison))
 
 	return m
 }

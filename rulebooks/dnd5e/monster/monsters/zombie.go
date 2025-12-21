@@ -44,9 +44,7 @@ func NewZombie(id string) *monster.Monster {
 	m.SetSpeed(monster.SpeedData{Walk: 20})
 
 	// Add immunity to poison damage (D&D 5e SRD)
-	if immuneJSON, err := monstertraits.ImmunityJSON(id, damage.Poison); err == nil {
-		m.AddTraitData(immuneJSON)
-	}
+	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Poison))
 
 	// Note: Undead Fortitude trait (CON save to stay at 1 HP when dropped to 0)
 	// requires a dice roller and is applied when the monster is loaded into combat
