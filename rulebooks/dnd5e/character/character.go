@@ -369,6 +369,34 @@ func (c *Character) ResetDeathSaveState() {
 	c.deathSaveState = &saves.DeathSaveState{}
 }
 
+// LongRest performs a long rest, restoring HP to maximum and triggering
+// resource/condition recovery via the RestEvent system.
+// Resources subscribed to RestTopic will automatically recover based on their ResetType.
+// Conditions subscribed to RestTopic will handle their own removal if appropriate.
+func (c *Character) LongRest(ctx context.Context) error {
+	if c.bus == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
+	}
+
+	// Restore HP to maximum
+	c.hitPoints = c.maxHitPoints
+
+	// Clear death save state
+	c.deathSaveState = nil
+
+	// Publish RestEvent - resources and conditions react automatically via subscriptions
+	restTopic := dnd5eEvents.RestTopic.On(c.bus)
+	err := restTopic.Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: c.id,
+	})
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to publish rest event")
+	}
+
+	return nil
+}
+
 // GetFeatures returns all character features
 func (c *Character) GetFeatures() []features.Feature {
 	return c.features
