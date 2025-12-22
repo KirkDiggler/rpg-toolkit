@@ -1562,4 +1562,3 @@ func (d *Draft) initializeClassResources(char *Character) {
 	})
 	char.resources[resources.HitDice] = hitDiceResource
 }
-
