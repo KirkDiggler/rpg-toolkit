@@ -47,7 +47,7 @@ func (f *FlurryOfBlows) CanActivate(_ context.Context, owner core.Entity, _ Feat
 	// Cast owner to ResourceAccessor to check Ki
 	accessor, ok := owner.(coreResources.ResourceAccessor)
 	if !ok {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner must implement ResourceAccessor")
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
 	}
 
 	// Check if Ki is available
@@ -68,7 +68,7 @@ func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input F
 	// Cast owner to ResourceAccessor to consume Ki
 	accessor, ok := owner.(coreResources.ResourceAccessor)
 	if !ok {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner must implement ResourceAccessor")
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
 	}
 
 	// Consume 1 Ki point
