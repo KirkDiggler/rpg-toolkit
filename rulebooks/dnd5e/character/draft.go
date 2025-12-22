@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -626,6 +627,9 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		conditions:          make([]dnd5eEvents.ConditionBehavior, 0),
 		subscriptionIDs:     make([]string, 0),
 	}
+
+	// Initialize class-specific resources
+	d.initializeClassResources(char)
 
 	// Subscribe to events - character comes out fully initialized
 	if err := char.subscribeToEvents(ctx); err != nil {
@@ -1497,3 +1501,46 @@ func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection) erro
 
 	return nil
 }
+
+// initializeClassResources adds class-specific resources to the character.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeClassResources(char *Character) {
+	level := char.level
+
+	switch d.class {
+	case classes.Barbarian:
+		// Rage charges - recovered on long rest
+		maxRages := features.CalculateRageUses(level)
+		if maxRages > 0 { // -1 means unlimited at level 20
+			rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.RageCharges),
+				Maximum:     maxRages,
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetLongRest,
+			})
+			char.resources[resources.RageCharges] = rageResource
+		}
+
+	case classes.Monk:
+		// Ki points - equal to monk level, recovered on short or long rest
+		kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.Ki),
+			Maximum:     level,
+			CharacterID: char.id,
+			ResetType:   coreResources.ResetShortRest,
+		})
+		char.resources[resources.Ki] = kiResource
+	}
+
+	// Hit dice - all classes get hit dice for short rest healing
+	// Maximum equals character level, die size from class
+	hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          string(resources.HitDice),
+		Maximum:     level,
+		CharacterID: char.id,
+		ResetType:   coreResources.ResetLongRest,
+		// Note: Hit dice recovery is half per long rest (min 1), handled by LongRest method
+	})
+	char.resources[resources.HitDice] = hitDiceResource
+}
+

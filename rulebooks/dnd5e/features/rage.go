@@ -35,8 +35,9 @@ type RageData struct {
 	Level int       `json:"level"`
 }
 
-// calculateRageUses determines max rage uses based on barbarian level
-func calculateRageUses(level int) int {
+// CalculateRageUses determines max rage uses based on barbarian level.
+// Exported for use by character creation when initializing barbarian resources.
+func CalculateRageUses(level int) int {
 	switch {
 	case level < 3:
 		return 2

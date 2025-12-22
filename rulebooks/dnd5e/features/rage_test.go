@@ -52,7 +52,7 @@ func (m *StubEntity) UseResource(key coreResources.ResourceKey, amount int) erro
 
 // newStubEntityWithRage creates a stub entity with rage charges for testing
 func newStubEntityWithRage(id string, level int) *StubEntity {
-	maxUses := calculateRageUses(level)
+	maxUses := CalculateRageUses(level)
 	return &StubEntity{
 		id: id,
 		resources: map[coreResources.ResourceKey]int{
@@ -146,7 +146,7 @@ func (s *RageTestSuite) TestRageUsesPerLevel() {
 	}
 
 	for _, tc := range testCases {
-		actual := calculateRageUses(tc.level)
+		actual := CalculateRageUses(tc.level)
 		s.Equal(tc.expected, actual, "Level %d should have %d rage uses", tc.level, tc.expected)
 	}
 }
