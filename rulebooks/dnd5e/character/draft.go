@@ -1502,6 +1502,26 @@ func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection) erro
 	return nil
 }
 
+// calculateBarbarianRageUses determines max rage uses based on barbarian level.
+// Duplicated here intentionally - character creation owns resource initialization,
+// features package owns resource consumption. Each proves the values independently.
+func calculateBarbarianRageUses(level int) int {
+	switch {
+	case level < 3:
+		return 2
+	case level < 6:
+		return 3
+	case level < 12:
+		return 4
+	case level < 17:
+		return 5
+	case level < 20:
+		return 6
+	default:
+		return -1 // Unlimited at level 20
+	}
+}
+
 // initializeClassResources adds class-specific resources to the character.
 // Called during ToCharacter after the character struct is created.
 func (d *Draft) initializeClassResources(char *Character) {
@@ -1510,7 +1530,7 @@ func (d *Draft) initializeClassResources(char *Character) {
 	switch d.class {
 	case classes.Barbarian:
 		// Rage charges - recovered on long rest
-		maxRages := features.CalculateRageUses(level)
+		maxRages := calculateBarbarianRageUses(level)
 		if maxRages > 0 { // -1 means unlimited at level 20
 			rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 				ID:          string(resources.RageCharges),
