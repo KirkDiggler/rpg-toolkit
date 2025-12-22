@@ -25,3 +25,17 @@ const (
 	ResetNever     ResetType = "never"
 	ResetManual    ResetType = "manual" // Only resets when explicitly told to
 )
+
+// ResourceAccessor provides access to an entity's resources.
+// Features can use this to consume resources without directly depending on Character.
+// This enables a clean separation where the owner (Character) manages resources
+// and features just consume them via this interface.
+type ResourceAccessor interface {
+	// IsResourceAvailable returns true if the resource has at least 1 use remaining.
+	// Returns false if the resource doesn't exist or is exhausted.
+	IsResourceAvailable(key ResourceKey) bool
+
+	// UseResource attempts to consume the specified amount from a resource.
+	// Returns an error if the resource doesn't exist or has insufficient uses.
+	UseResource(key ResourceKey, amount int) error
+}
