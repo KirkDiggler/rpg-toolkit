@@ -1531,7 +1531,9 @@ func (d *Draft) initializeClassResources(char *Character) {
 	case classes.Barbarian:
 		// Rage charges - recovered on long rest
 		maxRages := calculateBarbarianRageUses(level)
-		if maxRages > 0 { // -1 means unlimited at level 20
+		if maxRages > 0 {
+			// Level 20 barbarians return -1 (unlimited rages) and don't need a resource.
+			// The Rage feature's CanActivate checks level >= 20 and bypasses resource check.
 			rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 				ID:          string(resources.RageCharges),
 				Maximum:     maxRages,
@@ -1553,13 +1555,10 @@ func (d *Draft) initializeClassResources(char *Character) {
 	}
 
 	// Hit dice - all classes get hit dice for short rest healing
-	// Maximum equals character level, die size from class
-	hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-		ID:          string(resources.HitDice),
-		Maximum:     level,
+	// Uses helper which includes special recovery logic (half per long rest, min 1)
+	hitDiceResource := resources.NewHitDiceResource(resources.HitDiceResourceConfig{
 		CharacterID: char.id,
-		ResetType:   coreResources.ResetLongRest,
-		// Note: Hit dice recovery is half per long rest (min 1), handled by LongRest method
+		Level:       level,
 	})
 	char.resources[resources.HitDice] = hitDiceResource
 }
