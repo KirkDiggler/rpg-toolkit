@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -139,6 +140,19 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 	// TODO: Background is not stored in Character - separate issue tracked separately
 	// s.Equal(backgrounds.Soldier, data.BackgroundID)
 	s.Equal(1, data.Level)
+
+	// Verify class resources were initialized
+	// Level 1 barbarian should have 2 rage charges
+	rageResource := char.GetResource(resources.RageCharges)
+	s.Require().NotNil(rageResource, "Barbarian should have RageCharges resource")
+	s.Equal(2, rageResource.Maximum(), "Level 1 barbarian should have 2 max rage charges")
+	s.Equal(2, rageResource.Current(), "Rage charges should start at maximum")
+
+	// All characters should have hit dice
+	hitDiceResource := char.GetResource(resources.HitDice)
+	s.Require().NotNil(hitDiceResource, "Character should have HitDice resource")
+	s.Equal(1, hitDiceResource.Maximum(), "Level 1 character should have 1 max hit die")
+	s.Equal(1, hitDiceResource.Current(), "Hit dice should start at maximum")
 }
 
 // TestBarbarianClassComplete tests the IsClassComplete method specifically

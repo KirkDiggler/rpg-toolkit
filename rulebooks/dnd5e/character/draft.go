@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -626,6 +627,9 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		conditions:          make([]dnd5eEvents.ConditionBehavior, 0),
 		subscriptionIDs:     make([]string, 0),
 	}
+
+	// Initialize class-specific resources
+	d.initializeClassResources(char)
 
 	// Subscribe to events - character comes out fully initialized
 	if err := char.subscribeToEvents(ctx); err != nil {
@@ -1496,4 +1500,65 @@ func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection) erro
 	})
 
 	return nil
+}
+
+// calculateBarbarianRageUses determines max rage uses based on barbarian level.
+// Duplicated here intentionally - character creation owns resource initialization,
+// features package owns resource consumption. Each proves the values independently.
+func calculateBarbarianRageUses(level int) int {
+	switch {
+	case level < 3:
+		return 2
+	case level < 6:
+		return 3
+	case level < 12:
+		return 4
+	case level < 17:
+		return 5
+	case level < 20:
+		return 6
+	default:
+		return -1 // Unlimited at level 20
+	}
+}
+
+// initializeClassResources adds class-specific resources to the character.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeClassResources(char *Character) {
+	level := char.level
+
+	switch d.class {
+	case classes.Barbarian:
+		// Rage charges - recovered on long rest
+		maxRages := calculateBarbarianRageUses(level)
+		if maxRages > 0 {
+			// Level 20 barbarians return -1 (unlimited rages) and don't need a resource.
+			// The Rage feature's CanActivate checks level >= 20 and bypasses resource check.
+			rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.RageCharges),
+				Maximum:     maxRages,
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetLongRest,
+			})
+			char.resources[resources.RageCharges] = rageResource
+		}
+
+	case classes.Monk:
+		// Ki points - equal to monk level, recovered on short or long rest
+		kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.Ki),
+			Maximum:     level,
+			CharacterID: char.id,
+			ResetType:   coreResources.ResetShortRest,
+		})
+		char.resources[resources.Ki] = kiResource
+	}
+
+	// Hit dice - all classes get hit dice for short rest healing
+	// Uses helper which includes special recovery logic (half per long rest, min 1)
+	hitDiceResource := resources.NewHitDiceResource(resources.HitDiceResourceConfig{
+		CharacterID: char.id,
+		Level:       level,
+	})
+	char.resources[resources.HitDice] = hitDiceResource
 }
