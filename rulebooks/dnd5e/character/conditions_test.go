@@ -10,17 +10,20 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -39,6 +42,31 @@ func (s *CharacterConditionsTestSuite) SetupTest() {
 
 func TestCharacterConditionsTestSuite(t *testing.T) {
 	suite.Run(t, new(CharacterConditionsTestSuite))
+}
+
+// addRageChargesToCharacter adds rage charges resource to a character for testing.
+// In production, this should be done when the barbarian class is assigned.
+func addRageChargesToCharacter(char *Character, level int) {
+	// Calculate rage uses based on barbarian level
+	maxUses := 2 // Default for level 1-2
+	switch {
+	case level >= 17:
+		maxUses = 6
+	case level >= 12:
+		maxUses = 5
+	case level >= 6:
+		maxUses = 4
+	case level >= 3:
+		maxUses = 3
+	}
+
+	rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          string(resources.RageCharges),
+		Maximum:     maxUses,
+		CharacterID: char.GetID(),
+		ResetType:   coreResources.ResetLongRest,
+	})
+	char.AddResource(resources.RageCharges, rageResource)
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
@@ -84,6 +112,9 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 	s.Require().NotNil(char)
+
+	// Add rage charges resource (in production this would be done during class assignment)
+	addRageChargesToCharacter(char, 1)
 
 	// Verify character has only Unarmored Defense condition initially (from class grants)
 	initialConds := char.GetConditions()
@@ -236,6 +267,9 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 
+	// Add rage charges resource (in production this would be done during class assignment)
+	addRageChargesToCharacter(char, 1)
+
 	// Get rage feature and activate it
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
@@ -298,6 +332,9 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	// Convert to character with event bus
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
+
+	// Add rage charges resource (in production this would be done during class assignment)
+	addRageChargesToCharacter(char, 1)
 
 	// Activate rage
 	rageFeature := char.GetFeature("rage")

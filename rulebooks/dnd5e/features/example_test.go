@@ -6,10 +6,12 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // Example demonstrates how rage works with the event system
@@ -18,17 +20,20 @@ func Example() {
 	bus := events.NewEventBus()
 	ctx := context.Background()
 
-	// Mock barbarian character
-	barbarian := &mockCharacter{id: "conan"}
+	// Mock barbarian character with rage charges resource
+	barbarian := &mockCharacter{
+		id: "conan",
+		resources: map[coreResources.ResourceKey]int{
+			resources.RageCharges: 3, // Level 5 barbarian has 3 rage uses
+		},
+	}
 
-	// Server has stored feature JSON
+	// Server has stored feature JSON (resource state is owned by character, not feature)
 	featureJSON := json.RawMessage(`{
 		"ref": {"module": "dnd5e", "type": "features", "id": "rage"},
 		"id": "rage",
 		"name": "Rage",
-		"level": 5,
-		"uses": 2,
-		"max_uses": 3
+		"level": 5
 	}`)
 
 	// Load the feature
@@ -65,8 +70,29 @@ func Example() {
 }
 
 type mockCharacter struct {
-	id string
+	id        string
+	resources map[coreResources.ResourceKey]int
 }
 
 func (m *mockCharacter) GetID() string            { return m.id }
 func (m *mockCharacter) GetType() core.EntityType { return "character" }
+
+// IsResourceAvailable implements coreResources.ResourceAccessor
+func (m *mockCharacter) IsResourceAvailable(key coreResources.ResourceKey) bool {
+	if m.resources == nil {
+		return false
+	}
+	current, ok := m.resources[key]
+	return ok && current > 0
+}
+
+// UseResource implements coreResources.ResourceAccessor
+func (m *mockCharacter) UseResource(key coreResources.ResourceKey, amount int) error {
+	if m.resources == nil {
+		return fmt.Errorf("resource %s not found", key)
+	}
+	if current, ok := m.resources[key]; ok {
+		m.resources[key] = current - amount
+	}
+	return nil
+}

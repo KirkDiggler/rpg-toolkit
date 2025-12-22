@@ -6,7 +6,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -91,12 +90,12 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 
 // rageConfig is the config structure for rage feature
 type rageConfig struct {
-	Uses        int `json:"uses"`         // Number of uses (default based on level)
-	DamageBonus int `json:"damage_bonus"` // Damage bonus (default based on level)
-	Level       int `json:"level"`        // Barbarian level (optional, for calculating defaults)
+	Level int `json:"level"` // Barbarian level (optional, for calculating damage bonus)
 }
 
-// createRage creates a rage feature from config
+// createRage creates a rage feature from config.
+// Note: The rage resource (rage_charges) should be registered on the Character,
+// not on the feature itself.
 func createRage(config json.RawMessage, _ string) (*Rage, error) {
 	var cfg rageConfig
 	if len(config) > 0 {
@@ -111,20 +110,10 @@ func createRage(config json.RawMessage, _ string) (*Rage, error) {
 		level = 1
 	}
 
-	// Calculate uses based on level if not explicitly set
-	uses := cfg.Uses
-	if uses == 0 {
-		uses = calculateRageUses(level)
-	}
-
-	// Create resource for tracking uses
-	resource := resources.NewResource(refs.Features.Rage().ID, uses)
-
 	return &Rage{
-		id:       refs.Features.Rage().ID,
-		name:     "Rage",
-		level:    level,
-		resource: resource,
+		id:    refs.Features.Rage().ID,
+		name:  "Rage",
+		level: level,
 	}, nil
 }
 

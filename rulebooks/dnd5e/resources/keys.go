@@ -10,6 +10,13 @@ import (
 // Resource key constants for D&D 5e class resources.
 // These are used with Character.GetResource() to access resource pools.
 const (
+	// RageCharges is the barbarian's rage uses per long rest.
+	// Maximum depends on barbarian level: 2 at level 1-2, 3 at 3-5, 4 at 6-11, 5 at 12-16, 6 at 17-19.
+	// At level 20, rage becomes unlimited.
+	// Recovered on long rest.
+	// Used by: Rage
+	RageCharges coreResources.ResourceKey = "rage_charges"
+
 	// Ki is the monk's resource pool, equal to monk level.
 	// Recovered on short or long rest.
 	// Used by: Flurry of Blows, Patient Defense, Step of the Wind, etc.

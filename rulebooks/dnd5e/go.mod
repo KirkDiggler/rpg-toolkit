@@ -3,7 +3,7 @@ module github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e
 go 1.24.1
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.9.6
+	github.com/KirkDiggler/rpg-toolkit/core v0.10.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1

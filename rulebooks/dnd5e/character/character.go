@@ -369,10 +369,8 @@ func (c *Character) ResetDeathSaveState() {
 	c.deathSaveState = &saves.DeathSaveState{}
 }
 
-// LongRest performs a long rest, restoring HP to maximum and triggering
-// resource/condition recovery via the RestEvent system.
-// Resources subscribed to RestTopic will automatically recover based on their ResetType.
-// Conditions subscribed to RestTopic will handle their own removal if appropriate.
+// LongRest performs a long rest, restoring HP to maximum and all long-rest resources.
+// Also publishes RestEvent for conditions to handle their own removal if appropriate.
 func (c *Character) LongRest(ctx context.Context) error {
 	if c.bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
@@ -384,7 +382,25 @@ func (c *Character) LongRest(ctx context.Context) error {
 	// Clear death save state (use empty struct for consistency with ResetDeathSaveState)
 	c.deathSaveState = &saves.DeathSaveState{}
 
-	// Publish RestEvent - resources and conditions react automatically via subscriptions
+	// Directly restore all resources that reset on long rest
+	for key, resource := range c.resources {
+		if resource.ResetType == coreResources.ResetLongRest ||
+			resource.ResetType == coreResources.ResetShortRest {
+			// Hit dice have special recovery rules: regain half (minimum 1)
+			if key == resources.HitDice {
+				amount := resource.Maximum() / 2
+				if amount < 1 {
+					amount = 1
+				}
+				resource.Restore(amount)
+			} else {
+				// All other resources restore to full
+				resource.RestoreToFull()
+			}
+		}
+	}
+
+	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
 	restTopic := dnd5eEvents.RestTopic.On(c.bus)
 	err := restTopic.Publish(ctx, dnd5eEvents.RestEvent{
 		RestType:    coreResources.ResetLongRest,
@@ -453,6 +469,33 @@ func (c *Character) AddResource(key coreResources.ResourceKey, resource *combat.
 		c.resources = make(map[coreResources.ResourceKey]*combat.RecoverableResource)
 	}
 	c.resources[key] = resource
+}
+
+// IsResourceAvailable implements coreResources.ResourceAccessor.
+// Returns true if the resource exists and has at least 1 use remaining.
+func (c *Character) IsResourceAvailable(key coreResources.ResourceKey) bool {
+	if c.resources == nil {
+		return false
+	}
+	r, ok := c.resources[key]
+	if !ok {
+		return false
+	}
+	return r.IsAvailable()
+}
+
+// UseResource implements coreResources.ResourceAccessor.
+// Attempts to consume the specified amount from a resource.
+// Returns an error if the resource doesn't exist or has insufficient uses.
+func (c *Character) UseResource(key coreResources.ResourceKey, amount int) error {
+	if c.resources == nil {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "resource %s not found", key)
+	}
+	r, ok := c.resources[key]
+	if !ok {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "resource %s not found", key)
+	}
+	return r.Use(amount)
 }
 
 // GetResourceData returns serializable resource data for persistence

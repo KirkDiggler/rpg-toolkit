@@ -24,13 +24,12 @@ func (s *LoaderTestSuite) SetupTest() {
 }
 
 func (s *LoaderTestSuite) TestLoadRageFeature() {
+	// Note: Resource state (uses/max) is owned by Character, not the feature
 	jsonData := json.RawMessage(`{
 		"ref": {"module": "dnd5e", "type": "features", "id": "rage"},
 		"id": "rage",
 		"name": "Rage",
-		"level": 5,
-		"uses": 2,
-		"max_uses": 3
+		"level": 5
 	}`)
 
 	feature, err := LoadJSON(jsonData)
@@ -42,11 +41,9 @@ func (s *LoaderTestSuite) TestLoadRageFeature() {
 	s.True(ok, "Should be a Rage instance")
 	s.Equal("rage", rage.id)
 	s.Equal(5, rage.level)
-	s.Equal(2, rage.resource.Current)
-	s.Equal(3, rage.resource.Maximum)
 
-	// Test that it can be activated
-	owner := &StubEntity{id: "test-barbarian"}
+	// Test that it can be activated (owner needs ResourceAccessor)
+	owner := newStubEntityWithRage("test-barbarian", 5)
 	err = feature.CanActivate(s.ctx, owner, FeatureInput{})
 	s.NoError(err)
 }
@@ -60,11 +57,6 @@ func (s *LoaderTestSuite) TestRoundTripThroughJSON() {
 	// Create a rage feature
 	originalRage := newRageForTest("rage-roundtrip", 7)
 
-	// Use one charge
-	owner := &StubEntity{id: "test-barbarian"}
-	err := originalRage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
-	s.NoError(err)
-
 	// Convert to JSON
 	jsonData, err := originalRage.ToJSON()
 	s.NoError(err)
@@ -76,11 +68,9 @@ func (s *LoaderTestSuite) TestRoundTripThroughJSON() {
 	loadedRage, ok := feature.(*Rage)
 	s.True(ok)
 
-	// Verify state was preserved
+	// Verify state was preserved (resource state is owned by Character, not feature)
 	s.Equal(originalRage.id, loadedRage.id)
 	s.Equal(originalRage.level, loadedRage.level)
-	s.Equal(originalRage.resource.Current, loadedRage.resource.Current)
-	s.Equal(originalRage.resource.Maximum, loadedRage.resource.Maximum)
 }
 
 func (s *LoaderTestSuite) TestActionTypes() {

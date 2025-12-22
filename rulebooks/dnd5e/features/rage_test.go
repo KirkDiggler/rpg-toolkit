@@ -7,10 +7,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 type RageTestSuite struct {
@@ -20,22 +21,52 @@ type RageTestSuite struct {
 	ctx  context.Context
 }
 
-// StubEntity implements core.Entity for testing
+// StubEntity implements core.Entity and coreResources.ResourceAccessor for testing
 type StubEntity struct {
-	id string
+	id        string
+	resources map[coreResources.ResourceKey]int
 }
 
 func (m *StubEntity) GetID() string            { return m.id }
 func (m *StubEntity) GetType() core.EntityType { return "character" }
 
+// IsResourceAvailable implements coreResources.ResourceAccessor
+func (m *StubEntity) IsResourceAvailable(key coreResources.ResourceKey) bool {
+	if m.resources == nil {
+		return false
+	}
+	current, ok := m.resources[key]
+	return ok && current > 0
+}
+
+// UseResource implements coreResources.ResourceAccessor
+func (m *StubEntity) UseResource(key coreResources.ResourceKey, amount int) error {
+	if m.resources == nil {
+		return nil
+	}
+	if current, ok := m.resources[key]; ok {
+		m.resources[key] = current - amount
+	}
+	return nil
+}
+
+// newStubEntityWithRage creates a stub entity with rage charges for testing
+func newStubEntityWithRage(id string, level int) *StubEntity {
+	maxUses := calculateRageUses(level)
+	return &StubEntity{
+		id: id,
+		resources: map[coreResources.ResourceKey]int{
+			resources.RageCharges: maxUses,
+		},
+	}
+}
+
 // newRageForTest creates a rage feature for testing
 func newRageForTest(id string, level int) *Rage {
-	maxUses := calculateRageUses(level)
 	return &Rage{
-		id:       id,
-		name:     "Rage",
-		level:    level,
-		resource: resources.NewResource("rage", maxUses),
+		id:    id,
+		name:  "Rage",
+		level: level,
 	}
 }
 
@@ -46,7 +77,7 @@ func (s *RageTestSuite) SetupTest() {
 }
 
 func (s *RageTestSuite) TestCanActivate() {
-	owner := &StubEntity{id: "barbarian-1"}
+	owner := newStubEntityWithRage("barbarian-1", 3) // Level 3 = 3 uses
 
 	// Should be able to activate with uses available
 	err := s.rage.CanActivate(s.ctx, owner, FeatureInput{})
@@ -65,7 +96,7 @@ func (s *RageTestSuite) TestCanActivate() {
 }
 
 func (s *RageTestSuite) TestActivatePublishesCondition() {
-	owner := &StubEntity{id: "barbarian-1"}
+	owner := newStubEntityWithRage("barbarian-1", 3)
 
 	// Track if condition was published
 	var receivedEvent *dnd5eEvents.ConditionAppliedEvent
@@ -140,10 +171,11 @@ func (s *RageTestSuite) TestRageDamagePerLevel() {
 }
 
 func (s *RageTestSuite) TestUnlimitedRagesAtLevel20() {
+	// Level 20 barbarians have unlimited rages - no resources needed
 	owner := &StubEntity{id: "barbarian-1"}
 	rage20 := newRageForTest("epic-rage", 20)
 
-	// Should be able to activate many times
+	// Should be able to activate many times without consuming resources
 	for i := 0; i < 10; i++ {
 		err := rage20.CanActivate(s.ctx, owner, FeatureInput{})
 		s.NoError(err, "Level 20 barbarian should have unlimited rages")
@@ -154,13 +186,12 @@ func (s *RageTestSuite) TestUnlimitedRagesAtLevel20() {
 }
 
 func (s *RageTestSuite) TestLoadJSON() {
+	// Note: Resource state (uses/max) is owned by Character, not the feature
 	jsonData := []byte(`{
 		"ref": {"value": "rage"},
 		"id": "loaded-rage",
 		"name": "Rage",
-		"level": 5,
-		"uses": 1,
-		"max_uses": 3
+		"level": 5
 	}`)
 
 	rage := &Rage{}
@@ -170,8 +201,6 @@ func (s *RageTestSuite) TestLoadJSON() {
 	s.Equal("loaded-rage", rage.id)
 	s.Equal("Rage", rage.name)
 	s.Equal(5, rage.level)
-	s.Equal(1, rage.resource.Current)
-	s.Equal(3, rage.resource.Maximum)
 }
 
 func (s *RageTestSuite) TestToJSON() {
