@@ -118,32 +118,23 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.Equal(3, rageResource.Current(), "rage uses should be restored via RestEvent")
 	})
 
-	s.Run("recovers hit dice (half level, minimum 1) via RestEvent", func() {
+	s.Run("recovers hit dice (half level, minimum 1)", func() {
 		// Arrange: Add hit dice resource with 0 remaining
 		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 			ID:          string(resources.HitDice),
 			Maximum:     4, // Level 4 character
 			CharacterID: s.character.id,
 			ResetType:   coreResources.ResetLongRest,
-			RecoveryFunc: func(r *combat.RecoverableResource) {
-				// D&D 5e: Recover half (minimum 1) on long rest
-				amount := r.Maximum() / 2
-				if amount < 1 {
-					amount = 1
-				}
-				r.Restore(amount)
-			},
+			// Note: RecoveryFunc not needed - LongRest handles hit dice specially
 		})
 		_ = hitDiceResource.Use(4) // Deplete all hit dice
 		s.Require().Equal(0, hitDiceResource.Current(), "hit dice should be depleted")
 
-		// Apply resource so it subscribes to RestTopic
-		err := hitDiceResource.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
+		// Add resource to character (no event subscription needed - LongRest handles directly)
 		s.character.AddResource(resources.HitDice, hitDiceResource)
 
 		// Act
-		err = s.character.LongRest(s.ctx)
+		err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)

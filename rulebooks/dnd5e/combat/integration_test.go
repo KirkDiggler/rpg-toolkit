@@ -9,6 +9,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -20,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -101,6 +103,14 @@ func (s *CombatIntegrationSuite) createBarbarian() *character.Character {
 			abilities.STR: shared.Proficient,
 			abilities.CON: shared.Proficient,
 		},
+		// Resources are owned by Character, not features
+		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
+			resources.RageCharges: {
+				Current:   2, // Level 1 barbarian has 2 rage uses
+				Maximum:   2,
+				ResetType: coreResources.ResetLongRest,
+			},
+		},
 		Features: []json.RawMessage{
 			json.RawMessage(`{
 				"ref": {
@@ -110,9 +120,7 @@ func (s *CombatIntegrationSuite) createBarbarian() *character.Character {
 				},
 				"id":       "rage",
 				"name":     "Rage",
-				"level":    1,
-				"uses":     2,
-				"max_uses": 2
+				"level":    1
 			}`),
 		},
 	}

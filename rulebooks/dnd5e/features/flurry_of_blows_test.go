@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// mockResourceAccessor implements features.ResourceAccessor for testing
+// mockResourceAccessor implements coreResources.ResourceAccessor for testing
 type mockResourceAccessor struct {
 	id        string
 	resources map[coreResources.ResourceKey]*combat.RecoverableResource
@@ -32,6 +32,31 @@ func (m *mockResourceAccessor) GetType() core.EntityType {
 	return "character"
 }
 
+// IsResourceAvailable implements coreResources.ResourceAccessor
+func (m *mockResourceAccessor) IsResourceAvailable(key coreResources.ResourceKey) bool {
+	if m.resources == nil {
+		return false
+	}
+	r, ok := m.resources[key]
+	if !ok {
+		return false
+	}
+	return r.IsAvailable()
+}
+
+// UseResource implements coreResources.ResourceAccessor
+func (m *mockResourceAccessor) UseResource(key coreResources.ResourceKey, amount int) error {
+	if m.resources == nil {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "resource %s not found", key)
+	}
+	r, ok := m.resources[key]
+	if !ok {
+		return rpgerr.Newf(rpgerr.CodeNotFound, "resource %s not found", key)
+	}
+	return r.Use(amount)
+}
+
+// GetResource is a test helper to access internal state (not part of ResourceAccessor interface)
 func (m *mockResourceAccessor) GetResource(key coreResources.ResourceKey) *combat.RecoverableResource {
 	if m.resources == nil {
 		return combat.NewRecoverableResource(combat.RecoverableResourceConfig{

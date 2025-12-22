@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -44,14 +45,13 @@ func (s *StepOfTheWind) GetType() core.EntityType {
 // CanActivate implements core.Action[FeatureInput]
 func (s *StepOfTheWind) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
 	// Cast owner to ResourceAccessor to check Ki
-	accessor, ok := owner.(ResourceAccessor)
+	accessor, ok := owner.(coreResources.ResourceAccessor)
 	if !ok {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner must implement ResourceAccessor")
 	}
 
 	// Check if Ki is available
-	ki := accessor.GetResource(resources.Ki)
-	if !ki.IsAvailable() {
+	if !accessor.IsResourceAvailable(resources.Ki) {
 		return rpgerr.New(rpgerr.CodeResourceExhausted, "no ki points remaining")
 	}
 
@@ -66,14 +66,13 @@ func (s *StepOfTheWind) Activate(ctx context.Context, owner core.Entity, input F
 	}
 
 	// Cast owner to ResourceAccessor to consume Ki
-	accessor, ok := owner.(ResourceAccessor)
+	accessor, ok := owner.(coreResources.ResourceAccessor)
 	if !ok {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner must implement ResourceAccessor")
 	}
 
 	// Consume 1 Ki point
-	ki := accessor.GetResource(resources.Ki)
-	if err := ki.Use(1); err != nil {
+	if err := accessor.UseResource(resources.Ki, 1); err != nil {
 		return rpgerr.Wrapf(err, "failed to use ki for step of the wind")
 	}
 
