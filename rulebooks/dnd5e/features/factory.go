@@ -6,7 +6,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -97,7 +96,7 @@ type rageConfig struct {
 }
 
 // createRage creates a rage feature from config
-func createRage(config json.RawMessage, _ string) (*Rage, error) {
+func createRage(config json.RawMessage, characterID string) (*Rage, error) {
 	var cfg rageConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -117,14 +116,20 @@ func createRage(config json.RawMessage, _ string) (*Rage, error) {
 		uses = calculateRageUses(level)
 	}
 
-	// Create resource for tracking uses
-	resource := resources.NewResource(refs.Features.Rage().ID, uses)
+	// Create recoverable resource for tracking uses (restores on long rest)
+	resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          refs.Features.Rage().ID,
+		Maximum:     uses,
+		CharacterID: characterID,
+		ResetType:   coreResources.ResetLongRest,
+	})
 
 	return &Rage{
-		id:       refs.Features.Rage().ID,
-		name:     "Rage",
-		level:    level,
-		resource: resource,
+		id:          refs.Features.Rage().ID,
+		name:        "Rage",
+		level:       level,
+		characterID: characterID,
+		resource:    resource,
 	}, nil
 }
 

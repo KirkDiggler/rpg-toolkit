@@ -8,30 +8,34 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Rage represents the barbarian rage feature.
-// It implements core.Action[FeatureInput] for activation.
+// It implements core.Action[FeatureInput] for activation and events.BusEffect for resource management.
 type Rage struct {
-	id       string
-	name     string
-	level    int                 // Barbarian level for determining damage bonus
-	resource *resources.Resource // Tracks rage uses
+	id          string
+	name        string
+	level       int                              // Barbarian level for determining damage bonus
+	characterID string                           // Character this feature belongs to
+	resource    *dnd5eCombat.RecoverableResource // Tracks rage uses (restores on long rest)
 }
 
 // RageData is the JSON structure for persisting rage state
 type RageData struct {
-	Ref     *core.Ref `json:"ref"`
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Level   int       `json:"level"`
-	Uses    int       `json:"uses"`
-	MaxUses int       `json:"max_uses"`
+	Ref         *core.Ref `json:"ref"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Level       int       `json:"level"`
+	CharacterID string    `json:"character_id"`
+	Uses        int       `json:"uses"`
+	MaxUses     int       `json:"max_uses"`
 }
 
 // calculateRageUses determines max rage uses based on barbarian level
@@ -72,6 +76,18 @@ func (r *Rage) GetID() string {
 // GetType implements core.Entity
 func (r *Rage) GetType() core.EntityType {
 	return EntityTypeFeature
+}
+
+// Apply subscribes the recoverable resource to the event bus for automatic rest recovery.
+// This should be called when the feature is granted to a character.
+func (r *Rage) Apply(ctx context.Context, bus events.EventBus) error {
+	return r.resource.Apply(ctx, bus)
+}
+
+// Remove unsubscribes the recoverable resource from the event bus.
+// This should be called when the feature is removed from a character.
+func (r *Rage) Remove(ctx context.Context, bus events.EventBus) error {
+	return r.resource.Remove(ctx, bus)
 }
 
 // CanActivate implements core.Action[FeatureInput]
@@ -138,10 +154,21 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 	r.id = rageData.ID
 	r.name = rageData.Name
 	r.level = rageData.Level
+	r.characterID = rageData.CharacterID
 
-	// Set up resource with current and max uses
-	r.resource = resources.NewResource(refs.Features.Rage().ID, rageData.MaxUses)
-	r.resource.SetCurrent(rageData.Uses)
+	// Set up recoverable resource with current and max uses
+	r.resource = dnd5eCombat.NewRecoverableResource(dnd5eCombat.RecoverableResourceConfig{
+		ID:          refs.Features.Rage().ID,
+		Maximum:     rageData.MaxUses,
+		CharacterID: rageData.CharacterID,
+		ResetType:   coreResources.ResetLongRest,
+	})
+	// Restore to the saved state
+	if rageData.Uses < rageData.MaxUses {
+		if err := r.resource.Use(rageData.MaxUses - rageData.Uses); err != nil {
+			return fmt.Errorf("failed to set resource uses: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -149,12 +176,13 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 // ToJSON converts rage to JSON for persistence
 func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
-		Ref:     refs.Features.Rage(),
-		ID:      r.id,
-		Name:    r.name,
-		Level:   r.level,
-		Uses:    r.resource.Current,
-		MaxUses: r.resource.Maximum,
+		Ref:         refs.Features.Rage(),
+		ID:          r.id,
+		Name:        r.name,
+		Level:       r.level,
+		CharacterID: r.characterID,
+		Uses:        r.resource.Current(),
+		MaxUses:     r.resource.Maximum(),
 	}
 
 	bytes, err := json.Marshal(data)
@@ -163,11 +191,6 @@ func (r *Rage) ToJSON() (json.RawMessage, error) {
 	}
 
 	return bytes, nil
-}
-
-// RestoreOnLongRest restores all rage uses on a long rest
-func (r *Rage) RestoreOnLongRest() {
-	r.resource.RestoreToFull()
 }
 
 // ActionType returns the action economy cost to activate rage (bonus action)
