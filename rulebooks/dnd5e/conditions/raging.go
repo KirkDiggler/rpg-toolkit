@@ -234,40 +234,57 @@ func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
 	return r.Remove(ctx, r.bus)
 }
 
-// onDamageChain adds rage damage bonus to attacks made by the raging character
-// and tracks that we successfully hit an enemy this turn (for rage maintenance)
+// onDamageChain handles both:
+// 1. Adding rage damage bonus when the raging character attacks
+// 2. Applying resistance (halve damage) when the raging character is hit by B/P/S damage
 func (r *RagingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only add bonus if we're the attacker
-	if event.AttackerID != r.CharacterID {
-		return c, nil
+	// Handle attacker side: add rage damage bonus
+	if event.AttackerID == r.CharacterID {
+		// Track that we successfully hit an enemy this turn
+		// (damage chain only fires when an attack hits)
+		r.DidAttackThisTurn = true
+
+		// Add rage damage modifier in the StageFeatures stage
+		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+			// Append rage damage component
+			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+				Source:            dnd5eEvents.DamageSourceCondition,
+				SourceRef:         refs.Conditions.Raging(),
+				OriginalDiceRolls: nil, // No dice
+				FinalDiceRolls:    nil,
+				Rerolls:           nil,
+				FlatBonus:         r.DamageBonus,
+				DamageType:        e.DamageType, // Same as weapon damage type
+				IsCritical:        e.IsCritical,
+			})
+			return e, nil
+		}
+		err := c.Add(combat.StageFeatures, "rage", modifyDamage)
+		if err != nil {
+			return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
+		}
 	}
 
-	// Track that we successfully hit an enemy this turn
-	// (damage chain only fires when an attack hits)
-	r.DidAttackThisTurn = true
-
-	// Add rage damage modifier in the StageFeatures stage
-	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		// Append rage damage component
-		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceCondition,
-			SourceRef:         refs.Conditions.Raging(),
-			OriginalDiceRolls: nil, // No dice
-			FinalDiceRolls:    nil,
-			Rerolls:           nil,
-			FlatBonus:         r.DamageBonus,
-			DamageType:        e.DamageType, // Same as weapon damage type
-			IsCritical:        e.IsCritical,
-		})
-		return e, nil
-	}
-	err := c.Add(combat.StageFeatures, "rage", modifyDamage)
-	if err != nil {
-		return c, rpgerr.Wrapf(err, "error applying raging for character id %s", r.CharacterID)
+	// Handle defender side: apply resistance to B/P/S damage
+	if event.TargetID == r.CharacterID && event.DamageType.IsPhysical() {
+		// Add resistance multiplier in the StageFinal stage
+		applyResistance := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+				Source:     dnd5eEvents.DamageSourceCondition,
+				SourceRef:  refs.Conditions.Raging(),
+				DamageType: e.DamageType,
+				Multiplier: 0.5, // Resistance halves damage
+			})
+			return e, nil
+		}
+		err := c.Add(combat.StageFinal, "rage_resistance", applyResistance)
+		if err != nil {
+			return c, rpgerr.Wrapf(err, "error applying rage resistance for character id %s", r.CharacterID)
+		}
 	}
 
 	return c, nil

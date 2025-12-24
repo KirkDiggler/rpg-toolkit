@@ -462,3 +462,136 @@ func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterRest(
 	// Verify condition is still applied
 	s.True(raging.IsApplied(), "rage should still be applied")
 }
+
+// executeDamageChainAgainstTarget creates a damage chain event where a specific target is hit
+// and executes it through the damage chain topic. Used to test resistance.
+func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
+	attackerID, targetID string,
+	baseDamage int,
+	damageType damage.Type,
+) (*dnd5eEvents.DamageChainEvent, error) {
+	// Create weapon component with base damage
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		OriginalDiceRolls: []int{baseDamage},
+		FinalDiceRolls:    []int{baseDamage},
+		DamageType:        damageType,
+	}
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   attackerID,
+		TargetID:     targetID,
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
+		DamageType:   damageType,
+		IsCritical:   false,
+		WeaponDamage: "1d8",
+		AbilityUsed:  abilities.STR,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	if err != nil {
+		return nil, err
+	}
+
+	return modifiedChain.Execute(s.ctx, damageEvent)
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionAppliesResistanceToPhysicalDamage() {
+	// Create a raging condition for barbarian-1
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to damage chain
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Test each physical damage type
+	physicalTypes := []damage.Type{damage.Bludgeoning, damage.Piercing, damage.Slashing}
+
+	for _, dmgType := range physicalTypes {
+		s.Run(string(dmgType), func() {
+			// Execute damage chain with the barbarian as the target
+			finalEvent, err := s.executeDamageChainAgainstTarget("goblin-1", "barbarian-1", 10, dmgType)
+			s.Require().NoError(err)
+
+			// Should have 2 components: weapon damage and resistance multiplier
+			s.Require().Len(finalEvent.Components, 2, "Should have weapon and resistance components")
+
+			// Verify weapon component
+			s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
+			s.Equal(10, finalEvent.Components[0].Total())
+
+			// Verify resistance component was added with 0.5 multiplier
+			s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[1].Source)
+			s.Equal(0.5, finalEvent.Components[1].Multiplier, "Resistance should halve damage")
+		})
+	}
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionDoesNotResistNonPhysicalDamage() {
+	// Create a raging condition for barbarian-1
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to damage chain
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Test non-physical damage types
+	nonPhysicalTypes := []damage.Type{
+		damage.Fire, damage.Cold, damage.Lightning, damage.Thunder,
+		damage.Acid, damage.Poison, damage.Necrotic, damage.Radiant,
+		damage.Force, damage.Psychic,
+	}
+
+	for _, dmgType := range nonPhysicalTypes {
+		s.Run(string(dmgType), func() {
+			// Execute damage chain with the barbarian as the target
+			finalEvent, err := s.executeDamageChainAgainstTarget("goblin-1", "barbarian-1", 10, dmgType)
+			s.Require().NoError(err)
+
+			// Should only have 1 component: weapon damage (no resistance)
+			s.Require().Len(finalEvent.Components, 1, "Should only have weapon component, no resistance")
+
+			// Verify weapon component
+			s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
+			s.Equal(10, finalEvent.Components[0].Total())
+		})
+	}
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionResistanceOnlyAffectsOwnCharacter() {
+	// Create a raging condition for barbarian-1
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to damage chain
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Execute damage chain with a DIFFERENT character as the target
+	finalEvent, err := s.executeDamageChainAgainstTarget("goblin-1", "barbarian-2", 10, damage.Slashing)
+	s.Require().NoError(err)
+
+	// Should only have 1 component: weapon damage (no resistance for other characters)
+	s.Require().Len(finalEvent.Components, 1, "Should only have weapon component, no resistance for other characters")
+
+	// Verify weapon component
+	s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
+	s.Equal(10, finalEvent.Components[0].Total())
+}
