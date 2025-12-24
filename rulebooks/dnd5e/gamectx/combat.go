@@ -61,7 +61,7 @@ func CombatStateFromContext(ctx context.Context) (*CombatState, bool) {
 	return nil, false
 }
 
-// RequireCombatState retrieves the CombatState from the context.
+// MustCombatState retrieves the CombatState from the context.
 // Panics if no CombatState is present in the context.
 //
 // Purpose: For code paths that absolutely require combat state to function.
@@ -69,12 +69,12 @@ func CombatStateFromContext(ctx context.Context) (*CombatState, bool) {
 //
 // Example:
 //
-//	state := gamectx.RequireCombatState(ctx)
+//	state := gamectx.MustCombatState(ctx)
 //	currentRound := state.Round
-func RequireCombatState(ctx context.Context) *CombatState {
+func MustCombatState(ctx context.Context) *CombatState {
 	state, ok := CombatStateFromContext(ctx)
 	if !ok {
-		panic("RequireCombatState: no CombatState found in context")
+		panic("MustCombatState: no CombatState found in context")
 	}
 	return state
 }

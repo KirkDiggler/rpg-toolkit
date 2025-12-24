@@ -638,7 +638,7 @@ func (s *CombatStateTestSuite) TestCombatStateFromContextNotFound() {
 	s.Nil(state)
 }
 
-func (s *CombatStateTestSuite) TestRequireCombatStateSuccess() {
+func (s *CombatStateTestSuite) TestMustCombatStateSuccess() {
 	// Create combat state
 	state := &gamectx.CombatState{
 		EncounterID:      "enc-789",
@@ -648,18 +648,18 @@ func (s *CombatStateTestSuite) TestRequireCombatStateSuccess() {
 	}
 	wrappedCtx := gamectx.WithCombatState(s.ctx, state)
 
-	// RequireCombatState should succeed
-	retrievedState := gamectx.RequireCombatState(wrappedCtx)
+	// MustCombatState should succeed
+	retrievedState := gamectx.MustCombatState(wrappedCtx)
 	s.Require().NotNil(retrievedState)
 	s.Equal("enc-789", retrievedState.EncounterID)
 	s.Equal(5, retrievedState.Round)
 }
 
-func (s *CombatStateTestSuite) TestRequireCombatStatePanics() {
-	// RequireCombatState should panic when no CombatState is present
+func (s *CombatStateTestSuite) TestMustCombatStatePanics() {
+	// MustCombatState should panic when no CombatState is present
 	s.Require().Panics(func() {
-		gamectx.RequireCombatState(s.ctx)
-	}, "RequireCombatState should panic when no CombatState is in context")
+		gamectx.MustCombatState(s.ctx)
+	}, "MustCombatState should panic when no CombatState is in context")
 }
 
 func (s *CombatStateTestSuite) TestCombatStateWithRoomAndGameContext() {
