@@ -413,6 +413,34 @@ func (c *Character) LongRest(ctx context.Context) error {
 	return nil
 }
 
+// ShortRest restores resources that reset on a short rest (e.g., Second Wind, Ki).
+// Unlike LongRest, ShortRest does not restore HP or clear death saves.
+// Resources with ResetShortRest type are restored to full.
+func (c *Character) ShortRest(ctx context.Context) error {
+	if c.bus == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
+	}
+
+	// Restore all resources that reset on short rest
+	for _, resource := range c.resources {
+		if resource.ResetType == coreResources.ResetShortRest {
+			resource.RestoreToFull()
+		}
+	}
+
+	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
+	restTopic := dnd5eEvents.RestTopic.On(c.bus)
+	err := restTopic.Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetShortRest,
+		CharacterID: c.id,
+	})
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to publish rest event")
+	}
+
+	return nil
+}
+
 // GetFeatures returns all character features
 func (c *Character) GetFeatures() []features.Feature {
 	return c.features
