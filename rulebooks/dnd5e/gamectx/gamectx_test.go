@@ -583,3 +583,130 @@ func (s *IntegrationTestSuite) TestCombinedContextAccess() {
 func TestIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(IntegrationTestSuite))
 }
+
+// CombatStateTestSuite tests CombatState context wrapping and retrieval functions
+type CombatStateTestSuite struct {
+	suite.Suite
+	ctx context.Context
+}
+
+func (s *CombatStateTestSuite) SetupTest() {
+	s.ctx = context.Background()
+}
+
+func (s *CombatStateTestSuite) TestWithCombatState() {
+	// Create a combat state
+	state := &gamectx.CombatState{
+		EncounterID:      "enc-123",
+		Round:            3,
+		ActiveEntityID:   "hero-1",
+		ActiveEntityType: "character",
+	}
+
+	// Wrap the context with combat state
+	wrappedCtx := gamectx.WithCombatState(s.ctx, state)
+	s.Require().NotNil(wrappedCtx)
+
+	// Verify the wrapped context is different from the original
+	s.NotEqual(s.ctx, wrappedCtx)
+}
+
+func (s *CombatStateTestSuite) TestCombatStateFromContextSuccess() {
+	// Create and wrap combat state
+	state := &gamectx.CombatState{
+		EncounterID:      "enc-456",
+		Round:            2,
+		ActiveEntityID:   "goblin-1",
+		ActiveEntityType: "monster",
+	}
+	wrappedCtx := gamectx.WithCombatState(s.ctx, state)
+
+	// Retrieve the combat state
+	retrievedState, ok := gamectx.CombatStateFromContext(wrappedCtx)
+	s.Require().True(ok, "Expected to find CombatState in context")
+	s.Require().NotNil(retrievedState)
+	s.Equal("enc-456", retrievedState.EncounterID)
+	s.Equal(2, retrievedState.Round)
+	s.Equal("goblin-1", retrievedState.ActiveEntityID)
+	s.Equal("monster", retrievedState.ActiveEntityType)
+}
+
+func (s *CombatStateTestSuite) TestCombatStateFromContextNotFound() {
+	// Use a context without CombatState
+	state, ok := gamectx.CombatStateFromContext(s.ctx)
+	s.False(ok, "Expected not to find CombatState in plain context")
+	s.Nil(state)
+}
+
+func (s *CombatStateTestSuite) TestRequireCombatStateSuccess() {
+	// Create combat state
+	state := &gamectx.CombatState{
+		EncounterID:      "enc-789",
+		Round:            5,
+		ActiveEntityID:   "rogue-1",
+		ActiveEntityType: "character",
+	}
+	wrappedCtx := gamectx.WithCombatState(s.ctx, state)
+
+	// RequireCombatState should succeed
+	retrievedState := gamectx.RequireCombatState(wrappedCtx)
+	s.Require().NotNil(retrievedState)
+	s.Equal("enc-789", retrievedState.EncounterID)
+	s.Equal(5, retrievedState.Round)
+}
+
+func (s *CombatStateTestSuite) TestRequireCombatStatePanics() {
+	// RequireCombatState should panic when no CombatState is present
+	s.Require().Panics(func() {
+		gamectx.RequireCombatState(s.ctx)
+	}, "RequireCombatState should panic when no CombatState is in context")
+}
+
+func (s *CombatStateTestSuite) TestCombatStateWithRoomAndGameContext() {
+	// Test that all three context types can coexist
+
+	// Create room
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "battle-room",
+		Type: "combat",
+		Grid: grid,
+	})
+
+	// Create game context
+	registry := gamectx.NewBasicCharacterRegistry()
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+
+	// Create combat state
+	combatState := &gamectx.CombatState{
+		EncounterID:      "enc-all",
+		Round:            1,
+		ActiveEntityID:   "fighter-1",
+		ActiveEntityType: "character",
+	}
+
+	// Chain all three contexts
+	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+	ctx = gamectx.WithRoom(ctx, room)
+	ctx = gamectx.WithCombatState(ctx, combatState)
+
+	// Verify all three are accessible
+	retrievedRoom, roomOK := gamectx.Room(ctx)
+	s.Require().True(roomOK)
+	s.Equal("battle-room", retrievedRoom.GetID())
+
+	retrievedRegistry, charOK := gamectx.Characters(ctx)
+	s.Require().True(charOK)
+	s.NotNil(retrievedRegistry)
+
+	retrievedState, stateOK := gamectx.CombatStateFromContext(ctx)
+	s.Require().True(stateOK)
+	s.Equal("enc-all", retrievedState.EncounterID)
+	s.Equal(1, retrievedState.Round)
+}
+
+func TestCombatStateSuite(t *testing.T) {
+	suite.Run(t, new(CombatStateTestSuite))
+}
