@@ -710,3 +710,226 @@ func (s *CombatStateTestSuite) TestCombatStateWithRoomAndGameContext() {
 func TestCombatStateSuite(t *testing.T) {
 	suite.Run(t, new(CombatStateTestSuite))
 }
+
+// mockCombatant implements Combatant for testing
+type mockCombatant struct {
+	id           string
+	hitPoints    int
+	maxHitPoints int
+}
+
+func (m *mockCombatant) GetID() string        { return m.id }
+func (m *mockCombatant) GetHitPoints() int    { return m.hitPoints }
+func (m *mockCombatant) GetMaxHitPoints() int { return m.maxHitPoints }
+
+func (m *mockCombatant) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
+	if input == nil {
+		return &combat.ApplyDamageResult{
+			CurrentHP:  m.hitPoints,
+			PreviousHP: m.hitPoints,
+		}
+	}
+
+	previousHP := m.hitPoints
+	totalDamage := 0
+
+	for _, instance := range input.Instances {
+		totalDamage += instance.Amount
+	}
+
+	m.hitPoints -= totalDamage
+	if m.hitPoints < 0 {
+		m.hitPoints = 0
+	}
+
+	return &combat.ApplyDamageResult{
+		TotalDamage:   totalDamage,
+		CurrentHP:     m.hitPoints,
+		DroppedToZero: m.hitPoints == 0 && previousHP > 0,
+		PreviousHP:    previousHP,
+	}
+}
+
+// CombatantTestSuite tests Combatant registry and context functions
+type CombatantTestSuite struct {
+	suite.Suite
+	ctx context.Context
+}
+
+func (s *CombatantTestSuite) SetupTest() {
+	s.ctx = context.Background()
+}
+
+func (s *CombatantTestSuite) TestCombatantRegistryAdd() {
+	registry := gamectx.NewCombatantRegistry()
+
+	combatant := &mockCombatant{
+		id:           "hero-1",
+		hitPoints:    20,
+		maxHitPoints: 20,
+	}
+
+	registry.Add(combatant)
+
+	retrieved, err := registry.Get("hero-1")
+	s.Require().NoError(err)
+	s.Require().NotNil(retrieved)
+	s.Equal("hero-1", retrieved.GetID())
+	s.Equal(20, retrieved.GetHitPoints())
+}
+
+func (s *CombatantTestSuite) TestCombatantRegistryGetNotFound() {
+	registry := gamectx.NewCombatantRegistry()
+
+	retrieved, err := registry.Get("not-found")
+	s.Require().Error(err)
+	s.Nil(retrieved)
+	s.Contains(err.Error(), "not found")
+}
+
+func (s *CombatantTestSuite) TestCombatantRegistryAll() {
+	registry := gamectx.NewCombatantRegistry()
+
+	registry.Add(&mockCombatant{id: "hero-1", hitPoints: 20, maxHitPoints: 20})
+	registry.Add(&mockCombatant{id: "hero-2", hitPoints: 15, maxHitPoints: 15})
+	registry.Add(&mockCombatant{id: "goblin-1", hitPoints: 7, maxHitPoints: 7})
+
+	all := registry.All()
+	s.Len(all, 3)
+
+	// Verify all combatants are present
+	ids := make(map[string]bool)
+	for _, c := range all {
+		ids[c.GetID()] = true
+	}
+	s.True(ids["hero-1"])
+	s.True(ids["hero-2"])
+	s.True(ids["goblin-1"])
+}
+
+func (s *CombatantTestSuite) TestGetCombatantFromContext() {
+	registry := gamectx.NewCombatantRegistry()
+	registry.Add(&mockCombatant{id: "hero-1", hitPoints: 20, maxHitPoints: 20})
+
+	ctx := gamectx.WithCombatants(s.ctx, registry)
+
+	retrieved, err := gamectx.GetCombatant(ctx, "hero-1")
+	s.Require().NoError(err)
+	s.Require().NotNil(retrieved)
+	s.Equal("hero-1", retrieved.GetID())
+	s.Equal(20, retrieved.GetHitPoints())
+}
+
+func (s *CombatantTestSuite) TestGetCombatantNotInContext() {
+	// No registry in context
+	retrieved, err := gamectx.GetCombatant(s.ctx, "hero-1")
+	s.Require().Error(err)
+	s.Nil(retrieved)
+	s.Contains(err.Error(), "no combatant registry")
+}
+
+func (s *CombatantTestSuite) TestGetCombatantNotFound() {
+	registry := gamectx.NewCombatantRegistry()
+	ctx := gamectx.WithCombatants(s.ctx, registry)
+
+	retrieved, err := gamectx.GetCombatant(ctx, "not-found")
+	s.Require().Error(err)
+	s.Nil(retrieved)
+	s.Contains(err.Error(), "not found")
+}
+
+func (s *CombatantTestSuite) TestGetAllCombatantsFromContext() {
+	registry := gamectx.NewCombatantRegistry()
+	registry.Add(&mockCombatant{id: "hero-1", hitPoints: 20, maxHitPoints: 20})
+	registry.Add(&mockCombatant{id: "goblin-1", hitPoints: 7, maxHitPoints: 7})
+
+	ctx := gamectx.WithCombatants(s.ctx, registry)
+
+	all := gamectx.GetAllCombatants(ctx)
+	s.Len(all, 2)
+}
+
+func (s *CombatantTestSuite) TestGetAllCombatantsNoRegistry() {
+	all := gamectx.GetAllCombatants(s.ctx)
+	s.Nil(all)
+}
+
+func (s *CombatantTestSuite) TestApplyDamageNormal() {
+	combatant := &mockCombatant{
+		id:           "hero-1",
+		hitPoints:    20,
+		maxHitPoints: 20,
+	}
+
+	result := combatant.ApplyDamage(s.ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{
+			{Amount: 8, Type: "slashing"},
+		},
+	})
+
+	s.Equal(8, result.TotalDamage)
+	s.Equal(12, result.CurrentHP)
+	s.Equal(20, result.PreviousHP)
+	s.False(result.DroppedToZero)
+	s.Equal(12, combatant.GetHitPoints())
+}
+
+func (s *CombatantTestSuite) TestApplyDamageToZero() {
+	combatant := &mockCombatant{
+		id:           "hero-1",
+		hitPoints:    10,
+		maxHitPoints: 20,
+	}
+
+	result := combatant.ApplyDamage(s.ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{
+			{Amount: 15, Type: "slashing"},
+		},
+	})
+
+	s.Equal(15, result.TotalDamage)
+	s.Equal(0, result.CurrentHP)
+	s.Equal(10, result.PreviousHP)
+	s.True(result.DroppedToZero)
+	s.Equal(0, combatant.GetHitPoints()) // Capped at 0, not negative
+}
+
+func (s *CombatantTestSuite) TestApplyDamageMultipleInstances() {
+	combatant := &mockCombatant{
+		id:           "hero-1",
+		hitPoints:    30,
+		maxHitPoints: 30,
+	}
+
+	// Flametongue: 2d6 slashing + 2d6 fire = let's say 7 + 5
+	result := combatant.ApplyDamage(s.ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{
+			{Amount: 7, Type: "slashing"},
+			{Amount: 5, Type: "fire"},
+		},
+	})
+
+	s.Equal(12, result.TotalDamage)
+	s.Equal(18, result.CurrentHP)
+	s.Equal(30, result.PreviousHP)
+	s.False(result.DroppedToZero)
+}
+
+func (s *CombatantTestSuite) TestApplyDamageNilInput() {
+	combatant := &mockCombatant{
+		id:           "hero-1",
+		hitPoints:    20,
+		maxHitPoints: 20,
+	}
+
+	result := combatant.ApplyDamage(s.ctx, nil)
+
+	s.Equal(0, result.TotalDamage)
+	s.Equal(20, result.CurrentHP)
+	s.Equal(20, result.PreviousHP)
+	s.False(result.DroppedToZero)
+}
+
+func TestCombatantSuite(t *testing.T) {
+	suite.Run(t, new(CombatantTestSuite))
+}

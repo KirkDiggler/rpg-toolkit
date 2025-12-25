@@ -1,57 +1,48 @@
 {
-  "branch": "feature/death-saves-463",
-  "issues": ["#463"],
-  "goal": "Implement death saving throws - specialized saving throw mechanic for characters at 0 HP with unique roll interpretation, success/failure tracking, and damage handling",
+  "branch": "feature/504-damage-application",
+  "issues": ["#504"],
+  "goal": "Implement damage application via event chain (ADR-0026): three-phase flow with DamageChain and DamageReceivedEvent notification",
   "sessions": [
     {
-      "date": "2025-12-16",
-      "summary": "Implemented complete death saving throws mechanics following TDD approach",
-      "completed": [
-        "Created DeathSaveState struct with Successes, Failures, Stabilized, Dead fields",
-        "Created DeathSaveInput struct with Roller and State",
-        "Created DeathSaveResult struct with Roll, State, IsCriticalFail, IsCriticalSuccess, RegainedConsciousness, HPRestored",
-        "Created DamageWhileUnconsciousInput struct with State and IsCritical",
-        "Created DamageWhileUnconsciousResult struct with State and FailuresAdded",
-        "Implemented MakeDeathSave() with D&D 5e roll interpretation",
-        "Implemented TakeDamageWhileUnconscious()",
-        "Wrote 19 comprehensive tests covering all roll outcomes and edge cases"
+      "id": "2024-12-25-001",
+      "task": "Add Combatant interface and ApplyDamage",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/gamectx/combatant.go",
+        "rulebooks/dnd5e/character/character.go"
       ],
-      "tests_passing": "31/31",
-      "linter_issues": "0",
-      "commit": "46687fb"
+      "commit": "a0fecce",
+      "notes": "Created Combatant interface with ApplyDamage, CombatantRegistry for lookup, GetCombatant(ctx,id) returning error. Character now implements Combatant. All tests pass."
     },
     {
-      "date": "2025-12-16",
-      "summary": "Added Character helper methods for death saves",
-      "completed": [
-        "Added deathSaveState field to Character struct",
-        "Implemented Character.MakeDeathSave() helper method",
-        "Implemented Character.TakeDamageWhileUnconscious() helper method",
-        "Implemented Character.GetDeathSaveState() accessor",
-        "Implemented Character.ResetDeathSaveState() to clear state",
-        "Created MakeDeathSaveInput and TakeDamageWhileUnconsciousInput types",
-        "Wrote 7 tests for Character death save functionality"
+      "id": "2024-12-25-002",
+      "task": "Implement combat.DealDamage function",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/combat/combatant.go",
+        "rulebooks/dnd5e/combat/damage.go",
+        "rulebooks/dnd5e/combat/damage_test.go",
+        "rulebooks/dnd5e/gamectx/combatant.go",
+        "rulebooks/dnd5e/character/character.go",
+        "rulebooks/dnd5e/gamectx/gamectx_test.go"
       ],
-      "tests_passing": "7/7 new + all existing",
-      "linter_issues": "0",
-      "commit": "601160d"
+      "commit": "857773b",
+      "notes": "Moved Combatant interface to combat package to break import cycle. DealDamage orchestrates 3 phases: RESOLVE (DamageChain for modifiers), APPLY (Target.ApplyDamage), NOTIFY (DamageReceivedEvent). Changed API to accept Target directly instead of lookup to avoid cycle. All tests pass."
     },
     {
-      "date": "2025-12-16",
-      "summary": "Added persistence for death save state",
-      "completed": [
-        "Added DeathSaveState field to Data struct with omitempty",
-        "Updated ToData() to include deathSaveState in serialization",
-        "Updated LoadFromData() to restore deathSaveState from data",
-        "Added round-trip serialization test",
-        "All 8 death save tests passing"
+      "id": "2024-12-25-003",
+      "task": "Implement resistance/vulnerability multipliers in DealDamage",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/combat/damage.go",
+        "rulebooks/dnd5e/combat/integration_test.go"
       ],
-      "tests_passing": "8/8",
-      "linter_issues": "0"
+      "commit": "4ec605d",
+      "notes": "Added calculateFinalDamage and resolveMultipliers functions. Groups damage by type, applies D&D 5e multiplier stacking rules: immunity trumps all, resistance/vulnerability cancel, multiples don't stack. Rage resistance test now passes (10 slashing → 5 after 0.5x multiplier)."
     }
   ],
   "next_steps": [
-    "Commit persistence changes",
-    "Update PR"
+    "Integrate with rpg-api game server damage application",
+    "Update ADR-0026 with final implementation details"
   ]
 }

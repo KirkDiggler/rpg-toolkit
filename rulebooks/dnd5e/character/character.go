@@ -471,6 +471,45 @@ func (c *Character) GetMaxHitPoints() int {
 	return c.maxHitPoints
 }
 
+// ApplyDamage reduces the character's HP by the damage amount(s).
+// HP cannot go below 0. Returns the result of the damage application.
+//
+// This method directly mutates the character's HP. The caller is responsible
+// for persisting the updated character state.
+//
+// Implements combat.Combatant interface.
+//
+//nolint:revive // ctx is unused but kept for interface consistency and future use
+func (c *Character) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
+	if input == nil {
+		return &combat.ApplyDamageResult{
+			CurrentHP:  c.hitPoints,
+			PreviousHP: c.hitPoints,
+		}
+	}
+
+	previousHP := c.hitPoints
+	totalDamage := 0
+
+	// Sum all damage instances
+	for _, instance := range input.Instances {
+		totalDamage += instance.Amount
+	}
+
+	// Apply damage (minimum HP is 0)
+	c.hitPoints -= totalDamage
+	if c.hitPoints < 0 {
+		c.hitPoints = 0
+	}
+
+	return &combat.ApplyDamageResult{
+		TotalDamage:   totalDamage,
+		CurrentHP:     c.hitPoints,
+		DroppedToZero: c.hitPoints == 0 && previousHP > 0,
+		PreviousHP:    previousHP,
+	}
+}
+
 // emptyResource is returned when a resource doesn't exist.
 // It has 0 maximum and 0 current, so IsEmpty() returns true.
 var emptyResource = combat.NewRecoverableResource(combat.RecoverableResourceConfig{

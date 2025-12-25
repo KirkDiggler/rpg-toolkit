@@ -1,74 +1,67 @@
 {
   "tests": [
     {
-      "id": "death-save-types-defined",
-      "feature": "death-saves",
-      "prompt": "DeathSaveState and DeathSaveResult types exist in rulebooks/dnd5e/saves/ with all required fields (successes, failures, stabilized, dead) and consciousness handling via RegainedConsciousness in DeathSaveResult",
+      "id": "gamectx-character-lookup",
+      "feature": "gamectx",
+      "prompt": "Add a Character to gamectx registry. Call GetCombatant(ctx, id) and verify it returns the character and no error. Call GetCombatant with unknown ID and verify it returns an error.",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
+      "test_name": "TestCombatantSuite/TestCombatantRegistryAdd, TestCombatantSuite/TestCombatantRegistryGetNotFound"
     },
     {
-      "id": "roll-1-two-failures",
-      "feature": "death-saves",
-      "prompt": "Rolling a 1 on a death save adds 2 failures to DeathSaveState",
+      "id": "character-apply-damage",
+      "feature": "damage",
+      "prompt": "Create a Character with 20 HP. Call ApplyDamage with 8 damage. Verify HP is now 12 and DroppedToZero is false.",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
+      "test_name": "TestCombatantSuite/TestApplyDamageNormal"
     },
     {
-      "id": "roll-2-9-one-failure",
-      "feature": "death-saves",
-      "prompt": "Rolling 2-9 on a death save adds 1 failure to DeathSaveState",
+      "id": "character-apply-damage-to-zero",
+      "feature": "damage",
+      "prompt": "Create a Character with 10 HP. Call ApplyDamage with 15 damage. Verify HP is 0 (not negative) and DroppedToZero is true.",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
+      "test_name": "TestCombatantSuite/TestApplyDamageToZero"
     },
     {
-      "id": "roll-10-19-one-success",
-      "feature": "death-saves",
-      "prompt": "Rolling 10-19 on a death save adds 1 success to DeathSaveState",
+      "id": "deal-damage-basic",
+      "feature": "damage",
+      "prompt": "Create a Combatant with 20 HP. Call combat.DealDamage with 8 slashing damage. Verify combatant HP is now 12.",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/damage_test.go",
+      "test_name": "TestDealDamageSuite/TestDealDamageBasic"
     },
     {
-      "id": "roll-20-regain-consciousness",
-      "feature": "death-saves",
-      "prompt": "Rolling a 20 on a death save sets conscious=true and result indicates regaining 1 HP",
+      "id": "deal-damage-publishes-notification",
+      "feature": "damage",
+      "prompt": "Subscribe to DamageReceivedEvent. Call combat.DealDamage. Verify DamageReceivedEvent was received with correct TotalDamage and TargetID.",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/damage_test.go",
+      "test_name": "TestDealDamageSuite/TestDealDamageBasic"
     },
     {
-      "id": "three-failures-death",
-      "feature": "death-saves",
-      "prompt": "Accumulating 3 failures sets dead=true on DeathSaveState",
+      "id": "resolve-damage-chain-modifiers",
+      "feature": "damage",
+      "prompt": "Subscribe to DamageChain at features stage. When event fires, add +2 to damage. Call DealDamage with 8 base damage. Verify final damage applied is 10.",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/integration_test.go",
+      "test_name": "TestCombatIntegrationSuite/TestDealDamageWithRageBonus"
     },
     {
-      "id": "three-successes-stabilized",
-      "feature": "death-saves",
-      "prompt": "Accumulating 3 successes sets stabilized=true on DeathSaveState",
+      "id": "resolve-damage-chain-resistance",
+      "feature": "damage",
+      "prompt": "Activate rage on barbarian (resistance to B/P/S). Call DealDamage with 10 slashing damage. Verify final damage applied is 5 (halved).",
       "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
-    },
-    {
-      "id": "damage-while-unconscious",
-      "feature": "death-saves",
-      "prompt": "TakeDamageWhileUnconscious adds 1 failure for normal damage",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
-    },
-    {
-      "id": "crit-damage-while-unconscious",
-      "feature": "death-saves",
-      "prompt": "TakeDamageWhileUnconscious adds 2 failures for critical hit damage",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
-    },
-    {
-      "id": "unit-tests-pass",
-      "feature": "death-saves",
-      "prompt": "All unit tests for death saves pass with go test",
-      "passes": true,
-      "last_checked": "2025-12-16T00:00:00Z"
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/integration_test.go",
+      "test_name": "TestCombatIntegrationSuite/TestDealDamageWithRageResistance"
     }
   ]
 }
