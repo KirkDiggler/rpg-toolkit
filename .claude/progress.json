@@ -26,7 +26,7 @@
         "rulebooks/dnd5e/character/character.go",
         "rulebooks/dnd5e/gamectx/gamectx_test.go"
       ],
-      "commit": null,
+      "commit": "857773b",
       "notes": "Moved Combatant interface to combat package to break import cycle. DealDamage orchestrates 3 phases: RESOLVE (DamageChain for modifiers), APPLY (Target.ApplyDamage), NOTIFY (DamageReceivedEvent). Changed API to accept Target directly instead of lookup to avoid cycle. All tests pass."
     }
   ],
