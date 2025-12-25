@@ -18,7 +18,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -478,12 +477,12 @@ func (c *Character) GetMaxHitPoints() int {
 // This method directly mutates the character's HP. The caller is responsible
 // for persisting the updated character state.
 //
-// Implements gamectx.Combatant interface.
+// Implements combat.Combatant interface.
 //
 //nolint:revive // ctx is unused but kept for interface consistency and future use
-func (c *Character) ApplyDamage(_ context.Context, input *gamectx.ApplyDamageInput) *gamectx.ApplyDamageResult {
+func (c *Character) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
-		return &gamectx.ApplyDamageResult{
+		return &combat.ApplyDamageResult{
 			CurrentHP:  c.hitPoints,
 			PreviousHP: c.hitPoints,
 		}
@@ -503,7 +502,7 @@ func (c *Character) ApplyDamage(_ context.Context, input *gamectx.ApplyDamageInp
 		c.hitPoints = 0
 	}
 
-	return &gamectx.ApplyDamageResult{
+	return &combat.ApplyDamageResult{
 		TotalDamage:   totalDamage,
 		CurrentHP:     c.hitPoints,
 		DroppedToZero: c.hitPoints == 0 && previousHP > 0,

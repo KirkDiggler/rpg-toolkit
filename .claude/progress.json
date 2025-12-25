@@ -5,17 +5,34 @@
   "sessions": [
     {
       "id": "2024-12-25-001",
-      "task": "Set up incremental development artifacts and analyze current architecture",
-      "status": "in_progress",
-      "artifacts": [],
+      "task": "Add Combatant interface and ApplyDamage",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/gamectx/combatant.go",
+        "rulebooks/dnd5e/character/character.go"
+      ],
+      "commit": "a0fecce",
+      "notes": "Created Combatant interface with ApplyDamage, CombatantRegistry for lookup, GetCombatant(ctx,id) returning error. Character now implements Combatant. All tests pass."
+    },
+    {
+      "id": "2024-12-25-002",
+      "task": "Implement combat.DealDamage function",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/combat/combatant.go",
+        "rulebooks/dnd5e/combat/damage.go",
+        "rulebooks/dnd5e/combat/damage_test.go",
+        "rulebooks/dnd5e/gamectx/combatant.go",
+        "rulebooks/dnd5e/character/character.go",
+        "rulebooks/dnd5e/gamectx/gamectx_test.go"
+      ],
       "commit": null,
-      "notes": "gamectx currently stores partial character data (weapons, scores, economy). Need to extend to store full Character objects for mutation. Character already has hitPoints, maxHitPoints, and healing handling."
+      "notes": "Moved Combatant interface to combat package to break import cycle. DealDamage orchestrates 3 phases: RESOLVE (DamageChain for modifiers), APPLY (Target.ApplyDamage), NOTIFY (DamageReceivedEvent). Changed API to accept Target directly instead of lookup to avoid cycle. All tests pass."
     }
   ],
   "next_steps": [
-    "Extend gamectx to store full Character objects with GetCharacter() returning error",
-    "Add ApplyDamage method to Character with ApplyDamageInput/Result types",
-    "Create ResolveDamageEvent and DamageAppliedEvent types",
-    "Implement combat.DealDamage function orchestrating the two-phase flow"
+    "Test DealDamage with actual chain modifiers (e.g., Rage damage bonus, resistance)",
+    "Integrate with rpg-api game server damage application",
+    "Update ADR-0026 with final implementation details"
   ]
 }

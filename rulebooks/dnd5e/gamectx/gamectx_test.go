@@ -722,9 +722,9 @@ func (m *mockCombatant) GetID() string        { return m.id }
 func (m *mockCombatant) GetHitPoints() int    { return m.hitPoints }
 func (m *mockCombatant) GetMaxHitPoints() int { return m.maxHitPoints }
 
-func (m *mockCombatant) ApplyDamage(_ context.Context, input *gamectx.ApplyDamageInput) *gamectx.ApplyDamageResult {
+func (m *mockCombatant) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
-		return &gamectx.ApplyDamageResult{
+		return &combat.ApplyDamageResult{
 			CurrentHP:  m.hitPoints,
 			PreviousHP: m.hitPoints,
 		}
@@ -742,7 +742,7 @@ func (m *mockCombatant) ApplyDamage(_ context.Context, input *gamectx.ApplyDamag
 		m.hitPoints = 0
 	}
 
-	return &gamectx.ApplyDamageResult{
+	return &combat.ApplyDamageResult{
 		TotalDamage:   totalDamage,
 		CurrentHP:     m.hitPoints,
 		DroppedToZero: m.hitPoints == 0 && previousHP > 0,
@@ -861,8 +861,8 @@ func (s *CombatantTestSuite) TestApplyDamageNormal() {
 		maxHitPoints: 20,
 	}
 
-	result := combatant.ApplyDamage(s.ctx, &gamectx.ApplyDamageInput{
-		Instances: []gamectx.DamageInstance{
+	result := combatant.ApplyDamage(s.ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{
 			{Amount: 8, Type: "slashing"},
 		},
 	})
@@ -881,8 +881,8 @@ func (s *CombatantTestSuite) TestApplyDamageToZero() {
 		maxHitPoints: 20,
 	}
 
-	result := combatant.ApplyDamage(s.ctx, &gamectx.ApplyDamageInput{
-		Instances: []gamectx.DamageInstance{
+	result := combatant.ApplyDamage(s.ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{
 			{Amount: 15, Type: "slashing"},
 		},
 	})
@@ -902,8 +902,8 @@ func (s *CombatantTestSuite) TestApplyDamageMultipleInstances() {
 	}
 
 	// Flametongue: 2d6 slashing + 2d6 fire = let's say 7 + 5
-	result := combatant.ApplyDamage(s.ctx, &gamectx.ApplyDamageInput{
-		Instances: []gamectx.DamageInstance{
+	result := combatant.ApplyDamage(s.ctx, &combat.ApplyDamageInput{
+		Instances: []combat.DamageInstance{
 			{Amount: 7, Type: "slashing"},
 			{Amount: 5, Type: "fire"},
 		},

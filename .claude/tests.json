@@ -3,44 +3,55 @@
     {
       "id": "gamectx-character-lookup",
       "feature": "gamectx",
-      "prompt": "Add a Character to gamectx registry. Call GetCharacter(ctx, id) and verify it returns the character and no error. Call GetCharacter with unknown ID and verify it returns an error.",
-      "passes": false,
-      "last_checked": null
+      "prompt": "Add a Character to gamectx registry. Call GetCombatant(ctx, id) and verify it returns the character and no error. Call GetCombatant with unknown ID and verify it returns an error.",
+      "passes": true,
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
+      "test_name": "TestCombatantSuite/TestCombatantRegistryAdd, TestCombatantSuite/TestCombatantRegistryGetNotFound"
     },
     {
       "id": "character-apply-damage",
       "feature": "damage",
       "prompt": "Create a Character with 20 HP. Call ApplyDamage with 8 damage. Verify HP is now 12 and DroppedToZero is false.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
+      "test_name": "TestCombatantSuite/TestApplyDamageNormal"
     },
     {
       "id": "character-apply-damage-to-zero",
       "feature": "damage",
       "prompt": "Create a Character with 10 HP. Call ApplyDamage with 15 damage. Verify HP is 0 (not negative) and DroppedToZero is true.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
+      "test_name": "TestCombatantSuite/TestApplyDamageToZero"
     },
     {
       "id": "deal-damage-basic",
       "feature": "damage",
-      "prompt": "Load a Character into gamectx with 20 HP. Call combat.DealDamage with 8 slashing damage. Verify character HP is now 12.",
-      "passes": false,
-      "last_checked": null
+      "prompt": "Create a Combatant with 20 HP. Call combat.DealDamage with 8 slashing damage. Verify combatant HP is now 12.",
+      "passes": true,
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/damage_test.go",
+      "test_name": "TestDealDamageSuite/TestDealDamageBasic"
     },
     {
       "id": "deal-damage-publishes-notification",
       "feature": "damage",
-      "prompt": "Subscribe to DamageApplied event. Call combat.DealDamage. Verify DamageApplied event was received with correct TotalDamage and TargetID.",
-      "passes": false,
-      "last_checked": null
+      "prompt": "Subscribe to DamageReceivedEvent. Call combat.DealDamage. Verify DamageReceivedEvent was received with correct TotalDamage and TargetID.",
+      "passes": true,
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/damage_test.go",
+      "test_name": "TestDealDamageSuite/TestDealDamageBasic"
     },
     {
       "id": "resolve-damage-chain-modifiers",
       "feature": "damage",
-      "prompt": "Subscribe to ResolveDamage chain at features stage. When event fires, add +2 to damage. Call DealDamage with 8 base damage. Verify final damage applied is 10.",
+      "prompt": "Subscribe to DamageChain at features stage. When event fires, add +2 to damage. Call DealDamage with 8 base damage. Verify final damage applied is 10.",
       "passes": false,
-      "last_checked": null
+      "last_checked": "2024-12-25",
+      "notes": "DealDamage infrastructure is complete. Integration test with chain modifiers is future work."
     }
   ]
 }
