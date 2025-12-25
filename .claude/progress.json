@@ -1,57 +1,21 @@
 {
-  "branch": "feature/death-saves-463",
-  "issues": ["#463"],
-  "goal": "Implement death saving throws - specialized saving throw mechanic for characters at 0 HP with unique roll interpretation, success/failure tracking, and damage handling",
+  "branch": "feature/504-damage-application",
+  "issues": ["#504"],
+  "goal": "Implement damage application via event chain (ADR-0026): two-phase flow with ResolveDamage chain and DamageApplied notification",
   "sessions": [
     {
-      "date": "2025-12-16",
-      "summary": "Implemented complete death saving throws mechanics following TDD approach",
-      "completed": [
-        "Created DeathSaveState struct with Successes, Failures, Stabilized, Dead fields",
-        "Created DeathSaveInput struct with Roller and State",
-        "Created DeathSaveResult struct with Roll, State, IsCriticalFail, IsCriticalSuccess, RegainedConsciousness, HPRestored",
-        "Created DamageWhileUnconsciousInput struct with State and IsCritical",
-        "Created DamageWhileUnconsciousResult struct with State and FailuresAdded",
-        "Implemented MakeDeathSave() with D&D 5e roll interpretation",
-        "Implemented TakeDamageWhileUnconscious()",
-        "Wrote 19 comprehensive tests covering all roll outcomes and edge cases"
-      ],
-      "tests_passing": "31/31",
-      "linter_issues": "0",
-      "commit": "46687fb"
-    },
-    {
-      "date": "2025-12-16",
-      "summary": "Added Character helper methods for death saves",
-      "completed": [
-        "Added deathSaveState field to Character struct",
-        "Implemented Character.MakeDeathSave() helper method",
-        "Implemented Character.TakeDamageWhileUnconscious() helper method",
-        "Implemented Character.GetDeathSaveState() accessor",
-        "Implemented Character.ResetDeathSaveState() to clear state",
-        "Created MakeDeathSaveInput and TakeDamageWhileUnconsciousInput types",
-        "Wrote 7 tests for Character death save functionality"
-      ],
-      "tests_passing": "7/7 new + all existing",
-      "linter_issues": "0",
-      "commit": "601160d"
-    },
-    {
-      "date": "2025-12-16",
-      "summary": "Added persistence for death save state",
-      "completed": [
-        "Added DeathSaveState field to Data struct with omitempty",
-        "Updated ToData() to include deathSaveState in serialization",
-        "Updated LoadFromData() to restore deathSaveState from data",
-        "Added round-trip serialization test",
-        "All 8 death save tests passing"
-      ],
-      "tests_passing": "8/8",
-      "linter_issues": "0"
+      "id": "2024-12-25-001",
+      "task": "Set up incremental development artifacts and analyze current architecture",
+      "status": "in_progress",
+      "artifacts": [],
+      "commit": null,
+      "notes": "gamectx currently stores partial character data (weapons, scores, economy). Need to extend to store full Character objects for mutation. Character already has hitPoints, maxHitPoints, and healing handling."
     }
   ],
   "next_steps": [
-    "Commit persistence changes",
-    "Update PR"
+    "Extend gamectx to store full Character objects with GetCharacter() returning error",
+    "Add ApplyDamage method to Character with ApplyDamageInput/Result types",
+    "Create ResolveDamageEvent and DamageAppliedEvent types",
+    "Implement combat.DealDamage function orchestrating the two-phase flow"
   ]
 }
