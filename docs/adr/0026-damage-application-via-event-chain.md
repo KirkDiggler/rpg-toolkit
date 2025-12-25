@@ -30,7 +30,7 @@ The API layer was doing too much - loading characters, calculating damage, apply
 ┌─────────────────────────────────────────────────────────────┐
 │  RESOLVE PHASE (chain gathers modifiers)                    │
 │                                                             │
-│  ResolveDamage chain published                              │
+│  DamageChain published                                      │
 │       ↓                                                     │
 │  [Stage: base] → raw damage instances                       │
 │       ↓                                                     │
@@ -54,7 +54,7 @@ The API layer was doing too much - loading characters, calculating damage, apply
 ┌─────────────────────────────────────────────────────────────┐
 │  NOTIFY PHASE (informational, no modification)              │
 │                                                             │
-│  DamageApplied event published                              │
+│  DamageReceivedEvent published                              │
 │       ↓                                                     │
 │  [Subscriber: Concentration] → "I took 15 damage, DC 10"    │
 │  [Subscriber: Combat Log] → "Goblin hit you for 15"         │
@@ -69,8 +69,8 @@ The API layer was doing too much - loading characters, calculating damage, apply
 
 ### Event Naming
 
-- **`ResolveDamage`** (chain) - Subscribers MODIFY the damage (add resistance, rage bonus, etc.)
-- **`DamageApplied`** (notification) - Subscribers REACT to what happened (concentration checks, logging)
+- **`DamageChain`** (chained topic) - Subscribers MODIFY the damage (add resistance, rage bonus, etc.)
+- **`DamageReceivedEvent`** (notification) - Subscribers REACT to what happened (concentration checks, logging)
 
 ### Key Design Elements
 
@@ -192,19 +192,19 @@ func (o *Orchestrator) executeMonsterAttack(ctx context.Context, monsterID, targ
 ```
 
 ```go
-// Toolkit - DealDamage orchestrates the two-phase flow
+// Toolkit - DealDamage orchestrates the three-phase flow
 func DealDamage(ctx context.Context, bus events.EventBus, input *DealDamageInput) (*DealDamageOutput, error) {
     // Build initial event with all damage instances
-    event := &ResolveDamageEvent{
+    event := &DamageChainEvent{
         TargetID:  input.TargetID,
         Source:    input.Source,
         Instances: input.Instances,
     }
 
-    // PHASE 1: RESOLVE - gather modifiers via chain
-    chain := events.NewStagedChain[*ResolveDamageEvent](ModifierStages)
-    resolveChain := dnd5eEvents.ResolveDamage.On(bus)
-    modifiedChain, err := resolveChain.PublishWithChain(ctx, event, chain)
+    // RESOLVE: gather modifiers via chain
+    chain := events.NewStagedChain[*DamageChainEvent](ModifierStages)
+    damageChain := dnd5eEvents.DamageChain.On(bus)
+    modifiedChain, err := damageChain.PublishWithChain(ctx, event, chain)
     if err != nil {
         return nil, err
     }
@@ -215,7 +215,7 @@ func DealDamage(ctx context.Context, bus events.EventBus, input *DealDamageInput
         return nil, err
     }
 
-    // PHASE 2: APPLY - publisher applies damage directly (not a subscriber)
+    // APPLY: publisher applies damage directly (not a subscriber)
     target, err := gamectx.GetCharacter(ctx, input.TargetID)
     if err != nil {
         // Maybe it's a monster?
@@ -236,8 +236,8 @@ func DealDamage(ctx context.Context, bus events.EventBus, input *DealDamageInput
         Total:     totalDamage,
     })
 
-    // PHASE 3: NOTIFY - inform subscribers (concentration, logging, death checks)
-    dnd5eEvents.DamageApplied.On(bus).Publish(ctx, &DamageAppliedEvent{
+    // NOTIFY: inform subscribers (concentration, logging, death checks)
+    dnd5eEvents.DamageReceivedTopic.On(bus).Publish(ctx, DamageReceivedEvent{
         TargetID:     input.TargetID,
         Source:       input.Source,
         TotalDamage:  totalDamage,
@@ -254,11 +254,11 @@ func DealDamage(ctx context.Context, bus events.EventBus, input *DealDamageInput
 ```
 
 ```go
-// Rage feature subscribes to ResolveDamage chain at features stage
+// Rage feature subscribes to DamageChain at features stage
 func (r *RageFeature) Subscribe(bus events.EventBus) {
-    dnd5eEvents.ResolveDamage.On(bus).SubscribeWithStage(
+    dnd5eEvents.DamageChain.On(bus).SubscribeWithStage(
         ModifierStageFeatures,
-        func(ctx context.Context, event *ResolveDamageEvent) {
+        func(ctx context.Context, event *DamageChainEvent) {
             // Only modify melee weapon damage from this character
             if event.Source != combat.DamageSourceAttack {
                 return
@@ -278,16 +278,16 @@ func (r *RageFeature) Subscribe(bus events.EventBus) {
 ```
 
 ```go
-// Concentration subscribes to DamageApplied notification
+// Concentration subscribes to DamageReceivedEvent notification
 func (c *ConcentrationTracker) Subscribe(bus events.EventBus) {
-    dnd5eEvents.DamageApplied.On(bus).Subscribe(
-        func(ctx context.Context, event *DamageAppliedEvent) {
+    dnd5eEvents.DamageReceivedTopic.On(bus).Subscribe(
+        func(ctx context.Context, event DamageReceivedEvent) {
             if event.TargetID != c.CharacterID || !c.IsConcentrating {
                 return
             }
 
             // DC = 10 or half damage, whichever is higher
-            dc := max(10, event.TotalDamage/2)
+            dc := max(10, event.Amount/2)
             // Trigger concentration save...
         },
     )

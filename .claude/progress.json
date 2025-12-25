@@ -1,7 +1,7 @@
 {
   "branch": "feature/504-damage-application",
   "issues": ["#504"],
-  "goal": "Implement damage application via event chain (ADR-0026): two-phase flow with ResolveDamage chain and DamageApplied notification",
+  "goal": "Implement damage application via event chain (ADR-0026): three-phase flow with DamageChain and DamageReceivedEvent notification",
   "sessions": [
     {
       "id": "2024-12-25-001",
