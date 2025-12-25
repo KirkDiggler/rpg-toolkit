@@ -94,13 +94,10 @@ type DealDamageOutput struct {
 	FinalInstances []DamageInstanceInput
 }
 
-// DealDamage orchestrates the two-phase damage flow:
-// 1. RESOLVE: Publishes to DamageChain for modifiers (resistance, rage bonus, etc.)
-// 2. APPLY: Calls Target.ApplyDamage with the modified damage
-// 3. NOTIFY: Publishes DamageReceivedEvent for reactions (concentration, logging)
-//
-// The caller is responsible for looking up the target combatant (e.g., via gamectx.GetCombatant)
-// and passing it in the input.
+// DealDamage orchestrates the three-phase damage flow:
+//   - RESOLVE: Publishes to DamageChain for modifiers (resistance, rage bonus, vulnerability)
+//   - APPLY: Calls Target.ApplyDamage with the modified damage
+//   - NOTIFY: Publishes DamageReceivedEvent for reactions (concentration checks, logging)
 func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
@@ -119,10 +116,10 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 		})
 	}
 
-	// Determine primary damage type (first instance)
+	// Determine primary damage type (first instance, guaranteed non-empty by Validate)
 	primaryType := input.Instances[0].Type
 
-	// PHASE 1: RESOLVE - publish through DamageChain for modifiers
+	// RESOLVE: publish through DamageChain for modifiers
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: input.AttackerID,
 		TargetID:   targetID,
@@ -150,7 +147,7 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 	// Group components by damage type and apply multipliers
 	finalInstances := calculateFinalDamage(finalEvent.Components)
 
-	// PHASE 2: APPLY - apply damage to target
+	// APPLY: apply damage to target
 	applyInstances := make([]DamageInstance, 0, len(finalInstances))
 	for _, inst := range finalInstances {
 		applyInstances = append(applyInstances, DamageInstance{
@@ -164,7 +161,7 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 		IsCritical: input.IsCritical,
 	})
 
-	// PHASE 3: NOTIFY - publish DamageReceivedEvent for reactions
+	// NOTIFY: publish DamageReceivedEvent for reactions
 	damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
 	err = damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID:   targetID,
