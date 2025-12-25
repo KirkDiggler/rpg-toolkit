@@ -256,8 +256,8 @@ func (s *DealDamageTestSuite) TestDealDamageConditionSource() {
 	}
 
 	output, err := combat.DealDamage(s.ctx, &combat.DealDamageInput{
-		Target:   target,
-		Source:   combat.DamageSourceCondition,
+		Target: target,
+		Source: combat.DamageSourceCondition,
 		Instances: []combat.DamageInstanceInput{
 			{Amount: 3, Type: damage.Poison},
 		},
@@ -278,8 +278,8 @@ func (s *DealDamageTestSuite) TestDealDamageEnvironmentSource() {
 	}
 
 	output, err := combat.DealDamage(s.ctx, &combat.DealDamageInput{
-		Target:   target,
-		Source:   combat.DamageSourceEnvironment,
+		Target: target,
+		Source: combat.DamageSourceEnvironment,
 		Instances: []combat.DamageInstanceInput{
 			{Amount: 10, Type: damage.Bludgeoning},
 		},
