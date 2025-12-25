@@ -6,8 +6,10 @@ package combat
 import (
 	"context"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -52,11 +54,21 @@ type DealDamageInput struct {
 	// Source identifies where the damage comes from
 	Source DamageSource
 
-	// Instances are the damage amounts to apply (per damage type)
+	// Instances are simple damage amounts to apply (per damage type).
+	// Use for spells, conditions, environment damage where dice breakdown isn't needed.
+	// Either Instances OR Components must be provided, not both.
 	Instances []DamageInstanceInput
+
+	// Components are rich damage components with dice breakdown.
+	// Use for attacks where combat log needs full transparency (dice rolls, rerolls, sources).
+	// Either Instances OR Components must be provided, not both.
+	Components []dnd5eEvents.DamageComponent
 
 	// IsCritical indicates if this damage is from a critical hit
 	IsCritical bool
+
+	// HasAdvantage indicates if the attack had advantage (for sneak attack eligibility, etc.)
+	HasAdvantage bool
 
 	// EventBus is the event bus for publishing chain and notification events
 	EventBus events.EventBus
@@ -73,8 +85,15 @@ func (d *DealDamageInput) Validate() error {
 	if d.EventBus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "EventBus is required")
 	}
-	if len(d.Instances) == 0 {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "at least one damage instance is required")
+
+	hasInstances := len(d.Instances) > 0
+	hasComponents := len(d.Components) > 0
+
+	if !hasInstances && !hasComponents {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "either Instances or Components is required")
+	}
+	if hasInstances && hasComponents {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "provide either Instances or Components, not both")
 	}
 	return nil
 }
@@ -90,8 +109,12 @@ type DealDamageOutput struct {
 	// DroppedToZero is true if this damage reduced the target to 0 HP
 	DroppedToZero bool
 
-	// FinalInstances are the damage instances after chain modifiers
+	// FinalInstances are the damage instances after chain modifiers (simplified)
 	FinalInstances []DamageInstanceInput
+
+	// FinalComponents are the full damage components after chain modifiers.
+	// Contains dice rolls, rerolls, sources - everything needed for combat log.
+	FinalComponents []dnd5eEvents.DamageComponent
 }
 
 // DealDamage orchestrates the three-phase damage flow:
@@ -105,51 +128,43 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 
 	targetID := input.Target.GetID()
 
-	// Build initial damage components from input instances
-	components := make([]dnd5eEvents.DamageComponent, 0, len(input.Instances))
-	for _, inst := range input.Instances {
-		components = append(components, dnd5eEvents.DamageComponent{
-			Source:     dnd5eEvents.DamageSourceType(input.Source),
-			FlatBonus:  inst.Amount,
-			DamageType: inst.Type,
-			IsCritical: input.IsCritical,
-		})
+	// Build initial damage components - either from rich Components or simple Instances
+	var components []dnd5eEvents.DamageComponent
+
+	if len(input.Components) > 0 {
+		// Use pre-built components (from attack with full dice breakdown)
+		components = input.Components
+	} else {
+		// Build simple components from instances (for spells, conditions, etc.)
+		components = make([]dnd5eEvents.DamageComponent, 0, len(input.Instances))
+		for _, inst := range input.Instances {
+			components = append(components, dnd5eEvents.DamageComponent{
+				Source:     dnd5eEvents.DamageSourceType(input.Source),
+				FlatBonus:  inst.Amount,
+				DamageType: inst.Type,
+				IsCritical: input.IsCritical,
+			})
+		}
 	}
 
-	// Determine primary damage type (first instance, guaranteed non-empty by Validate)
-	primaryType := input.Instances[0].Type
-
-	// RESOLVE: publish through DamageChain for modifiers
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID: input.AttackerID,
-		TargetID:   targetID,
-		Components: components,
-		DamageType: primaryType,
-		IsCritical: input.IsCritical,
-	}
-
-	// Create and publish through damage chain
-	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](ModifierStages)
-	damages := dnd5eEvents.DamageChain.On(input.EventBus)
-
-	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	// RESOLVE: use shared ResolveDamage for chain processing
+	resolveOutput, err := ResolveDamage(ctx, &ResolveDamageInput{
+		AttackerID:   input.AttackerID,
+		TargetID:     targetID,
+		Components:   components,
+		IsCritical:   input.IsCritical,
+		HasAdvantage: input.HasAdvantage,
+		EventBus:     input.EventBus,
+	})
 	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to publish damage chain")
+		return nil, err
 	}
 
-	// Execute chain to get final modifiers
-	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to execute damage chain")
-	}
-
-	// Calculate total damage from all components after chain modifiers
-	// Group components by damage type and apply multipliers
-	finalInstances := calculateFinalDamage(finalEvent.Components)
+	primaryType := components[0].DamageType
 
 	// APPLY: apply damage to target
-	applyInstances := make([]DamageInstance, 0, len(finalInstances))
-	for _, inst := range finalInstances {
+	applyInstances := make([]DamageInstance, 0, len(resolveOutput.FinalInstances))
+	for _, inst := range resolveOutput.FinalInstances {
 		applyInstances = append(applyInstances, DamageInstance{
 			Amount: inst.Amount,
 			Type:   string(inst.Type),
@@ -174,10 +189,114 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 	}
 
 	return &DealDamageOutput{
-		TotalDamage:    applyResult.TotalDamage,
-		CurrentHP:      applyResult.CurrentHP,
-		DroppedToZero:  applyResult.DroppedToZero,
-		FinalInstances: finalInstances,
+		TotalDamage:     applyResult.TotalDamage,
+		CurrentHP:       applyResult.CurrentHP,
+		DroppedToZero:   applyResult.DroppedToZero,
+		FinalInstances:  resolveOutput.FinalInstances,
+		FinalComponents: resolveOutput.FinalComponents,
+	}, nil
+}
+
+// ResolveDamageInput contains parameters for resolving damage through the chain.
+// Use this when you need damage calculation without HP application (e.g., in ResolveAttack).
+type ResolveDamageInput struct {
+	// AttackerID is the ID of the entity dealing damage
+	AttackerID string
+
+	// TargetID is the ID of the entity receiving damage
+	TargetID string
+
+	// Components are rich damage components with dice breakdown
+	Components []dnd5eEvents.DamageComponent
+
+	// IsCritical indicates if this damage is from a critical hit
+	IsCritical bool
+
+	// HasAdvantage indicates if the attack had advantage
+	HasAdvantage bool
+
+	// EventBus is the event bus for publishing chain events
+	EventBus events.EventBus
+
+	// Attack-specific fields (optional, used by modifiers like Great Weapon Fighting)
+
+	// WeaponDamage is the weapon dice notation (e.g., "2d6") for reroll modifiers
+	WeaponDamage string
+
+	// AbilityUsed is which ability was used for the attack
+	AbilityUsed abilities.Ability
+
+	// WeaponRef is a reference to the weapon used
+	WeaponRef *core.Ref
+}
+
+// ResolveDamageOutput contains the result of damage resolution (before HP application).
+type ResolveDamageOutput struct {
+	// TotalDamage is the sum of all damage (after modifiers and multipliers)
+	TotalDamage int
+
+	// FinalInstances are the damage instances after chain modifiers (simplified)
+	FinalInstances []DamageInstanceInput
+
+	// FinalComponents are the full damage components after chain modifiers
+	FinalComponents []dnd5eEvents.DamageComponent
+}
+
+// ResolveDamage processes damage through the chain without applying HP changes.
+// Use this from ResolveAttack to calculate damage, or use DealDamage for full flow.
+func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDamageOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "ResolveDamageInput is nil")
+	}
+	if len(input.Components) == 0 {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "Components is required")
+	}
+	if input.EventBus == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "EventBus is required")
+	}
+
+	primaryType := input.Components[0].DamageType
+
+	// Publish through DamageChain for modifiers
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   input.AttackerID,
+		TargetID:     input.TargetID,
+		Components:   input.Components,
+		DamageType:   primaryType,
+		IsCritical:   input.IsCritical,
+		HasAdvantage: input.HasAdvantage,
+		// Attack-specific fields (for modifiers like GWF that need weapon info)
+		WeaponDamage: input.WeaponDamage,
+		AbilityUsed:  input.AbilityUsed,
+		WeaponRef:    input.WeaponRef,
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(input.EventBus)
+
+	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "failed to publish damage chain")
+	}
+
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "failed to execute damage chain")
+	}
+
+	// Apply multipliers (resistance, vulnerability, immunity)
+	finalInstances := calculateFinalDamage(finalEvent.Components)
+
+	// Calculate total
+	totalDamage := 0
+	for _, inst := range finalInstances {
+		totalDamage += inst.Amount
+	}
+
+	return &ResolveDamageOutput{
+		TotalDamage:     totalDamage,
+		FinalInstances:  finalInstances,
+		FinalComponents: finalEvent.Components,
 	}, nil
 }
 

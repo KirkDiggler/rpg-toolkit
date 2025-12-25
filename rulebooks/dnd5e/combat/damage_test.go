@@ -99,7 +99,7 @@ func (s *DealDamageTestSuite) TestValidateNilEventBus() {
 	s.Contains(err.Error(), "EventBus")
 }
 
-func (s *DealDamageTestSuite) TestValidateNoInstances() {
+func (s *DealDamageTestSuite) TestValidateNoInstancesOrComponents() {
 	target := &mockCombatant{id: "hero-1", hitPoints: 20, maxHitPoints: 20}
 	input := &combat.DealDamageInput{
 		Target:    target,
@@ -108,7 +108,7 @@ func (s *DealDamageTestSuite) TestValidateNoInstances() {
 	}
 	err := input.Validate()
 	s.Require().Error(err)
-	s.Contains(err.Error(), "damage instance")
+	s.Contains(err.Error(), "Instances or Components")
 }
 
 func (s *DealDamageTestSuite) TestDealDamageBasic() {
