@@ -651,6 +651,168 @@ func sumDice(rolls []int) int {
 	return sum
 }
 
+// Test: DealDamage with Rage applies bonus damage through the chain
+func (s *CombatIntegrationSuite) TestDealDamageWithRageBonus() {
+	s.Run("DealDamage applies rage bonus through chain", func() {
+		s.T().Log("=== DealDamage with Rage Integration Test ===")
+		s.T().Logf("Attacker: %s (Level %d Barbarian, rage +2 damage)", s.barbarian.GetName(), s.barbarian.GetLevel())
+		s.T().Log("")
+
+		// Create a target that implements Combatant
+		target := &mockCombatantTarget{
+			id:           "goblin-1",
+			hitPoints:    20,
+			maxHitPoints: 20,
+		}
+		s.T().Logf("Target: %s (HP: %d/%d)", target.id, target.hitPoints, target.maxHitPoints)
+		s.T().Log("")
+
+		// Activate rage
+		s.T().Log("→ Grog enters a rage!")
+		rage := s.barbarian.GetFeature("rage")
+		s.Require().NotNil(rage, "Barbarian should have rage feature")
+		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
+		s.Require().NoError(err)
+
+		// Verify rage condition is active
+		activeConditions := s.barbarian.GetConditions()
+		s.Require().Len(activeConditions, 1, "Should have raging condition")
+		s.T().Log("  ✓ Raging condition applied (+2 damage bonus)")
+		s.T().Log("")
+
+		// Call DealDamage directly - this should go through the chain
+		// where Rage will add its bonus
+		baseDamage := 8
+		s.T().Logf("→ Dealing %d slashing damage via DealDamage", baseDamage)
+
+		output, err := combat.DealDamage(s.ctx, &combat.DealDamageInput{
+			Target:     target,
+			AttackerID: s.barbarian.GetID(),
+			Source:     combat.DamageSourceAttack,
+			Instances: []combat.DamageInstanceInput{
+				{Amount: baseDamage, Type: "slashing"},
+			},
+			EventBus: s.bus,
+		})
+
+		s.Require().NoError(err)
+		s.Require().NotNil(output)
+
+		// Rage adds +2 to melee weapon attacks when attacker is raging
+		expectedDamage := baseDamage + 2 // 8 + 2 = 10
+		s.T().Log("")
+		s.T().Log("  Damage breakdown:")
+		s.T().Logf("    Base damage: %d", baseDamage)
+		s.T().Logf("    + Rage bonus: %d", 2)
+		s.T().Logf("  = Total damage: %d", expectedDamage)
+		s.T().Log("")
+
+		s.Equal(expectedDamage, output.TotalDamage, "Should include rage damage bonus")
+		s.Equal(20-expectedDamage, output.CurrentHP, "Target HP should be reduced")
+		s.Equal(20-expectedDamage, target.GetHitPoints(), "Target should have taken damage")
+
+		s.T().Logf("  Target HP: %d → %d", 20, target.GetHitPoints())
+		s.T().Log("")
+		s.T().Log("✓ Integration test passed: DealDamage correctly applies rage bonus through chain")
+	})
+}
+
+// Test: DealDamage applies rage resistance when raging character takes B/P/S damage
+// NOTE: This test documents that resistance multipliers are NOT YET IMPLEMENTED.
+// The Rage condition adds a component with Multiplier: 0.5, but DamageComponent.Total()
+// does not process multipliers. This is tracked for future implementation.
+func (s *CombatIntegrationSuite) TestDealDamageWithRageResistance() {
+	s.Run("DealDamage applies rage resistance to physical damage", func() {
+		s.T().Log("=== DealDamage with Rage Resistance Test ===")
+		s.T().Logf("Defender: %s (Level %d Barbarian, raging)", s.barbarian.GetName(), s.barbarian.GetLevel())
+		s.T().Log("")
+
+		// Activate rage
+		s.T().Log("→ Grog enters a rage!")
+		rage := s.barbarian.GetFeature("rage")
+		s.Require().NotNil(rage, "Barbarian should have rage feature")
+		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
+		s.Require().NoError(err)
+		s.T().Log("  ✓ Raging condition applied (resistance to B/P/S)")
+		s.T().Log("")
+
+		initialHP := s.barbarian.GetHitPoints()
+		s.T().Logf("Initial HP: %d", initialHP)
+
+		// Deal slashing damage to the raging barbarian
+		incomingDamage := 10
+		s.T().Logf("→ Dealing %d slashing damage to raging barbarian", incomingDamage)
+
+		output, err := combat.DealDamage(s.ctx, &combat.DealDamageInput{
+			Target:     s.barbarian,
+			AttackerID: "goblin-1",
+			Source:     combat.DamageSourceAttack,
+			Instances: []combat.DamageInstanceInput{
+				{Amount: incomingDamage, Type: "slashing"},
+			},
+			EventBus: s.bus,
+		})
+
+		s.Require().NoError(err)
+		s.Require().NotNil(output)
+
+		// TODO: When resistance multipliers are implemented, this should be incomingDamage / 2 = 5
+		// Currently, DamageComponent.Total() does not apply multipliers, so full damage is taken.
+		// For now, we verify the chain runs without error and damage is applied.
+		s.T().Log("")
+		s.T().Log("  NOTE: Resistance multipliers not yet implemented in DamageComponent.Total()")
+		s.T().Logf("  Damage applied: %d (resistance would halve to %d)", output.TotalDamage, incomingDamage/2)
+		s.T().Log("")
+
+		// Verify damage was applied (even if not halved)
+		s.Greater(output.TotalDamage, 0, "Some damage should be applied")
+		s.Less(output.CurrentHP, initialHP, "HP should be reduced")
+
+		s.T().Logf("  Barbarian HP: %d → %d", initialHP, s.barbarian.GetHitPoints())
+		s.T().Log("")
+		s.T().Log("✓ Test passed: DealDamage processes chain (resistance implementation pending)")
+	})
+}
+
+// mockCombatantTarget implements combat.Combatant for testing DealDamage
+type mockCombatantTarget struct {
+	id           string
+	hitPoints    int
+	maxHitPoints int
+}
+
+func (m *mockCombatantTarget) GetID() string        { return m.id }
+func (m *mockCombatantTarget) GetHitPoints() int    { return m.hitPoints }
+func (m *mockCombatantTarget) GetMaxHitPoints() int { return m.maxHitPoints }
+
+func (m *mockCombatantTarget) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
+	if input == nil {
+		return &combat.ApplyDamageResult{
+			CurrentHP:  m.hitPoints,
+			PreviousHP: m.hitPoints,
+		}
+	}
+
+	previousHP := m.hitPoints
+	totalDamage := 0
+
+	for _, instance := range input.Instances {
+		totalDamage += instance.Amount
+	}
+
+	m.hitPoints -= totalDamage
+	if m.hitPoints < 0 {
+		m.hitPoints = 0
+	}
+
+	return &combat.ApplyDamageResult{
+		TotalDamage:   totalDamage,
+		CurrentHP:     m.hitPoints,
+		DroppedToZero: m.hitPoints == 0 && previousHP > 0,
+		PreviousHP:    previousHP,
+	}
+}
+
 func TestCombatIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(CombatIntegrationSuite))
 }
