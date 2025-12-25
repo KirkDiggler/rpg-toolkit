@@ -49,9 +49,19 @@
       "id": "resolve-damage-chain-modifiers",
       "feature": "damage",
       "prompt": "Subscribe to DamageChain at features stage. When event fires, add +2 to damage. Call DealDamage with 8 base damage. Verify final damage applied is 10.",
-      "passes": false,
+      "passes": true,
       "last_checked": "2024-12-25",
-      "notes": "DealDamage infrastructure is complete. Integration test with chain modifiers is future work."
+      "test_file": "rulebooks/dnd5e/combat/integration_test.go",
+      "test_name": "TestCombatIntegrationSuite/TestDealDamageWithRageBonus"
+    },
+    {
+      "id": "resolve-damage-chain-resistance",
+      "feature": "damage",
+      "prompt": "Activate rage on barbarian (resistance to B/P/S). Call DealDamage with 10 slashing damage. Verify final damage applied is 5 (halved).",
+      "passes": true,
+      "last_checked": "2024-12-25",
+      "test_file": "rulebooks/dnd5e/combat/integration_test.go",
+      "test_name": "TestCombatIntegrationSuite/TestDealDamageWithRageResistance"
     }
   ]
 }

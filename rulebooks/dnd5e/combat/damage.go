@@ -147,14 +147,8 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 	}
 
 	// Calculate total damage from all components after chain modifiers
-	finalInstances := make([]DamageInstanceInput, 0, len(finalEvent.Components))
-	for _, component := range finalEvent.Components {
-		componentTotal := component.Total()
-		finalInstances = append(finalInstances, DamageInstanceInput{
-			Amount: componentTotal,
-			Type:   component.DamageType,
-		})
-	}
+	// Group components by damage type and apply multipliers
+	finalInstances := calculateFinalDamage(finalEvent.Components)
 
 	// PHASE 2: APPLY - apply damage to target
 	applyInstances := make([]DamageInstance, 0, len(finalInstances))
@@ -188,4 +182,96 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 		DroppedToZero:  applyResult.DroppedToZero,
 		FinalInstances: finalInstances,
 	}, nil
+}
+
+// calculateFinalDamage processes damage components and applies multipliers.
+// In D&D 5e:
+// - Resistance (0.5) halves damage, Vulnerability (2.0) doubles it, Immunity (0.0) negates
+// - Multiple resistances don't stack (apply most beneficial once)
+// - If both resistance and vulnerability exist for a type, they cancel out
+func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInstanceInput {
+	// Group damage and multipliers by type
+	type damageGroup struct {
+		baseDamage  int
+		multipliers []float64
+	}
+	byType := make(map[damage.Type]*damageGroup)
+
+	for _, component := range components {
+		dmgType := component.DamageType
+		if byType[dmgType] == nil {
+			byType[dmgType] = &damageGroup{}
+		}
+
+		// If component has a multiplier, it's a modifier (resistance/vulnerability)
+		// Otherwise, it contributes base damage
+		if component.Multiplier != 0 {
+			byType[dmgType].multipliers = append(byType[dmgType].multipliers, component.Multiplier)
+		} else {
+			byType[dmgType].baseDamage += component.Total()
+		}
+	}
+
+	// Apply multipliers to each damage type
+	result := make([]DamageInstanceInput, 0, len(byType))
+	for dmgType, group := range byType {
+		finalDamage := group.baseDamage
+
+		if len(group.multipliers) > 0 {
+			// Apply D&D 5e stacking rules
+			effectiveMultiplier := resolveMultipliers(group.multipliers)
+			finalDamage = int(float64(finalDamage) * effectiveMultiplier)
+		}
+
+		if finalDamage > 0 {
+			result = append(result, DamageInstanceInput{
+				Amount: finalDamage,
+				Type:   dmgType,
+			})
+		}
+	}
+
+	return result
+}
+
+// resolveMultipliers applies D&D 5e stacking rules for resistance/vulnerability.
+// - Immunity (0.0) always wins
+// - Resistance (0.5) and vulnerability (2.0) cancel out if both present
+// - Multiple resistances don't stack (use 0.5 once)
+// - Multiple vulnerabilities don't stack (use 2.0 once)
+func resolveMultipliers(multipliers []float64) float64 {
+	hasImmunity := false
+	hasResistance := false
+	hasVulnerability := false
+
+	for _, m := range multipliers {
+		switch {
+		case m == 0.0:
+			hasImmunity = true
+		case m < 1.0:
+			hasResistance = true
+		case m > 1.0:
+			hasVulnerability = true
+		}
+	}
+
+	// Immunity trumps everything
+	if hasImmunity {
+		return 0.0
+	}
+
+	// Resistance and vulnerability cancel out
+	if hasResistance && hasVulnerability {
+		return 1.0
+	}
+
+	// Apply resistance (0.5) or vulnerability (2.0)
+	if hasResistance {
+		return 0.5
+	}
+	if hasVulnerability {
+		return 2.0
+	}
+
+	return 1.0
 }

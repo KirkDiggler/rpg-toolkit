@@ -28,10 +28,20 @@
       ],
       "commit": "857773b",
       "notes": "Moved Combatant interface to combat package to break import cycle. DealDamage orchestrates 3 phases: RESOLVE (DamageChain for modifiers), APPLY (Target.ApplyDamage), NOTIFY (DamageReceivedEvent). Changed API to accept Target directly instead of lookup to avoid cycle. All tests pass."
+    },
+    {
+      "id": "2024-12-25-003",
+      "task": "Implement resistance/vulnerability multipliers in DealDamage",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/combat/damage.go",
+        "rulebooks/dnd5e/combat/integration_test.go"
+      ],
+      "commit": "4ec605d",
+      "notes": "Added calculateFinalDamage and resolveMultipliers functions. Groups damage by type, applies D&D 5e multiplier stacking rules: immunity trumps all, resistance/vulnerability cancel, multiples don't stack. Rage resistance test now passes (10 slashing → 5 after 0.5x multiplier)."
     }
   ],
   "next_steps": [
-    "Test DealDamage with actual chain modifiers (e.g., Rage damage bonus, resistance)",
     "Integrate with rpg-api game server damage application",
     "Update ADR-0026 with final implementation details"
   ]

@@ -718,9 +718,6 @@ func (s *CombatIntegrationSuite) TestDealDamageWithRageBonus() {
 }
 
 // Test: DealDamage applies rage resistance when raging character takes B/P/S damage
-// NOTE: This test documents that resistance multipliers are NOT YET IMPLEMENTED.
-// The Rage condition adds a component with Multiplier: 0.5, but DamageComponent.Total()
-// does not process multipliers. This is tracked for future implementation.
 func (s *CombatIntegrationSuite) TestDealDamageWithRageResistance() {
 	s.Run("DealDamage applies rage resistance to physical damage", func() {
 		s.T().Log("=== DealDamage with Rage Resistance Test ===")
@@ -756,21 +753,21 @@ func (s *CombatIntegrationSuite) TestDealDamageWithRageResistance() {
 		s.Require().NoError(err)
 		s.Require().NotNil(output)
 
-		// TODO: When resistance multipliers are implemented, this should be incomingDamage / 2 = 5
-		// Currently, DamageComponent.Total() does not apply multipliers, so full damage is taken.
-		// For now, we verify the chain runs without error and damage is applied.
+		// Rage provides resistance to B/P/S damage = half damage
+		// 10 slashing * 0.5 = 5 damage
+		expectedDamage := incomingDamage / 2
 		s.T().Log("")
-		s.T().Log("  NOTE: Resistance multipliers not yet implemented in DamageComponent.Total()")
-		s.T().Logf("  Damage applied: %d (resistance would halve to %d)", output.TotalDamage, incomingDamage/2)
+		s.T().Log("  Damage breakdown:")
+		s.T().Logf("    Incoming damage: %d", incomingDamage)
+		s.T().Logf("    × Rage resistance (0.5): %d", expectedDamage)
 		s.T().Log("")
 
-		// Verify damage was applied (even if not halved)
-		s.Greater(output.TotalDamage, 0, "Some damage should be applied")
-		s.Less(output.CurrentHP, initialHP, "HP should be reduced")
+		s.Equal(expectedDamage, output.TotalDamage, "Rage should halve physical damage")
+		s.Equal(initialHP-expectedDamage, output.CurrentHP, "HP should reflect halved damage")
 
 		s.T().Logf("  Barbarian HP: %d → %d", initialHP, s.barbarian.GetHitPoints())
 		s.T().Log("")
-		s.T().Log("✓ Test passed: DealDamage processes chain (resistance implementation pending)")
+		s.T().Log("✓ Integration test passed: Rage resistance correctly halves physical damage")
 	})
 }
 
