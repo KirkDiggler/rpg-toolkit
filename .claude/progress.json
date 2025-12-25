@@ -1,48 +1,32 @@
 {
-  "branch": "feature/504-damage-application",
-  "issues": ["#504"],
-  "goal": "Implement damage application via event chain (ADR-0026): three-phase flow with DamageChain and DamageReceivedEvent notification",
+  "branch": "feature/unify-damage-flow",
+  "issues": [],
+  "goal": "Unify damage flow: ResolveAttack uses ResolveDamage, remove duplicate applyDamageChain, preserve full DamageComponent breakdown for combat log",
   "sessions": [
     {
-      "id": "2024-12-25-001",
-      "task": "Add Combatant interface and ApplyDamage",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/gamectx/combatant.go",
-        "rulebooks/dnd5e/character/character.go"
-      ],
-      "commit": "a0fecce",
-      "notes": "Created Combatant interface with ApplyDamage, CombatantRegistry for lookup, GetCombatant(ctx,id) returning error. Character now implements Combatant. All tests pass."
-    },
-    {
-      "id": "2024-12-25-002",
-      "task": "Implement combat.DealDamage function",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/combat/combatant.go",
-        "rulebooks/dnd5e/combat/damage.go",
-        "rulebooks/dnd5e/combat/damage_test.go",
-        "rulebooks/dnd5e/gamectx/combatant.go",
-        "rulebooks/dnd5e/character/character.go",
-        "rulebooks/dnd5e/gamectx/gamectx_test.go"
-      ],
-      "commit": "857773b",
-      "notes": "Moved Combatant interface to combat package to break import cycle. DealDamage orchestrates 3 phases: RESOLVE (DamageChain for modifiers), APPLY (Target.ApplyDamage), NOTIFY (DamageReceivedEvent). Changed API to accept Target directly instead of lookup to avoid cycle. All tests pass."
-    },
-    {
-      "id": "2024-12-25-003",
-      "task": "Implement resistance/vulnerability multipliers in DealDamage",
+      "id": "2024-12-25-004",
+      "task": "Refactor DealDamage to accept pre-built components",
       "status": "completed",
       "artifacts": [
         "rulebooks/dnd5e/combat/damage.go",
-        "rulebooks/dnd5e/combat/integration_test.go"
+        "rulebooks/dnd5e/combat/damage_test.go"
       ],
-      "commit": "4ec605d",
-      "notes": "Added calculateFinalDamage and resolveMultipliers functions. Groups damage by type, applies D&D 5e multiplier stacking rules: immunity trumps all, resistance/vulnerability cancel, multiples don't stack. Rage resistance test now passes (10 slashing → 5 after 0.5x multiplier)."
+      "commit": null,
+      "notes": "Extended DealDamageInput to accept either Instances OR Components. Added ResolveDamage function for shared chain processing."
+    },
+    {
+      "id": "2024-12-25-005",
+      "task": "Refactor ResolveAttack to use ResolveDamage, remove applyDamageChain",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/combat/attack.go"
+      ],
+      "commit": null,
+      "notes": "ResolveAttack now uses ResolveDamage for damage chain. Removed duplicate applyDamageChain. Added attack-specific fields (WeaponDamage, AbilityUsed, WeaponRef) to ResolveDamageInput for GWF and similar modifiers."
     }
   ],
   "next_steps": [
-    "Integrate with rpg-api game server damage application",
-    "Update ADR-0026 with final implementation details"
+    "Commit changes",
+    "Create PR for review"
   ]
 }
