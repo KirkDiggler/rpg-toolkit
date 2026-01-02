@@ -3,7 +3,10 @@
 
 package gamectx
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
+)
 
 // Slot constants for weapon equipment positions
 const (
@@ -18,6 +21,10 @@ type EquippedWeapon struct {
 	// ID is the unique identifier for this weapon instance
 	ID string
 
+	// WeaponID is the weapon definition ID for property lookups.
+	// Use weapons.GetByID(WeaponID) to get full weapon properties.
+	WeaponID weapons.WeaponID
+
 	// Name is the display name of the weapon
 	Name string
 
@@ -29,9 +36,11 @@ type EquippedWeapon struct {
 	IsShield bool
 
 	// IsTwoHanded indicates if this weapon requires both hands to wield
+	// Deprecated: Use weapons.GetByID(WeaponID).IsTwoHanded instead
 	IsTwoHanded bool
 
 	// IsMelee indicates if this is a melee weapon (vs ranged)
+	// Deprecated: Use weapons.GetByID(WeaponID).IsMelee instead
 	IsMelee bool
 }
 
