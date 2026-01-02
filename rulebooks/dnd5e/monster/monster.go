@@ -109,6 +109,57 @@ func (m *Monster) MaxHP() int {
 	return m.maxHP
 }
 
+// GetHitPoints returns current HP.
+// Implements combat.Combatant interface.
+func (m *Monster) GetHitPoints() int {
+	return m.hp
+}
+
+// GetMaxHitPoints returns maximum HP.
+// Implements combat.Combatant interface.
+func (m *Monster) GetMaxHitPoints() int {
+	return m.maxHP
+}
+
+// ApplyDamage reduces the monster's HP by the damage amount(s).
+// HP cannot go below 0. Returns the result of the damage application.
+//
+// This method directly mutates the monster's HP. The caller is responsible
+// for persisting the updated monster state.
+//
+// Implements combat.Combatant interface.
+//
+//nolint:revive // ctx is unused but kept for interface consistency and future use
+func (m *Monster) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
+	if input == nil {
+		return &combat.ApplyDamageResult{
+			CurrentHP:  m.hp,
+			PreviousHP: m.hp,
+		}
+	}
+
+	previousHP := m.hp
+	totalDamage := 0
+
+	// Sum all damage instances
+	for _, instance := range input.Instances {
+		totalDamage += instance.Amount
+	}
+
+	// Apply damage (minimum HP is 0)
+	m.hp -= totalDamage
+	if m.hp < 0 {
+		m.hp = 0
+	}
+
+	return &combat.ApplyDamageResult{
+		TotalDamage:   totalDamage,
+		CurrentHP:     m.hp,
+		DroppedToZero: m.hp == 0 && previousHP > 0,
+		PreviousHP:    previousHP,
+	}
+}
+
 // AC returns armor class
 func (m *Monster) AC() int {
 	return m.ac
