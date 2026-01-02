@@ -297,10 +297,36 @@ type ResourceConsumedEvent struct {
 // =============================================================================
 
 // FlurryOfBlowsActivatedEvent is published when a monk activates Flurry of Blows
+// DEPRECATED: Use FlurryStrike actions instead. This event will be removed
+// once all consumers migrate to the action-based pattern.
 type FlurryOfBlowsActivatedEvent struct {
 	CharacterID    string // ID of the monk activating the feature
 	UnarmedStrikes int    // Number of unarmed strikes granted (always 2)
 	Source         string // Feature that triggered this (refs.Features.FlurryOfBlows().ID)
+}
+
+// FlurryStrikeRequestedEvent is published when a FlurryStrike action is activated.
+// The game server should resolve an unarmed strike attack from attacker to target.
+type FlurryStrikeRequestedEvent struct {
+	AttackerID string // ID of the monk making the strike
+	TargetID   string // ID of the target being struck
+	ActionID   string // ID of the FlurryStrike action (for tracking)
+}
+
+// ActionRemovedEvent is published when an action removes itself from a character.
+// The character should listen for this event and remove the action from their list.
+type ActionRemovedEvent struct {
+	ActionID string // ID of the action being removed
+	OwnerID  string // ID of the character who owns the action
+}
+
+// FlurryStrikeActivatedEvent is published after a FlurryStrike action is successfully used.
+// This is a notification event for UI/logging - the attack itself is resolved via FlurryStrikeRequestedEvent.
+type FlurryStrikeActivatedEvent struct {
+	AttackerID    string // ID of the monk who used the strike
+	TargetID      string // ID of the target that was struck
+	ActionID      string // ID of the FlurryStrike action
+	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
 }
 
 // PatientDefenseActivatedEvent is published when a monk activates Patient Defense
@@ -368,8 +394,21 @@ var (
 	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
 
 	// FlurryOfBlowsActivatedTopic provides typed pub/sub for flurry of blows activation events
+	// DEPRECATED: Use FlurryStrikeRequestedTopic instead.
 	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent](
 		"dnd5e.feature.flurry_of_blows.activated")
+
+	// FlurryStrikeRequestedTopic provides typed pub/sub for flurry strike action requests
+	FlurryStrikeRequestedTopic = events.DefineTypedTopic[FlurryStrikeRequestedEvent](
+		"dnd5e.action.flurry_strike.requested")
+
+	// FlurryStrikeActivatedTopic provides typed pub/sub for flurry strike completion notifications
+	FlurryStrikeActivatedTopic = events.DefineTypedTopic[FlurryStrikeActivatedEvent](
+		"dnd5e.action.flurry_strike.activated")
+
+	// ActionRemovedTopic provides typed pub/sub for action removed events
+	ActionRemovedTopic = events.DefineTypedTopic[ActionRemovedEvent](
+		"dnd5e.action.removed")
 
 	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
 	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](

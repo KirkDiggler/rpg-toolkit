@@ -10,15 +10,15 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/stretchr/testify/suite"
 )
 
-// mockResourceAccessor implements coreResources.ResourceAccessor for testing
+// mockResourceAccessor implements coreResources.ResourceAccessor for testing (used by other test files)
 type mockResourceAccessor struct {
 	id        string
 	resources map[coreResources.ResourceKey]*combat.RecoverableResource
@@ -80,12 +80,50 @@ func (m *mockResourceAccessor) AddResource(key coreResources.ResourceKey, resour
 	m.resources[key] = resource
 }
 
+// mockMonkCharacter extends mockResourceAccessor with ActionHolder interface
+type mockMonkCharacter struct {
+	mockResourceAccessor
+	actions []actions.Action
+}
+
+// AddAction implements actions.ActionHolder
+func (m *mockMonkCharacter) AddAction(action actions.Action) error {
+	m.actions = append(m.actions, action)
+	return nil
+}
+
+// RemoveAction implements actions.ActionHolder
+func (m *mockMonkCharacter) RemoveAction(actionID string) error {
+	for i, a := range m.actions {
+		if a.GetID() == actionID {
+			m.actions = append(m.actions[:i], m.actions[i+1:]...)
+			return nil
+		}
+	}
+	return rpgerr.Newf(rpgerr.CodeNotFound, "action %s not found", actionID)
+}
+
+// GetActions implements actions.ActionHolder
+func (m *mockMonkCharacter) GetActions() []actions.Action {
+	return m.actions
+}
+
+// GetAction implements actions.ActionHolder
+func (m *mockMonkCharacter) GetAction(actionID string) actions.Action {
+	for _, a := range m.actions {
+		if a.GetID() == actionID {
+			return a
+		}
+	}
+	return nil
+}
+
 type FlurryOfBlowsTestSuite struct {
 	suite.Suite
-	ctx      context.Context
-	bus      events.EventBus
-	accessor *mockResourceAccessor
-	feature  features.Feature
+	ctx       context.Context
+	bus       events.EventBus
+	character *mockMonkCharacter
+	feature   features.Feature
 }
 
 func TestFlurryOfBlowsTestSuite(t *testing.T) {
@@ -97,34 +135,36 @@ func (s *FlurryOfBlowsTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 
 	// Create a mock character with Ki resource
-	s.accessor = &mockResourceAccessor{
-		id: "test-monk",
+	s.character = &mockMonkCharacter{
+		mockResourceAccessor: mockResourceAccessor{
+			id: "test-monk",
+		},
 	}
 
 	// Add Ki resource (3 Ki points for level 3 monk)
 	kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 		ID:          string(resources.Ki),
 		Maximum:     3,
-		CharacterID: s.accessor.id,
+		CharacterID: s.character.GetID(),
 		ResetType:   coreResources.ResetShortRest,
 	})
-	s.accessor.AddResource(resources.Ki, kiResource)
+	s.character.AddResource(resources.Ki, kiResource)
 
 	// Create the Flurry of Blows feature via factory
 	output, err := features.CreateFromRef(&features.CreateFromRefInput{
 		Ref:         refs.Features.FlurryOfBlows().String(),
 		Config:      json.RawMessage(`{}`),
-		CharacterID: s.accessor.id,
+		CharacterID: s.character.GetID(),
 	})
 	s.Require().NoError(err)
 	s.feature = output.Feature
 }
 
 func (s *FlurryOfBlowsTestSuite) TestCanActivate_WithKi() {
-	// Arrange - accessor has Ki
+	// Arrange - character has Ki
 
 	// Act
-	err := s.feature.CanActivate(s.ctx, s.accessor, features.FeatureInput{})
+	err := s.feature.CanActivate(s.ctx, s.character, features.FeatureInput{})
 
 	// Assert
 	s.Require().NoError(err)
@@ -132,12 +172,12 @@ func (s *FlurryOfBlowsTestSuite) TestCanActivate_WithKi() {
 
 func (s *FlurryOfBlowsTestSuite) TestCanActivate_WithoutKi() {
 	// Arrange - consume all Ki
-	ki := s.accessor.GetResource(resources.Ki)
+	ki := s.character.GetResource(resources.Ki)
 	err := ki.Use(3)
 	s.Require().NoError(err)
 
 	// Act
-	err = s.feature.CanActivate(s.ctx, s.accessor, features.FeatureInput{})
+	err = s.feature.CanActivate(s.ctx, s.character, features.FeatureInput{})
 
 	// Assert
 	s.Require().Error(err)
@@ -148,12 +188,12 @@ func (s *FlurryOfBlowsTestSuite) TestCanActivate_WithoutKi() {
 
 func (s *FlurryOfBlowsTestSuite) TestActivate_ConsumesKi() {
 	// Arrange
-	ki := s.accessor.GetResource(resources.Ki)
+	ki := s.character.GetResource(resources.Ki)
 	initialKi := ki.Current()
 	s.Require().Equal(3, initialKi)
 
 	// Act
-	err := s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
+	err := s.feature.Activate(s.ctx, s.character, features.FeatureInput{
 		Bus: s.bus,
 	})
 
@@ -162,37 +202,33 @@ func (s *FlurryOfBlowsTestSuite) TestActivate_ConsumesKi() {
 	s.Assert().Equal(2, ki.Current(), "Should consume 1 Ki point")
 }
 
-func (s *FlurryOfBlowsTestSuite) TestActivate_PublishesEvent() {
-	// Arrange
-	var receivedEvent *dnd5eEvents.FlurryOfBlowsActivatedEvent
-	topic := dnd5eEvents.FlurryOfBlowsActivatedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.FlurryOfBlowsActivatedEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
+func (s *FlurryOfBlowsTestSuite) TestActivate_GrantsFlurryStrikeActions() {
+	// Arrange - character should have no actions initially
+	s.Require().Empty(s.character.GetActions())
 
 	// Act
-	err = s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
+	err := s.feature.Activate(s.ctx, s.character, features.FeatureInput{
 		Bus: s.bus,
 	})
 
 	// Assert
 	s.Require().NoError(err)
-	s.Require().NotNil(receivedEvent)
-	s.Assert().Equal(s.accessor.GetID(), receivedEvent.CharacterID)
-	s.Assert().Equal(2, receivedEvent.UnarmedStrikes)
-	s.Assert().Equal(refs.Features.FlurryOfBlows().ID, receivedEvent.Source)
+	grantedActions := s.character.GetActions()
+	s.Require().Len(grantedActions, 2, "Should grant 2 FlurryStrike actions")
+
+	// Verify they're FlurryStrike actions with correct IDs
+	s.Assert().Equal("test-monk-flurry-strike-1", grantedActions[0].GetID())
+	s.Assert().Equal("test-monk-flurry-strike-2", grantedActions[1].GetID())
 }
 
 func (s *FlurryOfBlowsTestSuite) TestActivate_FailsWhenNoKi() {
 	// Arrange - consume all Ki
-	ki := s.accessor.GetResource(resources.Ki)
+	ki := s.character.GetResource(resources.Ki)
 	err := ki.Use(3)
 	s.Require().NoError(err)
 
 	// Act
-	err = s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
+	err = s.feature.Activate(s.ctx, s.character, features.FeatureInput{
 		Bus: s.bus,
 	})
 
@@ -217,7 +253,7 @@ func (s *FlurryOfBlowsTestSuite) TestToJSON() {
 	s.Require().NoError(err)
 	s.Assert().Contains(data, "ref")
 	s.Assert().Contains(data, "character_id")
-	s.Assert().Equal(s.accessor.GetID(), data["character_id"])
+	s.Assert().Equal(s.character.GetID(), data["character_id"])
 }
 
 func (s *FlurryOfBlowsTestSuite) TestLoadJSON() {

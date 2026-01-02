@@ -831,6 +831,14 @@ func (c *Character) subscribeToEvents(ctx context.Context) error {
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, subID)
 
+	// Subscribe to action removed events
+	actionRemovedTopic := dnd5eEvents.ActionRemovedTopic.On(c.bus)
+	subID, err = actionRemovedTopic.Subscribe(ctx, c.onActionRemoved)
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to subscribe to action removed")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, subID)
+
 	return nil
 }
 
@@ -901,6 +909,18 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 		c.hitPoints = c.maxHitPoints
 	}
 
+	return nil
+}
+
+// onActionRemoved handles ActionRemovedEvent
+func (c *Character) onActionRemoved(_ context.Context, event dnd5eEvents.ActionRemovedEvent) error {
+	// Only process events for this character
+	if event.OwnerID != c.id {
+		return nil
+	}
+
+	// Remove the action from our list
+	_ = c.RemoveAction(event.ActionID)
 	return nil
 }
 
