@@ -181,6 +181,8 @@ func (f *FlurryStrike) onTurnEnd(ctx context.Context, event combat.TurnEndEvent)
    → Roll to hit, damage on hit
    → UsesRemaining decrements to 0
    → Action removes itself
+4. Player clicks "Flurry Strike 1", selects target
+   → Action.Activate(target) called
 
 5. Player clicks "Flurry Strike 2", selects different target
    → Same resolution
@@ -210,6 +212,8 @@ TWF off-hand attack could be modeled as a granted action:
 ```
 
 ## Example: Rage Flow
+4. Player clicks "Flurry Strike 1", selects target
+   → Action.Activate(target) called
 
 Rage grants a condition, not actions:
 
@@ -225,7 +229,9 @@ Rage grants a condition, not actions:
    → TurnEnd (check if raged this turn)
    → Rest (remove on rest)
 
-3. Condition passively modifies damage/resistance
+3. UI shows "raging" in active conditions
+
+4. Condition passively modifies damage/resistance
    → No player interaction needed
 ```
 
