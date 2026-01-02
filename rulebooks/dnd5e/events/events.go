@@ -323,9 +323,9 @@ type ActionRemovedEvent struct {
 // FlurryStrikeActivatedEvent is published after a FlurryStrike action is successfully used.
 // This is a notification event for UI/logging - the attack itself is resolved via FlurryStrikeRequestedEvent.
 type FlurryStrikeActivatedEvent struct {
-	AttackerID   string // ID of the monk who used the strike
-	TargetID     string // ID of the target that was struck
-	ActionID     string // ID of the FlurryStrike action
+	AttackerID    string // ID of the monk who used the strike
+	TargetID      string // ID of the target that was struck
+	ActionID      string // ID of the FlurryStrike action
 	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
 }
 
