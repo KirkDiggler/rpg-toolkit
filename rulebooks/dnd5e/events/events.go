@@ -329,6 +329,27 @@ type FlurryStrikeActivatedEvent struct {
 	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
 }
 
+// OffHandStrikeRequestedEvent is published when an OffHandStrike action is activated.
+// The game server should resolve an off-hand weapon attack from attacker to target.
+// Note: Off-hand attacks don't add ability modifier to damage unless the character
+// has the Two-Weapon Fighting fighting style.
+type OffHandStrikeRequestedEvent struct {
+	AttackerID string // ID of the character making the off-hand attack
+	TargetID   string // ID of the target being struck
+	WeaponID   string // ID of the off-hand weapon being used
+	ActionID   string // ID of the OffHandStrike action (for tracking)
+}
+
+// OffHandStrikeActivatedEvent is published after an OffHandStrike action is successfully used.
+// This is a notification event for UI/logging.
+type OffHandStrikeActivatedEvent struct {
+	AttackerID    string // ID of the character who used the strike
+	TargetID      string // ID of the target that was struck
+	WeaponID      string // ID of the off-hand weapon used
+	ActionID      string // ID of the OffHandStrike action
+	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
+}
+
 // PatientDefenseActivatedEvent is published when a monk activates Patient Defense
 type PatientDefenseActivatedEvent struct {
 	CharacterID string // ID of the monk activating the feature
@@ -405,6 +426,14 @@ var (
 	// FlurryStrikeActivatedTopic provides typed pub/sub for flurry strike completion notifications
 	FlurryStrikeActivatedTopic = events.DefineTypedTopic[FlurryStrikeActivatedEvent](
 		"dnd5e.action.flurry_strike.activated")
+
+	// OffHandStrikeRequestedTopic provides typed pub/sub for off-hand strike action requests
+	OffHandStrikeRequestedTopic = events.DefineTypedTopic[OffHandStrikeRequestedEvent](
+		"dnd5e.action.off_hand_strike.requested")
+
+	// OffHandStrikeActivatedTopic provides typed pub/sub for off-hand strike completion notifications
+	OffHandStrikeActivatedTopic = events.DefineTypedTopic[OffHandStrikeActivatedEvent](
+		"dnd5e.action.off_hand_strike.activated")
 
 	// ActionRemovedTopic provides typed pub/sub for action removed events
 	ActionRemovedTopic = events.DefineTypedTopic[ActionRemovedEvent](
