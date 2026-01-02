@@ -87,6 +87,18 @@ func (f *FlurryStrike) Activate(ctx context.Context, owner core.Entity, input Ac
 	// Decrement uses
 	f.uses--
 
+	// Publish notification event for UI/logging
+	if input.Bus != nil {
+		activatedTopic := dnd5eEvents.FlurryStrikeActivatedTopic.On(input.Bus)
+		// Ignore error - this is a notification, not critical to the action
+		_ = activatedTopic.Publish(ctx, dnd5eEvents.FlurryStrikeActivatedEvent{
+			AttackerID:    owner.GetID(),
+			TargetID:      input.Target.GetID(),
+			ActionID:      f.id,
+			UsesRemaining: f.uses,
+		})
+	}
+
 	// Remove self if no uses remaining
 	if f.uses <= 0 && f.bus != nil {
 		if err := f.Remove(ctx, f.bus); err != nil {

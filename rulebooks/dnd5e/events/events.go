@@ -320,6 +320,15 @@ type ActionRemovedEvent struct {
 	OwnerID  string // ID of the character who owns the action
 }
 
+// FlurryStrikeActivatedEvent is published after a FlurryStrike action is successfully used.
+// This is a notification event for UI/logging - the attack itself is resolved via FlurryStrikeRequestedEvent.
+type FlurryStrikeActivatedEvent struct {
+	AttackerID   string // ID of the monk who used the strike
+	TargetID     string // ID of the target that was struck
+	ActionID     string // ID of the FlurryStrike action
+	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
+}
+
 // PatientDefenseActivatedEvent is published when a monk activates Patient Defense
 type PatientDefenseActivatedEvent struct {
 	CharacterID string // ID of the monk activating the feature
@@ -392,6 +401,10 @@ var (
 	// FlurryStrikeRequestedTopic provides typed pub/sub for flurry strike action requests
 	FlurryStrikeRequestedTopic = events.DefineTypedTopic[FlurryStrikeRequestedEvent](
 		"dnd5e.action.flurry_strike.requested")
+
+	// FlurryStrikeActivatedTopic provides typed pub/sub for flurry strike completion notifications
+	FlurryStrikeActivatedTopic = events.DefineTypedTopic[FlurryStrikeActivatedEvent](
+		"dnd5e.action.flurry_strike.activated")
 
 	// ActionRemovedTopic provides typed pub/sub for action removed events
 	ActionRemovedTopic = events.DefineTypedTopic[ActionRemovedEvent](

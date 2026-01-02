@@ -161,6 +161,34 @@ func (s *FlurryStrikeTestSuite) TestActivate_ConsumesUse() {
 	s.Assert().Equal(0, s.strike.UsesRemaining())
 }
 
+func (s *FlurryStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
+	// Arrange
+	err := s.strike.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	var activatedEvent *dnd5eEvents.FlurryStrikeActivatedEvent
+	activatedTopic := dnd5eEvents.FlurryStrikeActivatedTopic.On(s.bus)
+	_, err = activatedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.FlurryStrikeActivatedEvent) error {
+		activatedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Act
+	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
+		Bus:    s.bus,
+		Target: s.target,
+	})
+
+	// Assert
+	s.Require().NoError(err)
+	s.Require().NotNil(activatedEvent, "Should publish FlurryStrikeActivatedEvent")
+	s.Assert().Equal(s.owner.id, activatedEvent.AttackerID)
+	s.Assert().Equal(s.target.id, activatedEvent.TargetID)
+	s.Assert().Equal("test-strike-1", activatedEvent.ActionID)
+	s.Assert().Equal(0, activatedEvent.UsesRemaining, "Should have 0 uses remaining after activation")
+}
+
 func (s *FlurryStrikeTestSuite) TestActivate_RemovesSelfWhenNoUsesRemaining() {
 	// Arrange
 	err := s.strike.Apply(s.ctx, s.bus)

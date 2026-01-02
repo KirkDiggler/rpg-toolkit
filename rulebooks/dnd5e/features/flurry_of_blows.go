@@ -77,11 +77,6 @@ func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input F
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ActionHolder")
 	}
 
-	// Consume 1 Ki point
-	if err := accessor.UseResource(resources.Ki, 1); err != nil {
-		return rpgerr.Wrapf(err, "failed to use ki for flurry of blows")
-	}
-
 	// Grant two FlurryStrike actions
 	ownerID := owner.GetID()
 	strike1 := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
@@ -122,6 +117,19 @@ func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input F
 			_ = strike2.Remove(ctx, input.Bus)
 		}
 		return rpgerr.Wrapf(err, "failed to add flurry strike 2 to character")
+	}
+
+	// Consume 1 Ki point only after successful action granting
+	// This ensures no Ki is lost if action granting fails
+	if err := accessor.UseResource(resources.Ki, 1); err != nil {
+		// Rollback all actions
+		_ = holder.RemoveAction(strike1.GetID())
+		_ = holder.RemoveAction(strike2.GetID())
+		if input.Bus != nil {
+			_ = strike1.Remove(ctx, input.Bus)
+			_ = strike2.Remove(ctx, input.Bus)
+		}
+		return rpgerr.Wrapf(err, "failed to use ki for flurry of blows")
 	}
 
 	return nil
