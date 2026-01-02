@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -32,6 +33,9 @@ const (
 	// shieldCategory is the category value for shield items
 	shieldCategory = "shield"
 )
+
+// Compile-time check that Character implements ActionHolder
+var _ actions.ActionHolder = (*Character)(nil)
 
 // Character represents a playable D&D 5e character
 // This is the domain model used during gameplay
@@ -75,10 +79,13 @@ type Character struct {
 	classResources map[shared.ClassResourceType]ResourceData
 	resources      map[coreResources.ResourceKey]*combat.RecoverableResource
 
-	// Features (rage, second wind, etc)
+	// Features (rage, second wind, etc) - grant actions and conditions
 	features []features.Feature
 
-	// Conditions (raging, poisoned, stunned, etc)
+	// Actions (attack, dash, flurry strike, etc) - things you can do
+	actions []actions.Action
+
+	// Conditions (raging, poisoned, stunned, etc) - passive effects
 	conditions []dnd5eEvents.ConditionBehavior
 
 	// Death saves (tracked when at 0 HP)
@@ -451,6 +458,45 @@ func (c *Character) GetFeature(id string) features.Feature {
 	for _, f := range c.features {
 		if f.GetID() == id {
 			return f
+		}
+	}
+	return nil
+}
+
+// AddAction adds an action to the character's available actions.
+// Implements actions.ActionHolder interface.
+func (c *Character) AddAction(action actions.Action) error {
+	if action == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "action cannot be nil")
+	}
+	c.actions = append(c.actions, action)
+	return nil
+}
+
+// RemoveAction removes an action by ID.
+// Implements actions.ActionHolder interface.
+func (c *Character) RemoveAction(actionID string) error {
+	for i, a := range c.actions {
+		if a.GetID() == actionID {
+			c.actions = append(c.actions[:i], c.actions[i+1:]...)
+			return nil
+		}
+	}
+	return rpgerr.Newf(rpgerr.CodeNotFound, "action %s not found", actionID)
+}
+
+// GetActions returns all available actions.
+// Implements actions.ActionHolder interface.
+func (c *Character) GetActions() []actions.Action {
+	return c.actions
+}
+
+// GetAction returns a specific action by ID, or nil if not found.
+// Implements actions.ActionHolder interface.
+func (c *Character) GetAction(id string) actions.Action {
+	for _, a := range c.actions {
+		if a.GetID() == id {
+			return a
 		}
 	}
 	return nil
