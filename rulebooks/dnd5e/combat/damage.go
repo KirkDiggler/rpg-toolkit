@@ -215,6 +215,10 @@ type ResolveDamageInput struct {
 	// HasAdvantage indicates if the attack had advantage
 	HasAdvantage bool
 
+	// IsOffHandAttack indicates this is a bonus action off-hand attack (two-weapon fighting).
+	// When true, the Two-Weapon Fighting style condition will add ability modifier to damage.
+	IsOffHandAttack bool
+
 	// EventBus is the event bus for publishing chain events
 	EventBus events.EventBus
 
@@ -228,6 +232,10 @@ type ResolveDamageInput struct {
 
 	// WeaponRef is a reference to the weapon used
 	WeaponRef *core.Ref
+
+	// AbilityModifier is the ability modifier for this attack (STR or DEX mod).
+	// Used by Two-Weapon Fighting style to add modifier to off-hand damage.
+	AbilityModifier int
 }
 
 // ResolveDamageOutput contains the result of damage resolution (before HP application).
@@ -259,12 +267,14 @@ func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDama
 
 	// Publish through DamageChain for modifiers
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   input.AttackerID,
-		TargetID:     input.TargetID,
-		Components:   input.Components,
-		DamageType:   primaryType,
-		IsCritical:   input.IsCritical,
-		HasAdvantage: input.HasAdvantage,
+		AttackerID:      input.AttackerID,
+		TargetID:        input.TargetID,
+		Components:      input.Components,
+		DamageType:      primaryType,
+		IsCritical:      input.IsCritical,
+		HasAdvantage:    input.HasAdvantage,
+		IsOffHandAttack: input.IsOffHandAttack,
+		AbilityModifier: input.AbilityModifier,
 		// Attack-specific fields (for modifiers like GWF that need weapon info)
 		WeaponDamage: input.WeaponDamage,
 		AbilityUsed:  input.AbilityUsed,

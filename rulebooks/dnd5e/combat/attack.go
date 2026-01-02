@@ -17,6 +17,50 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+// AttackHand indicates which hand is making the attack.
+type AttackHand string
+
+const (
+	// AttackHandMain is the default - a main hand attack using a standard action.
+	AttackHandMain AttackHand = "main"
+
+	// AttackHandOff is an off-hand attack using a bonus action (two-weapon fighting).
+	AttackHandOff AttackHand = "off"
+)
+
+// EquippedWeaponInfo provides weapon information needed for two-weapon fighting validation.
+// This interface is satisfied by gamectx.EquippedWeapon.
+type EquippedWeaponInfo struct {
+	WeaponID weapons.WeaponID
+}
+
+// TwoWeaponContext provides character weapon and action economy information
+// needed for two-weapon fighting validation.
+type TwoWeaponContext interface {
+	// GetMainHandWeapon returns the weapon in the main hand, or nil if none.
+	GetMainHandWeapon(characterID string) *EquippedWeaponInfo
+
+	// GetOffHandWeapon returns the weapon in the off hand (not shield), or nil if none.
+	GetOffHandWeapon(characterID string) *EquippedWeaponInfo
+
+	// GetActionEconomy returns the action economy for the character, or nil if not available.
+	GetActionEconomy(characterID string) *ActionEconomy
+}
+
+// twoWeaponContextKey is the context key for TwoWeaponContext
+type twoWeaponContextKey struct{}
+
+// WithTwoWeaponContext adds a TwoWeaponContext to the context.
+func WithTwoWeaponContext(ctx context.Context, twc TwoWeaponContext) context.Context {
+	return context.WithValue(ctx, twoWeaponContextKey{}, twc)
+}
+
+// GetTwoWeaponContext retrieves the TwoWeaponContext from context.
+func GetTwoWeaponContext(ctx context.Context) (TwoWeaponContext, bool) {
+	twc, ok := ctx.Value(twoWeaponContextKey{}).(TwoWeaponContext)
+	return twc, ok
+}
+
 // AttackInput provides all information needed to resolve an attack
 type AttackInput struct {
 	Attacker         core.Entity
@@ -27,6 +71,11 @@ type AttackInput struct {
 	ProficiencyBonus int
 	EventBus         events.EventBus
 	Roller           dice.Roller // Dice roller for attack and damage
+
+	// AttackHand indicates which hand is making the attack.
+	// Default (empty or AttackHandMain) is a main hand attack.
+	// AttackHandOff triggers two-weapon fighting validation and consumes a bonus action.
+	AttackHand AttackHand
 }
 
 // Validate validates the input
@@ -92,6 +141,16 @@ type AttackResult struct {
 func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
+	}
+
+	// Track if this is an off-hand attack for the damage chain
+	isOffHandAttack := input.AttackHand == AttackHandOff
+
+	// Validate two-weapon fighting requirements for off-hand attacks
+	if isOffHandAttack {
+		if err := validateOffHandAttack(ctx, input); err != nil {
+			return nil, err
+		}
 	}
 
 	// Use provided roller or default
@@ -262,12 +321,14 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 
 		// RESOLVE: Use shared ResolveDamage for chain processing and multipliers
 		resolveOutput, err := ResolveDamage(ctx, &ResolveDamageInput{
-			AttackerID:   input.Attacker.GetID(),
-			TargetID:     input.Defender.GetID(),
-			Components:   []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
-			IsCritical:   result.Critical,
-			HasAdvantage: result.HasAdvantage,
-			EventBus:     input.EventBus,
+			AttackerID:      input.Attacker.GetID(),
+			TargetID:        input.Defender.GetID(),
+			Components:      []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
+			IsCritical:      result.Critical,
+			HasAdvantage:    result.HasAdvantage,
+			IsOffHandAttack: isOffHandAttack,
+			AbilityModifier: abilityMod,
+			EventBus:        input.EventBus,
 			// Attack-specific fields for modifiers like Great Weapon Fighting
 			WeaponDamage: input.Weapon.Damage,
 			AbilityUsed:  abilityUsed,
@@ -394,4 +455,60 @@ func abilityToRef(ability abilities.Ability) *core.Ref {
 	default:
 		return nil
 	}
+}
+
+// validateOffHandAttack validates two-weapon fighting requirements for off-hand attacks.
+// Returns an error if requirements are not met.
+func validateOffHandAttack(ctx context.Context, input *AttackInput) error {
+	// Get two-weapon context
+	twc, ok := GetTwoWeaponContext(ctx)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "two-weapon context not available for off-hand attack validation")
+	}
+
+	characterID := input.Attacker.GetID()
+
+	// Check main hand weapon
+	mainHand := twc.GetMainHandWeapon(characterID)
+	if mainHand == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "no weapon in main hand")
+	}
+
+	// Look up main hand weapon properties
+	mainWeapon, err := weapons.GetByID(mainHand.WeaponID)
+	if err != nil {
+		return rpgerr.Wrapf(err, "unknown main hand weapon: %s", mainHand.WeaponID)
+	}
+
+	if !mainWeapon.HasProperty(weapons.PropertyLight) {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "main hand weapon must be light for two-weapon fighting")
+	}
+
+	// Check off hand weapon
+	offHand := twc.GetOffHandWeapon(characterID)
+	if offHand == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "no weapon in off hand")
+	}
+
+	// Look up off hand weapon properties
+	offWeapon, err := weapons.GetByID(offHand.WeaponID)
+	if err != nil {
+		return rpgerr.Wrapf(err, "unknown off hand weapon: %s", offHand.WeaponID)
+	}
+
+	if !offWeapon.HasProperty(weapons.PropertyLight) {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "off hand weapon must be light for two-weapon fighting")
+	}
+
+	// Check and consume bonus action
+	actionEconomy := twc.GetActionEconomy(characterID)
+	if actionEconomy == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "action economy not available for off-hand attack")
+	}
+
+	if err := actionEconomy.UseBonusAction(); err != nil {
+		return err // Already returns CodeResourceExhausted with "bonus action"
+	}
+
+	return nil
 }
