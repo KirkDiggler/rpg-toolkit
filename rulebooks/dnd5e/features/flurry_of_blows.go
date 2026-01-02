@@ -10,7 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -71,23 +71,57 @@ func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input F
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
 	}
 
+	// Cast owner to ActionHolder to grant FlurryStrike actions
+	holder, ok := owner.(actions.ActionHolder)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ActionHolder")
+	}
+
 	// Consume 1 Ki point
 	if err := accessor.UseResource(resources.Ki, 1); err != nil {
 		return rpgerr.Wrapf(err, "failed to use ki for flurry of blows")
 	}
 
-	// Publish event granting two unarmed strikes
-	// The game server is responsible for tracking and resolving these strikes
+	// Grant two FlurryStrike actions
+	ownerID := owner.GetID()
+	strike1 := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
+		ID:      fmt.Sprintf("%s-flurry-strike-1", ownerID),
+		OwnerID: ownerID,
+	})
+	strike2 := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
+		ID:      fmt.Sprintf("%s-flurry-strike-2", ownerID),
+		OwnerID: ownerID,
+	})
+
+	// Apply actions to event bus (subscribe to turn end for cleanup)
 	if input.Bus != nil {
-		topic := dnd5eEvents.FlurryOfBlowsActivatedTopic.On(input.Bus)
-		err := topic.Publish(ctx, dnd5eEvents.FlurryOfBlowsActivatedEvent{
-			CharacterID:    owner.GetID(),
-			UnarmedStrikes: 2,
-			Source:         refs.Features.FlurryOfBlows().ID,
-		})
-		if err != nil {
-			return rpgerr.Wrapf(err, "failed to publish flurry of blows event")
+		if err := strike1.Apply(ctx, input.Bus); err != nil {
+			return rpgerr.Wrapf(err, "failed to apply flurry strike 1")
 		}
+		if err := strike2.Apply(ctx, input.Bus); err != nil {
+			// Rollback strike1
+			_ = strike1.Remove(ctx, input.Bus)
+			return rpgerr.Wrapf(err, "failed to apply flurry strike 2")
+		}
+	}
+
+	// Add actions to the character
+	if err := holder.AddAction(strike1); err != nil {
+		// Rollback subscriptions
+		if input.Bus != nil {
+			_ = strike1.Remove(ctx, input.Bus)
+			_ = strike2.Remove(ctx, input.Bus)
+		}
+		return rpgerr.Wrapf(err, "failed to add flurry strike 1 to character")
+	}
+	if err := holder.AddAction(strike2); err != nil {
+		// Rollback strike1 from holder and subscriptions
+		_ = holder.RemoveAction(strike1.GetID())
+		if input.Bus != nil {
+			_ = strike1.Remove(ctx, input.Bus)
+			_ = strike2.Remove(ctx, input.Bus)
+		}
+		return rpgerr.Wrapf(err, "failed to add flurry strike 2 to character")
 	}
 
 	return nil
