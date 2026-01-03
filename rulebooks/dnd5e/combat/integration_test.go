@@ -773,19 +773,23 @@ func (s *CombatIntegrationSuite) TestDealDamageWithRageResistance() {
 
 // mockCombatantTarget implements combat.Combatant for testing DealDamage
 type mockCombatantTarget struct {
-	id           string
-	hitPoints    int
-	maxHitPoints int
-	ac           int
-	dirty        bool
+	id               string
+	hitPoints        int
+	maxHitPoints     int
+	ac               int
+	dirty            bool
+	abilityScores    shared.AbilityScores
+	proficiencyBonus int
 }
 
-func (m *mockCombatantTarget) GetID() string        { return m.id }
-func (m *mockCombatantTarget) GetHitPoints() int    { return m.hitPoints }
-func (m *mockCombatantTarget) GetMaxHitPoints() int { return m.maxHitPoints }
-func (m *mockCombatantTarget) AC() int              { return m.ac }
-func (m *mockCombatantTarget) IsDirty() bool        { return m.dirty }
-func (m *mockCombatantTarget) MarkClean()           { m.dirty = false }
+func (m *mockCombatantTarget) GetID() string                          { return m.id }
+func (m *mockCombatantTarget) GetHitPoints() int                      { return m.hitPoints }
+func (m *mockCombatantTarget) GetMaxHitPoints() int                   { return m.maxHitPoints }
+func (m *mockCombatantTarget) AC() int                                { return m.ac }
+func (m *mockCombatantTarget) IsDirty() bool                          { return m.dirty }
+func (m *mockCombatantTarget) MarkClean()                             { m.dirty = false }
+func (m *mockCombatantTarget) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockCombatantTarget) GetProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockCombatantTarget) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

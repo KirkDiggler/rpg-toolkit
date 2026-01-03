@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -21,19 +22,23 @@ func TestCombatantDirtySuite(t *testing.T) {
 
 // mockDirtyCombatant implements the extended Combatant interface with dirty tracking
 type mockDirtyCombatant struct {
-	id    string
-	hp    int
-	maxHP int
-	ac    int
-	dirty bool
+	id               string
+	hp               int
+	maxHP            int
+	ac               int
+	dirty            bool
+	abilityScores    shared.AbilityScores
+	proficiencyBonus int
 }
 
-func (m *mockDirtyCombatant) GetID() string        { return m.id }
-func (m *mockDirtyCombatant) GetHitPoints() int    { return m.hp }
-func (m *mockDirtyCombatant) GetMaxHitPoints() int { return m.maxHP }
-func (m *mockDirtyCombatant) AC() int              { return m.ac }
-func (m *mockDirtyCombatant) IsDirty() bool        { return m.dirty }
-func (m *mockDirtyCombatant) MarkClean()           { m.dirty = false }
+func (m *mockDirtyCombatant) GetID() string                          { return m.id }
+func (m *mockDirtyCombatant) GetHitPoints() int                      { return m.hp }
+func (m *mockDirtyCombatant) GetMaxHitPoints() int                   { return m.maxHP }
+func (m *mockDirtyCombatant) AC() int                                { return m.ac }
+func (m *mockDirtyCombatant) IsDirty() bool                          { return m.dirty }
+func (m *mockDirtyCombatant) MarkClean()                             { m.dirty = false }
+func (m *mockDirtyCombatant) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockDirtyCombatant) GetProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockDirtyCombatant) ApplyDamage(ctx context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	prev := m.hp
@@ -114,4 +119,41 @@ func (s *CombatantDirtyTestSuite) TestApplyDamage_MarksDirty() {
 
 	s.True(c.IsDirty())
 	s.Equal(15, c.GetHitPoints())
+}
+
+// Test that Combatant interface includes GetAbilityScores method
+func (s *CombatantDirtyTestSuite) TestCombatant_GetAbilityScores() {
+	combatant := &mockDirtyCombatant{
+		id:    "test-1",
+		hp:    20,
+		maxHP: 20,
+		abilityScores: shared.AbilityScores{
+			"STR": 16,
+			"DEX": 14,
+			"CON": 15,
+			"INT": 10,
+			"WIS": 12,
+			"CHA": 8,
+		},
+	}
+
+	// This should compile - Combatant interface should have GetAbilityScores()
+	var c combat.Combatant = combatant
+	scores := c.GetAbilityScores()
+	s.Equal(16, scores["STR"])
+	s.Equal(14, scores["DEX"])
+}
+
+// Test that Combatant interface includes GetProficiencyBonus method
+func (s *CombatantDirtyTestSuite) TestCombatant_GetProficiencyBonus() {
+	combatant := &mockDirtyCombatant{
+		id:               "test-1",
+		hp:               20,
+		maxHP:            20,
+		proficiencyBonus: 3,
+	}
+
+	// This should compile - Combatant interface should have GetProficiencyBonus()
+	var c combat.Combatant = combatant
+	s.Equal(3, c.GetProficiencyBonus())
 }

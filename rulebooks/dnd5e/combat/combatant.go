@@ -3,7 +3,11 @@
 
 package combat
 
-import "context"
+import (
+	"context"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+)
 
 // ApplyDamageInput contains parameters for applying damage to a combatant.
 // Supports multiple damage instances for attacks with multiple damage types
@@ -68,4 +72,10 @@ type Combatant interface {
 
 	// MarkClean marks the combatant as saved (not dirty)
 	MarkClean()
+
+	// GetAbilityScores returns all ability scores for attack/damage calculations
+	GetAbilityScores() shared.AbilityScores
+
+	// GetProficiencyBonus returns the proficiency bonus for attack calculations
+	GetProficiencyBonus() int
 }

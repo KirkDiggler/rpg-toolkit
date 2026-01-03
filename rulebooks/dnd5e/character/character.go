@@ -129,6 +129,11 @@ func (c *Character) GetAbilityModifier(ability abilities.Ability) int {
 	return c.abilityScores.Modifier(ability)
 }
 
+// GetAbilityScores returns all ability scores (implements Combatant interface)
+func (c *Character) GetAbilityScores() shared.AbilityScores {
+	return c.abilityScores
+}
+
 // GetProficiencyBonus returns the character's proficiency bonus
 func (c *Character) GetProficiencyBonus() int {
 	return c.proficiencyBonus

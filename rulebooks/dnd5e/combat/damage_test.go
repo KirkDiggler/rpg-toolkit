@@ -13,23 +13,28 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // mockCombatant implements combat.Combatant for testing
 type mockCombatant struct {
-	id           string
-	hitPoints    int
-	maxHitPoints int
-	ac           int
-	dirty        bool
+	id               string
+	hitPoints        int
+	maxHitPoints     int
+	ac               int
+	dirty            bool
+	abilityScores    shared.AbilityScores
+	proficiencyBonus int
 }
 
-func (m *mockCombatant) GetID() string        { return m.id }
-func (m *mockCombatant) GetHitPoints() int    { return m.hitPoints }
-func (m *mockCombatant) GetMaxHitPoints() int { return m.maxHitPoints }
-func (m *mockCombatant) AC() int              { return m.ac }
-func (m *mockCombatant) IsDirty() bool        { return m.dirty }
-func (m *mockCombatant) MarkClean()           { m.dirty = false }
+func (m *mockCombatant) GetID() string                          { return m.id }
+func (m *mockCombatant) GetHitPoints() int                      { return m.hitPoints }
+func (m *mockCombatant) GetMaxHitPoints() int                   { return m.maxHitPoints }
+func (m *mockCombatant) AC() int                                { return m.ac }
+func (m *mockCombatant) IsDirty() bool                          { return m.dirty }
+func (m *mockCombatant) MarkClean()                             { m.dirty = false }
+func (m *mockCombatant) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockCombatant) GetProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockCombatant) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

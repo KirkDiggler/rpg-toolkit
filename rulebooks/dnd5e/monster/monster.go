@@ -46,7 +46,8 @@ type Monster struct {
 	traitData []json.RawMessage
 
 	// Proficiencies
-	proficiencies map[string]int // skill -> bonus
+	proficiencyBonus int            // Base proficiency bonus (CR-based)
+	proficiencies    map[string]int // skill -> bonus
 
 	// AI behavior
 	targeting TargetingStrategy
@@ -61,24 +62,30 @@ type Monster struct {
 
 // Config provides initialization values for creating a monster
 type Config struct {
-	ID            string
-	Name          string
-	Ref           *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
-	HP            int
-	AC            int
-	AbilityScores shared.AbilityScores
+	ID               string
+	Name             string
+	Ref              *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
+	HP               int
+	AC               int
+	AbilityScores    shared.AbilityScores
+	ProficiencyBonus int // CR-based proficiency bonus (default 2 if not set)
 }
 
 // New creates a new monster with the specified configuration
 func New(config Config) *Monster {
+	profBonus := config.ProficiencyBonus
+	if profBonus == 0 {
+		profBonus = 2 // Default for low CR monsters
+	}
 	return &Monster{
-		id:            config.ID,
-		name:          config.Name,
-		ref:           config.Ref,
-		hp:            config.HP,
-		maxHP:         config.HP,
-		ac:            config.AC,
-		abilityScores: config.AbilityScores,
+		id:               config.ID,
+		name:             config.Name,
+		ref:              config.Ref,
+		hp:               config.HP,
+		maxHP:            config.HP,
+		ac:               config.AC,
+		abilityScores:    config.AbilityScores,
+		proficiencyBonus: profBonus,
 	}
 }
 
@@ -185,6 +192,16 @@ func (m *Monster) MarkClean() {
 // AbilityScores returns the monster's ability scores
 func (m *Monster) AbilityScores() shared.AbilityScores {
 	return m.abilityScores
+}
+
+// GetAbilityScores returns all ability scores (implements Combatant interface)
+func (m *Monster) GetAbilityScores() shared.AbilityScores {
+	return m.abilityScores
+}
+
+// GetProficiencyBonus returns the monster's proficiency bonus (implements Combatant interface)
+func (m *Monster) GetProficiencyBonus() int {
+	return m.proficiencyBonus
 }
 
 // TakeDamage reduces HP (returns actual damage taken)
@@ -294,22 +311,29 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, 
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
 
+	// Handle proficiency bonus - default to 2 if not set
+	profBonus := d.ProficiencyBonus
+	if profBonus == 0 {
+		profBonus = 2
+	}
+
 	// Create the monster with basic data
 	m := &Monster{
-		id:              d.ID,
-		name:            d.Name,
-		ref:             d.Ref,
-		hp:              d.HitPoints,
-		maxHP:           d.MaxHitPoints,
-		ac:              d.ArmorClass,
-		abilityScores:   d.AbilityScores,
-		speed:           d.Speed,
-		senses:          d.Senses,
-		targeting:       d.Targeting,
-		bus:             bus,
-		subscriptionIDs: make([]string, 0),
-		actions:         make([]MonsterAction, 0, len(d.Actions)),
-		proficiencies:   make(map[string]int),
+		id:               d.ID,
+		name:             d.Name,
+		ref:              d.Ref,
+		hp:               d.HitPoints,
+		maxHP:            d.MaxHitPoints,
+		ac:               d.ArmorClass,
+		abilityScores:    d.AbilityScores,
+		proficiencyBonus: profBonus,
+		speed:            d.Speed,
+		senses:           d.Senses,
+		targeting:        d.Targeting,
+		bus:              bus,
+		subscriptionIDs:  make([]string, 0),
+		actions:          make([]MonsterAction, 0, len(d.Actions)),
+		proficiencies:    make(map[string]int),
 	}
 
 	// Actions must be loaded by the caller to avoid import cycles.
@@ -660,18 +684,19 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 // ToData converts the monster to its persistent data form
 func (m *Monster) ToData() *Data {
 	data := &Data{
-		ID:            m.id,
-		Name:          m.name,
-		Ref:           m.ref,
-		HitPoints:     m.hp,
-		MaxHitPoints:  m.maxHP,
-		ArmorClass:    m.ac,
-		AbilityScores: m.abilityScores,
-		Speed:         m.speed,
-		Senses:        m.senses,
-		Targeting:     m.targeting,
-		Actions:       make([]ActionData, 0, len(m.actions)),
-		Proficiencies: make([]ProficiencyData, 0, len(m.proficiencies)),
+		ID:               m.id,
+		Name:             m.name,
+		Ref:              m.ref,
+		HitPoints:        m.hp,
+		MaxHitPoints:     m.maxHP,
+		ArmorClass:       m.ac,
+		AbilityScores:    m.abilityScores,
+		ProficiencyBonus: m.proficiencyBonus,
+		Speed:            m.speed,
+		Senses:           m.senses,
+		Targeting:        m.targeting,
+		Actions:          make([]ActionData, 0, len(m.actions)),
+		Proficiencies:    make([]ProficiencyData, 0, len(m.proficiencies)),
 	}
 
 	// Convert actions
