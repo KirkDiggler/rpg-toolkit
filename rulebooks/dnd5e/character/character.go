@@ -94,6 +94,9 @@ type Character struct {
 	// Event handling
 	bus             events.EventBus
 	subscriptionIDs []string
+
+	// Dirty tracking for persistence
+	dirty bool
 }
 
 // GetID returns the character's unique identifier
@@ -548,12 +551,32 @@ func (c *Character) ApplyDamage(_ context.Context, input *combat.ApplyDamageInpu
 		c.hitPoints = 0
 	}
 
+	c.dirty = true // Mark dirty when HP changes
+
 	return &combat.ApplyDamageResult{
 		TotalDamage:   totalDamage,
 		CurrentHP:     c.hitPoints,
 		DroppedToZero: c.hitPoints == 0 && previousHP > 0,
 		PreviousHP:    previousHP,
 	}
+}
+
+// AC returns the character's armor class.
+// Implements combat.Combatant interface.
+func (c *Character) AC() int {
+	return c.armorClass
+}
+
+// IsDirty returns true if the character has been modified since last save.
+// Implements combat.Combatant interface.
+func (c *Character) IsDirty() bool {
+	return c.dirty
+}
+
+// MarkClean marks the character as saved (not dirty).
+// Implements combat.Combatant interface.
+func (c *Character) MarkClean() {
+	c.dirty = false
 }
 
 // emptyResource is returned when a resource doesn't exist.

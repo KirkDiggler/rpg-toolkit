@@ -54,6 +54,9 @@ type Monster struct {
 	// Event bus wiring
 	bus             events.EventBus
 	subscriptionIDs []string
+
+	// Dirty tracking for persistence
+	dirty bool
 }
 
 // Config provides initialization values for creating a monster
@@ -152,6 +155,8 @@ func (m *Monster) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput)
 		m.hp = 0
 	}
 
+	m.dirty = true // Mark dirty when HP changes
+
 	return &combat.ApplyDamageResult{
 		TotalDamage:   totalDamage,
 		CurrentHP:     m.hp,
@@ -163,6 +168,18 @@ func (m *Monster) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput)
 // AC returns armor class
 func (m *Monster) AC() int {
 	return m.ac
+}
+
+// IsDirty returns true if the monster has been modified since last save.
+// Implements combat.Combatant interface.
+func (m *Monster) IsDirty() bool {
+	return m.dirty
+}
+
+// MarkClean marks the monster as saved (not dirty).
+// Implements combat.Combatant interface.
+func (m *Monster) MarkClean() {
+	m.dirty = false
 }
 
 // AbilityScores returns the monster's ability scores

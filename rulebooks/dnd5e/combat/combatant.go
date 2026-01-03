@@ -56,7 +56,16 @@ type Combatant interface {
 	// GetMaxHitPoints returns maximum HP
 	GetMaxHitPoints() int
 
+	// AC returns the combatant's armor class
+	AC() int
+
 	// ApplyDamage reduces HP by the damage amount(s).
 	// HP cannot go below 0.
 	ApplyDamage(ctx context.Context, input *ApplyDamageInput) *ApplyDamageResult
+
+	// IsDirty returns true if the combatant has been modified since last save
+	IsDirty() bool
+
+	// MarkClean marks the combatant as saved (not dirty)
+	MarkClean()
 }
