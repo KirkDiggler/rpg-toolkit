@@ -1,4 +1,4 @@
-package combat
+package combat_test
 
 import (
 	"context"
@@ -12,29 +12,20 @@ import (
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	mock_combat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/mock"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// testEntity is a simple entity for testing attacks without importing monster
-type testEntity struct {
-	id   string
-	name string
-	hp   int
-	ac   int
-}
-
-func (t *testEntity) GetID() string            { return t.id }
-func (t *testEntity) GetType() core.EntityType { return "test-entity" }
-func (t *testEntity) AC() int                  { return t.ac }
-
 type AttackTestSuite struct {
 	suite.Suite
 	ctrl     *gomock.Controller
 	ctx      context.Context
 	eventBus events.EventBus
+	lookup   *mock_combat.MockCombatantLookup
 }
 
 func TestAttackSuite(t *testing.T) {
@@ -43,8 +34,10 @@ func TestAttackSuite(t *testing.T) {
 
 func (s *AttackTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
 	s.eventBus = events.NewEventBus()
+	s.lookup = mock_combat.NewMockCombatantLookup(s.ctrl)
+	// Add combatant lookup to context
+	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
 }
 
 func (s *AttackTestSuite) TearDownTest() {
@@ -52,26 +45,23 @@ func (s *AttackTestSuite) TearDownTest() {
 }
 
 func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
-	// Create attacker entity with moderate STR
-	attackerScores := shared.AbilityScores{
+	// Create mock attacker with moderate STR
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("barbarian-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 16, // +3 modifier
 		abilities.DEX: 10, // +0 modifier
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
-	attacker := &testEntity{
-		id:   "barbarian-1",
-		name: "Barbarian",
-		hp:   50,
-		ac:   15,
-	}
+	// Create mock goblin target (AC 15 per SRD)
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
 
-	// Create goblin target (AC 15 per SRD)
-	goblin := &testEntity{
-		id:   "goblin-1",
-		name: "Goblin",
-		hp:   7,
-		ac:   15,
-	}
+	// Configure lookup to return our mocks
+	s.lookup.EXPECT().Get("barbarian-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
 
 	// Longsword
 	longsword := &weapons.Weapon{
@@ -87,18 +77,15 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 	mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(), // 15
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "barbarian-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
@@ -119,23 +106,19 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 }
 
 func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
-	attackerScores := shared.AbilityScores{
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("barbarian-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 10, // +0 modifier
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(0).AnyTimes()
 
-	attacker := &testEntity{
-		id:   "barbarian-1",
-		name: "Barbarian",
-		hp:   50,
-		ac:   15,
-	}
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
 
-	goblin := &testEntity{
-		id:   "goblin-1",
-		name: "Goblin",
-		hp:   7,
-		ac:   15,
-	}
+	s.lookup.EXPECT().Get("barbarian-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -149,18 +132,15 @@ func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
 	mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil)
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil).Times(2)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 0,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "barbarian-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 
 	s.Equal(20, result.AttackRoll)
@@ -177,23 +157,19 @@ func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
 }
 
 func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
-	attackerScores := shared.AbilityScores{
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("barbarian-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 16, // +3
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
-	attacker := &testEntity{
-		id:   "barbarian-1",
-		name: "Barbarian",
-		hp:   50,
-		ac:   15,
-	}
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
 
-	goblin := &testEntity{
-		id:   "goblin-1",
-		name: "Goblin",
-		hp:   7,
-		ac:   15,
-	}
+	s.lookup.EXPECT().Get("barbarian-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -234,18 +210,15 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 	})
 	s.Require().NoError(err)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "barbarian-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 	s.True(result.Hit)
 
@@ -261,12 +234,19 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 }
 
 func (s *AttackTestSuite) TestResolveAttack_WithAdvantage() {
-	attackerScores := shared.AbilityScores{
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
-	attacker := &testEntity{id: "fighter-1", name: "Fighter", hp: 40, ac: 16}
-	goblin := &testEntity{id: "goblin-1", name: "Goblin", hp: 7, ac: 15}
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
+
+	s.lookup.EXPECT().Get("fighter-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -296,22 +276,19 @@ func (s *AttackTestSuite) TestResolveAttack_WithAdvantage() {
 			})
 			return evt, nil
 		}
-		return c, c.Add(StageConditions, "pack_tactics", addAdvantage)
+		return c, c.Add(combat.StageConditions, "pack_tactics", addAdvantage)
 	})
 	s.Require().NoError(err)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 
 	// Should take higher roll (15)
@@ -326,12 +303,19 @@ func (s *AttackTestSuite) TestResolveAttack_WithAdvantage() {
 }
 
 func (s *AttackTestSuite) TestResolveAttack_WithDisadvantage() {
-	attackerScores := shared.AbilityScores{
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
-	attacker := &testEntity{id: "fighter-1", name: "Fighter", hp: 40, ac: 16}
-	goblin := &testEntity{id: "goblin-1", name: "Goblin", hp: 7, ac: 15}
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
+
+	s.lookup.EXPECT().Get("fighter-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -361,22 +345,19 @@ func (s *AttackTestSuite) TestResolveAttack_WithDisadvantage() {
 			})
 			return evt, nil
 		}
-		return c, c.Add(StageConditions, "protection", addDisadvantage)
+		return c, c.Add(combat.StageConditions, "protection", addDisadvantage)
 	})
 	s.Require().NoError(err)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 
 	// Should take lower roll (5)
@@ -391,12 +372,19 @@ func (s *AttackTestSuite) TestResolveAttack_WithDisadvantage() {
 }
 
 func (s *AttackTestSuite) TestResolveAttack_AdvantageAndDisadvantageCancelOut() {
-	attackerScores := shared.AbilityScores{
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
-	attacker := &testEntity{id: "fighter-1", name: "Fighter", hp: 40, ac: 16}
-	goblin := &testEntity{id: "goblin-1", name: "Goblin", hp: 7, ac: 15}
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
+
+	s.lookup.EXPECT().Get("fighter-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -432,22 +420,19 @@ func (s *AttackTestSuite) TestResolveAttack_AdvantageAndDisadvantageCancelOut() 
 			})
 			return evt, nil
 		}
-		return c, c.Add(StageConditions, "flanking_and_prone", addBoth)
+		return c, c.Add(combat.StageConditions, "flanking_and_prone", addBoth)
 	})
 	s.Require().NoError(err)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 
 	// D&D 5e rule: any advantage + any disadvantage = cancel out to normal roll
@@ -462,12 +447,19 @@ func (s *AttackTestSuite) TestResolveAttack_AdvantageAndDisadvantageCancelOut() 
 }
 
 func (s *AttackTestSuite) TestResolveAttack_ReactionsConsumedPublishesEvents() {
-	attackerScores := shared.AbilityScores{
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
-	}
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
-	attacker := &testEntity{id: "goblin-1", name: "Goblin", hp: 7, ac: 15}
-	defender := &testEntity{id: "fighter-1", name: "Fighter", hp: 40, ac: 18}
+	defender := mock_combat.NewMockCombatant(s.ctrl)
+	defender.EXPECT().GetID().Return("fighter-1").AnyTimes()
+	defender.EXPECT().AC().Return(18).AnyTimes()
+
+	s.lookup.EXPECT().Get("goblin-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("fighter-1").Return(defender, nil).AnyTimes()
 
 	scimitar := &weapons.Weapon{
 		ID:         weapons.Scimitar,
@@ -513,22 +505,19 @@ func (s *AttackTestSuite) TestResolveAttack_ReactionsConsumedPublishesEvents() {
 			})
 			return evt, nil
 		}
-		return c, c.Add(StageConditions, "protection", addProtection)
+		return c, c.Add(combat.StageConditions, "protection", addProtection)
 	})
 	s.Require().NoError(err)
 
-	input := &AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           scimitar,
-		AttackerScores:   attackerScores,
-		DefenderAC:       defender.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+	input := &combat.AttackInput{
+		AttackerID: "goblin-1",
+		TargetID:   "fighter-1",
+		Weapon:     scimitar,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
-	result, err := ResolveAttack(s.ctx, input)
+	result, err := combat.ResolveAttack(s.ctx, input)
 	s.Require().NoError(err)
 
 	// Verify attack missed due to disadvantage

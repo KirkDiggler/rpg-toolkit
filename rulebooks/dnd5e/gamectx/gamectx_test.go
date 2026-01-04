@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -713,14 +714,23 @@ func TestCombatStateSuite(t *testing.T) {
 
 // mockCombatant implements Combatant for testing
 type mockCombatant struct {
-	id           string
-	hitPoints    int
-	maxHitPoints int
+	id               string
+	hitPoints        int
+	maxHitPoints     int
+	ac               int
+	dirty            bool
+	abilityScores    shared.AbilityScores
+	proficiencyBonus int
 }
 
-func (m *mockCombatant) GetID() string        { return m.id }
-func (m *mockCombatant) GetHitPoints() int    { return m.hitPoints }
-func (m *mockCombatant) GetMaxHitPoints() int { return m.maxHitPoints }
+func (m *mockCombatant) GetID() string                       { return m.id }
+func (m *mockCombatant) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockCombatant) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockCombatant) AC() int                             { return m.ac }
+func (m *mockCombatant) IsDirty() bool                       { return m.dirty }
+func (m *mockCombatant) MarkClean()                          { m.dirty = false }
+func (m *mockCombatant) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockCombatant) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockCombatant) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

@@ -9,6 +9,7 @@ import (
 
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -19,11 +20,32 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+// simpleCombatantLookup provides combatant lookup for tests using real Monster instances
+type simpleCombatantLookup struct {
+	combatants map[string]combat.Combatant
+}
+
+func newSimpleCombatantLookup() *simpleCombatantLookup {
+	return &simpleCombatantLookup{combatants: make(map[string]combat.Combatant)}
+}
+
+func (l *simpleCombatantLookup) Add(c combat.Combatant) {
+	l.combatants[c.GetID()] = c
+}
+
+func (l *simpleCombatantLookup) Get(id string) (combat.Combatant, error) {
+	if c, ok := l.combatants[id]; ok {
+		return c, nil
+	}
+	return nil, rpgerr.New(rpgerr.CodeNotFound, "combatant not found: "+id)
+}
+
 type BreakdownTestSuite struct {
 	suite.Suite
 	ctrl     *gomock.Controller
 	ctx      context.Context
 	eventBus events.EventBus
+	lookup   *simpleCombatantLookup
 }
 
 func TestBreakdownSuite(t *testing.T) {
@@ -32,8 +54,9 @@ func TestBreakdownSuite(t *testing.T) {
 
 func (s *BreakdownTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
 	s.eventBus = events.NewEventBus()
+	s.lookup = newSimpleCombatantLookup()
+	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
 }
 
 func (s *BreakdownTestSuite) TearDownTest() {
@@ -48,14 +71,17 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_BasicMelee() {
 	}
 
 	attacker := monster.New(monster.Config{
-		ID:            "barbarian-1",
-		Name:          "Barbarian",
-		HP:            50,
-		AC:            15,
-		AbilityScores: attackerScores,
+		ID:               "barbarian-1",
+		Name:             "Barbarian",
+		HP:               50,
+		AC:               15,
+		AbilityScores:    attackerScores,
+		ProficiencyBonus: 2,
 	})
+	s.lookup.Add(attacker)
 
 	goblin := monster.NewGoblin("goblin-1")
+	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -71,14 +97,11 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_BasicMelee() {
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil)
 
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+		AttackerID: "barbarian-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
 	result, err := combat.ResolveAttack(s.ctx, input)
@@ -123,12 +146,14 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 	}
 
 	attacker := monster.New(monster.Config{
-		ID:            "barbarian-1",
-		Name:          "Barbarian",
-		HP:            50,
-		AC:            15,
-		AbilityScores: attackerScores,
+		ID:               "barbarian-1",
+		Name:             "Barbarian",
+		HP:               50,
+		AC:               15,
+		AbilityScores:    attackerScores,
+		ProficiencyBonus: 2,
 	})
+	s.lookup.Add(attacker)
 
 	// Apply rage condition (level 1 barbarian has +2 rage bonus)
 	raging := &conditions.RagingCondition{
@@ -141,6 +166,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 	s.Require().NoError(err)
 
 	goblin := monster.NewGoblin("goblin-1")
+	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -156,14 +182,11 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{6}, nil)
 
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+		AttackerID: "barbarian-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
 	result, err := combat.ResolveAttack(s.ctx, input)
@@ -211,14 +234,17 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_FinesseWeapon() {
 	}
 
 	attacker := monster.New(monster.Config{
-		ID:            "rogue-1",
-		Name:          "Rogue",
-		HP:            30,
-		AC:            15,
-		AbilityScores: attackerScores,
+		ID:               "rogue-1",
+		Name:             "Rogue",
+		HP:               30,
+		AC:               15,
+		AbilityScores:    attackerScores,
+		ProficiencyBonus: 3,
 	})
+	s.lookup.Add(attacker)
 
 	goblin := monster.NewGoblin("goblin-1")
+	s.lookup.Add(goblin)
 
 	// Rapier is a finesse weapon
 	rapier := &weapons.Weapon{
@@ -236,14 +262,11 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_FinesseWeapon() {
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{5}, nil)
 
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           rapier,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 3,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+		AttackerID: "rogue-1",
+		TargetID:   "goblin-1",
+		Weapon:     rapier,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
 	result, err := combat.ResolveAttack(s.ctx, input)
@@ -279,14 +302,17 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_CriticalHit() {
 	}
 
 	attacker := monster.New(monster.Config{
-		ID:            "fighter-1",
-		Name:          "Fighter",
-		HP:            40,
-		AC:            16,
-		AbilityScores: attackerScores,
+		ID:               "fighter-1",
+		Name:             "Fighter",
+		HP:               40,
+		AC:               16,
+		AbilityScores:    attackerScores,
+		ProficiencyBonus: 2,
 	})
+	s.lookup.Add(attacker)
 
 	goblin := monster.NewGoblin("goblin-1")
+	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -301,14 +327,11 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_CriticalHit() {
 	mockRoller.EXPECT().RollN(s.ctx, 1, 8).Return([]int{6}, nil).Times(2)
 
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 2,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
 	result, err := combat.ResolveAttack(s.ctx, input)
@@ -348,14 +371,17 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_Miss() {
 	}
 
 	attacker := monster.New(monster.Config{
-		ID:            "fighter-1",
-		Name:          "Fighter",
-		HP:            40,
-		AC:            16,
-		AbilityScores: attackerScores,
+		ID:               "fighter-1",
+		Name:             "Fighter",
+		HP:               40,
+		AC:               16,
+		AbilityScores:    attackerScores,
+		ProficiencyBonus: 0,
 	})
+	s.lookup.Add(attacker)
 
 	goblin := monster.NewGoblin("goblin-1")
+	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
 		ID:         weapons.Longsword,
@@ -369,14 +395,11 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_Miss() {
 	mockRoller.EXPECT().Roll(s.ctx, 20).Return(5, nil)
 
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         goblin,
-		Weapon:           longsword,
-		AttackerScores:   attackerScores,
-		DefenderAC:       goblin.AC(),
-		ProficiencyBonus: 0,
-		EventBus:         s.eventBus,
-		Roller:           mockRoller,
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
 	}
 
 	result, err := combat.ResolveAttack(s.ctx, input)

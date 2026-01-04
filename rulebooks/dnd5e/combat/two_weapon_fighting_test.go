@@ -44,13 +44,15 @@ type TwoWeaponFightingTestSuite struct {
 	ctx        context.Context
 	bus        events.EventBus
 	mockRoller *mock_dice.MockRoller
+	lookup     *integrationLookup
 }
 
 func (s *TwoWeaponFightingTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	s.lookup = newIntegrationLookup()
+	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
 }
 
 func (s *TwoWeaponFightingTestSuite) TearDownTest() {
@@ -66,17 +68,6 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithLightWeapons() {
 	}
 	ctx := combat.WithTwoWeaponContext(s.ctx, twc)
 
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	// Get the dagger for the off-hand attack
-	dagger, err := weapons.GetByID(weapons.Dagger)
-	s.Require().NoError(err)
-
-	// Mock rolls: 15 for attack, 4 for damage
-	s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(15, nil)
-	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 4).Return([]int{4}, nil) // 1d4 dagger damage
-
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
 		abilities.DEX: 16, // +3
@@ -86,16 +77,40 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithLightWeapons() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	// Get the dagger for the off-hand attack
+	dagger, err := weapons.GetByID(weapons.Dagger)
+	s.Require().NoError(err)
+
+	// Mock rolls: 15 for attack, 4 for damage
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(15, nil)
+	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 4).Return([]int{4}, nil) // 1d4 dagger damage
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &dagger,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &dagger,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	result, err := combat.ResolveAttack(ctx, input)
@@ -116,12 +131,6 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNonLightMainHand() {
 	}
 	ctx := combat.WithTwoWeaponContext(s.ctx, twc)
 
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	dagger, err := weapons.GetByID(weapons.Dagger)
-	s.Require().NoError(err)
-
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
 		abilities.DEX: 16,
@@ -131,16 +140,35 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNonLightMainHand() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	dagger, err := weapons.GetByID(weapons.Dagger)
+	s.Require().NoError(err)
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &dagger,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &dagger,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	_, err = combat.ResolveAttack(ctx, input)
@@ -158,12 +186,6 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNonLightOffHand() {
 	}
 	ctx := combat.WithTwoWeaponContext(s.ctx, twc)
 
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	longsword, err := weapons.GetByID(weapons.Longsword)
-	s.Require().NoError(err)
-
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
 		abilities.DEX: 16,
@@ -173,16 +195,35 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNonLightOffHand() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	longsword, err := weapons.GetByID(weapons.Longsword)
+	s.Require().NoError(err)
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &longsword,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &longsword,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	_, err = combat.ResolveAttack(ctx, input)
@@ -200,12 +241,6 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoMainHand() {
 	}
 	ctx := combat.WithTwoWeaponContext(s.ctx, twc)
 
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	dagger, err := weapons.GetByID(weapons.Dagger)
-	s.Require().NoError(err)
-
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
 		abilities.DEX: 16,
@@ -215,16 +250,35 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoMainHand() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	dagger, err := weapons.GetByID(weapons.Dagger)
+	s.Require().NoError(err)
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &dagger,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &dagger,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	_, err = combat.ResolveAttack(ctx, input)
@@ -242,12 +296,6 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoOffHand() {
 	}
 	ctx := combat.WithTwoWeaponContext(s.ctx, twc)
 
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	shortsword, err := weapons.GetByID(weapons.Shortsword)
-	s.Require().NoError(err)
-
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
 		abilities.DEX: 16,
@@ -257,16 +305,35 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoOffHand() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	shortsword, err := weapons.GetByID(weapons.Shortsword)
+	s.Require().NoError(err)
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &shortsword,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &shortsword,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	_, err = combat.ResolveAttack(ctx, input)
@@ -287,12 +354,6 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoBonusAction() {
 	}
 	ctx := combat.WithTwoWeaponContext(s.ctx, twc)
 
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	dagger, err := weapons.GetByID(weapons.Dagger)
-	s.Require().NoError(err)
-
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
 		abilities.DEX: 16,
@@ -302,16 +363,35 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoBonusAction() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	dagger, err := weapons.GetByID(weapons.Dagger)
+	s.Require().NoError(err)
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &dagger,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &dagger,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	_, err = combat.ResolveAttack(ctx, input)
@@ -321,14 +401,8 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoBonusAction() {
 }
 
 func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoContext() {
-	// Setup: No TwoWeaponContext in context
-	ctx := s.ctx // No TwoWeaponContext
-
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	dagger, err := weapons.GetByID(weapons.Dagger)
-	s.Require().NoError(err)
+	// Setup: No TwoWeaponContext in context (but still has combatant lookup)
+	ctx := s.ctx // Has CombatantLookup but no TwoWeaponContext
 
 	scores := shared.AbilityScores{
 		abilities.STR: 10,
@@ -339,16 +413,35 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoContext() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	dagger, err := weapons.GetByID(weapons.Dagger)
+	s.Require().NoError(err)
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &dagger,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandOff,
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &dagger,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandOff,
 	}
 
 	_, err = combat.ResolveAttack(ctx, input)
@@ -359,17 +452,7 @@ func (s *TwoWeaponFightingTestSuite) TestOffHandAttackWithNoContext() {
 
 func (s *TwoWeaponFightingTestSuite) TestMainHandAttackDoesNotRequireContext() {
 	// Main hand attacks should work without TwoWeaponContext
-	ctx := s.ctx // No TwoWeaponContext
-
-	attacker := &mockEntity{id: "fighter-1", name: "Fighter"}
-	defender := &mockEntity{id: "goblin-1", name: "Goblin"}
-
-	longsword, err := weapons.GetByID(weapons.Longsword)
-	s.Require().NoError(err)
-
-	// Mock rolls: 15 for attack, 6 for damage
-	s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(15, nil)
-	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 8).Return([]int{6}, nil) // 1d8 longsword
+	ctx := s.ctx // Has CombatantLookup but no TwoWeaponContext
 
 	scores := shared.AbilityScores{
 		abilities.STR: 16, // +3
@@ -380,16 +463,39 @@ func (s *TwoWeaponFightingTestSuite) TestMainHandAttackDoesNotRequireContext() {
 		abilities.CHA: 10,
 	}
 
+	attacker := &mockEntity{
+		id:               "fighter-1",
+		name:             "Fighter",
+		abilityScores:    scores,
+		proficiencyBonus: 2,
+		ac:               16,
+		hitPoints:        20,
+		maxHitPoints:     20,
+	}
+	defender := &mockEntity{
+		id:           "goblin-1",
+		name:         "Goblin",
+		ac:           12,
+		hitPoints:    7,
+		maxHitPoints: 7,
+	}
+	s.lookup.Add(attacker)
+	s.lookup.Add(defender)
+
+	longsword, err := weapons.GetByID(weapons.Longsword)
+	s.Require().NoError(err)
+
+	// Mock rolls: 15 for attack, 6 for damage
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(15, nil)
+	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 8).Return([]int{6}, nil) // 1d8 longsword
+
 	input := &combat.AttackInput{
-		Attacker:         attacker,
-		Defender:         defender,
-		Weapon:           &longsword,
-		AttackerScores:   scores,
-		DefenderAC:       12,
-		ProficiencyBonus: 2,
-		EventBus:         s.bus,
-		Roller:           s.mockRoller,
-		AttackHand:       combat.AttackHandMain, // Main hand (default)
+		AttackerID: attacker.GetID(),
+		TargetID:   defender.GetID(),
+		Weapon:     &longsword,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+		AttackHand: combat.AttackHandMain, // Main hand (default)
 	}
 
 	result, err := combat.ResolveAttack(ctx, input)

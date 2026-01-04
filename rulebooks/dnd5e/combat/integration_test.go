@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -27,6 +26,26 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+// integrationLookup provides combatant lookup for integration tests
+type integrationLookup struct {
+	combatants map[string]combat.Combatant
+}
+
+func newIntegrationLookup() *integrationLookup {
+	return &integrationLookup{combatants: make(map[string]combat.Combatant)}
+}
+
+func (l *integrationLookup) Add(c combat.Combatant) {
+	l.combatants[c.GetID()] = c
+}
+
+func (l *integrationLookup) Get(id string) (combat.Combatant, error) {
+	if c, ok := l.combatants[id]; ok {
+		return c, nil
+	}
+	return nil, nil
+}
+
 // CombatIntegrationSuite tests the full combat flow with real components
 type CombatIntegrationSuite struct {
 	suite.Suite
@@ -34,20 +53,22 @@ type CombatIntegrationSuite struct {
 	ctx        context.Context
 	bus        events.EventBus
 	mockRoller *mock_dice.MockRoller
+	lookup     *integrationLookup
 
 	// Test fixtures reset per subtest
 	barbarian       *character.Character
 	barbarianScores shared.AbilityScores
-	goblin          core.Entity
+	goblin          combat.Combatant
 	weapon          *weapons.Weapon
 }
 
 // SetupTest runs before each test function
 func (s *CombatIntegrationSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	s.lookup = newIntegrationLookup()
+	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
 }
 
 // SetupSubTest runs before each s.Run() subtest
@@ -64,6 +85,10 @@ func (s *CombatIntegrationSuite) SetupSubTest() {
 	s.barbarian = s.createBarbarian()
 	s.goblin = s.createGoblin()
 	s.weapon = s.createGreataxe()
+
+	// Register combatants with lookup for ResolveAttack
+	s.lookup.Add(s.barbarian)
+	s.lookup.Add(s.goblin)
 }
 
 // TearDownTest runs after each test
@@ -133,7 +158,7 @@ func (s *CombatIntegrationSuite) createBarbarian() *character.Character {
 }
 
 // Helper: Create a goblin target
-func (s *CombatIntegrationSuite) createGoblin() core.Entity {
+func (s *CombatIntegrationSuite) createGoblin() combat.Combatant {
 	return monster.New(monster.Config{
 		ID:   "goblin-1",
 		Name: "Goblin Scout",
@@ -187,14 +212,11 @@ func (s *CombatIntegrationSuite) TestBarbarianRageAddsDamageOnHit() {
 
 		// Execute attack
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			Attacker:         s.barbarian,
-			Defender:         s.goblin,
-			Weapon:           s.weapon,
-			AttackerScores:   s.barbarianScores,
-			DefenderAC:       s.goblin.(interface{ AC() int }).AC(),
-			ProficiencyBonus: s.barbarian.GetProficiencyBonus(),
-			EventBus:         s.bus,
-			Roller:           s.mockRoller,
+			AttackerID: s.barbarian.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Weapon:     s.weapon,
+			EventBus:   s.bus,
+			Roller:     s.mockRoller,
 		})
 
 		s.Require().NoError(err)
@@ -241,14 +263,11 @@ func (s *CombatIntegrationSuite) TestRageDamageNotAppliedOnMiss() {
 
 		// Execute attack
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			Attacker:         s.barbarian,
-			Defender:         s.goblin,
-			Weapon:           s.weapon,
-			AttackerScores:   s.barbarianScores,
-			DefenderAC:       s.goblin.(interface{ AC() int }).AC(),
-			ProficiencyBonus: s.barbarian.GetProficiencyBonus(),
-			EventBus:         s.bus,
-			Roller:           s.mockRoller,
+			AttackerID: s.barbarian.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Weapon:     s.weapon,
+			EventBus:   s.bus,
+			Roller:     s.mockRoller,
 		})
 
 		s.Require().NoError(err)
@@ -290,14 +309,11 @@ func (s *CombatIntegrationSuite) TestCriticalHitWithRage() {
 
 		// Execute attack
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			Attacker:         s.barbarian,
-			Defender:         s.goblin,
-			Weapon:           s.weapon,
-			AttackerScores:   s.barbarianScores,
-			DefenderAC:       s.goblin.(interface{ AC() int }).AC(),
-			ProficiencyBonus: s.barbarian.GetProficiencyBonus(),
-			EventBus:         s.bus,
-			Roller:           s.mockRoller,
+			AttackerID: s.barbarian.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Weapon:     s.weapon,
+			EventBus:   s.bus,
+			Roller:     s.mockRoller,
 		})
 
 		s.Require().NoError(err)
@@ -340,14 +356,11 @@ func (s *CombatIntegrationSuite) TestAttackWithoutRage() {
 
 		// Execute attack
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			Attacker:         s.barbarian,
-			Defender:         s.goblin,
-			Weapon:           s.weapon,
-			AttackerScores:   s.barbarianScores,
-			DefenderAC:       s.goblin.(interface{ AC() int }).AC(),
-			ProficiencyBonus: s.barbarian.GetProficiencyBonus(),
-			EventBus:         s.bus,
-			Roller:           s.mockRoller,
+			AttackerID: s.barbarian.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Weapon:     s.weapon,
+			EventBus:   s.bus,
+			Roller:     s.mockRoller,
 		})
 
 		s.Require().NoError(err)
@@ -513,20 +526,33 @@ func (s *CombatIntegrationSuite) TestArcheryFightingStyle() {
 
 		s.T().Log("→ Legolas fires longbow at Goblin")
 
-		// Create mock entities
-		fighter := &mockEntity{id: "fighter-1", name: "Legolas"}
-		goblin := &mockEntity{id: "goblin-1", name: "Goblin"}
+		// Create mock combatants and register with lookup
+		fighter := &mockEntity{
+			id:               "fighter-1",
+			name:             "Legolas",
+			abilityScores:    fighterScores,
+			proficiencyBonus: 2,
+			ac:               16,
+			hitPoints:        20,
+			maxHitPoints:     20,
+		}
+		goblin := &mockEntity{
+			id:           "goblin-1",
+			name:         "Goblin",
+			ac:           13,
+			hitPoints:    7,
+			maxHitPoints: 7,
+		}
+		s.lookup.Add(fighter)
+		s.lookup.Add(goblin)
 
 		// Execute attack
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			Attacker:         fighter,
-			Defender:         goblin,
-			Weapon:           &longbow,
-			AttackerScores:   fighterScores,
-			DefenderAC:       13,
-			ProficiencyBonus: 2,
-			EventBus:         s.bus,
-			Roller:           s.mockRoller,
+			AttackerID: fighter.GetID(),
+			TargetID:   goblin.GetID(),
+			Weapon:     &longbow,
+			EventBus:   s.bus,
+			Roller:     s.mockRoller,
 		})
 
 		s.Require().NoError(err)
@@ -581,20 +607,33 @@ func (s *CombatIntegrationSuite) TestGreatWeaponFighting() {
 
 		s.T().Log("→ Conan swings greatsword at Goblin")
 
-		// Create mock entities
-		fighter := &mockEntity{id: "fighter-2", name: "Conan"}
-		goblin := &mockEntity{id: "goblin-2", name: "Goblin"}
+		// Create mock combatants and register with lookup
+		fighter := &mockEntity{
+			id:               "fighter-2",
+			name:             "Conan",
+			abilityScores:    fighterScores,
+			proficiencyBonus: 2,
+			ac:               16,
+			hitPoints:        20,
+			maxHitPoints:     20,
+		}
+		goblin := &mockEntity{
+			id:           "goblin-2",
+			name:         "Goblin",
+			ac:           13,
+			hitPoints:    7,
+			maxHitPoints: 7,
+		}
+		s.lookup.Add(fighter)
+		s.lookup.Add(goblin)
 
 		// Execute attack
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			Attacker:         fighter,
-			Defender:         goblin,
-			Weapon:           &greatsword,
-			AttackerScores:   fighterScores,
-			DefenderAC:       13,
-			ProficiencyBonus: 2,
-			EventBus:         s.bus,
-			Roller:           s.mockRoller,
+			AttackerID: fighter.GetID(),
+			TargetID:   goblin.GetID(),
+			Weapon:     &greatsword,
+			EventBus:   s.bus,
+			Roller:     s.mockRoller,
 		})
 
 		s.Require().NoError(err)
@@ -628,18 +667,45 @@ func (s *CombatIntegrationSuite) TestGreatWeaponFighting() {
 	})
 }
 
-// mockEntity is a simple entity for testing
+// mockEntity implements combat.Combatant for simple test cases
 type mockEntity struct {
-	id   string
-	name string
+	id               string
+	name             string
+	hitPoints        int
+	maxHitPoints     int
+	ac               int
+	abilityScores    shared.AbilityScores
+	proficiencyBonus int
 }
 
-func (m *mockEntity) GetID() string {
-	return m.id
-}
+func (m *mockEntity) GetID() string                       { return m.id }
+func (m *mockEntity) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockEntity) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockEntity) AC() int                             { return m.ac }
+func (m *mockEntity) IsDirty() bool                       { return false }
+func (m *mockEntity) MarkClean()                          {}
+func (m *mockEntity) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockEntity) ProficiencyBonus() int               { return m.proficiencyBonus }
 
-func (m *mockEntity) GetType() core.EntityType {
-	return "character"
+func (m *mockEntity) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
+	if input == nil {
+		return &combat.ApplyDamageResult{CurrentHP: m.hitPoints, PreviousHP: m.hitPoints}
+	}
+	previousHP := m.hitPoints
+	totalDamage := 0
+	for _, instance := range input.Instances {
+		totalDamage += instance.Amount
+	}
+	m.hitPoints -= totalDamage
+	if m.hitPoints < 0 {
+		m.hitPoints = 0
+	}
+	return &combat.ApplyDamageResult{
+		TotalDamage:   totalDamage,
+		CurrentHP:     m.hitPoints,
+		DroppedToZero: m.hitPoints == 0 && previousHP > 0,
+		PreviousHP:    previousHP,
+	}
 }
 
 // sumDice sums a slice of dice rolls
@@ -773,14 +839,23 @@ func (s *CombatIntegrationSuite) TestDealDamageWithRageResistance() {
 
 // mockCombatantTarget implements combat.Combatant for testing DealDamage
 type mockCombatantTarget struct {
-	id           string
-	hitPoints    int
-	maxHitPoints int
+	id               string
+	hitPoints        int
+	maxHitPoints     int
+	ac               int
+	dirty            bool
+	abilityScores    shared.AbilityScores
+	proficiencyBonus int
 }
 
-func (m *mockCombatantTarget) GetID() string        { return m.id }
-func (m *mockCombatantTarget) GetHitPoints() int    { return m.hitPoints }
-func (m *mockCombatantTarget) GetMaxHitPoints() int { return m.maxHitPoints }
+func (m *mockCombatantTarget) GetID() string                       { return m.id }
+func (m *mockCombatantTarget) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockCombatantTarget) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockCombatantTarget) AC() int                             { return m.ac }
+func (m *mockCombatantTarget) IsDirty() bool                       { return m.dirty }
+func (m *mockCombatantTarget) MarkClean()                          { m.dirty = false }
+func (m *mockCombatantTarget) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockCombatantTarget) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockCombatantTarget) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

@@ -19,10 +19,11 @@ type Data struct {
 	Ref  *core.Ref `json:"ref,omitempty"` // Type reference (e.g., refs.Monsters.Skeleton())
 
 	// Core stats
-	HitPoints     int                  `json:"hit_points"`
-	MaxHitPoints  int                  `json:"max_hit_points"`
-	ArmorClass    int                  `json:"armor_class"`
-	AbilityScores shared.AbilityScores `json:"ability_scores"`
+	HitPoints        int                  `json:"hit_points"`
+	MaxHitPoints     int                  `json:"max_hit_points"`
+	ArmorClass       int                  `json:"armor_class"`
+	AbilityScores    shared.AbilityScores `json:"ability_scores"`
+	ProficiencyBonus int                  `json:"proficiency_bonus,omitempty"` // CR-based proficiency bonus
 
 	// Movement
 	Speed SpeedData `json:"speed"`
