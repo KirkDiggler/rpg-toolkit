@@ -106,7 +106,7 @@ func (s *RogueExpertiseSuite) TestRogueExpertiseDoublesSkillBonus() {
 	s.Require().NotNil(char)
 
 	// Verify proficiency bonus at level 1 is +2
-	s.Equal(2, char.GetProficiencyBonus())
+	s.Equal(2, char.ProficiencyBonus())
 
 	// DEX modifier is +3
 	dexMod := char.GetAbilityModifier(abilities.DEX)

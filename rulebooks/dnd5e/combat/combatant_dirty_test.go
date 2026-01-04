@@ -31,14 +31,14 @@ type mockDirtyCombatant struct {
 	proficiencyBonus int
 }
 
-func (m *mockDirtyCombatant) GetID() string                          { return m.id }
-func (m *mockDirtyCombatant) GetHitPoints() int                      { return m.hp }
-func (m *mockDirtyCombatant) GetMaxHitPoints() int                   { return m.maxHP }
-func (m *mockDirtyCombatant) AC() int                                { return m.ac }
-func (m *mockDirtyCombatant) IsDirty() bool                          { return m.dirty }
-func (m *mockDirtyCombatant) MarkClean()                             { m.dirty = false }
-func (m *mockDirtyCombatant) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
-func (m *mockDirtyCombatant) GetProficiencyBonus() int               { return m.proficiencyBonus }
+func (m *mockDirtyCombatant) GetID() string                       { return m.id }
+func (m *mockDirtyCombatant) GetHitPoints() int                   { return m.hp }
+func (m *mockDirtyCombatant) GetMaxHitPoints() int                { return m.maxHP }
+func (m *mockDirtyCombatant) AC() int                             { return m.ac }
+func (m *mockDirtyCombatant) IsDirty() bool                       { return m.dirty }
+func (m *mockDirtyCombatant) MarkClean()                          { m.dirty = false }
+func (m *mockDirtyCombatant) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockDirtyCombatant) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockDirtyCombatant) ApplyDamage(ctx context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	prev := m.hp
@@ -121,8 +121,8 @@ func (s *CombatantDirtyTestSuite) TestApplyDamage_MarksDirty() {
 	s.Equal(15, c.GetHitPoints())
 }
 
-// Test that Combatant interface includes GetAbilityScores method
-func (s *CombatantDirtyTestSuite) TestCombatant_GetAbilityScores() {
+// Test that Combatant interface includes AbilityScores method
+func (s *CombatantDirtyTestSuite) TestCombatant_AbilityScores() {
 	combatant := &mockDirtyCombatant{
 		id:    "test-1",
 		hp:    20,
@@ -137,15 +137,15 @@ func (s *CombatantDirtyTestSuite) TestCombatant_GetAbilityScores() {
 		},
 	}
 
-	// This should compile - Combatant interface should have GetAbilityScores()
+	// This should compile - Combatant interface should have AbilityScores()
 	var c combat.Combatant = combatant
-	scores := c.GetAbilityScores()
+	scores := c.AbilityScores()
 	s.Equal(16, scores["STR"])
 	s.Equal(14, scores["DEX"])
 }
 
-// Test that Combatant interface includes GetProficiencyBonus method
-func (s *CombatantDirtyTestSuite) TestCombatant_GetProficiencyBonus() {
+// Test that Combatant interface includes ProficiencyBonus method
+func (s *CombatantDirtyTestSuite) TestCombatant_ProficiencyBonus() {
 	combatant := &mockDirtyCombatant{
 		id:               "test-1",
 		hp:               20,
@@ -153,7 +153,7 @@ func (s *CombatantDirtyTestSuite) TestCombatant_GetProficiencyBonus() {
 		proficiencyBonus: 3,
 	}
 
-	// This should compile - Combatant interface should have GetProficiencyBonus()
+	// This should compile - Combatant interface should have ProficiencyBonus()
 	var c combat.Combatant = combatant
-	s.Equal(3, c.GetProficiencyBonus())
+	s.Equal(3, c.ProficiencyBonus())
 }

@@ -169,8 +169,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	}
 
 	// Get attacker stats for attack calculations
-	attackerScores := attacker.GetAbilityScores()
-	proficiencyBonus := attacker.GetProficiencyBonus()
+	attackerScores := attacker.AbilityScores()
+	proficiencyBonus := attacker.ProficiencyBonus()
 
 	// Get defender's effective AC (uses AC chain for Characters, base AC for Monsters)
 	defenderAC := GetEffectiveAC(ctx, defender)

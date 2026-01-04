@@ -56,6 +56,20 @@ func (mr *MockCombatantMockRecorder) AC() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AC", reflect.TypeOf((*MockCombatant)(nil).AC))
 }
 
+// AbilityScores mocks base method.
+func (m *MockCombatant) AbilityScores() shared.AbilityScores {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AbilityScores")
+	ret0, _ := ret[0].(shared.AbilityScores)
+	return ret0
+}
+
+// AbilityScores indicates an expected call of AbilityScores.
+func (mr *MockCombatantMockRecorder) AbilityScores() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AbilityScores", reflect.TypeOf((*MockCombatant)(nil).AbilityScores))
+}
+
 // ApplyDamage mocks base method.
 func (m *MockCombatant) ApplyDamage(ctx context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	m.ctrl.T.Helper()
@@ -68,20 +82,6 @@ func (m *MockCombatant) ApplyDamage(ctx context.Context, input *combat.ApplyDama
 func (mr *MockCombatantMockRecorder) ApplyDamage(ctx, input any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyDamage", reflect.TypeOf((*MockCombatant)(nil).ApplyDamage), ctx, input)
-}
-
-// GetAbilityScores mocks base method.
-func (m *MockCombatant) GetAbilityScores() shared.AbilityScores {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAbilityScores")
-	ret0, _ := ret[0].(shared.AbilityScores)
-	return ret0
-}
-
-// GetAbilityScores indicates an expected call of GetAbilityScores.
-func (mr *MockCombatantMockRecorder) GetAbilityScores() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAbilityScores", reflect.TypeOf((*MockCombatant)(nil).GetAbilityScores))
 }
 
 // GetHitPoints mocks base method.
@@ -126,20 +126,6 @@ func (mr *MockCombatantMockRecorder) GetMaxHitPoints() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMaxHitPoints", reflect.TypeOf((*MockCombatant)(nil).GetMaxHitPoints))
 }
 
-// GetProficiencyBonus mocks base method.
-func (m *MockCombatant) GetProficiencyBonus() int {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetProficiencyBonus")
-	ret0, _ := ret[0].(int)
-	return ret0
-}
-
-// GetProficiencyBonus indicates an expected call of GetProficiencyBonus.
-func (mr *MockCombatantMockRecorder) GetProficiencyBonus() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProficiencyBonus", reflect.TypeOf((*MockCombatant)(nil).GetProficiencyBonus))
-}
-
 // IsDirty mocks base method.
 func (m *MockCombatant) IsDirty() bool {
 	m.ctrl.T.Helper()
@@ -164,6 +150,20 @@ func (m *MockCombatant) MarkClean() {
 func (mr *MockCombatantMockRecorder) MarkClean() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkClean", reflect.TypeOf((*MockCombatant)(nil).MarkClean))
+}
+
+// ProficiencyBonus mocks base method.
+func (m *MockCombatant) ProficiencyBonus() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProficiencyBonus")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// ProficiencyBonus indicates an expected call of ProficiencyBonus.
+func (mr *MockCombatantMockRecorder) ProficiencyBonus() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProficiencyBonus", reflect.TypeOf((*MockCombatant)(nil).ProficiencyBonus))
 }
 
 // MockCombatantLookup is a mock of CombatantLookup interface.

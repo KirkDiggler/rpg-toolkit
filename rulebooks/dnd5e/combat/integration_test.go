@@ -678,14 +678,14 @@ type mockEntity struct {
 	proficiencyBonus int
 }
 
-func (m *mockEntity) GetID() string                          { return m.id }
-func (m *mockEntity) GetHitPoints() int                      { return m.hitPoints }
-func (m *mockEntity) GetMaxHitPoints() int                   { return m.maxHitPoints }
-func (m *mockEntity) AC() int                                { return m.ac }
-func (m *mockEntity) IsDirty() bool                          { return false }
-func (m *mockEntity) MarkClean()                             {}
-func (m *mockEntity) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
-func (m *mockEntity) GetProficiencyBonus() int               { return m.proficiencyBonus }
+func (m *mockEntity) GetID() string                       { return m.id }
+func (m *mockEntity) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockEntity) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockEntity) AC() int                             { return m.ac }
+func (m *mockEntity) IsDirty() bool                       { return false }
+func (m *mockEntity) MarkClean()                          {}
+func (m *mockEntity) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockEntity) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockEntity) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
@@ -848,14 +848,14 @@ type mockCombatantTarget struct {
 	proficiencyBonus int
 }
 
-func (m *mockCombatantTarget) GetID() string                          { return m.id }
-func (m *mockCombatantTarget) GetHitPoints() int                      { return m.hitPoints }
-func (m *mockCombatantTarget) GetMaxHitPoints() int                   { return m.maxHitPoints }
-func (m *mockCombatantTarget) AC() int                                { return m.ac }
-func (m *mockCombatantTarget) IsDirty() bool                          { return m.dirty }
-func (m *mockCombatantTarget) MarkClean()                             { m.dirty = false }
-func (m *mockCombatantTarget) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
-func (m *mockCombatantTarget) GetProficiencyBonus() int               { return m.proficiencyBonus }
+func (m *mockCombatantTarget) GetID() string                       { return m.id }
+func (m *mockCombatantTarget) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockCombatantTarget) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockCombatantTarget) AC() int                             { return m.ac }
+func (m *mockCombatantTarget) IsDirty() bool                       { return m.dirty }
+func (m *mockCombatantTarget) MarkClean()                          { m.dirty = false }
+func (m *mockCombatantTarget) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockCombatantTarget) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockCombatantTarget) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

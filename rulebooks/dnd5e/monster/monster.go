@@ -189,18 +189,13 @@ func (m *Monster) MarkClean() {
 	m.dirty = false
 }
 
-// AbilityScores returns the monster's ability scores
+// AbilityScores returns the monster's ability scores (implements Combatant interface)
 func (m *Monster) AbilityScores() shared.AbilityScores {
 	return m.abilityScores
 }
 
-// GetAbilityScores returns all ability scores (implements Combatant interface)
-func (m *Monster) GetAbilityScores() shared.AbilityScores {
-	return m.abilityScores
-}
-
-// GetProficiencyBonus returns the monster's proficiency bonus (implements Combatant interface)
-func (m *Monster) GetProficiencyBonus() int {
+// ProficiencyBonus returns the monster's proficiency bonus (implements Combatant interface)
+func (m *Monster) ProficiencyBonus() int {
 	return m.proficiencyBonus
 }
 

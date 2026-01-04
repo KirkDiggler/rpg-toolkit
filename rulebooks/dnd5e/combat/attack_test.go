@@ -48,11 +48,11 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 	// Create mock attacker with moderate STR
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("barbarian-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 16, // +3 modifier
 		abilities.DEX: 10, // +0 modifier
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(2).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
 	// Create mock goblin target (AC 15 per SRD)
 	goblin := mock_combat.NewMockCombatant(s.ctrl)
@@ -108,10 +108,10 @@ func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {
 func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("barbarian-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 10, // +0 modifier
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(0).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(0).AnyTimes()
 
 	goblin := mock_combat.NewMockCombatant(s.ctrl)
 	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
@@ -159,10 +159,10 @@ func (s *AttackTestSuite) TestResolveAttack_NaturalTwenty() {
 func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("barbarian-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 16, // +3
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(2).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
 	goblin := mock_combat.NewMockCombatant(s.ctrl)
 	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
@@ -236,10 +236,10 @@ func (s *AttackTestSuite) TestResolveAttack_PublishesEvents() {
 func (s *AttackTestSuite) TestResolveAttack_WithAdvantage() {
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(2).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
 	goblin := mock_combat.NewMockCombatant(s.ctrl)
 	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
@@ -305,10 +305,10 @@ func (s *AttackTestSuite) TestResolveAttack_WithAdvantage() {
 func (s *AttackTestSuite) TestResolveAttack_WithDisadvantage() {
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(2).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
 	goblin := mock_combat.NewMockCombatant(s.ctrl)
 	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
@@ -374,10 +374,10 @@ func (s *AttackTestSuite) TestResolveAttack_WithDisadvantage() {
 func (s *AttackTestSuite) TestResolveAttack_AdvantageAndDisadvantageCancelOut() {
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(2).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
 	goblin := mock_combat.NewMockCombatant(s.ctrl)
 	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
@@ -449,10 +449,10 @@ func (s *AttackTestSuite) TestResolveAttack_AdvantageAndDisadvantageCancelOut() 
 func (s *AttackTestSuite) TestResolveAttack_ReactionsConsumedPublishesEvents() {
 	attacker := mock_combat.NewMockCombatant(s.ctrl)
 	attacker.EXPECT().GetID().Return("goblin-1").AnyTimes()
-	attacker.EXPECT().GetAbilityScores().Return(shared.AbilityScores{
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
 		abilities.STR: 14, // +2 modifier
 	}).AnyTimes()
-	attacker.EXPECT().GetProficiencyBonus().Return(2).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
 
 	defender := mock_combat.NewMockCombatant(s.ctrl)
 	defender.EXPECT().GetID().Return("fighter-1").AnyTimes()

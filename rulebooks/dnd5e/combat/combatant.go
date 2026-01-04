@@ -74,11 +74,11 @@ type Combatant interface {
 	// MarkClean marks the combatant as saved (not dirty)
 	MarkClean()
 
-	// GetAbilityScores returns all ability scores for attack/damage calculations
-	GetAbilityScores() shared.AbilityScores
+	// AbilityScores returns all ability scores for attack/damage calculations
+	AbilityScores() shared.AbilityScores
 
-	// GetProficiencyBonus returns the proficiency bonus for attack calculations
-	GetProficiencyBonus() int
+	// ProficiencyBonus returns the proficiency bonus for attack calculations
+	ProficiencyBonus() int
 }
 
 // EffectiveACCalculator is implemented by combatants that support dynamic AC calculation.

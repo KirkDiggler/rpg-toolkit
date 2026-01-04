@@ -27,14 +27,14 @@ type mockCombatant struct {
 	proficiencyBonus int
 }
 
-func (m *mockCombatant) GetID() string                          { return m.id }
-func (m *mockCombatant) GetHitPoints() int                      { return m.hitPoints }
-func (m *mockCombatant) GetMaxHitPoints() int                   { return m.maxHitPoints }
-func (m *mockCombatant) AC() int                                { return m.ac }
-func (m *mockCombatant) IsDirty() bool                          { return m.dirty }
-func (m *mockCombatant) MarkClean()                             { m.dirty = false }
-func (m *mockCombatant) GetAbilityScores() shared.AbilityScores { return m.abilityScores }
-func (m *mockCombatant) GetProficiencyBonus() int               { return m.proficiencyBonus }
+func (m *mockCombatant) GetID() string                       { return m.id }
+func (m *mockCombatant) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockCombatant) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockCombatant) AC() int                             { return m.ac }
+func (m *mockCombatant) IsDirty() bool                       { return m.dirty }
+func (m *mockCombatant) MarkClean()                          { m.dirty = false }
+func (m *mockCombatant) AbilityScores() shared.AbilityScores { return m.abilityScores }
+func (m *mockCombatant) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockCombatant) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
