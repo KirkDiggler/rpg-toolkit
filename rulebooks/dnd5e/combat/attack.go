@@ -61,16 +61,27 @@ func GetTwoWeaponContext(ctx context.Context) (TwoWeaponContext, bool) {
 	return twc, ok
 }
 
-// AttackInput provides all information needed to resolve an attack
+// AttackInput provides all information needed to resolve an attack.
+// Combatants are looked up from context using the CombatantLookup interface.
+// Use WithCombatantLookup to add a combatant registry to the context.
 type AttackInput struct {
-	Attacker         core.Entity
-	Defender         core.Entity
-	Weapon           *weapons.Weapon
-	AttackerScores   shared.AbilityScores
-	DefenderAC       int
-	ProficiencyBonus int
-	EventBus         events.EventBus
-	Roller           dice.Roller // Dice roller for attack and damage
+	// AttackerID is the combatant performing the attack.
+	// The attacker is looked up from context using GetCombatantFromContext.
+	AttackerID string
+
+	// TargetID is the combatant being attacked.
+	// The target is looked up from context using GetCombatantFromContext.
+	TargetID string
+
+	// Weapon is the weapon being used for the attack.
+	Weapon *weapons.Weapon
+
+	// EventBus is required for publishing attack/damage events.
+	EventBus events.EventBus
+
+	// Roller is the dice roller for attack and damage rolls.
+	// If nil, a default roller is used.
+	Roller dice.Roller
 
 	// AttackHand indicates which hand is making the attack.
 	// Default (empty or AttackHandMain) is a main hand attack.
@@ -78,18 +89,20 @@ type AttackInput struct {
 	AttackHand AttackHand
 }
 
-// Validate validates the input
+// Validate validates the input.
+// Note: This only validates the input fields, not that the combatants exist in context.
+// Combatant lookup errors are returned by ResolveAttack.
 func (ai *AttackInput) Validate() error {
 	if ai == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "AttackInput is nil")
 	}
 
-	if ai.Attacker == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "Attacker is nil")
+	if ai.AttackerID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "AttackerID is required")
 	}
 
-	if ai.Defender == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "Defender is nil")
+	if ai.TargetID == "" {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "TargetID is required")
 	}
 
 	if ai.Weapon == nil {
@@ -143,6 +156,25 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		return nil, err
 	}
 
+	// Look up attacker from context
+	attacker, err := GetCombatantFromContext(ctx, input.AttackerID)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to look up attacker %s", input.AttackerID)
+	}
+
+	// Look up defender from context
+	defender, err := GetCombatantFromContext(ctx, input.TargetID)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to look up defender %s", input.TargetID)
+	}
+
+	// Get attacker stats for attack calculations
+	attackerScores := attacker.GetAbilityScores()
+	proficiencyBonus := attacker.GetProficiencyBonus()
+
+	// Get defender's effective AC (uses AC chain for Characters, base AC for Monsters)
+	defenderAC := GetEffectiveAC(ctx, defender)
+
 	// Track if this is an off-hand attack for the damage chain
 	isOffHandAttack := input.AttackHand == AttackHandOff
 
@@ -161,23 +193,23 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 
 	result := &AttackResult{
 		DamageType: input.Weapon.DamageType,
-		TargetAC:   input.DefenderAC,
+		TargetAC:   defenderAC,
 	}
 
 	// Step 1: Calculate base attack bonus (ability modifier + proficiency)
-	abilityMod := calculateAttackAbilityModifier(input.Weapon, input.AttackerScores)
-	baseBonus := abilityMod + input.ProficiencyBonus
+	abilityMod := calculateAttackAbilityModifier(input.Weapon, attackerScores)
+	baseBonus := abilityMod + proficiencyBonus
 
 	// Step 2: Fire attack chain BEFORE the roll to collect advantage/disadvantage and modifiers
 	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:          input.Attacker.GetID(),
-		TargetID:            input.Defender.GetID(),
+		AttackerID:          input.AttackerID,
+		TargetID:            input.TargetID,
 		WeaponRef:           weaponToRef(input.Weapon),
 		IsMelee:             !input.Weapon.IsRanged(),
 		AdvantageSources:    nil,
 		DisadvantageSources: nil,
 		AttackBonus:         baseBonus,
-		TargetAC:            input.DefenderAC,
+		TargetAC:            defenderAC,
 		CriticalThreshold:   20, // Default threshold (can be modified by conditions)
 		ReactionsConsumed:   nil,
 	}
@@ -273,7 +305,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	case result.IsNaturalTwenty:
 		result.Hit = true
 	default:
-		result.Hit = result.TotalAttack >= input.DefenderAC
+		result.Hit = result.TotalAttack >= defenderAC
 	}
 
 	// Step 6: If hit, calculate damage
@@ -299,7 +331,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		result.DamageRolls = damageRolls
 
 		// Determine which ability was used
-		abilityUsed := determineAbilityUsed(input.Weapon, input.AttackerScores)
+		abilityUsed := determineAbilityUsed(input.Weapon, attackerScores)
 
 		// Build damage components for the chain
 		weaponComponent := dnd5eEvents.DamageComponent{
@@ -321,8 +353,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 
 		// RESOLVE: Use shared ResolveDamage for chain processing and multipliers
 		resolveOutput, err := ResolveDamage(ctx, &ResolveDamageInput{
-			AttackerID:      input.Attacker.GetID(),
-			TargetID:        input.Defender.GetID(),
+			AttackerID:      input.AttackerID,
+			TargetID:        input.TargetID,
 			Components:      []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
 			IsCritical:      result.Critical,
 			HasAdvantage:    result.HasAdvantage,
@@ -356,8 +388,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		// NOTIFY: Publish DamageReceivedEvent with proper source info
 		damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
 		err = damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
-			TargetID:   input.Defender.GetID(),
-			SourceID:   input.Attacker.GetID(),
+			TargetID:   input.TargetID,
+			SourceID:   input.AttackerID,
 			SourceRef:  weaponToRef(input.Weapon),
 			Amount:     result.TotalDamage,
 			DamageType: input.Weapon.DamageType,
@@ -466,7 +498,7 @@ func validateOffHandAttack(ctx context.Context, input *AttackInput) error {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "two-weapon context not available for off-hand attack validation")
 	}
 
-	characterID := input.Attacker.GetID()
+	characterID := input.AttackerID
 
 	// Check main hand weapon
 	mainHand := twc.GetMainHandWeapon(characterID)

@@ -6,6 +6,7 @@ package combat
 import (
 	"context"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -78,4 +79,50 @@ type Combatant interface {
 
 	// GetProficiencyBonus returns the proficiency bonus for attack calculations
 	GetProficiencyBonus() int
+}
+
+// EffectiveACCalculator is implemented by combatants that support dynamic AC calculation.
+// Characters implement this to support spells like Shield that modify AC through the event chain.
+// Combatants that don't implement this will use their base AC() value.
+type EffectiveACCalculator interface {
+	// EffectiveAC calculates AC through the modifier chain, allowing conditions/spells to adjust it.
+	// Returns an ACBreakdown with the final AC and all contributing components.
+	EffectiveAC(ctx context.Context) *ACBreakdown
+}
+
+// GetEffectiveAC returns the effective AC for a combatant.
+// If the combatant implements EffectiveACCalculator (like Character), uses the chain-based calculation.
+// Otherwise, returns the base AC() value.
+func GetEffectiveAC(ctx context.Context, c Combatant) int {
+	if calc, ok := c.(EffectiveACCalculator); ok {
+		breakdown := calc.EffectiveAC(ctx)
+		return breakdown.Total
+	}
+	return c.AC()
+}
+
+// CombatantLookup provides combatant lookup from context.
+// This interface is satisfied by gamectx.CombatantRegistry.
+type CombatantLookup interface {
+	// Get retrieves a combatant by ID
+	Get(id string) (Combatant, error)
+}
+
+// combatantLookupKey is the context key for CombatantLookup
+type combatantLookupKey struct{}
+
+// WithCombatantLookup adds a CombatantLookup to the context.
+// Use this to enable ResolveAttack to look up combatants by ID.
+func WithCombatantLookup(ctx context.Context, lookup CombatantLookup) context.Context {
+	return context.WithValue(ctx, combatantLookupKey{}, lookup)
+}
+
+// GetCombatantFromContext retrieves a combatant by ID from context.
+// Returns error if no lookup is in context or combatant not found.
+func GetCombatantFromContext(ctx context.Context, id string) (Combatant, error) {
+	lookup, ok := ctx.Value(combatantLookupKey{}).(CombatantLookup)
+	if !ok || lookup == nil {
+		return nil, rpgerr.New(rpgerr.CodeNotFound, "no combatant lookup in context")
+	}
+	return lookup.Get(id)
 }
