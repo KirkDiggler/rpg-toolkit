@@ -32,15 +32,15 @@
       "id": "monster-moves-around-obstacle",
       "feature": "movement-integration",
       "prompt": "Monster.moveTowardEnemy moves around obstacles using BlockedHexes from PerceptionData",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-06"
     },
     {
       "id": "monster-stays-put-when-trapped",
       "feature": "movement-integration",
       "prompt": "Monster.moveTowardEnemy does not move when completely surrounded (returns empty movement)",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-06"
     }
   ]
 }

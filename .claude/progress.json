@@ -13,11 +13,21 @@
       ],
       "commit": "2b170ac96fb3dec308da315dee94e4e6c3d771c5",
       "notes": "Created PathFinder interface and SimplePathFinder struct implementing A* with hex distance heuristic. All 4 tests pass: TestDirectPath_NoObstacles, TestPathAroundLShapedWall, TestNoPath_Surrounded, TestSamePosition. Ready for Task 6 (integration into moveTowardEnemy)."
+    },
+    {
+      "id": "2026-01-06-002",
+      "task": "Integrated A* PathFinder into moveTowardEnemy (Task 6 from plan)",
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/monster/monster.go",
+        "rulebooks/dnd5e/monster/monster_test.go",
+        "rulebooks/dnd5e/monster/action.go"
+      ],
+      "commit": "bd397b8",
+      "notes": "Replaced greedy neighbor selection with SimplePathFinder.FindPath(). Builds blocked hex map from PerceptionData.BlockedHexes. Monsters now stay put if trapped (no path found). Added 2 integration tests: TestMoveTowardEnemy_AroundObstacle and TestMoveTowardEnemy_TrappedStaysPut. All 58 monster package tests pass, lint clean."
     }
   ],
   "next_steps": [
-    "Integrate PathFinder into moveTowardEnemy",
-    "Add integration test for monster movement around obstacles",
     "Run full test suite and lint",
     "Create pull request"
   ]
