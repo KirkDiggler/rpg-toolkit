@@ -177,7 +177,7 @@ func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
 		blocked[hex] = true
 	}
 	for _, pos := range result.Movement {
-		s.False(blocked[pos], "movement should not include blocked hex %v", pos)
+		s.Falsef(blocked[pos], "movement should not include blocked hex %v", pos)
 	}
 
 	// Final position should be adjacent to enemy (distance 1)

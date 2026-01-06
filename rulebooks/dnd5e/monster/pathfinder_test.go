@@ -58,7 +58,7 @@ func (s *PathFinderTestSuite) TestPathAroundLShapedWall() {
 
 	// Verify path doesn't go through blocked hexes
 	for _, pos := range path {
-		s.False(blocked[pos], "path should not include blocked hex %v", pos)
+		s.Falsef(blocked[pos], "path should not include blocked hex %v", pos)
 	}
 
 	// Verify path is connected
