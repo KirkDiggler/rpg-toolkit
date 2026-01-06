@@ -4,29 +4,29 @@
       "id": "direct-path",
       "feature": "pathfinding",
       "prompt": "PathFinder.FindPath from (0,0,0) to (3,0,-3) with no obstacles returns a 3-step path ending at goal",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-06"
     },
     {
       "id": "l-shaped-wall",
       "feature": "pathfinding",
       "prompt": "PathFinder.FindPath navigates around L-shaped wall blocking direct path - path avoids all blocked hexes",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-06"
     },
     {
       "id": "no-path-surrounded",
       "feature": "pathfinding",
       "prompt": "PathFinder.FindPath returns empty slice when start position is completely surrounded by blocked hexes",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-06"
     },
     {
       "id": "same-position",
       "feature": "pathfinding",
       "prompt": "PathFinder.FindPath returns empty slice when start equals goal",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-06"
     },
     {
       "id": "monster-moves-around-obstacle",
