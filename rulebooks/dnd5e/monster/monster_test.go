@@ -5,9 +5,11 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type MonsterTestSuite struct {
@@ -130,4 +132,116 @@ func (s *MonsterTestSuite) TestIsAlive() {
 
 	monster.TakeDamage(5)
 	s.False(monster.IsAlive(), "monster should be dead at 0 HP")
+}
+
+// TestMoveTowardEnemy_AroundObstacle verifies that monsters use A* pathfinding
+// to navigate around obstacles using BlockedHexes from PerceptionData.
+func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
+	monster := NewGoblin("goblin-1")
+
+	// Monster at (0,0,0), enemy at (3,-3,0)
+	// Direct path would be: (1,-1,0) -> (2,-2,0) -> (3,-3,0)
+	// Block (1,-1,0) and (2,-2,0) to force alternate route
+	enemyPos := spatial.CubeCoordinate{X: 3, Y: -3, Z: 0}
+	perception := &PerceptionData{
+		MyPosition: spatial.CubeCoordinate{X: 0, Y: 0, Z: 0},
+		Enemies: []PerceivedEntity{
+			{
+				Entity:   &mockMovementTestEntity{id: "enemy-1"},
+				Position: enemyPos,
+				Distance: 3,
+				Adjacent: false,
+			},
+		},
+		BlockedHexes: []spatial.CubeCoordinate{
+			{X: 1, Y: -1, Z: 0},
+			{X: 2, Y: -2, Z: 0},
+		},
+	}
+
+	input := &TurnInput{
+		Perception: perception,
+		Speed:      6, // 30ft = 6 hexes
+	}
+	result := &TurnResult{
+		Movement: make([]spatial.CubeCoordinate, 0),
+	}
+
+	monster.moveTowardEnemy(input, result)
+
+	s.Require().NotEmpty(result.Movement, "monster should move")
+
+	// Verify path doesn't include blocked hexes
+	blocked := make(map[spatial.CubeCoordinate]bool)
+	for _, hex := range perception.BlockedHexes {
+		blocked[hex] = true
+	}
+	for _, pos := range result.Movement {
+		s.Falsef(blocked[pos], "movement should not include blocked hex %v", pos)
+	}
+
+	// Final position should be adjacent to enemy (distance 1)
+	finalPos := result.Movement[len(result.Movement)-1]
+	s.Equal(1, finalPos.Distance(enemyPos), "should end up 1 hex away from enemy")
+
+	// Verify perception was updated
+	s.True(perception.Enemies[0].Adjacent, "enemy should be marked adjacent after move")
+}
+
+// TestMoveTowardEnemy_TrappedStaysPut verifies that monsters stay put when
+// completely surrounded by obstacles and cannot find a path to the target.
+func (s *MonsterTestSuite) TestMoveTowardEnemy_TrappedStaysPut() {
+	monster := NewGoblin("goblin-1")
+
+	// Monster at (0,0,0), completely surrounded by walls
+	startPos := spatial.CubeCoordinate{X: 0, Y: 0, Z: 0}
+	perception := &PerceptionData{
+		MyPosition: startPos,
+		Enemies: []PerceivedEntity{
+			{
+				Entity:   &mockMovementTestEntity{id: "enemy-1"},
+				Position: spatial.CubeCoordinate{X: 5, Y: -5, Z: 0},
+				Distance: 5,
+				Adjacent: false,
+			},
+		},
+		// Block all 6 neighbors
+		BlockedHexes: []spatial.CubeCoordinate{
+			{X: 1, Y: -1, Z: 0},
+			{X: 1, Y: 0, Z: -1},
+			{X: 0, Y: 1, Z: -1},
+			{X: -1, Y: 1, Z: 0},
+			{X: -1, Y: 0, Z: 1},
+			{X: 0, Y: -1, Z: 1},
+		},
+	}
+
+	input := &TurnInput{
+		Perception: perception,
+		Speed:      6,
+	}
+	result := &TurnResult{
+		Movement: make([]spatial.CubeCoordinate, 0),
+	}
+
+	monster.moveTowardEnemy(input, result)
+
+	// Should not move at all
+	s.Empty(result.Movement, "trapped monster should not move")
+
+	// Position should remain unchanged
+	s.Equal(startPos, perception.MyPosition, "position should not change")
+}
+
+// mockMovementTestEntity implements core.Entity for movement integration tests
+type mockMovementTestEntity struct {
+	id string
+}
+
+func (m *mockMovementTestEntity) GetID() string {
+	return m.id
+}
+
+func (m *mockMovementTestEntity) GetType() core.EntityType {
+	return dnd5e.EntityTypeCharacter
 }

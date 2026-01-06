@@ -1,32 +1,34 @@
 {
-  "branch": "feature/unify-damage-flow",
-  "issues": [],
-  "goal": "Unify damage flow: ResolveAttack uses ResolveDamage, remove duplicate applyDamageChain, preserve full DamageComponent breakdown for combat log",
+  "branch": "feat/monster-pathfinding-522",
+  "issues": ["#522", "#523"],
+  "goal": "Replace greedy monster movement with A* pathfinding that navigates around walls and obstacles",
   "sessions": [
     {
-      "id": "2024-12-25-004",
-      "task": "Refactor DealDamage to accept pre-built components",
+      "id": "2026-01-06-001",
+      "task": "Implemented PathFinder interface and SimplePathFinder with A* algorithm (Tasks 1-5 from plan)",
       "status": "completed",
       "artifacts": [
-        "rulebooks/dnd5e/combat/damage.go",
-        "rulebooks/dnd5e/combat/damage_test.go"
+        "rulebooks/dnd5e/monster/pathfinder.go",
+        "rulebooks/dnd5e/monster/pathfinder_test.go"
       ],
-      "commit": null,
-      "notes": "Extended DealDamageInput to accept either Instances OR Components. Added ResolveDamage function for shared chain processing."
+      "commit": "2b170ac96fb3dec308da315dee94e4e6c3d771c5",
+      "notes": "Created PathFinder interface and SimplePathFinder struct implementing A* with hex distance heuristic. All 4 tests pass: TestDirectPath_NoObstacles, TestPathAroundLShapedWall, TestNoPath_Surrounded, TestSamePosition. Ready for Task 6 (integration into moveTowardEnemy)."
     },
     {
-      "id": "2024-12-25-005",
-      "task": "Refactor ResolveAttack to use ResolveDamage, remove applyDamageChain",
+      "id": "2026-01-06-002",
+      "task": "Integrated A* PathFinder into moveTowardEnemy (Task 6 from plan)",
       "status": "completed",
       "artifacts": [
-        "rulebooks/dnd5e/combat/attack.go"
+        "rulebooks/dnd5e/monster/monster.go",
+        "rulebooks/dnd5e/monster/monster_test.go",
+        "rulebooks/dnd5e/monster/action.go"
       ],
-      "commit": null,
-      "notes": "ResolveAttack now uses ResolveDamage for damage chain. Removed duplicate applyDamageChain. Added attack-specific fields (WeaponDamage, AbilityUsed, WeaponRef) to ResolveDamageInput for GWF and similar modifiers."
+      "commit": "bd397b8",
+      "notes": "Replaced greedy neighbor selection with SimplePathFinder.FindPath(). Builds blocked hex map from PerceptionData.BlockedHexes. Monsters now stay put if trapped (no path found). Added 2 integration tests: TestMoveTowardEnemy_AroundObstacle and TestMoveTowardEnemy_TrappedStaysPut. All 58 monster package tests pass, lint clean."
     }
   ],
   "next_steps": [
-    "Commit changes",
-    "Create PR for review"
+    "Run full test suite and lint",
+    "Create pull request"
   ]
 }

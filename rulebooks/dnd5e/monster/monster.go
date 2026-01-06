@@ -594,7 +594,7 @@ func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity 
 }
 
 // moveTowardEnemy moves the monster toward the closest enemy if not already adjacent.
-// Uses greedy hex neighbor selection to build the movement path.
+// Uses A* pathfinding to navigate around obstacles.
 // Updates perception data to reflect new position after movement.
 func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 	if input.Perception == nil || len(input.Perception.Enemies) == 0 {
@@ -617,46 +617,39 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 		return // Can't move
 	}
 
-	// Calculate hexes to move (stop 1 hex away = adjacent)
-	hexesToMove := closest.Distance - 1
+	// Build blocked hex map for pathfinding
+	blocked := make(map[spatial.CubeCoordinate]bool)
+	for _, hex := range input.Perception.BlockedHexes {
+		blocked[hex] = true
+	}
+
+	// Find path using A*
+	pathFinder := NewSimplePathFinder()
+	path := pathFinder.FindPath(input.Perception.MyPosition, closest.Position, blocked)
+
+	if len(path) == 0 {
+		return // No valid path - stay put
+	}
+
+	// Calculate how many hexes to move (stop 1 hex short to stay adjacent)
+	hexesToMove := len(path) - 1 // Stop adjacent to target
 	if hexesToMove <= 0 {
 		return // Already close enough
 	}
-
-	// Cap at our speed
 	if hexesToMove > speed {
 		hexesToMove = speed
 	}
 
-	// Build path via greedy neighbor selection
+	// Build movement path (include start position, then each hex moved to)
 	current := input.Perception.MyPosition
-	target := closest.Position
-	path := []spatial.CubeCoordinate{current}
-
+	movementPath := []spatial.CubeCoordinate{current}
 	for i := 0; i < hexesToMove; i++ {
-		neighbors := current.GetNeighbors()
-		bestDist := current.Distance(target)
-		var bestNeighbor spatial.CubeCoordinate
-		found := false
-
-		for _, n := range neighbors {
-			dist := n.Distance(target)
-			if dist < bestDist {
-				bestDist = dist
-				bestNeighbor = n
-				found = true
-			}
-		}
-
-		if !found {
-			break // Can't get closer, stop
-		}
-		current = bestNeighbor
-		path = append(path, current)
+		current = path[i]
+		movementPath = append(movementPath, current)
 	}
 
 	// Record full path (every hex crossed)
-	result.Movement = path
+	result.Movement = movementPath
 
 	// Update perception with new position
 	input.Perception.MyPosition = current
