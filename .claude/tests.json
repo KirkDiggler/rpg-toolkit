@@ -1,67 +1,46 @@
 {
   "tests": [
     {
-      "id": "gamectx-character-lookup",
-      "feature": "gamectx",
-      "prompt": "Add a Character to gamectx registry. Call GetCombatant(ctx, id) and verify it returns the character and no error. Call GetCombatant with unknown ID and verify it returns an error.",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
-      "test_name": "TestCombatantSuite/TestCombatantRegistryAdd, TestCombatantSuite/TestCombatantRegistryGetNotFound"
+      "id": "direct-path",
+      "feature": "pathfinding",
+      "prompt": "PathFinder.FindPath from (0,0,0) to (3,0,-3) with no obstacles returns a 3-step path ending at goal",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "character-apply-damage",
-      "feature": "damage",
-      "prompt": "Create a Character with 20 HP. Call ApplyDamage with 8 damage. Verify HP is now 12 and DroppedToZero is false.",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
-      "test_name": "TestCombatantSuite/TestApplyDamageNormal"
+      "id": "l-shaped-wall",
+      "feature": "pathfinding",
+      "prompt": "PathFinder.FindPath navigates around L-shaped wall blocking direct path - path avoids all blocked hexes",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "character-apply-damage-to-zero",
-      "feature": "damage",
-      "prompt": "Create a Character with 10 HP. Call ApplyDamage with 15 damage. Verify HP is 0 (not negative) and DroppedToZero is true.",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/gamectx/gamectx_test.go",
-      "test_name": "TestCombatantSuite/TestApplyDamageToZero"
+      "id": "no-path-surrounded",
+      "feature": "pathfinding",
+      "prompt": "PathFinder.FindPath returns empty slice when start position is completely surrounded by blocked hexes",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "deal-damage-basic",
-      "feature": "damage",
-      "prompt": "Create a Combatant with 20 HP. Call combat.DealDamage with 8 slashing damage. Verify combatant HP is now 12.",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/combat/damage_test.go",
-      "test_name": "TestDealDamageSuite/TestDealDamageBasic"
+      "id": "same-position",
+      "feature": "pathfinding",
+      "prompt": "PathFinder.FindPath returns empty slice when start equals goal",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "deal-damage-publishes-notification",
-      "feature": "damage",
-      "prompt": "Subscribe to DamageReceivedEvent. Call combat.DealDamage. Verify DamageReceivedEvent was received with correct TotalDamage and TargetID.",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/combat/damage_test.go",
-      "test_name": "TestDealDamageSuite/TestDealDamageBasic"
+      "id": "monster-moves-around-obstacle",
+      "feature": "movement-integration",
+      "prompt": "Monster.moveTowardEnemy moves around obstacles using BlockedHexes from PerceptionData",
+      "passes": false,
+      "last_checked": null
     },
     {
-      "id": "resolve-damage-chain-modifiers",
-      "feature": "damage",
-      "prompt": "Subscribe to DamageChain at features stage. When event fires, add +2 to damage. Call DealDamage with 8 base damage. Verify final damage applied is 10.",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/combat/integration_test.go",
-      "test_name": "TestCombatIntegrationSuite/TestDealDamageWithRageBonus"
-    },
-    {
-      "id": "resolve-damage-chain-resistance",
-      "feature": "damage",
-      "prompt": "Activate rage on barbarian (resistance to B/P/S). Call DealDamage with 10 slashing damage. Verify final damage applied is 5 (halved).",
-      "passes": true,
-      "last_checked": "2024-12-25",
-      "test_file": "rulebooks/dnd5e/combat/integration_test.go",
-      "test_name": "TestCombatIntegrationSuite/TestDealDamageWithRageResistance"
+      "id": "monster-stays-put-when-trapped",
+      "feature": "movement-integration",
+      "prompt": "Monster.moveTowardEnemy does not move when completely surrounded (returns empty movement)",
+      "passes": false,
+      "last_checked": null
     }
   ]
 }

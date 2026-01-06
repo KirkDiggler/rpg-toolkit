@@ -1,32 +1,16 @@
 {
-  "branch": "feature/unify-damage-flow",
-  "issues": [],
-  "goal": "Unify damage flow: ResolveAttack uses ResolveDamage, remove duplicate applyDamageChain, preserve full DamageComponent breakdown for combat log",
-  "sessions": [
-    {
-      "id": "2024-12-25-004",
-      "task": "Refactor DealDamage to accept pre-built components",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/combat/damage.go",
-        "rulebooks/dnd5e/combat/damage_test.go"
-      ],
-      "commit": null,
-      "notes": "Extended DealDamageInput to accept either Instances OR Components. Added ResolveDamage function for shared chain processing."
-    },
-    {
-      "id": "2024-12-25-005",
-      "task": "Refactor ResolveAttack to use ResolveDamage, remove applyDamageChain",
-      "status": "completed",
-      "artifacts": [
-        "rulebooks/dnd5e/combat/attack.go"
-      ],
-      "commit": null,
-      "notes": "ResolveAttack now uses ResolveDamage for damage chain. Removed duplicate applyDamageChain. Added attack-specific fields (WeaponDamage, AbilityUsed, WeaponRef) to ResolveDamageInput for GWF and similar modifiers."
-    }
-  ],
+  "branch": "feat/monster-pathfinding-522",
+  "issues": ["#522", "#523"],
+  "goal": "Replace greedy monster movement with A* pathfinding that navigates around walls and obstacles",
+  "sessions": [],
   "next_steps": [
-    "Commit changes",
-    "Create PR for review"
+    "Create PathFinder interface in monster package",
+    "Implement SimplePathFinder with A* algorithm",
+    "Add tests for L-shaped wall navigation",
+    "Add tests for no path (trapped monster)",
+    "Add test for same position edge case",
+    "Integrate PathFinder into moveTowardEnemy",
+    "Run full test suite and lint",
+    "Create pull request"
   ]
 }
