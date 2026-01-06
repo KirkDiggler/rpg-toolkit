@@ -70,7 +70,7 @@ type PerceptionData struct {
 	Allies []PerceivedEntity
 
 	// BlockedHexes contains hexes that cannot be moved through (walls, obstacles)
-	// Used for pathfinding. Currently ignored by greedy movement algorithm.
+	// Used by the A* pathfinder in moveTowardEnemy.
 	BlockedHexes []spatial.CubeCoordinate
 }
 
