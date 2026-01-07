@@ -373,6 +373,66 @@ func (s *BaseCombatAbilityTestSuite) TestLoadJSON_InvalidJSON() {
 	s.Assert().Nil(ability)
 }
 
+func (s *BaseCombatAbilityTestSuite) TestLoadJSON_Attack() {
+	// Arrange
+	attack := combatabilities.NewAttack("test-attack")
+	jsonData, err := attack.ToJSON()
+	s.Require().NoError(err)
+
+	// Act
+	loaded, err := combatabilities.LoadJSON(jsonData)
+
+	// Assert
+	s.Require().NoError(err)
+	s.Assert().Equal("test-attack", loaded.GetID())
+	s.Assert().Equal("Attack", loaded.Name())
+}
+
+func (s *BaseCombatAbilityTestSuite) TestLoadJSON_Dash() {
+	// Arrange
+	dash := combatabilities.NewDash("test-dash")
+	jsonData, err := dash.ToJSON()
+	s.Require().NoError(err)
+
+	// Act
+	loaded, err := combatabilities.LoadJSON(jsonData)
+
+	// Assert
+	s.Require().NoError(err)
+	s.Assert().Equal("test-dash", loaded.GetID())
+	s.Assert().Equal("Dash", loaded.Name())
+}
+
+func (s *BaseCombatAbilityTestSuite) TestLoadJSON_Dodge() {
+	// Arrange
+	dodge := combatabilities.NewDodge("test-dodge")
+	jsonData, err := dodge.ToJSON()
+	s.Require().NoError(err)
+
+	// Act
+	loaded, err := combatabilities.LoadJSON(jsonData)
+
+	// Assert
+	s.Require().NoError(err)
+	s.Assert().Equal("test-dodge", loaded.GetID())
+	s.Assert().Equal("Dodge", loaded.Name())
+}
+
+func (s *BaseCombatAbilityTestSuite) TestLoadJSON_Disengage() {
+	// Arrange
+	disengage := combatabilities.NewDisengage("test-disengage")
+	jsonData, err := disengage.ToJSON()
+	s.Require().NoError(err)
+
+	// Act
+	loaded, err := combatabilities.LoadJSON(jsonData)
+
+	// Assert
+	s.Require().NoError(err)
+	s.Assert().Equal("test-disengage", loaded.GetID())
+	s.Assert().Equal("Disengage", loaded.Name())
+}
+
 // TestCombatAbilityInterface verifies that BaseCombatAbility can be used as CombatAbility
 // when wrapped by a concrete implementation
 type testCombatAbility struct {

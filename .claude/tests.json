@@ -19,22 +19,32 @@
       "id": "attack-ability-grants-strikes",
       "feature": "abilities",
       "prompt": "When Attack ability is activated, it should consume 1 action, set AttacksRemaining based on Extra Attack, and grant Strike action(s) to the character.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Attack ability consumes action and sets AttacksRemaining. Strike action granting will be Phase 4."
     },
     {
       "id": "dash-ability-adds-movement",
       "feature": "abilities",
       "prompt": "When Dash ability is activated, it should consume 1 action and add character's speed to MovementRemaining.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07"
     },
     {
       "id": "dodge-ability-grants-condition",
       "feature": "abilities",
       "prompt": "When Dodge ability is activated, it should consume 1 action and grant the Dodging condition.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Publishes DodgeActivatedEvent. DodgingCondition will subscribe in future phase."
+    },
+    {
+      "id": "disengage-ability-prevents-aoo",
+      "feature": "abilities",
+      "prompt": "When Disengage ability is activated, it should consume 1 action and grant the Disengaging condition.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Publishes DisengageActivatedEvent. DisengagingCondition will subscribe in future phase."
     },
     {
       "id": "strike-action-resolves-attack",

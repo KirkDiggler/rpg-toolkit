@@ -379,6 +379,24 @@ type DeflectMissilesThrowEvent struct {
 }
 
 // =============================================================================
+// Combat Ability Events
+// =============================================================================
+
+// DodgeActivatedEvent is published when a character uses the Dodge action.
+// Until the start of their next turn, attacks against them have disadvantage
+// (if they can see the attacker), and they make DEX saves with advantage.
+// The condition ends if they become incapacitated or their speed drops to 0.
+type DodgeActivatedEvent struct {
+	CharacterID string // ID of the character who is dodging
+}
+
+// DisengageActivatedEvent is published when a character uses the Disengage action.
+// Their movement doesn't provoke opportunity attacks for the rest of the turn.
+type DisengageActivatedEvent struct {
+	CharacterID string // ID of the character who is disengaging
+}
+
+// =============================================================================
 // Topic Definitions
 // =============================================================================
 
@@ -453,6 +471,12 @@ var (
 
 	// DeflectMissilesThrowTopic provides typed pub/sub for deflect missiles throw events
 	DeflectMissilesThrowTopic = events.DefineTypedTopic[DeflectMissilesThrowEvent]("dnd5e.feature.deflect_missiles.throw")
+
+	// DodgeActivatedTopic provides typed pub/sub for Dodge ability activation
+	DodgeActivatedTopic = events.DefineTypedTopic[DodgeActivatedEvent]("dnd5e.ability.dodge.activated")
+
+	// DisengageActivatedTopic provides typed pub/sub for Disengage ability activation
+	DisengageActivatedTopic = events.DefineTypedTopic[DisengageActivatedEvent]("dnd5e.ability.disengage.activated")
 )
 
 // Chain topics (for modifier chains)

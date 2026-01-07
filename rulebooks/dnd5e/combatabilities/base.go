@@ -174,7 +174,8 @@ func (b *BaseCombatAbility) ToJSON() (json.RawMessage, error) {
 	return bytes, nil
 }
 
-// LoadJSON loads a combat ability from JSON based on its ref
+// LoadJSON loads a combat ability from JSON based on its ref.
+// Routes to the appropriate ability type based on the ref ID.
 func LoadJSON(data json.RawMessage) (CombatAbility, error) {
 	// First, extract the ref to determine ability type
 	var metadata struct {
@@ -187,26 +188,45 @@ func LoadJSON(data json.RawMessage) (CombatAbility, error) {
 	// Route based on Ref ID
 	switch metadata.Ref.ID {
 	case refs.CombatAbilities.Attack().ID:
-		// Attack ability will be implemented in Phase 3
-		return nil, fmt.Errorf("attack ability not yet implemented")
+		attack := &Attack{}
+		if err := attack.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load attack ability: %w", err)
+		}
+		return attack, nil
+
 	case refs.CombatAbilities.Dash().ID:
-		// Dash ability will be implemented in Phase 3
-		return nil, fmt.Errorf("dash ability not yet implemented")
+		dash := &Dash{}
+		if err := dash.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load dash ability: %w", err)
+		}
+		return dash, nil
+
 	case refs.CombatAbilities.Dodge().ID:
-		// Dodge ability will be implemented in Phase 3
-		return nil, fmt.Errorf("dodge ability not yet implemented")
+		dodge := &Dodge{}
+		if err := dodge.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load dodge ability: %w", err)
+		}
+		return dodge, nil
+
 	case refs.CombatAbilities.Disengage().ID:
-		// Disengage ability will be implemented in Phase 3
-		return nil, fmt.Errorf("disengage ability not yet implemented")
+		disengage := &Disengage{}
+		if err := disengage.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load disengage ability: %w", err)
+		}
+		return disengage, nil
+
 	case refs.CombatAbilities.Help().ID:
-		// Help ability will be implemented in Phase 3
+		// Help ability will be implemented in a future phase
 		return nil, fmt.Errorf("help ability not yet implemented")
+
 	case refs.CombatAbilities.Hide().ID:
-		// Hide ability will be implemented in Phase 3
+		// Hide ability will be implemented in a future phase
 		return nil, fmt.Errorf("hide ability not yet implemented")
+
 	case refs.CombatAbilities.Ready().ID:
-		// Ready ability will be implemented in Phase 3
+		// Ready ability will be implemented in a future phase
 		return nil, fmt.Errorf("ready ability not yet implemented")
+
 	default:
 		return nil, fmt.Errorf("unknown combat ability type: %s", metadata.Ref.ID)
 	}

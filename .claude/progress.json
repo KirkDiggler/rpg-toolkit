@@ -32,10 +32,25 @@
         "Added comprehensive tests for all action economy types (standard, bonus, reaction, free)"
       ],
       "notes": "Phase 2 complete. The combatabilities package provides infrastructure for universal combat abilities. Named 'combatabilities' to avoid conflict with existing 'abilities' package (which contains ability scores STR/DEX/etc). The CombatAbility interface follows the same pattern as Feature and Action interfaces."
+    },
+    {
+      "date": "2026-01-07",
+      "phase": "Phase 3",
+      "completed": [
+        "Implemented Attack ability (attack.go) - consumes 1 action, sets AttacksRemaining based on ExtraAttacks",
+        "Implemented Dash ability (dash.go) - consumes 1 action, adds Speed to MovementRemaining",
+        "Implemented Dodge ability (dodge.go) - consumes 1 action, publishes DodgeActivatedEvent",
+        "Implemented Disengage ability (disengage.go) - consumes 1 action, publishes DisengageActivatedEvent",
+        "Added DodgeActivatedEvent and DisengageActivatedEvent to events/events.go",
+        "Added DodgeActivatedTopic and DisengageActivatedTopic for event pub/sub",
+        "Created NewBonusDash, NewBonusDodge, NewBonusDisengage constructors for bonus action variants",
+        "Updated LoadJSON to route to all four implemented abilities",
+        "Added comprehensive tests for all abilities including scenario tests (Fighter Action Surge, Rogue Cunning Action)"
+      ],
+      "notes": "Phase 3 complete. All four standard combat abilities are implemented. Dodge/Disengage publish events that future conditions can subscribe to. The actual Dodging/Disengaging conditions will be implemented in a future phase. Attack sets AttacksRemaining for Strike actions (Phase 4). Dash adds movement for Move actions (Phase 4)."
     }
   ],
   "next_steps": [
-    "Phase 3: Implement standard abilities (Attack, Dash, Dodge, Disengage) in combatabilities package",
     "Phase 4: Create Strike and Move actions",
     "Phase 5: Add combat abilities to Character, integrate with draft->character transition",
     "Phase 6: Add ActionGrantedEvent/ActionRemovedEvent, update Character.SubscribeEvents()"
