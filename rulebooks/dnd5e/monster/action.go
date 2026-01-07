@@ -63,6 +63,9 @@ type PerceptionData struct {
 	// Monster's current position in cube coordinates
 	MyPosition spatial.CubeCoordinate
 
+	// MyRoom is the room the monster is currently in (for event filtering)
+	MyRoom string
+
 	// Perceived enemies sorted by distance (closest first)
 	Enemies []PerceivedEntity
 
@@ -78,10 +81,11 @@ type PerceptionData struct {
 type PerceivedEntity struct {
 	Entity   core.Entity
 	Position spatial.CubeCoordinate
-	Distance int  // Distance in hex count
-	Adjacent bool // Distance == 1 (one hex away)
-	HP       int  // Current hit points (for TargetLowestHP strategy)
-	AC       int  // Armor class (for TargetLowestAC strategy)
+	Room     string // Which room the entity is in (for event filtering)
+	Distance int    // Distance in hex count
+	Adjacent bool   // Distance == 1 (one hex away)
+	HP       int    // Current hit points (for TargetLowestHP strategy)
+	AC       int    // Armor class (for TargetLowestAC strategy)
 }
 
 // HasAdjacentEnemy returns true if any enemy is within melee range

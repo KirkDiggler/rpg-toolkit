@@ -624,7 +624,7 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 	}
 
 	// Find path using A*
-	pathFinder := NewSimplePathFinder()
+	pathFinder := spatial.NewSimplePathFinder()
 	path := pathFinder.FindPath(input.Perception.MyPosition, closest.Position, blocked)
 
 	if len(path) == 0 {
