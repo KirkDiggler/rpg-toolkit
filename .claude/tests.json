@@ -4,8 +4,8 @@
       "id": "action-economy-sub-resources",
       "feature": "action-economy",
       "prompt": "ActionEconomy should have AttacksRemaining and MovementRemaining fields. Reset() should set primary resources to 1 but NOT set AttacksRemaining (stays 0 until Attack ability used).",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07"
     },
     {
       "id": "ability-interface",
