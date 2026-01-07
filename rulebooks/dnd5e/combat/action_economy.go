@@ -9,9 +9,14 @@ import "github.com/KirkDiggler/rpg-toolkit/rpgerr"
 // Purpose: Manages the action economy system for D&D 5e combat, ensuring combatants can only
 // take actions they have available in their turn.
 type ActionEconomy struct {
+	// Primary resources (consumed by abilities/features)
 	ActionsRemaining      int // Usually 1, Action Surge gives +1
 	BonusActionsRemaining int // Usually 1
 	ReactionsRemaining    int // Usually 1
+
+	// Capacity (set when specific abilities are used)
+	AttacksRemaining  int // Set when Attack ability is taken (stays 0 until then)
+	MovementRemaining int // Set at turn start from character speed
 }
 
 // NewActionEconomy creates a new ActionEconomy with default values (1/1/1)
@@ -72,8 +77,10 @@ func (ae *ActionEconomy) UseReaction() error {
 	return nil
 }
 
-// Reset restores all actions to default values (1/1/1)
-// Purpose: Called at the start of a combatant's turn to restore their action economy
+// Reset restores primary action economy to default values (1/1/1)
+// Purpose: Called at the start of a combatant's turn to restore their action economy.
+// Note: Does NOT reset AttacksRemaining (stays 0 until Attack ability is used) or
+// MovementRemaining (should be set separately via SetMovement at turn start).
 func (ae *ActionEconomy) Reset() {
 	ae.ActionsRemaining = 1
 	ae.BonusActionsRemaining = 1
@@ -90,4 +97,62 @@ func (ae *ActionEconomy) GrantExtraAction() {
 // Purpose: Future-proofing for potential features that grant extra bonus actions
 func (ae *ActionEconomy) GrantExtraBonusAction() {
 	ae.BonusActionsRemaining++
+}
+
+// CanUseAttack returns whether any attacks remain
+// Purpose: Allows checking attack availability without consuming it.
+// Returns false until Attack ability is used and SetAttacks is called.
+func (ae *ActionEconomy) CanUseAttack() bool {
+	return ae.AttacksRemaining > 0
+}
+
+// UseAttack consumes one attack if available
+// Purpose: Called by Strike actions to consume one of the attacks granted by the Attack ability.
+// Returns CodeResourceExhausted if no attacks remain.
+func (ae *ActionEconomy) UseAttack() error {
+	if ae.AttacksRemaining <= 0 {
+		return rpgerr.ResourceExhausted("attack")
+	}
+	ae.AttacksRemaining--
+	return nil
+}
+
+// SetAttacks sets the number of attacks remaining
+// Purpose: Called by the Attack ability to grant attacks based on Extra Attack feature.
+// Normal characters get 1 attack; fighters with Extra Attack get 2 or more.
+func (ae *ActionEconomy) SetAttacks(count int) {
+	ae.AttacksRemaining = count
+}
+
+// CanUseMovement returns whether enough movement remains for the given cost
+// Purpose: Allows checking movement availability without consuming it.
+// A cost of 0 always returns true (for free movement effects).
+func (ae *ActionEconomy) CanUseMovement(cost int) bool {
+	return ae.MovementRemaining >= cost
+}
+
+// UseMovement consumes the specified amount of movement if available
+// Purpose: Called by Move actions to consume movement when moving on the battlefield.
+// Returns CodeResourceExhausted if insufficient movement remains.
+// Does not consume partial movement - it's all or nothing.
+func (ae *ActionEconomy) UseMovement(cost int) error {
+	if ae.MovementRemaining < cost {
+		return rpgerr.ResourceExhausted("movement")
+	}
+	ae.MovementRemaining -= cost
+	return nil
+}
+
+// SetMovement sets the movement remaining to the specified amount
+// Purpose: Called at turn start to set movement from character speed.
+// Overwrites any existing movement value.
+func (ae *ActionEconomy) SetMovement(amount int) {
+	ae.MovementRemaining = amount
+}
+
+// AddMovement adds the specified amount to movement remaining
+// Purpose: Called by the Dash ability to add the character's speed again.
+// Can be called multiple times (e.g., Rogue's Cunning Action Dash).
+func (ae *ActionEconomy) AddMovement(amount int) {
+	ae.MovementRemaining += amount
 }
