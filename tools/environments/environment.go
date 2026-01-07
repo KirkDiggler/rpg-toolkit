@@ -209,6 +209,9 @@ func (e *BasicEnvironment) FindPath(_ spatial.Position, _ spatial.Position) ([]s
 // FindPathCube finds a path between cube coordinates using A* algorithm.
 // This is the primary pathfinding method for hex grid environments.
 func (e *BasicEnvironment) FindPathCube(input *FindPathCubeInput) (*FindPathCubeOutput, error) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
 	if input == nil {
 		return nil, fmt.Errorf("input cannot be nil")
 	}
