@@ -192,6 +192,23 @@ type PathConstraint struct {
 	Weight    float64            `json:"weight"`    // How much to weight this (0.0-1.0)
 }
 
+// FindPathCubeInput represents input for cube coordinate pathfinding
+// Purpose: Provides structured input for A* pathfinding across the environment
+// using cube coordinates for hex grids.
+type FindPathCubeInput struct {
+	From    spatial.CubeCoordinate          `json:"from"` // Starting position
+	To      spatial.CubeCoordinate          `json:"to"`   // Destination position
+	Blocked map[spatial.CubeCoordinate]bool `json:"-"`    // Blocked hexes (walls, obstacles)
+}
+
+// FindPathCubeOutput represents the result of cube coordinate pathfinding
+// Purpose: Returns the path and metadata for pathfinding queries.
+type FindPathCubeOutput struct {
+	Path          []spatial.CubeCoordinate `json:"path"`           // Path excluding start, including goal
+	TotalDistance int                      `json:"total_distance"` // Number of hexes in path
+	Found         bool                     `json:"found"`          // Whether a path was found
+}
+
 // PathConstraintType categorizes different pathfinding constraints
 // Purpose: Allows the pathfinder to handle different constraint types.
 type PathConstraintType int

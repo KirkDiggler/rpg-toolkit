@@ -8,8 +8,9 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.9.6
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
 	github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2
-	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.2.1
+	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.4.0
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/mock v0.5.2
 )
 
 require (

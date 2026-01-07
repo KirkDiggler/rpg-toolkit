@@ -206,6 +206,26 @@ func (e *BasicEnvironment) FindPath(_ spatial.Position, _ spatial.Position) ([]s
 	return nil, fmt.Errorf("position-to-position pathfinding not yet implemented")
 }
 
+// FindPathCube finds a path between cube coordinates using A* algorithm.
+// This is the primary pathfinding method for hex grid environments.
+func (e *BasicEnvironment) FindPathCube(input *FindPathCubeInput) (*FindPathCubeOutput, error) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	if input == nil {
+		return nil, fmt.Errorf("input cannot be nil")
+	}
+
+	pathfinder := spatial.NewSimplePathFinder()
+	path := pathfinder.FindPath(input.From, input.To, input.Blocked)
+
+	return &FindPathCubeOutput{
+		Path:          path,
+		TotalDistance: len(path),
+		Found:         len(path) > 0 || input.From == input.To,
+	}, nil
+}
+
 // Export serializes the environment to a byte array for storage or transmission.
 func (e *BasicEnvironment) Export() ([]byte, error) {
 	e.mutex.RLock()
