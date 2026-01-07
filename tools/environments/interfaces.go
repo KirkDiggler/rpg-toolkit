@@ -53,6 +53,10 @@ type Environment interface {
 	// FindPath finds a path between two positions across rooms
 	FindPath(from, to spatial.Position) ([]spatial.Position, error)
 
+	// FindPathCube finds a path between cube coordinates using A* algorithm.
+	// Uses the spatial.PathFinder for hex grid pathfinding.
+	FindPathCube(input *FindPathCubeInput) (*FindPathCubeOutput, error)
+
 	// Export exports the environment to a serializable format
 	Export() ([]byte, error)
 }

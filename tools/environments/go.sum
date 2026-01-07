@@ -8,8 +8,8 @@ github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbs
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2 h1:81iz712+EXhitPNgcf0tMDqvqI/0u9k26Hbdph62QZU=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2/go.mod h1:tnhhn+fRcklWqwIu5lOtBA2uCn1amkp5ZAARsqAgJqI=
-github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.2.1 h1:gN+TL6PiZHSckyvy/rhHCJQsoXnb+lZYqjOJeqo8FV0=
-github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.2.1/go.mod h1:z5WFtaT46GCz4lmDOKzeuFbSk8SRuZbKCf441M0yDa8=
+github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.4.0 h1:vlraS3uAcQ5N2+UxZ0l61CoCe6LtZhLIlxuGUnA+2NE=
+github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.4.0/go.mod h1:z5WFtaT46GCz4lmDOKzeuFbSk8SRuZbKCf441M0yDa8=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
