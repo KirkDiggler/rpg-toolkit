@@ -9,10 +9,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -623,10 +625,18 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		classResources:      make(map[shared.ClassResourceType]ResourceData),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 		features:            charFeatures,
+		combatAbilities:     make([]combatabilities.CombatAbility, 0),
+		actions:             make([]actions.Action, 0),
 		bus:                 bus,
 		conditions:          make([]dnd5eEvents.ConditionBehavior, 0),
 		subscriptionIDs:     make([]string, 0),
 	}
+
+	// Add standard combat abilities (Attack, Dash, Dodge, Disengage)
+	d.initializeStandardCombatAbilities(char)
+
+	// Add standard actions (Strike, Move)
+	d.initializeStandardActions(char)
 
 	// Initialize class-specific resources
 	d.initializeClassResources(char)
@@ -1561,4 +1571,45 @@ func (d *Draft) initializeClassResources(char *Character) {
 		Level:       level,
 	})
 	char.resources[resources.HitDice] = hitDiceResource
+}
+
+// initializeStandardCombatAbilities adds universal combat abilities to the character.
+// These are available to all characters: Attack, Dash, Dodge, Disengage.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeStandardCombatAbilities(char *Character) {
+	// Attack - consumes action economy to grant attack capacity
+	attackAbility := combatabilities.NewAttack(char.id + "-attack")
+	_ = char.AddCombatAbility(attackAbility)
+
+	// Dash - consumes action economy to add movement
+	dashAbility := combatabilities.NewDash(char.id + "-dash")
+	_ = char.AddCombatAbility(dashAbility)
+
+	// Dodge - consumes action economy to grant Dodging condition
+	dodgeAbility := combatabilities.NewDodge(char.id + "-dodge")
+	_ = char.AddCombatAbility(dodgeAbility)
+
+	// Disengage - consumes action economy to grant Disengaging condition
+	disengageAbility := combatabilities.NewDisengage(char.id + "-disengage")
+	_ = char.AddCombatAbility(disengageAbility)
+}
+
+// initializeStandardActions adds standard permanent actions to the character.
+// These are always available: Strike (uses attacks from Attack ability) and Move.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeStandardActions(char *Character) {
+	// Strike - consumes AttacksRemaining to make weapon attacks
+	strikeAction := actions.NewStrike(actions.StrikeConfig{
+		ID:      char.id + "-strike",
+		OwnerID: char.id,
+		// WeaponID is empty - will be determined at activation time based on equipped weapon
+	})
+	_ = char.AddAction(strikeAction)
+
+	// Move - consumes MovementRemaining to change position
+	moveAction := actions.NewMove(actions.MoveConfig{
+		ID:      char.id + "-move",
+		OwnerID: char.id,
+	})
+	_ = char.AddAction(moveAction)
 }

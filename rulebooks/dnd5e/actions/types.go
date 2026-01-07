@@ -5,6 +5,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // Type is the content type for actions within the dnd5e module
@@ -28,6 +29,13 @@ type ActionInput struct {
 	// Target is the entity being targeted by this action
 	Target core.Entity `json:"-"`
 
-	// TODO: Add Position for AoE targeting when needed
-	// Position *spatial.Position `json:"-"`
+	// CurrentPosition is the entity's current position (for Move action)
+	CurrentPosition *spatial.Position `json:"-"`
+
+	// Destination is the target position for movement (for Move action)
+	Destination *spatial.Position `json:"-"`
+
+	// MovementCostFt is the movement cost in feet to reach the destination
+	// This should be calculated by the caller based on grid/terrain rules
+	MovementCostFt int `json:"-"`
 }

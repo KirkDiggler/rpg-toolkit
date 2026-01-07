@@ -95,6 +95,17 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// ActionBehavior represents a grantable action.
+// This interface is defined in the events package to avoid import cycles
+// between events and actions packages. The actions package implements this
+// interface, and the character package can type-assert to actions.Action.
+type ActionBehavior interface {
+	core.Entity // GetID() and GetType()
+
+	// IsTemporary returns true if this action should be removed at turn end
+	IsTemporary() bool
+}
+
 // =============================================================================
 // Damage Source Types
 // =============================================================================
@@ -313,6 +324,15 @@ type FlurryStrikeRequestedEvent struct {
 	ActionID   string // ID of the FlurryStrike action (for tracking)
 }
 
+// ActionGrantedEvent is published when an action is granted to a character.
+// The character should subscribe to this event to add the action to its list.
+// The Action field contains the actual action to be added.
+type ActionGrantedEvent struct {
+	CharacterID string         // ID of the character receiving the action
+	Action      ActionBehavior // The action being granted (implements core.Entity)
+	Source      string         // What granted the action (e.g., "flurry_of_blows", "two_weapon_fighting")
+}
+
 // ActionRemovedEvent is published when an action removes itself from a character.
 // The character should listen for this event and remove the action from their list.
 type ActionRemovedEvent struct {
@@ -379,6 +399,52 @@ type DeflectMissilesThrowEvent struct {
 }
 
 // =============================================================================
+// Strike and Move Action Events
+// =============================================================================
+
+// StrikeExecutedEvent is published when a Strike action is activated.
+// The game server should resolve a weapon attack from attacker to target.
+// This is the standard attack action that consumes one of the attacks granted
+// by the Attack ability.
+type StrikeExecutedEvent struct {
+	AttackerID string // ID of the character making the attack
+	TargetID   string // ID of the target being attacked
+	WeaponID   string // ID of the weapon being used
+	ActionID   string // ID of the Strike action (for tracking)
+}
+
+// MoveExecutedEvent is published when a Move action is activated.
+// The game server should update the entity's position and handle any
+// opportunity attacks or other movement-triggered effects.
+type MoveExecutedEvent struct {
+	EntityID   string  // ID of the entity that moved
+	ActionID   string  // ID of the Move action (for tracking)
+	FromX      float64 // Starting X position
+	FromY      float64 // Starting Y position
+	ToX        float64 // Destination X position
+	ToY        float64 // Destination Y position
+	DistanceFt int     // Distance moved in feet
+}
+
+// =============================================================================
+// Combat Ability Events
+// =============================================================================
+
+// DodgeActivatedEvent is published when a character uses the Dodge action.
+// Until the start of their next turn, attacks against them have disadvantage
+// (if they can see the attacker), and they make DEX saves with advantage.
+// The condition ends if they become incapacitated or their speed drops to 0.
+type DodgeActivatedEvent struct {
+	CharacterID string // ID of the character who is dodging
+}
+
+// DisengageActivatedEvent is published when a character uses the Disengage action.
+// Their movement doesn't provoke opportunity attacks for the rest of the turn.
+type DisengageActivatedEvent struct {
+	CharacterID string // ID of the character who is disengaging
+}
+
+// =============================================================================
 // Topic Definitions
 // =============================================================================
 
@@ -435,6 +501,10 @@ var (
 	OffHandStrikeActivatedTopic = events.DefineTypedTopic[OffHandStrikeActivatedEvent](
 		"dnd5e.action.off_hand_strike.activated")
 
+	// ActionGrantedTopic provides typed pub/sub for action granted events
+	ActionGrantedTopic = events.DefineTypedTopic[ActionGrantedEvent](
+		"dnd5e.action.granted")
+
 	// ActionRemovedTopic provides typed pub/sub for action removed events
 	ActionRemovedTopic = events.DefineTypedTopic[ActionRemovedEvent](
 		"dnd5e.action.removed")
@@ -453,6 +523,18 @@ var (
 
 	// DeflectMissilesThrowTopic provides typed pub/sub for deflect missiles throw events
 	DeflectMissilesThrowTopic = events.DefineTypedTopic[DeflectMissilesThrowEvent]("dnd5e.feature.deflect_missiles.throw")
+
+	// DodgeActivatedTopic provides typed pub/sub for Dodge ability activation
+	DodgeActivatedTopic = events.DefineTypedTopic[DodgeActivatedEvent]("dnd5e.ability.dodge.activated")
+
+	// DisengageActivatedTopic provides typed pub/sub for Disengage ability activation
+	DisengageActivatedTopic = events.DefineTypedTopic[DisengageActivatedEvent]("dnd5e.ability.disengage.activated")
+
+	// StrikeExecutedTopic provides typed pub/sub for Strike action execution
+	StrikeExecutedTopic = events.DefineTypedTopic[StrikeExecutedEvent]("dnd5e.action.strike.executed")
+
+	// MoveExecutedTopic provides typed pub/sub for Move action execution
+	MoveExecutedTopic = events.DefineTypedTopic[MoveExecutedEvent]("dnd5e.action.move.executed")
 )
 
 // Chain topics (for modifier chains)

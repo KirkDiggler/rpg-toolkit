@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -34,8 +35,9 @@ const (
 	shieldCategory = "shield"
 )
 
-// Compile-time check that Character implements ActionHolder
+// Compile-time check that Character implements ActionHolder and CombatAbilityHolder
 var _ actions.ActionHolder = (*Character)(nil)
+var _ combatabilities.CombatAbilityHolder = (*Character)(nil)
 
 // Character represents a playable D&D 5e character
 // This is the domain model used during gameplay
@@ -81,6 +83,9 @@ type Character struct {
 
 	// Features (rage, second wind, etc) - grant actions and conditions
 	features []features.Feature
+
+	// Combat abilities (Attack, Dash, Dodge, Disengage) - consume action economy to grant capacity
+	combatAbilities []combatabilities.CombatAbility
 
 	// Actions (attack, dash, flurry strike, etc) - things you can do
 	actions []actions.Action
@@ -510,6 +515,45 @@ func (c *Character) GetAction(id string) actions.Action {
 	return nil
 }
 
+// AddCombatAbility adds a combat ability to the character's available combat abilities.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) AddCombatAbility(ability combatabilities.CombatAbility) error {
+	if ability == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "combat ability cannot be nil")
+	}
+	c.combatAbilities = append(c.combatAbilities, ability)
+	return nil
+}
+
+// RemoveCombatAbility removes a combat ability by ID.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) RemoveCombatAbility(abilityID string) error {
+	for i, a := range c.combatAbilities {
+		if a.GetID() == abilityID {
+			c.combatAbilities = append(c.combatAbilities[:i], c.combatAbilities[i+1:]...)
+			return nil
+		}
+	}
+	return rpgerr.Newf(rpgerr.CodeNotFound, "combat ability %s not found", abilityID)
+}
+
+// GetCombatAbilities returns all available combat abilities.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) GetCombatAbilities() []combatabilities.CombatAbility {
+	return c.combatAbilities
+}
+
+// GetCombatAbility returns a specific combat ability by ID, or nil if not found.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) GetCombatAbility(id string) combatabilities.CombatAbility {
+	for _, a := range c.combatAbilities {
+		if a.GetID() == id {
+			return a
+		}
+	}
+	return nil
+}
+
 // GetConditions returns all active conditions
 func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return c.conditions
@@ -859,6 +903,14 @@ func (c *Character) subscribeToEvents(ctx context.Context) error {
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, subID)
 
+	// Subscribe to action granted events
+	actionGrantedTopic := dnd5eEvents.ActionGrantedTopic.On(c.bus)
+	subID, err = actionGrantedTopic.Subscribe(ctx, c.onActionGranted)
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to subscribe to action granted")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, subID)
+
 	// Subscribe to action removed events
 	actionRemovedTopic := dnd5eEvents.ActionRemovedTopic.On(c.bus)
 	subID, err = actionRemovedTopic.Subscribe(ctx, c.onActionRemoved)
@@ -938,6 +990,23 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 	}
 
 	return nil
+}
+
+// onActionGranted handles ActionGrantedEvent
+func (c *Character) onActionGranted(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+	// Only process events for this character
+	if event.CharacterID != c.id {
+		return nil
+	}
+
+	// Type-assert to actions.Action
+	action, ok := event.Action.(actions.Action)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "event action does not implement actions.Action")
+	}
+
+	// Add the action to our list
+	return c.AddAction(action)
 }
 
 // onActionRemoved handles ActionRemovedEvent

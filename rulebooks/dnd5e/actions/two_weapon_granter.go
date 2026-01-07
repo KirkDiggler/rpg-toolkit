@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -40,10 +41,11 @@ type TwoWeaponGranterInput struct {
 	// OffHandWeapon is the weapon in the off hand (nil if none or shield)
 	OffHandWeapon *EquippedWeaponInfo
 
-	// ActionHolder is used to grant the off-hand strike action
+	// ActionHolder is used to grant the off-hand strike action (deprecated - use EventBus instead)
+	// Kept for backwards compatibility. If EventBus is provided, actions are granted via events.
 	ActionHolder ActionHolder
 
-	// EventBus is used to subscribe the action to turn-end events
+	// EventBus is used to subscribe the action to turn-end events and grant actions via events
 	EventBus events.EventBus
 }
 
@@ -136,15 +138,21 @@ func CheckAndGrantOffHandStrike(ctx context.Context, input *TwoWeaponGranterInpu
 		if err := strike.Apply(ctx, input.EventBus); err != nil {
 			return nil, fmt.Errorf("failed to apply off-hand strike to event bus: %w", err)
 		}
-	}
 
-	// Add to character's actions
-	if input.ActionHolder != nil {
-		if err := input.ActionHolder.AddAction(strike); err != nil {
+		// Publish ActionGrantedEvent - character subscribes and adds the action
+		actionGrantedTopic := dnd5eEvents.ActionGrantedTopic.On(input.EventBus)
+		if err := actionGrantedTopic.Publish(ctx, dnd5eEvents.ActionGrantedEvent{
+			CharacterID: input.CharacterID,
+			Action:      strike,
+			Source:      "two_weapon_fighting",
+		}); err != nil {
 			// Rollback event subscription
-			if input.EventBus != nil {
-				_ = strike.Remove(ctx, input.EventBus)
-			}
+			_ = strike.Remove(ctx, input.EventBus)
+			return nil, fmt.Errorf("failed to publish action granted event: %w", err)
+		}
+	} else if input.ActionHolder != nil {
+		// Fallback to direct ActionHolder for backwards compatibility
+		if err := input.ActionHolder.AddAction(strike); err != nil {
 			return nil, fmt.Errorf("failed to add off-hand strike to character: %w", err)
 		}
 	}
