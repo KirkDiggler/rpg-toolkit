@@ -66,16 +66,17 @@
       "id": "character-has-combat-abilities",
       "feature": "character",
       "prompt": "Character should have combatAbilities []CombatAbility slice with AddCombatAbility(), RemoveCombatAbility(), GetCombatAbilities() methods.",
-      "passes": false,
-      "last_checked": null,
-      "notes": "Changed from 'abilities' to 'combatAbilities' to avoid naming conflict"
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Changed from 'abilities' to 'combatAbilities' to avoid naming conflict. Implemented in character/character.go."
     },
     {
       "id": "character-gets-standard-abilities",
       "feature": "character",
       "prompt": "When a character is finalized (draft -> character), it should automatically receive standard combat abilities: Attack, Dash, Dodge, Disengage.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Added during ToCharacter via initializeStandardCombatAbilities() helper. Also adds Strike and Move actions via initializeStandardActions()."
     },
     {
       "id": "action-granted-event",

@@ -63,10 +63,22 @@
         "Added comprehensive tests including scenario tests (Fighter Extra Attack, Dash double movement, interleaved combat)"
       ],
       "notes": "Phase 4 complete. Strike and Move actions are the 'doing' layer that consume capacity granted by abilities. Strike consumes attacks granted by Attack ability and publishes StrikeExecutedEvent for the game layer to resolve. Move consumes movement and publishes MoveExecutedEvent for position changes. Both are permanent actions (unlike FlurryStrike/OffHandStrike which are temporary)."
+    },
+    {
+      "date": "2026-01-07",
+      "phase": "Phase 5",
+      "completed": [
+        "Added CombatAbilityHolder interface implementation to Character (AddCombatAbility, RemoveCombatAbility, GetCombatAbilities, GetCombatAbility)",
+        "Added combatAbilities []combatabilities.CombatAbility field to Character struct",
+        "Added initializeStandardCombatAbilities() helper - adds Attack, Dash, Dodge, Disengage during ToCharacter",
+        "Added initializeStandardActions() helper - adds Strike and Move actions during ToCharacter",
+        "Updated ToCharacter to initialize combatAbilities and actions slices",
+        "Added comprehensive tests in combat_abilities_test.go verifying character gets all standard abilities"
+      ],
+      "notes": "Phase 5 complete. Characters now receive 4 standard combat abilities (Attack, Dash, Dodge, Disengage) and 2 standard actions (Strike, Move) when finalized via ToCharacter. The CombatAbilityHolder interface follows the same pattern as ActionHolder. Combat abilities are identified by characterID + ability name (e.g., 'char-001-attack')."
     }
   ],
   "next_steps": [
-    "Phase 5: Add combat abilities to Character, integrate with draft->character transition",
     "Phase 6: Add ActionGrantedEvent/ActionRemovedEvent, update Character.SubscribeEvents()",
     "Phase 7: Implement Dodging/Disengaging conditions that subscribe to their respective events"
   ]

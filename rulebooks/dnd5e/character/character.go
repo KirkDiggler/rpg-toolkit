@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -34,8 +35,9 @@ const (
 	shieldCategory = "shield"
 )
 
-// Compile-time check that Character implements ActionHolder
+// Compile-time check that Character implements ActionHolder and CombatAbilityHolder
 var _ actions.ActionHolder = (*Character)(nil)
+var _ combatabilities.CombatAbilityHolder = (*Character)(nil)
 
 // Character represents a playable D&D 5e character
 // This is the domain model used during gameplay
@@ -81,6 +83,9 @@ type Character struct {
 
 	// Features (rage, second wind, etc) - grant actions and conditions
 	features []features.Feature
+
+	// Combat abilities (Attack, Dash, Dodge, Disengage) - consume action economy to grant capacity
+	combatAbilities []combatabilities.CombatAbility
 
 	// Actions (attack, dash, flurry strike, etc) - things you can do
 	actions []actions.Action
@@ -503,6 +508,45 @@ func (c *Character) GetActions() []actions.Action {
 // Implements actions.ActionHolder interface.
 func (c *Character) GetAction(id string) actions.Action {
 	for _, a := range c.actions {
+		if a.GetID() == id {
+			return a
+		}
+	}
+	return nil
+}
+
+// AddCombatAbility adds a combat ability to the character's available combat abilities.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) AddCombatAbility(ability combatabilities.CombatAbility) error {
+	if ability == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "combat ability cannot be nil")
+	}
+	c.combatAbilities = append(c.combatAbilities, ability)
+	return nil
+}
+
+// RemoveCombatAbility removes a combat ability by ID.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) RemoveCombatAbility(abilityID string) error {
+	for i, a := range c.combatAbilities {
+		if a.GetID() == abilityID {
+			c.combatAbilities = append(c.combatAbilities[:i], c.combatAbilities[i+1:]...)
+			return nil
+		}
+	}
+	return rpgerr.Newf(rpgerr.CodeNotFound, "combat ability %s not found", abilityID)
+}
+
+// GetCombatAbilities returns all available combat abilities.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) GetCombatAbilities() []combatabilities.CombatAbility {
+	return c.combatAbilities
+}
+
+// GetCombatAbility returns a specific combat ability by ID, or nil if not found.
+// Implements combatabilities.CombatAbilityHolder interface.
+func (c *Character) GetCombatAbility(id string) combatabilities.CombatAbility {
+	for _, a := range c.combatAbilities {
 		if a.GetID() == id {
 			return a
 		}
