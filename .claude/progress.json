@@ -16,13 +16,28 @@
       ],
       "commit": "cb7e741",
       "notes": "Phase 1 complete. ActionEconomy now supports the two-level action economy where abilities grant capacity and actions consume it."
+    },
+    {
+      "date": "2026-01-07",
+      "phase": "Phase 2",
+      "completed": [
+        "Created combatabilities package at rulebooks/dnd5e/combatabilities/",
+        "Added TypeCombatAbilities constant to refs/module.go",
+        "Created refs/combat_abilities.go with refs for Attack, Dash, Dodge, Disengage, Help, Hide, Ready",
+        "Created CombatAbility interface extending core.Action[CombatAbilityInput]",
+        "Created CombatAbilityInput struct with Bus, ActionEconomy, ActionHolder, Speed, ExtraAttacks fields",
+        "Created BaseCombatAbility struct providing common functionality",
+        "Created CombatAbilityHolder interface for entities that hold combat abilities",
+        "Implemented LoadJSON function stub for ability deserialization",
+        "Added comprehensive tests for all action economy types (standard, bonus, reaction, free)"
+      ],
+      "notes": "Phase 2 complete. The combatabilities package provides infrastructure for universal combat abilities. Named 'combatabilities' to avoid conflict with existing 'abilities' package (which contains ability scores STR/DEX/etc). The CombatAbility interface follows the same pattern as Feature and Action interfaces."
     }
   ],
   "next_steps": [
-    "Phase 2: Create Ability interface and AbilityInput struct",
-    "Phase 3: Implement standard abilities (Attack, Dash, Dodge, Disengage)",
+    "Phase 3: Implement standard abilities (Attack, Dash, Dodge, Disengage) in combatabilities package",
     "Phase 4: Create Strike and Move actions",
-    "Phase 5: Add abilities to Character, integrate with draft->character transition",
+    "Phase 5: Add combat abilities to Character, integrate with draft->character transition",
     "Phase 6: Add ActionGrantedEvent/ActionRemovedEvent, update Character.SubscribeEvents()"
   ]
 }

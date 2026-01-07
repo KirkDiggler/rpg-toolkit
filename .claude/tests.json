@@ -10,9 +10,10 @@
     {
       "id": "ability-interface",
       "feature": "abilities",
-      "prompt": "Ability interface should extend core.Action[AbilityInput]. AbilityInput should have Bus and ActionEconomy fields.",
-      "passes": false,
-      "last_checked": null
+      "prompt": "CombatAbility interface should extend core.Action[CombatAbilityInput]. CombatAbilityInput should have Bus, ActionEconomy, ActionHolder, Speed, and ExtraAttacks fields.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Named CombatAbility to avoid conflict with abilities package (ability scores). Located at rulebooks/dnd5e/combatabilities/"
     },
     {
       "id": "attack-ability-grants-strikes",
@@ -50,16 +51,17 @@
       "last_checked": null
     },
     {
-      "id": "character-has-abilities",
+      "id": "character-has-combat-abilities",
       "feature": "character",
-      "prompt": "Character should have abilities []Ability slice with AddAbility(), RemoveAbility(), GetAbilities() methods.",
+      "prompt": "Character should have combatAbilities []CombatAbility slice with AddCombatAbility(), RemoveCombatAbility(), GetCombatAbilities() methods.",
       "passes": false,
-      "last_checked": null
+      "last_checked": null,
+      "notes": "Changed from 'abilities' to 'combatAbilities' to avoid naming conflict"
     },
     {
       "id": "character-gets-standard-abilities",
       "feature": "character",
-      "prompt": "When a character is finalized (draft -> character), it should automatically receive standard abilities: Attack, Dash, Dodge, Disengage.",
+      "prompt": "When a character is finalized (draft -> character), it should automatically receive standard combat abilities: Attack, Dash, Dodge, Disengage.",
       "passes": false,
       "last_checked": null
     },
