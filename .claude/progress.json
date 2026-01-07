@@ -93,6 +93,18 @@
         "Added TestEventBasedActionGranting test suite in combat_abilities_test.go with 4 test cases"
       ],
       "notes": "Phase 6 complete. Actions are now granted via events for observability. ActionGrantedEvent carries the action via ActionBehavior interface (defined in events package to avoid import cycles). Character type-asserts ActionBehavior to actions.Action when handling the event. FlurryOfBlows now requires an EventBus. TwoWeaponGranter falls back to direct ActionHolder if EventBus is nil for backwards compatibility."
+    },
+    {
+      "date": "2026-01-07",
+      "phase": "Integration Test",
+      "completed": [
+        "Created character/integration_test.go with FullAttackFlowIntegrationSuite",
+        "TestFullAttackFlow - verifies complete combat turn with Extra Attack and dual wielding",
+        "TestAttackAbilityVariants - tests different Extra Attack configurations (0-3 extra attacks)",
+        "TestTwoWeaponFightingRequirements - validates dual-wielding requires both light weapons",
+        "TestEventFlowOrder - confirms events are published in correct order during attack sequence"
+      ],
+      "notes": "Integration test added to verify the full attack flow end-to-end. The test creates a fighter character, sets up ActionEconomy, activates Attack ability with Extra Attack (2 attacks), makes two Strikes with StrikeExecutedEvents, grants OffHandStrike via two-weapon fighting with ActionGrantedEvent, and executes the off-hand strike with OffHandStrikeRequestedEvent. All tests pass."
     }
   ],
   "next_steps": [

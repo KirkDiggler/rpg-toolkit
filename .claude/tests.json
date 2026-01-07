@@ -90,8 +90,9 @@
       "id": "full-attack-flow",
       "feature": "integration",
       "prompt": "Full flow: Activate Attack ability -> grants Strike(s) -> activate Strike -> attack resolves -> DualWieldingCondition grants OffHandStrike. All via events, no 'requested' indirection.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Integration test in character/integration_test.go. Tests full combat turn: ActionEconomy setup, Attack ability with Extra Attack (2 attacks), Strike execution with events, two-weapon fighting granting OffHandStrike via ActionGrantedEvent, and OffHandStrike execution with events."
     }
   ]
 }
