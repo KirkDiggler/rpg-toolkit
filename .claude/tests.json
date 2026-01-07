@@ -82,8 +82,9 @@
       "id": "action-granted-event",
       "feature": "events",
       "prompt": "ActionGrantedEvent should exist. Character should subscribe to it and add the action to its actions list when received.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "ActionGrantedEvent and ActionBehavior interface added to events/events.go. Character.onActionGranted() handler added to subscribe and add actions. FlurryOfBlows and TwoWeaponGranter updated to publish ActionGrantedEvent."
     },
     {
       "id": "full-attack-flow",

@@ -95,6 +95,17 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// ActionBehavior represents a grantable action.
+// This interface is defined in the events package to avoid import cycles
+// between events and actions packages. The actions package implements this
+// interface, and the character package can type-assert to actions.Action.
+type ActionBehavior interface {
+	core.Entity // GetID() and GetType()
+
+	// IsTemporary returns true if this action should be removed at turn end
+	IsTemporary() bool
+}
+
 // =============================================================================
 // Damage Source Types
 // =============================================================================
@@ -313,6 +324,15 @@ type FlurryStrikeRequestedEvent struct {
 	ActionID   string // ID of the FlurryStrike action (for tracking)
 }
 
+// ActionGrantedEvent is published when an action is granted to a character.
+// The character should subscribe to this event to add the action to its list.
+// The Action field contains the actual action to be added.
+type ActionGrantedEvent struct {
+	CharacterID string         // ID of the character receiving the action
+	Action      ActionBehavior // The action being granted (implements core.Entity)
+	Source      string         // What granted the action (e.g., "flurry_of_blows", "two_weapon_fighting")
+}
+
 // ActionRemovedEvent is published when an action removes itself from a character.
 // The character should listen for this event and remove the action from their list.
 type ActionRemovedEvent struct {
@@ -480,6 +500,10 @@ var (
 	// OffHandStrikeActivatedTopic provides typed pub/sub for off-hand strike completion notifications
 	OffHandStrikeActivatedTopic = events.DefineTypedTopic[OffHandStrikeActivatedEvent](
 		"dnd5e.action.off_hand_strike.activated")
+
+	// ActionGrantedTopic provides typed pub/sub for action granted events
+	ActionGrantedTopic = events.DefineTypedTopic[ActionGrantedEvent](
+		"dnd5e.action.granted")
 
 	// ActionRemovedTopic provides typed pub/sub for action removed events
 	ActionRemovedTopic = events.DefineTypedTopic[ActionRemovedEvent](

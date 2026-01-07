@@ -11,6 +11,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -71,10 +72,9 @@ func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input F
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
 	}
 
-	// Cast owner to ActionHolder to grant FlurryStrike actions
-	holder, ok := owner.(actions.ActionHolder)
-	if !ok {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ActionHolder")
+	// Require event bus for action granting via events
+	if input.Bus == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus required for flurry of blows")
 	}
 
 	// Grant two FlurryStrike actions
@@ -89,46 +89,45 @@ func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input F
 	})
 
 	// Apply actions to event bus (subscribe to turn end for cleanup)
-	if input.Bus != nil {
-		if err := strike1.Apply(ctx, input.Bus); err != nil {
-			return rpgerr.Wrapf(err, "failed to apply flurry strike 1")
-		}
-		if err := strike2.Apply(ctx, input.Bus); err != nil {
-			// Rollback strike1
-			_ = strike1.Remove(ctx, input.Bus)
-			return rpgerr.Wrapf(err, "failed to apply flurry strike 2")
-		}
+	if err := strike1.Apply(ctx, input.Bus); err != nil {
+		return rpgerr.Wrapf(err, "failed to apply flurry strike 1")
+	}
+	if err := strike2.Apply(ctx, input.Bus); err != nil {
+		// Rollback strike1
+		_ = strike1.Remove(ctx, input.Bus)
+		return rpgerr.Wrapf(err, "failed to apply flurry strike 2")
 	}
 
-	// Add actions to the character
-	if err := holder.AddAction(strike1); err != nil {
+	// Publish ActionGrantedEvent for each action
+	// The character subscribes to this event and adds the action
+	actionGrantedTopic := dnd5eEvents.ActionGrantedTopic.On(input.Bus)
+	if err := actionGrantedTopic.Publish(ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: ownerID,
+		Action:      strike1,
+		Source:      "flurry_of_blows",
+	}); err != nil {
 		// Rollback subscriptions
-		if input.Bus != nil {
-			_ = strike1.Remove(ctx, input.Bus)
-			_ = strike2.Remove(ctx, input.Bus)
-		}
-		return rpgerr.Wrapf(err, "failed to add flurry strike 1 to character")
+		_ = strike1.Remove(ctx, input.Bus)
+		_ = strike2.Remove(ctx, input.Bus)
+		return rpgerr.Wrapf(err, "failed to publish action granted event for flurry strike 1")
 	}
-	if err := holder.AddAction(strike2); err != nil {
-		// Rollback strike1 from holder and subscriptions
-		_ = holder.RemoveAction(strike1.GetID())
-		if input.Bus != nil {
-			_ = strike1.Remove(ctx, input.Bus)
-			_ = strike2.Remove(ctx, input.Bus)
-		}
-		return rpgerr.Wrapf(err, "failed to add flurry strike 2 to character")
+	if err := actionGrantedTopic.Publish(ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: ownerID,
+		Action:      strike2,
+		Source:      "flurry_of_blows",
+	}); err != nil {
+		// Rollback subscriptions (note: strike1 is already added to character via event)
+		_ = strike1.Remove(ctx, input.Bus)
+		_ = strike2.Remove(ctx, input.Bus)
+		return rpgerr.Wrapf(err, "failed to publish action granted event for flurry strike 2")
 	}
 
 	// Consume 1 Ki point only after successful action granting
 	// This ensures no Ki is lost if action granting fails
 	if err := accessor.UseResource(resources.Ki, 1); err != nil {
-		// Rollback all actions
-		_ = holder.RemoveAction(strike1.GetID())
-		_ = holder.RemoveAction(strike2.GetID())
-		if input.Bus != nil {
-			_ = strike1.Remove(ctx, input.Bus)
-			_ = strike2.Remove(ctx, input.Bus)
-		}
+		// Rollback subscriptions (actions were added to character via events)
+		_ = strike1.Remove(ctx, input.Bus)
+		_ = strike2.Remove(ctx, input.Bus)
 		return rpgerr.Wrapf(err, "failed to use ki for flurry of blows")
 	}
 

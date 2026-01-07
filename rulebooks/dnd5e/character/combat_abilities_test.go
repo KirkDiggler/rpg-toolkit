@@ -8,11 +8,13 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -296,6 +298,137 @@ func (s *CombatAbilitiesTestSuite) TestCombatAbilityHolder() {
 
 		ability := char.GetCombatAbility("nonexistent")
 		s.Assert().Nil(ability)
+	})
+}
+
+func (s *CombatAbilitiesTestSuite) TestEventBasedActionGranting() {
+	s.Run("character adds action when ActionGrantedEvent is published", func() {
+		draft := s.createFighterDraft()
+
+		char, err := draft.ToCharacter(s.ctx, "char-event-001", s.bus)
+		s.Require().NoError(err)
+
+		initialActionCount := len(char.GetActions())
+
+		// Create a FlurryStrike action (temporary action)
+		flurryStrike := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
+			ID:      "test-flurry-strike-1",
+			OwnerID: "char-event-001",
+		})
+
+		// Publish ActionGrantedEvent
+		topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+		err = topic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+			CharacterID: "char-event-001",
+			Action:      flurryStrike,
+			Source:      "test",
+		})
+		s.Require().NoError(err)
+
+		// Verify the action was added
+		s.Assert().Len(char.GetActions(), initialActionCount+1)
+		addedAction := char.GetAction("test-flurry-strike-1")
+		s.Require().NotNil(addedAction, "character should have the granted action")
+	})
+
+	s.Run("character ignores ActionGrantedEvent for other characters", func() {
+		draft := s.createFighterDraft()
+
+		char, err := draft.ToCharacter(s.ctx, "char-event-002", s.bus)
+		s.Require().NoError(err)
+
+		initialActionCount := len(char.GetActions())
+
+		// Create a FlurryStrike action for a different character
+		flurryStrike := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
+			ID:      "test-flurry-strike-2",
+			OwnerID: "other-character",
+		})
+
+		// Publish ActionGrantedEvent for different character
+		topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+		err = topic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+			CharacterID: "other-character", // Different character
+			Action:      flurryStrike,
+			Source:      "test",
+		})
+		s.Require().NoError(err)
+
+		// Verify the action was NOT added to our character
+		s.Assert().Len(char.GetActions(), initialActionCount)
+		s.Assert().Nil(char.GetAction("test-flurry-strike-2"))
+	})
+
+	s.Run("character removes action when ActionRemovedEvent is published", func() {
+		draft := s.createFighterDraft()
+
+		char, err := draft.ToCharacter(s.ctx, "char-event-003", s.bus)
+		s.Require().NoError(err)
+
+		// First add an action via event
+		flurryStrike := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
+			ID:      "test-flurry-strike-3",
+			OwnerID: "char-event-003",
+		})
+
+		grantTopic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+		err = grantTopic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+			CharacterID: "char-event-003",
+			Action:      flurryStrike,
+			Source:      "test",
+		})
+		s.Require().NoError(err)
+
+		// Verify action was added
+		s.Require().NotNil(char.GetAction("test-flurry-strike-3"))
+		actionCountAfterAdd := len(char.GetActions())
+
+		// Now publish ActionRemovedEvent
+		removeTopic := dnd5eEvents.ActionRemovedTopic.On(s.bus)
+		err = removeTopic.Publish(s.ctx, dnd5eEvents.ActionRemovedEvent{
+			ActionID: "test-flurry-strike-3",
+			OwnerID:  "char-event-003",
+		})
+		s.Require().NoError(err)
+
+		// Verify the action was removed
+		s.Assert().Len(char.GetActions(), actionCountAfterAdd-1)
+		s.Assert().Nil(char.GetAction("test-flurry-strike-3"))
+	})
+
+	s.Run("character ignores ActionRemovedEvent for other characters", func() {
+		draft := s.createFighterDraft()
+
+		char, err := draft.ToCharacter(s.ctx, "char-event-004", s.bus)
+		s.Require().NoError(err)
+
+		// Add an action first
+		flurryStrike := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
+			ID:      "test-flurry-strike-4",
+			OwnerID: "char-event-004",
+		})
+
+		grantTopic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+		err = grantTopic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+			CharacterID: "char-event-004",
+			Action:      flurryStrike,
+			Source:      "test",
+		})
+		s.Require().NoError(err)
+
+		actionCountAfterAdd := len(char.GetActions())
+
+		// Publish ActionRemovedEvent for different character
+		removeTopic := dnd5eEvents.ActionRemovedTopic.On(s.bus)
+		err = removeTopic.Publish(s.ctx, dnd5eEvents.ActionRemovedEvent{
+			ActionID: "test-flurry-strike-4",
+			OwnerID:  "other-character", // Different character
+		})
+		s.Require().NoError(err)
+
+		// Verify the action was NOT removed
+		s.Assert().Len(char.GetActions(), actionCountAfterAdd)
+		s.Assert().NotNil(char.GetAction("test-flurry-strike-4"))
 	})
 }
 

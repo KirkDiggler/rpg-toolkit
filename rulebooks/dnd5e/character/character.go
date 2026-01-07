@@ -903,6 +903,14 @@ func (c *Character) subscribeToEvents(ctx context.Context) error {
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, subID)
 
+	// Subscribe to action granted events
+	actionGrantedTopic := dnd5eEvents.ActionGrantedTopic.On(c.bus)
+	subID, err = actionGrantedTopic.Subscribe(ctx, c.onActionGranted)
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to subscribe to action granted")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, subID)
+
 	// Subscribe to action removed events
 	actionRemovedTopic := dnd5eEvents.ActionRemovedTopic.On(c.bus)
 	subID, err = actionRemovedTopic.Subscribe(ctx, c.onActionRemoved)
@@ -982,6 +990,23 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 	}
 
 	return nil
+}
+
+// onActionGranted handles ActionGrantedEvent
+func (c *Character) onActionGranted(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+	// Only process events for this character
+	if event.CharacterID != c.id {
+		return nil
+	}
+
+	// Type-assert to actions.Action
+	action, ok := event.Action.(actions.Action)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "event action does not implement actions.Action")
+	}
+
+	// Add the action to our list
+	return c.AddAction(action)
 }
 
 // onActionRemoved handles ActionRemovedEvent

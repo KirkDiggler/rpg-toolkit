@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
 )
@@ -60,9 +61,10 @@ func (m *mockActionHolder) GetAction(actionID string) actions.Action {
 
 type TwoWeaponGranterTestSuite struct {
 	suite.Suite
-	ctx          context.Context
-	bus          events.EventBus
-	actionHolder *mockActionHolder
+	ctx            context.Context
+	bus            events.EventBus
+	actionHolder   *mockActionHolder
+	grantedActions []dnd5eEvents.ActionBehavior
 }
 
 func TestTwoWeaponGranterTestSuite(t *testing.T) {
@@ -73,6 +75,18 @@ func (s *TwoWeaponGranterTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 	s.actionHolder = newMockActionHolder()
+	s.grantedActions = []dnd5eEvents.ActionBehavior{}
+
+	// Subscribe to ActionGrantedEvent to track actions granted via events
+	topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+	_, _ = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+		s.grantedActions = append(s.grantedActions, event.Action)
+		// Also add to action holder to maintain test compatibility
+		if action, ok := event.Action.(actions.Action); ok {
+			_ = s.actionHolder.AddAction(action)
+		}
+		return nil
+	})
 }
 
 func (s *TwoWeaponGranterTestSuite) TestGrantsOffHandStrike_DualLightWeapons() {
@@ -312,7 +326,7 @@ func (s *TwoWeaponGranterTestSuite) TestGrantsWithoutActionHolder() {
 }
 
 func (s *TwoWeaponGranterTestSuite) TestActionHolderAddError_RollsBackEventSubscription() {
-	// Arrange - action holder will fail
+	// Arrange - action holder will fail (only applies when EventBus is nil and ActionHolder is used)
 	s.actionHolder.addError = rpgerr.New(rpgerr.CodeInternal, "mock add error")
 	input := &actions.TwoWeaponGranterInput{
 		CharacterID:    "test-fighter",
@@ -320,7 +334,7 @@ func (s *TwoWeaponGranterTestSuite) TestActionHolderAddError_RollsBackEventSubsc
 		MainHandWeapon: &actions.EquippedWeaponInfo{WeaponID: weapons.Shortsword},
 		OffHandWeapon:  &actions.EquippedWeaponInfo{WeaponID: weapons.Shortsword},
 		ActionHolder:   s.actionHolder,
-		EventBus:       s.bus,
+		EventBus:       nil, // No event bus - falls back to direct ActionHolder
 	}
 
 	// Act

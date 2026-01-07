@@ -76,10 +76,26 @@
         "Added comprehensive tests in combat_abilities_test.go verifying character gets all standard abilities"
       ],
       "notes": "Phase 5 complete. Characters now receive 4 standard combat abilities (Attack, Dash, Dodge, Disengage) and 2 standard actions (Strike, Move) when finalized via ToCharacter. The CombatAbilityHolder interface follows the same pattern as ActionHolder. Combat abilities are identified by characterID + ability name (e.g., 'char-001-attack')."
+    },
+    {
+      "date": "2026-01-07",
+      "phase": "Phase 6",
+      "completed": [
+        "Added ActionBehavior interface to events/events.go (core.Entity + IsTemporary())",
+        "Added ActionGrantedEvent struct with CharacterID, Action (ActionBehavior), and Source fields",
+        "Added ActionGrantedTopic for typed pub/sub of action granted events",
+        "Added Character.onActionGranted() handler that subscribes to ActionGrantedEvent and adds actions",
+        "Updated Character.subscribeToEvents() to subscribe to ActionGrantedTopic",
+        "Updated FlurryOfBlows.Activate() to publish ActionGrantedEvent instead of direct holder.AddAction()",
+        "Updated TwoWeaponGranter.CheckAndGrantOffHandStrike() to publish ActionGrantedEvent when EventBus is provided",
+        "Updated tests in flurry_of_blows_test.go to subscribe to ActionGrantedEvent",
+        "Updated tests in two_weapon_granter_test.go to subscribe to ActionGrantedEvent",
+        "Added TestEventBasedActionGranting test suite in combat_abilities_test.go with 4 test cases"
+      ],
+      "notes": "Phase 6 complete. Actions are now granted via events for observability. ActionGrantedEvent carries the action via ActionBehavior interface (defined in events package to avoid import cycles). Character type-asserts ActionBehavior to actions.Action when handling the event. FlurryOfBlows now requires an EventBus. TwoWeaponGranter falls back to direct ActionHolder if EventBus is nil for backwards compatibility."
     }
   ],
   "next_steps": [
-    "Phase 6: Add ActionGrantedEvent/ActionRemovedEvent, update Character.SubscribeEvents()",
     "Phase 7: Implement Dodging/Disengaging conditions that subscribe to their respective events"
   ]
 }

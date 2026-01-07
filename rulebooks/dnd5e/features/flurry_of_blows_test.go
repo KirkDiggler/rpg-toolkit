@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -140,6 +141,19 @@ func (s *FlurryOfBlowsTestSuite) SetupTest() {
 			id: "test-monk",
 		},
 	}
+
+	// Subscribe to ActionGrantedEvent to add actions to the mock character
+	// This simulates what Character.subscribeToEvents() does
+	topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+	_, _ = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+		if event.CharacterID != s.character.GetID() {
+			return nil
+		}
+		if action, ok := event.Action.(actions.Action); ok {
+			return s.character.AddAction(action)
+		}
+		return nil
+	})
 
 	// Add Ki resource (3 Ki points for level 3 monk)
 	kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
