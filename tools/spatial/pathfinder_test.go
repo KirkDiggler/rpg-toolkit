@@ -94,3 +94,17 @@ func (s *PathFinderTestSuite) TestSamePosition() {
 
 	s.Empty(path, "should return empty path when already at goal")
 }
+
+func (s *PathFinderTestSuite) TestNoPath_GoalBlocked() {
+	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
+	goal := CubeCoordinate{X: 3, Y: 0, Z: -3}
+
+	// Block the goal itself
+	blocked := map[CubeCoordinate]bool{
+		goal: true,
+	}
+
+	path := s.pathFinder.FindPath(start, goal, blocked)
+
+	s.Empty(path, "should return empty path when goal is blocked")
+}

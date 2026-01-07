@@ -25,6 +25,11 @@ func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[Cube
 		return []CubeCoordinate{}
 	}
 
+	// If goal is blocked, no path exists
+	if blocked[goal] {
+		return []CubeCoordinate{}
+	}
+
 	// Priority queue entry
 	type node struct {
 		pos    CubeCoordinate
@@ -82,8 +87,17 @@ func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[Cube
 				fScore := tentativeG + neighbor.Distance(goal)
 
 				if !inOpenSet[neighbor] {
+					// New node: add to open set
 					openSet = append(openSet, node{pos: neighbor, fScore: fScore})
 					inOpenSet[neighbor] = true
+				} else {
+					// Existing node: update fScore for optimal exploration order
+					for i, n := range openSet {
+						if n.pos == neighbor {
+							openSet[i].fScore = fScore
+							break
+						}
+					}
 				}
 			}
 		}
@@ -93,23 +107,35 @@ func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[Cube
 	return []CubeCoordinate{}
 }
 
-// reconstructPath builds the path from start to goal using cameFrom map
+// reconstructPath builds the path from start to goal using cameFrom map.
+// Uses O(n) algorithm: build reversed path, then reverse once.
 func (p *SimplePathFinder) reconstructPath(
 	cameFrom map[CubeCoordinate]CubeCoordinate,
 	current CubeCoordinate,
 ) []CubeCoordinate {
-	path := []CubeCoordinate{current}
+	// Build path in reverse (from goal back to start) in O(n)
+	reversed := []CubeCoordinate{current}
 	for {
 		prev, ok := cameFrom[current]
 		if !ok {
 			break
 		}
-		path = append([]CubeCoordinate{prev}, path...)
+		reversed = append(reversed, prev)
 		current = prev
 	}
-	// Remove start from path (path should exclude start)
-	if len(path) > 0 {
-		path = path[1:]
+
+	// reversed now contains [goal, ..., start]
+	if len(reversed) == 0 {
+		return reversed
 	}
-	return path
+
+	// Remove start from path (path should exclude start)
+	reversed = reversed[:len(reversed)-1]
+
+	// Reverse to get path from first step after start to goal
+	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
+		reversed[i], reversed[j] = reversed[j], reversed[i]
+	}
+
+	return reversed
 }
