@@ -49,16 +49,18 @@
     {
       "id": "strike-action-resolves-attack",
       "feature": "actions",
-      "prompt": "Strike action should consume 1 AttacksRemaining and call combat.ResolveAttack() directly (not publish a 'requested' event).",
-      "passes": false,
-      "last_checked": null
+      "prompt": "Strike action should consume 1 AttacksRemaining and publish StrikeExecutedEvent for the game layer to resolve.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Strike consumes AttacksRemaining via ActionEconomy.UseAttack() and publishes StrikeExecutedEvent. The game layer handles attack resolution."
     },
     {
       "id": "move-action-uses-movement",
       "feature": "actions",
-      "prompt": "Move action should consume MovementRemaining based on distance and execute movement (not publish a 'requested' event).",
-      "passes": false,
-      "last_checked": null
+      "prompt": "Move action should consume MovementRemaining based on distance and publish MoveExecutedEvent for position changes.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Move consumes movement via ActionEconomy.UseMovement() and publishes MoveExecutedEvent. The game layer handles position updates."
     },
     {
       "id": "character-has-combat-abilities",

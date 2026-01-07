@@ -48,11 +48,26 @@
         "Added comprehensive tests for all abilities including scenario tests (Fighter Action Surge, Rogue Cunning Action)"
       ],
       "notes": "Phase 3 complete. All four standard combat abilities are implemented. Dodge/Disengage publish events that future conditions can subscribe to. The actual Dodging/Disengaging conditions will be implemented in a future phase. Attack sets AttacksRemaining for Strike actions (Phase 4). Dash adds movement for Move actions (Phase 4)."
+    },
+    {
+      "date": "2026-01-07",
+      "phase": "Phase 4",
+      "completed": [
+        "Implemented Strike action (strike.go) - consumes 1 AttacksRemaining, publishes StrikeExecutedEvent",
+        "Implemented Move action (move.go) - consumes MovementRemaining based on distance, publishes MoveExecutedEvent",
+        "Added StrikeExecutedEvent and MoveExecutedEvent to events/events.go",
+        "Added StrikeExecutedTopic and MoveExecutedTopic for event pub/sub",
+        "Added CurrentPosition, Destination, and MovementCostFt fields to ActionInput",
+        "Strike is permanent (not temporary like FlurryStrike/OffHandStrike) with unlimited uses",
+        "Move is permanent with unlimited uses, validates movement cost before activation",
+        "Added comprehensive tests including scenario tests (Fighter Extra Attack, Dash double movement, interleaved combat)"
+      ],
+      "notes": "Phase 4 complete. Strike and Move actions are the 'doing' layer that consume capacity granted by abilities. Strike consumes attacks granted by Attack ability and publishes StrikeExecutedEvent for the game layer to resolve. Move consumes movement and publishes MoveExecutedEvent for position changes. Both are permanent actions (unlike FlurryStrike/OffHandStrike which are temporary)."
     }
   ],
   "next_steps": [
-    "Phase 4: Create Strike and Move actions",
     "Phase 5: Add combat abilities to Character, integrate with draft->character transition",
-    "Phase 6: Add ActionGrantedEvent/ActionRemovedEvent, update Character.SubscribeEvents()"
+    "Phase 6: Add ActionGrantedEvent/ActionRemovedEvent, update Character.SubscribeEvents()",
+    "Phase 7: Implement Dodging/Disengaging conditions that subscribe to their respective events"
   ]
 }

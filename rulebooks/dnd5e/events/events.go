@@ -379,6 +379,34 @@ type DeflectMissilesThrowEvent struct {
 }
 
 // =============================================================================
+// Strike and Move Action Events
+// =============================================================================
+
+// StrikeExecutedEvent is published when a Strike action is activated.
+// The game server should resolve a weapon attack from attacker to target.
+// This is the standard attack action that consumes one of the attacks granted
+// by the Attack ability.
+type StrikeExecutedEvent struct {
+	AttackerID string // ID of the character making the attack
+	TargetID   string // ID of the target being attacked
+	WeaponID   string // ID of the weapon being used
+	ActionID   string // ID of the Strike action (for tracking)
+}
+
+// MoveExecutedEvent is published when a Move action is activated.
+// The game server should update the entity's position and handle any
+// opportunity attacks or other movement-triggered effects.
+type MoveExecutedEvent struct {
+	EntityID   string  // ID of the entity that moved
+	ActionID   string  // ID of the Move action (for tracking)
+	FromX      float64 // Starting X position
+	FromY      float64 // Starting Y position
+	ToX        float64 // Destination X position
+	ToY        float64 // Destination Y position
+	DistanceFt int     // Distance moved in feet
+}
+
+// =============================================================================
 // Combat Ability Events
 // =============================================================================
 
@@ -477,6 +505,12 @@ var (
 
 	// DisengageActivatedTopic provides typed pub/sub for Disengage ability activation
 	DisengageActivatedTopic = events.DefineTypedTopic[DisengageActivatedEvent]("dnd5e.ability.disengage.activated")
+
+	// StrikeExecutedTopic provides typed pub/sub for Strike action execution
+	StrikeExecutedTopic = events.DefineTypedTopic[StrikeExecutedEvent]("dnd5e.action.strike.executed")
+
+	// MoveExecutedTopic provides typed pub/sub for Move action execution
+	MoveExecutedTopic = events.DefineTypedTopic[MoveExecutedEvent]("dnd5e.action.move.executed")
 )
 
 // Chain topics (for modifier chains)
