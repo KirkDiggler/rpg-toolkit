@@ -1064,10 +1064,11 @@ func (g *GraphBasedGenerator) createRequiredPathsUnsafe(_ *RoomNode, shape *Room
 func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(
 	roomNode *RoomNode, walls []WallSegment,
 ) (spatial.Room, error) {
-	// Create a grid for the room
-	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-		Width:  roomNode.Size.Width,
-		Height: roomNode.Size.Height,
+	// Create a hex grid for the room - environments use cube coordinates throughout
+	grid := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width:       roomNode.Size.Width,
+		Height:      roomNode.Size.Height,
+		Orientation: spatial.HexOrientationPointyTop, // D&D 5e standard
 	})
 
 	// Create spatial room configuration
@@ -1158,31 +1159,42 @@ func (g *GraphBasedGenerator) createEnvironmentUnsafe(
 		roomPositions[roomID] = node.Position
 	}
 
-	// Calculate blocked hexes from wall entities in all rooms
+	// Calculate blocked hexes from entities that block movement in all rooms
 	blockedHexes := make(map[spatial.CubeCoordinate]bool)
 	for roomID, room := range orchestrator.GetAllRooms() {
 		roomPos := roomPositions[roomID]
+		grid := room.GetGrid()
 
-		// Get all entities in the room and find walls
+		// Get all entities in the room and find those that block movement
 		for _, entity := range room.GetAllEntities() {
-			// Check if entity is a wall (blocks movement)
-			if wallEntity, ok := entity.(*WallEntity); ok {
-				// Convert wall position (Position) to cube coordinate
-				pos := wallEntity.GetPosition()
-				localCube := spatial.CubeCoordinate{
-					X: int(pos.X),
-					Y: int(-pos.X - pos.Y), // y = -x - z, with z = -pos.Y
-					Z: -int(pos.Y),
-				}
-
-				// Convert to dungeon-absolute
-				absCube := spatial.CubeCoordinate{
-					X: roomPos.X + localCube.X,
-					Y: roomPos.Y + localCube.Y,
-					Z: roomPos.Z + localCube.Z,
-				}
-				blockedHexes[absCube] = true
+			// Check if entity implements Placeable and blocks movement
+			placeable, ok := entity.(spatial.Placeable)
+			if !ok || !placeable.BlocksMovement() {
+				continue
 			}
+
+			// Get entity position and convert to cube coordinate
+			pos, exists := room.GetEntityPosition(entity.GetID())
+			if !exists {
+				continue
+			}
+
+			// Use HexGrid's proper offset-to-cube conversion if available
+			var localCube spatial.CubeCoordinate
+			if hexGrid, ok := grid.(*spatial.HexGrid); ok {
+				localCube = hexGrid.OffsetToCube(pos)
+			} else {
+				// Fallback for non-hex grids: treat Position as simple offset
+				localCube = spatial.OffsetCoordinateToCube(pos)
+			}
+
+			// Convert to dungeon-absolute coordinates
+			absCube := spatial.CubeCoordinate{
+				X: roomPos.X + localCube.X,
+				Y: roomPos.Y + localCube.Y,
+				Z: roomPos.Z + localCube.Z,
+			}
+			blockedHexes[absCube] = true
 		}
 	}
 
