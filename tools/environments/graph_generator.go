@@ -3,7 +3,6 @@ package environments
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -179,8 +178,8 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 		return nil, fmt.Errorf("failed to create connections: %w", err)
 	}
 
-	// Step 5: Create environment wrapper
-	environment := g.createEnvironmentUnsafe(orchestrator, config)
+	// Step 5: Create environment wrapper with room positions
+	environment := g.createEnvironmentUnsafe(roomGraph, orchestrator, config)
 
 	// Publish typed generation completed event
 	completedEvent := GenerationCompletedEvent{
@@ -231,7 +230,27 @@ type RoomNode struct {
 	Size       spatial.Dimensions     `json:"size"`
 	Features   []Feature              `json:"features"`
 	Properties map[string]interface{} `json:"properties"`
-	Position   *spatial.Position      `json:"position,omitempty"` // Set during spatial placement
+	// Position is the room's origin in dungeon-absolute coordinates.
+	// Set during spatial placement to enable unified coordinate system.
+	Position spatial.CubeCoordinate `json:"position"`
+}
+
+// ToAbsolute converts room-local coordinates to dungeon-absolute coordinates
+func (r *RoomNode) ToAbsolute(local spatial.CubeCoordinate) spatial.CubeCoordinate {
+	return spatial.CubeCoordinate{
+		X: r.Position.X + local.X,
+		Y: r.Position.Y + local.Y,
+		Z: r.Position.Z + local.Z,
+	}
+}
+
+// ToLocal converts dungeon-absolute coordinates to room-local coordinates
+func (r *RoomNode) ToLocal(absolute spatial.CubeCoordinate) spatial.CubeCoordinate {
+	return spatial.CubeCoordinate{
+		X: absolute.X - r.Position.X,
+		Y: absolute.Y - r.Position.Y,
+		Z: absolute.Z - r.Position.Z,
+	}
 }
 
 // ConnectionEdge represents a connection in the abstract graph
@@ -243,6 +262,10 @@ type ConnectionEdge struct {
 	Bidirectional bool    `json:"bidirectional"`
 	Cost          float64 `json:"cost"`
 	Required      bool    `json:"required"`
+	// FromPosition is the door position in FromRoom's local coordinates
+	FromPosition spatial.CubeCoordinate `json:"from_position"`
+	// ToPosition is the door position in ToRoom's local coordinates
+	ToPosition spatial.CubeCoordinate `json:"to_position"`
 }
 
 // RoomGraph represents the abstract graph structure
@@ -724,28 +747,131 @@ func (g *GraphBasedGenerator) placeRoomsSpatiallyUnsafe(
 	// Create shape loader for room shapes
 	shapeLoader := NewShapeLoader("tools/environments/shapes")
 
-	// Place each room from the graph into spatial coordinates
+	// Step 1: Create all spatial rooms and add to orchestrator
+	spatialRooms := make(map[string]spatial.Room)
 	for _, roomNode := range graph.nodes {
-		// Create spatial room from graph node
 		spatialRoom, err := g.createSpatialRoomUnsafe(ctx, roomNode, config, shapeLoader)
 		if err != nil {
 			return fmt.Errorf("failed to create spatial room %s: %w", roomNode.ID, err)
 		}
 
-		// Add room to orchestrator
 		if err := orchestrator.AddRoom(spatialRoom); err != nil {
 			return fmt.Errorf("failed to add room %s to orchestrator: %w", roomNode.ID, err)
 		}
 
-		// Store spatial position back to graph node for connection creation
-		// Note: Rooms don't have positions directly, using default for now
-		roomNode.Position = &spatial.Position{
-			X: 0,
-			Y: 0,
+		spatialRooms[roomNode.ID] = spatialRoom
+	}
+
+	// Step 2: Calculate door positions for each edge
+	for _, edge := range graph.edges {
+		fromRoom := spatialRooms[edge.FromRoomID]
+		toRoom := spatialRooms[edge.ToRoomID]
+
+		edge.FromPosition = g.findDoorPositionCube(fromRoom, toRoom, "exit")
+		edge.ToPosition = g.findDoorPositionCube(toRoom, fromRoom, "entrance")
+	}
+
+	// Step 3: Calculate room positions via BFS from first room
+	if len(graph.nodes) == 0 {
+		return nil
+	}
+
+	// Find first room (entrance or any room)
+	var firstRoomID string
+	for _, node := range graph.nodes {
+		if node.Type == RoomTypeEntrance {
+			firstRoomID = node.ID
+			break
+		}
+		if firstRoomID == "" {
+			firstRoomID = node.ID
+		}
+	}
+
+	// Place first room at origin
+	graph.nodes[firstRoomID].Position = spatial.CubeCoordinate{X: 0, Y: 0, Z: 0}
+
+	// BFS to place remaining rooms based on door alignment
+	placed := map[string]bool{firstRoomID: true}
+	queue := []string{firstRoomID}
+
+	for len(queue) > 0 {
+		currentID := queue[0]
+		queue = queue[1:]
+		currentNode := graph.nodes[currentID]
+
+		// Find all edges connected to current room
+		for _, edge := range graph.edges {
+			neighborID, currentDoorPos, neighborDoorPos, found := g.getUnplacedNeighbor(
+				edge, currentID, placed,
+			)
+			if !found {
+				continue
+			}
+
+			// Calculate neighbor's position so doors align
+			// neighborPos + neighborDoorPos = currentPos + currentDoorPos
+			// neighborPos = currentPos + currentDoorPos - neighborDoorPos
+			neighborNode := graph.nodes[neighborID]
+			neighborNode.Position = spatial.CubeCoordinate{
+				X: currentNode.Position.X + currentDoorPos.X - neighborDoorPos.X,
+				Y: currentNode.Position.Y + currentDoorPos.Y - neighborDoorPos.Y,
+				Z: currentNode.Position.Z + currentDoorPos.Z - neighborDoorPos.Z,
+			}
+
+			placed[neighborID] = true
+			queue = append(queue, neighborID)
+		}
+	}
+
+	// Handle any disconnected rooms (shouldn't happen in valid graphs)
+	offset := 100 // Large offset to separate disconnected subgraphs
+	for roomID, node := range graph.nodes {
+		if !placed[roomID] {
+			node.Position = spatial.CubeCoordinate{X: offset, Y: 0, Z: -offset}
+			offset += 100
 		}
 	}
 
 	return nil
+}
+
+// getUnplacedNeighbor checks if an edge connects to an unplaced neighbor room.
+// Returns the neighbor ID, current door position, neighbor door position, and whether found.
+func (g *GraphBasedGenerator) getUnplacedNeighbor(
+	edge *ConnectionEdge, currentID string, placed map[string]bool,
+) (neighborID string, currentDoorPos, neighborDoorPos spatial.CubeCoordinate, found bool) {
+	switch {
+	case edge.FromRoomID == currentID && !placed[edge.ToRoomID]:
+		return edge.ToRoomID, edge.FromPosition, edge.ToPosition, true
+	case edge.ToRoomID == currentID && !placed[edge.FromRoomID] && edge.Bidirectional:
+		return edge.FromRoomID, edge.ToPosition, edge.FromPosition, true
+	default:
+		return "", spatial.CubeCoordinate{}, spatial.CubeCoordinate{}, false
+	}
+}
+
+// findDoorPositionCube finds a door position on room boundary in cube coordinates
+func (g *GraphBasedGenerator) findDoorPositionCube(
+	room spatial.Room, _ spatial.Room, _ string,
+) spatial.CubeCoordinate {
+	// Get room dimensions from the grid
+	grid := room.GetGrid()
+	dimensions := grid.GetDimensions()
+
+	// For now, place door at edge of room (right side for "exit", left for "entrance")
+	// In a complete implementation, would consider:
+	// 1. Direction to other room
+	// 2. Room shape and existing doors
+	// 3. Optimal placement for pathfinding
+
+	// Place at center of right edge (x = width-1, z = -height/2)
+	// Using cube coords where x goes right, z goes down, y = -x-z
+	x := int(dimensions.Width) - 1
+	z := -int(dimensions.Height) / 2
+	y := -x - z
+
+	return spatial.CubeCoordinate{X: x, Y: y, Z: z}
 }
 
 func (g *GraphBasedGenerator) createSpatialRoomUnsafe(
@@ -998,19 +1124,13 @@ func (g *GraphBasedGenerator) createConnectionsUnsafe(
 }
 
 func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
-	edge *ConnectionEdge, fromRoom, toRoom spatial.Room, _ GenerationConfig,
+	edge *ConnectionEdge, _, _ spatial.Room, _ GenerationConfig,
 ) spatial.Connection {
-	// Determine connection positions
-	fromPos := g.findConnectionPositionUnsafe(fromRoom, toRoom, "exit")
-	toPos := g.findConnectionPositionUnsafe(toRoom, fromRoom, "entrance")
-
-	// Calculate cost based on position distance (fromPos, toPos used for cost calculation)
-	dx := fromPos.X - toPos.X
-	dy := fromPos.Y - toPos.Y
-	distance := math.Sqrt(dx*dx + dy*dy)
-	cost := distance * 1.0 // Base cost multiplier
+	// Door positions are already calculated and stored in edge during placeRoomsSpatiallyUnsafe
+	// Use edge cost or default to 1.0
+	cost := edge.Cost
 	if cost < 1.0 {
-		cost = 1.0 // Minimum cost
+		cost = 1.0
 	}
 
 	// Create spatial connection based on edge type
@@ -1029,37 +1149,43 @@ func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
 	}
 }
 
-func (g *GraphBasedGenerator) findConnectionPositionUnsafe(
-	room spatial.Room, otherRoom spatial.Room, purpose string,
-) spatial.Position {
-	// Find appropriate connection position on room boundary
-	// Get room dimensions from the grid
-	grid := room.GetGrid()
-	dimensions := grid.GetDimensions()
-
-	// Get grid dimensions
-	width := dimensions.Width
-	height := dimensions.Height
-
-	// Calculate center of room
-	centerX := width / 2
-	centerY := height / 2
-
-	// TODO: Use otherRoom and purpose parameters to determine optimal connection
-	// In a complete implementation, would:
-	// 1. Get the other room's position to determine direction
-	// 2. Find the appropriate edge based on that direction
-	// 3. Account for connection purpose (entrance/exit positioning)
-	// 4. Account for room shape and existing connections
-	// For now, return room center as connection point
-	_ = otherRoom // Acknowledge parameter until TODO is implemented
-	_ = purpose   // Acknowledge parameter until TODO is implemented
-	return spatial.Position{X: centerX, Y: centerY}
-}
-
 func (g *GraphBasedGenerator) createEnvironmentUnsafe(
-	orchestrator spatial.RoomOrchestrator, config GenerationConfig,
+	graph *RoomGraph, orchestrator spatial.RoomOrchestrator, config GenerationConfig,
 ) Environment {
+	// Extract room positions from the graph
+	roomPositions := make(map[string]spatial.CubeCoordinate)
+	for roomID, node := range graph.nodes {
+		roomPositions[roomID] = node.Position
+	}
+
+	// Calculate blocked hexes from wall entities in all rooms
+	blockedHexes := make(map[spatial.CubeCoordinate]bool)
+	for roomID, room := range orchestrator.GetAllRooms() {
+		roomPos := roomPositions[roomID]
+
+		// Get all entities in the room and find walls
+		for _, entity := range room.GetAllEntities() {
+			// Check if entity is a wall (blocks movement)
+			if wallEntity, ok := entity.(*WallEntity); ok {
+				// Convert wall position (Position) to cube coordinate
+				pos := wallEntity.GetPosition()
+				localCube := spatial.CubeCoordinate{
+					X: int(pos.X),
+					Y: int(-pos.X - pos.Y), // y = -x - z, with z = -pos.Y
+					Z: -int(pos.Y),
+				}
+
+				// Convert to dungeon-absolute
+				absCube := spatial.CubeCoordinate{
+					X: roomPos.X + localCube.X,
+					Y: roomPos.Y + localCube.Y,
+					Z: roomPos.Z + localCube.Z,
+				}
+				blockedHexes[absCube] = true
+			}
+		}
+	}
+
 	// Create query handler for this environment
 	queryHandler := NewBasicQueryHandler(BasicQueryHandlerConfig{
 		Orchestrator: orchestrator,
@@ -1067,15 +1193,16 @@ func (g *GraphBasedGenerator) createEnvironmentUnsafe(
 		// EventBus removed - ConnectToEventBus pattern used instead
 	})
 
-	// Create environment wrapper
+	// Create environment wrapper with room positions for unified coordinates
 	environment := NewBasicEnvironment(BasicEnvironmentConfig{
-		ID:       fmt.Sprintf("%s_environment", g.id),
-		Type:     "generated_environment",
-		Theme:    config.Theme,
-		Metadata: config.Metadata,
-		// EventBus removed - ConnectToEventBus pattern used instead
-		Orchestrator: orchestrator,
-		QueryHandler: queryHandler,
+		ID:            fmt.Sprintf("%s_environment", g.id),
+		Type:          "generated_environment",
+		Theme:         config.Theme,
+		Metadata:      config.Metadata,
+		Orchestrator:  orchestrator,
+		QueryHandler:  queryHandler,
+		RoomPositions: roomPositions,
+		BlockedHexes:  blockedHexes,
 	})
 
 	return environment
