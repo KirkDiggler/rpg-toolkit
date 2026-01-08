@@ -19,12 +19,14 @@ Move D&D 5e dungeon data structures and runtime logic from `rpg-api` to `rpg-too
 
 ```
 rulebooks/dnd5e/dungeon/
-├── dungeon.go          # Dungeon runtime struct + methods
+├── dungeon.go          # Dungeon runtime struct + LoadFromData
 ├── dungeon_data.go     # DungeonData, RoomData, persistence structs
 ├── dungeon_test.go     # Tests for runtime logic
 ├── types.go            # DungeonState, RoomType, MonsterRole, etc.
-└── go.mod              # Depends on tools/environments, core
+└── types_test.go       # Tests for Direction.Opposite(), etc.
 ```
+
+Note: Part of the `rulebooks/dnd5e` module (no separate go.mod).
 
 ## Data Structures
 
@@ -42,8 +44,8 @@ type DungeonData struct {
     BossRoomID  string  `json:"boss_room_id"`
     Seed        int64   `json:"seed"` // For reproducible generation
 
-    // Room details indexed by zone ID
-    Rooms map[string]RoomData `json:"rooms"`
+    // Room details indexed by zone ID (pointers for in-place mutation)
+    Rooms map[string]*RoomData `json:"rooms"`
 
     // Exploration state
     State         DungeonState    `json:"state"`
@@ -142,12 +144,22 @@ type Dungeon struct {
     data *DungeonData
 
     // Cached lookups (built on load)
-    roomsByID       map[string]*RoomData
-    connectionsByID map[string]*environments.PassageData
+    passagesByID map[string]environments.PassageData
 }
 
-// Construction
-func New(data *DungeonData) *Dungeon
+// Construction (Input/Output pattern with validation)
+type LoadFromDataInput struct {
+    Data *DungeonData
+}
+type LoadFromDataOutput struct {
+    Dungeon *Dungeon
+}
+func LoadFromData(input *LoadFromDataInput) (*LoadFromDataOutput, error)
+
+// Validation errors
+var ErrNilData = errors.New("dungeon data is nil")
+var ErrEmptyID = errors.New("dungeon ID is required")
+var ErrNoStartRoom = errors.New("start room ID is required")
 
 // Identity
 func (d *Dungeon) ID() string
@@ -155,15 +167,15 @@ func (d *Dungeon) State() DungeonState
 func (d *Dungeon) StartRoom() string
 func (d *Dungeon) BossRoom() string
 
-// Room queries
+// Room queries (returns pointers - mutations persist)
 func (d *Dungeon) Room(roomID string) *RoomData
 func (d *Dungeon) CurrentRoom() *RoomData
 func (d *Dungeon) RoomRevealed(roomID string) bool
 
 // Door queries
-func (d *Dungeon) Doors() []*environments.PassageData
-func (d *Dungeon) DoorsFromRoom(roomID string) []*environments.PassageData
-func (d *Dungeon) VisibleDoors() []*environments.PassageData
+func (d *Dungeon) Doors() []environments.PassageData
+func (d *Dungeon) DoorsFromRoom(roomID string) []environments.PassageData
+func (d *Dungeon) VisibleDoors() []environments.PassageData
 func (d *Dungeon) DoorOpen(connectionID string) bool
 
 // State mutations
@@ -254,7 +266,7 @@ rulebooks/dnd5e/dungeon
 ## API Migration Path
 
 1. API generator builds `DungeonData` with `EnvironmentData` inside
-2. API creates `dungeon.Dungeon` via `dungeon.New(data)`
+2. API creates runtime dungeon via `dungeon.LoadFromData(&LoadFromDataInput{Data: data})`
 3. API calls toolkit methods for exploration logic
 4. API persists via `dungeon.ToData()` when saving
 5. API's `entities.Dungeon` becomes a thin wrapper or is removed
@@ -267,3 +279,6 @@ rulebooks/dnd5e/dungeon
 4. **Caches built on load** - Performance without persistence complexity
 5. **Same method signatures** - Minimal API code changes during migration
 6. **Go naming conventions** - `VisibleDoors()` not `GetVisibleDoors()`
+7. **Pointer types for RoomData** - `map[string]*RoomData` enables in-place mutations (gamectx pattern)
+8. **LoadFromData with validation** - Returns error instead of silent nil; Input/Output pattern
+9. **No separate go.mod** - Part of dnd5e module to avoid dependency complexity
