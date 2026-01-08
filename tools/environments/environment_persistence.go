@@ -239,8 +239,12 @@ func (e *BasicEnvironment) localToAbsolute(
 	pos spatial.Position, origin spatial.CubeCoordinate, grid spatial.Grid,
 ) spatial.CubeCoordinate {
 	if grid.GetShape() == spatial.GridShapeHex {
-		// For hex grids, convert offset to cube then add origin
-		localCube := spatial.OffsetCoordinateToCube(pos)
+		// For hex grids, use orientation-aware conversion
+		orientation := spatial.HexOrientationPointyTop
+		if hexGrid, ok := grid.(*spatial.HexGrid); ok {
+			orientation = hexGrid.GetOrientation()
+		}
+		localCube := spatial.OffsetCoordinateToCubeWithOrientation(pos, orientation)
 		return spatial.CubeCoordinate{
 			X: origin.X + localCube.X,
 			Y: origin.Y + localCube.Y,
@@ -446,13 +450,29 @@ func createGridFromZone(zone ZoneData) (spatial.Grid, error) {
 }
 
 // absoluteToLocal converts an absolute environment position to room-local coordinates
-func absoluteToLocal(absPos spatial.CubeCoordinate, origin spatial.CubeCoordinate, _ spatial.Grid) spatial.Position {
+func absoluteToLocal(
+	absPos spatial.CubeCoordinate, origin spatial.CubeCoordinate, grid spatial.Grid,
+) spatial.Position {
 	localCube := spatial.CubeCoordinate{
 		X: absPos.X - origin.X,
 		Y: absPos.Y - origin.Y,
 		Z: absPos.Z - origin.Z,
 	}
-	return localCube.ToOffsetCoordinate()
+
+	// For hex grids, use orientation-aware cube-to-offset conversion
+	if grid.GetShape() == spatial.GridShapeHex {
+		orientation := spatial.HexOrientationPointyTop
+		if hexGrid, ok := grid.(*spatial.HexGrid); ok {
+			orientation = hexGrid.GetOrientation()
+		}
+		return localCube.ToOffsetCoordinateWithOrientation(orientation)
+	}
+
+	// For square and gridless grids, directly map cube X/Z to position X/Y
+	return spatial.Position{
+		X: float64(localCube.X),
+		Y: float64(localCube.Z),
+	}
 }
 
 // localToAbsoluteStatic is a static version of localToAbsolute for use outside method context
@@ -460,7 +480,12 @@ func localToAbsoluteStatic(
 	pos spatial.Position, origin spatial.CubeCoordinate, grid spatial.Grid,
 ) spatial.CubeCoordinate {
 	if grid.GetShape() == spatial.GridShapeHex {
-		localCube := spatial.OffsetCoordinateToCube(pos)
+		// For hex grids, use orientation-aware conversion
+		orientation := spatial.HexOrientationPointyTop
+		if hexGrid, ok := grid.(*spatial.HexGrid); ok {
+			orientation = hexGrid.GetOrientation()
+		}
+		localCube := spatial.OffsetCoordinateToCubeWithOrientation(pos, orientation)
 		return spatial.CubeCoordinate{
 			X: origin.X + localCube.X,
 			Y: origin.Y + localCube.Y,
@@ -468,6 +493,7 @@ func localToAbsoluteStatic(
 		}
 	}
 
+	// For square/gridless, use X/Z mapping and derive Y
 	x := origin.X + int(pos.X)
 	z := origin.Z + int(pos.Y)
 	y := -x - z

@@ -156,6 +156,27 @@ func (s *EnvironmentPersistenceTestSuite) TestToDataAndLoadFromData() {
 		pos2, found2 := restored.GetRoomPosition("room-2")
 		s.Assert().True(found2)
 		s.Assert().Equal(spatial.CubeCoordinate{X: 15, Y: -8, Z: -7}, pos2)
+
+		// Verify entity positions preserved after round-trip
+		restoredRooms := restored.GetRooms()
+		var room1Restored spatial.Room
+		for _, r := range restoredRooms {
+			if r.GetID() == "room-1" {
+				room1Restored = r
+				break
+			}
+		}
+		s.Require().NotNil(room1Restored)
+
+		// Check entity exists in restored room at correct position
+		entities := room1Restored.GetAllEntities()
+		s.Require().Len(entities, 1)
+		s.Require().Contains(entities, "entity-1")
+
+		// Verify position matches original
+		entityPos, posFound := room1Restored.GetEntityPosition("entity-1")
+		s.Require().True(posFound)
+		s.Assert().Equal(spatial.Position{X: 3, Y: 2}, entityPos)
 	})
 }
 
@@ -279,6 +300,78 @@ func (s *EnvironmentPersistenceTestSuite) TestAllGridShapes() {
 
 	s.Run("gridless round trips correctly", func() {
 		s.verifyGridShapeRoundTrip(GridShapeGridless, "")
+	})
+}
+
+func (s *EnvironmentPersistenceTestSuite) TestFlatTopHexWithEntities() {
+	s.Run("flat-top hex grid preserves entity positions", func() {
+		// Create orchestrator with flat-top hex grid
+		orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
+			ID:   "test-orch",
+			Type: "orchestrator",
+		})
+		orchestrator.ConnectToEventBus(s.eventBus)
+
+		// Create flat-top hex grid
+		grid := spatial.NewHexGrid(spatial.HexGridConfig{
+			Width:       10,
+			Height:      10,
+			Orientation: spatial.HexOrientationFlatTop,
+		})
+		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+			ID:   "flat-hex-room",
+			Type: "room",
+			Grid: grid,
+		})
+		room.ConnectToEventBus(s.eventBus)
+		s.Require().NoError(orchestrator.AddRoom(room))
+
+		// Place entity at a position that would be different with wrong orientation
+		entity := &testEntity{
+			id:             "entity-flat",
+			entityType:     "monster",
+			blocksMovement: true,
+		}
+		originalPos := spatial.Position{X: 5, Y: 3}
+		s.Require().NoError(room.PlaceEntity(entity, originalPos))
+
+		// Create environment
+		env := NewBasicEnvironment(BasicEnvironmentConfig{
+			ID:           "flat-hex-env",
+			Type:         "test",
+			Orchestrator: orchestrator,
+			RoomPositions: map[string]spatial.CubeCoordinate{
+				"flat-hex-room": {X: 0, Y: 0, Z: 0},
+			},
+		})
+
+		// Round-trip
+		data := env.ToData()
+
+		// Verify orientation in data
+		s.Require().Len(data.Zones, 1)
+		s.Assert().Equal(HexOrientationFlat, data.Zones[0].Orientation)
+
+		// Load from data
+		output, err := LoadFromData(LoadFromDataInput{
+			Data:     data,
+			EventBus: events.NewEventBus(),
+		})
+		s.Require().NoError(err)
+		s.Assert().Empty(output.PlacementErrors)
+
+		// Verify entity position preserved
+		restoredRooms := output.Environment.GetRooms()
+		s.Require().Len(restoredRooms, 1)
+
+		restoredRoom := restoredRooms[0]
+		entities := restoredRoom.GetAllEntities()
+		s.Require().Len(entities, 1)
+		s.Require().Contains(entities, "entity-flat")
+
+		restoredPos, found := restoredRoom.GetEntityPosition("entity-flat")
+		s.Require().True(found)
+		s.Assert().Equal(originalPos, restoredPos, "entity position should match after round-trip")
 	})
 }
 
