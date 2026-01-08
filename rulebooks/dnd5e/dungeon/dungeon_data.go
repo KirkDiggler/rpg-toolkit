@@ -18,7 +18,7 @@ type DungeonData struct {
 	Seed        int64  `json:"seed"` // For reproducible generation
 
 	// Room details indexed by zone ID
-	Rooms map[string]RoomData `json:"rooms"`
+	Rooms map[string]*RoomData `json:"rooms"`
 
 	// Exploration state
 	State         DungeonState    `json:"state"`

@@ -34,7 +34,7 @@ func (s *DungeonTestSuite) createTestDungeonData() *DungeonData {
 		StartRoomID: "room-1",
 		BossRoomID:  "room-3",
 		Seed:        12345,
-		Rooms: map[string]RoomData{
+		Rooms: map[string]*RoomData{
 			"room-1": {
 				Type: RoomTypeEntrance,
 				Encounter: &EncounterData{
@@ -263,6 +263,24 @@ func (s *DungeonTestSuite) TestPersistence() {
 		s.Assert().Equal("room-2", returned.CurrentRoomID)
 		s.Assert().Equal(1, returned.RoomsCleared)
 		s.Assert().Equal(5, returned.MonstersKilled)
+	})
+
+	s.Run("room modifications persist via pointer", func() {
+		// Get room pointer and modify it
+		room := d.Room("room-1")
+		s.Require().NotNil(room)
+		s.Require().NotNil(room.Encounter)
+
+		// Clear the encounter (simulating defeating monsters)
+		room.Encounter = nil
+
+		// Verify the change persisted
+		roomAgain := d.Room("room-1")
+		s.Assert().Nil(roomAgain.Encounter, "room modifications should persist")
+
+		// Also verify via ToData
+		returned := d.ToData()
+		s.Assert().Nil(returned.Rooms["room-1"].Encounter)
 	})
 }
 

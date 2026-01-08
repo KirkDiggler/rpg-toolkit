@@ -62,15 +62,12 @@ func (d *Dungeon) Seed() int64 {
 }
 
 // Room returns the room data for the given ID, or nil if not found.
+// The returned pointer references the actual data - modifications persist.
 func (d *Dungeon) Room(roomID string) *RoomData {
 	if d.data.Rooms == nil {
 		return nil
 	}
-	room, ok := d.data.Rooms[roomID]
-	if !ok {
-		return nil
-	}
-	return &room
+	return d.data.Rooms[roomID]
 }
 
 // CurrentRoom returns the room players are currently in.
@@ -220,7 +217,8 @@ func (d *Dungeon) Environment() *environments.EnvironmentData {
 }
 
 // Rooms returns all room data.
-func (d *Dungeon) Rooms() map[string]RoomData {
+// The returned map references the actual data - modifications persist.
+func (d *Dungeon) Rooms() map[string]*RoomData {
 	return d.data.Rooms
 }
 
