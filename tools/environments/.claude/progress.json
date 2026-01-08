@@ -2,11 +2,33 @@
   "branch": "feat/environment-persistence",
   "issues": ["#540"],
   "goal": "Full-fidelity EnvironmentData persistence with ToData/LoadFromData",
-  "sessions": [],
+  "design_doc": "docs/plans/2026-01-08-environment-persistence-design.md",
+  "sessions": [
+    {
+      "id": "2026-01-08-001",
+      "task": "Create design doc for tools/environments persistence scope",
+      "status": "completed",
+      "artifacts": [
+        "docs/plans/2026-01-08-environment-persistence-design.md"
+      ],
+      "commit": "bfc5cec",
+      "notes": "Focused design doc on environments only, rulebooks will have separate design"
+    },
+    {
+      "id": "2026-01-08-002",
+      "task": "Define typed string types and EnvironmentData structs",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_data.go",
+        "tools/environments/environment_data_test.go"
+      ],
+      "commit": "edacfe0",
+      "notes": "Added EnvironmentType, PropertyKey, GridShapeValue, HexOrientationValue. Full data structs with metadata, grid shape, orientation."
+    }
+  ],
   "next_steps": [
-    "Update design doc to tools/environments scope only",
-    "Add PropertyKey type for discoverable properties",
-    "Define data structs with full round-trip fields",
-    "Implement ToData/LoadFromData with proper error handling"
+    "Implement ToData() with proper conversion and deterministic ordering",
+    "Implement LoadFromData() with validation and error handling",
+    "Write round-trip tests for full fidelity verification"
   ]
 }
