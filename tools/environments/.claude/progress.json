@@ -12,7 +12,7 @@
         "tools/environments/dungeon_data.go",
         "tools/environments/dungeon_data_test.go"
       ],
-      "commit": null,
+      "commit": "5951caf",
       "notes": "Created DungeonData, DungeonRoomData, DungeonConnectionData, DungeonEntityData, DungeonWallData. All use spatial.CubeCoordinate for absolute positions. Entity types defined as string constants. Properties map for flexible door/monster/obstacle data."
     }
   ],
