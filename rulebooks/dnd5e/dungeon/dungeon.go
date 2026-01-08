@@ -1,9 +1,20 @@
 package dungeon
 
 import (
+	"errors"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
+)
+
+// Validation errors
+var (
+	// ErrNilData is returned when LoadFromData receives nil data
+	ErrNilData = errors.New("dungeon data is nil")
+	// ErrEmptyID is returned when the dungeon has no ID
+	ErrEmptyID = errors.New("dungeon ID is required")
+	// ErrNoStartRoom is returned when no start room is specified
+	ErrNoStartRoom = errors.New("start room ID is required")
 )
 
 // Dungeon is the runtime representation with exploration logic.
@@ -15,10 +26,33 @@ type Dungeon struct {
 	passagesByID map[string]environments.PassageData
 }
 
-// New creates a Dungeon from persisted data.
-func New(data *DungeonData) *Dungeon {
-	if data == nil {
-		return nil
+// LoadFromDataInput contains parameters for loading a dungeon from persisted data.
+type LoadFromDataInput struct {
+	// Data is the persisted dungeon data to load
+	Data *DungeonData
+}
+
+// LoadFromDataOutput contains the result of loading a dungeon.
+type LoadFromDataOutput struct {
+	// Dungeon is the loaded runtime dungeon
+	Dungeon *Dungeon
+}
+
+// LoadFromData creates a runtime Dungeon from persisted DungeonData.
+// Returns an error if the data is invalid (nil, missing ID, etc.).
+func LoadFromData(input *LoadFromDataInput) (*LoadFromDataOutput, error) {
+	if input == nil || input.Data == nil {
+		return nil, ErrNilData
+	}
+
+	data := input.Data
+
+	// Validate required fields
+	if data.Environment.ID == "" {
+		return nil, ErrEmptyID
+	}
+	if data.StartRoomID == "" {
+		return nil, ErrNoStartRoom
 	}
 
 	d := &Dungeon{
@@ -26,7 +60,8 @@ func New(data *DungeonData) *Dungeon {
 		passagesByID: make(map[string]environments.PassageData),
 	}
 	d.buildCaches()
-	return d
+
+	return &LoadFromDataOutput{Dungeon: d}, nil
 }
 
 // buildCaches populates lookup maps for efficient queries.

@@ -72,25 +72,60 @@ func (s *DungeonTestSuite) createTestDungeonData() *DungeonData {
 	}
 }
 
-func (s *DungeonTestSuite) TestNew() {
-	s.Run("creates dungeon from valid data", func() {
-		data := s.createTestDungeonData()
-		d := New(data)
+// loadTestDungeon is a helper that loads dungeon data and fails test on error
+func (s *DungeonTestSuite) loadTestDungeon(data *DungeonData) *Dungeon {
+	output, err := LoadFromData(&LoadFromDataInput{Data: data})
+	s.Require().NoError(err)
+	s.Require().NotNil(output)
+	return output.Dungeon
+}
 
-		s.Require().NotNil(d)
-		s.Assert().Equal("dungeon-1", d.ID())
-		s.Assert().Equal(StateActive, d.State())
+func (s *DungeonTestSuite) TestLoadFromData() {
+	s.Run("loads dungeon from valid data", func() {
+		data := s.createTestDungeonData()
+		output, err := LoadFromData(&LoadFromDataInput{Data: data})
+
+		s.Require().NoError(err)
+		s.Require().NotNil(output)
+		s.Require().NotNil(output.Dungeon)
+		s.Assert().Equal("dungeon-1", output.Dungeon.ID())
+		s.Assert().Equal(StateActive, output.Dungeon.State())
 	})
 
-	s.Run("returns nil for nil data", func() {
-		d := New(nil)
-		s.Assert().Nil(d)
+	s.Run("returns error for nil input", func() {
+		output, err := LoadFromData(nil)
+		s.Assert().ErrorIs(err, ErrNilData)
+		s.Assert().Nil(output)
+	})
+
+	s.Run("returns error for nil data", func() {
+		output, err := LoadFromData(&LoadFromDataInput{Data: nil})
+		s.Assert().ErrorIs(err, ErrNilData)
+		s.Assert().Nil(output)
+	})
+
+	s.Run("returns error for empty ID", func() {
+		data := s.createTestDungeonData()
+		data.Environment.ID = ""
+
+		output, err := LoadFromData(&LoadFromDataInput{Data: data})
+		s.Assert().ErrorIs(err, ErrEmptyID)
+		s.Assert().Nil(output)
+	})
+
+	s.Run("returns error for missing start room", func() {
+		data := s.createTestDungeonData()
+		data.StartRoomID = ""
+
+		output, err := LoadFromData(&LoadFromDataInput{Data: data})
+		s.Assert().ErrorIs(err, ErrNoStartRoom)
+		s.Assert().Nil(output)
 	})
 }
 
 func (s *DungeonTestSuite) TestRoomAccess() {
 	data := s.createTestDungeonData()
-	d := New(data)
+	d := s.loadTestDungeon(data)
 
 	s.Run("Room returns room by ID", func() {
 		room := d.Room("room-1")
@@ -131,7 +166,7 @@ func (s *DungeonTestSuite) TestRoomAccess() {
 
 func (s *DungeonTestSuite) TestExplorationState() {
 	data := s.createTestDungeonData()
-	d := New(data)
+	d := s.loadTestDungeon(data)
 
 	s.Run("RoomRevealed checks revealed state", func() {
 		s.Assert().True(d.RoomRevealed("room-1"))
@@ -160,7 +195,7 @@ func (s *DungeonTestSuite) TestExplorationState() {
 
 func (s *DungeonTestSuite) TestDoorQueries() {
 	data := s.createTestDungeonData()
-	d := New(data)
+	d := s.loadTestDungeon(data)
 
 	s.Run("Doors returns all passages", func() {
 		doors := d.Doors()
@@ -194,7 +229,7 @@ func (s *DungeonTestSuite) TestDoorQueries() {
 
 func (s *DungeonTestSuite) TestMetrics() {
 	data := s.createTestDungeonData()
-	d := New(data)
+	d := s.loadTestDungeon(data)
 
 	s.Run("tracks rooms cleared", func() {
 		s.Assert().Equal(0, d.RoomsCleared())
@@ -214,7 +249,7 @@ func (s *DungeonTestSuite) TestMetrics() {
 func (s *DungeonTestSuite) TestStateTransitions() {
 	s.Run("MarkVictory sets state and completion time", func() {
 		data := s.createTestDungeonData()
-		d := New(data)
+		d := s.loadTestDungeon(data)
 
 		s.Assert().Nil(d.CompletedAt())
 		d.MarkVictory()
@@ -224,7 +259,7 @@ func (s *DungeonTestSuite) TestStateTransitions() {
 
 	s.Run("MarkFailed sets state and completion time", func() {
 		data := s.createTestDungeonData()
-		d := New(data)
+		d := s.loadTestDungeon(data)
 
 		d.MarkFailed()
 		s.Assert().Equal(StateFailed, d.State())
@@ -233,7 +268,7 @@ func (s *DungeonTestSuite) TestStateTransitions() {
 
 	s.Run("MarkAbandoned sets state and completion time", func() {
 		data := s.createTestDungeonData()
-		d := New(data)
+		d := s.loadTestDungeon(data)
 
 		d.MarkAbandoned()
 		s.Assert().Equal(StateAbandoned, d.State())
@@ -243,7 +278,7 @@ func (s *DungeonTestSuite) TestStateTransitions() {
 
 func (s *DungeonTestSuite) TestPersistence() {
 	data := s.createTestDungeonData()
-	d := New(data)
+	d := s.loadTestDungeon(data)
 
 	s.Run("ToData returns underlying data", func() {
 		returned := d.ToData()
@@ -286,7 +321,7 @@ func (s *DungeonTestSuite) TestPersistence() {
 
 func (s *DungeonTestSuite) TestEnvironmentAccess() {
 	data := s.createTestDungeonData()
-	d := New(data)
+	d := s.loadTestDungeon(data)
 
 	s.Run("Environment returns environment data", func() {
 		env := d.Environment()
