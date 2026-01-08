@@ -23,7 +23,7 @@
         "tools/environments/environment_data.go",
         "tools/environments/environment_data_test.go"
       ],
-      "commit": null,
+      "commit": "45beb25",
       "notes": "Renamed to generic types: EnvironmentData, ZoneData, PassageData, PlacedEntityData, WallSegmentData. Entity types are now game-defined strings. DungeonData will be added to rulebooks/dnd5e/dungeon composing this."
     }
   ],
