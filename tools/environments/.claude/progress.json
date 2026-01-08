@@ -25,6 +25,17 @@
       ],
       "commit": "45beb25",
       "notes": "Renamed to generic types: EnvironmentData, ZoneData, PassageData, PlacedEntityData, WallSegmentData. Entity types are now game-defined strings. DungeonData will be added to rulebooks/dnd5e/dungeon composing this."
+    },
+    {
+      "id": "2026-01-08-003",
+      "task": "Add ToData/LoadFromData persistence methods",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_persistence.go",
+        "tools/environments/environment_persistence_test.go"
+      ],
+      "commit": "8eae4bd",
+      "notes": "Added proper persistence pattern: ToData() converts BasicEnvironment to EnvironmentData with absolute coordinates, LoadFromData() reconstructs from persisted data. Includes persistedEntity type and round-trip tests."
     }
   ],
   "next_steps": [
