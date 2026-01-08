@@ -17,6 +17,10 @@ type ActionEconomy struct {
 	// Capacity (set when specific abilities are used)
 	AttacksRemaining  int // Set when Attack ability is taken (stays 0 until then)
 	MovementRemaining int // Set at turn start from character speed
+
+	// Additional capacity for granted actions
+	OffHandAttacksRemaining int // Set by TwoWeaponGranter after main-hand attack
+	FlurryStrikesRemaining  int // Set by FlurryOfBlows feature (usually 2)
 }
 
 // NewActionEconomy creates a new ActionEconomy with default values (1/1/1)
@@ -81,10 +85,15 @@ func (ae *ActionEconomy) UseReaction() error {
 // Purpose: Called at the start of a combatant's turn to restore their action economy.
 // Note: Does NOT reset AttacksRemaining (stays 0 until Attack ability is used) or
 // MovementRemaining (should be set separately via SetMovement at turn start).
+// Resets turn-granted capacity (OffHandAttacks, FlurryStrikes) to 0.
 func (ae *ActionEconomy) Reset() {
 	ae.ActionsRemaining = 1
 	ae.BonusActionsRemaining = 1
 	ae.ReactionsRemaining = 1
+	// Note: AttacksRemaining and MovementRemaining are NOT reset here
+	// They are set separately by abilities (Attack) and at turn start (SetMovement)
+	ae.OffHandAttacksRemaining = 0
+	ae.FlurryStrikesRemaining = 0
 }
 
 // GrantExtraAction grants an additional action
@@ -155,4 +164,54 @@ func (ae *ActionEconomy) SetMovement(amount int) {
 // Can be called multiple times (e.g., Rogue's Cunning Action Dash).
 func (ae *ActionEconomy) AddMovement(amount int) {
 	ae.MovementRemaining += amount
+}
+
+// CanUseOffHandAttack returns whether any off-hand attacks remain
+// Purpose: Allows checking off-hand attack availability without consuming it.
+// Returns false until TwoWeaponGranter grants off-hand attacks.
+func (ae *ActionEconomy) CanUseOffHandAttack() bool {
+	return ae.OffHandAttacksRemaining > 0
+}
+
+// UseOffHandAttack consumes one off-hand attack if available
+// Purpose: Called by OffHandStrike actions to consume one of the attacks granted by two-weapon fighting.
+// Returns CodeResourceExhausted if no off-hand attacks remain.
+func (ae *ActionEconomy) UseOffHandAttack() error {
+	if ae.OffHandAttacksRemaining <= 0 {
+		return rpgerr.ResourceExhausted("off-hand attack")
+	}
+	ae.OffHandAttacksRemaining--
+	return nil
+}
+
+// SetOffHandAttacks sets the number of off-hand attacks remaining
+// Purpose: Called by TwoWeaponGranter to grant off-hand attacks after a main-hand attack.
+// Usually grants 1 off-hand attack per turn.
+func (ae *ActionEconomy) SetOffHandAttacks(count int) {
+	ae.OffHandAttacksRemaining = count
+}
+
+// CanUseFlurryStrike returns whether any flurry strikes remain
+// Purpose: Allows checking flurry strike availability without consuming it.
+// Returns false until FlurryOfBlows grants flurry strikes.
+func (ae *ActionEconomy) CanUseFlurryStrike() bool {
+	return ae.FlurryStrikesRemaining > 0
+}
+
+// UseFlurryStrike consumes one flurry strike if available
+// Purpose: Called by FlurryStrike actions to consume one of the attacks granted by Flurry of Blows.
+// Returns CodeResourceExhausted if no flurry strikes remain.
+func (ae *ActionEconomy) UseFlurryStrike() error {
+	if ae.FlurryStrikesRemaining <= 0 {
+		return rpgerr.ResourceExhausted("flurry strike")
+	}
+	ae.FlurryStrikesRemaining--
+	return nil
+}
+
+// SetFlurryStrikes sets the number of flurry strikes remaining
+// Purpose: Called by FlurryOfBlows feature to grant flurry strikes.
+// Usually grants 2 flurry strikes when activated.
+func (ae *ActionEconomy) SetFlurryStrikes(count int) {
+	ae.FlurryStrikesRemaining = count
 }

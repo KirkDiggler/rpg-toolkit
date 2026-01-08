@@ -165,7 +165,34 @@ These run automatically on commit.
 2. **Composition Over Inheritance**: Use embedded structs and interfaces
 3. **Error Handling**: Always check errors in tests with require.NoError(t, err)
 4. **Event Naming**: Use dot notation (e.g., "resource.consumed", "condition.applied")
-5. **JSON Serialization Pattern**: See below
+5. **Typed Constants Pattern**: See below
+6. **JSON Serialization Pattern**: See below
+
+### Typed Constants Pattern
+
+**Toolkit is the source of truth for game mechanics identifiers.**
+
+Game server (rpg-api) is a pure translator:
+- Proto enum in → Toolkit typed constant
+- Toolkit validates, processes, returns result/error
+- Game server maps response → proto, passes through unchanged
+
+**Rule:** If the game server passes a decision parameter to the toolkit, it must be a typed constant.
+
+**Pattern:**
+- Base types in `shared/` or domain package
+- Constants in domain packages (e.g., `weapons/common.go`)
+
+```go
+// weapons/common.go
+type WeaponID = shared.EquipmentID
+const (
+    Longsword WeaponID = "longsword"
+    Dagger    WeaponID = "dagger"
+)
+```
+
+**Toolkit validates everything.** Error messages are user-facing since they pass through unchanged.
 
 ### Feature/Condition Serialization Pattern
 
