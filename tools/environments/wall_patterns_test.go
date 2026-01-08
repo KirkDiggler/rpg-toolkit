@@ -175,10 +175,9 @@ func (s *WallPatternsTestSuite) TestRandomPattern() {
 		// Should maintain minimum open space
 		s.Assert().True(hasMinimumOpenSpace(walls, s.testShape, s.testSize, s.testParams.Safety.MinOpenSpace))
 
-		// Should not block connections
-		for _, conn := range s.testShape.Connections {
-			s.Assert().True(isConnectionAccessible(walls, conn, s.testParams.Safety.EntitySize))
-		}
+		// Should pass full path safety validation (A* pathfinding between all connections)
+		err = validatePathSafety(walls, s.testShape, s.testSize, s.testParams.Safety)
+		s.Assert().NoError(err)
 	})
 }
 

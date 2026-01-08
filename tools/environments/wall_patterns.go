@@ -228,17 +228,28 @@ func validatePathSafety(walls []WallSegment, shape *RoomShape, size spatial.Dime
 		return fmt.Errorf("room does not have minimum open space (%.1f%%)", safety.MinOpenSpace*100)
 	}
 
-	// Check required paths
-	for _, path := range safety.RequiredPaths {
-		if !pathExists(walls, path, safety.MinPathWidth) {
-			return fmt.Errorf("required path '%s' is blocked", path.Purpose)
-		}
-	}
+	// Convert wall segments to blocked hex positions for A* pathfinding
+	blockedHexes := wallSegmentsToBlockedHexes(walls)
 
-	// Check all connection points are accessible
-	for _, conn := range shape.Connections {
-		if !isConnectionAccessible(walls, conn, safety.EntitySize) {
-			return fmt.Errorf("connection '%s' is not accessible", conn.Name)
+	// Check all connection pairs are reachable via A* pathfinding
+	if len(shape.Connections) >= 2 {
+		pathfinder := spatial.NewSimplePathFinder()
+
+		for i := 0; i < len(shape.Connections); i++ {
+			for j := i + 1; j < len(shape.Connections); j++ {
+				fromConn := shape.Connections[i]
+				toConn := shape.Connections[j]
+
+				// Convert connection positions to cube coordinates
+				fromCube := positionToCubeCoordinate(fromConn.Position, size)
+				toCube := positionToCubeCoordinate(toConn.Position, size)
+
+				// Run A* pathfinding
+				path := pathfinder.FindPath(fromCube, toCube, blockedHexes)
+				if len(path) == 0 && fromCube != toCube {
+					return fmt.Errorf("no path between connections '%s' and '%s'", fromConn.Name, toConn.Name)
+				}
+			}
 		}
 	}
 
@@ -254,20 +265,47 @@ func validateAndFixPathfinding(
 		return walls, nil
 	}
 
-	// Try to fix pathfinding issues
+	// Try to fix pathfinding issues by removing blocking walls
 	fixedWalls := walls
 
-	// 1. Clear required paths
-	for _, path := range safety.RequiredPaths {
-		if !pathExists(fixedWalls, path, safety.MinPathWidth) {
-			fixedWalls = clearPathway(fixedWalls, path, safety.MinPathWidth)
-		}
-	}
+	// Convert to blocked hexes for pathfinding
+	pathfinder := spatial.NewSimplePathFinder()
 
-	// 2. Ensure connection accessibility
-	for _, conn := range shape.Connections {
-		if !isConnectionAccessible(fixedWalls, conn, safety.EntitySize) {
-			fixedWalls = clearPathToConnection(fixedWalls, conn, safety.MinPathWidth)
+	// Iteratively remove walls until all connections are reachable
+	maxIterations := len(walls) + 1
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		blockedHexes := wallSegmentsToBlockedHexes(fixedWalls)
+
+		// Find first blocked path
+		var blockedFrom, blockedTo *ConnectionPoint
+		for i := 0; i < len(shape.Connections) && blockedFrom == nil; i++ {
+			for j := i + 1; j < len(shape.Connections); j++ {
+				fromConn := shape.Connections[i]
+				toConn := shape.Connections[j]
+
+				fromCube := positionToCubeCoordinate(fromConn.Position, size)
+				toCube := positionToCubeCoordinate(toConn.Position, size)
+
+				path := pathfinder.FindPath(fromCube, toCube, blockedHexes)
+				if len(path) == 0 && fromCube != toCube {
+					blockedFrom = &fromConn
+					blockedTo = &toConn
+					break
+				}
+			}
+		}
+
+		// If no blocked paths, we're done
+		if blockedFrom == nil {
+			break
+		}
+
+		// Remove walls along the straight line between blocked connections
+		fixedWalls = removeWallsBetweenConnections(fixedWalls, *blockedFrom, *blockedTo, size, safety.MinPathWidth)
+
+		// If we've removed all walls and still no path, give up
+		if len(fixedWalls) == 0 {
+			break
 		}
 	}
 
@@ -280,13 +318,79 @@ func validateAndFixPathfinding(
 	if err := validatePathSafety(fixedWalls, shape, size, safety); err != nil {
 		if safety.EmergencyFallback {
 			// Emergency fallback: return empty room
-			// TODO: Consider how to notify callers about fallback usage
 			return []WallSegment{}, nil
 		}
 		return nil, fmt.Errorf("could not fix pathfinding issues: %w", err)
 	}
 
 	return fixedWalls, nil
+}
+
+// wallSegmentsToBlockedHexes converts wall segments to a map of blocked cube coordinates.
+// This discretizes the continuous wall segments into actual hex positions for A* pathfinding.
+func wallSegmentsToBlockedHexes(walls []WallSegment) map[spatial.CubeCoordinate]bool {
+	blocked := make(map[spatial.CubeCoordinate]bool)
+
+	for _, wall := range walls {
+		if !wall.Properties.BlocksMovement {
+			continue
+		}
+
+		// Calculate positions along the wall segment (same logic as discretizeWallSegment)
+		positions := calculateWallPositions(wall.Start, wall.End, wall.Properties.Thickness)
+
+		for _, pos := range positions {
+			// Convert position to cube coordinate
+			cube := spatial.OffsetCoordinateToCube(pos)
+			blocked[cube] = true
+		}
+	}
+
+	return blocked
+}
+
+// positionToCubeCoordinate converts a normalized position to a cube coordinate.
+// Positions from connections are in room-relative coordinates.
+func positionToCubeCoordinate(pos spatial.Position, size spatial.Dimensions) spatial.CubeCoordinate {
+	// Scale normalized position to actual room size and convert to cube
+	scaledPos := spatial.Position{
+		X: pos.X * size.Width,
+		Y: pos.Y * size.Height,
+	}
+	return spatial.OffsetCoordinateToCube(scaledPos)
+}
+
+// removeWallsBetweenConnections removes walls that block the path between two connections.
+func removeWallsBetweenConnections(
+	walls []WallSegment, from, to ConnectionPoint, size spatial.Dimensions, pathWidth float64,
+) []WallSegment {
+	// Scale connection positions to actual size
+	fromPos := spatial.Position{X: from.Position.X * size.Width, Y: from.Position.Y * size.Height}
+	toPos := spatial.Position{X: to.Position.X * size.Width, Y: to.Position.Y * size.Height}
+
+	var keptWalls []WallSegment
+	for _, wall := range walls {
+		// Check if wall blocks the corridor between connections
+		if wallBlocksPathBetweenPoints(wall, fromPos, toPos, pathWidth) {
+			continue // Remove this wall
+		}
+		keptWalls = append(keptWalls, wall)
+	}
+
+	return keptWalls
+}
+
+// wallBlocksPathBetweenPoints checks if a wall blocks the corridor between two points.
+func wallBlocksPathBetweenPoints(wall WallSegment, from, to spatial.Position, pathWidth float64) bool {
+	if !wall.Properties.BlocksMovement {
+		return false
+	}
+
+	// Check if wall start or end is within the path corridor
+	distStart := pointToLineDistance(wall.Start, from, to)
+	distEnd := pointToLineDistance(wall.End, from, to)
+
+	return distStart < pathWidth || distEnd < pathWidth
 }
 
 func hasMinimumOpenSpace(walls []WallSegment, _ *RoomShape, size spatial.Dimensions, minPercent float64) bool {
@@ -309,56 +413,6 @@ func calculateWallArea(walls []WallSegment) float64 {
 		totalArea += length * thickness
 	}
 	return totalArea
-}
-
-func pathExists(walls []WallSegment, path Path, _ float64) bool {
-	// Simplified path existence check
-	// In production, would use proper A* pathfinding with wall collision detection
-
-	// For now, check if path line intersects with any walls
-	for _, wall := range walls {
-		if wall.Properties.BlocksMovement && lineIntersectsWall(path.From, path.To, wall) {
-			return false
-		}
-	}
-	return true
-}
-
-func lineIntersectsWall(from, to spatial.Position, wall WallSegment) bool {
-	// Simplified line intersection check
-	// In production, would use proper line-line intersection algorithm
-
-	// Check if path line intersects with wall segment
-	return linesIntersect(from, to, wall.Start, wall.End)
-}
-
-func linesIntersect(p1, p2, p3, p4 spatial.Position) bool {
-	// Simple line intersection algorithm
-	denom := (p1.X-p2.X)*(p3.Y-p4.Y) - (p1.Y-p2.Y)*(p3.X-p4.X)
-	if denom == 0 {
-		return false // Lines are parallel
-	}
-
-	t := ((p1.X-p3.X)*(p3.Y-p4.Y) - (p1.Y-p3.Y)*(p3.X-p4.X)) / denom
-	u := -((p1.X-p2.X)*(p1.Y-p3.Y) - (p1.Y-p2.Y)*(p1.X-p3.X)) / denom
-
-	return t >= 0 && t <= 1 && u >= 0 && u <= 1
-}
-
-func isConnectionAccessible(walls []WallSegment, conn ConnectionPoint, entitySize float64) bool {
-	// Check if there's a clear path to the connection point
-	// For now, simple check - in production would use proper pathfinding
-
-	// Check if connection point is blocked by walls
-	for _, wall := range walls {
-		if wall.Properties.BlocksMovement {
-			distToWall := pointToLineDistance(conn.Position, wall.Start, wall.End)
-			if distToWall < entitySize {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 func pointToLineDistance(point, lineStart, lineEnd spatial.Position) float64 {
@@ -386,55 +440,6 @@ func pointToLineDistance(point, lineStart, lineEnd spatial.Position) float64 {
 	deltaX := point.X - closestX
 	deltaY := point.Y - closestY
 	return math.Sqrt(deltaX*deltaX + deltaY*deltaY)
-}
-
-func clearPathway(walls []WallSegment, path Path, width float64) []WallSegment {
-	var clearedWalls []WallSegment
-
-	for _, wall := range walls {
-		if !wallBlocksPath(wall, path, width) {
-			clearedWalls = append(clearedWalls, wall)
-		}
-	}
-
-	return clearedWalls
-}
-
-func wallBlocksPath(wall WallSegment, path Path, width float64) bool {
-	// Check if wall blocks the path corridor
-	// Simplified check - in production would use proper corridor-line intersection
-
-	if !wall.Properties.BlocksMovement {
-		return false
-	}
-
-	// Check if wall intersects with path corridor
-	distToPath := pointToLineDistance(wall.Start, path.From, path.To)
-	if distToPath < width/2 {
-		return true
-	}
-
-	distToPath = pointToLineDistance(wall.End, path.From, path.To)
-	return distToPath < width/2
-}
-
-func clearPathToConnection(walls []WallSegment, conn ConnectionPoint, width float64) []WallSegment {
-	var clearedWalls []WallSegment
-
-	// Remove walls that block access to the connection
-	for _, wall := range walls {
-		if !wallBlocksConnection(wall, conn, width) {
-			clearedWalls = append(clearedWalls, wall)
-		}
-	}
-
-	return clearedWalls
-}
-
-func wallBlocksConnection(wall WallSegment, conn ConnectionPoint, width float64) bool {
-	// Check if wall blocks access to connection
-	distToConnection := pointToLineDistance(conn.Position, wall.Start, wall.End)
-	return wall.Properties.BlocksMovement && distToConnection < width
 }
 
 func removeExcessWalls(

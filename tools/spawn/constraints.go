@@ -69,10 +69,20 @@ func (cs *ConstraintSolver) FindValidPositions(
 		return cs.findValidPositionsGridless(room, entity, constraints, existingEntities, maxPositions)
 	}
 
+	// Get room dimensions from grid
+	dimensions := roomGrid.GetDimensions()
+	maxX := dimensions.Width
+	maxY := dimensions.Height
+
 	// For grid-based rooms: align to grid positions
-	for x := 1.0; x < 10.0 && len(validPositions) < maxPositions; x += 0.5 {
-		for y := 1.0; y < 10.0 && len(validPositions) < maxPositions; y += 0.5 {
+	for x := 1.0; x < maxX && len(validPositions) < maxPositions; x += 1.0 {
+		for y := 1.0; y < maxY && len(validPositions) < maxPositions; y += 1.0 {
 			position := spatial.Position{X: x, Y: y}
+
+			// Check if position is blocked by existing entities (walls, obstacles)
+			if !room.CanPlaceEntity(entity, position) {
+				continue
+			}
 
 			if cs.ValidatePosition(room, position, entity, constraints, existingEntities) == nil {
 				validPositions = append(validPositions, position)
@@ -346,6 +356,12 @@ func (cs *ConstraintSolver) findValidPositionsGridless(
 		x := margin + (roomDimensions.Width-2*margin)*cs.random.Float64()
 		y := margin + (roomDimensions.Height-2*margin)*cs.random.Float64()
 		position := spatial.Position{X: x, Y: y}
+
+		// Check if position is blocked by existing entities (walls, obstacles)
+		if !room.CanPlaceEntity(entity, position) {
+			attempts++
+			continue
+		}
 
 		if cs.ValidatePosition(room, position, entity, constraints, existingEntities) == nil {
 			validPositions = append(validPositions, position)
