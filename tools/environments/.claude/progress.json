@@ -1,0 +1,55 @@
+{
+  "branch": "feat/environment-persistence",
+  "issues": ["#540"],
+  "goal": "Full-fidelity EnvironmentData persistence with ToData/LoadFromData",
+  "design_doc": "docs/plans/2026-01-08-environment-persistence-design.md",
+  "sessions": [
+    {
+      "id": "2026-01-08-001",
+      "task": "Create design doc for tools/environments persistence scope",
+      "status": "completed",
+      "artifacts": [
+        "docs/plans/2026-01-08-environment-persistence-design.md"
+      ],
+      "commit": "bfc5cec",
+      "notes": "Focused design doc on environments only, rulebooks will have separate design"
+    },
+    {
+      "id": "2026-01-08-002",
+      "task": "Define typed string types and EnvironmentData structs",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_data.go",
+        "tools/environments/environment_data_test.go"
+      ],
+      "commit": "edacfe0",
+      "notes": "Added EnvironmentType, PropertyKey, GridShapeValue, HexOrientationValue. Full data structs with metadata, grid shape, orientation."
+    },
+    {
+      "id": "2026-01-08-003",
+      "task": "Implement ToData/LoadFromData with full fidelity",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_persistence.go",
+        "tools/environments/environment_persistence_test.go"
+      ],
+      "commit": "49cd36a",
+      "notes": "Full round-trip fidelity. Deterministic output. All grid shapes supported. Placement errors collected not fatal. Comprehensive test coverage."
+    },
+    {
+      "id": "2026-01-08-004",
+      "task": "Fix orientation-aware hex coordinate conversion per Copilot review",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_persistence.go",
+        "tools/environments/environment_persistence_test.go"
+      ],
+      "commit": "37b2321",
+      "notes": "localToAbsolute now uses OffsetCoordinateToCubeWithOrientation for hex grids. absoluteToLocal handles hex vs non-hex differently. Added entity position verification and flat-top hex tests."
+    }
+  ],
+  "next_steps": [
+    "Await PR review and merge",
+    "Create DungeonData in rulebooks/dnd5e/dungeon that composes EnvironmentData"
+  ]
+}

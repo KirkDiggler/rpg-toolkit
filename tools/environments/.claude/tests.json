@@ -1,0 +1,39 @@
+{
+  "tests": [
+    {
+      "id": "full-round-trip",
+      "feature": "environment-persistence",
+      "prompt": "Create a BasicEnvironment with 2 rooms, 1 connection, 2 entities, theme, and metadata. Call ToData(), then LoadFromData(). Verify ALL fields are preserved.",
+      "passes": true,
+      "last_checked": "2026-01-08"
+    },
+    {
+      "id": "property-key-discoverable",
+      "feature": "environment-persistence",
+      "prompt": "PropertyKey type exists. Games can define const MyProp environments.PropertyKey = 'my_prop' and use it in Properties map.",
+      "passes": true,
+      "last_checked": "2026-01-08"
+    },
+    {
+      "id": "deterministic-serialization",
+      "feature": "environment-persistence",
+      "prompt": "Call ToData() twice on same environment. JSON output should be identical (deterministic ordering).",
+      "passes": true,
+      "last_checked": "2026-01-08"
+    },
+    {
+      "id": "nil-grid-safety",
+      "feature": "environment-persistence",
+      "prompt": "Room with nil grid should not panic during ToData(). Should either skip or return error.",
+      "passes": true,
+      "last_checked": "2026-01-08"
+    },
+    {
+      "id": "placement-errors-reported",
+      "feature": "environment-persistence",
+      "prompt": "LoadFromData with invalid entity position should report error, not silently skip.",
+      "passes": true,
+      "last_checked": "2026-01-08"
+    }
+  ]
+}
