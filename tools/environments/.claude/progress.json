@@ -1,0 +1,12 @@
+{
+  "branch": "feat/environment-persistence",
+  "issues": ["#540"],
+  "goal": "Full-fidelity EnvironmentData persistence with ToData/LoadFromData",
+  "sessions": [],
+  "next_steps": [
+    "Update design doc to tools/environments scope only",
+    "Add PropertyKey type for discoverable properties",
+    "Define data structs with full round-trip fields",
+    "Implement ToData/LoadFromData with proper error handling"
+  ]
+}
