@@ -35,11 +35,21 @@
       ],
       "commit": "49cd36a",
       "notes": "Full round-trip fidelity. Deterministic output. All grid shapes supported. Placement errors collected not fatal. Comprehensive test coverage."
+    },
+    {
+      "id": "2026-01-08-004",
+      "task": "Fix orientation-aware hex coordinate conversion per Copilot review",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_persistence.go",
+        "tools/environments/environment_persistence_test.go"
+      ],
+      "commit": "37b2321",
+      "notes": "localToAbsolute now uses OffsetCoordinateToCubeWithOrientation for hex grids. absoluteToLocal handles hex vs non-hex differently. Added entity position verification and flat-top hex tests."
     }
   ],
   "next_steps": [
-    "Update tests.json to mark passing tests",
-    "Push branch and create PR",
+    "Await PR review and merge",
     "Create DungeonData in rulebooks/dnd5e/dungeon that composes EnvironmentData"
   ]
 }
