@@ -1,7 +1,7 @@
 {
   "branch": "feat/dungeon-data-structure",
   "issues": ["#540"],
-  "goal": "Define DungeonData persistence structure with absolute coordinates for dungeon storage",
+  "goal": "Define generic EnvironmentData persistence structure with absolute coordinates",
   "design_doc": "docs/plans/2026-01-08-unified-dungeon-coordinate-system-design.md",
   "sessions": [
     {
@@ -13,8 +13,22 @@
         "tools/environments/dungeon_data_test.go"
       ],
       "commit": "5951caf",
-      "notes": "Created DungeonData, DungeonRoomData, DungeonConnectionData, DungeonEntityData, DungeonWallData. All use spatial.CubeCoordinate for absolute positions. Entity types defined as string constants. Properties map for flexible door/monster/obstacle data."
+      "notes": "Initial implementation - too D&D-specific for environments package"
+    },
+    {
+      "id": "2026-01-08-002",
+      "task": "Refactor to generic EnvironmentData (dungeons are rulebook concept)",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_data.go",
+        "tools/environments/environment_data_test.go"
+      ],
+      "commit": null,
+      "notes": "Renamed to generic types: EnvironmentData, ZoneData, PassageData, PlacedEntityData, WallSegmentData. Entity types are now game-defined strings. DungeonData will be added to rulebooks/dnd5e/dungeon composing this."
     }
   ],
-  "next_steps": []
+  "next_steps": [
+    "Merge this PR and let CI bump environments version",
+    "Create DungeonData in rulebooks/dnd5e/dungeon that composes EnvironmentData"
+  ]
 }

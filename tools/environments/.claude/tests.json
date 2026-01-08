@@ -1,30 +1,30 @@
 {
   "tests": [
     {
-      "id": "dungeon-data-serialization",
-      "feature": "dungeon-persistence",
-      "prompt": "Create a DungeonData with 2 rooms, 1 connection, 3 entities (monster, obstacle, door), and 2 walls. Serialize to JSON and deserialize. Verify all data round-trips correctly.",
+      "id": "environment-data-serialization",
+      "feature": "environment-persistence",
+      "prompt": "Create an EnvironmentData with 2 zones, 1 passage, 4 entities, and 2 walls. Serialize to JSON and deserialize. Verify all data round-trips correctly.",
       "passes": true,
       "last_checked": "2026-01-08"
     },
     {
       "id": "coordinates-are-absolute",
-      "feature": "dungeon-persistence",
+      "feature": "environment-persistence",
       "prompt": "Verify that position types use CubeCoordinate (x, y, z) format where x+y+z=0, not offset coordinates.",
       "passes": true,
       "last_checked": "2026-01-08"
     },
     {
-      "id": "entity-types-complete",
-      "feature": "dungeon-persistence",
-      "prompt": "Verify EntityData can represent all three types: monster (with MonsterType), obstacle (with ObstacleType), door (with DoorType and Properties map).",
+      "id": "entity-types-are-strings",
+      "feature": "environment-persistence",
+      "prompt": "Verify entity types are game-defined strings (not constants), allowing games to define their own types.",
       "passes": true,
       "last_checked": "2026-01-08"
     },
     {
-      "id": "door-properties-flexible",
-      "feature": "dungeon-persistence",
-      "prompt": "Create a door entity with Properties containing 'open': false, 'locked': true, 'trap_dc': 15. Verify these serialize and deserialize correctly.",
+      "id": "properties-flexible",
+      "feature": "environment-persistence",
+      "prompt": "Create an entity with arbitrary Properties. Verify these serialize and deserialize correctly.",
       "passes": true,
       "last_checked": "2026-01-08"
     }
