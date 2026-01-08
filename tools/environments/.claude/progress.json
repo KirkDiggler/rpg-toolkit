@@ -24,11 +24,22 @@
       ],
       "commit": "edacfe0",
       "notes": "Added EnvironmentType, PropertyKey, GridShapeValue, HexOrientationValue. Full data structs with metadata, grid shape, orientation."
+    },
+    {
+      "id": "2026-01-08-003",
+      "task": "Implement ToData/LoadFromData with full fidelity",
+      "status": "completed",
+      "artifacts": [
+        "tools/environments/environment_persistence.go",
+        "tools/environments/environment_persistence_test.go"
+      ],
+      "commit": "49cd36a",
+      "notes": "Full round-trip fidelity. Deterministic output. All grid shapes supported. Placement errors collected not fatal. Comprehensive test coverage."
     }
   ],
   "next_steps": [
-    "Implement ToData() with proper conversion and deterministic ordering",
-    "Implement LoadFromData() with validation and error handling",
-    "Write round-trip tests for full fidelity verification"
+    "Update tests.json to mark passing tests",
+    "Push branch and create PR",
+    "Create DungeonData in rulebooks/dnd5e/dungeon that composes EnvironmentData"
   ]
 }
