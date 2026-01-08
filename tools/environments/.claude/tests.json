@@ -1,0 +1,32 @@
+{
+  "tests": [
+    {
+      "id": "dungeon-data-serialization",
+      "feature": "dungeon-persistence",
+      "prompt": "Create a DungeonData with 2 rooms, 1 connection, 3 entities (monster, obstacle, door), and 2 walls. Serialize to JSON and deserialize. Verify all data round-trips correctly.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "coordinates-are-absolute",
+      "feature": "dungeon-persistence",
+      "prompt": "Verify that position types use CubeCoordinate (x, y, z) format where x+y+z=0, not offset coordinates.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "entity-types-complete",
+      "feature": "dungeon-persistence",
+      "prompt": "Verify EntityData can represent all three types: monster (with MonsterType), obstacle (with ObstacleType), door (with DoorType and Properties map).",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "door-properties-flexible",
+      "feature": "dungeon-persistence",
+      "prompt": "Create a door entity with Properties containing 'open': false, 'locked': true, 'trap_dc': 15. Verify these serialize and deserialize correctly.",
+      "passes": false,
+      "last_checked": null
+    }
+  ]
+}

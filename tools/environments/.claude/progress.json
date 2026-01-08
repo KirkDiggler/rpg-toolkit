@@ -1,0 +1,16 @@
+{
+  "branch": "feat/dungeon-data-structure",
+  "issues": ["#540"],
+  "goal": "Define DungeonData persistence structure with absolute coordinates for dungeon storage",
+  "design_doc": "docs/plans/2026-01-08-unified-dungeon-coordinate-system-design.md",
+  "sessions": [],
+  "next_steps": [
+    "Define DungeonData struct with rooms, connections, entities, walls",
+    "Define RoomData struct with ID, type, origin, entity IDs",
+    "Define ConnectionData struct linking rooms with door entity reference",
+    "Define EntityData struct supporting monster, obstacle, door types",
+    "Define WallData struct with start/end positions",
+    "Add JSON serialization tags for persistence",
+    "Write unit tests for serialization round-trip"
+  ]
+}
