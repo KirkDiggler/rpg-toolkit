@@ -34,6 +34,10 @@ var (
 		Module: Module, Type: TypeConditions, ID: "fighting_style_two_weapon_fighting",
 	}
 
+	// Turn-based conditions (from actions, last until start of next turn)
+	conditionDodging     = &core.Ref{Module: Module, Type: TypeConditions, ID: "dodging"}
+	conditionDisengaging = &core.Ref{Module: Module, Type: TypeConditions, ID: "disengaging"}
+
 	// Standard D&D 5e Conditions
 	conditionBlinded       = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
 	conditionCharmed       = &core.Ref{Module: Module, Type: TypeConditions, ID: "charmed"}
@@ -79,6 +83,10 @@ func (n conditionsNS) FightingStyleProtection() *core.Ref { return conditionFigh
 func (n conditionsNS) FightingStyleTwoWeaponFighting() *core.Ref {
 	return conditionFightingStyleTwoWeaponFighting
 }
+
+// Turn-based conditions (from actions)
+func (n conditionsNS) Dodging() *core.Ref     { return conditionDodging }
+func (n conditionsNS) Disengaging() *core.Ref { return conditionDisengaging }
 
 // Standard D&D 5e Conditions
 func (n conditionsNS) Blinded() *core.Ref       { return conditionBlinded }

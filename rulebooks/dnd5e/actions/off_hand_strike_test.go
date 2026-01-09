@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
@@ -43,11 +44,12 @@ func (m *offHandOwner) GetType() core.EntityType {
 
 type OffHandStrikeTestSuite struct {
 	suite.Suite
-	ctx    context.Context
-	bus    events.EventBus
-	owner  *offHandOwner
-	target *offHandTarget
-	strike *actions.OffHandStrike
+	ctx           context.Context
+	bus           events.EventBus
+	owner         *offHandOwner
+	target        *offHandTarget
+	strike        *actions.OffHandStrike
+	actionEconomy *combat.ActionEconomy
 }
 
 func TestOffHandStrikeTestSuite(t *testing.T) {
@@ -64,13 +66,16 @@ func (s *OffHandStrikeTestSuite) SetupTest() {
 		OwnerID:  s.owner.id,
 		WeaponID: weapons.Shortsword,
 	})
+	// ActionEconomy tracks off-hand attack capacity
+	s.actionEconomy = combat.NewActionEconomy()
+	s.actionEconomy.SetOffHandAttacks(1) // Two-weapon fighting grants 1 off-hand attack
 }
 
 func (s *OffHandStrikeTestSuite) TestNewOffHandStrike() {
 	// Assert
 	s.Assert().Equal("test-off-hand-strike-1", s.strike.GetID())
 	s.Assert().Equal(core.EntityType("action"), s.strike.GetType())
-	s.Assert().Equal(1, s.strike.UsesRemaining())
+	s.Assert().Equal(actions.UnlimitedUses, s.strike.UsesRemaining()) // Capacity tracked via ActionEconomy
 	s.Assert().True(s.strike.IsTemporary())
 	s.Assert().Equal(weapons.Shortsword, s.strike.GetWeaponID())
 }
@@ -90,7 +95,8 @@ func (s *OffHandStrikeTestSuite) TestCanActivate_Success() {
 
 	// Act
 	err = s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: s.target,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -100,7 +106,22 @@ func (s *OffHandStrikeTestSuite) TestCanActivate_Success() {
 func (s *OffHandStrikeTestSuite) TestCanActivate_NoTarget() {
 	// Act
 	err := s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: nil,
+		Target:        nil,
+		ActionEconomy: s.actionEconomy,
+	})
+
+	// Assert
+	s.Require().Error(err)
+	var rpgErr *rpgerr.Error
+	s.Require().True(errors.As(err, &rpgErr))
+	s.Assert().Equal(rpgerr.CodeInvalidArgument, rpgErr.Code)
+}
+
+func (s *OffHandStrikeTestSuite) TestCanActivate_NoActionEconomy() {
+	// Act
+	err := s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
+		Target:        s.target,
+		ActionEconomy: nil,
 	})
 
 	// Assert
@@ -119,7 +140,8 @@ func (s *OffHandStrikeTestSuite) TestCanActivate_AlreadyRemoved() {
 
 	// Act
 	err = s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: s.target,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -129,36 +151,14 @@ func (s *OffHandStrikeTestSuite) TestCanActivate_AlreadyRemoved() {
 	s.Assert().Equal(rpgerr.CodeInvalidArgument, rpgErr.Code)
 }
 
-func (s *OffHandStrikeTestSuite) TestCanActivate_NoUsesRemaining() {
-	// Arrange - apply and use it
-	err := s.strike.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
-	})
-	s.Require().NoError(err)
-
-	// Create a new strike to test exhaustion without removal
-	// (the original gets removed after use, so make a fresh one)
-	strike2 := actions.NewOffHandStrike(actions.OffHandStrikeConfig{
-		ID:       "test-off-hand-strike-2",
-		OwnerID:  s.owner.id,
-		WeaponID: weapons.Shortsword,
-	})
-	// Don't apply to bus so it won't auto-remove
-
-	// Manually exhaust it by activating without bus (won't trigger removal)
-	err = strike2.Activate(s.ctx, s.owner, actions.ActionInput{
-		Target: s.target,
-		// No bus - won't auto-remove
-	})
-	s.Require().NoError(err)
-	s.Assert().Equal(0, strike2.UsesRemaining())
+func (s *OffHandStrikeTestSuite) TestCanActivate_NoOffHandAttacksRemaining() {
+	// Arrange - exhaust off-hand attacks
+	s.actionEconomy.SetOffHandAttacks(0)
 
 	// Act
-	err = strike2.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: s.target,
+	err := s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -183,8 +183,9 @@ func (s *OffHandStrikeTestSuite) TestActivate_PublishesRequestEvent() {
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -196,21 +197,22 @@ func (s *OffHandStrikeTestSuite) TestActivate_PublishesRequestEvent() {
 	s.Assert().Equal("test-off-hand-strike-1", receivedEvent.ActionID)
 }
 
-func (s *OffHandStrikeTestSuite) TestActivate_ConsumesUse() {
+func (s *OffHandStrikeTestSuite) TestActivate_ConsumesFromActionEconomy() {
 	// Arrange
 	err := s.strike.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
-	s.Require().Equal(1, s.strike.UsesRemaining())
+	s.Require().Equal(1, s.actionEconomy.OffHandAttacksRemaining)
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
 	s.Require().NoError(err)
-	s.Assert().Equal(0, s.strike.UsesRemaining())
+	s.Assert().Equal(0, s.actionEconomy.OffHandAttacksRemaining)
 }
 
 func (s *OffHandStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
@@ -228,8 +230,9 @@ func (s *OffHandStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -243,7 +246,7 @@ func (s *OffHandStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
 }
 
 func (s *OffHandStrikeTestSuite) TestActivate_RemovesSelfWhenNoUsesRemaining() {
-	// Arrange
+	// Arrange - action economy already has 1 off-hand attack, so it exhausts after one use
 	err := s.strike.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
@@ -257,15 +260,17 @@ func (s *OffHandStrikeTestSuite) TestActivate_RemovesSelfWhenNoUsesRemaining() {
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
 	s.Require().NoError(err)
-	s.Require().NotNil(removedEvent)
+	s.Require().NotNil(removedEvent, "Should remove self when no off-hand attacks remaining")
 	s.Assert().Equal("test-off-hand-strike-1", removedEvent.ActionID)
 	s.Assert().Equal(s.owner.id, removedEvent.OwnerID)
+	s.Assert().Equal(0, s.actionEconomy.OffHandAttacksRemaining)
 }
 
 func (s *OffHandStrikeTestSuite) TestApply_SubscribesToTurnEnd() {
@@ -377,7 +382,8 @@ func (s *OffHandStrikeTestSuite) TestTurnEnd_IgnoresOtherCharacterTurnEnd() {
 
 	// Assert - should not have been removed
 	s.Assert().Nil(removedEvent)
-	s.Assert().Equal(1, s.strike.UsesRemaining())
+	// Action economy still has off-hand attacks available
+	s.Assert().Equal(1, s.actionEconomy.OffHandAttacksRemaining)
 }
 
 func (s *OffHandStrikeTestSuite) TestToJSON() {

@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/stretchr/testify/suite"
 )
@@ -41,11 +42,12 @@ func (m *mockOwner) GetType() core.EntityType {
 
 type FlurryStrikeTestSuite struct {
 	suite.Suite
-	ctx    context.Context
-	bus    events.EventBus
-	owner  *mockOwner
-	target *mockTarget
-	strike *actions.FlurryStrike
+	ctx           context.Context
+	bus           events.EventBus
+	owner         *mockOwner
+	target        *mockTarget
+	strike        *actions.FlurryStrike
+	actionEconomy *combat.ActionEconomy
 }
 
 func TestFlurryStrikeTestSuite(t *testing.T) {
@@ -61,13 +63,16 @@ func (s *FlurryStrikeTestSuite) SetupTest() {
 		ID:      "test-strike-1",
 		OwnerID: s.owner.id,
 	})
+	// ActionEconomy tracks flurry strike capacity
+	s.actionEconomy = combat.NewActionEconomy()
+	s.actionEconomy.SetFlurryStrikes(2) // Flurry of Blows grants 2 strikes
 }
 
 func (s *FlurryStrikeTestSuite) TestNewFlurryStrike() {
 	// Assert
 	s.Assert().Equal("test-strike-1", s.strike.GetID())
 	s.Assert().Equal(core.EntityType("action"), s.strike.GetType())
-	s.Assert().Equal(1, s.strike.UsesRemaining())
+	s.Assert().Equal(actions.UnlimitedUses, s.strike.UsesRemaining()) // Capacity tracked via ActionEconomy
 	s.Assert().True(s.strike.IsTemporary())
 }
 
@@ -78,7 +83,8 @@ func (s *FlurryStrikeTestSuite) TestCanActivate_Success() {
 
 	// Act
 	err = s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: s.target,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -88,7 +94,8 @@ func (s *FlurryStrikeTestSuite) TestCanActivate_Success() {
 func (s *FlurryStrikeTestSuite) TestCanActivate_NoTarget() {
 	// Act
 	err := s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: nil,
+		Target:        nil,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -96,6 +103,37 @@ func (s *FlurryStrikeTestSuite) TestCanActivate_NoTarget() {
 	var rpgErr *rpgerr.Error
 	s.Require().True(errors.As(err, &rpgErr))
 	s.Assert().Equal(rpgerr.CodeInvalidArgument, rpgErr.Code)
+}
+
+func (s *FlurryStrikeTestSuite) TestCanActivate_NoActionEconomy() {
+	// Act
+	err := s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
+		Target:        s.target,
+		ActionEconomy: nil,
+	})
+
+	// Assert
+	s.Require().Error(err)
+	var rpgErr *rpgerr.Error
+	s.Require().True(errors.As(err, &rpgErr))
+	s.Assert().Equal(rpgerr.CodeInvalidArgument, rpgErr.Code)
+}
+
+func (s *FlurryStrikeTestSuite) TestCanActivate_NoFlurryStrikesRemaining() {
+	// Arrange - exhaust flurry strikes
+	s.actionEconomy.SetFlurryStrikes(0)
+
+	// Act
+	err := s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
+	})
+
+	// Assert
+	s.Require().Error(err)
+	var rpgErr *rpgerr.Error
+	s.Require().True(errors.As(err, &rpgErr))
+	s.Assert().Equal(rpgerr.CodeResourceExhausted, rpgErr.Code)
 }
 
 func (s *FlurryStrikeTestSuite) TestCanActivate_AlreadyRemoved() {
@@ -107,7 +145,8 @@ func (s *FlurryStrikeTestSuite) TestCanActivate_AlreadyRemoved() {
 
 	// Act
 	err = s.strike.CanActivate(s.ctx, s.owner, actions.ActionInput{
-		Target: s.target,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -132,8 +171,9 @@ func (s *FlurryStrikeTestSuite) TestActivate_PublishesEvent() {
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -144,21 +184,22 @@ func (s *FlurryStrikeTestSuite) TestActivate_PublishesEvent() {
 	s.Assert().Equal("test-strike-1", receivedEvent.ActionID)
 }
 
-func (s *FlurryStrikeTestSuite) TestActivate_ConsumesUse() {
+func (s *FlurryStrikeTestSuite) TestActivate_ConsumesFromActionEconomy() {
 	// Arrange
 	err := s.strike.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
-	s.Require().Equal(1, s.strike.UsesRemaining())
+	s.Require().Equal(2, s.actionEconomy.FlurryStrikesRemaining)
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
 	s.Require().NoError(err)
-	s.Assert().Equal(0, s.strike.UsesRemaining())
+	s.Assert().Equal(1, s.actionEconomy.FlurryStrikesRemaining)
 }
 
 func (s *FlurryStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
@@ -176,8 +217,9 @@ func (s *FlurryStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
@@ -186,11 +228,12 @@ func (s *FlurryStrikeTestSuite) TestActivate_PublishesActivatedNotification() {
 	s.Assert().Equal(s.owner.id, activatedEvent.AttackerID)
 	s.Assert().Equal(s.target.id, activatedEvent.TargetID)
 	s.Assert().Equal("test-strike-1", activatedEvent.ActionID)
-	s.Assert().Equal(0, activatedEvent.UsesRemaining, "Should have 0 uses remaining after activation")
+	s.Assert().Equal(1, activatedEvent.UsesRemaining, "Should have 1 use remaining after activation (started with 2)")
 }
 
 func (s *FlurryStrikeTestSuite) TestActivate_RemovesSelfWhenNoUsesRemaining() {
-	// Arrange
+	// Arrange - set up with only 1 flurry strike so it exhausts after one use
+	s.actionEconomy.SetFlurryStrikes(1)
 	err := s.strike.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
@@ -204,15 +247,17 @@ func (s *FlurryStrikeTestSuite) TestActivate_RemovesSelfWhenNoUsesRemaining() {
 
 	// Act
 	err = s.strike.Activate(s.ctx, s.owner, actions.ActionInput{
-		Bus:    s.bus,
-		Target: s.target,
+		Bus:           s.bus,
+		Target:        s.target,
+		ActionEconomy: s.actionEconomy,
 	})
 
 	// Assert
 	s.Require().NoError(err)
-	s.Require().NotNil(removedEvent)
+	s.Require().NotNil(removedEvent, "Should remove self when no flurry strikes remaining")
 	s.Assert().Equal("test-strike-1", removedEvent.ActionID)
 	s.Assert().Equal(s.owner.id, removedEvent.OwnerID)
+	s.Assert().Equal(0, s.actionEconomy.FlurryStrikesRemaining)
 }
 
 func (s *FlurryStrikeTestSuite) TestApply_SubscribesToTurnEnd() {
@@ -324,7 +369,8 @@ func (s *FlurryStrikeTestSuite) TestTurnEnd_IgnoresOtherCharacterTurnEnd() {
 
 	// Assert - should not have been removed
 	s.Assert().Nil(removedEvent)
-	s.Assert().Equal(1, s.strike.UsesRemaining())
+	// Action economy still has flurry strikes available
+	s.Assert().Equal(2, s.actionEconomy.FlurryStrikesRemaining)
 }
 
 func (s *FlurryStrikeTestSuite) TestToJSON() {
