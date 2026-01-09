@@ -266,6 +266,9 @@ func (s *FullAttackFlowIntegrationSuite) TestFullAttackFlow() {
 		s.Assert().Equal("fighter-001", actionGrantedEvents[0].CharacterID)
 		s.Assert().Equal("two_weapon_fighting", actionGrantedEvents[0].Source)
 
+		// Set off-hand attack capacity in action economy (game server would do this)
+		actionEconomy.SetOffHandAttacks(1)
+
 		// Verify character received the action via event
 		offHandStrike := char.GetAction("fighter-001-off-hand-strike")
 		s.Require().NotNil(offHandStrike, "character should have OffHandStrike action after event")
@@ -303,8 +306,9 @@ func (s *FullAttackFlowIntegrationSuite) TestFullAttackFlow() {
 
 		// Activate the off-hand strike
 		err = offHandAction.Activate(s.ctx, char, actions.ActionInput{
-			Bus:    s.bus,
-			Target: goblin,
+			Bus:           s.bus,
+			ActionEconomy: actionEconomy,
+			Target:        goblin,
 		})
 		s.Require().NoError(err)
 
@@ -526,6 +530,9 @@ func (s *FullAttackFlowIntegrationSuite) TestEventFlowOrder() {
 			EventBus:       s.bus,
 		})
 
+		// Set off-hand attack capacity in action economy
+		actionEconomy.SetOffHandAttacks(1)
+
 		// Second strike
 		_ = strikeAction.Activate(s.ctx, char, actions.ActionInput{
 			Bus:           s.bus,
@@ -537,8 +544,9 @@ func (s *FullAttackFlowIntegrationSuite) TestEventFlowOrder() {
 		offHandAction := char.GetAction("fighter-events-off-hand-strike")
 		if offHandAction != nil {
 			_ = offHandAction.Activate(s.ctx, char, actions.ActionInput{
-				Bus:    s.bus,
-				Target: goblin,
+				Bus:           s.bus,
+				ActionEconomy: actionEconomy,
+				Target:        goblin,
 			})
 		}
 
