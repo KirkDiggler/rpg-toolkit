@@ -13,11 +13,11 @@ import (
 )
 
 // FlurryStrike represents an unarmed strike granted by Flurry of Blows.
-// It is a temporary action that removes itself after use or at turn end.
+// It is a temporary action that removes itself when ActionEconomy.FlurryStrikesRemaining
+// reaches 0 or at turn end.
 type FlurryStrike struct {
 	id             string
 	ownerID        string
-	uses           int
 	bus            events.EventBus
 	subscriptionID string
 	removed        bool
@@ -29,12 +29,12 @@ type FlurryStrikeConfig struct {
 	OwnerID string
 }
 
-// NewFlurryStrike creates a new FlurryStrike action with 1 use
+// NewFlurryStrike creates a new FlurryStrike action.
+// Capacity is tracked via ActionEconomy.FlurryStrikesRemaining, not internally.
 func NewFlurryStrike(config FlurryStrikeConfig) *FlurryStrike {
 	return &FlurryStrike{
 		id:      config.ID,
 		ownerID: config.OwnerID,
-		uses:    1,
 	}
 }
 
@@ -54,8 +54,12 @@ func (f *FlurryStrike) CanActivate(_ context.Context, _ core.Entity, input Actio
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "flurry strike has been removed")
 	}
 
-	if f.uses <= 0 {
-		return rpgerr.New(rpgerr.CodeResourceExhausted, "flurry strike has no uses remaining")
+	if input.ActionEconomy == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "action economy required")
+	}
+
+	if !input.ActionEconomy.CanUseFlurryStrike() {
+		return rpgerr.New(rpgerr.CodeResourceExhausted, "no flurry strikes remaining")
 	}
 
 	if input.Target == nil {
@@ -71,6 +75,11 @@ func (f *FlurryStrike) Activate(ctx context.Context, owner core.Entity, input Ac
 		return err
 	}
 
+	// Consume from ActionEconomy
+	if err := input.ActionEconomy.UseFlurryStrike(); err != nil {
+		return rpgerr.Wrapf(err, "failed to use flurry strike")
+	}
+
 	// Publish the strike request event for the game server to resolve
 	if input.Bus != nil {
 		topic := dnd5eEvents.FlurryStrikeRequestedTopic.On(input.Bus)
@@ -84,9 +93,6 @@ func (f *FlurryStrike) Activate(ctx context.Context, owner core.Entity, input Ac
 		}
 	}
 
-	// Decrement uses
-	f.uses--
-
 	// Publish notification event for UI/logging
 	if input.Bus != nil {
 		activatedTopic := dnd5eEvents.FlurryStrikeActivatedTopic.On(input.Bus)
@@ -95,12 +101,12 @@ func (f *FlurryStrike) Activate(ctx context.Context, owner core.Entity, input Ac
 			AttackerID:    owner.GetID(),
 			TargetID:      input.Target.GetID(),
 			ActionID:      f.id,
-			UsesRemaining: f.uses,
+			UsesRemaining: input.ActionEconomy.FlurryStrikesRemaining,
 		})
 	}
 
-	// Remove self if no uses remaining
-	if f.uses <= 0 && f.bus != nil {
+	// Remove self if no flurry strikes remaining
+	if input.ActionEconomy.FlurryStrikesRemaining <= 0 && f.bus != nil {
 		if err := f.Remove(ctx, f.bus); err != nil {
 			return rpgerr.Wrapf(err, "failed to remove flurry strike after use")
 		}
@@ -177,17 +183,18 @@ func (f *FlurryStrike) IsTemporary() bool {
 	return true
 }
 
-// UsesRemaining returns the number of uses remaining
+// UsesRemaining returns UnlimitedUses since capacity is tracked via ActionEconomy.
+// The actual remaining count is in ActionEconomy.FlurryStrikesRemaining.
 func (f *FlurryStrike) UsesRemaining() int {
-	return f.uses
+	return UnlimitedUses
 }
 
-// ToJSON converts the action to JSON for persistence
+// ToJSON converts the action to JSON for persistence.
+// Note: Uses are not serialized as capacity is tracked via ActionEconomy.
 func (f *FlurryStrike) ToJSON() (json.RawMessage, error) {
 	data := map[string]interface{}{
 		"id":       f.id,
 		"owner_id": f.ownerID,
-		"uses":     f.uses,
 		"type":     "flurry_strike",
 	}
 

@@ -14,14 +14,14 @@ import (
 )
 
 // OffHandStrike represents an off-hand attack granted by two-weapon fighting.
-// It is a temporary action that removes itself after use or at turn end.
+// It is a temporary action that removes itself when ActionEconomy.OffHandAttacksRemaining
+// reaches 0 or at turn end.
 // Unlike normal attacks, off-hand strikes don't add ability modifier to damage
 // (unless the character has the Two-Weapon Fighting fighting style).
 type OffHandStrike struct {
 	id             string
 	ownerID        string
 	weaponID       weapons.WeaponID // The off-hand weapon to attack with
-	uses           int
 	bus            events.EventBus
 	subscriptionID string
 	removed        bool
@@ -34,13 +34,13 @@ type OffHandStrikeConfig struct {
 	WeaponID weapons.WeaponID // The off-hand weapon
 }
 
-// NewOffHandStrike creates a new OffHandStrike action with 1 use
+// NewOffHandStrike creates a new OffHandStrike action.
+// Capacity is tracked via ActionEconomy.OffHandAttacksRemaining, not internally.
 func NewOffHandStrike(config OffHandStrikeConfig) *OffHandStrike {
 	return &OffHandStrike{
 		id:       config.ID,
 		ownerID:  config.OwnerID,
 		weaponID: config.WeaponID,
-		uses:     1,
 	}
 }
 
@@ -65,8 +65,12 @@ func (o *OffHandStrike) CanActivate(_ context.Context, _ core.Entity, input Acti
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "off-hand strike has been removed")
 	}
 
-	if o.uses <= 0 {
-		return rpgerr.New(rpgerr.CodeResourceExhausted, "off-hand strike has no uses remaining")
+	if input.ActionEconomy == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "action economy required")
+	}
+
+	if !input.ActionEconomy.CanUseOffHandAttack() {
+		return rpgerr.New(rpgerr.CodeResourceExhausted, "no off-hand attacks remaining")
 	}
 
 	if input.Target == nil {
@@ -80,6 +84,11 @@ func (o *OffHandStrike) CanActivate(_ context.Context, _ core.Entity, input Acti
 func (o *OffHandStrike) Activate(ctx context.Context, owner core.Entity, input ActionInput) error {
 	if err := o.CanActivate(ctx, owner, input); err != nil {
 		return err
+	}
+
+	// Consume from ActionEconomy
+	if err := input.ActionEconomy.UseOffHandAttack(); err != nil {
+		return rpgerr.Wrapf(err, "failed to use off-hand attack")
 	}
 
 	// Publish the strike request event for the game server to resolve
@@ -96,9 +105,6 @@ func (o *OffHandStrike) Activate(ctx context.Context, owner core.Entity, input A
 		}
 	}
 
-	// Decrement uses
-	o.uses--
-
 	// Publish notification event for UI/logging
 	if input.Bus != nil {
 		activatedTopic := dnd5eEvents.OffHandStrikeActivatedTopic.On(input.Bus)
@@ -108,12 +114,12 @@ func (o *OffHandStrike) Activate(ctx context.Context, owner core.Entity, input A
 			TargetID:      input.Target.GetID(),
 			WeaponID:      string(o.weaponID),
 			ActionID:      o.id,
-			UsesRemaining: o.uses,
+			UsesRemaining: input.ActionEconomy.OffHandAttacksRemaining,
 		})
 	}
 
-	// Remove self if no uses remaining
-	if o.uses <= 0 && o.bus != nil {
+	// Remove self if no off-hand attacks remaining
+	if input.ActionEconomy.OffHandAttacksRemaining <= 0 && o.bus != nil {
 		if err := o.Remove(ctx, o.bus); err != nil {
 			return rpgerr.Wrapf(err, "failed to remove off-hand strike after use")
 		}
@@ -190,18 +196,19 @@ func (o *OffHandStrike) IsTemporary() bool {
 	return true
 }
 
-// UsesRemaining returns the number of uses remaining
+// UsesRemaining returns UnlimitedUses since capacity is tracked via ActionEconomy.
+// The actual remaining count is in ActionEconomy.OffHandAttacksRemaining.
 func (o *OffHandStrike) UsesRemaining() int {
-	return o.uses
+	return UnlimitedUses
 }
 
-// ToJSON converts the action to JSON for persistence
+// ToJSON converts the action to JSON for persistence.
+// Note: Uses are not serialized as capacity is tracked via ActionEconomy.
 func (o *OffHandStrike) ToJSON() (json.RawMessage, error) {
 	data := map[string]interface{}{
 		"id":        o.id,
 		"owner_id":  o.ownerID,
 		"weapon_id": o.weaponID,
-		"uses":      o.uses,
 		"type":      "off_hand_strike",
 	}
 

@@ -10,6 +10,8 @@ import (
 
 // ActionData represents the common data structure for loading actions.
 // Actions share a consistent schema, so we use LoadFromData instead of LoadJSON.
+// Capacity for temporary actions (OffHandStrike, FlurryStrike) is tracked via
+// ActionEconomy, not serialized with the action.
 type ActionData struct {
 	// Ref identifies the action type (e.g., refs.Actions.Strike())
 	Ref *core.Ref
@@ -22,9 +24,6 @@ type ActionData struct {
 
 	// WeaponID is the weapon used for this action (empty for Move, FlurryStrike)
 	WeaponID weapons.WeaponID
-
-	// Uses is the number of uses remaining for temporary actions (ignored for permanent)
-	Uses int
 }
 
 // LoadFromData creates an Action from the given data.
@@ -49,27 +48,17 @@ func LoadFromData(data ActionData) (Action, error) {
 		}), nil
 
 	case refs.Actions.OffHandStrike().ID:
-		action := NewOffHandStrike(OffHandStrikeConfig{
+		return NewOffHandStrike(OffHandStrikeConfig{
 			ID:       data.ID,
 			OwnerID:  data.OwnerID,
 			WeaponID: data.WeaponID,
-		})
-		// Restore uses if specified (otherwise defaults to 1)
-		if data.Uses > 0 {
-			action.uses = data.Uses
-		}
-		return action, nil
+		}), nil
 
 	case refs.Actions.FlurryStrike().ID:
-		action := NewFlurryStrike(FlurryStrikeConfig{
+		return NewFlurryStrike(FlurryStrikeConfig{
 			ID:      data.ID,
 			OwnerID: data.OwnerID,
-		})
-		// Restore uses if specified (otherwise defaults to 1)
-		if data.Uses > 0 {
-			action.uses = data.Uses
-		}
-		return action, nil
+		}), nil
 
 	case refs.Actions.UnarmedStrike().ID:
 		// UnarmedStrike uses Strike with no weapon

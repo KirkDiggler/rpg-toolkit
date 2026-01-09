@@ -19,10 +19,6 @@ type ActionEconomy struct {
 	MovementRemaining int // Set at turn start from character speed
 
 	// Additional capacity for granted actions
-	// NOTE: OffHandStrike and FlurryStrike actions currently track their own usage
-	// via internal "uses" fields and do not yet consume these capacities. These
-	// fields are introduced for game server integration - a future refactor will
-	// update the action implementations to use ActionEconomy as single source of truth.
 	OffHandAttacksRemaining int // Set by TwoWeaponGranter after main-hand attack
 	FlurryStrikesRemaining  int // Set by FlurryOfBlows feature (usually 2)
 }

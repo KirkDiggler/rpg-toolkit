@@ -104,24 +104,8 @@ func (s *LoadFromDataTestSuite) TestLoadFromData_OffHandStrike() {
 		s.Equal("offhand-1", offhand.GetID())
 		s.Equal("char-1", offhand.ownerID)
 		s.Equal(weapons.Dagger, offhand.weaponID)
-		s.Equal(1, offhand.uses, "should default to 1 use")
-	})
-
-	s.Run("restores uses when specified", func() {
-		data := ActionData{
-			Ref:      refs.Actions.OffHandStrike(),
-			ID:       "offhand-2",
-			OwnerID:  "char-1",
-			WeaponID: weapons.Shortsword,
-			Uses:     3,
-		}
-
-		action, err := LoadFromData(data)
-		s.Require().NoError(err)
-
-		offhand, ok := action.(*OffHandStrike)
-		s.Require().True(ok)
-		s.Equal(3, offhand.uses, "should restore uses from data")
+		// Capacity is tracked via ActionEconomy, not internally
+		s.Equal(UnlimitedUses, offhand.UsesRemaining())
 	})
 }
 
@@ -141,23 +125,8 @@ func (s *LoadFromDataTestSuite) TestLoadFromData_FlurryStrike() {
 		s.Require().True(ok, "should be a *FlurryStrike")
 		s.Equal("flurry-1", flurry.GetID())
 		s.Equal("monk-1", flurry.ownerID)
-		s.Equal(1, flurry.uses, "should default to 1 use")
-	})
-
-	s.Run("restores uses when specified", func() {
-		data := ActionData{
-			Ref:     refs.Actions.FlurryStrike(),
-			ID:      "flurry-2",
-			OwnerID: "monk-1",
-			Uses:    2,
-		}
-
-		action, err := LoadFromData(data)
-		s.Require().NoError(err)
-
-		flurry, ok := action.(*FlurryStrike)
-		s.Require().True(ok)
-		s.Equal(2, flurry.uses, "should restore uses from data")
+		// Capacity is tracked via ActionEconomy, not internally
+		s.Equal(UnlimitedUses, flurry.UsesRemaining())
 	})
 }
 
