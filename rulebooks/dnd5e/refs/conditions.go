@@ -39,7 +39,7 @@ var (
 	conditionDisengaging = &core.Ref{Module: Module, Type: TypeConditions, ID: "disengaging"}
 
 	// Standard D&D 5e Conditions
-	conditionBlinded = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
+	conditionBlinded       = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
 	conditionCharmed       = &core.Ref{Module: Module, Type: TypeConditions, ID: "charmed"}
 	conditionDeafened      = &core.Ref{Module: Module, Type: TypeConditions, ID: "deafened"}
 	conditionFrightened    = &core.Ref{Module: Module, Type: TypeConditions, ID: "frightened"}
@@ -89,7 +89,7 @@ func (n conditionsNS) Dodging() *core.Ref     { return conditionDodging }
 func (n conditionsNS) Disengaging() *core.Ref { return conditionDisengaging }
 
 // Standard D&D 5e Conditions
-func (n conditionsNS) Blinded() *core.Ref { return conditionBlinded }
+func (n conditionsNS) Blinded() *core.Ref       { return conditionBlinded }
 func (n conditionsNS) Charmed() *core.Ref       { return conditionCharmed }
 func (n conditionsNS) Deafened() *core.Ref      { return conditionDeafened }
 func (n conditionsNS) Frightened() *core.Ref    { return conditionFrightened }
