@@ -693,3 +693,139 @@ func (s *ActionEconomyTestSuite) TestFullCombatTurnScenario() {
 		s.True(s.economy.CanUseReaction())
 	})
 }
+
+// Tests for OffHandAttacksRemaining capacity
+
+func (s *ActionEconomyTestSuite) TestCanUseOffHandAttack() {
+	s.Run("returns false when no off-hand attacks available", func() {
+		s.False(s.economy.CanUseOffHandAttack())
+	})
+
+	s.Run("returns true when off-hand attacks available", func() {
+		s.economy.SetOffHandAttacks(1)
+		s.True(s.economy.CanUseOffHandAttack())
+	})
+
+	s.Run("returns true with multiple off-hand attacks", func() {
+		s.economy.SetOffHandAttacks(2)
+		s.True(s.economy.CanUseOffHandAttack())
+	})
+}
+
+func (s *ActionEconomyTestSuite) TestUseOffHandAttack() {
+	s.Run("returns error when no off-hand attacks available", func() {
+		err := s.economy.UseOffHandAttack()
+		s.Require().Error(err)
+		s.True(rpgerr.IsResourceExhausted(err))
+		s.Equal(0, s.economy.OffHandAttacksRemaining, "should not go negative")
+	})
+
+	s.Run("consumes off-hand attack successfully", func() {
+		s.economy.SetOffHandAttacks(1)
+		err := s.economy.UseOffHandAttack()
+		s.Require().NoError(err)
+		s.Equal(0, s.economy.OffHandAttacksRemaining)
+		s.False(s.economy.CanUseOffHandAttack())
+	})
+
+	s.Run("consumes multiple off-hand attacks sequentially", func() {
+		s.economy.SetOffHandAttacks(2)
+
+		err := s.economy.UseOffHandAttack()
+		s.Require().NoError(err)
+		s.Equal(1, s.economy.OffHandAttacksRemaining)
+
+		err = s.economy.UseOffHandAttack()
+		s.Require().NoError(err)
+		s.Equal(0, s.economy.OffHandAttacksRemaining)
+
+		err = s.economy.UseOffHandAttack()
+		s.Require().Error(err)
+		s.True(rpgerr.IsResourceExhausted(err))
+	})
+}
+
+func (s *ActionEconomyTestSuite) TestSetOffHandAttacks() {
+	s.Run("sets off-hand attacks to specified count", func() {
+		s.economy.SetOffHandAttacks(1)
+		s.Equal(1, s.economy.OffHandAttacksRemaining)
+	})
+
+	s.Run("overwrites existing off-hand attack count", func() {
+		s.economy.SetOffHandAttacks(1)
+		s.economy.SetOffHandAttacks(2)
+		s.Equal(2, s.economy.OffHandAttacksRemaining)
+	})
+}
+
+// Tests for FlurryStrikesRemaining capacity
+
+func (s *ActionEconomyTestSuite) TestCanUseFlurryStrike() {
+	s.Run("returns false when no flurry strikes available", func() {
+		s.False(s.economy.CanUseFlurryStrike())
+	})
+
+	s.Run("returns true when flurry strikes available", func() {
+		s.economy.SetFlurryStrikes(2)
+		s.True(s.economy.CanUseFlurryStrike())
+	})
+}
+
+func (s *ActionEconomyTestSuite) TestUseFlurryStrike() {
+	s.Run("returns error when no flurry strikes available", func() {
+		err := s.economy.UseFlurryStrike()
+		s.Require().Error(err)
+		s.True(rpgerr.IsResourceExhausted(err))
+		s.Equal(0, s.economy.FlurryStrikesRemaining, "should not go negative")
+	})
+
+	s.Run("consumes flurry strike successfully", func() {
+		s.economy.SetFlurryStrikes(2)
+		err := s.economy.UseFlurryStrike()
+		s.Require().NoError(err)
+		s.Equal(1, s.economy.FlurryStrikesRemaining)
+	})
+
+	s.Run("consumes multiple flurry strikes sequentially", func() {
+		s.economy.SetFlurryStrikes(2)
+
+		err := s.economy.UseFlurryStrike()
+		s.Require().NoError(err)
+		s.Equal(1, s.economy.FlurryStrikesRemaining)
+
+		err = s.economy.UseFlurryStrike()
+		s.Require().NoError(err)
+		s.Equal(0, s.economy.FlurryStrikesRemaining)
+
+		err = s.economy.UseFlurryStrike()
+		s.Require().Error(err)
+		s.True(rpgerr.IsResourceExhausted(err))
+	})
+}
+
+func (s *ActionEconomyTestSuite) TestSetFlurryStrikes() {
+	s.Run("sets flurry strikes to specified count", func() {
+		s.economy.SetFlurryStrikes(2)
+		s.Equal(2, s.economy.FlurryStrikesRemaining)
+	})
+
+	s.Run("overwrites existing flurry strike count", func() {
+		s.economy.SetFlurryStrikes(2)
+		s.economy.SetFlurryStrikes(4)
+		s.Equal(4, s.economy.FlurryStrikesRemaining)
+	})
+}
+
+func (s *ActionEconomyTestSuite) TestResetClearsGrantedCapacity() {
+	s.Run("reset clears off-hand attacks", func() {
+		s.economy.SetOffHandAttacks(1)
+		s.economy.Reset()
+		s.Equal(0, s.economy.OffHandAttacksRemaining)
+	})
+
+	s.Run("reset clears flurry strikes", func() {
+		s.economy.SetFlurryStrikes(2)
+		s.economy.Reset()
+		s.Equal(0, s.economy.FlurryStrikesRemaining)
+	})
+}
