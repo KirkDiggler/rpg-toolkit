@@ -118,6 +118,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return sneak, nil
 
+	case refs.Conditions.Disengaging().ID:
+		disengaging := &DisengagingCondition{}
+		if err := disengaging.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load disengaging condition")
+		}
+		return disengaging, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}
