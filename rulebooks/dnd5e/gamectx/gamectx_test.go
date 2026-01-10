@@ -179,7 +179,8 @@ func (s *ContextWrappingTestSuite) TestRequireCharactersSuccess() {
 	wrappedCtx := gamectx.WithGameContext(s.ctx, gameCtx)
 
 	// RequireCharacters should succeed
-	registry := gamectx.RequireCharacters(wrappedCtx)
+	registry, err := gamectx.RequireCharacters(wrappedCtx)
+	s.Require().NoError(err)
 	s.Require().NotNil(registry)
 
 	// Verify we can use the registry
@@ -188,11 +189,12 @@ func (s *ContextWrappingTestSuite) TestRequireCharactersSuccess() {
 	s.Equal("dagger-1", retrievedWeapons.MainHand().ID)
 }
 
-func (s *ContextWrappingTestSuite) TestRequireCharactersPanics() {
-	// RequireCharacters should panic when no GameContext is present
-	s.Require().Panics(func() {
-		gamectx.RequireCharacters(s.ctx)
-	}, "RequireCharacters should panic when no GameContext is in context")
+func (s *ContextWrappingTestSuite) TestRequireCharactersReturnsError() {
+	// RequireCharacters should return error when no GameContext is present
+	registry, err := gamectx.RequireCharacters(s.ctx)
+	s.Require().Error(err)
+	s.Require().Nil(registry)
+	s.ErrorIs(err, gamectx.ErrNoGameContext)
 }
 
 func (s *ContextWrappingTestSuite) TestMultipleContextLayers() {
@@ -309,16 +311,18 @@ func (s *RoomContextTestSuite) TestRequireRoomSuccess() {
 	wrappedCtx := gamectx.WithRoom(s.ctx, room)
 
 	// RequireRoom should succeed
-	retrievedRoom := gamectx.RequireRoom(wrappedCtx)
+	retrievedRoom, err := gamectx.RequireRoom(wrappedCtx)
+	s.Require().NoError(err)
 	s.Require().NotNil(retrievedRoom)
 	s.Equal("required-room", retrievedRoom.GetID())
 }
 
-func (s *RoomContextTestSuite) TestRequireRoomPanics() {
-	// RequireRoom should panic when no Room is present
-	s.Require().Panics(func() {
-		gamectx.RequireRoom(s.ctx)
-	}, "RequireRoom should panic when no Room is in context")
+func (s *RoomContextTestSuite) TestRequireRoomReturnsError() {
+	// RequireRoom should return error when no Room is present
+	room, err := gamectx.RequireRoom(s.ctx)
+	s.Require().Error(err)
+	s.Require().Nil(room)
+	s.ErrorIs(err, gamectx.ErrNoRoom)
 }
 
 func TestRoomContextSuite(t *testing.T) {

@@ -137,9 +137,10 @@ func (s *UnarmoredMovementTestSuite) TestCalculateSpeedBonus() {
 }
 
 func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithoutContext() {
-	// Without context, should return bonus (assumes unarmored)
-	bonus := s.condition.GetSpeedBonus(s.ctx)
-	s.Assert().Equal(10, bonus, "Level 3 monk should get +10 ft")
+	// Without context, should return error
+	bonus, err := s.condition.GetSpeedBonus(s.ctx)
+	s.Require().Error(err, "Should error when game context is not available")
+	s.Assert().Equal(0, bonus)
 }
 
 func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusUnarmored() {
@@ -154,7 +155,8 @@ func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusUnarmored() {
 	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
 	registry.Add("monk-1", weapons)
 
-	bonus := s.condition.GetSpeedBonus(ctx)
+	bonus, err := s.condition.GetSpeedBonus(ctx)
+	s.Require().NoError(err)
 	s.Assert().Equal(10, bonus, "Unarmored monk should get speed bonus")
 }
 
@@ -178,7 +180,8 @@ func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithWeaponNoShield() {
 	})
 	registry.Add("monk-1", weapons)
 
-	bonus := s.condition.GetSpeedBonus(ctx)
+	bonus, err := s.condition.GetSpeedBonus(ctx)
+	s.Require().NoError(err)
 	s.Assert().Equal(10, bonus, "Monk with weapon but no shield should get speed bonus")
 }
 
@@ -201,7 +204,8 @@ func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithShieldInMainHand() {
 	})
 	registry.Add("monk-1", weapons)
 
-	bonus := s.condition.GetSpeedBonus(ctx)
+	bonus, err := s.condition.GetSpeedBonus(ctx)
+	s.Require().NoError(err)
 	s.Assert().Equal(0, bonus, "Monk with shield should not get speed bonus")
 }
 
@@ -233,7 +237,8 @@ func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithDifferentLevels() {
 				CharacterID: "monk-1",
 				MonkLevel:   tc.monkLevel,
 			})
-			bonus := condition.GetSpeedBonus(ctx)
+			bonus, err := condition.GetSpeedBonus(ctx)
+			s.Require().NoError(err)
 			s.Assert().Equal(tc.expectedBonus, bonus)
 		})
 	}
