@@ -253,6 +253,80 @@ type DamageChainEvent struct {
 }
 
 // =============================================================================
+// Saving Throw Chain Types
+// =============================================================================
+
+// SaveTrigger identifies what caused the saving throw
+type SaveTrigger string
+
+const (
+	// SaveTriggerSpell indicates the saving throw was caused by a spell
+	SaveTriggerSpell SaveTrigger = "spell"
+	// SaveTriggerTrap indicates the saving throw was caused by a trap
+	SaveTriggerTrap SaveTrigger = "trap"
+	// SaveTriggerConcentration indicates the saving throw was for maintaining concentration
+	SaveTriggerConcentration SaveTrigger = "concentration"
+	// SaveTriggerFeature indicates the saving throw was caused by a class/racial feature
+	SaveTriggerFeature SaveTrigger = "feature"
+	// SaveTriggerEnvironment indicates the saving throw was caused by environmental effects
+	SaveTriggerEnvironment SaveTrigger = "environment"
+)
+
+// SaveCause provides context about what caused the saving throw
+type SaveCause struct {
+	Trigger        SaveTrigger // What type of effect triggered this save
+	EffectRef      *core.Ref   // Reference to the spell/trap/feature causing the save
+	InstigatorID   string      // ID of entity that caused the save (caster, trap placer, etc)
+	InstigatorType string      // Type of instigator ("character", "monster", "trap", etc)
+}
+
+// SaveModifierSource tracks the source of a saving throw modifier
+type SaveModifierSource struct {
+	Name       string    // Display name (e.g., "Dodging", "Bless")
+	SourceType string    // Type of source ("condition", "feature", "spell", etc)
+	SourceRef  *core.Ref // Reference to the source
+	EntityID   string    // ID of entity providing the modifier
+}
+
+// SaveBonusSource tracks a bonus to the saving throw
+type SaveBonusSource struct {
+	SaveModifierSource     // Embedded modifier source
+	Bonus              int // The bonus amount
+}
+
+// SavingThrowChainEvent represents a saving throw flowing through the modifier chain.
+// This event fires BEFORE the d20 roll to allow advantage/disadvantage/bonuses to be collected.
+type SavingThrowChainEvent struct {
+	SaverID string            // ID of the entity making the save
+	Ability abilities.Ability // The ability being used (DEX, CON, etc)
+	DC      int               // Difficulty class
+	Cause   SaveCause         // What caused this saving throw
+
+	AdvantageSources    []SaveModifierSource // Sources granting advantage
+	DisadvantageSources []SaveModifierSource // Sources imposing disadvantage
+	BonusSources        []SaveBonusSource    // Sources adding bonuses to the roll
+}
+
+// HasAdvantage returns true if any advantage sources have been added to this event
+func (e *SavingThrowChainEvent) HasAdvantage() bool {
+	return len(e.AdvantageSources) > 0
+}
+
+// HasDisadvantage returns true if any disadvantage sources have been added to this event
+func (e *SavingThrowChainEvent) HasDisadvantage() bool {
+	return len(e.DisadvantageSources) > 0
+}
+
+// TotalBonus returns the sum of all bonus sources
+func (e *SavingThrowChainEvent) TotalBonus() int {
+	total := 0
+	for _, source := range e.BonusSources {
+		total += source.Bonus
+	}
+	return total
+}
+
+// =============================================================================
 // Simple Events (pub/sub notifications)
 // =============================================================================
 
@@ -572,4 +646,7 @@ var (
 
 	// DamageChain provides typed chained topic for damage modifiers
 	DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
+
+	// SavingThrowChain provides typed chained topic for saving throw modifiers
+	SavingThrowChain = events.DefineChainedTopic[*SavingThrowChainEvent]("dnd5e.saves.chain")
 )

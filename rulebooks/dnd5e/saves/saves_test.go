@@ -7,8 +7,12 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 type SavingThrowTestSuite struct {
@@ -297,4 +301,223 @@ func (s *SavingThrowTestSuite) TestNilInput() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "input cannot be nil")
+}
+
+// TestChainGrantsAdvantage tests that a chain subscriber can grant advantage
+func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
+	// With advantage from chain, should roll 2d20 and take higher
+	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
+
+	bus := events.NewEventBus()
+
+	// Subscribe to grant advantage on DEX saves
+	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	_, err := saveChain.SubscribeWithChain(s.ctx,
+		func(_ context.Context, event *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+			// Grant advantage on DEX saves
+			if event.Ability == abilities.DEX {
+				addErr := c.Add(combat.StageConditions, "dodging", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
+					e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.SaveModifierSource{
+						Name:       "Dodging",
+						SourceType: "condition",
+						EntityID:   "hero",
+					})
+					return e, nil
+				})
+				if addErr != nil {
+					return c, addErr
+				}
+			}
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: bus,
+		SaverID:  "hero",
+		Ability:  abilities.DEX,
+		DC:       15,
+		Modifier: 2,
+	}
+
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(15, result.Roll, "should use higher roll due to advantage")
+	s.Equal(17, result.Total, "total should be 15 + 2 = 17")
+	s.True(result.Success, "17 should succeed against DC 15")
+	s.Len(result.AdvantageSources, 1, "should have one advantage source")
+	s.Equal("Dodging", result.AdvantageSources[0].Name)
+}
+
+// TestChainGrantsDisadvantage tests that a chain subscriber can impose disadvantage
+func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
+	// With disadvantage from chain, should roll 2d20 and take lower
+	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
+
+	bus := events.NewEventBus()
+
+	// Subscribe to impose disadvantage
+	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	_, err := saveChain.SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+			addErr := c.Add(combat.StageConditions, "poisoned", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
+				e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.SaveModifierSource{
+					Name:       "Poisoned",
+					SourceType: "condition",
+					EntityID:   "hero",
+				})
+				return e, nil
+			})
+			if addErr != nil {
+				return c, addErr
+			}
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: bus,
+		SaverID:  "hero",
+		Ability:  abilities.CON,
+		DC:       15,
+		Modifier: 4,
+	}
+
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(5, result.Roll, "should use lower roll due to disadvantage")
+	s.Equal(9, result.Total, "total should be 5 + 4 = 9")
+	s.False(result.Success, "9 should fail against DC 15")
+	s.Len(result.DisadvantageSources, 1, "should have one disadvantage source")
+	s.Equal("Poisoned", result.DisadvantageSources[0].Name)
+}
+
+// TestChainAddsBonus tests that a chain subscriber can add bonuses to the roll
+func (s *SavingThrowTestSuite) TestChainAddsBonus() {
+	// Normal roll (no advantage/disadvantage)
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(10, nil)
+
+	bus := events.NewEventBus()
+
+	// Subscribe to add Bless bonus
+	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	_, err := saveChain.SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+			addErr := c.Add(combat.StageConditions, "bless", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
+				e.BonusSources = append(e.BonusSources, dnd5eEvents.SaveBonusSource{
+					SaveModifierSource: dnd5eEvents.SaveModifierSource{
+						Name:       "Bless",
+						SourceType: "spell",
+						EntityID:   "cleric",
+					},
+					Bonus: 3, // Simulating a 1d4 roll of 3
+				})
+				return e, nil
+			})
+			if addErr != nil {
+				return c, addErr
+			}
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: bus,
+		SaverID:  "hero",
+		Ability:  abilities.WIS,
+		DC:       15,
+		Modifier: 2,
+	}
+
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(10, result.Roll, "roll should be 10")
+	s.Equal(15, result.Total, "total should be 10 + 2 (modifier) + 3 (bless) = 15")
+	s.True(result.Success, "15 should succeed against DC 15")
+	s.Len(result.BonusSources, 1, "should have one bonus source")
+	s.Equal("Bless", result.BonusSources[0].Name)
+	s.Equal(3, result.BonusSources[0].Bonus)
+}
+
+// TestChainAdvantageAndInputDisadvantageCancelOut tests that chain advantage and input disadvantage cancel
+func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut() {
+	// Should roll normally when they cancel out
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(12, nil)
+
+	bus := events.NewEventBus()
+
+	// Subscribe to grant advantage
+	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	_, err := saveChain.SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+			addErr := c.Add(combat.StageConditions, "dodging", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
+				e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.SaveModifierSource{
+					Name:       "Dodging",
+					SourceType: "condition",
+				})
+				return e, nil
+			})
+			if addErr != nil {
+				return c, addErr
+			}
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	input := &SavingThrowInput{
+		Roller:          s.mockRoller,
+		EventBus:        bus,
+		SaverID:         "hero",
+		Ability:         abilities.DEX,
+		DC:              15,
+		Modifier:        2,
+		HasDisadvantage: true, // Input has disadvantage
+	}
+
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(12, result.Roll, "should roll normally when advantage/disadvantage cancel")
+	s.Equal(14, result.Total, "total should be 12 + 2 = 14")
+
+	// Both sources should still be tracked even though they cancelled out
+	s.Len(result.AdvantageSources, 1, "should track advantage source from chain")
+	s.Equal("Dodging", result.AdvantageSources[0].Name)
+	s.Len(result.DisadvantageSources, 1, "should track disadvantage source from input")
+	s.Equal("Input", result.DisadvantageSources[0].Name)
+}
+
+// TestNoEventBusStillWorks tests that MakeSavingThrow works without an EventBus
+func (s *SavingThrowTestSuite) TestNoEventBusStillWorks() {
+	// Normal roll without EventBus
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
+
+	input := &SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: nil, // No event bus
+		Ability:  abilities.STR,
+		DC:       12,
+		Modifier: 3,
+	}
+
+	result, err := MakeSavingThrow(s.ctx, input)
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(15, result.Roll, "roll should be 15")
+	s.Equal(18, result.Total, "total should be 15 + 3 = 18")
+	s.True(result.Success, "18 should succeed against DC 12")
+	s.Empty(result.AdvantageSources, "should have no advantage sources")
+	s.Empty(result.DisadvantageSources, "should have no disadvantage sources")
+	s.Empty(result.BonusSources, "should have no bonus sources")
 }
