@@ -422,23 +422,59 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() {
 	// Sneak attack should NOT trigger without advantage OR ally adjacent
+
+	// Set up room with rogue and target, but NO ally adjacent to target
+	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
+	err := s.room.PlaceEntity(rogue, spatial.Position{X: 2, Y: 2})
+	s.Require().NoError(err)
+
+	goblin := &mockEntity{id: "goblin-1", entityType: "monster"}
+	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	// NO allies adjacent to the goblin
+
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		CharacterID: "rogue-1",
 		Level:       1,
 		Roller:      s.roller,
 	})
 
-	err := sneak.Apply(s.ctx, s.bus)
+	err = sneak.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
 	// No roller expectation - sneak attack should NOT be rolled
 
-	// Attack without advantage and without ally adjacent (no room/teams context)
-	finalEvent, err := s.executeDamageChain(damageChainInput{
-		attackerID:   "rogue-1",
-		abilityUsed:  abilities.DEX,
-		hasAdvantage: false, // No advantage
-	})
+	// Create context with room
+	ctx := gamectx.WithRoom(s.ctx, s.room)
+
+	// Execute damage chain with room context (but no advantage and no ally adjacent)
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		OriginalDiceRolls: []int{5},
+		FinalDiceRolls:    []int{5},
+		DamageType:        damage.Piercing,
+		IsCritical:        false,
+	}
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   "rogue-1",
+		TargetID:     "goblin-1",
+		Components:   []dnd5eEvents.DamageComponent{weaponComp},
+		DamageType:   damage.Piercing,
+		IsCritical:   false,
+		HasAdvantage: false, // No advantage
+		WeaponDamage: "1d6",
+		AbilityUsed:  abilities.DEX,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, chain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 	s.Require().NoError(err)
 
 	// Should NOT have sneak attack

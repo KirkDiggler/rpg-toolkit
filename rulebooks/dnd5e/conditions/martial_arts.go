@@ -118,9 +118,9 @@ func (ma *MartialArtsCondition) onDamageChain(
 	}
 
 	// Get character registry to check weapon and ability scores
-	registry, ok := gamectx.Characters(ctx)
-	if !ok {
-		return c, nil
+	registry, err := gamectx.RequireCharacters(ctx)
+	if err != nil {
+		return c, err
 	}
 
 	// Get ability scores for DEX vs STR comparison
@@ -216,8 +216,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 		return e, nil
 	}
 
-	err := c.Add(combat.StageFeatures, "martial_arts", modifyDamage)
-	if err != nil {
+	if err = c.Add(combat.StageFeatures, "martial_arts", modifyDamage); err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply martial arts for character %s", ma.CharacterID)
 	}
 

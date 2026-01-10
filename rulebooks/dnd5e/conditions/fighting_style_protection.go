@@ -119,9 +119,9 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	// Check if we have shield equipped
-	registry, ok := gamectx.Characters(ctx)
-	if !ok {
-		return c, nil
+	registry, err := gamectx.RequireCharacters(ctx)
+	if err != nil {
+		return c, err
 	}
 
 	weapons := registry.GetCharacterWeapons(f.CharacterID)
@@ -141,9 +141,9 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	// Check if we're within 5 feet of the target
-	room, ok := gamectx.Room(ctx)
-	if !ok {
-		return c, nil
+	room, err := gamectx.RequireRoom(ctx)
+	if err != nil {
+		return c, err
 	}
 
 	// Get positions of fighter and target

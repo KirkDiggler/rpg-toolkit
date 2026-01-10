@@ -112,10 +112,9 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 	}
 
 	// Get character registry from context
-	registry, ok := gamectx.Characters(ctx)
-	if !ok {
-		// No character registry available, can't check eligibility
-		return c, nil
+	registry, err := gamectx.RequireCharacters(ctx)
+	if err != nil {
+		return c, err
 	}
 
 	// Get character weapons

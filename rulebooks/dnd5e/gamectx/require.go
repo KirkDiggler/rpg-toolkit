@@ -3,7 +3,13 @@
 
 package gamectx
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrNoGameContext is returned when a required GameContext is not found in context.
+var ErrNoGameContext = errors.New("no GameContext found in context")
 
 // gameContextKey is the key type for storing GameContext in context.Context.
 type gameContextKey struct{}
@@ -41,19 +47,22 @@ func Characters(ctx context.Context) (CharacterRegistry, bool) {
 }
 
 // RequireCharacters retrieves the CharacterRegistry from the context.
-// Panics if no GameContext is present in the context.
+// Returns an error if no GameContext is present in the context.
 //
-// Purpose: For code paths that absolutely require game context to function.
-// Use Characters() instead if missing context is a valid scenario.
+// Purpose: For code paths that require game context to function and need
+// explicit error handling rather than silent failures.
 //
 // Example:
 //
-//	registry := gamectx.RequireCharacters(ctx)
+//	registry, err := gamectx.RequireCharacters(ctx)
+//	if err != nil {
+//	    return c, err
+//	}
 //	character := registry.GetCharacter("hero-1")
-func RequireCharacters(ctx context.Context) CharacterRegistry {
+func RequireCharacters(ctx context.Context) (CharacterRegistry, error) {
 	registry, ok := Characters(ctx)
 	if !ok {
-		panic("RequireCharacters: no GameContext found in context")
+		return nil, ErrNoGameContext
 	}
-	return registry
+	return registry, nil
 }

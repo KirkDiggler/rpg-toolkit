@@ -99,44 +99,47 @@ func (u *UnarmoredMovementCondition) loadJSON(data json.RawMessage) error {
 
 // GetSpeedBonus returns the speed bonus granted by this condition.
 // Returns 0 if the character is wearing armor or using a shield.
+// Returns an error if game context is not available.
 // The bonus is based on monk level:
 // - Level 2-5: +10 ft
 // - Level 6-9: +15 ft
 // - Level 10-13: +20 ft
 // - Level 14-17: +25 ft
 // - Level 18+: +30 ft
-func (u *UnarmoredMovementCondition) GetSpeedBonus(ctx context.Context) int {
+func (u *UnarmoredMovementCondition) GetSpeedBonus(ctx context.Context) (int, error) {
 	// Check if character is wearing armor or shield
-	if !u.isUnarmored(ctx) {
-		return 0
+	unarmored, err := u.isUnarmored(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if !unarmored {
+		return 0, nil
 	}
 
 	// Calculate bonus based on monk level
-	return u.calculateSpeedBonus()
+	return u.calculateSpeedBonus(), nil
 }
 
 // isUnarmored checks if the character is not wearing armor or using a shield.
 // Currently only checks for shield via weapons registry.
 // Full armor checking would require extending gamectx.CharacterRegistry.
-func (u *UnarmoredMovementCondition) isUnarmored(ctx context.Context) bool {
+func (u *UnarmoredMovementCondition) isUnarmored(ctx context.Context) (bool, error) {
 	// Get character registry to check equipment
-	registry, ok := gamectx.Characters(ctx)
-	if !ok {
-		// No registry available, assume unarmored for now
-		// Game server should provide proper context
-		return true
+	registry, err := gamectx.RequireCharacters(ctx)
+	if err != nil {
+		return false, err
 	}
 
 	// Check for shield in equipped weapons
 	weapons := registry.GetCharacterWeapons(u.CharacterID)
 	if weapons == nil {
 		// No weapons data, assume unarmored
-		return true
+		return true, nil
 	}
 
 	// Check main hand for shield
 	if mainHand := weapons.MainHand(); mainHand != nil && mainHand.IsShield {
-		return false
+		return false, nil
 	}
 
 	// Check off hand for shield
@@ -153,7 +156,7 @@ func (u *UnarmoredMovementCondition) isUnarmored(ctx context.Context) bool {
 	// TODO: When armor tracking is added to gamectx, check for equipped armor here
 	// For now, we assume no armor unless a shield is found
 
-	return true
+	return true, nil
 }
 
 // calculateSpeedBonus returns the speed bonus based on monk level

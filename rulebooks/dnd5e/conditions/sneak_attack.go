@@ -144,7 +144,11 @@ func (s *SneakAttackCondition) onDamageChain(
 	}
 
 	// Check sneak attack conditions: advantage OR ally within 5ft of target
-	if !s.checkSneakAttackConditions(ctx, event) {
+	meetsConditions, err := s.checkSneakAttackConditions(ctx, event)
+	if err != nil {
+		return c, err
+	}
+	if !meetsConditions {
 		return c, nil
 	}
 
@@ -189,27 +193,27 @@ func (s *SneakAttackCondition) onDamageChain(
 // Returns true if:
 // - Attacker has advantage on the attack roll, OR
 // - An ally (another "character" type entity) is within 5ft of the target
+// Returns an error if room context is required but not available.
 func (s *SneakAttackCondition) checkSneakAttackConditions(
 	ctx context.Context,
 	event *dnd5eEvents.DamageChainEvent,
-) bool {
+) (bool, error) {
 	// Condition 1: Has advantage
 	if event.HasAdvantage {
-		return true
+		return true, nil
 	}
 
 	// Condition 2: Ally within 5ft of target
 	// Need Room context to check positions
-	room, hasRoom := gamectx.Room(ctx)
-	if !hasRoom {
-		// Without spatial context, can't verify ally adjacent
-		return false
+	room, err := gamectx.RequireRoom(ctx)
+	if err != nil {
+		return false, err
 	}
 
 	// Get target position
 	targetPos, found := room.GetEntityPosition(event.TargetID)
 	if !found {
-		return false
+		return false, nil
 	}
 
 	// Query entities within 5ft (1 square = 5ft, use radius 1.5 to include diagonals)
@@ -231,11 +235,11 @@ func (s *SneakAttackCondition) checkSneakAttackConditions(
 
 		// Allies are "character" type entities (players/NPCs, not monsters)
 		if entity.GetType() == "character" {
-			return true
+			return true, nil
 		}
 	}
 
-	return false
+	return false, nil
 }
 
 // ToJSON converts the condition to JSON for persistence

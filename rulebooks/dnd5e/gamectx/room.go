@@ -5,6 +5,7 @@ package gamectx
 
 import (
 	"context"
+	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -44,19 +45,25 @@ func Room(ctx context.Context) (spatial.Room, bool) {
 }
 
 // RequireRoom retrieves the spatial.Room from the context.
-// Panics if no Room is present in the context.
+// Returns an error if no Room is present in the context.
 //
-// Purpose: For code paths that absolutely require spatial data to function.
-// Use Room() instead if missing room is a valid scenario.
+// Purpose: For code paths that require spatial data to function and need
+// explicit error handling rather than silent failures.
 //
 // Example:
 //
-//	room := gamectx.RequireRoom(ctx)
+//	room, err := gamectx.RequireRoom(ctx)
+//	if err != nil {
+//	    return c, err
+//	}
 //	targetPos, _ := room.GetEntityPosition(targetID)
-func RequireRoom(ctx context.Context) spatial.Room {
+func RequireRoom(ctx context.Context) (spatial.Room, error) {
 	room, ok := Room(ctx)
 	if !ok {
-		panic("RequireRoom: no Room found in context")
+		return nil, ErrNoRoom
 	}
-	return room
+	return room, nil
 }
+
+// ErrNoRoom is returned when a required Room is not found in context.
+var ErrNoRoom = errors.New("no Room found in context")
