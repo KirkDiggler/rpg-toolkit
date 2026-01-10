@@ -94,6 +94,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createUnarmoredMovement(input.Config, input.CharacterID)
 	case refs.Conditions.SneakAttack().ID:
 		condition, err = createSneakAttack(input.Config, input.CharacterID)
+	case refs.Conditions.Disengaging().ID:
+		condition = NewDisengagingCondition(input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
