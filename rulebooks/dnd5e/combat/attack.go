@@ -87,6 +87,11 @@ type AttackInput struct {
 	// Default (empty or AttackHandMain) is a main hand attack.
 	// AttackHandOff triggers two-weapon fighting validation and consumes a bonus action.
 	AttackHand AttackHand
+
+	// AttackType indicates whether this is a standard attack or an opportunity attack.
+	// Default (empty) is treated as AttackTypeStandard.
+	// Set to AttackTypeOpportunity when triggering opportunity attacks.
+	AttackType dnd5eEvents.AttackType
 }
 
 // Validate validates the input.
@@ -206,8 +211,10 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		TargetID:            input.TargetID,
 		WeaponRef:           weaponToRef(input.Weapon),
 		IsMelee:             !input.Weapon.IsRanged(),
+		AttackType:          resolveAttackType(input.AttackType),
 		AdvantageSources:    nil,
 		DisadvantageSources: nil,
+		CancellationSources: nil,
 		AttackBonus:         baseBonus,
 		TargetAC:            defenderAC,
 		CriticalThreshold:   20, // Default threshold (can be modified by conditions)
@@ -458,6 +465,14 @@ func calculateAttackAbilityModifier(weapon *weapons.Weapon, scores shared.Abilit
 
 	// Melee weapons use STR
 	return scores.Modifier(abilities.STR)
+}
+
+// resolveAttackType returns the attack type, defaulting to Standard if empty.
+func resolveAttackType(at dnd5eEvents.AttackType) dnd5eEvents.AttackType {
+	if at == "" {
+		return dnd5eEvents.AttackTypeStandard
+	}
+	return at
 }
 
 // weaponToRef converts a weapon to its singleton core.Ref.
