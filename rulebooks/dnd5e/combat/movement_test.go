@@ -116,7 +116,7 @@ func (s *MovementTestSuite) TestMoveEntity_TriggersOpportunityAttack() {
 	mockGoblin := mock_combat.NewMockCombatant(s.ctrl)
 	mockGoblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
 	mockGoblin.EXPECT().AbilityScores().Return(shared.AbilityScores{
-		abilities.STR: 8, // -1 modifier
+		abilities.STR: 8,  // -1 modifier
 		abilities.DEX: 14, // +2 modifier
 	}).AnyTimes()
 	mockGoblin.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
