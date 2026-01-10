@@ -370,14 +370,19 @@ func (e *MovementChainEvent) IsOAPrevented() bool {
 	return len(e.OAPreventionSources) > 0
 }
 
-// Position represents a 2D position for movement tracking.
+// Position represents a 2D grid position for movement tracking.
 // This mirrors spatial.Position but avoids import cycles.
+// Note: This uses float64 for compatibility with spatial.Position, but grid-based
+// positions are typically exact integers. Direct equality comparison is safe for
+// grid positions that come from exact assignments (not mathematical calculations).
 type Position struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
 }
 
-// Equals checks if two positions are equal.
+// Equals checks if two positions are equal using direct comparison.
+// This is safe for grid-based positions which are typically exact integer values.
+// For positions derived from complex calculations, consider epsilon-based comparison.
 func (p Position) Equals(other Position) bool {
 	return p.X == other.X && p.Y == other.Y
 }

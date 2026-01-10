@@ -410,6 +410,19 @@ func (s *MovementTestSuite) TestMoveEntity_ValidationErrors() {
 		s.Contains(err.Error(), "EntityID")
 	})
 
+	s.Run("empty entity type", func() {
+		input := &combat.MoveEntityInput{
+			EntityID:   "fighter-1",
+			EntityType: "",
+			Path:       []spatial.Position{{X: 1, Y: 1}},
+			EventBus:   s.eventBus,
+		}
+		result, err := combat.MoveEntity(s.ctx, input)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "EntityType")
+	})
+
 	s.Run("empty path", func() {
 		input := &combat.MoveEntityInput{
 			EntityID:   "fighter-1",

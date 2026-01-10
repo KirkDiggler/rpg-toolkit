@@ -110,6 +110,10 @@ type MoveEntityResult struct {
 	// OAsTriggered contains all opportunity attacks that were triggered during movement.
 	OAsTriggered []OpportunityAttackResult
 
+	// OAErrors contains any errors that occurred while processing opportunity attacks.
+	// These are non-fatal errors that didn't stop movement but should be logged for debugging.
+	OAErrors []string
+
 	// MovementStopped indicates whether movement was stopped before reaching the destination.
 	MovementStopped bool
 
@@ -158,10 +162,14 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 		FinalPosition:  currentPos,
 		StepsCompleted: 0,
 		OAsTriggered:   make([]OpportunityAttackResult, 0),
+		OAErrors:       make([]string, 0),
 	}
 
+	// Track actual steps taken (separate from loop index to handle skipped positions)
+	actualSteps := 0
+
 	// Process each step in the path
-	for i, nextPos := range input.Path {
+	for _, nextPos := range input.Path {
 		// Skip if this is the current position (first position in path might be starting point)
 		if currentPos.Equals(nextPos) {
 			continue
@@ -211,7 +219,8 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 					// Trigger opportunity attack
 					oaResult, err := triggerOpportunityAttack(ctx, threatenerID, input.EntityID, input.EventBus, roller)
 					if err != nil {
-						// Log error but continue - OA failure shouldn't stop movement
+						// Record error for debugging but continue - OA failure shouldn't stop movement
+						result.OAErrors = append(result.OAErrors, err.Error())
 						continue
 					}
 
@@ -225,10 +234,16 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 			}
 		}
 
-		// Move to the next position
+		// Actually move the entity in the spatial room
+		if err := room.MoveEntity(input.EntityID, nextPos); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to move entity to position (%v, %v)", nextPos.X, nextPos.Y)
+		}
+
+		// Update tracking
 		currentPos = nextPos
+		actualSteps++
 		result.FinalPosition = currentPos
-		result.StepsCompleted = i + 1
+		result.StepsCompleted = actualSteps
 	}
 
 	return result, nil
@@ -239,6 +254,10 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 // - It is within melee reach of the position
 // - It is not the moving entity itself
 // - It can make opportunity attacks (not incapacitated)
+//
+// NOTE: This function currently does not check hostility. In D&D 5e, only hostile
+// creatures can make opportunity attacks. Future implementation should add a hostility
+// check once faction/allegiance tracking is available in gamectx.
 func findThreateningEntities(
 	ctx context.Context,
 	room spatial.Room,
@@ -332,9 +351,10 @@ func triggerOpportunityAttack(
 		return nil, nil
 	}
 
-	// Check if attacker has reaction available
-	// Future: Consume reaction via ActionEconomy
-	_ = attacker // Silence unused warning for now
+	// TODO: Use attacker to check and consume reaction availability via ActionEconomy.
+	// Opportunity attacks require a reaction, which should be checked and consumed here.
+	// Until reaction checks are implemented, attacker is retrieved but not otherwise used.
+	_ = attacker
 
 	// Resolve the opportunity attack
 	attackResult, err := ResolveAttack(ctx, &AttackInput{
