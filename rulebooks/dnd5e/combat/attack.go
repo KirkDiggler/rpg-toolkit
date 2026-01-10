@@ -206,8 +206,10 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		TargetID:            input.TargetID,
 		WeaponRef:           weaponToRef(input.Weapon),
 		IsMelee:             !input.Weapon.IsRanged(),
+		AttackType:          dnd5eEvents.AttackTypeStandard, // Default to standard attack
 		AdvantageSources:    nil,
 		DisadvantageSources: nil,
+		CancellationSources: nil,
 		AttackBonus:         baseBonus,
 		TargetAC:            defenderAC,
 		CriticalThreshold:   20, // Default threshold (can be modified by conditions)

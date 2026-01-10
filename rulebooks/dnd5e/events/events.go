@@ -164,6 +164,23 @@ func (dc *DamageComponent) Total() int {
 }
 
 // =============================================================================
+// Attack Type
+// =============================================================================
+
+// AttackType categorizes the type of attack being made.
+// This is used to distinguish standard attacks from opportunity attacks,
+// which affects how certain conditions (like Disengaging) can respond.
+type AttackType string
+
+const (
+	// AttackTypeStandard is a normal attack made during combat (default)
+	AttackTypeStandard AttackType = "standard"
+
+	// AttackTypeOpportunity is a reaction attack triggered by movement
+	AttackTypeOpportunity AttackType = "opportunity"
+)
+
+// =============================================================================
 // Attack Modifier Types
 // =============================================================================
 
@@ -191,14 +208,18 @@ type ReactionConsumption struct {
 // This event fires BEFORE the d20 roll to allow advantage/disadvantage to be collected.
 type AttackChainEvent struct {
 	// Identity
-	AttackerID string    // ID of the attacking character
-	TargetID   string    // ID of the target
-	WeaponRef  *core.Ref // Reference to the weapon used
-	IsMelee    bool      // True for melee attacks, false for ranged
+	AttackerID string     // ID of the attacking character
+	TargetID   string     // ID of the target
+	WeaponRef  *core.Ref  // Reference to the weapon used
+	IsMelee    bool       // True for melee attacks, false for ranged
+	AttackType AttackType // Type of attack (standard or opportunity)
 
 	// Advantage/Disadvantage (inputs to the roll)
 	AdvantageSources    []AttackModifierSource // Sources granting advantage
 	DisadvantageSources []AttackModifierSource // Sources imposing disadvantage
+
+	// Cancellation (attack can be cancelled by conditions like Disengaging)
+	CancellationSources []AttackModifierSource // Sources that cancelled this attack
 
 	// Modifiers (applied to attack roll)
 	AttackBonus       int // Base bonus before modifiers (can be modified by chain)
@@ -207,6 +228,13 @@ type AttackChainEvent struct {
 
 	// Side effects (processed after chain execution)
 	ReactionsConsumed []ReactionConsumption // Reactions used during this attack
+}
+
+// IsCancelled returns true if this attack has been cancelled.
+// An attack is cancelled if any cancellation sources have been added to the event.
+// When cancelled, the attack should not proceed (no roll, no damage).
+func (e *AttackChainEvent) IsCancelled() bool {
+	return len(e.CancellationSources) > 0
 }
 
 // DamageChainEvent represents damage flowing through the modifier chain
