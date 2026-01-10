@@ -327,6 +327,62 @@ func (e *SavingThrowChainEvent) TotalBonus() int {
 }
 
 // =============================================================================
+// Movement Chain Types
+// =============================================================================
+
+// MovementModifierSource tracks the source of a movement modifier.
+// This is used by conditions like Disengaging to prevent opportunity attacks,
+// or by features like Sentinel to stop movement.
+type MovementModifierSource struct {
+	Name       string    // Display name (e.g., "Disengaging", "Sentinel")
+	SourceType string    // Type of source ("condition", "feature", etc)
+	SourceRef  *core.Ref // Reference to the source
+	EntityID   string    // ID of entity providing the modifier
+}
+
+// MovementChainEvent represents movement flowing through the modifier chain.
+// This event fires BEFORE movement completes to allow OA prevention and other
+// movement-related effects to be processed.
+type MovementChainEvent struct {
+	// Identity
+	EntityID   string // ID of the moving entity
+	EntityType string // Type ("character", "monster")
+
+	// Movement details
+	FromPosition Position // Starting position (grid coordinates)
+	ToPosition   Position // Ending position (single step)
+
+	// Threat tracking - populated by the movement system
+	ThreateningEntities []string // Entity IDs that threaten this movement
+
+	// OA Prevention - conditions can add sources here to prevent OA
+	OAPreventionSources []MovementModifierSource
+
+	// Movement control - can stop movement entirely
+	MovementPrevented bool   // If true, movement is blocked
+	PreventionReason  string // Why movement was prevented
+}
+
+// IsOAPrevented returns true if opportunity attacks are prevented for this movement.
+// A condition like Disengaging adds itself to OAPreventionSources to indicate
+// that the moving entity should not provoke opportunity attacks.
+func (e *MovementChainEvent) IsOAPrevented() bool {
+	return len(e.OAPreventionSources) > 0
+}
+
+// Position represents a 2D position for movement tracking.
+// This mirrors spatial.Position but avoids import cycles.
+type Position struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// Equals checks if two positions are equal.
+func (p Position) Equals(other Position) bool {
+	return p.X == other.X && p.Y == other.Y
+}
+
+// =============================================================================
 // Simple Events (pub/sub notifications)
 // =============================================================================
 
@@ -649,4 +705,10 @@ var (
 
 	// SavingThrowChain provides typed chained topic for saving throw modifiers
 	SavingThrowChain = events.DefineChainedTopic[*SavingThrowChainEvent]("dnd5e.saves.chain")
+
+	// MovementChain provides typed chained topic for movement modifiers.
+	// This chain fires BEFORE each step of movement to allow conditions like
+	// Disengaging to prevent opportunity attacks, or features like Sentinel
+	// to stop movement entirely.
+	MovementChain = events.DefineChainedTopic[*MovementChainEvent]("dnd5e.combat.movement.chain")
 )
