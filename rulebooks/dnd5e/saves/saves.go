@@ -112,6 +112,20 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 	var disadvantageSources []dnd5eEvents.SaveModifierSource
 	var bonusSources []dnd5eEvents.SaveBonusSource
 
+	// Track input-provided advantage/disadvantage as sources for auditability
+	if input.HasAdvantage {
+		advantageSources = append(advantageSources, dnd5eEvents.SaveModifierSource{
+			Name:       "Input",
+			SourceType: "input",
+		})
+	}
+	if input.HasDisadvantage {
+		disadvantageSources = append(disadvantageSources, dnd5eEvents.SaveModifierSource{
+			Name:       "Input",
+			SourceType: "input",
+		})
+	}
+
 	// Fire chain event if EventBus is provided
 	if input.EventBus != nil {
 		chainEvent := &dnd5eEvents.SavingThrowChainEvent{
@@ -136,17 +150,17 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 			return nil, rpgerr.Wrap(err, "failed to execute saving throw chain")
 		}
 
-		// Collect modifiers from chain
+		// Collect modifiers from chain (append to input sources)
 		if result.HasAdvantage() {
 			hasAdvantage = true
-			advantageSources = result.AdvantageSources
+			advantageSources = append(advantageSources, result.AdvantageSources...)
 		}
 		if result.HasDisadvantage() {
 			hasDisadvantage = true
-			disadvantageSources = result.DisadvantageSources
+			disadvantageSources = append(disadvantageSources, result.DisadvantageSources...)
 		}
 		bonusFromChain = result.TotalBonus()
-		bonusSources = result.BonusSources
+		bonusSources = append(bonusSources, result.BonusSources...)
 	}
 
 	var roll int

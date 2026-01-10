@@ -489,6 +489,12 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 
 	s.Equal(12, result.Roll, "should roll normally when advantage/disadvantage cancel")
 	s.Equal(14, result.Total, "total should be 12 + 2 = 14")
+
+	// Both sources should still be tracked even though they cancelled out
+	s.Len(result.AdvantageSources, 1, "should track advantage source from chain")
+	s.Equal("Dodging", result.AdvantageSources[0].Name)
+	s.Len(result.DisadvantageSources, 1, "should track disadvantage source from input")
+	s.Equal("Input", result.DisadvantageSources[0].Name)
 }
 
 // TestNoEventBusStillWorks tests that MakeSavingThrow works without an EventBus
