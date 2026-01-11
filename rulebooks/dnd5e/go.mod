@@ -8,7 +8,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
-	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.0
+	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.1
 	github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.4.0
 	github.com/stretchr/testify v1.10.0
