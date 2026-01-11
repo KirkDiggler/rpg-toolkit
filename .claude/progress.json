@@ -27,10 +27,12 @@
     {
       "id": "2026-01-11-003",
       "task": "Create theme.go with Theme struct, WallMaterial, MonsterRef, and predefined themes",
-      "status": "pending",
-      "artifacts": [],
-      "commit": null,
-      "notes": "Uses selectables package for monster pools. Reuses environments.RoomTables."
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/theme.go"
+      ],
+      "commit": "356cb31",
+      "notes": "Created WallMaterial typed constant, MonsterRef struct, Theme struct with selectables-based monster/boss pools, RoomTables from environments package, and three predefined themes (ThemeCrypt, ThemeCave, ThemeBanditLair). Added GetTheme() and GetThemeIDs() for lookup."
     },
     {
       "id": "2026-01-11-004",
