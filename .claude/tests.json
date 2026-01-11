@@ -112,9 +112,11 @@
       "id": "example-test-runs",
       "feature": "example",
       "prompt": "go test -v ./rulebooks/dnd5e/dungeon/example/ should run and print narrated output showing dungeon generation flow.",
-      "passes": false,
-      "last_checked": null,
-      "notes": "Pending session 008"
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/example/example_test.go",
+      "test_name": "TestExampleSuite",
+      "notes": "6 narrated tests: TestBasicGeneration, TestSeedReproducibility, TestThemesProduceDifferentEncounters, TestAccessingDungeonData, TestBossRoomEncounter, TestDifferentRoomCounts"
     }
   ]
 }

@@ -78,14 +78,17 @@
     {
       "id": "2026-01-11-008",
       "task": "Create example/ directory with README and narrated example tests",
-      "status": "pending",
-      "artifacts": [],
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/example/README.md",
+        "rulebooks/dnd5e/dungeon/example/example_test.go"
+      ],
       "commit": null,
-      "notes": "Living documentation per issue #564 pattern"
+      "notes": "Created living documentation with README.md (quick start, themes, run command) and example_test.go (6 narrated tests covering basic generation, seed reproducibility, theme differences, data access, boss encounters, room count layouts). All tests pass, lint clean."
     }
   ],
   "next_steps": [
-    "Create example/ directory with README and narrated tests (session 008)"
+    "Future: Monster position placement (deferred to follow-up work, see gaps_and_observations)"
   ],
   "gaps_and_observations": [
     {
