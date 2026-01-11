@@ -29,8 +29,6 @@ type allocateBudgetInput struct {
 	BossRoomID string
 	// TargetCR is the total challenge rating budget for the dungeon
 	TargetCR float64
-	// PartySize affects CR scaling (default: 4)
-	PartySize int
 	// DifficultyRamp makes earlier rooms easier, later rooms harder
 	DifficultyRamp bool
 }
