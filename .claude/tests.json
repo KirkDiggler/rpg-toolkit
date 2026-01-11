@@ -1,98 +1,122 @@
 {
   "tests": [
     {
-      "id": "action-economy-sub-resources",
-      "feature": "action-economy",
-      "prompt": "ActionEconomy should have AttacksRemaining and MovementRemaining fields. Reset() should set primary resources to 1 but NOT set AttacksRemaining (stays 0 until Attack ability used).",
+      "id": "generator-exists",
+      "feature": "generator",
+      "prompt": "dungeon.NewGenerator(nil) should create a Generator. Generator.Generate(ctx, input) should accept GenerateInput and return GenerateOutput.",
       "passes": true,
-      "last_checked": "2026-01-07"
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGeneratorExists"
     },
     {
-      "id": "ability-interface",
-      "feature": "abilities",
-      "prompt": "CombatAbility interface should extend core.Action[CombatAbilityInput]. CombatAbilityInput should have Bus, ActionEconomy, ActionHolder, Speed, and ExtraAttacks fields.",
+      "id": "generate-returns-dungeon",
+      "feature": "generator",
+      "prompt": "Generate() should return *Dungeon (runtime object), not *DungeonData. Caller uses dungeon.ToData() for persistence.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Named CombatAbility to avoid conflict with abilities package (ability scores). Located at rulebooks/dnd5e/combatabilities/"
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGenerateReturnsDungeon"
     },
     {
-      "id": "attack-ability-grants-strikes",
-      "feature": "abilities",
-      "prompt": "When Attack ability is activated, it should consume 1 action, set AttacksRemaining based on Extra Attack, and grant Strike action(s) to the character.",
+      "id": "generate-respects-room-count",
+      "feature": "generator",
+      "prompt": "Generate with RoomCount=5 should produce a dungeon with exactly 5 rooms.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Attack ability consumes action and sets AttacksRemaining. Strike action granting will be Phase 4."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGenerateRespectsRoomCount"
     },
     {
-      "id": "dash-ability-adds-movement",
-      "feature": "abilities",
-      "prompt": "When Dash ability is activated, it should consume 1 action and add character's speed to MovementRemaining.",
+      "id": "generate-seed-reproducible",
+      "feature": "generator",
+      "prompt": "Generate with same Seed should produce identical dungeons. Different seeds produce different dungeons.",
       "passes": true,
-      "last_checked": "2026-01-07"
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGenerateSeedReproducible",
+      "notes": "Same seed produces same room structure and types. Different seeds verified by unique output seeds."
     },
     {
-      "id": "dodge-ability-grants-condition",
-      "feature": "abilities",
-      "prompt": "When Dodge ability is activated, it should consume 1 action and grant the Dodging condition.",
+      "id": "theme-crypt-exists",
+      "feature": "theme",
+      "prompt": "dungeon.ThemeCrypt should exist with ID='crypt', MonsterPool (selectables table), BossPool, and WallMaterial=WallMaterialStone.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Publishes DodgeActivatedEvent. DodgingCondition will subscribe in future phase."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/theme_test.go",
+      "test_name": "TestThemeSuite/TestPredefinedThemesExist"
     },
     {
-      "id": "disengage-ability-prevents-aoo",
-      "feature": "abilities",
-      "prompt": "When Disengage ability is activated, it should consume 1 action and grant the Disengaging condition.",
+      "id": "theme-monster-pool-selectable",
+      "feature": "theme",
+      "prompt": "Theme.MonsterPool should be a selectables.SelectionTable[MonsterRef]. Calling Select() should return a MonsterRef with Ref, CR, and Role.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Publishes DisengageActivatedEvent. DisengagingCondition will subscribe in future phase."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/theme_test.go",
+      "test_name": "TestThemeSuite/TestMonsterPoolSelection"
     },
     {
-      "id": "strike-action-resolves-attack",
-      "feature": "actions",
-      "prompt": "Strike action should consume 1 AttacksRemaining and publish StrikeExecutedEvent for the game layer to resolve.",
+      "id": "wall-material-typed",
+      "feature": "theme",
+      "prompt": "WallMaterial should be a typed constant (type WallMaterial string) with values WallMaterialStone, WallMaterialRock, WallMaterialWood, WallMaterialMetal.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Strike consumes AttacksRemaining via ActionEconomy.UseAttack() and publishes StrikeExecutedEvent. The game layer handles attack resolution."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/theme_test.go",
+      "test_name": "TestThemeSuite/TestWallMaterialConstants"
     },
     {
-      "id": "move-action-uses-movement",
-      "feature": "actions",
-      "prompt": "Move action should consume MovementRemaining based on distance and publish MoveExecutedEvent for position changes.",
+      "id": "encounter-budget-allocation",
+      "feature": "encounter",
+      "prompt": "allocateBudget should distribute CR across rooms. Boss room gets ~40% of budget. Other rooms get remaining budget with earlier rooms easier.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Move consumes movement via ActionEconomy.UseMovement() and publishes MoveExecutedEvent. The game layer handles position updates."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/encounter_test.go",
+      "test_name": "TestEncounterSuite/TestAllocateBudget"
     },
     {
-      "id": "character-has-combat-abilities",
-      "feature": "character",
-      "prompt": "Character should have combatAbilities []CombatAbility slice with AddCombatAbility(), RemoveCombatAbility(), GetCombatAbilities() methods.",
+      "id": "encounter-monster-selection",
+      "feature": "encounter",
+      "prompt": "generateEncounter should fill budget with monsters from pool. Should include mix of roles (melee, ranged, support). Boss room uses BossPool.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Changed from 'abilities' to 'combatAbilities' to avoid naming conflict. Implemented in character/character.go."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/encounter_test.go",
+      "test_name": "TestEncounterSuite/TestGenerateEncounter"
     },
     {
-      "id": "character-gets-standard-abilities",
-      "feature": "character",
-      "prompt": "When a character is finalized (draft -> character), it should automatically receive standard combat abilities: Attack, Dash, Dodge, Disengage.",
+      "id": "boss-room-has-boss",
+      "feature": "generator",
+      "prompt": "Generated dungeon should have exactly one boss room. Boss room encounter should contain at least one monster with RoleBoss.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Added during ToCharacter via initializeStandardCombatAbilities() helper. Also adds Strike and Move actions via initializeStandardActions()."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestBossRoomHasBoss"
     },
     {
-      "id": "action-granted-event",
-      "feature": "events",
-      "prompt": "ActionGrantedEvent should exist. Character should subscribe to it and add the action to its actions list when received.",
-      "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "ActionGrantedEvent and ActionBehavior interface added to events/events.go. Character.onActionGranted() handler added to subscribe and add actions. FlurryOfBlows and TwoWeaponGranter updated to publish ActionGrantedEvent."
+      "id": "monsters-placed-in-rooms",
+      "feature": "generator",
+      "prompt": "After generation, monsters should be placed in rooms. RoomData.Encounter.Monsters should have positions in dungeon-absolute coordinates.",
+      "passes": false,
+      "last_checked": "2026-01-11",
+      "notes": "Design decision: Monster positions are deferred - MonsterPlacementData has Position field but not yet populated. See gaps_and_observations in progress.json."
     },
     {
-      "id": "full-attack-flow",
-      "feature": "integration",
-      "prompt": "Full flow: Activate Attack ability -> grants Strike(s) -> activate Strike -> attack resolves -> DualWieldingCondition grants OffHandStrike. All via events, no 'requested' indirection.",
+      "id": "validation-errors",
+      "feature": "errors",
+      "prompt": "Generate should return ErrNilInput for nil input, ErrInvalidTheme for empty theme, ErrInvalidCR for CR <= 0, ErrInvalidRoomCount for rooms < 1.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Integration test in character/integration_test.go. Tests full combat turn: ActionEconomy setup, Attack ability with Extra Attack (2 attacks), Strike execution with events, two-weapon fighting granting OffHandStrike via ActionGrantedEvent, and OffHandStrike execution with events."
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestValidationErrors"
+    },
+    {
+      "id": "example-test-runs",
+      "feature": "example",
+      "prompt": "go test -v ./rulebooks/dnd5e/dungeon/example/ should run and print narrated output showing dungeon generation flow.",
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/example/example_test.go",
+      "test_name": "TestExampleSuite",
+      "notes": "6 narrated tests: TestBasicGeneration, TestSeedReproducibility, TestThemesProduceDifferentEncounters, TestAccessingDungeonData, TestBossRoomEncounter, TestDifferentRoomCounts"
     }
   ]
 }

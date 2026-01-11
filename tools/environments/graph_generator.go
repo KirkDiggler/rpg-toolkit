@@ -149,7 +149,9 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 		},
 		StartTime: startTime,
 	}
-	_ = g.generationStartedTopic.Publish(ctx, startedEvent)
+	if g.generationStartedTopic != nil {
+		_ = g.generationStartedTopic.Publish(ctx, startedEvent)
+	}
 
 	// Set random seed for reproducible generation
 	if config.Seed != 0 {
@@ -196,7 +198,9 @@ func (g *GraphBasedGenerator) Generate(ctx context.Context, config GenerationCon
 		Duration:        time.Since(startTime),
 		CompletedAt:     time.Now(),
 	}
-	_ = g.generationCompletedTopic.Publish(ctx, completedEvent)
+	if g.generationCompletedTopic != nil {
+		_ = g.generationCompletedTopic.Publish(ctx, completedEvent)
+	}
 
 	return environment, nil
 }
@@ -1233,7 +1237,9 @@ func (g *GraphBasedGenerator) publishGenerationProgressUnsafe(ctx context.Contex
 	}
 
 	// Publish typed event
-	_ = g.generationProgressTopic.Publish(ctx, event)
+	if g.generationProgressTopic != nil {
+		_ = g.generationProgressTopic.Publish(ctx, event)
+	}
 }
 
 func (g *GraphBasedGenerator) publishGenerationFailedUnsafe(ctx context.Context, err error, stage string) {
@@ -1248,7 +1254,9 @@ func (g *GraphBasedGenerator) publishGenerationFailedUnsafe(ctx context.Context,
 	}
 
 	// Publish typed event
-	_ = g.generationFailedTopic.Publish(ctx, event)
+	if g.generationFailedTopic != nil {
+		_ = g.generationFailedTopic.Publish(ctx, event)
+	}
 }
 
 // Validation
