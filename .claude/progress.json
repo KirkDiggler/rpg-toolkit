@@ -17,10 +17,12 @@
     {
       "id": "2026-01-11-002",
       "task": "Create errors.go with validation error definitions",
-      "status": "pending",
-      "artifacts": [],
-      "commit": null,
-      "notes": null
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/errors.go"
+      ],
+      "commit": "0cbefd3",
+      "notes": "Added ErrNilInput, ErrInvalidTheme, ErrInvalidCR, ErrInvalidRoomCount using rpgerr package"
     },
     {
       "id": "2026-01-11-003",
