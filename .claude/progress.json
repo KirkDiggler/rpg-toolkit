@@ -83,7 +83,7 @@
         "rulebooks/dnd5e/dungeon/example/README.md",
         "rulebooks/dnd5e/dungeon/example/example_test.go"
       ],
-      "commit": null,
+      "commit": "bfe28e7",
       "notes": "Created living documentation with README.md (quick start, themes, run command) and example_test.go (6 narrated tests covering basic generation, seed reproducibility, theme differences, data access, boss encounters, room count layouts). All tests pass, lint clean."
     }
   ],
