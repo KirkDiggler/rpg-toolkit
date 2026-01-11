@@ -4,92 +4,117 @@
       "id": "generator-exists",
       "feature": "generator",
       "prompt": "dungeon.NewGenerator(nil) should create a Generator. Generator.Generate(ctx, input) should accept GenerateInput and return GenerateOutput.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGeneratorExists"
     },
     {
       "id": "generate-returns-dungeon",
       "feature": "generator",
       "prompt": "Generate() should return *Dungeon (runtime object), not *DungeonData. Caller uses dungeon.ToData() for persistence.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGenerateReturnsDungeon"
     },
     {
       "id": "generate-respects-room-count",
       "feature": "generator",
       "prompt": "Generate with RoomCount=5 should produce a dungeon with exactly 5 rooms.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGenerateRespectsRoomCount"
     },
     {
       "id": "generate-seed-reproducible",
       "feature": "generator",
       "prompt": "Generate with same Seed should produce identical dungeons. Different seeds produce different dungeons.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestGenerateSeedReproducible",
+      "notes": "Same seed produces same room structure and types. Different seeds verified by unique output seeds."
     },
     {
       "id": "theme-crypt-exists",
       "feature": "theme",
       "prompt": "dungeon.ThemeCrypt should exist with ID='crypt', MonsterPool (selectables table), BossPool, and WallMaterial=WallMaterialStone.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/theme_test.go",
+      "test_name": "TestThemeSuite/TestPredefinedThemesExist"
     },
     {
       "id": "theme-monster-pool-selectable",
       "feature": "theme",
       "prompt": "Theme.MonsterPool should be a selectables.SelectionTable[MonsterRef]. Calling Select() should return a MonsterRef with Ref, CR, and Role.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/theme_test.go",
+      "test_name": "TestThemeSuite/TestMonsterPoolSelection"
     },
     {
       "id": "wall-material-typed",
       "feature": "theme",
       "prompt": "WallMaterial should be a typed constant (type WallMaterial string) with values WallMaterialStone, WallMaterialRock, WallMaterialWood, WallMaterialMetal.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/theme_test.go",
+      "test_name": "TestThemeSuite/TestWallMaterialConstants"
     },
     {
       "id": "encounter-budget-allocation",
       "feature": "encounter",
       "prompt": "allocateBudget should distribute CR across rooms. Boss room gets ~40% of budget. Other rooms get remaining budget with earlier rooms easier.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/encounter_test.go",
+      "test_name": "TestEncounterSuite/TestAllocateBudget"
     },
     {
       "id": "encounter-monster-selection",
       "feature": "encounter",
       "prompt": "generateEncounter should fill budget with monsters from pool. Should include mix of roles (melee, ranged, support). Boss room uses BossPool.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/encounter_test.go",
+      "test_name": "TestEncounterSuite/TestGenerateEncounter"
     },
     {
       "id": "boss-room-has-boss",
       "feature": "generator",
       "prompt": "Generated dungeon should have exactly one boss room. Boss room encounter should contain at least one monster with RoleBoss.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestBossRoomHasBoss"
     },
     {
       "id": "monsters-placed-in-rooms",
       "feature": "generator",
       "prompt": "After generation, monsters should be placed in rooms. RoomData.Encounter.Monsters should have positions in dungeon-absolute coordinates.",
       "passes": false,
-      "last_checked": null
+      "last_checked": "2026-01-11",
+      "notes": "Design decision: Monster positions are deferred - MonsterPlacementData has Position field but not yet populated. See gaps_and_observations in progress.json."
     },
     {
       "id": "validation-errors",
       "feature": "errors",
       "prompt": "Generate should return ErrNilInput for nil input, ErrInvalidTheme for empty theme, ErrInvalidCR for CR <= 0, ErrInvalidRoomCount for rooms < 1.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-01-11",
+      "test_file": "rulebooks/dnd5e/dungeon/generator_test.go",
+      "test_name": "TestGeneratorSuite/TestValidationErrors"
     },
     {
       "id": "example-test-runs",
       "feature": "example",
       "prompt": "go test -v ./rulebooks/dnd5e/dungeon/example/ should run and print narrated output showing dungeon generation flow.",
       "passes": false,
-      "last_checked": null
+      "last_checked": null,
+      "notes": "Pending session 008"
     }
   ]
 }

@@ -68,10 +68,12 @@
     {
       "id": "2026-01-11-007",
       "task": "Create integration tests for generator",
-      "status": "pending",
-      "artifacts": [],
-      "commit": null,
-      "notes": "generator_test.go - full pipeline tests with real components"
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/generator_test.go"
+      ],
+      "commit": "a8a470f",
+      "notes": "Created GeneratorTestSuite with 63 tests covering full pipeline. Tests from tests.json: generator-exists, generate-returns-dungeon, generate-respects-room-count, generate-seed-reproducible, boss-room-has-boss, validation-errors. Additional tests: layout auto-selection, start room revealed, state active, room types, encounters, ToData round-trip, all themes work, doors/connections, environment data. Also fixed nil pointer panic in environments module (v0.4.1)."
     },
     {
       "id": "2026-01-11-008",
@@ -83,7 +85,6 @@
     }
   ],
   "next_steps": [
-    "Create integration tests for generator (session 007)",
     "Create example/ directory with README and narrated tests (session 008)"
   ],
   "gaps_and_observations": [
