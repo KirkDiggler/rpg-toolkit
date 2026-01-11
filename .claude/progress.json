@@ -83,5 +83,43 @@
     "Create unit tests for theme and encounter logic (session 006)",
     "Create integration tests for generator (session 007)",
     "Create example/ directory with README and narrated tests (session 008)"
+  ],
+  "gaps_and_observations": [
+    {
+      "file": "theme.go",
+      "severity": "minor",
+      "description": "buildMonsterTable and buildBossTable are nearly identical - could be consolidated to one function",
+      "decision": "Leave as-is, internal and simple enough"
+    },
+    {
+      "file": "encounter.go",
+      "severity": "minor",
+      "description": "Custom itoa function (lines 286-299) - could use strconv.Itoa()",
+      "decision": "Works fine, low priority cleanup"
+    },
+    {
+      "file": "encounter.go",
+      "severity": "note",
+      "description": "Monster IDs are 'monster_0', 'monster_1' - may conflict across rooms",
+      "decision": "Generator should prepend room ID if needed, or address in integration"
+    },
+    {
+      "file": "generator.go",
+      "severity": "minor",
+      "description": "sortRoomIDs uses bubble sort - could use sort.Strings()",
+      "decision": "Works for small room counts, low priority"
+    },
+    {
+      "file": "generator.go",
+      "severity": "note",
+      "description": "GetRoomPositions is a public debugging helper - could be internal or removed",
+      "decision": "Harmless, leave for now"
+    },
+    {
+      "file": "generator.go",
+      "severity": "note",
+      "description": "Encounters have monster IDs/CRs but no positions yet",
+      "decision": "Design said 'position placement can come later' - tracked for future"
+    }
   ]
 }
