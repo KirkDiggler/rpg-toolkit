@@ -1,113 +1,81 @@
 {
-  "branch": "feature/abilities-actions-system",
-  "issues": ["#529"],
-  "goal": "Implement two-level action economy: Abilities consume action economy to grant capacity, Actions consume capacity to do things",
-  "design_doc": "docs/plans/2026-01-07-abilities-actions-design.md",
+  "branch": "feat/564-dungeon-generation",
+  "issues": ["#564"],
+  "goal": "Move dungeon generation from rpg-api prototype into toolkit dungeon module. API configures, toolkit generates.",
+  "design_doc": "docs/plans/2026-01-11-dungeon-generation-design.md",
   "sessions": [
     {
-      "date": "2026-01-07",
-      "phase": "Phase 1",
-      "completed": [
-        "Added AttacksRemaining and MovementRemaining fields to ActionEconomy struct",
-        "Implemented CanUseAttack(), UseAttack(), SetAttacks() methods for attack capacity",
-        "Implemented CanUseMovement(), UseMovement(), SetMovement(), AddMovement() methods for movement",
-        "Updated Reset() to only reset primary resources, not capacity",
-        "Added comprehensive tests including scenario tests for Fighter/Rogue combat flows"
+      "id": "2026-01-11-001",
+      "task": "Create design document for dungeon generation",
+      "status": "completed",
+      "artifacts": [
+        "docs/plans/2026-01-11-dungeon-generation-design.md"
       ],
-      "commit": "cb7e741",
-      "notes": "Phase 1 complete. ActionEconomy now supports the two-level action economy where abilities grant capacity and actions consume it."
+      "commit": "199c487",
+      "notes": "Design covers public API, theme structure, internal components, testing strategy"
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 2",
-      "completed": [
-        "Created combatabilities package at rulebooks/dnd5e/combatabilities/",
-        "Added TypeCombatAbilities constant to refs/module.go",
-        "Created refs/combat_abilities.go with refs for Attack, Dash, Dodge, Disengage, Help, Hide, Ready",
-        "Created CombatAbility interface extending core.Action[CombatAbilityInput]",
-        "Created CombatAbilityInput struct with Bus, ActionEconomy, ActionHolder, Speed, ExtraAttacks fields",
-        "Created BaseCombatAbility struct providing common functionality",
-        "Created CombatAbilityHolder interface for entities that hold combat abilities",
-        "Implemented LoadJSON function stub for ability deserialization",
-        "Added comprehensive tests for all action economy types (standard, bonus, reaction, free)"
-      ],
-      "notes": "Phase 2 complete. The combatabilities package provides infrastructure for universal combat abilities. Named 'combatabilities' to avoid conflict with existing 'abilities' package (which contains ability scores STR/DEX/etc). The CombatAbility interface follows the same pattern as Feature and Action interfaces."
+      "id": "2026-01-11-002",
+      "task": "Create errors.go with validation error definitions",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": null
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 3",
-      "completed": [
-        "Implemented Attack ability (attack.go) - consumes 1 action, sets AttacksRemaining based on ExtraAttacks",
-        "Implemented Dash ability (dash.go) - consumes 1 action, adds Speed to MovementRemaining",
-        "Implemented Dodge ability (dodge.go) - consumes 1 action, publishes DodgeActivatedEvent",
-        "Implemented Disengage ability (disengage.go) - consumes 1 action, publishes DisengageActivatedEvent",
-        "Added DodgeActivatedEvent and DisengageActivatedEvent to events/events.go",
-        "Added DodgeActivatedTopic and DisengageActivatedTopic for event pub/sub",
-        "Created NewBonusDash, NewBonusDodge, NewBonusDisengage constructors for bonus action variants",
-        "Updated LoadJSON to route to all four implemented abilities",
-        "Added comprehensive tests for all abilities including scenario tests (Fighter Action Surge, Rogue Cunning Action)"
-      ],
-      "notes": "Phase 3 complete. All four standard combat abilities are implemented. Dodge/Disengage publish events that future conditions can subscribe to. The actual Dodging/Disengaging conditions will be implemented in a future phase. Attack sets AttacksRemaining for Strike actions (Phase 4). Dash adds movement for Move actions (Phase 4)."
+      "id": "2026-01-11-003",
+      "task": "Create theme.go with Theme struct, WallMaterial, MonsterRef, and predefined themes",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Uses selectables package for monster pools. Reuses environments.RoomTables."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 4",
-      "completed": [
-        "Implemented Strike action (strike.go) - consumes 1 AttacksRemaining, publishes StrikeExecutedEvent",
-        "Implemented Move action (move.go) - consumes MovementRemaining based on distance, publishes MoveExecutedEvent",
-        "Added StrikeExecutedEvent and MoveExecutedEvent to events/events.go",
-        "Added StrikeExecutedTopic and MoveExecutedTopic for event pub/sub",
-        "Added CurrentPosition, Destination, and MovementCostFt fields to ActionInput",
-        "Strike is permanent (not temporary like FlurryStrike/OffHandStrike) with unlimited uses",
-        "Move is permanent with unlimited uses, validates movement cost before activation",
-        "Added comprehensive tests including scenario tests (Fighter Extra Attack, Dash double movement, interleaved combat)"
-      ],
-      "notes": "Phase 4 complete. Strike and Move actions are the 'doing' layer that consume capacity granted by abilities. Strike consumes attacks granted by Attack ability and publishes StrikeExecutedEvent for the game layer to resolve. Move consumes movement and publishes MoveExecutedEvent for position changes. Both are permanent actions (unlike FlurryStrike/OffHandStrike which are temporary)."
+      "id": "2026-01-11-004",
+      "task": "Create encounter.go with internal budget allocation and encounter generation logic",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Internal functions only. CR budgeting, monster selection, role distribution."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 5",
-      "completed": [
-        "Added CombatAbilityHolder interface implementation to Character (AddCombatAbility, RemoveCombatAbility, GetCombatAbilities, GetCombatAbility)",
-        "Added combatAbilities []combatabilities.CombatAbility field to Character struct",
-        "Added initializeStandardCombatAbilities() helper - adds Attack, Dash, Dodge, Disengage during ToCharacter",
-        "Added initializeStandardActions() helper - adds Strike and Move actions during ToCharacter",
-        "Updated ToCharacter to initialize combatAbilities and actions slices",
-        "Added comprehensive tests in combat_abilities_test.go verifying character gets all standard abilities"
-      ],
-      "notes": "Phase 5 complete. Characters now receive 4 standard combat abilities (Attack, Dash, Dodge, Disengage) and 2 standard actions (Strike, Move) when finalized via ToCharacter. The CombatAbilityHolder interface follows the same pattern as ActionHolder. Combat abilities are identified by characterID + ability name (e.g., 'char-001-attack')."
+      "id": "2026-01-11-005",
+      "task": "Create generator.go with Generator, GenerateInput/Output, and Generate method",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Orchestrates layout generation, encounter allocation, monster placement. Returns *Dungeon."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 6",
-      "completed": [
-        "Added ActionBehavior interface to events/events.go (core.Entity + IsTemporary())",
-        "Added ActionGrantedEvent struct with CharacterID, Action (ActionBehavior), and Source fields",
-        "Added ActionGrantedTopic for typed pub/sub of action granted events",
-        "Added Character.onActionGranted() handler that subscribes to ActionGrantedEvent and adds actions",
-        "Updated Character.subscribeToEvents() to subscribe to ActionGrantedTopic",
-        "Updated FlurryOfBlows.Activate() to publish ActionGrantedEvent instead of direct holder.AddAction()",
-        "Updated TwoWeaponGranter.CheckAndGrantOffHandStrike() to publish ActionGrantedEvent when EventBus is provided",
-        "Updated tests in flurry_of_blows_test.go to subscribe to ActionGrantedEvent",
-        "Updated tests in two_weapon_granter_test.go to subscribe to ActionGrantedEvent",
-        "Added TestEventBasedActionGranting test suite in combat_abilities_test.go with 4 test cases"
-      ],
-      "notes": "Phase 6 complete. Actions are now granted via events for observability. ActionGrantedEvent carries the action via ActionBehavior interface (defined in events package to avoid import cycles). Character type-asserts ActionBehavior to actions.Action when handling the event. FlurryOfBlows now requires an EventBus. TwoWeaponGranter falls back to direct ActionHolder if EventBus is nil for backwards compatibility."
+      "id": "2026-01-11-006",
+      "task": "Create unit tests for theme and encounter logic",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": "theme_test.go and encounter_test.go"
     },
     {
-      "date": "2026-01-07",
-      "phase": "Integration Test",
-      "completed": [
-        "Created character/integration_test.go with FullAttackFlowIntegrationSuite",
-        "TestFullAttackFlow - verifies complete combat turn with Extra Attack and dual wielding",
-        "TestAttackAbilityVariants - tests different Extra Attack configurations (0-3 extra attacks)",
-        "TestTwoWeaponFightingRequirements - validates dual-wielding requires both light weapons",
-        "TestEventFlowOrder - confirms events are published in correct order during attack sequence"
-      ],
-      "notes": "Integration test added to verify the full attack flow end-to-end. The test creates a fighter character, sets up ActionEconomy, activates Attack ability with Extra Attack (2 attacks), makes two Strikes with StrikeExecutedEvents, grants OffHandStrike via two-weapon fighting with ActionGrantedEvent, and executes the off-hand strike with OffHandStrikeRequestedEvent. All tests pass."
+      "id": "2026-01-11-007",
+      "task": "Create integration tests for generator",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": "generator_test.go - full pipeline tests with real components"
+    },
+    {
+      "id": "2026-01-11-008",
+      "task": "Create example/ directory with README and narrated example tests",
+      "status": "pending",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Living documentation per issue #564 pattern"
     }
   ],
   "next_steps": [
-    "Phase 7: Implement Dodging/Disengaging conditions that subscribe to their respective events"
+    "Start with errors.go (simple, no dependencies)",
+    "Then theme.go (defines data structures)",
+    "Then encounter.go (uses themes)",
+    "Then generator.go (orchestrates everything)",
+    "Then tests and examples"
   ]
 }
