@@ -57,10 +57,13 @@
     {
       "id": "2026-01-11-006",
       "task": "Create unit tests for theme and encounter logic",
-      "status": "pending",
-      "artifacts": [],
-      "commit": null,
-      "notes": "theme_test.go and encounter_test.go"
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/theme_test.go",
+        "rulebooks/dnd5e/dungeon/encounter_test.go"
+      ],
+      "commit": "6ee52cd",
+      "notes": "Created ThemeTestSuite (WallMaterial, MonsterRef, Theme fields, predefined themes, pool selection, GetTheme, GetThemeIDs, obstacle/terrain types) and EncounterTestSuite (allocateBudget single/multi-room, 40%/60% split, difficulty ramp, min CR, generateEncounter nil/zero/budget/boss, seeded roller, helpers). Note: Seed reproducibility test verifies constraints rather than exact output due to Go's non-deterministic map iteration."
     },
     {
       "id": "2026-01-11-007",
@@ -80,7 +83,6 @@
     }
   ],
   "next_steps": [
-    "Create unit tests for theme and encounter logic (session 006)",
     "Create integration tests for generator (session 007)",
     "Create example/ directory with README and narrated tests (session 008)"
   ],
@@ -120,6 +122,12 @@
       "severity": "note",
       "description": "Encounters have monster IDs/CRs but no positions yet",
       "decision": "Design said 'position placement can come later' - tracked for future"
+    },
+    {
+      "file": "encounter.go",
+      "severity": "note",
+      "description": "Seed reproducibility is limited by selectables package's map iteration - same seed may not produce identical encounters due to Go's non-deterministic map iteration",
+      "decision": "Tests verify budget constraints rather than exact output. Full reproducibility would require ordered iteration in selectables or sorting by item weight."
     }
   ]
 }
