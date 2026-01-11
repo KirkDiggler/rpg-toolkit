@@ -1,20 +1,22 @@
 package dungeon
 
 import (
-	"errors"
 	"time"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
 // Validation errors
 var (
-	// ErrNilData is returned when LoadFromData receives nil data
-	ErrNilData = errors.New("dungeon data is nil")
-	// ErrEmptyID is returned when the dungeon has no ID
-	ErrEmptyID = errors.New("dungeon ID is required")
-	// ErrNoStartRoom is returned when no start room is specified
-	ErrNoStartRoom = errors.New("start room ID is required")
+	// ErrNilData is returned when LoadFromData receives nil data.
+	ErrNilData = rpgerr.New(rpgerr.CodeInvalidArgument, "dungeon data is nil")
+
+	// ErrEmptyID is returned when dungeon data has an empty ID.
+	ErrEmptyID = rpgerr.New(rpgerr.CodeInvalidArgument, "dungeon ID is required")
+
+	// ErrNoStartRoom is returned when dungeon data has no start room.
+	ErrNoStartRoom = rpgerr.New(rpgerr.CodeInvalidArgument, "start room ID is required")
 )
 
 // Dungeon is the runtime representation with exploration logic.
