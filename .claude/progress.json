@@ -47,10 +47,12 @@
     {
       "id": "2026-01-11-005",
       "task": "Create generator.go with Generator, GenerateInput/Output, and Generate method",
-      "status": "pending",
-      "artifacts": [],
-      "commit": null,
-      "notes": "Orchestrates layout generation, encounter allocation, monster placement. Returns *Dungeon."
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/generator.go"
+      ],
+      "commit": "cff6eef",
+      "notes": "Created Generator with dependency injection via GeneratorConfig. Generate method implements full pipeline: validate input, generate seed, create spatial layout via GraphBasedGenerator, identify boss room, allocate budget, generate encounters, build DungeonData, load via LoadFromData. Returns *Dungeon runtime wrapper."
     },
     {
       "id": "2026-01-11-006",
@@ -78,10 +80,8 @@
     }
   ],
   "next_steps": [
-    "Start with errors.go (simple, no dependencies)",
-    "Then theme.go (defines data structures)",
-    "Then encounter.go (uses themes)",
-    "Then generator.go (orchestrates everything)",
-    "Then tests and examples"
+    "Create unit tests for theme and encounter logic (session 006)",
+    "Create integration tests for generator (session 007)",
+    "Create example/ directory with README and narrated tests (session 008)"
   ]
 }
