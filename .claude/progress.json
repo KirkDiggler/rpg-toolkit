@@ -37,10 +37,12 @@
     {
       "id": "2026-01-11-004",
       "task": "Create encounter.go with internal budget allocation and encounter generation logic",
-      "status": "pending",
-      "artifacts": [],
-      "commit": null,
-      "notes": "Internal functions only. CR budgeting, monster selection, role distribution."
+      "status": "completed",
+      "artifacts": [
+        "rulebooks/dnd5e/dungeon/encounter.go"
+      ],
+      "commit": "6c4e83a",
+      "notes": "Created internal functions: allocateBudget (40% boss / 60% other rooms with difficulty ramping), generateEncounter (fills budget from selection pools), seededRoller (math/rand for reproducibility). All functions use nolint:unused since they're called by generator.go in session 005."
     },
     {
       "id": "2026-01-11-005",
