@@ -2,12 +2,15 @@ package character_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
@@ -16,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -24,6 +28,62 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
+
+// sequenceRoller is a deterministic dice roller that returns values from a predetermined sequence.
+// Used in integration tests for reproducible results.
+type sequenceRoller struct {
+	rolls []int
+	index int
+}
+
+func newSequenceRoller(rolls ...int) *sequenceRoller {
+	return &sequenceRoller{rolls: rolls}
+}
+
+func (r *sequenceRoller) Roll(_ context.Context, _ int) (int, error) {
+	if r.index >= len(r.rolls) {
+		return 0, rpgerr.New(rpgerr.CodeInternal, "sequence roller exhausted")
+	}
+	val := r.rolls[r.index]
+	r.index++
+	return val, nil
+}
+
+func (r *sequenceRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
+	results := make([]int, count)
+	for i := 0; i < count; i++ {
+		if r.index >= len(r.rolls) {
+			return nil, rpgerr.New(rpgerr.CodeInternal, "sequence roller exhausted")
+		}
+		results[i] = r.rolls[r.index]
+		r.index++
+	}
+	return results, nil
+}
+
+// Verify sequenceRoller implements dice.Roller
+var _ dice.Roller = (*sequenceRoller)(nil)
+
+// combatantRegistry implements combat.CombatantLookup for integration tests.
+type combatantRegistry struct {
+	combatants map[string]combat.Combatant
+}
+
+func newCombatantRegistry() *combatantRegistry {
+	return &combatantRegistry{combatants: make(map[string]combat.Combatant)}
+}
+
+func (r *combatantRegistry) Register(c combat.Combatant) {
+	r.combatants[c.GetID()] = c
+}
+
+func (r *combatantRegistry) Get(id string) (combat.Combatant, error) {
+	c, ok := r.combatants[id]
+	if !ok {
+		return nil, rpgerr.New(rpgerr.CodeNotFound, fmt.Sprintf("combatant %s not found", id))
+	}
+	return c, nil
+}
 
 // FullAttackFlowIntegrationSuite tests the complete attack flow from character creation
 // through action economy usage, strike execution, and two-weapon fighting.
@@ -560,5 +620,496 @@ func (s *FullAttackFlowIntegrationSuite) TestEventFlowOrder() {
 		}
 
 		s.Assert().Equal(expectedOrder, eventOrder, "events should be published in the correct order")
+	})
+}
+
+// =============================================================================
+// AttackResolutionIntegrationSuite - Tests ResolveAttack with real conditions
+// =============================================================================
+
+// AttackResolutionIntegrationSuite tests the complete attack resolution flow with
+// real Characters and Conditions modifying the AttackChain and DamageChain.
+// This proves the full pipeline: Character → Conditions → Chains → ResolveAttack → Damage.
+type AttackResolutionIntegrationSuite struct {
+	suite.Suite
+	ctx context.Context
+	bus events.EventBus
+}
+
+func TestAttackResolutionIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(AttackResolutionIntegrationSuite))
+}
+
+func (s *AttackResolutionIntegrationSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+}
+
+func (s *AttackResolutionIntegrationSuite) SetupSubTest() {
+	s.bus = events.NewEventBus()
+}
+
+// createBarbarianDraft creates a barbarian draft for attack resolution tests.
+func (s *AttackResolutionIntegrationSuite) createBarbarianDraft() *character.Draft {
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "draft-barbarian",
+		PlayerID: "player-barbarian",
+	})
+
+	err := draft.SetName(&character.SetNameInput{Name: "Korg the Furious"})
+	s.Require().NoError(err)
+
+	// Strong barbarian: STR 16 (+3), DEX 14 (+2)
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 8,
+			abilities.WIS: 12,
+			abilities.CHA: 10,
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Orc},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Outlander,
+		Choices:      character.BackgroundChoices{},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponMartial,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword}},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
+		},
+	})
+	s.Require().NoError(err)
+
+	return draft
+}
+
+// createDefenderDraft creates a fighter draft to serve as the defender.
+func (s *AttackResolutionIntegrationSuite) createDefenderDraft() *character.Draft {
+	draft := character.LoadDraftFromData(&character.DraftData{
+		ID:       "draft-defender",
+		PlayerID: "player-defender",
+	})
+
+	err := draft.SetName(&character.SetNameInput{Name: "Elara the Cautious"})
+	s.Require().NoError(err)
+
+	err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 14,
+			abilities.DEX: 16,
+			abilities.CON: 12,
+			abilities.INT: 10,
+			abilities.WIS: 14,
+			abilities.CHA: 10,
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetRace(&character.SetRaceInput{
+		RaceID:  races.Elf,
+		Choices: character.RaceChoices{},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+		Choices:      character.BackgroundChoices{},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Perception},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{ChoiceID: choices.FighterWeaponsPrimary, OptionID: choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword}},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
+		},
+	})
+	s.Require().NoError(err)
+
+	return draft
+}
+
+// TestRagingBarbarianHitsDodgingDefender demonstrates the full attack resolution flow:
+// - Attacker has RagingCondition (subscribes to DamageChain, adds +2 damage)
+// - Defender has DodgingCondition (subscribes to AttackChain, imposes disadvantage)
+// - ResolveAttack fires through both chains
+// - Printed output shows the complete sequence
+func (s *AttackResolutionIntegrationSuite) TestRagingBarbarianHitsDodgingDefender() {
+	s.Run("hit scenario: raging barbarian overcomes disadvantage", func() {
+		fmt.Println("\n=== ATTACK RESOLUTION: Raging Barbarian vs Dodging Defender ===")
+
+		// Create characters
+		attackerDraft := s.createBarbarianDraft()
+		attacker, err := attackerDraft.ToCharacter(s.ctx, "barbarian-1", s.bus)
+		s.Require().NoError(err)
+
+		defenderDraft := s.createDefenderDraft()
+		defender, err := defenderDraft.ToCharacter(s.ctx, "defender-1", s.bus)
+		s.Require().NoError(err)
+
+		fmt.Printf("  Attacker: %s (STR +3, Prof +2, Attack Bonus +5)\n", attacker.GetName())
+		fmt.Printf("  Defender: %s (AC %d)\n", defender.GetName(), defender.AC())
+
+		// Apply RagingCondition to attacker
+		ragingCondition := &conditions.RagingCondition{
+			CharacterID: "barbarian-1",
+			DamageBonus: 2,
+			Level:       1,
+			Source:      "dnd5e:features:rage",
+		}
+		err = ragingCondition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		fmt.Println("  [Condition] RagingCondition applied to attacker (+2 damage bonus)")
+
+		// Apply DodgingCondition to defender
+		dodgingCondition := conditions.NewDodgingCondition("defender-1")
+		err = dodgingCondition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		fmt.Println("  [Condition] DodgingCondition applied to defender (disadvantage on attacks)")
+
+		// Track DamageReceivedEvent
+		var damageEvents []dnd5eEvents.DamageReceivedEvent
+		damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
+		_, err = damageTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DamageReceivedEvent) error {
+			damageEvents = append(damageEvents, event)
+			return nil
+		})
+		s.Require().NoError(err)
+
+		// Register combatants in context
+		registry := newCombatantRegistry()
+		registry.Register(attacker)
+		registry.Register(defender)
+		ctx := combat.WithCombatantLookup(s.ctx, registry)
+
+		// Get the longsword for the attack
+		longsword, err := weapons.GetByID(weapons.Longsword)
+		s.Require().NoError(err)
+
+		// Deterministic roller: d20 rolls = 18, 15 (disadvantage takes 15), d8 = 6
+		roller := newSequenceRoller(18, 15, 6)
+
+		fmt.Println("\n  --- Attack Resolution ---")
+		fmt.Println("  [Roll] 2d20 (disadvantage): 18, 15 → takes 15")
+		fmt.Printf("  [Attack] Total: 15 + 5 (bonus) = 20 vs AC %d → HIT\n", defender.AC())
+
+		// Resolve the attack
+		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+			AttackerID: "barbarian-1",
+			TargetID:   "defender-1",
+			Weapon:     &longsword,
+			EventBus:   s.bus,
+			Roller:     roller,
+		})
+		s.Require().NoError(err)
+
+		// Verify disadvantage was applied by DodgingCondition
+		s.Assert().True(result.HasDisadvantage, "DodgingCondition should impose disadvantage")
+		s.Assert().Equal([]int{18, 15}, result.AllRolls, "should have rolled 2d20")
+		s.Assert().Equal(15, result.AttackRoll, "disadvantage should take lower roll")
+
+		// Verify hit (15 + 5 = 20 >= AC)
+		s.Assert().True(result.Hit, "20 should beat defender AC")
+		s.Assert().Equal(20, result.TotalAttack)
+
+		// Verify rage damage bonus was added
+		s.Require().NotNil(result.Breakdown, "hit should have damage breakdown")
+		fmt.Printf("  [Damage] Weapon: %d (1d8 roll), Ability: +3, Rage: +2\n",
+			result.DamageRolls[0])
+		fmt.Printf("  [Damage] Total: %d\n", result.TotalDamage)
+
+		// Total damage = 6 (weapon roll) + 3 (STR mod) + 2 (rage) = 11
+		s.Assert().Equal(11, result.TotalDamage, "should be weapon + STR + rage bonus")
+
+		// Verify DamageReceivedEvent was published
+		s.Require().Len(damageEvents, 1, "should publish DamageReceivedEvent")
+		s.Assert().Equal("defender-1", damageEvents[0].TargetID)
+		s.Assert().Equal("barbarian-1", damageEvents[0].SourceID)
+		s.Assert().Equal(11, damageEvents[0].Amount)
+
+		fmt.Printf("  [Event] DamageReceivedEvent: %d damage to %s\n",
+			damageEvents[0].Amount, damageEvents[0].TargetID)
+		fmt.Println("  === RESULT: HIT for 11 damage ===")
+	})
+
+	s.Run("miss scenario: disadvantage causes attack to miss", func() {
+		fmt.Println("\n=== ATTACK RESOLUTION: Disadvantage Causes Miss ===")
+
+		// Create characters on fresh bus
+		attackerDraft := s.createBarbarianDraft()
+		attacker, err := attackerDraft.ToCharacter(s.ctx, "barbarian-2", s.bus)
+		s.Require().NoError(err)
+
+		defenderDraft := s.createDefenderDraft()
+		defender, err := defenderDraft.ToCharacter(s.ctx, "defender-2", s.bus)
+		s.Require().NoError(err)
+
+		fmt.Printf("  Attacker: %s (Attack Bonus +5)\n", attacker.GetName())
+		fmt.Printf("  Defender: %s (AC %d, Dodging)\n", defender.GetName(), defender.AC())
+
+		// Apply DodgingCondition to defender (no rage on attacker this time)
+		dodgingCondition := conditions.NewDodgingCondition("defender-2")
+		err = dodgingCondition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+
+		// Register combatants
+		registry := newCombatantRegistry()
+		registry.Register(attacker)
+		registry.Register(defender)
+		ctx := combat.WithCombatantLookup(s.ctx, registry)
+
+		longsword, err := weapons.GetByID(weapons.Longsword)
+		s.Require().NoError(err)
+
+		// Deterministic roller: d20 rolls = 14, 8 (disadvantage takes 8)
+		// 8 + 5 = 13 < AC (should miss)
+		roller := newSequenceRoller(14, 8)
+
+		fmt.Println("  [Roll] 2d20 (disadvantage): 14, 8 → takes 8")
+		fmt.Printf("  [Attack] Total: 8 + 5 = 13 vs AC %d → MISS\n", defender.AC())
+
+		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+			AttackerID: "barbarian-2",
+			TargetID:   "defender-2",
+			Weapon:     &longsword,
+			EventBus:   s.bus,
+			Roller:     roller,
+		})
+		s.Require().NoError(err)
+
+		s.Assert().True(result.HasDisadvantage, "DodgingCondition should impose disadvantage")
+		s.Assert().Equal(8, result.AttackRoll, "disadvantage should take lower roll")
+		s.Assert().Equal(13, result.TotalAttack)
+		s.Assert().False(result.Hit, "13 should not beat defender AC")
+		s.Assert().Nil(result.Breakdown, "miss should have no damage breakdown")
+		s.Assert().Equal(0, result.TotalDamage)
+
+		fmt.Println("  === RESULT: MISS ===")
+	})
+
+	s.Run("normal attack without conditions: no advantage or disadvantage", func() {
+		fmt.Println("\n=== ATTACK RESOLUTION: Normal Attack (No Conditions) ===")
+
+		attackerDraft := s.createBarbarianDraft()
+		attacker, err := attackerDraft.ToCharacter(s.ctx, "barbarian-3", s.bus)
+		s.Require().NoError(err)
+
+		defenderDraft := s.createDefenderDraft()
+		defender, err := defenderDraft.ToCharacter(s.ctx, "defender-3", s.bus)
+		s.Require().NoError(err)
+
+		fmt.Printf("  Attacker: %s (Attack Bonus +5)\n", attacker.GetName())
+		fmt.Printf("  Defender: %s (AC %d, no conditions)\n", defender.GetName(), defender.AC())
+
+		// No conditions applied - normal roll
+		registry := newCombatantRegistry()
+		registry.Register(attacker)
+		registry.Register(defender)
+		ctx := combat.WithCombatantLookup(s.ctx, registry)
+
+		longsword, err := weapons.GetByID(weapons.Longsword)
+		s.Require().NoError(err)
+
+		// Single d20 roll = 12, d8 = 4
+		// 12 + 5 = 17 >= AC → hit
+		roller := newSequenceRoller(12, 4)
+
+		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+			AttackerID: "barbarian-3",
+			TargetID:   "defender-3",
+			Weapon:     &longsword,
+			EventBus:   s.bus,
+			Roller:     roller,
+		})
+		s.Require().NoError(err)
+
+		fmt.Printf("  [Roll] 1d20: %d (normal roll)\n", result.AttackRoll)
+		fmt.Printf("  [Attack] Total: %d + 5 = %d vs AC %d → %s\n",
+			result.AttackRoll, result.TotalAttack, defender.AC(),
+			map[bool]string{true: "HIT", false: "MISS"}[result.Hit])
+
+		s.Assert().False(result.HasAdvantage, "should not have advantage")
+		s.Assert().False(result.HasDisadvantage, "should not have disadvantage")
+		s.Assert().Equal([]int{12}, result.AllRolls, "should have rolled 1d20")
+		s.Assert().Equal(12, result.AttackRoll)
+		s.Assert().True(result.Hit, "17 should beat defender AC")
+
+		// Damage = 4 (weapon) + 3 (STR) = 7 (no rage bonus)
+		s.Assert().Equal(7, result.TotalDamage, "should be weapon + STR only (no rage)")
+
+		fmt.Printf("  [Damage] Weapon: %d, Ability: +3 (no rage)\n", result.DamageRolls[0])
+		fmt.Printf("  [Damage] Total: %d\n", result.TotalDamage)
+		fmt.Println("  === RESULT: HIT for 7 damage ===")
+	})
+
+	s.Run("critical hit doubles weapon dice", func() {
+		fmt.Println("\n=== ATTACK RESOLUTION: Critical Hit ===")
+
+		attackerDraft := s.createBarbarianDraft()
+		attacker, err := attackerDraft.ToCharacter(s.ctx, "barbarian-4", s.bus)
+		s.Require().NoError(err)
+
+		defenderDraft := s.createDefenderDraft()
+		defender, err := defenderDraft.ToCharacter(s.ctx, "defender-4", s.bus)
+		s.Require().NoError(err)
+
+		// Apply rage for extra damage on crit
+		ragingCondition := &conditions.RagingCondition{
+			CharacterID: "barbarian-4",
+			DamageBonus: 2,
+			Level:       1,
+			Source:      "dnd5e:features:rage",
+		}
+		err = ragingCondition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+
+		registry := newCombatantRegistry()
+		registry.Register(attacker)
+		registry.Register(defender)
+		ctx := combat.WithCombatantLookup(s.ctx, registry)
+
+		longsword, err := weapons.GetByID(weapons.Longsword)
+		s.Require().NoError(err)
+
+		// Natural 20 on d20, then 2d8 for crit damage (7, 5)
+		roller := newSequenceRoller(20, 7, 5)
+
+		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+			AttackerID: "barbarian-4",
+			TargetID:   "defender-4",
+			Weapon:     &longsword,
+			EventBus:   s.bus,
+			Roller:     roller,
+		})
+		s.Require().NoError(err)
+
+		fmt.Printf("  [Roll] d20: NATURAL 20! (Critical Hit)\n")
+		fmt.Printf("  [Damage] Weapon dice doubled: 2d8 = %v\n", result.DamageRolls)
+
+		s.Assert().True(result.IsNaturalTwenty, "should be natural 20")
+		s.Assert().True(result.Critical, "natural 20 should be critical")
+		s.Assert().True(result.Hit, "natural 20 always hits")
+		s.Assert().Len(result.DamageRolls, 2, "critical should roll 2d8")
+
+		// Damage = 7 + 5 (2d8 crit) + 3 (STR) + 2 (rage) = 17
+		s.Assert().Equal(17, result.TotalDamage, "crit damage + STR + rage")
+
+		fmt.Printf("  [Damage] Total: %d (2d8=%d + STR=3 + Rage=2)\n",
+			result.TotalDamage, result.DamageRolls[0]+result.DamageRolls[1])
+		fmt.Println("  === RESULT: CRITICAL HIT for 17 damage ===")
+	})
+}
+
+// TestTurnEndCleanup demonstrates the full turn lifecycle:
+// Turn start → actions granted → strikes executed → turn end → temporary actions removed
+func (s *AttackResolutionIntegrationSuite) TestTurnEndCleanup() {
+	s.Run("temporary actions are removed on cleanup", func() {
+		fmt.Println("\n=== TURN LIFECYCLE: Temporary Action Cleanup ===")
+
+		// Create a fighter character
+		draft := character.LoadDraftFromData(&character.DraftData{
+			ID:       "draft-cleanup-test",
+			PlayerID: "player-cleanup",
+		})
+		err := draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
+		s.Require().NoError(err)
+		err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+			Scores: shared.AbilityScores{
+				abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
+				abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
+			},
+		})
+		s.Require().NoError(err)
+		err = draft.SetRace(&character.SetRaceInput{
+			RaceID:  races.Human,
+			Choices: character.RaceChoices{Languages: []languages.Language{languages.Elvish}},
+		})
+		s.Require().NoError(err)
+		err = draft.SetBackground(&character.SetBackgroundInput{
+			BackgroundID: backgrounds.Soldier,
+			Choices:      character.BackgroundChoices{},
+		})
+		s.Require().NoError(err)
+		err = draft.SetClass(&character.SetClassInput{
+			ClassID: classes.Fighter,
+			Choices: character.ClassChoices{
+				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+					{ChoiceID: choices.FighterWeaponsPrimary, OptionID: choices.FighterWeaponMartialShield,
+						CategorySelections: []shared.EquipmentID{weapons.Longsword}},
+					{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+				},
+				FightingStyle: fightingstyles.TwoWeaponFighting,
+			},
+		})
+		s.Require().NoError(err)
+
+		char, err := draft.ToCharacter(s.ctx, "fighter-cleanup", s.bus)
+		s.Require().NoError(err)
+
+		permanentActionCount := len(char.GetActions())
+		fmt.Printf("  Character: %s (%d permanent actions)\n", char.GetName(), permanentActionCount)
+
+		// Grant a temporary off-hand strike action via event
+		_, err = actions.CheckAndGrantOffHandStrike(s.ctx, &actions.TwoWeaponGranterInput{
+			CharacterID:    "fighter-cleanup",
+			AttackHand:     actions.AttackHandMain,
+			MainHandWeapon: &actions.EquippedWeaponInfo{WeaponID: weapons.Shortsword},
+			OffHandWeapon:  &actions.EquippedWeaponInfo{WeaponID: weapons.Shortsword},
+			EventBus:       s.bus,
+		})
+		s.Require().NoError(err)
+
+		afterGrant := len(char.GetActions())
+		fmt.Printf("  [Turn] OffHandStrike granted → %d actions total\n", afterGrant)
+		s.Assert().Equal(permanentActionCount+1, afterGrant, "should have one more action after grant")
+
+		// Verify the off-hand strike exists
+		offHand := char.GetAction("fighter-cleanup-off-hand-strike")
+		s.Require().NotNil(offHand, "off-hand strike should be on character")
+
+		// Simulate turn end via Cleanup
+		fmt.Println("  [Turn End] Cleanup...")
+		err = char.Cleanup(s.ctx)
+		s.Require().NoError(err)
+
+		afterCleanup := len(char.GetActions())
+		fmt.Printf("  [Turn End] After cleanup: %d actions (temporary removed)\n", afterCleanup)
+		s.Assert().Equal(permanentActionCount, afterCleanup, "temporary actions should be removed")
+
+		// Verify off-hand strike is gone
+		offHand = char.GetAction("fighter-cleanup-off-hand-strike")
+		s.Assert().Nil(offHand, "off-hand strike should be removed after cleanup")
+
+		fmt.Println("  === TURN END: Temporary actions cleaned up ===")
 	})
 }
