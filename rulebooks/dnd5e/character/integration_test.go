@@ -1038,22 +1038,26 @@ func (s *AttackResolutionIntegrationSuite) TestTurnEndCleanup() {
 			ID:       "draft-cleanup-test",
 			PlayerID: "player-cleanup",
 		})
-		_ = draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
-		_ = draft.SetAbilityScores(&character.SetAbilityScoresInput{
+		err := draft.SetName(&character.SetNameInput{Name: "Test Fighter"})
+		s.Require().NoError(err)
+		err = draft.SetAbilityScores(&character.SetAbilityScoresInput{
 			Scores: shared.AbilityScores{
 				abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 				abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
 			},
 		})
-		_ = draft.SetRace(&character.SetRaceInput{
+		s.Require().NoError(err)
+		err = draft.SetRace(&character.SetRaceInput{
 			RaceID:  races.Human,
 			Choices: character.RaceChoices{Languages: []languages.Language{languages.Elvish}},
 		})
-		_ = draft.SetBackground(&character.SetBackgroundInput{
+		s.Require().NoError(err)
+		err = draft.SetBackground(&character.SetBackgroundInput{
 			BackgroundID: backgrounds.Soldier,
 			Choices:      character.BackgroundChoices{},
 		})
-		_ = draft.SetClass(&character.SetClassInput{
+		s.Require().NoError(err)
+		err = draft.SetClass(&character.SetClassInput{
 			ClassID: classes.Fighter,
 			Choices: character.ClassChoices{
 				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
@@ -1067,6 +1071,7 @@ func (s *AttackResolutionIntegrationSuite) TestTurnEndCleanup() {
 				FightingStyle: fightingstyles.TwoWeaponFighting,
 			},
 		})
+		s.Require().NoError(err)
 
 		char, err := draft.ToCharacter(s.ctx, "fighter-cleanup", s.bus)
 		s.Require().NoError(err)
