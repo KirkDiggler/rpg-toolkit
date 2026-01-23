@@ -96,6 +96,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition, err = createSneakAttack(input.Config, input.CharacterID)
 	case refs.Conditions.Disengaging().ID:
 		condition = NewDisengagingCondition(input.CharacterID)
+	case refs.Conditions.Dodging().ID:
+		condition = NewDodgingCondition(input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}

@@ -125,6 +125,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return disengaging, nil
 
+	case refs.Conditions.Dodging().ID:
+		dodging := &DodgingCondition{}
+		if err := dodging.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load dodging condition")
+		}
+		return dodging, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}
