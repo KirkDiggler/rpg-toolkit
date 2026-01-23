@@ -10,7 +10,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // mockAction implements actions.Action for testing
@@ -21,6 +23,7 @@ type mockAction struct {
 	applied     bool
 	removed     bool
 	activations int
+	applyErr    error // If set, Apply returns this error
 }
 
 func (m *mockAction) GetID() string {
@@ -44,6 +47,9 @@ func (m *mockAction) Activate(_ context.Context, _ core.Entity, _ actions.Action
 }
 
 func (m *mockAction) Apply(_ context.Context, _ events.EventBus) error {
+	if m.applyErr != nil {
+		return m.applyErr
+	}
 	m.applied = true
 	return nil
 }
@@ -193,4 +199,126 @@ func (s *ActionHolderTestSuite) TestCharacterImplementsActionHolder() {
 
 func TestActionHolderSuite(t *testing.T) {
 	suite.Run(t, new(ActionHolderTestSuite))
+}
+
+// ActionLifecycleTestSuite tests action Apply/Remove through the event system
+type ActionLifecycleTestSuite struct {
+	suite.Suite
+	character *Character
+	bus       events.EventBus
+	ctx       context.Context
+}
+
+func (s *ActionLifecycleTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+	s.character = &Character{
+		id:   "test-char",
+		name: "Test Character",
+		bus:  s.bus,
+	}
+	err := s.character.subscribeToEvents(s.ctx)
+	s.Require().NoError(err)
+}
+
+func (s *ActionLifecycleTestSuite) TestActionGrantedCallsApply() {
+	action := &mockAction{id: "temp-action", temporary: true}
+
+	// Publish ActionGrantedEvent
+	topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+	err := topic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: "test-char",
+		Action:      action,
+		Source:      "test",
+	})
+
+	s.Require().NoError(err)
+	s.Assert().True(action.applied, "Apply should be called on granted action")
+	s.Assert().Len(s.character.actions, 1)
+}
+
+func (s *ActionLifecycleTestSuite) TestActionGrantedToleratesAlreadyApplied() {
+	// Simulate a granter that already called Apply (returns AlreadyExists on second call)
+	action := &mockAction{
+		id:        "pre-applied-action",
+		temporary: true,
+		applyErr:  rpgerr.New(rpgerr.CodeAlreadyExists, "already applied"),
+	}
+
+	// Publish ActionGrantedEvent - should not error despite Apply returning AlreadyExists
+	topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+	err := topic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: "test-char",
+		Action:      action,
+		Source:      "test",
+	})
+
+	s.Require().NoError(err)
+	s.Assert().Len(s.character.actions, 1, "action should still be added")
+}
+
+func (s *ActionLifecycleTestSuite) TestActionGrantedIgnoresOtherCharacters() {
+	action := &mockAction{id: "other-action", temporary: true}
+
+	topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+	err := topic.Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: "other-char",
+		Action:      action,
+		Source:      "test",
+	})
+
+	s.Require().NoError(err)
+	s.Assert().False(action.applied, "should not apply action for other character")
+	s.Assert().Empty(s.character.actions)
+}
+
+func (s *ActionLifecycleTestSuite) TestCleanupRemovesTemporaryActions() {
+	tempAction := &mockAction{id: "temp-action", temporary: true}
+	permAction := &mockAction{id: "perm-action", temporary: false}
+
+	s.Require().NoError(s.character.AddAction(tempAction))
+	s.Require().NoError(s.character.AddAction(permAction))
+	s.Assert().Len(s.character.actions, 2)
+
+	err := s.character.Cleanup(s.ctx)
+
+	s.Require().NoError(err)
+	s.Assert().True(tempAction.removed, "temporary action should be removed")
+	s.Assert().False(permAction.removed, "permanent action should NOT be removed")
+	s.Assert().Len(s.character.actions, 1, "only permanent action should remain")
+	s.Assert().Equal("perm-action", s.character.actions[0].GetID())
+}
+
+func (s *ActionLifecycleTestSuite) TestCleanupKeepsAllPermanentActions() {
+	perm1 := &mockAction{id: "strike-1", temporary: false}
+	perm2 := &mockAction{id: "strike-2", temporary: false}
+
+	s.Require().NoError(s.character.AddAction(perm1))
+	s.Require().NoError(s.character.AddAction(perm2))
+
+	err := s.character.Cleanup(s.ctx)
+
+	s.Require().NoError(err)
+	s.Assert().Len(s.character.actions, 2, "all permanent actions should remain")
+	s.Assert().False(perm1.removed)
+	s.Assert().False(perm2.removed)
+}
+
+func (s *ActionLifecycleTestSuite) TestCleanupRemovesAllTemporaryActions() {
+	temp1 := &mockAction{id: "flurry-1", temporary: true}
+	temp2 := &mockAction{id: "offhand-1", temporary: true}
+
+	s.Require().NoError(s.character.AddAction(temp1))
+	s.Require().NoError(s.character.AddAction(temp2))
+
+	err := s.character.Cleanup(s.ctx)
+
+	s.Require().NoError(err)
+	s.Assert().True(temp1.removed)
+	s.Assert().True(temp2.removed)
+	s.Assert().Empty(s.character.actions, "no actions should remain")
+}
+
+func TestActionLifecycleSuite(t *testing.T) {
+	suite.Run(t, new(ActionLifecycleTestSuite))
 }

@@ -1026,7 +1026,7 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 }
 
 // onActionGranted handles ActionGrantedEvent
-func (c *Character) onActionGranted(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+func (c *Character) onActionGranted(ctx context.Context, event dnd5eEvents.ActionGrantedEvent) error {
 	// Only process events for this character
 	if event.CharacterID != c.id {
 		return nil
@@ -1036,6 +1036,14 @@ func (c *Character) onActionGranted(_ context.Context, event dnd5eEvents.ActionG
 	action, ok := event.Action.(actions.Action)
 	if !ok {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event action does not implement actions.Action")
+	}
+
+	// Apply the action (subscribes to events like TurnEnd for cleanup).
+	// Ignore AlreadyExists errors since the granter may have already called Apply.
+	if err := action.Apply(ctx, c.bus); err != nil {
+		if rpgerr.GetCode(err) != rpgerr.CodeAlreadyExists {
+			return rpgerr.Wrapf(err, "failed to apply action")
+		}
 	}
 
 	// Add the action to our list
@@ -1054,7 +1062,7 @@ func (c *Character) onActionRemoved(_ context.Context, event dnd5eEvents.ActionR
 	return nil
 }
 
-// Cleanup unsubscribes from all events and removes all active conditions
+// Cleanup unsubscribes from all events and removes all active conditions and temporary actions
 func (c *Character) Cleanup(ctx context.Context) error {
 	if c.bus == nil {
 		return nil
@@ -1069,6 +1077,19 @@ func (c *Character) Cleanup(ctx context.Context) error {
 		}
 	}
 	c.conditions = nil
+
+	// Remove temporary actions (unsubscribes from TurnEnd, publishes ActionRemovedEvent)
+	var permanentActions []actions.Action
+	for _, action := range c.actions {
+		if action.IsTemporary() {
+			if err := action.Remove(ctx, c.bus); err != nil {
+				errors = append(errors, rpgerr.Wrapf(err, "failed to remove action"))
+			}
+		} else {
+			permanentActions = append(permanentActions, action)
+		}
+	}
+	c.actions = permanentActions
 
 	// Unsubscribe from events - collect errors but try to unsubscribe all
 	for _, subID := range c.subscriptionIDs {
