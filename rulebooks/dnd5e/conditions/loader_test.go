@@ -24,7 +24,7 @@ func (s *LoaderTestSuite) TestLoadRagingCondition() {
 		CharacterID:       "barbarian-1",
 		DamageBonus:       2,
 		Level:             5,
-		Source:            "rage-feature",
+		Source:            "dnd5e:features:rage",
 		TurnsActive:       3,
 		WasHitThisTurn:    true,
 		DidAttackThisTurn: true,
@@ -82,7 +82,7 @@ func (s *LoaderTestSuite) TestLoadUnarmoredDefenseCondition() {
 	original := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "barbarian-1",
 		Type:        UnarmoredDefenseBarbarian,
-		Source:      "barbarian:unarmored_defense",
+		Source:      "dnd5e:classes:barbarian",
 	})
 
 	// Serialize to JSON
@@ -108,7 +108,7 @@ func (s *LoaderTestSuite) TestLoadMonkUnarmoredDefense() {
 	original := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		CharacterID: "monk-1",
 		Type:        UnarmoredDefenseMonk,
-		Source:      "monk:unarmored_defense",
+		Source:      "dnd5e:classes:monk",
 	})
 
 	jsonData, err := original.ToJSON()
@@ -124,7 +124,7 @@ func (s *LoaderTestSuite) TestLoadMonkUnarmoredDefense() {
 
 func (s *LoaderTestSuite) TestLoadUnknownCondition() {
 	// Test loading unknown condition ref
-	jsonData := []byte(`{"ref":{"module":"dnd5e","type":"conditions","value":"unknown"}}`)
+	jsonData := []byte(`{"ref":{"module":"dnd5e","type":"conditions","id":"unknown"}}`)
 
 	_, err := LoadJSON(jsonData)
 	s.Error(err)

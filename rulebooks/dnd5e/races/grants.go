@@ -2,21 +2,32 @@ package races
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// AutomaticGrants represents what a race automatically provides
-type AutomaticGrants struct {
-	Skills    []skills.Skill
+// Grant represents what a race provides at character creation.
+// For intrinsic racial properties (speed, size, ability scores), see Data.
+type Grant struct {
+	// Proficiencies
+	SkillProficiencies  []skills.Skill
+	WeaponProficiencies []proficiencies.Weapon // e.g., Dwarf combat training
+	ArmorProficiencies  []proficiencies.Armor  // e.g., Mountain Dwarf
+	ToolProficiencies   []proficiencies.Tool   // e.g., Dwarf artisan tools
+
+	// Languages
 	Languages []languages.Language
-	// TODO: Add weapon proficiencies, armor proficiencies, etc.
+
+	// Future: conditions and features when racial traits are implemented
+	// Conditions []ConditionRef  // e.g., Darkvision, poison resistance
+	// Features   []FeatureRef    // e.g., Breath Weapon, Relentless Endurance
 }
 
-// GetAutomaticGrants returns what a race automatically grants (not choices)
-func GetAutomaticGrants(race Race) AutomaticGrants {
+// GetGrants returns what a race grants at character creation (not choices).
+func GetGrants(race Race) *Grant {
 	switch race {
 	case Dragonborn:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Draconic,
@@ -24,7 +35,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case Dwarf, HillDwarf, MountainDwarf:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Dwarvish,
@@ -32,7 +43,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case Elf, HighElf, WoodElf:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Elvish,
@@ -40,7 +51,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case Gnome, ForestGnome, RockGnome:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Gnomish,
@@ -48,7 +59,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case HalfElf:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Elvish,
@@ -57,7 +68,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case Halfling, LightfootHalfling, StoutHalfling:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Halfling,
@@ -65,8 +76,8 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case HalfOrc:
-		return AutomaticGrants{
-			Skills: []skills.Skill{
+		return &Grant{
+			SkillProficiencies: []skills.Skill{
 				skills.Intimidation, // Menacing trait
 			},
 			Languages: []languages.Language{
@@ -76,7 +87,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case Human:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				// Note: Human gets one additional language of choice - that's handled in choices
@@ -84,7 +95,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	case Tiefling:
-		return AutomaticGrants{
+		return &Grant{
 			Languages: []languages.Language{
 				languages.Common,
 				languages.Infernal,
@@ -92,7 +103,7 @@ func GetAutomaticGrants(race Race) AutomaticGrants {
 		}
 
 	default:
-		// Unknown race or one without automatic grants
-		return AutomaticGrants{}
+		// Unknown race or one without grants
+		return nil
 	}
 }

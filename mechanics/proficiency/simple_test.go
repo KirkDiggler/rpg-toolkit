@@ -15,11 +15,11 @@ import (
 // MockEntity for testing
 type MockEntity struct {
 	id  string
-	typ string
+	typ core.EntityType
 }
 
-func (e *MockEntity) GetID() string   { return e.id }
-func (e *MockEntity) GetType() string { return e.typ }
+func (e *MockEntity) GetID() string            { return e.id }
+func (e *MockEntity) GetType() core.EntityType { return e.typ }
 
 func TestSimpleProficiency(t *testing.T) {
 	// Create event bus
@@ -39,7 +39,7 @@ func TestSimpleProficiency(t *testing.T) {
 		Subject: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "weapon",
-			Value:  "longsword",
+			ID:     "longsword",
 		}),
 		Source: &core.Source{
 			Category: core.SourceClass,
@@ -105,7 +105,7 @@ func TestProficiencyMetadata(t *testing.T) {
 		Subject: core.MustNewRef(core.RefInput{
 			Module: "core",
 			Type:   "skill",
-			Value:  "athletics",
+			ID:     "athletics",
 		}),
 		Source: &core.Source{
 			Category: core.SourceClass,
@@ -129,7 +129,7 @@ func TestProficiencyMetadata(t *testing.T) {
 	athleticsRef := core.MustNewRef(core.RefInput{
 		Module: "core",
 		Type:   "skill",
-		Value:  "athletics",
+		ID:     "athletics",
 	})
 	if !prof.Subject().Equals(athleticsRef) {
 		t.Errorf("Expected subject 'athletics', got %s", prof.Subject().String())

@@ -327,22 +327,33 @@ func (s *HexGridTestSuite) TestSmallHexGrid() {
 
 // TestGetOrientation tests the GetOrientation method
 func (s *HexGridTestSuite) TestGetOrientation() {
-	s.Run("pointy-top orientation", func() {
-		pointyGrid := spatial.NewHexGrid(spatial.HexGridConfig{
-			Width:     5,
-			Height:    5,
-			PointyTop: true,
+	s.Run("default is pointy-top", func() {
+		grid := spatial.NewHexGrid(spatial.HexGridConfig{
+			Width:  5,
+			Height: 5,
 		})
-		s.Assert().True(pointyGrid.GetOrientation())
+		s.Assert().Equal(spatial.HexOrientationPointyTop, grid.GetOrientation())
+		s.Assert().True(grid.IsPointyTop())
 	})
 
-	s.Run("flat-top orientation", func() {
-		flatGrid := spatial.NewHexGrid(spatial.HexGridConfig{
-			Width:     5,
-			Height:    5,
-			PointyTop: false,
+	s.Run("pointy-top orientation via Orientation field", func() {
+		pointyGrid := spatial.NewHexGrid(spatial.HexGridConfig{
+			Width:       5,
+			Height:      5,
+			Orientation: spatial.HexOrientationPointyTop,
 		})
-		s.Assert().False(flatGrid.GetOrientation())
+		s.Assert().Equal(spatial.HexOrientationPointyTop, pointyGrid.GetOrientation())
+		s.Assert().True(pointyGrid.IsPointyTop())
+	})
+
+	s.Run("flat-top orientation via Orientation field", func() {
+		flatGrid := spatial.NewHexGrid(spatial.HexGridConfig{
+			Width:       5,
+			Height:      5,
+			Orientation: spatial.HexOrientationFlatTop,
+		})
+		s.Assert().Equal(spatial.HexOrientationFlatTop, flatGrid.GetOrientation())
+		s.Assert().False(flatGrid.IsPointyTop())
 	})
 }
 

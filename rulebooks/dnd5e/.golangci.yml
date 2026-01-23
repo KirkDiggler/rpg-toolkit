@@ -1,0 +1,16 @@
+version: "2"
+
+linters-settings:
+  dupl:
+    threshold: 150  # Increase threshold for duplicate detection
+
+run:
+  skip-dirs:
+    - character/choices/testdata
+
+issues:
+  exclude-rules:
+    # Exclude dupl in test files - test patterns are often similar
+    - path: _test\.go
+      linters:
+        - dupl

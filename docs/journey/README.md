@@ -61,6 +61,8 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 42. [Circular Dependencies Events Subpackage](045-circular-dependencies-events-subpackage.md) - Solving import cycles
 43. [Feature Implementation Workflows](046-feature-implementation-workflows.md) - Patterns for adding class features
 44. [Class-Level Grants Architecture](047-class-level-grants-architecture.md) - Self-contained class definitions with level-based grants
+45. [Refs Package Design](047-refs-package-design.md) - Pointers vs values for discoverable type-safe references
+
 
 ## Document Types
 

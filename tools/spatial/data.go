@@ -41,12 +41,19 @@ type RoomData struct {
 	// false = pointy-top (default), true = flat-top
 	HexFlatTop bool `json:"hex_flat_top,omitempty"`
 
-	// Entities contains positioned entities within the room
-	// Map of entity ID to their position and data
+	// Entities contains positioned entities within the room using offset coordinates.
+	// Used for square and gridless grids.
+	// Map of entity ID to their position and data.
 	Entities map[string]EntityPlacement `json:"entities,omitempty"`
+
+	// CubeEntities contains positioned entities within the room using cube coordinates.
+	// Used for hex grids where cube coordinates are the native format.
+	// Map of entity ID to their position and data.
+	CubeEntities map[string]EntityCubePlacement `json:"cube_entities,omitempty"`
 }
 
-// EntityPlacement represents an entity's position and spatial properties in a room
+// EntityPlacement represents an entity's position and spatial properties in a room.
+// Used for square and gridless grids that use offset coordinates.
 type EntityPlacement struct {
 	// EntityID is the unique identifier of the entity
 	EntityID string `json:"entity_id"`
@@ -54,8 +61,30 @@ type EntityPlacement struct {
 	// EntityType is the type of the entity (e.g., "character", "monster", "object")
 	EntityType string `json:"entity_type"`
 
-	// Position is where the entity is placed in the room
+	// Position is where the entity is placed in the room (offset coordinates)
 	Position Position `json:"position"`
+
+	// Size is how many grid spaces the entity occupies (default 1)
+	Size int `json:"size,omitempty"`
+
+	// BlocksMovement indicates if this entity blocks movement through its space
+	BlocksMovement bool `json:"blocks_movement"`
+
+	// BlocksLineOfSight indicates if this entity blocks line of sight
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+}
+
+// EntityCubePlacement represents an entity's position using cube coordinates.
+// Used for hex grids where cube coordinates (x, y, z where x+y+z=0) are the native format.
+type EntityCubePlacement struct {
+	// EntityID is the unique identifier of the entity
+	EntityID string `json:"entity_id"`
+
+	// EntityType is the type of the entity (e.g., "character", "monster", "object")
+	EntityType string `json:"entity_type"`
+
+	// CubePosition is where the entity is placed in the room (cube coordinates)
+	CubePosition CubeCoordinate `json:"cube_position"`
 
 	// Size is how many grid spaces the entity occupies (default 1)
 	Size int `json:"size,omitempty"`
@@ -121,9 +150,9 @@ func (r *BasicRoom) ToData() RoomData {
 		gridType = GridTypeHex
 		// Hex grid shape will always be *HexGrid
 		hexGrid := r.grid.(*HexGrid)
-		// HexGrid.GetOrientation() returns true for pointy-top, false for flat-top
-		// We want HexFlatTop, so invert it
-		hexFlatTop = !hexGrid.GetOrientation()
+		// HexGrid.GetOrientation() returns HexOrientation type
+		// We want hexFlatTop to be true when orientation is flat-top
+		hexFlatTop = hexGrid.GetOrientation() == HexOrientationFlatTop
 	case GridShapeGridless:
 		gridType = GridTypeGridless
 	default:
@@ -133,35 +162,70 @@ func (r *BasicRoom) ToData() RoomData {
 	// Get dimensions from grid
 	dims := r.grid.GetDimensions()
 
-	// Build entity placements
-	entities := make(map[string]EntityPlacement)
-	for id, entity := range r.entities {
-		if pos, exists := r.positions[id]; exists {
-			placement := EntityPlacement{
-				EntityID:   entity.GetID(),
-				EntityType: string(entity.GetType()),
-				Position:   pos,
-			}
+	// Build entity placements based on grid type
+	var entities map[string]EntityPlacement
+	var cubeEntities map[string]EntityCubePlacement
 
-			// Check if entity implements Placeable to get spatial properties
-			if placeable, ok := entity.(Placeable); ok {
-				placement.Size = placeable.GetSize()
-				placement.BlocksMovement = placeable.BlocksMovement()
-				placement.BlocksLineOfSight = placeable.BlocksLineOfSight()
-			}
+	if gridType == GridTypeHex {
+		// For hex grids, use cube coordinates
+		hexGrid := r.grid.(*HexGrid)
+		orientation := hexGrid.GetOrientation()
+		cubeEntities = make(map[string]EntityCubePlacement)
 
-			entities[id] = placement
+		for id, entity := range r.entities {
+			if pos, exists := r.positions[id]; exists {
+				// Convert offset position to cube coordinate
+				cubePos := OffsetCoordinateToCubeWithOrientation(pos, orientation)
+
+				placement := EntityCubePlacement{
+					EntityID:     entity.GetID(),
+					EntityType:   string(entity.GetType()),
+					CubePosition: cubePos,
+				}
+
+				// Check if entity implements Placeable to get spatial properties
+				if placeable, ok := entity.(Placeable); ok {
+					placement.Size = placeable.GetSize()
+					placement.BlocksMovement = placeable.BlocksMovement()
+					placement.BlocksLineOfSight = placeable.BlocksLineOfSight()
+				}
+
+				cubeEntities[id] = placement
+			}
+		}
+	} else {
+		// For square/gridless grids, use offset coordinates
+		entities = make(map[string]EntityPlacement)
+
+		for id, entity := range r.entities {
+			if pos, exists := r.positions[id]; exists {
+				placement := EntityPlacement{
+					EntityID:   entity.GetID(),
+					EntityType: string(entity.GetType()),
+					Position:   pos,
+				}
+
+				// Check if entity implements Placeable to get spatial properties
+				if placeable, ok := entity.(Placeable); ok {
+					placement.Size = placeable.GetSize()
+					placement.BlocksMovement = placeable.BlocksMovement()
+					placement.BlocksLineOfSight = placeable.BlocksLineOfSight()
+				}
+
+				entities[id] = placement
+			}
 		}
 	}
 
 	return RoomData{
-		ID:         r.id,
-		Type:       r.roomType,
-		Width:      int(dims.Width),
-		Height:     int(dims.Height),
-		GridType:   gridType,
-		HexFlatTop: hexFlatTop,
-		Entities:   entities,
+		ID:           r.id,
+		Type:         r.roomType,
+		Width:        int(dims.Width),
+		Height:       int(dims.Height),
+		GridType:     gridType,
+		HexFlatTop:   hexFlatTop,
+		Entities:     entities,
+		CubeEntities: cubeEntities,
 	}
 }
 
@@ -181,11 +245,14 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 		})
 	case GridTypeHex:
 		// HexFlatTop: false = pointy-top (default), true = flat-top
-		// HexGrid.PointyTop is opposite of HexFlatTop
+		orientation := HexOrientationPointyTop
+		if data.HexFlatTop {
+			orientation = HexOrientationFlatTop
+		}
 		grid = NewHexGrid(HexGridConfig{
-			Width:     float64(data.Width),
-			Height:    float64(data.Height),
-			PointyTop: !data.HexFlatTop,
+			Width:       float64(data.Width),
+			Height:      float64(data.Height),
+			Orientation: orientation,
 		})
 	case GridTypeGridless:
 		grid = NewGridlessRoom(GridlessConfig{
@@ -206,22 +273,59 @@ func LoadRoomFromContext(_ context.Context, gameCtx game.Context[RoomData]) (*Ba
 	// Connect to event bus for typed events
 	room.ConnectToEventBus(eventBus)
 
-	// Place entities using minimal spatial data
-	for _, placement := range data.Entities {
-		// Create a minimal placeable entity with just spatial properties
-		entity := &PlaceableData{
-			id:                placement.EntityID,
-			entityType:        placement.EntityType,
-			size:              placement.Size,
-			blocksMovement:    placement.BlocksMovement,
-			blocksLineOfSight: placement.BlocksLineOfSight,
+	// Place entities based on grid type
+	if data.GridType == GridTypeHex {
+		// For hex grids, read from CubeEntities and convert cube to offset coordinates
+		orientation := HexOrientationPointyTop
+		if data.HexFlatTop {
+			orientation = HexOrientationFlatTop
 		}
 
-		// Place the entity in the room
-		if err := room.PlaceEntity(entity, placement.Position); err != nil {
-			// Log error but continue loading other entities
-			// In production, might want to handle this differently
-			continue
+		for _, placement := range data.CubeEntities {
+			// Validate cube coordinate before conversion
+			if !placement.CubePosition.IsValid() {
+				// Skip invalid cube coordinates (x + y + z != 0)
+				// This catches data corruption early rather than causing incorrect positions
+				continue
+			}
+
+			// Create a minimal placeable entity with just spatial properties
+			entity := &PlaceableData{
+				id:                placement.EntityID,
+				entityType:        placement.EntityType,
+				size:              placement.Size,
+				blocksMovement:    placement.BlocksMovement,
+				blocksLineOfSight: placement.BlocksLineOfSight,
+			}
+
+			// Convert cube coordinate to offset position for internal storage
+			pos := placement.CubePosition.ToOffsetCoordinateWithOrientation(orientation)
+
+			// Place the entity in the room
+			if err := room.PlaceEntity(entity, pos); err != nil {
+				// Log error but continue loading other entities
+				// In production, might want to handle this differently
+				continue
+			}
+		}
+	} else {
+		// For square/gridless grids, read from Entities with offset coordinates
+		for _, placement := range data.Entities {
+			// Create a minimal placeable entity with just spatial properties
+			entity := &PlaceableData{
+				id:                placement.EntityID,
+				entityType:        placement.EntityType,
+				size:              placement.Size,
+				blocksMovement:    placement.BlocksMovement,
+				blocksLineOfSight: placement.BlocksLineOfSight,
+			}
+
+			// Place the entity in the room
+			if err := room.PlaceEntity(entity, placement.Position); err != nil {
+				// Log error but continue loading other entities
+				// In production, might want to handle this differently
+				continue
+			}
 		}
 	}
 

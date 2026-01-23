@@ -55,8 +55,9 @@ const (
 	RockGnome   Race = "rock-gnome"
 )
 
-// All provides map lookup for base races only (no subraces)
-// Deprecated: Use RaceData directly - it now contains ID field and Name()/Description() methods
+// All provides map lookup for base races only (no subraces).
+//
+// Deprecated: Use RaceData directly - it now contains ID field and Name()/Description() methods.
 var All = map[string]Race{
 	"human":      Human,
 	"elf":        Elf,

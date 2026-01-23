@@ -53,6 +53,25 @@ type Environment interface {
 	// FindPath finds a path between two positions across rooms
 	FindPath(from, to spatial.Position) ([]spatial.Position, error)
 
+	// FindPathCube finds a path between cube coordinates using A* algorithm.
+	// Uses the spatial.PathFinder for hex grid pathfinding.
+	FindPathCube(input *FindPathCubeInput) (*FindPathCubeOutput, error)
+
+	// GetBlockedHexes returns all blocked hexes (walls, obstacles) in dungeon-absolute coordinates.
+	// This aggregates blocked hexes from all rooms, offset by their positions.
+	GetBlockedHexes() map[spatial.CubeCoordinate]bool
+
+	// GetRoomAt returns which room contains the given dungeon-absolute coordinate.
+	// Returns the room ID and true if found, empty string and false otherwise.
+	GetRoomAt(coord spatial.CubeCoordinate) (roomID string, found bool)
+
+	// GetRoomBounds returns the min/max coordinates for a room in dungeon-absolute space.
+	// Useful for determining room boundaries for event filtering.
+	GetRoomBounds(roomID string) (minCoord, maxCoord spatial.CubeCoordinate, err error)
+
+	// GetRoomPosition returns a room's origin in dungeon-absolute coordinates.
+	GetRoomPosition(roomID string) (spatial.CubeCoordinate, bool)
+
 	// Export exports the environment to a serializable format
 	Export() ([]byte, error)
 }

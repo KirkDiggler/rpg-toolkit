@@ -7,9 +7,11 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type SecondWindTestSuite struct {
@@ -20,18 +22,24 @@ type SecondWindTestSuite struct {
 }
 
 // newSecondWindForTest creates a Second Wind feature for testing
-func newSecondWindForTest(id string, level int) *SecondWind {
+func newSecondWindForTest(id string, level int, characterID string) *SecondWind {
 	return &SecondWind{
-		id:       id,
-		name:     "Second Wind",
-		level:    level,
-		resource: resources.NewResource("second_wind", 1), // Always 1 use per short/long rest
+		id:          id,
+		name:        "Second Wind",
+		level:       level,
+		characterID: characterID,
+		resource: combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          refs.Features.SecondWind().ID,
+			Maximum:     1,
+			CharacterID: characterID,
+			ResetType:   coreResources.ResetShortRest,
+		}),
 	}
 }
 
 func (s *SecondWindTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
-	s.secondWind = newSecondWindForTest("second-wind-feature", 3) // Level 3 fighter
+	s.secondWind = newSecondWindForTest("second-wind-feature", 3, "fighter-1") // Level 3 fighter
 	s.ctx = context.Background()
 }
 
@@ -99,7 +107,7 @@ func (s *SecondWindTestSuite) TestHealingScalesWithLevel() {
 
 	for _, tc := range testCases {
 		s.Run(fmt.Sprintf("Level %d", tc.level), func() {
-			sw := newSecondWindForTest("test-sw", tc.level)
+			sw := newSecondWindForTest("test-sw", tc.level, "fighter-1")
 			owner := &StubEntity{id: "fighter-1"}
 
 			var receivedEvent *dnd5eEvents.HealingReceivedEvent
@@ -126,6 +134,7 @@ func (s *SecondWindTestSuite) TestLoadJSON() {
 		"id": "loaded-second-wind",
 		"name": "Second Wind",
 		"level": 5,
+		"character_id": "fighter-99",
 		"uses": 0,
 		"max_uses": 1
 	}`)
@@ -137,8 +146,9 @@ func (s *SecondWindTestSuite) TestLoadJSON() {
 	s.Equal("loaded-second-wind", sw.id)
 	s.Equal("Second Wind", sw.name)
 	s.Equal(5, sw.level)
-	s.Equal(0, sw.resource.Current)
-	s.Equal(1, sw.resource.Maximum)
+	s.Equal("fighter-99", sw.characterID)
+	s.Equal(0, sw.resource.Current())
+	s.Equal(1, sw.resource.Maximum())
 }
 
 func (s *SecondWindTestSuite) TestToJSON() {
@@ -155,25 +165,115 @@ func (s *SecondWindTestSuite) TestToJSON() {
 	s.Equal(s.secondWind.level, loaded.level)
 }
 
-func (s *SecondWindTestSuite) TestRestoreOnShortRest() {
+func (s *SecondWindTestSuite) TestAutomaticShortRestRecovery() {
 	owner := &StubEntity{id: "fighter-1"}
 
+	// Apply the resource to the event bus for automatic recovery
+	err := s.secondWind.Apply(s.ctx, s.bus)
+	s.NoError(err)
+
 	// Use second wind
-	err := s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
 	s.NoError(err)
 
 	// Should have 0 uses left
-	s.Equal(0, s.secondWind.resource.Current)
+	s.Equal(0, s.secondWind.resource.Current())
 
-	// Restore on short rest
-	s.secondWind.RestoreOnShortRest()
+	// Publish a short rest event for the same character
+	rests := dnd5eEvents.RestTopic.On(s.bus)
+	err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+		CharacterID: "fighter-1",
+		RestType:    coreResources.ResetShortRest,
+	})
+	s.NoError(err)
 
-	// Should have 1 use again
-	s.Equal(1, s.secondWind.resource.Current)
+	// Should automatically have 1 use again
+	s.Equal(1, s.secondWind.resource.Current())
 
 	// Should be able to activate again
 	err = s.secondWind.CanActivate(s.ctx, owner, FeatureInput{})
 	s.NoError(err)
+}
+
+func (s *SecondWindTestSuite) TestAutomaticLongRestRecovery() {
+	owner := &StubEntity{id: "fighter-1"}
+
+	// Apply the resource to the event bus for automatic recovery
+	err := s.secondWind.Apply(s.ctx, s.bus)
+	s.NoError(err)
+
+	// Use second wind
+	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+	s.NoError(err)
+
+	// Should have 0 uses left
+	s.Equal(0, s.secondWind.resource.Current())
+
+	// Publish a long rest event for the same character
+	// Long rest should also restore short rest resources
+	rests := dnd5eEvents.RestTopic.On(s.bus)
+	err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+		CharacterID: "fighter-1",
+		RestType:    coreResources.ResetLongRest,
+	})
+	s.NoError(err)
+
+	// Should automatically have 1 use again
+	s.Equal(1, s.secondWind.resource.Current())
+}
+
+func (s *SecondWindTestSuite) TestNoRecoveryForDifferentCharacter() {
+	owner := &StubEntity{id: "fighter-1"}
+
+	// Apply the resource to the event bus for automatic recovery
+	err := s.secondWind.Apply(s.ctx, s.bus)
+	s.NoError(err)
+
+	// Use second wind
+	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+	s.NoError(err)
+
+	// Should have 0 uses left
+	s.Equal(0, s.secondWind.resource.Current())
+
+	// Publish a short rest event for a DIFFERENT character
+	rests := dnd5eEvents.RestTopic.On(s.bus)
+	err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+		CharacterID: "fighter-2", // Different character!
+		RestType:    coreResources.ResetShortRest,
+	})
+	s.NoError(err)
+
+	// Should still have 0 uses (no recovery for other character)
+	s.Equal(0, s.secondWind.resource.Current())
+}
+
+func (s *SecondWindTestSuite) TestApplyRemove() {
+	// Test that Apply/Remove work correctly
+	err := s.secondWind.Apply(s.ctx, s.bus)
+	s.NoError(err)
+	s.True(s.secondWind.resource.IsApplied())
+
+	err = s.secondWind.Remove(s.ctx, s.bus)
+	s.NoError(err)
+	s.False(s.secondWind.resource.IsApplied())
+
+	// After removal, rest events should not restore
+	owner := &StubEntity{id: "fighter-1"}
+	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+	s.NoError(err)
+	s.Equal(0, s.secondWind.resource.Current())
+
+	// Publish rest event
+	rests := dnd5eEvents.RestTopic.On(s.bus)
+	err = rests.Publish(s.ctx, dnd5eEvents.RestEvent{
+		CharacterID: "fighter-1",
+		RestType:    coreResources.ResetShortRest,
+	})
+	s.NoError(err)
+
+	// Should still be 0 (not restored because removed)
+	s.Equal(0, s.secondWind.resource.Current())
 }
 
 func TestSecondWindTestSuite(t *testing.T) {

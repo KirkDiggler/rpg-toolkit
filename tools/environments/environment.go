@@ -31,6 +31,14 @@ type BasicEnvironment struct {
 	metadata EnvironmentMetadata
 	theme    string
 
+	// Unified coordinate system - room origins in dungeon-absolute coordinates
+	// Enables GetBlockedHexes, GetRoomAt, and GetRoomBounds methods
+	roomPositions map[string]spatial.CubeCoordinate
+
+	// Cached blocked hexes in dungeon-absolute coordinates
+	// Calculated during generation from wall placements
+	blockedHexes map[spatial.CubeCoordinate]bool
+
 	// Event integration following toolkit patterns - typed topics
 	environmentEntityAddedTopic     events.TypedTopic[EnvironmentEntityAddedEvent]
 	environmentEntityMovedTopic     events.TypedTopic[EnvironmentEntityMovedEvent]
@@ -58,11 +66,27 @@ type BasicEnvironmentConfig struct {
 	// EventBus removed - ConnectToEventBus pattern used instead
 	Orchestrator spatial.RoomOrchestrator `json:"-"` // Not serializable
 	QueryHandler QueryHandler             `json:"-"` // Not serializable
+	// RoomPositions maps room IDs to their origin in dungeon-absolute coordinates
+	// Enables unified coordinate system across the entire environment
+	RoomPositions map[string]spatial.CubeCoordinate `json:"-"` // Not serializable
+	// BlockedHexes contains all blocked positions in dungeon-absolute coordinates
+	// Calculated during generation from wall placements
+	BlockedHexes map[spatial.CubeCoordinate]bool `json:"-"` // Not serializable
 }
 
 // NewBasicEnvironment creates a new BasicEnvironment following toolkit patterns
 // Purpose: Standard constructor with config struct, proper initialization
 func NewBasicEnvironment(config BasicEnvironmentConfig) *BasicEnvironment {
+	roomPositions := config.RoomPositions
+	if roomPositions == nil {
+		roomPositions = make(map[string]spatial.CubeCoordinate)
+	}
+
+	blockedHexes := config.BlockedHexes
+	if blockedHexes == nil {
+		blockedHexes = make(map[spatial.CubeCoordinate]bool)
+	}
+
 	env := &BasicEnvironment{
 		id:            config.ID,
 		typ:           config.Type,
@@ -70,6 +94,8 @@ func NewBasicEnvironment(config BasicEnvironmentConfig) *BasicEnvironment {
 		metadata:      config.Metadata,
 		orchestrator:  config.Orchestrator,
 		queryHandler:  config.QueryHandler,
+		roomPositions: roomPositions,
+		blockedHexes:  blockedHexes,
 		subscriptions: make([]string, 0),
 	}
 
@@ -206,6 +232,26 @@ func (e *BasicEnvironment) FindPath(_ spatial.Position, _ spatial.Position) ([]s
 	return nil, fmt.Errorf("position-to-position pathfinding not yet implemented")
 }
 
+// FindPathCube finds a path between cube coordinates using A* algorithm.
+// This is the primary pathfinding method for hex grid environments.
+func (e *BasicEnvironment) FindPathCube(input *FindPathCubeInput) (*FindPathCubeOutput, error) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	if input == nil {
+		return nil, fmt.Errorf("input cannot be nil")
+	}
+
+	pathfinder := spatial.NewSimplePathFinder()
+	path := pathfinder.FindPath(input.From, input.To, input.Blocked)
+
+	return &FindPathCubeOutput{
+		Path:          path,
+		TotalDistance: len(path),
+		Found:         len(path) > 0 || input.From == input.To,
+	}, nil
+}
+
 // Export serializes the environment to a byte array for storage or transmission.
 func (e *BasicEnvironment) Export() ([]byte, error) {
 	e.mutex.RLock()
@@ -316,4 +362,115 @@ func (e *BasicEnvironment) getAllRoomIDsUnsafe() []string {
 		roomIDs = append(roomIDs, room.GetID())
 	}
 	return roomIDs
+}
+
+// Unified coordinate system methods
+
+// GetBlockedHexes returns all blocked hexes in dungeon-absolute coordinates.
+// This returns the pre-calculated blocked hexes from generation.
+func (e *BasicEnvironment) GetBlockedHexes() map[spatial.CubeCoordinate]bool {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	// Return a copy to prevent external modification
+	result := make(map[spatial.CubeCoordinate]bool, len(e.blockedHexes))
+	for k, v := range e.blockedHexes {
+		result[k] = v
+	}
+	return result
+}
+
+// GetRoomAt returns which room contains the given dungeon-absolute coordinate.
+func (e *BasicEnvironment) GetRoomAt(coord spatial.CubeCoordinate) (string, bool) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	for roomID, room := range e.orchestrator.GetAllRooms() {
+		roomPos, hasPos := e.roomPositions[roomID]
+		if !hasPos {
+			roomPos = spatial.CubeCoordinate{}
+		}
+
+		// Convert absolute to room-local
+		localX := coord.X - roomPos.X
+		localZ := coord.Z - roomPos.Z
+
+		// Check if within room grid bounds
+		grid := room.GetGrid()
+		if grid == nil {
+			continue
+		}
+
+		dims := grid.GetDimensions()
+		width := int(dims.Width)
+		height := int(dims.Height)
+
+		// Room uses cube coords starting at 0,0,0
+		// Width extends in +X direction, height extends in -Z direction
+		if localX >= 0 && localX < width && localZ <= 0 && localZ > -height {
+			return roomID, true
+		}
+	}
+
+	return "", false
+}
+
+// GetRoomBounds returns the min/max coordinates for a room in dungeon-absolute space.
+func (e *BasicEnvironment) GetRoomBounds(roomID string) (spatial.CubeCoordinate, spatial.CubeCoordinate, error) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	room, exists := e.orchestrator.GetRoom(roomID)
+	if !exists {
+		return spatial.CubeCoordinate{}, spatial.CubeCoordinate{}, fmt.Errorf("room %s not found", roomID)
+	}
+
+	roomPos, hasPos := e.roomPositions[roomID]
+	if !hasPos {
+		roomPos = spatial.CubeCoordinate{}
+	}
+
+	grid := room.GetGrid()
+	if grid == nil {
+		return spatial.CubeCoordinate{}, spatial.CubeCoordinate{}, fmt.Errorf("room %s has no grid", roomID)
+	}
+
+	// Get dimensions and calculate bounds
+	dims := grid.GetDimensions()
+	width := int(dims.Width)
+	height := int(dims.Height)
+
+	// Room-local bounds: x from 0 to width-1, z from 0 to -(height-1)
+	// Min is bottom-left (x=0, z=-(height-1)), max is top-right (x=width-1, z=0)
+	minX := 0
+	maxX := width - 1
+	minZ := -(height - 1)
+	maxZ := 0
+
+	// Y is derived: y = -x - z
+	minLocal := spatial.CubeCoordinate{X: minX, Y: -minX - minZ, Z: minZ}
+	maxLocal := spatial.CubeCoordinate{X: maxX, Y: -maxX - maxZ, Z: maxZ}
+
+	// Convert to absolute
+	minAbs := spatial.CubeCoordinate{
+		X: roomPos.X + minLocal.X,
+		Y: roomPos.Y + minLocal.Y,
+		Z: roomPos.Z + minLocal.Z,
+	}
+	maxAbs := spatial.CubeCoordinate{
+		X: roomPos.X + maxLocal.X,
+		Y: roomPos.Y + maxLocal.Y,
+		Z: roomPos.Z + maxLocal.Z,
+	}
+
+	return minAbs, maxAbs, nil
+}
+
+// GetRoomPosition returns a room's origin in dungeon-absolute coordinates.
+func (e *BasicEnvironment) GetRoomPosition(roomID string) (spatial.CubeCoordinate, bool) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	pos, exists := e.roomPositions[roomID]
+	return pos, exists
 }

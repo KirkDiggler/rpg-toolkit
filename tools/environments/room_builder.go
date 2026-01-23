@@ -364,10 +364,11 @@ func (b *BasicRoomBuilder) createRequiredPaths(shape *RoomShape) []Path {
 }
 
 func (b *BasicRoomBuilder) createSpatialRoom(_ *RoomShape, walls []WallSegment) (spatial.Room, error) {
-	// Create a grid for the room
-	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-		Width:  b.size.Width,
-		Height: b.size.Height,
+	// Create a hex grid for the room - environments use cube coordinates throughout
+	grid := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width:       b.size.Width,
+		Height:      b.size.Height,
+		Orientation: spatial.HexOrientationPointyTop, // D&D 5e standard
 	})
 
 	// Create spatial room configuration

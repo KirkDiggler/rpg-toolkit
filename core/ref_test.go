@@ -54,14 +54,14 @@ func TestNew(t *testing.T) {
 			id, err := core.NewRef(core.RefInput{
 				Module: tt.module,
 				Type:   tt.idType,
-				Value:  tt.value,
+				ID:     tt.value,
 			})
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.value, id.Value)
+			assert.Equal(t, tt.value, id.ID)
 			assert.Equal(t, tt.module, id.Module)
 			assert.Equal(t, tt.idType, id.Type)
 		})
@@ -69,15 +69,15 @@ func TestNew(t *testing.T) {
 }
 
 func TestID_String(t *testing.T) {
-	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "darkvision"})
+	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "darkvision"})
 	assert.Equal(t, "core:feature:darkvision", id.String())
 }
 
 func TestID_Equals(t *testing.T) {
-	id1 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "darkvision"})
-	id2 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "darkvision"})
-	id3 := core.MustNewRef(core.RefInput{Module: "core", Type: "proficiency", Value: "darkvision"})
-	id4 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "keen_senses"})
+	id1 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "darkvision"})
+	id2 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "darkvision"})
+	id3 := core.MustNewRef(core.RefInput{Module: "core", Type: "proficiency", ID: "darkvision"})
+	id4 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "keen_senses"})
 
 	assert.True(t, id1.Equals(id2), "identical IDs should be equal")
 	assert.False(t, id1.Equals(id3), "different types should not be equal")
@@ -91,7 +91,7 @@ func TestID_Equals(t *testing.T) {
 }
 
 func TestID_JSONMarshaling(t *testing.T) {
-	original := core.MustNewRef(core.RefInput{Module: "core", Type: "skill", Value: "athletics"})
+	original := core.MustNewRef(core.RefInput{Module: "core", Type: "skill", ID: "athletics"})
 
 	// Marshal to JSON
 	data, err := json.Marshal(original)
@@ -106,20 +106,20 @@ func TestID_JSONMarshaling(t *testing.T) {
 }
 
 func TestID_JSONUnmarshal_BackwardCompatibility(t *testing.T) {
-	// Test that we can unmarshal the old object format
-	oldFormat := `{"value":"darkvision","module":"core","type":"feature"}`
+	// Test that we can unmarshal the object format
+	objectFormat := `{"module":"core","type":"feature","id":"darkvision"}`
 
 	var id core.Ref
-	err := json.Unmarshal([]byte(oldFormat), &id)
+	err := json.Unmarshal([]byte(objectFormat), &id)
 	require.NoError(t, err)
 
-	assert.Equal(t, "darkvision", id.Value)
+	assert.Equal(t, "darkvision", id.ID)
 	assert.Equal(t, "core", id.Module)
 	assert.Equal(t, "feature", id.Type)
 }
 
 func TestWithSource(t *testing.T) {
-	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "second_wind"})
+	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "second_wind"})
 	withSource := core.NewWithSourcedRef(id, &core.Source{
 		Category: core.SourceClass,
 		Name:     "fighter",
@@ -142,7 +142,7 @@ func TestWithSource(t *testing.T) {
 
 func TestMustNew_Panics(t *testing.T) {
 	assert.Panics(t, func() {
-		core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: ""})
+		core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: ""})
 	}, "MustNewRef should panic with invalid input")
 }
 
@@ -158,17 +158,17 @@ func TestParseString(t *testing.T) {
 		{
 			name:  "valid identifier",
 			input: "core:feature:rage",
-			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "rage"}),
+			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "rage"}),
 		},
 		{
 			name:  "valid with underscores",
 			input: "core:feature:sneak_attack",
-			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", Value: "sneak_attack"}),
+			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "sneak_attack"}),
 		},
 		{
 			name:  "valid with dashes",
 			input: "third-party:feature:custom-ability",
-			want:  core.MustNewRef(core.RefInput{Module: "third-party", Type: "feature", Value: "custom-ability"}),
+			want:  core.MustNewRef(core.RefInput{Module: "third-party", Type: "feature", ID: "custom-ability"}),
 		},
 		{
 			name:         "empty string",
@@ -205,10 +205,10 @@ func TestParseString(t *testing.T) {
 			checkErrType: true,
 		},
 		{
-			name:         "empty value",
+			name:         "empty id",
 			input:        "core:feature:",
 			wantErr:      core.ErrEmptyComponent,
-			wantErrMsg:   "value",
+			wantErrMsg:   "id",
 			checkErrType: true,
 		},
 		{

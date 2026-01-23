@@ -125,11 +125,10 @@ func (s *FighterFinalizeSuite) TestFighterWithArcheryFightingStyle() {
 	charConditions := char.GetConditions()
 	s.Require().Len(charConditions, 1, "Character should have exactly 1 condition (Archery)")
 
-	// Verify it's a FightingStyleCondition with Archery
-	fsCondition, ok := charConditions[0].(*conditions.FightingStyleCondition)
-	s.Require().True(ok, "Condition should be FightingStyleCondition")
-	s.Equal(fightingstyles.Archery, fsCondition.Style)
-	s.Equal("fighter-1", fsCondition.CharacterID)
+	// Verify it's a FightingStyleArcheryCondition
+	archeryCondition, ok := charConditions[0].(*conditions.FightingStyleArcheryCondition)
+	s.Require().True(ok, "Condition should be FightingStyleArcheryCondition")
+	s.Equal("fighter-1", archeryCondition.CharacterID)
 }
 
 // TestFighterWithGWFFightingStyle tests Great Weapon Fighting style application
@@ -206,14 +205,14 @@ func (s *FighterFinalizeSuite) TestFighterWithGWFFightingStyle() {
 	charConditions := char.GetConditions()
 	s.Require().Len(charConditions, 1, "Character should have exactly 1 condition (GWF)")
 
-	// Verify it's GWF
-	fsCondition, ok := charConditions[0].(*conditions.FightingStyleCondition)
-	s.Require().True(ok, "Condition should be FightingStyleCondition")
-	s.Equal(fightingstyles.GreatWeaponFighting, fsCondition.Style)
+	// Verify it's FightingStyleGreatWeaponFightingCondition
+	gwfCondition, ok := charConditions[0].(*conditions.FightingStyleGreatWeaponFightingCondition)
+	s.Require().True(ok, "Condition should be FightingStyleGreatWeaponFightingCondition")
+	s.Equal("gwf-fighter", gwfCondition.CharacterID)
 }
 
-// TestFighterWithoutFightingStyle tests that a Fighter without a fighting style
-// has no conditions applied
+// TestFighterWithoutFightingStyle tests that a Fighter cannot be created without
+// selecting a fighting style (required at Level 1 per D&D 5e PHB)
 func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 	// Create a new draft
 	draft, err := NewDraft(&DraftConfig{
@@ -253,7 +252,7 @@ func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
 			},
-			// No FightingStyle set
+			// No FightingStyle set - this should cause validation to fail
 		},
 	})
 	s.Require().NoError(err)
@@ -278,28 +277,29 @@ func (s *FighterFinalizeSuite) TestFighterWithoutFightingStyle() {
 	})
 	s.Require().NoError(err)
 
-	// Finalize to character
-	char, err := draft.ToCharacter(context.Background(), "no-style-fighter", s.eventBus)
-	s.Require().NoError(err)
-	s.Require().NotNil(char)
+	// ValidateChoices should fail because no fighting style was selected
+	err = draft.ValidateChoices()
+	s.Require().Error(err, "ValidateChoices should fail when Fighter has no fighting style")
+	s.Contains(err.Error(), "fighting style", "Error should mention fighting style")
 
-	// Verify no conditions were applied
-	charConditions := char.GetConditions()
-	s.Empty(charConditions, "Character without fighting style should have no conditions")
+	// ToCharacter should also fail
+	char, err := draft.ToCharacter(context.Background(), "no-style-fighter", s.eventBus)
+	s.Require().Error(err, "ToCharacter should fail when Fighter has no fighting style")
+	s.Nil(char, "Character should not be created without fighting style")
 }
 
-// TestFighterWithUnimplementedStyleFails tests that choosing an unimplemented
-// fighting style fails during finalization
-func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
+// TestFighterWithInvalidStyleFails tests that choosing an invalid
+// fighting style fails during validation
+func (s *FighterFinalizeSuite) TestFighterWithInvalidStyleFails() {
 	// Create a new draft
 	draft, err := NewDraft(&DraftConfig{
-		ID:       "test-defense-fighter",
+		ID:       "test-invalid-style-fighter",
 		PlayerID: "player-4",
 	})
 	s.Require().NoError(err)
 
 	// Set name
-	err = draft.SetName(&SetNameInput{Name: "Defensive Fighter"})
+	err = draft.SetName(&SetNameInput{Name: "Invalid Style Fighter"})
 	s.Require().NoError(err)
 
 	// Set race
@@ -311,7 +311,7 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	})
 	s.Require().NoError(err)
 
-	// Set class with Defense fighting style (not yet implemented)
+	// Set class with a fake fighting style that doesn't exist
 	err = draft.SetClass(&SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: ClassChoices{
@@ -329,7 +329,7 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
 				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackExplorer},
 			},
-			FightingStyle: fightingstyles.Defense, // Not yet implemented!
+			FightingStyle: "mariner", // Fake style that doesn't exist in valid options
 		},
 	})
 	s.Require().NoError(err)
@@ -354,12 +354,15 @@ func (s *FighterFinalizeSuite) TestFighterWithUnimplementedStyleFails() {
 	})
 	s.Require().NoError(err)
 
-	// Finalize should fail with "not yet implemented" error
-	char, err := draft.ToCharacter(context.Background(), "defense-fighter", s.eventBus)
-	s.Require().Error(err, "ToCharacter should fail for unimplemented fighting style")
-	s.Nil(char, "Character should not be created when finalization fails")
-	s.Contains(err.Error(), "not yet implemented", "Error should mention that style is not implemented")
-	s.Contains(err.Error(), "defense", "Error should mention the specific fighting style")
+	// Validation should fail because "mariner" is not a valid fighting style option
+	err = draft.ValidateChoices()
+	s.Require().Error(err, "ValidateChoices should fail for invalid fighting style")
+	s.Contains(err.Error(), "mariner", "Error should mention the invalid fighting style")
+
+	// ToCharacter should also fail
+	char, err := draft.ToCharacter(context.Background(), "fake-style-fighter", s.eventBus)
+	s.Require().Error(err, "ToCharacter should fail for invalid fighting style")
+	s.Nil(char, "Character should not be created when validation fails")
 }
 
 func TestFighterFinalizeSuite(t *testing.T) {

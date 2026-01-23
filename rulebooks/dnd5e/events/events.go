@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 )
 
 // ConditionType represents D&D 5e conditions
@@ -92,7 +95,301 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
-// Event types for D&D 5e gameplay
+// ActionBehavior represents a grantable action.
+// This interface is defined in the events package to avoid import cycles
+// between events and actions packages. The actions package implements this
+// interface, and the character package can type-assert to actions.Action.
+type ActionBehavior interface {
+	core.Entity // GetID() and GetType()
+
+	// IsTemporary returns true if this action should be removed at turn end
+	IsTemporary() bool
+}
+
+// =============================================================================
+// Damage Source Types
+// =============================================================================
+
+// DamageSourceType categorizes where damage bonuses come from.
+// This is the category only - use SourceRef for the specific reference.
+type DamageSourceType string
+
+// Damage source category constants
+const (
+	DamageSourceWeapon       DamageSourceType = "weapon"        // Damage from a weapon
+	DamageSourceAbility      DamageSourceType = "ability"       // Damage from ability modifier
+	DamageSourceCondition    DamageSourceType = "condition"     // Damage from an active condition (rage, etc.)
+	DamageSourceFeature      DamageSourceType = "feature"       // Damage from a class/racial feature
+	DamageSourceSpell        DamageSourceType = "spell"         // Damage from a spell
+	DamageSourceItem         DamageSourceType = "item"          // Damage from a magic item
+	DamageSourceMonsterTrait DamageSourceType = "monster_trait" // Modifier from monster trait (vulnerability, etc.)
+)
+
+// =============================================================================
+// Damage Components
+// =============================================================================
+
+// RerollEvent tracks a single die reroll
+type RerollEvent struct {
+	DieIndex int    // Which die was rerolled (0-based in OriginalDiceRolls)
+	Before   int    // Value before reroll
+	After    int    // Value after reroll
+	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
+}
+
+// DamageComponent represents damage from one source
+type DamageComponent struct {
+	Source            DamageSourceType // Category: weapon, ability, condition, etc.
+	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
+	OriginalDiceRolls []int            // As first rolled
+	FinalDiceRolls    []int            // After all rerolls
+	Rerolls           []RerollEvent    // History of rerolls
+	FlatBonus         int              // Flat modifier (0 if none)
+	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
+	IsCritical        bool             // Was this doubled for crit?
+	// Multiplier for this component (0 means 1.0/no multiplier).
+	// Used for vulnerability (2.0), resistance (0.5), or immunity (0.0 to negate).
+	// When non-zero, this component represents a multiplier to apply to other
+	// components of the same damage type, not additional damage itself.
+	Multiplier float64
+}
+
+// Total returns the total damage for this component
+func (dc *DamageComponent) Total() int {
+	total := dc.FlatBonus
+	for _, roll := range dc.FinalDiceRolls {
+		total += roll
+	}
+	return total
+}
+
+// =============================================================================
+// Attack Type
+// =============================================================================
+
+// AttackType categorizes the type of attack being made.
+// This is used to distinguish standard attacks from opportunity attacks,
+// which affects how certain conditions (like Disengaging) can respond.
+type AttackType string
+
+const (
+	// AttackTypeStandard is a normal attack made during combat (default)
+	AttackTypeStandard AttackType = "standard"
+
+	// AttackTypeOpportunity is a reaction attack triggered by movement
+	AttackTypeOpportunity AttackType = "opportunity"
+)
+
+// =============================================================================
+// Attack Modifier Types
+// =============================================================================
+
+// AttackModifierSource tracks the source of an advantage or disadvantage modifier.
+// Used by features like Protection fighting style to record what caused the modifier.
+type AttackModifierSource struct {
+	SourceRef *core.Ref // Reference to the feature/condition (e.g., refs.Conditions.FightingStyleProtection())
+	SourceID  string    // ID of the entity that provided the modifier
+	Reason    string    // Human-readable explanation
+}
+
+// ReactionConsumption tracks a reaction consumed during an attack chain.
+// Processed after chain execution to update game state.
+type ReactionConsumption struct {
+	CharacterID string    // Who used their reaction
+	FeatureRef  *core.Ref // What feature consumed it
+	Reason      string    // Human-readable explanation
+}
+
+// =============================================================================
+// Chain Events (modifier chains)
+// =============================================================================
+
+// AttackChainEvent represents an attack flowing through the modifier chain.
+// This event fires BEFORE the d20 roll to allow advantage/disadvantage to be collected.
+type AttackChainEvent struct {
+	// Identity
+	AttackerID string     // ID of the attacking character
+	TargetID   string     // ID of the target
+	WeaponRef  *core.Ref  // Reference to the weapon used
+	IsMelee    bool       // True for melee attacks, false for ranged
+	AttackType AttackType // Type of attack (standard or opportunity)
+
+	// Advantage/Disadvantage (inputs to the roll)
+	AdvantageSources    []AttackModifierSource // Sources granting advantage
+	DisadvantageSources []AttackModifierSource // Sources imposing disadvantage
+
+	// Cancellation (attack can be cancelled by conditions like Disengaging)
+	CancellationSources []AttackModifierSource // Sources that cancelled this attack
+
+	// Modifiers (applied to attack roll)
+	AttackBonus       int // Base bonus before modifiers (can be modified by chain)
+	TargetAC          int // Target's armor class (for reference)
+	CriticalThreshold int // Roll >= this value is a critical hit (default 20, can be lowered)
+
+	// Side effects (processed after chain execution)
+	ReactionsConsumed []ReactionConsumption // Reactions used during this attack
+}
+
+// IsCancelled returns true if this attack has been cancelled.
+// An attack is cancelled if any cancellation sources have been added to the event.
+// When cancelled, the attack should not proceed (no roll, no damage).
+func (e *AttackChainEvent) IsCancelled() bool {
+	return len(e.CancellationSources) > 0
+}
+
+// DamageChainEvent represents damage flowing through the modifier chain
+type DamageChainEvent struct {
+	AttackerID      string
+	TargetID        string
+	Components      []DamageComponent // All damage sources
+	DamageType      damage.Type       // Type of damage (slashing, piercing, etc.)
+	IsCritical      bool              // Double damage dice on crit
+	HasAdvantage    bool              // True if attacker had advantage on the attack roll
+	WeaponDamage    string            // Weapon damage dice (e.g., "1d8")
+	AbilityUsed     abilities.Ability // Which ability was used (str, dex, etc.)
+	WeaponRef       *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
+	IsOffHandAttack bool              // True for bonus action off-hand attacks (two-weapon fighting)
+	AbilityModifier int               // The ability modifier (STR/DEX) for this attack
+}
+
+// =============================================================================
+// Saving Throw Chain Types
+// =============================================================================
+
+// SaveTrigger identifies what caused the saving throw
+type SaveTrigger string
+
+const (
+	// SaveTriggerSpell indicates the saving throw was caused by a spell
+	SaveTriggerSpell SaveTrigger = "spell"
+	// SaveTriggerTrap indicates the saving throw was caused by a trap
+	SaveTriggerTrap SaveTrigger = "trap"
+	// SaveTriggerConcentration indicates the saving throw was for maintaining concentration
+	SaveTriggerConcentration SaveTrigger = "concentration"
+	// SaveTriggerFeature indicates the saving throw was caused by a class/racial feature
+	SaveTriggerFeature SaveTrigger = "feature"
+	// SaveTriggerEnvironment indicates the saving throw was caused by environmental effects
+	SaveTriggerEnvironment SaveTrigger = "environment"
+)
+
+// SaveCause provides context about what caused the saving throw
+type SaveCause struct {
+	Trigger        SaveTrigger // What type of effect triggered this save
+	EffectRef      *core.Ref   // Reference to the spell/trap/feature causing the save
+	InstigatorID   string      // ID of entity that caused the save (caster, trap placer, etc)
+	InstigatorType string      // Type of instigator ("character", "monster", "trap", etc)
+}
+
+// SaveModifierSource tracks the source of a saving throw modifier
+type SaveModifierSource struct {
+	Name       string    // Display name (e.g., "Dodging", "Bless")
+	SourceType string    // Type of source ("condition", "feature", "spell", etc)
+	SourceRef  *core.Ref // Reference to the source
+	EntityID   string    // ID of entity providing the modifier
+}
+
+// SaveBonusSource tracks a bonus to the saving throw
+type SaveBonusSource struct {
+	SaveModifierSource     // Embedded modifier source
+	Bonus              int // The bonus amount
+}
+
+// SavingThrowChainEvent represents a saving throw flowing through the modifier chain.
+// This event fires BEFORE the d20 roll to allow advantage/disadvantage/bonuses to be collected.
+type SavingThrowChainEvent struct {
+	SaverID string            // ID of the entity making the save
+	Ability abilities.Ability // The ability being used (DEX, CON, etc)
+	DC      int               // Difficulty class
+	Cause   SaveCause         // What caused this saving throw
+
+	AdvantageSources    []SaveModifierSource // Sources granting advantage
+	DisadvantageSources []SaveModifierSource // Sources imposing disadvantage
+	BonusSources        []SaveBonusSource    // Sources adding bonuses to the roll
+}
+
+// HasAdvantage returns true if any advantage sources have been added to this event
+func (e *SavingThrowChainEvent) HasAdvantage() bool {
+	return len(e.AdvantageSources) > 0
+}
+
+// HasDisadvantage returns true if any disadvantage sources have been added to this event
+func (e *SavingThrowChainEvent) HasDisadvantage() bool {
+	return len(e.DisadvantageSources) > 0
+}
+
+// TotalBonus returns the sum of all bonus sources
+func (e *SavingThrowChainEvent) TotalBonus() int {
+	total := 0
+	for _, source := range e.BonusSources {
+		total += source.Bonus
+	}
+	return total
+}
+
+// =============================================================================
+// Movement Chain Types
+// =============================================================================
+
+// MovementModifierSource tracks the source of a movement modifier.
+// This is used by conditions like Disengaging to prevent opportunity attacks,
+// or by features like Sentinel to stop movement.
+type MovementModifierSource struct {
+	Name       string    // Display name (e.g., "Disengaging", "Sentinel")
+	SourceType string    // Type of source ("condition", "feature", etc)
+	SourceRef  *core.Ref // Reference to the source
+	EntityID   string    // ID of entity providing the modifier
+}
+
+// MovementChainEvent represents movement flowing through the modifier chain.
+// This event fires BEFORE movement completes to allow OA prevention and other
+// movement-related effects to be processed.
+type MovementChainEvent struct {
+	// Identity
+	EntityID   string // ID of the moving entity
+	EntityType string // Type ("character", "monster")
+
+	// Movement details
+	FromPosition Position // Starting position (grid coordinates)
+	ToPosition   Position // Ending position (single step)
+
+	// Threat tracking - populated by the movement system
+	ThreateningEntities []string // Entity IDs that threaten this movement
+
+	// OA Prevention - conditions can add sources here to prevent OA
+	OAPreventionSources []MovementModifierSource
+
+	// Movement control - can stop movement entirely
+	MovementPrevented bool   // If true, movement is blocked
+	PreventionReason  string // Why movement was prevented
+}
+
+// IsOAPrevented returns true if opportunity attacks are prevented for this movement.
+// A condition like Disengaging adds itself to OAPreventionSources to indicate
+// that the moving entity should not provoke opportunity attacks.
+func (e *MovementChainEvent) IsOAPrevented() bool {
+	return len(e.OAPreventionSources) > 0
+}
+
+// Position represents a 2D grid position for movement tracking.
+// This mirrors spatial.Position but avoids import cycles.
+// Note: This uses float64 for compatibility with spatial.Position, but grid-based
+// positions are typically exact integers. Direct equality comparison is safe for
+// grid positions that come from exact assignments (not mathematical calculations).
+type Position struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// Equals checks if two positions are equal using direct comparison.
+// This is safe for grid-based positions which are typically exact integer values.
+// For positions derived from complex calculations, consider epsilon-based comparison.
+func (p Position) Equals(other Position) bool {
+	return p.X == other.X && p.Y == other.Y
+}
+
+// =============================================================================
+// Simple Events (pub/sub notifications)
+// =============================================================================
 
 // TurnStartEvent is published when a character's turn begins
 type TurnStartEvent struct {
@@ -108,10 +405,11 @@ type TurnEndEvent struct {
 
 // DamageReceivedEvent is published when a character takes damage
 type DamageReceivedEvent struct {
-	TargetID   string // ID of the character taking damage
-	SourceID   string // ID of the damage source
-	Amount     int    // Amount of damage
-	DamageType string // Type of damage (slashing, fire, etc)
+	TargetID   string      // ID of the character taking damage
+	SourceID   string      // ID of the attacker/source entity
+	SourceRef  *core.Ref   // What caused the damage (weapon, spell, condition ref)
+	Amount     int         // Amount of damage
+	DamageType damage.Type // Type of damage (slashing, fire, etc)
 }
 
 // HealingReceivedEvent is published when a character receives healing
@@ -138,7 +436,7 @@ type ConditionRemovedEvent struct {
 	Reason       string
 }
 
-// AttackEvent is published when a character makes an attack
+// AttackEvent is published when a character makes an attack (before rolls)
 type AttackEvent struct {
 	AttackerID string // ID of the attacking character
 	TargetID   string // ID of the target
@@ -146,7 +444,174 @@ type AttackEvent struct {
 	IsMelee    bool   // True for melee attacks, false for ranged
 }
 
-// Topic definitions for typed event system
+// ReactionUsedEvent is published when a character uses their reaction.
+// Game server listens to update ActionEconomy.
+type ReactionUsedEvent struct {
+	CharacterID string    // ID of the character who used their reaction
+	FeatureRef  *core.Ref // What feature consumed the reaction
+	Reason      string    // Human-readable explanation
+}
+
+// RestEvent is published when a character takes a rest
+type RestEvent struct {
+	RestType    resources.ResetType // Type of rest (short_rest, long_rest, etc)
+	CharacterID string              // ID of the character resting
+}
+
+// ResourceConsumedEvent is published when a character uses a resource
+type ResourceConsumedEvent struct {
+	CharacterID string                // ID of the character consuming the resource
+	ResourceKey resources.ResourceKey // Which resource was consumed
+	Amount      int                   // How much was consumed
+	Remaining   int                   // How much is left after consumption
+}
+
+// =============================================================================
+// Monk Feature Events
+// =============================================================================
+
+// FlurryOfBlowsActivatedEvent is published when a monk activates Flurry of Blows
+// DEPRECATED: Use FlurryStrike actions instead. This event will be removed
+// once all consumers migrate to the action-based pattern.
+type FlurryOfBlowsActivatedEvent struct {
+	CharacterID    string // ID of the monk activating the feature
+	UnarmedStrikes int    // Number of unarmed strikes granted (always 2)
+	Source         string // Feature that triggered this (refs.Features.FlurryOfBlows().ID)
+}
+
+// FlurryStrikeRequestedEvent is published when a FlurryStrike action is activated.
+// The game server should resolve an unarmed strike attack from attacker to target.
+type FlurryStrikeRequestedEvent struct {
+	AttackerID string // ID of the monk making the strike
+	TargetID   string // ID of the target being struck
+	ActionID   string // ID of the FlurryStrike action (for tracking)
+}
+
+// ActionGrantedEvent is published when an action is granted to a character.
+// The character should subscribe to this event to add the action to its list.
+// The Action field contains the actual action to be added.
+type ActionGrantedEvent struct {
+	CharacterID string         // ID of the character receiving the action
+	Action      ActionBehavior // The action being granted (implements core.Entity)
+	Source      string         // What granted the action (e.g., "flurry_of_blows", "two_weapon_fighting")
+}
+
+// ActionRemovedEvent is published when an action removes itself from a character.
+// The character should listen for this event and remove the action from their list.
+type ActionRemovedEvent struct {
+	ActionID string // ID of the action being removed
+	OwnerID  string // ID of the character who owns the action
+}
+
+// FlurryStrikeActivatedEvent is published after a FlurryStrike action is successfully used.
+// This is a notification event for UI/logging - the attack itself is resolved via FlurryStrikeRequestedEvent.
+type FlurryStrikeActivatedEvent struct {
+	AttackerID    string // ID of the monk who used the strike
+	TargetID      string // ID of the target that was struck
+	ActionID      string // ID of the FlurryStrike action
+	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
+}
+
+// OffHandStrikeRequestedEvent is published when an OffHandStrike action is activated.
+// The game server should resolve an off-hand weapon attack from attacker to target.
+// Note: Off-hand attacks don't add ability modifier to damage unless the character
+// has the Two-Weapon Fighting fighting style.
+type OffHandStrikeRequestedEvent struct {
+	AttackerID string // ID of the character making the off-hand attack
+	TargetID   string // ID of the target being struck
+	WeaponID   string // ID of the off-hand weapon being used
+	ActionID   string // ID of the OffHandStrike action (for tracking)
+}
+
+// OffHandStrikeActivatedEvent is published after an OffHandStrike action is successfully used.
+// This is a notification event for UI/logging.
+type OffHandStrikeActivatedEvent struct {
+	AttackerID    string // ID of the character who used the strike
+	TargetID      string // ID of the target that was struck
+	WeaponID      string // ID of the off-hand weapon used
+	ActionID      string // ID of the OffHandStrike action
+	UsesRemaining int    // Uses remaining after this activation (0 = action will be removed)
+}
+
+// PatientDefenseActivatedEvent is published when a monk activates Patient Defense
+type PatientDefenseActivatedEvent struct {
+	CharacterID string // ID of the monk activating the feature
+	Source      string // Feature that triggered this (refs.Features.PatientDefense().ID)
+}
+
+// StepOfTheWindActivatedEvent is published when a monk activates Step of the Wind
+type StepOfTheWindActivatedEvent struct {
+	CharacterID string // ID of the monk activating the feature
+	Action      string // Action taken: "disengage" or "dash"
+	Source      string // Feature that triggered this (refs.Features.StepOfTheWind().ID)
+}
+
+// DeflectMissilesTriggerEvent is published when a monk deflects a ranged weapon attack
+type DeflectMissilesTriggerEvent struct {
+	CharacterID      string // ID of the monk deflecting
+	OriginalDamage   int    // Damage before reduction
+	Reduction        int    // Amount reduced (1d10 + DEX + monk level)
+	DamageReducedTo0 bool   // If true, monk can spend 1 Ki to throw it back
+	Source           string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+}
+
+// DeflectMissilesThrowEvent is published when a monk throws a deflected missile back
+type DeflectMissilesThrowEvent struct {
+	CharacterID string // ID of the monk throwing the missile
+	Source      string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+}
+
+// =============================================================================
+// Strike and Move Action Events
+// =============================================================================
+
+// StrikeExecutedEvent is published when a Strike action is activated.
+// The game server should resolve a weapon attack from attacker to target.
+// This is the standard attack action that consumes one of the attacks granted
+// by the Attack ability.
+type StrikeExecutedEvent struct {
+	AttackerID string // ID of the character making the attack
+	TargetID   string // ID of the target being attacked
+	WeaponID   string // ID of the weapon being used
+	ActionID   string // ID of the Strike action (for tracking)
+}
+
+// MoveExecutedEvent is published when a Move action is activated.
+// The game server should update the entity's position and handle any
+// opportunity attacks or other movement-triggered effects.
+type MoveExecutedEvent struct {
+	EntityID   string  // ID of the entity that moved
+	ActionID   string  // ID of the Move action (for tracking)
+	FromX      float64 // Starting X position
+	FromY      float64 // Starting Y position
+	ToX        float64 // Destination X position
+	ToY        float64 // Destination Y position
+	DistanceFt int     // Distance moved in feet
+}
+
+// =============================================================================
+// Combat Ability Events
+// =============================================================================
+
+// DodgeActivatedEvent is published when a character uses the Dodge action.
+// Until the start of their next turn, attacks against them have disadvantage
+// (if they can see the attacker), and they make DEX saves with advantage.
+// The condition ends if they become incapacitated or their speed drops to 0.
+type DodgeActivatedEvent struct {
+	CharacterID string // ID of the character who is dodging
+}
+
+// DisengageActivatedEvent is published when a character uses the Disengage action.
+// Their movement doesn't provoke opportunity attacks for the rest of the turn.
+type DisengageActivatedEvent struct {
+	CharacterID string // ID of the character who is disengaging
+}
+
+// =============================================================================
+// Topic Definitions
+// =============================================================================
+
+// Simple pub/sub topics
 var (
 	// TurnStartTopic provides typed pub/sub for turn start events
 	TurnStartTopic = events.DefineTypedTopic[TurnStartEvent]("dnd5e.turn.start")
@@ -168,4 +633,87 @@ var (
 
 	// AttackTopic provides typed pub/sub for attack events
 	AttackTopic = events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack")
+
+	// ReactionUsedTopic provides typed pub/sub for reaction used events
+	ReactionUsedTopic = events.DefineTypedTopic[ReactionUsedEvent]("dnd5e.combat.reaction.used")
+
+	// RestTopic provides typed pub/sub for rest events
+	RestTopic = events.DefineTypedTopic[RestEvent]("dnd5e.rest")
+
+	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
+	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
+
+	// FlurryOfBlowsActivatedTopic provides typed pub/sub for flurry of blows activation events
+	// DEPRECATED: Use FlurryStrikeRequestedTopic instead.
+	FlurryOfBlowsActivatedTopic = events.DefineTypedTopic[FlurryOfBlowsActivatedEvent](
+		"dnd5e.feature.flurry_of_blows.activated")
+
+	// FlurryStrikeRequestedTopic provides typed pub/sub for flurry strike action requests
+	FlurryStrikeRequestedTopic = events.DefineTypedTopic[FlurryStrikeRequestedEvent](
+		"dnd5e.action.flurry_strike.requested")
+
+	// FlurryStrikeActivatedTopic provides typed pub/sub for flurry strike completion notifications
+	FlurryStrikeActivatedTopic = events.DefineTypedTopic[FlurryStrikeActivatedEvent](
+		"dnd5e.action.flurry_strike.activated")
+
+	// OffHandStrikeRequestedTopic provides typed pub/sub for off-hand strike action requests
+	OffHandStrikeRequestedTopic = events.DefineTypedTopic[OffHandStrikeRequestedEvent](
+		"dnd5e.action.off_hand_strike.requested")
+
+	// OffHandStrikeActivatedTopic provides typed pub/sub for off-hand strike completion notifications
+	OffHandStrikeActivatedTopic = events.DefineTypedTopic[OffHandStrikeActivatedEvent](
+		"dnd5e.action.off_hand_strike.activated")
+
+	// ActionGrantedTopic provides typed pub/sub for action granted events
+	ActionGrantedTopic = events.DefineTypedTopic[ActionGrantedEvent](
+		"dnd5e.action.granted")
+
+	// ActionRemovedTopic provides typed pub/sub for action removed events
+	ActionRemovedTopic = events.DefineTypedTopic[ActionRemovedEvent](
+		"dnd5e.action.removed")
+
+	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
+	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](
+		"dnd5e.feature.patient_defense.activated")
+
+	// StepOfTheWindActivatedTopic provides typed pub/sub for step of the wind activation events
+	StepOfTheWindActivatedTopic = events.DefineTypedTopic[StepOfTheWindActivatedEvent](
+		"dnd5e.feature.step_of_the_wind.activated")
+
+	// DeflectMissilesTriggerTopic provides typed pub/sub for deflect missiles trigger events
+	DeflectMissilesTriggerTopic = events.DefineTypedTopic[DeflectMissilesTriggerEvent](
+		"dnd5e.feature.deflect_missiles.triggered")
+
+	// DeflectMissilesThrowTopic provides typed pub/sub for deflect missiles throw events
+	DeflectMissilesThrowTopic = events.DefineTypedTopic[DeflectMissilesThrowEvent]("dnd5e.feature.deflect_missiles.throw")
+
+	// DodgeActivatedTopic provides typed pub/sub for Dodge ability activation
+	DodgeActivatedTopic = events.DefineTypedTopic[DodgeActivatedEvent]("dnd5e.ability.dodge.activated")
+
+	// DisengageActivatedTopic provides typed pub/sub for Disengage ability activation
+	DisengageActivatedTopic = events.DefineTypedTopic[DisengageActivatedEvent]("dnd5e.ability.disengage.activated")
+
+	// StrikeExecutedTopic provides typed pub/sub for Strike action execution
+	StrikeExecutedTopic = events.DefineTypedTopic[StrikeExecutedEvent]("dnd5e.action.strike.executed")
+
+	// MoveExecutedTopic provides typed pub/sub for Move action execution
+	MoveExecutedTopic = events.DefineTypedTopic[MoveExecutedEvent]("dnd5e.action.move.executed")
+)
+
+// Chain topics (for modifier chains)
+var (
+	// AttackChain provides typed chained topic for attack roll modifiers
+	AttackChain = events.DefineChainedTopic[AttackChainEvent]("dnd5e.combat.attack.chain")
+
+	// DamageChain provides typed chained topic for damage modifiers
+	DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
+
+	// SavingThrowChain provides typed chained topic for saving throw modifiers
+	SavingThrowChain = events.DefineChainedTopic[*SavingThrowChainEvent]("dnd5e.saves.chain")
+
+	// MovementChain provides typed chained topic for movement modifiers.
+	// This chain fires BEFORE each step of movement to allow conditions like
+	// Disengaging to prevent opportunity attacks, or features like Sentinel
+	// to stop movement entirely.
+	MovementChain = events.DefineChainedTopic[*MovementChainEvent]("dnd5e.combat.movement.chain")
 )

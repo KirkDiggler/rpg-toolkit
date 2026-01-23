@@ -10,10 +10,14 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 type FeaturesTestSuite struct {
@@ -43,7 +47,9 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 	err = draft.SetRace(&SetRaceInput{
 		RaceID:    races.Human,
 		SubraceID: "", // Human has no subrace
-		Choices:   RaceChoices{},
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -54,7 +60,12 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 			Skills: []skills.Skill{
 				skills.Athletics,
 				skills.Survival,
-			}, // Barbarian needs to choose 2 skills
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	})
 	s.Require().NoError(err)
@@ -99,7 +110,7 @@ func (s *FeaturesTestSuite) TestBarbarianGetsRageFeature() {
 	s.Equal(rageFeature, features[0])
 }
 
-func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
+func (s *FeaturesTestSuite) TestFighterGetsSecondWindFeature() {
 	// Create a draft
 	draft, err := NewDraft(&DraftConfig{
 		ID:       "test-fighter",
@@ -115,7 +126,9 @@ func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
 	err = draft.SetRace(&SetRaceInput{
 		RaceID:    races.Human,
 		SubraceID: "",
-		Choices:   RaceChoices{},
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -126,7 +139,18 @@ func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
 			Skills: []skills.Skill{
 				skills.Athletics,
 				skills.History,
-			}, // Fighter needs to choose 2 skills
+			},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	})
 	s.Require().NoError(err)
@@ -158,10 +182,14 @@ func (s *FeaturesTestSuite) TestNonBarbarianHasNoFeatures() {
 	s.Require().NoError(err)
 	s.Require().NotNil(character)
 
-	// Check that the fighter has no features yet
-	// TODO: Fighter should have Second Wind at level 1
+	// Check that the fighter has Second Wind feature at level 1
 	features := character.GetFeatures()
-	s.Len(features, 0, "Fighter has no features implemented yet")
+	s.Require().Len(features, 1, "Fighter should have 1 feature at level 1")
+
+	// Verify the second wind feature
+	secondWindFeature := character.GetFeature("second_wind")
+	s.Require().NotNil(secondWindFeature)
+	s.Equal("second_wind", secondWindFeature.GetID())
 }
 
 func TestFeaturesTestSuite(t *testing.T) {

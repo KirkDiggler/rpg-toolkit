@@ -61,7 +61,7 @@ func NewCore(cfg CoreConfig) *Core {
 func (c *Core) GetID() string { return c.id }
 
 // GetType implements core.Entity
-func (c *Core) GetType() string { return c.typ }
+func (c *Core) GetType() core.EntityType { return core.EntityType(c.typ) }
 
 // Source returns what created or granted this effect.
 func (c *Core) Source() *core.Source { return c.source }

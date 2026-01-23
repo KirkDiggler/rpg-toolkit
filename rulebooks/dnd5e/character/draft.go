@@ -2,24 +2,28 @@ package character
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -254,6 +258,25 @@ func (d *Draft) SetRace(input *SetRaceInput) error {
 		})
 	}
 
+	// Record tool proficiency choices (for Dwarf, etc.)
+	if len(input.Choices.Tools) > 0 {
+		var choiceID choices.ChoiceID
+		if d.race == races.Dwarf {
+			choiceID = choices.DwarfToolProficiency
+		}
+		// Convert SelectionID to proficiencies.Tool
+		toolSelection := make([]proficiencies.Tool, 0, len(input.Choices.Tools))
+		for _, t := range input.Choices.Tools {
+			toolSelection = append(toolSelection, proficiencies.Tool(t))
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:      shared.ChoiceToolProficiency,
+			Source:        shared.SourceRace,
+			ChoiceID:      choiceID,
+			ToolSelection: toolSelection,
+		})
+	}
+
 	d.updatedAt = time.Now()
 
 	// Update progress if race choices are complete
@@ -347,6 +370,75 @@ func (d *Draft) SetClass(input *SetClassInput) error {
 			Source:         shared.SourceClass,
 			ChoiceID:       choiceID,
 			SpellSelection: input.Choices.Spells,
+		})
+	}
+
+	// Record tool proficiency choices (for Monk, Bard, etc.)
+	if len(input.Choices.Tools) > 0 {
+		var choiceID choices.ChoiceID
+		if requirements.Tools != nil {
+			choiceID = requirements.Tools.ID
+		}
+		// Convert shared.SelectionID to proficiencies.Tool
+		toolSelection := make([]proficiencies.Tool, len(input.Choices.Tools))
+		for i, t := range input.Choices.Tools {
+			toolSelection[i] = proficiencies.Tool(t)
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:      shared.ChoiceToolProficiency,
+			Source:        shared.SourceClass,
+			ChoiceID:      choiceID,
+			ToolSelection: toolSelection,
+		})
+	}
+
+	// Record expertise choices (for Rogue L1/L6, Bard L3/L10)
+	if len(input.Choices.Expertise) > 0 {
+		// Validate expertise skills are from ANY proficient skill source (class, race, background)
+		proficientSkills := make(map[skills.Skill]bool)
+
+		// Add class skills from this input
+		for _, skill := range input.Choices.Skills {
+			proficientSkills[skill] = true
+		}
+
+		// Add racial skill proficiencies
+		if d.race != "" {
+			raceData := races.GetData(d.race)
+			if raceData != nil {
+				for _, skill := range raceData.Skills {
+					proficientSkills[skill] = true
+				}
+			}
+		}
+
+		// Add skills from previous race choices (e.g., Half-Elf skill choices)
+		for _, choice := range d.choices {
+			if choice.Source == shared.SourceRace && choice.Category == shared.ChoiceSkills {
+				for _, skill := range choice.SkillSelection {
+					proficientSkills[skill] = true
+				}
+			}
+		}
+
+		// TODO: Add background skills when background data is implemented
+
+		for _, expertiseSkill := range input.Choices.Expertise {
+			if !proficientSkills[expertiseSkill] {
+				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"expertise skill %s must be from a proficient skill (class, race, or background)", expertiseSkill)
+			}
+		}
+
+		var choiceID choices.ChoiceID
+		if requirements.Expertise != nil {
+			choiceID = requirements.Expertise.ID
+		}
+		d.recordChoice(choices.ChoiceData{
+			Category:           shared.ChoiceExpertise,
+			Source:             shared.SourceClass,
+			ChoiceID:           choiceID,
+			ExpertiseSelection: input.Choices.Expertise,
 		})
 	}
 
@@ -465,6 +557,11 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet, "all ability scores must be set")
 	}
 
+	// Validate all required choices have been made
+	if err := d.ValidateChoices(); err != nil {
+		return nil, err
+	}
+
 	// Get race and class data
 	raceData := races.GetData(d.race)
 	if raceData == nil {
@@ -493,40 +590,56 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	// Build proficiencies
 	skillProfs := d.compileSkills(raceData)
 	savingThrows := d.compileSavingThrows(classData)
+	armorProfs, weaponProfs, toolProfs := d.compileProficiencies()
 
 	// Compile features (can fail)
-	charFeatures, err := d.compileFeatures()
+	charFeatures, err := d.compileFeatures(characterID)
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to compile features")
 	}
 
 	// Create the character
 	char := &Character{
-		id:               characterID,
-		playerID:         d.playerID,
-		name:             d.name,
-		level:            1,
-		proficiencyBonus: 2,
-		raceID:           d.race,
-		subraceID:        d.subrace,
-		classID:          d.class,
-		subclassID:       d.subclass,
-		abilityScores:    finalScores,
-		hitPoints:        maxHP,
-		maxHitPoints:     maxHP,
-		armorClass:       10 + finalScores.Modifier(abilities.DEX), // Base AC
-		hitDice:          classData.HitDice,
-		skills:           skillProfs,
-		savingThrows:     savingThrows,
-		languages:        d.compileLanguages(raceData),
-		inventory:        d.compileInventory(),
-		spellSlots:       d.compileSpellSlots(classData),
-		classResources:   make(map[shared.ClassResourceType]ResourceData),
-		features:         charFeatures,
-		bus:              bus,
-		conditions:       make([]dnd5eEvents.ConditionBehavior, 0),
-		subscriptionIDs:  make([]string, 0),
+		id:                  characterID,
+		playerID:            d.playerID,
+		name:                d.name,
+		level:               1,
+		proficiencyBonus:    2,
+		raceID:              d.race,
+		subraceID:           d.subrace,
+		classID:             d.class,
+		subclassID:          d.subclass,
+		abilityScores:       finalScores,
+		hitPoints:           maxHP,
+		maxHitPoints:        maxHP,
+		armorClass:          10 + finalScores.Modifier(abilities.DEX), // Base AC
+		hitDice:             classData.HitDice,
+		skills:              skillProfs,
+		savingThrows:        savingThrows,
+		armorProficiencies:  armorProfs,
+		weaponProficiencies: weaponProfs,
+		toolProficiencies:   toolProfs,
+		languages:           d.compileLanguages(raceData),
+		inventory:           d.compileInventory(),
+		spellSlots:          d.compileSpellSlots(classData),
+		classResources:      make(map[shared.ClassResourceType]ResourceData),
+		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+		features:            charFeatures,
+		combatAbilities:     make([]combatabilities.CombatAbility, 0),
+		actions:             make([]actions.Action, 0),
+		bus:                 bus,
+		conditions:          make([]dnd5eEvents.ConditionBehavior, 0),
+		subscriptionIDs:     make([]string, 0),
 	}
+
+	// Add standard combat abilities (Attack, Dash, Dodge, Disengage)
+	d.initializeStandardCombatAbilities(char)
+
+	// Add standard actions (Strike, Move)
+	d.initializeStandardActions(char)
+
+	// Initialize class-specific resources
+	d.initializeClassResources(char)
 
 	// Subscribe to events - character comes out fully initialized
 	if err := char.subscribeToEvents(ctx); err != nil {
@@ -538,6 +651,17 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to compile conditions")
 	}
+
+	// Check for Unarmored Defense condition and apply its AC calculation
+	// Barbarian: AC = 10 + DEX + CON
+	// Monk: AC = 10 + DEX + WIS
+	for _, cond := range initialConditions {
+		if ud, ok := cond.(*conditions.UnarmoredDefenseCondition); ok {
+			char.armorClass = ud.CalculateAC(finalScores)
+			break
+		}
+	}
+
 	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(bus)
 	for _, cond := range initialConditions {
 		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
@@ -553,7 +677,10 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	return char, nil
 }
 
-// ValidateChoices validates that all required choices have been made
+// ValidateChoices validates that all required choices have been made.
+// Complexity is inherent due to handling multiple choice categories.
+//
+//nolint:gocyclo // Complexity is inherent due to handling multiple choice categories
 func (d *Draft) ValidateChoices() error {
 	// Create validator
 	validator := choices.NewValidator()
@@ -610,6 +737,39 @@ func (d *Draft) ValidateChoices() error {
 					Source:   choice.Source,
 					ChoiceID: choice.ChoiceID,
 					Values:   langValues,
+				})
+			}
+		case shared.ChoiceToolProficiency:
+			if len(choice.ToolSelection) > 0 {
+				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
+				for i, t := range choice.ToolSelection {
+					toolValues[i] = shared.SelectionID(t)
+				}
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceToolProficiency,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   toolValues,
+				})
+			}
+		case shared.ChoiceFightingStyle:
+			if choice.FightingStyleSelection != nil {
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceFightingStyle,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   []shared.SelectionID{*choice.FightingStyleSelection},
+				})
+			}
+		case shared.ChoiceExpertise:
+			if len(choice.ExpertiseSelection) > 0 {
+				expertiseValues := make([]shared.SelectionID, len(choice.ExpertiseSelection))
+				copy(expertiseValues, choice.ExpertiseSelection)
+				submissions.Add(choices.Submission{
+					Category: shared.ChoiceExpertise,
+					Source:   choice.Source,
+					ChoiceID: choice.ChoiceID,
+					Values:   expertiseValues,
 				})
 			}
 		}
@@ -697,25 +857,37 @@ func (d *Draft) recordChoice(choice choices.ChoiceData) {
 // TODO: check if class can grant skills or all they all chosen
 // compileSkills builds the skill proficiency map
 func (d *Draft) compileSkills(raceData *races.Data) map[skills.Skill]shared.ProficiencyLevel {
-	skills := make(map[skills.Skill]shared.ProficiencyLevel)
+	skillMap := make(map[skills.Skill]shared.ProficiencyLevel)
 
 	// Add racial skill proficiencies
 	for _, skill := range raceData.Skills {
-		skills[skill] = shared.Proficient
+		skillMap[skill] = shared.Proficient
 	}
 
 	// Add chosen skills from choices
 	for _, choice := range d.choices {
 		if choice.Category == shared.ChoiceSkills {
 			for _, skill := range choice.SkillSelection {
-				skills[skill] = shared.Proficient
+				skillMap[skill] = shared.Proficient
+			}
+		}
+	}
+
+	// Apply expertise - upgrade proficient skills to expert
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceExpertise {
+			for _, skill := range choice.ExpertiseSelection {
+				// Only upgrade if already proficient (validation should catch this earlier)
+				if _, hasProficiency := skillMap[skill]; hasProficiency {
+					skillMap[skill] = shared.Expert
+				}
 			}
 		}
 	}
 
 	// TODO: Add background skills when we have internal background data
 
-	return skills
+	return skillMap
 }
 
 // compileSavingThrows builds the saving throw proficiency map
@@ -727,6 +899,36 @@ func (d *Draft) compileSavingThrows(classData *classes.Data) map[abilities.Abili
 	}
 
 	return saves
+}
+
+// compileProficiencies collects armor, weapon, and tool proficiencies from class and race grants
+func (d *Draft) compileProficiencies() ([]proficiencies.Armor, []proficiencies.Weapon, []proficiencies.Tool) {
+	armorProfs := make([]proficiencies.Armor, 0)
+	weaponProfs := make([]proficiencies.Weapon, 0)
+	toolProfs := make([]proficiencies.Tool, 0)
+
+	// Collect from class grants
+	if d.class != "" {
+		grants := classes.GetGrantsForLevel(d.class, 1)
+		for _, grant := range grants {
+			armorProfs = append(armorProfs, grant.ArmorProficiencies...)
+			weaponProfs = append(weaponProfs, grant.WeaponProficiencies...)
+			toolProfs = append(toolProfs, grant.ToolProficiencies...)
+		}
+	}
+
+	// Collect from race grants
+	if d.race != "" {
+		if grant := races.GetGrants(d.race); grant != nil {
+			armorProfs = append(armorProfs, grant.ArmorProficiencies...)
+			weaponProfs = append(weaponProfs, grant.WeaponProficiencies...)
+			toolProfs = append(toolProfs, grant.ToolProficiencies...)
+		}
+	}
+
+	// TODO: Collect from background grants when implemented
+
+	return armorProfs, weaponProfs, toolProfs
 }
 
 // compileLanguages builds the language list
@@ -750,10 +952,11 @@ func (d *Draft) compileLanguages(raceData *races.Data) []languages.Language {
 func (d *Draft) compileInventory() []InventoryItem {
 	inventory := make([]InventoryItem, 0)
 
-	// Add starting equipment from class grants
+	// Add starting equipment from class grants (new Grant system)
 	if d.class != "" {
-		if classGrants := classes.GetAutomaticGrants(d.class); classGrants != nil {
-			for _, item := range classGrants.StartingEquipment {
+		grants := classes.GetGrantsForLevel(d.class, 1)
+		for _, grant := range grants {
+			for _, item := range grant.Equipment {
 				equip, err := equipment.GetByID(item.ID)
 				if err != nil {
 					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
@@ -809,63 +1012,95 @@ func (d *Draft) compileSpellSlots(classData *classes.Data) map[int]SpellSlotData
 	return slots
 }
 
-// compileFeatures returns the character's class features
-func (d *Draft) compileFeatures() ([]features.Feature, error) {
+// compileFeatures returns the character's class features using the unified grant system.
+// Features are created from FeatureRef grants defined in classes/grant.go.
+func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) {
 	featureList := make([]features.Feature, 0)
 
-	// Level 1 barbarian gets rage
-	if d.class == classes.Barbarian {
-		// Create rage feature with proper JSON data
-		rageData := map[string]interface{}{
-			"ref": core.Ref{
-				Module: "dnd5e",
-				Type:   "features",
-				Value:  "rage",
-			},
-			"id":       "rage",
-			"name":     "Rage",
-			"level":    1,
-			"uses":     2, // Level 1 has 2 uses
-			"max_uses": 2,
-		}
-
-		// Create rage from JSON
-		jsonBytes, err := json.Marshal(rageData)
-		if err != nil {
-			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to marshal rage data")
-		}
-
-		rage, err := features.LoadJSON(jsonBytes)
-		if err != nil {
-			return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "failed to load rage feature")
-		}
-		featureList = append(featureList, rage)
+	// Get grants for the class at level 1 (character creation)
+	grants := classes.GetGrantsForLevel(d.class, 1)
+	if grants == nil {
+		return featureList, nil
 	}
 
-	// TODO: Add other class features (second wind for fighter, etc)
+	// Create features from each grant's FeatureRefs
+	for _, grant := range grants {
+		for _, featureRef := range grant.Features {
+			output, err := features.CreateFromRef(&features.CreateFromRefInput{
+				Ref:         featureRef.Ref,
+				Config:      featureRef.Config,
+				CharacterID: characterID,
+			})
+			if err != nil {
+				return nil, rpgerr.Wrapf(err, "failed to create feature from ref %s", featureRef.Ref)
+			}
+			featureList = append(featureList, output.Feature)
+		}
+	}
 
 	return featureList, nil
 }
 
-// compileConditions creates conditions from draft choices (e.g., fighting styles)
+// compileConditions creates conditions from grants and draft choices (e.g., fighting styles).
+// Conditions can come from two sources:
+// 1. Class grants (e.g., Barbarian's Unarmored Defense)
+// 2. Player choices (e.g., Fighter's chosen Fighting Style)
 func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBehavior, error) {
 	conditionList := make([]dnd5eEvents.ConditionBehavior, 0)
 
-	// Check for fighting style
-	if style := d.GetFightingStyleSelection(); style != nil {
-		if !fightingstyles.IsImplemented(*style) {
-			return nil, rpgerr.Newf(rpgerr.CodeNotAllowed,
-				"fighting style %s is not yet implemented", *style)
+	// Get conditions from class grants
+	grants := classes.GetGrantsForLevel(d.class, 1)
+	classSourceRef := "dnd5e:classes:" + d.class
+	for _, grant := range grants {
+		for _, condRef := range grant.Conditions {
+			output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
+				Ref:         condRef.Ref,
+				Config:      condRef.Config,
+				CharacterID: characterID,
+				SourceRef:   classSourceRef,
+			})
+			if err != nil {
+				return nil, rpgerr.Wrapf(err, "failed to create condition from ref %s", condRef.Ref)
+			}
+			conditionList = append(conditionList, output.Condition)
 		}
+	}
 
-		fsCondition := conditions.NewFightingStyleCondition(conditions.FightingStyleConditionConfig{
-			CharacterID: characterID,
-			Style:       *style,
-		})
+	// Add conditions from player choices (e.g., fighting styles)
+	// Fighting styles are CHOICES, not grants, so they're handled separately
+	// Each fighting style maps to its corresponding condition
+	if style := d.GetFightingStyleSelection(); style != nil {
+		fsCondition, err := createFightingStyleCondition(*style, characterID)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to create fighting style condition")
+		}
 		conditionList = append(conditionList, fsCondition)
 	}
 
 	return conditionList, nil
+}
+
+// createFightingStyleCondition creates the appropriate condition for a fighting style.
+// Each fighting style maps to its own dedicated condition type.
+func createFightingStyleCondition(
+	style fightingstyles.FightingStyle, characterID string,
+) (dnd5eEvents.ConditionBehavior, error) {
+	switch style {
+	case fightingstyles.Archery:
+		return conditions.NewFightingStyleArcheryCondition(characterID), nil
+	case fightingstyles.Defense:
+		return conditions.NewFightingStyleDefenseCondition(characterID), nil
+	case fightingstyles.Dueling:
+		return conditions.NewFightingStyleDuelingCondition(characterID), nil
+	case fightingstyles.GreatWeaponFighting:
+		return conditions.NewFightingStyleGreatWeaponFightingCondition(characterID, nil), nil
+	case fightingstyles.Protection:
+		return conditions.NewFightingStyleProtectionCondition(characterID), nil
+	case fightingstyles.TwoWeaponFighting:
+		return conditions.NewFightingStyleTwoWeaponFightingCondition(characterID), nil
+	default:
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown fighting style: %s", style)
+	}
 }
 
 // Progress validation methods
@@ -984,7 +1219,27 @@ func (d *Draft) getRaceSubmissions() *choices.Submissions {
 				})
 			}
 
-			// Add other choice types...
+			// Handle tool proficiency choices (for Dwarf, etc.)
+			if len(choice.ToolSelection) > 0 {
+				// Convert proficiencies.Tool to shared.SelectionID
+				toolValues := make([]shared.SelectionID, 0, len(choice.ToolSelection))
+				for _, t := range choice.ToolSelection {
+					toolValues = append(toolValues, shared.SelectionID(t))
+				}
+				var choiceID choices.ChoiceID
+				switch d.race {
+				case races.Dwarf:
+					choiceID = choices.DwarfToolProficiency
+				default:
+					choiceID = choices.ChoiceID(string(d.race) + "-tool-proficiency")
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceToolProficiency,
+					Source:   shared.SourceRace,
+					ChoiceID: choiceID,
+					Values:   toolValues,
+				})
+			}
 		}
 	}
 
@@ -1043,7 +1298,31 @@ func (d *Draft) getClassSubmissions() *choices.Submissions {
 				})
 			}
 
-			// Add other choice types...
+			// Handle tool proficiency choices
+			if len(choice.ToolSelection) > 0 {
+				toolValues := make([]shared.SelectionID, len(choice.ToolSelection))
+				for i, t := range choice.ToolSelection {
+					toolValues[i] = shared.SelectionID(t)
+				}
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceToolProficiency,
+					Source:   shared.SourceClass,
+					ChoiceID: choice.ChoiceID,
+					Values:   toolValues,
+				})
+			}
+
+			// Handle expertise choices (Rogue L1/L6, Bard L3/L10)
+			if len(choice.ExpertiseSelection) > 0 {
+				expertiseValues := make([]shared.SelectionID, len(choice.ExpertiseSelection))
+				copy(expertiseValues, choice.ExpertiseSelection)
+				subs.Add(choices.Submission{
+					Category: shared.ChoiceExpertise,
+					Source:   shared.SourceClass,
+					ChoiceID: choice.ChoiceID,
+					Values:   expertiseValues,
+				})
+			}
 		}
 	}
 
@@ -1231,4 +1510,106 @@ func (d *Draft) recordCategoryEquipment(selection EquipmentChoiceSelection) erro
 	})
 
 	return nil
+}
+
+// calculateBarbarianRageUses determines max rage uses based on barbarian level.
+// Duplicated here intentionally - character creation owns resource initialization,
+// features package owns resource consumption. Each proves the values independently.
+func calculateBarbarianRageUses(level int) int {
+	switch {
+	case level < 3:
+		return 2
+	case level < 6:
+		return 3
+	case level < 12:
+		return 4
+	case level < 17:
+		return 5
+	case level < 20:
+		return 6
+	default:
+		return -1 // Unlimited at level 20
+	}
+}
+
+// initializeClassResources adds class-specific resources to the character.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeClassResources(char *Character) {
+	level := char.level
+
+	switch d.class {
+	case classes.Barbarian:
+		// Rage charges - recovered on long rest
+		maxRages := calculateBarbarianRageUses(level)
+		if maxRages > 0 {
+			// Level 20 barbarians return -1 (unlimited rages) and don't need a resource.
+			// The Rage feature's CanActivate checks level >= 20 and bypasses resource check.
+			rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.RageCharges),
+				Maximum:     maxRages,
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetLongRest,
+			})
+			char.resources[resources.RageCharges] = rageResource
+		}
+
+	case classes.Monk:
+		// Ki points - equal to monk level, recovered on short or long rest
+		kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(resources.Ki),
+			Maximum:     level,
+			CharacterID: char.id,
+			ResetType:   coreResources.ResetShortRest,
+		})
+		char.resources[resources.Ki] = kiResource
+	}
+
+	// Hit dice - all classes get hit dice for short rest healing
+	// Uses helper which includes special recovery logic (half per long rest, min 1)
+	hitDiceResource := resources.NewHitDiceResource(resources.HitDiceResourceConfig{
+		CharacterID: char.id,
+		Level:       level,
+	})
+	char.resources[resources.HitDice] = hitDiceResource
+}
+
+// initializeStandardCombatAbilities adds universal combat abilities to the character.
+// These are available to all characters: Attack, Dash, Dodge, Disengage.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeStandardCombatAbilities(char *Character) {
+	// Attack - consumes action economy to grant attack capacity
+	attackAbility := combatabilities.NewAttack(char.id + "-attack")
+	_ = char.AddCombatAbility(attackAbility)
+
+	// Dash - consumes action economy to add movement
+	dashAbility := combatabilities.NewDash(char.id + "-dash")
+	_ = char.AddCombatAbility(dashAbility)
+
+	// Dodge - consumes action economy to grant Dodging condition
+	dodgeAbility := combatabilities.NewDodge(char.id + "-dodge")
+	_ = char.AddCombatAbility(dodgeAbility)
+
+	// Disengage - consumes action economy to grant Disengaging condition
+	disengageAbility := combatabilities.NewDisengage(char.id + "-disengage")
+	_ = char.AddCombatAbility(disengageAbility)
+}
+
+// initializeStandardActions adds standard permanent actions to the character.
+// These are always available: Strike (uses attacks from Attack ability) and Move.
+// Called during ToCharacter after the character struct is created.
+func (d *Draft) initializeStandardActions(char *Character) {
+	// Strike - consumes AttacksRemaining to make weapon attacks
+	strikeAction := actions.NewStrike(actions.StrikeConfig{
+		ID:      char.id + "-strike",
+		OwnerID: char.id,
+		// WeaponID is empty - will be determined at activation time based on equipped weapon
+	})
+	_ = char.AddAction(strikeAction)
+
+	// Move - consumes MovementRemaining to change position
+	moveAction := actions.NewMove(actions.MoveConfig{
+		ID:      char.id + "-move",
+		OwnerID: char.id,
+	})
+	_ = char.AddAction(moveAction)
 }

@@ -72,6 +72,29 @@ func (d Dimensions) Contains(pos Position) bool {
 	return pos.X >= 0 && pos.X < d.Width && pos.Y >= 0 && pos.Y < d.Height
 }
 
+// HexOrientation represents the orientation of a hexagonal grid
+type HexOrientation int
+
+const (
+	// HexOrientationPointyTop is the default orientation where hexes have a pointed top
+	// This is the standard D&D 5e hex grid orientation
+	HexOrientationPointyTop HexOrientation = iota
+	// HexOrientationFlatTop is an alternative orientation where hexes have a flat top
+	HexOrientationFlatTop
+)
+
+// String returns the string representation of the hex orientation
+func (o HexOrientation) String() string {
+	switch o {
+	case HexOrientationPointyTop:
+		return "pointy-top"
+	case HexOrientationFlatTop:
+		return "flat-top"
+	default:
+		return "unknown"
+	}
+}
+
 // CubeCoordinate represents a position in cube coordinate system (for hex grids)
 // In hex grids, cube coordinates simplify distance and neighbor calculations
 type CubeCoordinate struct {
@@ -143,22 +166,54 @@ func (c CubeCoordinate) GetNeighbors() []CubeCoordinate {
 }
 
 // ToOffsetCoordinate converts cube coordinate to offset coordinate (for display)
+// Uses pointy-top orientation by default. Use ToOffsetCoordinateWithOrientation for flat-top.
 func (c CubeCoordinate) ToOffsetCoordinate() Position {
-	col := float64(c.X)
-	row := float64(c.Z + (c.X-(c.X&1))/2)
-	return Position{X: col, Y: row}
+	return c.ToOffsetCoordinateWithOrientation(HexOrientationPointyTop)
+}
+
+// ToOffsetCoordinateWithOrientation converts cube coordinate to offset coordinate
+// using the specified hex orientation
+func (c CubeCoordinate) ToOffsetCoordinateWithOrientation(orientation HexOrientation) Position {
+	switch orientation {
+	case HexOrientationFlatTop:
+		// Flat-top: odd-r offset coordinates
+		col := float64(c.X + (c.Z-(c.Z&1))/2)
+		row := float64(c.Z)
+		return Position{X: col, Y: row}
+	default:
+		// Pointy-top: odd-q offset coordinates (default)
+		col := float64(c.X)
+		row := float64(c.Z + (c.X-(c.X&1))/2)
+		return Position{X: col, Y: row}
+	}
 }
 
 // OffsetCoordinateToCube converts offset coordinate to cube coordinate
+// Uses pointy-top orientation by default. Use OffsetCoordinateToCubeWithOrientation for flat-top.
 func OffsetCoordinateToCube(pos Position) CubeCoordinate {
+	return OffsetCoordinateToCubeWithOrientation(pos, HexOrientationPointyTop)
+}
+
+// OffsetCoordinateToCubeWithOrientation converts offset coordinate to cube coordinate
+// using the specified hex orientation
+func OffsetCoordinateToCubeWithOrientation(pos Position, orientation HexOrientation) CubeCoordinate {
 	col := int(pos.X)
 	row := int(pos.Y)
 
-	x := col
-	z := row - (col-(col&1))/2
-	y := -x - z
-
-	return CubeCoordinate{X: x, Y: y, Z: z}
+	switch orientation {
+	case HexOrientationFlatTop:
+		// Flat-top: odd-r offset coordinates
+		x := col - (row-(row&1))/2
+		z := row
+		y := -x - z
+		return CubeCoordinate{X: x, Y: y, Z: z}
+	default:
+		// Pointy-top: odd-q offset coordinates (default)
+		x := col
+		z := row - (col-(col&1))/2
+		y := -x - z
+		return CubeCoordinate{X: x, Y: y, Z: z}
+	}
 }
 
 // Rectangle represents a rectangular area

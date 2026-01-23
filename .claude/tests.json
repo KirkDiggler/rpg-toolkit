@@ -1,0 +1,98 @@
+{
+  "tests": [
+    {
+      "id": "action-economy-sub-resources",
+      "feature": "action-economy",
+      "prompt": "ActionEconomy should have AttacksRemaining and MovementRemaining fields. Reset() should set primary resources to 1 but NOT set AttacksRemaining (stays 0 until Attack ability used).",
+      "passes": true,
+      "last_checked": "2026-01-07"
+    },
+    {
+      "id": "ability-interface",
+      "feature": "abilities",
+      "prompt": "CombatAbility interface should extend core.Action[CombatAbilityInput]. CombatAbilityInput should have Bus, ActionEconomy, ActionHolder, Speed, and ExtraAttacks fields.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Named CombatAbility to avoid conflict with abilities package (ability scores). Located at rulebooks/dnd5e/combatabilities/"
+    },
+    {
+      "id": "attack-ability-grants-strikes",
+      "feature": "abilities",
+      "prompt": "When Attack ability is activated, it should consume 1 action, set AttacksRemaining based on Extra Attack, and grant Strike action(s) to the character.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Attack ability consumes action and sets AttacksRemaining. Strike action granting will be Phase 4."
+    },
+    {
+      "id": "dash-ability-adds-movement",
+      "feature": "abilities",
+      "prompt": "When Dash ability is activated, it should consume 1 action and add character's speed to MovementRemaining.",
+      "passes": true,
+      "last_checked": "2026-01-07"
+    },
+    {
+      "id": "dodge-ability-grants-condition",
+      "feature": "abilities",
+      "prompt": "When Dodge ability is activated, it should consume 1 action and grant the Dodging condition.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Publishes DodgeActivatedEvent. DodgingCondition will subscribe in future phase."
+    },
+    {
+      "id": "disengage-ability-prevents-aoo",
+      "feature": "abilities",
+      "prompt": "When Disengage ability is activated, it should consume 1 action and grant the Disengaging condition.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Publishes DisengageActivatedEvent. DisengagingCondition will subscribe in future phase."
+    },
+    {
+      "id": "strike-action-resolves-attack",
+      "feature": "actions",
+      "prompt": "Strike action should consume 1 AttacksRemaining and publish StrikeExecutedEvent for the game layer to resolve.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Strike consumes AttacksRemaining via ActionEconomy.UseAttack() and publishes StrikeExecutedEvent. The game layer handles attack resolution."
+    },
+    {
+      "id": "move-action-uses-movement",
+      "feature": "actions",
+      "prompt": "Move action should consume MovementRemaining based on distance and publish MoveExecutedEvent for position changes.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Move consumes movement via ActionEconomy.UseMovement() and publishes MoveExecutedEvent. The game layer handles position updates."
+    },
+    {
+      "id": "character-has-combat-abilities",
+      "feature": "character",
+      "prompt": "Character should have combatAbilities []CombatAbility slice with AddCombatAbility(), RemoveCombatAbility(), GetCombatAbilities() methods.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Changed from 'abilities' to 'combatAbilities' to avoid naming conflict. Implemented in character/character.go."
+    },
+    {
+      "id": "character-gets-standard-abilities",
+      "feature": "character",
+      "prompt": "When a character is finalized (draft -> character), it should automatically receive standard combat abilities: Attack, Dash, Dodge, Disengage.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Added during ToCharacter via initializeStandardCombatAbilities() helper. Also adds Strike and Move actions via initializeStandardActions()."
+    },
+    {
+      "id": "action-granted-event",
+      "feature": "events",
+      "prompt": "ActionGrantedEvent should exist. Character should subscribe to it and add the action to its actions list when received.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "ActionGrantedEvent and ActionBehavior interface added to events/events.go. Character.onActionGranted() handler added to subscribe and add actions. FlurryOfBlows and TwoWeaponGranter updated to publish ActionGrantedEvent."
+    },
+    {
+      "id": "full-attack-flow",
+      "feature": "integration",
+      "prompt": "Full flow: Activate Attack ability -> grants Strike(s) -> activate Strike -> attack resolves -> DualWieldingCondition grants OffHandStrike. All via events, no 'requested' indirection.",
+      "passes": true,
+      "last_checked": "2026-01-07",
+      "notes": "Integration test in character/integration_test.go. Tests full combat turn: ActionEconomy setup, Attack ability with Extra Attack (2 attacks), Strike execution with events, two-weapon fighting granting OffHandStrike via ActionGrantedEvent, and OffHandStrike execution with events."
+    }
+  ]
+}

@@ -6,17 +6,21 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -50,15 +54,23 @@ type Data struct {
 	MaxHitPoints int `json:"max_hit_points"`
 	ArmorClass   int `json:"armor_class"`
 
+	// Death saves (only persisted if character is at 0 HP making death saves)
+	DeathSaveState *saves.DeathSaveState `json:"death_save_state,omitempty"`
+
 	// Proficiencies and skills
-	Skills       map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
-	SavingThrows map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"`
-	Languages    []languages.Language                          `json:"languages"`
+	Skills              map[skills.Skill]shared.ProficiencyLevel      `json:"skills"`
+	SavingThrows        map[abilities.Ability]shared.ProficiencyLevel `json:"saving_throws"`
+	Languages           []languages.Language                          `json:"languages"`
+	ArmorProficiencies  []proficiencies.Armor                         `json:"armor_proficiencies"`
+	WeaponProficiencies []proficiencies.Weapon                        `json:"weapon_proficiencies"`
+	ToolProficiencies   []proficiencies.Tool                          `json:"tool_proficiencies"`
 
 	// Equipment and resources
-	Inventory      []InventoryItemData                       `json:"inventory"`
-	SpellSlots     map[int]SpellSlotData                     `json:"spell_slots,omitempty"`
-	ClassResources map[shared.ClassResourceType]ResourceData `json:"class_resources,omitempty"`
+	Inventory      []InventoryItemData                                   `json:"inventory"`
+	EquipmentSlots EquipmentSlots                                        `json:"equipment_slots,omitempty"`
+	SpellSlots     map[int]SpellSlotData                                 `json:"spell_slots,omitempty"`
+	ClassResources map[shared.ClassResourceType]ResourceData             `json:"class_resources,omitempty"`
+	Resources      map[coreResources.ResourceKey]RecoverableResourceData `json:"resources,omitempty"`
 
 	// Features (rage, second wind, etc)
 	Features []json.RawMessage `json:"features,omitempty"`
@@ -92,6 +104,13 @@ type ResourceData struct {
 	Resets  shared.ResetType `json:"resets"`
 }
 
+// RecoverableResourceData represents serializable recoverable resource state
+type RecoverableResourceData struct {
+	Current   int                     `json:"current"`
+	Maximum   int                     `json:"maximum"`
+	ResetType coreResources.ResetType `json:"reset_type"`
+}
+
 // LoadFromData creates a Character from persistent data
 func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character, error) {
 	if bus == nil {
@@ -99,23 +118,30 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 	}
 
 	char := &Character{
-		id:               d.ID,
-		playerID:         d.PlayerID,
-		name:             d.Name,
-		level:            d.Level,
-		proficiencyBonus: d.ProficiencyBonus,
-		raceID:           d.RaceID,
-		subraceID:        d.SubraceID,
-		classID:          d.ClassID,
-		subclassID:       d.SubclassID,
-		abilityScores:    d.AbilityScores,
-		hitPoints:        d.HitPoints,
-		maxHitPoints:     d.MaxHitPoints,
-		armorClass:       d.ArmorClass,
-		skills:           d.Skills,
-		savingThrows:     d.SavingThrows,
-		bus:              bus,
-		subscriptionIDs:  make([]string, 0),
+		id:                  d.ID,
+		playerID:            d.PlayerID,
+		name:                d.Name,
+		level:               d.Level,
+		proficiencyBonus:    d.ProficiencyBonus,
+		raceID:              d.RaceID,
+		subraceID:           d.SubraceID,
+		classID:             d.ClassID,
+		subclassID:          d.SubclassID,
+		abilityScores:       d.AbilityScores,
+		hitPoints:           d.HitPoints,
+		maxHitPoints:        d.MaxHitPoints,
+		armorClass:          d.ArmorClass,
+		deathSaveState:      d.DeathSaveState,
+		skills:              d.Skills,
+		savingThrows:        d.SavingThrows,
+		languages:           d.Languages,
+		armorProficiencies:  d.ArmorProficiencies,
+		weaponProficiencies: d.WeaponProficiencies,
+		toolProficiencies:   d.ToolProficiencies,
+		equipmentSlots:      d.EquipmentSlots,
+		bus:                 bus,
+		subscriptionIDs:     make([]string, 0),
+		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
 
 	// Get hit dice from class data
@@ -187,6 +213,33 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		}
 
 		char.conditions = append(char.conditions, condition)
+	}
+
+	// Load resources from persisted data
+	for key, resData := range d.Resources {
+		resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID:          string(key),
+			Maximum:     resData.Maximum,
+			CharacterID: char.id,
+			ResetType:   resData.ResetType,
+		})
+
+		// Set current value if different from maximum
+		if resData.Current != resData.Maximum {
+			deficit := resData.Maximum - resData.Current
+			_ = resource.Use(deficit) // Ignore error - we know the value is valid
+		}
+
+		// Apply resource to subscribe to rest events
+		if err := resource.Apply(ctx, bus); err != nil {
+			// Clean up on failure
+			_ = resource.Remove(ctx, bus)
+			// Log error but continue loading other resources
+			// TODO: Consider how to handle resource apply errors
+			continue
+		}
+
+		char.resources[key] = resource
 	}
 
 	// Subscribe to events - character comes out fully initialized

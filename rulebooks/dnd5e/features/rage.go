@@ -7,29 +7,32 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
+	"github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // Rage represents the barbarian rage feature.
 // It implements core.Action[FeatureInput] for activation.
+// Rage uses the owner's resources via ResourceAccessor - the character owns the
+// rage charges resource, and this feature consumes from it.
 type Rage struct {
-	id       string
-	name     string
-	level    int                 // Barbarian level for determining damage bonus
-	resource *resources.Resource // Tracks rage uses
+	id    string
+	name  string
+	level int // Barbarian level for determining damage bonus
 }
 
-// RageData is the JSON structure for persisting rage state
+// RageData is the JSON structure for persisting rage state.
+// Note: Resource state (uses/max) is owned by the Character, not the feature.
 type RageData struct {
-	Ref     core.Ref `json:"ref"`
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Level   int      `json:"level"`
-	Uses    int      `json:"uses"`
-	MaxUses int      `json:"max_uses"`
+	Ref   *core.Ref `json:"ref"`
+	ID    string    `json:"id"`
+	Name  string    `json:"name"`
+	Level int       `json:"level"`
 }
 
 // calculateRageUses determines max rage uses based on barbarian level
@@ -69,18 +72,24 @@ func (r *Rage) GetID() string {
 
 // GetType implements core.Entity
 func (r *Rage) GetType() core.EntityType {
-	return "feature"
+	return EntityTypeFeature
 }
 
 // CanActivate implements core.Action[FeatureInput]
-func (r *Rage) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
 	// At level 20, barbarians have unlimited rages
 	if r.level >= 20 {
 		return nil
 	}
 
+	// Get resource accessor from owner
+	accessor, ok := owner.(coreResources.ResourceAccessor)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
+	}
+
 	// Check if we have uses remaining
-	if !r.resource.IsAvailable() {
+	if !accessor.IsResourceAvailable(resources.RageCharges) {
 		return rpgerr.New(rpgerr.CodeResourceExhausted, "no rage uses remaining")
 	}
 
@@ -96,7 +105,11 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 
 	// Consume a use (unless level 20)
 	if r.level < 20 {
-		if err := r.resource.Use(1); err != nil {
+		accessor, ok := owner.(coreResources.ResourceAccessor)
+		if !ok {
+			return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
+		}
+		if err := accessor.UseResource(resources.RageCharges, 1); err != nil {
 			return rpgerr.Wrapf(err, "failed to use rage")
 		}
 	}
@@ -137,26 +150,16 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 	r.name = rageData.Name
 	r.level = rageData.Level
 
-	// Set up resource with current and max uses
-	r.resource = resources.NewResource("rage", rageData.MaxUses)
-	r.resource.SetCurrent(rageData.Uses)
-
 	return nil
 }
 
 // ToJSON converts rage to JSON for persistence
 func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
-		Ref: core.Ref{
-			Module: "dnd5e",
-			Type:   "features",
-			Value:  "rage",
-		},
-		ID:      r.id,
-		Name:    r.name,
-		Level:   r.level,
-		Uses:    r.resource.Current,
-		MaxUses: r.resource.Maximum,
+		Ref:   refs.Features.Rage(),
+		ID:    r.id,
+		Name:  r.name,
+		Level: r.level,
 	}
 
 	bytes, err := json.Marshal(data)
@@ -167,7 +170,7 @@ func (r *Rage) ToJSON() (json.RawMessage, error) {
 	return bytes, nil
 }
 
-// RestoreOnLongRest restores all rage uses on a long rest
-func (r *Rage) RestoreOnLongRest() {
-	r.resource.RestoreToFull()
+// ActionType returns the action economy cost to activate rage (bonus action)
+func (r *Rage) ActionType() combat.ActionType {
+	return combat.ActionBonus
 }

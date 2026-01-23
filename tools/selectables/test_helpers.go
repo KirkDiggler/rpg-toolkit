@@ -1,6 +1,7 @@
 package selectables
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -26,7 +27,7 @@ func NewTestRoller(values []int) dice.Roller {
 }
 
 // Roll returns the next predefined value, cycling through the values array
-func (t *TestRoller) Roll(size int) (int, error) {
+func (t *TestRoller) Roll(_ context.Context, size int) (int, error) {
 	if size <= 0 {
 		return 0, fmt.Errorf("dice: invalid die size %d", size)
 	}
@@ -47,7 +48,7 @@ func (t *TestRoller) Roll(size int) (int, error) {
 }
 
 // RollN rolls multiple dice, each returning the next value in sequence
-func (t *TestRoller) RollN(count, size int) ([]int, error) {
+func (t *TestRoller) RollN(ctx context.Context, count, size int) ([]int, error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("dice: invalid die size %d", size)
 	}
@@ -57,7 +58,7 @@ func (t *TestRoller) RollN(count, size int) ([]int, error) {
 
 	results := make([]int, count)
 	for i := 0; i < count; i++ {
-		roll, err := t.Roll(size)
+		roll, err := t.Roll(ctx, size)
 		if err != nil {
 			return nil, err
 		}

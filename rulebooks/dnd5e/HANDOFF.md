@@ -27,7 +27,7 @@ Added domain methods to encapsulate validation logic instead of spreading it acr
 // RaceChoice methods in builder.go  
 - MissingRequiredSubrace() bool             // Checks if subrace required but missing
 - IsValid() bool                            // Overall validation
-- GetAutomaticGrants() *races.AutomaticGrants // Returns race grants
+- GetGrants() *races.Grant // Returns race grants
 ```
 
 ### Phase 3: Proficiency Constants Refactoring ✅

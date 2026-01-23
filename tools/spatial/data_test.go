@@ -142,6 +142,55 @@ func (s *RoomDataTestSuite) TestToDataHexRoom() {
 	s.Equal("hex", data.GridType)
 	s.Equal(8, data.Width)
 	s.Equal(8, data.Height)
+
+	// Verify hex rooms use CubeEntities, not Entities
+	s.Nil(data.Entities, "Hex rooms should not use Entities map")
+	s.NotNil(data.CubeEntities, "Hex rooms should use CubeEntities map")
+}
+
+func (s *RoomDataTestSuite) TestToDataHexRoomWithEntities() {
+	// Create a hex room with entities
+	room := NewBasicRoom(BasicRoomConfig{
+		ID:   "hex-entities-room",
+		Type: "battlefield",
+		Grid: NewHexGrid(HexGridConfig{
+			Width:  10,
+			Height: 10,
+		}),
+	})
+	room.ConnectToEventBus(s.eventBus)
+
+	// Add entities at known positions
+	warrior := &MockEntity{
+		id:                "warrior",
+		entityType:        "character",
+		size:              1,
+		blocksMovement:    true,
+		blocksLineOfSight: false,
+	}
+	// Place at offset position (3, 2)
+	err := room.PlaceEntity(warrior, Position{X: 3, Y: 2})
+	s.Require().NoError(err)
+
+	// Convert to data
+	data := room.ToData()
+
+	// Verify entities are in CubeEntities, not Entities
+	s.Nil(data.Entities, "Hex rooms should not populate Entities")
+	s.Len(data.CubeEntities, 1)
+
+	// Verify the warrior placement uses cube coordinates
+	placement, exists := data.CubeEntities["warrior"]
+	s.True(exists)
+	s.Equal("warrior", placement.EntityID)
+	s.Equal("character", placement.EntityType)
+	s.Equal(1, placement.Size)
+	s.True(placement.BlocksMovement)
+	s.False(placement.BlocksLineOfSight)
+
+	// The cube position should be valid (x + y + z = 0)
+	cube := placement.CubePosition
+	s.Equal(0, cube.X+cube.Y+cube.Z, "Cube coordinates must satisfy x + y + z = 0")
 }
 
 func (s *RoomDataTestSuite) TestToDataGridlessRoom() {
@@ -219,13 +268,23 @@ func (s *RoomDataTestSuite) TestLoadRoomFromContext() {
 }
 
 func (s *RoomDataTestSuite) TestLoadRoomFromContextHex() {
-	// Create hex room data
+	// Create hex room data with CubeEntities
 	roomData := RoomData{
 		ID:       "hex-loaded",
 		Type:     "wilderness",
 		Width:    10,
 		Height:   10,
 		GridType: "hex",
+		CubeEntities: map[string]EntityCubePlacement{
+			"ranger": {
+				EntityID:          "ranger",
+				EntityType:        "character",
+				CubePosition:      CubeCoordinate{X: 2, Y: -4, Z: 2}, // Valid cube coord (2 + -4 + 2 = 0)
+				Size:              1,
+				BlocksMovement:    true,
+				BlocksLineOfSight: false,
+			},
+		},
 	}
 
 	// Create game context
@@ -239,6 +298,70 @@ func (s *RoomDataTestSuite) TestLoadRoomFromContextHex() {
 	// Verify hex grid
 	grid := room.GetGrid()
 	s.Equal(GridShapeHex, grid.GetShape())
+
+	// Verify entity was loaded
+	entities := room.GetAllEntities()
+	s.Len(entities, 1)
+
+	rangerEntity, exists := entities["ranger"]
+	s.True(exists)
+	s.Equal("ranger", rangerEntity.GetID())
+	s.Equal(core.EntityType("character"), rangerEntity.GetType())
+
+	// Verify position was converted from cube to offset
+	pos, ok := room.GetEntityPosition("ranger")
+	s.True(ok)
+	// Position should be valid (converted from cube coordinates)
+	s.NotNil(pos)
+}
+
+func (s *RoomDataTestSuite) TestLoadRoomFromContextHexInvalidCubeCoordinate() {
+	// Create hex room data with an invalid cube coordinate (x + y + z != 0)
+	roomData := RoomData{
+		ID:       "hex-invalid",
+		Type:     "wilderness",
+		Width:    10,
+		Height:   10,
+		GridType: "hex",
+		CubeEntities: map[string]EntityCubePlacement{
+			"valid-entity": {
+				EntityID:          "valid-entity",
+				EntityType:        "character",
+				CubePosition:      CubeCoordinate{X: 2, Y: -4, Z: 2}, // Valid: 2 + -4 + 2 = 0
+				Size:              1,
+				BlocksMovement:    true,
+				BlocksLineOfSight: false,
+			},
+			"invalid-entity": {
+				EntityID:          "invalid-entity",
+				EntityType:        "monster",
+				CubePosition:      CubeCoordinate{X: 1, Y: 2, Z: 3}, // Invalid: 1 + 2 + 3 = 6 != 0
+				Size:              1,
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			},
+		},
+	}
+
+	// Create game context
+	gameCtx, err := game.NewContext(s.eventBus, roomData)
+	s.Require().NoError(err)
+
+	// Load room from context
+	room, err := LoadRoomFromContext(context.Background(), gameCtx)
+	s.Require().NoError(err)
+
+	// Only the valid entity should be loaded
+	entities := room.GetAllEntities()
+	s.Len(entities, 1, "Only valid cube coordinates should be loaded")
+
+	// Verify the valid entity was loaded
+	_, exists := entities["valid-entity"]
+	s.True(exists, "Valid entity should be loaded")
+
+	// Verify the invalid entity was skipped
+	_, exists = entities["invalid-entity"]
+	s.False(exists, "Invalid cube coordinate entity should be skipped")
 }
 
 func (s *RoomDataTestSuite) TestLoadRoomFromContextGridless() {
@@ -341,6 +464,71 @@ func (s *RoomDataTestSuite) TestRoundTripConversion() {
 	s.Equal(Position{X: 7, Y: 6}, pos)
 }
 
+func (s *RoomDataTestSuite) TestHexRoundTripConversion() {
+	// Create original hex room
+	originalRoom := NewBasicRoom(BasicRoomConfig{
+		ID:   "hex-round-trip",
+		Type: "battlefield",
+		Grid: NewHexGrid(HexGridConfig{
+			Width:  12,
+			Height: 10,
+		}),
+	})
+	originalRoom.ConnectToEventBus(s.eventBus)
+
+	// Add entities at specific positions
+	archer := &MockEntity{
+		id:                "archer",
+		entityType:        "character",
+		size:              1,
+		blocksMovement:    true,
+		blocksLineOfSight: false,
+	}
+	originalPos := Position{X: 5, Y: 3}
+	err := originalRoom.PlaceEntity(archer, originalPos)
+	s.Require().NoError(err)
+
+	// Convert to data
+	data := originalRoom.ToData()
+
+	// Verify data uses CubeEntities
+	s.Nil(data.Entities, "Hex room should not use Entities")
+	s.Len(data.CubeEntities, 1, "Hex room should use CubeEntities")
+
+	// Verify cube coordinate is valid
+	archerPlacement := data.CubeEntities["archer"]
+	s.Equal(0, archerPlacement.CubePosition.X+archerPlacement.CubePosition.Y+archerPlacement.CubePosition.Z,
+		"Cube coordinates must satisfy x + y + z = 0")
+
+	// Create new room from data
+	gameCtx, err := game.NewContext(s.eventBus, data)
+	s.Require().NoError(err)
+
+	loadedRoom, err := LoadRoomFromContext(context.Background(), gameCtx)
+	s.Require().NoError(err)
+
+	// Verify room properties match
+	s.Equal(originalRoom.GetID(), loadedRoom.GetID())
+	s.Equal(originalRoom.GetType(), loadedRoom.GetType())
+
+	// Verify grid type matches
+	s.Equal(GridShapeHex, loadedRoom.GetGrid().GetShape())
+
+	// Verify entity was loaded
+	loadedEntities := loadedRoom.GetAllEntities()
+	s.Len(loadedEntities, 1)
+
+	archerEntity, exists := loadedEntities["archer"]
+	s.True(exists)
+	s.Equal("archer", archerEntity.GetID())
+
+	// Verify entity position matches original (round-trip through cube coordinates)
+	loadedPos, ok := loadedRoom.GetEntityPosition("archer")
+	s.True(ok)
+	s.Equal(originalPos.X, loadedPos.X, "X position should match after round-trip")
+	s.Equal(originalPos.Y, loadedPos.Y, "Y position should match after round-trip")
+}
+
 func (s *RoomDataTestSuite) TestSpatialPropertiesPreserved() {
 	// Create room with entities that have different spatial properties
 	room := NewBasicRoom(BasicRoomConfig{
@@ -410,15 +598,15 @@ func (s *RoomDataTestSuite) TestSpatialPropertiesPreserved() {
 // TestHexFlatTopPersistence tests that hex orientation is properly persisted and loaded
 func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 	// Helper function to test hex orientation persistence
-	testHexOrientation := func(roomID, roomType string, width, height int, pointyTop bool, label string) {
+	testHexOrientation := func(roomID, roomType string, width, height int, orientation HexOrientation, label string) {
 		// Create hex room with specified orientation
 		room := NewBasicRoom(BasicRoomConfig{
 			ID:   roomID,
 			Type: roomType,
 			Grid: NewHexGrid(HexGridConfig{
-				Width:     float64(width),
-				Height:    float64(height),
-				PointyTop: pointyTop,
+				Width:       float64(width),
+				Height:      float64(height),
+				Orientation: orientation,
 			}),
 		})
 		room.ConnectToEventBus(s.eventBus)
@@ -428,8 +616,8 @@ func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 
 		// Verify hex orientation is captured
 		s.Equal("hex", data.GridType)
-		// HexFlatTop is opposite of pointyTop
-		s.Equal(!pointyTop, data.HexFlatTop)
+		// HexFlatTop should be true when orientation is flat-top
+		s.Equal(orientation == HexOrientationFlatTop, data.HexFlatTop)
 
 		// Load from data
 		gameCtx, err := game.NewContext(s.eventBus, data)
@@ -442,15 +630,15 @@ func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 		s.Equal(GridShapeHex, grid.GetShape())
 		hexGrid, ok := grid.(*HexGrid)
 		s.Require().True(ok)
-		s.Equal(pointyTop, hexGrid.GetOrientation(), label)
+		s.Equal(orientation, hexGrid.GetOrientation(), label)
 	}
 
 	s.Run("pointy-top hex grid persistence", func() {
-		testHexOrientation("pointy-hex", "battlefield", 8, 8, true, "Loaded grid should be pointy-top")
+		testHexOrientation("pointy-hex", "battlefield", 8, 8, HexOrientationPointyTop, "Loaded grid should be pointy-top")
 	})
 
 	s.Run("flat-top hex grid persistence", func() {
-		testHexOrientation("flat-hex", "campaign", 6, 6, false, "Loaded grid should be flat-top")
+		testHexOrientation("flat-hex", "campaign", 6, 6, HexOrientationFlatTop, "Loaded grid should be flat-top")
 	})
 
 	s.Run("hex grid defaults to pointy-top", func() {
@@ -475,7 +663,7 @@ func (s *RoomDataTestSuite) TestHexFlatTopPersistence() {
 		s.Equal(GridShapeHex, grid.GetShape())
 		hexGrid, ok := grid.(*HexGrid)
 		s.Require().True(ok)
-		s.True(hexGrid.GetOrientation(), "Hex grid should default to pointy-top")
+		s.Equal(HexOrientationPointyTop, hexGrid.GetOrientation(), "Hex grid should default to pointy-top")
 	})
 
 	s.Run("non-hex grids don't have HexFlatTop set", func() {

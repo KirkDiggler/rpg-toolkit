@@ -10,16 +10,23 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 type CharacterConditionsTestSuite struct {
@@ -37,6 +44,31 @@ func TestCharacterConditionsTestSuite(t *testing.T) {
 	suite.Run(t, new(CharacterConditionsTestSuite))
 }
 
+// addRageChargesToCharacter adds rage charges resource to a character for testing.
+// In production, this should be done when the barbarian class is assigned.
+func addRageChargesToCharacter(char *Character, level int) {
+	// Calculate rage uses based on barbarian level
+	maxUses := 2 // Default for level 1-2
+	switch {
+	case level >= 17:
+		maxUses = 6
+	case level >= 12:
+		maxUses = 5
+	case level >= 6:
+		maxUses = 4
+	case level >= 3:
+		maxUses = 3
+	}
+
+	rageResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          string(resources.RageCharges),
+		Maximum:     maxUses,
+		CharacterID: char.GetID(),
+		ResetType:   coreResources.ResetLongRest,
+	})
+	char.AddResource(resources.RageCharges, rageResource)
+}
+
 func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	// Create a barbarian with rage feature
 	draft := LoadDraftFromData(&DraftData{
@@ -46,11 +78,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -73,8 +113,14 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	s.Require().NoError(err)
 	s.Require().NotNil(char)
 
-	// Verify character has no conditions initially
-	s.Empty(char.GetConditions(), "Character should start with no conditions")
+	// Add rage charges resource (in production this would be done during class assignment)
+	addRageChargesToCharacter(char, 1)
+
+	// Verify character has only Unarmored Defense condition initially (from class grants)
+	initialConds := char.GetConditions()
+	s.Require().Len(initialConds, 1, "Barbarian should start with Unarmored Defense condition")
+	_, isUnarmoredDefense := initialConds[0].(*conditions.UnarmoredDefenseCondition)
+	s.True(isUnarmoredDefense, "Initial condition should be Unarmored Defense")
 
 	// Get rage feature
 	rageFeature := char.GetFeature("rage")
@@ -84,14 +130,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
 	s.Require().NoError(err)
 
-	// Verify character now has the raging condition
+	// Verify character now has both Unarmored Defense and Raging conditions
 	conds := char.GetConditions()
-	s.Len(conds, 1, "Character should have one condition after rage")
+	s.Len(conds, 2, "Character should have two conditions after rage (Unarmored Defense + Raging)")
 
-	// Type assert to verify it's the raging condition
-	ragingCond, ok := conds[0].(*conditions.RagingCondition)
-	s.True(ok, "Condition should be *RagingCondition")
-	s.NotNil(ragingCond)
+	// Find and verify the raging condition
+	var ragingCond *conditions.RagingCondition
+	for _, c := range conds {
+		if rc, ok := c.(*conditions.RagingCondition); ok {
+			ragingCond = rc
+			break
+		}
+	}
+	s.Require().NotNil(ragingCond, "Should have raging condition")
 	s.Equal("char-1", ragingCond.CharacterID)
 	s.Equal(2, ragingCond.DamageBonus) // Level 1 barbarian = +2 rage damage
 	s.Equal("rage", ragingCond.Source)
@@ -106,11 +157,25 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 
 	// Minimal setup
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Test"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Fighter,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -126,6 +191,11 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
+
+	// Capture initial conditions - Fighter has a FightingStyleCondition from choosing Defense
+	initialConditions := char.GetConditions()
+	initialCount := len(initialConditions)
+	s.Require().Equal(1, initialCount, "Fighter should have 1 condition (FightingStyleCondition) at start")
 
 	// Publish a condition for a DIFFERENT character
 	differentChar := &DummyEntity{id: "char-2"}
@@ -147,8 +217,15 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 	})
 	s.Require().NoError(err)
 
-	// Verify our character did NOT receive the condition
-	s.Empty(char.GetConditions(), "Character should ignore conditions for other characters")
+	// Verify our character did NOT receive the raging condition
+	// It should still only have its initial FightingStyleCondition
+	s.Len(char.GetConditions(), initialCount, "Character should ignore conditions for other characters")
+
+	// Verify no raging condition was added
+	for _, cond := range char.GetConditions() {
+		_, isRaging := cond.(*conditions.RagingCondition)
+		s.False(isRaging, "Character should NOT have raging condition from another character")
+	}
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
@@ -160,11 +237,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -182,14 +267,17 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 
+	// Add rage charges resource (in production this would be done during class assignment)
+	addRageChargesToCharacter(char, 1)
+
 	// Get rage feature and activate it
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
 	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
 	s.Require().NoError(err)
 
-	// Verify character has raging condition
-	s.Len(char.GetConditions(), 1, "Character should have raging condition")
+	// Verify character has both Unarmored Defense (from grants) and Raging (from activation)
+	s.Len(char.GetConditions(), 2, "Character should have Unarmored Defense + Raging conditions")
 
 	// Simulate rage expiring by publishing turn end event without combat activity
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
@@ -199,8 +287,11 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	})
 	s.Require().NoError(err)
 
-	// Verify condition was removed from character's list
-	s.Empty(char.GetConditions(), "Character should have no conditions after rage expires")
+	// Verify only Unarmored Defense remains after rage expires
+	remainingConds := char.GetConditions()
+	s.Len(remainingConds, 1, "Character should have 1 condition (Unarmored Defense) after rage expires")
+	_, isUnarmoredDefense := remainingConds[0].(*conditions.UnarmoredDefenseCondition)
+	s.True(isUnarmoredDefense, "Remaining condition should be Unarmored Defense")
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemovals() {
@@ -212,11 +303,19 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 
 	// Setup character
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Conan"}))
-	s.Require().NoError(draft.SetRace(&SetRaceInput{RaceID: races.Human}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
 	s.Require().NoError(draft.SetClass(&SetClassInput{
 		ClassID: classes.Barbarian,
 		Choices: ClassChoices{
 			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
 		},
 	}))
 	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
@@ -234,14 +333,17 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	char, err := draft.ToCharacter(s.ctx, "char-1", s.bus)
 	s.Require().NoError(err)
 
+	// Add rage charges resource (in production this would be done during class assignment)
+	addRageChargesToCharacter(char, 1)
+
 	// Activate rage
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
 	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
 	s.Require().NoError(err)
 
-	// Verify character has raging condition
-	s.Len(char.GetConditions(), 1, "Character should have raging condition")
+	// Verify character has Unarmored Defense + Raging conditions
+	s.Len(char.GetConditions(), 2, "Character should have Unarmored Defense + Raging conditions")
 
 	// Publish removal event for a DIFFERENT character
 	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
@@ -252,8 +354,77 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	})
 	s.Require().NoError(err)
 
-	// Verify our character still has the condition
-	s.Len(char.GetConditions(), 1, "Character should still have raging condition")
+	// Verify our character still has both conditions
+	s.Len(char.GetConditions(), 2, "Character should still have both conditions")
+}
+
+func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
+	// Create a monk
+	draft := LoadDraftFromData(&DraftData{
+		ID:       "test-monk",
+		PlayerID: "player1",
+	})
+
+	// Setup character
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Sensei"}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:  races.Human,
+		Choices: RaceChoices{Languages: []languages.Language{languages.Elvish}},
+	}))
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Monk,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+			Tools: []shared.SelectionID{"brewers-supplies"},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Hermit,
+		Choices:      BackgroundChoices{},
+	}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 10,
+			abilities.DEX: 16, // +3
+			abilities.CON: 12, // +1
+			abilities.INT: 10,
+			abilities.WIS: 14, // +2
+			abilities.CHA: 8,
+		},
+	}))
+
+	// Convert to character with event bus
+	char, err := draft.ToCharacter(s.ctx, "char-monk", s.bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	// Verify character has both Unarmored Defense and Martial Arts conditions
+	conds := char.GetConditions()
+	s.Require().Len(conds, 2, "Monk should start with Unarmored Defense and Martial Arts conditions")
+
+	// Find the conditions
+	var hasUnarmoredDefense, hasMartialArts bool
+	var martialArtsCond *conditions.MartialArtsCondition
+	for _, cond := range conds {
+		if _, ok := cond.(*conditions.UnarmoredDefenseCondition); ok {
+			hasUnarmoredDefense = true
+		}
+		if ma, ok := cond.(*conditions.MartialArtsCondition); ok {
+			hasMartialArts = true
+			martialArtsCond = ma
+		}
+	}
+
+	s.True(hasUnarmoredDefense, "Monk should have Unarmored Defense condition")
+	s.True(hasMartialArts, "Monk should have Martial Arts condition")
+
+	// Verify Martial Arts is configured for level 1
+	s.Require().NotNil(martialArtsCond)
+	s.Equal(1, martialArtsCond.MonkLevel, "Martial Arts should be configured for monk level 1")
 }
 
 // DummyEntity implements core.Entity for testing
