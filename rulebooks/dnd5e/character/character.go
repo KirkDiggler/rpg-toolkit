@@ -124,6 +124,39 @@ func (c *Character) GetLevel() int {
 	return c.level
 }
 
+// GetSpeed returns the character's base walking speed in feet from their race.
+// This is the base speed before condition modifiers (e.g., Unarmored Movement).
+// Condition-based speed modifiers are applied through the MovementChain.
+func (c *Character) GetSpeed() int {
+	raceData := races.GetData(c.raceID)
+	if raceData == nil {
+		return 30 // Default speed if race data not found
+	}
+	return raceData.Speed
+}
+
+// GetExtraAttacksCount returns the number of extra attacks granted by class features.
+// This is used by the Attack combat ability to determine total attacks per action.
+// 0 = 1 attack (normal), 1 = 2 attacks (Extra Attack), 2 = 3 attacks, etc.
+func (c *Character) GetExtraAttacksCount() int {
+	switch c.classID {
+	case classes.Fighter:
+		switch {
+		case c.level >= 20:
+			return 3
+		case c.level >= 11:
+			return 2
+		case c.level >= 5:
+			return 1
+		}
+	case classes.Barbarian, classes.Monk, classes.Paladin, classes.Ranger:
+		if c.level >= 5 {
+			return 1
+		}
+	}
+	return 0
+}
+
 // GetAbilityScore returns the character's ability score (including racial modifiers)
 func (c *Character) GetAbilityScore(ability abilities.Ability) int {
 	return c.abilityScores[ability]
