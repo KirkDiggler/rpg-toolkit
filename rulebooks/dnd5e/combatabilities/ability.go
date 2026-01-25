@@ -43,6 +43,8 @@ type CombatAbility interface {
 	Description() string
 	// ActionType returns the action economy cost to use this ability
 	ActionType() coreCombat.ActionType
+	// Ref returns the reference identifying this ability type
+	Ref() *core.Ref
 
 	// Persistence
 	// ToJSON converts the ability to JSON for persistence

@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // Action represents something a character can do (attack, dash, flurry strike).
@@ -28,6 +29,9 @@ type Action interface {
 
 	// Action economy cost
 	ActionType() coreCombat.ActionType
+
+	// CapacityType returns what capacity this action consumes (attacks, movement, etc.)
+	CapacityType() combat.CapacityType
 }
 
 // ActionHolder is implemented by entities that can hold actions.
