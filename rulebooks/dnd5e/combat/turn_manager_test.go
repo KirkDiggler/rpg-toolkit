@@ -2,6 +2,7 @@ package combat_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -41,7 +42,7 @@ func (l *turnManagerLookup) Get(id string) (combat.Combatant, error) {
 	if c, ok := l.combatants[id]; ok {
 		return c, nil
 	}
-	return nil, nil
+	return nil, fmt.Errorf("combatant not found: %s", id)
 }
 
 // TurnManagerTestSuite tests the TurnManager orchestration

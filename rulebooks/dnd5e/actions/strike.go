@@ -9,6 +9,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -146,6 +147,11 @@ func (s *Strike) ToJSON() (json.RawMessage, error) {
 // ActionType returns the action economy cost (free - uses come from Attack ability)
 func (s *Strike) ActionType() coreCombat.ActionType {
 	return coreCombat.ActionFree
+}
+
+// CapacityType returns that Strike consumes attack capacity
+func (s *Strike) CapacityType() combat.CapacityType {
+	return combat.CapacityAttack
 }
 
 // Compile-time check that Strike implements Action

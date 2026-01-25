@@ -9,6 +9,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -157,6 +158,11 @@ func (m *Move) ToJSON() (json.RawMessage, error) {
 // ActionType returns the action economy cost (free - movement is not an action)
 func (m *Move) ActionType() coreCombat.ActionType {
 	return coreCombat.ActionFree
+}
+
+// CapacityType returns that Move consumes movement capacity
+func (m *Move) CapacityType() combat.CapacityType {
+	return combat.CapacityMovement
 }
 
 // Compile-time check that Move implements Action

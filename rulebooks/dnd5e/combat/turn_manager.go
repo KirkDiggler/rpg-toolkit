@@ -5,6 +5,7 @@ package combat
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -46,6 +47,27 @@ type AbilityInfo struct {
 	ActionType coreCombat.ActionType
 }
 
+// CapacityType identifies what capacity an action consumes.
+type CapacityType string
+
+// CapacityType constants for different action capacity requirements.
+const (
+	// CapacityNone means the action has no capacity requirement.
+	CapacityNone CapacityType = ""
+
+	// CapacityAttack means the action consumes one attack from AttacksRemaining.
+	CapacityAttack CapacityType = "attack"
+
+	// CapacityMovement means the action consumes movement from MovementRemaining.
+	CapacityMovement CapacityType = "movement"
+
+	// CapacityOffHandAttack means the action consumes one off-hand attack.
+	CapacityOffHandAttack CapacityType = "off_hand_attack"
+
+	// CapacityFlurryStrike means the action consumes one flurry strike.
+	CapacityFlurryStrike CapacityType = "flurry_strike"
+)
+
 // ActionInfo provides metadata about an available action.
 type ActionInfo struct {
 	// ID is the unique identifier of this action instance.
@@ -53,6 +75,10 @@ type ActionInfo struct {
 
 	// ActionType is the action economy cost to use this action.
 	ActionType coreCombat.ActionType
+
+	// CapacityType indicates what capacity this action consumes when used.
+	// For example, Strike consumes attack capacity, Move consumes movement capacity.
+	CapacityType CapacityType
 
 	// IsTemporary indicates if this action was granted for the current turn only.
 	IsTemporary bool
@@ -110,19 +136,22 @@ type EndTurnResult struct {
 // TurnManager orchestrates a single combatant's turn in combat.
 // It manages the action economy, delegates to ResolveAttack and MoveEntity,
 // and publishes events for multiplayer broadcasting.
+// After EndTurn is called, the TurnManager must not be reused.
 type TurnManager struct {
 	character      CombatCharacter
 	economy        *ActionEconomy
-	ctx            context.Context
+	combatants     CombatantLookup
+	room           spatial.Room
 	bus            events.EventBus
 	roller         dice.Roller
 	mainHandWeapon *EquippedWeaponInfo
 	offHandWeapon  *EquippedWeaponInfo
 	turnStarted    bool
+	turnEnded      bool
 }
 
 // NewTurnManager creates a TurnManager for managing a combatant's turn.
-// The context is pre-built with CombatantLookup and Room for use throughout the turn.
+// Dependencies are stored and used to build context per-call.
 func NewTurnManager(input *NewTurnManagerInput) (*TurnManager, error) {
 	if input == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "NewTurnManagerInput is nil")
@@ -145,15 +174,11 @@ func NewTurnManager(input *NewTurnManagerInput) (*TurnManager, error) {
 		roller = dice.NewRoller()
 	}
 
-	// Pre-build context with combatant lookup and room
-	ctx := context.Background()
-	ctx = WithCombatantLookup(ctx, input.Combatants)
-	ctx = WithRoom(ctx, input.Room)
-
 	return &TurnManager{
 		character:      input.Character,
 		economy:        NewActionEconomy(),
-		ctx:            ctx,
+		combatants:     input.Combatants,
+		room:           input.Room,
 		bus:            input.EventBus,
 		roller:         roller,
 		mainHandWeapon: input.MainHandWeapon,
@@ -161,9 +186,55 @@ func NewTurnManager(input *NewTurnManagerInput) (*TurnManager, error) {
 	}, nil
 }
 
+// buildContext creates an operation context with combat dependencies.
+// Wraps the caller's context with CombatantLookup, Room, and TwoWeaponContext.
+func (tm *TurnManager) buildContext(ctx context.Context) context.Context {
+	ctx = WithCombatantLookup(ctx, tm.combatants)
+	ctx = WithRoom(ctx, tm.room)
+	ctx = WithTwoWeaponContext(ctx, &turnManagerTwoWeaponContext{
+		characterID:    tm.character.GetID(),
+		mainHandWeapon: tm.mainHandWeapon,
+		offHandWeapon:  tm.offHandWeapon,
+		economy:        tm.economy,
+	})
+	return ctx
+}
+
+// turnManagerTwoWeaponContext implements TwoWeaponContext for a single character's turn.
+type turnManagerTwoWeaponContext struct {
+	characterID    string
+	mainHandWeapon *EquippedWeaponInfo
+	offHandWeapon  *EquippedWeaponInfo
+	economy        *ActionEconomy
+}
+
+func (t *turnManagerTwoWeaponContext) GetMainHandWeapon(characterID string) *EquippedWeaponInfo {
+	if characterID != t.characterID {
+		return nil
+	}
+	return t.mainHandWeapon
+}
+
+func (t *turnManagerTwoWeaponContext) GetOffHandWeapon(characterID string) *EquippedWeaponInfo {
+	if characterID != t.characterID {
+		return nil
+	}
+	return t.offHandWeapon
+}
+
+func (t *turnManagerTwoWeaponContext) GetActionEconomy(characterID string) *ActionEconomy {
+	if characterID != t.characterID {
+		return nil
+	}
+	return t.economy
+}
+
 // StartTurn initializes the action economy and publishes a TurnStartEvent.
 // Must be called before any other turn actions.
 func (tm *TurnManager) StartTurn(ctx context.Context) (*StartTurnResult, error) {
+	if tm.turnEnded {
+		return nil, rpgerr.New(rpgerr.CodeInvalidState, "turn manager cannot be reused after EndTurn")
+	}
 	if tm.turnStarted {
 		return nil, rpgerr.New(rpgerr.CodeInvalidState, "turn already started")
 	}
@@ -173,9 +244,11 @@ func (tm *TurnManager) StartTurn(ctx context.Context) (*StartTurnResult, error) 
 
 	// Publish turn start event
 	topic := dnd5eEvents.TurnStartTopic.On(tm.bus)
-	_ = topic.Publish(ctx, dnd5eEvents.TurnStartEvent{
+	if err := topic.Publish(ctx, dnd5eEvents.TurnStartEvent{
 		CharacterID: tm.character.GetID(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("failed to publish turn start event: %w", err)
+	}
 
 	return &StartTurnResult{
 		Economy: tm.economy,
@@ -183,24 +256,29 @@ func (tm *TurnManager) StartTurn(ctx context.Context) (*StartTurnResult, error) 
 }
 
 // EndTurn publishes a TurnEndEvent and cleans up temporary actions/conditions.
-// After calling EndTurn, the TurnManager should not be reused.
+// After calling EndTurn, the TurnManager must not be reused.
 func (tm *TurnManager) EndTurn(ctx context.Context) (*EndTurnResult, error) {
+	if tm.turnEnded {
+		return nil, rpgerr.New(rpgerr.CodeInvalidState, "turn already ended")
+	}
 	if !tm.turnStarted {
 		return nil, rpgerr.New(rpgerr.CodeInvalidState, "turn not started")
 	}
 
 	// Publish turn end event
 	topic := dnd5eEvents.TurnEndTopic.On(tm.bus)
-	_ = topic.Publish(ctx, dnd5eEvents.TurnEndEvent{
+	if err := topic.Publish(ctx, dnd5eEvents.TurnEndEvent{
 		CharacterID: tm.character.GetID(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("failed to publish turn end event: %w", err)
+	}
 
 	// Cleanup temporary actions/conditions
 	if err := tm.character.Cleanup(ctx); err != nil {
 		return nil, err
 	}
 
-	tm.turnStarted = false
+	tm.turnEnded = true
 
 	return &EndTurnResult{
 		CharacterID: tm.character.GetID(),

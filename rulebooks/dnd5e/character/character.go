@@ -597,16 +597,21 @@ func (c *Character) ActivateCombatAbility(ctx context.Context, input *combat.Act
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "AbilityRef is required")
 	}
 
-	// Find the ability by matching ref ID
+	// Find the ability by matching its ref (module/type/id), not the instance ID
 	var ability combatabilities.CombatAbility
 	for _, a := range c.combatAbilities {
-		if a.GetID() == input.AbilityRef.ID {
+		aRef := a.Ref()
+		if aRef != nil &&
+			aRef.Module == input.AbilityRef.Module &&
+			aRef.Type == input.AbilityRef.Type &&
+			aRef.ID == input.AbilityRef.ID {
 			ability = a
 			break
 		}
 	}
 	if ability == nil {
-		return rpgerr.Newf(rpgerr.CodeNotFound, "combat ability %s not found", input.AbilityRef.ID)
+		return rpgerr.Newf(rpgerr.CodeNotFound, "combat ability ref %s/%s/%s not found",
+			input.AbilityRef.Module, input.AbilityRef.Type, input.AbilityRef.ID)
 	}
 
 	// Build CombatAbilityInput from ActivateAbilityInput
@@ -645,9 +650,10 @@ func (c *Character) GetActionInfos() []combat.ActionInfo {
 	infos := make([]combat.ActionInfo, 0, len(c.actions))
 	for _, a := range c.actions {
 		infos = append(infos, combat.ActionInfo{
-			ID:          a.GetID(),
-			ActionType:  a.ActionType(),
-			IsTemporary: a.IsTemporary(),
+			ID:           a.GetID(),
+			ActionType:   a.ActionType(),
+			CapacityType: a.CapacityType(),
+			IsTemporary:  a.IsTemporary(),
 		})
 	}
 	return infos

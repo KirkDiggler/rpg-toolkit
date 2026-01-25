@@ -9,6 +9,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -209,6 +210,11 @@ func (f *FlurryStrike) ToJSON() (json.RawMessage, error) {
 // ActionType returns the action economy cost (free - uses come from Flurry of Blows bonus action)
 func (f *FlurryStrike) ActionType() coreCombat.ActionType {
 	return coreCombat.ActionFree
+}
+
+// CapacityType returns that FlurryStrike consumes flurry strike capacity
+func (f *FlurryStrike) CapacityType() combat.CapacityType {
+	return combat.CapacityFlurryStrike
 }
 
 // Compile-time check that FlurryStrike implements Action

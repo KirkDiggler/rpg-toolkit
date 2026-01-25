@@ -25,6 +25,9 @@ type UseAbilityResult struct {
 // UseAbility activates a combat ability by its Ref, consuming the appropriate action economy
 // resource and granting capacity (attacks, movement, conditions, etc.).
 func (tm *TurnManager) UseAbility(ctx context.Context, input *UseAbilityInput) (*UseAbilityResult, error) {
+	if tm.turnEnded {
+		return nil, rpgerr.New(rpgerr.CodeInvalidState, "turn already ended")
+	}
 	if !tm.turnStarted {
 		return nil, rpgerr.New(rpgerr.CodeInvalidState, "turn not started")
 	}

@@ -93,20 +93,26 @@ func (tm *TurnManager) canUseAbility(info AbilityInfo) (bool, string) {
 	return true, ""
 }
 
-// canUseAction checks if an action can be taken based on its action type cost.
+// canUseAction checks if an action can be taken based on its capacity requirements.
+// Actions consume capacity (attacks, movement, etc.) rather than action economy directly.
 func (tm *TurnManager) canUseAction(info ActionInfo) (bool, string) {
-	switch info.ActionType {
-	case coreCombat.ActionStandard:
+	// Check capacity requirements
+	switch info.CapacityType {
+	case CapacityAttack:
 		if !tm.economy.CanUseAttack() {
 			return false, "no attacks remaining"
 		}
-	case coreCombat.ActionBonus:
+	case CapacityMovement:
+		if !tm.economy.CanUseMovement(int(FeetPerGridUnit)) {
+			return false, "insufficient movement remaining"
+		}
+	case CapacityOffHandAttack:
 		if !tm.economy.CanUseOffHandAttack() {
 			return false, "no off-hand attacks remaining"
 		}
-	case coreCombat.ActionMovement:
-		if !tm.economy.CanUseMovement(int(FeetPerGridUnit)) {
-			return false, "insufficient movement remaining"
+	case CapacityFlurryStrike:
+		if !tm.economy.CanUseFlurryStrike() {
+			return false, "no flurry strikes remaining"
 		}
 	}
 	return true, ""

@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -77,6 +78,10 @@ func (m *mockAction) ToJSON() (json.RawMessage, error) {
 
 func (m *mockAction) ActionType() coreCombat.ActionType {
 	return coreCombat.ActionBonus
+}
+
+func (m *mockAction) CapacityType() combat.CapacityType {
+	return combat.CapacityNone
 }
 
 // ActionHolderTestSuite tests the ActionHolder implementation on Character

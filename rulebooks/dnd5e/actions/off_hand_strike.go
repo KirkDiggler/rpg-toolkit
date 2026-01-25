@@ -9,6 +9,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -223,6 +224,11 @@ func (o *OffHandStrike) ToJSON() (json.RawMessage, error) {
 // ActionType returns the action economy cost (bonus action for off-hand attacks)
 func (o *OffHandStrike) ActionType() coreCombat.ActionType {
 	return coreCombat.ActionBonus
+}
+
+// CapacityType returns that OffHandStrike consumes off-hand attack capacity
+func (o *OffHandStrike) CapacityType() combat.CapacityType {
+	return combat.CapacityOffHandAttack
 }
 
 // Compile-time check that OffHandStrike implements Action
