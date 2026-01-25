@@ -3,6 +3,7 @@ package combat_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -1188,9 +1189,13 @@ func (s *TurnManagerIntegrationSuite) TestAvailabilityQueries() {
 		s.Require().NotNil(dashAvail)
 		s.True(dashAvail.CanUse, "Dash should be available")
 
-		// Check available actions - Strike should NOT be available (no attacks granted yet)
+		// Check available actions - Strike should NOT be usable (no attacks granted yet)
 		actions := tm.GetAvailableActions(s.ctx)
 		s.T().Logf("Available actions before Attack ability: %d", len(actions))
+		strikeBeforeAttack := findAction(actions, "strike")
+		if strikeBeforeAttack != nil {
+			s.False(strikeBeforeAttack.CanUse, "Strike should NOT be usable before Attack ability")
+		}
 
 		// Use Attack ability
 		_, err = tm.UseAbility(s.ctx, &combat.UseAbilityInput{
@@ -1205,9 +1210,13 @@ func (s *TurnManagerIntegrationSuite) TestAvailabilityQueries() {
 		s.False(attackAvail.CanUse, "Attack should NOT be available (action spent)")
 		s.T().Logf("Attack availability after use: CanUse=%v, Reason=%s", attackAvail.CanUse, attackAvail.Reason)
 
-		// Check actions again - Strike SHOULD be available (attacks granted)
+		// Check actions again - Strike SHOULD be usable (attacks granted)
 		actions = tm.GetAvailableActions(s.ctx)
 		s.T().Logf("Available actions after Attack ability: %d", len(actions))
+		strikeAfterAttack := findAction(actions, "strike")
+		if strikeAfterAttack != nil {
+			s.True(strikeAfterAttack.CanUse, "Strike SHOULD be usable after Attack ability")
+		}
 
 		// Consume all attacks
 		s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(5, nil).Times(2) // Two misses
@@ -1356,27 +1365,14 @@ func findAbility(abilities []combat.AvailableAbility, idSuffix string) *combat.A
 	return nil
 }
 
-// Helper to find action by ID suffix
+// Helper to find action by ID substring
 func findAction(actions []combat.AvailableAction, idContains string) *combat.AvailableAction {
 	for i := range actions {
-		if contains(actions[i].Info.ID, idContains) {
+		if strings.Contains(actions[i].Info.ID, idContains) {
 			return &actions[i]
 		}
 	}
 	return nil
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 1; i < len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestTurnManagerIntegrationSuite(t *testing.T) {
