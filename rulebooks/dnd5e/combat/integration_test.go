@@ -15,15 +15,18 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // integrationLookup provides combatant lookup for integration tests
@@ -887,4 +890,495 @@ func (m *mockCombatantTarget) ApplyDamage(_ context.Context, input *combat.Apply
 
 func TestCombatIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(CombatIntegrationSuite))
+}
+
+// =============================================================================
+// TurnManager Integration Suite
+// =============================================================================
+
+// TurnManagerIntegrationSuite tests TurnManager with real components
+type TurnManagerIntegrationSuite struct {
+	suite.Suite
+	ctrl       *gomock.Controller
+	ctx        context.Context
+	bus        events.EventBus
+	mockRoller *mock_dice.MockRoller
+	lookup     *integrationLookup
+	room       spatial.Room
+
+	fighter *character.Character
+	goblin  *monster.Monster
+	weapon  *weapons.Weapon
+}
+
+func (s *TurnManagerIntegrationSuite) SetupTest() {
+	s.ctrl = gomock.NewController(s.T())
+	s.bus = events.NewEventBus()
+	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	s.lookup = newIntegrationLookup()
+	s.ctx = context.Background()
+
+	// Create a 10x10 square grid room
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
+		Width:  10,
+		Height: 10,
+	})
+	s.room = spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "combat-room",
+		Type: "combat",
+		Grid: grid,
+	})
+}
+
+func (s *TurnManagerIntegrationSuite) SetupSubTest() {
+	s.bus = events.NewEventBus()
+	s.fighter = s.createFighter()
+	s.goblin = s.createGoblin()
+	s.weapon = s.createLongsword()
+
+	s.lookup = newIntegrationLookup()
+	s.lookup.Add(s.fighter)
+	s.lookup.Add(s.goblin)
+
+	// Place entities in room - fighter at (2,2), goblin at (3,2) (adjacent)
+	_ = s.room.PlaceEntity(s.fighter, spatial.Position{X: 2, Y: 2})
+	_ = s.room.PlaceEntity(s.goblin, spatial.Position{X: 3, Y: 2})
+}
+
+func (s *TurnManagerIntegrationSuite) TearDownSubTest() {
+	_ = s.room.RemoveEntity(s.fighter.GetID())
+	_ = s.room.RemoveEntity(s.goblin.GetID())
+	if s.fighter != nil {
+		_ = s.fighter.Cleanup(s.ctx)
+	}
+}
+
+func (s *TurnManagerIntegrationSuite) TearDownTest() {
+	s.ctrl.Finish()
+}
+
+// createFighter creates a level 5 fighter with Extra Attack
+func (s *TurnManagerIntegrationSuite) createFighter() *character.Character {
+	data := &character.Data{
+		ID:               "fighter-1",
+		PlayerID:         "player-1",
+		Name:             "Sir Reginald",
+		Level:            5,
+		ProficiencyBonus: 3,
+		RaceID:           races.Human,
+		ClassID:          classes.Fighter,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 18, // +4
+			abilities.DEX: 14, // +2
+			abilities.CON: 16, // +3
+			abilities.INT: 10, // +0
+			abilities.WIS: 12, // +1
+			abilities.CHA: 10, // +0
+		},
+		HitPoints:    44,
+		MaxHitPoints: 44,
+		ArmorClass:   18,
+		Skills: map[skills.Skill]shared.ProficiencyLevel{
+			skills.Athletics: shared.Proficient,
+		},
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+			abilities.CON: shared.Proficient,
+		},
+	}
+
+	char, err := character.LoadFromData(s.ctx, data, s.bus)
+	s.Require().NoError(err)
+
+	// Add standard combat abilities
+	s.Require().NoError(char.AddCombatAbility(combatabilities.NewAttack("attack")))
+	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDash("dash")))
+	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDisengage("disengage")))
+	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDodge("dodge")))
+
+	return char
+}
+
+// createGoblin creates a goblin monster
+func (s *TurnManagerIntegrationSuite) createGoblin() *monster.Monster {
+	return monster.New(monster.Config{
+		ID:   "goblin-1",
+		Name: "Goblin Scout",
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 8,  // -1
+			abilities.DEX: 14, // +2
+			abilities.CON: 10, // +0
+			abilities.INT: 10, // +0
+			abilities.WIS: 8,  // -1
+			abilities.CHA: 8,  // -1
+		},
+		AC: 13,
+		HP: 7,
+	})
+}
+
+func (s *TurnManagerIntegrationSuite) createLongsword() *weapons.Weapon {
+	weapon, _ := weapons.GetByID(weapons.Longsword)
+	return &weapon
+}
+
+func (s *TurnManagerIntegrationSuite) createTurnManager() *combat.TurnManager {
+	tm, err := combat.NewTurnManager(&combat.NewTurnManagerInput{
+		Character:  s.fighter,
+		Combatants: s.lookup,
+		Room:       s.room,
+		EventBus:   s.bus,
+		Roller:     s.mockRoller,
+	})
+	s.Require().NoError(err)
+	return tm
+}
+
+// Test: Complete fighter turn with Extra Attack (2 strikes) and movement
+func (s *TurnManagerIntegrationSuite) TestFighterFullTurn() {
+	s.Run("Fighter takes full turn: Attack ability -> 2 strikes -> move", func() {
+		s.T().Log("=== Fighter Full Turn Integration Test ===")
+		s.T().Logf("Fighter: %s (Level %d, Extra Attack)", s.fighter.GetName(), s.fighter.GetLevel())
+		s.T().Logf("Target: Goblin (AC 13, HP 7)")
+		s.T().Log("")
+
+		tm := s.createTurnManager()
+
+		// Track events
+		var turnStarted, turnEnded bool
+
+		startTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
+		_, _ = startTopic.Subscribe(s.ctx, func(_ context.Context, _ dnd5eEvents.TurnStartEvent) error {
+			turnStarted = true
+			return nil
+		})
+
+		endTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+		_, _ = endTopic.Subscribe(s.ctx, func(_ context.Context, _ dnd5eEvents.TurnEndEvent) error {
+			turnEnded = true
+			return nil
+		})
+
+		// 1. Start turn
+		s.T().Log("→ Starting turn")
+		startResult, err := tm.StartTurn(s.ctx)
+		s.Require().NoError(err)
+		s.True(turnStarted, "TurnStartEvent should be published")
+		s.Equal(30, startResult.Economy.MovementRemaining, "Fighter has 30ft movement")
+		s.Equal(1, startResult.Economy.ActionsRemaining, "Has 1 action")
+		s.T().Logf("  Economy: %d action, %d movement", startResult.Economy.ActionsRemaining, startResult.Economy.MovementRemaining)
+		s.T().Log("")
+
+		// 2. Use Attack ability (grants 2 attacks for level 5 fighter)
+		s.T().Log("→ Using Attack ability")
+		abilityResult, err := tm.UseAbility(s.ctx, &combat.UseAbilityInput{
+			AbilityRef: refs.CombatAbilities.Attack(),
+		})
+		s.Require().NoError(err)
+		s.Equal(2, abilityResult.Economy.AttacksRemaining, "Extra Attack grants 2 attacks")
+		s.Equal(0, abilityResult.Economy.ActionsRemaining, "Action consumed")
+		s.T().Logf("  Granted %d attacks (1 base + 1 Extra Attack)", abilityResult.Economy.AttacksRemaining)
+		s.T().Log("")
+
+		// 3. First strike - mock dice for hit
+		s.T().Log("→ First Strike at Goblin")
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(15, nil).Times(1)          // Attack roll: 15 + 7 = 22 vs AC 13
+		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 8).Return([]int{6}, nil).Times(1) // Damage: 1d8
+
+		strike1, err := tm.Strike(s.ctx, &combat.StrikeInput{
+			TargetID: s.goblin.GetID(),
+			Weapon:   s.weapon,
+		})
+		s.Require().NoError(err)
+		s.True(strike1.Hit, "First strike should hit (22 vs AC 13)")
+		expectedDamage1 := 6 + 4 // 1d8(6) + STR(4)
+		s.Equal(expectedDamage1, strike1.TotalDamage)
+		s.T().Logf("  Attack: 1d20(%d) + STR(%d) + Prof(%d) = %d vs AC 13 → HIT", 15, 4, 3, 22)
+		s.T().Logf("  Damage: 1d8(%d) + STR(%d) = %d", 6, 4, expectedDamage1)
+		s.T().Log("")
+
+		// Check economy after first strike
+		economy := tm.GetEconomy()
+		s.Equal(1, economy.AttacksRemaining, "1 attack remaining after first strike")
+
+		// 4. Second strike - mock dice for hit
+		s.T().Log("→ Second Strike at Goblin")
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(12, nil).Times(1)          // Attack roll: 12 + 7 = 19 vs AC 13
+		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 8).Return([]int{4}, nil).Times(1) // Damage: 1d8
+
+		strike2, err := tm.Strike(s.ctx, &combat.StrikeInput{
+			TargetID: s.goblin.GetID(),
+			Weapon:   s.weapon,
+		})
+		s.Require().NoError(err)
+		s.True(strike2.Hit, "Second strike should hit (19 vs AC 13)")
+		expectedDamage2 := 4 + 4 // 1d8(4) + STR(4)
+		s.Equal(expectedDamage2, strike2.TotalDamage)
+		s.T().Logf("  Attack: 1d20(%d) + STR(%d) + Prof(%d) = %d vs AC 13 → HIT", 12, 4, 3, 19)
+		s.T().Logf("  Damage: 1d8(%d) + STR(%d) = %d", 4, 4, expectedDamage2)
+		s.T().Log("")
+
+		// Check economy - no attacks remaining
+		economy = tm.GetEconomy()
+		s.Equal(0, economy.AttacksRemaining, "No attacks remaining after second strike")
+
+		// 5. Move - fighter moves from (2,2) to (4,2) (10 feet)
+		s.T().Log("→ Moving 10 feet")
+		currentPos, _ := s.room.GetEntityPosition(s.fighter.GetID())
+		s.Equal(float64(2), currentPos.X)
+		s.Equal(float64(2), currentPos.Y)
+
+		path := []spatial.Position{
+			{X: 2, Y: 2}, // Current position
+			{X: 3, Y: 2}, // Step 1 (through goblin's space - allowed for allies in this test)
+			{X: 4, Y: 2}, // Step 2 - destination
+		}
+
+		moveResult, err := tm.Move(s.ctx, &combat.MoveInput{
+			Path: path,
+		})
+		s.Require().NoError(err)
+		s.Equal(2, moveResult.StepsCompleted)
+		s.T().Logf("  Moved from (%d,%d) to (%d,%d)", 2, 2, 4, 2)
+		s.T().Log("")
+
+		// Verify new position (moved from 2,2 to 4,2 - same row)
+		newPos, _ := s.room.GetEntityPosition(s.fighter.GetID())
+		s.Equal(float64(4), newPos.X)
+		s.Equal(float64(2), newPos.Y)
+
+		// Check movement remaining
+		economy = tm.GetEconomy()
+		s.Equal(20, economy.MovementRemaining, "20ft remaining after 10ft move")
+
+		// 6. End turn
+		s.T().Log("→ Ending turn")
+		endResult, err := tm.EndTurn(s.ctx)
+		s.Require().NoError(err)
+		s.True(turnEnded, "TurnEndEvent should be published")
+		s.Equal(s.fighter.GetID(), endResult.CharacterID)
+		s.T().Log("")
+
+		s.T().Log("=== Summary ===")
+		s.T().Logf("Total damage dealt: %d", expectedDamage1+expectedDamage2)
+		s.T().Logf("Movement used: 10ft")
+		s.T().Log("✓ Fighter full turn integration test passed")
+	})
+}
+
+// Test: Available abilities/actions reflect economy state
+func (s *TurnManagerIntegrationSuite) TestAvailabilityQueries() {
+	s.Run("GetAvailableAbilities and GetAvailableActions reflect economy", func() {
+		s.T().Log("=== Availability Queries Integration Test ===")
+
+		tm := s.createTurnManager()
+		_, err := tm.StartTurn(s.ctx)
+		s.Require().NoError(err)
+
+		// Check available abilities at start
+		abilities := tm.GetAvailableAbilities(s.ctx)
+		s.T().Logf("Available abilities at turn start: %d", len(abilities))
+
+		// All abilities should be available (have action/bonus)
+		attackAvail := findAbility(abilities, "attack")
+		s.Require().NotNil(attackAvail)
+		s.True(attackAvail.CanUse, "Attack should be available")
+
+		dashAvail := findAbility(abilities, "dash")
+		s.Require().NotNil(dashAvail)
+		s.True(dashAvail.CanUse, "Dash should be available")
+
+		// Check available actions - Strike should NOT be available (no attacks granted yet)
+		actions := tm.GetAvailableActions(s.ctx)
+		s.T().Logf("Available actions before Attack ability: %d", len(actions))
+
+		// Use Attack ability
+		_, err = tm.UseAbility(s.ctx, &combat.UseAbilityInput{
+			AbilityRef: refs.CombatAbilities.Attack(),
+		})
+		s.Require().NoError(err)
+
+		// Now check abilities again - Attack should NOT be available (no action remaining)
+		abilities = tm.GetAvailableAbilities(s.ctx)
+		attackAvail = findAbility(abilities, "attack")
+		s.Require().NotNil(attackAvail)
+		s.False(attackAvail.CanUse, "Attack should NOT be available (action spent)")
+		s.T().Logf("Attack availability after use: CanUse=%v, Reason=%s", attackAvail.CanUse, attackAvail.Reason)
+
+		// Check actions again - Strike SHOULD be available (attacks granted)
+		actions = tm.GetAvailableActions(s.ctx)
+		s.T().Logf("Available actions after Attack ability: %d", len(actions))
+
+		// Consume all attacks
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(5, nil).Times(2) // Two misses
+
+		_, _ = tm.Strike(s.ctx, &combat.StrikeInput{TargetID: s.goblin.GetID(), Weapon: s.weapon})
+		_, _ = tm.Strike(s.ctx, &combat.StrikeInput{TargetID: s.goblin.GetID(), Weapon: s.weapon})
+
+		// Now Strike should NOT be available
+		actions = tm.GetAvailableActions(s.ctx)
+		strikeAvail := findAction(actions, "strike")
+		if strikeAvail != nil {
+			s.False(strikeAvail.CanUse, "Strike should NOT be available (no attacks remaining)")
+			s.T().Logf("Strike availability after exhaustion: CanUse=%v, Reason=%s", strikeAvail.CanUse, strikeAvail.Reason)
+		}
+
+		_, _ = tm.EndTurn(s.ctx)
+		s.T().Log("✓ Availability queries integration test passed")
+	})
+}
+
+// Test: Dash ability doubles movement
+func (s *TurnManagerIntegrationSuite) TestDashDoublesMovement() {
+	s.Run("Dash ability grants extra movement equal to speed", func() {
+		s.T().Log("=== Dash Integration Test ===")
+
+		tm := s.createTurnManager()
+		startResult, err := tm.StartTurn(s.ctx)
+		s.Require().NoError(err)
+
+		initialMovement := startResult.Economy.MovementRemaining
+		s.T().Logf("Initial movement: %d ft", initialMovement)
+
+		// Use Dash ability
+		dashResult, err := tm.UseAbility(s.ctx, &combat.UseAbilityInput{
+			AbilityRef: refs.CombatAbilities.Dash(),
+		})
+		s.Require().NoError(err)
+
+		// Movement should be doubled
+		expectedMovement := initialMovement * 2
+		s.Equal(expectedMovement, dashResult.Economy.MovementRemaining)
+		s.T().Logf("Movement after Dash: %d ft (doubled)", dashResult.Economy.MovementRemaining)
+
+		_, _ = tm.EndTurn(s.ctx)
+		s.T().Log("✓ Dash integration test passed")
+	})
+}
+
+// Test: Dodge ability consumes action and activates
+func (s *TurnManagerIntegrationSuite) TestDodgeConsumesAction() {
+	s.Run("Dodge ability consumes action and publishes event", func() {
+		s.T().Log("=== Dodge Integration Test ===")
+
+		// Track if DodgeActivatedEvent was published
+		dodgeActivated := false
+		dodgeTopic := dnd5eEvents.DodgeActivatedTopic.On(s.bus)
+		_, err := dodgeTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DodgeActivatedEvent) error {
+			if event.CharacterID == s.fighter.GetID() {
+				dodgeActivated = true
+			}
+			return nil
+		})
+		s.Require().NoError(err)
+
+		tm := s.createTurnManager()
+		result, err := tm.StartTurn(s.ctx)
+		s.Require().NoError(err)
+		s.Equal(1, result.Economy.ActionsRemaining)
+		s.T().Logf("Actions before Dodge: %d", result.Economy.ActionsRemaining)
+
+		// Use Dodge ability
+		dodgeResult, err := tm.UseAbility(s.ctx, &combat.UseAbilityInput{
+			AbilityRef: refs.CombatAbilities.Dodge(),
+		})
+		s.Require().NoError(err)
+
+		// Verify action was consumed
+		s.Equal(0, dodgeResult.Economy.ActionsRemaining)
+		s.T().Logf("Actions after Dodge: %d", dodgeResult.Economy.ActionsRemaining)
+
+		// Verify DodgeActivatedEvent was published
+		s.True(dodgeActivated, "DodgeActivatedEvent should be published")
+		s.T().Log("  ✓ DodgeActivatedEvent published")
+
+		_, _ = tm.EndTurn(s.ctx)
+		s.T().Log("✓ Dodge integration test passed")
+	})
+}
+
+// Test: Cannot use actions without capacity
+func (s *TurnManagerIntegrationSuite) TestStrikeRequiresCapacity() {
+	s.Run("Strike fails without attack capacity", func() {
+		s.T().Log("=== Strike Without Capacity Test ===")
+
+		tm := s.createTurnManager()
+		_, err := tm.StartTurn(s.ctx)
+		s.Require().NoError(err)
+
+		// Try to Strike without using Attack ability first
+		_, err = tm.Strike(s.ctx, &combat.StrikeInput{
+			TargetID: s.goblin.GetID(),
+			Weapon:   s.weapon,
+		})
+		s.Require().Error(err, "Strike should fail without attacks")
+		s.T().Logf("  Expected error: %s", err.Error())
+
+		_, _ = tm.EndTurn(s.ctx)
+		s.T().Log("✓ Strike capacity requirement test passed")
+	})
+}
+
+// Test: Movement respects Path[0] validation
+func (s *TurnManagerIntegrationSuite) TestMovePathValidation() {
+	s.Run("Move validates Path[0] is current position", func() {
+		s.T().Log("=== Move Path Validation Test ===")
+
+		tm := s.createTurnManager()
+		_, err := tm.StartTurn(s.ctx)
+		s.Require().NoError(err)
+
+		// Try to move with wrong starting position
+		wrongPath := []spatial.Position{
+			{X: 5, Y: 5}, // Wrong - not at (2,2)
+			{X: 5, Y: 6},
+		}
+
+		_, err = tm.Move(s.ctx, &combat.MoveInput{
+			Path: wrongPath,
+		})
+		s.Require().Error(err, "Move should fail with wrong Path[0]")
+		s.Contains(err.Error(), "current position")
+		s.T().Logf("  Expected error: %s", err.Error())
+
+		_, _ = tm.EndTurn(s.ctx)
+		s.T().Log("✓ Move path validation test passed")
+	})
+}
+
+// Helper to find ability by ID suffix
+func findAbility(abilities []combat.AvailableAbility, idSuffix string) *combat.AvailableAbility {
+	for i := range abilities {
+		if abilities[i].Info.Ref != nil && abilities[i].Info.Ref.ID == idSuffix {
+			return &abilities[i]
+		}
+	}
+	return nil
+}
+
+// Helper to find action by ID suffix
+func findAction(actions []combat.AvailableAction, idContains string) *combat.AvailableAction {
+	for i := range actions {
+		if contains(actions[i].Info.ID, idContains) {
+			return &actions[i]
+		}
+	}
+	return nil
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsMiddle(s, substr)))
+}
+
+func containsMiddle(s, substr string) bool {
+	for i := 1; i < len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestTurnManagerIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(TurnManagerIntegrationSuite))
 }
