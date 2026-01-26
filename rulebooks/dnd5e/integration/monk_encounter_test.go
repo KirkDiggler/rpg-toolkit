@@ -525,33 +525,39 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 // LEVEL 1: UNARMORED DEFENSE TESTS
 // =============================================================================
 
-func (s *MonkEncounterSuite) TestUnarmoredDefense_ACCalculation() {
-	s.Run("Unarmored Defense: AC = 10 + DEX + WIS", func() {
+func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
+	s.Run("Unarmored Defense expected AC: 10 + DEX + WIS", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMORED DEFENSE: AC Calculation                          ║")
+		s.T().Log("║  MONK UNARMORED DEFENSE: Expected AC                             ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
+
+		// TODO: When UnarmoredDefenseCondition is wired to ACChain (#580),
+		// this test should apply the real condition and verify AC through
+		// the EffectiveAC() calculation chain. For now, we document the
+		// expected formula and verify the mock is set up correctly.
 
 		// Monk stats: DEX 16 (+3), WIS 16 (+3)
 		// Unarmored Defense: 10 + 3 + 3 = 16
 		expectedAC := 16
 
 		actualAC := s.monk.AC()
-		s.Equal(expectedAC, actualAC, "Unarmored Defense should calculate AC correctly")
+		s.Equal(expectedAC, actualAC, "Mock AC should match expected Unarmored Defense formula")
 
 		s.T().Logf("  Ability Scores:")
 		s.T().Logf("    DEX: 16 (+3)")
 		s.T().Logf("    WIS: 16 (+3)")
 		s.T().Log("")
-		s.T().Log("  Unarmored Defense (Monk):")
+		s.T().Log("  Unarmored Defense (Monk) formula:")
 		s.T().Log("    Base:          10")
 		s.T().Log("    + DEX mod:      3")
 		s.T().Log("    + WIS mod:      3")
 		s.T().Logf("    = AC:          %d", expectedAC)
 		s.T().Log("")
 		s.T().Log("  Note: Monk uses WIS, Barbarian uses CON")
+		s.T().Log("  Note: Real UnarmoredDefenseCondition not yet wired to ACChain")
 		s.T().Log("")
-		s.T().Log("✓ Unarmored Defense AC calculated correctly")
+		s.T().Log("✓ Mock AC matches expected Unarmored Defense formula")
 	})
 }
 
@@ -586,8 +592,8 @@ func (s *MonkEncounterSuite) TestKi_InitialPoints() {
 	})
 }
 
-func (s *MonkEncounterSuite) TestFlurryOfBlows_ConsumesKi() {
-	s.Run("Flurry of Blows consumes 1 Ki and grants 2 unarmed strikes", func() {
+func (s *MonkEncounterSuite) TestFlurryOfBlows_KiConsumption() {
+	s.Run("Flurry of Blows consumes 1 Ki", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
 		s.T().Log("║  MONK FLURRY OF BLOWS: Ki Consumption                            ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
@@ -599,25 +605,15 @@ func (s *MonkEncounterSuite) TestFlurryOfBlows_ConsumesKi() {
 		s.T().Logf("  Initial Ki: %d/2", monk2.GetResourceCurrent(resources.Ki))
 		s.T().Log("")
 
-		// Track actions granted
-		var actionsGranted int
-		actionTopic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
-		_, err := actionTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
-			if event.Source == "flurry_of_blows" {
-				actionsGranted++
-			}
-			return nil
-		})
-		s.Require().NoError(err)
-
 		s.T().Log("→ Shadow uses Flurry of Blows!")
 
-		// Note: In a real scenario, we'd use the actual FlurryOfBlows feature
-		// For now, we simulate the expected behavior
-		s.T().Log("  [Bonus Action] Spend 1 Ki → Gain 2 unarmed strikes")
+		// TODO: When FlurryOfBlows feature is implemented, exercise it here
+		// and assert that 2 bonus action unarmed strikes are granted.
+		// For now, we only test Ki consumption.
+		s.T().Log("  [Bonus Action] Spend 1 Ki")
 
 		// Simulate Ki consumption
-		err = monk2.UseResource(resources.Ki, 1)
+		err := monk2.UseResource(resources.Ki, 1)
 		s.Require().NoError(err)
 
 		kiAfter := monk2.GetResourceCurrent(resources.Ki)
@@ -628,17 +624,17 @@ func (s *MonkEncounterSuite) TestFlurryOfBlows_ConsumesKi() {
 		s.T().Log("")
 		s.T().Log("  Flurry of Blows:")
 		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: 2 unarmed strikes as bonus action")
+		s.T().Log("    Effect: 2 unarmed strikes as bonus action (not yet tested)")
 		s.T().Log("    Timing: Immediately after Attack action")
 		s.T().Log("")
-		s.T().Log("✓ Flurry of Blows correctly consumes Ki")
+		s.T().Log("✓ Flurry of Blows Ki consumption verified")
 	})
 }
 
-func (s *MonkEncounterSuite) TestPatientDefense_GrantsDodge() {
-	s.Run("Patient Defense costs 1 Ki and grants Dodge as bonus action", func() {
+func (s *MonkEncounterSuite) TestPatientDefense_KiConsumption() {
+	s.Run("Patient Defense consumes 1 Ki", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK PATIENT DEFENSE: Dodge as Bonus Action                     ║")
+		s.T().Log("║  MONK PATIENT DEFENSE: Ki Consumption                            ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
@@ -648,7 +644,11 @@ func (s *MonkEncounterSuite) TestPatientDefense_GrantsDodge() {
 		s.T().Log("")
 
 		s.T().Log("→ Shadow uses Patient Defense!")
-		s.T().Log("  [Bonus Action] Spend 1 Ki → Take Dodge action")
+		s.T().Log("  [Bonus Action] Spend 1 Ki")
+
+		// TODO: When PatientDefense feature is implemented, exercise it here
+		// and assert that Dodge action is granted/enabled.
+		// For now, we only test Ki consumption.
 
 		// Simulate Ki consumption
 		err := monk2.UseResource(resources.Ki, 1)
@@ -662,17 +662,17 @@ func (s *MonkEncounterSuite) TestPatientDefense_GrantsDodge() {
 		s.T().Log("")
 		s.T().Log("  Patient Defense:")
 		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: Take Dodge action as bonus action")
+		s.T().Log("    Effect: Take Dodge action as bonus action (not yet tested)")
 		s.T().Log("    Dodge: Attack rolls against you have disadvantage")
 		s.T().Log("")
-		s.T().Log("✓ Patient Defense correctly consumes Ki for Dodge")
+		s.T().Log("✓ Patient Defense Ki consumption verified")
 	})
 }
 
-func (s *MonkEncounterSuite) TestStepOfTheWind_GrantsDashOrDisengage() {
-	s.Run("Step of the Wind costs 1 Ki and grants Dash/Disengage + double jump", func() {
+func (s *MonkEncounterSuite) TestStepOfTheWind_KiConsumption() {
+	s.Run("Step of the Wind consumes 1 Ki", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK STEP OF THE WIND: Dash/Disengage + Double Jump             ║")
+		s.T().Log("║  MONK STEP OF THE WIND: Ki Consumption                           ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
@@ -682,7 +682,11 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_GrantsDashOrDisengage() {
 		s.T().Log("")
 
 		s.T().Log("→ Shadow uses Step of the Wind!")
-		s.T().Log("  [Bonus Action] Spend 1 Ki → Dash or Disengage + double jump")
+		s.T().Log("  [Bonus Action] Spend 1 Ki")
+
+		// TODO: When StepOfTheWind feature is implemented, exercise it here
+		// and assert that Dash/Disengage action + double jump are granted.
+		// For now, we only test Ki consumption.
 
 		// Simulate Ki consumption
 		err := monk2.UseResource(resources.Ki, 1)
@@ -696,10 +700,10 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_GrantsDashOrDisengage() {
 		s.T().Log("")
 		s.T().Log("  Step of the Wind:")
 		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: Dash OR Disengage as bonus action")
-		s.T().Log("    Bonus: Jump distance doubled for the turn")
+		s.T().Log("    Effect: Dash OR Disengage as bonus action (not yet tested)")
+		s.T().Log("    Bonus: Jump distance doubled for the turn (not yet tested)")
 		s.T().Log("")
-		s.T().Log("✓ Step of the Wind correctly consumes Ki")
+		s.T().Log("✓ Step of the Wind Ki consumption verified")
 	})
 }
 
