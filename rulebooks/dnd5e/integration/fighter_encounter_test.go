@@ -52,7 +52,6 @@ type FighterEncounterSuite struct {
 
 	fighter *mockFighterCharacter
 	goblin  *monster.Monster
-	rapier  *weapons.Weapon
 }
 
 // mockFighterCharacter implements the interfaces needed for fighter testing
@@ -127,7 +126,6 @@ func (s *FighterEncounterSuite) SetupSubTest() {
 
 	s.fighter = s.createLevel1Fighter()
 	s.goblin = s.createGoblin()
-	s.rapier = s.createRapier()
 
 	s.lookup.Add(s.fighter)
 	s.lookup.Add(s.goblin)
@@ -182,20 +180,10 @@ func (s *FighterEncounterSuite) createGoblin() *monster.Monster {
 	})
 }
 
-func (s *FighterEncounterSuite) createRapier() *weapons.Weapon {
-	weapon, err := weapons.GetByID(weapons.Rapier)
-	s.Require().NoError(err)
-	return &weapon
-}
-
 // createSecondWind creates a Second Wind feature for testing.
 func (s *FighterEncounterSuite) createSecondWind(level int, characterID string) *features.SecondWind {
-	// Create config with level
-	config := []byte(`{"level": ` + string(rune('0'+level)) + `}`)
-	if level >= 10 {
-		// Handle multi-digit levels
-		config = []byte(`{"level": ` + fmt.Sprintf("%d", level) + `}`)
-	}
+	// Create config with level using standard formatting
+	config := []byte(fmt.Sprintf(`{"level": %d}`, level))
 
 	// Use the factory to create Second Wind properly
 	output, err := features.CreateFromRef(&features.CreateFromRefInput{
@@ -218,9 +206,6 @@ func (s *FighterEncounterSuite) TestSecondWind_HealsCharacter() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
 		s.T().Log("║  FIGHTER SECOND WIND: Basic Healing                              ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-
-		// Fighter took 8 damage
-		s.fighter.hitPoints = 4
 
 		// Create Second Wind feature
 		secondWind := s.createSecondWind(1, s.fighter.GetID())
@@ -261,8 +246,6 @@ func (s *FighterEncounterSuite) TestSecondWind_OncePerShortRest() {
 		s.T().Log("║  FIGHTER SECOND WIND: Once Per Short Rest                        ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		s.fighter.hitPoints = 4
-
 		secondWind := s.createSecondWind(1, s.fighter.GetID())
 		err := secondWind.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -286,8 +269,6 @@ func (s *FighterEncounterSuite) TestSecondWind_ResetsOnShortRest() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
 		s.T().Log("║  FIGHTER SECOND WIND: Resets on Short Rest                       ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-
-		s.fighter.hitPoints = 4
 
 		secondWind := s.createSecondWind(1, s.fighter.GetID())
 		err := secondWind.Apply(s.ctx, s.bus)
@@ -324,9 +305,7 @@ func (s *FighterEncounterSuite) TestSecondWind_ScalesWithLevel() {
 		s.T().Log("║  FIGHTER SECOND WIND: Level Scaling                              ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		s.fighter.hitPoints = 4
-		s.fighter.level = 5 // Level 5 fighter
-
+		// Level is passed to the factory config, not read from the character
 		secondWind := s.createSecondWind(5, s.fighter.GetID()) // Level 5
 		err := secondWind.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
