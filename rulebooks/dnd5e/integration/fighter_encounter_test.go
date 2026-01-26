@@ -649,16 +649,16 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 		s.T().Log("║  FIGHTER GWF: Reroll 1s and 2s                                   ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Expect rerolls for the 1 and 2
-		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil).Times(1) // Reroll the 1
-		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil).Times(1) // Reroll the 2
+		// Expect rerolls for both dice (1 and 2)
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil) // Reroll the 1 -> 5
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil) // Reroll the 2 -> 4
 
 		gwf := conditions.NewFightingStyleGreatWeaponFightingCondition(s.fighter.GetID(), s.mockRoller)
 		err := gwf.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
 
-		// Create damage event with 1s and 2s in the roll
+		// Create damage event with 1s and 2s in the roll (2d6 = 2 dice)
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID:   s.fighter.GetID(),
 			TargetID:     s.goblin.GetID(),
@@ -667,8 +667,8 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
-					OriginalDiceRolls: []int{1, 2, 6}, // 1 and 2 need rerolling
-					FinalDiceRolls:    []int{1, 2, 6},
+					OriginalDiceRolls: []int{1, 2}, // Both need rerolling
+					FinalDiceRolls:    []int{1, 2},
 					DamageType:        damage.Slashing,
 				},
 			},
@@ -683,7 +683,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 		s.Require().NoError(err)
 
 		// Verify 1 and 2 were rerolled to 5 and 4
-		s.Equal([]int{5, 4, 6}, finalEvent.Components[0].FinalDiceRolls, "1 and 2 should be rerolled")
+		s.Equal([]int{5, 4}, finalEvent.Components[0].FinalDiceRolls, "1 and 2 should be rerolled")
 
 		s.T().Log("✓ Great Weapon Fighting correctly rerolls 1s and 2s")
 	})
@@ -709,8 +709,8 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
-					OriginalDiceRolls: []int{3, 4, 5}, // All 3+, no rerolls
-					FinalDiceRolls:    []int{3, 4, 5},
+					OriginalDiceRolls: []int{3, 5}, // Both 3+, no rerolls (2d6 = 2 dice)
+					FinalDiceRolls:    []int{3, 5},
 					DamageType:        damage.Slashing,
 				},
 			},
@@ -725,7 +725,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
 		s.Require().NoError(err)
 
 		// Dice should be unchanged
-		s.Equal([]int{3, 4, 5}, finalEvent.Components[0].FinalDiceRolls, "3+ rolls should not be rerolled")
+		s.Equal([]int{3, 5}, finalEvent.Components[0].FinalDiceRolls, "3+ rolls should not be rerolled")
 
 		s.T().Log("✓ Great Weapon Fighting correctly keeps 3+ rolls")
 	})
