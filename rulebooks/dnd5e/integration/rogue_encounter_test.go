@@ -159,7 +159,7 @@ func (s *RogueEncounterSuite) TearDownTest() {
 }
 
 // =============================================================================
-// CHARACTER CREATION
+// CHARACTER CREATION HELPERS
 // =============================================================================
 
 func (s *RogueEncounterSuite) createLevel1Rogue() *mockRogueCharacter {
@@ -189,7 +189,8 @@ func (s *RogueEncounterSuite) createGoblin() *monster.Monster {
 }
 
 func (s *RogueEncounterSuite) createRapier() *weapons.Weapon {
-	weapon, _ := weapons.GetByID(weapons.Rapier)
+	weapon, err := weapons.GetByID(weapons.Rapier)
+	s.Require().NoError(err)
 	return &weapon
 }
 
@@ -374,8 +375,10 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 
 		chain1 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		topic := dnd5eEvents.DamageChain.On(s.bus)
-		modChain1, _ := topic.PublishWithChain(s.ctx, damageEvent1, chain1)
-		finalEvent1, _ := modChain1.Execute(s.ctx, damageEvent1)
+		modChain1, err := topic.PublishWithChain(s.ctx, damageEvent1, chain1)
+		s.Require().NoError(err)
+		finalEvent1, err := modChain1.Execute(s.ctx, damageEvent1)
+		s.Require().NoError(err)
 		s.Len(finalEvent1.Components, 2, "First attack should have sneak attack")
 
 		// Second attack (same turn) - sneak attack should NOT trigger
@@ -386,8 +389,10 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 		}
 
 		chain2 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		modChain2, _ := topic.PublishWithChain(s.ctx, damageEvent2, chain2)
-		finalEvent2, _ := modChain2.Execute(s.ctx, damageEvent2)
+		modChain2, err := topic.PublishWithChain(s.ctx, damageEvent2, chain2)
+		s.Require().NoError(err)
+		finalEvent2, err := modChain2.Execute(s.ctx, damageEvent2)
+		s.Require().NoError(err)
 		s.Len(finalEvent2.Components, 1, "Second attack should NOT have sneak attack")
 
 		s.T().Log("✓ Sneak Attack correctly limited to once per turn")
@@ -419,12 +424,15 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
 		}
 		chain1 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		modChain1, _ := topic.PublishWithChain(s.ctx, damageEvent1, chain1)
-		_, _ = modChain1.Execute(s.ctx, damageEvent1)
+		modChain1, err := topic.PublishWithChain(s.ctx, damageEvent1, chain1)
+		s.Require().NoError(err)
+		_, err = modChain1.Execute(s.ctx, damageEvent1)
+		s.Require().NoError(err)
 
 		// End the turn
 		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-		_ = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{CharacterID: s.rogue.GetID()})
+		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{CharacterID: s.rogue.GetID()})
+		s.Require().NoError(err)
 
 		// Next turn - sneak attack should work again
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{6}, nil)
@@ -434,8 +442,10 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
 		}
 		chain2 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		modChain2, _ := topic.PublishWithChain(s.ctx, damageEvent2, chain2)
-		finalEvent2, _ := modChain2.Execute(s.ctx, damageEvent2)
+		modChain2, err := topic.PublishWithChain(s.ctx, damageEvent2, chain2)
+		s.Require().NoError(err)
+		finalEvent2, err := modChain2.Execute(s.ctx, damageEvent2)
+		s.Require().NoError(err)
 
 		s.Len(finalEvent2.Components, 2, "Sneak attack should work again after turn end")
 
@@ -469,8 +479,10 @@ func (s *RogueEncounterSuite) TestSneakAttack_RequiresFinesseOrRanged() {
 
 		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		topic := dnd5eEvents.DamageChain.On(s.bus)
-		modChain, _ := topic.PublishWithChain(s.ctx, damageEvent, chain)
-		finalEvent, _ := modChain.Execute(s.ctx, damageEvent)
+		modChain, err := topic.PublishWithChain(s.ctx, damageEvent, chain)
+		s.Require().NoError(err)
+		finalEvent, err := modChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
 
 		s.Len(finalEvent.Components, 1, "STR attack should not trigger sneak attack")
 
@@ -504,8 +516,10 @@ func (s *RogueEncounterSuite) TestSneakAttack_ScalesWithLevel() {
 
 		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		topic := dnd5eEvents.DamageChain.On(s.bus)
-		modChain, _ := topic.PublishWithChain(s.ctx, damageEvent, chain)
-		finalEvent, _ := modChain.Execute(s.ctx, damageEvent)
+		modChain, err := topic.PublishWithChain(s.ctx, damageEvent, chain)
+		s.Require().NoError(err)
+		finalEvent, err := modChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
 
 		var sneakDice []int
 		for _, comp := range finalEvent.Components {
