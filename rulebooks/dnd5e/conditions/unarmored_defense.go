@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -40,10 +43,11 @@ type UnarmoredDefenseData struct {
 // Monk: AC = 10 + DEX modifier + WIS modifier
 // Only applies when not wearing armor. Shields can still be used.
 type UnarmoredDefenseCondition struct {
-	CharacterID string
-	Type        UnarmoredDefenseType
-	Source      string // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
-	bus         events.EventBus
+	CharacterID     string
+	Type            UnarmoredDefenseType
+	Source          string // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
+	subscriptionIDs []string
+	bus             events.EventBus
 }
 
 // Ensure UnarmoredDefenseCondition implements dnd5eEvents.ConditionBehavior
@@ -70,16 +74,37 @@ func (u *UnarmoredDefenseCondition) IsApplied() bool {
 	return u.bus != nil
 }
 
-// Apply registers this condition with the event bus.
-// Unarmored Defense is a passive feature that doesn't subscribe to events,
-// but we store the bus reference for consistency with the interface.
-func (u *UnarmoredDefenseCondition) Apply(_ context.Context, bus events.EventBus) error {
+// Apply subscribes this condition to AC chain events.
+func (u *UnarmoredDefenseCondition) Apply(ctx context.Context, bus events.EventBus) error {
+	if u.IsApplied() {
+		return rpgerr.New(rpgerr.CodeAlreadyExists, "unarmored defense already applied")
+	}
 	u.bus = bus
+
+	// Subscribe to ACChain to add secondary ability modifier when unarmored
+	acChain := combat.ACChain.On(bus)
+	subID, err := acChain.SubscribeWithChain(ctx, u.onACChain)
+	if err != nil {
+		return rpgerr.Wrap(err, "failed to subscribe to AC chain")
+	}
+	u.subscriptionIDs = append(u.subscriptionIDs, subID)
+
 	return nil
 }
 
-// Remove unregisters this condition from the event bus.
-func (u *UnarmoredDefenseCondition) Remove(_ context.Context, _ events.EventBus) error {
+// Remove unsubscribes this condition from events.
+func (u *UnarmoredDefenseCondition) Remove(ctx context.Context, bus events.EventBus) error {
+	if u.bus == nil {
+		return nil
+	}
+
+	for _, subID := range u.subscriptionIDs {
+		if err := bus.Unsubscribe(ctx, subID); err != nil {
+			return rpgerr.Wrap(err, "failed to unsubscribe from event")
+		}
+	}
+
+	u.subscriptionIDs = nil
 	u.bus = nil
 	return nil
 }
@@ -136,4 +161,51 @@ func (u *UnarmoredDefenseCondition) SecondaryAbility() abilities.Ability {
 	default:
 		return abilities.CON
 	}
+}
+
+// onACChain adds the secondary ability modifier to AC when unarmored.
+func (u *UnarmoredDefenseCondition) onACChain(
+	ctx context.Context,
+	event *combat.ACChainEvent,
+	c chain.Chain[*combat.ACChainEvent],
+) (chain.Chain[*combat.ACChainEvent], error) {
+	// Only modify AC for this character
+	if event.CharacterID != u.CharacterID {
+		return c, nil
+	}
+
+	// Only apply when NOT wearing armor (shields are fine)
+	if event.HasArmor {
+		return c, nil
+	}
+
+	// Get ability scores from game context
+	registry, err := gamectx.RequireCharacters(ctx)
+	if err != nil {
+		return c, err
+	}
+
+	abilityScores := registry.GetCharacterAbilityScores(u.CharacterID)
+	if abilityScores == nil {
+		return c, nil
+	}
+
+	// Get the secondary ability modifier (WIS for Monk, CON for Barbarian)
+	secondaryMod := abilityScores.Modifier(u.SecondaryAbility())
+
+	// Add secondary ability modifier at StageFeatures
+	modifyAC := func(_ context.Context, e *combat.ACChainEvent) (*combat.ACChainEvent, error) {
+		e.Breakdown.AddComponent(combat.ACComponent{
+			Type:   combat.ACSourceFeature,
+			Source: refs.Conditions.UnarmoredDefense(),
+			Value:  secondaryMod,
+		})
+		return e, nil
+	}
+
+	if err := c.Add(combat.StageFeatures, "unarmored_defense", modifyAC); err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply unarmored defense for character %s", u.CharacterID)
+	}
+
+	return c, nil
 }
