@@ -52,8 +52,8 @@ type MonkEncounterSuite struct {
 	room       spatial.Room
 	registry   *gamectx.BasicCharacterRegistry
 
-	monk      *mockMonkCharacter
-	goblin    *monster.Monster
+	monk       *mockMonkCharacter
+	goblin     *monster.Monster
 	shortsword *weapons.Weapon
 }
 
@@ -72,17 +72,17 @@ type mockMonkCharacter struct {
 	features         map[string]features.Feature
 }
 
-func (m *mockMonkCharacter) GetID() string               { return m.id }
-func (m *mockMonkCharacter) GetName() string             { return m.name }
-func (m *mockMonkCharacter) GetLevel() int               { return m.level }
-func (m *mockMonkCharacter) GetType() core.EntityType    { return "character" }
-func (m *mockMonkCharacter) GetHitPoints() int        { return m.hitPoints }
-func (m *mockMonkCharacter) GetMaxHitPoints() int     { return m.maxHitPoints }
-func (m *mockMonkCharacter) AC() int                  { return m.armorClass }
-func (m *mockMonkCharacter) IsDirty() bool            { return false }
-func (m *mockMonkCharacter) MarkClean()               {}
+func (m *mockMonkCharacter) GetID() string                       { return m.id }
+func (m *mockMonkCharacter) GetName() string                     { return m.name }
+func (m *mockMonkCharacter) GetLevel() int                       { return m.level }
+func (m *mockMonkCharacter) GetType() core.EntityType            { return "character" }
+func (m *mockMonkCharacter) GetHitPoints() int                   { return m.hitPoints }
+func (m *mockMonkCharacter) GetMaxHitPoints() int                { return m.maxHitPoints }
+func (m *mockMonkCharacter) AC() int                             { return m.armorClass }
+func (m *mockMonkCharacter) IsDirty() bool                       { return false }
+func (m *mockMonkCharacter) MarkClean()                          {}
 func (m *mockMonkCharacter) AbilityScores() shared.AbilityScores { return m.abilityScores }
-func (m *mockMonkCharacter) ProficiencyBonus() int    { return m.proficiencyBonus }
+func (m *mockMonkCharacter) ProficiencyBonus() int               { return m.proficiencyBonus }
 
 func (m *mockMonkCharacter) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
