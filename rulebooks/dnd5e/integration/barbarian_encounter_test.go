@@ -47,7 +47,7 @@ type BarbarianEncounterSuite struct {
 	ctx        context.Context
 	bus        events.EventBus
 	mockRoller *mock_dice.MockRoller
-	lookup     *combatantLookup
+	lookup     *integrationLookup
 	room       spatial.Room
 
 	barbarian *character.Character
@@ -55,20 +55,21 @@ type BarbarianEncounterSuite struct {
 	greataxe  *weapons.Weapon
 }
 
-// combatantLookup provides combatant lookup for tests
-type combatantLookup struct {
+// integrationLookup provides combatant lookup for tests
+// Named to match pattern in combat/integration_test.go
+type integrationLookup struct {
 	combatants map[string]combat.Combatant
 }
 
-func newCombatantLookup() *combatantLookup {
-	return &combatantLookup{combatants: make(map[string]combat.Combatant)}
+func newIntegrationLookup() *integrationLookup {
+	return &integrationLookup{combatants: make(map[string]combat.Combatant)}
 }
 
-func (l *combatantLookup) Add(c combat.Combatant) {
+func (l *integrationLookup) Add(c combat.Combatant) {
 	l.combatants[c.GetID()] = c
 }
 
-func (l *combatantLookup) Get(id string) (combat.Combatant, error) {
+func (l *integrationLookup) Get(id string) (combat.Combatant, error) {
 	if c, ok := l.combatants[id]; ok {
 		return c, nil
 	}
@@ -79,7 +80,7 @@ func (s *BarbarianEncounterSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.bus = events.NewEventBus()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-	s.lookup = newCombatantLookup()
+	s.lookup = newIntegrationLookup()
 	s.ctx = context.Background()
 
 	// Create spatial room for movement
@@ -97,7 +98,7 @@ func (s *BarbarianEncounterSuite) SetupTest() {
 func (s *BarbarianEncounterSuite) SetupSubTest() {
 	// Fresh event bus for each subtest
 	s.bus = events.NewEventBus()
-	s.lookup = newCombatantLookup()
+	s.lookup = newIntegrationLookup()
 
 	// Create barbarian and goblin
 	s.barbarian = s.createLevel1Barbarian()
@@ -208,7 +209,8 @@ func (s *BarbarianEncounterSuite) createGoblin() *monster.Monster {
 }
 
 func (s *BarbarianEncounterSuite) createGreataxe() *weapons.Weapon {
-	weapon, _ := weapons.GetByID(weapons.Greataxe)
+	weapon, err := weapons.GetByID(weapons.Greataxe)
+	s.Require().NoError(err)
 	return &weapon
 }
 
@@ -622,21 +624,23 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		var rageEndReason string
 
 		appliedTopic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
-		_, _ = appliedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+		_, err := appliedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
 			if event.Type == dnd5eEvents.ConditionRaging {
 				rageActive = true
 			}
 			return nil
 		})
+		s.Require().NoError(err)
 
 		removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
-		_, _ = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 			if event.ConditionRef == "dnd5e:conditions:raging" {
 				rageActive = false
 				rageEndReason = event.Reason
 			}
 			return nil
 		})
+		s.Require().NoError(err)
 
 		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 
@@ -649,7 +653,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		s.T().Log("→ Grog's turn:")
 		s.T().Log("  [Bonus Action] Grog enters a RAGE!")
 		rage := s.barbarian.GetFeature("rage")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
+		err = rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
 		s.Require().NoError(err)
 		s.True(rageActive, "Rage should be active")
 		s.T().Logf("    Rage uses: %d/2", s.barbarian.GetResource(resources.RageCharges).Current())
