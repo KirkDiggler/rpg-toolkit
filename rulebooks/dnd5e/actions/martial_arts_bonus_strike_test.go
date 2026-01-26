@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -270,4 +271,123 @@ func (s *MartialArtsBonusStrikeTestSuite) TestToJSON() {
 	s.Contains(string(data), "strike-1")
 	s.Contains(string(data), "monk-1")
 	s.Contains(string(data), "martial_arts_bonus_strike")
+}
+
+func (s *MartialArtsBonusStrikeTestSuite) TestActivate_PublishesFlurryStrikeRequestedEvent() {
+	strike := actions.NewMartialArtsBonusStrike(actions.MartialArtsBonusStrikeConfig{
+		ID:      "strike-1",
+		OwnerID: "monk-1",
+	})
+
+	err := strike.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Subscribe to FlurryStrikeRequestedTopic
+	var receivedEvent *dnd5eEvents.FlurryStrikeRequestedEvent
+	topic := dnd5eEvents.FlurryStrikeRequestedTopic.On(s.bus)
+	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.FlurryStrikeRequestedEvent) error {
+		receivedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	economy := combat.NewActionEconomy()
+	err = strike.Activate(s.ctx, s.owner, actions.ActionInput{
+		ActionEconomy: economy,
+		Target:        s.target,
+		Bus:           s.bus,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(receivedEvent, "Should publish FlurryStrikeRequestedEvent")
+	s.Equal("monk-1", receivedEvent.AttackerID)
+	s.Equal("goblin-1", receivedEvent.TargetID)
+	s.Equal("strike-1", receivedEvent.ActionID)
+}
+
+func (s *MartialArtsBonusStrikeTestSuite) TestRemove_PublishesActionRemovedEvent() {
+	strike := actions.NewMartialArtsBonusStrike(actions.MartialArtsBonusStrikeConfig{
+		ID:      "strike-1",
+		OwnerID: "monk-1",
+	})
+
+	err := strike.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Subscribe to ActionRemovedTopic
+	var receivedEvent *dnd5eEvents.ActionRemovedEvent
+	topic := dnd5eEvents.ActionRemovedTopic.On(s.bus)
+	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionRemovedEvent) error {
+		receivedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	err = strike.Remove(s.ctx, s.bus)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(receivedEvent, "Should publish ActionRemovedEvent")
+	s.Equal("strike-1", receivedEvent.ActionID)
+	s.Equal("monk-1", receivedEvent.OwnerID)
+}
+
+func (s *MartialArtsBonusStrikeTestSuite) TestTurnEnd_RemovesUnusedStrike() {
+	strike := actions.NewMartialArtsBonusStrike(actions.MartialArtsBonusStrikeConfig{
+		ID:      "strike-1",
+		OwnerID: "monk-1",
+	})
+
+	err := strike.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Subscribe to ActionRemovedTopic to verify cleanup
+	var removedEvent *dnd5eEvents.ActionRemovedEvent
+	removedTopic := dnd5eEvents.ActionRemovedTopic.On(s.bus)
+	_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish turn end event for the owner
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		CharacterID: "monk-1",
+	})
+	s.Require().NoError(err)
+
+	// Verify the action was removed
+	s.Require().NotNil(removedEvent, "Should publish ActionRemovedEvent on turn end")
+	s.Equal("strike-1", removedEvent.ActionID)
+	s.Equal("monk-1", removedEvent.OwnerID)
+}
+
+func (s *MartialArtsBonusStrikeTestSuite) TestTurnEnd_IgnoresOtherCharactersTurns() {
+	strike := actions.NewMartialArtsBonusStrike(actions.MartialArtsBonusStrikeConfig{
+		ID:      "strike-1",
+		OwnerID: "monk-1",
+	})
+
+	err := strike.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Subscribe to ActionRemovedTopic
+	var removedEvent *dnd5eEvents.ActionRemovedEvent
+	removedTopic := dnd5eEvents.ActionRemovedTopic.On(s.bus)
+	_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish turn end event for a DIFFERENT character
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		CharacterID: "fighter-1", // Not the owner
+	})
+	s.Require().NoError(err)
+
+	// Verify the action was NOT removed
+	s.Nil(removedEvent, "Should NOT remove action when different character's turn ends")
+	s.Equal(1, strike.UsesRemaining(), "Strike should still have uses")
 }

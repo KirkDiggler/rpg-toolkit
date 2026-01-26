@@ -183,9 +183,11 @@ func (m *MartialArtsBonusStrike) IsTemporary() bool {
 	return true
 }
 
-// UsesRemaining returns 1 if not used, 0 if used
+// UsesRemaining returns 1 if not used, 0 if used.
+// Note: This only tracks actual usage, not removal state.
+// A removed-but-unused action still reports 1 use remaining.
 func (m *MartialArtsBonusStrike) UsesRemaining() int {
-	if m.used || m.removed {
+	if m.used {
 		return 0
 	}
 	return 1

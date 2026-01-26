@@ -64,7 +64,7 @@ func CheckAndGrantMartialArtsBonusStrike(ctx context.Context, input *MartialArts
 	if input.SourceAbility != "attack" && input.SourceAbility != "" {
 		return &MartialArtsGranterOutput{
 			Granted: false,
-			Reason:  fmt.Sprintf("attack source is %s, not Attack action", input.SourceAbility),
+			Reason:  fmt.Sprintf("source ability is %q, expected Attack action", input.SourceAbility),
 		}, nil
 	}
 

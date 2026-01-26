@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
 )
@@ -117,7 +118,7 @@ func (s *MartialArtsGranterTestSuite) TestDeniesForFlurrySource() {
 	s.Require().NoError(err)
 	s.False(result.Granted)
 	s.Nil(result.Action)
-	s.Contains(result.Reason, "not Attack action")
+	s.Contains(result.Reason, "expected Attack action")
 }
 
 func (s *MartialArtsGranterTestSuite) TestDeniesForOffHandSource() {
@@ -132,7 +133,7 @@ func (s *MartialArtsGranterTestSuite) TestDeniesForOffHandSource() {
 	s.Require().NoError(err)
 	s.False(result.Granted)
 	s.Nil(result.Action)
-	s.Contains(result.Reason, "not Attack action")
+	s.Contains(result.Reason, "expected Attack action")
 }
 
 func (s *MartialArtsGranterTestSuite) TestDeniesIfAlreadyGranted() {
@@ -210,4 +211,31 @@ func (s *MartialArtsGranterTestSuite) TestWorksWithoutEventBus() {
 	s.Require().NoError(err)
 	s.True(result.Granted)
 	s.NotNil(result.Action)
+}
+
+func (s *MartialArtsGranterTestSuite) TestPublishesActionGrantedEvent() {
+	// Subscribe to ActionGrantedTopic
+	var receivedEvent *dnd5eEvents.ActionGrantedEvent
+	topic := dnd5eEvents.ActionGrantedTopic.On(s.bus)
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+		receivedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Grant the action
+	result, err := actions.CheckAndGrantMartialArtsBonusStrike(s.ctx, &actions.MartialArtsGranterInput{
+		CharacterID:   "monk-1",
+		IsUnarmed:     true,
+		SourceAbility: "attack",
+		EventBus:      s.bus,
+	})
+
+	s.Require().NoError(err)
+	s.True(result.Granted)
+	s.Require().NotNil(receivedEvent, "Should publish ActionGrantedEvent")
+	s.Equal("monk-1", receivedEvent.CharacterID)
+	s.Equal("martial_arts", receivedEvent.Source)
+	s.NotNil(receivedEvent.Action)
+	s.Equal(result.Action.GetID(), receivedEvent.Action.GetID())
 }
