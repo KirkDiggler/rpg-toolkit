@@ -182,8 +182,7 @@ func (u *UnarmoredDefenseCondition) onACChain(
 	// Get ability scores from game context
 	registry, err := gamectx.RequireCharacters(ctx)
 	if err != nil {
-		// If no registry available, skip modification
-		return c, nil
+		return c, err
 	}
 
 	abilityScores := registry.GetCharacterAbilityScores(u.CharacterID)
