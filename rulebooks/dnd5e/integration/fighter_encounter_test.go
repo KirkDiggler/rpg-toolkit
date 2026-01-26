@@ -404,7 +404,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDefense_NoBonus_WithoutArmor() 
 		// Fighter is NOT wearing armor (unarmored)
 		acEvent := &combat.ACChainEvent{
 			CharacterID: s.fighter.GetID(),
-			HasArmor:    false, // No armor!
+			HasArmor:    false,                          // No armor!
 			Breakdown:   &combat.ACBreakdown{Total: 12}, // Just DEX
 		}
 
