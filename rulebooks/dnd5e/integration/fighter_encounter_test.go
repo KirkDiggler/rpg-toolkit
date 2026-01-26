@@ -584,3 +584,315 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_DualWielding() 
 		s.T().Log("✓ Dueling correctly denied when dual wielding")
 	})
 }
+
+// =============================================================================
+// FIGHTING STYLE: ARCHERY TESTS
+// =============================================================================
+
+func (s *FighterEncounterSuite) TestFightingStyleArchery_AddsAttackBonus() {
+	s.Run("Archery fighting style adds +2 to ranged attack rolls", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER ARCHERY: +2 Ranged Attack Bonus                         ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		archery := conditions.NewFightingStyleArcheryCondition(s.fighter.GetID())
+		err := archery.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = archery.Remove(s.ctx, s.bus) }()
+
+		// Create ranged attack event (IsMelee: false = ranged)
+		attackEvent := dnd5eEvents.AttackChainEvent{
+			AttackerID:        s.fighter.GetID(),
+			TargetID:          s.goblin.GetID(),
+			IsMelee:           false, // Ranged attack
+			AttackBonus:       5,     // Base bonus
+			CriticalThreshold: 20,
+		}
+
+		// Execute through attack chain
+		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
+		modifiedChain, err := attackTopic.PublishWithChain(s.ctx, attackEvent, attackChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+		s.Require().NoError(err)
+
+		// Verify +2 attack bonus was added (5 + 2 = 7)
+		s.Equal(7, finalEvent.AttackBonus, "Archery should add +2 to attack roll")
+
+		s.T().Log("✓ Archery fighting style correctly adds +2 to ranged attacks")
+	})
+}
+
+func (s *FighterEncounterSuite) TestFightingStyleArchery_NoBonus_Melee() {
+	s.Run("Archery does NOT add bonus to melee attacks", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER ARCHERY: No Bonus For Melee                             ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		archery := conditions.NewFightingStyleArcheryCondition(s.fighter.GetID())
+		err := archery.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = archery.Remove(s.ctx, s.bus) }()
+
+		// Create melee attack event
+		attackEvent := dnd5eEvents.AttackChainEvent{
+			AttackerID:        s.fighter.GetID(),
+			TargetID:          s.goblin.GetID(),
+			IsMelee:           true, // Melee attack
+			AttackBonus:       5,    // Base bonus
+			CriticalThreshold: 20,
+		}
+
+		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
+		modifiedChain, err := attackTopic.PublishWithChain(s.ctx, attackEvent, attackChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+		s.Require().NoError(err)
+
+		// No bonus for melee (stays at 5)
+		s.Equal(5, finalEvent.AttackBonus, "Archery should not add bonus to melee attacks")
+
+		s.T().Log("✓ Archery correctly denied for melee attacks")
+	})
+}
+
+// =============================================================================
+// FIGHTING STYLE: GREAT WEAPON FIGHTING TESTS
+// =============================================================================
+
+func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
+	s.Run("Great Weapon Fighting rerolls 1s and 2s on damage dice", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER GWF: Reroll 1s and 2s                                   ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		// Expect rerolls for the 1 and 2
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil).Times(1) // Reroll the 1
+		s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil).Times(1) // Reroll the 2
+
+		gwf := conditions.NewFightingStyleGreatWeaponFightingCondition(s.fighter.GetID(), s.mockRoller)
+		err := gwf.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+		// Create damage event with 1s and 2s in the roll
+		damageEvent := &dnd5eEvents.DamageChainEvent{
+			AttackerID:   s.fighter.GetID(),
+			TargetID:     s.goblin.GetID(),
+			WeaponDamage: "2d6",
+			DamageType:   damage.Slashing,
+			Components: []dnd5eEvents.DamageComponent{
+				{
+					Source:            dnd5eEvents.DamageSourceWeapon,
+					OriginalDiceRolls: []int{1, 2, 6}, // 1 and 2 need rerolling
+					FinalDiceRolls:    []int{1, 2, 6},
+					DamageType:        damage.Slashing,
+				},
+			},
+		}
+
+		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
+
+		// Verify 1 and 2 were rerolled to 5 and 4
+		s.Equal([]int{5, 4, 6}, finalEvent.Components[0].FinalDiceRolls, "1 and 2 should be rerolled")
+
+		s.T().Log("✓ Great Weapon Fighting correctly rerolls 1s and 2s")
+	})
+}
+
+func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
+	s.Run("Great Weapon Fighting keeps rolls of 3+", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER GWF: Keeps 3+ Rolls                                     ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		// No rerolls expected - all dice are 3+
+		gwf := conditions.NewFightingStyleGreatWeaponFightingCondition(s.fighter.GetID(), s.mockRoller)
+		err := gwf.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+		damageEvent := &dnd5eEvents.DamageChainEvent{
+			AttackerID:   s.fighter.GetID(),
+			TargetID:     s.goblin.GetID(),
+			WeaponDamage: "2d6",
+			DamageType:   damage.Slashing,
+			Components: []dnd5eEvents.DamageComponent{
+				{
+					Source:            dnd5eEvents.DamageSourceWeapon,
+					OriginalDiceRolls: []int{3, 4, 5}, // All 3+, no rerolls
+					FinalDiceRolls:    []int{3, 4, 5},
+					DamageType:        damage.Slashing,
+				},
+			},
+		}
+
+		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
+
+		// Dice should be unchanged
+		s.Equal([]int{3, 4, 5}, finalEvent.Components[0].FinalDiceRolls, "3+ rolls should not be rerolled")
+
+		s.T().Log("✓ Great Weapon Fighting correctly keeps 3+ rolls")
+	})
+}
+
+// =============================================================================
+// FIGHTING STYLE: TWO-WEAPON FIGHTING TESTS
+// =============================================================================
+
+func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
+	s.Run("Two-Weapon Fighting adds ability modifier to off-hand attacks", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER TWF: Adds Ability Mod to Off-Hand                       ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		twf := conditions.NewFightingStyleTwoWeaponFightingCondition(s.fighter.GetID())
+		err := twf.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = twf.Remove(s.ctx, s.bus) }()
+
+		// Create off-hand attack damage event with ability modifier
+		damageEvent := &dnd5eEvents.DamageChainEvent{
+			AttackerID:      s.fighter.GetID(),
+			TargetID:        s.goblin.GetID(),
+			IsOffHandAttack: true, // Off-hand attack
+			AbilityModifier: 3,    // STR modifier to add
+			DamageType:      damage.Slashing,
+			Components: []dnd5eEvents.DamageComponent{
+				{
+					Source:            dnd5eEvents.DamageSourceWeapon,
+					OriginalDiceRolls: []int{4},
+					FinalDiceRolls:    []int{4},
+					FlatBonus:         0, // No ability mod by default for off-hand
+					DamageType:        damage.Slashing,
+				},
+			},
+		}
+
+		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
+
+		// Should have TWF bonus component with ability modifier
+		s.Require().Len(finalEvent.Components, 2, "Should have weapon + TWF bonus")
+		s.Equal(3, finalEvent.Components[1].FlatBonus, "TWF should add +3 (STR mod) to off-hand damage")
+
+		s.T().Log("✓ Two-Weapon Fighting correctly adds ability modifier to off-hand")
+	})
+}
+
+func (s *FighterEncounterSuite) TestFightingStyleTWF_NoBonus_MainHand() {
+	s.Run("Two-Weapon Fighting does NOT add bonus to main-hand attacks", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER TWF: No Bonus For Main-Hand                             ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		twf := conditions.NewFightingStyleTwoWeaponFightingCondition(s.fighter.GetID())
+		err := twf.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = twf.Remove(s.ctx, s.bus) }()
+
+		// Create main-hand attack damage event
+		damageEvent := &dnd5eEvents.DamageChainEvent{
+			AttackerID:      s.fighter.GetID(),
+			TargetID:        s.goblin.GetID(),
+			IsOffHandAttack: false, // Main-hand attack
+			AbilityModifier: 3,
+			DamageType:      damage.Slashing,
+			Components:      []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
+		}
+
+		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
+
+		// Should only have weapon damage
+		s.Len(finalEvent.Components, 1, "Main-hand should not get TWF bonus")
+
+		s.T().Log("✓ Two-Weapon Fighting correctly denied for main-hand attacks")
+	})
+}
+
+// =============================================================================
+// FIGHTING STYLE: PROTECTION TESTS
+// =============================================================================
+
+func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage() {
+	s.Run("Protection imposes disadvantage when ally is adjacent", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  FIGHTER PROTECTION: Disadvantage on Attacks vs Adjacent Ally   ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+
+		protection := conditions.NewFightingStyleProtectionCondition(s.fighter.GetID())
+		err := protection.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+		// Place ally adjacent to fighter (fighter at 2,2)
+		ally := &mockFighterCharacter{id: "ally-1", name: "Ally"}
+		_ = s.room.PlaceEntity(ally, spatial.Position{X: 3, Y: 2}) // Adjacent to fighter
+
+		// Set up fighter with a shield and reaction available
+		shield := &gamectx.EquippedWeapon{
+			ID:       "shield-1",
+			Name:     "Shield",
+			Slot:     "off_hand",
+			IsShield: true,
+		}
+		weaponSet := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{shield})
+		s.registry.Add(s.fighter.GetID(), weaponSet)
+
+		// Add action economy with reaction available
+		actionEconomy := combat.NewActionEconomy()
+		s.registry.AddActionEconomy(s.fighter.GetID(), actionEconomy)
+
+		// Update context with room
+		ctx := gamectx.WithRoom(s.ctx, s.room)
+
+		// Create melee attack against the ally (not the fighter)
+		attackEvent := dnd5eEvents.AttackChainEvent{
+			AttackerID:        s.goblin.GetID(),
+			TargetID:          ally.GetID(), // Attacking ally, not fighter
+			IsMelee:           true,
+			AttackBonus:       5,
+			CriticalThreshold: 20,
+		}
+
+		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
+		modifiedChain, err := attackTopic.PublishWithChain(ctx, attackEvent, attackChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+		s.Require().NoError(err)
+
+		// Verify disadvantage was imposed
+		s.Greater(len(finalEvent.DisadvantageSources), 0, "Protection should impose disadvantage")
+
+		s.T().Log("✓ Protection correctly imposes disadvantage on attacks against adjacent ally")
+	})
+}
