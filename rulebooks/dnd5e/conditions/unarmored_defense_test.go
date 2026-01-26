@@ -11,6 +11,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -144,9 +146,136 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseApplyRemove() {
 	// Apply should succeed
 	err := ud.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
+	s.True(ud.IsApplied(), "condition should be applied")
+
+	// Apply again should fail
+	err = ud.Apply(s.ctx, s.bus)
+	s.Error(err, "should not be able to apply twice")
 
 	// Remove should succeed
 	err = ud.Remove(s.ctx, s.bus)
+	s.Require().NoError(err)
+	s.False(ud.IsApplied(), "condition should not be applied after remove")
+}
+
+func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseACChainIntegration() {
+	// Test that the condition modifies AC through the ACChain
+	characterID := "monk-1"
+
+	// Create Monk Unarmored Defense: AC = 10 + DEX + WIS
+	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
+		CharacterID: characterID,
+		Type:        UnarmoredDefenseMonk,
+		Source:      "dnd5e:classes:monk",
+	})
+
+	// Apply the condition
+	err := ud.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Set up game context with ability scores
+	// DEX 16 (+3), WIS 14 (+2) -> Unarmored Defense adds +2 (WIS mod)
+	registry := gamectx.NewBasicCharacterRegistry()
+	registry.AddAbilityScores(characterID, &gamectx.AbilityScores{
+		Strength:     10, // +0
+		Dexterity:    16, // +3
+		Constitution: 12, // +1
+		Intelligence: 10, // +0
+		Wisdom:       14, // +2
+		Charisma:     10, // +0
+	})
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+
+	// Create AC event for unarmored character
+	// Base would be 10 + 3 (DEX) = 13, Unarmored Defense should add +2 (WIS) = 15
+	breakdown := &combat.ACBreakdown{
+		Total:      13, // Base 10 + DEX 3
+		Components: []combat.ACComponent{},
+	}
+	acEvent := &combat.ACChainEvent{
+		CharacterID: characterID,
+		Breakdown:   breakdown,
+		HasArmor:    false, // Unarmored!
+		HasShield:   false,
+	}
+
+	// Execute through AC chain
+	acChain := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
+	acTopic := combat.ACChain.On(s.bus)
+
+	modifiedChain, err := acTopic.PublishWithChain(ctx, acEvent, acChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, acEvent)
+	s.Require().NoError(err)
+
+	// Verify the WIS modifier (+2) was added
+	s.Equal(15, finalEvent.Breakdown.Total, "AC should be 13 + 2 (WIS from Unarmored Defense) = 15")
+
+	// Verify the component was added
+	s.Len(finalEvent.Breakdown.Components, 1)
+	s.Equal(combat.ACSourceFeature, finalEvent.Breakdown.Components[0].Type)
+	s.Equal(2, finalEvent.Breakdown.Components[0].Value)
+
+	// Clean up
+	err = ud.Remove(ctx, s.bus)
+	s.Require().NoError(err)
+}
+
+func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseIgnoredWhenWearingArmor() {
+	// Test that Unarmored Defense does NOT apply when wearing armor
+	characterID := "monk-1"
+
+	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
+		CharacterID: characterID,
+		Type:        UnarmoredDefenseMonk,
+		Source:      "dnd5e:classes:monk",
+	})
+
+	err := ud.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	// Set up game context
+	registry := gamectx.NewBasicCharacterRegistry()
+	registry.AddAbilityScores(characterID, &gamectx.AbilityScores{
+		Dexterity: 16,
+		Wisdom:    14,
+	})
+	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+		CharacterRegistry: registry,
+	})
+	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+
+	// Create AC event for character WEARING ARMOR
+	breakdown := &combat.ACBreakdown{
+		Total:      16, // Armor provides this
+		Components: []combat.ACComponent{},
+	}
+	acEvent := &combat.ACChainEvent{
+		CharacterID: characterID,
+		Breakdown:   breakdown,
+		HasArmor:    true, // Wearing armor!
+		HasShield:   false,
+	}
+
+	// Execute through AC chain
+	acChain := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
+	acTopic := combat.ACChain.On(s.bus)
+
+	modifiedChain, err := acTopic.PublishWithChain(ctx, acEvent, acChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, acEvent)
+	s.Require().NoError(err)
+
+	// Verify NO modification was made (still 16, no components added)
+	s.Equal(16, finalEvent.Breakdown.Total, "AC should remain unchanged when wearing armor")
+	s.Empty(finalEvent.Breakdown.Components, "No components should be added when wearing armor")
+
+	err = ud.Remove(ctx, s.bus)
 	s.Require().NoError(err)
 }
 
