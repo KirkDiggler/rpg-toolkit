@@ -5,26 +5,27 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/mock/gomock"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -36,119 +37,27 @@ import (
 //   - Unarmored Defense (AC = 10 + DEX + WIS)
 // Level 2 Monk Features:
 //   - Ki (2 points)
-//   - Flurry of Blows (1 Ki → 2 unarmed strikes)
+//   - Flurry of Blows (1 Ki → 2 unarmed strikes as bonus action)
 //   - Patient Defense (1 Ki → Dodge as bonus action)
-//   - Step of the Wind (1 Ki → Dash/Disengage + double jump)
+//   - Step of the Wind (1 Ki → Dash/Disengage as bonus action + double jump)
 //   - Unarmored Movement (+10 ft speed)
 // ============================================================================
 
 type MonkEncounterSuite struct {
 	suite.Suite
-	ctrl       *gomock.Controller
-	ctx        context.Context
-	bus        events.EventBus
-	mockRoller *mock_dice.MockRoller
-	lookup     *integrationLookup
-	room       spatial.Room
-	registry   *gamectx.BasicCharacterRegistry
+	ctx      context.Context
+	bus      events.EventBus
+	lookup   *integrationLookup
+	room     spatial.Room
+	registry *gamectx.BasicCharacterRegistry
 
-	monk       *mockMonkCharacter
+	monk       *character.Character
 	goblin     *monster.Monster
 	shortsword *weapons.Weapon
 }
 
-// mockMonkCharacter implements the interfaces needed for monk testing
-type mockMonkCharacter struct {
-	id               string
-	name             string
-	level            int
-	abilityScores    shared.AbilityScores
-	proficiencyBonus int
-	hitPoints        int
-	maxHitPoints     int
-	armorClass       int
-	resources        map[coreResources.ResourceKey]int
-	conditions       []dnd5eEvents.ConditionBehavior
-	features         map[string]features.Feature
-}
-
-func (m *mockMonkCharacter) GetID() string                       { return m.id }
-func (m *mockMonkCharacter) GetName() string                     { return m.name }
-func (m *mockMonkCharacter) GetLevel() int                       { return m.level }
-func (m *mockMonkCharacter) GetType() core.EntityType            { return "character" }
-func (m *mockMonkCharacter) GetHitPoints() int                   { return m.hitPoints }
-func (m *mockMonkCharacter) GetMaxHitPoints() int                { return m.maxHitPoints }
-func (m *mockMonkCharacter) AC() int                             { return m.armorClass }
-func (m *mockMonkCharacter) IsDirty() bool                       { return false }
-func (m *mockMonkCharacter) MarkClean()                          {}
-func (m *mockMonkCharacter) AbilityScores() shared.AbilityScores { return m.abilityScores }
-func (m *mockMonkCharacter) ProficiencyBonus() int               { return m.proficiencyBonus }
-
-func (m *mockMonkCharacter) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
-	if input == nil {
-		return &combat.ApplyDamageResult{CurrentHP: m.hitPoints, PreviousHP: m.hitPoints}
-	}
-	previousHP := m.hitPoints
-	totalDamage := 0
-	for _, instance := range input.Instances {
-		totalDamage += instance.Amount
-	}
-	m.hitPoints -= totalDamage
-	if m.hitPoints < 0 {
-		m.hitPoints = 0
-	}
-	return &combat.ApplyDamageResult{
-		TotalDamage:   totalDamage,
-		CurrentHP:     m.hitPoints,
-		DroppedToZero: m.hitPoints == 0 && previousHP > 0,
-		PreviousHP:    previousHP,
-	}
-}
-
-func (m *mockMonkCharacter) IsResourceAvailable(key coreResources.ResourceKey) bool {
-	if m.resources == nil {
-		return false
-	}
-	current, ok := m.resources[key]
-	return ok && current > 0
-}
-
-func (m *mockMonkCharacter) UseResource(key coreResources.ResourceKey, amount int) error {
-	if m.resources == nil {
-		return nil
-	}
-	if current, ok := m.resources[key]; ok {
-		m.resources[key] = current - amount
-	}
-	return nil
-}
-
-func (m *mockMonkCharacter) GetResourceCurrent(key coreResources.ResourceKey) int {
-	if m.resources == nil {
-		return 0
-	}
-	return m.resources[key]
-}
-
-func (m *mockMonkCharacter) GetConditions() []dnd5eEvents.ConditionBehavior {
-	return m.conditions
-}
-
-func (m *mockMonkCharacter) AddCondition(c dnd5eEvents.ConditionBehavior) {
-	m.conditions = append(m.conditions, c)
-}
-
-func (m *mockMonkCharacter) GetFeature(id string) features.Feature {
-	if m.features == nil {
-		return nil
-	}
-	return m.features[id]
-}
-
 func (s *MonkEncounterSuite) SetupTest() {
-	s.ctrl = gomock.NewController(s.T())
 	s.bus = events.NewEventBus()
-	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
 	s.lookup = newIntegrationLookup()
 	s.ctx = context.Background()
 
@@ -169,7 +78,7 @@ func (s *MonkEncounterSuite) SetupSubTest() {
 	s.bus = events.NewEventBus()
 	s.lookup = newIntegrationLookup()
 
-	// Create monk and goblin
+	// Default to level 1 monk — tests that need level 2 will override
 	s.monk = s.createLevel1Monk()
 	s.goblin = s.createGoblin()
 	s.shortsword = s.createShortsword()
@@ -204,27 +113,30 @@ func (s *MonkEncounterSuite) SetupSubTest() {
 func (s *MonkEncounterSuite) TearDownSubTest() {
 	_ = s.room.RemoveEntity(s.monk.GetID())
 	_ = s.room.RemoveEntity(s.goblin.GetID())
-}
-
-func (s *MonkEncounterSuite) TearDownTest() {
-	s.ctrl.Finish()
+	if s.monk != nil {
+		_ = s.monk.Cleanup(s.ctx)
+	}
 }
 
 // =============================================================================
 // CHARACTER CREATION HELPERS
 // =============================================================================
 
-func (s *MonkEncounterSuite) createLevel1Monk() *mockMonkCharacter {
+func (s *MonkEncounterSuite) createLevel1Monk() *character.Character {
 	// Level 1 Monk with standard array:
 	// STR 10 (+0), DEX 16 (+3), CON 14 (+2), INT 10 (+0), WIS 16 (+3), CHA 8 (-1)
 	// Unarmored Defense: 10 + 3 + 3 = 16 AC
 	// HP: 8 + 2 = 10
 	// Martial Arts: 1d4 unarmed, use DEX
-	return &mockMonkCharacter{
-		id:    "shadow-monk",
-		name:  "Shadow the Swift",
-		level: 1,
-		abilityScores: shared.AbilityScores{
+	data := &character.Data{
+		ID:               "shadow-monk",
+		PlayerID:         "player-1",
+		Name:             "Shadow the Swift",
+		Level:            1,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Monk,
+		AbilityScores: shared.AbilityScores{
 			abilities.STR: 10, // +0
 			abilities.DEX: 16, // +3
 			abilities.CON: 14, // +2
@@ -232,23 +144,114 @@ func (s *MonkEncounterSuite) createLevel1Monk() *mockMonkCharacter {
 			abilities.WIS: 16, // +3
 			abilities.CHA: 8,  // -1
 		},
-		proficiencyBonus: 2,
-		hitPoints:        10, // 8 base + 2 CON
-		maxHitPoints:     10,
-		armorClass:       16, // Unarmored: 10 + DEX(3) + WIS(3)
-		resources:        make(map[coreResources.ResourceKey]int),
-		conditions:       []dnd5eEvents.ConditionBehavior{},
-		features:         make(map[string]features.Feature),
+		HitPoints:    10, // 8 base + 2 CON
+		MaxHitPoints: 10,
+		ArmorClass:   16, // Unarmored: 10 + DEX(3) + WIS(3)
+		Skills: map[skills.Skill]shared.ProficiencyLevel{
+			skills.Acrobatics: shared.Proficient,
+			skills.Stealth:    shared.Proficient,
+		},
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+			abilities.DEX: shared.Proficient,
+		},
+		// Martial Arts is a passive condition applied at character creation
+		Conditions: []json.RawMessage{
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
+				"character_id": "shadow-monk",
+				"monk_level": 1
+			}`),
+		},
 	}
+
+	char, err := character.LoadFromData(s.ctx, data, s.bus)
+	s.Require().NoError(err)
+
+	// Add combat abilities
+	s.Require().NoError(char.AddCombatAbility(combatabilities.NewAttack("attack")))
+
+	return char
 }
 
-func (s *MonkEncounterSuite) createLevel2Monk() *mockMonkCharacter {
-	monk := s.createLevel1Monk()
-	monk.level = 2
-	monk.hitPoints = 16 // 8 + 2 + (5 + 2) + 2 CON
-	monk.maxHitPoints = 16
-	monk.resources[resources.Ki] = 2 // Level 2 monk has 2 Ki
-	return monk
+func (s *MonkEncounterSuite) createLevel2Monk() *character.Character {
+	// Level 2 Monk: gains Ki (2 points), Flurry of Blows, Patient Defense,
+	// Step of the Wind, and Unarmored Movement (+10 ft)
+	data := &character.Data{
+		ID:               "shadow-monk",
+		PlayerID:         "player-1",
+		Name:             "Shadow the Swift",
+		Level:            2,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Monk,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 10, // +0
+			abilities.DEX: 16, // +3
+			abilities.CON: 14, // +2
+			abilities.INT: 10, // +0
+			abilities.WIS: 16, // +3
+			abilities.CHA: 8,  // -1
+		},
+		HitPoints:    16, // 8 + 2 + (5 + 2) - level 2
+		MaxHitPoints: 16,
+		ArmorClass:   16, // Unarmored: 10 + DEX(3) + WIS(3)
+		Skills: map[skills.Skill]shared.ProficiencyLevel{
+			skills.Acrobatics: shared.Proficient,
+			skills.Stealth:    shared.Proficient,
+		},
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+			abilities.DEX: shared.Proficient,
+		},
+		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
+			resources.Ki: {
+				Current:   2,
+				Maximum:   2,
+				ResetType: coreResources.ResetShortRest,
+			},
+		},
+		Features: []json.RawMessage{
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "features", "id": "flurry_of_blows"},
+				"id": "flurry_of_blows",
+				"name": "Flurry of Blows",
+				"character_id": "shadow-monk"
+			}`),
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "features", "id": "patient_defense"},
+				"id": "patient_defense",
+				"name": "Patient Defense",
+				"character_id": "shadow-monk"
+			}`),
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "features", "id": "step_of_the_wind"},
+				"id": "step_of_the_wind",
+				"name": "Step of the Wind",
+				"character_id": "shadow-monk"
+			}`),
+		},
+		Conditions: []json.RawMessage{
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
+				"character_id": "shadow-monk",
+				"monk_level": 2
+			}`),
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_movement"},
+				"character_id": "shadow-monk",
+				"monk_level": 2
+			}`),
+		},
+	}
+
+	char, err := character.LoadFromData(s.ctx, data, s.bus)
+	s.Require().NoError(err)
+
+	// Add combat abilities
+	s.Require().NoError(char.AddCombatAbility(combatabilities.NewAttack("attack")))
+
+	return char
 }
 
 func (s *MonkEncounterSuite) createGoblin() *monster.Monster {
@@ -281,33 +284,24 @@ func (s *MonkEncounterSuite) createShortsword() *weapons.Weapon {
 func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 	s.Run("Martial Arts uses DEX instead of STR when DEX is higher", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK MARTIAL ARTS: DEX for Unarmed Strikes                      ║")
+		s.T().Log("║  MONK MARTIAL ARTS: DEX for Unarmed Strikes                     ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 		s.T().Logf("  Monk: %s (Level 1, STR +0, DEX +3)", s.monk.GetName())
 		s.T().Logf("  Target: Goblin Scout (AC 13, HP 7)")
 		s.T().Log("")
 
-		// Apply Martial Arts condition
-		martialArts := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-			CharacterID: s.monk.GetID(),
-			MonkLevel:   1,
-			Roller:      s.mockRoller,
-		})
-		err := martialArts.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = martialArts.Remove(s.ctx, s.bus) }()
-
+		// Verify Martial Arts condition is loaded
+		monkConditions := s.monk.GetConditions()
+		s.Require().NotEmpty(monkConditions, "Monk should have Martial Arts condition loaded from Data")
 		s.T().Log("→ Martial Arts active: Can use DEX for unarmed strikes")
 		s.T().Log("")
 
+		// Note: The MartialArtsCondition loaded via JSON uses its own dice.NewRoller()
+		// (not the mock), so we verify behavior (DEX swap, damage string) rather than
+		// exact roll values.
+
 		// Create damage chain event for unarmed strike
-		// Monk has STR +0, DEX +3 - should use DEX
-		s.T().Log("→ Shadow strikes with an unarmed attack!")
-
-		// Mock the dice roll for 1d4 martial arts damage
-		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 4).Return([]int{3}, nil).Times(1)
-
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.monk.GetID(),
 			TargetID:   s.goblin.GetID(),
@@ -315,18 +309,15 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
-					OriginalDiceRolls: []int{1}, // Base unarmed (will be replaced)
+					OriginalDiceRolls: []int{1},
 					FinalDiceRolls:    []int{1},
-					DamageType:        damage.Bludgeoning,
 				},
 				{
-					Source:     dnd5eEvents.DamageSourceAbility,
-					FlatBonus:  0, // STR +0 (will be replaced with DEX +3)
-					DamageType: damage.Bludgeoning,
+					Source:    dnd5eEvents.DamageSourceAbility,
+					FlatBonus: 0, // STR +0 (should be replaced with DEX +3)
 				},
 			},
-			DamageType:   damage.Bludgeoning,
-			WeaponDamage: "1", // Base unarmed
+			WeaponDamage: "1",
 			AbilityUsed:  abilities.STR,
 		}
 
@@ -350,10 +341,9 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 		s.Equal(3, abilityBonus, "Should use DEX (+3) instead of STR (+0)")
 		s.Equal(abilities.DEX, finalEvent.AbilityUsed, "AbilityUsed should be updated to DEX")
 
-		s.T().Log("  Damage breakdown:")
-		s.T().Logf("    1d4 martial arts: %d", 3)
-		s.T().Logf("    + DEX modifier:   %d (not STR +0)", 3)
-		s.T().Logf("    = Total:          %d damage", 6)
+		s.T().Log("  Verified:")
+		s.T().Log("    Ability modifier: DEX +3 (replaced STR +0)")
+		s.T().Log("    AbilityUsed field: DEX")
 		s.T().Log("")
 		s.T().Log("✓ Martial Arts correctly uses DEX for unarmed strikes")
 	})
@@ -362,27 +352,18 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 	s.Run("Martial Arts scales unarmed damage: 1d4 at level 1", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK MARTIAL ARTS: Unarmed Damage Scaling (1d4)                 ║")
+		s.T().Log("║  MONK MARTIAL ARTS: Unarmed Damage Scaling (1d4)                ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 		s.T().Logf("  Monk: %s (Level 1)", s.monk.GetName())
 		s.T().Log("  Martial Arts Die: 1d4 (levels 1-4)")
 		s.T().Log("")
 
-		// Apply Martial Arts condition
-		martialArts := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-			CharacterID: s.monk.GetID(),
-			MonkLevel:   1,
-			Roller:      s.mockRoller,
-		})
-		err := martialArts.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = martialArts.Remove(s.ctx, s.bus) }()
-
 		s.T().Log("→ Shadow throws a punch!")
 
-		// Mock the dice roll - 1d4 returns 4 (max)
-		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 4).Return([]int{4}, nil).Times(1)
+		// Note: The MartialArtsCondition loaded via JSON uses its own dice.NewRoller()
+		// so the actual roll value is non-deterministic. We verify the damage string
+		// is upgraded to "1d4" and the roll count is correct.
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.monk.GetID(),
@@ -393,15 +374,12 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 					Source:            dnd5eEvents.DamageSourceWeapon,
 					OriginalDiceRolls: []int{1},
 					FinalDiceRolls:    []int{1},
-					DamageType:        damage.Bludgeoning,
 				},
 				{
-					Source:     dnd5eEvents.DamageSourceAbility,
-					FlatBonus:  0,
-					DamageType: damage.Bludgeoning,
+					Source:    dnd5eEvents.DamageSourceAbility,
+					FlatBonus: 0,
 				},
 			},
-			DamageType:   damage.Bludgeoning,
 			WeaponDamage: "1",
 			AbilityUsed:  abilities.STR,
 		}
@@ -418,7 +396,7 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 		// Verify weapon damage was updated to martial arts die
 		s.Equal("1d4", finalEvent.WeaponDamage, "Weapon damage should be updated to 1d4")
 
-		// Verify weapon component has the new roll
+		// Verify weapon component has exactly 1 die roll (1d4 = one die)
 		var weaponRolls []int
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceWeapon {
@@ -426,40 +404,30 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 				break
 			}
 		}
-		s.Equal([]int{4}, weaponRolls, "Weapon rolls should be from 1d4")
+		s.Require().Len(weaponRolls, 1, "Should have exactly 1 die roll (1d4)")
+		s.True(weaponRolls[0] >= 1 && weaponRolls[0] <= 4, "Roll should be in [1,4] range, got %d", weaponRolls[0])
 
-		s.T().Log("")
 		s.T().Log("  Damage die progression:")
 		s.T().Log("    Levels 1-4:   1d4")
 		s.T().Log("    Levels 5-10:  1d6")
 		s.T().Log("    Levels 11-16: 1d8")
 		s.T().Log("    Levels 17+:   1d10")
 		s.T().Log("")
-		s.T().Logf("  This attack: 1d4 → %d", 4)
+		s.T().Logf("  This attack: 1d4 → %d (verified in [1,4] range)", weaponRolls[0])
 		s.T().Log("")
-		s.T().Log("✓ Martial Arts correctly uses 1d4 for unarmed damage at level 1")
+		s.T().Log("✓ Martial Arts correctly upgrades unarmed damage to 1d4 at level 1")
 	})
 }
 
 func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 	s.Run("Martial Arts allows DEX for monk weapons (shortsword)", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK MARTIAL ARTS: DEX for Monk Weapons                         ║")
+		s.T().Log("║  MONK MARTIAL ARTS: DEX for Monk Weapons                        ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 		s.T().Logf("  Monk: %s (Level 1, STR +0, DEX +3)", s.monk.GetName())
 		s.T().Logf("  Weapon: Shortsword (1d6 piercing, monk weapon)")
 		s.T().Log("")
-
-		// Apply Martial Arts condition
-		martialArts := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-			CharacterID: s.monk.GetID(),
-			MonkLevel:   1,
-			Roller:      s.mockRoller,
-		})
-		err := martialArts.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = martialArts.Remove(s.ctx, s.bus) }()
 
 		s.T().Log("→ Shadow slashes with a shortsword!")
 
@@ -473,15 +441,12 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 					Source:            dnd5eEvents.DamageSourceWeapon,
 					OriginalDiceRolls: []int{5},
 					FinalDiceRolls:    []int{5},
-					DamageType:        damage.Piercing,
 				},
 				{
-					Source:     dnd5eEvents.DamageSourceAbility,
-					FlatBonus:  0, // STR +0 (will be replaced with DEX +3)
-					DamageType: damage.Piercing,
+					Source:    dnd5eEvents.DamageSourceAbility,
+					FlatBonus: 0, // STR +0 (will be replaced with DEX +3)
 				},
 			},
-			DamageType:   damage.Piercing,
 			WeaponDamage: "1d6",
 			AbilityUsed:  abilities.STR,
 		}
@@ -513,10 +478,6 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 		s.T().Logf("    + DEX modifier: %d", 3)
 		s.T().Logf("    = Total:        %d damage", 8)
 		s.T().Log("")
-		s.T().Log("  Monk weapons include:")
-		s.T().Log("    - Shortswords")
-		s.T().Log("    - Simple melee weapons (no Heavy/Two-Handed)")
-		s.T().Log("")
 		s.T().Log("✓ Martial Arts correctly uses DEX for monk weapons")
 	})
 }
@@ -528,25 +489,25 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
 	s.Run("Unarmored Defense expected AC: 10 + DEX + WIS", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMORED DEFENSE: Expected AC                             ║")
+		s.T().Log("║  MONK UNARMORED DEFENSE: Expected AC                            ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		// TODO: When UnarmoredDefenseCondition is wired to ACChain (#580),
+		// TODO: When UnarmoredDefenseCondition is wired to ACChain,
 		// this test should apply the real condition and verify AC through
-		// the EffectiveAC() calculation chain. For now, we document the
-		// expected formula and verify the mock is set up correctly.
+		// the EffectiveAC() calculation chain. For now, we verify the
+		// character was loaded with the correct AC from Data.
 
 		// Monk stats: DEX 16 (+3), WIS 16 (+3)
 		// Unarmored Defense: 10 + 3 + 3 = 16
 		expectedAC := 16
 
 		actualAC := s.monk.AC()
-		s.Equal(expectedAC, actualAC, "Mock AC should match expected Unarmored Defense formula")
+		s.Equal(expectedAC, actualAC, "Character AC should match expected Unarmored Defense formula")
 
-		s.T().Logf("  Ability Scores:")
-		s.T().Logf("    DEX: 16 (+3)")
-		s.T().Logf("    WIS: 16 (+3)")
+		s.T().Log("  Ability Scores:")
+		s.T().Log("    DEX: 16 (+3)")
+		s.T().Log("    WIS: 16 (+3)")
 		s.T().Log("")
 		s.T().Log("  Unarmored Defense (Monk) formula:")
 		s.T().Log("    Base:          10")
@@ -557,153 +518,370 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
 		s.T().Log("  Note: Monk uses WIS, Barbarian uses CON")
 		s.T().Log("  Note: Real UnarmoredDefenseCondition not yet wired to ACChain")
 		s.T().Log("")
-		s.T().Log("✓ Mock AC matches expected Unarmored Defense formula")
+		s.T().Log("✓ Character AC matches expected Unarmored Defense formula")
 	})
 }
 
 // =============================================================================
-// LEVEL 2: KI FEATURE TESTS
+// LEVEL 2: KI FEATURE TESTS — REAL FEATURE ACTIVATION
 // =============================================================================
 
-func (s *MonkEncounterSuite) TestKi_InitialPoints() {
-	s.Run("Level 2 Monk has 2 Ki points", func() {
+func (s *MonkEncounterSuite) TestFlurryOfBlows_GrantsTwoStrikes() {
+	s.Run("Flurry of Blows consumes 1 Ki and grants 2 FlurryStrike actions", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK KI: Initial Ki Points                                      ║")
+		s.T().Log("║  MONK FLURRY OF BLOWS: Ki + Strike Grants                       ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		// Create level 2 monk
-		monk2 := s.createLevel2Monk()
+		// Override with level 2 monk that has Ki and features
+		if s.monk != nil {
+			_ = s.monk.Cleanup(s.ctx)
+		}
+		s.monk = s.createLevel2Monk()
+		s.lookup.Add(s.monk)
 
-		kiPoints := monk2.GetResourceCurrent(resources.Ki)
-		s.Equal(2, kiPoints, "Level 2 monk should have 2 Ki points")
-
-		s.T().Logf("  Monk: %s (Level 2)", monk2.GetName())
-		s.T().Log("")
-		s.T().Log("  Ki Points by Level:")
-		s.T().Log("    Level 2:  2 Ki")
-		s.T().Log("    Level 3:  3 Ki")
-		s.T().Log("    Level 4:  4 Ki")
-		s.T().Log("    ... (Ki = Monk Level)")
-		s.T().Log("")
-		s.T().Logf("  Current Ki: %d/2", kiPoints)
-		s.T().Log("")
-		s.T().Log("✓ Level 2 Monk correctly has 2 Ki points")
-	})
-}
-
-func (s *MonkEncounterSuite) TestFlurryOfBlows_KiConsumption() {
-	s.Run("Flurry of Blows consumes 1 Ki", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK FLURRY OF BLOWS: Ki Consumption                            ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		// Verify Ki is available
+		ki := s.monk.GetResource(resources.Ki)
+		s.Require().NotNil(ki, "Level 2 monk should have Ki resource")
+		s.Require().Equal(2, ki.Current(), "Should start with 2 Ki")
+		s.T().Logf("  Monk: %s (Level 2)", s.monk.GetName())
+		s.T().Logf("  Initial Ki: %d/2", ki.Current())
 		s.T().Log("")
 
-		// Create level 2 monk with Ki
-		monk2 := s.createLevel2Monk()
-		s.T().Logf("  Monk: %s (Level 2)", monk2.GetName())
-		s.T().Logf("  Initial Ki: %d/2", monk2.GetResourceCurrent(resources.Ki))
-		s.T().Log("")
+		// Get the Flurry of Blows feature
+		flurry := s.monk.GetFeature("flurry_of_blows")
+		s.Require().NotNil(flurry, "Monk should have Flurry of Blows feature loaded from Data")
 
+		// Verify no extra actions before activation
+		initialActions := s.monk.GetActions()
+		s.T().Logf("  Actions before Flurry: %d", len(initialActions))
+
+		s.T().Log("")
 		s.T().Log("→ Shadow uses Flurry of Blows!")
-
-		// TODO: When FlurryOfBlows feature is implemented, exercise it here
-		// and assert that 2 bonus action unarmed strikes are granted.
-		// For now, we only test Ki consumption.
 		s.T().Log("  [Bonus Action] Spend 1 Ki")
 
-		// Simulate Ki consumption
-		err := monk2.UseResource(resources.Ki, 1)
+		// Activate Flurry of Blows
+		err := flurry.Activate(s.ctx, s.monk, features.FeatureInput{
+			Bus: s.bus,
+		})
 		s.Require().NoError(err)
 
-		kiAfter := monk2.GetResourceCurrent(resources.Ki)
-		s.Equal(1, kiAfter, "Ki should be consumed")
+		// Verify Ki was consumed
+		s.Equal(1, ki.Current(), "Should consume 1 Ki point")
+		s.T().Logf("  Ki remaining: %d/2", ki.Current())
+
+		// Verify 2 FlurryStrike actions were granted to the character
+		allActions := s.monk.GetActions()
+		flurryActions := 0
+		for _, action := range allActions {
+			if action.IsTemporary() {
+				flurryActions++
+			}
+		}
+		s.Equal(2, flurryActions, "Should grant 2 temporary FlurryStrike actions")
 
 		s.T().Log("")
-		s.T().Logf("  Ki remaining: %d/2", kiAfter)
+		s.T().Logf("  Actions after Flurry: %d total (%d flurry strikes)", len(allActions), flurryActions)
 		s.T().Log("")
 		s.T().Log("  Flurry of Blows:")
 		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: 2 unarmed strikes as bonus action (not yet tested)")
+		s.T().Log("    Effect: 2 unarmed strikes as bonus action")
 		s.T().Log("    Timing: Immediately after Attack action")
 		s.T().Log("")
-		s.T().Log("✓ Flurry of Blows Ki consumption verified")
+		s.T().Log("✓ Flurry of Blows consumes Ki AND grants 2 strike actions")
 	})
 }
 
-func (s *MonkEncounterSuite) TestPatientDefense_KiConsumption() {
-	s.Run("Patient Defense consumes 1 Ki", func() {
+func (s *MonkEncounterSuite) TestPatientDefense_PublishesDodgeEvent() {
+	s.Run("Patient Defense consumes 1 Ki and publishes dodge event", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK PATIENT DEFENSE: Ki Consumption                            ║")
+		s.T().Log("║  MONK PATIENT DEFENSE: Ki + Dodge Event                         ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		monk2 := s.createLevel2Monk()
-		s.T().Logf("  Monk: %s (Level 2)", monk2.GetName())
-		s.T().Logf("  Initial Ki: %d/2", monk2.GetResourceCurrent(resources.Ki))
+		// Override with level 2 monk
+		if s.monk != nil {
+			_ = s.monk.Cleanup(s.ctx)
+		}
+		s.monk = s.createLevel2Monk()
+		s.lookup.Add(s.monk)
+
+		ki := s.monk.GetResource(resources.Ki)
+		s.Require().Equal(2, ki.Current())
+		s.T().Logf("  Monk: %s (Level 2)", s.monk.GetName())
+		s.T().Logf("  Initial Ki: %d/2", ki.Current())
 		s.T().Log("")
+
+		// Get the Patient Defense feature
+		patientDefense := s.monk.GetFeature("patient_defense")
+		s.Require().NotNil(patientDefense, "Monk should have Patient Defense feature loaded from Data")
+
+		// Subscribe to the event to verify it fires
+		var receivedEvent *dnd5eEvents.PatientDefenseActivatedEvent
+		topic := dnd5eEvents.PatientDefenseActivatedTopic.On(s.bus)
+		_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.PatientDefenseActivatedEvent) error {
+			receivedEvent = &event
+			return nil
+		})
+		s.Require().NoError(err)
 
 		s.T().Log("→ Shadow uses Patient Defense!")
 		s.T().Log("  [Bonus Action] Spend 1 Ki")
 
-		// TODO: When PatientDefense feature is implemented, exercise it here
-		// and assert that Dodge action is granted/enabled.
-		// For now, we only test Ki consumption.
-
-		// Simulate Ki consumption
-		err := monk2.UseResource(resources.Ki, 1)
+		// Activate Patient Defense
+		err = patientDefense.Activate(s.ctx, s.monk, features.FeatureInput{
+			Bus: s.bus,
+		})
 		s.Require().NoError(err)
 
-		kiAfter := monk2.GetResourceCurrent(resources.Ki)
-		s.Equal(1, kiAfter, "Ki should be consumed")
+		// Verify Ki was consumed
+		s.Equal(1, ki.Current(), "Should consume 1 Ki point")
+		s.T().Logf("  Ki remaining: %d/2", ki.Current())
+
+		// Verify the event was published with correct data
+		s.Require().NotNil(receivedEvent, "PatientDefenseActivatedEvent should have been published")
+		s.Equal(s.monk.GetID(), receivedEvent.CharacterID)
+		s.Equal(refs.Features.PatientDefense().ID, receivedEvent.Source)
 
 		s.T().Log("")
-		s.T().Logf("  Ki remaining: %d/2", kiAfter)
+		s.T().Logf("  Event received: CharacterID=%s, Source=%s", receivedEvent.CharacterID, receivedEvent.Source)
 		s.T().Log("")
 		s.T().Log("  Patient Defense:")
 		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: Take Dodge action as bonus action (not yet tested)")
+		s.T().Log("    Effect: Dodge action as bonus action")
 		s.T().Log("    Dodge: Attack rolls against you have disadvantage")
 		s.T().Log("")
-		s.T().Log("✓ Patient Defense Ki consumption verified")
+		s.T().Log("✓ Patient Defense consumes Ki AND publishes dodge event")
 	})
 }
 
-func (s *MonkEncounterSuite) TestStepOfTheWind_KiConsumption() {
-	s.Run("Step of the Wind consumes 1 Ki", func() {
+func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDashEvent() {
+	s.Run("Step of the Wind with dash action publishes correct event", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK STEP OF THE WIND: Ki Consumption                           ║")
+		s.T().Log("║  MONK STEP OF THE WIND: Ki + Dash Event                         ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		monk2 := s.createLevel2Monk()
-		s.T().Logf("  Monk: %s (Level 2)", monk2.GetName())
-		s.T().Logf("  Initial Ki: %d/2", monk2.GetResourceCurrent(resources.Ki))
+		// Override with level 2 monk
+		if s.monk != nil {
+			_ = s.monk.Cleanup(s.ctx)
+		}
+		s.monk = s.createLevel2Monk()
+		s.lookup.Add(s.monk)
+
+		ki := s.monk.GetResource(resources.Ki)
+		s.Require().Equal(2, ki.Current())
+		s.T().Logf("  Monk: %s (Level 2)", s.monk.GetName())
+		s.T().Logf("  Initial Ki: %d/2", ki.Current())
 		s.T().Log("")
 
-		s.T().Log("→ Shadow uses Step of the Wind!")
-		s.T().Log("  [Bonus Action] Spend 1 Ki")
+		// Get the Step of the Wind feature
+		stepOfWind := s.monk.GetFeature("step_of_the_wind")
+		s.Require().NotNil(stepOfWind, "Monk should have Step of the Wind feature loaded from Data")
 
-		// TODO: When StepOfTheWind feature is implemented, exercise it here
-		// and assert that Dash/Disengage action + double jump are granted.
-		// For now, we only test Ki consumption.
-
-		// Simulate Ki consumption
-		err := monk2.UseResource(resources.Ki, 1)
+		// Subscribe to the event
+		var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent
+		topic := dnd5eEvents.StepOfTheWindActivatedTopic.On(s.bus)
+		_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
+			receivedEvent = &event
+			return nil
+		})
 		s.Require().NoError(err)
 
-		kiAfter := monk2.GetResourceCurrent(resources.Ki)
-		s.Equal(1, kiAfter, "Ki should be consumed")
+		s.T().Log("→ Shadow uses Step of the Wind (Dash)!")
+		s.T().Log("  [Bonus Action] Spend 1 Ki")
+
+		// Activate Step of the Wind with "dash"
+		err = stepOfWind.Activate(s.ctx, s.monk, features.FeatureInput{
+			Bus:    s.bus,
+			Action: "dash",
+		})
+		s.Require().NoError(err)
+
+		// Verify Ki was consumed
+		s.Equal(1, ki.Current(), "Should consume 1 Ki point")
+
+		// Verify the event was published with correct action
+		s.Require().NotNil(receivedEvent, "StepOfTheWindActivatedEvent should have been published")
+		s.Equal(s.monk.GetID(), receivedEvent.CharacterID)
+		s.Equal("dash", receivedEvent.Action)
+		s.Equal(refs.Features.StepOfTheWind().ID, receivedEvent.Source)
 
 		s.T().Log("")
-		s.T().Logf("  Ki remaining: %d/2", kiAfter)
+		s.T().Logf("  Event received: CharacterID=%s, Action=%s", receivedEvent.CharacterID, receivedEvent.Action)
 		s.T().Log("")
-		s.T().Log("  Step of the Wind:")
+		s.T().Log("  Step of the Wind (Dash):")
 		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: Dash OR Disengage as bonus action (not yet tested)")
-		s.T().Log("    Bonus: Jump distance doubled for the turn (not yet tested)")
+		s.T().Log("    Effect: Dash as bonus action + double jump distance")
 		s.T().Log("")
-		s.T().Log("✓ Step of the Wind Ki consumption verified")
+		s.T().Log("✓ Step of the Wind (Dash) consumes Ki AND publishes correct event")
+	})
+}
+
+func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDisengageEvent() {
+	s.Run("Step of the Wind with disengage action publishes correct event", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  MONK STEP OF THE WIND: Ki + Disengage Event                    ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		s.T().Log("")
+
+		// Override with level 2 monk
+		if s.monk != nil {
+			_ = s.monk.Cleanup(s.ctx)
+		}
+		s.monk = s.createLevel2Monk()
+		s.lookup.Add(s.monk)
+
+		ki := s.monk.GetResource(resources.Ki)
+		s.Require().Equal(2, ki.Current())
+
+		// Get the Step of the Wind feature
+		stepOfWind := s.monk.GetFeature("step_of_the_wind")
+		s.Require().NotNil(stepOfWind)
+
+		// Subscribe to the event
+		var receivedEvent *dnd5eEvents.StepOfTheWindActivatedEvent
+		topic := dnd5eEvents.StepOfTheWindActivatedTopic.On(s.bus)
+		_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.StepOfTheWindActivatedEvent) error {
+			receivedEvent = &event
+			return nil
+		})
+		s.Require().NoError(err)
+
+		s.T().Log("→ Shadow uses Step of the Wind (Disengage)!")
+
+		// Activate Step of the Wind with "disengage"
+		err = stepOfWind.Activate(s.ctx, s.monk, features.FeatureInput{
+			Bus:    s.bus,
+			Action: "disengage",
+		})
+		s.Require().NoError(err)
+
+		// Verify Ki was consumed
+		s.Equal(1, ki.Current(), "Should consume 1 Ki point")
+
+		// Verify event
+		s.Require().NotNil(receivedEvent)
+		s.Equal(s.monk.GetID(), receivedEvent.CharacterID)
+		s.Equal("disengage", receivedEvent.Action)
+
+		s.T().Log("")
+		s.T().Logf("  Event received: CharacterID=%s, Action=%s", receivedEvent.CharacterID, receivedEvent.Action)
+		s.T().Log("")
+		s.T().Log("✓ Step of the Wind (Disengage) consumes Ki AND publishes correct event")
+	})
+}
+
+// =============================================================================
+// LEVEL 2: UNARMORED MOVEMENT TESTS
+// =============================================================================
+
+func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
+	s.Run("Unarmored Movement grants +10ft speed at level 2", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  MONK UNARMORED MOVEMENT: Speed Bonus                           ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		s.T().Log("")
+
+		// Override with level 2 monk that has Unarmored Movement condition
+		if s.monk != nil {
+			_ = s.monk.Cleanup(s.ctx)
+		}
+		s.monk = s.createLevel2Monk()
+		s.lookup.Add(s.monk)
+
+		// Set up weapons registry (no weapons = unarmored)
+		charWeapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
+		s.registry.Add(s.monk.GetID(), charWeapons)
+
+		s.T().Logf("  Monk: %s (Level 2, unarmored)", s.monk.GetName())
+		s.T().Log("")
+
+		// Find the UnarmoredMovementCondition from loaded conditions
+		var umCondition interface{ GetSpeedBonus(context.Context) (int, error) }
+		for _, cond := range s.monk.GetConditions() {
+			if getter, ok := cond.(interface{ GetSpeedBonus(context.Context) (int, error) }); ok {
+				umCondition = getter
+				break
+			}
+		}
+		s.Require().NotNil(umCondition, "Monk should have UnarmoredMovementCondition loaded from Data")
+
+		// Verify speed bonus
+		bonus, err := umCondition.GetSpeedBonus(s.ctx)
+		s.Require().NoError(err)
+		s.Equal(10, bonus, "Level 2 monk should get +10 ft speed bonus")
+
+		s.T().Log("  Speed bonus by level:")
+		s.T().Log("    Level 2-5:   +10 ft")
+		s.T().Log("    Level 6-9:   +15 ft")
+		s.T().Log("    Level 10-13: +20 ft")
+		s.T().Log("    Level 14-17: +25 ft")
+		s.T().Log("    Level 18+:   +30 ft")
+		s.T().Log("")
+		s.T().Logf("  Current bonus: +%d ft", bonus)
+		s.T().Log("")
+		s.T().Log("✓ Unarmored Movement correctly grants speed bonus")
+	})
+}
+
+// =============================================================================
+// LEVEL 2: KI EXHAUSTION
+// =============================================================================
+
+func (s *MonkEncounterSuite) TestKi_ExhaustionPreventsActivation() {
+	s.Run("Ki features fail when Ki is exhausted", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  MONK KI: Exhaustion Prevents Activation                        ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		s.T().Log("")
+
+		// Override with level 2 monk
+		if s.monk != nil {
+			_ = s.monk.Cleanup(s.ctx)
+		}
+		s.monk = s.createLevel2Monk()
+		s.lookup.Add(s.monk)
+
+		ki := s.monk.GetResource(resources.Ki)
+		s.T().Logf("  Monk: %s (Level 2, Ki: %d/2)", s.monk.GetName(), ki.Current())
+		s.T().Log("")
+
+		// Use Flurry of Blows to consume 1 Ki
+		flurry := s.monk.GetFeature("flurry_of_blows")
+		s.Require().NotNil(flurry)
+
+		err := flurry.Activate(s.ctx, s.monk, features.FeatureInput{Bus: s.bus})
+		s.Require().NoError(err)
+		s.T().Log("→ Flurry of Blows activated (1 Ki spent)")
+		s.T().Logf("  Ki remaining: %d/2", ki.Current())
+
+		// Use Patient Defense to consume the last Ki
+		patientDefense := s.monk.GetFeature("patient_defense")
+		s.Require().NotNil(patientDefense)
+
+		err = patientDefense.Activate(s.ctx, s.monk, features.FeatureInput{Bus: s.bus})
+		s.Require().NoError(err)
+		s.T().Log("→ Patient Defense activated (1 Ki spent)")
+		s.T().Logf("  Ki remaining: %d/2", ki.Current())
+		s.Equal(0, ki.Current(), "All Ki should be consumed")
+
+		// Now Step of the Wind should fail
+		stepOfWind := s.monk.GetFeature("step_of_the_wind")
+		s.Require().NotNil(stepOfWind)
+
+		s.T().Log("")
+		s.T().Log("→ Shadow tries Step of the Wind with 0 Ki...")
+
+		err = stepOfWind.Activate(s.ctx, s.monk, features.FeatureInput{
+			Bus:    s.bus,
+			Action: "dash",
+		})
+		s.Require().Error(err, "Step of the Wind should fail with no Ki")
+		s.T().Logf("  Error: %v", err)
+
+		s.T().Log("")
+		s.T().Log("✓ Ki exhaustion correctly prevents feature activation")
 	})
 }
 
