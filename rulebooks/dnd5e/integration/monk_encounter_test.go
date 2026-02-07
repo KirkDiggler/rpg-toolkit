@@ -193,7 +193,7 @@ func (s *MonkEncounterSuite) createLevel2Monk() *character.Character {
 			abilities.WIS: 16, // +3
 			abilities.CHA: 8,  // -1
 		},
-		HitPoints:    16, // 8 + 2 + (5 + 2) - level 2
+		HitPoints:    16, // 16 HP at level 2
 		MaxHitPoints: 16,
 		ArmorClass:   16, // Unarmored: 10 + DEX(3) + WIS(3)
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
@@ -570,15 +570,32 @@ func (s *MonkEncounterSuite) TestFlurryOfBlows_GrantsTwoStrikes() {
 		s.Equal(1, ki.Current(), "Should consume 1 Ki point")
 		s.T().Logf("  Ki remaining: %d/2", ki.Current())
 
-		// Verify 2 FlurryStrike actions were granted to the character
+		// Verify 2 FlurryStrike actions were granted to the character by ID
 		allActions := s.monk.GetActions()
+		monkID := s.monk.GetID()
+		expectedFlurry1 := monkID + "-flurry-strike-1"
+		expectedFlurry2 := monkID + "-flurry-strike-2"
+
 		flurryActions := 0
+		foundFlurry1 := false
+		foundFlurry2 := false
+
 		for _, action := range allActions {
-			if action.IsTemporary() {
+			switch action.GetID() {
+			case expectedFlurry1:
+				foundFlurry1 = true
+				s.True(action.IsTemporary(), "FlurryStrike action 1 should be temporary")
+				flurryActions++
+			case expectedFlurry2:
+				foundFlurry2 = true
+				s.True(action.IsTemporary(), "FlurryStrike action 2 should be temporary")
 				flurryActions++
 			}
 		}
-		s.Equal(2, flurryActions, "Should grant 2 temporary FlurryStrike actions")
+
+		s.True(foundFlurry1, "Expected FlurryStrike action ID %q to exist on monk", expectedFlurry1)
+		s.True(foundFlurry2, "Expected FlurryStrike action ID %q to exist on monk", expectedFlurry2)
+		s.Equal(2, flurryActions, "Should grant 2 FlurryStrike actions")
 
 		s.T().Log("")
 		s.T().Logf("  Actions after Flurry: %d total (%d flurry strikes)", len(allActions), flurryActions)
@@ -764,9 +781,10 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDisengageEvent() {
 		s.Require().NotNil(receivedEvent)
 		s.Equal(s.monk.GetID(), receivedEvent.CharacterID)
 		s.Equal("disengage", receivedEvent.Action)
+		s.Equal(refs.Features.StepOfTheWind().ID, receivedEvent.Source)
 
 		s.T().Log("")
-		s.T().Logf("  Event received: CharacterID=%s, Action=%s", receivedEvent.CharacterID, receivedEvent.Action)
+		s.T().Logf("  Event received: CharacterID=%s, Action=%s, Source=%s", receivedEvent.CharacterID, receivedEvent.Action, receivedEvent.Source)
 		s.T().Log("")
 		s.T().Log("✓ Step of the Wind (Disengage) consumes Ki AND publishes correct event")
 	})
@@ -798,9 +816,13 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		s.T().Log("")
 
 		// Find the UnarmoredMovementCondition from loaded conditions
-		var umCondition interface{ GetSpeedBonus(context.Context) (int, error) }
+		var umCondition interface {
+			GetSpeedBonus(context.Context) (int, error)
+		}
 		for _, cond := range s.monk.GetConditions() {
-			if getter, ok := cond.(interface{ GetSpeedBonus(context.Context) (int, error) }); ok {
+			if getter, ok := cond.(interface {
+				GetSpeedBonus(context.Context) (int, error)
+			}); ok {
 				umCondition = getter
 				break
 			}
