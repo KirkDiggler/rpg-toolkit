@@ -63,6 +63,8 @@ const (
 
 	// ConditionRaging is a class-specific condition for barbarians
 	ConditionRaging ConditionType = "raging"
+	// ConditionRecklessAttack is a class-specific condition for barbarians using Reckless Attack
+	ConditionRecklessAttack ConditionType = "reckless_attack"
 
 	// ConditionFightingStyle represents an active fighting style
 	ConditionFightingStyle ConditionType = "fighting_style"

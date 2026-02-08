@@ -70,6 +70,13 @@ func LoadJSON(data json.RawMessage) (Feature, error) {
 		}
 
 		return stepOfTheWind, nil
+	case refs.Features.RecklessAttack().ID:
+		recklessAttack := &RecklessAttack{}
+		if err := recklessAttack.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load reckless attack: %w", err)
+		}
+
+		return recklessAttack, nil
 	case refs.Features.DeflectMissiles().ID:
 		deflectMissiles := &DeflectMissiles{}
 		if err := deflectMissiles.loadJSON(data); err != nil {

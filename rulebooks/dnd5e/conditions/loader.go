@@ -97,6 +97,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return ic, nil
 
+	case refs.Conditions.RecklessAttack().ID:
+		ra := &RecklessAttackCondition{}
+		if err := ra.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load reckless attack condition")
+		}
+		return ra, nil
+
 	case refs.Conditions.MartialArts().ID:
 		ma := &MartialArtsCondition{}
 		if err := ma.loadJSON(data); err != nil {

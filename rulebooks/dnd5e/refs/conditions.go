@@ -8,6 +8,7 @@ var (
 	// Class-based conditions
 	conditionRaging            = &core.Ref{Module: Module, Type: TypeConditions, ID: "raging"}
 	conditionBrutalCritical    = &core.Ref{Module: Module, Type: TypeConditions, ID: "brutal_critical"}
+	conditionRecklessAttack    = &core.Ref{Module: Module, Type: TypeConditions, ID: "reckless_attack"}
 	conditionUnarmoredDefense  = &core.Ref{Module: Module, Type: TypeConditions, ID: "unarmored_defense"}
 	conditionImprovedCritical  = &core.Ref{Module: Module, Type: TypeConditions, ID: "improved_critical"}
 	conditionMartialArts       = &core.Ref{Module: Module, Type: TypeConditions, ID: "martial_arts"}
@@ -66,6 +67,7 @@ type conditionsNS struct{}
 // Class-based conditions
 func (n conditionsNS) Raging() *core.Ref            { return conditionRaging }
 func (n conditionsNS) BrutalCritical() *core.Ref    { return conditionBrutalCritical }
+func (n conditionsNS) RecklessAttack() *core.Ref    { return conditionRecklessAttack }
 func (n conditionsNS) UnarmoredDefense() *core.Ref  { return conditionUnarmoredDefense }
 func (n conditionsNS) ImprovedCritical() *core.Ref  { return conditionImprovedCritical }
 func (n conditionsNS) MartialArts() *core.Ref       { return conditionMartialArts }
