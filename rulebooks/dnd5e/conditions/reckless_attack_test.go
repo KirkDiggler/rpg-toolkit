@@ -164,15 +164,15 @@ func (s *RecklessAttackTestSuite) TestEnemyRangedAlsoGetsAdvantage() {
 }
 
 func (s *RecklessAttackTestSuite) TestBothAdvantageWhenBarbarianAttacksSelf() {
-	// Edge case: when barbarian attacks themselves (shouldn't happen, but verify both trigger)
+	// Edge case: when barbarian is both attacker and target, both advantage sources apply
 	err := s.condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// Barbarian attacks a different target — only attacker advantage applies
 	attackEvent := dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
-		TargetID:   "goblin-1",
+		TargetID:   "barbarian-1", // Self-target
 		IsMelee:    true,
+		AttackType: dnd5eEvents.AttackTypeStandard,
 	}
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
@@ -183,8 +183,36 @@ func (s *RecklessAttackTestSuite) TestBothAdvantageWhenBarbarianAttacksSelf() {
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
 	s.Require().NoError(err)
 
-	// Only attacker advantage (not vulnerability, since barbarian isn't the target)
-	s.Len(finalEvent.AdvantageSources, 1)
+	// Both attacker advantage AND target vulnerability should fire
+	s.Require().Len(finalEvent.AdvantageSources, 2, "Should have both attacker and target advantage sources")
+
+	reasons := []string{finalEvent.AdvantageSources[0].Reason, finalEvent.AdvantageSources[1].Reason}
+	s.Contains(reasons, "Reckless Attack")
+	s.Contains(reasons, "Target is reckless")
+}
+
+func (s *RecklessAttackTestSuite) TestNoAdvantageOnOpportunityAttacks() {
+	// RAW: Reckless Attack only applies "when you make your first attack on your turn"
+	err := s.condition.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID: "barbarian-1",
+		TargetID:   "goblin-1",
+		IsMelee:    true,
+		AttackType: dnd5eEvents.AttackTypeOpportunity, // Opportunity attack!
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attackTopic.PublishWithChain(s.ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	s.Require().NoError(err)
+
+	// No attacker advantage on opportunity attacks
+	s.Empty(finalEvent.AdvantageSources, "Opportunity attacks should NOT get Reckless Attack advantage")
 }
 
 func (s *RecklessAttackTestSuite) TestNoEffectOnUnrelatedAttacks() {
@@ -214,6 +242,15 @@ func (s *RecklessAttackTestSuite) TestRemovedOnTurnStart() {
 	s.Require().NoError(err)
 	s.True(s.condition.IsApplied())
 
+	// Subscribe to removal events to verify one is published
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
 	// Publish turn start for the barbarian
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
@@ -224,6 +261,12 @@ func (s *RecklessAttackTestSuite) TestRemovedOnTurnStart() {
 
 	// Condition should be removed
 	s.False(s.condition.IsApplied(), "Condition should be removed on turn start")
+
+	// ConditionRemovedEvent should have been published
+	s.Require().NotNil(removedEvent, "ConditionRemovedEvent should be published on turn start")
+	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal(refs.Conditions.RecklessAttack().String(), removedEvent.ConditionRef)
+	s.Equal("turn_start", removedEvent.Reason)
 }
 
 func (s *RecklessAttackTestSuite) TestNotRemovedOnOtherTurnStart() {

@@ -133,8 +133,9 @@ func (r *RecklessAttackCondition) onAttackChain(
 		return c, nil
 	}
 
-	// When the barbarian is the attacker: advantage on melee attacks
-	if isAttacker && event.IsMelee {
+	// When the barbarian is the attacker: advantage on melee attacks made during their turn.
+	// RAW: "When you make your first attack on your turn" — does not apply to opportunity attacks.
+	if isAttacker && event.IsMelee && event.AttackType != dnd5eEvents.AttackTypeOpportunity {
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.RecklessAttack(),
@@ -176,6 +177,17 @@ func (r *RecklessAttackCondition) onTurnStart(ctx context.Context, event dnd5eEv
 
 	if r.bus == nil {
 		return nil
+	}
+
+	// Publish condition removed event before unsubscribing so the character's
+	// condition tracker knows to drop this condition from persistence.
+	removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
+	if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  r.CharacterID,
+		ConditionRef: refs.Conditions.RecklessAttack().String(),
+		Reason:       "turn_start",
+	}); err != nil {
+		return rpgerr.Wrapf(err, "failed to publish reckless attack removal for character %s", r.CharacterID)
 	}
 
 	return r.Remove(ctx, r.bus)

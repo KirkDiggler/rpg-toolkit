@@ -50,12 +50,29 @@ func (s *RecklessAttackTestSuite) TestCanActivate_Always() {
 	s.Require().NoError(err)
 }
 
-func (s *RecklessAttackTestSuite) TestActivate_AppliesCondition() {
+func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() {
+	// Subscribe to ConditionAppliedTopic to verify the feature publishes correctly
+	var receivedEvent *dnd5eEvents.ConditionAppliedEvent
+	topic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+		receivedEvent = &event
+		// Simulate what the character manager does: apply the condition to the bus
+		return event.Condition.Apply(s.ctx, s.bus)
+	})
+	s.Require().NoError(err)
+
 	// Activate Reckless Attack
-	err := s.feature.Activate(s.ctx, s.character, features.FeatureInput{
+	err = s.feature.Activate(s.ctx, s.character, features.FeatureInput{
 		Bus: s.bus,
 	})
 	s.Require().NoError(err)
+
+	// Verify ConditionAppliedEvent was published with correct fields
+	s.Require().NotNil(receivedEvent, "Should publish ConditionAppliedEvent")
+	s.Equal(dnd5eEvents.ConditionRecklessAttack, receivedEvent.Type)
+	s.Equal(dnd5eEvents.ConditionSourceFeature, receivedEvent.Source)
+	s.Equal(s.character.GetID(), receivedEvent.Target.GetID())
+	s.Require().NotNil(receivedEvent.Condition, "Should include condition behavior")
 
 	// Verify the condition is active by checking attack chain
 	attackEvent := dnd5eEvents.AttackChainEvent{

@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -58,10 +59,17 @@ func (r *RecklessAttack) Activate(ctx context.Context, owner core.Entity, input 
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus required for reckless attack")
 	}
 
-	// Create and apply the reckless attack condition
+	// Publish via ConditionAppliedTopic so the character's condition manager
+	// handles apply/storage/duplicate-prevention (same pattern as Rage).
 	condition := conditions.NewRecklessAttackCondition(owner.GetID())
-	if err := condition.Apply(ctx, input.Bus); err != nil {
-		return rpgerr.Wrap(err, "failed to apply reckless attack condition")
+	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
+	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    owner,
+		Type:      dnd5eEvents.ConditionRecklessAttack,
+		Source:    dnd5eEvents.ConditionSourceFeature,
+		Condition: condition,
+	}); err != nil {
+		return rpgerr.Wrapf(err, "failed to publish reckless attack condition")
 	}
 
 	return nil
