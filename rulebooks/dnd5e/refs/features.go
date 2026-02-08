@@ -8,6 +8,7 @@ var (
 	// Barbarian
 	featureRage           = &core.Ref{Module: Module, Type: TypeFeatures, ID: "rage"}
 	featureBrutalCritical = &core.Ref{Module: Module, Type: TypeFeatures, ID: "brutal_critical"}
+	featureRecklessAttack = &core.Ref{Module: Module, Type: TypeFeatures, ID: "reckless_attack"}
 
 	// Fighter
 	featureSecondWind  = &core.Ref{Module: Module, Type: TypeFeatures, ID: "second_wind"}
@@ -36,6 +37,7 @@ type featuresNS struct{}
 // Barbarian
 func (n featuresNS) Rage() *core.Ref           { return featureRage }
 func (n featuresNS) BrutalCritical() *core.Ref { return featureBrutalCritical }
+func (n featuresNS) RecklessAttack() *core.Ref { return featureRecklessAttack }
 
 // Fighter
 func (n featuresNS) SecondWind() *core.Ref  { return featureSecondWind }

@@ -75,6 +75,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		feature, err = createPatientDefense(input.Config, input.CharacterID)
 	case refs.Features.StepOfTheWind().ID:
 		feature, err = createStepOfTheWind(input.Config, input.CharacterID)
+	case refs.Features.RecklessAttack().ID:
+		feature, err = createRecklessAttack(input.Config, input.CharacterID)
 	case refs.Features.DeflectMissiles().ID:
 		feature, err = createDeflectMissiles(input.Config, input.CharacterID)
 	default:
@@ -259,6 +261,27 @@ func createStepOfTheWind(config json.RawMessage, characterID string) (*StepOfThe
 	return &StepOfTheWind{
 		id:          refs.Features.StepOfTheWind().ID,
 		name:        "Step of the Wind",
+		characterID: characterID,
+	}, nil
+}
+
+// recklessAttackConfig is the config structure for reckless attack feature
+type recklessAttackConfig struct {
+	// Reckless Attack has no resource cost or config
+}
+
+// createRecklessAttack creates a reckless attack feature from config
+func createRecklessAttack(config json.RawMessage, characterID string) (*RecklessAttack, error) {
+	var cfg recklessAttackConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse reckless attack config")
+		}
+	}
+
+	return &RecklessAttack{
+		id:          refs.Features.RecklessAttack().ID,
+		name:        "Reckless Attack",
 		characterID: characterID,
 	}, nil
 }
