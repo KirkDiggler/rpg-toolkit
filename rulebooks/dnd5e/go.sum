@@ -10,8 +10,8 @@ github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 h1:wRshHQZfLnEh03/
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1/go.mod h1:LzyZd5OAAic1UnyPwCx6HnmWcOQ/jZvqMSc+Q0k7fH8=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 h1:MtAEpVskb0lfb+oXO8xGrSQsDoHZdQ/kjdjh7b9IOdY=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1/go.mod h1:wsyJmmf1X0iLFGy5Iyy5sUoZhXZQvuYVsKdXfc4b/T4=
-github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.0 h1:fyNqBWKRn98giYFAP7oY+e9ygHFMGjeHlF6k68FhOy0=
-github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.0/go.mod h1:tchpvtZ7MTh7P5J1efr2Wigw108VzQBQEojlVFbw8rM=
+github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.1 h1:/yYERgUujKqa3nwy9/xtOHC05tDvWfTpYBcEW1v1Yeo=
+github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.1/go.mod h1:tchpvtZ7MTh7P5J1efr2Wigw108VzQBQEojlVFbw8rM=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2 h1:81iz712+EXhitPNgcf0tMDqvqI/0u9k26Hbdph62QZU=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2/go.mod h1:tnhhn+fRcklWqwIu5lOtBA2uCn1amkp5ZAARsqAgJqI=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.4.0 h1:vlraS3uAcQ5N2+UxZ0l61CoCe6LtZhLIlxuGUnA+2NE=
