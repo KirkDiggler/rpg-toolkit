@@ -100,6 +100,9 @@ type Character struct {
 	bus             events.EventBus
 	subscriptionIDs []string
 
+	// Action economy state (nil outside combat)
+	actionEconomy *ActionEconomyData
+
 	// Dirty tracking for persistence
 	dirty bool
 }
@@ -961,6 +964,9 @@ func (c *Character) ToData() *Data {
 		// The feature's ToJSON already includes the fully qualified ref
 		data.Features = append(data.Features, jsonData)
 	}
+
+	// Copy action economy state (nil outside combat)
+	data.ActionEconomy = c.actionEconomy
 
 	// Convert conditions to persisted JSON (following same pattern as features)
 	data.Conditions = make([]json.RawMessage, 0, len(c.conditions))

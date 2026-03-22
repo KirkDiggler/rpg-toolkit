@@ -78,6 +78,9 @@ type Data struct {
 	// Conditions (raging, poisoned, stunned, etc)
 	Conditions []json.RawMessage `json:"conditions,omitempty"`
 
+	// Action economy state (nil outside combat)
+	ActionEconomy *ActionEconomyData `json:"action_economy,omitempty"`
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -143,6 +146,9 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		subscriptionIDs:     make([]string, 0),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
+
+	// Restore action economy state (nil outside combat is fine)
+	char.actionEconomy = d.ActionEconomy
 
 	// Get hit dice from class data
 	if classData := classes.GetData(d.ClassID); classData != nil {
