@@ -5,6 +5,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -425,6 +426,58 @@ func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
 	// Verify Martial Arts is configured for level 1
 	s.Require().NotNil(martialArtsCond)
 	s.Equal(1, martialArtsCond.MonkLevel, "Martial Arts should be configured for monk level 1")
+}
+
+func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
+	// Build a RagingCondition, serialize it to JSON
+	ragingCond := &conditions.RagingCondition{
+		CharacterID: "char-rt",
+		DamageBonus: 2,
+		Level:       1,
+		Source:      "rage",
+		TurnsActive: 3,
+	}
+
+	rawJSON, err := ragingCond.ToJSON()
+	s.Require().NoError(err)
+
+	// Build a minimal character Data with the serialized condition
+	data := &Data{
+		ID:       "char-rt",
+		PlayerID: "player-rt",
+		Name:     "Round Trip Barbarian",
+		Level:    1,
+		ClassID:  classes.Barbarian,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:        14,
+		MaxHitPoints:     14,
+		ProficiencyBonus: 2,
+		Conditions:       []json.RawMessage{rawJSON},
+	}
+
+	// LoadFromData should deserialize and Apply the condition
+	char, err := LoadFromData(s.ctx, data, s.bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	// Verify the character has exactly one condition and it is applied
+	conds := char.GetConditions()
+	s.Require().Len(conds, 1, "Character should have one condition loaded from data")
+
+	loadedCond, ok := conds[0].(*conditions.RagingCondition)
+	s.Require().True(ok, "Condition should be a RagingCondition")
+	s.True(loadedCond.IsApplied(), "Loaded condition should be applied (subscribed to bus)")
+	s.Equal("char-rt", loadedCond.CharacterID)
+	s.Equal(2, loadedCond.DamageBonus)
+	s.Equal(3, loadedCond.TurnsActive)
 }
 
 // DummyEntity implements core.Entity for testing
