@@ -112,7 +112,7 @@ func (s *SneakAttackCondition) Remove(ctx context.Context, bus events.EventBus) 
 	var errs []error
 	for _, id := range s.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, id); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", id, err))
 		}
 	}
 

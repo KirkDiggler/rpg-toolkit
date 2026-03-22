@@ -77,7 +77,7 @@ func (f *FightingStyleProtectionCondition) Remove(ctx context.Context, bus event
 	var errs []error
 	for _, subID := range f.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 

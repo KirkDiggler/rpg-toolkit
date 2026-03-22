@@ -120,7 +120,7 @@ func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error
 	var errs []error
 	for _, subID := range r.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 

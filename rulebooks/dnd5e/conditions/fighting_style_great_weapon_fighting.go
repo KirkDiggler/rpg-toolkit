@@ -84,7 +84,7 @@ func (f *FightingStyleGreatWeaponFightingCondition) Remove(ctx context.Context, 
 	var errs []error
 	for _, subID := range f.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 

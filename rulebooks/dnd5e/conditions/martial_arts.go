@@ -75,7 +75,7 @@ func (ma *MartialArtsCondition) Remove(ctx context.Context, bus events.EventBus)
 	var errs []error
 	for _, subID := range ma.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 
