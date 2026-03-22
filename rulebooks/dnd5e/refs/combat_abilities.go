@@ -6,13 +6,14 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 // CombatAbility singletons - unexported for controlled access via methods
 // These represent universal combat abilities available to all characters
 var (
-	combatAbilityAttack    = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "attack"}
-	combatAbilityDash      = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "dash"}
-	combatAbilityDodge     = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "dodge"}
-	combatAbilityDisengage = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "disengage"}
-	combatAbilityHelp      = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "help"}
-	combatAbilityHide      = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "hide"}
-	combatAbilityReady     = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "ready"}
+	combatAbilityAttack        = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "attack"}
+	combatAbilityDash          = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "dash"}
+	combatAbilityDodge         = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "dodge"}
+	combatAbilityDisengage     = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "disengage"}
+	combatAbilityHelp          = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "help"}
+	combatAbilityHide          = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "hide"}
+	combatAbilityReady         = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "ready"}
+	combatAbilityOffHandAttack = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "off_hand_attack"}
 )
 
 // CombatAbilities provides type-safe, discoverable references to D&D 5e combat abilities.
@@ -50,3 +51,7 @@ func (n combatAbilitiesNS) Hide() *core.Ref { return combatAbilityHide }
 // Ready returns the ref for the Ready combat ability.
 // Ready consumes 1 action to prepare an action for a specified trigger.
 func (n combatAbilitiesNS) Ready() *core.Ref { return combatAbilityReady }
+
+// OffHandAttack returns the ref for the Off-Hand Attack combat ability.
+// Off-Hand Attack consumes 1 bonus action to grant off-hand strike capacity.
+func (n combatAbilitiesNS) OffHandAttack() *core.Ref { return combatAbilityOffHandAttack }

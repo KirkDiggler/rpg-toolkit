@@ -32,6 +32,12 @@ type PatientDefenseData struct {
 	CharacterID string    `json:"character_id"`
 }
 
+// Ref returns the unique ref for the Patient Defense feature.
+func (p *PatientDefense) Ref() *core.Ref { return refs.Features.PatientDefense() }
+
+// Name returns the display name for the Patient Defense feature.
+func (p *PatientDefense) Name() string { return p.name }
+
 // GetID implements core.Entity
 func (p *PatientDefense) GetID() string {
 	return p.id

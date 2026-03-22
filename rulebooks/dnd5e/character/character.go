@@ -100,6 +100,9 @@ type Character struct {
 	bus             events.EventBus
 	subscriptionIDs []string
 
+	// Action economy state (nil outside combat)
+	actionEconomy *ActionEconomyData
+
 	// Dirty tracking for persistence
 	dirty bool
 }
@@ -550,9 +553,17 @@ func (c *Character) GetAction(id string) actions.Action {
 
 // AddCombatAbility adds a combat ability to the character's available combat abilities.
 // Implements combatabilities.CombatAbilityHolder interface.
+// Implements combatabilities.CombatAbilityHolder interface.
+// Idempotent: skips if an ability with the same ID is already registered.
 func (c *Character) AddCombatAbility(ability combatabilities.CombatAbility) error {
 	if ability == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "combat ability cannot be nil")
+	}
+	// Skip if already registered (same ID)
+	for _, existing := range c.combatAbilities {
+		if existing.GetID() == ability.GetID() {
+			return nil
+		}
 	}
 	c.combatAbilities = append(c.combatAbilities, ability)
 	return nil
@@ -574,6 +585,15 @@ func (c *Character) RemoveCombatAbility(abilityID string) error {
 // Implements combatabilities.CombatAbilityHolder interface.
 func (c *Character) GetCombatAbilities() []combatabilities.CombatAbility {
 	return c.combatAbilities
+}
+
+// initStandardCombatAbilities adds universal combat abilities to a character.
+// Called during LoadFromData to re-register abilities that are not persisted.
+func initStandardCombatAbilities(char *Character) {
+	_ = char.AddCombatAbility(combatabilities.NewAttack(char.id + "-attack"))
+	_ = char.AddCombatAbility(combatabilities.NewDash(char.id + "-dash"))
+	_ = char.AddCombatAbility(combatabilities.NewDodge(char.id + "-dodge"))
+	_ = char.AddCombatAbility(combatabilities.NewDisengage(char.id + "-disengage"))
 }
 
 // GetCombatAbility returns a specific combat ability by ID, or nil if not found.
@@ -960,6 +980,15 @@ func (c *Character) ToData() *Data {
 		}
 		// The feature's ToJSON already includes the fully qualified ref
 		data.Features = append(data.Features, jsonData)
+	}
+
+	// Deep-copy action economy state (nil outside combat) to avoid sharing mutable maps
+	if c.actionEconomy != nil {
+		aeCopy := *c.actionEconomy
+		if c.actionEconomy.Granted != nil {
+			aeCopy.Granted = maps.Clone(c.actionEconomy.Granted)
+		}
+		data.ActionEconomy = &aeCopy
 	}
 
 	// Convert conditions to persisted JSON (following same pattern as features)

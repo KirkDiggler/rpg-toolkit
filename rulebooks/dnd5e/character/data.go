@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -78,6 +79,9 @@ type Data struct {
 	// Conditions (raging, poisoned, stunned, etc)
 	Conditions []json.RawMessage `json:"conditions,omitempty"`
 
+	// Action economy state (nil outside combat)
+	ActionEconomy *ActionEconomyData `json:"action_economy,omitempty"`
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -142,6 +146,15 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		bus:                 bus,
 		subscriptionIDs:     make([]string, 0),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+	}
+
+	// Deep-copy action economy state to avoid aliasing mutable Granted map
+	if d.ActionEconomy != nil {
+		aeCopy := *d.ActionEconomy
+		if d.ActionEconomy.Granted != nil {
+			aeCopy.Granted = maps.Clone(d.ActionEconomy.Granted)
+		}
+		char.actionEconomy = &aeCopy
 	}
 
 	// Get hit dice from class data
@@ -241,6 +254,9 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 
 		char.resources[key] = resource
 	}
+
+	// Re-register standard combat abilities (not persisted, always available)
+	initStandardCombatAbilities(char)
 
 	// Subscribe to events - character comes out fully initialized
 	if err := char.subscribeToEvents(ctx); err != nil {

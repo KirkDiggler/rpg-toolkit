@@ -34,6 +34,12 @@ type ActionSurgeData struct {
 	MaxUses     int       `json:"max_uses"`
 }
 
+// Ref returns the unique ref for the Action Surge feature.
+func (a *ActionSurge) Ref() *core.Ref { return refs.Features.ActionSurge() }
+
+// Name returns the display name for the Action Surge feature.
+func (a *ActionSurge) Name() string { return a.name }
+
 // GetID implements core.Entity
 func (a *ActionSurge) GetID() string {
 	return a.id

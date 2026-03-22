@@ -32,6 +32,12 @@ type StepOfTheWindData struct {
 	CharacterID string    `json:"character_id"`
 }
 
+// Ref returns the unique ref for the Step of the Wind feature.
+func (s *StepOfTheWind) Ref() *core.Ref { return refs.Features.StepOfTheWind() }
+
+// Name returns the display name for the Step of the Wind feature.
+func (s *StepOfTheWind) Name() string { return s.name }
+
 // GetID implements core.Entity
 func (s *StepOfTheWind) GetID() string {
 	return s.id
