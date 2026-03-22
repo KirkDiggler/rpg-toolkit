@@ -139,6 +139,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return dodging, nil
 
+	case refs.Conditions.Unconscious().ID:
+		uc := &UnconsciousCondition{}
+		if err := uc.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load unconscious condition")
+		}
+		return uc, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}

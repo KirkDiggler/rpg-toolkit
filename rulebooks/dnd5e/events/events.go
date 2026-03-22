@@ -412,6 +412,7 @@ type DamageReceivedEvent struct {
 	SourceRef  *core.Ref   // What caused the damage (weapon, spell, condition ref)
 	Amount     int         // Amount of damage
 	DamageType damage.Type // Type of damage (slashing, fire, etc)
+	IsCritical bool        // True if this was a critical hit (unconscious characters take 2 death save failures)
 }
 
 // HealingReceivedEvent is published when a character receives healing
@@ -466,6 +467,35 @@ type ResourceConsumedEvent struct {
 	ResourceKey resources.ResourceKey // Which resource was consumed
 	Amount      int                   // How much was consumed
 	Remaining   int                   // How much is left after consumption
+}
+
+// =============================================================================
+// Death Save Events
+// =============================================================================
+
+// DeathSaveRolledEvent is published when a death save is rolled for an unconscious character
+type DeathSaveRolledEvent struct {
+	CharacterID           string // ID of the character who rolled
+	Roll                  int    // The d20 roll result (0 if from damage, not a roll)
+	IsSuccess             bool   // True if the roll was 10+
+	IsCriticalFail        bool   // True if the roll was 1
+	IsCriticalSuccess     bool   // True if the roll was 20
+	Successes             int    // Total successes after this event
+	Failures              int    // Total failures after this event
+	Stabilized            bool   // True if character stabilized (3 successes)
+	Dead                  bool   // True if character died (3 failures)
+	RegainedConsciousness bool   // True if nat 20 regained consciousness
+	HPRestored            int    // HP restored (1 on nat 20, 0 otherwise)
+}
+
+// CharacterDiedEvent is published when a character accumulates 3 death save failures
+type CharacterDiedEvent struct {
+	CharacterID string // ID of the dead character
+}
+
+// CharacterStabilizedEvent is published when a character accumulates 3 death save successes
+type CharacterStabilizedEvent struct {
+	CharacterID string // ID of the stabilized character
 }
 
 // =============================================================================
@@ -700,6 +730,15 @@ var (
 
 	// MoveExecutedTopic provides typed pub/sub for Move action execution
 	MoveExecutedTopic = events.DefineTypedTopic[MoveExecutedEvent]("dnd5e.action.move.executed")
+
+	// DeathSaveRolledTopic provides typed pub/sub for death save roll events
+	DeathSaveRolledTopic = events.DefineTypedTopic[DeathSaveRolledEvent]("dnd5e.death_save.rolled")
+
+	// CharacterDiedTopic provides typed pub/sub for character death events
+	CharacterDiedTopic = events.DefineTypedTopic[CharacterDiedEvent]("dnd5e.death_save.died")
+
+	// CharacterStabilizedTopic provides typed pub/sub for character stabilization events
+	CharacterStabilizedTopic = events.DefineTypedTopic[CharacterStabilizedEvent]("dnd5e.death_save.stabilized")
 )
 
 // Chain topics (for modifier chains)
