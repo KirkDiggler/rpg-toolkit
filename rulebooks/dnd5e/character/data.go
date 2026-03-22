@@ -248,6 +248,9 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		char.resources[key] = resource
 	}
 
+	// Re-register standard combat abilities (not persisted, always available)
+	initStandardCombatAbilities(char)
+
 	// Subscribe to events - character comes out fully initialized
 	if err := char.subscribeToEvents(ctx); err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")

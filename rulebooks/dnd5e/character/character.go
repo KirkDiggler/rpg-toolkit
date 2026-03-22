@@ -579,6 +579,15 @@ func (c *Character) GetCombatAbilities() []combatabilities.CombatAbility {
 	return c.combatAbilities
 }
 
+// initStandardCombatAbilities adds universal combat abilities to a character.
+// Called during LoadFromData to re-register abilities that are not persisted.
+func initStandardCombatAbilities(char *Character) {
+	_ = char.AddCombatAbility(combatabilities.NewAttack(char.id + "-attack"))
+	_ = char.AddCombatAbility(combatabilities.NewDash(char.id + "-dash"))
+	_ = char.AddCombatAbility(combatabilities.NewDodge(char.id + "-dodge"))
+	_ = char.AddCombatAbility(combatabilities.NewDisengage(char.id + "-disengage"))
+}
+
 // GetCombatAbility returns a specific combat ability by ID, or nil if not found.
 // Implements combatabilities.CombatAbilityHolder interface.
 func (c *Character) GetCombatAbility(id string) combatabilities.CombatAbility {
