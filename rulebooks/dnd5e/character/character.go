@@ -553,9 +553,17 @@ func (c *Character) GetAction(id string) actions.Action {
 
 // AddCombatAbility adds a combat ability to the character's available combat abilities.
 // Implements combatabilities.CombatAbilityHolder interface.
+// Implements combatabilities.CombatAbilityHolder interface.
+// Idempotent: skips if an ability with the same ID is already registered.
 func (c *Character) AddCombatAbility(ability combatabilities.CombatAbility) error {
 	if ability == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "combat ability cannot be nil")
+	}
+	// Skip if already registered (same ID)
+	for _, existing := range c.combatAbilities {
+		if existing.GetID() == ability.GetID() {
+			return nil
+		}
 	}
 	c.combatAbilities = append(c.combatAbilities, ability)
 	return nil
@@ -974,8 +982,14 @@ func (c *Character) ToData() *Data {
 		data.Features = append(data.Features, jsonData)
 	}
 
-	// Copy action economy state (nil outside combat)
-	data.ActionEconomy = c.actionEconomy
+	// Deep-copy action economy state (nil outside combat) to avoid sharing mutable maps
+	if c.actionEconomy != nil {
+		aeCopy := *c.actionEconomy
+		if c.actionEconomy.Granted != nil {
+			aeCopy.Granted = maps.Clone(c.actionEconomy.Granted)
+		}
+		data.ActionEconomy = &aeCopy
+	}
 
 	// Convert conditions to persisted JSON (following same pattern as features)
 	data.Conditions = make([]json.RawMessage, 0, len(c.conditions))

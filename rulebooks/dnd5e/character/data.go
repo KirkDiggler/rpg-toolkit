@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -147,8 +148,14 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
 
-	// Restore action economy state (nil outside combat is fine)
-	char.actionEconomy = d.ActionEconomy
+	// Deep-copy action economy state to avoid aliasing mutable Granted map
+	if d.ActionEconomy != nil {
+		aeCopy := *d.ActionEconomy
+		if d.ActionEconomy.Granted != nil {
+			aeCopy.Granted = maps.Clone(d.ActionEconomy.Granted)
+		}
+		char.actionEconomy = &aeCopy
+	}
 
 	// Get hit dice from class data
 	if classData := classes.GetData(d.ClassID); classData != nil {

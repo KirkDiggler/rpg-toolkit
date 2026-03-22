@@ -13,7 +13,7 @@ var (
 	combatAbilityHelp          = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "help"}
 	combatAbilityHide          = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "hide"}
 	combatAbilityReady         = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "ready"}
-	combatAbilityOffHandAttack = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "offhand_attack"}
+	combatAbilityOffHandAttack = &core.Ref{Module: Module, Type: TypeCombatAbilities, ID: "off_hand_attack"}
 )
 
 // CombatAbilities provides type-safe, discoverable references to D&D 5e combat abilities.

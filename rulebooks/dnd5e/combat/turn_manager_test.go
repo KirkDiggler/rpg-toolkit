@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -136,11 +135,7 @@ func (s *TurnManagerTestSuite) createFighter() *character.Character {
 	char, err := character.LoadFromData(s.ctx, data, s.bus)
 	s.Require().NoError(err)
 
-	// Add standard combat abilities
-	s.Require().NoError(char.AddCombatAbility(combatabilities.NewAttack("attack")))
-	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDash("dash")))
-	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDisengage("disengage")))
-	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDodge("dodge")))
+	// Standard combat abilities are now registered by LoadFromData via initStandardCombatAbilities
 
 	return char
 }
@@ -171,8 +166,7 @@ func (s *TurnManagerTestSuite) createGoblinCharacter() *character.Character {
 	char, err := character.LoadFromData(s.ctx, data, s.bus)
 	s.Require().NoError(err)
 
-	// Add attack ability for OA capability
-	s.Require().NoError(char.AddCombatAbility(combatabilities.NewAttack("attack")))
+	// Standard combat abilities (including Attack for OA) registered by LoadFromData
 
 	return char
 }
