@@ -65,6 +65,12 @@ func calculateRageDamage(level int) int {
 	}
 }
 
+// Ref returns the unique ref for the Rage feature.
+func (r *Rage) Ref() *core.Ref { return refs.Features.Rage() }
+
+// Name returns the display name for the Rage feature.
+func (r *Rage) Name() string { return r.name }
+
 // GetID implements core.Entity
 func (r *Rage) GetID() string {
 	return r.id

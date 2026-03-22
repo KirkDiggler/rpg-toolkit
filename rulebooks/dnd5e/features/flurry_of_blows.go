@@ -33,6 +33,12 @@ type FlurryOfBlowsData struct {
 	CharacterID string    `json:"character_id"`
 }
 
+// Ref returns the unique ref for the Flurry of Blows feature.
+func (f *FlurryOfBlows) Ref() *core.Ref { return refs.Features.FlurryOfBlows() }
+
+// Name returns the display name for the Flurry of Blows feature.
+func (f *FlurryOfBlows) Name() string { return f.name }
+
 // GetID implements core.Entity
 func (f *FlurryOfBlows) GetID() string {
 	return f.id

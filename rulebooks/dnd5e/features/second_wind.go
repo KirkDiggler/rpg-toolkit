@@ -38,6 +38,12 @@ type SecondWindData struct {
 	MaxUses     int       `json:"max_uses"`
 }
 
+// Ref returns the unique ref for the Second Wind feature.
+func (s *SecondWind) Ref() *core.Ref { return refs.Features.SecondWind() }
+
+// Name returns the display name for the Second Wind feature.
+func (s *SecondWind) Name() string { return s.name }
+
 // GetID implements core.Entity
 func (s *SecondWind) GetID() string {
 	return s.id

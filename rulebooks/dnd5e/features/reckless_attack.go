@@ -31,6 +31,12 @@ type RecklessAttackData struct {
 	CharacterID string    `json:"character_id"`
 }
 
+// Ref returns the unique ref for the Reckless Attack feature.
+func (r *RecklessAttack) Ref() *core.Ref { return refs.Features.RecklessAttack() }
+
+// Name returns the display name for the Reckless Attack feature.
+func (r *RecklessAttack) Name() string { return r.name }
+
 // GetID implements core.Entity
 func (r *RecklessAttack) GetID() string {
 	return r.id

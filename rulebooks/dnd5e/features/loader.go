@@ -12,6 +12,8 @@ import (
 // Feature represents a class feature that can be activated
 type Feature interface {
 	core.Action[FeatureInput] // Can be activated
+	Ref() *core.Ref           // Returns the feature's unique ref
+	Name() string             // Returns the feature's display name
 	ToJSON() (json.RawMessage, error)
 	ActionType() combat.ActionType // Returns action economy cost to activate
 }

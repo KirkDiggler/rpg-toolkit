@@ -39,6 +39,12 @@ type DeflectMissilesData struct {
 	DexModifier int       `json:"dex_modifier"`
 }
 
+// Ref returns the unique ref for the Deflect Missiles feature.
+func (d *DeflectMissiles) Ref() *core.Ref { return refs.Features.DeflectMissiles() }
+
+// Name returns the display name for the Deflect Missiles feature.
+func (d *DeflectMissiles) Name() string { return d.name }
+
 // GetID implements core.Entity
 func (d *DeflectMissiles) GetID() string {
 	return d.id
