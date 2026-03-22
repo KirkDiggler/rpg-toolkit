@@ -4,6 +4,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/tools"
@@ -76,6 +77,15 @@ func ResolveEquipmentDetail(id shared.EquipmentID) *EquipmentDetail {
 			Type:   shared.EquipmentTypeAmmunition,
 			Weight: ammo.Weight,
 			Cost:   ammo.Cost,
+		}
+	}
+	// Check miscellaneous items
+	if item, ok := items.All[id]; ok {
+		return &EquipmentDetail{
+			Name:   item.Name,
+			Type:   shared.EquipmentTypeItem,
+			Weight: item.Weight,
+			Cost:   item.Cost,
 		}
 	}
 	return nil

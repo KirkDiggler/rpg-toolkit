@@ -35,4 +35,20 @@ const (
 	Waterskin  ItemID = "waterskin"
 )
 
+// Item represents a miscellaneous item with basic stats.
+type Item struct {
+	Name   string
+	Weight float64
+	Cost   string
+}
+
+// All maps item IDs to their definitions.
+var All = map[ItemID]Item{
+	ComponentPouch: {Name: "Component Pouch", Weight: 2, Cost: "25 gp"},
+	ArcaneFocus:    {Name: "Arcane Focus", Weight: 1, Cost: "10 gp"},
+	DruidicFocus:   {Name: "Druidic Focus", Weight: 0, Cost: "1 gp"},
+	HolySymbol:     {Name: "Holy Symbol", Weight: 0, Cost: "5 gp"},
+	Spellbook:      {Name: "Spellbook", Weight: 3, Cost: "50 gp"},
+}
+
 // TODO: Add more items as needed
