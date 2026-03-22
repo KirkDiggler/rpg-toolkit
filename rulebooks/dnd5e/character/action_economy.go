@@ -15,6 +15,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+// GetActionEconomy returns the current action economy data, or nil if not in combat.
+func (c *Character) GetActionEconomy() *ActionEconomyData {
+	return c.actionEconomy
+}
+
 // InCombat returns true if the character is currently in combat.
 // Combat is indicated by the action economy being initialized (non-nil).
 func (c *Character) InCombat() bool {
@@ -33,6 +38,7 @@ func (c *Character) ExitCombat(_ context.Context, _ *ExitCombatInput) (*ExitComb
 // Returns the available abilities and actions for this turn.
 func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartTurnOutput, error) {
 	c.actionEconomy = &ActionEconomyData{
+		TurnNumber:            input.TurnNumber,
 		ActionsRemaining:      1,
 		BonusActionsRemaining: 1,
 		ReactionsRemaining:    1,
