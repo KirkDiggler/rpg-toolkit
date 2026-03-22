@@ -6,6 +6,8 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -64,15 +66,20 @@ func (ic *ImprovedCriticalCondition) Remove(ctx context.Context, bus events.Even
 		return nil // Not applied, nothing to remove
 	}
 
+	total := len(ic.subscriptionIDs)
+	var errs []error
 	for _, subID := range ic.subscriptionIDs {
-		err := bus.Unsubscribe(ctx, subID)
-		if err != nil {
-			return rpgerr.Wrap(err, "failed to unsubscribe from event")
+		if err := bus.Unsubscribe(ctx, subID); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
 	ic.subscriptionIDs = nil
 	ic.bus = nil
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
+	}
 	return nil
 }
 

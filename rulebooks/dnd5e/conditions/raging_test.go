@@ -5,6 +5,7 @@ package conditions
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -16,6 +17,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
+
+// errorOnUnsubscribeBus wraps an EventBus to return errors for specific subscription IDs.
+// Used to test that Remove() continues cleaning up after individual unsubscribe failures.
+type errorOnUnsubscribeBus struct {
+	events.EventBus
+	failIDs map[string]bool
+}
+
+// Unsubscribe returns an error for IDs in failIDs, delegates to inner bus otherwise
+func (b *errorOnUnsubscribeBus) Unsubscribe(ctx context.Context, id string) error {
+	if b.failIDs[id] {
+		return fmt.Errorf("subscription %s not found", id)
+	}
+	return b.EventBus.Unsubscribe(ctx, id)
+}
 
 // ragingConditionInput provides configuration for creating a raging condition
 type ragingConditionInput struct {
@@ -594,4 +610,34 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceOnlyAffectsOwnCh
 	// Verify weapon component
 	s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
 	s.Equal(10, finalEvent.Components[0].Total())
+}
+
+func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
+	// Apply a raging condition (creates 5 subscriptions)
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	s.Require().Len(raging.subscriptionIDs, 5)
+
+	// Wrap the bus so that the first subscription ID fails on unsubscribe
+	failBus := &errorOnUnsubscribeBus{
+		EventBus: s.bus,
+		failIDs:  map[string]bool{raging.subscriptionIDs[0]: true},
+	}
+
+	// Remove should return an error but still clean up all other subscriptions
+	err = raging.Remove(s.ctx, failBus)
+	s.Require().Error(err, "Remove should report the failed unsubscribe")
+	s.Contains(err.Error(), "1/5", "error should report count of failures vs total")
+
+	// Condition should be fully cleaned up despite the error
+	s.Nil(raging.subscriptionIDs, "subscriptionIDs should be nil after Remove")
+	s.Nil(raging.bus, "bus should be nil after Remove")
+	s.False(raging.IsApplied(), "condition should no longer be applied")
 }

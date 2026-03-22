@@ -6,6 +6,8 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -110,20 +112,24 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 
 // Remove unsubscribes this condition from events
 func (r *RagingCondition) Remove(ctx context.Context, bus events.EventBus) error {
-	// Unsubscribe from all events we subscribed to in Apply()
 	if r.bus == nil {
 		return nil // Not applied, nothing to remove
 	}
 
+	total := len(r.subscriptionIDs)
+	var errs []error
 	for _, subID := range r.subscriptionIDs {
-		err := bus.Unsubscribe(ctx, subID)
-		if err != nil {
-			return err
+		if err := bus.Unsubscribe(ctx, subID); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
 	r.subscriptionIDs = nil
 	r.bus = nil
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
+	}
 	return nil
 }
 
