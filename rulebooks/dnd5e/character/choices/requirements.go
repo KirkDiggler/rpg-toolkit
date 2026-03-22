@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -73,8 +74,22 @@ type EquipmentOption struct {
 
 // EquipmentItem represents an item in an equipment option
 type EquipmentItem struct {
-	ID       shared.EquipmentID `json:"id"`       // Equipment ID
-	Quantity int                `json:"quantity"` // How many (default 1)
+	ID       shared.EquipmentID         `json:"id"`               // Equipment ID
+	Quantity int                        `json:"quantity"`         // How many (default 1)
+	Detail   *equipment.EquipmentDetail `json:"detail,omitempty"` // Resolved equipment stats
+}
+
+// enrichEquipmentRequirements populates the Detail field for each equipment item
+// across all options in the given requirements using the equipment registry.
+func enrichEquipmentRequirements(reqs []*EquipmentRequirement) []*EquipmentRequirement {
+	for _, req := range reqs {
+		for i := range req.Options {
+			for j := range req.Options[i].Items {
+				req.Options[i].Items[j].Detail = equipment.ResolveEquipmentDetail(req.Options[i].Items[j].ID)
+			}
+		}
+	}
+	return reqs
 }
 
 // EquipmentCategoryChoice represents a category-based equipment selection within an option
@@ -226,7 +241,7 @@ func getFighterRequirements() *Requirements {
 			Options: classes.ClassData[classes.Fighter].SkillList,
 			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Fighter].SkillCount),
 		},
-		Equipment: getFighterEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getFighterEquipmentRequirements()),
 		FightingStyle: &FightingStyleRequirement{
 			ID: FighterFightingStyle,
 			Options: []fightingstyles.FightingStyle{
@@ -250,7 +265,7 @@ func getBarbarianRequirements() *Requirements {
 			Options: classes.ClassData[classes.Barbarian].SkillList,
 			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Barbarian].SkillCount),
 		},
-		Equipment: getBarbarianEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getBarbarianEquipmentRequirements()),
 		// No subclass at level 1 (Path chosen at level 3)
 		// No spells or cantrips
 	}
@@ -264,7 +279,7 @@ func getWizardRequirements() *Requirements {
 			Options: classes.ClassData[classes.Wizard].SkillList,
 			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Wizard].SkillCount),
 		},
-		Equipment: getWizardEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getWizardEquipmentRequirements()),
 		Cantrips: &CantripRequirement{
 			ID:    WizardCantrips1,
 			Count: 3,
@@ -318,7 +333,7 @@ func getRogueRequirements() *Requirements {
 			Options: classes.ClassData[classes.Rogue].SkillList,
 			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Rogue].SkillCount),
 		},
-		Equipment: getRogueEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getRogueEquipmentRequirements()),
 		Expertise: &ExpertiseRequirement{
 			ID:    RogueExpertise1,
 			Count: 2,
@@ -336,7 +351,7 @@ func getBardRequirements() *Requirements {
 			Options: nil, // Bards can choose ANY 3 skills
 			Label:   "Choose 3 skills",
 		},
-		Equipment: getBardEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getBardEquipmentRequirements()),
 		Tools: &ToolRequirement{
 			ID:    BardInstruments,
 			Count: 3,
@@ -413,7 +428,7 @@ func getDruidRequirements() *Requirements {
 			Options: classes.ClassData[classes.Druid].SkillList,
 			Label:   "Choose 2 skills",
 		},
-		Equipment: getDruidEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getDruidEquipmentRequirements()),
 		Cantrips: &CantripRequirement{
 			ID:    DruidCantrips1,
 			Count: 2,
@@ -448,7 +463,7 @@ func getMonkRequirements() *Requirements {
 			Options: classes.ClassData[classes.Monk].SkillList,
 			Label:   "Choose 2 skills",
 		},
-		Equipment: getMonkEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getMonkEquipmentRequirements()),
 		Tools: &ToolRequirement{
 			ID:    MonkTools,
 			Count: 1,
@@ -499,7 +514,7 @@ func getPaladinRequirements() *Requirements {
 			Options: classes.ClassData[classes.Paladin].SkillList,
 			Label:   "Choose 2 skills",
 		},
-		Equipment: getPaladinEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getPaladinEquipmentRequirements()),
 		// Note: Paladins get spells at level 2, not level 1
 		// Fighting style comes at level 2 for Paladins
 	}
@@ -514,7 +529,7 @@ func getRangerRequirements() *Requirements {
 			Options: classes.ClassData[classes.Ranger].SkillList,
 			Label:   "Choose 3 skills",
 		},
-		Equipment: getRangerEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getRangerEquipmentRequirements()),
 		FightingStyle: &FightingStyleRequirement{
 			ID: RangerFightingStyle,
 			Options: []fightingstyles.FightingStyle{
@@ -538,7 +553,7 @@ func getSorcererRequirements() *Requirements {
 			Options: classes.ClassData[classes.Sorcerer].SkillList,
 			Label:   "Choose 2 skills",
 		},
-		Equipment: getSorcererEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getSorcererEquipmentRequirements()),
 		Cantrips: &CantripRequirement{
 			ID:    SorcererCantrips1,
 			Count: 4,
@@ -604,7 +619,7 @@ func getWarlockRequirements() *Requirements {
 			Options: classes.ClassData[classes.Warlock].SkillList,
 			Label:   "Choose 2 skills",
 		},
-		Equipment: getWarlockEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getWarlockEquipmentRequirements()),
 		Cantrips: &CantripRequirement{
 			ID:    WarlockCantrips1,
 			Count: 2,
@@ -654,7 +669,7 @@ func getClericRequirements() *Requirements {
 			Options: classes.ClassData[classes.Cleric].SkillList,
 			Label:   fmt.Sprintf("Choose %d skills", classes.ClassData[classes.Cleric].SkillCount),
 		},
-		Equipment: getClericEquipmentRequirements(),
+		Equipment: enrichEquipmentRequirements(getClericEquipmentRequirements()),
 		Cantrips: &CantripRequirement{
 			ID:    ClericCantrips1,
 			Count: 3,
