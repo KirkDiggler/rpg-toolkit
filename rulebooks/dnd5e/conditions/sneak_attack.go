@@ -6,6 +6,8 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -102,13 +104,24 @@ func (s *SneakAttackCondition) Apply(ctx context.Context, bus events.EventBus) e
 
 // Remove unsubscribes this condition from events
 func (s *SneakAttackCondition) Remove(ctx context.Context, bus events.EventBus) error {
+	if s.bus == nil {
+		return nil
+	}
+
+	total := len(s.subscriptionIDs)
+	var errs []error
 	for _, id := range s.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, id); err != nil {
-			return rpgerr.Wrapf(err, "failed to unsubscribe %s", id)
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", id, err))
 		}
 	}
+
 	s.subscriptionIDs = nil
 	s.bus = nil
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
+	}
 	return nil
 }
 

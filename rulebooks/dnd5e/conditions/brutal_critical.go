@@ -6,6 +6,8 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 
@@ -102,15 +104,20 @@ func (b *BrutalCriticalCondition) Remove(ctx context.Context, bus events.EventBu
 		return nil // Not applied, nothing to remove
 	}
 
+	total := len(b.subscriptionIDs)
+	var errs []error
 	for _, subID := range b.subscriptionIDs {
-		err := bus.Unsubscribe(ctx, subID)
-		if err != nil {
-			return rpgerr.Wrap(err, "failed to unsubscribe from damage chain")
+		if err := bus.Unsubscribe(ctx, subID); err != nil {
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 
 	b.subscriptionIDs = nil
 	b.bus = nil
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
+	}
 	return nil
 }
 

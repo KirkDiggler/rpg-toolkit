@@ -6,6 +6,8 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -85,14 +87,20 @@ func (r *RecklessAttackCondition) Remove(ctx context.Context, bus events.EventBu
 		return nil
 	}
 
+	total := len(r.subscriptionIDs)
+	var errs []error
 	for _, subID := range r.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil {
-			return rpgerr.Wrap(err, "failed to unsubscribe from event")
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 
 	r.subscriptionIDs = nil
 	r.bus = nil
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
+	}
 	return nil
 }
 

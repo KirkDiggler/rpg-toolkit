@@ -6,6 +6,8 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -69,15 +71,20 @@ func (ma *MartialArtsCondition) Remove(ctx context.Context, bus events.EventBus)
 		return nil // Not applied, nothing to remove
 	}
 
+	total := len(ma.subscriptionIDs)
+	var errs []error
 	for _, subID := range ma.subscriptionIDs {
-		err := bus.Unsubscribe(ctx, subID)
-		if err != nil {
-			return rpgerr.Wrap(err, "failed to unsubscribe from event")
+		if err := bus.Unsubscribe(ctx, subID); err != nil {
+			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
 		}
 	}
 
 	ma.subscriptionIDs = nil
 	ma.bus = nil
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
+	}
 	return nil
 }
 
