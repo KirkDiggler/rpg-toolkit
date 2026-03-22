@@ -114,10 +114,12 @@ func (c *UnconsciousCondition) ToJSON() (json.RawMessage, error) {
 	data := UnconsciousData{
 		Ref:         refs.Conditions.Unconscious(),
 		CharacterID: c.CharacterID,
-		Successes:   c.deathSaveState.Successes,
-		Failures:    c.deathSaveState.Failures,
-		Stabilized:  c.deathSaveState.Stabilized,
-		Dead:        c.deathSaveState.Dead,
+	}
+	if c.deathSaveState != nil {
+		data.Successes = c.deathSaveState.Successes
+		data.Failures = c.deathSaveState.Failures
+		data.Stabilized = c.deathSaveState.Stabilized
+		data.Dead = c.deathSaveState.Dead
 	}
 	return json.Marshal(data)
 }
@@ -164,7 +166,7 @@ func (c *UnconsciousCondition) onTurnStart(ctx context.Context, event dnd5eEvent
 	rolledEvent := dnd5eEvents.DeathSaveRolledEvent{
 		CharacterID:           c.CharacterID,
 		Roll:                  result.Roll,
-		IsSuccess:             result.Roll >= 10 && result.Roll < 20,
+		IsSuccess:             result.Roll >= 10,
 		IsCriticalFail:        result.IsCriticalFail,
 		IsCriticalSuccess:     result.IsCriticalSuccess,
 		Successes:             result.State.Successes,
@@ -242,8 +244,14 @@ func (c *UnconsciousCondition) onDamageReceived(ctx context.Context, event dnd5e
 	if event.TargetID != c.CharacterID {
 		return nil
 	}
-	if c.deathSaveState.Stabilized || c.deathSaveState.Dead {
+	if c.deathSaveState.Dead {
 		return nil
+	}
+
+	// Per 5e RAW, a stabilized-but-unconscious creature taking damage
+	// loses stabilization and gains a death save failure
+	if c.deathSaveState.Stabilized {
+		c.deathSaveState.Stabilized = false
 	}
 
 	result, err := saves.TakeDamageWhileUnconscious(ctx, &saves.DamageWhileUnconsciousInput{

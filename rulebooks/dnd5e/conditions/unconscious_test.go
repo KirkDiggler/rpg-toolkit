@@ -212,6 +212,7 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_CriticalSuccess_RegainsC
 	s.Require().NoError(err)
 
 	s.Require().NotNil(rolledEvent)
+	s.True(rolledEvent.IsSuccess)
 	s.True(rolledEvent.IsCriticalSuccess)
 	s.True(rolledEvent.RegainedConsciousness)
 	s.Equal(1, rolledEvent.HPRestored)
@@ -439,6 +440,42 @@ func (s *UnconsciousConditionTestSuite) TestToJSON_RoundTrip() {
 	s.Equal("char-1", uc2.CharacterID)
 	s.Equal(1, uc2.deathSaveState.Successes)
 	s.Equal(2, uc2.deathSaveState.Failures)
+}
+
+func (s *UnconsciousConditionTestSuite) TestOnDamageReceived_StabilizedCreature_LosesStabilization() {
+	uc := s.newCondition("char-1")
+	// Start stabilized (3 successes)
+	uc.deathSaveState.Successes = 3
+	uc.deathSaveState.Stabilized = true
+
+	err := uc.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
+	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
+	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
+		rolledEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish damage event to stabilized creature
+	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
+	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
+		TargetID:   "char-1",
+		SourceID:   "goblin-1",
+		Amount:     5,
+		IsCritical: false,
+	})
+	s.Require().NoError(err)
+
+	// Should have processed the damage
+	s.Require().NotNil(rolledEvent)
+	s.Equal("char-1", rolledEvent.CharacterID)
+	s.Equal(1, rolledEvent.Failures, "should gain a death save failure")
+
+	// Stabilization should be lost
+	s.False(uc.deathSaveState.Stabilized, "stabilization should be reset")
 }
 
 func (s *UnconsciousConditionTestSuite) TestIsApplied_ReflectsBusState() {
