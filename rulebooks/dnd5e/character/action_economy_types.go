@@ -28,7 +28,8 @@ type AvailableAction struct {
 
 // StartTurnInput provides input for initializing the action economy at turn start.
 type StartTurnInput struct {
-	Speed int // character's movement speed (30ft default)
+	Speed      int // character's movement speed (30ft default)
+	TurnNumber int // current turn number (used to detect stale state)
 }
 
 // StartTurnOutput contains the initialized action economy state.
@@ -102,6 +103,7 @@ const (
 // ActionEconomyData is the serializable form of the action economy state.
 // Lives on Character.Data.ActionEconomy (nil outside combat, omitempty).
 type ActionEconomyData struct {
+	TurnNumber            int                      `json:"turn_number"`
 	ActionsRemaining      int                      `json:"actions_remaining"`
 	BonusActionsRemaining int                      `json:"bonus_actions_remaining"`
 	ReactionsRemaining    int                      `json:"reactions_remaining"`
