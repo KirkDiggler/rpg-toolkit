@@ -61,6 +61,14 @@ const (
 	Net           WeaponID = "net"
 )
 
+// Special Weapons
+const (
+	// UnarmedStrike represents an unarmed strike.
+	// Base damage is 1 + STR modifier (bludgeoning).
+	// Monks with Martial Arts use 1d4 + DEX modifier (or higher at higher levels).
+	UnarmedStrike WeaponID = "unarmed-strike"
+)
+
 // Category placeholders for choice requirements
 // These are used when a choice allows any weapon from a category
 const (

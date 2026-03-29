@@ -417,6 +417,19 @@ var MartialRangedWeapons = map[WeaponID]Weapon{
 	},
 }
 
+// SpecialWeapons contains special weapon types like unarmed strike
+var SpecialWeapons = map[WeaponID]Weapon{
+	UnarmedStrike: {
+		ID:         UnarmedStrike,
+		Name:       "Unarmed Strike",
+		Category:   CategorySimpleMelee,
+		Damage:     "1d1", // Base: always 1, plus ability modifier. Monks upgrade via Martial Arts.
+		DamageType: damage.Bludgeoning,
+		Weight:     0,
+		Properties: []WeaponProperty{},
+	},
+}
+
 // All combines all weapon maps for easy lookup
 var All = make(map[WeaponID]Weapon)
 
@@ -432,6 +445,9 @@ func init() {
 		All[id] = w
 	}
 	for id, w := range MartialRangedWeapons {
+		All[id] = w
+	}
+	for id, w := range SpecialWeapons {
 		All[id] = w
 	}
 }
@@ -451,15 +467,22 @@ func GetByID(id WeaponID) (Weapon, error) {
 	return w, nil
 }
 
-// GetByCategory returns all weapons in a category
+// GetByCategory returns all equippable weapons in a category.
+// Special weapons like UnarmedStrike are excluded since they are not equippable.
 func GetByCategory(cat WeaponCategory) []Weapon {
 	var result []Weapon
 	for _, w := range All {
-		if w.Category == cat {
+		if w.Category == cat && !isSpecialWeapon(w.ID) {
 			result = append(result, w)
 		}
 	}
 	return result
+}
+
+// isSpecialWeapon returns true for weapons that should not appear in equipment selection lists.
+func isSpecialWeapon(id WeaponID) bool {
+	_, ok := SpecialWeapons[id]
+	return ok
 }
 
 // GetSimpleWeapons returns all simple weapons
