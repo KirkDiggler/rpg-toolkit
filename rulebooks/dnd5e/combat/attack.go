@@ -385,10 +385,15 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 			result.TotalDamage = 0
 		}
 
-		// Set breakdown from resolve output
+		// Set breakdown from resolve output.
+		// Use AbilityUsed from chain output - conditions like Martial Arts may change it.
+		finalAbilityUsed := abilityUsed
+		if resolveOutput.AbilityUsed != "" {
+			finalAbilityUsed = resolveOutput.AbilityUsed
+		}
 		result.Breakdown = &DamageBreakdown{
 			Components:  resolveOutput.FinalComponents,
-			AbilityUsed: abilityUsed,
+			AbilityUsed: finalAbilityUsed,
 			TotalDamage: resolveOutput.TotalDamage,
 		}
 

@@ -383,24 +383,10 @@ func triggerOpportunityAttack(
 // getAttackerMeleeWeapon returns the melee weapon the attacker would use for an opportunity attack.
 // Returns nil if the attacker has no melee weapon available.
 func getAttackerMeleeWeapon(_ context.Context, _ string) *weapons.Weapon {
-	// For now, return a basic unarmed strike
+	// For now, return the registered unarmed strike
 	// Future: Look up equipped weapon from character/monster state
-	return defaultUnarmedStrike()
-}
-
-// defaultUnarmedStrike returns a basic unarmed strike weapon for opportunity attacks.
-// In D&D 5e, unarmed strikes deal 1 + STR modifier bludgeoning damage.
-// Note: We use "1d1" instead of "1" because the dice parser requires dice notation.
-func defaultUnarmedStrike() *weapons.Weapon {
-	return &weapons.Weapon{
-		ID:         "unarmed-strike",
-		Name:       "Unarmed Strike",
-		Category:   weapons.CategorySimpleMelee,
-		Damage:     "1d1", // Always rolls 1, plus STR modifier
-		DamageType: "bludgeoning",
-		Weight:     0,
-		Properties: nil,
-	}
+	w, _ := weapons.GetByID(weapons.UnarmedStrike)
+	return &w
 }
 
 // toEventPosition converts a spatial.Position to an events.Position.

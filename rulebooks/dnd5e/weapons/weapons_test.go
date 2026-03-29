@@ -49,6 +49,20 @@ func TestWeaponLookup(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:     "find unarmed strike",
+			weaponID: "unarmed-strike",
+			want: weapons.Weapon{
+				ID:         weapons.UnarmedStrike,
+				Name:       "Unarmed Strike",
+				Category:   weapons.CategorySimpleMelee,
+				Damage:     "1d1",
+				DamageType: damage.Bludgeoning,
+				Weight:     0,
+				Properties: nil,
+			},
+			wantOK: true,
+		},
+		{
 			name:     "weapon not found",
 			weaponID: "lightsaber",
 			wantOK:   false,

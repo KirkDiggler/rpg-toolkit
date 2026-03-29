@@ -417,6 +417,19 @@ var MartialRangedWeapons = map[WeaponID]Weapon{
 	},
 }
 
+// SpecialWeapons contains special weapon types like unarmed strike
+var SpecialWeapons = map[WeaponID]Weapon{
+	UnarmedStrike: {
+		ID:         UnarmedStrike,
+		Name:       "Unarmed Strike",
+		Category:   CategorySimpleMelee,
+		Damage:     "1d1", // Base: always 1, plus ability modifier. Monks upgrade via Martial Arts.
+		DamageType: damage.Bludgeoning,
+		Weight:     0,
+		Properties: nil,
+	},
+}
+
 // All combines all weapon maps for easy lookup
 var All = make(map[WeaponID]Weapon)
 
@@ -432,6 +445,9 @@ func init() {
 		All[id] = w
 	}
 	for id, w := range MartialRangedWeapons {
+		All[id] = w
+	}
+	for id, w := range SpecialWeapons {
 		All[id] = w
 	}
 }

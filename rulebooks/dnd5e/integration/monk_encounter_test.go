@@ -907,6 +907,99 @@ func (s *MonkEncounterSuite) TestKi_ExhaustionPreventsActivation() {
 	})
 }
 
+// TestMartialArts_UnarmedStrikeEndToEnd tests the full ResolveAttack flow
+// for a monk unarmed strike, verifying that Martial Arts upgrades damage
+// from base 1 to 1d4 + DEX modifier.
+func (s *MonkEncounterSuite) TestMartialArts_UnarmedStrikeEndToEnd() {
+	s.Run("ResolveAttack with unarmed strike applies Martial Arts damage", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  MONK UNARMED STRIKE: End-to-End ResolveAttack                  ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		s.T().Log("")
+		s.T().Logf("  Monk: %s (Level 1, STR +0, DEX +3)", s.monk.GetName())
+		s.T().Logf("  Target: Goblin (AC 13, HP 7)")
+		s.T().Log("")
+
+		// Get the registered unarmed strike weapon
+		unarmed, err := weapons.GetByID(weapons.UnarmedStrike)
+		s.Require().NoError(err, "Unarmed strike must be a registered weapon")
+
+		// Use a deterministic roller that always hits and rolls specific damage
+		mockRoller := &deterministicRoller{
+			rolls: []int{
+				20, // Attack roll: natural 20 (always hits)
+				3,  // Damage roll: 1d1 = 1 (base, will be replaced by martial arts 1d4)
+			},
+			rollNResults: [][]int{
+				{3}, // Martial Arts 1d4 roll = 3
+			},
+		}
+
+		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
+			AttackerID: s.monk.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Weapon:     &unarmed,
+			EventBus:   s.bus,
+			Roller:     mockRoller,
+		})
+		s.Require().NoError(err)
+		s.Require().True(result.Hit, "Natural 20 should always hit")
+
+		// The key assertion: damage should be MORE than base 1 + 0 (STR mod)
+		// With Martial Arts: 1d4(3) + DEX(3) = 6
+		s.T().Logf("  Total damage: %d", result.TotalDamage)
+		s.T().Logf("  Breakdown: %+v", result.Breakdown)
+
+		// Without Martial Arts, damage would be 1 (base) + 0 (STR) = 1
+		// With Martial Arts, damage should be 1d4 + DEX(3)
+		// The martial arts die replaces the weapon die, and DEX replaces STR
+		s.Greater(result.TotalDamage, 1,
+			"Monk unarmed strike with Martial Arts should deal more than 1 damage")
+
+		// Verify DEX was used (not STR)
+		if result.Breakdown != nil {
+			s.Equal(abilities.DEX, result.Breakdown.AbilityUsed,
+				"Martial Arts should use DEX for unarmed strikes")
+		}
+
+		s.T().Log("")
+		s.T().Log("✓ Monk unarmed strike correctly uses Martial Arts damage through ResolveAttack")
+	})
+}
+
+// deterministicRoller is a test roller that returns predetermined values.
+type deterministicRoller struct {
+	rolls        []int
+	rollIdx      int
+	rollNResults [][]int
+	rollNIdx     int
+}
+
+// Roll returns the next predetermined single roll value.
+func (r *deterministicRoller) Roll(_ context.Context, _ int) (int, error) {
+	if r.rollIdx >= len(r.rolls) {
+		return 1, nil // fallback
+	}
+	val := r.rolls[r.rollIdx]
+	r.rollIdx++
+	return val, nil
+}
+
+// RollN returns the next predetermined multi-roll result.
+func (r *deterministicRoller) RollN(_ context.Context, count int, _ int) ([]int, error) {
+	if r.rollNIdx < len(r.rollNResults) {
+		val := r.rollNResults[r.rollNIdx]
+		r.rollNIdx++
+		return val, nil
+	}
+	// fallback: return count 1s
+	result := make([]int, count)
+	for i := range result {
+		result[i] = 1
+	}
+	return result, nil
+}
+
 func TestMonkEncounterSuite(t *testing.T) {
 	suite.Run(t, new(MonkEncounterSuite))
 }

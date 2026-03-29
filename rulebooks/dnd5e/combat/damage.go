@@ -248,6 +248,10 @@ type ResolveDamageOutput struct {
 
 	// FinalComponents are the full damage components after chain modifiers
 	FinalComponents []dnd5eEvents.DamageComponent
+
+	// AbilityUsed is the ability that was used for the attack after chain modifiers.
+	// Conditions like Martial Arts may change this (e.g., STR -> DEX).
+	AbilityUsed abilities.Ability
 }
 
 // ResolveDamage processes damage through the chain without applying HP changes.
@@ -307,6 +311,7 @@ func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDama
 		TotalDamage:     totalDamage,
 		FinalInstances:  finalInstances,
 		FinalComponents: finalEvent.Components,
+		AbilityUsed:     finalEvent.AbilityUsed,
 	}, nil
 }
 
