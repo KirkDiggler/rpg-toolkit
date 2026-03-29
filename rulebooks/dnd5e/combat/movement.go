@@ -385,7 +385,10 @@ func triggerOpportunityAttack(
 func getAttackerMeleeWeapon(_ context.Context, _ string) *weapons.Weapon {
 	// For now, return the registered unarmed strike
 	// Future: Look up equipped weapon from character/monster state
-	w, _ := weapons.GetByID(weapons.UnarmedStrike)
+	w, err := weapons.GetByID(weapons.UnarmedStrike)
+	if err != nil {
+		return nil
+	}
 	return &w
 }
 

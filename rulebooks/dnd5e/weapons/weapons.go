@@ -426,7 +426,7 @@ var SpecialWeapons = map[WeaponID]Weapon{
 		Damage:     "1d1", // Base: always 1, plus ability modifier. Monks upgrade via Martial Arts.
 		DamageType: damage.Bludgeoning,
 		Weight:     0,
-		Properties: nil,
+		Properties: []WeaponProperty{},
 	},
 }
 
@@ -467,15 +467,22 @@ func GetByID(id WeaponID) (Weapon, error) {
 	return w, nil
 }
 
-// GetByCategory returns all weapons in a category
+// GetByCategory returns all equippable weapons in a category.
+// Special weapons like UnarmedStrike are excluded since they are not equippable.
 func GetByCategory(cat WeaponCategory) []Weapon {
 	var result []Weapon
 	for _, w := range All {
-		if w.Category == cat {
+		if w.Category == cat && !isSpecialWeapon(w.ID) {
 			result = append(result, w)
 		}
 	}
 	return result
+}
+
+// isSpecialWeapon returns true for weapons that should not appear in equipment selection lists.
+func isSpecialWeapon(id WeaponID) bool {
+	_, ok := SpecialWeapons[id]
+	return ok
 }
 
 // GetSimpleWeapons returns all simple weapons

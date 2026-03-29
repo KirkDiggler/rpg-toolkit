@@ -378,7 +378,15 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		}
 
 		result.TotalDamage = resolveOutput.TotalDamage
-		result.DamageBonus = abilityMod // Keep for backward compatibility
+
+		// Use AbilityUsed from chain output - conditions like Martial Arts may change it.
+		finalAbilityUsed := abilityUsed
+		if resolveOutput.AbilityUsed != "" {
+			finalAbilityUsed = resolveOutput.AbilityUsed
+		}
+
+		// Use resolved ability modifier for DamageBonus (chain may change ability, e.g. STR -> DEX)
+		result.DamageBonus = attackerScores.Modifier(finalAbilityUsed)
 
 		// Damage can't be negative
 		if result.TotalDamage < 0 {
@@ -386,11 +394,6 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		}
 
 		// Set breakdown from resolve output.
-		// Use AbilityUsed from chain output - conditions like Martial Arts may change it.
-		finalAbilityUsed := abilityUsed
-		if resolveOutput.AbilityUsed != "" {
-			finalAbilityUsed = resolveOutput.AbilityUsed
-		}
 		result.Breakdown = &DamageBreakdown{
 			Components:  resolveOutput.FinalComponents,
 			AbilityUsed: finalAbilityUsed,

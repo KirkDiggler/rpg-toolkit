@@ -975,22 +975,40 @@ type deterministicRoller struct {
 	rollNIdx     int
 }
 
-// Roll returns the next predetermined single roll value.
-func (r *deterministicRoller) Roll(_ context.Context, _ int) (int, error) {
+// clampToDieSize ensures a value is within [1, size].
+func clampToDieSize(val, size int) int {
+	if size <= 0 {
+		return val
+	}
+	if val < 1 {
+		return 1
+	}
+	if val > size {
+		return size
+	}
+	return val
+}
+
+// Roll returns the next predetermined single roll value, clamped to [1, size].
+func (r *deterministicRoller) Roll(_ context.Context, size int) (int, error) {
 	if r.rollIdx >= len(r.rolls) {
 		return 1, nil // fallback
 	}
 	val := r.rolls[r.rollIdx]
 	r.rollIdx++
-	return val, nil
+	return clampToDieSize(val, size), nil
 }
 
-// RollN returns the next predetermined multi-roll result.
-func (r *deterministicRoller) RollN(_ context.Context, count int, _ int) ([]int, error) {
+// RollN returns the next predetermined multi-roll result, clamped to [1, size].
+func (r *deterministicRoller) RollN(_ context.Context, count int, size int) ([]int, error) {
 	if r.rollNIdx < len(r.rollNResults) {
 		val := r.rollNResults[r.rollNIdx]
 		r.rollNIdx++
-		return val, nil
+		clamped := make([]int, len(val))
+		for i, v := range val {
+			clamped[i] = clampToDieSize(v, size)
+		}
+		return clamped, nil
 	}
 	// fallback: return count 1s
 	result := make([]int, count)

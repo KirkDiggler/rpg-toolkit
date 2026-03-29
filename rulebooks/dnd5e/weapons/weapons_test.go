@@ -58,7 +58,7 @@ func TestWeaponLookup(t *testing.T) {
 				Damage:     "1d1",
 				DamageType: damage.Bludgeoning,
 				Weight:     0,
-				Properties: nil,
+				Properties: []weapons.WeaponProperty{},
 			},
 			wantOK: true,
 		},
