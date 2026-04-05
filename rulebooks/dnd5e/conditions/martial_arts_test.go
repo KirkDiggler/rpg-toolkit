@@ -381,6 +381,173 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 	})
 }
 
+// TestDEXModifierLabel tests that the SourceRef label is updated to DEX when Martial Arts uses DEX
+// Regression test for https://github.com/KirkDiggler/rpg-toolkit/issues/605:
+// combat log shows "STR" label even when DEX modifier value is correctly applied.
+func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
+	s.Run("SourceRef label is DEX when DEX replaces STR for unarmed strike", func() {
+		// Registry already has DEX=16 (+3), STR=10 (+0)
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+
+		err := condition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() {
+			_ = condition.Remove(s.ctx, s.bus)
+		}()
+
+		event := &dnd5eEvents.DamageChainEvent{
+			AttackerID: s.characterID,
+			TargetID:   "target-1",
+			Components: []dnd5eEvents.DamageComponent{
+				{
+					Source:            dnd5eEvents.DamageSourceWeapon,
+					SourceRef:         refs.Weapons.UnarmedStrike(),
+					OriginalDiceRolls: []int{3},
+					FinalDiceRolls:    []int{3},
+				},
+				{
+					Source:    dnd5eEvents.DamageSourceAbility,
+					SourceRef: refs.Abilities.Strength(), // Initial STR label
+					FlatBonus: 0,                         // STR modifier (+0)
+				},
+			},
+			AbilityUsed: abilities.STR,
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
+		}
+
+		damageChain := dnd5eEvents.DamageChain.On(s.bus)
+		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+
+		modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, event)
+		s.Require().NoError(err)
+
+		// Verify value is DEX
+		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(abilities.DEX, finalEvent.AbilityUsed)
+
+		// Verify label (SourceRef) is also updated to DEX — this is the bug (#605)
+		s.Equal(refs.Abilities.Dexterity(), finalEvent.Components[1].SourceRef,
+			"SourceRef label must be DEX when Martial Arts replaces STR with DEX modifier")
+	})
+
+	s.Run("SourceRef label stays STR when STR is higher than DEX", func() {
+		// Create a monk with higher STR than DEX
+		strongMonk := "monk-str-label"
+		scores := &gamectx.AbilityScores{
+			Strength:     16, // +3 modifier
+			Dexterity:    14, // +2 modifier
+			Constitution: 14,
+			Intelligence: 10,
+			Wisdom:       15,
+			Charisma:     8,
+		}
+		s.registry.AddAbilityScores(strongMonk, scores)
+
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: strongMonk,
+			MonkLevel:   1,
+		})
+
+		err := condition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() {
+			_ = condition.Remove(s.ctx, s.bus)
+		}()
+
+		event := &dnd5eEvents.DamageChainEvent{
+			AttackerID: strongMonk,
+			TargetID:   "target-1",
+			Components: []dnd5eEvents.DamageComponent{
+				{
+					Source:            dnd5eEvents.DamageSourceWeapon,
+					SourceRef:         refs.Weapons.UnarmedStrike(),
+					OriginalDiceRolls: []int{3},
+					FinalDiceRolls:    []int{3},
+				},
+				{
+					Source:    dnd5eEvents.DamageSourceAbility,
+					SourceRef: refs.Abilities.Strength(), // STR label should stay
+					FlatBonus: 3,                         // STR modifier (+3)
+				},
+			},
+			AbilityUsed: abilities.STR,
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
+		}
+
+		damageChain := dnd5eEvents.DamageChain.On(s.bus)
+		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+
+		modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, event)
+		s.Require().NoError(err)
+
+		// STR is higher, so STR label and value are retained
+		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(abilities.STR, finalEvent.AbilityUsed)
+		s.Equal(refs.Abilities.Strength(), finalEvent.Components[1].SourceRef,
+			"SourceRef label must stay STR when STR modifier is retained")
+	})
+
+	s.Run("SourceRef label is DEX when DEX replaces STR for monk weapon", func() {
+		// Registry already has DEX=16 (+3), STR=10 (+0)
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+
+		err := condition.Apply(s.ctx, s.bus)
+		s.Require().NoError(err)
+		defer func() {
+			_ = condition.Remove(s.ctx, s.bus)
+		}()
+
+		event := &dnd5eEvents.DamageChainEvent{
+			AttackerID: s.characterID,
+			TargetID:   "target-1",
+			Components: []dnd5eEvents.DamageComponent{
+				{
+					Source:            dnd5eEvents.DamageSourceWeapon,
+					SourceRef:         refs.Weapons.Shortsword(),
+					OriginalDiceRolls: []int{5},
+					FinalDiceRolls:    []int{5},
+				},
+				{
+					Source:    dnd5eEvents.DamageSourceAbility,
+					SourceRef: refs.Abilities.Strength(), // Initial STR label
+					FlatBonus: 0,                         // STR modifier (+0)
+				},
+			},
+			AbilityUsed: abilities.STR,
+			WeaponRef:   refs.Weapons.Shortsword(),
+		}
+
+		damageChain := dnd5eEvents.DamageChain.On(s.bus)
+		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+
+		modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, event)
+		s.Require().NoError(err)
+
+		// Verify value is DEX
+		s.Equal(3, finalEvent.Components[1].FlatBonus)
+		s.Equal(abilities.DEX, finalEvent.AbilityUsed)
+
+		// Verify label (SourceRef) is also updated to DEX
+		s.Equal(refs.Abilities.Dexterity(), finalEvent.Components[1].SourceRef,
+			"SourceRef label must be DEX when Martial Arts replaces STR with DEX modifier for monk weapon")
+	})
+}
+
 // TestMonkWeaponDetection tests that monk weapons are correctly identified
 func (s *MartialArtsTestSuite) TestMonkWeaponDetection() {
 	testCases := []struct {

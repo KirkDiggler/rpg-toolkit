@@ -211,8 +211,10 @@ func (ma *MartialArtsCondition) onDamageChain(
 			for i := range e.Components {
 				component := &e.Components[i]
 				if component.Source == dnd5eEvents.DamageSourceAbility {
-					// Replace STR modifier with DEX modifier
+					// Replace STR modifier value with DEX modifier
 					component.FlatBonus = dexMod
+					// Update the SourceRef label so combat log shows DEX, not STR
+					component.SourceRef = refs.Abilities.Dexterity()
 					// Update the ability used in the event
 					e.AbilityUsed = abilities.DEX
 					break
