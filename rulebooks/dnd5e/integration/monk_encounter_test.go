@@ -617,13 +617,13 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 		// Verify the WIS component is present in the breakdown
 		hasWISComponent := false
 		for _, comp := range breakdown.Components {
-			if comp.Type == combat.ACSourceFeature && comp.Value == 2 {
+			if comp.Type == combat.ACSourceFeature && comp.Value == 2 && comp.Source == refs.Conditions.UnarmoredDefense() {
 				hasWISComponent = true
 				break
 			}
 		}
 		s.True(hasWISComponent,
-			"AC breakdown should contain a Feature component with value 2 (WIS modifier from Unarmored Defense)")
+			"AC breakdown should contain a Feature component with value 2 sourced from UnarmoredDefense (WIS modifier from Unarmored Defense)")
 
 		s.T().Log("")
 		s.T().Log("✓ Monk Unarmored Defense WIS modifier included in AC chain")
