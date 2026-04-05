@@ -493,10 +493,10 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		// TODO: When UnarmoredDefenseCondition is wired to ACChain,
-		// this test should apply the real condition and verify AC through
-		// the EffectiveAC() calculation chain. For now, we verify the
-		// character was loaded with the correct AC from Data.
+		// Verify the character's stored AC was set correctly during creation.
+		// Note: For the AC chain to work during combat, the UnarmoredDefenseCondition
+		// must be in the character's Conditions JSON AND the game context must have
+		// the character's ability scores. See TestUnarmoredDefense_ACChainIncludesWIS.
 
 		// Monk stats: DEX 16 (+3), WIS 16 (+3)
 		// Unarmored Defense: 10 + 3 + 3 = 16
@@ -516,9 +516,201 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
 		s.T().Logf("    = AC:          %d", expectedAC)
 		s.T().Log("")
 		s.T().Log("  Note: Monk uses WIS, Barbarian uses CON")
-		s.T().Log("  Note: Real UnarmoredDefenseCondition not yet wired to ACChain")
 		s.T().Log("")
-		s.T().Log("✓ Character AC matches expected Unarmored Defense formula")
+		s.T().Log("✓ Character stored AC matches expected Unarmored Defense formula")
+	})
+}
+
+// TestUnarmoredDefense_ACChainIncludesWIS verifies that when a Monk with
+// Unarmored Defense is the defender in combat, the AC chain used in
+// ResolveAttack includes the WIS modifier (not just 10 + DEX).
+// Issue #456: Combat log shows Monk AC as 13 (10 + DEX 3) but should be
+// 15 (10 + DEX 3 + WIS 2) — the WIS bonus was missing from AC chain.
+func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
+	s.Run("Monk AC chain includes WIS modifier from Unarmored Defense", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  MONK UNARMORED DEFENSE: AC Chain WIS Modifier (Issue #456)     ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		s.T().Log("")
+
+		// Create a monk with DEX 16 (+3) and WIS 14 (+2).
+		// Unarmored Defense: AC = 10 + DEX(+3) + WIS(+2) = 15.
+		// The bug: without the WIS component in the ACChain, EffectiveAC
+		// returns only 13 (10 + DEX 3), causing attacks to incorrectly hit.
+		monkWithUD := &character.Data{
+			ID:               "monk-ud-test",
+			PlayerID:         "player-1",
+			Name:             "Wisdom Monk",
+			Level:            1,
+			ProficiencyBonus: 2,
+			RaceID:           races.Human,
+			ClassID:          classes.Monk,
+			AbilityScores: shared.AbilityScores{
+				abilities.STR: 10, // +0
+				abilities.DEX: 16, // +3
+				abilities.CON: 12, // +1
+				abilities.INT: 10, // +0
+				abilities.WIS: 14, // +2
+				abilities.CHA: 8,  // -1
+			},
+			HitPoints:    10,
+			MaxHitPoints: 10,
+			ArmorClass:   15, // 10 + DEX(3) + WIS(2)
+			Skills: map[skills.Skill]shared.ProficiencyLevel{
+				skills.Acrobatics: shared.Proficient,
+				skills.Stealth:    shared.Proficient,
+			},
+			SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+				abilities.STR: shared.Proficient,
+				abilities.DEX: shared.Proficient,
+			},
+			// Both conditions must be present: martial_arts and unarmored_defense
+			Conditions: []json.RawMessage{
+				json.RawMessage(`{
+					"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
+					"character_id": "monk-ud-test",
+					"monk_level": 1
+				}`),
+				json.RawMessage(`{
+					"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_defense"},
+					"type": "monk",
+					"character_id": "monk-ud-test",
+					"source": "dnd5e:classes:monk"
+				}`),
+			},
+		}
+
+		bus := events.NewEventBus()
+		monk, err := character.LoadFromData(s.ctx, monkWithUD, bus)
+		s.Require().NoError(err)
+		defer func() { _ = monk.Cleanup(s.ctx) }()
+
+		// Set up registry with the monk's ability scores so the
+		// UnarmoredDefenseCondition.onACChain can look them up.
+		registry := gamectx.NewBasicCharacterRegistry()
+		registry.AddAbilityScores(monk.GetID(), &gamectx.AbilityScores{
+			Strength:     10,
+			Dexterity:    16, // +3
+			Constitution: 12,
+			Intelligence: 10,
+			Wisdom:       14, // +2
+			Charisma:     8,
+		})
+		gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
+			CharacterRegistry: registry,
+		})
+		ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+
+		// Verify EffectiveAC includes WIS modifier via the AC chain.
+		// Expected: 10 (base) + 3 (DEX) + 2 (WIS from UnarmoredDefense) = 15
+		breakdown := monk.EffectiveAC(ctx)
+
+		s.T().Logf("  Monk EffectiveAC breakdown:")
+		s.T().Logf("    Total: %d", breakdown.Total)
+		for _, comp := range breakdown.Components {
+			s.T().Logf("    Component: type=%s value=%d", comp.Type, comp.Value)
+		}
+
+		s.Equal(15, breakdown.Total,
+			"Monk AC chain should be 10 + DEX(+3) + WIS(+2) = 15, not just 10 + DEX = 13")
+
+		// Verify the WIS component is present in the breakdown
+		hasWISComponent := false
+		for _, comp := range breakdown.Components {
+			if comp.Type == combat.ACSourceFeature && comp.Value == 2 {
+				hasWISComponent = true
+				break
+			}
+		}
+		s.True(hasWISComponent,
+			"AC breakdown should contain a Feature component with value 2 (WIS modifier from Unarmored Defense)")
+
+		s.T().Log("")
+		s.T().Log("✓ Monk Unarmored Defense WIS modifier included in AC chain")
+	})
+}
+
+// TestUnarmoredDefense_ACChainWithoutGameContext verifies that when a Monk with
+// Unarmored Defense is the defender but game context is NOT set up (missing
+// character ability score registry), the AC chain returns only the base + DEX
+// value. This documents the API wiring requirement: game context with character
+// ability scores MUST be present for Unarmored Defense to work.
+func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainWithoutGameContext() {
+	s.Run("Monk AC chain without game context is missing WIS modifier", func() {
+		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
+		s.T().Log("║  MONK UNARMORED DEFENSE: AC Without Game Context (API wiring)   ║")
+		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
+		s.T().Log("")
+		s.T().Log("  This test documents the API wiring requirement:")
+		s.T().Log("  The game context (with character ability scores) MUST be present")
+		s.T().Log("  when EffectiveAC is called, or the WIS modifier is silently dropped.")
+		s.T().Log("")
+
+		monkWithUD := &character.Data{
+			ID:               "monk-ud-no-ctx",
+			PlayerID:         "player-1",
+			Name:             "Wisdom Monk",
+			Level:            1,
+			ProficiencyBonus: 2,
+			RaceID:           races.Human,
+			ClassID:          classes.Monk,
+			AbilityScores: shared.AbilityScores{
+				abilities.STR: 10,
+				abilities.DEX: 16, // +3
+				abilities.CON: 12,
+				abilities.INT: 10,
+				abilities.WIS: 14, // +2
+				abilities.CHA: 8,
+			},
+			HitPoints:    10,
+			MaxHitPoints: 10,
+			ArmorClass:   15,
+			Skills: map[skills.Skill]shared.ProficiencyLevel{
+				skills.Acrobatics: shared.Proficient,
+				skills.Stealth:    shared.Proficient,
+			},
+			SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+				abilities.STR: shared.Proficient,
+				abilities.DEX: shared.Proficient,
+			},
+			Conditions: []json.RawMessage{
+				json.RawMessage(`{
+					"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
+					"character_id": "monk-ud-no-ctx",
+					"monk_level": 1
+				}`),
+				json.RawMessage(`{
+					"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_defense"},
+					"type": "monk",
+					"character_id": "monk-ud-no-ctx",
+					"source": "dnd5e:classes:monk"
+				}`),
+			},
+		}
+
+		bus := events.NewEventBus()
+		monk, err := character.LoadFromData(s.ctx, monkWithUD, bus)
+		s.Require().NoError(err)
+		defer func() { _ = monk.Cleanup(s.ctx) }()
+
+		// Call EffectiveAC WITHOUT a game context (no ability score registry).
+		// The UnarmoredDefenseCondition.onACChain will fail to find the registry
+		// and silently return without adding the WIS component.
+		ctxWithoutGameCtx := context.Background()
+		breakdown := monk.EffectiveAC(ctxWithoutGameCtx)
+
+		s.T().Logf("  Monk EffectiveAC (no game context):")
+		s.T().Logf("    Total: %d (expected 13, WIS silently dropped)", breakdown.Total)
+
+		// Without game context, WIS modifier is silently dropped: only 10 + DEX = 13
+		s.Equal(13, breakdown.Total,
+			"Without game context, AC chain should return only 10 + DEX = 13 (WIS silently dropped)")
+
+		s.T().Log("")
+		s.T().Log("  API WIRING REQUIREMENT:")
+		s.T().Log("  When calling EffectiveAC during attack resolution, the context")
+		s.T().Log("  MUST include a GameContext with the defender's ability scores.")
+		s.T().Log("  See: gamectx.WithGameContext + gamectx.BasicCharacterRegistry")
 	})
 }
 
