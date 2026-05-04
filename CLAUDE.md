@@ -1,4 +1,25 @@
-# RPG Toolkit Development Guidelines
+# RPG Toolkit
+
+rpg-toolkit is the rules engine for D&D 5e (and future rulebooks). It implements
+game rules and returns rich breakdowns. Consumed by rpg-api (the game server) and
+any other rulebook host. The toolkit never orchestrates data, never persists state,
+and never imports rpg-api or rpg-api-protos.
+
+## Where things live
+
+- `docs/architecture/overview.md` — layer rules (Core → Events → Mechanics → Tools → Rulebooks), module map, boundary with rpg-api, named violations
+- `docs/architecture/data-model.md` — ToData/LoadFromData pattern, entity shapes, chain/breakdown output
+- `docs/architecture/components/` — one doc per major module (core, events, mechanics, tools-spatial, tools-environments, tools-spawn, rulebook-dnd5e, items)
+- `docs/status.md` — current health: active work, paused items, known rough edges, per-subsystem confidence
+- `docs/quality.md` — A-D scorecard with rationale per module
+- `docs/adr/` — architectural decisions (32 ADRs). New decisions add new ADRs; superseded ones stay with a "Superseded by ADR-NNN" note. Never archive an ADR.
+- `docs/journey/` — exploration narratives (49 docs). How the engine got to where it is. Future contributors learn the engine from these. Do not archive.
+- `docs/plans/` — design explorations for specific features (10 plans). Historical; some are implemented, some stale.
+- `docs/ideas/` — cross-repo design work scoped to toolkit (3 ideas: action-economy-history, monster-behavior, type-safe-refs).
+- `docs/how-to/` — task guides: run-tests, add-a-mechanic, add-a-rulebook-entry, fix-go-mod-replace-directives
+- `docs/archive/` — genuine archive: pre-Dec-2025 design docs, diagrams, guides that no longer reflect current architecture. Read for historical context only.
+
+## RPG Toolkit Development Guidelines
 
 ## Slash Commands for Common Workflows
 
