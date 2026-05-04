@@ -7,14 +7,14 @@ updated: 2026-05-04
 # How to fix go.mod replace directives
 
 **Status (2026-05-04):**
-- ✅ `items/go.mod` — directive removed (issue #613)
-- ✅ `mechanics/proficiency/go.mod` — directive removed (issue #613)
-- ⏳ `mechanics/conditions/go.mod` — directives retained; source uses newer events APIs than published versions support (tracked in #617)
+- ✅ `items/go.mod` — directive removed (per issue #613)
+- ✅ `mechanics/proficiency/go.mod` — directive removed (per issue #613)
+- ⏳ `mechanics/conditions/go.mod` — directives retained; source uses old-API events symbols that no published events version exposes (tracked in #617)
 - ⏳ `mechanics/spells/go.mod` — directives retained; same reason (tracked in #617)
 
-The two cleanups that landed had no source drift — the replace directives were leftover cruft. The two that remain have real source drift: their published versions pin `events v0.1.0`, but the main-branch source uses APIs introduced in events v0.6.x. The replace directives are masking that drift, not just convenience. Resolving them requires migrating the modules to events v0.6.x source-side, which is deferred (the 4-class playtest doesn't exercise spells or conditions in their newer form).
+The two cleanups that landed had no source drift — the replace directives were leftover cruft. The two that remain have real source drift: their main-branch source uses old-shape events symbols (`events.Event`, `events.HandlerFunc`, `event.Context().GetString` / `.AddModifier()`) that the current events module does not expose (events has been rewritten to a typed-topic API: `TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`). The replace directives mask that mismatch by pointing at local source. Resolving them requires **rewriting** conditions and spells against the new typed-topic API — a real refactor, not a version bump. Deferred because the 4-class playtest doesn't exercise either module.
 
-The workspace rule is explicit: no replace directives on main. The two remaining cases are documented exceptions tracked in issue #617.
+The workspace rule (CLAUDE.md) is explicit: no replace directives on main, full stop. The two remaining cases are an active rule violation — not an "exception" — tracked in issue #617 and visible in the doc snapshot above so they don't get forgotten. Issue #613's items+proficiency portion landed; its conditions/spells portion and the CI grep guard are explicitly deferred to #617.
 
 ## The fix pattern
 
@@ -64,7 +64,7 @@ Tests should pass against the published versions. If they fail because the local
 
 ### 5. PR scope
 
-Per the workspace rule: one issue per PR. If multiple modules can be cleaned up the same way (no source drift, just stale pins), bundling them is fine — issue #613 was resolved with one PR covering items + proficiency. If migration is needed, that's a different issue.
+Per the workspace rule: one issue per PR. If multiple modules can be cleaned up the same way (no source drift, just stale pins), bundling them is fine — issue #613's items + proficiency portion landed in one PR; its conditions/spells portion plus the CI grep guard rolled into #617 because they need a real source-side rewrite. If migration is needed, that's a different issue.
 
 ### 6. Verify CI passes
 

@@ -41,7 +41,7 @@ Condition manager plus simple/enhanced condition types.
 - `EnhancedCondition` — SimpleCondition with stacking and duration support
 
 ### go.mod state (issue #617)
-`mechanics/conditions/go.mod` carries four committed `replace` directives. Resolution deferred to **issue #617**: the source uses newer events APIs (`events.EventBus`, `event.Context().GetString`) than the pinned `events v0.1.0` provides. Removing the directives requires migrating the module to events v0.6.x. The 4-class playtest doesn't exercise conditions in their newer form, so this is on hold until conditions are needed.
+`mechanics/conditions/go.mod` carries four committed `replace` directives. Resolution deferred to **issue #617**: the source uses old-API events symbols (`events.Event`, `events.HandlerFunc`, `event.Context().GetString` / `.AddModifier()`) that don't exist in any published events version. The replace directives point `events => ../../events` so the build can find these symbols. Closing #617 means rewriting conditions against the new typed-topic events API (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`, `StagedChain`) — a real refactor, not a version bump. The 4-class playtest doesn't exercise conditions, so this is on hold until conditions are needed.
 
 ### Coverage note
 Good behavior coverage at the `rulebooks/dnd5e` level (raging, dodging, unconscious, etc. all exercised in integration tests), but the base `Manager`/`SimpleCondition`/`EnhancedCondition` tests are flat and not suite-pattern.
@@ -86,7 +86,7 @@ Grade would move to B with tests that exercise the loader routing and error path
 
 ---
 
-## mechanics/proficiency — B-
+## mechanics/proficiency — B
 
 **Path:** `mechanics/proficiency/`
 **Module:** `github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency`
@@ -115,7 +115,7 @@ Spell slots, concentration tracking, spell lists.
 - `SpellList` — list of known/prepared spells
 
 ### go.mod state (issue #617)
-Six replace directives committed to main. Same situation as `mechanics/conditions`: source has drifted past published versions of the events API. Tracked in **issue #617**, deferred until the playtest exercises spells.
+Six replace directives committed to main. Same situation as `mechanics/conditions`: source uses old-API events symbols that don't exist in any published events version. Closing #617 means rewriting against the new typed-topic API. Tracked in **issue #617**, deferred until the playtest exercises spells.
 
 ### Coverage note
 Concentration logic, spell events, and slot management all have test files and pass. Test style is mostly flat (not suite pattern). No known logic bugs.

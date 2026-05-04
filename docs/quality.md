@@ -239,8 +239,8 @@ Held back from B by the absence of any tests at the base-module level.
 |---|---|
 | A / A- | core, rpgerr, dice, rulebooks/dnd5e/combat |
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e |
-| B | mechanics/effects, mechanics/conditions, tools/environments, tools/spawn |
-| B- | mechanics/proficiency, mechanics/spells |
+| B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
+| B- | mechanics/spells |
 | C | mechanics/features, items |
 
 ## How to use this doc
