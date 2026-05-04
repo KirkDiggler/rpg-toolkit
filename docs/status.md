@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; needs Kirk's correction pass on any items that have already moved
 ---
 

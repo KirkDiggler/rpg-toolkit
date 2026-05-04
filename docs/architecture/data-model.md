@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit data model
 description: Entity types, serialization structures, the chain/breakdown pattern, and known type-system gaps
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: high — verified by reading core/entity.go, rulebooks/dnd5e/character/, tools/spatial/data.go, tools/environments/environment_data.go
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: core module
 description: Fundamental interfaces and types that every other module depends on
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: high — verified by reading all files in core/
 ---
 

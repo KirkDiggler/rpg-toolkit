@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit architecture overview
 description: Layer rules, module map, persistence pattern, and boundary with rpg-api
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: high — verified by full code read-through of go.mod files, key source files, and test suites
 ---
 

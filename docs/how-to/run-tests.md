@@ -1,7 +1,7 @@
 ---
 name: how to run tests
 description: Per-module test commands, known failures, pre-commit targets
-updated: 2026-05-02
+updated: 2026-05-04
 ---
 
 # How to run tests

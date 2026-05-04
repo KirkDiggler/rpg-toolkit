@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit quality scorecard
 description: Per-module grade with rationale — graded from code read, test run, and go.mod inspection 2026-05-02
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: medium — first-pass grades from read-through and live test run; no coverage tooling run; should be reviewed by Kirk
 ---
 
