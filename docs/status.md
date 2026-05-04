@@ -53,17 +53,20 @@ They are not merged and likely not resumable as-is. See "Paused / on hold" below
 
 ### Module hygiene — active build failures
 
-- **`mechanics/conditions/go.mod` and `mechanics/spells/go.mod` need `go mod tidy`.**
-  Both have local `replace` directives and pinned versions that have drifted.
-  Running tests works today but CI will flag a diff in go.mod. Confirmed: running
-  `go test ./...` in conditions returns `go: updates to go.mod needed` before
-  printing test results.
+- **`mechanics/conditions/go.mod` and `mechanics/spells/go.mod` carry committed
+  local `replace` directives** that mask deeper source drift. Their published
+  versions pin `events v0.1.0`; their main-branch source uses newer events APIs
+  (`events.EventBus`, `event.Context().GetString()`) that were introduced
+  somewhere between v0.1.x and v0.6.x. Removing the directives breaks the
+  build. The 4-class playtest doesn't exercise either module so this is
+  deferred — tracked as **issue #617**. Issue #613 (the directive cleanup)
+  was partially resolved 2026-05-04 by removing the directives from `items`
+  and `mechanics/proficiency`; the conditions/spells case rolls into #617.
 
-- **`items`, `mechanics/proficiency`, `mechanics/spells`, `mechanics/conditions`
-  all carry local `replace` directives.** This violates the stated workspace rule
-  ("NEVER add replace directives — breaks CI/CD"). The workspace CLAUDE.md allows
-  them during dev but they must be stripped before commit. These are currently
-  committed to main.
+- **events API split** — events has rolled forward to v0.6.2 (used by tools,
+  rulebooks/dnd5e, items, mechanics/proficiency) but mechanics/effects,
+  conditions, spells, features, and game still pin v0.1.x. Tracked as part
+  of #617.
 
 ### Spatial
 

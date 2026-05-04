@@ -11,7 +11,7 @@ confidence: high — verified by reading item.go, go.mod, and items/validation/b
 **Module:** `github.com/KirkDiggler/rpg-toolkit/items`
 **Grade:** C
 
-Interface definitions for game items. No implementing structs in the base module — those live in `rulebooks/dnd5e/weapons`, `rulebooks/dnd5e/armor`, etc. The base module is intentionally thin. Its tests now compile (issue #612 resolved); the go.mod still carries a `replace` directive (issue #613).
+Interface definitions for game items. No implementing structs in the base module — those live in `rulebooks/dnd5e/weapons`, `rulebooks/dnd5e/armor`, etc. The base module is intentionally thin. Its tests compile (#612 resolved 2026-05-04) and its go.mod no longer carries a replace directive (#613 resolved 2026-05-04, pinned to `core v0.10.0`).
 
 ## Files
 
@@ -24,14 +24,6 @@ Interface definitions for game items. No implementing structs in the base module
 | `validation/basic_validator_test.go` | Tests for `BasicValidator` |
 | `validation/edge_cases_test.go` | Tests for edge cases |
 | `validation/validator.go` | `Validator` interface |
-
-## go.mod violation (issue #613)
-
-```
-replace github.com/KirkDiggler/rpg-toolkit/core => ../core
-```
-
-One committed replace directive remaining. The mocks now satisfy `core.Entity`, so `go test ./...` builds and runs from the items directory.
 
 ## What items provides
 

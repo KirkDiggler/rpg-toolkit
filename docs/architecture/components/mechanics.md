@@ -1,7 +1,7 @@
 ---
 name: mechanics modules
 description: Conditions, effects, features, proficiency, resources, spells — the modifier pipeline infrastructure
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: medium-high — verified by reading go.mod files, key source files, and test runs per module
 ---
 
@@ -40,16 +40,8 @@ Condition manager plus simple/enhanced condition types.
 - `SimpleCondition` — basic BusEffect with apply/remove handlers
 - `EnhancedCondition` — SimpleCondition with stacking and duration support
 
-### go.mod violation (issue #613)
-`mechanics/conditions/go.mod` carries four committed `replace` directives:
-```
-replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects
-replace github.com/KirkDiggler/rpg-toolkit/events           => ../../events
-replace github.com/KirkDiggler/rpg-toolkit/core             => ../../core
-replace github.com/KirkDiggler/rpg-toolkit/dice             => ../../dice
-```
-
-Running `go test ./...` from this module emits `go: updates to go.mod needed` before printing test results. Tests pass locally, but CI fails on the go.mod diff. This violates the workspace rule: no replace directives on main.
+### go.mod state (issue #617)
+`mechanics/conditions/go.mod` carries four committed `replace` directives. Resolution deferred to **issue #617**: the source uses newer events APIs (`events.EventBus`, `event.Context().GetString`) than the pinned `events v0.1.0` provides. Removing the directives requires migrating the module to events v0.6.x. The 4-class playtest doesn't exercise conditions in their newer form, so this is on hold until conditions are needed.
 
 ### Coverage note
 Good behavior coverage at the `rulebooks/dnd5e` level (raging, dodging, unconscious, etc. all exercised in integration tests), but the base `Manager`/`SimpleCondition`/`EnhancedCondition` tests are flat and not suite-pattern.
@@ -105,12 +97,8 @@ Proficiency system. Tracks what an entity is proficient with and calculates prof
 - `Proficiency` interface
 - `SimpleProfiler` — concrete implementation
 
-### go.mod violation (issue #613)
-```
-replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects
-```
-
-One replace directive committed to main. Tests pass locally. CI will flag the go.mod diff.
+### go.mod: clean (issue #613 resolved 2026-05-04)
+Pinned to published `core v0.9.3`, `events v0.1.0`, `mechanics/effects v0.2.1`, `dice v0.1.0`. No replace directives. `go test -race ./...` passes against published versions.
 
 ---
 
@@ -126,18 +114,8 @@ Spell slots, concentration tracking, spell lists.
 - `ConcentrationTracker` — manages concentration (one spell at a time)
 - `SpellList` — list of known/prepared spells
 
-### go.mod violation (issue #613) — most severe
-Six replace directives committed to main:
-```
-replace github.com/KirkDiggler/rpg-toolkit/core               => ../../core
-replace github.com/KirkDiggler/rpg-toolkit/dice               => ../../dice
-replace github.com/KirkDiggler/rpg-toolkit/events             => ../../events
-replace github.com/KirkDiggler/rpg-toolkit/mechanics/conditions => ../conditions
-replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects    => ../effects
-replace github.com/KirkDiggler/rpg-toolkit/mechanics/resources  => ../resources
-```
-
-This module has the most replace directives of any module in the repo. Tests pass locally; CI fails on go.mod diff. Needs a dedicated cleanup PR.
+### go.mod state (issue #617)
+Six replace directives committed to main. Same situation as `mechanics/conditions`: source has drifted past published versions of the events API. Tracked in **issue #617**, deferred until the playtest exercises spells.
 
 ### Coverage note
 Concentration logic, spell events, and slot management all have test files and pass. Test style is mostly flat (not suite pattern). No known logic bugs.
