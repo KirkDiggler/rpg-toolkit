@@ -174,8 +174,10 @@ subscribe and unsubscribe as it becomes active/inactive. `dnd5eEvents.ConditionB
 dnd5e rulebook implement `ConditionBehavior`, not `BusEffect` directly — but
 the lifecycle is identical.
 
-`BusEffect` is **not visible to rpg-api**. It's the contract toolkit-internal
-mechanics use to manage their bus subscriptions.
+`BusEffect` is exported, so any consumer that imports `events` could reference
+it — but **rpg-api does not import it**. It's the contract toolkit-internal
+mechanics use to manage their bus subscriptions, and per the audit rpg-api
+relies on `EventBus` and `NewEventBus` only.
 
 ## Rewrite history (issue #617)
 
@@ -185,15 +187,19 @@ to the current typed-topic API (`TypedTopic[T]`, `ChainedTopic[T]`,
 `BusEffect`, `StagedChain`). Several modules under `mechanics/*`
 (`mechanics/conditions`, `mechanics/effects`, `mechanics/features`,
 `mechanics/spells`) still carry source written against the old shape — they
-reference `events.Event` and `events.HandlerFunc` symbols that no longer exist
-on the published events module. Those modules ship with `replace` directives
-in their `go.mod` pointing `events` at a local path so the build can find the
-old symbols.
+reference `events.Event` and `events.HandlerFunc` symbols that no longer
+exist on either the local or any published events module. Those modules
+carry `replace` directives in their `go.mod` pointing `events => ../../events`,
+but since the local `events` only exposes the typed-topic API, the directives
+don't actually let those modules build against the old symbols — running
+`go mod tidy` or `go build ./...` inside them fails. The directives are a
+holdover from before the events rewrite landed.
 
 Closing #617 means rewriting those mechanics modules against the typed-topic
-API. The 4-class playtest doesn't exercise them directly (rpg-api consumes
-their refactored cousins through `rulebooks/dnd5e/*`), so the migration is
-deferred. See `mechanics.md` and the components-doc audit
+API — a real refactor, not a version bump. The 4-class playtest doesn't
+exercise them directly (rpg-api consumes their refactored cousins through
+`rulebooks/dnd5e/*`), so the migration is deferred. See `mechanics.md` and
+the components-doc audit
 (`docs/journey/049-rpg-api-toolkit-usage-audit.md`) for the consumer view.
 
 ## Known gaps

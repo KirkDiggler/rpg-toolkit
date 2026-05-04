@@ -13,12 +13,13 @@ confidence: medium-high — verified by reading go.mod files, key source files, 
 > the rpg-api boundary view, mechanics is implementation detail.
 >
 > Several mechanics modules carry `replace` directives in their `go.mod`
-> because their source still uses the old typed-event events API
-> (`events.Event`, `events.HandlerFunc`) that the published events module no
-> longer exposes. Closing **issue #617** means rewriting these against the
-> typed-topic API (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`,
-> `StagedChain`). The 4-class playtest doesn't exercise these modules
-> directly, so the migration is deferred.
+> pointing `events => ../../events`. Their source still references old-API
+> symbols (`events.Event`, `events.HandlerFunc`) that neither the local nor
+> any published events module exposes today, so these modules don't build
+> against either pinned or local events. Closing **issue #617** means
+> rewriting them against the typed-topic API (`TypedTopic[T]`,
+> `ChainedTopic[T]`, `BusEffect`, `StagedChain`). The 4-class playtest
+> doesn't exercise these modules directly, so the migration is deferred.
 >
 > See `events.md` for the new events API and `docs/journey/049-rpg-api-toolkit-usage-audit.md`
 > for the consumer-side usage data.
@@ -59,17 +60,18 @@ Condition manager plus simple/enhanced condition types.
 - `EnhancedCondition` — SimpleCondition with stacking and duration support
 
 ### go.mod state (issue #617)
-`mechanics/conditions/go.mod` carries four committed `replace` directives.
-Resolution deferred to **issue #617**: the source uses old-API events symbols
-(`events.Event`, `events.HandlerFunc`, `event.Context().GetString` /
-`.AddModifier()`) that don't exist in any published events version. The
-replace directives point `events => ../../events` so the build can find these
-symbols. Closing #617 means rewriting conditions against the new typed-topic
-events API (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`, `StagedChain`)
-— a real refactor, not a version bump. The 4-class playtest doesn't exercise
-this module (it consumes `rulebooks/dnd5e/conditions` instead, which already
-runs against the new API), so this is on hold until the base module is
-needed.
+`mechanics/conditions/go.mod` carries four committed `replace` directives,
+including `events => ../../events`. The local `events` module on this branch
+exposes only the typed-topic API (`TypedTopic[T]`, `ChainedTopic[T]`,
+`BusEffect`, `StagedChain`) — not the old `events.Event` / `events.HandlerFunc`
+/ `event.Context().GetString` / `.AddModifier()` symbols this module's source
+still references. So the replace directives don't actually let this module
+build today; running `go mod tidy` or `go build ./...` inside
+`mechanics/conditions` fails. Resolution is deferred to **issue #617**, which
+means rewriting the source against the typed-topic API — a real refactor, not
+a version bump. The 4-class playtest doesn't exercise this module (it
+consumes `rulebooks/dnd5e/conditions` instead, which already runs against the
+new API), so this is on hold until the base module is needed.
 
 ### Coverage note
 Good behavior coverage at the `rulebooks/dnd5e` level (raging, dodging,

@@ -1,6 +1,6 @@
 ---
 name: tools/environments module
-description: Multi-room environment graph, persistence, generation — rpg-api consumes a narrow slice (ConnectionEdge, RoomShape, ConnectionPoint)
+description: Multi-room environment graph, persistence, generation — rpg-api consumes a narrow slice (ConnectionEdge, RoomShape, GetDefaultShapes, ConnectionPoint)
 updated: 2026-05-04
 confidence: high — verified by reading environment_persistence.go, environment_data.go, graph_generator.go, and rpg-api dungeon-entity callsites per audit 049
 ---
