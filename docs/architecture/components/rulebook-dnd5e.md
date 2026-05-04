@@ -1,6 +1,6 @@
 ---
 name: rulebooks/dnd5e module
-description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 24 sub-packages
+description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 31 sub-packages (character/ alone in 24 files)
 updated: 2026-05-04
 confidence: high — verified by directory listing, grep over public symbols, and rpg-api import-graph audit 049
 ---
@@ -18,11 +18,17 @@ initiative, features (Rage, Second Wind, Martial Arts, etc.), conditions
 
 ## What rpg-api consumes
 
-Per audit Section 1, rpg-api imports **30 sub-packages** of `rulebooks/dnd5e`
-(the audit's intro narrative reads "24 sub-packages" — that count is for the
-`character/` package itself, which is imported from 24 rpg-api files; the
-total sub-package count from Section 1's listing is 30, with the
-`monster/actions` and `monster/monsters` siblings imported zero times).
+Per a fresh grep on 2026-05-04, rpg-api imports **31 sub-packages** of
+`rulebooks/dnd5e` (the `character/` package alone is imported by 24 rpg-api
+files, which is where the audit's intro narrative's "24 sub-packages"
+phrasing comes from — that count is files-importing-`character`, not
+total sub-packages). The audit Section 1 marks
+`monster/actions` and `monster/monsters` as 0 files each; that's wrong —
+both are imported (`monster/actions` from
+`internal/orchestrators/encounter/monster_turns.go`; `monster/monsters` from
+`internal/components/dungeon/monster_factory.go` and
+`internal/orchestrators/encounter/orchestrator_test.go`). Audit needs a
+follow-up correction; this doc's table reflects the fresh count.
 
 This is the dominant consumer-facing surface. The top imports by file count:
 
@@ -212,11 +218,16 @@ notes are in `character/choices/CHOICES_SYSTEM.md`.
 
 ## monster/ — note on sibling sub-packages
 
-`monster/` is imported by 14 rpg-api files. **Important nuance** (per audit
-Section 1): `monster/actions` and `monster/monsters` are **sibling sub-packages**
-of `monster/`, not subdirectories in the import sense. They cannot be reached
-through `monster/` because of an import cycle, and rpg-api does not import
-either sibling directly.
+`monster/` is imported by 14 rpg-api files. **Important nuance**:
+`monster/actions` and `monster/monsters` are **sibling sub-packages** of
+`monster/`, not subdirectories in the import sense — they cannot be reached
+through `monster/` because of an import cycle. rpg-api imports them directly
+where it needs them: `monster/actions` from
+`internal/orchestrators/encounter/monster_turns.go` (1 file) and
+`monster/monsters` from `internal/components/dungeon/monster_factory.go` and
+`internal/orchestrators/encounter/orchestrator_test.go` (2 files). The audit
+at `docs/journey/049-rpg-api-toolkit-usage-audit.md` Section 1 incorrectly
+records both as 0 files; this needs a follow-up correction to the audit.
 
 The built-in monster factory functions like `NewGoblin` live in
 `rulebooks/dnd5e/monster/monster.go` (search for `func NewGoblin`), **not** in
