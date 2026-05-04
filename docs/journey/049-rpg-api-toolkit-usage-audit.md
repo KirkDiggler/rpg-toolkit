@@ -24,7 +24,7 @@ counts use `grep -rln '<import path>'` with the same scope. File:line citations
 are by symbol — not by line number for line-likely-to-move callsites — per
 toolkit-member lesson 002.
 
-Three empty buckets verified by hand: `mechanics/*`, `items`, `tools/spawn`,
+Six empty buckets verified by hand: `mechanics/*`, `items`, `tools/spawn`,
 `tools/selectables`, `behavior`, `core/chain` — **rpg-api does not import any of
 these directly**. They are reached, if at all, transitively through
 `rulebooks/dnd5e`. This shapes the recommendations for PR 2.
@@ -379,10 +379,15 @@ indirect via refs.
 
 | Symbol | Refs | One citation |
 |---|---|---|
-| `events.NewEventBus` | 5 | combat-adjacent (alias collision: this is `dnd5e/events`'s re-export) |
+| `dnd5eEvents.TurnEndTopic` | 1 | `internal/orchestrators/encounter/orchestrator.go:256` (`turnEndTopic := dnd5eEvents.TurnEndTopic.On(bus)`) |
+| `dnd5eEvents.TurnEndEvent` | 1 | `internal/orchestrators/encounter/orchestrator.go:257` (typed event payload) |
+| `dnd5eEvents.DamageComponent` | 1 | `internal/orchestrators/encounter/orchestrator.go:616` (`convertToolkitComponent`) |
 
-(One file imports `rulebooks/dnd5e/events`. The 5 references reach `NewEventBus`
-because the dnd5e/events package re-exports the bus constructor.)
+The package's actual surface is dnd5e-specific event payloads and topic
+helpers, plus the `ConditionBehavior` and `ActionBehavior` interfaces. It does
+**not** define or re-export `NewEventBus` — that constructor lives in the
+top-level `events` package (`events/bus.go:41`). Imports under the
+`dnd5eEvents` alias should not be confused with bus construction.
 
 ### Module: `rulebooks/dnd5e/resources` — 1 file
 
@@ -395,7 +400,11 @@ direct hit (under alias `toolkitchar`).
 
 ### Module: `rulebooks/dnd5e/monster/actions`, `monster/monsters` — 0 files each
 
-Imported indirectly via `rulebooks/dnd5e/monster`. No direct rpg-api hit.
+Both subpackages are sibling packages of `rulebooks/dnd5e/monster`, not
+imported by rpg-api. They are also not transitively reachable through
+`monster` (the parent package can't import `monster/actions` due to an import
+cycle, and the built-in monster factories like `NewGoblin` live directly in
+the `monster` package — `monster.go:221` — not in `monster/monsters`).
 
 ---
 
@@ -428,7 +437,7 @@ rulebook-dnd5e).
 
 | Component doc | Documents | Used by rpg-api | Cruft candidate | Missing surface |
 |---|---|---|---|---|
-| `core.md` | core module | **YES** — `core.Ref`, `core.Entity`, `core.EntityType` (8 files) | Not cruft. Doc currently covers `Action`, `topic.go`. rpg-api does not import `core.Action` directly, but the doc is the right place to explain that Action is the toolkit-internal contract that Features (and to a partial extent, Conditions) implement. | `core/combat` and `core/resources` are not separately documented; both are imported by rpg-api. Decide whether to fold into `core.md` or split. |
+| `core.md` | core module | **YES** — `core.Ref`, `core.Entity`, `core.EntityType` (8 files) | Not cruft. Doc currently covers `Action`, `topic.go`. rpg-api does not import `core.Action` directly, but the doc is the right place to explain that Action is the toolkit-internal contract Features implement. (Conditions implement the separate `dnd5eEvents.ConditionBehavior` interface — not Action — see Section 3 Claim 1.) | `core/combat` and `core/resources` are not separately documented; both are imported by rpg-api. Decide whether to fold into `core.md` or split. |
 | `events.md` | events module — `EventBus`, `BusEffect`, `TypedTopic`, `ChainedTopic` | **YES** — `events.NewEventBus`, `events.EventBus` (4 files). | Not cruft. `BusEffect` is a toolkit-internal pattern — fine to cover, but worth flagging it's not visible to rpg-api. | The "chain pattern" deserves its own first-class explanation: the chain is `core/chain`, the chained topic is in `events`, and the *worked example* lives in `rulebooks/dnd5e/combat/attack.go`. Currently scattered. |
 | `mechanics.md` | conditions, effects, features, proficiency, resources, spells | **NO** — zero direct imports from rpg-api | **Cruft candidate at the consumer level.** Toolkit-internal. PR 2 should either (a) keep as a toolkit-internal architecture doc and label it as such, or (b) collapse the user-facing parts into `rulebook-dnd5e.md` and delete `mechanics.md`. | n/a — mechanics is not part of the rpg-api surface. |
 | `items.md` | item interface module | **NO** — zero direct imports from rpg-api | **Cruft candidate.** Items used by rpg-api come through `rulebooks/dnd5e/weapons` etc. | n/a |
@@ -544,10 +553,12 @@ heavily round-tripped — rpg-api's character orchestrator at
 inside rpg-api.
 
 Note: Conditions follow a parallel-but-different pattern. They use
-`ToJSON()` / per-condition `LoadJSON` (see `rulebooks/dnd5e/CLAUDE.md` "Feature/
-Condition Serialization Pattern") because the rulebook has a routing-by-ref
-loader. This nuance — ToData for entity-typed structs, ToJSON for
-ref-routed effects — is not surfaced in current docs and should be in PR 2.
+`ToJSON()` / per-condition `LoadJSON` (see the repo-root `CLAUDE.md`
+"Feature/Condition Serialization Pattern" section — that pattern is documented
+at the workspace level, not inside `rulebooks/dnd5e/CLAUDE.md`) because the
+rulebook has a routing-by-ref loader. This nuance — ToData for entity-typed
+structs, ToJSON for ref-routed effects — is not surfaced in current docs and
+should be in PR 2.
 
 ### Claim 4: "Event bus + chains is the load-bearing combat architecture."
 
