@@ -22,7 +22,7 @@ type Entity interface {
 }
 ```
 
-`EntityType` is a distinct named type (not `string`). This is the source of the compile failure in `items/validation/basic_validator_test.go:27` where the mock returns `string` instead of `EntityType`.
+`EntityType` is a distinct named type (not `string`). Mocks and test doubles must declare `GetType() core.EntityType`; returning raw `string` does not satisfy `core.Entity`. (A previous mock-drift bug at `items/validation/basic_validator_test.go:27` was resolved per issue #612.)
 
 Domain packages define `EntityType` constants:
 - `core` defines `EntityTypeCharacter`, `EntityTypeItem`, etc.
@@ -223,7 +223,7 @@ Combat
 ## Known data model gaps
 
 ### `items` module: no implementation types
-`items/item.go` defines `Item`, `EquippableItem`, `WeaponItem`, `ArmorItem`, `ConsumableItem` as interfaces. There are no implementing structs in the base `items` module — implementations live in `rulebooks/dnd5e/weapons`, `rulebooks/dnd5e/armor`, etc. This is intentional (the base module is infrastructure), but the `items` module's test layer is broken because the mock uses `GetType() string` where `core.Entity.GetType()` returns `core.EntityType`. See `items/validation/basic_validator_test.go:27`.
+`items/item.go` defines `Item`, `EquippableItem`, `WeaponItem`, `ArmorItem`, `ConsumableItem` as interfaces. There are no implementing structs in the base `items` module — implementations live in `rulebooks/dnd5e/weapons`, `rulebooks/dnd5e/armor`, etc. This is intentional (the base module is infrastructure).
 
 ### `game` module: version spread
 `game` is pinned at `v0.1.0` across all consumers but carries no replace directive. However the module's dependency on `events v0.1.1` means it receives older event types than the spatial or dnd5e modules. This has not caused a runtime issue but creates a version spread that makes it hard to know "which events interface does game.Context use." Watch for this when upgrading events past v0.6.x.

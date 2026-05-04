@@ -217,16 +217,13 @@ conditions.
 
 ## Items
 
-### items — D
+### items — C
 
-The base `items` module has **no test files** (only `validation/`). The
-`validation/basic_validator_test.go` **does not compile** — mock types implement
-`GetType() string` but the current `core.Entity` interface requires
-`GetType() EntityType`. The module's go.mod pins `core v0.1.0` and uses a local
-replace directive. This means `go test ./...` from the items directory prints a
-build failure. No open PR to fix it. This is the only module in the repo where
-tests are actively broken. Production code builds correctly; only the test layer
-is broken.
+The base `items` module has **no test files** (only `validation/`).
+`validation/basic_validator_test.go` now compiles (issue #612 resolved — mock
+types updated to return `core.EntityType` instead of `string`). Held back from
+B by the committed `replace` directive in `items/go.mod` (issue #613) and the
+absence of any tests at the base-module level.
 
 ---
 
@@ -245,8 +242,7 @@ is broken.
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e |
 | B | mechanics/effects, mechanics/conditions, tools/environments, tools/spawn |
 | B- | mechanics/proficiency, mechanics/spells |
-| C | mechanics/features |
-| D | items |
+| C | mechanics/features, items |
 
 ## How to use this doc
 
@@ -254,7 +250,7 @@ Grades are a starting point from 2026-05-02 read-through. When a grade changes,
 record the reason. Don't just move the letter.
 
 Suggested signals to watch:
-- `go test ./...` in each module — catches the items build failure
+- `go test ./...` in each module — catches mock-vs-interface drift like #612
 - `go mod tidy` diff — catches the replace directive / go.sum drift
 - New sub-packages with no test files — check grants.go in backgrounds/races
 - Pathfinder coverage — add square-grid intra-room test before multi-room dungeon

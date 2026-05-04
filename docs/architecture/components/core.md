@@ -46,7 +46,7 @@ type Entity interface {
 }
 ```
 
-`EntityType` is a distinct named type (`core.EntityType`), not a raw `string`. This distinction is load-bearing: the `items/validation` test compile failure (`items/validation/basic_validator_test.go:27`) is caused by a mock that returns `string` where `EntityType` is required.
+`EntityType` is a distinct named type (`core.EntityType`), not a raw `string`. This distinction is load-bearing: any mock or test double that returns `string` from `GetType()` will fail to satisfy `core.Entity` (a previous mock in `items/validation/basic_validator_test.go` had this drift; resolved per issue #612).
 
 ### Ref
 ```go

@@ -113,10 +113,6 @@ Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains 
 
 Tracked in issue #613. These work locally but break CI because published module resolution fails when directives are present.
 
-### Rule: Tests must compile
-**Violated by `items/validation/basic_validator_test.go`:**
-The mock at `items/validation/basic_validator_test.go:27` implements `GetType() string`, but `core.Entity.GetType()` returns `core.EntityType` (a distinct named type defined in `core/entity.go:8`). The test does not compile. `go test ./...` from the `items/` directory exits with a build failure. Production code builds correctly. No open PR as of 2026-05-02. Tracked in issue #612.
-
 ### Rule: Higher layers only; Tools is not Rulebooks
 **Potential violation: `rulebooks/dnd5e/dungeon/` inside the rulebook:**
 The `dungeon/` package (`dungeon.go`, `dungeon_data.go`, `types.go`) provides procedural dungeon generation that architecturally belongs at the Tools layer (so rpg-api can use dungeon logic without importing the full dnd5e rulebook). It uses `tools/environments` and `tools/spatial` (both lower layers — that direction is correct), but its location makes `rulebooks/dnd5e` the only consumer path. The planned move is to `tools/dungeon/` or a new top-level module. No issue or branch exists yet.

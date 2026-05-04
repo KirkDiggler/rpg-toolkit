@@ -15,7 +15,7 @@ import (
 // mockItem implements items.Item
 type mockItem struct {
 	id         string
-	itemType   string
+	itemType   core.EntityType
 	weight     float64
 	value      int
 	properties []string
@@ -23,13 +23,13 @@ type mockItem struct {
 	maxStack   int
 }
 
-func (m *mockItem) GetID() string           { return m.id }
-func (m *mockItem) GetType() string         { return m.itemType }
-func (m *mockItem) GetWeight() float64      { return m.weight }
-func (m *mockItem) GetValue() int           { return m.value }
-func (m *mockItem) GetProperties() []string { return m.properties }
-func (m *mockItem) IsStackable() bool       { return m.stackable }
-func (m *mockItem) GetMaxStack() int        { return m.maxStack }
+func (m *mockItem) GetID() string            { return m.id }
+func (m *mockItem) GetType() core.EntityType { return m.itemType }
+func (m *mockItem) GetWeight() float64       { return m.weight }
+func (m *mockItem) GetValue() int            { return m.value }
+func (m *mockItem) GetProperties() []string  { return m.properties }
+func (m *mockItem) IsStackable() bool        { return m.stackable }
+func (m *mockItem) GetMaxStack() int         { return m.maxStack }
 
 // mockEquippableItem implements items.EquippableItem
 type mockEquippableItem struct {
