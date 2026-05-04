@@ -53,17 +53,38 @@ They are not merged and likely not resumable as-is. See "Paused / on hold" below
 
 ### Module hygiene — active build failures
 
-- **`mechanics/conditions/go.mod` and `mechanics/spells/go.mod` need `go mod tidy`.**
-  Both have local `replace` directives and pinned versions that have drifted.
-  Running tests works today but CI will flag a diff in go.mod. Confirmed: running
-  `go test ./...` in conditions returns `go: updates to go.mod needed` before
-  printing test results.
+- **`mechanics/conditions/go.mod` and `mechanics/spells/go.mod` carry committed
+  local `replace` directives** that mask source drift against the events
+  module. Their main-branch source uses the **old events API**
+  (`events.Event`, `events.HandlerFunc`, `event.Context().GetString()`,
+  `event.Context().AddModifier()`) — a shape that no published events version
+  exposes today. The replace directives point `events => ../../events` so the
+  build can find these symbols somewhere; without that pointer the source
+  doesn't compile. The 4-class playtest doesn't exercise either module so
+  this is deferred — tracked as **issue #617**. Issue #613 (the directive
+  cleanup) had its items + proficiency portion resolved 2026-05-04; the
+  conditions/spells portion rolls into #617.
 
-- **`items`, `mechanics/proficiency`, `mechanics/spells`, `mechanics/conditions`
-  all carry local `replace` directives.** This violates the stated workspace rule
-  ("NEVER add replace directives — breaks CI/CD"). The workspace CLAUDE.md allows
-  them during dev but they must be stripped before commit. These are currently
-  committed to main.
+- **events API rewrite, not version bump.** The events module has been
+  rewritten on main from a typed-event API (`events.Event`, `HandlerFunc`,
+  `Context().GetString()` / `.Set()` / `.AddModifier()`) to a typed-topic API
+  (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`, `StagedChain`). Two
+  worlds today:
+  - **New API (current main events surface):** rulebooks/dnd5e (+ subpackages),
+    tools/spatial, tools/environments, tools/spawn, tools/selectables. These
+    pin events v0.6.x.
+  - **Old API:** mechanics/effects (matches published v0.2.1),
+    mechanics/conditions, mechanics/spells, mechanics/features, game,
+    mechanics/proficiency. These pin events v0.1.x in their go.mod;
+    conditions/spells additionally use APIs not present in v0.1.0, which is
+    why their replace directives point at local source. Proficiency builds
+    cleanly against v0.1.0 because it only consumes effects (which itself
+    works against v0.1.0).
+  - **No events dependency at all:** items.
+
+  Closing #617 means rewriting effects/conditions/spells/features against
+  the new typed-topic shape, not version-bumping the events line. That is
+  a real refactor, not a hygiene task.
 
 ### Spatial
 

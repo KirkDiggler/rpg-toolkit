@@ -78,12 +78,12 @@ the repo and there is no explicit documentation of when to use `effects` vs
 ### mechanics/conditions — B
 
 The base module (`manager`, `simple`, `enhanced`, `builder`) is functional.
-go.mod has replace directives committed to main (`replace => ../effects`,
-`replace => ../../events`, etc.) and running `go test ./...` emits
-`go: updates to go.mod needed`. The directives work locally but this is a CI
-smell that has been merged. `simple_test.go` and `enhanced_test.go` are flat style
-(not suite). Actual condition behavior is well-exercised at the `rulebooks/dnd5e`
-level which uses this module heavily.
+go.mod still carries 4 replace directives because the source has drifted past
+published versions of the events API (issue #617). Cleaning up the directives
+requires migrating the module to events v0.6.x; deferred until the playtest
+exercises conditions in their newer form. `simple_test.go` and
+`enhanced_test.go` are flat style (not suite). Actual condition behavior is
+well-exercised at the `rulebooks/dnd5e` level which uses this module heavily.
 
 ### mechanics/resources — B+
 
@@ -104,21 +104,20 @@ unit tests for the base infrastructure are absent. For a module that other layer
 depend on, this is a real gap. Grade would move to B with tests that exercise the
 loader routing and error paths.
 
-### mechanics/proficiency — B-
+### mechanics/proficiency — B
 
-`simple.go` has tests but go.mod carries a local replace directive committed to
-main. `proficiency.go` interface is clean but `doc.go` is the only documentation
-of package-level intent. No examples. Grade held back from B by the go.mod hygiene
-issue.
+`simple.go` has tests. go.mod is clean — replace directive removed (issue #613
+resolved 2026-05-04). `proficiency.go` interface is clean but `doc.go` is the
+only documentation of package-level intent. No examples.
 
 ### mechanics/spells — B-
 
-Spell slots, concentration, spell list — all have tests and pass. The go.mod has
-replace directives for `core`, `dice`, `events`, `conditions`, `effects`, and
-`resources` — all pointing to local paths, all committed to main. This is the most
-replace-directive-heavy module in the repo. Tests are flat (not suite) for most
-files. Concentration logic (`concentration.go`) has test coverage. Spell events
-pattern is tested. No known logic bugs.
+Spell slots, concentration, spell list — all have tests and pass. The go.mod
+still carries 6 replace directives (most of any module). Same root cause as
+conditions: source has drifted past published events v0.1.x. Migration
+deferred to issue #617 (playtest doesn't exercise spells yet). Tests are flat
+(not suite) for most files. Concentration logic (`concentration.go`) has test
+coverage. Spell events pattern is tested. No known logic bugs.
 
 ---
 
@@ -221,9 +220,9 @@ conditions.
 
 The base `items` module has **no test files** (only `validation/`).
 `validation/basic_validator_test.go` now compiles (issue #612 resolved — mock
-types updated to return `core.EntityType` instead of `string`). Held back from
-B by the committed `replace` directive in `items/go.mod` (issue #613) and the
-absence of any tests at the base-module level.
+types updated to return `core.EntityType` instead of `string`). Replace
+directive removed (issue #613 resolved 2026-05-04, pinned to `core v0.10.0`).
+Held back from B by the absence of any tests at the base-module level.
 
 ---
 
@@ -240,8 +239,8 @@ absence of any tests at the base-module level.
 |---|---|
 | A / A- | core, rpgerr, dice, rulebooks/dnd5e/combat |
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e |
-| B | mechanics/effects, mechanics/conditions, tools/environments, tools/spawn |
-| B- | mechanics/proficiency, mechanics/spells |
+| B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
+| B- | mechanics/spells |
 | C | mechanics/features, items |
 
 ## How to use this doc

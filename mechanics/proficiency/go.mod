@@ -12,5 +12,3 @@ require (
 )
 
 require github.com/KirkDiggler/rpg-toolkit/dice v0.1.0 // indirect
-
-replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects
