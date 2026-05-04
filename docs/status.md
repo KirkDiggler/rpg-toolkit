@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; needs Kirk's correction pass on any items that have already moved
 ---
 
@@ -52,14 +52,6 @@ They are not merged and likely not resumable as-is. See "Paused / on hold" below
 ## Known rough edges
 
 ### Module hygiene — active build failures
-
-- **`items/validation` tests do not compile.** The mock in
-  `items/validation/basic_validator_test.go` implements `GetType() string` but
-  `core.Entity` requires `GetType() EntityType`. The `items` module pins
-  `core v0.1.0` and has a local `replace` directive pointing to `../../core`.
-  The current `core` at that path defines `EntityType`, so the mocks in the test
-  are simply stale. This is a broken test, not broken production code, but it
-  means `go test ./...` from the items module fails at compile. No open PR.
 
 - **`mechanics/conditions/go.mod` and `mechanics/spells/go.mod` need `go mod tidy`.**
   Both have local `replace` directives and pinned versions that have drifted.
@@ -146,7 +138,7 @@ See quality.md for grade and rationale.
 | rulebooks/dnd5e (core) | High — character, combat, conditions, features all tested |
 | rulebooks/dnd5e/integration | High — Barbarian, Fighter, Monk, Rogue encounter tests all pass |
 | rulebooks/dnd5e/dungeon | Medium — tests present; planned to move out of rulebook |
-| items | Low — base module has no tests; validation tests do not compile |
+| items | Low — base module has no tests; validation tests pass after issue #612 fix |
 | rpgerr | High — scenario tests and accumulation tests cover the patterns |
 | game | Medium-high — context pattern tested |
 | behavior | Low — empty implementation, ADR only |
@@ -163,11 +155,6 @@ will:
 - Require updating all callers in rpg-api.
 
 No issue or branch exists yet. Treat this as pre-planned but unscheduled.
-
-### Items module repair
-
-`items/validation` tests need mock types updated to use `core.EntityType`. Likely
-a 30-minute fix but needs an issue.
 
 ### go.mod replace directive cleanup
 

@@ -1,7 +1,7 @@
 ---
 name: how to run tests
 description: Per-module test commands, known failures, pre-commit targets
-updated: 2026-05-02
+updated: 2026-05-04
 ---
 
 # How to run tests
@@ -37,14 +37,6 @@ cd /home/kirk/personal/rpg-toolkit/rulebooks/dnd5e && go test -race ./...
 ```
 
 ### Modules with known issues
-
-```bash
-# items — DO NOT run without expecting build failure
-cd /home/kirk/personal/rpg-toolkit/items && go test ./...
-# Result: build failure in items/validation/basic_validator_test.go:27
-# GetType() string does not satisfy core.Entity.GetType() EntityType
-# Tracked: issue #612
-```
 
 ```bash
 # mechanics/conditions — runs but emits go.mod warning
@@ -106,5 +98,4 @@ If the command changes `go.mod` or `go.sum`, commit those changes. CI runs `go m
 
 - `make pre-commit` passes today for core + events.
 - `mechanics/conditions`, `mechanics/spells` tests pass locally but CI fails because `go mod tidy` would change their go.mod (replace directives present, issue #613).
-- `items` module: `go test ./...` build failure (issue #612).
-- Running `make test-all` will fail at `items/` — this is expected and tracked.
+- `items` module tests now compile and pass (resolved per issue #612).

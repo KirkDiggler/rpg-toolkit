@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit architecture overview
 description: Layer rules, module map, persistence pattern, and boundary with rpg-api
-updated: 2026-05-02
+updated: 2026-05-04
 confidence: high — verified by full code read-through of go.mod files, key source files, and test suites
 ---
 
@@ -112,10 +112,6 @@ Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains 
 - `mechanics/spells/go.mod` — 6 replace directives (`core`, `dice`, `events`, `conditions`, `effects`, `resources`)
 
 Tracked in issue #613. These work locally but break CI because published module resolution fails when directives are present.
-
-### Rule: Tests must compile
-**Violated by `items/validation/basic_validator_test.go`:**
-The mock at `items/validation/basic_validator_test.go:27` implements `GetType() string`, but `core.Entity.GetType()` returns `core.EntityType` (a distinct named type defined in `core/entity.go:8`). The test does not compile. `go test ./...` from the `items/` directory exits with a build failure. Production code builds correctly. No open PR as of 2026-05-02. Tracked in issue #612.
 
 ### Rule: Higher layers only; Tools is not Rulebooks
 **Potential violation: `rulebooks/dnd5e/dungeon/` inside the rulebook:**
