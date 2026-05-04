@@ -9,7 +9,7 @@ and never imports rpg-api or rpg-api-protos.
 
 - `docs/architecture/overview.md` — layer rules (Core → Events → Mechanics → Tools → Rulebooks), module map, boundary with rpg-api, named violations
 - `docs/architecture/data-model.md` — ToData/LoadFromData pattern, entity shapes, chain/breakdown output
-- `docs/architecture/components/` — one doc per major module (core, events, mechanics, tools-spatial, tools-environments, tools-spawn, rulebook-dnd5e, items)
+- `docs/architecture/components/` — one doc per major module (core, events, dice, mechanics, tools-spatial, tools-environments, tools-spawn, rulebook-dnd5e, refs, items)
 - `docs/status.md` — current health: active work, paused items, known rough edges, per-subsystem confidence
 - `docs/quality.md` — A-D scorecard with rationale per module
 - `docs/adr/` — architectural decisions (32 ADRs). New decisions add new ADRs; superseded ones stay with a "Superseded by ADR-NNN" note. Never archive an ADR.

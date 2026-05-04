@@ -1,20 +1,38 @@
 ---
 name: mechanics modules
-description: Conditions, effects, features, proficiency, resources, spells — the modifier pipeline infrastructure
+description: Conditions, effects, features, proficiency, resources, spells — the modifier pipeline infrastructure (toolkit-internal; not directly imported by rpg-api)
 updated: 2026-05-04
-confidence: medium-high — verified by reading go.mod files, key source files, and test runs per module
+confidence: medium-high — verified by reading go.mod files, key source files, and the rpg-api import graph per audit 049
 ---
 
 # mechanics modules
 
-Six sub-modules that implement the D&D/RPG modifier pipeline infrastructure. All depend on `core` and `events`; none depend on `rulebooks/dnd5e`.
+> **Consumer status (per audit 049): rpg-api does NOT directly import any
+> `mechanics/*` module.** These modules are toolkit-internal architecture —
+> depended on by `rulebooks/dnd5e/*`, which is the consumer-facing layer. From
+> the rpg-api boundary view, mechanics is implementation detail.
+>
+> Several mechanics modules carry `replace` directives in their `go.mod`
+> because their source still uses the old typed-event events API
+> (`events.Event`, `events.HandlerFunc`) that the published events module no
+> longer exposes. Closing **issue #617** means rewriting these against the
+> typed-topic API (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`,
+> `StagedChain`). The 4-class playtest doesn't exercise these modules
+> directly, so the migration is deferred.
+>
+> See `events.md` for the new events API and `docs/journey/049-rpg-api-toolkit-usage-audit.md`
+> for the consumer-side usage data.
+
+Six sub-modules that implement the D&D/RPG modifier pipeline infrastructure.
+All depend on `core` and `events`; none depend on `rulebooks/dnd5e`.
 
 ## mechanics/effects — B
 
 **Path:** `mechanics/effects/`
 **Module:** `github.com/KirkDiggler/rpg-toolkit/mechanics/effects`
 
-Shared infrastructure for conditions and proficiencies. Provides `EffectTracker`, effect behaviors, and a composed condition base type.
+Shared infrastructure for conditions and proficiencies. Provides
+`EffectTracker`, effect behaviors, and a composed condition base type.
 
 ### Key types
 - `EffectTracker` — tracks applied/removed effects with deduplication
@@ -41,10 +59,23 @@ Condition manager plus simple/enhanced condition types.
 - `EnhancedCondition` — SimpleCondition with stacking and duration support
 
 ### go.mod state (issue #617)
-`mechanics/conditions/go.mod` carries four committed `replace` directives. Resolution deferred to **issue #617**: the source uses old-API events symbols (`events.Event`, `events.HandlerFunc`, `event.Context().GetString` / `.AddModifier()`) that don't exist in any published events version. The replace directives point `events => ../../events` so the build can find these symbols. Closing #617 means rewriting conditions against the new typed-topic events API (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`, `StagedChain`) — a real refactor, not a version bump. The 4-class playtest doesn't exercise conditions, so this is on hold until conditions are needed.
+`mechanics/conditions/go.mod` carries four committed `replace` directives.
+Resolution deferred to **issue #617**: the source uses old-API events symbols
+(`events.Event`, `events.HandlerFunc`, `event.Context().GetString` /
+`.AddModifier()`) that don't exist in any published events version. The
+replace directives point `events => ../../events` so the build can find these
+symbols. Closing #617 means rewriting conditions against the new typed-topic
+events API (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`, `StagedChain`)
+— a real refactor, not a version bump. The 4-class playtest doesn't exercise
+this module (it consumes `rulebooks/dnd5e/conditions` instead, which already
+runs against the new API), so this is on hold until the base module is
+needed.
 
 ### Coverage note
-Good behavior coverage at the `rulebooks/dnd5e` level (raging, dodging, unconscious, etc. all exercised in integration tests), but the base `Manager`/`SimpleCondition`/`EnhancedCondition` tests are flat and not suite-pattern.
+Good behavior coverage at the `rulebooks/dnd5e` level (raging, dodging,
+unconscious, etc. all exercised in integration tests), but the base
+`Manager`/`SimpleCondition`/`EnhancedCondition` tests are flat and not
+suite-pattern.
 
 ---
 
@@ -60,7 +91,9 @@ Resource pools and counters for finite game resources.
 - `Counter` — simpler counter (rage uses, second wind)
 
 ### Status
-No go.mod issues. Tests cover happy paths. Edge cases (refill to zero, consume past limit) not explicitly tested, but the pool logic is straightforward enough that this is low risk.
+No go.mod issues. Tests cover happy paths. Edge cases (refill to zero,
+consume past limit) not explicitly tested, but the pool logic is
+straightforward enough that this is low risk.
 
 ---
 
@@ -69,7 +102,8 @@ No go.mod issues. Tests cover happy paths. Edge cases (refill to zero, consume p
 **Path:** `mechanics/features/`
 **Module:** `github.com/KirkDiggler/rpg-toolkit/mechanics/features`
 
-Feature loader infrastructure. The base module provides the routing layer; rulebooks provide implementations.
+Feature loader infrastructure. The base module provides the routing layer;
+rulebooks provide implementations.
 
 ### Key types
 - `FeatureData` interface — gives loaders access to a feature's `Ref()` and `JSON()`
@@ -80,9 +114,15 @@ Feature loader infrastructure. The base module provides the routing layer; ruleb
 Clean dependencies — only `core`.
 
 ### Critical gap (issue #615 adjacent)
-`loader.go`, `feature.go`, `simple_feature.go` — **zero test files in the base module.** Only `mock/` exists. The feature loader routing logic and error paths are untested at the module level. Indirect coverage exists through `rulebooks/dnd5e/features`, but a bug in `Loader.Route()` error handling would not be caught by running `cd mechanics/features && go test ./...` — that command prints "no test files."
+`loader.go`, `feature.go`, `simple_feature.go` — **zero test files in the base
+module.** Only `mock/` exists. The feature loader routing logic and error
+paths are untested at the module level. Indirect coverage exists through
+`rulebooks/dnd5e/features`, but a bug in `Loader.Route()` error handling
+would not be caught by running `cd mechanics/features && go test ./...` —
+that command prints "no test files."
 
-Grade would move to B with tests that exercise the loader routing and error paths.
+Grade would move to B with tests that exercise the loader routing and error
+paths.
 
 ---
 
@@ -91,14 +131,17 @@ Grade would move to B with tests that exercise the loader routing and error path
 **Path:** `mechanics/proficiency/`
 **Module:** `github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency`
 
-Proficiency system. Tracks what an entity is proficient with and calculates proficiency-bonus-adjusted modifiers.
+Proficiency system. Tracks what an entity is proficient with and calculates
+proficiency-bonus-adjusted modifiers.
 
 ### Key types
 - `Proficiency` interface
 - `SimpleProfiler` — concrete implementation
 
 ### go.mod: clean (issue #613 resolved 2026-05-04)
-Pinned to published `core v0.9.3`, `events v0.1.0`, `mechanics/effects v0.2.1`, `dice v0.1.0`. No replace directives. `go test -race ./...` passes against published versions.
+Pinned to published `core v0.9.3`, `events v0.1.0`, `mechanics/effects v0.2.1`,
+`dice v0.1.0`. No replace directives. `go test -race ./...` passes against
+published versions.
 
 ---
 
@@ -115,7 +158,12 @@ Spell slots, concentration tracking, spell lists.
 - `SpellList` — list of known/prepared spells
 
 ### go.mod state (issue #617)
-Six replace directives committed to main. Same situation as `mechanics/conditions`: source uses old-API events symbols that don't exist in any published events version. Closing #617 means rewriting against the new typed-topic API. Tracked in **issue #617**, deferred until the playtest exercises spells.
+Six replace directives committed to main. Same situation as
+`mechanics/conditions`: source uses old-API events symbols that don't exist
+in any published events version. Closing #617 means rewriting against the
+new typed-topic API. Tracked in **issue #617**, deferred until the playtest
+exercises spells.
 
 ### Coverage note
-Concentration logic, spell events, and slot management all have test files and pass. Test style is mostly flat (not suite pattern). No known logic bugs.
+Concentration logic, spell events, and slot management all have test files
+and pass. Test style is mostly flat (not suite pattern). No known logic bugs.
