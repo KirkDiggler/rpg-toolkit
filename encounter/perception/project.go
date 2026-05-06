@@ -1,8 +1,8 @@
 package perception
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 )
 
 // ProjectMove computes a viewer's move slice and reveal slice when an entity
@@ -16,8 +16,8 @@ import (
 // The mover parameter is reserved for future slices (entity-visibility
 // accumulation will use it to record "X became visible to viewer").
 func ProjectMove(
-	_ types.EntityID, // mover — reserved for future-slice entity-visibility
-	path []types.Hex,
+	_ core.EntityID, // mover — reserved for future-slice entity-visibility
+	path []core.Hex,
 	viewer *View,
 ) (moveSlice *events.MovePlayerSlice, revealSlice *events.HexRevealedSlice) {
 	if viewer == nil || len(path) == 0 {
@@ -25,7 +25,7 @@ func ProjectMove(
 	}
 	visible := VisibleHexesAt(viewer.Position, viewer.SightRange)
 
-	var seen []types.Hex
+	var seen []core.Hex
 	for _, hex := range path {
 		if visible.Has(hex) {
 			seen = append(seen, hex)
@@ -52,9 +52,9 @@ func ProjectMove(
 // will need door identity for wall logic; entity-visibility accumulation
 // for openedBy).
 func ProjectDoorOpen(
-	_ types.EntityID, // door — reserved for future-slice wall logic
-	doorPos types.Hex,
-	_ types.EntityID, // openedBy — reserved for future-slice entity-visibility
+	_ core.EntityID, // door — reserved for future-slice wall logic
+	doorPos core.Hex,
+	_ core.EntityID, // openedBy — reserved for future-slice entity-visibility
 	viewer *View,
 ) (doorSlice *events.DoorOpenedPlayerSlice, revealSlice *events.HexRevealedSlice) {
 	if viewer == nil {
@@ -67,7 +67,7 @@ func ProjectDoorOpen(
 
 	doorSlice = &events.DoorOpenedPlayerSlice{Visible: true}
 
-	newHexes := make(types.HexSet)
+	newHexes := make(core.HexSet)
 	for _, neighbor := range HexNeighbors(doorPos) {
 		if visible.Has(neighbor) && !viewer.RevealedHexes.Has(neighbor) {
 			newHexes[neighbor] = struct{}{}

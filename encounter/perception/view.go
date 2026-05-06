@@ -1,6 +1,6 @@
 package perception
 
-import "github.com/KirkDiggler/rpg-toolkit/encounter/types"
+import "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 
 // View is what a single player currently knows about an encounter.
 // Persisted on EncounterData; rehydrated on LoadFromData.
@@ -10,21 +10,21 @@ import "github.com/KirkDiggler/rpg-toolkit/encounter/types"
 // entity-knowledge accumulation land in future slices, persisted JSON
 // won't need a migration.
 type View struct {
-	PlayerID      types.PlayerID `json:"player_id"`
-	Position      types.Hex      `json:"position"`
-	SightRange    int            `json:"sight_range"`
-	RevealedHexes types.HexSet   `json:"revealed_hexes"`
+	PlayerID      core.PlayerID `json:"player_id"`
+	Position      core.Hex      `json:"position"`
+	SightRange    int           `json:"sight_range"`
+	RevealedHexes core.HexSet   `json:"revealed_hexes"`
 
 	// Future-slice fields — emitted as zero values for now.
-	KnownEntities map[types.EntityID]EntityKnowledge `json:"known_entities,omitempty"`
-	ActiveSenses  []Sense                            `json:"active_senses,omitempty"`
-	Conditions    []types.EntityID                   `json:"conditions,omitempty"`
+	KnownEntities map[core.EntityID]EntityKnowledge `json:"known_entities,omitempty"`
+	ActiveSenses  []Sense                           `json:"active_senses,omitempty"`
+	Conditions    []core.EntityID                   `json:"conditions,omitempty"`
 }
 
 // EntityKnowledge is reserved for entity-visibility accumulation in future slices.
 type EntityKnowledge struct {
-	LastSeenPosition types.Hex `json:"last_seen_position"`
-	Identified       bool      `json:"identified"`
+	LastSeenPosition core.Hex `json:"last_seen_position"`
+	Identified       bool     `json:"identified"`
 }
 
 // Sense is reserved for senses (darkvision, blindsight, ...) in future slices.
@@ -34,19 +34,19 @@ type Sense struct {
 }
 
 // NewView constructs a View with the empty cumulative reveal set.
-func NewView(playerID types.PlayerID, position types.Hex, sightRange int) *View {
+func NewView(playerID core.PlayerID, position core.Hex, sightRange int) *View {
 	return &View{
 		PlayerID:      playerID,
 		Position:      position,
 		SightRange:    sightRange,
-		RevealedHexes: make(types.HexSet),
+		RevealedHexes: make(core.HexSet),
 	}
 }
 
 // ApplyReveal merges newly-revealed hexes into the cumulative set. Idempotent.
-func (v *View) ApplyReveal(hexes types.HexSet) {
+func (v *View) ApplyReveal(hexes core.HexSet) {
 	if v.RevealedHexes == nil {
-		v.RevealedHexes = make(types.HexSet)
+		v.RevealedHexes = make(core.HexSet)
 	}
 	for h := range hexes {
 		v.RevealedHexes[h] = struct{}{}

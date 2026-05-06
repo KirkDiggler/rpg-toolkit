@@ -3,7 +3,7 @@ package events
 import (
 	"encoding/json"
 
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 )
 
 // DoorOpenedEvent is published when an entity opens a door in the encounter.
@@ -12,11 +12,11 @@ import (
 // HexRevealedEvent published alongside this one — see the decoupled
 // cause/effect decision.
 type DoorOpenedEvent struct {
-	encID     types.EncounterID
+	encID     core.EncounterID
 	seq       uint64
-	DoorID    types.EntityID
-	OpenedBy  types.EntityID
-	PerPlayer map[types.PlayerID]DoorOpenedPlayerSlice
+	DoorID    core.EntityID
+	OpenedBy  core.EntityID
+	PerPlayer map[core.PlayerID]DoorOpenedPlayerSlice
 }
 
 // DoorOpenedPlayerSlice is each viewer's projection. Visible says whether
@@ -27,11 +27,11 @@ type DoorOpenedPlayerSlice struct {
 
 // NewDoorOpenedEvent constructs a DoorOpenedEvent.
 func NewDoorOpenedEvent(
-	encID types.EncounterID,
+	encID core.EncounterID,
 	seq uint64,
-	door types.EntityID,
-	openedBy types.EntityID,
-	perPlayer map[types.PlayerID]DoorOpenedPlayerSlice,
+	door core.EntityID,
+	openedBy core.EntityID,
+	perPlayer map[core.PlayerID]DoorOpenedPlayerSlice,
 ) *DoorOpenedEvent {
 	return &DoorOpenedEvent{
 		encID:     encID,
@@ -45,21 +45,21 @@ func NewDoorOpenedEvent(
 func (*DoorOpenedEvent) isEncounterEvent() {}
 
 // EncounterID returns the encounter this event belongs to.
-func (e *DoorOpenedEvent) EncounterID() types.EncounterID { return e.encID }
+func (e *DoorOpenedEvent) EncounterID() core.EncounterID { return e.encID }
 
 // Sequence returns the encounter-monotonic sequence number stamped at publish time.
 func (e *DoorOpenedEvent) Sequence() uint64 { return e.seq }
 
 // Audience returns the set of players who can perceive the open-door event,
 // derived from PerPlayer keys.
-func (e *DoorOpenedEvent) Audience() types.AudienceSet { return audienceFromMap(e.PerPlayer) }
+func (e *DoorOpenedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type doorOpenedWire struct {
-	EncID     types.EncounterID                        `json:"encounter_id"`
-	Seq       uint64                                   `json:"sequence"`
-	DoorID    types.EntityID                           `json:"door_id"`
-	OpenedBy  types.EntityID                           `json:"opened_by"`
-	PerPlayer map[types.PlayerID]DoorOpenedPlayerSlice `json:"per_player"`
+	EncID     core.EncounterID                        `json:"encounter_id"`
+	Seq       uint64                                  `json:"sequence"`
+	DoorID    core.EntityID                           `json:"door_id"`
+	OpenedBy  core.EntityID                           `json:"opened_by"`
+	PerPlayer map[core.PlayerID]DoorOpenedPlayerSlice `json:"per_player"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names without

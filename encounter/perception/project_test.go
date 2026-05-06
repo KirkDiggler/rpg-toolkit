@@ -3,8 +3,8 @@ package perception_test
 import (
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -17,9 +17,9 @@ func TestProjectSuite(t *testing.T) {
 }
 
 func (s *ProjectSuite) TestProjectMove_ViewerInRange() {
-	viewer := perception.NewView("alice", types.Hex{}, 5)
+	viewer := perception.NewView("alice", core.Hex{}, 5)
 
-	path := []types.Hex{
+	path := []core.Hex{
 		{Q: 1, R: 0, S: -1},
 		{Q: 2, R: 0, S: -2},
 		{Q: 3, R: 0, S: -3},
@@ -31,9 +31,9 @@ func (s *ProjectSuite) TestProjectMove_ViewerInRange() {
 }
 
 func (s *ProjectSuite) TestProjectMove_ViewerOutOfRange() {
-	viewer := perception.NewView("alice", types.Hex{}, 2)
+	viewer := perception.NewView("alice", core.Hex{}, 2)
 
-	path := []types.Hex{
+	path := []core.Hex{
 		{Q: 5, R: -2, S: -3},
 		{Q: 6, R: -2, S: -4},
 	}
@@ -44,9 +44,9 @@ func (s *ProjectSuite) TestProjectMove_ViewerOutOfRange() {
 }
 
 func (s *ProjectSuite) TestProjectDoorOpen_ViewerNearDoor() {
-	viewer := perception.NewView("alice", types.Hex{}, 3)
+	viewer := perception.NewView("alice", core.Hex{}, 3)
 
-	doorPos := types.Hex{Q: 2, R: 0, S: -2}
+	doorPos := core.Hex{Q: 2, R: 0, S: -2}
 	doorSlice, revealSlice := perception.ProjectDoorOpen("door-1", doorPos, "bob", viewer)
 
 	s.Require().NotNil(doorSlice)
@@ -56,9 +56,9 @@ func (s *ProjectSuite) TestProjectDoorOpen_ViewerNearDoor() {
 }
 
 func (s *ProjectSuite) TestProjectDoorOpen_ViewerOutOfRange() {
-	viewer := perception.NewView("alice", types.Hex{}, 1)
+	viewer := perception.NewView("alice", core.Hex{}, 1)
 
-	doorPos := types.Hex{Q: 5, R: -2, S: -3}
+	doorPos := core.Hex{Q: 5, R: -2, S: -3}
 	doorSlice, revealSlice := perception.ProjectDoorOpen("door-1", doorPos, "bob", viewer)
 
 	s.Nil(doorSlice)
@@ -66,11 +66,11 @@ func (s *ProjectSuite) TestProjectDoorOpen_ViewerOutOfRange() {
 }
 
 func (s *ProjectSuite) TestView_ApplyRevealIdempotent() {
-	viewer := perception.NewView("alice", types.Hex{}, 3)
-	h := types.Hex{Q: 1, R: 0, S: -1}
+	viewer := perception.NewView("alice", core.Hex{}, 3)
+	h := core.Hex{Q: 1, R: 0, S: -1}
 
-	viewer.ApplyReveal(types.NewHexSet(h))
-	viewer.ApplyReveal(types.NewHexSet(h))
+	viewer.ApplyReveal(core.NewHexSet(h))
+	viewer.ApplyReveal(core.NewHexSet(h))
 
 	s.Len(viewer.RevealedHexes, 1)
 	s.True(viewer.RevealedHexes.Has(h))

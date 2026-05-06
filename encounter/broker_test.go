@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -39,9 +39,9 @@ func (s *BrokerSuite) TestPublish_RoutesByAudience() {
 	s.Require().NoError(err)
 
 	move := events.NewMoveEvent("enc:1", 1, "monster-1",
-		[]types.Hex{{Q: 0, R: 0, S: 0}},
-		map[types.PlayerID]events.MovePlayerSlice{
-			"alice": {SeenSegments: []types.Hex{{Q: 0, R: 0, S: 0}}},
+		[]core.Hex{{Q: 0, R: 0, S: 0}},
+		map[core.PlayerID]events.MovePlayerSlice{
+			"alice": {SeenSegments: []core.Hex{{Q: 0, R: 0, S: 0}}},
 			// bob absent — out of audience
 		},
 	)
@@ -57,7 +57,7 @@ func (s *BrokerSuite) TestPublish_IsolatesEncounters() {
 	sub2, _ := s.broker.Subscribe("enc:2", "alice")
 
 	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x",
-		nil, map[types.PlayerID]events.MovePlayerSlice{"alice": {}})))
+		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
 
 	s.assertReceivesType(sub1, "*events.MoveEvent")
 	s.assertNoReceive(sub2)
@@ -69,7 +69,7 @@ func (s *BrokerSuite) TestSubscribe_MultiSubsForSamePlayer() {
 	a2, _ := s.broker.Subscribe("enc:1", "alice")
 
 	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x",
-		nil, map[types.PlayerID]events.MovePlayerSlice{"alice": {}})))
+		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
 
 	s.assertReceivesType(a1, "*events.MoveEvent")
 	s.assertReceivesType(a2, "*events.MoveEvent")
@@ -82,7 +82,7 @@ func (s *BrokerSuite) TestClose_RemovesOnlyClosedSub() {
 	s.Require().NoError(a1.Close())
 
 	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x",
-		nil, map[types.PlayerID]events.MovePlayerSlice{"alice": {}})))
+		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
 
 	// a2 still receives — the meaningful assertion.
 	s.assertReceivesType(a2, "*events.MoveEvent")

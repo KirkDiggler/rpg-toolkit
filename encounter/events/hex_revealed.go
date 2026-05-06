@@ -3,7 +3,7 @@ package events
 import (
 	"encoding/json"
 
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 )
 
 // HexRevealedEvent is published whenever a player's vision gains hexes
@@ -14,9 +14,9 @@ import (
 // The cause stays in the parallel action event; this event describes the
 // effect on perception with the same shape across all causes.
 type HexRevealedEvent struct {
-	encID     types.EncounterID
+	encID     core.EncounterID
 	seq       uint64
-	PerPlayer map[types.PlayerID]HexRevealedSlice
+	PerPlayer map[core.PlayerID]HexRevealedSlice
 }
 
 // HexRevealedSlice is each viewer's projection — newly visible hexes
@@ -26,22 +26,22 @@ type HexRevealedEvent struct {
 // future slices can add entity-visibility accumulation without a JSON
 // migration.
 type HexRevealedSlice struct {
-	Hexes    types.HexSet       `json:"hexes"`
+	Hexes    core.HexSet        `json:"hexes"`
 	Entities []EntityVisibility `json:"entities,omitempty"`
 }
 
 // EntityVisibility names an entity that has become visible to a player.
 // Reserved for future slices; not emitted in slice 1.
 type EntityVisibility struct {
-	EntityID types.EntityID `json:"entity_id"`
-	Position types.Hex      `json:"position"`
+	EntityID core.EntityID `json:"entity_id"`
+	Position core.Hex      `json:"position"`
 }
 
 // NewHexRevealedEvent constructs a HexRevealedEvent.
 func NewHexRevealedEvent(
-	encID types.EncounterID,
+	encID core.EncounterID,
 	seq uint64,
-	perPlayer map[types.PlayerID]HexRevealedSlice,
+	perPlayer map[core.PlayerID]HexRevealedSlice,
 ) *HexRevealedEvent {
 	return &HexRevealedEvent{
 		encID:     encID,
@@ -53,18 +53,18 @@ func NewHexRevealedEvent(
 func (*HexRevealedEvent) isEncounterEvent() {}
 
 // EncounterID returns the encounter this event belongs to.
-func (e *HexRevealedEvent) EncounterID() types.EncounterID { return e.encID }
+func (e *HexRevealedEvent) EncounterID() core.EncounterID { return e.encID }
 
 // Sequence returns the encounter-monotonic sequence number stamped at publish time.
 func (e *HexRevealedEvent) Sequence() uint64 { return e.seq }
 
 // Audience returns the set of players whose vision changed, derived from PerPlayer keys.
-func (e *HexRevealedEvent) Audience() types.AudienceSet { return audienceFromMap(e.PerPlayer) }
+func (e *HexRevealedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type hexRevealedWire struct {
-	EncID     types.EncounterID                   `json:"encounter_id"`
-	Seq       uint64                              `json:"sequence"`
-	PerPlayer map[types.PlayerID]HexRevealedSlice `json:"per_player"`
+	EncID     core.EncounterID                   `json:"encounter_id"`
+	Seq       uint64                             `json:"sequence"`
+	PerPlayer map[core.PlayerID]HexRevealedSlice `json:"per_player"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names without

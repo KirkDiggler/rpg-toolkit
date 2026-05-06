@@ -3,7 +3,7 @@ package events
 import (
 	"encoding/json"
 
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 )
 
 // MoveEvent is published when an entity moves through hexes in the encounter.
@@ -12,11 +12,11 @@ import (
 // parallel HexRevealedEvent published alongside this one. See the decoupled
 // cause/effect decision in sdk-direction.md.
 type MoveEvent struct {
-	encID     types.EncounterID
+	encID     core.EncounterID
 	seq       uint64
-	Mover     types.EntityID
-	Path      []types.Hex
-	PerPlayer map[types.PlayerID]MovePlayerSlice
+	Mover     core.EntityID
+	Path      []core.Hex
+	PerPlayer map[core.PlayerID]MovePlayerSlice
 }
 
 // MovePlayerSlice is each viewer's projection of the move — which hexes
@@ -25,18 +25,18 @@ type MoveEvent struct {
 // Vision changes from the move (newly-revealed hexes/entities) are NOT
 // embedded here — they ride on a parallel HexRevealedEvent.
 type MovePlayerSlice struct {
-	SeenSegments []types.Hex `json:"seen_segments"`
+	SeenSegments []core.Hex `json:"seen_segments"`
 }
 
 // NewMoveEvent constructs a MoveEvent. The encounter is responsible for
 // stamping the encounter ID and sequence number; PerPlayer is computed
 // by perception.ProjectMove.
 func NewMoveEvent(
-	encID types.EncounterID,
+	encID core.EncounterID,
 	seq uint64,
-	mover types.EntityID,
-	path []types.Hex,
-	perPlayer map[types.PlayerID]MovePlayerSlice,
+	mover core.EntityID,
+	path []core.Hex,
+	perPlayer map[core.PlayerID]MovePlayerSlice,
 ) *MoveEvent {
 	return &MoveEvent{
 		encID:     encID,
@@ -50,25 +50,25 @@ func NewMoveEvent(
 func (*MoveEvent) isEncounterEvent() {}
 
 // EncounterID returns the encounter this event belongs to.
-func (e *MoveEvent) EncounterID() types.EncounterID { return e.encID }
+func (e *MoveEvent) EncounterID() core.EncounterID { return e.encID }
 
 // Sequence returns the encounter-monotonic sequence number stamped at publish time.
 func (e *MoveEvent) Sequence() uint64 { return e.seq }
 
 // Audience returns the set of players who can perceive this event,
 // derived from the keys of PerPlayer.
-func (e *MoveEvent) Audience() types.AudienceSet { return audienceFromMap(e.PerPlayer) }
+func (e *MoveEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 // moveEventWire is the on-wire shape — used only by MarshalJSON / UnmarshalJSON.
 // Keeping this private (alongside the unexported encID/seq fields) preserves
 // the construction invariant: only NewMoveEvent and UnmarshalJSON can set
 // the encounter ID and sequence number.
 type moveEventWire struct {
-	EncID     types.EncounterID                  `json:"encounter_id"`
-	Seq       uint64                             `json:"sequence"`
-	Mover     types.EntityID                     `json:"mover"`
-	Path      []types.Hex                        `json:"path"`
-	PerPlayer map[types.PlayerID]MovePlayerSlice `json:"per_player"`
+	EncID     core.EncounterID                  `json:"encounter_id"`
+	Seq       uint64                            `json:"sequence"`
+	Mover     core.EntityID                     `json:"mover"`
+	Path      []core.Hex                        `json:"path"`
+	PerPlayer map[core.PlayerID]MovePlayerSlice `json:"per_player"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names without

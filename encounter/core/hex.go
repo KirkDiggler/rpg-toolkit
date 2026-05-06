@@ -1,5 +1,4 @@
-//nolint:revive // package name "types" is purposeful — see doc.go
-package types
+package core
 
 import (
 	"encoding/json"

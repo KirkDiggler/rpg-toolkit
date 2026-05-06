@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -27,24 +27,24 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.
 func (s *EventsSuite) TestMoveEvent_AudienceFromPerPlayer() {
 	e := events.NewMoveEvent("enc-1", 7, "bob",
-		[]types.Hex{{Q: 0, R: 0, S: 0}},
-		map[types.PlayerID]events.MovePlayerSlice{
-			"alice": {SeenSegments: []types.Hex{{Q: 0, R: 0, S: 0}}},
-			"carol": {SeenSegments: []types.Hex{}},
+		[]core.Hex{{Q: 0, R: 0, S: 0}},
+		map[core.PlayerID]events.MovePlayerSlice{
+			"alice": {SeenSegments: []core.Hex{{Q: 0, R: 0, S: 0}}},
+			"carol": {SeenSegments: []core.Hex{}},
 		},
 	)
 
-	s.Equal(types.EncounterID("enc-1"), e.EncounterID())
+	s.Equal(core.EncounterID("enc-1"), e.EncounterID())
 	s.Equal(uint64(7), e.Sequence())
-	s.ElementsMatch(types.AudienceSet{"alice", "carol"}, e.Audience())
+	s.ElementsMatch(events.AudienceSet{"alice", "carol"}, e.Audience())
 }
 
 // MoveEvent JSON round-trip preserves all fields, including unexported encID/seq.
 func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 	original := events.NewMoveEvent("enc-1", 42, "bob",
-		[]types.Hex{{Q: 1, R: -1, S: 0}, {Q: 2, R: -1, S: -1}},
-		map[types.PlayerID]events.MovePlayerSlice{
-			"alice": {SeenSegments: []types.Hex{{Q: 1, R: -1, S: 0}}},
+		[]core.Hex{{Q: 1, R: -1, S: 0}, {Q: 2, R: -1, S: -1}},
+		map[core.PlayerID]events.MovePlayerSlice{
+			"alice": {SeenSegments: []core.Hex{{Q: 1, R: -1, S: 0}}},
 		},
 	)
 
@@ -54,11 +54,11 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 	var decoded events.MoveEvent
 	s.Require().NoError(json.Unmarshal(payload, &decoded))
 
-	s.Equal(types.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
 	s.Equal(uint64(42), decoded.Sequence())
-	s.Equal(types.EntityID("bob"), decoded.Mover)
+	s.Equal(core.EntityID("bob"), decoded.Mover)
 	s.Equal(original.Path, decoded.Path)
-	s.Require().Contains(decoded.PerPlayer, types.PlayerID("alice"))
+	s.Require().Contains(decoded.PerPlayer, core.PlayerID("alice"))
 	s.Equal(original.PerPlayer["alice"].SeenSegments, decoded.PerPlayer["alice"].SeenSegments)
 }
 
@@ -66,8 +66,8 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 // embeds HexSet via this slice and the persistence layer round-trips it.
 func (s *EventsSuite) TestHexRevealedEvent_JSONRoundTrip() {
 	original := events.NewHexRevealedEvent("enc-1", 8,
-		map[types.PlayerID]events.HexRevealedSlice{
-			"alice": {Hexes: types.NewHexSet(types.Hex{Q: 1, R: 0, S: -1})},
+		map[core.PlayerID]events.HexRevealedSlice{
+			"alice": {Hexes: core.NewHexSet(core.Hex{Q: 1, R: 0, S: -1})},
 		},
 	)
 
@@ -77,10 +77,10 @@ func (s *EventsSuite) TestHexRevealedEvent_JSONRoundTrip() {
 	var decoded events.HexRevealedEvent
 	s.Require().NoError(json.Unmarshal(payload, &decoded))
 
-	s.Equal(types.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
 	s.Equal(uint64(8), decoded.Sequence())
 	aliceSlice := decoded.PerPlayer["alice"]
-	s.True(aliceSlice.Hexes.Has(types.Hex{Q: 1, R: 0, S: -1}))
+	s.True(aliceSlice.Hexes.Has(core.Hex{Q: 1, R: 0, S: -1}))
 }
 
 // Type switch returns the concrete type.

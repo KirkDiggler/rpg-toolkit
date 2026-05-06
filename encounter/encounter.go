@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 )
 
 // Encounter is the transient SDK object for one ongoing encounter.
@@ -19,14 +19,14 @@ type Encounter struct {
 
 // PlayerInput populates a player seat at construction / AddPlayer time.
 type PlayerInput struct {
-	PlayerID   types.PlayerID
-	EntityID   types.EntityID
-	Position   types.Hex
+	PlayerID   core.PlayerID
+	EntityID   core.EntityID
+	Position   core.Hex
 	SightRange int
 }
 
 // New constructs a fresh encounter with the given ID.
-func New(id types.EncounterID, b *Broker) *Encounter {
+func New(id core.EncounterID, b *Broker) *Encounter {
 	return &Encounter{
 		data:   NewData(id),
 		broker: b,
@@ -39,10 +39,10 @@ func LoadFromData(data *Data, b *Broker) (*Encounter, error) {
 		return nil, errors.New("nil Data")
 	}
 	if data.Players == nil {
-		data.Players = make(map[types.PlayerID]*PlayerData)
+		data.Players = make(map[core.PlayerID]*PlayerData)
 	}
 	if data.Doors == nil {
-		data.Doors = make(map[types.EntityID]*DoorData)
+		data.Doors = make(map[core.EntityID]*DoorData)
 	}
 	return &Encounter{data: data, broker: b}, nil
 }
@@ -66,21 +66,21 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 
 // AddDoor registers a door (slice scope; future slices use a richer entity
 // system).
-func (e *Encounter) AddDoor(id types.EntityID, position types.Hex, open bool) {
+func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) {
 	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
 }
 
 // ID returns the encounter's identifier.
-func (e *Encounter) ID() types.EncounterID { return e.data.ID }
+func (e *Encounter) ID() core.EncounterID { return e.data.ID }
 
 // SnapshotFor returns the read-only view a player's gRPC handler ships
 // on connect/reconnect.
-func (e *Encounter) SnapshotFor(playerID types.PlayerID) Snapshot {
+func (e *Encounter) SnapshotFor(playerID core.PlayerID) Snapshot {
 	p, ok := e.data.Players[playerID]
 	if !ok || p.View == nil {
 		return Snapshot{}
 	}
-	revealed := make(types.HexSet, len(p.View.RevealedHexes))
+	revealed := make(core.HexSet, len(p.View.RevealedHexes))
 	for h := range p.View.RevealedHexes {
 		revealed[h] = struct{}{}
 	}
@@ -94,9 +94,9 @@ func (e *Encounter) SnapshotFor(playerID types.PlayerID) Snapshot {
 // Snapshot is the slice-1 read-only view. Future slices add visible
 // entities, turn state, action economy, etc.
 type Snapshot struct {
-	PlayerID      types.PlayerID
-	Position      types.Hex
-	RevealedHexes types.HexSet
+	PlayerID      core.PlayerID
+	Position      core.Hex
+	RevealedHexes core.HexSet
 }
 
 // ToData returns the persisted shape. Caller saves this to the KV store.
@@ -115,7 +115,7 @@ func (e *Encounter) nextSeq() uint64 {
 //
 // Slice scope: no action economy, no turn-order enforcement, no
 // path-contiguity validation beyond non-empty.
-func (e *Encounter) Move(playerID types.PlayerID, path []types.Hex) error {
+func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	if len(path) == 0 {
 		return errors.New("empty path")
 	}
@@ -136,13 +136,13 @@ func (e *Encounter) Move(playerID types.PlayerID, path []types.Hex) error {
 	p.View.ApplyReveal(moverNewHexes)
 
 	// 3. Per-player projection.
-	movePerPlayer := make(map[types.PlayerID]events.MovePlayerSlice)
-	revealPerPlayer := make(map[types.PlayerID]events.HexRevealedSlice)
+	movePerPlayer := make(map[core.PlayerID]events.MovePlayerSlice)
+	revealPerPlayer := make(map[core.PlayerID]events.HexRevealedSlice)
 
 	// The mover always sees their own move; their reveal is the delta we
 	// just computed.
 	movePerPlayer[playerID] = events.MovePlayerSlice{
-		SeenSegments: append([]types.Hex(nil), path...),
+		SeenSegments: append([]core.Hex(nil), path...),
 	}
 	if len(moverNewHexes) > 0 {
 		revealPerPlayer[playerID] = events.HexRevealedSlice{Hexes: moverNewHexes}
@@ -185,7 +185,7 @@ func (e *Encounter) Move(playerID types.PlayerID, path []types.Hex) error {
 // OpenDoor applies an open-door action. Marks the door open and publishes
 // the cause event (DoorOpenedEvent) plus a HexRevealedEvent for any viewer
 // whose vision grew.
-func (e *Encounter) OpenDoor(playerID types.PlayerID, doorID types.EntityID) error {
+func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error {
 	p, ok := e.data.Players[playerID]
 	if !ok {
 		return fmt.Errorf("player %q not in encounter", playerID)
@@ -200,8 +200,8 @@ func (e *Encounter) OpenDoor(playerID types.PlayerID, doorID types.EntityID) err
 
 	door.Open = true
 
-	doorPerPlayer := make(map[types.PlayerID]events.DoorOpenedPlayerSlice)
-	revealPerPlayer := make(map[types.PlayerID]events.HexRevealedSlice)
+	doorPerPlayer := make(map[core.PlayerID]events.DoorOpenedPlayerSlice)
+	revealPerPlayer := make(map[core.PlayerID]events.HexRevealedSlice)
 
 	for viewerID, viewer := range e.data.Players {
 		doorSlice, revealSlice := perception.ProjectDoorOpen(
@@ -234,8 +234,8 @@ func (e *Encounter) OpenDoor(playerID types.PlayerID, doorID types.EntityID) err
 }
 
 // diffHexes returns hexes in candidate that are not already in current.
-func diffHexes(current, candidate types.HexSet) types.HexSet {
-	out := make(types.HexSet)
+func diffHexes(current, candidate core.HexSet) core.HexSet {
+	out := make(core.HexSet)
 	for h := range candidate {
 		if !current.Has(h) {
 			out[h] = struct{}{}

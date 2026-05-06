@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 )
 
 // Broker is the process-scoped event router. Encounters publish through it;
@@ -18,14 +18,14 @@ type Broker struct {
 
 	mu          sync.Mutex
 	subscribers map[subscriberKey][]*Subscription
-	listeners   map[types.EncounterID]TransportSubscription
+	listeners   map[core.EncounterID]TransportSubscription
 	listenerWG  sync.WaitGroup // tracks listener goroutines for clean shutdown
 	closed      bool
 }
 
 type subscriberKey struct {
-	EncID    types.EncounterID
-	PlayerID types.PlayerID
+	EncID    core.EncounterID
+	PlayerID core.PlayerID
 }
 
 // NewBroker constructs a Broker over the given Transport.
@@ -33,7 +33,7 @@ func NewBroker(t Transport) *Broker {
 	return &Broker{
 		transport:   t,
 		subscribers: make(map[subscriberKey][]*Subscription),
-		listeners:   make(map[types.EncounterID]TransportSubscription),
+		listeners:   make(map[core.EncounterID]TransportSubscription),
 	}
 }
 
@@ -55,7 +55,7 @@ func (b *Broker) Publish(evt events.EncounterEvent) error {
 // subscription is acquired BEFORE the broker registry is mutated — so a
 // transport.Subscribe failure leaves the broker state untouched (no leaked
 // orphan subscription).
-func (b *Broker) Subscribe(encID types.EncounterID, playerID types.PlayerID) (*Subscription, error) {
+func (b *Broker) Subscribe(encID core.EncounterID, playerID core.PlayerID) (*Subscription, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
@@ -134,7 +134,7 @@ func (b *Broker) Close() error {
 // takes b.mu before closing sub.events) cannot interleave with a send and
 // cause a send-on-closed-channel panic. Sends are non-blocking (select +
 // default), so holding the lock during fanout is bounded.
-func (b *Broker) listen(encID types.EncounterID, ts TransportSubscription) {
+func (b *Broker) listen(encID core.EncounterID, ts TransportSubscription) {
 	defer b.listenerWG.Done()
 	for payload := range ts.Payloads() {
 		evt, err := decodeEvent(payload)
@@ -159,15 +159,15 @@ func (b *Broker) listen(encID types.EncounterID, ts TransportSubscription) {
 }
 
 // channelFor returns the transport channel key for an encounter.
-func channelFor(encID types.EncounterID) string {
+func channelFor(encID core.EncounterID) string {
 	return "enc:" + string(encID)
 }
 
 // Subscription is a per-player view onto an encounter's event stream.
 type Subscription struct {
 	broker   *Broker
-	encID    types.EncounterID
-	playerID types.PlayerID
+	encID    core.EncounterID
+	playerID core.PlayerID
 	events   chan events.EncounterEvent
 	once     sync.Once
 }
@@ -202,7 +202,7 @@ func (s *Subscription) Close() error {
 //
 // Wire format is JSON with a top-level "_type" discriminator. Concrete event
 // types do not see it. Future Transport implementations can substitute a
-// different codec without changing event types.
+// different codec without changing event core.
 
 type wireEnvelope struct {
 	Type    string          `json:"_type"`

@@ -1,10 +1,10 @@
 package perception
 
-import "github.com/KirkDiggler/rpg-toolkit/encounter/types"
+import "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 
 // HexDistance is the cube-coordinate hex distance between two hexes.
 // Exported for use by the encounter package's verbs.
-func HexDistance(a, b types.Hex) int {
+func HexDistance(a, b core.Hex) int {
 	dq := abs(a.Q - b.Q)
 	dr := abs(a.R - b.R)
 	ds := abs(a.S - b.S)
@@ -24,8 +24,8 @@ func HexDistance(a, b types.Hex) int {
 //
 // STUB: ignores walls, lighting, conditions. Replaced with real LoS in a
 // future slice.
-func VisibleHexesAt(from types.Hex, sightRange int) types.HexSet {
-	out := make(types.HexSet)
+func VisibleHexesAt(from core.Hex, sightRange int) core.HexSet {
+	out := make(core.HexSet)
 	for dq := -sightRange; dq <= sightRange; dq++ {
 		for dr := -sightRange; dr <= sightRange; dr++ {
 			ds := -dq - dr
@@ -33,7 +33,7 @@ func VisibleHexesAt(from types.Hex, sightRange int) types.HexSet {
 			if abs(ds) > sightRange {
 				continue
 			}
-			h := types.Hex{Q: from.Q + dq, R: from.R + dr, S: from.S + ds}
+			h := core.Hex{Q: from.Q + dq, R: from.R + dr, S: from.S + ds}
 			out[h] = struct{}{}
 		}
 	}
@@ -41,8 +41,8 @@ func VisibleHexesAt(from types.Hex, sightRange int) types.HexSet {
 }
 
 // HexNeighbors returns the six adjacent hexes (cube coords).
-func HexNeighbors(h types.Hex) []types.Hex {
-	return []types.Hex{
+func HexNeighbors(h core.Hex) []core.Hex {
+	return []core.Hex{
 		{Q: h.Q + 1, R: h.R - 1, S: h.S},
 		{Q: h.Q + 1, R: h.R, S: h.S - 1},
 		{Q: h.Q, R: h.R + 1, S: h.S - 1},

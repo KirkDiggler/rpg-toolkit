@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -36,14 +36,14 @@ func (s *EncounterSuite) TestAddPlayer_PopulatesView() {
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID:   "alice",
 		EntityID:   "char-alice",
-		Position:   types.Hex{Q: 0, R: 0, S: 0},
+		Position:   core.Hex{Q: 0, R: 0, S: 0},
 		SightRange: 3,
 	}))
 
 	snap := e.SnapshotFor("alice")
-	s.Equal(types.PlayerID("alice"), snap.PlayerID)
-	s.Equal(types.Hex{}, snap.Position)
-	s.True(snap.RevealedHexes.Has(types.Hex{}))
+	s.Equal(core.PlayerID("alice"), snap.PlayerID)
+	s.Equal(core.Hex{}, snap.Position)
+	s.True(snap.RevealedHexes.Has(core.Hex{}))
 }
 
 func (s *EncounterSuite) TestAddPlayer_RejectsDuplicate() {
@@ -61,9 +61,9 @@ func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
 	e1 := encounter.New("enc-1", s.broker)
 	s.Require().NoError(e1.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-1",
-		Position: types.Hex{Q: 1, R: -1, S: 0}, SightRange: 5,
+		Position: core.Hex{Q: 1, R: -1, S: 0}, SightRange: 5,
 	}))
-	e1.AddDoor("door-1", types.Hex{Q: 2, R: 0, S: -2}, false)
+	e1.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false)
 
 	payload, err := json.Marshal(e1.ToData())
 	s.Require().NoError(err)
@@ -74,10 +74,10 @@ func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
 	e2, err := encounter.LoadFromData(&data, s.broker)
 	s.Require().NoError(err)
 
-	s.Equal(types.EncounterID("enc-1"), e2.ID())
+	s.Equal(core.EncounterID("enc-1"), e2.ID())
 	snap := e2.SnapshotFor("alice")
-	s.Equal(types.Hex{Q: 1, R: -1, S: 0}, snap.Position)
-	s.True(snap.RevealedHexes.Has(types.Hex{Q: 1, R: -1, S: 0}),
+	s.Equal(core.Hex{Q: 1, R: -1, S: 0}, snap.Position)
+	s.True(snap.RevealedHexes.Has(core.Hex{Q: 1, R: -1, S: 0}),
 		"RevealedHexes must round-trip — guards against HexSet JSON regression")
 }
 
@@ -93,17 +93,17 @@ func (s *EncounterSuite) TestMove_PublishesMoveEvent() {
 	e := encounter.New("enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
-		Position: types.Hex{}, SightRange: 5,
+		Position: core.Hex{}, SightRange: 5,
 	}))
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "bob", EntityID: "char-bob",
-		Position: types.Hex{Q: 50, R: -25, S: -25}, SightRange: 5,
+		Position: core.Hex{Q: 50, R: -25, S: -25}, SightRange: 5,
 	}))
 
 	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
 	bobSub, _ := s.broker.Subscribe("enc-1", "bob")
 
-	path := []types.Hex{
+	path := []core.Hex{
 		{Q: 1, R: 0, S: -1},
 		{Q: 2, R: 0, S: -2},
 	}
@@ -122,11 +122,11 @@ func (s *EncounterSuite) TestMove_PublishesHexRevealedEventForMover() {
 	e := encounter.New("enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
-		Position: types.Hex{}, SightRange: 2,
+		Position: core.Hex{}, SightRange: 2,
 	}))
 	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
 
-	path := []types.Hex{{Q: 1, R: 0, S: -1}}
+	path := []core.Hex{{Q: 1, R: 0, S: -1}}
 	s.Require().NoError(e.Move("alice", path))
 
 	seen := collectTypes(aliceSub, 500*time.Millisecond)
@@ -141,20 +141,20 @@ func (s *EncounterSuite) TestMove_Validations() {
 	}))
 
 	s.Error(e.Move("alice", nil), "empty path should error")
-	s.Error(e.Move("nobody", []types.Hex{{}}), "unknown player should error")
+	s.Error(e.Move("nobody", []core.Hex{{}}), "unknown player should error")
 }
 
 func (s *EncounterSuite) TestOpenDoor_PublishesEvents() {
 	e := encounter.New("enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
-		Position: types.Hex{}, SightRange: 4,
+		Position: core.Hex{}, SightRange: 4,
 	}))
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "bob", EntityID: "char-bob",
-		Position: types.Hex{Q: 50, R: -25, S: -25}, SightRange: 4,
+		Position: core.Hex{Q: 50, R: -25, S: -25}, SightRange: 4,
 	}))
-	e.AddDoor("door-1", types.Hex{Q: 2, R: 0, S: -2}, false)
+	e.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false)
 
 	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
 	bobSub, _ := s.broker.Subscribe("enc-1", "bob")
@@ -173,7 +173,7 @@ func (s *EncounterSuite) TestOpenDoor_Validations() {
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-1", SightRange: 3,
 	}))
-	e.AddDoor("door-1", types.Hex{}, false)
+	e.AddDoor("door-1", core.Hex{}, false)
 
 	s.Error(e.OpenDoor("nobody", "door-1"))
 	s.Error(e.OpenDoor("alice", "nonexistent"))

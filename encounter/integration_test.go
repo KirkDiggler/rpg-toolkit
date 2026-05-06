@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -30,13 +30,13 @@ func (s *IntegrationSuite) SetupTest() {
 
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
-		Position: types.Hex{}, SightRange: 4,
+		Position: core.Hex{}, SightRange: 4,
 	}))
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "bob", EntityID: "char-bob",
-		Position: types.Hex{Q: 2, R: 0, S: -2}, SightRange: 4,
+		Position: core.Hex{Q: 2, R: 0, S: -2}, SightRange: 4,
 	}))
-	s.enc.AddDoor("door-east", types.Hex{Q: 4, R: 0, S: -4}, false)
+	s.enc.AddDoor("door-east", core.Hex{Q: 4, R: 0, S: -4}, false)
 
 	var err error
 	s.aliceSub, err = s.broker.Subscribe("enc-walking-skel", "alice")
@@ -55,7 +55,7 @@ func (s *IntegrationSuite) TearDownTest() {
 // Alice moves toward Bob. Bob is within sight (distance 2 between her
 // destination and his position). Both should receive MoveEvent.
 func (s *IntegrationSuite) TestSlice_MoveTowardEachOther() {
-	path := []types.Hex{{Q: 1, R: 0, S: -1}}
+	path := []core.Hex{{Q: 1, R: 0, S: -1}}
 	s.Require().NoError(s.enc.Move("alice", path))
 
 	aliceEvents := collectTypes(s.aliceSub, 500*time.Millisecond)
@@ -81,7 +81,7 @@ func (s *IntegrationSuite) TestSlice_OpenDoor() {
 // Persistence round-trip: serialize, "restart," replay another action,
 // observe events still flow and prior reveal persisted.
 func (s *IntegrationSuite) TestSlice_RoundTripPersistence() {
-	s.Require().NoError(s.enc.Move("alice", []types.Hex{{Q: 1, R: 0, S: -1}}))
+	s.Require().NoError(s.enc.Move("alice", []core.Hex{{Q: 1, R: 0, S: -1}}))
 	drainSub(s.aliceSub, 200*time.Millisecond)
 	drainSub(s.bobSub, 200*time.Millisecond)
 
@@ -103,20 +103,20 @@ func (s *IntegrationSuite) TestSlice_RoundTripPersistence() {
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub2.Close() }()
 
-	s.Require().NoError(enc2.Move("alice", []types.Hex{{Q: 2, R: 0, S: -2}}))
+	s.Require().NoError(enc2.Move("alice", []core.Hex{{Q: 2, R: 0, S: -2}}))
 
 	aliceEvents := collectTypes(aliceSub2, 500*time.Millisecond)
 	s.Contains(aliceEvents, "*events.MoveEvent",
 		"after reload, encounter publishes events through the new broker")
 
 	snap := enc2.SnapshotFor("alice")
-	s.True(snap.RevealedHexes.Has(types.Hex{Q: 1, R: 0, S: -1}),
+	s.True(snap.RevealedHexes.Has(core.Hex{Q: 1, R: 0, S: -1}),
 		"reveal from round-1 move should persist through round-trip")
 }
 
 // Sequence numbers monotonic across both events of one action.
 func (s *IntegrationSuite) TestSlice_SequenceMonotonic() {
-	s.Require().NoError(s.enc.Move("alice", []types.Hex{{Q: 1, R: 0, S: -1}}))
+	s.Require().NoError(s.enc.Move("alice", []core.Hex{{Q: 1, R: 0, S: -1}}))
 
 	var seqs []uint64
 	timeout := time.After(500 * time.Millisecond)

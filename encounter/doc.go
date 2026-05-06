@@ -9,9 +9,9 @@
 //
 // Internal layout:
 //
-//	encounter/types       — primitive value types (IDs, Hex, HexSet, AudienceSet)
-//	encounter/events      — sealed EncounterEvent interface + concrete events
-//	encounter/perception  — PerceptionView + projection functions
+//	encounter/core        — IDs (EncounterID, PlayerID, EntityID) + spatial primitives (Hex, HexSet)
+//	encounter/events      — sealed EncounterEvent interface + concrete events + AudienceSet
+//	encounter/perception  — View + projection functions
 //	encounter (top-level) — Encounter aggregate, Broker, Transport
 //
 // See rpg-project/ideas/encounter/v1alpha2/sdk-direction.md for the design.
