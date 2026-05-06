@@ -1,0 +1,109 @@
+package encounter
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+)
+
+// Encounter is the transient SDK object for one ongoing encounter.
+// Constructed per-call via LoadFromData; mutated by verbs; serialized via
+// ToData and saved.
+type Encounter struct {
+	data   *EncounterData
+	broker *Broker
+}
+
+// PlayerInput populates a player seat at construction / AddPlayer time.
+type PlayerInput struct {
+	PlayerID   types.PlayerID
+	EntityID   types.EntityID
+	Position   types.Hex
+	SightRange int
+}
+
+// New constructs a fresh encounter with the given ID.
+func New(id types.EncounterID, b *Broker) *Encounter {
+	return &Encounter{
+		data:   NewEncounterData(id),
+		broker: b,
+	}
+}
+
+// LoadFromData rehydrates an encounter from persisted state.
+func LoadFromData(data *EncounterData, b *Broker) (*Encounter, error) {
+	if data == nil {
+		return nil, errors.New("nil EncounterData")
+	}
+	if data.Players == nil {
+		data.Players = make(map[types.PlayerID]*PlayerData)
+	}
+	if data.Doors == nil {
+		data.Doors = make(map[types.EntityID]*DoorData)
+	}
+	return &Encounter{data: data, broker: b}, nil
+}
+
+// AddPlayer registers a new player seat with a fresh PerceptionView.
+// The player sees their starting position and surrounding hexes immediately.
+func (e *Encounter) AddPlayer(input PlayerInput) error {
+	if _, exists := e.data.Players[input.PlayerID]; exists {
+		return fmt.Errorf("player %q already in encounter", input.PlayerID)
+	}
+	view := perception.NewView(input.PlayerID, input.Position, input.SightRange)
+	view.ApplyReveal(perception.VisibleHexesAt(input.Position, input.SightRange))
+
+	e.data.Players[input.PlayerID] = &PlayerData{
+		ID:       input.PlayerID,
+		EntityID: input.EntityID,
+		View:     view,
+	}
+	return nil
+}
+
+// AddDoor registers a door (slice scope; future slices use a richer entity
+// system).
+func (e *Encounter) AddDoor(id types.EntityID, position types.Hex, open bool) {
+	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
+}
+
+// ID returns the encounter's identifier.
+func (e *Encounter) ID() types.EncounterID { return e.data.ID }
+
+// SnapshotFor returns the read-only view a player's gRPC handler ships
+// on connect/reconnect.
+func (e *Encounter) SnapshotFor(playerID types.PlayerID) Snapshot {
+	p, ok := e.data.Players[playerID]
+	if !ok || p.View == nil {
+		return Snapshot{}
+	}
+	revealed := make(types.HexSet, len(p.View.RevealedHexes))
+	for h := range p.View.RevealedHexes {
+		revealed[h] = struct{}{}
+	}
+	return Snapshot{
+		PlayerID:      playerID,
+		Position:      p.View.Position,
+		RevealedHexes: revealed,
+	}
+}
+
+// Snapshot is the slice-1 read-only view. Future slices add visible
+// entities, turn state, action economy, etc.
+type Snapshot struct {
+	PlayerID      types.PlayerID
+	Position      types.Hex
+	RevealedHexes types.HexSet
+}
+
+// ToData returns the persisted shape. Caller saves this to the KV store.
+func (e *Encounter) ToData() *EncounterData { return e.data }
+
+// nextSeq advances and returns the encounter's monotonic sequence counter.
+// Used to stamp events on publish (Task 7+ verbs).
+func (e *Encounter) nextSeq() uint64 {
+	e.data.Sequence++
+	return e.data.Sequence
+}

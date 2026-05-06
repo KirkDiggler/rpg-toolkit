@@ -1,0 +1,129 @@
+package encounter_test
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
+	"github.com/stretchr/testify/suite"
+)
+
+type EncounterSuite struct {
+	suite.Suite
+	transport *encounter.InMemoryTransport
+	broker    *encounter.Broker
+}
+
+func TestEncounterSuite(t *testing.T) {
+	suite.Run(t, new(EncounterSuite))
+}
+
+func (s *EncounterSuite) SetupTest() {
+	s.transport = encounter.NewInMemoryTransport()
+	s.broker = encounter.NewBroker(s.transport)
+}
+
+func (s *EncounterSuite) TearDownTest() {
+	_ = s.broker.Close()
+	_ = s.transport.Close()
+}
+
+func (s *EncounterSuite) TestAddPlayer_PopulatesView() {
+	e := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID:   "alice",
+		EntityID:   "char-alice",
+		Position:   types.Hex{Q: 0, R: 0, S: 0},
+		SightRange: 3,
+	}))
+
+	snap := e.SnapshotFor("alice")
+	s.Equal(types.PlayerID("alice"), snap.PlayerID)
+	s.Equal(types.Hex{}, snap.Position)
+	s.True(snap.RevealedHexes.Has(types.Hex{}))
+}
+
+func (s *EncounterSuite) TestAddPlayer_RejectsDuplicate() {
+	e := encounter.New("enc-1", s.broker)
+	input := encounter.PlayerInput{PlayerID: "alice", EntityID: "char-1", SightRange: 3}
+	s.Require().NoError(e.AddPlayer(input))
+	s.Error(e.AddPlayer(input))
+}
+
+// ToData / LoadFromData round-trips through JSON cleanly. This test is
+// load-bearing because earlier iterations of this design failed JSON
+// round-trip for HexSet (struct map keys) — the types subpackage's
+// MarshalJSON now fixes that and this test guards against regression.
+func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
+	e1 := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e1.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-1",
+		Position: types.Hex{Q: 1, R: -1, S: 0}, SightRange: 5,
+	}))
+	e1.AddDoor("door-1", types.Hex{Q: 2, R: 0, S: -2}, false)
+
+	payload, err := json.Marshal(e1.ToData())
+	s.Require().NoError(err)
+
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(payload, &data))
+
+	e2, err := encounter.LoadFromData(&data, s.broker)
+	s.Require().NoError(err)
+
+	s.Equal(types.EncounterID("enc-1"), e2.ID())
+	snap := e2.SnapshotFor("alice")
+	s.Equal(types.Hex{Q: 1, R: -1, S: 0}, snap.Position)
+	s.True(snap.RevealedHexes.Has(types.Hex{Q: 1, R: -1, S: 0}),
+		"RevealedHexes must round-trip — guards against HexSet JSON regression")
+}
+
+func (s *EncounterSuite) TestSnapshotFor_UnknownPlayer() {
+	e := encounter.New("enc-1", s.broker)
+	snap := e.SnapshotFor("nobody")
+	s.Equal(encounter.Snapshot{}, snap)
+}
+
+// Helpers shared with later EncounterSuite tests (Move/OpenDoor in Tasks 7-8)
+// and integration tests in Task 9.
+func (s *EncounterSuite) assertReceivesType(sub *encounter.Subscription, want string) {
+	s.T().Helper()
+	select {
+	case evt, ok := <-sub.Events():
+		s.Require().True(ok)
+		s.Equal(want, fmt.Sprintf("%T", evt))
+	case <-time.After(time.Second):
+		s.FailNow("did not receive event in 1s")
+	}
+}
+
+func (s *EncounterSuite) assertNoReceive(sub *encounter.Subscription) {
+	s.T().Helper()
+	select {
+	case evt, ok := <-sub.Events():
+		if ok {
+			s.FailNowf("unexpected event", "got %T", evt)
+		}
+	case <-time.After(50 * time.Millisecond):
+		// expected
+	}
+}
+
+func collectTypes(sub *encounter.Subscription, timeout time.Duration) []string {
+	var out []string
+	deadline := time.After(timeout)
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				return out
+			}
+			out = append(out, fmt.Sprintf("%T", evt))
+		case <-deadline:
+			return out
+		}
+	}
+}
