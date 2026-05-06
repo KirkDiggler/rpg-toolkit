@@ -68,7 +68,7 @@ func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
 	payload, err := json.Marshal(e1.ToData())
 	s.Require().NoError(err)
 
-	var data encounter.EncounterData
+	var data encounter.Data
 	s.Require().NoError(json.Unmarshal(payload, &data))
 
 	e2, err := encounter.LoadFromData(&data, s.broker)

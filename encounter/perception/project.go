@@ -18,7 +18,7 @@ import (
 func ProjectMove(
 	_ types.EntityID, // mover — reserved for future-slice entity-visibility
 	path []types.Hex,
-	viewer *PerceptionView,
+	viewer *View,
 ) (moveSlice *events.MovePlayerSlice, revealSlice *events.HexRevealedSlice) {
 	if viewer == nil || len(path) == 0 {
 		return nil, nil
@@ -55,7 +55,7 @@ func ProjectDoorOpen(
 	_ types.EntityID, // door — reserved for future-slice wall logic
 	doorPos types.Hex,
 	_ types.EntityID, // openedBy — reserved for future-slice entity-visibility
-	viewer *PerceptionView,
+	viewer *View,
 ) (doorSlice *events.DoorOpenedPlayerSlice, revealSlice *events.HexRevealedSlice) {
 	if viewer == nil {
 		return nil, nil

@@ -121,6 +121,10 @@ func (s *BrokerSuite) TestBrokerClose_ClosesAllSubsSafely() {
 }
 
 // Helpers — shared with other encounter_test suites in this package.
+// assertReceivesType takes a `want` string so future tests can assert other
+// concrete event types; current call sites only exercise MoveEvent.
+//
+//nolint:unparam // generic helper; want will diversify as more verbs land
 func (s *BrokerSuite) assertReceivesType(sub *encounter.Subscription, want string) {
 	s.T().Helper()
 	select {

@@ -94,7 +94,7 @@ func (s *IntegrationSuite) TestSlice_RoundTripPersistence() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
 
-	var loaded encounter.EncounterData
+	var loaded encounter.Data
 	s.Require().NoError(json.Unmarshal(payload, &loaded))
 	enc2, err := encounter.LoadFromData(&loaded, s.broker)
 	s.Require().NoError(err)

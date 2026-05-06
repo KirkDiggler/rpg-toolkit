@@ -2,14 +2,14 @@ package perception
 
 import "github.com/KirkDiggler/rpg-toolkit/encounter/types"
 
-// PerceptionView is what a single player currently knows about an encounter.
+// View is what a single player currently knows about an encounter.
 // Persisted on EncounterData; rehydrated on LoadFromData.
 //
 // Slice 1 only uses Position, SightRange, RevealedHexes. The remaining
 // fields are reserved for shape stability — when conditions, senses, and
 // entity-knowledge accumulation land in future slices, persisted JSON
 // won't need a migration.
-type PerceptionView struct {
+type View struct {
 	PlayerID      types.PlayerID `json:"player_id"`
 	Position      types.Hex      `json:"position"`
 	SightRange    int            `json:"sight_range"`
@@ -33,9 +33,9 @@ type Sense struct {
 	Range int    `json:"range"`
 }
 
-// NewView constructs a PerceptionView with the empty cumulative reveal set.
-func NewView(playerID types.PlayerID, position types.Hex, sightRange int) *PerceptionView {
-	return &PerceptionView{
+// NewView constructs a View with the empty cumulative reveal set.
+func NewView(playerID types.PlayerID, position types.Hex, sightRange int) *View {
+	return &View{
 		PlayerID:      playerID,
 		Position:      position,
 		SightRange:    sightRange,
@@ -44,7 +44,7 @@ func NewView(playerID types.PlayerID, position types.Hex, sightRange int) *Perce
 }
 
 // ApplyReveal merges newly-revealed hexes into the cumulative set. Idempotent.
-func (v *PerceptionView) ApplyReveal(hexes types.HexSet) {
+func (v *View) ApplyReveal(hexes types.HexSet) {
 	if v.RevealedHexes == nil {
 		v.RevealedHexes = make(types.HexSet)
 	}

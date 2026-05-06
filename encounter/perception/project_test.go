@@ -65,7 +65,7 @@ func (s *ProjectSuite) TestProjectDoorOpen_ViewerOutOfRange() {
 	s.Nil(revealSlice)
 }
 
-func (s *ProjectSuite) TestPerceptionView_ApplyRevealIdempotent() {
+func (s *ProjectSuite) TestView_ApplyRevealIdempotent() {
 	viewer := perception.NewView("alice", types.Hex{}, 3)
 	h := types.Hex{Q: 1, R: 0, S: -1}
 

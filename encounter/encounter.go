@@ -13,7 +13,7 @@ import (
 // Constructed per-call via LoadFromData; mutated by verbs; serialized via
 // ToData and saved.
 type Encounter struct {
-	data   *EncounterData
+	data   *Data
 	broker *Broker
 }
 
@@ -28,15 +28,15 @@ type PlayerInput struct {
 // New constructs a fresh encounter with the given ID.
 func New(id types.EncounterID, b *Broker) *Encounter {
 	return &Encounter{
-		data:   NewEncounterData(id),
+		data:   NewData(id),
 		broker: b,
 	}
 }
 
 // LoadFromData rehydrates an encounter from persisted state.
-func LoadFromData(data *EncounterData, b *Broker) (*Encounter, error) {
+func LoadFromData(data *Data, b *Broker) (*Encounter, error) {
 	if data == nil {
-		return nil, errors.New("nil EncounterData")
+		return nil, errors.New("nil Data")
 	}
 	if data.Players == nil {
 		data.Players = make(map[types.PlayerID]*PlayerData)
@@ -100,7 +100,7 @@ type Snapshot struct {
 }
 
 // ToData returns the persisted shape. Caller saves this to the KV store.
-func (e *Encounter) ToData() *EncounterData { return e.data }
+func (e *Encounter) ToData() *Data { return e.data }
 
 // nextSeq advances and returns the encounter's monotonic sequence counter.
 // Used to stamp events on publish.
