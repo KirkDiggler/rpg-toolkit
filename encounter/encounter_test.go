@@ -144,6 +144,43 @@ func (s *EncounterSuite) TestMove_Validations() {
 	s.Error(e.Move("nobody", []types.Hex{{}}), "unknown player should error")
 }
 
+func (s *EncounterSuite) TestOpenDoor_PublishesEvents() {
+	e := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: types.Hex{}, SightRange: 4,
+	}))
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "bob", EntityID: "char-bob",
+		Position: types.Hex{Q: 50, R: -25, S: -25}, SightRange: 4,
+	}))
+	e.AddDoor("door-1", types.Hex{Q: 2, R: 0, S: -2}, false)
+
+	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
+	bobSub, _ := s.broker.Subscribe("enc-1", "bob")
+
+	s.Require().NoError(e.OpenDoor("alice", "door-1"))
+
+	seenAlice := collectTypes(aliceSub, 500*time.Millisecond)
+	s.Contains(seenAlice, "*events.DoorOpenedEvent")
+
+	seenBob := collectTypes(bobSub, 100*time.Millisecond)
+	s.Empty(seenBob, "bob out of range should receive nothing")
+}
+
+func (s *EncounterSuite) TestOpenDoor_Validations() {
+	e := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-1", SightRange: 3,
+	}))
+	e.AddDoor("door-1", types.Hex{}, false)
+
+	s.Error(e.OpenDoor("nobody", "door-1"))
+	s.Error(e.OpenDoor("alice", "nonexistent"))
+	s.Require().NoError(e.OpenDoor("alice", "door-1"))
+	s.Error(e.OpenDoor("alice", "door-1"), "second open should error")
+}
+
 // Helpers shared with later EncounterSuite tests (OpenDoor in Task 8) and
 // integration tests in Task 9.
 func (s *EncounterSuite) assertReceivesType(sub *encounter.Subscription, want string) {

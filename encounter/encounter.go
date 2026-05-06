@@ -182,6 +182,57 @@ func (e *Encounter) Move(playerID types.PlayerID, path []types.Hex) error {
 	return nil
 }
 
+// OpenDoor applies an open-door action. Marks the door open and publishes
+// the cause event (DoorOpenedEvent) plus a HexRevealedEvent for any viewer
+// whose vision grew.
+func (e *Encounter) OpenDoor(playerID types.PlayerID, doorID types.EntityID) error {
+	p, ok := e.data.Players[playerID]
+	if !ok {
+		return fmt.Errorf("player %q not in encounter", playerID)
+	}
+	door, ok := e.data.Doors[doorID]
+	if !ok {
+		return fmt.Errorf("door %q not in encounter", doorID)
+	}
+	if door.Open {
+		return fmt.Errorf("door %q already open", doorID)
+	}
+
+	door.Open = true
+
+	doorPerPlayer := make(map[types.PlayerID]events.DoorOpenedPlayerSlice)
+	revealPerPlayer := make(map[types.PlayerID]events.HexRevealedSlice)
+
+	for viewerID, viewer := range e.data.Players {
+		doorSlice, revealSlice := perception.ProjectDoorOpen(
+			doorID, door.Position, p.EntityID, viewer.View,
+		)
+		if doorSlice != nil {
+			doorPerPlayer[viewerID] = *doorSlice
+		}
+		if revealSlice != nil {
+			if revealSlice.Hexes != nil {
+				viewer.View.ApplyReveal(revealSlice.Hexes)
+			}
+			revealPerPlayer[viewerID] = *revealSlice
+		}
+	}
+
+	if err := e.broker.Publish(events.NewDoorOpenedEvent(
+		e.data.ID, e.nextSeq(), doorID, p.EntityID, doorPerPlayer,
+	)); err != nil {
+		return fmt.Errorf("publish door: %w", err)
+	}
+	if len(revealPerPlayer) > 0 {
+		if err := e.broker.Publish(events.NewHexRevealedEvent(
+			e.data.ID, e.nextSeq(), revealPerPlayer,
+		)); err != nil {
+			return fmt.Errorf("publish reveal: %w", err)
+		}
+	}
+	return nil
+}
+
 // diffHexes returns hexes in candidate that are not already in current.
 func diffHexes(current, candidate types.HexSet) types.HexSet {
 	out := make(types.HexSet)
