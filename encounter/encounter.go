@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/types"
 )
@@ -102,8 +103,92 @@ type Snapshot struct {
 func (e *Encounter) ToData() *EncounterData { return e.data }
 
 // nextSeq advances and returns the encounter's monotonic sequence counter.
-// Used to stamp events on publish (Task 7+ verbs).
+// Used to stamp events on publish.
 func (e *Encounter) nextSeq() uint64 {
 	e.data.Sequence++
 	return e.data.Sequence
+}
+
+// Move applies a move action by playerID along path. Validates, mutates
+// player position, and publishes the cause event (MoveEvent) plus a
+// HexRevealedEvent for any viewer whose vision grew.
+//
+// Slice scope: no action economy, no turn-order enforcement, no
+// path-contiguity validation beyond non-empty.
+func (e *Encounter) Move(playerID types.PlayerID, path []types.Hex) error {
+	if len(path) == 0 {
+		return errors.New("empty path")
+	}
+	p, ok := e.data.Players[playerID]
+	if !ok {
+		return fmt.Errorf("player %q not in encounter", playerID)
+	}
+
+	// 1. Compute the mover's reveal delta BEFORE mutating position/view.
+	//    The delta = (visible-from-new-position) MINUS (already-revealed).
+	//    Critical: if we apply the reveal first, the diff is always empty.
+	end := path[len(path)-1]
+	newVisible := perception.VisibleHexesAt(end, p.View.SightRange)
+	moverNewHexes := diffHexes(p.View.RevealedHexes, newVisible)
+
+	// 2. Mutate state: position, then apply the reveal delta we just computed.
+	p.View.Position = end
+	p.View.ApplyReveal(moverNewHexes)
+
+	// 3. Per-player projection.
+	movePerPlayer := make(map[types.PlayerID]events.MovePlayerSlice)
+	revealPerPlayer := make(map[types.PlayerID]events.HexRevealedSlice)
+
+	// The mover always sees their own move; their reveal is the delta we
+	// just computed.
+	movePerPlayer[playerID] = events.MovePlayerSlice{
+		SeenSegments: append([]types.Hex(nil), path...),
+	}
+	if len(moverNewHexes) > 0 {
+		revealPerPlayer[playerID] = events.HexRevealedSlice{Hexes: moverNewHexes}
+	}
+
+	// Other players: project the move from their current view.
+	for otherID, other := range e.data.Players {
+		if otherID == playerID {
+			continue
+		}
+		moveSlice, revealSlice := perception.ProjectMove(p.EntityID, path, other.View)
+		if moveSlice != nil {
+			movePerPlayer[otherID] = *moveSlice
+		}
+		if revealSlice != nil {
+			if revealSlice.Hexes != nil {
+				other.View.ApplyReveal(revealSlice.Hexes)
+			}
+			revealPerPlayer[otherID] = *revealSlice
+		}
+	}
+
+	// 4. Publish — cause event always; effect event only when someone's
+	//    vision changed. The two events get sequential sequence numbers.
+	if err := e.broker.Publish(events.NewMoveEvent(
+		e.data.ID, e.nextSeq(), p.EntityID, path, movePerPlayer,
+	)); err != nil {
+		return fmt.Errorf("publish move: %w", err)
+	}
+	if len(revealPerPlayer) > 0 {
+		if err := e.broker.Publish(events.NewHexRevealedEvent(
+			e.data.ID, e.nextSeq(), revealPerPlayer,
+		)); err != nil {
+			return fmt.Errorf("publish reveal: %w", err)
+		}
+	}
+	return nil
+}
+
+// diffHexes returns hexes in candidate that are not already in current.
+func diffHexes(current, candidate types.HexSet) types.HexSet {
+	out := make(types.HexSet)
+	for h := range candidate {
+		if !current.Has(h) {
+			out[h] = struct{}{}
+		}
+	}
+	return out
 }

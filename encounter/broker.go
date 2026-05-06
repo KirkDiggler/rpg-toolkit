@@ -16,10 +16,11 @@ import (
 type Broker struct {
 	transport Transport
 
-	mu          sync.Mutex
-	subscribers map[subscriberKey][]*Subscription
-	listeners   map[types.EncounterID]TransportSubscription
-	closed      bool
+	mu           sync.Mutex
+	subscribers  map[subscriberKey][]*Subscription
+	listeners    map[types.EncounterID]TransportSubscription
+	listenerWG   sync.WaitGroup // tracks listener goroutines for clean shutdown
+	closed       bool
 }
 
 type subscriberKey struct {
@@ -72,6 +73,7 @@ func (b *Broker) Subscribe(encID types.EncounterID, playerID types.PlayerID) (*S
 			return nil, fmt.Errorf("transport subscribe: %w", err)
 		}
 		b.listeners[encID] = ts
+		b.listenerWG.Add(1)
 		go b.listen(encID, ts)
 	}
 	return sub, nil
@@ -96,8 +98,12 @@ func (b *Broker) Close() error {
 	for _, ts := range listeners {
 		_ = ts.Close()
 	}
-	// Close subscriptions after listeners. Subscription.Close is idempotent
-	// (sync.Once guards the channel close).
+	// Wait for listener goroutines to fully exit before closing subscription
+	// channels. Without this, a listener mid-send to sub.events races with
+	// Subscription.Close closing it.
+	b.listenerWG.Wait()
+	// Close subscriptions. Subscription.Close is idempotent (sync.Once guards
+	// the channel close).
 	for _, list := range subs {
 		for _, sub := range list {
 			_ = sub.Close()
@@ -112,6 +118,7 @@ func (b *Broker) Close() error {
 // Subscribers are snapshotted under lock; channel sends happen OUTSIDE the
 // lock so a slow subscriber can't stall the listener.
 func (b *Broker) listen(encID types.EncounterID, ts TransportSubscription) {
+	defer b.listenerWG.Done()
 	for payload := range ts.Payloads() {
 		evt, err := decodeEvent(payload)
 		if err != nil {

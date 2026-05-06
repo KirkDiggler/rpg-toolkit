@@ -87,8 +87,65 @@ func (s *EncounterSuite) TestSnapshotFor_UnknownPlayer() {
 	s.Equal(encounter.Snapshot{}, snap)
 }
 
-// Helpers shared with later EncounterSuite tests (Move/OpenDoor in Tasks 7-8)
-// and integration tests in Task 9.
+// Move publishes MoveEvent. Mover and viewers in range get a slice; viewers
+// out of range are absent from PerPlayer.
+func (s *EncounterSuite) TestMove_PublishesMoveEvent() {
+	e := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: types.Hex{}, SightRange: 5,
+	}))
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "bob", EntityID: "char-bob",
+		Position: types.Hex{Q: 50, R: -25, S: -25}, SightRange: 5,
+	}))
+
+	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
+	bobSub, _ := s.broker.Subscribe("enc-1", "bob")
+
+	path := []types.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	s.Require().NoError(e.Move("alice", path))
+
+	// Alice (mover) gets MoveEvent.
+	s.assertReceivesType(aliceSub, "*events.MoveEvent")
+	// Bob (out of range) gets nothing.
+	s.assertNoReceive(bobSub)
+}
+
+// Move publishes HexRevealedEvent when the mover's vision grew. This test
+// guards against a regression where the delta was computed AFTER applying
+// reveal — making the delta always empty.
+func (s *EncounterSuite) TestMove_PublishesHexRevealedEventForMover() {
+	e := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: types.Hex{}, SightRange: 2,
+	}))
+	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
+
+	path := []types.Hex{{Q: 1, R: 0, S: -1}}
+	s.Require().NoError(e.Move("alice", path))
+
+	seen := collectTypes(aliceSub, 500*time.Millisecond)
+	s.Contains(seen, "*events.MoveEvent")
+	s.Contains(seen, "*events.HexRevealedEvent")
+}
+
+func (s *EncounterSuite) TestMove_Validations() {
+	e := encounter.New("enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-1", SightRange: 3,
+	}))
+
+	s.Error(e.Move("alice", nil), "empty path should error")
+	s.Error(e.Move("nobody", []types.Hex{{}}), "unknown player should error")
+}
+
+// Helpers shared with later EncounterSuite tests (OpenDoor in Task 8) and
+// integration tests in Task 9.
 func (s *EncounterSuite) assertReceivesType(sub *encounter.Subscription, want string) {
 	s.T().Helper()
 	select {
