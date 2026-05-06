@@ -16,11 +16,11 @@ import (
 type Broker struct {
 	transport Transport
 
-	mu           sync.Mutex
-	subscribers  map[subscriberKey][]*Subscription
-	listeners    map[types.EncounterID]TransportSubscription
-	listenerWG   sync.WaitGroup // tracks listener goroutines for clean shutdown
-	closed       bool
+	mu          sync.Mutex
+	subscribers map[subscriberKey][]*Subscription
+	listeners   map[types.EncounterID]TransportSubscription
+	listenerWG  sync.WaitGroup // tracks listener goroutines for clean shutdown
+	closed      bool
 }
 
 type subscriberKey struct {

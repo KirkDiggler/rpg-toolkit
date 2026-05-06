@@ -42,10 +42,17 @@ func NewDoorOpenedEvent(
 	}
 }
 
-func (*DoorOpenedEvent) isEncounterEvent()                {}
+func (*DoorOpenedEvent) isEncounterEvent() {}
+
+// EncounterID returns the encounter this event belongs to.
 func (e *DoorOpenedEvent) EncounterID() types.EncounterID { return e.encID }
-func (e *DoorOpenedEvent) Sequence() uint64               { return e.seq }
-func (e *DoorOpenedEvent) Audience() types.AudienceSet    { return audienceFromMap(e.PerPlayer) }
+
+// Sequence returns the encounter-monotonic sequence number stamped at publish time.
+func (e *DoorOpenedEvent) Sequence() uint64 { return e.seq }
+
+// Audience returns the set of players who can perceive the open-door event,
+// derived from PerPlayer keys.
+func (e *DoorOpenedEvent) Audience() types.AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type doorOpenedWire struct {
 	EncID     types.EncounterID                        `json:"encounter_id"`
@@ -55,6 +62,8 @@ type doorOpenedWire struct {
 	PerPlayer map[types.PlayerID]DoorOpenedPlayerSlice `json:"per_player"`
 }
 
+// MarshalJSON exposes encID and seq under stable JSON field names without
+// making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *DoorOpenedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(doorOpenedWire{
 		EncID: e.encID, Seq: e.seq,
@@ -63,6 +72,8 @@ func (e *DoorOpenedEvent) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON populates the unexported fields from JSON.
+// Implements encoding/json.Unmarshaler.
 func (e *DoorOpenedEvent) UnmarshalJSON(b []byte) error {
 	var w doorOpenedWire
 	if err := json.Unmarshal(b, &w); err != nil {

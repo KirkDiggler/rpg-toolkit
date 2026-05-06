@@ -12,12 +12,14 @@ import (
 // Slice 1 stub: viewer's visibility is computed from their CURRENT position.
 // Real LoS will be position-aware-per-segment. Slice 1 does NOT emit
 // EntityVisibility — entity-knowledge accumulation is a future slice.
+//
+// The mover parameter is reserved for future slices (entity-visibility
+// accumulation will use it to record "X became visible to viewer").
 func ProjectMove(
-	mover types.EntityID,
+	_ types.EntityID, // mover — reserved for future-slice entity-visibility
 	path []types.Hex,
 	viewer *PerceptionView,
 ) (moveSlice *events.MovePlayerSlice, revealSlice *events.HexRevealedSlice) {
-
 	if viewer == nil || len(path) == 0 {
 		return nil, nil
 	}
@@ -45,13 +47,16 @@ func ProjectMove(
 // (no walls modeled), but if the door is in the viewer's sight range we
 // emit a DoorOpenedPlayerSlice. The reveal slice covers the door's
 // immediate neighbors that the viewer hadn't seen before.
+//
+// The door and openedBy parameters are reserved for future slices (real LoS
+// will need door identity for wall logic; entity-visibility accumulation
+// for openedBy).
 func ProjectDoorOpen(
-	door types.EntityID,
+	_ types.EntityID, // door — reserved for future-slice wall logic
 	doorPos types.Hex,
-	openedBy types.EntityID,
+	_ types.EntityID, // openedBy — reserved for future-slice entity-visibility
 	viewer *PerceptionView,
 ) (doorSlice *events.DoorOpenedPlayerSlice, revealSlice *events.HexRevealedSlice) {
-
 	if viewer == nil {
 		return nil, nil
 	}

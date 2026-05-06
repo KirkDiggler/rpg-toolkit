@@ -50,10 +50,16 @@ func NewHexRevealedEvent(
 	}
 }
 
-func (*HexRevealedEvent) isEncounterEvent()                {}
+func (*HexRevealedEvent) isEncounterEvent() {}
+
+// EncounterID returns the encounter this event belongs to.
 func (e *HexRevealedEvent) EncounterID() types.EncounterID { return e.encID }
-func (e *HexRevealedEvent) Sequence() uint64               { return e.seq }
-func (e *HexRevealedEvent) Audience() types.AudienceSet    { return audienceFromMap(e.PerPlayer) }
+
+// Sequence returns the encounter-monotonic sequence number stamped at publish time.
+func (e *HexRevealedEvent) Sequence() uint64 { return e.seq }
+
+// Audience returns the set of players whose vision changed, derived from PerPlayer keys.
+func (e *HexRevealedEvent) Audience() types.AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type hexRevealedWire struct {
 	EncID     types.EncounterID                   `json:"encounter_id"`
@@ -61,10 +67,14 @@ type hexRevealedWire struct {
 	PerPlayer map[types.PlayerID]HexRevealedSlice `json:"per_player"`
 }
 
+// MarshalJSON exposes encID and seq under stable JSON field names without
+// making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *HexRevealedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(hexRevealedWire{EncID: e.encID, Seq: e.seq, PerPlayer: e.PerPlayer})
 }
 
+// UnmarshalJSON populates the unexported fields from JSON.
+// Implements encoding/json.Unmarshaler.
 func (e *HexRevealedEvent) UnmarshalJSON(b []byte) error {
 	var w hexRevealedWire
 	if err := json.Unmarshal(b, &w); err != nil {

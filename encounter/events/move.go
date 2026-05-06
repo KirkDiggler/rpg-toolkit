@@ -47,10 +47,17 @@ func NewMoveEvent(
 	}
 }
 
-func (*MoveEvent) isEncounterEvent()                {}
+func (*MoveEvent) isEncounterEvent() {}
+
+// EncounterID returns the encounter this event belongs to.
 func (e *MoveEvent) EncounterID() types.EncounterID { return e.encID }
-func (e *MoveEvent) Sequence() uint64               { return e.seq }
-func (e *MoveEvent) Audience() types.AudienceSet    { return audienceFromMap(e.PerPlayer) }
+
+// Sequence returns the encounter-monotonic sequence number stamped at publish time.
+func (e *MoveEvent) Sequence() uint64 { return e.seq }
+
+// Audience returns the set of players who can perceive this event,
+// derived from the keys of PerPlayer.
+func (e *MoveEvent) Audience() types.AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 // moveEventWire is the on-wire shape — used only by MarshalJSON / UnmarshalJSON.
 // Keeping this private (alongside the unexported encID/seq fields) preserves
@@ -65,7 +72,7 @@ type moveEventWire struct {
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names without
-// making the Go fields exported.
+// making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *MoveEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(moveEventWire{
 		EncID:     e.encID,
@@ -77,6 +84,7 @@ func (e *MoveEvent) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON populates the unexported fields from JSON.
+// Implements encoding/json.Unmarshaler.
 func (e *MoveEvent) UnmarshalJSON(b []byte) error {
 	var w moveEventWire
 	if err := json.Unmarshal(b, &w); err != nil {
