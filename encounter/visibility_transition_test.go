@@ -209,15 +209,14 @@ func (s *VisibilityTransitionSuite) TestPassThrough_BothEventsFired() {
 		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 4,
 	}))
 
-	// Alice's path: starts outside bob's view, enters it, then leaves.
+	// Alice's path (destination hexes only; her starting position {Q:-10,...} is
+	// held by Alice's View.Position, not included in path):
 	// Under stub LoS bob sees hexes within distance 4 of origin.
-	// path[0]={-10,...} outside, path[1]={-3,...} inside (dist=3), path[2]={4,...} inside (dist=4),
-	// path[3]={10,...} outside.
+	// {-3,...} is inside (dist=3), {4,...} is inside (dist=4), {10,...} is outside.
 	path := []core.Hex{
-		{Q: -10, R: 0, S: 10}, // outside
-		{Q: -3, R: 0, S: 3},   // inside (dist 3)
+		{Q: -3, R: 0, S: 3},   // inside (dist 3) — first destination
 		{Q: 4, R: 0, S: -4},   // inside (dist 4, on edge)
-		{Q: 10, R: 0, S: -10}, // outside
+		{Q: 10, R: 0, S: -10}, // outside — destination
 	}
 	s.Require().NoError(s.enc.Move("alice", path))
 

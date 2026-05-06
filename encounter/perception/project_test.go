@@ -24,7 +24,7 @@ func (s *ProjectSuite) TestProjectMove_ViewerInRange() {
 		{Q: 2, R: 0, S: -2},
 		{Q: 3, R: 0, S: -3},
 	}
-	moveSlice, _ := perception.ProjectMove("bob", path, viewer)
+	moveSlice, _, _ := perception.ProjectMove("bob", path, viewer)
 
 	s.Require().NotNil(moveSlice)
 	s.Equal(path, moveSlice.SeenSegments)
@@ -37,7 +37,7 @@ func (s *ProjectSuite) TestProjectMove_ViewerOutOfRange() {
 		{Q: 5, R: -2, S: -3},
 		{Q: 6, R: -2, S: -4},
 	}
-	moveSlice, revealSlice := perception.ProjectMove("bob", path, viewer)
+	moveSlice, revealSlice, _ := perception.ProjectMove("bob", path, viewer)
 
 	s.Nil(moveSlice)
 	s.Nil(revealSlice)
@@ -76,12 +76,12 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_EnterLoS() {
 	pathEnd := core.Hex{Q: 3, R: 0, S: -3}
 	path := []core.Hex{pathEnd}
 
-	// seenSegments from ProjectMove: path end is visible.
-	moveSlice, _ := perception.ProjectMove("alice", path, viewer)
+	// Use ProjectMove to get both seenSegments and the precomputed visible set.
+	moveSlice, _, visible := perception.ProjectMove("alice", path, viewer)
 	s.Require().NotNil(moveSlice)
 	seenSegments := moveSlice.SeenSegments
 
-	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer)
+	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer, visible)
 
 	s.Require().NotNil(appearedAt, "mover entered LoS — appearedAt must not be nil")
 	s.Equal(pathEnd, *appearedAt)
@@ -99,11 +99,11 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_LeaveLoS() {
 		{Q: 10, R: 0, S: -10}, // outside
 	}
 
-	moveSlice, _ := perception.ProjectMove("alice", path, viewer)
+	moveSlice, _, visible := perception.ProjectMove("alice", path, viewer)
 	s.Require().NotNil(moveSlice)
 	seenSegments := moveSlice.SeenSegments
 
-	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer)
+	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer, visible)
 
 	s.Nil(appearedAt)
 	s.Require().NotNil(disappearedAt, "mover left LoS — disappearedAt must not be nil")
@@ -112,22 +112,22 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_LeaveLoS() {
 }
 
 // Mover starts outside, passes through viewer's LoS, ends outside → both events.
+// Path contains only destination hexes; moverStart supplies the initial position.
 func (s *ProjectSuite) TestProjectVisibilityTransition_PassThrough() {
 	viewer := perception.NewView("bob", core.Hex{}, 4)
 
-	moverStart := core.Hex{Q: -10, R: 0, S: 10} // outside
+	moverStart := core.Hex{Q: -10, R: 0, S: 10} // outside — NOT in path
 	path := []core.Hex{
-		{Q: -10, R: 0, S: 10}, // outside (same as start, included explicitly)
-		{Q: -3, R: 0, S: 3},   // inside (dist 3)
+		{Q: -3, R: 0, S: 3},   // first destination — inside (dist 3)
 		{Q: 4, R: 0, S: -4},   // inside (dist 4)
 		{Q: 10, R: 0, S: -10}, // outside
 	}
 
-	moveSlice, _ := perception.ProjectMove("alice", path, viewer)
+	moveSlice, _, visible := perception.ProjectMove("alice", path, viewer)
 	s.Require().NotNil(moveSlice)
 	seenSegments := moveSlice.SeenSegments
 
-	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer)
+	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer, visible)
 
 	s.Require().NotNil(appearedAt)
 	s.Require().NotNil(disappearedAt)
@@ -142,11 +142,11 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_StaysVisible() {
 	moverStart := core.Hex{Q: 1, R: 0, S: -1} // inside
 	path := []core.Hex{{Q: 2, R: 0, S: -2}}   // inside
 
-	moveSlice, _ := perception.ProjectMove("alice", path, viewer)
+	moveSlice, _, visible := perception.ProjectMove("alice", path, viewer)
 	s.Require().NotNil(moveSlice)
 	seenSegments := moveSlice.SeenSegments
 
-	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer)
+	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, viewer, visible)
 
 	s.Nil(appearedAt, "no enter-LoS transition when mover stays visible")
 	s.Nil(disappearedAt, "no leave-LoS transition when mover stays visible")
@@ -159,13 +159,33 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_NeverVisible() {
 	moverStart := core.Hex{Q: 10, R: 0, S: -10}
 	path := []core.Hex{{Q: 15, R: 0, S: -15}}
 
-	moveSlice, _ := perception.ProjectMove("alice", path, viewer)
-	s.Nil(moveSlice, "viewer out of range — no move slice")
+	_, _, visible := perception.ProjectMove("alice", path, viewer)
 
-	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, nil, viewer)
+	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, nil, viewer, visible)
 
 	s.Nil(appearedAt)
 	s.Nil(disappearedAt)
+}
+
+// Mover starts visible but path has no visible destination hexes (immediate leave) →
+// last-known hex falls back to moverStart rather than silently dropping the event.
+func (s *ProjectSuite) TestProjectVisibilityTransition_LeaveLoS_EmptySeenSegments() {
+	viewer := perception.NewView("bob", core.Hex{}, 4)
+
+	// moverStart is inside viewer's range; path has only one hex outside range.
+	moverStart := core.Hex{Q: 2, R: 0, S: -2}
+	path := []core.Hex{{Q: 10, R: 0, S: -10}} // single destination, outside
+
+	_, _, visible := perception.ProjectMove("alice", path, viewer)
+
+	// seenSegments will be empty because the single path hex is out of range.
+	appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, nil, viewer, visible)
+
+	s.Nil(appearedAt)
+	s.Require().NotNil(disappearedAt,
+		"disappearedAt must not be nil when mover was visible at start but seenSegments is empty")
+	s.Equal(moverStart, *disappearedAt,
+		"last-known hex falls back to moverStart when no path hex was visible")
 }
 
 func (s *ProjectSuite) TestView_ApplyRevealIdempotent() {

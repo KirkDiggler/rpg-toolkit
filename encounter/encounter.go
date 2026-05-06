@@ -165,7 +165,9 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		if otherID == playerID {
 			continue
 		}
-		moveSlice, revealSlice := perception.ProjectMove(p.EntityID, path, other.View)
+		// ProjectMove returns the visible set so we can pass it directly to
+		// ProjectVisibilityTransition without recomputing VisibleHexesAt.
+		moveSlice, revealSlice, visible := perception.ProjectMove(p.EntityID, path, other.View)
 		if moveSlice != nil {
 			movePerPlayer[otherID] = *moveSlice
 		}
@@ -181,7 +183,9 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		if moveSlice != nil {
 			seenSegments = moveSlice.SeenSegments
 		}
-		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, other.View)
+		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(
+			moverStart, path, seenSegments, other.View, visible,
+		)
 		if appearedAt != nil {
 			if appearedByHex[*appearedAt] == nil {
 				appearedByHex[*appearedAt] = make(map[core.PlayerID]struct{})
