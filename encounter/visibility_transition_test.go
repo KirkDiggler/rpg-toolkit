@@ -103,7 +103,7 @@ func (s *VisibilityTransitionSuite) assertHasType(evts []events.EncounterEvent, 
 			return e
 		}
 	}
-	var names []string
+	names := make([]string, 0, len(evts))
 	for _, e := range evts {
 		names = append(names, typeNameOf(e))
 	}
