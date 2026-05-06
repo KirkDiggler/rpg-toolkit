@@ -1,3 +1,4 @@
+//nolint:revive // package name "types" is purposeful — see doc.go
 package types
 
 // EncounterID uniquely identifies an encounter instance.
