@@ -124,9 +124,13 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		return fmt.Errorf("player %q not in encounter", playerID)
 	}
 
-	// 1. Compute the mover's reveal delta BEFORE mutating position/view.
-	//    The delta = (visible-from-new-position) MINUS (already-revealed).
-	//    Critical: if we apply the reveal first, the diff is always empty.
+	// 1. Capture starting position and compute the mover's reveal delta BEFORE
+	//    mutating position/view.
+	//    - moverStart is needed for visibility-transition detection (so viewers
+	//      can determine if the mover was visible to them before the move).
+	//    - The reveal delta = (visible-from-new-position) MINUS (already-revealed).
+	//      Critical: if we apply the reveal first, the diff is always empty.
+	moverStart := p.View.Position
 	end := path[len(path)-1]
 	newVisible := perception.VisibleHexesAt(end, p.View.SightRange)
 	moverNewHexes := diffHexes(p.View.RevealedHexes, newVisible)
@@ -149,6 +153,14 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	}
 
 	// Other players: project the move from their current view.
+	//
+	// Also accumulate visibility-transition data for EntityAppeared /
+	// EntityDisappeared events. appearedByHex maps the hex where the mover
+	// became visible to the set of viewers who see the appearance at that hex.
+	// disappearedPerPlayer maps each viewer to the hex where they last saw the mover.
+	appearedByHex := make(map[core.Hex]map[core.PlayerID]struct{})
+	disappearedPerPlayer := make(map[core.PlayerID]core.Hex)
+
 	for otherID, other := range e.data.Players {
 		if otherID == playerID {
 			continue
@@ -162,6 +174,22 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 				other.View.ApplyReveal(revealSlice.Hexes)
 			}
 			revealPerPlayer[otherID] = *revealSlice
+		}
+
+		// Determine visibility transitions for this viewer.
+		var seenSegments []core.Hex
+		if moveSlice != nil {
+			seenSegments = moveSlice.SeenSegments
+		}
+		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(moverStart, path, seenSegments, other.View)
+		if appearedAt != nil {
+			if appearedByHex[*appearedAt] == nil {
+				appearedByHex[*appearedAt] = make(map[core.PlayerID]struct{})
+			}
+			appearedByHex[*appearedAt][otherID] = struct{}{}
+		}
+		if disappearedAt != nil {
+			disappearedPerPlayer[otherID] = *disappearedAt
 		}
 	}
 
@@ -177,6 +205,30 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 			e.data.ID, e.nextSeq(), revealPerPlayer,
 		)); err != nil {
 			return fmt.Errorf("publish reveal: %w", err)
+		}
+	}
+
+	// Emit EntityAppearedEvent once per distinct appeared-at hex, grouping
+	// viewers who share the same appearance position. Under the endpoints-only
+	// model this is typically a single hex (path[len-1] for enter-LoS), but
+	// pass-through viewers at different positions can yield different
+	// SeenSegments[0] hexes, producing distinct groups.
+	for hex, viewers := range appearedByHex {
+		if err := e.broker.Publish(events.NewEntityAppearedEvent(
+			e.data.ID, e.nextSeq(), p.EntityID, hex, viewers,
+		)); err != nil {
+			return fmt.Errorf("publish entity appeared: %w", err)
+		}
+	}
+
+	// Emit EntityDisappearedEvent as a single event carrying per-viewer
+	// last-known hexes (different viewers may have last seen the mover at
+	// different hexes during a pass-through move).
+	if len(disappearedPerPlayer) > 0 {
+		if err := e.broker.Publish(events.NewEntityDisappearedEvent(
+			e.data.ID, e.nextSeq(), p.EntityID, disappearedPerPlayer,
+		)); err != nil {
+			return fmt.Errorf("publish entity disappeared: %w", err)
 		}
 	}
 	return nil

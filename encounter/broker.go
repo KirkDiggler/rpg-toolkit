@@ -218,6 +218,10 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "HexRevealedEvent"
 	case *events.DoorOpenedEvent:
 		typeName = "DoorOpenedEvent"
+	case *events.EntityAppearedEvent:
+		typeName = "EntityAppearedEvent"
+	case *events.EntityDisappearedEvent:
+		typeName = "EntityDisappearedEvent"
 	default:
 		return nil, fmt.Errorf("unknown event type %T", evt)
 	}
@@ -248,6 +252,18 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "DoorOpenedEvent":
 		var e events.DoorOpenedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "EntityAppearedEvent":
+		var e events.EntityAppearedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "EntityDisappearedEvent":
+		var e events.EntityDisappearedEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}
