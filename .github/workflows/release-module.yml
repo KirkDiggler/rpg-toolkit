@@ -20,6 +20,9 @@ on:
 permissions:
   contents: write
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   release:
     runs-on: ubuntu-latest

@@ -12,6 +12,7 @@ permissions:
 env:
   GO_VERSION: '1.25.x'
   GOLANGCI_VERSION: 'v2.2.1'
+  GOTOOLCHAIN: local
 
 jobs:
   detect-modules:
