@@ -22,6 +22,8 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.MoveEvent)(nil)
 	var _ events.EncounterEvent = (*events.HexRevealedEvent)(nil)
 	var _ events.EncounterEvent = (*events.DoorOpenedEvent)(nil)
+	var _ events.EncounterEvent = (*events.EntityAppearedEvent)(nil)
+	var _ events.EncounterEvent = (*events.EntityDisappearedEvent)(nil)
 }
 
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.
@@ -83,12 +85,63 @@ func (s *EventsSuite) TestHexRevealedEvent_JSONRoundTrip() {
 	s.True(aliceSlice.Hexes.Has(core.Hex{Q: 1, R: 0, S: -1}))
 }
 
+// EntityAppearedEvent JSON round-trip — audience derived from PerPlayer keys.
+func (s *EventsSuite) TestEntityAppearedEvent_JSONRoundTrip() {
+	original := events.NewEntityAppearedEvent(
+		"enc-1", 9, "char-alice",
+		core.Hex{Q: 2, R: 0, S: -2},
+		map[core.PlayerID]struct{}{"bob": {}, "carol": {}},
+	)
+
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.EntityAppearedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(9), decoded.Sequence())
+	s.Equal(core.EntityID("char-alice"), decoded.Entity)
+	s.Equal(core.Hex{Q: 2, R: 0, S: -2}, decoded.Position)
+	s.Contains(decoded.PerPlayer, core.PlayerID("bob"))
+	s.Contains(decoded.PerPlayer, core.PlayerID("carol"))
+	s.ElementsMatch(events.AudienceSet{"bob", "carol"}, decoded.Audience())
+}
+
+// EntityDisappearedEvent JSON round-trip — per-viewer hex map survives encoding.
+func (s *EventsSuite) TestEntityDisappearedEvent_JSONRoundTrip() {
+	original := events.NewEntityDisappearedEvent(
+		"enc-1", 10, "char-alice",
+		map[core.PlayerID]core.Hex{
+			"bob":   {Q: 3, R: 0, S: -3},
+			"carol": {Q: 1, R: 1, S: -2},
+		},
+	)
+
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.EntityDisappearedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(10), decoded.Sequence())
+	s.Equal(core.EntityID("char-alice"), decoded.Entity)
+	s.Require().Contains(decoded.PerPlayer, core.PlayerID("bob"))
+	s.Equal(core.Hex{Q: 3, R: 0, S: -3}, decoded.PerPlayer[core.PlayerID("bob")])
+	s.Require().Contains(decoded.PerPlayer, core.PlayerID("carol"))
+	s.Equal(core.Hex{Q: 1, R: 1, S: -2}, decoded.PerPlayer[core.PlayerID("carol")])
+	s.ElementsMatch(events.AudienceSet{"bob", "carol"}, decoded.Audience())
+}
+
 // Type switch returns the concrete type.
 func (s *EventsSuite) TestTypeSwitch_RecoversConcrete() {
 	evts := []events.EncounterEvent{
 		events.NewMoveEvent("enc-1", 1, "bob", nil, nil),
 		events.NewHexRevealedEvent("enc-1", 2, nil),
 		events.NewDoorOpenedEvent("enc-1", 3, "door-1", "bob", nil),
+		events.NewEntityAppearedEvent("enc-1", 4, "bob", core.Hex{}, nil),
+		events.NewEntityDisappearedEvent("enc-1", 5, "bob", nil),
 	}
 
 	var seen []string
@@ -100,9 +153,13 @@ func (s *EventsSuite) TestTypeSwitch_RecoversConcrete() {
 			seen = append(seen, "revealed")
 		case *events.DoorOpenedEvent:
 			seen = append(seen, "door")
+		case *events.EntityAppearedEvent:
+			seen = append(seen, "appeared")
+		case *events.EntityDisappearedEvent:
+			seen = append(seen, "disappeared")
 		default:
 			s.FailNow("unhandled event type")
 		}
 	}
-	s.Equal([]string{"move", "revealed", "door"}, seen)
+	s.Equal([]string{"move", "revealed", "door", "appeared", "disappeared"}, seen)
 }
