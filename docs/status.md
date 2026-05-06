@@ -11,11 +11,19 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Active work
 
-No open PRs as of 2026-05-02. The last merge was PR #609 (fix/456-unarmored-defense-ac-chain,
-2026-04-05). Main is quiet.
+**Encounter SDK walking skeleton (#622)** — Phase 2 Slice 1 of v1alpha2.
+New top-level `encounter/` module with subpackages `types`, `events`,
+`perception`. Sealed `EncounterEvent` interface (AWS v2 SDK marker pattern).
+Process-scoped `Broker` over a pluggable `Transport` (InMemoryTransport;
+Redis/Kafka are future). Transient `Encounter` aggregate with `Move` and
+`OpenDoor` verbs, `ToData`/`LoadFromData` persistence, `SnapshotFor` for
+stream snapshots. Stub Manhattan-radius LoS in `encounter/perception/`;
+real LoS is a future slice.
 
-A large number of stale remote branches remain (40+) from earlier exploratory work.
-They are not merged and likely not resumable as-is. See "Paused / on hold" below.
+Earlier active state: no open PRs as of 2026-05-02; last merge was PR #609.
+A large number of stale remote branches remain (40+) from earlier
+exploratory work. They are not merged and likely not resumable as-is.
+See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
