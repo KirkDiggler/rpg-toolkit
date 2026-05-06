@@ -50,11 +50,14 @@ New top-level module landed in PR #622 (walking skeleton). Sealed
 
 Subpackages:
 
-- `encounter/types` — primitive value types with custom `HexSet` JSON
-  (struct map keys can't serialize via the default codec).
+- `encounter/core` — identity primitives (EncounterID, PlayerID, EntityID)
+  + spatial primitives (Hex, HexSet) with custom `HexSet` JSON (struct map
+  keys can't serialize via the default codec). Hex/HexSet may move to
+  `tools/spatial` in a future slice.
 - `encounter/events` — three concrete events (Move, HexRevealed,
   DoorOpened), each with `MarshalJSON`/`UnmarshalJSON` so unexported
-  `encID`/`seq` round-trip cleanly.
+  `encID`/`seq` round-trip cleanly. Also holds `AudienceSet` (event-routing
+  concept).
 - `encounter/perception` — pure `ProjectMove`/`ProjectDoorOpen` over
   Manhattan-radius stub LoS.
 - `encounter` (top-level) — Encounter aggregate, Broker (with `sync.WaitGroup`

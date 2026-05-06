@@ -12,13 +12,14 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 ## Active work
 
 **Encounter SDK walking skeleton (#622)** — Phase 2 Slice 1 of v1alpha2.
-New top-level `encounter/` module with subpackages `types`, `events`,
-`perception`. Sealed `EncounterEvent` interface (AWS v2 SDK marker pattern).
-Process-scoped `Broker` over a pluggable `Transport` (InMemoryTransport;
-Redis/Kafka are future). Transient `Encounter` aggregate with `Move` and
-`OpenDoor` verbs, `ToData`/`LoadFromData` persistence, `SnapshotFor` for
-stream snapshots. Stub Manhattan-radius LoS in `encounter/perception/`;
-real LoS is a future slice.
+New top-level `encounter/` module with subpackages `core` (IDs + spatial
+primitives), `events` (sealed taxonomy + AudienceSet), `perception`
+(projection functions). Sealed `EncounterEvent` interface (AWS v2 SDK
+marker pattern). Process-scoped `Broker` over a pluggable `Transport`
+(InMemoryTransport; Redis/Kafka are future). Transient `Encounter`
+aggregate with `Move` and `OpenDoor` verbs, `ToData`/`LoadFromData`
+persistence, `SnapshotFor` for stream snapshots. Stub Manhattan-radius
+LoS in `encounter/perception/`; real LoS is a future slice.
 
 Earlier active state: no open PRs as of 2026-05-02; last merge was PR #609.
 A large number of stale remote branches remain (40+) from earlier
