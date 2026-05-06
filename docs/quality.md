@@ -41,6 +41,38 @@ polluting function signatures" problem. Dependency on events and core is appropr
 Pinned to old `events v0.1.1` and `core v0.1.0` — no replace directives, but the
 version spread across modules makes it hard to know what "current game" means.
 
+### encounter — B (slice 1)
+
+New top-level module landed in PR #622 (walking skeleton). Sealed
+`EncounterEvent` taxonomy via AWS v2 SDK marker pattern; process-scoped
+`Broker` over a pluggable `Transport`; transient `Encounter` aggregate with
+`Move`/`OpenDoor` verbs and `ToData`/`LoadFromData` persistence.
+
+Subpackages:
+
+- `encounter/core` — identity primitives (EncounterID, PlayerID, EntityID)
+  + spatial primitives (Hex, HexSet) with custom `HexSet` JSON (struct map
+  keys can't serialize via the default codec). Hex/HexSet may move to
+  `tools/spatial` in a future slice.
+- `encounter/events` — three concrete events (Move, HexRevealed,
+  DoorOpened), each with `MarshalJSON`/`UnmarshalJSON` so unexported
+  `encID`/`seq` round-trip cleanly. Also holds `AudienceSet` (event-routing
+  concept).
+- `encounter/perception` — pure `ProjectMove`/`ProjectDoorOpen` over
+  Manhattan-radius stub LoS.
+- `encounter` (top-level) — Encounter aggregate, Broker (with `sync.WaitGroup`
+  for clean shutdown — no double-close races), Transport, InMemoryTransport,
+  JSON codec.
+
+Tests cover: HexSet JSON round-trip, sealed-interface assertions, audience
+filtering, broker close races, Move/OpenDoor verb behavior, end-to-end
+integration scenarios (move + door + persistence round-trip + sequence
+monotonicity).
+
+Grade B for first slice — narrow scope by design; grade rises as combat
+verbs (Attack, ActivateFeature) and real LoS land in future slices. No
+coverage tooling run yet.
+
 ### events — B+
 
 Typed topics via generics (`TypedTopic[T]`) are the right design for an event bus in
