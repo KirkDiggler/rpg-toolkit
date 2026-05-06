@@ -24,18 +24,18 @@ func NewInMemoryTransport() *InMemoryTransport {
 }
 
 // Publish delivers payload to all current subscribers of channel.
+//
+// Sends are performed under t.mu so that subscription/transport Close calls
+// (which also take t.mu before closing the underlying channel) cannot
+// interleave with a send and cause a send-on-closed-channel panic. Sends
+// are non-blocking (select + default), so holding the lock is bounded.
 func (t *InMemoryTransport) Publish(channel string, payload []byte) error {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.closed {
-		t.mu.Unlock()
 		return errors.New("transport closed")
 	}
-	// Snapshot subscriber channels under lock; send outside lock so a slow
-	// consumer can't stall publishers or other subscribers.
-	subs := append([]chan []byte(nil), t.subscribers[channel]...)
-	t.mu.Unlock()
-
-	for _, ch := range subs {
+	for _, ch := range t.subscribers[channel] {
 		select {
 		case ch <- payload:
 		default:

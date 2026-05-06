@@ -50,11 +50,31 @@ func (b *Broker) Publish(evt events.EncounterEvent) error {
 // Subscribe registers a per-player subscription. The returned Subscription
 // delivers only events whose Audience contains playerID. Subscriptions
 // outlive any single Encounter object — the transport channel is the spine.
+//
+// If this is the first subscriber for the encounter, the transport
+// subscription is acquired BEFORE the broker registry is mutated — so a
+// transport.Subscribe failure leaves the broker state untouched (no leaked
+// orphan subscription).
 func (b *Broker) Subscribe(encID types.EncounterID, playerID types.PlayerID) (*Subscription, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
 		return nil, errors.New("broker closed")
+	}
+
+	// Acquire transport subscription first if this encounter doesn't have a
+	// listener yet. If this errors, no broker state has been mutated.
+	var (
+		newTS      TransportSubscription
+		startedNew bool
+	)
+	if _, ok := b.listeners[encID]; !ok {
+		ts, err := b.transport.Subscribe(channelFor(encID))
+		if err != nil {
+			return nil, fmt.Errorf("transport subscribe: %w", err)
+		}
+		newTS = ts
+		startedNew = true
 	}
 
 	sub := &Subscription{
@@ -66,15 +86,10 @@ func (b *Broker) Subscribe(encID types.EncounterID, playerID types.PlayerID) (*S
 	key := subscriberKey{EncID: encID, PlayerID: playerID}
 	b.subscribers[key] = append(b.subscribers[key], sub)
 
-	// First subscriber for this encounter starts the listener goroutine.
-	if _, ok := b.listeners[encID]; !ok {
-		ts, err := b.transport.Subscribe(channelFor(encID))
-		if err != nil {
-			return nil, fmt.Errorf("transport subscribe: %w", err)
-		}
-		b.listeners[encID] = ts
+	if startedNew {
+		b.listeners[encID] = newTS
 		b.listenerWG.Add(1)
-		go b.listen(encID, ts)
+		go b.listen(encID, newTS)
 	}
 	return sub, nil
 }
@@ -115,8 +130,10 @@ func (b *Broker) Close() error {
 // listen runs one goroutine per encounter the broker is aware of. Decodes
 // events and fans out to per-player subscribers in the audience.
 //
-// Subscribers are snapshotted under lock; channel sends happen OUTSIDE the
-// lock so a slow subscriber can't stall the listener.
+// Sends are performed under b.mu so that Subscription.Close (which also
+// takes b.mu before closing sub.events) cannot interleave with a send and
+// cause a send-on-closed-channel panic. Sends are non-blocking (select +
+// default), so holding the lock during fanout is bounded.
 func (b *Broker) listen(encID types.EncounterID, ts TransportSubscription) {
 	defer b.listenerWG.Done()
 	for payload := range ts.Payloads() {
@@ -127,19 +144,17 @@ func (b *Broker) listen(encID types.EncounterID, ts TransportSubscription) {
 		}
 
 		b.mu.Lock()
-		var targets []*Subscription
 		for _, playerID := range evt.Audience() {
-			targets = append(targets, b.subscribers[subscriberKey{EncID: encID, PlayerID: playerID}]...)
-		}
-		b.mu.Unlock()
-
-		for _, sub := range targets {
-			select {
-			case sub.events <- evt:
-			default:
-				// Subscriber buffer full — drop. Tests size buffers high enough.
+			for _, sub := range b.subscribers[subscriberKey{EncID: encID, PlayerID: playerID}] {
+				select {
+				case sub.events <- evt:
+				default:
+					// Subscriber buffer full — drop. Tests size buffers
+					// high enough that this doesn't trip in normal use.
+				}
 			}
 		}
+		b.mu.Unlock()
 	}
 }
 
