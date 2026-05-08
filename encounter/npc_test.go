@@ -35,19 +35,19 @@ func (s *NPCSuite) SetupTest() {
 	s.enc = encounter.New("enc-npc", s.broker)
 
 	// Build a goblin and serialize it.
-	gob := monster.NewGoblin("goblin-1")
+	gob := monster.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
 
 	// Alice adjacent to goblin so the goblin can attack on its turn.
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: "char-alice",
+		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
 		HP: 12, MaxHP: 12, AC: 14,
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
-		ID:       "goblin-1",
+		ID:       gobEntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
 		MonsterRef:  "dnd5e:monsters:goblin",
@@ -72,13 +72,13 @@ func (s *NPCSuite) TearDownTest() {
 // AttackResolvedEvent.
 func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
-	for s.enc.ActiveActor() != "goblin-1" {
+	for s.enc.ActiveActor() != gobEntityID {
 		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
 
-	err := s.enc.NPCAct(s.ctx, "goblin-1")
+	err := s.enc.NPCAct(s.ctx, gobEntityID)
 	s.Require().NoError(err)
 
 	seen := collectTypes(s.aliceSub, time.Second)
@@ -87,7 +87,7 @@ func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
 
 // NPCAct outside TURN_BASED returns ErrNotTurnBased.
 func (s *NPCSuite) TestNPCAct_RequiresTurnBased() {
-	err := s.enc.NPCAct(s.ctx, "goblin-1")
+	err := s.enc.NPCAct(s.ctx, gobEntityID)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
@@ -97,7 +97,7 @@ func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
 	// Cycle to goblin to satisfy the active-actor gate, then try to act
 	// for a non-existent npc — the test exercises ErrNotYourTurn (the
 	// active-actor check fires before the existence check).
-	for s.enc.ActiveActor() != "goblin-1" {
+	for s.enc.ActiveActor() != gobEntityID {
 		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}

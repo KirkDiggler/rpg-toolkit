@@ -75,6 +75,13 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	if err := json.Unmarshal(mon.DataJSON, &data); err != nil {
 		return fmt.Errorf("unmarshal monster data: %w", err)
 	}
+	// MonsterData is the encounter SDK's authoritative state; the
+	// serialized monster.Data may be stale (e.g. HP after damage from a
+	// prior turn lives only on MonsterData). Sync the volatile fields
+	// from MonsterData onto data before LoadFromData so the loaded
+	// *Monster sees current HP / AC / Speed and so its targeting / AI
+	// scoring use the authoritative numbers.
+	syncMonsterDataFromSnapshot(&data, mon)
 	loaded, err := monster.LoadFromData(ctx, &data, bus)
 	if err != nil {
 		return fmt.Errorf("load monster: %w", err)
@@ -117,6 +124,37 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 		return err
 	}
 	return nil
+}
+
+// syncMonsterDataFromSnapshot copies authoritative volatile state from
+// the encounter's MonsterData snapshot onto a deserialized monster.Data
+// before it is loaded into a live *Monster. The encounter SDK is the
+// single source of truth for HP/AC/Speed; the JSON blob is the
+// serialization seam for action data only and may be stale across turns
+// (e.g. when TakeAction reduced HP last round).
+//
+// MonsterData does not track full SpeedData (just walking speed in
+// hexes), so we only override Walk; other movement modes survive from
+// the JSON snapshot.
+func syncMonsterDataFromSnapshot(data *monster.Data, snap *MonsterData) {
+	if data == nil || snap == nil {
+		return
+	}
+	if snap.HP > 0 || snap.MaxHP > 0 {
+		// HP can legitimately be 0 (dead/dying) but we only override when
+		// the snapshot has set MaxHP — otherwise MonsterData is empty and
+		// we leave the JSON values alone.
+		if snap.MaxHP > 0 {
+			data.HitPoints = snap.HP
+			data.MaxHitPoints = snap.MaxHP
+		}
+	}
+	if snap.AC > 0 {
+		data.ArmorClass = snap.AC
+	}
+	if snap.Speed > 0 {
+		data.Speed.Walk = snap.Speed
+	}
 }
 
 // applyNPCMovement walks the NPC to the final hex from the captured
@@ -190,23 +228,20 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 // encounter DamageDealtEvent. Today no shipped action publishes one
 // through this bus, but the wiring is in place so downstream changes
 // flow automatically.
+//
+// Target resolution: tries player → monster. If neither matches, the
+// damage event is skipped (no DamageDealtEvent published) — emitting
+// with hp_after=0 / zero-hex position would leak garbage values to
+// clients.
 func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.DamageReceivedEvent) error {
 	for _, dmg := range damages {
 		targetID := encountercore.EntityID(dmg.TargetID)
 		sourceID := encountercore.EntityID(dmg.SourceID)
-		targetPlayer := e.findPlayerByEntityID(targetID)
-		if targetPlayer != nil {
-			targetPlayer.HP -= dmg.Amount
-			if targetPlayer.HP < 0 {
-				targetPlayer.HP = 0
-			}
-		}
-		var hpAfter, maxHP int
-		var targetPos encountercore.Hex
-		if targetPlayer != nil {
-			hpAfter = targetPlayer.HP
-			maxHP = targetPlayer.MaxHP
-			targetPos = targetPlayer.View.Position
+
+		hpAfter, maxHP, targetPos, ok := e.applyDamageToTarget(targetID, dmg.Amount)
+		if !ok {
+			// Unknown target — skip publish rather than emit a stub event.
+			continue
 		}
 		damageType := string(dmg.DamageType)
 		if damageType == "" {
@@ -214,8 +249,10 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 		}
 		damagePerPlayer := make(map[encountercore.PlayerID]events.DamageDealtSlice)
 		for viewerID, viewer := range e.data.Players {
-			visible := e.viewerCanSee(viewer, mon.Position) || e.viewerCanSee(viewer, targetPos)
-			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: visible}
+			if !e.viewerCanSee(viewer, mon.Position) && !e.viewerCanSee(viewer, targetPos) {
+				continue
+			}
+			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
 		}
 		if err := e.broker.Publish(events.NewDamageDealtEvent(
 			e.data.ID, e.nextSeq(),
@@ -230,18 +267,61 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 	return nil
 }
 
+// applyDamageToTarget mutates HP on a player or monster matching id and
+// returns its post-damage HP, MaxHP, and position. Returns ok=false if
+// the id matches neither a player nor a monster. HP is clamped at 0.
+func (e *Encounter) applyDamageToTarget(
+	id encountercore.EntityID, amount int,
+) (hpAfter, maxHP int, pos encountercore.Hex, ok bool) {
+	if p := e.findPlayerByEntityID(id); p != nil {
+		p.HP -= amount
+		if p.HP < 0 {
+			p.HP = 0
+		}
+		return p.HP, p.MaxHP, p.View.Position, true
+	}
+	if m, exists := e.data.Monsters[id]; exists {
+		m.HP -= amount
+		if m.HP < 0 {
+			m.HP = 0
+		}
+		return m.HP, m.MaxHP, m.Position, true
+	}
+	return 0, 0, encountercore.Hex{}, false
+}
+
 // applyCapturedConditions translates each dnd5e ConditionAppliedEvent into
 // an encounter ConditionAppliedEvent. As with damage, no shipped action
 // publishes one through this bus today.
+//
+// Per-viewer projection mirrors publishAttackOutcome: a viewer is in
+// PerPlayer iff they have LoS to the source (mon) or the target. Viewers
+// out of LoS are omitted from PerPlayer entirely so the broker does not
+// deliver to them — matching the Move / OpenDoor audience-routing
+// pattern.
 func (e *Encounter) applyCapturedConditions(mon *MonsterData, conds []dnd5eEvents.ConditionAppliedEvent) error {
 	for _, cond := range conds {
 		targetID := encountercore.EntityID("")
+		var targetPos encountercore.Hex
+		var haveTargetPos bool
 		if cond.Target != nil {
 			targetID = encountercore.EntityID(cond.Target.GetID())
+			if p := e.findPlayerByEntityID(targetID); p != nil && p.View != nil {
+				targetPos = p.View.Position
+				haveTargetPos = true
+			} else if m, ok := e.data.Monsters[targetID]; ok {
+				targetPos = m.Position
+				haveTargetPos = true
+			}
 		}
 		condRef := string(cond.Type)
 		condPerPlayer := make(map[encountercore.PlayerID]events.ConditionAppliedSlice)
-		for viewerID := range e.data.Players {
+		for viewerID, viewer := range e.data.Players {
+			seesSource := e.viewerCanSee(viewer, mon.Position)
+			seesTarget := haveTargetPos && e.viewerCanSee(viewer, targetPos)
+			if !seesSource && !seesTarget {
+				continue
+			}
 			condPerPlayer[viewerID] = events.ConditionAppliedSlice{Visible: true}
 		}
 		if err := e.broker.Publish(events.NewConditionAppliedEvent(
