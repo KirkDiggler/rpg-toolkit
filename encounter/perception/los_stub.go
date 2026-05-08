@@ -40,6 +40,16 @@ func VisibleHexesAt(from core.Hex, sightRange int) core.HexSet {
 	return out
 }
 
+// CanSeeAt reports whether a viewer can currently see the given hex,
+// using the stub LoS rules: a hex is visible iff it is within the
+// viewer's SightRange (cube distance). Returns false for a nil viewer.
+func CanSeeAt(viewer *View, target core.Hex) bool {
+	if viewer == nil {
+		return false
+	}
+	return HexDistance(viewer.Position, target) <= viewer.SightRange
+}
+
 // HexNeighbors returns the six adjacent hexes (cube coords).
 func HexNeighbors(h core.Hex) []core.Hex {
 	return []core.Hex{

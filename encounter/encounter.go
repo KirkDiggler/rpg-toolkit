@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
@@ -15,26 +16,78 @@ import (
 type Encounter struct {
 	data   *Data
 	broker *Broker
+	roller dice.Roller
+}
+
+// Option configures an Encounter at construction.
+type Option func(*Encounter)
+
+// WithRoller injects a dice.Roller for combat verbs that need to roll
+// (initiative, attacks, damage). If unset the encounter creates a default
+// dice.NewRoller() at construction.
+func WithRoller(r dice.Roller) Option {
+	return func(e *Encounter) {
+		if r != nil {
+			e.roller = r
+		}
+	}
 }
 
 // PlayerInput populates a player seat at construction / AddPlayer time.
+//
+// Combat fields (HP / AC / AttackBonus / DamageDice / DamageType) are
+// optional; when zero they remain unset on PlayerData and combat verbs
+// that read them treat the player as a non-combatant.
 type PlayerInput struct {
 	PlayerID   core.PlayerID
 	EntityID   core.EntityID
 	Position   core.Hex
 	SightRange int
+
+	HP          int
+	MaxHP       int
+	AC          int
+	AttackBonus int
+	DamageDice  string
+	DamageType  string
+}
+
+// MonsterInput populates a monster seat at AddMonster time.
+//
+// MonsterRef and DataJSON are required if the orchestrator wants the
+// encounter to drive AI via NPCAct (which rehydrates a *monster.Monster
+// from DataJSON). The combat snapshot fields (AttackBonus / DamageDice /
+// DamageType) feed NPCAct's stand-in attack resolution.
+type MonsterInput struct {
+	ID         core.EntityID
+	Position   core.Hex
+	HP         int
+	MaxHP      int
+	AC         int
+	Speed      int
+	MonsterRef string
+	DataJSON   []byte
+
+	AttackBonus int
+	DamageDice  string
+	DamageType  string
 }
 
 // New constructs a fresh encounter with the given ID.
-func New(id core.EncounterID, b *Broker) *Encounter {
-	return &Encounter{
+func New(id core.EncounterID, b *Broker, opts ...Option) *Encounter {
+	e := &Encounter{
 		data:   NewData(id),
 		broker: b,
+		roller: dice.NewRoller(),
 	}
+	for _, o := range opts {
+		o(e)
+	}
+	return e
 }
 
 // LoadFromData rehydrates an encounter from persisted state.
-func LoadFromData(data *Data, b *Broker) (*Encounter, error) {
+func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 	if data == nil {
 		return nil, errors.New("nil Data")
 	}
@@ -44,7 +97,17 @@ func LoadFromData(data *Data, b *Broker) (*Encounter, error) {
 	if data.Doors == nil {
 		data.Doors = make(map[core.EntityID]*DoorData)
 	}
-	return &Encounter{data: data, broker: b}, nil
+	if data.Monsters == nil {
+		data.Monsters = make(map[core.EntityID]*MonsterData)
+	}
+	if data.Mode == core.ModeUnspecified {
+		data.Mode = core.ModeFreeRoam
+	}
+	e := &Encounter{data: data, broker: b, roller: dice.NewRoller()}
+	for _, o := range opts {
+		o(e)
+	}
+	return e, nil
 }
 
 // AddPlayer registers a new player seat with a fresh PerceptionView.
@@ -57,9 +120,15 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 	view.ApplyReveal(perception.VisibleHexesAt(input.Position, input.SightRange))
 
 	e.data.Players[input.PlayerID] = &PlayerData{
-		ID:       input.PlayerID,
-		EntityID: input.EntityID,
-		View:     view,
+		ID:          input.PlayerID,
+		EntityID:    input.EntityID,
+		View:        view,
+		HP:          input.HP,
+		MaxHP:       input.MaxHP,
+		AC:          input.AC,
+		AttackBonus: input.AttackBonus,
+		DamageDice:  input.DamageDice,
+		DamageType:  input.DamageType,
 	}
 	return nil
 }
@@ -68,6 +137,55 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 // system).
 func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) {
 	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
+}
+
+// AddMonster registers a monster seat. Mirrors AddPlayer / AddDoor and is
+// the primary fixture verb for tests and orchestrator-driven seeding.
+func (e *Encounter) AddMonster(input MonsterInput) error {
+	if input.ID == "" {
+		return errors.New("monster ID required")
+	}
+	if _, exists := e.data.Monsters[input.ID]; exists {
+		return fmt.Errorf("monster %q already in encounter", input.ID)
+	}
+	e.data.Monsters[input.ID] = &MonsterData{
+		ID:          input.ID,
+		Position:    input.Position,
+		HP:          input.HP,
+		MaxHP:       input.MaxHP,
+		AC:          input.AC,
+		Speed:       input.Speed,
+		MonsterRef:  input.MonsterRef,
+		DataJSON:    input.DataJSON,
+		AttackBonus: input.AttackBonus,
+		DamageDice:  input.DamageDice,
+		DamageType:  input.DamageType,
+	}
+	return nil
+}
+
+// Mode returns the encounter's current mode.
+func (e *Encounter) Mode() core.EncounterMode { return e.data.Mode }
+
+// ActiveActor returns the entity id whose turn it currently is. Returns
+// the empty string when Mode != ModeTurnBased or initiative is empty.
+func (e *Encounter) ActiveActor() core.EntityID {
+	if e.data.Mode != core.ModeTurnBased || len(e.data.Initiative) == 0 {
+		return ""
+	}
+	idx := e.data.ActiveIdx
+	if idx < 0 || idx >= len(e.data.Initiative) {
+		return ""
+	}
+	return e.data.Initiative[idx]
+}
+
+// IsNPC reports whether the given entity id refers to a monster (NPC) in
+// this encounter — i.e. not a player. Used by orchestrators to decide
+// whether to call NPCAct after EndTurn.
+func (e *Encounter) IsNPC(id core.EntityID) bool {
+	_, ok := e.data.Monsters[id]
+	return ok
 }
 
 // ID returns the encounter's identifier.
