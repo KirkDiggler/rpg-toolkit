@@ -24,6 +24,12 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.DoorOpenedEvent)(nil)
 	var _ events.EncounterEvent = (*events.EntityAppearedEvent)(nil)
 	var _ events.EncounterEvent = (*events.EntityDisappearedEvent)(nil)
+	var _ events.EncounterEvent = (*events.AttackResolvedEvent)(nil)
+	var _ events.EncounterEvent = (*events.DamageDealtEvent)(nil)
+	var _ events.EncounterEvent = (*events.ConditionAppliedEvent)(nil)
+	var _ events.EncounterEvent = (*events.ModeChangedEvent)(nil)
+	var _ events.EncounterEvent = (*events.TurnStartedEvent)(nil)
+	var _ events.EncounterEvent = (*events.TurnEndedEvent)(nil)
 }
 
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.
@@ -162,4 +168,125 @@ func (s *EventsSuite) TestTypeSwitch_RecoversConcrete() {
 		}
 	}
 	s.Equal([]string{"move", "revealed", "door", "appeared", "disappeared"}, seen)
+}
+
+// AttackResolvedEvent JSON round-trip and audience-from-perplayer.
+func (s *EventsSuite) TestAttackResolvedEvent_JSONRoundTrip() {
+	original := events.NewAttackResolvedEvent(
+		"enc-1", 11, "char-alice", "goblin-1",
+		true, false, 17, 4, 15,
+		map[core.PlayerID]events.AttackResolvedSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: false},
+		},
+	)
+
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.AttackResolvedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(11), decoded.Sequence())
+	s.Equal(core.EntityID("char-alice"), decoded.AttackerID)
+	s.Equal(core.EntityID("goblin-1"), decoded.TargetID)
+	s.True(decoded.Hit)
+	s.False(decoded.Critical)
+	s.Equal(17, decoded.AttackRoll)
+	s.Equal(4, decoded.AttackBonus)
+	s.Equal(15, decoded.TargetAC)
+	s.True(decoded.PerPlayer["alice"].Visible)
+	s.False(decoded.PerPlayer["bob"].Visible)
+	s.ElementsMatch(events.AudienceSet{"alice", "bob"}, decoded.Audience())
+}
+
+// DamageDealtEvent JSON round-trip.
+func (s *EventsSuite) TestDamageDealtEvent_JSONRoundTrip() {
+	original := events.NewDamageDealtEvent(
+		"enc-1", 12, "goblin-1", "char-alice",
+		5, "slashing", 2, 7,
+		map[core.PlayerID]events.DamageDealtSlice{
+			"alice": {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.DamageDealtEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(uint64(12), decoded.Sequence())
+	s.Equal(core.EntityID("goblin-1"), decoded.TargetID)
+	s.Equal(core.EntityID("char-alice"), decoded.SourceID)
+	s.Equal(5, decoded.Amount)
+	s.Equal("slashing", decoded.DamageType)
+	s.Equal(2, decoded.HPAfter)
+	s.Equal(7, decoded.MaxHP)
+	s.True(decoded.PerPlayer["alice"].Visible)
+}
+
+// ConditionAppliedEvent JSON round-trip.
+func (s *EventsSuite) TestConditionAppliedEvent_JSONRoundTrip() {
+	original := events.NewConditionAppliedEvent(
+		"enc-1", 13, "char-alice", "goblin-1",
+		"prone", 1,
+		map[core.PlayerID]events.ConditionAppliedSlice{
+			"alice": {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.ConditionAppliedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal("prone", decoded.ConditionRef)
+	s.Equal(1, decoded.DurationRounds)
+	s.True(decoded.PerPlayer["alice"].Visible)
+}
+
+// ModeChangedEvent JSON round-trip.
+func (s *EventsSuite) TestModeChangedEvent_JSONRoundTrip() {
+	original := events.NewModeChangedEvent(
+		"enc-1", 14, core.ModeFreeRoam, core.ModeTurnBased, "ambush",
+		map[core.PlayerID]events.ModeChangedSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.ModeChangedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.ModeFreeRoam, decoded.From)
+	s.Equal(core.ModeTurnBased, decoded.To)
+	s.Equal("ambush", decoded.Reason)
+	s.Len(decoded.PerPlayer, 2)
+}
+
+// TurnStartedEvent / TurnEndedEvent JSON round-trip.
+func (s *EventsSuite) TestTurnEvents_JSONRoundTrip() {
+	started := events.NewTurnStartedEvent(
+		"enc-1", 15, "char-alice", 1,
+		map[core.PlayerID]events.TurnStartedSlice{"alice": {Visible: true}},
+	)
+	payload, err := json.Marshal(started)
+	s.Require().NoError(err)
+	var decodedStarted events.TurnStartedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decodedStarted))
+	s.Equal(core.EntityID("char-alice"), decodedStarted.ActorID)
+	s.Equal(1, decodedStarted.Round)
+
+	ended := events.NewTurnEndedEvent(
+		"enc-1", 16, "char-alice",
+		map[core.PlayerID]events.TurnEndedSlice{"alice": {Visible: true}},
+	)
+	payload, err = json.Marshal(ended)
+	s.Require().NoError(err)
+	var decodedEnded events.TurnEndedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decodedEnded))
+	s.Equal(core.EntityID("char-alice"), decodedEnded.ActorID)
 }
