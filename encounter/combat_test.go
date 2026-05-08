@@ -12,6 +12,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 )
 
+// Test-package fixture identifiers (extracted to satisfy goconst).
+const (
+	aliceEntityID  = "char-alice"
+	bobEntityID    = "char-bob"
+	gobEntityID    = "goblin-1"
+	gob2EntityID   = "goblin-2"
+	damageSlashing = "slashing"
+)
+
 // CombatSuite covers the Wave 2.8 verbs (SetMode, EndTurn, TakeAction,
 // NPCAct) and the new combat events. Fixture: alice + bob + goblin-1.
 type CombatSuite struct {
@@ -35,23 +44,23 @@ func (s *CombatSuite) SetupTest() {
 	s.enc = encounter.New("enc-combat", s.broker)
 
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: "char-alice",
+		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
 		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
-		DamageDice: "1d8+2", DamageType: "slashing",
+		DamageDice: "1d8+2", DamageType: damageSlashing,
 	}))
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "bob", EntityID: "char-bob",
+		PlayerID: "bob", EntityID: bobEntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
 		HP: 10, MaxHP: 10, AC: 13, AttackBonus: 3,
 		DamageDice: "1d6+1", DamageType: "piercing",
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
-		ID:       "goblin-1",
+		ID:       gobEntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
 		MonsterRef:  "dnd5e:monsters:goblin",
-		AttackBonus: 4, DamageDice: "1d6+2", DamageType: "slashing",
+		AttackBonus: 4, DamageDice: "1d6+2", DamageType: damageSlashing,
 	}))
 
 	var err error
@@ -97,7 +106,7 @@ func (s *CombatSuite) TestSetMode_RejectsRedundant() {
 func (s *CombatSuite) TestTakeAction_RejectedOutsideTurnBased() {
 	err := s.enc.TakeAction("alice",
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
-		encounter.ActionTarget{EntityID: "goblin-1"},
+		encounter.ActionTarget{EntityID: gobEntityID},
 	)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
@@ -108,14 +117,14 @@ func (s *CombatSuite) TestTakeAction_RejectedWhenNotYourTurn() {
 	active := s.enc.ActiveActor()
 	// Find the OTHER player and try to act.
 	var attackerID core.PlayerID
-	if active == "char-alice" {
+	if active == aliceEntityID {
 		attackerID = "bob"
 	} else {
 		attackerID = "alice"
 	}
 	err := s.enc.TakeAction(attackerID,
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
-		encounter.ActionTarget{EntityID: "goblin-1"},
+		encounter.ActionTarget{EntityID: gobEntityID},
 	)
 	s.ErrorIs(err, encounter.ErrNotYourTurn)
 }
@@ -130,7 +139,7 @@ func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
 	}
 	err := s.enc.TakeAction(playerID,
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "shove"},
-		encounter.ActionTarget{EntityID: "goblin-1"},
+		encounter.ActionTarget{EntityID: gobEntityID},
 	)
 	s.ErrorIs(err, encounter.ErrUnsupportedAction)
 }
@@ -139,8 +148,7 @@ func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
 // DamageDealtEvent rides alongside.
 func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
-	// Force alice to be active by ending turns until she is.
-	for s.enc.ActiveActor() != "char-alice" {
+	for s.enc.ActiveActor() != aliceEntityID {
 		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
@@ -149,13 +157,39 @@ func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 
 	err := s.enc.TakeAction("alice",
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
-		encounter.ActionTarget{EntityID: "goblin-1"},
+		encounter.ActionTarget{EntityID: gobEntityID},
 	)
 	s.Require().NoError(err)
 
 	seenAlice := collectTypes(s.aliceSub, 500*time.Millisecond)
 	s.Contains(seenAlice, "*events.AttackResolvedEvent")
-	// The attack may have hit or missed; both branches should be safe to inspect.
+}
+
+// TakeAction returns ErrNonCombatant when the active player has no
+// combat snapshot. Documents the PlayerInput contract: zero combat
+// fields opt the seat out of combat verbs.
+func (s *CombatSuite) TestTakeAction_RejectsNonCombatant() {
+	// Build a fresh encounter with a non-combatant alice.
+	enc := encounter.New("enc-noncomb", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		// No HP / AC / DamageDice — non-combatant.
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != aliceEntityID {
+		_, _, err := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+	err := enc.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	)
+	s.ErrorIs(err, encounter.ErrNonCombatant)
 }
 
 // EndTurn publishes TurnEnded + TurnStarted; rotates Initiative.
@@ -179,9 +213,9 @@ func (s *CombatSuite) TestEndTurn_AdvancesInitiative() {
 func (s *CombatSuite) TestEndTurn_RejectsWrongActor() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	active := s.enc.ActiveActor()
-	other := core.EntityID("char-alice")
-	if active == "char-alice" {
-		other = "char-bob"
+	other := core.EntityID(aliceEntityID)
+	if active == aliceEntityID {
+		other = bobEntityID
 	}
 	_, _, err := s.enc.EndTurn(other)
 	s.ErrorIs(err, encounter.ErrNotYourTurn)
@@ -189,48 +223,60 @@ func (s *CombatSuite) TestEndTurn_RejectsWrongActor() {
 
 // EndTurn outside TURN_BASED returns ErrNotTurnBased.
 func (s *CombatSuite) TestEndTurn_RequiresTurnBased() {
-	_, _, err := s.enc.EndTurn("char-alice")
+	_, _, err := s.enc.EndTurn(aliceEntityID)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
+// EndTurn returns ErrNoCombatants — does not panic — when initiative
+// is empty (e.g. SetMode(TurnBased) flipped on an empty encounter).
+// Regression test for the out-of-range panic Copilot flagged in #638.
+func (s *CombatSuite) TestEndTurn_GuardsEmptyInitiative() {
+	enc := encounter.New("enc-empty", s.broker)
+	// SetMode would normally roll initiative, but with no players or
+	// monsters the Initiative slice ends up empty.
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.Empty(enc.ActiveActor())
+
+	_, _, err := enc.EndTurn("anyone")
+	s.ErrorIs(err, encounter.ErrNoCombatants)
+}
+
 // NPCAct (scripted path — no DataJSON) emits an attack event when a
-// player is reachable. We run the full cycle: alice attacks then ends
-// turn, ending turn rotates to (probably) bob, bob ends turn rotates to
-// goblin-1, NPCAct fires.
+// player is reachable.
 func (s *CombatSuite) TestNPCAct_ScriptedAttackPublishes() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
-	// Cycle initiative until goblin-1 is the active actor.
-	for s.enc.ActiveActor() != "goblin-1" {
+	for s.enc.ActiveActor() != gobEntityID {
 		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
 	drainSub(s.bobSub, 100*time.Millisecond)
 
-	err := s.enc.NPCAct(s.ctx, "goblin-1")
+	err := s.enc.NPCAct(s.ctx, gobEntityID)
 	s.Require().NoError(err)
 
 	seen := collectTypes(s.aliceSub, 500*time.Millisecond)
 	s.Contains(seen, "*events.AttackResolvedEvent")
 }
 
-// TakeAction with viewer out of LoS marks PerPlayer Visible: false.
-func (s *CombatSuite) TestTakeAction_PerViewerVisibility() {
-	// Move bob far away so he can't see alice's attack.
-	s.enc = encounter.New("enc-combat-2", s.broker)
-	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: "char-alice",
+// TakeAction omits non-viewers (out-of-LoS players) from PerPlayer
+// entirely so the broker does not deliver to them. Mirrors Move /
+// OpenDoor audience-routing.
+func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
+	enc := encounter.New("enc-combat-2", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
 		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
-		DamageDice: "1d8+2", DamageType: "slashing",
+		DamageDice: "1d8+2", DamageType: damageSlashing,
 	}))
-	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "bob", EntityID: "char-bob",
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "bob", EntityID: bobEntityID,
 		Position: core.Hex{Q: 50, R: -25, S: -25}, SightRange: 5,
 		HP: 10, MaxHP: 10, AC: 13,
 	}))
-	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
-		ID:       "goblin-2",
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:       gob2EntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP:       7, MaxHP: 7, AC: 15,
 	}))
@@ -241,33 +287,39 @@ func (s *CombatSuite) TestTakeAction_PerViewerVisibility() {
 	s.Require().NoError(err)
 	defer func() { _ = farBobSub.Close() }()
 
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
-	for s.enc.ActiveActor() != "char-alice" {
-		_, _, endErr := s.enc.EndTurn(s.enc.ActiveActor())
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != aliceEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(farAliceSub, 100*time.Millisecond)
 	drainSub(farBobSub, 100*time.Millisecond)
 
-	err = s.enc.TakeAction("alice",
+	err = enc.TakeAction("alice",
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
-		encounter.ActionTarget{EntityID: "goblin-2"},
+		encounter.ActionTarget{EntityID: gob2EntityID},
 	)
 	s.Require().NoError(err)
 
-	// Alice is in audience and sees Visible: true (she's the attacker).
-	// Bob is in audience but Visible: false (out of range).
+	// Alice can see her attack: she's in PerPlayer (Visible: true) and
+	// her subscription delivers.
 	aliceEvent := waitForAttackResolved(s.T(), farAliceSub, time.Second)
-	s.Require().NotNil(aliceEvent)
+	s.Require().NotNil(aliceEvent, "alice should receive AttackResolvedEvent")
 	s.True(aliceEvent.PerPlayer["alice"].Visible)
-	s.False(aliceEvent.PerPlayer["bob"].Visible)
+	_, bobInAudience := aliceEvent.PerPlayer["bob"]
+	s.False(bobInAudience, "bob is out of LoS; he should be omitted from PerPlayer entirely")
+
+	// Bob is out of LoS to both attacker and target — broker should NOT
+	// deliver any AttackResolvedEvent to bob's subscription.
+	bobEvent := waitForAttackResolved(s.T(), farBobSub, 200*time.Millisecond)
+	s.Nil(bobEvent, "bob is out of LoS; no AttackResolvedEvent should be delivered")
 }
 
 // MonsterData round-trips through ToData / LoadFromData.
 func (s *CombatSuite) TestMonsterData_RoundTrips() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	persisted := s.enc.ToData()
-	s.Require().Contains(persisted.Monsters, core.EntityID("goblin-1"))
+	s.Require().Contains(persisted.Monsters, core.EntityID(gobEntityID))
 
 	rehydrated, err := encounter.LoadFromData(persisted, s.broker)
 	s.Require().NoError(err)
@@ -279,15 +331,17 @@ func (s *CombatSuite) TestMonsterData_RoundTrips() {
 
 func (s *CombatSuite) playerIDFor(entityID core.EntityID) core.PlayerID {
 	switch entityID {
-	case "char-alice":
+	case aliceEntityID:
 		return "alice"
-	case "char-bob":
+	case bobEntityID:
 		return "bob"
 	}
 	return ""
 }
 
-func waitForAttackResolved(t *testing.T, sub *encounter.Subscription, timeout time.Duration) *events.AttackResolvedEvent {
+func waitForAttackResolved(
+	t *testing.T, sub *encounter.Subscription, timeout time.Duration,
+) *events.AttackResolvedEvent {
 	t.Helper()
 	deadline := time.After(timeout)
 	for {

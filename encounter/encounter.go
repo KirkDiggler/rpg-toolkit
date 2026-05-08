@@ -35,9 +35,12 @@ func WithRoller(r dice.Roller) Option {
 
 // PlayerInput populates a player seat at construction / AddPlayer time.
 //
-// Combat fields (HP / AC / AttackBonus / DamageDice / DamageType) are
-// optional; when zero they remain unset on PlayerData and combat verbs
-// that read them treat the player as a non-combatant.
+// Combat fields are optional. A seat is treated as a combatant for
+// TakeAction iff MaxHP > 0, AC > 0, and DamageDice is non-empty (see
+// isPlayerCombatant in combat.go). AttackBonus may be 0 (no proficiency)
+// and DamageType defaults to "untyped" when empty. Seats added without
+// these fields cannot call combat verbs and TakeAction returns
+// ErrNonCombatant for them.
 type PlayerInput struct {
 	PlayerID   core.PlayerID
 	EntityID   core.EntityID

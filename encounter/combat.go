@@ -27,12 +27,32 @@ var (
 	// ErrUnknownTarget is returned when an action targets an entity that
 	// is not in the encounter. Maps to gRPC FailedPrecondition.
 	ErrUnknownTarget = errors.New("unknown target entity")
+	// ErrNoCombatants is returned when a turn-based verb is invoked on an
+	// encounter whose initiative roster is empty. Maps to gRPC
+	// FailedPrecondition.
+	ErrNoCombatants = errors.New("encounter has no combatants in initiative")
+	// ErrNonCombatant is returned when TakeAction is invoked for a player
+	// whose combat snapshot (HP, AC, AttackBonus, DamageDice) is not
+	// fully populated. Maps to gRPC FailedPrecondition.
+	ErrNonCombatant = errors.New("actor is not a combatant")
 )
 
 // damageTypeUntyped is the fallback damage type emitted when an attacker's
 // configured damage type is empty. The downstream translator (rpg-api)
 // maps this to the proto's UNSPECIFIED damage type.
 const damageTypeUntyped = "untyped"
+
+// isPlayerCombatant reports whether a player seat carries the minimum
+// combat snapshot required for TakeAction. PlayerInput documents that a
+// zero combat snapshot opts a seat out of combat verbs; this helper is
+// the gate that contract enforces. AttackBonus may legitimately be 0
+// (no proficiency bonus), so it is NOT required.
+func isPlayerCombatant(p *PlayerData) bool {
+	if p == nil {
+		return false
+	}
+	return p.MaxHP > 0 && p.AC > 0 && p.DamageDice != ""
+}
 
 // ActionRef identifies an action via the toolkit's three-part ref shape
 // (module / type / id). Wave 2.8 only dispatches on id == "attack".
@@ -99,9 +119,15 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 // Publishes TurnEndedEvent for the actor whose turn ended, then
 // TurnStartedEvent for the new active actor (with Round incremented when
 // the active index wraps).
+//
+// Returns ErrNoCombatants if Initiative is empty (can happen if SetMode
+// flipped to TURN_BASED with no players or monsters).
 func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, isNPC bool, err error) {
 	if e.data.Mode != core.ModeTurnBased {
 		return "", false, ErrNotTurnBased
+	}
+	if len(e.data.Initiative) == 0 {
+		return "", false, ErrNoCombatants
 	}
 	if active := e.ActiveActor(); active != actorID {
 		return "", false, fmt.Errorf("%w: active=%q got=%q", ErrNotYourTurn, active, actorID)
@@ -135,9 +161,17 @@ func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, i
 // On hit, mutates target HP and publishes AttackResolvedEvent +
 // DamageDealtEvent (per-viewer projection driven by LoS to attacker OR
 // target). On miss, publishes only AttackResolvedEvent.
+//
+// Returns ErrNonCombatant if the player's combat snapshot
+// (HP / MaxHP / AC / DamageDice) is not populated — i.e. the seat was
+// added without combat fields. PlayerInput documents that a zero combat
+// snapshot opts the player out of combat verbs.
 func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target ActionTarget) error {
 	if e.data.Mode != core.ModeTurnBased {
 		return ErrNotTurnBased
+	}
+	if len(e.data.Initiative) == 0 {
+		return ErrNoCombatants
 	}
 	player, ok := e.data.Players[playerID]
 	if !ok {
@@ -148,6 +182,9 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	}
 	if ref.ID != "attack" {
 		return fmt.Errorf("%w: %q", ErrUnsupportedAction, ref.ID)
+	}
+	if !isPlayerCombatant(player) {
+		return fmt.Errorf("%w: player %q missing HP/AC/DamageDice", ErrNonCombatant, playerID)
 	}
 	if target.EntityID == "" {
 		return fmt.Errorf("%w: empty target", ErrUnknownTarget)
@@ -281,6 +318,11 @@ func (e *Encounter) resolveAttack(attackBonus, targetAC int, damageNotation stri
 // publishAttackOutcome emits the AttackResolvedEvent (always) plus the
 // DamageDealtEvent (only on hit) with per-viewer projection determined by
 // LoS to attacker OR target.
+//
+// Audience routing matches Move / OpenDoor: viewers who cannot perceive
+// the attacker or the target are omitted from PerPlayer entirely (and so
+// are excluded from Audience()). The broker delivers only to listed
+// viewers, which prevents fog-of-war leakage of out-of-LoS combat.
 func (e *Encounter) publishAttackOutcome(
 	attackerID, targetID core.EntityID,
 	res attackResolution,
@@ -291,10 +333,13 @@ func (e *Encounter) publishAttackOutcome(
 	attackPerPlayer := make(map[core.PlayerID]events.AttackResolvedSlice)
 	damagePerPlayer := make(map[core.PlayerID]events.DamageDealtSlice)
 	for viewerID, viewer := range e.data.Players {
-		visible := perception.CanSeeAt(viewer.View, attackerPos) || perception.CanSeeAt(viewer.View, targetPos)
-		attackPerPlayer[viewerID] = events.AttackResolvedSlice{Visible: visible}
+		if !perception.CanSeeAt(viewer.View, attackerPos) &&
+			!perception.CanSeeAt(viewer.View, targetPos) {
+			continue
+		}
+		attackPerPlayer[viewerID] = events.AttackResolvedSlice{Visible: true}
 		if res.hit {
-			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: visible}
+			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
 		}
 	}
 	if err := e.broker.Publish(events.NewAttackResolvedEvent(
