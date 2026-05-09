@@ -21,8 +21,14 @@ const (
 	// defeated). Combat verbs (TakeAction, EndTurn, NPCAct) reject with
 	// ErrEncounterEnded; the orchestrator stops dispatching turns. The
 	// encounter persists in storage with this mode so reconnects see the
-	// terminal state via snapshot replay. Initiative / ActiveIdx / Round
-	// are cleared on the transition to ModeEnded.
+	// terminal state via snapshot replay.
+	//
+	// The transition to ModeEnded happens inside the kill chain
+	// (Encounter.checkEncounterEnd, in death.go), not via SetMode.
+	// SetMode does NOT accept ModeEnded as a target — terminal state is
+	// always orchestrator-driven through gameplay (last hostile dies),
+	// never through an explicit "set the mode to ended" call. The
+	// transition clears Initiative / ActiveIdx / Round.
 	ModeEnded
 )
 

@@ -78,6 +78,15 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	if mode == core.ModeUnspecified {
 		return errors.New("mode unspecified")
 	}
+	if mode == core.ModeEnded {
+		// Terminal state is gameplay-driven (Encounter.checkEncounterEnd
+		// fires when the last hostile dies), never set externally. Reject
+		// so callers don't accidentally bypass the kill chain.
+		return errors.New("ModeEnded is set internally by checkEncounterEnd, not via SetMode")
+	}
+	if e.data.Mode == core.ModeEnded {
+		return ErrEncounterEnded
+	}
 	from := e.data.Mode
 	if from == mode {
 		return fmt.Errorf("mode is already %s", mode)
@@ -207,6 +216,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, target.EntityID)
 	}
 
+	hpBefore := monster.HP
 	res := e.resolveAttack(player.AttackBonus, monster.AC, player.DamageDice)
 	if res.hit {
 		monster.HP -= res.damage
@@ -226,10 +236,13 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	); err != nil {
 		return err
 	}
-	// If the attack reduced the monster to zero, fire the death + removal
-	// + encounter-end chain. killEntity also runs the encounter-end
-	// predicate which may transition mode to ModeEnded.
-	if res.hit && monster.HP == 0 {
+	// Fire the death + removal + encounter-end chain only on the
+	// HP transition (>0 → 0). Re-attacking an already-dead monster
+	// (which can't happen today since dead monsters are spliced
+	// out, but the gate is cheap insurance for future paths) does
+	// NOT re-fire death events. killEntity also runs the
+	// encounter-end predicate which may transition mode to ModeEnded.
+	if res.hit && hpBefore > 0 && monster.HP == 0 {
 		if err := e.killEntity(target.EntityID, player.EntityID); err != nil {
 			return err
 		}

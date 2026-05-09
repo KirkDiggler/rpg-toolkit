@@ -452,7 +452,90 @@ func (s *DeathSuite) TestSlice_EncounterEndedReasonAllHostilesDefeated() {
 	s.Equal(encounter.EncounterEndedReasonAllHostilesDefeated, ended.Reason)
 }
 
+// Re-attacking a player who is already at HP=0 must not re-fire
+// EntityDiedEvent. Regression for the "multi-attack NPC could double up
+// the death event" risk Copilot raised on the first review pass.
+func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
+	encID := core.EncounterID("enc-death-rehit-player")
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
+		DamageDice: damage1d8plus2, DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+
+	var err error
+	s.aliceSub, err = s.broker.Subscribe(encID, "alice")
+	s.Require().NoError(err)
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	// Goblin's first turn: kills alice. EntityDiedEvent fires.
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+	firstSeen := collectTypes(s.aliceSub, 500*time.Millisecond)
+	s.Equal(1, countOf(firstSeen, "*events.EntityDiedEvent"),
+		"first NPC kill must fire exactly one EntityDiedEvent")
+
+	// Cycle back to the goblin's turn (alice is at 0 HP but still in
+	// initiative per Wave 2.10 partial player-death). NPCAct again —
+	// goblin re-hits the downed player. NO new EntityDiedEvent.
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+	secondSeen := collectTypes(s.aliceSub, 500*time.Millisecond)
+	s.Equal(0, countOf(secondSeen, "*events.EntityDiedEvent"),
+		"re-hitting a downed player must NOT re-fire EntityDiedEvent")
+}
+
+// SetMode rejects ModeEnded — terminal state is internal-only, set by
+// checkEncounterEnd, never via the public SetMode verb.
+func (s *DeathSuite) TestSetMode_RejectsModeEnded() {
+	enc := encounter.New("enc-setmode-end", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+	}))
+	err := enc.SetMode(core.ModeEnded)
+	s.Error(err, "SetMode(ModeEnded) must reject")
+	s.NotEqual(core.ModeEnded, enc.Mode())
+}
+
+// SetMode against an already-ended encounter returns ErrEncounterEnded.
+func (s *DeathSuite) TestSetMode_RejectsAfterEnd() {
+	enc := s.newSingleMonsterEnc("enc-setmode-postend")
+	s.Require().NoError(enc.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	))
+	s.Require().Equal(core.ModeEnded, enc.Mode())
+
+	err := enc.SetMode(core.ModeFreeRoam)
+	s.ErrorIs(err, encounter.ErrEncounterEnded)
+}
+
 // --- helpers ---
+
+func countOf(haystack []string, needle string) int {
+	n := 0
+	for _, h := range haystack {
+		if h == needle {
+			n++
+		}
+	}
+	return n
+}
 
 func indexOf(haystack []string, needle string) int {
 	for i, h := range haystack {
