@@ -31,6 +31,12 @@ var (
 	// was constructed without a CharacterResolver — modifier resolution is
 	// impossible without one. Maps to gRPC FailedPrecondition.
 	ErrNoCharacterResolver = errors.New("encounter has no character resolver")
+	// ErrPromptKindMismatch is returned by SubmitCheck when the pending
+	// prompt's Kind is not PromptKindSkillCheck — SubmitCheck only
+	// resolves skill-check prompts. Future verbs handle the other kinds
+	// (dialogue, target-select). Maps to gRPC FailedPrecondition.
+	// The pending prompt is preserved so the right verb can resolve it.
+	ErrPromptKindMismatch = errors.New("pending prompt is not a skill check")
 )
 
 // PendingPromptKind discriminates the kinds of in-flight player prompts
@@ -112,9 +118,11 @@ type SubmitCheckResult struct {
 }
 
 // AttemptUnlock issues a skill-check prompt for a locked door. The
-// player picks up the prompt via the next snapshot / event stream and
-// must resolve it via SubmitCheck before issuing other verbs that would
-// race the same player's input slot.
+// orchestrator reads the issued prompt from the returned PromptIssued
+// (and from Data.PendingPrompts on subsequent loads), translates it to
+// its wire shape, and surfaces it to the player. The player must
+// resolve it via SubmitCheck before issuing other verbs that would race
+// the same player's input slot.
 //
 // Errors:
 //   - door not in encounter: wrapped fmt.Errorf
@@ -122,8 +130,10 @@ type SubmitCheckResult struct {
 //   - door not locked: ErrDoorNotLocked
 //   - player already has a pending prompt: ErrPromptAlreadyPending
 //
-// Does not emit any event; the prompt rides the next SnapshotFor /
-// orchestrator response, not the broker.
+// Does not publish any broker event — prompts are persisted state, not
+// transient broadcasts. The orchestrator picks them up by reading
+// Data.PendingPrompts (or via the PromptIssued return value on this
+// call) and translating to the wire shape.
 func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) (PromptIssued, error) {
 	if _, ok := e.data.Players[playerID]; !ok {
 		return PromptIssued{}, fmt.Errorf("player %q not in encounter", playerID)
@@ -166,14 +176,29 @@ func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) 
 // "open" → calls OpenDoor internally, which emits DoorOpenedEvent +
 // HexRevealedEvent through the broker).
 //
-// The pending prompt is cleared regardless of outcome.
+// Prompt-clearing contract:
+//   - Resolved (success or failure of the check): prompt is CLEARED.
+//     The player has spent their attempt; success dispatches the
+//     triggered action, failure does nothing. Either way, no prompt
+//     remains.
+//   - Input-validation errors that prevent resolution
+//     (ErrNoCharacterResolver, ErrNoPendingPrompt, ErrInvalidRoll,
+//     ErrPromptKindMismatch): prompt is PRESERVED so the orchestrator
+//     can correct the inputs and retry. ErrNoPendingPrompt is the
+//     no-op case (nothing to preserve).
+//   - Resolution proceeded but dispatch failed
+//     (ErrUnsupportedPromptAction, downstream OpenDoor errors): the
+//     check itself resolved (Success=true is reported), so the prompt
+//     is CLEARED to avoid stranding stale state. The error surfaces
+//     the dispatch failure to the orchestrator.
 //
 // Errors:
-//   - no resolver wired: ErrNoCharacterResolver
-//   - no prompt outstanding for player: ErrNoPendingPrompt
-//   - roll outside [1,20]: ErrInvalidRoll
-//   - prompt's TriggeredAction not "open": ErrUnsupportedPromptAction
-//   - downstream OpenDoor failure: wrapped through fmt.Errorf
+//   - no resolver wired: ErrNoCharacterResolver (prompt preserved)
+//   - no prompt outstanding for player: ErrNoPendingPrompt (no-op)
+//   - prompt is not a skill-check kind: ErrPromptKindMismatch (preserved)
+//   - roll outside [1,20]: ErrInvalidRoll (prompt preserved)
+//   - prompt's TriggeredAction not wired: ErrUnsupportedPromptAction (prompt cleared)
+//   - downstream OpenDoor failure: wrapped fmt.Errorf (prompt cleared)
 func (e *Encounter) SubmitCheck(playerID core.PlayerID, roll int) (SubmitCheckResult, error) {
 	if e.resolver == nil {
 		return SubmitCheckResult{}, ErrNoCharacterResolver
@@ -181,6 +206,9 @@ func (e *Encounter) SubmitCheck(playerID core.PlayerID, roll int) (SubmitCheckRe
 	prompt, ok := e.data.PendingPrompts[playerID]
 	if !ok {
 		return SubmitCheckResult{}, fmt.Errorf("%w: player %q", ErrNoPendingPrompt, playerID)
+	}
+	if prompt.Kind != PromptKindSkillCheck {
+		return SubmitCheckResult{}, fmt.Errorf("%w: kind=%d", ErrPromptKindMismatch, prompt.Kind)
 	}
 	if roll < 1 || roll > 20 {
 		return SubmitCheckResult{}, fmt.Errorf("%w: roll=%d", ErrInvalidRoll, roll)
@@ -194,8 +222,11 @@ func (e *Encounter) SubmitCheck(playerID core.PlayerID, roll int) (SubmitCheckRe
 	total := roll + abilityMod + toolBonus
 	success := total >= prompt.DC
 
-	// Capture what we need before clearing the prompt — dispatch happens
-	// after clearing so an OpenDoor failure doesn't strand a stale prompt.
+	// Capture what we need before clearing the prompt. The check has
+	// resolved at this point (success or failure of the player's
+	// attempt) so the prompt is consumed regardless. Clearing before
+	// dispatch keeps a downstream OpenDoor failure from stranding a
+	// stale prompt — the dispatch error surfaces in the return value.
 	triggeredBy := prompt.TriggeredBy
 	triggeredAction := prompt.TriggeredAction
 	delete(e.data.PendingPrompts, playerID)
@@ -218,10 +249,12 @@ const promptActionOpen = "open"
 // on a successful check. Wave 2.9 only wires "open" → OpenDoor; any
 // other action returns ErrUnsupportedPromptAction.
 //
-// OpenDoor itself emits DoorOpenedEvent + HexRevealedEvent through the
-// broker and clears door.Locked-vs-Open state per the existing verb.
-// We additionally clear the door's Locked flag here so a downstream
-// OpenDoor never re-encounters a locked-but-open door.
+// OpenDoor emits DoorOpenedEvent + HexRevealedEvent through the broker
+// (per the existing Wave 2.7 verb). It does NOT itself check or clear
+// door.Locked — that gating lives in the prompt machinery here. We
+// clear door.Locked before calling OpenDoor so the door round-trips as
+// unlocked-and-open (not locked-and-open) for any subsequent snapshot
+// or verb.
 func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.EntityID, action string) error {
 	switch action {
 	case promptActionOpen:

@@ -57,17 +57,21 @@ type PlayerData struct {
 
 // DoorData persists a door entity.
 //
-// Wave 2.9 adds the locked-door snapshot. When Locked is true the door
-// cannot be opened directly via OpenDoor — a player must AttemptUnlock,
-// which issues a skill-check prompt resolved through SubmitCheck. All
-// lock fields are omitempty so legacy DoorData (Wave 2.7) round-trips
-// as an unlocked door.
+// Wave 2.9 adds the locked-door snapshot. Locked is the orchestrator's
+// signal that the door requires AttemptUnlock + SubmitCheck rather than
+// OpenDoor. The toolkit does NOT gate OpenDoor on Locked — orchestrators
+// (and the verb router on the wire side) route player intent to
+// AttemptUnlock when a door is Locked. SubmitCheck on success clears
+// Locked before calling OpenDoor internally so the door round-trips as
+// unlocked-and-open. All lock fields are omitempty so legacy DoorData
+// (Wave 2.7) round-trips as an unlocked door.
 type DoorData struct {
 	ID       core.EntityID `json:"id"`
 	Position core.Hex      `json:"position"`
 	Open     bool          `json:"open"`
 
-	// Locked-door state (Wave 2.9). Locked gates AttemptUnlock; LockDC,
+	// Locked-door state (Wave 2.9). Locked must be true for AttemptUnlock
+	// to issue a prompt (returns ErrDoorNotLocked otherwise). LockDC,
 	// LockAbility, and LockTool feed the SkillCheck prompt that resolution
 	// runs through. LockAbility uses 3-letter codes ("DEX", "STR"). LockTool
 	// is a toolkit ref (e.g. "dnd5e:item:thieves-tools"); empty means no

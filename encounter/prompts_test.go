@@ -285,8 +285,10 @@ func (s *PromptsSuite) TestSubmitCheck_InvalidRoll() {
 	s.Require().Contains(e.ToData().PendingPrompts, core.PlayerID("alice"))
 }
 
-// SubmitCheck without a CharacterResolver returns ErrNoCharacterResolver.
-// This guards against a misconfigured orchestrator construction path.
+// SubmitCheck without a CharacterResolver returns ErrNoCharacterResolver
+// and PRESERVES the prompt — this is an input-validation error, not a
+// resolution outcome, so the orchestrator can wire the resolver and
+// retry without losing the player's pending state.
 func (s *PromptsSuite) TestSubmitCheck_NoResolverConfigured() {
 	e := s.newEncounterWithResolver(nil) // no resolver wired
 	_, err := e.AttemptUnlock("alice", "door-1")
@@ -295,12 +297,34 @@ func (s *PromptsSuite) TestSubmitCheck_NoResolverConfigured() {
 	_, err = e.SubmitCheck("alice", 15)
 	s.Require().Error(err)
 	s.Require().True(errors.Is(err, encounter.ErrNoCharacterResolver))
+	s.Require().Contains(e.ToData().PendingPrompts, core.PlayerID("alice"))
+}
+
+// SubmitCheck on a prompt whose Kind is not PromptKindSkillCheck
+// returns ErrPromptKindMismatch and PRESERVES the prompt (the right
+// verb resolves it later). Guards against silently resolving a
+// dialogue / target-select prompt as a skill check.
+func (s *PromptsSuite) TestSubmitCheck_PromptKindMismatch() {
+	e := s.newEncounterWithLockedDoor()
+	// Hand-set a non-SkillCheck prompt — same path future waves take
+	// when they queue dialogue / target-select prompts.
+	e.ToData().PendingPrompts["alice"] = &encounter.PendingPrompt{
+		Kind:            encounter.PromptKindDialogue,
+		TriggeredBy:     "npc-1",
+		TriggeredAction: "respond",
+	}
+
+	_, err := e.SubmitCheck("alice", 15)
+	s.Require().Error(err)
+	s.Require().True(errors.Is(err, encounter.ErrPromptKindMismatch))
+	s.Require().Contains(e.ToData().PendingPrompts, core.PlayerID("alice"))
 }
 
 // SubmitCheck on a prompt whose TriggeredAction is something other than
-// "open" returns ErrUnsupportedPromptAction. The persisted prompt is
-// hand-set via the Data accessor since AttemptUnlock currently only
-// issues "open" prompts. This guards the dispatch table for future waves.
+// "open" returns ErrUnsupportedPromptAction. The check itself resolves
+// (success path), so the prompt is CLEARED to avoid stranded state.
+// Hand-set via the Data accessor since AttemptUnlock currently only
+// issues "open" prompts.
 func (s *PromptsSuite) TestSubmitCheck_UnsupportedAction() {
 	e := s.newEncounterWithLockedDoor()
 	// Hand-set a prompt with an unsupported action via the persisted
