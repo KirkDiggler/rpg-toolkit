@@ -78,6 +78,15 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	if mode == core.ModeUnspecified {
 		return errors.New("mode unspecified")
 	}
+	if mode == core.ModeEnded {
+		// Terminal state is gameplay-driven (Encounter.checkEncounterEnd
+		// fires when the last hostile dies), never set externally. Reject
+		// so callers don't accidentally bypass the kill chain.
+		return errors.New("ModeEnded is set internally by checkEncounterEnd, not via SetMode")
+	}
+	if e.data.Mode == core.ModeEnded {
+		return ErrEncounterEnded
+	}
 	from := e.data.Mode
 	if from == mode {
 		return fmt.Errorf("mode is already %s", mode)
@@ -120,9 +129,13 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 // TurnStartedEvent for the new active actor (with Round incremented when
 // the active index wraps).
 //
-// Returns ErrNoCombatants if Initiative is empty (can happen if SetMode
-// flipped to TURN_BASED with no players or monsters).
+// Returns ErrEncounterEnded when the encounter is in the terminal state
+// (ModeEnded). Returns ErrNoCombatants if Initiative is empty (can happen
+// if SetMode flipped to TURN_BASED with no players or monsters).
 func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, isNPC bool, err error) {
+	if e.data.Mode == core.ModeEnded {
+		return "", false, ErrEncounterEnded
+	}
 	if e.data.Mode != core.ModeTurnBased {
 		return "", false, ErrNotTurnBased
 	}
@@ -162,11 +175,20 @@ func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, i
 // DamageDealtEvent (per-viewer projection driven by LoS to attacker OR
 // target). On miss, publishes only AttackResolvedEvent.
 //
+// Wave 2.10: when an attack drops the monster's HP to zero, also publishes
+// EntityDiedEvent + EntityRemovedEvent for the monster, and (if it was the
+// last hostile) flips the encounter to ModeEnded and publishes
+// EncounterEndedEvent.
+//
+// Returns ErrEncounterEnded when the encounter is in the terminal state.
 // Returns ErrNonCombatant if the player's combat snapshot
 // (HP / MaxHP / AC / DamageDice) is not populated — i.e. the seat was
 // added without combat fields. PlayerInput documents that a zero combat
 // snapshot opts the player out of combat verbs.
 func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target ActionTarget) error {
+	if e.data.Mode == core.ModeEnded {
+		return ErrEncounterEnded
+	}
 	if e.data.Mode != core.ModeTurnBased {
 		return ErrNotTurnBased
 	}
@@ -194,6 +216,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, target.EntityID)
 	}
 
+	hpBefore := monster.HP
 	res := e.resolveAttack(player.AttackBonus, monster.AC, player.DamageDice)
 	if res.hit {
 		monster.HP -= res.damage
@@ -206,11 +229,25 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	if damageType == "" {
 		damageType = damageTypeUntyped
 	}
-	return e.publishAttackOutcome(
+	if err := e.publishAttackOutcome(
 		player.EntityID, target.EntityID, res,
 		monster.HP, monster.MaxHP, damageType,
 		player.View.Position, monster.Position,
-	)
+	); err != nil {
+		return err
+	}
+	// Fire the death + removal + encounter-end chain only on the
+	// HP transition (>0 → 0). Re-attacking an already-dead monster
+	// (which can't happen today since dead monsters are spliced
+	// out, but the gate is cheap insurance for future paths) does
+	// NOT re-fire death events. killEntity also runs the
+	// encounter-end predicate which may transition mode to ModeEnded.
+	if res.hit && hpBefore > 0 && monster.HP == 0 {
+		if err := e.killEntity(target.EntityID, player.EntityID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // rollInitiative seeds Initiative with all combatants in d20-roll-desc

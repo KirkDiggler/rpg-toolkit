@@ -34,6 +34,9 @@ import (
 //
 // Does NOT auto-cycle the turn — orchestrator calls EndTurn(npcID) next.
 func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) error {
+	if e.data.Mode == encountercore.ModeEnded {
+		return ErrEncounterEnded
+	}
 	if e.data.Mode != encountercore.ModeTurnBased {
 		return ErrNotTurnBased
 	}
@@ -195,6 +198,16 @@ func (e *Encounter) applyNPCMovement(mon *MonsterData, movement []spatial.CubeCo
 // applyCapturedAttacks resolves each captured dnd5e AttackEvent (cause-only)
 // using the encounter's stand-in resolver, mutates the target player's HP,
 // and emits AttackResolved + DamageDealt encounter events.
+//
+// Wave 2.10: when an NPC's attack drops a player to HP=0, also publishes
+// EntityDiedEvent for the player (with the NPC as killer). The player is
+// NOT removed from initiative and EntityRemovedEvent is NOT published —
+// player dying-state is Wave 2.11+ territory. The encounter does NOT
+// auto-end on player deaths (TPK is also Wave 2.11+).
+//
+// Death is published only on the HP transition (hpBefore > 0 && hpAfter == 0),
+// not whenever HP happens to be 0 — so multi-attack NPCs and re-hits on a
+// downed player do not duplicate EntityDiedEvent.
 func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents.AttackEvent) error {
 	for _, atk := range attacks {
 		targetID := encountercore.EntityID(atk.TargetID)
@@ -206,6 +219,7 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		if dmgType == "" {
 			dmgType = damageTypeUntyped
 		}
+		hpBefore := targetPlayer.HP
 		res := e.resolveAttack(mon.AttackBonus, targetPlayer.AC, mon.DamageDice)
 		if res.hit {
 			targetPlayer.HP -= res.damage
@@ -220,6 +234,15 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		); err != nil {
 			return err
 		}
+		// Wave 2.10 partial player-death: fire EntityDiedEvent only on the
+		// HP transition (avoids duplicates from multi-attack NPCs or hits
+		// on an already-downed player). No EntityRemoved / no initiative
+		// splice / no encounter-end.
+		if res.hit && hpBefore > 0 && targetPlayer.HP == 0 {
+			if err := e.publishPlayerDied(targetID, mon.ID); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -233,12 +256,19 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 // damage event is skipped (no DamageDealtEvent published) — emitting
 // with hp_after=0 / zero-hex position would leak garbage values to
 // clients.
+//
+// Wave 2.10: if captured damage drops a monster's HP from >0 to 0, fires
+// the kill chain (EntityDied + EntityRemoved + checkEncounterEnd). If it
+// drops a player's HP from >0 to 0, fires only EntityDiedEvent (partial
+// player-death per Wave 2.10 architectural call). Re-applying damage to
+// an already-zero target does NOT re-fire death events — death is gated
+// on the >0 → 0 transition.
 func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.DamageReceivedEvent) error {
 	for _, dmg := range damages {
 		targetID := encountercore.EntityID(dmg.TargetID)
 		sourceID := encountercore.EntityID(dmg.SourceID)
 
-		hpAfter, maxHP, targetPos, ok := e.applyDamageToTarget(targetID, dmg.Amount)
+		hpBefore, hpAfter, maxHP, targetPos, isMonster, ok := e.applyDamageToTarget(targetID, dmg.Amount)
 		if !ok {
 			// Unknown target — skip publish rather than emit a stub event.
 			continue
@@ -263,31 +293,47 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 		)); err != nil {
 			return fmt.Errorf("publish damage dealt: %w", err)
 		}
+		if hpBefore > 0 && hpAfter == 0 {
+			if isMonster {
+				if err := e.killEntity(targetID, sourceID); err != nil {
+					return err
+				}
+			} else {
+				if err := e.publishPlayerDied(targetID, sourceID); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
 
 // applyDamageToTarget mutates HP on a player or monster matching id and
-// returns its post-damage HP, MaxHP, and position. Returns ok=false if
-// the id matches neither a player nor a monster. HP is clamped at 0.
+// returns its pre-damage HP, post-damage HP, MaxHP, position, and whether
+// the target was a monster (vs a player). hpBefore lets callers detect
+// the >0 → 0 transition so death events fire exactly once per kill, not
+// per "HP happens to be 0 right now" check. Returns ok=false if the id
+// matches neither a player nor a monster. HP is clamped at 0.
 func (e *Encounter) applyDamageToTarget(
 	id encountercore.EntityID, amount int,
-) (hpAfter, maxHP int, pos encountercore.Hex, ok bool) {
+) (hpBefore, hpAfter, maxHP int, pos encountercore.Hex, isMonster bool, ok bool) {
 	if p := e.findPlayerByEntityID(id); p != nil {
+		hpBefore = p.HP
 		p.HP -= amount
 		if p.HP < 0 {
 			p.HP = 0
 		}
-		return p.HP, p.MaxHP, p.View.Position, true
+		return hpBefore, p.HP, p.MaxHP, p.View.Position, false, true
 	}
 	if m, exists := e.data.Monsters[id]; exists {
+		hpBefore = m.HP
 		m.HP -= amount
 		if m.HP < 0 {
 			m.HP = 0
 		}
-		return m.HP, m.MaxHP, m.Position, true
+		return hpBefore, m.HP, m.MaxHP, m.Position, true, true
 	}
-	return 0, 0, encountercore.Hex{}, false
+	return 0, 0, 0, encountercore.Hex{}, false, false
 }
 
 // applyCapturedConditions translates each dnd5e ConditionAppliedEvent into
@@ -337,6 +383,10 @@ func (e *Encounter) applyCapturedConditions(mon *MonsterData, conds []dnd5eEvent
 // npcActScripted runs a minimal attack against the closest player when
 // the monster has no DataJSON to rehydrate. Used for tests and
 // orchestrator-seeded fixtures that don't carry a serialized monster.
+//
+// Wave 2.10: same partial player-death semantics as applyCapturedAttacks
+// — fires EntityDiedEvent on a player kill (only on HP transition, not
+// whenever HP is 0) but does not remove the player or end the encounter.
 func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	target := e.closestPlayer(mon.Position)
 	if target == nil {
@@ -346,6 +396,7 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	if dmgType == "" {
 		dmgType = damageTypeUntyped
 	}
+	hpBefore := target.HP
 	res := e.resolveAttack(mon.AttackBonus, target.AC, mon.DamageDice)
 	if res.hit {
 		target.HP -= res.damage
@@ -353,11 +404,19 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 			target.HP = 0
 		}
 	}
-	return e.publishAttackOutcome(
+	if err := e.publishAttackOutcome(
 		mon.ID, target.EntityID, res,
 		target.HP, target.MaxHP, dmgType,
 		mon.Position, target.View.Position,
-	)
+	); err != nil {
+		return err
+	}
+	if res.hit && hpBefore > 0 && target.HP == 0 {
+		if err := e.publishPlayerDied(target.EntityID, mon.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // buildPerception assembles the PerceptionData a monster needs to choose
