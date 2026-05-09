@@ -5,6 +5,7 @@ package core
 // FREE_ROAM: no initiative; players act in any order; the encounter is in
 // exploration / pre-combat. TURN_BASED: initiative order is fixed; one
 // active actor at a time; verbs that mutate combat state require it.
+// ENDED: terminal state; combat verbs reject with ErrEncounterEnded.
 type EncounterMode int
 
 // EncounterMode values.
@@ -15,6 +16,14 @@ const (
 	ModeFreeRoam
 	// ModeTurnBased is initiative-locked combat. Verbs gate on the active actor.
 	ModeTurnBased
+	// ModeEnded is the terminal state for an encounter — entered when the
+	// encounter-end predicate first goes true (Wave 2.10: all hostiles
+	// defeated). Combat verbs (TakeAction, EndTurn, NPCAct) reject with
+	// ErrEncounterEnded; the orchestrator stops dispatching turns. The
+	// encounter persists in storage with this mode so reconnects see the
+	// terminal state via snapshot replay. Initiative / ActiveIdx / Round
+	// are cleared on the transition to ModeEnded.
+	ModeEnded
 )
 
 // String returns a stable label for the mode (for logs and JSON-friendly debug).
@@ -24,6 +33,8 @@ func (m EncounterMode) String() string {
 		return "FREE_ROAM"
 	case ModeTurnBased:
 		return "TURN_BASED"
+	case ModeEnded:
+		return "ENDED"
 	default:
 		return "UNSPECIFIED"
 	}

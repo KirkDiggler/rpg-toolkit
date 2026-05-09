@@ -234,6 +234,12 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "TurnStartedEvent"
 	case *events.TurnEndedEvent:
 		typeName = "TurnEndedEvent"
+	case *events.EntityDiedEvent:
+		typeName = "EntityDiedEvent"
+	case *events.EntityRemovedEvent:
+		typeName = "EntityRemovedEvent"
+	case *events.EncounterEndedEvent:
+		typeName = "EncounterEndedEvent"
 	default:
 		return nil, fmt.Errorf("unknown event type %T", evt)
 	}
@@ -312,6 +318,24 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "TurnEndedEvent":
 		var e events.TurnEndedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "EntityDiedEvent":
+		var e events.EntityDiedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "EntityRemovedEvent":
+		var e events.EntityRemovedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "EncounterEndedEvent":
+		var e events.EncounterEndedEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}

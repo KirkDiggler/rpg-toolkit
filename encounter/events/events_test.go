@@ -30,6 +30,9 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.ModeChangedEvent)(nil)
 	var _ events.EncounterEvent = (*events.TurnStartedEvent)(nil)
 	var _ events.EncounterEvent = (*events.TurnEndedEvent)(nil)
+	var _ events.EncounterEvent = (*events.EntityDiedEvent)(nil)
+	var _ events.EncounterEvent = (*events.EntityRemovedEvent)(nil)
+	var _ events.EncounterEvent = (*events.EncounterEndedEvent)(nil)
 }
 
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.
@@ -265,6 +268,97 @@ func (s *EventsSuite) TestModeChangedEvent_JSONRoundTrip() {
 	s.Equal(core.ModeTurnBased, decoded.To)
 	s.Equal("ambush", decoded.Reason)
 	s.Len(decoded.PerPlayer, 2)
+}
+
+// EntityDiedEvent JSON round-trip — KillerID and PerPlayer survive encoding,
+// audience derives from PerPlayer keys.
+func (s *EventsSuite) TestEntityDiedEvent_JSONRoundTrip() {
+	original := events.NewEntityDiedEvent(
+		"enc-1", 17, "goblin-1", "char-alice",
+		map[core.PlayerID]events.EntityDiedSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.EntityDiedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(17), decoded.Sequence())
+	s.Equal(core.EntityID("goblin-1"), decoded.EntityID)
+	s.Equal(core.EntityID("char-alice"), decoded.KillerID)
+	s.True(decoded.PerPlayer["alice"].Visible)
+	s.True(decoded.PerPlayer["bob"].Visible)
+	s.ElementsMatch(events.AudienceSet{"alice", "bob"}, decoded.Audience())
+}
+
+// EntityDiedEvent with an empty KillerID round-trips with KillerID still
+// empty (omitempty on the wire) — covers the environmental-damage / future
+// indirect-kill case.
+func (s *EventsSuite) TestEntityDiedEvent_EmptyKillerOmitted() {
+	original := events.NewEntityDiedEvent(
+		"enc-1", 18, "goblin-1", "",
+		map[core.PlayerID]events.EntityDiedSlice{
+			"alice": {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+	s.NotContains(string(payload), `"killer_id"`,
+		"empty KillerID should be omitted from the wire")
+
+	var decoded events.EntityDiedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+	s.Equal(core.EntityID(""), decoded.KillerID)
+}
+
+// EntityRemovedEvent JSON round-trip — Reason and PerPlayer survive encoding.
+func (s *EventsSuite) TestEntityRemovedEvent_JSONRoundTrip() {
+	original := events.NewEntityRemovedEvent(
+		"enc-1", 19, "goblin-1", "destroyed",
+		map[core.PlayerID]events.EntityRemovedSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.EntityRemovedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(19), decoded.Sequence())
+	s.Equal(core.EntityID("goblin-1"), decoded.EntityID)
+	s.Equal("destroyed", decoded.Reason)
+	s.Len(decoded.PerPlayer, 2)
+	s.True(decoded.PerPlayer["alice"].Visible)
+	s.ElementsMatch(events.AudienceSet{"alice", "bob"}, decoded.Audience())
+}
+
+// EncounterEndedEvent JSON round-trip — Reason and PerPlayer survive encoding.
+func (s *EventsSuite) TestEncounterEndedEvent_JSONRoundTrip() {
+	original := events.NewEncounterEndedEvent(
+		"enc-1", 20, "all_hostiles_defeated",
+		map[core.PlayerID]events.EncounterEndedSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.EncounterEndedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(20), decoded.Sequence())
+	s.Equal("all_hostiles_defeated", decoded.Reason)
+	s.Len(decoded.PerPlayer, 2)
+	s.ElementsMatch(events.AudienceSet{"alice", "bob"}, decoded.Audience())
 }
 
 // TurnStartedEvent / TurnEndedEvent JSON round-trip.

@@ -120,9 +120,13 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 // TurnStartedEvent for the new active actor (with Round incremented when
 // the active index wraps).
 //
-// Returns ErrNoCombatants if Initiative is empty (can happen if SetMode
-// flipped to TURN_BASED with no players or monsters).
+// Returns ErrEncounterEnded when the encounter is in the terminal state
+// (ModeEnded). Returns ErrNoCombatants if Initiative is empty (can happen
+// if SetMode flipped to TURN_BASED with no players or monsters).
 func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, isNPC bool, err error) {
+	if e.data.Mode == core.ModeEnded {
+		return "", false, ErrEncounterEnded
+	}
 	if e.data.Mode != core.ModeTurnBased {
 		return "", false, ErrNotTurnBased
 	}
@@ -162,11 +166,20 @@ func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, i
 // DamageDealtEvent (per-viewer projection driven by LoS to attacker OR
 // target). On miss, publishes only AttackResolvedEvent.
 //
+// Wave 2.10: when an attack drops the monster's HP to zero, also publishes
+// EntityDiedEvent + EntityRemovedEvent for the monster, and (if it was the
+// last hostile) flips the encounter to ModeEnded and publishes
+// EncounterEndedEvent.
+//
+// Returns ErrEncounterEnded when the encounter is in the terminal state.
 // Returns ErrNonCombatant if the player's combat snapshot
 // (HP / MaxHP / AC / DamageDice) is not populated — i.e. the seat was
 // added without combat fields. PlayerInput documents that a zero combat
 // snapshot opts the player out of combat verbs.
 func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target ActionTarget) error {
+	if e.data.Mode == core.ModeEnded {
+		return ErrEncounterEnded
+	}
 	if e.data.Mode != core.ModeTurnBased {
 		return ErrNotTurnBased
 	}
@@ -206,11 +219,22 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	if damageType == "" {
 		damageType = damageTypeUntyped
 	}
-	return e.publishAttackOutcome(
+	if err := e.publishAttackOutcome(
 		player.EntityID, target.EntityID, res,
 		monster.HP, monster.MaxHP, damageType,
 		player.View.Position, monster.Position,
-	)
+	); err != nil {
+		return err
+	}
+	// If the attack reduced the monster to zero, fire the death + removal
+	// + encounter-end chain. killEntity also runs the encounter-end
+	// predicate which may transition mode to ModeEnded.
+	if res.hit && monster.HP == 0 {
+		if err := e.killEntity(target.EntityID, player.EntityID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // rollInitiative seeds Initiative with all combatants in d20-roll-desc
