@@ -12,7 +12,13 @@
 //	encounter/core        — IDs (EncounterID, PlayerID, EntityID) + spatial primitives (Hex, HexSet)
 //	encounter/events      — sealed EncounterEvent interface + concrete events + AudienceSet
 //	encounter/perception  — View + projection functions
-//	encounter (top-level) — Encounter aggregate, Broker, Transport
+//	encounter (top-level) — Encounter aggregate, Broker, Transport, prompts
+//
+// Wave 2.9 adds prompt machinery: locked doors carry an unlock DC +
+// ability + tool, AttemptUnlock issues a per-player skill-check prompt,
+// and SubmitCheck resolves it (calling OpenDoor on success). See
+// prompts.go for the contract and the CharacterResolver hook the
+// orchestrator wires for ability/tool modifier lookup.
 //
 // See rpg-project/ideas/encounter/v1alpha2/sdk-direction.md for the design.
 package encounter

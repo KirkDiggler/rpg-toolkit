@@ -11,6 +11,9 @@ import (
 //
 // Wave 2.8 adds Monsters + Mode + turn-state. The encounter SDK is the
 // source of truth for whose turn it is — the orchestrator does not mirror.
+//
+// Wave 2.9 adds PendingPrompts: at most one in-flight prompt per player,
+// resolved via SubmitCheck.
 type Data struct {
 	ID       core.EncounterID               `json:"id"`
 	Sequence uint64                         `json:"sequence"`
@@ -24,6 +27,12 @@ type Data struct {
 	Initiative []core.EntityID    `json:"initiative,omitempty"`
 	ActiveIdx  int                `json:"active_idx,omitempty"`
 	Round      int                `json:"round,omitempty"`
+
+	// PendingPrompts holds at most one in-flight prompt per player. A prompt
+	// is set by a verb that needs a player decision/check (AttemptUnlock,
+	// future dialogue/target-select) and cleared by SubmitCheck regardless
+	// of outcome. Omitted from the wire when empty.
+	PendingPrompts map[core.PlayerID]*PendingPrompt `json:"pending_prompts,omitempty"`
 }
 
 // PlayerData persists a single player seat.
@@ -47,10 +56,26 @@ type PlayerData struct {
 }
 
 // DoorData persists a door entity.
+//
+// Wave 2.9 adds the locked-door snapshot. When Locked is true the door
+// cannot be opened directly via OpenDoor — a player must AttemptUnlock,
+// which issues a skill-check prompt resolved through SubmitCheck. All
+// lock fields are omitempty so legacy DoorData (Wave 2.7) round-trips
+// as an unlocked door.
 type DoorData struct {
 	ID       core.EntityID `json:"id"`
 	Position core.Hex      `json:"position"`
 	Open     bool          `json:"open"`
+
+	// Locked-door state (Wave 2.9). Locked gates AttemptUnlock; LockDC,
+	// LockAbility, and LockTool feed the SkillCheck prompt that resolution
+	// runs through. LockAbility uses 3-letter codes ("DEX", "STR"). LockTool
+	// is a toolkit ref (e.g. "dnd5e:item:thieves-tools"); empty means no
+	// tool proficiency applies.
+	Locked      bool   `json:"locked,omitempty"`
+	LockDC      int    `json:"lock_dc,omitempty"`
+	LockAbility string `json:"lock_ability,omitempty"`
+	LockTool    string `json:"lock_tool,omitempty"`
 }
 
 // MonsterData persists a monster entity, including the serialized
@@ -83,10 +108,11 @@ type MonsterData struct {
 // ModeFreeRoam; turn-state fields remain at their zero values.
 func NewData(id core.EncounterID) *Data {
 	return &Data{
-		ID:       id,
-		Players:  make(map[core.PlayerID]*PlayerData),
-		Doors:    make(map[core.EntityID]*DoorData),
-		Monsters: make(map[core.EntityID]*MonsterData),
-		Mode:     core.ModeFreeRoam,
+		ID:             id,
+		Players:        make(map[core.PlayerID]*PlayerData),
+		Doors:          make(map[core.EntityID]*DoorData),
+		Monsters:       make(map[core.EntityID]*MonsterData),
+		Mode:           core.ModeFreeRoam,
+		PendingPrompts: make(map[core.PlayerID]*PendingPrompt),
 	}
 }

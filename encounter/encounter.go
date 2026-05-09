@@ -14,9 +14,10 @@ import (
 // Constructed per-call via LoadFromData; mutated by verbs; serialized via
 // ToData and saved.
 type Encounter struct {
-	data   *Data
-	broker *Broker
-	roller dice.Roller
+	data     *Data
+	broker   *Broker
+	roller   dice.Roller
+	resolver CharacterResolver
 }
 
 // Option configures an Encounter at construction.
@@ -30,6 +31,17 @@ func WithRoller(r dice.Roller) Option {
 		if r != nil {
 			e.roller = r
 		}
+	}
+}
+
+// WithCharacterResolver injects a CharacterResolver used by SubmitCheck
+// to look up the ability/proficiency modifiers for the acting player.
+// In production rpg-api wires this against its character store; tests
+// supply a stub. SubmitCheck returns ErrNoCharacterResolver if a check
+// is submitted without one.
+func WithCharacterResolver(r CharacterResolver) Option {
+	return func(e *Encounter) {
+		e.resolver = r
 	}
 }
 
@@ -102,6 +114,9 @@ func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 	}
 	if data.Monsters == nil {
 		data.Monsters = make(map[core.EntityID]*MonsterData)
+	}
+	if data.PendingPrompts == nil {
+		data.PendingPrompts = make(map[core.PlayerID]*PendingPrompt)
 	}
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
