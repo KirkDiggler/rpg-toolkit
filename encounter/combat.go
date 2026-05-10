@@ -42,6 +42,11 @@ var (
 // maps this to the proto's UNSPECIFIED damage type.
 const damageTypeUntyped = "untyped"
 
+// actionIDAttack is the canonical action ID for a standard melee/ranged
+// attack. Used as AttackInput.ActionRef.ID for both the player path
+// (TakeAction) and the NPC path (NPCAct / npcActScripted).
+const actionIDAttack = "attack"
+
 // isPlayerCombatant reports whether a player seat carries the minimum
 // combat snapshot required for TakeAction. PlayerInput documents that a
 // zero combat snapshot opts a seat out of combat verbs; this helper is
@@ -202,7 +207,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	if active := e.ActiveActor(); active != player.EntityID {
 		return fmt.Errorf("%w: active=%q got=%q", ErrNotYourTurn, active, player.EntityID)
 	}
-	if ref.ID != "attack" {
+	if ref.ID != actionIDAttack {
 		return fmt.Errorf("%w: %q", ErrUnsupportedAction, ref.ID)
 	}
 	if !isPlayerCombatant(player) {
@@ -238,16 +243,8 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 		// here keeps a misbehaving implementation from panicking the verb.
 		return fmt.Errorf("combat resolver: nil outcome with nil error")
 	}
-	res := attackResolution{
-		hit:         outcome.Hit,
-		critical:    outcome.Critical,
-		attackRoll:  outcome.AttackRoll,
-		attackBonus: outcome.AttackBonus,
-		targetAC:    outcome.TargetAC,
-		damage:      outcome.Damage,
-	}
-	if res.hit {
-		monster.HP -= res.damage
+	if outcome.Hit {
+		monster.HP -= outcome.Damage
 		if monster.HP < 0 {
 			monster.HP = 0
 		}
@@ -261,7 +258,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 		damageType = damageTypeUntyped
 	}
 	if err := e.publishAttackOutcome(
-		player.EntityID, target.EntityID, res,
+		player.EntityID, target.EntityID, outcome,
 		monster.HP, monster.MaxHP, damageType,
 		player.View.Position, monster.Position,
 	); err != nil {
@@ -273,7 +270,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	// out, but the gate is cheap insurance for future paths) does
 	// NOT re-fire death events. killEntity also runs the
 	// encounter-end predicate which may transition mode to ModeEnded.
-	if res.hit && hpBefore > 0 && monster.HP == 0 {
+	if outcome.Hit && hpBefore > 0 && monster.HP == 0 {
 		if err := e.killEntity(target.EntityID, player.EntityID); err != nil {
 			return err
 		}
@@ -319,70 +316,6 @@ func rollD20(r dice.Roller) int {
 	return v
 }
 
-// attackResolution captures one resolved attack — used by both TakeAction
-// (player attacks monster) and NPCAct (monster attacks player). Stand-in
-// for the proper combat.ResolveAttack chain (followup).
-type attackResolution struct {
-	hit         bool
-	critical    bool
-	attackRoll  int
-	attackBonus int
-	targetAC    int
-	damage      int
-}
-
-// resolveAttack rolls a d20+attackBonus attack against targetAC and, on hit,
-// rolls damage from the supplied dice notation. Nat-20 is a critical (double
-// damage dice). Nat-1 misses regardless of bonus. Empty notation defaults to
-// "1d4".
-func (e *Encounter) resolveAttack(attackBonus, targetAC int, damageNotation string) attackResolution {
-	roll := rollD20(e.roller)
-	res := attackResolution{
-		attackRoll:  roll,
-		attackBonus: attackBonus,
-		targetAC:    targetAC,
-		critical:    roll == 20,
-	}
-	switch roll {
-	case 1:
-		res.hit = false
-	case 20:
-		res.hit = true
-	default:
-		res.hit = roll+attackBonus >= targetAC
-	}
-	if !res.hit {
-		return res
-	}
-	notation := damageNotation
-	if notation == "" {
-		notation = "1d4"
-	}
-	pool, err := dice.ParseNotation(notation)
-	if err != nil {
-		// Indeterminate damage — fall back to 1 to keep the verb non-blocking.
-		res.damage = 1
-		return res
-	}
-	rolled := pool.RollContext(context.Background(), e.roller)
-	if rolled.Error() != nil {
-		res.damage = 1
-		return res
-	}
-	dmg := rolled.Total()
-	if res.critical {
-		// Crit doubles dice (additive of the dice portion). The simple
-		// approximation here is total*2 - modifier; close enough for the
-		// stand-in. Followup: full crit-damage chain.
-		dmg += rolled.Total() - rolled.Modifier()
-	}
-	if dmg < 0 {
-		dmg = 0
-	}
-	res.damage = dmg
-	return res
-}
-
 // publishAttackOutcome emits the AttackResolvedEvent (always) plus the
 // DamageDealtEvent (only on hit) with per-viewer projection determined by
 // LoS to attacker OR target.
@@ -393,7 +326,7 @@ func (e *Encounter) resolveAttack(attackBonus, targetAC int, damageNotation stri
 // viewers, which prevents fog-of-war leakage of out-of-LoS combat.
 func (e *Encounter) publishAttackOutcome(
 	attackerID, targetID core.EntityID,
-	res attackResolution,
+	outcome *AttackOutcome,
 	targetHPAfter, targetMaxHP int,
 	damageType string,
 	attackerPos, targetPos core.Hex,
@@ -406,23 +339,23 @@ func (e *Encounter) publishAttackOutcome(
 			continue
 		}
 		attackPerPlayer[viewerID] = events.AttackResolvedSlice{Visible: true}
-		if res.hit {
+		if outcome.Hit {
 			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
 		}
 	}
 	if err := e.broker.Publish(events.NewAttackResolvedEvent(
 		e.data.ID, e.nextSeq(),
 		attackerID, targetID,
-		res.hit, res.critical, res.attackRoll, res.attackBonus, res.targetAC,
+		outcome.Hit, outcome.Critical, outcome.AttackRoll, outcome.AttackBonus, outcome.TargetAC,
 		attackPerPlayer,
 	)); err != nil {
 		return fmt.Errorf("publish attack resolved: %w", err)
 	}
-	if res.hit {
+	if outcome.Hit {
 		if err := e.broker.Publish(events.NewDamageDealtEvent(
 			e.data.ID, e.nextSeq(),
 			targetID, attackerID,
-			res.damage, damageType,
+			outcome.Damage, damageType,
 			targetHPAfter, targetMaxHP,
 			damagePerPlayer,
 		)); err != nil {

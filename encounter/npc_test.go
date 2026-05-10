@@ -13,6 +13,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
+// monsterRefGoblin is the canonical monster ref used across NPC fixtures.
+const monsterRefGoblin = "dnd5e:monsters:goblin"
+
 // NPCSuite covers the full NPCAct path through monster.TakeTurn —
 // distinct from CombatSuite which uses the scripted DataJSON-less path.
 type NPCSuite struct {
@@ -32,7 +35,9 @@ func (s *NPCSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-npc", s.broker)
+	s.enc = encounter.New("enc-npc", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+	)
 
 	// Build a goblin and serialize it.
 	gob := monster.NewGoblin(gobEntityID)
@@ -42,7 +47,7 @@ func (s *NPCSuite) SetupTest() {
 
 	// Alice adjacent to goblin so the goblin can attack on its turn.
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: aliceEntityID,
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
 		HP: 12, MaxHP: 12, AC: 14,
 	}))
@@ -50,12 +55,12 @@ func (s *NPCSuite) SetupTest() {
 		ID:       gobEntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
-		MonsterRef:  "dnd5e:monsters:goblin",
+		MonsterRef:  monsterRefGoblin,
 		DataJSON:    dataJSON,
-		AttackBonus: 4, DamageDice: "1d6+2", DamageType: "slashing",
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
 	}))
 
-	s.aliceSub, err = s.broker.Subscribe("enc-npc", "alice")
+	s.aliceSub, err = s.broker.Subscribe("enc-npc", alicePlayerID)
 	s.Require().NoError(err)
 }
 
@@ -91,7 +96,8 @@ func (s *NPCSuite) TestNPCAct_RequiresTurnBased() {
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
-// NPCAct against an unknown id returns ErrUnknownTarget when in TURN_BASED.
+// NPCAct against an unknown id returns ErrNotYourTurn (the active-actor
+// check fires before the existence check).
 func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	// Cycle to goblin to satisfy the active-actor gate, then try to act
@@ -103,4 +109,62 @@ func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
 	}
 	err := s.enc.NPCAct(s.ctx, "ghost")
 	s.ErrorIs(err, encounter.ErrNotYourTurn)
+}
+
+// NPCAct returns ErrNoCombatResolver when no CombatResolver is wired.
+// Mirrors the guard on TakeAction (player path) — production must wire one
+// via WithCombatResolver.
+func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
+	gob := monster.NewGoblin(gobEntityID)
+	gobData := gob.ToData()
+	dataJSON, err := json.Marshal(gobData)
+	s.Require().NoError(err)
+
+	enc := encounter.New("enc-npc-no-resolver", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14,
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:       gobEntityID,
+		Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
+		MonsterRef: monsterRefGoblin,
+		DataJSON:   dataJSON,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	err = enc.NPCAct(s.ctx, gobEntityID)
+	s.ErrorIs(err, encounter.ErrNoCombatResolver)
+}
+
+// NPCAct (scripted path — no DataJSON) returns ErrNoCombatResolver when
+// no resolver is wired.
+func (s *NPCSuite) TestNPCAct_Scripted_ErrNoCombatResolver() {
+	enc := encounter.New("enc-npc-scripted-no-resolver", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14,
+	}))
+	// No DataJSON — triggers the scripted path.
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:       gobEntityID,
+		Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	err := enc.NPCAct(s.ctx, gobEntityID)
+	s.ErrorIs(err, encounter.ErrNoCombatResolver)
 }
