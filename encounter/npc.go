@@ -224,6 +224,7 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		outcome, err := e.combatResolver.ResolveAttack(AttackInput{
 			AttackerID:          mon.ID,
 			TargetID:            targetID,
+			ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: actionIDAttack},
 			AttackerAttackBonus: mon.AttackBonus,
 			AttackerDamageDice:  mon.DamageDice,
 			AttackerDamageType:  mon.DamageType,
@@ -421,6 +422,7 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
 		AttackerID:          mon.ID,
 		TargetID:            target.EntityID,
+		ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: "attack"},
 		AttackerAttackBonus: mon.AttackBonus,
 		AttackerDamageDice:  mon.DamageDice,
 		AttackerDamageType:  mon.DamageType,

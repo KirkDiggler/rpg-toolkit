@@ -42,6 +42,11 @@ var (
 // maps this to the proto's UNSPECIFIED damage type.
 const damageTypeUntyped = "untyped"
 
+// actionIDAttack is the canonical action ID for a standard melee/ranged
+// attack. Used as AttackInput.ActionRef.ID for both the player path
+// (TakeAction) and the NPC path (NPCAct / npcActScripted).
+const actionIDAttack = "attack"
+
 // isPlayerCombatant reports whether a player seat carries the minimum
 // combat snapshot required for TakeAction. PlayerInput documents that a
 // zero combat snapshot opts a seat out of combat verbs; this helper is
@@ -202,7 +207,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	if active := e.ActiveActor(); active != player.EntityID {
 		return fmt.Errorf("%w: active=%q got=%q", ErrNotYourTurn, active, player.EntityID)
 	}
-	if ref.ID != "attack" {
+	if ref.ID != actionIDAttack {
 		return fmt.Errorf("%w: %q", ErrUnsupportedAction, ref.ID)
 	}
 	if !isPlayerCombatant(player) {
