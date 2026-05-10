@@ -14,10 +14,11 @@ import (
 // Constructed per-call via LoadFromData; mutated by verbs; serialized via
 // ToData and saved.
 type Encounter struct {
-	data     *Data
-	broker   *Broker
-	roller   dice.Roller
-	resolver CharacterResolver
+	data           *Data
+	broker         *Broker
+	roller         dice.Roller
+	resolver       CharacterResolver
+	combatResolver CombatResolver
 }
 
 // Option configures an Encounter at construction.
@@ -42,6 +43,18 @@ func WithRoller(r dice.Roller) Option {
 func WithCharacterResolver(r CharacterResolver) Option {
 	return func(e *Encounter) {
 		e.resolver = r
+	}
+}
+
+// WithCombatResolver injects a CombatResolver used by combat verbs
+// (today: TakeAction's player-attack path; future waves extend) to
+// evaluate attack mechanics through a rulebook implementation. The
+// encounter SDK never embeds rulebook logic; the orchestrator (rpg-api)
+// wires this against the dnd5e rulebook in production. Tests supply
+// a stub. TakeAction returns ErrNoCombatResolver if invoked without one.
+func WithCombatResolver(r CombatResolver) Option {
+	return func(e *Encounter) {
+		e.combatResolver = r
 	}
 }
 

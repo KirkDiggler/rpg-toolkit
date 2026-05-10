@@ -73,7 +73,8 @@ func (s *DeathSuite) TearDownTest() {
 // the fixed-max roller and pre-flipped to ModeTurnBased on alice's turn.
 // Returns the encounter; subscriptions are written into the suite fields.
 func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Encounter {
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -175,7 +176,8 @@ func (s *DeathSuite) TestSlice_PostEnd_ErrEncounterEnded() {
 // does NOT publish EncounterEndedEvent.
 func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 	encID := core.EncounterID("enc-death-3")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -240,7 +242,8 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 // (NOT the dead goblin). Regression for ActiveIdx splice math.
 func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 	encID := core.EncounterID("enc-death-4")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -290,7 +293,8 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 // player (PerPlayer covers all of them, regardless of LoS to the kill).
 func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 	encID := core.EncounterID("enc-death-5")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -343,7 +347,8 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 // encounter (TPK is Wave 2.11+).
 func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	encID := core.EncounterID("enc-death-6")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	// alice has 1 HP — guaranteed kill on first NPC hit.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -457,7 +462,8 @@ func (s *DeathSuite) TestSlice_EncounterEndedReasonAllHostilesDefeated() {
 // the death event" risk Copilot raised on the first review pass.
 func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 	encID := core.EncounterID("enc-death-rehit-player")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,

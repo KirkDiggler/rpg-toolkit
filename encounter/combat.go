@@ -215,9 +215,31 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, target.EntityID)
 	}
+	if e.combatResolver == nil {
+		return ErrNoCombatResolver
+	}
 
 	hpBefore := monster.HP
-	res := e.resolveAttack(player.AttackBonus, monster.AC, player.DamageDice)
+	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
+		AttackerID:          player.EntityID,
+		TargetID:            target.EntityID,
+		ActionRef:           toolkitRef(ref),
+		AttackerAttackBonus: player.AttackBonus,
+		AttackerDamageDice:  player.DamageDice,
+		AttackerDamageType:  player.DamageType,
+		TargetAC:            monster.AC,
+	})
+	if err != nil {
+		return fmt.Errorf("combat resolver: %w", err)
+	}
+	res := attackResolution{
+		hit:         outcome.Hit,
+		critical:    outcome.Critical,
+		attackRoll:  outcome.AttackRoll,
+		attackBonus: outcome.AttackBonus,
+		targetAC:    outcome.TargetAC,
+		damage:      outcome.Damage,
+	}
 	if res.hit {
 		monster.HP -= res.damage
 		if monster.HP < 0 {
@@ -225,7 +247,10 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 		}
 	}
 
-	damageType := player.DamageType
+	damageType := outcome.DamageType
+	if damageType == "" {
+		damageType = player.DamageType
+	}
 	if damageType == "" {
 		damageType = damageTypeUntyped
 	}
