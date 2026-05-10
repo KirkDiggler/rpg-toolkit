@@ -14,11 +14,15 @@ import (
 
 // Test-package fixture identifiers (extracted to satisfy goconst).
 const (
+	alicePlayerID  = "alice"
+	bobPlayerID    = "bob"
 	aliceEntityID  = "char-alice"
 	bobEntityID    = "char-bob"
 	gobEntityID    = "goblin-1"
 	gob2EntityID   = "goblin-2"
 	damageSlashing = "slashing"
+	refModuleDnd5e = "dnd5e"
+	refTypeAction  = "action"
 )
 
 // CombatSuite covers the Wave 2.8 verbs (SetMode, EndTurn, TakeAction,
@@ -41,7 +45,9 @@ func (s *CombatSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-combat", s.broker)
+	s.enc = encounter.New("enc-combat", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+	)
 
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -263,7 +269,9 @@ func (s *CombatSuite) TestNPCAct_ScriptedAttackPublishes() {
 // entirely so the broker does not deliver to them. Mirrors Move /
 // OpenDoor audience-routing.
 func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
-	enc := encounter.New("enc-combat-2", s.broker)
+	enc := encounter.New("enc-combat-2", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
