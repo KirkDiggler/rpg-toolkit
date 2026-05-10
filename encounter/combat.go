@@ -232,6 +232,12 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	if err != nil {
 		return fmt.Errorf("combat resolver: %w", err)
 	}
+	if outcome == nil {
+		// Defensive: a well-behaved CombatResolver returns either a non-nil
+		// outcome or a non-nil error per the interface contract. Guarding
+		// here keeps a misbehaving implementation from panicking the verb.
+		return fmt.Errorf("combat resolver: nil outcome with nil error")
+	}
 	res := attackResolution{
 		hit:         outcome.Hit,
 		critical:    outcome.Critical,
