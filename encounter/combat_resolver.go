@@ -23,11 +23,11 @@ var ErrNoCombatResolver = errors.New("no combat resolver wired")
 // rulebook (today: dnd5e). The encounter SDK never imports rulebook
 // packages — keeping the boundary clean across rulebooks.
 //
-// Wave 2.11a wires ResolveAttack for the player-attack path
-// (combat.TakeAction). NPCAct continues to use the legacy stand-in path
-// until Wave 2.11b adds monster rulebook adapters and OA / multiattack
-// support; method additions on this interface in 2.11b are explicit
-// breaking changes flagged in the encounter module's release notes.
+// Wave 2.11a wired ResolveAttack for the player-attack path (TakeAction).
+// Wave 2.11b (encounter v0.7.0) folds NPCAct onto the same resolver — both
+// player and monster attack paths share this single injection seam. The
+// in-package resolveAttack helper has been removed; hosts that previously
+// relied on it must wire a resolver via WithCombatResolver.
 type CombatResolver interface {
 	// ResolveAttack evaluates one attack from attacker to target and
 	// returns the outcome. The resolver is responsible for looking up
@@ -45,8 +45,8 @@ type CombatResolver interface {
 // The orchestrator's resolver implementation translates this to the
 // rulebook's native AttackInput shape (e.g., dnd5e/combat.AttackInput).
 type AttackInput struct {
-	// AttackerID is the entity making the attack — could be a player
-	// (combat.TakeAction path) or a monster (future NPCAct migration).
+	// AttackerID is the entity making the attack — a player entity ID on
+	// the TakeAction path, or a monster entity ID on the NPCAct path.
 	AttackerID encountercore.EntityID
 
 	// TargetID is the entity being attacked.

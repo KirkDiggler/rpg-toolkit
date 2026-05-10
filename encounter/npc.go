@@ -22,12 +22,10 @@ import (
 // to capture the dnd5e events the action publishes, and re-publishes them
 // as encounter-scoped per-viewer events.
 //
-// Wave 2.8 only handles single-target melee attacks (the shape goblin /
-// scimitar / bite emit). For each captured dnd5e.AttackEvent, the
-// encounter SDK resolves hit/damage with its own roller (since the
-// dnd5e action layer does not run resolution itself today — see issue
-// followups), mutates the target player's HP, and emits AttackResolved
-// + DamageDealt encounter events.
+// For each captured dnd5e.AttackEvent, the encounter SDK resolves hit/damage
+// by delegating to the wired CombatResolver — the same resolver used by the
+// player-attack path (TakeAction). NPCAct returns ErrNoCombatResolver if no
+// resolver has been wired via WithCombatResolver.
 //
 // Position is updated from TurnResult.Movement; a MoveEvent is emitted
 // per-viewer for the NPC's path.
@@ -46,6 +44,9 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	mon, ok := e.data.Monsters[npcID]
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, npcID)
+	}
+	if e.combatResolver == nil {
+		return ErrNoCombatResolver
 	}
 	if len(mon.DataJSON) == 0 {
 		// No rehydratable monster — fall back to a minimal scripted attack
@@ -196,7 +197,7 @@ func (e *Encounter) applyNPCMovement(mon *MonsterData, movement []spatial.CubeCo
 }
 
 // applyCapturedAttacks resolves each captured dnd5e AttackEvent (cause-only)
-// using the encounter's stand-in resolver, mutates the target player's HP,
+// through the wired CombatResolver, mutates the target player's HP,
 // and emits AttackResolved + DamageDealt encounter events.
 //
 // Wave 2.10: when an NPC's attack drops a player to HP=0, also publishes
@@ -220,15 +221,31 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 			dmgType = damageTypeUntyped
 		}
 		hpBefore := targetPlayer.HP
-		res := e.resolveAttack(mon.AttackBonus, targetPlayer.AC, mon.DamageDice)
-		if res.hit {
-			targetPlayer.HP -= res.damage
+		outcome, err := e.combatResolver.ResolveAttack(AttackInput{
+			AttackerID:          mon.ID,
+			TargetID:            targetID,
+			AttackerAttackBonus: mon.AttackBonus,
+			AttackerDamageDice:  mon.DamageDice,
+			AttackerDamageType:  mon.DamageType,
+			TargetAC:            targetPlayer.AC,
+		})
+		if err != nil {
+			return fmt.Errorf("combat resolver: %w", err)
+		}
+		if outcome == nil {
+			return fmt.Errorf("combat resolver: nil outcome with nil error")
+		}
+		if outcome.Hit {
+			targetPlayer.HP -= outcome.Damage
 			if targetPlayer.HP < 0 {
 				targetPlayer.HP = 0
 			}
 		}
+		if outcome.DamageType != "" {
+			dmgType = outcome.DamageType
+		}
 		if err := e.publishAttackOutcome(
-			mon.ID, targetID, res,
+			mon.ID, targetID, outcome,
 			targetPlayer.HP, targetPlayer.MaxHP, dmgType,
 			mon.Position, targetPlayer.View.Position,
 		); err != nil {
@@ -238,7 +255,7 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		// HP transition (avoids duplicates from multi-attack NPCs or hits
 		// on an already-downed player). No EntityRemoved / no initiative
 		// splice / no encounter-end.
-		if res.hit && hpBefore > 0 && targetPlayer.HP == 0 {
+		if outcome.Hit && hpBefore > 0 && targetPlayer.HP == 0 {
 			if err := e.publishPlayerDied(targetID, mon.ID); err != nil {
 				return err
 			}
@@ -384,6 +401,10 @@ func (e *Encounter) applyCapturedConditions(mon *MonsterData, conds []dnd5eEvent
 // the monster has no DataJSON to rehydrate. Used for tests and
 // orchestrator-seeded fixtures that don't carry a serialized monster.
 //
+// Delegates to the wired CombatResolver (same as applyCapturedAttacks and
+// TakeAction). The resolver guard at NPCAct entry ensures combatResolver
+// is non-nil before this path is reached.
+//
 // Wave 2.10: same partial player-death semantics as applyCapturedAttacks
 // — fires EntityDiedEvent on a player kill (only on HP transition, not
 // whenever HP is 0) but does not remove the player or end the encounter.
@@ -397,21 +418,37 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 		dmgType = damageTypeUntyped
 	}
 	hpBefore := target.HP
-	res := e.resolveAttack(mon.AttackBonus, target.AC, mon.DamageDice)
-	if res.hit {
-		target.HP -= res.damage
+	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
+		AttackerID:          mon.ID,
+		TargetID:            target.EntityID,
+		AttackerAttackBonus: mon.AttackBonus,
+		AttackerDamageDice:  mon.DamageDice,
+		AttackerDamageType:  mon.DamageType,
+		TargetAC:            target.AC,
+	})
+	if err != nil {
+		return fmt.Errorf("combat resolver: %w", err)
+	}
+	if outcome == nil {
+		return fmt.Errorf("combat resolver: nil outcome with nil error")
+	}
+	if outcome.Hit {
+		target.HP -= outcome.Damage
 		if target.HP < 0 {
 			target.HP = 0
 		}
 	}
+	if outcome.DamageType != "" {
+		dmgType = outcome.DamageType
+	}
 	if err := e.publishAttackOutcome(
-		mon.ID, target.EntityID, res,
+		mon.ID, target.EntityID, outcome,
 		target.HP, target.MaxHP, dmgType,
 		mon.Position, target.View.Position,
 	); err != nil {
 		return err
 	}
-	if res.hit && hpBefore > 0 && target.HP == 0 {
+	if outcome.Hit && hpBefore > 0 && target.HP == 0 {
 		if err := e.publishPlayerDied(target.EntityID, mon.ID); err != nil {
 			return err
 		}
