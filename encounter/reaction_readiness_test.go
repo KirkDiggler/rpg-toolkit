@@ -2,6 +2,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
@@ -34,11 +35,13 @@ func (s *ReactionReadinessSuite) TearDownTest() {
 }
 
 // addCombatPlayer is a helper that adds a player with combat stats so
-// OA default seeding fires.
-func (s *ReactionReadinessSuite) addCombatPlayer(playerID, entityID string) {
+// OA default seeding fires. playerID is derived from entityID (the player
+// seat key); all assertions target the entityID, which is what the
+// readiness map indexes.
+func (s *ReactionReadinessSuite) addCombatPlayer(entityID string) {
 	s.T().Helper()
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID:   core.PlayerID(playerID),
+		PlayerID:   core.PlayerID("player-" + entityID),
 		EntityID:   core.EntityID(entityID),
 		Position:   core.Hex{},
 		SightRange: 4,
@@ -68,7 +71,7 @@ func (s *ReactionReadinessSuite) addCombatMonster(id string) {
 // --- Default OA Seeding ---
 
 func (s *ReactionReadinessSuite) TestAddPlayer_WithCombatStats_SeedsOAReadiness() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	s.True(s.enc.IsReactionReady("char-alice", encounter.OAReactionRef),
 		"melee combatant should default-on for OA")
 }
@@ -106,7 +109,7 @@ func (s *ReactionReadinessSuite) TestAddMonster_WithoutCombatStats_DoesNotSeedOA
 // --- SetReactionReady ---
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_SetsTrue() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	// Initially OA is true; verify we can also set an arbitrary reaction.
 	const shieldRef = "dnd5e:conditions:shield"
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", shieldRef, true))
@@ -114,14 +117,14 @@ func (s *ReactionReadinessSuite) TestSetReactionReady_SetsTrue() {
 }
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_SetsFalse() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	// OA starts true; player can opt out.
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", encounter.OAReactionRef, false))
 	s.False(s.enc.IsReactionReady("char-alice", encounter.OAReactionRef))
 }
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_Idempotent() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", encounter.OAReactionRef, true))
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", encounter.OAReactionRef, true))
 	s.True(s.enc.IsReactionReady("char-alice", encounter.OAReactionRef))
@@ -139,7 +142,7 @@ func (s *ReactionReadinessSuite) TestSetReactionReady_EmptyCharID_ReturnsError()
 }
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_EmptyRef_ReturnsError() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	err := s.enc.SetReactionReady("char-alice", "", true)
 	s.Error(err)
 }
@@ -152,7 +155,7 @@ func (s *ReactionReadinessSuite) TestIsReactionReady_UnknownEntity_ReturnsFalse(
 }
 
 func (s *ReactionReadinessSuite) TestIsReactionReady_UnknownRef_ReturnsFalse() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	s.False(s.enc.IsReactionReady("char-alice", "dnd5e:conditions:shield"),
 		"reaction not yet set should return false (safe default)")
 }
@@ -168,7 +171,7 @@ func (s *ReactionReadinessSuite) TestSetReactionReady_MonsterEntity() {
 // --- ToData / LoadFromData round-trip ---
 
 func (s *ReactionReadinessSuite) TestReactionReadiness_RoundTrip() {
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	s.addCombatMonster("goblin-1")
 	const shieldRef = "dnd5e:conditions:shield"
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", shieldRef, true))
@@ -221,10 +224,16 @@ func (s *ReactionReadinessSuite) TestEventBus_NotNil() {
 func (s *ReactionReadinessSuite) TestEventBus_SameInstanceAfterVerbs() {
 	// The bus must be the same object between calls (encounter-scoped, not
 	// per-verb). Conditions subscribe once and stay subscribed.
+	// Use pointer identity — DeepEqual on an interface could match two
+	// structurally identical but distinct bus objects.
 	bus1 := s.enc.EventBus()
-	s.addCombatPlayer("alice", "char-alice")
+	s.addCombatPlayer("char-alice")
 	bus2 := s.enc.EventBus()
-	s.Equal(bus1, bus2, "EventBus must return the same instance throughout the encounter's lifetime")
+	s.Equal(
+		reflect.ValueOf(bus1).Pointer(),
+		reflect.ValueOf(bus2).Pointer(),
+		"EventBus must return the same instance throughout the encounter's lifetime",
+	)
 }
 
 func (s *ReactionReadinessSuite) TestEventBus_RestoredAfterLoadFromData() {

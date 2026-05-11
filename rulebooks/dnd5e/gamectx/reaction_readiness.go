@@ -8,12 +8,13 @@ import "context"
 // reactionReadinessKey is the context key for the reaction readiness map.
 type reactionReadinessKey struct{}
 
-// ReactionReadinessMap is a read-only view of per-entity reaction readiness.
-// Keys are entity IDs; values are maps from reaction ref strings
-// (e.g. "dnd5e:conditions:opportunity_attack") to ready booleans.
+// ReactionReadinessMap is the value stored in context by WithReactionReadiness
+// and consumed by IsReactionReady. It holds per-entity reaction readiness:
+// outer keys are entity IDs; inner keys are reaction ref strings
+// (e.g. "dnd5e:conditions:opportunity_attack"); values are ready booleans.
 //
-// Returned by IsReactionReady when the context carries this value.
-// Populated by the encounter SDK (rpg-api side) before invoking attack chains.
+// Populated by the encounter SDK (rpg-api side) before invoking attack chains,
+// typically from Encounter.ToData().ReactionReadiness.
 type ReactionReadinessMap map[string]map[string]bool
 
 // WithReactionReadiness wraps a context.Context with the provided readiness map.

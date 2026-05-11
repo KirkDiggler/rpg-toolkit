@@ -2,6 +2,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -255,9 +256,14 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 	s.EqualValues(2, resolver.callCount.Load(), "resolver must be called for both attacks")
 
 	// Both calls must carry the same bus instance (encounter-scoped, not per-attack).
+	// Use pointer identity — DeepEqual on an interface could match two
+	// structurally identical but distinct bus objects.
 	s.Require().Len(resolver.buses, 2)
-	s.Equal(resolver.buses[0], resolver.buses[1],
-		"encounter SDK must pass the same EventBus instance across attacks within an encounter")
+	s.Equal(
+		reflect.ValueOf(resolver.buses[0]).Pointer(),
+		reflect.ValueOf(resolver.buses[1]).Pointer(),
+		"encounter SDK must pass the same EventBus instance across attacks within an encounter",
+	)
 
 	// The bus must not be nil.
 	s.NotNil(resolver.buses[0], "encounter bus passed to resolver must not be nil")
