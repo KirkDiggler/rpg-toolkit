@@ -28,7 +28,7 @@ type AttackContext struct {
 	Weapon     *weapons.Weapon
 
 	// Original state (before any reactions)
-	OriginalAC int // Target AC before any reaction modifiers
+	OriginalAC int  // Target AC before any reaction modifiers
 	WouldHit   bool // Whether roll hits against originalAC
 
 	// Roll details (needed by phase 2 to re-evaluate hit)
