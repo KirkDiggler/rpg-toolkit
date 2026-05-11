@@ -226,9 +226,9 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 		DamageDice: "1d8", DamageType: "slashing",
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
-		ID:         "goblin-1",
-		Position:   core.Hex{Q: 1},
-		HP:         20, MaxHP: 20, AC: 12,
+		ID:       "goblin-1",
+		Position: core.Hex{Q: 1},
+		HP:       20, MaxHP: 20, AC: 12,
 		DamageDice: "1d6", DamageType: "piercing",
 	}))
 
@@ -285,9 +285,9 @@ func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRo
 		DamageDice: "1d6", DamageType: "slashing",
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
-		ID:         "goblin-1",
-		Position:   core.Hex{Q: 1},
-		HP:         10, MaxHP: 10, AC: 11,
+		ID:       "goblin-1",
+		Position: core.Hex{Q: 1},
+		HP:       10, MaxHP: 10, AC: 11,
 		DamageDice: "1d4", DamageType: "piercing",
 	}))
 
