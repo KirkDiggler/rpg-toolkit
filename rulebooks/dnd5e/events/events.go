@@ -499,6 +499,61 @@ type CharacterStabilizedEvent struct {
 }
 
 // =============================================================================
+// Reaction Trigger Events (Wave 2.11c)
+// =============================================================================
+
+// TriggerKind identifies which reaction window is firing.
+// Used by the orchestrator (rpg-api) to decide which prompt to show.
+type TriggerKind string
+
+const (
+	// TriggerKindPostHit is published after the attack chain resolves
+	// (roll + hit determination against originalAC) — the Shield window.
+	// The reactor may apply an AC bonus that retroactively turns a hit into a miss.
+	TriggerKindPostHit TriggerKind = "post_hit"
+
+	// TriggerKindMovementOA is published when a combatant leaves a threatened
+	// square — the Opportunity Attack window.
+	TriggerKindMovementOA TriggerKind = "movement_oa"
+
+	// TriggerKindPostDamage is published after damage has been applied —
+	// the Hellish Rebuke window.
+	TriggerKindPostDamage TriggerKind = "post_damage"
+)
+
+// ReactionTriggerEvent is published by condition handlers when their predicate
+// matches AND gamectx.IsReactionReady(reactorID, conditionRef) returns true.
+//
+// The chain itself runs to completion regardless; this event is additional
+// output that the orchestrator (rpg-api) reads AFTER the chain returns to
+// decide whether to push a reaction prompt to the player.
+//
+// NPC reactors never publish this event — they auto-resolve inline by
+// modifying the in-flight chain event directly.
+type ReactionTriggerEvent struct {
+	// ReactorID is the character ID of the entity that can react.
+	ReactorID string
+
+	// ConditionRef identifies the reaction (e.g. "dnd5e:conditions:shield",
+	// "dnd5e:conditions:opportunity_attack"). Matches the ref used to seed
+	// gamectx.ReactionReadinessMap.
+	ConditionRef string
+
+	// TriggerKind identifies which reaction window fired.
+	TriggerKind TriggerKind
+
+	// SourceEntity is the entity that triggered this reaction opportunity
+	// (the attacker for post-hit, the moving entity for OA, etc.).
+	SourceEntity string
+
+	// Payload carries window-specific context. The concrete type depends on
+	// TriggerKind and is documented per condition:
+	//   - TriggerKindPostHit: *AttackHitResult (from combat package)
+	//   - TriggerKindMovementOA: the entity ID string of the mover
+	Payload any
+}
+
+// =============================================================================
 // Monk Feature Events
 // =============================================================================
 
@@ -739,6 +794,13 @@ var (
 
 	// CharacterStabilizedTopic provides typed pub/sub for character stabilization events
 	CharacterStabilizedTopic = events.DefineTypedTopic[CharacterStabilizedEvent]("dnd5e.death_save.stabilized")
+
+	// ReactionTriggerTopic provides typed pub/sub for reaction trigger events.
+	// Published by condition handlers when a player reactor has a readied reaction
+	// whose predicate matched. The orchestrator (rpg-api) reads these after the
+	// chain returns to push prompts. NPC reactors do NOT publish to this topic —
+	// they apply modifiers inline.
+	ReactionTriggerTopic = events.DefineTypedTopic[ReactionTriggerEvent]("dnd5e.combat.reaction.trigger")
 )
 
 // Chain topics (for modifier chains)
