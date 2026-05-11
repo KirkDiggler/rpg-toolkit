@@ -233,6 +233,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 		AttackerDamageDice:  player.DamageDice,
 		AttackerDamageType:  player.DamageType,
 		TargetAC:            monster.AC,
+		EventBus:            e.bus,
 	})
 	if err != nil {
 		return fmt.Errorf("combat resolver: %w", err)

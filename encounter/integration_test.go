@@ -2,11 +2,13 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -151,4 +153,162 @@ func drainSub(sub *encounter.Subscription, timeout time.Duration) {
 			return
 		}
 	}
+}
+
+// --- Wave 2.11c integration tests ---
+
+// busCapturingResolver is a CombatResolver test double that records the
+// EventBus it receives on each ResolveAttack call. Used to verify the
+// encounter SDK passes the same bus instance across multiple attacks.
+type busCapturingResolver struct {
+	callCount atomic.Int32
+	buses     []dnd5events.EventBus
+	damage    int
+}
+
+func (r *busCapturingResolver) ResolveAttack(input encounter.AttackInput) (*encounter.AttackOutcome, error) {
+	r.callCount.Add(1)
+	r.buses = append(r.buses, input.EventBus)
+	return &encounter.AttackOutcome{
+		Hit:        true,
+		AttackRoll: 15,
+		TargetAC:   10,
+		Damage:     r.damage,
+		DamageType: "slashing",
+	}, nil
+}
+
+// ConditionPersistenceSuite verifies Wave 2.11c foundation:
+// - The encounter-scoped bus is the same instance across attacks.
+// - The resolver receives the bus on every call.
+// - Reaction readiness round-trips through ToData/LoadFromData.
+type ConditionPersistenceSuite struct {
+	suite.Suite
+	transport *encounter.InMemoryTransport
+	broker    *encounter.Broker
+}
+
+func TestConditionPersistenceSuite(t *testing.T) {
+	suite.Run(t, new(ConditionPersistenceSuite))
+}
+
+func (s *ConditionPersistenceSuite) SetupTest() {
+	s.transport = encounter.NewInMemoryTransport()
+	s.broker = encounter.NewBroker(s.transport)
+}
+
+func (s *ConditionPersistenceSuite) TearDownTest() {
+	_ = s.broker.Close()
+	_ = s.transport.Close()
+}
+
+// TestSlice_ConditionStatePersistsAcrossAttacks validates that the encounter
+// SDK passes the same EventBus instance to the resolver on every attack call.
+// This is the foundational guarantee that conditions Apply()'d once at
+// rehydration remain subscribed across all attacks in the encounter (enabling
+// SneakAttack.UsedThisTurn to hold for a whole turn, etc.).
+func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttacks() {
+	resolver := &busCapturingResolver{damage: 3}
+	enc := encounter.New("enc-bus-test", s.broker,
+		encounter.WithCombatResolver(resolver),
+	)
+
+	aliceSub, err := s.broker.Subscribe("enc-bus-test", "alice")
+	s.Require().NoError(err)
+	defer func() { _ = aliceSub.Close() }()
+
+	// Add combatants.
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: core.Hex{}, SightRange: 10,
+		HP: 20, MaxHP: 20, AC: 14,
+		DamageDice: "1d8", DamageType: "slashing",
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:         "goblin-1",
+		Position:   core.Hex{Q: 1},
+		HP:         20, MaxHP: 20, AC: 12,
+		DamageDice: "1d6", DamageType: "piercing",
+	}))
+
+	// Start combat — alice must go first for the test to be deterministic.
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != "char-alice" {
+		_, _, err := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+
+	// First attack.
+	s.Require().NoError(enc.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	))
+
+	// Second attack (same turn — encounter SDK does not enforce multi-attack
+	// limits; that's the resolver's job).
+	s.Require().NoError(enc.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	))
+
+	// Both calls must have gone to the resolver.
+	s.EqualValues(2, resolver.callCount.Load(), "resolver must be called for both attacks")
+
+	// Both calls must carry the same bus instance (encounter-scoped, not per-attack).
+	s.Require().Len(resolver.buses, 2)
+	s.Equal(resolver.buses[0], resolver.buses[1],
+		"encounter SDK must pass the same EventBus instance across attacks within an encounter")
+
+	// The bus must not be nil.
+	s.NotNil(resolver.buses[0], "encounter bus passed to resolver must not be nil")
+}
+
+// TestSlice_ReactionReadinessPersistsThroughRoundTrip verifies that the
+// ReactionReadiness map survives a ToData/LoadFromData cycle and that the
+// resolver receives a non-nil bus after rehydration.
+func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRoundTrip() {
+	resolver := &busCapturingResolver{damage: 2}
+	enc := encounter.New("enc-rt-test", s.broker,
+		encounter.WithCombatResolver(resolver),
+	)
+
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: core.Hex{}, SightRange: 4,
+		HP: 15, MaxHP: 15, AC: 13,
+		DamageDice: "1d6", DamageType: "slashing",
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:         "goblin-1",
+		Position:   core.Hex{Q: 1},
+		HP:         10, MaxHP: 10, AC: 11,
+		DamageDice: "1d4", DamageType: "piercing",
+	}))
+
+	// Mutate readiness before serialising.
+	s.Require().NoError(enc.SetReactionReady("char-alice", encounter.OAReactionRef, false))
+	s.Require().NoError(enc.SetReactionReady("char-alice", "dnd5e:conditions:shield", true))
+
+	// Serialize.
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+
+	// Rehydrate.
+	var restored encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &restored))
+	enc2, err := encounter.LoadFromData(&restored, s.broker,
+		encounter.WithCombatResolver(resolver),
+	)
+	s.Require().NoError(err)
+
+	// Readiness map survived.
+	s.False(enc2.IsReactionReady("char-alice", encounter.OAReactionRef),
+		"alice opted out of OA before serialise — must persist")
+	s.True(enc2.IsReactionReady("char-alice", "dnd5e:conditions:shield"),
+		"alice opted into Shield before serialise — must persist")
+	s.True(enc2.IsReactionReady("goblin-1", encounter.OAReactionRef),
+		"goblin default OA ready must survive round-trip")
+
+	// The rehydrated encounter has a non-nil bus.
+	s.NotNil(enc2.EventBus(), "rehydrated encounter must have a non-nil EventBus")
 }
