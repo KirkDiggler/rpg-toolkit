@@ -229,6 +229,7 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 			AttackerDamageDice:  mon.DamageDice,
 			AttackerDamageType:  mon.DamageType,
 			TargetAC:            targetPlayer.AC,
+			EventBus:            e.bus,
 		})
 		if err != nil {
 			return fmt.Errorf("combat resolver: %w", err)
@@ -427,6 +428,7 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 		AttackerDamageDice:  mon.DamageDice,
 		AttackerDamageType:  mon.DamageType,
 		TargetAC:            target.AC,
+		EventBus:            e.bus,
 	})
 	if err != nil {
 		return fmt.Errorf("combat resolver: %w", err)

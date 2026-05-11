@@ -5,6 +5,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 // ErrNoCombatResolver is returned by combat verbs when the encounter was
@@ -73,6 +74,17 @@ type AttackInput struct {
 	AttackerDamageDice  string
 	AttackerDamageType  string
 	TargetAC            int
+
+	// EventBus is the encounter-scoped dnd5e event bus. Wave 2.11c passes
+	// this through so the resolver implementation can fire the attack chain
+	// on the persistent bus (rather than creating a fresh per-attack bus).
+	// Conditions subscribed at character rehydration — Sneak Attack,
+	// Protection, etc. — observe attacks on this bus throughout the
+	// encounter lifetime, enabling once-per-turn semantics to hold.
+	//
+	// May be nil for resolvers that manage their own bus internally.
+	// rpg-api's Dnd5eCombatResolver MUST use this bus when non-nil.
+	EventBus dnd5events.EventBus
 }
 
 // AttackOutcome is the encounter-SDK-side result shape from ResolveAttack.

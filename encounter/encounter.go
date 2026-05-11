@@ -8,17 +8,35 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 )
+
+// OAReactionRef is the canonical reaction ref string for Opportunity Attack.
+// Wave 2.11c defines this ref so the readiness map can be seeded for melee
+// combatants. The full OpportunityAttackCondition implementation ships in
+// Wave 2.11d (#649); this constant aligns with the ref that condition will use.
+const OAReactionRef = "dnd5e:conditions:opportunity_attack"
 
 // Encounter is the transient SDK object for one ongoing encounter.
 // Constructed per-call via LoadFromData; mutated by verbs; serialized via
 // ToData and saved.
+//
+// Wave 2.11c: the encounter now owns a single dnd5e EventBus for its
+// lifetime. Conditions Apply()'d during character rehydration subscribe
+// to this bus once and stay subscribed across attacks, enabling persistent
+// state (SneakAttack.UsedThisTurn, Protection reaction consumption) to
+// accumulate correctly within a turn and reset at turn boundaries.
+// The bus is reconstructed at LoadFromData — it is not serialized.
 type Encounter struct {
 	data           *Data
 	broker         *Broker
 	roller         dice.Roller
 	resolver       CharacterResolver
 	combatResolver CombatResolver
+	// bus is the encounter-scoped dnd5e event bus. Conditions subscribe
+	// once at rehydration and remain subscribed for the encounter's lifetime.
+	// Reconstructed (not serialized) at each LoadFromData call.
+	bus dnd5events.EventBus
 }
 
 // Option configures an Encounter at construction.
@@ -107,6 +125,7 @@ func New(id core.EncounterID, b *Broker, opts ...Option) *Encounter {
 		data:   NewData(id),
 		broker: b,
 		roller: dice.NewRoller(),
+		bus:    dnd5events.NewEventBus(),
 	}
 	for _, o := range opts {
 		o(e)
@@ -115,6 +134,10 @@ func New(id core.EncounterID, b *Broker, opts ...Option) *Encounter {
 }
 
 // LoadFromData rehydrates an encounter from persisted state.
+//
+// Wave 2.11c: a fresh encounter-scoped dnd5e EventBus is created at this
+// point. Callers (typically rpg-api) then rehydrate character conditions
+// via the bus exposed by EventBus() so subscriptions persist across attacks.
 func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 	if data == nil {
 		return nil, errors.New("nil Data")
@@ -131,10 +154,18 @@ func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 	if data.PendingPrompts == nil {
 		data.PendingPrompts = make(map[core.PlayerID]*PendingPrompt)
 	}
+	if data.ReactionReadiness == nil {
+		data.ReactionReadiness = make(map[core.EntityID]map[string]bool)
+	}
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
 	}
-	e := &Encounter{data: data, broker: b, roller: dice.NewRoller()}
+	e := &Encounter{
+		data:   data,
+		broker: b,
+		roller: dice.NewRoller(),
+		bus:    dnd5events.NewEventBus(),
+	}
 	for _, o := range opts {
 		o(e)
 	}
@@ -143,6 +174,12 @@ func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 
 // AddPlayer registers a new player seat with a fresh PerceptionView.
 // The player sees their starting position and surrounding hexes immediately.
+//
+// Wave 2.11c: if the player seat carries combat stats (DamageDice set), the
+// Opportunity Attack reaction is seeded as ready-by-default. OA is a
+// free-cost reaction; players should not need to opt in per-fight.
+// Spell-cost reactions (Shield, Counterspell) are seeded false and require
+// the player to opt in via SetReactionReady.
 func (e *Encounter) AddPlayer(input PlayerInput) error {
 	if _, exists := e.data.Players[input.PlayerID]; exists {
 		return fmt.Errorf("player %q already in encounter", input.PlayerID)
@@ -161,6 +198,11 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 		DamageDice:  input.DamageDice,
 		DamageType:  input.DamageType,
 	}
+	// Seed default OA readiness for combatants. Free-cost reactions default
+	// on so players do not need to opt in every fight.
+	if input.DamageDice != "" && input.EntityID != "" {
+		e.seedOAReadiness(input.EntityID)
+	}
 	return nil
 }
 
@@ -172,6 +214,11 @@ func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) {
 
 // AddMonster registers a monster seat. Mirrors AddPlayer / AddDoor and is
 // the primary fixture verb for tests and orchestrator-driven seeding.
+//
+// Wave 2.11c: if the monster carries combat stats (DamageDice set), the
+// Opportunity Attack reaction is seeded as ready-by-default. NPCs with
+// melee capability auto-fire their OA reaction — no prompt needed for NPC
+// reactors per the wave's architectural call.
 func (e *Encounter) AddMonster(input MonsterInput) error {
 	if input.ID == "" {
 		return errors.New("monster ID required")
@@ -192,7 +239,21 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 		DamageDice:  input.DamageDice,
 		DamageType:  input.DamageType,
 	}
+	// Seed default OA readiness for combatant monsters.
+	if input.DamageDice != "" {
+		e.seedOAReadiness(input.ID)
+	}
 	return nil
+}
+
+// seedOAReadiness initialises an entity's readiness map (if needed) and
+// sets Opportunity Attack to ready=true. Idempotent — safe to call multiple
+// times for the same entity.
+func (e *Encounter) seedOAReadiness(id core.EntityID) {
+	if e.data.ReactionReadiness[id] == nil {
+		e.data.ReactionReadiness[id] = make(map[string]bool)
+	}
+	e.data.ReactionReadiness[id][OAReactionRef] = true
 }
 
 // Mode returns the encounter's current mode.
@@ -250,6 +311,70 @@ type Snapshot struct {
 
 // ToData returns the persisted shape. Caller saves this to the KV store.
 func (e *Encounter) ToData() *Data { return e.data }
+
+// EventBus returns the encounter-scoped dnd5e event bus. Callers (rpg-api)
+// use this bus to Apply() character conditions during rehydration so that
+// subscriptions survive across attacks within the encounter lifetime.
+//
+// The bus is NOT serialized — it is reconstructed fresh at each LoadFromData.
+// Condition state that must survive serialization (e.g. SneakAttack level)
+// is persisted via character.Data.Conditions JSON blobs and re-Apply()'d
+// each time the encounter is rehydrated from the KV store.
+func (e *Encounter) EventBus() dnd5events.EventBus { return e.bus }
+
+// SetReactionReady sets the readiness flag for a specific reaction on a
+// specific entity. Returns an error if the entity is not in the encounter.
+//
+// charID must be an EntityID (not a PlayerID) — the same identifier used
+// in AttackInput.AttackerID / TargetID.
+//
+// reactionRef is the canonical ref string for the reaction (e.g.
+// OAReactionRef for Opportunity Attack, or "dnd5e:conditions:shield" for
+// the Shield spell). The convention matches core.Ref.String().
+//
+// This setter is the toolkit-side implementation of the SetReactionReady RPC
+// (Wave 2.11d, #531). The RPC handler in rpg-api calls this method after
+// rehydrating the encounter from the KV store and before saving it back.
+func (e *Encounter) SetReactionReady(charID core.EntityID, reactionRef string, ready bool) error {
+	if charID == "" {
+		return errors.New("charID must not be empty")
+	}
+	if reactionRef == "" {
+		return errors.New("reactionRef must not be empty")
+	}
+	// Validate the entity exists in the encounter (player entity or monster).
+	if !e.entityExists(charID) {
+		return fmt.Errorf("entity %q not in encounter", charID)
+	}
+	if e.data.ReactionReadiness[charID] == nil {
+		e.data.ReactionReadiness[charID] = make(map[string]bool)
+	}
+	e.data.ReactionReadiness[charID][reactionRef] = ready
+	return nil
+}
+
+// IsReactionReady reports whether the named reaction is currently ready for
+// the given entity. Returns false for any unknown entity or reaction ref —
+// not-ready is the safe default (no accidental reaction fires).
+func (e *Encounter) IsReactionReady(charID core.EntityID, reactionRef string) bool {
+	m, ok := e.data.ReactionReadiness[charID]
+	if !ok {
+		return false
+	}
+	return m[reactionRef]
+}
+
+// entityExists reports whether an entity ID belongs to a player seat or
+// a monster seat in this encounter.
+func (e *Encounter) entityExists(id core.EntityID) bool {
+	for _, p := range e.data.Players {
+		if p.EntityID == id {
+			return true
+		}
+	}
+	_, isMonster := e.data.Monsters[id]
+	return isMonster
+}
 
 // nextSeq advances and returns the encounter's monotonic sequence counter.
 // Used to stamp events on publish.

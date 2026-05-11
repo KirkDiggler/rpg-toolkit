@@ -14,6 +14,9 @@ import (
 //
 // Wave 2.9 adds PendingPrompts: at most one in-flight prompt per player,
 // resolved via SubmitCheck.
+//
+// Wave 2.11c adds ReactionReadiness: per-entity, per-reaction readiness
+// flags that persist across attacks within an encounter session.
 type Data struct {
 	ID       core.EncounterID               `json:"id"`
 	Sequence uint64                         `json:"sequence"`
@@ -33,6 +36,14 @@ type Data struct {
 	// future dialogue/target-select) and cleared by SubmitCheck regardless
 	// of outcome. Omitted from the wire when empty.
 	PendingPrompts map[core.PlayerID]*PendingPrompt `json:"pending_prompts,omitempty"`
+
+	// ReactionReadiness tracks per-entity readiness for each named reaction.
+	// Keys are entity IDs; values are maps from reaction ref strings
+	// (e.g. "dnd5e:conditions:opportunity_attack") to ready booleans.
+	// Free-cost reactions (OA) default to true for melee combatants;
+	// spell-cost reactions (Shield, Counterspell) default to false.
+	// Survives ToData/LoadFromData round-trips; omitted from JSON when empty.
+	ReactionReadiness map[core.EntityID]map[string]bool `json:"reaction_readiness,omitempty"`
 }
 
 // PlayerData persists a single player seat.
@@ -112,11 +123,12 @@ type MonsterData struct {
 // ModeFreeRoam; turn-state fields remain at their zero values.
 func NewData(id core.EncounterID) *Data {
 	return &Data{
-		ID:             id,
-		Players:        make(map[core.PlayerID]*PlayerData),
-		Doors:          make(map[core.EntityID]*DoorData),
-		Monsters:       make(map[core.EntityID]*MonsterData),
-		Mode:           core.ModeFreeRoam,
-		PendingPrompts: make(map[core.PlayerID]*PendingPrompt),
+		ID:                id,
+		Players:           make(map[core.PlayerID]*PlayerData),
+		Doors:             make(map[core.EntityID]*DoorData),
+		Monsters:          make(map[core.EntityID]*MonsterData),
+		Mode:              core.ModeFreeRoam,
+		PendingPrompts:    make(map[core.PlayerID]*PendingPrompt),
+		ReactionReadiness: make(map[core.EntityID]map[string]bool),
 	}
 }

@@ -1,10 +1,154 @@
 # ADR-0027: Attack Resolution and Reactions
 
-Date: 2024-12-25
+Date: 2024-12-25 (proposed) / 2026-05-10 (accepted)
 
 ## Status
 
-Proposed
+Accepted
+
+## Confirmed by shipped code
+
+The three-phase attack model and condition-as-chain-subscriber pattern this ADR
+proposed are now load-bearing in shipped code. Promotion from Proposed to
+Accepted reflects that the seams the ADR predicted are the seams the rulebook
+actually uses:
+
+- **Chain subscription pattern (Phase 1 — RESOLVE ATTACK)** —
+  `rulebooks/dnd5e/combat/attack.go:225-235` builds a `StagedChain[AttackChainEvent]`
+  and calls `attacks.PublishWithChain(ctx, attackEvent, attackChain)` followed
+  by `Execute()`. Conditions subscribe via `AttackChain.On(bus).SubscribeWithChain(...)`
+  and add modifiers at named stages — see `conditions/sneak_attack.go` (subscribes
+  to `DamageChain`, marks eligibility, adds dice at `StageFeatures`) and
+  `conditions/fighting_style_protection.go` (subscribes to `AttackChain`, adds
+  disadvantage + records `ReactionsConsumed` at `StageFeatures`).
+- **gamectx pattern (ADR-0025) is the state-query seam** — `sneak_attack.go:221`
+  calls `gamectx.RequireRoom(ctx)` to query target position; `fighting_style_protection.go:130-152`
+  calls `gamectx.RequireCharacters(ctx)` for shield + reaction-economy lookup
+  and `gamectx.RequireRoom(ctx)` for adjacency. Conditions never bloat events;
+  they query state through gamectx at handler time.
+- **Movement chain + OA prevention primitive** —
+  `rulebooks/dnd5e/combat/movement.go:138-250` ships `MoveEntity` with a
+  `MovementChain` that conditions can modify before opportunity-attack
+  triggering. `conditions/disengaging.go:131-157` is the reference subscriber:
+  it appends to `MovementChainEvent.OAPreventionSources` at `StageConditions`,
+  and `MoveEntity` checks `IsOAPrevented()` before invoking
+  `triggerOpportunityAttack`. The OA-as-condition direction this ADR predicted
+  is partially shipped — Disengage prevents OAs as a condition; the OA *trigger*
+  itself still lives inline in `MoveEntity` rather than as a per-combatant
+  subscriber. Wave 2.11 (`rpg-project/ideas/encounter/v1alpha2/plans/11-wave-2.11-condition-driven-reactions.md`)
+  is the wave that ports the trigger to the same condition pattern.
+- **Reaction consumption inside the chain** — `AttackChainEvent.ReactionsConsumed`
+  (`rulebooks/dnd5e/events/events.go`) is a slice that subscribers append to
+  during chain execution; `combat.ResolveAttack` (`combat/attack.go:296-306`)
+  publishes one `ReactionUsedEvent` per entry after `Execute`. The "reactions
+  are subscribers + record consumption back on the event" model from this ADR
+  is the shipped shape.
+- **AttackTypeOpportunity tag is shipped** —
+  `rulebooks/dnd5e/events/events.go:181-182` defines `AttackTypeOpportunity`,
+  consumed by `combat/movement.go:360-370` (`triggerOpportunityAttack` calls
+  `combat.ResolveAttack` with `AttackType: AttackTypeOpportunity`). Conditions
+  that gate on attack type (Sentinel, Polearm Master) have a stable hook.
+
+## Amendments since proposal
+
+The ADR's intent is correct. Two specific items in the original text are stale
+relative to shipped code; they're noted here rather than rewritten so the
+ADR's narrative remains the design that drove the implementation.
+
+- **Phase 0 events (`AttackDeclaredEvent`) and Phase 2 events
+  (`AttackRolledEvent`, `AttackResolvedEvent`) are not yet published as
+  separate topics.** `combat.ResolveAttack` currently publishes one chain
+  (`AttackChain`) before the roll and emits `DamageReceivedEvent` after damage
+  is applied. The DECLARE / ROLL / DAMAGE windows the ADR describes exist
+  conceptually inside `ResolveAttack` (chain publish → roll → hit determination
+  → damage chain → damage publish) but are not externally observable as
+  reaction-window events yet. **Wave 2.11 ships the missing publish points
+  (Phase 0 declare + Phase 2 post-roll + Phase 3 pre-damage / post-damage) so
+  Sentinel / Shield / Uncanny Dodge / Hellish Rebuke have somewhere to
+  subscribe.** Until then, only Phase 1 (chain) reactions like Protection are
+  expressible.
+- **`OpportunityAttackCheckEvent` is not yet shipped as a typed topic.** The
+  OA-prevention primitive is currently the `OAPreventionSources` slice on
+  `MovementChainEvent`, mutated by chain subscribers (e.g., Disengaging). A
+  separate `OpportunityAttackCheckTopic` was sketched in
+  `docs/ideas/action-economy-history/design-toolkit.md` but did not land. The
+  shipped chain-mutation approach is sufficient for prevention; it's
+  insufficient for *triggering* OAs as conditions (the larger Wave 2.11 OA
+  port). Wave 2.11 evaluates whether to add `OpportunityAttackCheckTopic` or
+  keep the trigger inline in `MoveEntity` and just relocate the geometry +
+  reaction-resource check into a per-combatant `OpportunityAttackCondition`
+  subscriber.
+
+These amendments do not change the architectural decision; they record the
+shipped-code drift between the original proposal and today. The new ADR-0027
+is the shape Wave 2.11 builds against; the amendments call out which pieces
+Wave 2.11 has to ship to honor the full design.
+
+## Amendments since acceptance
+
+### 2026-05-10 — Discrete RPC phases instead of in-process chain pauses; opt-in reaction readiness
+
+The chain pause primitive originally implied by the three-phase model is being
+implemented as **discrete RPC phases orchestrated by the server (rpg-api)**, not
+as in-process chain pauses inside `combat.ResolveAttack`. The toolkit chain
+itself does not gain pause-resume capability; that complexity moves out of the
+toolkit and lives at the RPC boundary, where the encounter snapshot already
+persists naturally.
+
+Concretely:
+
+- `combat.ResolveAttack` is split into `ResolveAttackHit` (phase 1: chain runs
+  end-to-end, returns an `AttackContext` carrying roll, originalAC, wouldHit,
+  etc.) and `ApplyAttackOutcome` (phase 2: chain runs end-to-end with reaction
+  modifiers baked in, recomputes effective AC, applies damage if still a hit,
+  publishes outcome events).
+- Each phase is atomic. No in-flight chain state is serialized. The "pause"
+  lives between RPC calls — the server invokes phase 1, scans for
+  `ReactionTrigger` events the chain published, pushes prompts to ready
+  reactors, awaits responses via `SubmitCheck`, then invokes phase 2 with the
+  player's choice baked in.
+- Conditions still subscribe to the chain at the right window. When their
+  predicate matches AND `gamectx.IsReactionReady(charID, reactionRef)` returns
+  true, they publish a `ReactionTriggerEvent` on the encounter bus that the
+  orchestrator reads after the chain returns. The chain itself runs to
+  completion either way.
+- NPC reactors auto-resolve inline during phase 1 (the modifier is applied
+  directly to the in-flight chain event, no event published). Player reactors
+  with readied reactions emit the trigger event for the server to translate
+  into a prompt.
+
+**Reactions are opt-in via per-character readiness state.** Default: no
+prompts. The condition handler's readiness check gates the trigger event. This
+trades RAW 5e flexibility ("cast Shield reactively without pre-declaring") for
+"no constant prompt mashing" — the right call for asynchronous multiplayer
+without a DM. Default readiness varies by reaction type: free-cost reactions
+(OA) default-on for melee combatants; spell-cost reactions (Shield,
+Counterspell) default-off; class-feature reactions per-feature. Spell-cost
+reactions auto-clear after firing (one-shot); free reactions stay ready until
+canceled.
+
+**Why this beats the implied "chain pause-resume" primitive:**
+
+- Serializing in-flight chain state means serializing a mutable Go struct with
+  registered closures (chain stage handlers). Not JSON-round-trippable without
+  significant refactoring.
+- Shield's mechanic is retroactive — the hit decision already executed at the
+  time Shield triggers. Implementing this with chain-pause-and-mutate means the
+  chain has to be reversible, which is much harder than reversible RPC calls.
+- The discrete-phase split doesn't pause anything inside the chain. Each phase
+  runs end-to-end. The split is at the RPC boundary — where the snapshot
+  persistence already lives.
+- Opt-in readiness means the split rarely happens. The common case stays
+  single-phase end-to-end. When a player has a readied reaction whose
+  predicate matches, the server pays the prompt cost; otherwise the attack
+  runs as today.
+
+The wave-2.11d plan
+(`rpg-project/ideas/encounter/v1alpha2/plans/11-wave-2.11-condition-driven-reactions.md`)
+is the canonical implementation reference. The "Phase 0/1/2/3" framing in this
+ADR remains the design that drove the implementation; the amendment is on
+*how* the windows are surfaced (discrete RPC phases + ReactionTrigger event +
+gamectx-readiness predicate, not in-process chain pause).
 
 ## Context
 
