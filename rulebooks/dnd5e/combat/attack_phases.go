@@ -355,7 +355,10 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		hit = ac.TotalAttack >= effectiveAC
 	}
 
-	isCritical := ac.AttackRoll >= ac.CriticalThreshold
+	// Critical requires BOTH: roll meets the threshold AND the attack still hits.
+	// If a reaction (e.g. Shield) retroactively converts a would-be crit into a
+	// miss, Critical must be false — an attack that misses cannot deal crit damage.
+	isCritical := hit && ac.AttackRoll >= ac.CriticalThreshold
 
 	result := &AttackResult{
 		AttackRoll:      ac.AttackRoll,

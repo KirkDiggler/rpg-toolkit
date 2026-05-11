@@ -548,7 +548,8 @@ type ReactionTriggerEvent struct {
 
 	// Payload carries window-specific context. The concrete type depends on
 	// TriggerKind and is documented per condition:
-	//   - TriggerKindPostHit: *AttackHitResult (from combat package)
+	//   - TriggerKindPostHit: *combat.AttackContext (the full phase-1 result, so
+	//     the orchestrator can store it between RPC calls)
 	//   - TriggerKindMovementOA: the entity ID string of the mover
 	Payload any
 }
