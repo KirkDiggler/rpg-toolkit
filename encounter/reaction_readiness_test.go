@@ -34,15 +34,14 @@ func (s *ReactionReadinessSuite) TearDownTest() {
 	_ = s.transport.Close()
 }
 
-// addCombatPlayer is a helper that adds a player with combat stats so
-// OA default seeding fires. playerID is derived from entityID (the player
-// seat key); all assertions target the entityID, which is what the
-// readiness map indexes.
-func (s *ReactionReadinessSuite) addCombatPlayer(entityID string) {
+// addCombatPlayer adds the standard fixture combatant (alice / char-alice)
+// with full combat stats so OA default seeding fires. All tests in this
+// suite assert against the hardcoded entity ID "char-alice".
+func (s *ReactionReadinessSuite) addCombatPlayer() {
 	s.T().Helper()
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID:   core.PlayerID("player-" + entityID),
-		EntityID:   core.EntityID(entityID),
+		PlayerID:   "alice",
+		EntityID:   "char-alice",
 		Position:   core.Hex{},
 		SightRange: 4,
 		HP:         20,
@@ -71,7 +70,7 @@ func (s *ReactionReadinessSuite) addCombatMonster(id string) {
 // --- Default OA Seeding ---
 
 func (s *ReactionReadinessSuite) TestAddPlayer_WithCombatStats_SeedsOAReadiness() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	s.True(s.enc.IsReactionReady("char-alice", encounter.OAReactionRef),
 		"melee combatant should default-on for OA")
 }
@@ -109,7 +108,7 @@ func (s *ReactionReadinessSuite) TestAddMonster_WithoutCombatStats_DoesNotSeedOA
 // --- SetReactionReady ---
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_SetsTrue() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	// Initially OA is true; verify we can also set an arbitrary reaction.
 	const shieldRef = "dnd5e:conditions:shield"
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", shieldRef, true))
@@ -117,14 +116,14 @@ func (s *ReactionReadinessSuite) TestSetReactionReady_SetsTrue() {
 }
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_SetsFalse() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	// OA starts true; player can opt out.
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", encounter.OAReactionRef, false))
 	s.False(s.enc.IsReactionReady("char-alice", encounter.OAReactionRef))
 }
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_Idempotent() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", encounter.OAReactionRef, true))
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", encounter.OAReactionRef, true))
 	s.True(s.enc.IsReactionReady("char-alice", encounter.OAReactionRef))
@@ -142,7 +141,7 @@ func (s *ReactionReadinessSuite) TestSetReactionReady_EmptyCharID_ReturnsError()
 }
 
 func (s *ReactionReadinessSuite) TestSetReactionReady_EmptyRef_ReturnsError() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	err := s.enc.SetReactionReady("char-alice", "", true)
 	s.Error(err)
 }
@@ -155,7 +154,7 @@ func (s *ReactionReadinessSuite) TestIsReactionReady_UnknownEntity_ReturnsFalse(
 }
 
 func (s *ReactionReadinessSuite) TestIsReactionReady_UnknownRef_ReturnsFalse() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	s.False(s.enc.IsReactionReady("char-alice", "dnd5e:conditions:shield"),
 		"reaction not yet set should return false (safe default)")
 }
@@ -171,7 +170,7 @@ func (s *ReactionReadinessSuite) TestSetReactionReady_MonsterEntity() {
 // --- ToData / LoadFromData round-trip ---
 
 func (s *ReactionReadinessSuite) TestReactionReadiness_RoundTrip() {
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	s.addCombatMonster("goblin-1")
 	const shieldRef = "dnd5e:conditions:shield"
 	s.Require().NoError(s.enc.SetReactionReady("char-alice", shieldRef, true))
@@ -227,7 +226,7 @@ func (s *ReactionReadinessSuite) TestEventBus_SameInstanceAfterVerbs() {
 	// Use pointer identity — DeepEqual on an interface could match two
 	// structurally identical but distinct bus objects.
 	bus1 := s.enc.EventBus()
-	s.addCombatPlayer("char-alice")
+	s.addCombatPlayer()
 	bus2 := s.enc.EventBus()
 	s.Equal(
 		reflect.ValueOf(bus1).Pointer(),
