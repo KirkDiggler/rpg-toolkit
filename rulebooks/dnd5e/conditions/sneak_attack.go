@@ -20,12 +20,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// SneakAttackData is the JSON structure for persisting sneak attack condition state
+// SneakAttackData is the JSON structure for persisting sneak attack condition state.
+//
+// UsedThisTurn is persisted (not just runtime) because each Encounter.TakeAction
+// RPC call goes through LoadFromData → fresh condition instance from JSON. Without
+// persisting the once-per-turn flag, a rogue would sneak-attack on every TakeAction
+// call, breaking the once-per-turn semantic across separate RPCs in the same turn.
+// See rpg-toolkit#654 for the broader sustainable-per-turn-state pattern.
 type SneakAttackData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	Level       int       `json:"level"`
-	DamageDice  int       `json:"damage_dice"`
+	Ref          *core.Ref `json:"ref"`
+	CharacterID  string    `json:"character_id"`
+	Level        int       `json:"level"`
+	DamageDice   int       `json:"damage_dice"`
+	UsedThisTurn bool      `json:"used_this_turn"`
 }
 
 // SneakAttackCondition represents the rogue's sneak attack feature.
@@ -258,10 +265,11 @@ func (s *SneakAttackCondition) checkSneakAttackConditions(
 // ToJSON converts the condition to JSON for persistence
 func (s *SneakAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := SneakAttackData{
-		Ref:         refs.Features.SneakAttack(),
-		CharacterID: s.CharacterID,
-		Level:       s.Level,
-		DamageDice:  s.DamageDice,
+		Ref:          refs.Features.SneakAttack(),
+		CharacterID:  s.CharacterID,
+		Level:        s.Level,
+		DamageDice:   s.DamageDice,
+		UsedThisTurn: s.UsedThisTurn,
 	}
 
 	bytes, err := json.Marshal(data)
@@ -282,6 +290,7 @@ func (s *SneakAttackCondition) loadJSON(data json.RawMessage) error {
 	s.CharacterID = sneakData.CharacterID
 	s.Level = sneakData.Level
 	s.DamageDice = sneakData.DamageDice
+	s.UsedThisTurn = sneakData.UsedThisTurn
 
 	return nil
 }

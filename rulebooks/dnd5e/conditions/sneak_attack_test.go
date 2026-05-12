@@ -246,6 +246,53 @@ func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 	s.Require().Len(finalEvent.Components, 2, "Should have sneak attack after turn reset")
 }
 
+// TestSneakAttackUsedThisTurnPersistsAcrossJSONRoundTrip is the regression
+// guard for the bug fixed in this PR. Before the fix, ToJSON / loadJSON dropped
+// UsedThisTurn, so an Encounter.TakeAction RPC that did Character.LoadFromData
+// would always start with UsedThisTurn=false — letting a rogue sneak-attack on
+// every TakeAction within a turn instead of once per turn.
+func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnPersistsAcrossJSONRoundTrip() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       3,
+	})
+	sneak.UsedThisTurn = true
+
+	raw, err := sneak.ToJSON()
+	s.Require().NoError(err)
+
+	loaded := &SneakAttackCondition{}
+	err = loaded.loadJSON(raw)
+	s.Require().NoError(err)
+
+	s.True(loaded.UsedThisTurn,
+		"UsedThisTurn must survive ToJSON → loadJSON; otherwise the once-per-turn gate is silently broken across LoadFromData cycles")
+	s.Equal("rogue-1", loaded.CharacterID, "CharacterID still round-trips")
+	s.Equal(3, loaded.Level, "Level still round-trips")
+	s.Equal(2, loaded.DamageDice, "DamageDice still round-trips (level 3 → 2d6)")
+}
+
+// TestSneakAttackUsedThisTurnFalseRoundTrips guards against the inverse bug —
+// if loadJSON forgot to read the field, a fresh condition would always have
+// UsedThisTurn=false regardless of the persisted value.
+func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnFalseRoundTrips() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+	})
+	// UsedThisTurn defaults to false; explicit for the test.
+	sneak.UsedThisTurn = false
+
+	raw, err := sneak.ToJSON()
+	s.Require().NoError(err)
+
+	loaded := &SneakAttackCondition{}
+	err = loaded.loadJSON(raw)
+	s.Require().NoError(err)
+
+	s.False(loaded.UsedThisTurn, "UsedThisTurn=false must round-trip as false")
+}
+
 func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		CharacterID: "rogue-1",
