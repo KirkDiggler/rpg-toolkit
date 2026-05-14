@@ -263,6 +263,7 @@ func (s *BarbarianEncounterSuite) TestRage_ActivationAndDamageBonus() {
 		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)
 		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{8}, nil).Times(1)
 
+		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
 			AttackerID: s.barbarian.GetID(),
 			TargetID:   s.goblin.GetID(),
@@ -320,6 +321,7 @@ func (s *BarbarianEncounterSuite) TestRage_ContinuesWhenBarbarianHitsEnemy() {
 		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)
 		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{6}, nil).Times(1)
 
+		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
 			AttackerID: s.barbarian.GetID(),
 			TargetID:   s.goblin.GetID(),
@@ -663,6 +665,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(18, nil).Times(1)
 		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{10}, nil).Times(1)
 
+		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
 			AttackerID: s.barbarian.GetID(),
 			TargetID:   s.goblin.GetID(),

@@ -1127,6 +1127,7 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedStrikeEndToEnd() {
 			},
 		}
 
+		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
 		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
 			AttackerID: s.monk.GetID(),
 			TargetID:   s.goblin.GetID(),

@@ -3,7 +3,6 @@ package combat
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -153,7 +152,14 @@ type AttackResult struct {
 	Breakdown *DamageBreakdown // Detailed damage breakdown (nil if attack missed)
 }
 
-// ResolveAttack performs a complete attack resolution using the event chain system
+// ResolveAttack performs a complete attack resolution using the event chain system.
+//
+// Deprecated: ResolveAttack is a convenience wrapper for callers that do not
+// need reaction windows between the hit and damage phases. New code that needs
+// to support player reactions (Shield, Opportunity Attack prompts, etc.) should
+// call ResolveAttackHit followed by ApplyAttackOutcome with the player's
+// reaction decisions. ResolveAttack will not be removed; it delegates to both
+// discrete phases with an empty reaction set.
 //
 //nolint:gocyclo // Attack resolution requires orchestrating multiple game rules stages
 func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, error) {
@@ -161,260 +167,25 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		return nil, err
 	}
 
-	// Look up attacker from context
-	attacker, err := GetCombatantFromContext(ctx, input.AttackerID)
+	// Phase 1: run the attack chain and determine hit against original AC
+	hitResult, err := ResolveAttackHit(ctx, &ResolveAttackHitInput{
+		AttackerID: input.AttackerID,
+		TargetID:   input.TargetID,
+		Weapon:     input.Weapon,
+		EventBus:   input.EventBus,
+		Roller:     input.Roller,
+		AttackHand: input.AttackHand,
+		AttackType: input.AttackType,
+	})
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to look up attacker %s", input.AttackerID)
+		return nil, err
 	}
 
-	// Look up defender from context
-	defender, err := GetCombatantFromContext(ctx, input.TargetID)
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to look up defender %s", input.TargetID)
-	}
-
-	// Get attacker stats for attack calculations
-	attackerScores := attacker.AbilityScores()
-	proficiencyBonus := attacker.ProficiencyBonus()
-
-	// Get defender's effective AC (uses AC chain for Characters, base AC for Monsters)
-	defenderAC := GetEffectiveAC(ctx, defender)
-
-	// Track if this is an off-hand attack for the damage chain
-	isOffHandAttack := input.AttackHand == AttackHandOff
-
-	// Validate two-weapon fighting requirements for off-hand attacks
-	if isOffHandAttack {
-		if err := validateOffHandAttack(ctx, input); err != nil {
-			return nil, err
-		}
-	}
-
-	// Use provided roller or default
-	roller := input.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
-
-	result := &AttackResult{
-		DamageType: input.Weapon.DamageType,
-		TargetAC:   defenderAC,
-	}
-
-	// Step 1: Calculate base attack bonus (ability modifier + proficiency)
-	abilityMod := calculateAttackAbilityModifier(input.Weapon, attackerScores)
-	baseBonus := abilityMod + proficiencyBonus
-
-	// Step 2: Fire attack chain BEFORE the roll to collect advantage/disadvantage and modifiers
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:          input.AttackerID,
-		TargetID:            input.TargetID,
-		WeaponRef:           weaponToRef(input.Weapon),
-		IsMelee:             !input.Weapon.IsRanged(),
-		AttackType:          resolveAttackType(input.AttackType),
-		AdvantageSources:    nil,
-		DisadvantageSources: nil,
-		CancellationSources: nil,
-		AttackBonus:         baseBonus,
-		TargetAC:            defenderAC,
-		CriticalThreshold:   20, // Default threshold (can be modified by conditions)
-		ReactionsConsumed:   nil,
-	}
-
-	// Create attack chain
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(input.EventBus)
-
-	// Publish through chain to collect modifiers
-	modifiedAttackChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to publish attack chain")
-	}
-
-	// Execute chain to get final attack event with all modifiers
-	finalAttackEvent, err := modifiedAttackChain.Execute(ctx, attackEvent)
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to execute attack chain")
-	}
-
-	// Step 3: Determine advantage/disadvantage and roll
-	// D&D 5e rule: any advantage + any disadvantage = cancel out to normal roll
-	hasAdvantage := len(finalAttackEvent.AdvantageSources) > 0
-	hasDisadvantage := len(finalAttackEvent.DisadvantageSources) > 0
-
-	var attackRoll int
-	var allRolls []int
-
-	switch {
-	case hasAdvantage && hasDisadvantage:
-		// They cancel out - roll normally
-		attackRoll, err = roller.Roll(ctx, 20)
-		if err != nil {
-			return nil, rpgerr.Wrap(err, "failed to roll attack")
-		}
-		allRolls = []int{attackRoll}
-		// Clear both flags since they cancelled
-		hasAdvantage = false
-		hasDisadvantage = false
-	case hasAdvantage:
-		// D&D 5e advantage: roll 2d20, take higher
-		allRolls, err = roller.RollN(ctx, 2, 20)
-		if err != nil {
-			return nil, rpgerr.Wrap(err, "failed to roll attack with advantage")
-		}
-		attackRoll = max(allRolls[0], allRolls[1])
-	case hasDisadvantage:
-		// D&D 5e disadvantage: roll 2d20, take lower
-		allRolls, err = roller.RollN(ctx, 2, 20)
-		if err != nil {
-			return nil, rpgerr.Wrap(err, "failed to roll attack with disadvantage")
-		}
-		attackRoll = min(allRolls[0], allRolls[1])
-	default:
-		// Normal roll
-		attackRoll, err = roller.Roll(ctx, 20)
-		if err != nil {
-			return nil, rpgerr.Wrap(err, "failed to roll attack")
-		}
-		allRolls = []int{attackRoll}
-	}
-
-	result.AttackRoll = attackRoll
-	result.AllRolls = allRolls
-	result.HasAdvantage = hasAdvantage
-	result.HasDisadvantage = hasDisadvantage
-	result.IsNaturalTwenty = (attackRoll == 20)
-	result.IsNaturalOne = (attackRoll == 1)
-
-	// Update result with modified values from chain
-	result.AttackBonus = finalAttackEvent.AttackBonus
-	result.TotalAttack = attackRoll + result.AttackBonus
-
-	// Determine critical hit based on threshold (modified by conditions like Improved Critical)
-	result.Critical = attackRoll >= finalAttackEvent.CriticalThreshold
-
-	// Step 4: Publish ReactionUsedEvents for any reactions consumed during the chain
-	if len(finalAttackEvent.ReactionsConsumed) > 0 {
-		reactionTopic := dnd5eEvents.ReactionUsedTopic.On(input.EventBus)
-		for _, reaction := range finalAttackEvent.ReactionsConsumed {
-			// ReactionConsumption has same structure as ReactionUsedEvent
-			err = reactionTopic.Publish(ctx, dnd5eEvents.ReactionUsedEvent(reaction))
-			if err != nil {
-				return nil, rpgerr.Wrap(err, "failed to publish reaction used event")
-			}
-		}
-	}
-
-	// Step 5: Determine hit/miss (natural 20 always hits, natural 1 always misses)
-	switch {
-	case result.IsNaturalOne:
-		result.Hit = false
-	case result.IsNaturalTwenty:
-		result.Hit = true
-	default:
-		result.Hit = result.TotalAttack >= defenderAC
-	}
-
-	// Step 6: If hit, calculate damage
-	if result.Hit {
-		// Parse weapon damage notation
-		damagePool, err := dice.ParseNotation(input.Weapon.Damage)
-		if err != nil {
-			return nil, rpgerr.Wrap(err, fmt.Sprintf("invalid weapon damage %s", input.Weapon.Damage))
-		}
-
-		// Roll damage dice (double for crits)
-		var damageRolls []int
-		if result.Critical {
-			// Critical: roll dice twice and combine
-			damageRolls, err = rollDamageDice(ctx, damagePool, roller, 2)
-		} else {
-			// Normal: roll dice once
-			damageRolls, err = rollDamageDice(ctx, damagePool, roller, 1)
-		}
-		if err != nil {
-			return nil, err
-		}
-		result.DamageRolls = damageRolls
-
-		// Determine which ability was used
-		abilityUsed := determineAbilityUsed(input.Weapon, attackerScores)
-
-		// Build damage components for the chain
-		weaponComponent := dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceWeapon,
-			SourceRef:         weaponToRef(input.Weapon),
-			OriginalDiceRolls: damageRolls,
-			FinalDiceRolls:    damageRolls, // No rerolls yet
-			DamageType:        input.Weapon.DamageType,
-			IsCritical:        result.Critical,
-		}
-
-		abilityComponent := dnd5eEvents.DamageComponent{
-			Source:     dnd5eEvents.DamageSourceAbility,
-			SourceRef:  abilityToRef(abilityUsed),
-			FlatBonus:  abilityMod,
-			DamageType: input.Weapon.DamageType,
-			IsCritical: result.Critical,
-		}
-
-		// RESOLVE: Use shared ResolveDamage for chain processing and multipliers
-		resolveOutput, err := ResolveDamage(ctx, &ResolveDamageInput{
-			AttackerID:      input.AttackerID,
-			TargetID:        input.TargetID,
-			Components:      []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
-			IsCritical:      result.Critical,
-			HasAdvantage:    result.HasAdvantage,
-			IsOffHandAttack: isOffHandAttack,
-			AbilityModifier: abilityMod,
-			EventBus:        input.EventBus,
-			// Attack-specific fields for modifiers like Great Weapon Fighting
-			WeaponDamage: input.Weapon.Damage,
-			AbilityUsed:  abilityUsed,
-			WeaponRef:    weaponToRef(input.Weapon),
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		result.TotalDamage = resolveOutput.TotalDamage
-
-		// Use AbilityUsed from chain output - conditions like Martial Arts may change it.
-		finalAbilityUsed := abilityUsed
-		if resolveOutput.AbilityUsed != "" {
-			finalAbilityUsed = resolveOutput.AbilityUsed
-		}
-
-		// Use resolved ability modifier for DamageBonus (chain may change ability, e.g. STR -> DEX)
-		result.DamageBonus = attackerScores.Modifier(finalAbilityUsed)
-
-		// Damage can't be negative
-		if result.TotalDamage < 0 {
-			result.TotalDamage = 0
-		}
-
-		// Set breakdown from resolve output.
-		result.Breakdown = &DamageBreakdown{
-			Components:  resolveOutput.FinalComponents,
-			AbilityUsed: finalAbilityUsed,
-			TotalDamage: resolveOutput.TotalDamage,
-		}
-
-		// NOTIFY: Publish DamageReceivedEvent with proper source info
-		damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
-		err = damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
-			TargetID:   input.TargetID,
-			SourceID:   input.AttackerID,
-			SourceRef:  weaponToRef(input.Weapon),
-			Amount:     result.TotalDamage,
-			DamageType: input.Weapon.DamageType,
-		})
-		if err != nil {
-			return nil, rpgerr.Wrap(err, "failed to publish damage received event")
-		}
-	}
-
-	return result, nil
+	// Phase 2: apply outcome with no reaction modifiers
+	return ApplyAttackOutcome(ctx, &ApplyAttackOutcomeInput{
+		HitResult: hitResult,
+		Reactions: nil,
+	})
 }
 
 // rollDamageDice rolls the damage pool the specified number of times and combines results

@@ -822,6 +822,7 @@ func (s *AttackResolutionIntegrationSuite) TestRagingBarbarianHitsDodgingDefende
 		fmt.Printf("  [Attack] Total: 15 + 5 (bonus) = 20 vs AC %d → HIT\n", defender.AC())
 
 		// Resolve the attack
+		//nolint:staticcheck // intentional: this test predates Wave 2.11 and does not exercise reaction windows
 		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
 			AttackerID: "barbarian-1",
 			TargetID:   "defender-1",
@@ -896,6 +897,7 @@ func (s *AttackResolutionIntegrationSuite) TestRagingBarbarianHitsDodgingDefende
 		fmt.Println("  [Roll] 2d20 (disadvantage): 14, 8 → takes 8")
 		fmt.Printf("  [Attack] Total: 8 + 5 = 13 vs AC %d → MISS\n", defender.AC())
 
+		//nolint:staticcheck // intentional: this test predates Wave 2.11 and does not exercise reaction windows
 		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
 			AttackerID: "barbarian-2",
 			TargetID:   "defender-2",
@@ -942,6 +944,7 @@ func (s *AttackResolutionIntegrationSuite) TestRagingBarbarianHitsDodgingDefende
 		// 12 + 5 = 17 >= AC → hit
 		roller := newSequenceRoller(12, 4)
 
+		//nolint:staticcheck // intentional: this test predates Wave 2.11 and does not exercise reaction windows
 		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
 			AttackerID: "barbarian-3",
 			TargetID:   "defender-3",
@@ -1002,6 +1005,7 @@ func (s *AttackResolutionIntegrationSuite) TestRagingBarbarianHitsDodgingDefende
 		// Natural 20 on d20, then 2d8 for crit damage (7, 5)
 		roller := newSequenceRoller(20, 7, 5)
 
+		//nolint:staticcheck // intentional: this test predates Wave 2.11 and does not exercise reaction windows
 		result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
 			AttackerID: "barbarian-4",
 			TargetID:   "defender-4",
