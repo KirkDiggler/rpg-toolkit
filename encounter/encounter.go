@@ -37,6 +37,12 @@ type Encounter struct {
 	// once at rehydration and remain subscribed for the encounter's lifetime.
 	// Reconstructed (not serialized) at each LoadFromData call.
 	bus dnd5events.EventBus
+	// pendingPhasedAttacks caches the in-flight PhasedAttackContext for each
+	// reactor whose NPC-attack-triggered prompt is awaiting response. This is
+	// in-process state, not serialized — the host marshals via its rulebook
+	// adapter into PendingReactionPrompt.AttackContextJSON before saving the
+	// encounter snapshot. Wave 2.11d.
+	pendingPhasedAttacks map[core.PlayerID]*PhasedAttackContext
 }
 
 // Option configures an Encounter at construction.
@@ -156,6 +162,9 @@ func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 	}
 	if data.ReactionReadiness == nil {
 		data.ReactionReadiness = make(map[core.EntityID]map[string]bool)
+	}
+	if data.PendingReactionPrompts == nil {
+		data.PendingReactionPrompts = make(map[core.PlayerID]*PendingReactionPrompt)
 	}
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam

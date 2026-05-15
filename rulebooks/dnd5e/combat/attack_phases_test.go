@@ -218,6 +218,8 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_NoReactions_Hit() {
 	result, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
 		HitResult: hitResult,
 		Reactions: nil,
+		EventBus:  s.eventBus,
+		Roller:    s.mockRoller,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
@@ -247,6 +249,8 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_NoReactions_Miss() {
 	result, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
 		HitResult: hitResult,
 		Reactions: nil,
+		EventBus:  s.eventBus,
+		Roller:    s.mockRoller,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
@@ -289,6 +293,8 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_ACBonus_TurnsHitIntoMiss(
 	result, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
 		HitResult: hitResult,
 		Reactions: []combat.ReactionModifier{shieldMod},
+		EventBus:  s.eventBus,
+		Roller:    s.mockRoller,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
@@ -320,6 +326,8 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_ACBonus_HitStillHits() {
 	result, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
 		HitResult: hitResult,
 		Reactions: []combat.ReactionModifier{{ConditionRef: "dnd5e:conditions:shield", ACBonus: 5}},
+		EventBus:  s.eventBus,
+		Roller:    s.mockRoller,
 	})
 	s.Require().NoError(err)
 
@@ -385,6 +393,8 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_CritThresholdMet_ButReact
 		Reactions: []combat.ReactionModifier{
 			{ConditionRef: "dnd5e:conditions:shield", ACBonus: 8},
 		},
+		EventBus: s.eventBus,
+		Roller:   s.mockRoller,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
@@ -430,6 +440,8 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_ImprovedCritical_HitStill
 		Reactions: []combat.ReactionModifier{
 			{ConditionRef: "dnd5e:conditions:shield", ACBonus: 3},
 		},
+		EventBus: s.eventBus,
+		Roller:   s.mockRoller,
 	})
 	s.Require().NoError(err)
 
@@ -486,6 +498,8 @@ func (s *AttackPhasesTestSuite) TestResolveAttack_Wrapper_MatchesTwoPhase() {
 	twoPhaseResult, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
 		HitResult: hitResult,
 		Reactions: nil,
+		EventBus:  bus2,
+		Roller:    roller2,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(twoPhaseResult)
@@ -717,6 +731,16 @@ func (s *AttackPhasesTestSuite) TestApplyAttackOutcome_Validation() {
 	s.Run("nil hit result", func() {
 		_, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
 			HitResult: nil,
+			EventBus:  s.eventBus,
+		})
+		s.Error(err)
+	})
+
+	s.Run("nil event bus", func() {
+		// HitResult set but EventBus missing → Validate fails before any
+		// damage chain runs. Wave 2.11d: EventBus is required input.
+		_, err := combat.ApplyAttackOutcome(s.ctx, &combat.ApplyAttackOutcomeInput{
+			HitResult: &combat.AttackContext{AttackerID: "x", TargetID: "y"},
 		})
 		s.Error(err)
 	})

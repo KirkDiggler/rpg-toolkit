@@ -146,6 +146,20 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return uc, nil
 
+	case refs.Conditions.OpportunityAttack().ID:
+		oa := &OpportunityAttackCondition{}
+		if err := oa.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load opportunity attack condition")
+		}
+		return oa, nil
+
+	case refs.Spells.Shield().ID:
+		sh := &ShieldSpellCondition{}
+		if err := sh.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load shield spell condition")
+		}
+		return sh, nil
+
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
 	}

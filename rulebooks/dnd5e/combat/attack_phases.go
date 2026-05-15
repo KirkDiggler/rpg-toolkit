@@ -21,6 +21,13 @@ import (
 // This is the value returned by ResolveAttackHit and consumed by
 // ApplyAttackOutcome. The orchestrator (rpg-api) stores it in the encounter
 // snapshot while awaiting player reaction choices.
+//
+// Wave 2.11d: AttackContext is pure data — no live event-bus or dice-roller
+// references — so it serializes cleanly into the encounter snapshot for the
+// player-reaction RPC gap. The orchestrator persists this value across the
+// (TakeAction → wait → SubmitCheck{take_reaction} → CompleteTakeAction) flow
+// and supplies a fresh EventBus + Roller via ApplyAttackOutcomeInput at
+// phase-2 dispatch. Symmetric with ResolveAttackHitInput.
 type AttackContext struct {
 	// Identity
 	AttackerID string
@@ -49,13 +56,12 @@ type AttackContext struct {
 	// Side effects from phase 1
 	ReactionsConsumed []dnd5eEvents.ReactionConsumption
 
-	// Internal fields needed by ApplyAttackOutcome to reconstruct damage context.
-	// These are unexported from the package perspective but accessed within the same package.
-	abilityMod      int
-	abilityUsed     abilities.Ability
-	isOffHandAttack bool
-	eventBus        events.EventBus
-	roller          dice.Roller
+	// Damage-chain context — populated by ResolveAttackHit and consumed by
+	// ApplyAttackOutcome. Exported so the AttackContext is fully serializable;
+	// orchestrators should not modify these between phases.
+	AbilityMod      int
+	AbilityUsed     abilities.Ability
+	IsOffHandAttack bool
 }
 
 // ReactionModifier represents an AC or roll modification chosen by a player
@@ -122,6 +128,12 @@ func (r *ResolveAttackHitInput) Validate() error {
 }
 
 // ApplyAttackOutcomeInput provides parameters for the second discrete attack phase.
+//
+// Wave 2.11d: EventBus and Roller are passed as input fields (symmetric with
+// ResolveAttackHitInput) rather than carried inside AttackContext. This keeps
+// AttackContext serializable across the player-reaction RPC gap and gives the
+// orchestrator a single, explicit place to provide live infrastructure on the
+// resume path.
 type ApplyAttackOutcomeInput struct {
 	// HitResult is the AttackContext returned by ResolveAttackHit.
 	HitResult *AttackContext
@@ -129,6 +141,16 @@ type ApplyAttackOutcomeInput struct {
 	// Reactions is the list of modifier decisions made by reactors between
 	// phase 1 and phase 2. May be empty (no reactions, or all auto-resolved).
 	Reactions []ReactionModifier
+
+	// EventBus is required for publishing the damage-received event. The
+	// orchestrator passes the encounter-scoped bus here so subscribers (e.g.
+	// SneakAttack on the damage chain) see the event on the same bus they
+	// subscribed to during the encounter's lifetime.
+	EventBus events.EventBus
+
+	// Roller is the dice roller for damage rolls. If nil, a default roller
+	// is used (matches ResolveAttackHitInput semantics).
+	Roller dice.Roller
 }
 
 // Validate validates the input fields.
@@ -138,6 +160,9 @@ func (a *ApplyAttackOutcomeInput) Validate() error {
 	}
 	if a.HitResult == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "HitResult is nil")
+	}
+	if a.EventBus == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "EventBus is required")
 	}
 	return nil
 }
@@ -292,6 +317,33 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		}
 	}
 
+	// Wave 2.11d: publish PostAttackRollEvent so post-roll subscribers
+	// (Shield spell condition, future Uncanny Dodge) can evaluate their
+	// predicates against the actual roll value and would-hit determination.
+	// Subscribers may publish ReactionTriggerEvents on this same bus that the
+	// orchestrator reads after ResolveAttackHit returns.
+	//
+	// Implemented as a chained topic to ensure the publish-time ctx (carrying
+	// gamectx values like reaction-readiness) flows to subscribers. Subscribers
+	// typically do not modify the chain — the AC bonus from a taken Shield
+	// reaction is applied in phase 2 (ApplyAttackOutcome) via ReactionModifier.
+	postRollEvent := &dnd5eEvents.PostAttackRollEvent{
+		AttackerID:      input.AttackerID,
+		TargetID:        input.TargetID,
+		OriginalAC:      defenderAC,
+		AttackRoll:      attackRoll,
+		AttackBonus:     finalAttackEvent.AttackBonus,
+		TotalAttack:     totalAttack,
+		WouldHit:        wouldHit,
+		IsNaturalTwenty: isNatural20,
+		IsNaturalOne:    isNatural1,
+	}
+	postRollChain := events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](ModifierStages)
+	postRolls := dnd5eEvents.PostAttackRollChain.On(input.EventBus)
+	if _, pubErr := postRolls.PublishWithChain(ctx, postRollEvent, postRollChain); pubErr != nil {
+		return nil, rpgerr.Wrap(pubErr, "failed to publish post-attack-roll event")
+	}
+
 	return &AttackContext{
 		AttackerID:        input.AttackerID,
 		TargetID:          input.TargetID,
@@ -308,11 +360,9 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		HasDisadvantage:   hasDisadvantage,
 		CriticalThreshold: finalAttackEvent.CriticalThreshold,
 		ReactionsConsumed: finalAttackEvent.ReactionsConsumed,
-		abilityMod:        abilityMod,
-		abilityUsed:       determineAbilityUsed(input.Weapon, attackerScores),
-		isOffHandAttack:   isOffHandAttack,
-		eventBus:          input.EventBus,
-		roller:            roller,
+		AbilityMod:        abilityMod,
+		AbilityUsed:       determineAbilityUsed(input.Weapon, attackerScores),
+		IsOffHandAttack:   isOffHandAttack,
 	}, nil
 }
 
@@ -337,6 +387,10 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	}
 
 	ac := input.HitResult
+	roller := input.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
 
 	// Recompute effective AC with any reaction modifiers
 	effectiveAC := ac.OriginalAC
@@ -387,9 +441,9 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 
 	var damageRolls []int
 	if isCritical {
-		damageRolls, err = rollDamageDice(ctx, damagePool, ac.roller, 2)
+		damageRolls, err = rollDamageDice(ctx, damagePool, roller, 2)
 	} else {
-		damageRolls, err = rollDamageDice(ctx, damagePool, ac.roller, 1)
+		damageRolls, err = rollDamageDice(ctx, damagePool, roller, 1)
 	}
 	if err != nil {
 		return nil, err
@@ -407,8 +461,8 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 
 	abilityComponent := dnd5eEvents.DamageComponent{
 		Source:     dnd5eEvents.DamageSourceAbility,
-		SourceRef:  abilityToRef(ac.abilityUsed),
-		FlatBonus:  ac.abilityMod,
+		SourceRef:  abilityToRef(ac.AbilityUsed),
+		FlatBonus:  ac.AbilityMod,
 		DamageType: ac.Weapon.DamageType,
 		IsCritical: isCritical,
 	}
@@ -419,11 +473,11 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		Components:      []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
 		IsCritical:      isCritical,
 		HasAdvantage:    ac.HasAdvantage,
-		IsOffHandAttack: ac.isOffHandAttack,
-		AbilityModifier: ac.abilityMod,
-		EventBus:        ac.eventBus,
+		IsOffHandAttack: ac.IsOffHandAttack,
+		AbilityModifier: ac.AbilityMod,
+		EventBus:        input.EventBus,
 		WeaponDamage:    ac.Weapon.Damage,
-		AbilityUsed:     ac.abilityUsed,
+		AbilityUsed:     ac.AbilityUsed,
 		WeaponRef:       weaponToRef(ac.Weapon),
 	})
 	if err != nil {
@@ -432,7 +486,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 
 	result.TotalDamage = resolveOutput.TotalDamage
 
-	finalAbilityUsed := ac.abilityUsed
+	finalAbilityUsed := ac.AbilityUsed
 	if resolveOutput.AbilityUsed != "" {
 		finalAbilityUsed = resolveOutput.AbilityUsed
 	}
@@ -454,7 +508,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		TotalDamage: resolveOutput.TotalDamage,
 	}
 
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(ac.eventBus)
+	damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
 	if err := damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID:   ac.TargetID,
 		SourceID:   ac.AttackerID,

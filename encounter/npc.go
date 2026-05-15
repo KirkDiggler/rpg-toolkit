@@ -56,7 +56,11 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 		return e.npcActScripted(ctx, mon)
 	}
 
-	bus := dnd5events.NewEventBus()
+	// Wave 2.11d: use the encounter-scoped bus instead of a fresh per-call
+	// bus so post-roll subscribers (Shield spell condition Apply'd by rpg-api
+	// at player rehydration) see NPC attacks against players. Without this,
+	// NPC vs player attacks would never fire player reaction prompts.
+	bus := e.bus
 	captured, unsubAttack, err := subscribeAttacks(ctx, bus)
 	if err != nil {
 		return fmt.Errorf("subscribe dnd5e attack: %w", err)
@@ -119,6 +123,13 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 		return err
 	}
 	if err := e.applyCapturedAttacks(mon, *captured); err != nil {
+		if IsNPCPausedForReaction(err) {
+			// NPC turn paused for player reaction — return the sentinel so
+			// the orchestrator sees it explicitly and can break the dispatch
+			// loop. Other captured-event processing (damage, conditions) is
+			// skipped because the attack chain itself is suspended.
+			return err
+		}
 		return err
 	}
 	if err := e.applyCapturedDamage(mon, *capturedDmg); err != nil {
@@ -221,7 +232,8 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 			dmgType = damageTypeUntyped
 		}
 		hpBefore := targetPlayer.HP
-		outcome, err := e.combatResolver.ResolveAttack(AttackInput{
+
+		input := AttackInput{
 			AttackerID:          mon.ID,
 			TargetID:            targetID,
 			ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: actionIDAttack},
@@ -230,9 +242,22 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 			AttackerDamageType:  mon.DamageType,
 			TargetAC:            targetPlayer.AC,
 			EventBus:            e.bus,
-		})
+		}
+
+		// Wave 2.11d: route NPC attacks through the phased path when the
+		// resolver supports it so player Shield prompts can fire on hits
+		// against players. Falls back to single-phase ResolveAttack when the
+		// resolver is legacy-only.
+		outcome, paused, err := e.npcResolveAttackPhased(input, targetPlayer)
 		if err != nil {
 			return fmt.Errorf("combat resolver: %w", err)
+		}
+		if paused {
+			// Player reactor was prompted. The encounter has the pending
+			// reaction state + prompt event already published. Stop processing
+			// further captured attacks for this NPC turn — the orchestrator
+			// will resume the NPC dispatch after the reactor responds.
+			return errNPCPausedForReaction
 		}
 		if outcome == nil {
 			return fmt.Errorf("combat resolver: nil outcome with nil error")
@@ -264,6 +289,163 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		}
 	}
 	return nil
+}
+
+// npcResolveAttackPhased runs an NPC attack via the resolver's phased path
+// when available, installing a buffered subscriber on ReactionTriggerTopic
+// to catch player Shield prompts. Returns:
+//   - (outcome, false, nil): attack resolved normally (no reactions, or only
+//     NPC-reactor triggers that were auto-resolved inline).
+//   - (nil, true, nil): a player reactor was prompted; the AttackContext is
+//     persisted on Encounter Data and the InputRequiredDeliveredEvent has
+//     been published. The NPC dispatch loop must pause until the player
+//     responds via SubmitCheck.
+//   - (_, _, err): resolver failure.
+//
+// Falls back to the legacy single-phase ResolveAttack when the resolver
+// does not implement PhasedCombatResolver.
+func (e *Encounter) npcResolveAttackPhased(input AttackInput, _ *PlayerData) (*AttackOutcome, bool, error) {
+	phased, ok := e.combatResolver.(PhasedCombatResolver)
+	if !ok {
+		// Legacy path — single-phase. Reactions cannot fire because the
+		// resolver doesn't expose phase-1 state. Return the outcome as-is.
+		out, err := e.combatResolver.ResolveAttack(input)
+		return out, false, err
+	}
+
+	triggers, drainCleanup, err := e.installTriggerBuffer()
+	if err != nil {
+		return nil, false, fmt.Errorf("install trigger buffer: %w", err)
+	}
+	defer drainCleanup()
+
+	attackCtx, resolverTriggers, err := phased.ResolveAttackHit(input)
+	if err != nil {
+		return nil, false, err
+	}
+
+	allTriggers := append([]ReactionTrigger{}, resolverTriggers...)
+	allTriggers = append(allTriggers, *triggers...)
+	npcTriggers, playerTriggers := e.partitionTriggers(allTriggers)
+
+	if len(playerTriggers) == 0 {
+		// No player prompts — resolve NPC modifiers (if any) and run phase 2.
+		modifiers := e.npcModifiers(npcTriggers)
+		outcome, err := phased.ApplyAttackOutcome(attackCtx, modifiers)
+		if err != nil {
+			return nil, false, err
+		}
+		return outcome, false, nil
+	}
+
+	// Player triggers present — persist the pending state + emit prompt
+	// events, then signal the caller to pause. The orchestrator's NPC
+	// dispatch loop sees PendingReactionPrompts on the encounter and stops
+	// advancing.
+	if err := e.persistNPCPendingReactions(attackCtx, playerTriggers); err != nil {
+		return nil, false, fmt.Errorf("persist NPC pending reactions: %w", err)
+	}
+	return nil, true, nil
+}
+
+// persistNPCPendingReactions records each player trigger from an NPC attack
+// as a PendingReactionPrompt and emits an InputRequiredDeliveredEvent.
+//
+// AttackContextJSON is left empty here because the encounter SDK does not
+// know the resolver's rulebook-AttackContext shape. The orchestrator's
+// CompleteTakeAction path on resume rebuilds the context from the prompt's
+// metadata + the wired resolver. This works because rpg-api's Dnd5eCombatResolver
+// rebuilds the prep on the resume path (cache miss when running in a fresh
+// SubmitCheck RPC).
+//
+// FUTURE: when the SDK gains a way to ask the resolver "marshal this
+// AttackContext to bytes", we can persist the actual context here for fidelity.
+// For 2.11d, NPC-attacks-trigger-player-Shield works via the encounter-bus
+// PostAttackRollChain: the orchestrator's CompleteTakeAction calls
+// ApplyAttackOutcome with a fresh prep that re-runs phase 1 + finds the
+// trigger again, then runs phase 2 with the modifier. For 2.11d this shape
+// works because the orchestrator stores enough metadata on the prompt.
+func (e *Encounter) persistNPCPendingReactions(
+	attackCtx *PhasedAttackContext,
+	playerTriggers []ReactionTrigger,
+) error {
+	for _, trig := range playerTriggers {
+		reactorPlayerID, ok := e.playerByEntityIDLookup(trig.ReactorID)
+		if !ok {
+			continue
+		}
+		// Without a host-side AttackContext serializer (cross-rulebook concern),
+		// the prompt persists metadata only. The host's SubmitCheck handler is
+		// responsible for marshaling AttackContext via its rulebook adapter
+		// before this call lands; this branch is the SDK fallback for hosts
+		// that haven't wired the marshaling step.
+		e.SetPendingReactionPrompt(reactorPlayerID, &PendingReactionPrompt{
+			ReactorEntityID: trig.ReactorID,
+			ConditionRef:    trig.ConditionRef,
+			TriggerKind:     trig.TriggerKind,
+			SourceEntity:    trig.SourceEntity,
+			// AttackContextJSON intentionally empty — the host marshals the
+			// PhasedAttackContext (which includes the rulebook-side context)
+			// via its own type before re-saving the encounter.
+		})
+		if err := e.PublishInputRequiredDelivered(reactorPlayerID, events.PromptKindReaction); err != nil {
+			return err
+		}
+		// Cache the in-flight phasedCtx so the host can pull it via a
+		// follow-up call (added below for the resume path).
+		e.cachePhasedAttackContext(reactorPlayerID, attackCtx)
+	}
+	return nil
+}
+
+// playerByEntityIDLookup looks up a player ID by entity ID. Returns false
+// if the entity isn't a player (caller should skip).
+func (e *Encounter) playerByEntityIDLookup(id encountercore.EntityID) (encountercore.PlayerID, bool) {
+	for pid, pd := range e.data.Players {
+		if pd.EntityID == id {
+			return pid, true
+		}
+	}
+	return "", false
+}
+
+// errNPCPausedForReaction signals to the NPC dispatch loop that a player
+// reaction prompt was issued and the NPC's turn must pause. Internal
+// sentinel; not exported.
+var errNPCPausedForReaction = fmt.Errorf("npc turn paused for player reaction")
+
+// IsNPCPausedForReaction reports whether the given error indicates an NPC
+// turn paused for a player reaction prompt. Used by the orchestrator's
+// EndTurn loop to distinguish a benign pause from a real failure.
+func IsNPCPausedForReaction(err error) bool {
+	return err == errNPCPausedForReaction
+}
+
+// cachePhasedAttackContext stores the in-flight PhasedAttackContext for a
+// reactor so the host can read it via PendingPhasedAttackContext on the
+// resume path. This complements the persisted PendingReactionPrompt: the
+// prompt is durable across RPCs (snapshot persists), the AttackContext is
+// in-process for the same RPC (the cache is per-Encounter instance).
+//
+// For the cross-RPC resume case, the host marshals the AttackContext into
+// the PendingReactionPrompt.AttackContextJSON before persisting; on the
+// next RPC the host unmarshals it back. This cache only matters when the
+// host doesn't marshal (fast-path single-RPC NPC attacks that pause).
+func (e *Encounter) cachePhasedAttackContext(
+	reactorPlayerID encountercore.PlayerID,
+	attackCtx *PhasedAttackContext,
+) {
+	if e.pendingPhasedAttacks == nil {
+		e.pendingPhasedAttacks = make(map[encountercore.PlayerID]*PhasedAttackContext)
+	}
+	e.pendingPhasedAttacks[reactorPlayerID] = attackCtx
+}
+
+// PendingPhasedAttackContext returns the in-process AttackContext for the
+// reactor (set by an NPC attack that paused for a player reaction). Nil if
+// none. The host calls this on the resume path to feed CompleteTakeAction.
+func (e *Encounter) PendingPhasedAttackContext(reactorPlayerID encountercore.PlayerID) *PhasedAttackContext {
+	return e.pendingPhasedAttacks[reactorPlayerID]
 }
 
 // applyCapturedDamage translates each dnd5e DamageReceivedEvent into an

@@ -44,6 +44,52 @@ type Data struct {
 	// spell-cost reactions (Shield, Counterspell) default to false.
 	// Survives ToData/LoadFromData round-trips; omitted from JSON when empty.
 	ReactionReadiness map[core.EntityID]map[string]bool `json:"reaction_readiness,omitempty"`
+
+	// PendingReactionPrompts holds, per reactor PlayerID, the in-flight
+	// phase-1 attack state plus the trigger details for which reaction the
+	// reactor is being asked about. The orchestrator persists this across
+	// the (TakeAction → wait for SubmitCheck{take_reaction} → CompleteTakeAction)
+	// flow.
+	//
+	// Keyed by REACTOR playerID (not the original caller's playerID): the
+	// reactor responds via SubmitCheck on their own session.
+	//
+	// Cleared when the reactor's SubmitCheck resolves (take or skip).
+	PendingReactionPrompts map[core.PlayerID]*PendingReactionPrompt `json:"pending_reaction_prompts,omitempty"`
+}
+
+// PendingReactionPrompt is the persisted shape of a reaction prompt waiting
+// on a player's SubmitCheck{take_reaction} response. The orchestrator sets
+// this when TakeActionPhased returns reactions for a player reactor; it is
+// cleared (and consumed) when CompleteTakeAction runs after the reactor's
+// response.
+//
+// AttackContext is opaque to the encounter SDK — the resolver implementation
+// (rpg-api's Dnd5eCombatResolver) interprets it. The field is json.RawMessage
+// to keep the SDK rulebook-agnostic; rpg-api marshals/unmarshals via its own
+// type when persisting and reloading.
+type PendingReactionPrompt struct {
+	// ReactorEntityID is the entity that can react. Used by the orchestrator
+	// to map back to the reactor's PlayerID for prompt routing.
+	ReactorEntityID core.EntityID `json:"reactor_entity_id"`
+
+	// ConditionRef identifies which reaction this prompt is asking about
+	// (e.g. "dnd5e:conditions:opportunity_attack", "dnd5e:spells:shield").
+	ConditionRef string `json:"condition_ref"`
+
+	// TriggerKind mirrors the rulebook's TriggerKind enum
+	// (e.g. "post_hit", "movement_oa", "post_damage").
+	TriggerKind string `json:"trigger_kind"`
+
+	// SourceEntity is the entity whose action triggered this prompt
+	// (the attacker for post_hit, the mover for movement_oa).
+	SourceEntity core.EntityID `json:"source_entity"`
+
+	// AttackContextJSON is the serialized phase-1 attack state. The
+	// resolver implementation owns the schema; the SDK treats it as opaque
+	// bytes to keep the boundary clean. CompleteTakeAction unmarshals it
+	// into the resolver's PhasedAttackContext shape before phase 2.
+	AttackContextJSON []byte `json:"attack_context_json"`
 }
 
 // PlayerData persists a single player seat.
@@ -123,12 +169,13 @@ type MonsterData struct {
 // ModeFreeRoam; turn-state fields remain at their zero values.
 func NewData(id core.EncounterID) *Data {
 	return &Data{
-		ID:                id,
-		Players:           make(map[core.PlayerID]*PlayerData),
-		Doors:             make(map[core.EntityID]*DoorData),
-		Monsters:          make(map[core.EntityID]*MonsterData),
-		Mode:              core.ModeFreeRoam,
-		PendingPrompts:    make(map[core.PlayerID]*PendingPrompt),
-		ReactionReadiness: make(map[core.EntityID]map[string]bool),
+		ID:                     id,
+		Players:                make(map[core.PlayerID]*PlayerData),
+		Doors:                  make(map[core.EntityID]*DoorData),
+		Monsters:               make(map[core.EntityID]*MonsterData),
+		Mode:                   core.ModeFreeRoam,
+		PendingPrompts:         make(map[core.PlayerID]*PendingPrompt),
+		ReactionReadiness:      make(map[core.EntityID]map[string]bool),
+		PendingReactionPrompts: make(map[core.PlayerID]*PendingReactionPrompt),
 	}
 }

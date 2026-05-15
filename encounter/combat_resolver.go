@@ -42,6 +42,125 @@ type CombatResolver interface {
 	ResolveAttack(input AttackInput) (*AttackOutcome, error)
 }
 
+// PhasedCombatResolver extends CombatResolver with discrete RPC-phase verbs
+// for two-phase attack resolution. The encounter SDK uses these verbs when
+// an attack triggers reactions (Wave 2.11d).
+//
+// PhasedCombatResolver is an OPTIONAL interface — resolvers that implement
+// it enable two-phase + reaction-prompt flows. Resolvers that only implement
+// CombatResolver continue to work for single-phase attacks.
+//
+// The encounter SDK type-asserts CombatResolver to PhasedCombatResolver in
+// TakeAction; absence of the phased interface falls back to the monolithic
+// ResolveAttack call (today's behavior).
+type PhasedCombatResolver interface {
+	CombatResolver
+
+	// ResolveAttackHit runs phase 1 of an attack: rolls the d20, evaluates
+	// hit/miss against the target's original AC, and returns an opaque
+	// PhasedAttackContext that the orchestrator stores between the two phases.
+	//
+	// Side effect: condition handlers may publish ReactionTriggerEvents on
+	// the encounter bus during the chain. The encounter SDK drains those
+	// events via a buffered subscriber installed before this call and
+	// returns them to the caller alongside the context.
+	ResolveAttackHit(input AttackInput) (*PhasedAttackContext, []ReactionTrigger, error)
+
+	// ApplyAttackOutcome runs phase 2 of an attack: takes the PhasedAttackContext
+	// from phase 1 plus any reaction modifiers chosen by reactors and produces
+	// the final outcome (re-evaluating hit with modified AC, applying damage).
+	ApplyAttackOutcome(ctx *PhasedAttackContext, modifiers []ReactionModifier) (*AttackOutcome, error)
+}
+
+// PhasedAttackContext is the opaque state carried between phase 1 and phase 2
+// of a two-phase attack. The encounter SDK does NOT inspect its contents —
+// it persists it in the encounter snapshot's pending-prompt state and passes
+// it back to ApplyAttackOutcome when the reactor responds.
+//
+// Concretely the resolver implementation wraps a pointer to its rulebook's
+// native attack-context type (e.g. *combat.AttackContext for dnd5e). The
+// encounter SDK treats it as a black box.
+type PhasedAttackContext struct {
+	// Rulebook holds the resolver's native attack context. Opaque to the SDK.
+	Rulebook any
+
+	// AttackerID + TargetID are mirrored from phase-1 input so the SDK can
+	// route reaction prompts and resolve final HP changes without reaching
+	// into the opaque Rulebook payload.
+	AttackerID encountercore.EntityID
+	TargetID   encountercore.EntityID
+}
+
+// ReactionTrigger is the encounter-SDK-shaped projection of a rulebook
+// ReactionTriggerEvent. The encounter SDK SDK partitions triggers by reactor
+// (player vs NPC), surfaces player triggers to the orchestrator (rpg-api),
+// and resolves NPC triggers inline by calling back into the resolver.
+type ReactionTrigger struct {
+	// ReactorID is the entity that can react — used by rpg-api to look up
+	// the controlling player and route the InputRequired{reaction_prompt}
+	// event onto the reactor's per-viewer stream.
+	ReactorID encountercore.EntityID
+
+	// ConditionRef identifies the reaction (e.g.
+	// "dnd5e:conditions:opportunity_attack", "dnd5e:spells:shield"). Matches
+	// the canonical core.Ref string format module:type:id.
+	ConditionRef string
+
+	// TriggerKind identifies which reaction window fired. Mirrors the
+	// rulebook's TriggerKind enum (e.g. "post_hit", "movement_oa", "post_damage").
+	TriggerKind string
+
+	// SourceEntity is the entity that triggered this reaction opportunity
+	// (the attacker for post-hit, the moving entity for OA, etc.).
+	SourceEntity encountercore.EntityID
+
+	// Payload carries window-specific context, opaque to the encounter SDK.
+	// rpg-api passes it through to the reaction-modifier construction in
+	// CompleteTakeAction.
+	Payload any
+}
+
+// ReactionModifier is the encounter-SDK-shaped projection of a rulebook
+// reaction modifier produced when a reactor takes (vs skips) a reaction.
+// rpg-api builds these from take_reaction responses and passes them to
+// CompleteTakeAction; the encounter SDK forwards them to ApplyAttackOutcome.
+type ReactionModifier struct {
+	// ConditionRef identifies the reaction (e.g. "dnd5e:spells:shield").
+	ConditionRef string
+
+	// ACBonus is the AC increase applied to the target for hit re-evaluation
+	// in phase 2. Shield = +5; future reactions may set zero and modify other
+	// fields once the modifier shape grows.
+	ACBonus int
+}
+
+// TakeActionOutcome is the result returned by Encounter.TakeAction in the
+// new two-phase model. The orchestrator branches on which fields are set:
+//
+//   - Resolved=true → phase 1 + phase 2 ran inline; events were published as
+//     before. No further action required.
+//   - len(Reactions) > 0 → phase 1 published ReactionTriggerEvents for one
+//     or more player reactors. AttackContext is the in-flight phase-1 state
+//     that must be persisted on the encounter snapshot until the orchestrator
+//     calls CompleteTakeAction with the reactors' choices.
+//
+// Mutually exclusive: exactly one branch is populated per call.
+type TakeActionOutcome struct {
+	// Resolved is true when phase 1 + phase 2 ran inline (no readied reactions
+	// matched, OR all reactions were resolved by NPCs inline).
+	Resolved bool
+
+	// Reactions is non-empty when one or more player reactors have a readied
+	// reaction whose predicate matched. The orchestrator must surface each
+	// trigger as InputRequired{reaction_prompt} on the corresponding reactor's
+	// stream and call CompleteTakeAction once the reactors respond.
+	Reactions []ReactionTrigger
+
+	// AttackContext is the in-flight phase-1 state to persist between phases.
+	// Non-nil iff Reactions is non-empty.
+	AttackContext *PhasedAttackContext
+}
+
 // AttackInput is the encounter-SDK-side request shape for ResolveAttack.
 // The orchestrator's resolver implementation translates this to the
 // rulebook's native AttackInput shape (e.g., dnd5e/combat.AttackInput).
