@@ -18,6 +18,7 @@ package encounter
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
@@ -230,8 +231,8 @@ func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers
 	// caller is the attacker; the target may be either a player (cross-PvP)
 	// or a monster — Wave 2.11d only supports player → monster attacks per
 	// the existing TakeAction contract.
-	player, ok := e.playerByEntityID(attackCtx.AttackerID)
-	if !ok {
+	player := e.findPlayerByEntityID(attackCtx.AttackerID)
+	if player == nil {
 		return fmt.Errorf("attacker %q not in encounter", attackCtx.AttackerID)
 	}
 	monster, ok := e.data.Monsters[attackCtx.TargetID]
@@ -290,10 +291,18 @@ func (e *Encounter) applyAndPublishOutcome(player *PlayerData, monster *MonsterD
 //
 // Per Director B3, this is a small inline buffer — not a generalized helper.
 // If a second consumer of the pattern appears, refactor to events.BufferedSubscriber.
+//
+// Concurrency: today's bus implementation is synchronous (handlers run in the
+// publisher's goroutine), so a sync.Mutex on the buffer would be redundant.
+// We add one anyway for safety parity with the test helpers that use the same
+// pattern (opportunity_attack_test.go / shield_spell_test.go), and to future-
+// proof against a bus implementation that fans handlers out concurrently.
 func (e *Encounter) installTriggerBuffer() (*[]ReactionTrigger, func(), error) {
+	var mu sync.Mutex
 	collected := &[]ReactionTrigger{}
 	topic := dnd5eEvents.ReactionTriggerTopic.On(e.bus)
 	handler := func(_ context.Context, evt dnd5eEvents.ReactionTriggerEvent) error {
+		mu.Lock()
 		*collected = append(*collected, ReactionTrigger{
 			ReactorID:    core.EntityID(evt.ReactorID),
 			ConditionRef: evt.ConditionRef,
@@ -301,6 +310,7 @@ func (e *Encounter) installTriggerBuffer() (*[]ReactionTrigger, func(), error) {
 			SourceEntity: core.EntityID(evt.SourceEntity),
 			Payload:      evt.Payload,
 		})
+		mu.Unlock()
 		return nil
 	}
 	subID, err := topic.Subscribe(context.Background(), handler)
@@ -320,35 +330,13 @@ func (e *Encounter) installTriggerBuffer() (*[]ReactionTrigger, func(), error) {
 // the encounter; otherwise it is treated as an NPC.
 func (e *Encounter) partitionTriggers(triggers []ReactionTrigger) (npc, player []ReactionTrigger) {
 	for _, t := range triggers {
-		if e.isPlayerEntity(t.ReactorID) {
+		if e.findPlayerByEntityID(t.ReactorID) != nil {
 			player = append(player, t)
 		} else {
 			npc = append(npc, t)
 		}
 	}
 	return npc, player
-}
-
-// isPlayerEntity reports whether the given entity id refers to a player
-// (rather than a monster). Used to partition reaction triggers — NPC
-// reactors auto-resolve; player reactors are prompt-driven.
-func (e *Encounter) isPlayerEntity(id core.EntityID) bool {
-	for _, p := range e.data.Players {
-		if p.EntityID == id {
-			return true
-		}
-	}
-	return false
-}
-
-// playerByEntityID looks up the PlayerData for the given EntityID.
-func (e *Encounter) playerByEntityID(id core.EntityID) (*PlayerData, bool) {
-	for _, p := range e.data.Players {
-		if p.EntityID == id {
-			return p, true
-		}
-	}
-	return nil, false
 }
 
 // shieldRef is the canonical core.Ref string for the Shield spell. Used to
