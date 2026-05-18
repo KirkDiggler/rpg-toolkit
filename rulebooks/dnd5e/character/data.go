@@ -143,9 +143,20 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		weaponProficiencies: d.WeaponProficiencies,
 		toolProficiencies:   d.ToolProficiencies,
 		equipmentSlots:      d.EquipmentSlots,
-		bus:                 bus,
-		subscriptionIDs:     make([]string, 0),
-		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+		// Round-trip fix (#659): SpellSlots and ClassResources are written
+		// by ToData (character.go ~954-957) via maps.Clone, but were not
+		// being read back here. A finalized character round-tripping through
+		// Data lost its spell slots and class resources, breaking any
+		// consumer that gates on them — most visibly Wave 2.11d's
+		// applyReactionConditions.hasFirstLevelSpellSlot check in rpg-api
+		// that decides whether to Apply()  the Shield reaction.
+		// maps.Clone(nil) safely returns nil; consumers (hasFirstLevelSpellSlot,
+		// etc.) already handle the nil-map case.
+		spellSlots:      maps.Clone(d.SpellSlots),
+		classResources:  maps.Clone(d.ClassResources),
+		bus:             bus,
+		subscriptionIDs: make([]string, 0),
+		resources:       make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
 
 	// Deep-copy action economy state to avoid aliasing mutable Granted map

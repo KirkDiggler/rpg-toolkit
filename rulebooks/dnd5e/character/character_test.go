@@ -821,3 +821,113 @@ func (s *CharacterHitDiceTestSuite) TestSpendHitDice() {
 func TestCharacterHitDiceSuite(t *testing.T) {
 	suite.Run(t, new(CharacterHitDiceTestSuite))
 }
+
+// CharacterLoadFromDataRoundTripSuite verifies that LoadFromData reads every
+// Data field that ToData writes. Regression coverage for issue #659: SpellSlots
+// and ClassResources were written by ToData (character.go ~954-957) but
+// silently dropped by LoadFromData's constructor — a finalized character
+// round-tripping through Data emerged with empty maps.
+//
+// Wave 2.11d's rpg-api applyReactionConditions gates Shield-Apply on
+// hasFirstLevelSpellSlot(char), which reads ToData().SpellSlots. Before the
+// fix, every spellcaster rehydrated from the encounter repo had zero slots,
+// so Shield was never Apply()'d, so the Shield reaction prompt never fired
+// in production.
+type CharacterLoadFromDataRoundTripSuite struct {
+	suite.Suite
+	ctx context.Context
+	bus events.EventBus
+}
+
+// SetupTest is run before each test function to establish fresh bus + context.
+func (s *CharacterLoadFromDataRoundTripSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+}
+
+// TestSpellSlotsSurviveRoundTrip is the core regression: SpellSlots populated
+// on input Data must equal SpellSlots emitted by ToData after LoadFromData.
+func (s *CharacterLoadFromDataRoundTripSuite) TestSpellSlotsSurviveRoundTrip() {
+	in := s.minimalSpellcasterData()
+	in.SpellSlots = map[int]SpellSlotData{
+		1: {Max: 2, Used: 0},
+		2: {Max: 1, Used: 0},
+	}
+
+	char, err := LoadFromData(s.ctx, in, s.bus)
+	s.Require().NoError(err, "LoadFromData must succeed for a minimal spellcaster")
+	s.Require().NotNil(char)
+
+	out := char.ToData()
+	s.Require().NotNil(out, "ToData must not return nil after LoadFromData")
+	s.Require().NotNil(out.SpellSlots, "round-tripped SpellSlots must not be nil")
+
+	s.Equal(2, out.SpellSlots[1].Max, "level-1 slot Max must survive round-trip")
+	s.Equal(0, out.SpellSlots[1].Used, "level-1 slot Used must survive round-trip")
+	s.Equal(1, out.SpellSlots[2].Max, "level-2 slot Max must survive round-trip")
+}
+
+// TestClassResourcesSurviveRoundTrip is the partner regression: ClassResources
+// has the same shape and was dropped by the same code path.
+func (s *CharacterLoadFromDataRoundTripSuite) TestClassResourcesSurviveRoundTrip() {
+	in := s.minimalSpellcasterData()
+	in.ClassResources = map[shared.ClassResourceType]ResourceData{
+		shared.ClassResourceRage: {
+			Name:    "Rage",
+			Max:     2,
+			Current: 2,
+			Resets:  shared.ResetTypeLongRest,
+		},
+	}
+
+	char, err := LoadFromData(s.ctx, in, s.bus)
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	out := char.ToData()
+	s.Require().NotNil(out.ClassResources, "round-tripped ClassResources must not be nil")
+
+	rage, ok := out.ClassResources[shared.ClassResourceRage]
+	s.Require().True(ok, "rage class resource must survive round-trip")
+	s.Equal(2, rage.Max, "rage Max must survive round-trip")
+	s.Equal(2, rage.Current, "rage Current must survive round-trip")
+}
+
+// TestNilSpellSlots_StaysNil verifies the input-nil case: a character with
+// no SpellSlots on input must produce nil (not empty map) on output, so the
+// nil-map handling in consumers (e.g. hasFirstLevelSpellSlot) continues to
+// work correctly. maps.Clone(nil) returns nil — confirming.
+func (s *CharacterLoadFromDataRoundTripSuite) TestNilSpellSlots_StaysNil() {
+	in := s.minimalSpellcasterData()
+	in.SpellSlots = nil
+
+	char, err := LoadFromData(s.ctx, in, s.bus)
+	s.Require().NoError(err)
+
+	out := char.ToData()
+	s.Nil(out.SpellSlots, "nil input SpellSlots must round-trip as nil, not empty map")
+}
+
+// minimalSpellcasterData builds the smallest valid Data shape the test needs.
+// LoadFromData has minimal required fields beyond ID + bus; this fixture
+// covers the constructor's expected fields without bringing in equipment or
+// feature complexity.
+func (s *CharacterLoadFromDataRoundTripSuite) minimalSpellcasterData() *Data {
+	return &Data{
+		ID:               "wendy-test",
+		Name:             "Wendy",
+		Level:            1,
+		ProficiencyBonus: 2,
+		HitPoints:        8,
+		MaxHitPoints:     8,
+		ArmorClass:       12,
+		AbilityScores: shared.AbilityScores{
+			abilities.INT: 16,
+		},
+	}
+}
+
+// TestCharacterLoadFromDataRoundTripSuite runs the round-trip regression suite.
+func TestCharacterLoadFromDataRoundTripSuite(t *testing.T) {
+	suite.Run(t, new(CharacterLoadFromDataRoundTripSuite))
+}
