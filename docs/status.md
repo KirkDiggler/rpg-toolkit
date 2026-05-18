@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-04
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; needs Kirk's correction pass on any items that have already moved
+updated: 2026-05-14
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; Wave 2.11d updates verified against shipped code
 ---
 
 # rpg-toolkit: Where We Are
@@ -11,15 +11,49 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Active work
 
-**Encounter SDK walking skeleton (#622)** — Phase 2 Slice 1 of v1alpha2.
-New top-level `encounter/` module with subpackages `core` (IDs + spatial
-primitives), `events` (sealed taxonomy + AudienceSet), `perception`
-(projection functions). Sealed `EncounterEvent` interface (AWS v2 SDK
-marker pattern). Process-scoped `Broker` over a pluggable `Transport`
-(InMemoryTransport; Redis/Kafka are future). Transient `Encounter`
-aggregate with `Move` and `OpenDoor` verbs, `ToData`/`LoadFromData`
-persistence, `SnapshotFor` for stream snapshots. Stub Manhattan-radius
-LoS in `encounter/perception/`; real LoS is a future slice.
+**Wave 2.11d toolkit half landed (PR #656, 2026-05-14)** — opt-in player
+reactions through the v2 stack. Toolkit ships the SDK surface; rpg-api
+integration and web halves are next.
+
+What landed on the toolkit side:
+
+- `combat.AttackContext` is now pure data (eventBus/roller removed;
+  `AbilityMod`/`AbilityUsed`/`IsOffHandAttack` exported). JSON
+  round-trippable so the host can persist it across the player-reaction
+  RPC gap.
+- `combat.ApplyAttackOutcomeInput` carries `EventBus` + `Roller`
+  directly (symmetric with `ResolveAttackHitInput`). `EventBus` required;
+  `Roller` defaults.
+- `combat.PostAttackRollChain` typed chained-topic published in
+  `ResolveAttackHit` after `wouldHit` computation — Shield's predicate
+  subscribes here.
+- `encounter.PhasedCombatResolver` interface (optional extension to
+  `CombatResolver`); `Encounter.TakeActionPhased` + `CompleteTakeAction`
+  are the canonical orchestration entry points.
+- `Encounter.Data.PendingReactionPrompts` is the persistence shape between
+  phase 1 and phase 2; `encounter/events.InputRequiredDeliveredEvent` is
+  the single-viewer audience SDK event the translator reads to build the
+  proto payload.
+- NPC pause-on-reaction via `errNPCPausedForReaction` sentinel +
+  `IsNPCPausedForReaction(err)` helper for orchestrators.
+- Two new conditions in `rulebooks/dnd5e/conditions/`: `OpportunityAttack`
+  (MovementChain subscriber) and `Shield` (PostAttackRollChain
+  subscriber). JSON round-trip pattern is now exercised by 4 conditions.
+- Known follow-up: issue
+  [#657](https://github.com/KirkDiggler/rpg-toolkit/issues/657) tracks the
+  HOST CONTRACT smell on `PendingReactionPrompt.AttackContextJSON` (SDK
+  trusts host to populate; resolver-supplied serializer is the proper fix).
+
+**Encounter SDK walking skeleton (#622)** — Phase 2 Slice 1 of v1alpha2,
+landed earlier. New top-level `encounter/` module with subpackages `core`
+(IDs + spatial primitives), `events` (sealed taxonomy + AudienceSet),
+`perception` (projection functions). Sealed `EncounterEvent` interface
+(AWS v2 SDK marker pattern). Process-scoped `Broker` over a pluggable
+`Transport` (InMemoryTransport; Redis/Kafka are future). Transient
+`Encounter` aggregate with `Move` and `OpenDoor` verbs,
+`ToData`/`LoadFromData` persistence, `SnapshotFor` for stream snapshots.
+Stub Manhattan-radius LoS in `encounter/perception/`; real LoS is a
+future slice.
 
 Earlier active state: no open PRs as of 2026-05-02; last merge was PR #609.
 A large number of stale remote branches remain (40+) from earlier
@@ -155,6 +189,7 @@ See quality.md for grade and rationale.
 | core | High — stable foundation, clean interfaces, good tests |
 | events | Medium-high — typed topics work well; dual-bus split undocumented |
 | dice | High — well-tested including pool, lazy, modifier, notation |
+| encounter | Medium-high — discrete-phase orchestration + reaction prompts shipped in Wave 2.11d (TakeActionPhased, CompleteTakeAction, PendingReactionPrompts, InputRequiredDeliveredEvent, IsNPCPausedForReaction); HOST CONTRACT smell on AttackContextJSON tracked in #657 |
 | mechanics/conditions | Medium — good coverage for dnd5e conditions; base module has go.mod drift |
 | mechanics/resources | Medium-high — passes tests, no known gaps |
 | mechanics/effects | Medium — no suite-pattern tests; functional |
@@ -166,6 +201,8 @@ See quality.md for grade and rationale.
 | tools/selectables | Medium-high — passes, good pattern |
 | tools/spawn | Medium-high — 4-phase implementation complete; environment integration tested |
 | rulebooks/dnd5e (core) | High — character, combat, conditions, features all tested |
+| rulebooks/dnd5e/combat | High — Wave 2.11d shipped AttackContext-as-pure-data refactor + PostAttackRollChain seam; phase 1/phase 2 input symmetry is clean |
+| rulebooks/dnd5e/conditions | High — Wave 2.11d added OpportunityAttack + Shield; JSON round-trip pattern now exercised by 4 conditions (sneak attack, raging, OA, Shield) |
 | rulebooks/dnd5e/integration | High — Barbarian, Fighter, Monk, Rogue encounter tests all pass |
 | rulebooks/dnd5e/dungeon | Medium — tests present; planned to move out of rulebook |
 | items | Low — base module has no tests; validation tests pass after issue #612 fix |

@@ -75,7 +75,14 @@ actually uses:
   - **`Encounter.Data.PendingReactionPrompts`** is the persistence shape
     between the two RPCs. Keyed by reactor `PlayerID`; carries
     `AttackContextJSON` as opaque bytes (the SDK stays rulebook-agnostic;
-    the orchestrator marshals/unmarshals via `combat.AttackContext`).
+    the orchestrator marshals/unmarshals via `combat.AttackContext`). The
+    NPC-pause path writes the prompt with `AttackContextJSON: nil` and
+    relies on the host to populate it before snapshot via
+    `Encounter.PendingPhasedAttackContext(playerID)` — see the HOST
+    CONTRACT block on `persistNPCPendingReactions` and follow-up
+    issue [#657](https://github.com/KirkDiggler/rpg-toolkit/issues/657)
+    (resolver-supplied serializer callback) which would let the SDK
+    populate the bytes itself.
   - **`encounter/events.InputRequiredDeliveredEvent`** is the metadata-only
     SDK event with single-viewer audience (only the reactor receives it).
     The wire-side translator reads `PendingReactionPrompts` to build the
