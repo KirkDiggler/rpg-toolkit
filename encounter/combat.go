@@ -185,96 +185,25 @@ func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, i
 // last hostile) flips the encounter to ModeEnded and publishes
 // EncounterEndedEvent.
 //
+// Wave 2.11d: TakeAction is now a thin wrapper over TakeActionPhased that
+// returns just the error for callers that don't need reaction-prompt support.
+// A returned outcome with Reactions populated is treated as an internal-state
+// programming error here — callers that wire a PhasedCombatResolver should
+// use TakeActionPhased directly to handle reaction prompts.
+//
 // Returns ErrEncounterEnded when the encounter is in the terminal state.
 // Returns ErrNonCombatant if the player's combat snapshot
 // (HP / MaxHP / AC / DamageDice) is not populated — i.e. the seat was
 // added without combat fields. PlayerInput documents that a zero combat
 // snapshot opts the player out of combat verbs.
 func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target ActionTarget) error {
-	if e.data.Mode == core.ModeEnded {
-		return ErrEncounterEnded
-	}
-	if e.data.Mode != core.ModeTurnBased {
-		return ErrNotTurnBased
-	}
-	if len(e.data.Initiative) == 0 {
-		return ErrNoCombatants
-	}
-	player, ok := e.data.Players[playerID]
-	if !ok {
-		return fmt.Errorf("player %q not in encounter", playerID)
-	}
-	if active := e.ActiveActor(); active != player.EntityID {
-		return fmt.Errorf("%w: active=%q got=%q", ErrNotYourTurn, active, player.EntityID)
-	}
-	if ref.ID != actionIDAttack {
-		return fmt.Errorf("%w: %q", ErrUnsupportedAction, ref.ID)
-	}
-	if !isPlayerCombatant(player) {
-		return fmt.Errorf("%w: player %q missing HP/AC/DamageDice", ErrNonCombatant, playerID)
-	}
-	if target.EntityID == "" {
-		return fmt.Errorf("%w: empty target", ErrUnknownTarget)
-	}
-	monster, ok := e.data.Monsters[target.EntityID]
-	if !ok {
-		return fmt.Errorf("%w: %q", ErrUnknownTarget, target.EntityID)
-	}
-	if e.combatResolver == nil {
-		return ErrNoCombatResolver
-	}
-
-	hpBefore := monster.HP
-	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
-		AttackerID:          player.EntityID,
-		TargetID:            target.EntityID,
-		ActionRef:           toolkitRef(ref),
-		AttackerAttackBonus: player.AttackBonus,
-		AttackerDamageDice:  player.DamageDice,
-		AttackerDamageType:  player.DamageType,
-		TargetAC:            monster.AC,
-		EventBus:            e.bus,
-	})
+	outcome, err := e.TakeActionPhased(playerID, ref, target)
 	if err != nil {
-		return fmt.Errorf("combat resolver: %w", err)
-	}
-	if outcome == nil {
-		// Defensive: a well-behaved CombatResolver returns either a non-nil
-		// outcome or a non-nil error per the interface contract. Guarding
-		// here keeps a misbehaving implementation from panicking the verb.
-		return fmt.Errorf("combat resolver: nil outcome with nil error")
-	}
-	if outcome.Hit {
-		monster.HP -= outcome.Damage
-		if monster.HP < 0 {
-			monster.HP = 0
-		}
-	}
-
-	damageType := outcome.DamageType
-	if damageType == "" {
-		damageType = player.DamageType
-	}
-	if damageType == "" {
-		damageType = damageTypeUntyped
-	}
-	if err := e.publishAttackOutcome(
-		player.EntityID, target.EntityID, outcome,
-		monster.HP, monster.MaxHP, damageType,
-		player.View.Position, monster.Position,
-	); err != nil {
 		return err
 	}
-	// Fire the death + removal + encounter-end chain only on the
-	// HP transition (>0 → 0). Re-attacking an already-dead monster
-	// (which can't happen today since dead monsters are spliced
-	// out, but the gate is cheap insurance for future paths) does
-	// NOT re-fire death events. killEntity also runs the
-	// encounter-end predicate which may transition mode to ModeEnded.
-	if outcome.Hit && hpBefore > 0 && monster.HP == 0 {
-		if err := e.killEntity(target.EntityID, player.EntityID); err != nil {
-			return err
-		}
+	if outcome != nil && len(outcome.Reactions) > 0 {
+		return fmt.Errorf("TakeAction: reactions pending but caller did not use TakeActionPhased; " +
+			"use TakeActionPhased to handle reaction prompts")
 	}
 	return nil
 }

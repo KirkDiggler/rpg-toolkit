@@ -525,11 +525,13 @@ const (
 // matches AND gamectx.IsReactionReady(reactorID, conditionRef) returns true.
 //
 // The chain itself runs to completion regardless; this event is additional
-// output that the orchestrator (rpg-api) reads AFTER the chain returns to
-// decide whether to push a reaction prompt to the player.
+// output that the orchestrator (rpg-api) reads AFTER the chain returns.
 //
-// NPC reactors never publish this event — they auto-resolve inline by
-// modifying the in-flight chain event directly.
+// Wave 2.11d: per Director ruling, BOTH player AND NPC reactors publish this
+// event. The orchestrator (encounter SDK wrapper) iterates the buffered
+// triggers, partitions by reactor type, and either resolves NPC reactions
+// inline or surfaces player reactions for prompt-driven response. Re-entrant
+// chain calls from inside condition handlers are explicitly NOT used.
 type ReactionTriggerEvent struct {
 	// ReactorID is the character ID of the entity that can react.
 	ReactorID string
@@ -548,10 +550,55 @@ type ReactionTriggerEvent struct {
 
 	// Payload carries window-specific context. The concrete type depends on
 	// TriggerKind and is documented per condition:
-	//   - TriggerKindPostHit: *combat.AttackContext (the full phase-1 result, so
-	//     the orchestrator can store it between RPC calls)
-	//   - TriggerKindMovementOA: the entity ID string of the mover
+	//   - TriggerKindPostHit: PostAttackRollEvent (the post-roll snapshot;
+	//     the AttackContext lives on the resolver side and is correlated by
+	//     attacker+target)
+	//   - TriggerKindMovementOA: MovementChainEvent (read-only copy of the
+	//     move event so the orchestrator knows mover, from/to positions)
 	Payload any
+}
+
+// PostAttackRollEvent is published by ResolveAttackHit AFTER the d20 has been
+// rolled and wouldHit has been determined against the original AC, but BEFORE
+// the AttackContext is returned to the caller.
+//
+// This is the subscription point for reactions whose predicate depends on the
+// roll value and the would-hit determination — most notably Shield, which
+// only fires when the attack would hit AND a +5 AC bonus would deflect it.
+//
+// Subscribers receive a read-only snapshot. They cannot mutate the in-flight
+// roll — the AC modifier is applied in phase 2 (ApplyAttackOutcome) via
+// ReactionModifier when the reactor takes the reaction. Subscribers may
+// publish ReactionTriggerEvents to surface a player prompt or signal the
+// orchestrator that an NPC auto-resolve modifier should be applied.
+type PostAttackRollEvent struct {
+	// AttackerID is the entity making the attack.
+	AttackerID string
+
+	// TargetID is the entity being attacked.
+	TargetID string
+
+	// OriginalAC is the target's effective AC against this attack BEFORE any
+	// reaction modifier (Shield etc.) is applied.
+	OriginalAC int
+
+	// AttackRoll is the d20 result (after advantage/disadvantage resolution).
+	AttackRoll int
+
+	// AttackBonus is the total bonus added to the roll.
+	AttackBonus int
+
+	// TotalAttack is AttackRoll + AttackBonus.
+	TotalAttack int
+
+	// WouldHit is true if TotalAttack >= OriginalAC (with natural 1/20 rules).
+	WouldHit bool
+
+	// IsNaturalTwenty is true if the natural d20 was 20 (always hits).
+	IsNaturalTwenty bool
+
+	// IsNaturalOne is true if the natural d20 was 1 (always misses).
+	IsNaturalOne bool
 }
 
 // =============================================================================
@@ -797,12 +844,28 @@ var (
 	CharacterStabilizedTopic = events.DefineTypedTopic[CharacterStabilizedEvent]("dnd5e.death_save.stabilized")
 
 	// ReactionTriggerTopic provides typed pub/sub for reaction trigger events.
-	// Published by condition handlers when a player reactor has a readied reaction
-	// whose predicate matched. The orchestrator (rpg-api) reads these after the
-	// chain returns to push prompts. NPC reactors do NOT publish to this topic —
-	// they apply modifiers inline.
+	// Published by condition handlers when a reactor has a readied reaction
+	// whose predicate matched. The orchestrator (encounter SDK wrapper) reads
+	// these after the chain returns and either resolves NPC reactions inline
+	// or surfaces player reactions for prompt-driven response (Wave 2.11d).
 	ReactionTriggerTopic = events.DefineTypedTopic[ReactionTriggerEvent]("dnd5e.combat.reaction.trigger")
 )
+
+// PostAttackRollChain is a chained topic published by combat.ResolveAttackHit
+// AFTER the d20 has been rolled and wouldHit has been computed, BEFORE the
+// AttackContext is returned. The Shield spell condition subscribes here to
+// publish a ReactionTriggerEvent when a hit-but-deflectable attack lands on
+// a wizard with Shield readied.
+//
+// Why a chain topic? The chained-topic pattern propagates the publish-time
+// context to subscribers (carrying gamectx values like reaction-readiness
+// and room). Typed topics in rpg-toolkit do not propagate context, which
+// would cause IsReactionReady to read a stale empty context. Subscribers
+// here typically do NOT modify the chain — they inspect the event and
+// publish side-effect ReactionTriggerEvents. The chain stage is unused
+// (ModifierStages provides the slot machinery; subscribers return the chain
+// unchanged).
+var PostAttackRollChain = events.DefineChainedTopic[*PostAttackRollEvent]("dnd5e.combat.attack.post_roll")
 
 // Chain topics (for modifier chains)
 var (

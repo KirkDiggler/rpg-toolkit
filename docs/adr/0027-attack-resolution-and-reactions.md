@@ -48,6 +48,53 @@ actually uses:
   consumed by `combat/movement.go:360-370` (`triggerOpportunityAttack` calls
   `combat.ResolveAttack` with `AttackType: AttackTypeOpportunity`). Conditions
   that gate on attack type (Sentinel, Polearm Master) have a stable hook.
+- **Discrete-phase orchestration shipped (Wave 2.11d, 2026-05-14)** — the
+  2026-05-10 amendment described the discrete RPC phase model conceptually;
+  Wave 2.11d ships the load-bearing shape. Specifically:
+  - **`combat.AttackContext` is JSON-serializable.** `eventBus` and `roller`
+    are no longer carried inside the context; `abilityMod`/`abilityUsed`/
+    `isOffHandAttack` are now exported as `AbilityMod`/`AbilityUsed`/
+    `IsOffHandAttack`. The orchestrator persists the context across the
+    player-reaction RPC gap (TakeAction → SubmitCheck{take_reaction} →
+    CompleteTakeAction) without needing reattach helpers.
+  - **`combat.ApplyAttackOutcomeInput` carries `EventBus` + `Roller` directly.**
+    Symmetric with `ResolveAttackHitInput`. The orchestrator supplies these
+    on the resume path from the encounter-scoped bus + cfg roller.
+    `EventBus` is required at validation time; `Roller` is optional (defaults
+    to `dice.NewRoller()`).
+  - **`combat.PostAttackRollChain` is the post-roll subscription seam.**
+    `ResolveAttackHit` publishes a `PostAttackRollEvent` after the d20 has
+    been rolled and `wouldHit` computed but before the `AttackContext`
+    returns. Implemented as a chained topic (rather than a typed topic) so
+    the publish-time context (carrying `gamectx.WithReactionReadiness` etc.)
+    propagates to subscribers. Shield's predicate runs here.
+  - **`encounter.PhasedCombatResolver`** (optional extension to
+    `CombatResolver`) exposes `ResolveAttackHit` + `ApplyAttackOutcome` to
+    the encounter SDK. The SDK's `Encounter.TakeActionPhased` +
+    `CompleteTakeAction` are the canonical orchestration entry points.
+  - **`Encounter.Data.PendingReactionPrompts`** is the persistence shape
+    between the two RPCs. Keyed by reactor `PlayerID`; carries
+    `AttackContextJSON` as opaque bytes (the SDK stays rulebook-agnostic;
+    the orchestrator marshals/unmarshals via `combat.AttackContext`). The
+    NPC-pause path writes the prompt with `AttackContextJSON: nil` and
+    relies on the host to populate it before snapshot via
+    `Encounter.PendingPhasedAttackContext(playerID)` — see the HOST
+    CONTRACT block on `persistNPCPendingReactions` and follow-up
+    issue [#657](https://github.com/KirkDiggler/rpg-toolkit/issues/657)
+    (resolver-supplied serializer callback) which would let the SDK
+    populate the bytes itself.
+  - **`encounter/events.InputRequiredDeliveredEvent`** is the metadata-only
+    SDK event with single-viewer audience (only the reactor receives it).
+    The wire-side translator reads `PendingReactionPrompts` to build the
+    proto payload.
+  - **NPC pause-on-reaction.** `Encounter.NPCAct` uses the encounter-scoped
+    bus + phased path; when a player reactor has a triggered prompt the
+    NPC's turn pauses via the `errNPCPausedForReaction` sentinel
+    (`IsNPCPausedForReaction` helper for orchestrators).
+
+  See `rulebooks/dnd5e/conditions/opportunity_attack.go` and
+  `shield_spell.go` for the canonical reaction-condition implementations
+  this surface enables.
 
 ## Amendments since proposal
 

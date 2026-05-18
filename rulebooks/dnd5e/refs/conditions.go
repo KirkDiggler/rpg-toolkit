@@ -39,6 +39,11 @@ var (
 	conditionDodging     = &core.Ref{Module: Module, Type: TypeConditions, ID: "dodging"}
 	conditionDisengaging = &core.Ref{Module: Module, Type: TypeConditions, ID: "disengaging"}
 
+	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
+	// subscribe to the appropriate chain and publish ReactionTriggerEvents
+	// when their predicate matches AND gamectx.IsReactionReady returns true.
+	conditionOpportunityAttack = &core.Ref{Module: Module, Type: TypeConditions, ID: "opportunity_attack"}
+
 	// Standard D&D 5e Conditions
 	conditionBlinded       = &core.Ref{Module: Module, Type: TypeConditions, ID: "blinded"}
 	conditionCharmed       = &core.Ref{Module: Module, Type: TypeConditions, ID: "charmed"}
@@ -89,6 +94,12 @@ func (n conditionsNS) FightingStyleTwoWeaponFighting() *core.Ref {
 // Turn-based conditions (from actions)
 func (n conditionsNS) Dodging() *core.Ref     { return conditionDodging }
 func (n conditionsNS) Disengaging() *core.Ref { return conditionDisengaging }
+
+// OpportunityAttack returns the ref for the OpportunityAttackCondition
+// applied by default to every melee combatant. The condition subscribes to
+// MovementChain and publishes a ReactionTriggerEvent when an enemy leaves
+// the holder's threatened reach AND the holder has the OA reaction readied.
+func (n conditionsNS) OpportunityAttack() *core.Ref { return conditionOpportunityAttack }
 
 // Standard D&D 5e Conditions
 func (n conditionsNS) Blinded() *core.Ref       { return conditionBlinded }

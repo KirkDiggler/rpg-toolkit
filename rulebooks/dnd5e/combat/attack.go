@@ -185,6 +185,8 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	return ApplyAttackOutcome(ctx, &ApplyAttackOutcomeInput{
 		HitResult: hitResult,
 		Reactions: nil,
+		EventBus:  input.EventBus,
+		Roller:    input.Roller,
 	})
 }
 

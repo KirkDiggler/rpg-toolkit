@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit quality scorecard
 description: Per-module grade with rationale — graded from code read, test run, and go.mod inspection 2026-05-02
-updated: 2026-05-04
-confidence: medium — first-pass grades from read-through and live test run; no coverage tooling run; should be reviewed by Kirk
+updated: 2026-05-14
+confidence: medium — first-pass grades from read-through and live test run; Wave 2.11d grades from shipped-code verification; no coverage tooling run
 ---
 
 # Quality scorecard
@@ -41,37 +41,51 @@ polluting function signatures" problem. Dependency on events and core is appropr
 Pinned to old `events v0.1.1` and `core v0.1.0` — no replace directives, but the
 version spread across modules makes it hard to know what "current game" means.
 
-### encounter — B (slice 1)
+### encounter — B+ (Wave 2.11d, was B at slice 1)
 
-New top-level module landed in PR #622 (walking skeleton). Sealed
+Original first slice landed in PR #622 (walking skeleton): sealed
 `EncounterEvent` taxonomy via AWS v2 SDK marker pattern; process-scoped
 `Broker` over a pluggable `Transport`; transient `Encounter` aggregate with
 `Move`/`OpenDoor` verbs and `ToData`/`LoadFromData` persistence.
 
-Subpackages:
+**Wave 2.11d (PR #656) added the combat-orchestration surface that this
+module needed to carry encounter sessions end-to-end through reactions.**
+The discrete-phase architecture replaces the implied chain-pause primitive
+with `TakeActionPhased` + `CompleteTakeAction` SDK verbs, the
+`PhasedCombatResolver` extension interface, and `PendingReactionPrompts`
+persistence between the two RPC phases. NPC turns pause via the
+`errNPCPausedForReaction` sentinel (`IsNPCPausedForReaction` helper for
+hosts). The `InputRequiredDeliveredEvent` (metadata-only, single-viewer
+audience) is the bus signal hosts translate into the proto reaction
+prompt.
+
+Subpackages (unchanged from slice 1):
 
 - `encounter/core` — identity primitives (EncounterID, PlayerID, EntityID)
   + spatial primitives (Hex, HexSet) with custom `HexSet` JSON (struct map
   keys can't serialize via the default codec). Hex/HexSet may move to
   `tools/spatial` in a future slice.
-- `encounter/events` — three concrete events (Move, HexRevealed,
-  DoorOpened), each with `MarshalJSON`/`UnmarshalJSON` so unexported
-  `encID`/`seq` round-trip cleanly. Also holds `AudienceSet` (event-routing
-  concept).
+- `encounter/events` — concrete events (Move, HexRevealed, DoorOpened,
+  Wave 2.11d adds `InputRequiredDelivered`), each with
+  `MarshalJSON`/`UnmarshalJSON` so unexported `encID`/`seq` round-trip
+  cleanly. Also holds `AudienceSet` (event-routing concept).
 - `encounter/perception` — pure `ProjectMove`/`ProjectDoorOpen` over
   Manhattan-radius stub LoS.
 - `encounter` (top-level) — Encounter aggregate, Broker (with `sync.WaitGroup`
   for clean shutdown — no double-close races), Transport, InMemoryTransport,
-  JSON codec.
+  JSON codec, **Wave 2.11d** combat orchestration (combat.go,
+  combat_phased.go, combat_resolver.go, npc.go pause handling).
 
-Tests cover: HexSet JSON round-trip, sealed-interface assertions, audience
-filtering, broker close races, Move/OpenDoor verb behavior, end-to-end
-integration scenarios (move + door + persistence round-trip + sequence
-monotonicity).
+Wave 2.11d tests cover: phased attack inline path, player-reaction pause +
+resume, NPC-paused-for-reaction propagation, legacy `CombatResolver`-only
+fallback, buffered subscriber drain pattern.
 
-Grade B for first slice — narrow scope by design; grade rises as combat
-verbs (Attack, ActivateFeature) and real LoS land in future slices. No
-coverage tooling run yet.
+Grade B+ for the combined surface — discrete-phase orchestration is a
+meaningful architectural surface addition that lifts the module above
+"walking skeleton." Grade is held back from A by the HOST CONTRACT smell
+on `PendingReactionPrompt.AttackContextJSON` (issue #657 — SDK trusts
+host to populate the bytes; resolver-supplied serializer would close it)
+and by no coverage tooling run yet.
 
 ### events — B+
 
@@ -234,15 +248,61 @@ Known gaps that keep it from A:
 4. **`combatabilities` dash, disengage, and dodge** are tested but `move.go` is
    tested minimally — no test for stopping reasons or multi-leg paths.
 
-### rulebooks/dnd5e/combat — A-
+### rulebooks/dnd5e/combat — A (Wave 2.11d, was A-)
 
 The combat pipeline (AC, attack, damage, healing, movement, action economy,
 turn manager) is thoroughly tested. `integration_test.go` and
 `combatant_dirty_test.go` test cross-cutting concerns. `breakdown_test.go` ensures
 the rich breakdown format required by the Boundary Rule is produced. The two-weapon
 fighting test is its own file. Copilot review feedback has been addressed in recent
-PRs. Only gap: no test for simultaneous multi-combatant AC resolution under
-conditions.
+PRs.
+
+**Wave 2.11d (PR #656) bumps this to A.** `combat.AttackContext` was
+refactored from a struct-with-closures (`eventBus`, `roller`) to pure
+data — JSON round-trippable, exported `AbilityMod`/`AbilityUsed`/
+`IsOffHandAttack`. `ApplyAttackOutcomeInput` carries `EventBus` + `Roller`
+directly, giving phase 1 / phase 2 input symmetry. The new
+`PostAttackRollChain` typed topic publishes in `ResolveAttackHit` after
+the d20 has been rolled and `wouldHit` computed — the subscription seam
+for would-hit reaction conditions (Shield). `attack_phases_test.go` covers
+the new contract including a nil-bus validation case. Net: a meaningful
+cleanup that removes a serializability foot-gun and adds a documented
+extension point.
+
+Remaining gap: no test for simultaneous multi-combatant AC resolution
+under conditions.
+
+### rulebooks/dnd5e/conditions — B+ (Wave 2.11d, was rolled into rulebooks/dnd5e B+)
+
+Broken out as its own grade now that Wave 2.11d ships the second pair of
+chain-subscribing reaction conditions and the JSON round-trip pattern is
+exercised by enough conditions to validate it as a pattern (not a
+one-off).
+
+Conditions implementing the typed-data-JSON pattern (per CLAUDE.md
+"Feature/Condition Serialization Pattern"):
+
+- `RagingCondition` (Barbarian) — original reference impl, AttackChain
+  subscriber.
+- `SneakAttackCondition` (Rogue) — DamageChain subscriber, marks
+  eligibility + adds dice.
+- `OpportunityAttackCondition` (Wave 2.11d) — MovementChain subscriber,
+  publishes `ReactionTriggerEvent` when an enemy leaves a threatened
+  square.
+- `ShieldSpellCondition` (Wave 2.11d) — PostAttackRollChain subscriber,
+  publishes `ReactionTriggerEvent` when the rolled attack total falls in
+  the [AC, AC+4] band.
+
+Wave 2.11d tests cover OA predicate + JSON round-trip + geometry,
+Shield predicate gates + JSON round-trip. The two new conditions also
+exercise the `gamectx.IsReactionReady(charID, reactionRef)` opt-in
+readiness gate — first conditions to use it.
+
+Grade B+ rather than A because the loader (`conditions/loader.go`) is
+still a hand-maintained switch over ref values rather than a registry.
+Each new condition adds a case, and a missed case fails silently as
+"unknown ref." Acceptable for a 4-condition surface; will need to
+reconsider as the count grows.
 
 ---
 
@@ -265,15 +325,20 @@ Held back from B by the absence of any tests at the base-module level.
 - **C** — meaningful gap: missing tests for non-trivial logic, or known regression
 - **D** — tests broken or absent for load-bearing code; blocked from CI passing
 
-## Grade distribution (2026-05-02)
+## Grade distribution (2026-05-14, post Wave 2.11d)
 
 | Grade | Modules |
 |---|---|
 | A / A- | core, rpgerr, dice, rulebooks/dnd5e/combat |
-| B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e |
+| B+ | game, events, encounter, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
 | B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
 | B- | mechanics/spells |
 | C | mechanics/features, items |
+
+Wave 2.11d moves: `encounter` B → B+ (discrete-phase orchestration
+surface), `rulebooks/dnd5e/combat` A- → A (AttackContext-as-pure-data +
+PostAttackRollChain), `rulebooks/dnd5e/conditions` broken out as own
+grade at B+ (4-condition pattern validation).
 
 ## How to use this doc
 

@@ -1,8 +1,8 @@
 ---
 name: rulebooks/dnd5e module
 description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 31 sub-packages (character/ alone in 24 files)
-updated: 2026-05-04
-confidence: high — verified by directory listing, grep over public symbols, and rpg-api import-graph audit 049
+updated: 2026-05-14
+confidence: high — verified by directory listing, grep over public symbols, rpg-api import-graph audit 049, and Wave 2.11d shipped-code verification
 ---
 
 # rulebooks/dnd5e module
@@ -197,6 +197,118 @@ The chain stages (`StageBase`, `StageFeatures`, `StageConditions`,
 `StageEquipment`, `StageFinal`) are defined in
 `rulebooks/dnd5e/combat/stages.go`. See `events.md` for how `StagedChain[T]`
 and `ChainedTopic[T]` cooperate to drive the chain.
+
+### combat.AttackContext as pure data (Wave 2.11d)
+
+`combat.AttackContext` started as a struct that carried both attack-state
+(`AbilityMod`, `AbilityUsed`, `IsOffHandAttack`, etc.) and the
+infrastructure it needed to apply outcomes (`eventBus`, `roller`). That
+shape was convenient for the in-process path but blocked persistence
+across an RPC gap: the bus is a process-scoped Go struct, not something
+serializable.
+
+Wave 2.11d (PR #656) split the data from the infrastructure:
+
+- `AttackContext` is now pure data — eventBus and roller are gone;
+  `AbilityMod` / `AbilityUsed` / `IsOffHandAttack` are exported so the
+  context round-trips through `json.Marshal` / `json.Unmarshal` cleanly.
+- The two-phase input symmetry is enforced by signature:
+  `ResolveAttackHitInput` and `ApplyAttackOutcomeInput` both carry
+  `EventBus` (required) + `Roller` (defaults to `dice.NewRoller()`). The
+  host supplies them on each phase from the encounter-scoped bus + cfg
+  roller. The orchestrator never has to plumb infrastructure through the
+  serialized context.
+
+The cleanup let the SDK's `Encounter.PendingReactionPrompts` shape carry
+`AttackContextJSON []byte` between phase 1 and phase 2 without any
+custom marshaling logic at the rulebook layer.
+
+### combat.PostAttackRollChain — the post-roll subscription seam (Wave 2.11d)
+
+Wave 2.11d introduced a new typed chained-topic in
+`rulebooks/dnd5e/events/events.go`:
+
+```go
+// PostAttackRollChain publishes after the d20 has been rolled and
+// wouldHit has been computed in ResolveAttackHit, but before
+// AttackContext returns to the orchestrator. Subscribers see the raw
+// roll, modifiers, target AC, and the boolean wouldHit; they can mark
+// the event for reaction-prompt fan-out at the SDK layer.
+var PostAttackRollChain = events.NewChainedTopic[PostAttackRollEvent]("combat.post_attack_roll")
+```
+
+The chained-topic form (rather than a plain typed topic) was deliberate:
+the publish-time `context.Context` carries `gamectx.WithReactionReadiness`
+that subscribers need to evaluate predicates against (e.g., Shield's
+"would this make me miss?" gate runs against the current reaction
+readiness for the target). A flat topic would lose the chain context.
+
+Shield's predicate subscribes here; future "post-roll" reactions
+(Lucky-style reroll, Cutting Words) would attach to the same seam.
+
+## rulebooks/dnd5e/conditions — reaction conditions (Wave 2.11d)
+
+Wave 2.11d added two reaction conditions that round out the chain-as-reaction-window pattern this rulebook has been building toward since
+ADR-0027 was promoted to Accepted:
+
+### conditions.OpportunityAttackCondition
+
+`rulebooks/dnd5e/conditions/opportunity_attack.go`. Subscribes to
+`combat.MovementChain` and publishes a `ReactionTriggerEvent` on the
+encounter bus when an enemy leaves a square the bearer threatens.
+
+Predicate checks:
+
+1. The moving entity is hostile to the bearer.
+2. The moving entity's `from` square is in the bearer's threatened set
+   (melee weapon reach).
+3. The moving entity's `to` square is NOT in the bearer's threatened set
+   (genuinely leaving, not shuffling within reach).
+4. The bearer has a reaction available
+   (`gamectx.IsReactionReady(bearerID, refs.Conditions.OpportunityAttack())`).
+5. The moving entity is not disengaging (no `OAPreventionSources` entry
+   on the MovementChain event for this bearer).
+
+If all five pass, the condition publishes `ReactionTriggerEvent` with
+the trigger payload the orchestrator will turn into a reaction prompt.
+The chain runs to completion; the orchestrator handles the prompt at
+the SDK layer.
+
+### conditions.ShieldSpellCondition
+
+`rulebooks/dnd5e/conditions/shield_spell.go`. Subscribes to
+`combat.PostAttackRollChain`. Predicate gates:
+
+1. The target of the attack is the bearer.
+2. The rolled attack total falls in the band `[currentAC, currentAC+4]`
+   — Shield adds +5 to AC, so the total has to be in a range where
+   Shield actually changes the outcome.
+3. The bearer has a reaction available and a 1st-level (or higher)
+   spell slot ready
+   (`gamectx.IsReactionReady(bearerID, refs.Conditions.Shield())` +
+   resource check).
+
+Both conditions use the typed-data-JSON pattern from CLAUDE.md (`Data`
+struct with `core.Ref` for routing; runtime struct without JSON tags;
+`ToJSON` / `loadJSON`). The loader in `conditions/loader.go` routes both
+new refs.
+
+### What the reaction-condition pattern looks like
+
+The four chain-subscribing conditions in dnd5e now cover the four
+load-bearing flavors:
+
+| Condition | Chain | Action |
+|---|---|---|
+| `RagingCondition` | `AttackChain` | Adds damage modifier at `StageFeatures` |
+| `SneakAttackCondition` | `DamageChain` | Marks eligibility + adds dice at `StageFeatures` |
+| `OpportunityAttackCondition` | `MovementChain` | Publishes `ReactionTriggerEvent` for OA prompt |
+| `ShieldSpellCondition` | `PostAttackRollChain` | Publishes `ReactionTriggerEvent` for Shield prompt |
+
+The pattern is: conditions own their predicate and their publish
+behavior; the encounter SDK owns the prompt fan-out and the player-input
+RPC; the host wires the persistence between phases. No condition has to
+know about reactions-as-RPC; it just knows when to publish a trigger.
 
 ## character/choices/ — service-shaped surface
 

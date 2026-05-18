@@ -240,6 +240,8 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "EntityRemovedEvent"
 	case *events.EncounterEndedEvent:
 		typeName = "EncounterEndedEvent"
+	case *events.InputRequiredDeliveredEvent:
+		typeName = "InputRequiredDeliveredEvent"
 	default:
 		return nil, fmt.Errorf("unknown event type %T", evt)
 	}
@@ -250,6 +252,12 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 	return json.Marshal(wireEnvelope{Type: typeName, Payload: payload})
 }
 
+// decodeEvent is a flat dispatcher over event types — complexity grows
+// linearly with the event taxonomy. Adding a new event variant adds one
+// case + one corresponding case in encodeEvent. Splitting by category
+// would not reduce overall complexity, just relocate it.
+//
+//nolint:gocyclo // flat type dispatcher; complexity = event-taxonomy size
 func decodeEvent(b []byte) (events.EncounterEvent, error) {
 	var env wireEnvelope
 	if err := json.Unmarshal(b, &env); err != nil {
@@ -336,6 +344,12 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "EncounterEndedEvent":
 		var e events.EncounterEndedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "InputRequiredDeliveredEvent":
+		var e events.InputRequiredDeliveredEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}
