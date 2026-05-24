@@ -102,7 +102,7 @@ func (s *TypedTopicTestSuite) TestMultipleSubscribers() {
 	s.Require().NoError(err)
 
 	// Publish once
-	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: "test"})
+	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: testIDTest})
 	s.Require().NoError(err)
 
 	// All subscribers should be called
@@ -197,7 +197,7 @@ func (s *TypedTopicTestSuite) TestSameTopicDifferentInstances() {
 	s.Require().NoError(err)
 
 	// Publish from first instance
-	err = topic1.Publish(s.ctx, TestNotificationEvent{ID: "test"})
+	err = topic1.Publish(s.ctx, TestNotificationEvent{ID: testIDTest})
 	s.Require().NoError(err)
 
 	// Both should receive (same bus, same topic ID)
@@ -215,7 +215,7 @@ func (s *TypedTopicTestSuite) TestHandlerError() {
 	s.Require().NoError(err)
 
 	// Publish should propagate the error
-	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: "test"})
+	err = s.topic.Publish(s.ctx, TestNotificationEvent{ID: testIDTest})
 	s.Error(err)
 	s.Equal(testError, err)
 }

@@ -82,7 +82,7 @@ func (m *MockEntity) GetType() core.EntityType { return m.eType }
 func TestActionInterface(t *testing.T) {
 	t.Run("SimpleAction", func(t *testing.T) {
 		action := &SimpleAction{
-			id:   "rage",
+			id:   testRage,
 			uses: 3,
 		}
 		owner := &MockEntity{id: "barbarian", eType: core.EntityType("character")}
@@ -155,7 +155,7 @@ func TestActionInterface(t *testing.T) {
 		// This demonstrates that different actions have different input types
 		// and they're type-safe at compile time
 
-		simple := &SimpleAction{id: "rage", uses: 1}
+		simple := &SimpleAction{id: testRage, uses: 1}
 		targeted := &TargetedAction{id: "fireball", maxRange: 150}
 
 		owner := &MockEntity{id: "player", eType: core.EntityType("character")}

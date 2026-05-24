@@ -91,6 +91,19 @@ actually uses:
     bus + phased path; when a player reactor has a triggered prompt the
     NPC's turn pauses via the `errNPCPausedForReaction` sentinel
     (`IsNPCPausedForReaction` helper for orchestrators).
+  - **Polymorphic `CompleteTakeAction` resume (Wave 2.11e, 2026-05-23).**
+    The resume verb accepts either PvE attack direction. Direction is
+    resolved from `PhasedAttackContext.AttackerID` by looking the entity
+    up against both the Players and the Monsters maps; the SDK then
+    dispatches to `applyAndPublishOutcome` (player→monster) or
+    `applyAndPublishNPCOutcome` (monster→player). The NPC-attacker
+    direction is the only one Shield can fire in PvE scope (the bearer
+    must be the *target* for Shield's predicate to match, and PvE means
+    monster as attacker). Without this polymorphism the Shield resume
+    path was rejected at the resume verb with "attacker not in encounter."
+    Player→player and monster→monster attacks return
+    `ErrUnsupportedAttackDirection` until a wave adds the corresponding
+    publish helper; the SDK surface stays the same.
 
   See `rulebooks/dnd5e/conditions/opportunity_attack.go` and
   `shield_spell.go` for the canonical reaction-condition implementations
