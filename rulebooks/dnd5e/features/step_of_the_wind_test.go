@@ -17,6 +17,13 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// Wave 2.11e (#666) — Step of the Wind tests below this line verify the
+// toolkit-side condition application added in this wave. Per director
+// signoff (#666 Q1=(a)), Activate with action="disengage" must apply
+// DisengagingCondition directly to input.Bus in addition to publishing
+// the existing telemetry event. The "dash" branch keeps event-only
+// behavior because Dash is not part of Wave 2.11e's OA-suppression goal.
+
 type StepOfTheWindTestSuite struct {
 	suite.Suite
 	ctx      context.Context
@@ -202,6 +209,75 @@ func (s *StepOfTheWindTestSuite) TestActivate_FailsWhenNoKi() {
 	var rpgErr *rpgerr.Error
 	s.True(errors.As(err, &rpgErr))
 	s.Assert().Equal(rpgerr.CodeResourceExhausted, rpgErr.Code)
+}
+
+// TestActivate_DisengageBranch_AppliesDisengagingCondition is the
+// load-bearing wave-2.11e (#666) test: when Activate runs with
+// action="disengage", the DisengagingCondition must be applied to the
+// owner on input.Bus so the next MovementChain for the owner emits an
+// OAPreventionSources entry. Without this, monks using Step of the Wind
+// would take OAs when moving past enemies — breaking the playable goal.
+func (s *StepOfTheWindTestSuite) TestActivate_DisengageBranch_AppliesDisengagingCondition() {
+	err := s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
+		Bus:    s.bus,
+		Action: "disengage",
+	})
+	s.Require().NoError(err)
+
+	// Now drive a MovementChain for the owner and verify the applied
+	// DisengagingCondition adds an OAPreventionSources entry.
+	movementChain := dnd5eEvents.MovementChain.On(s.bus)
+	chainBuilder := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
+	event := &dnd5eEvents.MovementChainEvent{
+		EntityID:            s.accessor.GetID(),
+		FromPosition:        dnd5eEvents.Position{X: 0, Y: 0},
+		ToPosition:          dnd5eEvents.Position{X: 1, Y: 0},
+		OAPreventionSources: []dnd5eEvents.MovementModifierSource{},
+	}
+
+	modifiedChain, err := movementChain.PublishWithChain(s.ctx, event, chainBuilder)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	s.Require().NotEmpty(finalEvent.OAPreventionSources,
+		"DisengagingCondition must add OAPreventionSources after Step of the Wind disengage activation")
+	s.True(finalEvent.IsOAPrevented(),
+		"IsOAPrevented must be true so OpportunityAttackCondition predicate skips")
+	s.Equal("Disengaging", finalEvent.OAPreventionSources[0].Name)
+}
+
+// TestActivate_DashBranch_DoesNotApplyDisengagingCondition verifies the
+// "dash" branch keeps event-only behavior — no DisengagingCondition is
+// applied because Dash itself doesn't suppress OAs in 5e rules. This
+// preserves the wave-scope split (Q2 director signoff).
+func (s *StepOfTheWindTestSuite) TestActivate_DashBranch_DoesNotApplyDisengagingCondition() {
+	err := s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
+		Bus:    s.bus,
+		Action: "dash",
+	})
+	s.Require().NoError(err)
+
+	// Movement should NOT see any OAPreventionSources added.
+	movementChain := dnd5eEvents.MovementChain.On(s.bus)
+	chainBuilder := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
+	event := &dnd5eEvents.MovementChainEvent{
+		EntityID:            s.accessor.GetID(),
+		FromPosition:        dnd5eEvents.Position{X: 0, Y: 0},
+		ToPosition:          dnd5eEvents.Position{X: 1, Y: 0},
+		OAPreventionSources: []dnd5eEvents.MovementModifierSource{},
+	}
+
+	modifiedChain, err := movementChain.PublishWithChain(s.ctx, event, chainBuilder)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	s.Empty(finalEvent.OAPreventionSources,
+		"Dash branch must NOT apply DisengagingCondition — only disengage branch suppresses OAs")
+	s.False(finalEvent.IsOAPrevented())
 }
 
 func (s *StepOfTheWindTestSuite) TestToJSON() {

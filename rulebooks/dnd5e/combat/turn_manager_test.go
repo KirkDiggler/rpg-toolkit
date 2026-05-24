@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -488,17 +487,15 @@ func (s *TurnManagerTestSuite) TestStrikeWithoutAttackAbility() {
 
 func (s *TurnManagerTestSuite) TestDisengagePreventsOA() {
 	s.Run("disengage prevents opportunity attacks when moving away", func() {
-		// Subscribe to DisengageActivatedEvent to apply the Disengaging condition
-		// (simulates what the game server would do)
-		disengageTopic := dnd5eEvents.DisengageActivatedTopic.On(s.bus)
-		_, err := disengageTopic.Subscribe(s.ctx, func(ctx context.Context, event dnd5eEvents.DisengageActivatedEvent) error {
-			cond := conditions.NewDisengagingCondition(event.CharacterID)
-			return cond.Apply(ctx, s.bus)
-		})
-		s.Require().NoError(err)
+		// Wave 2.11e (#666): combatabilities.Disengage now applies the
+		// DisengagingCondition itself per project_toolkit_as_product framing.
+		// The previous game-server-simulation subscribe-and-apply pattern
+		// here has been removed — re-applying the condition through the
+		// event handler would now duplicate the modifier and fail
+		// MovementChain publication with "modifier ID already exists."
 
 		tm := s.createTurnManager()
-		_, err = tm.StartTurn(s.ctx)
+		_, err := tm.StartTurn(s.ctx)
 		s.Require().NoError(err)
 
 		// Use Disengage ability

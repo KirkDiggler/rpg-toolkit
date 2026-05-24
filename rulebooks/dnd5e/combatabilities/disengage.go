@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -74,8 +75,20 @@ func (d *Disengage) CanActivate(ctx context.Context, owner core.Entity, input Co
 	return nil
 }
 
-// Activate consumes 1 action and publishes a DisengageActivatedEvent.
-// Subscribers to the event can apply the Disengaging condition.
+// Activate consumes 1 action (or bonus action for NewBonusDisengage),
+// applies the DisengagingCondition to the owner on input.Bus, and
+// publishes a DisengageActivatedEvent for game-server telemetry.
+//
+// Wave 2.11e (#666): toolkit-side rule application per
+// project_toolkit_as_product framing. Before this change, the comment
+// here said "A DisengagingCondition (to be implemented in a future
+// phase) will subscribe to this event and apply the actual mechanical
+// effects" — but the condition has always been ready; the gap was that
+// no Activate path applied it. Now the condition gets Apply'd here, so
+// the next MovementChain for the owner emits OAPreventionSources and
+// OpportunityAttackCondition.onMovementChain skips publishing a trigger.
+//
+// The condition removes itself automatically on the owner's TurnEnd.
 func (d *Disengage) Activate(ctx context.Context, owner core.Entity, input CombatAbilityInput) error {
 	// Validate event bus before consuming action
 	if input.Bus == nil {
@@ -87,9 +100,16 @@ func (d *Disengage) Activate(ctx context.Context, owner core.Entity, input Comba
 		return err
 	}
 
-	// Publish the disengage activated event
-	// A DisengagingCondition (to be implemented in a future phase) will subscribe
-	// to this event and apply the actual mechanical effects
+	// Apply the DisengagingCondition. The condition subscribes to
+	// MovementChain (adds OAPreventionSources when the owner moves) and
+	// TurnEndTopic (self-removes when the owner's turn ends).
+	condition := conditions.NewDisengagingCondition(owner.GetID())
+	if err := condition.Apply(ctx, input.Bus); err != nil {
+		return fmt.Errorf("failed to apply disengaging condition: %w", err)
+	}
+
+	// Telemetry event for the game server. The condition is already
+	// applied; this is the activation signal for stream consumers.
 	if err := dnd5eEvents.DisengageActivatedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.DisengageActivatedEvent{
 		CharacterID: owner.GetID(),
 	}); err != nil {

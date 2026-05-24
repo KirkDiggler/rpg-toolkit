@@ -15,6 +15,11 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// Wave 2.11e (#666) — Disengage now applies DisengagingCondition.
+// The condition was already wired to MovementChain + TurnEndTopic; the
+// gap was that no Activate path applied it. Tests below verify the new
+// toolkit-side rule application.
+
 type DisengageAbilityTestSuite struct {
 	suite.Suite
 	ctx           context.Context
@@ -126,6 +131,47 @@ func (s *DisengageAbilityTestSuite) TestActivate_PublishesDisengageActivatedEven
 	s.Require().NoError(err)
 	s.Assert().True(eventReceived, "DisengageActivatedEvent should be published")
 	s.Assert().Equal(s.owner.GetID(), receivedEvent.CharacterID)
+}
+
+// TestActivate_AppliesDisengagingCondition_OASuppressed is the load-bearing
+// Wave 2.11e (#666) test: after Activate, the owner's movement must produce
+// an OAPreventionSources entry in the MovementChain event. This proves the
+// DisengagingCondition was applied toolkit-side (Q1=(a) director signoff)
+// and is actively suppressing OAs.
+//
+// Does NOT re-test DisengagingCondition internals (already covered in
+// conditions/disengaging_test.go) — only verifies the Activate path wires
+// the condition to the bus so the suppression mechanism activates.
+func (s *DisengageAbilityTestSuite) TestActivate_AppliesDisengagingCondition_OASuppressed() {
+	// Arrange
+	err := s.disengage.Activate(s.ctx, s.owner, combatabilities.CombatAbilityInput{
+		ActionEconomy: s.actionEconomy,
+		Bus:           s.bus,
+	})
+	s.Require().NoError(err)
+
+	// Act - drive a MovementChain for the owner
+	movementChain := dnd5eEvents.MovementChain.On(s.bus)
+	chainBuilder := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
+	event := &dnd5eEvents.MovementChainEvent{
+		EntityID:            s.owner.GetID(),
+		FromPosition:        dnd5eEvents.Position{X: 0, Y: 0},
+		ToPosition:          dnd5eEvents.Position{X: 1, Y: 0},
+		OAPreventionSources: []dnd5eEvents.MovementModifierSource{},
+	}
+
+	modifiedChain, err := movementChain.PublishWithChain(s.ctx, event, chainBuilder)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	// Assert - DisengagingCondition added a prevention source
+	s.Require().NotEmpty(finalEvent.OAPreventionSources,
+		"DisengagingCondition must add OAPreventionSources after Disengage.Activate")
+	s.True(finalEvent.IsOAPrevented(),
+		"IsOAPrevented must be true so OpportunityAttackCondition predicate skips")
+	s.Equal("Disengaging", finalEvent.OAPreventionSources[0].Name)
 }
 
 func (s *DisengageAbilityTestSuite) TestActivate_NoActionEconomy() {

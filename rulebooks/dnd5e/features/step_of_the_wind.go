@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -93,9 +94,24 @@ func (s *StepOfTheWind) Activate(ctx context.Context, owner core.Entity, input F
 		return rpgerr.Newf(rpgerr.CodeInvalidArgument, "invalid action: %s (must be 'disengage' or 'dash')", action)
 	}
 
-	// Publish event granting Disengage or Dash action
-	// The game server is responsible for applying the appropriate effect
 	if input.Bus != nil {
+		// Wave 2.11e (#666 Q1=(a)): toolkit-side rule application for the
+		// disengage branch. Applying DisengagingCondition here lets the
+		// monk's bonus-action Disengage suppress OAs end-to-end without
+		// rpg-api needing to know "Step of the Wind activated" means
+		// "apply DisengagingCondition" (boundary smell). The "dash"
+		// branch stays event-only; Dash itself doesn't suppress OAs in
+		// 5e, and the Dash action is not part of Wave 2.11e's scope.
+		if action == "disengage" {
+			condition := conditions.NewDisengagingCondition(owner.GetID())
+			if err := condition.Apply(ctx, input.Bus); err != nil {
+				return rpgerr.Wrapf(err, "failed to apply disengaging condition")
+			}
+		}
+
+		// Telemetry event for the game server — kept after the condition
+		// application so any stream consumers (UI, audit log) see the
+		// activation regardless of which branch was taken.
 		topic := dnd5eEvents.StepOfTheWindActivatedTopic.On(input.Bus)
 		err := topic.Publish(ctx, dnd5eEvents.StepOfTheWindActivatedEvent{
 			CharacterID: owner.GetID(),
