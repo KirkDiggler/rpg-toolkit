@@ -413,11 +413,12 @@ func (e *Encounter) nextSeq() uint64 {
 //
 // Wave 2.11e: when a MovementResolver is wired (WithMovementResolver),
 // Move iterates per-step calling resolver.ResolveStep per hex with a
-// buffered subscriber on ReactionTriggerTopic active for the duration.
-// This is the seam that lets the rulebook run MovementChain per step (so
-// OA conditions fire) without the encounter SDK importing rulebook
-// packages. When no resolver is wired, the legacy single-jump behavior
-// is preserved for non-combat encounters.
+// fresh buffered subscriber on ReactionTriggerTopic installed and torn
+// down around each step (see iterateMovementSteps). This is the seam
+// that lets the rulebook run MovementChain per step (so OA conditions
+// fire) without the encounter SDK importing rulebook packages. When no
+// resolver is wired, the legacy single-jump behavior is preserved for
+// non-combat encounters.
 //
 // Slice scope: no action economy, no turn-order enforcement, no
 // path-contiguity validation beyond non-empty.
@@ -469,26 +470,32 @@ func (e *Encounter) iterateMovementSteps(
 	traveled := make([]core.Hex, 0, len(path))
 	from := moverStart
 	for _, to := range path {
-		// Install a buffered subscriber on ReactionTriggerTopic per step.
-		// The subscriber catches any triggers that chain subscribers
-		// publish during this step's resolver call. In NPC-OA-only scope
-		// the SDK doesn't act on captured triggers (the resolver impl
-		// resolves them inline), but the buffer is installed for shape
-		// parity with TakeActionPhased and to flush subscriptions
-		// cleanly per step.
-		_, drainCleanup, err := e.installTriggerBuffer()
-		if err != nil {
-			return traveled, fmt.Errorf("install trigger buffer: %w", err)
-		}
+		// Each step runs inside an inner func so the buffered subscriber
+		// is torn down via defer even if the resolver panics. Without
+		// this, a panic in the rulebook chain would leak the subscription
+		// and pollute subsequent encounter operations.
+		result, stepErr := func() (*MovementStepResult, error) {
+			// Install a buffered subscriber on ReactionTriggerTopic per
+			// step. The subscriber catches any triggers that chain
+			// subscribers publish during this step's resolver call. In
+			// NPC-OA-only scope the SDK doesn't act on captured triggers
+			// (the resolver impl resolves them inline), but the buffer is
+			// installed for shape parity with TakeActionPhased and to
+			// flush subscriptions cleanly per step.
+			_, drainCleanup, err := e.installTriggerBuffer()
+			if err != nil {
+				return nil, fmt.Errorf("install trigger buffer: %w", err)
+			}
+			defer drainCleanup()
 
-		result, resolveErr := e.movementResolver.ResolveStep(MovementStepInput{
-			EntityID: p.EntityID,
-			FromHex:  from,
-			ToHex:    to,
-		})
-		drainCleanup()
-		if resolveErr != nil {
-			return traveled, fmt.Errorf("resolve movement step: %w", resolveErr)
+			return e.movementResolver.ResolveStep(MovementStepInput{
+				EntityID: p.EntityID,
+				FromHex:  from,
+				ToHex:    to,
+			})
+		}()
+		if stepErr != nil {
+			return traveled, fmt.Errorf("resolve movement step: %w", stepErr)
 		}
 		if result == nil {
 			return traveled, fmt.Errorf("movement resolver: nil result with nil error")

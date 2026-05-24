@@ -50,8 +50,10 @@ type MovementResolver interface {
 	// triggers — they were already resolved.
 	//
 	// The resolver MUST NOT mutate encounter SDK state directly. The SDK
-	// updates Player.View.Position based on the step's ToHex when the
-	// result is not Prevented; the resolver only signals chain outcomes.
+	// accumulates a traveled path across successful step calls and applies
+	// the final position + publishes events once after the loop (see
+	// applyAndPublishMove). The resolver only signals chain outcomes per
+	// step; the SDK owns when state is committed.
 	ResolveStep(input MovementStepInput) (*MovementStepResult, error)
 }
 
@@ -72,9 +74,12 @@ type MovementStepInput struct {
 // MovementStepResult is the per-step output shape for MovementResolver.
 type MovementStepResult struct {
 	// Prevented is true when chain subscribers (Disengage, etc.) blocked
-	// the step. The encounter SDK stops the move at FromHex and does not
-	// advance to ToHex. The encounter publishes its MoveEvent with the
-	// truncated traveled-path (hexes up to and including FromHex).
+	// the step. The encounter SDK stops the move and does NOT advance to
+	// ToHex. The MoveEvent then carries the traveled segments — the ToHexes
+	// of all successfully-completed steps before this one (which equals
+	// the prevented step's FromHex for any non-first step). If prevention
+	// fires on the very first step, no MoveEvent is published and position
+	// is unchanged.
 	Prevented bool
 
 	// PreventReason is a human-readable explanation when Prevented is true.

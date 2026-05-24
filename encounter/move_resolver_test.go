@@ -269,10 +269,11 @@ func (s *MovementResolverSuite) TestMove_ResolverPublishesEvents_TruncatedPath()
 	err = s.enc.Move(alicePlayerID, path)
 	s.Require().NoError(err)
 
-	// Drain the alice subscription with a small timeout (broker forwards
-	// events via a goroutine; default-select would race with forwarding).
+	// Drain the alice subscription with a generous timeout (broker forwards
+	// events via a goroutine; default-select would race with forwarding,
+	// and a tight deadline can flake under CI load).
 	var moveEvt *events.MoveEvent
-	deadline := time.After(200 * time.Millisecond)
+	deadline := time.After(2 * time.Second)
 drainLoop:
 	for {
 		select {

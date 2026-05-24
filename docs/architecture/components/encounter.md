@@ -145,10 +145,12 @@ The orchestrator (rpg-api) wires a resolver via `WithMovementResolver(...)`. The
 
 `Encounter.Move` has two paths gated on resolver presence:
 
-| Resolver wired? | Path | Position updates | Chain executes | OA fires |
+| Resolver wired? | Path | Encounter SDK position update | Chain executes | OA fires |
 |---|---|---|---|---|
 | No | Legacy single-jump | once, to `path[-1]` | never | never |
-| Yes | Per-step iteration | per step, to each `ToHex` | per step via resolver | inline (NPC-OA scope) |
+| Yes | Per-step iteration | once, to the final hex of the traveled path (after loop completes) | per step via resolver | inline (NPC-OA scope) |
+
+The per-step path accumulates `traveled` as it iterates; the SDK only mutates `Player.View.Position` once, after the loop, via `applyAndPublishMove`. Step-by-step position mutation happens externally in the resolver impl (combat.MoveEntity calls `room.MoveEntity` per step on the spatial-room side), but the encounter SDK keeps its own position state in sync by committing once at the end.
 
 When no resolver is wired, the legacy single-jump behavior is preserved for non-combat encounters (free-roam, social). The shape was load-bearing for Wave 2.11d's verification gate: the active.md B8 probe asserted that movement without a resolver does NOT trigger OAs. The new per-step path activates only when a resolver is explicitly supplied.
 
