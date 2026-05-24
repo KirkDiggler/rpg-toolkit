@@ -28,11 +28,12 @@ const OAReactionRef = "dnd5e:conditions:opportunity_attack"
 // accumulate correctly within a turn and reset at turn boundaries.
 // The bus is reconstructed at LoadFromData — it is not serialized.
 type Encounter struct {
-	data           *Data
-	broker         *Broker
-	roller         dice.Roller
-	resolver       CharacterResolver
-	combatResolver CombatResolver
+	data             *Data
+	broker           *Broker
+	roller           dice.Roller
+	resolver         CharacterResolver
+	combatResolver   CombatResolver
+	movementResolver MovementResolver
 	// bus is the encounter-scoped dnd5e event bus. Conditions subscribe
 	// once at rehydration and remain subscribed for the encounter's lifetime.
 	// Reconstructed (not serialized) at each LoadFromData call.
@@ -79,6 +80,20 @@ func WithCharacterResolver(r CharacterResolver) Option {
 func WithCombatResolver(r CombatResolver) Option {
 	return func(e *Encounter) {
 		e.combatResolver = r
+	}
+}
+
+// WithMovementResolver injects a MovementResolver used by Encounter.Move
+// to delegate per-step movement mechanics (MovementChain execution, OA
+// triggering) to a rulebook implementation. Wave 2.11e (#658).
+//
+// Optional — when not supplied, Encounter.Move uses the legacy single-
+// jump behavior that mutates position to path[-1] without per-step chain
+// execution. Non-combat encounters (free-roam, social) don't need a
+// resolver and don't pay the per-step iteration cost.
+func WithMovementResolver(r MovementResolver) Option {
+	return func(e *Encounter) {
+		e.movementResolver = r
 	}
 }
 
@@ -396,6 +411,14 @@ func (e *Encounter) nextSeq() uint64 {
 // player position, and publishes the cause event (MoveEvent) plus a
 // HexRevealedEvent for any viewer whose vision grew.
 //
+// Wave 2.11e: when a MovementResolver is wired (WithMovementResolver),
+// Move iterates per-step calling resolver.ResolveStep per hex with a
+// buffered subscriber on ReactionTriggerTopic active for the duration.
+// This is the seam that lets the rulebook run MovementChain per step (so
+// OA conditions fire) without the encounter SDK importing rulebook
+// packages. When no resolver is wired, the legacy single-jump behavior
+// is preserved for non-combat encounters.
+//
 // Slice scope: no action economy, no turn-order enforcement, no
 // path-contiguity validation beyond non-empty.
 func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
@@ -407,14 +430,100 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		return fmt.Errorf("player %q not in encounter", playerID)
 	}
 
-	// 1. Capture starting position and compute the mover's reveal delta BEFORE
-	//    mutating position/view.
+	moverStart := p.View.Position
+
+	// Determine the actually-traveled path. Without a resolver, the legacy
+	// single-jump path is the entire requested path. With a resolver, the
+	// per-step iteration may truncate when chain subscribers prevent a
+	// step (Disengage no-op, etc.).
+	traveledPath := path
+	if e.movementResolver != nil {
+		traveled, err := e.iterateMovementSteps(p, moverStart, path)
+		if err != nil {
+			return err
+		}
+		traveledPath = traveled
+		if len(traveledPath) == 0 {
+			// Movement was prevented at the very first step. Nothing to
+			// publish — position unchanged, no events fire.
+			return nil
+		}
+	}
+
+	return e.applyAndPublishMove(p, playerID, moverStart, traveledPath)
+}
+
+// iterateMovementSteps walks the path one hex at a time, calling the
+// resolver per step and draining the ReactionTriggerTopic buffer. Returns
+// the actually-traveled segment of the path (may be shorter than the
+// input if a step was Prevented).
+//
+// Wave 2.11e NPC-OA-only scope (per director signoff on #658): the SDK
+// drains triggers but does not partition or act on them. NPC OAs are
+// resolved inline by the resolver impl (combat.MoveEntity →
+// triggerOpportunityAttack → ResolveAttack runs end-to-end). Player-pause
+// branch deferred to #665.
+func (e *Encounter) iterateMovementSteps(
+	p *PlayerData, moverStart core.Hex, path []core.Hex,
+) ([]core.Hex, error) {
+	traveled := make([]core.Hex, 0, len(path))
+	from := moverStart
+	for _, to := range path {
+		// Install a buffered subscriber on ReactionTriggerTopic per step.
+		// The subscriber catches any triggers that chain subscribers
+		// publish during this step's resolver call. In NPC-OA-only scope
+		// the SDK doesn't act on captured triggers (the resolver impl
+		// resolves them inline), but the buffer is installed for shape
+		// parity with TakeActionPhased and to flush subscriptions
+		// cleanly per step.
+		_, drainCleanup, err := e.installTriggerBuffer()
+		if err != nil {
+			return traveled, fmt.Errorf("install trigger buffer: %w", err)
+		}
+
+		result, resolveErr := e.movementResolver.ResolveStep(MovementStepInput{
+			EntityID: p.EntityID,
+			FromHex:  from,
+			ToHex:    to,
+		})
+		drainCleanup()
+		if resolveErr != nil {
+			return traveled, fmt.Errorf("resolve movement step: %w", resolveErr)
+		}
+		if result == nil {
+			return traveled, fmt.Errorf("movement resolver: nil result with nil error")
+		}
+
+		if result.Prevented {
+			// Chain subscriber blocked the step. Stop here; do not advance
+			// to `to`. The traveled slice so far is the actually-moved path.
+			break
+		}
+
+		traveled = append(traveled, to)
+		from = to
+	}
+	return traveled, nil
+}
+
+// applyAndPublishMove mutates the player's position to the final hex of
+// traveledPath, computes per-viewer projections, and publishes the move +
+// reveal + visibility-transition events. Shared between the legacy
+// single-jump path (traveledPath = full input) and the resolver-mediated
+// per-step path (traveledPath = actually-moved segments, possibly
+// truncated by chain prevention).
+//
+// Wave 2.11e (#658 Q3): events carry the truncated traveled path, not the
+// requested path. Wire clients see the actual outcome, not the intent.
+func (e *Encounter) applyAndPublishMove(
+	p *PlayerData, playerID core.PlayerID, moverStart core.Hex, traveledPath []core.Hex,
+) error {
+	// 1. Compute the mover's reveal delta BEFORE mutating position/view.
 	//    - moverStart is needed for visibility-transition detection (so viewers
 	//      can determine if the mover was visible to them before the move).
 	//    - The reveal delta = (visible-from-new-position) MINUS (already-revealed).
 	//      Critical: if we apply the reveal first, the diff is always empty.
-	moverStart := p.View.Position
-	end := path[len(path)-1]
+	end := traveledPath[len(traveledPath)-1]
 	newVisible := perception.VisibleHexesAt(end, p.View.SightRange)
 	moverNewHexes := diffHexes(p.View.RevealedHexes, newVisible)
 
@@ -429,7 +538,7 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	// The mover always sees their own move; their reveal is the delta we
 	// just computed.
 	movePerPlayer[playerID] = events.MovePlayerSlice{
-		SeenSegments: append([]core.Hex(nil), path...),
+		SeenSegments: append([]core.Hex(nil), traveledPath...),
 	}
 	if len(moverNewHexes) > 0 {
 		revealPerPlayer[playerID] = events.HexRevealedSlice{Hexes: moverNewHexes}
@@ -450,7 +559,7 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		}
 		// ProjectMove returns the visible set so we can pass it directly to
 		// ProjectVisibilityTransition without recomputing VisibleHexesAt.
-		moveSlice, revealSlice, visible := perception.ProjectMove(p.EntityID, path, other.View)
+		moveSlice, revealSlice, visible := perception.ProjectMove(p.EntityID, traveledPath, other.View)
 		if moveSlice != nil {
 			movePerPlayer[otherID] = *moveSlice
 		}
@@ -467,7 +576,7 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 			seenSegments = moveSlice.SeenSegments
 		}
 		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(
-			moverStart, path, seenSegments, other.View, visible,
+			moverStart, traveledPath, seenSegments, other.View, visible,
 		)
 		if appearedAt != nil {
 			if appearedByHex[*appearedAt] == nil {
@@ -483,7 +592,7 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	// 4. Publish — cause event always; effect event only when someone's
 	//    vision changed. The two events get sequential sequence numbers.
 	if err := e.broker.Publish(events.NewMoveEvent(
-		e.data.ID, e.nextSeq(), p.EntityID, path, movePerPlayer,
+		e.data.ID, e.nextSeq(), p.EntityID, traveledPath, movePerPlayer,
 	)); err != nil {
 		return fmt.Errorf("publish move: %w", err)
 	}
