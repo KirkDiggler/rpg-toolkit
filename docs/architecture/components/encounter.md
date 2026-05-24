@@ -135,9 +135,10 @@ type MovementStepInput struct {
 type MovementStepResult struct {
     Prevented     bool
     PreventReason string
-    Triggers      []ReactionTrigger
 }
 ```
+
+Triggers flow via the buffered bus subscription only — there is intentionally no resolver-returned trigger slot on the result. Chain subscribers (Disengage marker, OA condition) publish `ReactionTriggerEvent`s on the encounter bus during `ResolveStep`; the SDK installs a buffered subscriber per step to observe them. The bus path is canonical for OA/reaction handoff and matches `PhasedCombatResolver`'s shape applied to attack reactions.
 
 The orchestrator (rpg-api) wires a resolver via `WithMovementResolver(...)`. The orchestrator's implementation wraps the rulebook's `combat.MoveEntity` so chain subscribers (Disengage marker, OpportunityAttackCondition) fire per step and OAs resolve inline via the rulebook's `triggerOpportunityAttack` → `combat.ResolveAttack` path.
 

@@ -39,9 +39,9 @@ type MovementResolver interface {
 	//
 	// The encounter SDK installs a buffered subscriber on
 	// ReactionTriggerTopic before this call, so triggers published by chain
-	// subscribers are seen even if the resolver doesn't include them in
-	// MovementStepResult.Triggers. Returning Triggers explicitly is a
-	// defensive pattern (matches PhasedCombatResolver.ResolveAttackHit).
+	// subscribers are observed via the bus. Triggers flow via the buffered
+	// bus subscription only — the resolver does not return them in the
+	// step result. The bus path is canonical for OA/reaction handoff.
 	//
 	// NPC OAs are resolved inline by the resolver impl: combat.MoveEntity
 	// → triggerOpportunityAttack → ResolveAttack runs end-to-end, applying
@@ -72,6 +72,16 @@ type MovementStepInput struct {
 }
 
 // MovementStepResult is the per-step output shape for MovementResolver.
+//
+// Triggers flow via the buffered bus subscription only — the SDK installs
+// a buffered subscriber on ReactionTriggerTopic per step and drains it
+// after ResolveStep returns. Chain subscribers (Disengage marker, OA
+// condition) publish ReactionTriggerEvents on the encounter bus; the SDK
+// observes them through the buffer. There is intentionally no
+// resolver-returned trigger slot: a second channel would invite
+// implementers to silently drop bus triggers, and the bus path is
+// canonical for OA/reaction handoff (see PhasedCombatResolver for the
+// same shape applied to attack reactions).
 type MovementStepResult struct {
 	// Prevented is true when chain subscribers (Disengage, etc.) blocked
 	// the step. The encounter SDK stops the move and does NOT advance to
@@ -85,12 +95,4 @@ type MovementStepResult struct {
 	// PreventReason is a human-readable explanation when Prevented is true.
 	// Optional; the SDK does not interpret it.
 	PreventReason string
-
-	// Triggers are reaction triggers the resolver explicitly captured
-	// during the step (in addition to whatever the SDK's buffered
-	// subscriber catches on the bus). Defensive pattern — lets the
-	// resolver surface triggers even if the bus subscription has issues.
-	// The SDK partitions but does not act on triggers in Wave 2.11e
-	// (NPC-OA only).
-	Triggers []ReactionTrigger
 }

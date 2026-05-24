@@ -44,12 +44,10 @@ type stubMovementResolver struct {
 
 	// publishOnStep, when set, is invoked at each ResolveStep call with the
 	// bus + step index so tests can simulate OA condition triggers firing
-	// during the step.
+	// during the step. Triggers flow exclusively through the bus
+	// subscription per director review on PR #667 — there is no
+	// resolver-returned trigger slot to stub.
 	publishOnStep func(bus dnd5events.EventBus, stepIdx int)
-
-	// returnTriggersByStep returns explicit Triggers from a specific step's
-	// MovementStepResult (in addition to bus-buffered ones).
-	returnTriggersByStep map[int][]tkenc.ReactionTrigger
 
 	// bus is captured from the first call so we can publish into it.
 	bus dnd5events.EventBus
@@ -70,9 +68,6 @@ func (s *stubMovementResolver) ResolveStep(input tkenc.MovementStepInput) (*tken
 	if s.preventAtCall != nil && stepIdx == *s.preventAtCall {
 		result.Prevented = true
 		result.PreventReason = s.preventReason
-	}
-	if triggers, ok := s.returnTriggersByStep[stepIdx]; ok {
-		result.Triggers = triggers
 	}
 	return result, nil
 }
