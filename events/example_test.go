@@ -125,7 +125,7 @@ func ExampleChainedTopic() {
 
 	// Apply rage feature
 	rage := &RageFeature{
-		ownerID: "barbarian",
+		ownerID: testBarbarian,
 		bonus:   2,
 	}
 	err := rage.Apply(bus)
@@ -144,8 +144,8 @@ func ExampleChainedTopic() {
 
 	// Create attack event and chain
 	attack := AttackEvent{
-		AttackerID: "barbarian",
-		TargetID:   "goblin",
+		AttackerID: testBarbarian,
+		TargetID:   testGoblin,
 		Damage:     10,
 	}
 

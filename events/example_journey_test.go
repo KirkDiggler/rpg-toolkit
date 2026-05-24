@@ -29,23 +29,23 @@ func Example_journey_attackFlow() {
 	}
 
 	// Feature 1: Rage - adds damage when active
-	rage := &RageFeature{ownerID: "barbarian", bonus: 2}
+	rage := &RageFeature{ownerID: testBarbarian, bonus: 2}
 	_ = rage.Apply(bus)
 
 	// Feature 2: Bless - adds to attack and damage
-	bless := &BlessSpell{targets: []string{"barbarian"}, bonus: 4}
+	bless := &BlessSpell{targets: []string{testBarbarian}, bonus: 4}
 	_ = bless.Apply(bus)
 
 	// Feature 3: Magic Weapon - enhances weapon damage
-	magicWeapon := &MagicWeaponFeature{ownerID: "barbarian", bonus: 1}
+	magicWeapon := &MagicWeaponFeature{ownerID: testBarbarian, bonus: 1}
 	_ = magicWeapon.Apply(bus)
 
 	// Now watch the journey unfold...
 
 	// 1. Create the attack event - just data!
 	attack := AttackEvent{
-		AttackerID: "barbarian",
-		TargetID:   "goblin",
+		AttackerID: testBarbarian,
+		TargetID:   testGoblin,
 		Damage:     10, // Base damage
 	}
 
@@ -87,17 +87,17 @@ func Example_journey_saveFlow() {
 	SaveChain := events.DefineChainedTopic[SaveEvent]("combat.save")
 
 	// Feature: Resistance gives advantage (we'll simulate with +5)
-	resistance := &ResistanceFeature{targetID: "hero", bonus: 5}
+	resistance := &ResistanceFeature{targetID: testHero, bonus: 5}
 	saves := SaveChain.On(bus) // Connect to journey
 	_, _ = saves.SubscribeWithChain(ctx, resistance.ModifySave)
 
 	// Feature: Bane spell imposes penalty
-	bane := &BaneSpell{targets: []string{"hero"}, penalty: -2}
+	bane := &BaneSpell{targets: []string{testHero}, penalty: -2}
 	_, _ = saves.SubscribeWithChain(ctx, bane.ModifySave)
 
 	// Create save event
 	save := SaveEvent{
-		TargetID: "hero",
+		TargetID: testHero,
 		SaveType: "wisdom",
 		DC:       15,
 		BaseRoll: 10,
@@ -137,25 +137,25 @@ func Example_journey_damageReduction() {
 	DamageChain := events.DefineChainedTopic[DamageEvent]("combat.damage")
 
 	// Feature: Fire Resistance
-	fireResist := &ResistanceFeature{targetID: "dragon", damageType: "fire"}
+	fireResist := &ResistanceFeature{targetID: testDragon, damageType: "fire"}
 	damages := DamageChain.On(bus) // THE MAGIC CONNECTION
 	_, _ = damages.SubscribeWithChain(ctx, fireResist.ModifyDamage)
 
 	// Feature: Stoneskin spell
-	stoneskin := &StoneskinSpell{targetID: "dragon", reduction: 3}
+	stoneskin := &StoneskinSpell{targetID: testDragon, reduction: 3}
 	_, _ = damages.SubscribeWithChain(ctx, stoneskin.ModifyDamage)
 
 	// Create damage events
 	fireDamage := DamageEvent{
 		SourceID:   "wizard",
-		TargetID:   "dragon",
+		TargetID:   testDragon,
 		Amount:     20,
 		DamageType: "fire",
 	}
 
 	slashDamage := DamageEvent{
 		SourceID:   "fighter",
-		TargetID:   "dragon",
+		TargetID:   testDragon,
 		Amount:     15,
 		DamageType: "slashing",
 	}

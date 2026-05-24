@@ -9,7 +9,7 @@ import (
 func TestTypedRef(t *testing.T) {
 	t.Run("String with valid ref", func(t *testing.T) {
 		ref := core.MustNewRef(core.RefInput{
-			Module: "combat",
+			Module: testModuleCombat,
 			Type:   "attack",
 			ID:     "melee",
 		})
@@ -39,16 +39,16 @@ func TestTypedRef(t *testing.T) {
 		// This is useful when the same ref needs different type associations
 		attackRef := core.TypedRef[AttackEvent]{
 			Ref: core.MustNewRef(core.RefInput{
-				Module: "combat",
-				Type:   "event",
+				Module: testModuleCombat,
+				Type:   testTypeEvent,
 				ID:     "attack",
 			}),
 		}
 
 		damageRef := core.TypedRef[DamageEvent]{
 			Ref: core.MustNewRef(core.RefInput{
-				Module: "combat",
-				Type:   "event",
+				Module: testModuleCombat,
+				Type:   testTypeEvent,
 				ID:     "damage",
 			}),
 		}
@@ -73,7 +73,7 @@ func TestTypedRef(t *testing.T) {
 		// Useful for event systems where the same event ID might have different payload types
 		sharedRef := core.MustNewRef(core.RefInput{
 			Module: "game",
-			Type:   "event",
+			Type:   testTypeEvent,
 			ID:     "turn_end",
 		})
 

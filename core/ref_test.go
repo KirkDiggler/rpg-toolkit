@@ -21,29 +21,29 @@ func TestNew(t *testing.T) {
 	}{
 		{
 			name:    "valid identifier",
-			value:   "darkvision",
-			module:  "core",
-			idType:  "feature",
+			value:   testDarkvision,
+			module:  testModuleCore,
+			idType:  testTypeFeature,
 			wantErr: false,
 		},
 		{
 			name:    "empty value",
 			value:   "",
-			module:  "core",
-			idType:  "feature",
+			module:  testModuleCore,
+			idType:  testTypeFeature,
 			wantErr: true,
 		},
 		{
 			name:    "empty module",
-			value:   "darkvision",
+			value:   testDarkvision,
 			module:  "",
-			idType:  "feature",
+			idType:  testTypeFeature,
 			wantErr: true,
 		},
 		{
 			name:    "empty type",
-			value:   "darkvision",
-			module:  "core",
+			value:   testDarkvision,
+			module:  testModuleCore,
 			idType:  "",
 			wantErr: true,
 		},
@@ -69,15 +69,15 @@ func TestNew(t *testing.T) {
 }
 
 func TestID_String(t *testing.T) {
-	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "darkvision"})
+	id := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: testDarkvision})
 	assert.Equal(t, "core:feature:darkvision", id.String())
 }
 
 func TestID_Equals(t *testing.T) {
-	id1 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "darkvision"})
-	id2 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "darkvision"})
-	id3 := core.MustNewRef(core.RefInput{Module: "core", Type: "proficiency", ID: "darkvision"})
-	id4 := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "keen_senses"})
+	id1 := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: testDarkvision})
+	id2 := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: testDarkvision})
+	id3 := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: "proficiency", ID: testDarkvision})
+	id4 := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: "keen_senses"})
 
 	assert.True(t, id1.Equals(id2), "identical IDs should be equal")
 	assert.False(t, id1.Equals(id3), "different types should not be equal")
@@ -91,7 +91,7 @@ func TestID_Equals(t *testing.T) {
 }
 
 func TestID_JSONMarshaling(t *testing.T) {
-	original := core.MustNewRef(core.RefInput{Module: "core", Type: "skill", ID: "athletics"})
+	original := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: "skill", ID: "athletics"})
 
 	// Marshal to JSON
 	data, err := json.Marshal(original)
@@ -113,13 +113,13 @@ func TestID_JSONUnmarshal_BackwardCompatibility(t *testing.T) {
 	err := json.Unmarshal([]byte(objectFormat), &id)
 	require.NoError(t, err)
 
-	assert.Equal(t, "darkvision", id.ID)
+	assert.Equal(t, testDarkvision, id.ID)
 	assert.Equal(t, "core", id.Module)
 	assert.Equal(t, "feature", id.Type)
 }
 
 func TestWithSource(t *testing.T) {
-	id := core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "second_wind"})
+	id := core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: "second_wind"})
 	withSource := core.NewWithSourcedRef(id, &core.Source{
 		Category: core.SourceClass,
 		Name:     "fighter",
@@ -142,7 +142,7 @@ func TestWithSource(t *testing.T) {
 
 func TestMustNew_Panics(t *testing.T) {
 	assert.Panics(t, func() {
-		core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: ""})
+		core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: ""})
 	}, "MustNewRef should panic with invalid input")
 }
 
@@ -158,17 +158,17 @@ func TestParseString(t *testing.T) {
 		{
 			name:  "valid identifier",
 			input: "core:feature:rage",
-			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "rage"}),
+			want:  core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: testRage}),
 		},
 		{
 			name:  "valid with underscores",
 			input: "core:feature:sneak_attack",
-			want:  core.MustNewRef(core.RefInput{Module: "core", Type: "feature", ID: "sneak_attack"}),
+			want:  core.MustNewRef(core.RefInput{Module: testModuleCore, Type: testTypeFeature, ID: "sneak_attack"}),
 		},
 		{
 			name:  "valid with dashes",
 			input: "third-party:feature:custom-ability",
-			want:  core.MustNewRef(core.RefInput{Module: "third-party", Type: "feature", ID: "custom-ability"}),
+			want:  core.MustNewRef(core.RefInput{Module: "third-party", Type: testTypeFeature, ID: "custom-ability"}),
 		},
 		{
 			name:         "empty string",
@@ -215,21 +215,21 @@ func TestParseString(t *testing.T) {
 			name:         "invalid characters - spaces",
 			input:        "core:feature:rage bonus",
 			wantErr:      core.ErrInvalidCharacters,
-			wantErrMsg:   "invalid characters",
+			wantErrMsg:   testErrInvalidChar,
 			checkErrType: true,
 		},
 		{
 			name:         "invalid characters - special chars",
 			input:        "core:feature:rage!",
 			wantErr:      core.ErrInvalidCharacters,
-			wantErrMsg:   "invalid characters",
+			wantErrMsg:   testErrInvalidChar,
 			checkErrType: true,
 		},
 		{
 			name:         "invalid characters - dots",
 			input:        "core:feature:rage.bonus",
 			wantErr:      core.ErrInvalidCharacters,
-			wantErrMsg:   "invalid characters",
+			wantErrMsg:   testErrInvalidChar,
 			checkErrType: true,
 		},
 	}
