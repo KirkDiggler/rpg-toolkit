@@ -171,22 +171,82 @@ func syncMonsterDataFromSnapshot(data *monster.Data, snap *MonsterData) {
 	}
 }
 
-// applyNPCMovement walks the NPC to the final hex from the captured
-// movement path and emits a MoveEvent for any viewer who saw any segment.
+// applyNPCMovement walks the NPC along the captured movement path. When
+// a MovementResolver is wired (Wave 2.11e #668), iterates per-step so
+// chain subscribers (player OA conditions in particular) fire and
+// inline OAs against the moving NPC resolve via the resolver impl
+// (combat.MoveEntity → triggerOpportunityAttack → ResolveAttack). When
+// no resolver is wired, preserves the legacy single-jump behavior for
+// non-combat encounters that don't need chain mediation.
+//
+// Wave 2.11e #668 closes the symmetric B8-shape gap: pre-#668,
+// applyNPCMovement bypassed the chain entirely, so player OA conditions
+// watching for "leaver moves out of threatened range" never saw a chain
+// when an NPC fled their reach. The fix mirrors #667's player-direction
+// shape via the shared iterateMovementStepsForEntity helper.
 func (e *Encounter) applyNPCMovement(mon *MonsterData, movement []spatial.CubeCoordinate) error {
 	if len(movement) == 0 {
 		return nil
 	}
-	final := movement[len(movement)-1]
-	mon.Position = encountercore.Hex{Q: final.X, R: final.Y, S: final.Z}
+	// Convert the rulebook-side spatial.CubeCoordinate path to the
+	// encounter SDK's core.Hex path.
 	path := make([]encountercore.Hex, 0, len(movement))
 	for _, hop := range movement {
 		path = append(path, encountercore.Hex{Q: hop.X, R: hop.Y, S: hop.Z})
 	}
+	return e.applyNPCMovementSteps(mon, path)
+}
+
+// MoveNPCSteps is a public seam (Wave 2.11e #668) that drives the
+// NPC-direction MovementResolver path with a known per-hex path. Used
+// by tests to verify per-step iteration + buffer drain + truncation
+// shapes without depending on monster.TakeTurn's AI to produce a
+// specific movement. Production callers go through NPCAct which calls
+// applyNPCMovement with monster.TakeTurn's Movement output.
+func (e *Encounter) MoveNPCSteps(npcID encountercore.EntityID, path []encountercore.Hex) error {
+	if len(path) == 0 {
+		return nil
+	}
+	mon, ok := e.data.Monsters[npcID]
+	if !ok {
+		return fmt.Errorf("monster %q not in encounter", npcID)
+	}
+	return e.applyNPCMovementSteps(mon, path)
+}
+
+// applyNPCMovementSteps is the shared body used by applyNPCMovement
+// (production NPCAct path) and MoveNPCSteps (test public seam). Branches
+// on movementResolver presence: per-step iteration when wired,
+// single-jump when not. Either way, ends by publishing a MoveEvent with
+// the truncated traveled path.
+func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore.Hex) error {
+	moverStart := mon.Position
+
+	traveledPath := path
+	if e.movementResolver != nil {
+		traveled, err := e.iterateMovementStepsForEntity(mon.ID, moverStart, path)
+		if err != nil {
+			return err
+		}
+		traveledPath = traveled
+		if len(traveledPath) == 0 {
+			// Movement prevented at the very first step. Position unchanged,
+			// no event fires — matches the player-direction shape from #667.
+			return nil
+		}
+	}
+
+	// Commit final position.
+	finalHex := traveledPath[len(traveledPath)-1]
+	mon.Position = finalHex
+
+	// Per-viewer projection — NPC visibility model is simpler than the
+	// player path (no Player.View on MonsterData, no EntityAppeared/
+	// Disappeared transitions for NPCs in this slice; future work).
 	movePerPlayer := make(map[encountercore.PlayerID]events.MovePlayerSlice)
 	for viewerID, viewer := range e.data.Players {
-		seen := make([]encountercore.Hex, 0, len(path))
-		for _, h := range path {
+		seen := make([]encountercore.Hex, 0, len(traveledPath))
+		for _, h := range traveledPath {
 			if e.viewerCanSee(viewer, h) {
 				seen = append(seen, h)
 			}
@@ -199,7 +259,7 @@ func (e *Encounter) applyNPCMovement(mon *MonsterData, movement []spatial.CubeCo
 		return nil
 	}
 	if err := e.broker.Publish(events.NewMoveEvent(
-		e.data.ID, e.nextSeq(), mon.ID, path, movePerPlayer,
+		e.data.ID, e.nextSeq(), mon.ID, traveledPath, movePerPlayer,
 	)); err != nil {
 		return fmt.Errorf("publish npc move: %w", err)
 	}

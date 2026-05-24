@@ -295,3 +295,162 @@ drainLoop:
 	}, moverSlice.SeenSegments,
 		"MoveEvent should carry only the actually-traveled segments")
 }
+
+// --- Wave 2.11e (#668) — NPC-movement direction tests ---
+//
+// The wave-goal-refined sentence (#50) names BOTH movement directions:
+// player→enemy AND enemy→player. PR #667 shipped the player direction
+// via Encounter.Move; this slice ships the mirror through
+// Encounter.applyNPCMovement (the path NPCAct uses for monster.TakeTurn's
+// movement output). Same MovementResolver seam; same per-step iteration;
+// same buffered trigger drain.
+//
+// Tests below drive NPC movement via Encounter.MoveNPCSteps — a small
+// public seam that bypasses the full NPCAct → monster.TakeTurn flow so we
+// can pin the movement path exactly (rather than depending on the
+// monster's AI targeting). The same internal iteration code runs either
+// way; the seam just gives tests deterministic input.
+
+// addGoblinForNPCMovementTests adds a goblin combatant to the encounter
+// so NPC-movement tests have a real MonsterData to push through the
+// resolver-mediated iteration.
+func (s *MovementResolverSuite) addGoblinForNPCMovementTests() {
+	s.Require().NoError(s.enc.AddMonster(tkenc.MonsterInput{
+		ID:       gobEntityID,
+		Position: encountercore.Hex{Q: 10, R: 0, S: -10},
+		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
+		AttackBonus: 4,
+		DamageDice:  damage1d6plus1,
+		DamageType:  damageSlashing,
+	}))
+}
+
+// TestNPCMove_NoResolver_LegacyBehavior verifies the regression-guard B8
+// MIRROR shape (#668 issue body): without a MovementResolver wired,
+// applyNPCMovement single-jumps the goblin to the final hex without per-
+// step iteration and does not invoke any chain machinery.
+func (s *MovementResolverSuite) TestNPCMove_NoResolver_LegacyBehavior() {
+	// Setup without resolver — rebuild the encounter wiring-free.
+	s.transport = tkenc.NewInMemoryTransport()
+	s.broker = tkenc.NewBroker(s.transport)
+	s.enc = tkenc.New("enc-moveres-npc", s.broker)
+	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: encountercore.Hex{}, SightRange: 10,
+	}))
+	s.addGoblinForNPCMovementTests()
+
+	path := []encountercore.Hex{
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+		{Q: 7, R: 0, S: -7},
+	}
+	err := s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err)
+
+	// Goblin landed at the final hex (single-jump).
+	mon := s.enc.ToData().Monsters[gobEntityID]
+	s.Require().NotNil(mon)
+	s.Equal(encountercore.Hex{Q: 7, R: 0, S: -7}, mon.Position,
+		"no-resolver NPC path should jump straight to path[-1]")
+}
+
+// TestNPCMove_ResolverNoTriggers_FullPath verifies per-step iteration
+// when a resolver is wired: one ResolveStep call per hex; goblin lands
+// at the final hex.
+func (s *MovementResolverSuite) TestNPCMove_ResolverNoTriggers_FullPath() {
+	s.addGoblinForNPCMovementTests()
+	startHex := encountercore.Hex{Q: 10, R: 0, S: -10}
+
+	path := []encountercore.Hex{
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+		{Q: 7, R: 0, S: -7},
+	}
+	err := s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err)
+
+	// One ResolveStep call per hex.
+	s.Require().Len(s.resolver.calls, 3,
+		"expected one ResolveStep per NPC path hex")
+
+	// First step from goblin's start hex.
+	s.Equal(startHex, s.resolver.calls[0].FromHex)
+	s.Equal(path[0], s.resolver.calls[0].ToHex)
+	s.Equal(encountercore.EntityID(gobEntityID), s.resolver.calls[0].EntityID,
+		"resolver call must carry the NPC's entity ID as mover")
+
+	// Goblin landed at the final hex.
+	mon := s.enc.ToData().Monsters[gobEntityID]
+	s.Equal(path[2], mon.Position)
+}
+
+// TestNPCMove_ResolverPrevented_TruncatesPath verifies that when the
+// resolver signals Prevented mid-path, the NPC stops at the previous hex
+// and does not advance further (mirror of the player-direction truncation
+// test).
+func (s *MovementResolverSuite) TestNPCMove_ResolverPrevented_TruncatesPath() {
+	s.addGoblinForNPCMovementTests()
+
+	preventAt := 1 // prevent on step 2 (0-indexed = 1)
+	s.resolver.preventAtCall = &preventAt
+	s.resolver.preventReason = "stub prevention for npc test"
+
+	path := []encountercore.Hex{
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+		{Q: 7, R: 0, S: -7},
+	}
+	err := s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err, "Prevented is not an error; movement just stops")
+
+	// Two calls — step 1 succeeded, step 2 returned Prevented; step 3 skipped.
+	s.Require().Len(s.resolver.calls, 2,
+		"resolver should be called for step 1 (succeeded) and step 2 (prevented), not step 3")
+
+	// Goblin stopped at step 1's destination — did not advance to step 2.
+	mon := s.enc.ToData().Monsters[gobEntityID]
+	s.Equal(encountercore.Hex{Q: 9, R: 0, S: -9}, mon.Position,
+		"NPC position should stop at the last successfully-traveled hex")
+}
+
+// TestNPCMove_ResolverPublishesTrigger_BufferDrainedCleanly mirrors the
+// player-direction buffer-drain regression guard. When the resolver
+// publishes a ReactionTriggerEvent on the encounter bus during ResolveStep
+// (simulating a player's OA condition firing against the moving NPC),
+// the SDK's trigger buffer catches it without erroring. In NPC-OA-only
+// scope the SDK does not act on the trigger (the resolver impl resolves
+// player OAs inline against the NPC), but the buffer MUST drain cleanly
+// to avoid leaked subscriptions across steps.
+func (s *MovementResolverSuite) TestNPCMove_ResolverPublishesTrigger_BufferDrainedCleanly() {
+	s.addGoblinForNPCMovementTests()
+
+	// Stub publishes a ReactionTriggerEvent during step 1 — simulates
+	// alice's OA condition firing because the goblin is leaving her reach.
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			topic := dnd5eEvents.ReactionTriggerTopic.On(bus)
+			_ = topic.Publish(context.Background(), dnd5eEvents.ReactionTriggerEvent{
+				ReactorID:    aliceEntityID, // player reactor (in players map)
+				ConditionRef: "dnd5e:conditions:opportunity_attack",
+				TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
+				SourceEntity: gobEntityID,
+			})
+		}
+	}
+
+	path := []encountercore.Hex{
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+	}
+	err := s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err,
+		"player-reactor triggers in buffer should NOT cause NPC Move to error in NPC-OA-only scope")
+
+	// All steps still ran.
+	s.Require().Len(s.resolver.calls, 2)
+
+	// Goblin reached the final hex.
+	mon := s.enc.ToData().Monsters[gobEntityID]
+	s.Equal(path[1], mon.Position)
+}

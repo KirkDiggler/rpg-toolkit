@@ -454,18 +454,38 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	return e.applyAndPublishMove(p, playerID, moverStart, traveledPath)
 }
 
-// iterateMovementSteps walks the path one hex at a time, calling the
-// resolver per step and draining the ReactionTriggerTopic buffer. Returns
-// the actually-traveled segment of the path (may be shorter than the
-// input if a step was Prevented).
+// iterateMovementSteps walks the path one hex at a time for the given
+// PlayerData mover, calling the resolver per step and draining the
+// ReactionTriggerTopic buffer. Returns the actually-traveled segment of
+// the path (may be shorter than the input if a step was Prevented).
 //
 // Wave 2.11e NPC-OA-only scope (per director signoff on #658): the SDK
 // drains triggers but does not partition or act on them. NPC OAs are
 // resolved inline by the resolver impl (combat.MoveEntity →
 // triggerOpportunityAttack → ResolveAttack runs end-to-end). Player-pause
 // branch deferred to #665.
+//
+// Thin player-mover wrapper around iterateMovementStepsForEntity — kept so
+// the player-direction call site (Encounter.Move) reads as before, while
+// the NPC-direction (applyNPCMovement via #668) reuses the shared
+// entity-agnostic walker.
 func (e *Encounter) iterateMovementSteps(
 	p *PlayerData, moverStart core.Hex, path []core.Hex,
+) ([]core.Hex, error) {
+	return e.iterateMovementStepsForEntity(p.EntityID, moverStart, path)
+}
+
+// iterateMovementStepsForEntity is the entity-agnostic per-step walker
+// added in Wave 2.11e (#668). Same shape as iterateMovementSteps but
+// takes the mover's EntityID directly so the NPC-direction caller
+// (applyNPCMovement) can reuse the iteration mechanics without a
+// PlayerData wrapper.
+//
+// Per #658 Q4 signoff: MovementStepInput carries no EntityType field —
+// the SDK is direction-agnostic. The resolver impl differentiates by
+// looking the entity up itself.
+func (e *Encounter) iterateMovementStepsForEntity(
+	moverID core.EntityID, moverStart core.Hex, path []core.Hex,
 ) ([]core.Hex, error) {
 	traveled := make([]core.Hex, 0, len(path))
 	from := moverStart
@@ -489,7 +509,7 @@ func (e *Encounter) iterateMovementSteps(
 			defer drainCleanup()
 
 			return e.movementResolver.ResolveStep(MovementStepInput{
-				EntityID: p.EntityID,
+				EntityID: moverID,
 				FromHex:  from,
 				ToHex:    to,
 			})

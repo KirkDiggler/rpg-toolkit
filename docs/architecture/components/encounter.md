@@ -1,8 +1,8 @@
 ---
 name: encounter module
-description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, discrete-phase combat orchestration, MovementResolver seam
+description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, discrete-phase combat orchestration, MovementResolver seam (both movement directions)
 updated: 2026-05-24
-confidence: high — Wave 2.11d shipped the discrete-phase combat surface; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement (NPC-OA scope; player-pause deferred to #665)
+confidence: high — Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions (player-Move and NPC applyNPCMovement; NPC-OA scope; player-pause deferred to #665)
 ---
 
 # encounter module
@@ -142,16 +142,22 @@ Triggers flow via the buffered bus subscription only — there is intentionally 
 
 The orchestrator (rpg-api) wires a resolver via `WithMovementResolver(...)`. The orchestrator's implementation wraps the rulebook's `combat.MoveEntity` so chain subscribers (Disengage marker, OpportunityAttackCondition) fire per step and OAs resolve inline via the rulebook's `triggerOpportunityAttack` → `combat.ResolveAttack` path.
 
-### Per-step iteration vs legacy single-jump
+### Per-step iteration vs legacy single-jump (both movement directions)
 
-`Encounter.Move` has two paths gated on resolver presence:
+`Encounter.Move` (player direction) and `Encounter.applyNPCMovement` (NPC direction, called from `NPCAct` with `monster.TakeTurn`'s movement output) both branch on resolver presence using the same shared `iterateMovementStepsForEntity` helper:
 
-| Resolver wired? | Path | Encounter SDK position update | Chain executes | OA fires |
-|---|---|---|---|---|
-| No | Legacy single-jump | once, to `path[-1]` | never | never |
-| Yes | Per-step iteration | once, to the final hex of the traveled path (after loop completes) | per step via resolver | inline (NPC-OA scope) |
+| Mover | Caller | Resolver wired? | Path | SDK position update | Chain executes | OA fires |
+|---|---|---|---|---|---|---|
+| Player | `Encounter.Move` | No | Legacy single-jump | once, to `path[-1]` | never | never |
+| Player | `Encounter.Move` | Yes | Per-step iteration | once, to the final hex of the traveled path | per step via resolver | inline (NPC reactor) |
+| NPC | `Encounter.applyNPCMovement` | No | Legacy single-jump | once, to `path[-1]` | never | never |
+| NPC | `Encounter.applyNPCMovement` | Yes | Per-step iteration | once, to the final hex of the traveled path | per step via resolver | inline (player reactor) |
 
-The per-step path accumulates `traveled` as it iterates; the SDK only mutates `Player.View.Position` once, after the loop, via `applyAndPublishMove`. Step-by-step position mutation happens externally in the resolver impl (combat.MoveEntity calls `room.MoveEntity` per step on the spatial-room side), but the encounter SDK keeps its own position state in sync by committing once at the end.
+Wave 2.11e #667 shipped the player-direction iteration; Wave 2.11e #668 shipped the NPC-direction mirror. Same `MovementStepInput`/`MovementStepResult` types in both directions; the SDK is direction-agnostic per #658 Q4 signoff (no `EntityType` field on the input — the resolver impl differentiates from its own lookup).
+
+The per-step path accumulates `traveled` as it iterates; the SDK only mutates position (Player.View.Position or MonsterData.Position) once, after the loop. Step-by-step position mutation in the spatial room happens externally in the resolver impl (combat.MoveEntity calls `room.MoveEntity` per step), but the encounter SDK keeps its own position state in sync by committing once at the end.
+
+For tests that need to drive NPC movement with a deterministic path (rather than depending on `monster.TakeTurn`'s AI output), `Encounter.MoveNPCSteps(npcID, path)` is the public seam that calls into the same iteration mechanics.
 
 When no resolver is wired, the legacy single-jump behavior is preserved for non-combat encounters (free-roam, social). The shape was load-bearing for Wave 2.11d's verification gate: the active.md B8 probe asserted that movement without a resolver does NOT trigger OAs. The new per-step path activates only when a resolver is explicitly supplied.
 
