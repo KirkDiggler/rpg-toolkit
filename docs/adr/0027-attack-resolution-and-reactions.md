@@ -104,10 +104,12 @@ actually uses:
     Player→player and monster→monster attacks return
     `ErrUnsupportedAttackDirection` until a wave adds the corresponding
     publish helper; the SDK surface stays the same.
-  - **MovementResolver (Wave 2.11e, 2026-05-24).** Second instance of
-    the resolver-per-verb pattern. `Encounter.Move` delegates per-step
-    movement mechanics (MovementChain execution, OA triggering) to a
-    rulebook implementation via `MovementResolver.ResolveStep`. When a
+  - **MovementResolver (Wave 2.11e, 2026-05-24, both directions).**
+    Second instance of the resolver-per-verb pattern. `Encounter.Move`
+    (player-direction, #667) AND `Encounter.applyNPCMovement` (NPC-
+    direction, #668) both delegate per-step movement mechanics
+    (MovementChain execution, OA triggering) to a rulebook
+    implementation via `MovementResolver.ResolveStep`. When a
     resolver is wired, `Move` iterates per-step with a buffered
     subscriber on `ReactionTriggerTopic` installed per step; chain
     subscribers (`OpportunityAttackCondition.onMovementChain`, Disengage
@@ -117,9 +119,11 @@ actually uses:
     (non-combat encounters). Truncated-traveled-path events: when chain
     prevention blocks a step, the published `MoveEvent` carries only
     the actually-traveled segments — wire clients see the truthful
-    outcome, not the intent. NPC-OA-only scope; player-pause branch
-    (Sentinel-shape / spell reactions like Shield-during-movement)
-    deferred to issue
+    outcome, not the intent. Both directions share the
+    `iterateMovementStepsForEntity` helper; the SDK is direction-
+    agnostic (no `EntityType` field on `MovementStepInput`). NPC-OA-only
+    scope; player-pause branch (Sentinel-shape / spell reactions like
+    Shield-during-movement) deferred to issue
     [#665](https://github.com/KirkDiggler/rpg-toolkit/issues/665).
 
   **The resolver-per-verb pattern is now the canonical seam for any
