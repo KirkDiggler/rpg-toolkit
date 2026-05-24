@@ -67,7 +67,7 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `character/choices/` | Choice system (class/race at creation) | Medium — testdata from external API |
 | `combat/` | AC chain, attack resolution, damage, healing, action economy | High — integration and unit tests |
 | `combatabilities/` | Attack, Dash, Disengage, Dodge, Hide, Move | Medium — `move.go` minimally tested |
-| `actions/` | Strike, OffHandStrike, Disengage, CheckAndGrant | High — used in integration tests |
+| `actions/` | Strike, OffHandStrike, CheckAndGrant | High — used in integration tests |
 | `features/` | Feature loader for dnd5e features | High — Rage, SecondWind, MartialArts, etc. |
 | `conditions/` | Condition loader + all named conditions | High — loader test, individual condition tests |
 | `initiative/` | Initiative roll + tracker | High |
@@ -310,30 +310,33 @@ behavior; the encounter SDK owns the prompt fan-out and the player-input
 RPC; the host wires the persistence between phases. No condition has to
 know about reactions-as-RPC; it just knows when to publish a trigger.
 
-## actions/Disengage + Step of the Wind — OA suppression (Wave 2.11e)
+## combatabilities/Disengage + Step of the Wind — OA suppression (Wave 2.11e)
 
 Wave 2.11e's playable target — rogue/fighter/barbarian/monk playable —
 requires Disengage support so monks can reposition with Step of the Wind
 without taking opportunity attacks. The OA-suppression mechanism was
 already wired (`DisengagingCondition` adds `OAPreventionSources` on
 MovementChain; `OpportunityAttackCondition` respects `IsOAPrevented()`),
-but no production path applied the condition.
+but no production path applied the condition. Wave 2.11e completes both
+production paths.
 
-### actions.Disengage
+### combatabilities.Disengage
 
-`rulebooks/dnd5e/actions/disengage.go`. Full-action Disengage available to
-all characters. `Activate` consumes one action from the ActionEconomy,
-applies `DisengagingCondition` to the owner on `input.Bus` (so MovementChain
-subscribers add prevention sources during the next move), and publishes
-`DisengageActivatedEvent` for game-server telemetry. The condition removes
-itself automatically on the owner's TurnEnd.
+`rulebooks/dnd5e/combatabilities/disengage.go`. The canonical Disengage
+entry point (full-action via `NewDisengage`, bonus-action via
+`NewBonusDisengage` for rogue's Cunning Action and similar features).
+`Activate` consumes the action/bonus action from the ActionEconomy,
+applies `DisengagingCondition` to the owner on `input.Bus` (so
+MovementChain subscribers add prevention sources during the next move),
+and publishes `DisengageActivatedEvent` for game-server telemetry. The
+condition removes itself automatically on the owner's TurnEnd.
 
 ```
 host → Disengage.Activate
        ↓
-       ActionEconomy.UseAction()
+       BaseCombatAbility.Activate() → ActionEconomy.UseAction()
        ↓
-       conditions.NewDisengagingCondition(ownerID).Apply(ctx, bus)
+       conditions.NewDisengagingCondition(owner.GetID()).Apply(ctx, bus)
        ↓ subscribes to MovementChain + TurnEnd
        ↓
        DisengageActivatedTopic.Publish(...)
@@ -341,10 +344,11 @@ host → Disengage.Activate
        return nil
 ```
 
-Bonus-action Disengage (monk's Step of the Wind) is reachable via the
-feature path, not via this constructor. Per director signoff on #666 Q3:
-YAGNI on the bonus-action constructor; future class features add the
-variant when needed.
+Before Wave 2.11e, the comment in `combatabilities/disengage.go:91-92`
+said "A DisengagingCondition (to be implemented in a future phase) will
+subscribe to this event and apply the actual mechanical effects" — but
+the condition has always been ready; the gap was that no Activate path
+applied it.
 
 ### features.StepOfTheWind — disengage branch
 
@@ -359,6 +363,12 @@ DisengagingCondition."
 The `action="dash"` branch keeps event-only behavior. Dash doesn't suppress
 OAs in 5e rules, and the Dash action itself isn't part of Wave 2.11e's
 scope.
+
+The feature applies the condition directly rather than internally calling
+`combatabilities.NewBonusDisengage` — Step of the Wind already has its own
+Ki-cost gating + activation surface, and routing through the combat
+ability would create coupling without DRY payoff. Parallel paths converge
+on the same `DisengagingCondition`.
 
 ## character/choices/ — service-shaped surface
 
