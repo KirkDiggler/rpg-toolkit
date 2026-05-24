@@ -414,6 +414,78 @@ func (s *MovementResolverSuite) TestNPCMove_ResolverPrevented_TruncatesPath() {
 		"NPC position should stop at the last successfully-traveled hex")
 }
 
+// TestNPCMove_StartHexInPath_TrimmedCorrectly verifies the trim shape
+// for monster.TakeTurn's output: TurnResult.Movement includes the start
+// hex per its contract (monster/monster.go:645 — "include start
+// position, then each hex moved to"). Without trimming, the per-step
+// iteration would see a no-op FromHex==ToHex first step and could
+// misinterpret "prevented on first real move" as a non-empty traveled
+// path. Copilot review on PR #672 flagged this; the fix lives in
+// applyNPCMovementSteps and benefits both call sites.
+//
+// Test drives MoveNPCSteps with a start-included path (matching
+// TakeTurn's shape) and asserts:
+//   - resolver.calls equals len(path) - 1 (not len(path) — the start
+//     hex was trimmed before iteration)
+//   - first ResolveStep call has FromHex == startHex, ToHex == path[1]
+//   - goblin lands at the final destination
+func (s *MovementResolverSuite) TestNPCMove_StartHexInPath_TrimmedCorrectly() {
+	s.addGoblinForNPCMovementTests()
+	startHex := encountercore.Hex{Q: 10, R: 0, S: -10}
+
+	// Start-included path — mirrors monster.TakeTurn's TurnResult.Movement
+	// shape (start hex followed by destination hexes).
+	path := []encountercore.Hex{
+		startHex, // path[0] = current position (TakeTurn includes this)
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+	}
+	err := s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err)
+
+	// Only 2 ResolveStep calls — the start hex was trimmed.
+	s.Require().Len(s.resolver.calls, 2,
+		"start hex must be trimmed; expected 2 calls for 3-hex path")
+
+	// First call is the FIRST REAL step (from startHex to path[1]).
+	s.Equal(startHex, s.resolver.calls[0].FromHex,
+		"first call's FromHex should be the start hex")
+	s.Equal(encountercore.Hex{Q: 9, R: 0, S: -9}, s.resolver.calls[0].ToHex,
+		"first call's ToHex should be path[1] (path[0] was trimmed)")
+
+	// Goblin landed at the final destination.
+	mon := s.enc.ToData().Monsters[gobEntityID]
+	s.Equal(encountercore.Hex{Q: 8, R: 0, S: -8}, mon.Position)
+}
+
+// TestNPCMove_OnlyStartHex_NoOp verifies the edge case where the path
+// consists solely of the start hex (caller asked the NPC to "move" to
+// where they already are). After trimming, the path is empty → no-op,
+// no events fired.
+func (s *MovementResolverSuite) TestNPCMove_OnlyStartHex_NoOp() {
+	s.addGoblinForNPCMovementTests()
+	startHex := encountercore.Hex{Q: 10, R: 0, S: -10}
+
+	err := s.enc.MoveNPCSteps(gobEntityID, []encountercore.Hex{startHex})
+	s.Require().NoError(err, "single-start-hex path is a no-op, not an error")
+
+	s.Empty(s.resolver.calls, "no ResolveStep calls — nothing real to iterate")
+
+	mon := s.enc.ToData().Monsters[gobEntityID]
+	s.Equal(startHex, mon.Position, "position unchanged")
+}
+
+// TestMoveNPCSteps_EmptyPath_Errors verifies MoveNPCSteps aligns with
+// Encounter.Move's empty-path convention — returns an error instead of
+// silently no-op'ing. Copilot review flag on PR #672.
+func (s *MovementResolverSuite) TestMoveNPCSteps_EmptyPath_Errors() {
+	s.addGoblinForNPCMovementTests()
+
+	err := s.enc.MoveNPCSteps(gobEntityID, nil)
+	s.Require().Error(err, "empty path must error, matching Encounter.Move convention")
+	s.Contains(err.Error(), "empty path")
+}
+
 // TestNPCMove_ResolverPublishesTrigger_BufferDrainedCleanly mirrors the
 // player-direction buffer-drain regression guard. When the resolver
 // publishes a ReactionTriggerEvent on the encounter bus during ResolveStep

@@ -203,9 +203,15 @@ func (e *Encounter) applyNPCMovement(mon *MonsterData, movement []spatial.CubeCo
 // shapes without depending on monster.TakeTurn's AI to produce a
 // specific movement. Production callers go through NPCAct which calls
 // applyNPCMovement with monster.TakeTurn's Movement output.
+//
+// Returns an error on empty path, matching Encounter.Move's convention
+// (Copilot review on PR #672 flagged the silent-no-op divergence). If
+// the caller passes a leading hex that equals the NPC's current
+// position, it is trimmed (matching the TakeTurn output shape — see
+// applyNPCMovementSteps).
 func (e *Encounter) MoveNPCSteps(npcID encountercore.EntityID, path []encountercore.Hex) error {
 	if len(path) == 0 {
-		return nil
+		return errors.New("empty path")
 	}
 	mon, ok := e.data.Monsters[npcID]
 	if !ok {
@@ -219,8 +225,27 @@ func (e *Encounter) MoveNPCSteps(npcID encountercore.EntityID, path []encounterc
 // on movementResolver presence: per-step iteration when wired,
 // single-jump when not. Either way, ends by publishing a MoveEvent with
 // the truncated traveled path.
+//
+// Normalizes the input path by trimming a leading hex that equals the
+// NPC's current position. monster.TakeTurn's TurnResult.Movement
+// includes the start hex per its contract
+// (rulebooks/dnd5e/monster/monster.go:645 "include start position, then
+// each hex moved to"); without trimming, the per-step iteration would
+// see a no-op FromHex==ToHex first step and could incorrectly treat
+// "prevented on first real move" as a non-empty traveled path. Copilot
+// review on PR #672 flagged this; trimming at this shared seam makes
+// both call sites (applyNPCMovement + MoveNPCSteps) forgiving of the
+// TakeTurn shape.
 func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore.Hex) error {
 	moverStart := mon.Position
+
+	// Trim leading start-hex if monster.TakeTurn included it.
+	if len(path) > 0 && path[0] == moverStart {
+		path = path[1:]
+	}
+	if len(path) == 0 {
+		return nil // No real movement — moving to where you already are.
+	}
 
 	traveledPath := path
 	if e.movementResolver != nil {
