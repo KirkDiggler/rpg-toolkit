@@ -35,6 +35,12 @@ var (
 	// whose combat snapshot (HP, AC, AttackBonus, DamageDice) is not
 	// fully populated. Maps to gRPC FailedPrecondition.
 	ErrNonCombatant = errors.New("actor is not a combatant")
+	// ErrUnsupportedAttackDirection is returned by CompleteTakeAction when
+	// the (attacker, target) pair encoded in PhasedAttackContext is not a
+	// shipped PvE direction (player→monster or monster→player). Player→
+	// player and monster→monster are out of scope until a wave adds the
+	// corresponding verb. Maps to gRPC Unimplemented.
+	ErrUnsupportedAttackDirection = errors.New("unsupported attack direction")
 )
 
 // damageTypeUntyped is the fallback damage type emitted when an attacker's

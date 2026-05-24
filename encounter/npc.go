@@ -226,11 +226,6 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		if targetPlayer == nil {
 			continue
 		}
-		dmgType := mon.DamageType
-		if dmgType == "" {
-			dmgType = damageTypeUntyped
-		}
-		hpBefore := targetPlayer.HP
 
 		input := AttackInput{
 			AttackerID:          mon.ID,
@@ -255,36 +250,18 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 			// Player reactor was prompted. The encounter has the pending
 			// reaction state + prompt event already published. Stop processing
 			// further captured attacks for this NPC turn — the orchestrator
-			// will resume the NPC dispatch after the reactor responds.
+			// will resume the NPC dispatch after the reactor responds via
+			// SubmitCheck → CompleteTakeAction (the NPC-attacker direction
+			// added in Wave 2.11e).
 			return errNPCPausedForReaction
 		}
 		if outcome == nil {
 			return fmt.Errorf("combat resolver: nil outcome with nil error")
 		}
-		if outcome.Hit {
-			targetPlayer.HP -= outcome.Damage
-			if targetPlayer.HP < 0 {
-				targetPlayer.HP = 0
-			}
-		}
-		if outcome.DamageType != "" {
-			dmgType = outcome.DamageType
-		}
-		if err := e.publishAttackOutcome(
-			mon.ID, targetID, outcome,
-			targetPlayer.HP, targetPlayer.MaxHP, dmgType,
-			mon.Position, targetPlayer.View.Position,
-		); err != nil {
+		// Wave 2.11e: share the NPC-attacker outcome publish path with
+		// CompleteTakeAction so inline and resume emit the same shape.
+		if err := e.applyAndPublishNPCOutcome(mon, targetPlayer, outcome); err != nil {
 			return err
-		}
-		// Wave 2.10 partial player-death: fire EntityDiedEvent only on the
-		// HP transition (avoids duplicates from multi-attack NPCs or hits
-		// on an already-downed player). No EntityRemoved / no initiative
-		// splice / no encounter-end.
-		if outcome.Hit && hpBefore > 0 && targetPlayer.HP == 0 {
-			if err := e.publishPlayerDied(targetID, mon.ID); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
@@ -608,15 +585,10 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	if target == nil {
 		return nil
 	}
-	dmgType := mon.DamageType
-	if dmgType == "" {
-		dmgType = damageTypeUntyped
-	}
-	hpBefore := target.HP
 	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
 		AttackerID:          mon.ID,
 		TargetID:            target.EntityID,
-		ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: "attack"},
+		ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: actionIDAttack},
 		AttackerAttackBonus: mon.AttackBonus,
 		AttackerDamageDice:  mon.DamageDice,
 		AttackerDamageType:  mon.DamageType,
@@ -629,28 +601,10 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	if outcome == nil {
 		return fmt.Errorf("combat resolver: nil outcome with nil error")
 	}
-	if outcome.Hit {
-		target.HP -= outcome.Damage
-		if target.HP < 0 {
-			target.HP = 0
-		}
-	}
-	if outcome.DamageType != "" {
-		dmgType = outcome.DamageType
-	}
-	if err := e.publishAttackOutcome(
-		mon.ID, target.EntityID, outcome,
-		target.HP, target.MaxHP, dmgType,
-		mon.Position, target.View.Position,
-	); err != nil {
-		return err
-	}
-	if outcome.Hit && hpBefore > 0 && target.HP == 0 {
-		if err := e.publishPlayerDied(target.EntityID, mon.ID); err != nil {
-			return err
-		}
-	}
-	return nil
+	// Wave 2.11e: share the NPC-attacker outcome publish path. Same
+	// rationale as applyCapturedAttacks above — inline scripted attacks
+	// and the phased Shield-resume direction must emit identical shapes.
+	return e.applyAndPublishNPCOutcome(mon, target, outcome)
 }
 
 // buildPerception assembles the PerceptionData a monster needs to choose

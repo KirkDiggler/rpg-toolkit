@@ -1,8 +1,8 @@
 ---
 name: encounter module
 description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, discrete-phase combat orchestration
-updated: 2026-05-14
-confidence: high — Wave 2.11d shipped the discrete-phase combat surface verified by shipped code + tests + ADR-0027 cross-reference
+updated: 2026-05-23
+confidence: high — Wave 2.11d shipped the discrete-phase combat surface; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction (verified by shipped tests + ADR-0027 cross-reference)
 ---
 
 # encounter module
@@ -97,6 +97,25 @@ if encounter.IsNPCPausedForReaction(err) {
 ```
 
 `IsNPCPausedForReaction` uses `errors.Is` so the helper survives any `%w`-wrapping callers add. The sentinel is unexported deliberately — the helper is the only legitimate detection path.
+
+### NPC-attacker resume direction (Wave 2.11e)
+
+`CompleteTakeAction` accepts either PvE attack direction. The shipped Wave 2.11d shape rejected NPC attackers (the original implementation looked up `attackCtx.AttackerID` only against `data.Players`), which broke the resume path for the only direction Shield can fire in: monster attacks player → player Shield prompt → player chooses Take → resume calls `CompleteTakeAction` with `AttackerID = monsterID`.
+
+The Wave 2.11e fix resolves direction polymorphically by checking the AttackerID against both the Players map and the Monsters map, then dispatching to the appropriate publish helper:
+
+| Direction | AttackerID resolved against | Outcome publish path | Death event |
+|---|---|---|---|
+| player→monster | `data.Players` | `applyAndPublishOutcome(player, monster, outcome)` | `killEntity` (full kill chain — remove from initiative, check encounter-end) |
+| monster→player | `data.Monsters` | `applyAndPublishNPCOutcome(monster, player, outcome)` | `publishPlayerDied` (Wave 2.10 partial — event only, no removal, no encounter-end) |
+| player→player | n/a | rejected with `ErrUnsupportedAttackDirection` | n/a |
+| monster→monster | n/a | rejected with `ErrUnsupportedAttackDirection` | n/a |
+
+`applyAndPublishNPCOutcome` is extracted from the per-attack body of `applyCapturedAttacks` (encounter/npc.go) and re-used from both the inline NPC turn and the Shield-resume direction so the two paths emit identical event shapes. Before this extraction, the inline `applyCapturedAttacks` had a 60-line tail computing damage-type fallback + HP delta + publishAttackOutcome + publishPlayerDied that the resume direction would have to duplicate. The extraction is internal — no change to the resolver interface or any host-visible verb signature.
+
+The single SDK call site is unchanged from the orchestrator's perspective: rpg-api's `submit_check_reaction.go` calls `enc.CompleteTakeAction(phasedCtx, modifiers)` regardless of direction. The SDK figures out which `applyAndPublish*` to dispatch from `attackCtx.AttackerID`.
+
+PvP and monster-vs-monster directions return `ErrUnsupportedAttackDirection` (maps to gRPC `Unimplemented`). A future wave that wants either direction would add the corresponding `applyAndPublish*` helper to the dispatch switch; the SDK surface stays the same.
 
 ## Implementation notes worth keeping
 

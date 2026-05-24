@@ -215,6 +215,14 @@ func (e *Encounter) ClearPendingReactionPrompt(reactorPlayerID core.PlayerID) {
 //
 // Publishes the AttackResolvedEvent + (on hit) DamageDealtEvent and runs the
 // same death/removal chain as the inline path.
+//
+// Wave 2.11e: accepts either PvE attack direction — player→monster (the
+// original 2.11d shape, dispatched via TakeActionPhased) and monster→player
+// (the Shield resume direction, dispatched via NPCAct that paused for a
+// player reaction). The SDK resolves direction from AttackerID lookup
+// against the Players + Monsters maps; the orchestrator passes the
+// PhasedAttackContext through unchanged for either direction. Player→
+// player attacks return ErrUnsupportedAttackDirection.
 func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers []ReactionModifier) error {
 	if attackCtx == nil {
 		return fmt.Errorf("nil attack context")
@@ -227,16 +235,19 @@ func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers
 		return fmt.Errorf("combat resolver does not support phased completion")
 	}
 
-	// Resolve the player + monster from the attack context's IDs. The
-	// caller is the attacker; the target may be either a player (cross-PvP)
-	// or a monster — Wave 2.11d only supports player → monster attacks per
-	// the existing TakeAction contract.
-	player := e.findPlayerByEntityID(attackCtx.AttackerID)
-	if player == nil {
+	// Resolve attacker against both maps; CompleteTakeAction is the only
+	// resume verb so the direction must be inferred from the persisted
+	// context (the orchestrator does not pass a direction hint).
+	attackerPlayer := e.findPlayerByEntityID(attackCtx.AttackerID)
+	attackerMonster := e.data.Monsters[attackCtx.AttackerID]
+	if attackerPlayer == nil && attackerMonster == nil {
 		return fmt.Errorf("attacker %q not in encounter", attackCtx.AttackerID)
 	}
-	monster, ok := e.data.Monsters[attackCtx.TargetID]
-	if !ok {
+
+	// Resolve target against both maps for the symmetric reason.
+	targetMonster := e.data.Monsters[attackCtx.TargetID]
+	targetPlayer := e.findPlayerByEntityID(attackCtx.TargetID)
+	if targetMonster == nil && targetPlayer == nil {
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, attackCtx.TargetID)
 	}
 
@@ -247,13 +258,78 @@ func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers
 	if outcome == nil {
 		return fmt.Errorf("combat resolver: nil outcome with nil error")
 	}
-	return e.applyAndPublishOutcome(player, monster, outcome)
+
+	// Dispatch by the resolved direction. PvE only — player→player and
+	// monster→monster shapes are out of scope until a wave adds the
+	// corresponding verb.
+	switch {
+	case attackerPlayer != nil && targetMonster != nil:
+		return e.applyAndPublishOutcome(attackerPlayer, targetMonster, outcome)
+	case attackerMonster != nil && targetPlayer != nil:
+		return e.applyAndPublishNPCOutcome(attackerMonster, targetPlayer, outcome)
+	default:
+		return fmt.Errorf("%w: %q→%q",
+			ErrUnsupportedAttackDirection, attackCtx.AttackerID, attackCtx.TargetID)
+	}
+}
+
+// applyAndPublishNPCOutcome mutates the target player's HP, publishes the
+// attack/damage events with per-viewer projection, and fires the partial
+// player-death event on the >0 → 0 transition. The NPC-attacker mirror of
+// applyAndPublishOutcome.
+//
+// Wave 2.10 partial player-death semantics apply: a player whose HP hits
+// 0 fires EntityDiedEvent but is NOT removed from initiative and does NOT
+// terminate the encounter — dying-state and TPK are Wave 2.11+ territory.
+//
+// Shared between two call sites:
+//   - applyCapturedAttacks (inline NPC turn that did NOT pause for a
+//     player reaction) — publishes the outcome immediately after the
+//     resolver returns.
+//   - CompleteTakeAction (NPC→player Shield-resume direction) — publishes
+//     the outcome after the player's SubmitCheck{take_reaction} reaches
+//     the SDK via the orchestrator.
+//
+// Wave 2.11e: extracted from the per-attack body of applyCapturedAttacks
+// (encounter/npc.go) so the Shield resume path emits the same shape as
+// the inline path. Without this, NPC-attacker resume would diverge from
+// NPC-attacker inline on death-event emission and damage-type fallback.
+func (e *Encounter) applyAndPublishNPCOutcome(monster *MonsterData, player *PlayerData, outcome *AttackOutcome) error {
+	hpBefore := player.HP
+	if outcome.Hit {
+		player.HP -= outcome.Damage
+		if player.HP < 0 {
+			player.HP = 0
+		}
+	}
+
+	damageType := outcome.DamageType
+	if damageType == "" {
+		damageType = monster.DamageType
+	}
+	if damageType == "" {
+		damageType = damageTypeUntyped
+	}
+	if err := e.publishAttackOutcome(
+		monster.ID, player.EntityID, outcome,
+		player.HP, player.MaxHP, damageType,
+		monster.Position, player.View.Position,
+	); err != nil {
+		return err
+	}
+	if outcome.Hit && hpBefore > 0 && player.HP == 0 {
+		if err := e.publishPlayerDied(player.EntityID, monster.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // applyAndPublishOutcome mutates target HP, publishes the attack/damage
 // events with per-viewer projection, and fires the death + encounter-end
 // chain on the >0 → 0 transition. Shared between the legacy single-phase
-// path and the phased CompleteTakeAction path.
+// path and the phased CompleteTakeAction path (player→monster direction).
+// applyAndPublishNPCOutcome is the monster→player mirror.
 func (e *Encounter) applyAndPublishOutcome(player *PlayerData, monster *MonsterData, outcome *AttackOutcome) error {
 	hpBefore := monster.HP
 	if outcome.Hit {

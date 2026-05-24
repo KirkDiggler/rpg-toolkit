@@ -6,15 +6,22 @@ package encounter_test
 // a stubbed PhasedCombatResolver. The stub controls whether ReactionTrigger
 // events are published during phase 1 and whether the reactor is a player
 // (surface) or NPC (auto-resolve).
+//
+// Wave 2.11e — NPC-attacker CompleteTakeAction symmetry tests appended at
+// the bottom of the file. They exercise the only PvE direction Shield can
+// fire in: monster attacks player → player Shield prompt → SubmitCheck
+// resume calls CompleteTakeAction with the NPC as AttackerID.
 
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
 	tkenc "github.com/KirkDiggler/rpg-toolkit/encounter"
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -277,4 +284,150 @@ func (s *PhasedTakeActionSuite) TestLegacyResolverFallback() {
 	s.Require().NotNil(out)
 	s.True(out.Resolved, "legacy resolver always Resolved=true")
 	s.Len(resolver.calls, 1)
+}
+
+// --- Wave 2.11e — NPC-attacker CompleteTakeAction symmetry ---
+//
+// The goblin attacks bob; bob's Shield prompt fires; SubmitCheck resumes
+// via CompleteTakeAction with AttackerID=gobEntityID, TargetID=bobEntityID.
+// These tests exercise the only PvE direction Shield can fire in. The
+// existing player-attacker tests above stay; this is parallel coverage,
+// not a replacement.
+//
+// Test scaffolding shape signed off by director B19 (2026-05-23): share
+// the PhasedTakeActionSuite struct + a goblinAttackBobContext() helper
+// builds the PhasedAttackContext directly (bypassing NPCAct since
+// CompleteTakeAction is the surface under test).
+
+// goblinAttackBobContext builds the PhasedAttackContext that the
+// orchestrator would persist when an NPC attack pauses for a player
+// reaction. Direction: monster (goblin) → player (bob).
+func goblinAttackBobContext() *tkenc.PhasedAttackContext {
+	return &tkenc.PhasedAttackContext{
+		Rulebook:   "stub",
+		AttackerID: gobEntityID,
+		TargetID:   bobEntityID,
+	}
+}
+
+func (s *PhasedTakeActionSuite) TestCompleteTakeAction_NPCAttacker_HitPublishes() {
+	bobSub, err := s.broker.Subscribe(s.enc.ID(), bobPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = bobSub.Close() }()
+
+	s.resolver.outcomeReturn = &tkenc.AttackOutcome{
+		Hit:         true,
+		AttackRoll:  16,
+		AttackBonus: 4,
+		TargetAC:    12,
+		Damage:      5,
+		DamageType:  damageSlashing,
+	}
+
+	err = s.enc.CompleteTakeAction(goblinAttackBobContext(), nil)
+	s.Require().NoError(err, "NPC-attacker resume must not be rejected")
+
+	// HP delta on bob: starting 18 - 5 = 13.
+	bobData := s.enc.ToData().Players[bobPlayerID]
+	s.Require().NotNil(bobData, "bob must remain a player in the encounter")
+	s.Equal(13, bobData.HP, "bob HP should drop by outcome.Damage")
+
+	// Events published to bob: AttackResolved + DamageDealt.
+	evts := drainEvents(bobSub, 200*time.Millisecond)
+	s.Require().NotEmpty(evts, "expected at least AttackResolved+DamageDealt events")
+	s.True(hasEventOfType[*events.AttackResolvedEvent](evts), "AttackResolvedEvent expected on hit")
+	s.True(hasEventOfType[*events.DamageDealtEvent](evts), "DamageDealtEvent expected on hit")
+	s.False(hasEventOfType[*events.EntityDiedEvent](evts), "no death — bob still has HP")
+
+	s.Len(s.resolver.outcomeCalls, 1, "phase 2 should run once via NPC-attacker resume")
+}
+
+func (s *PhasedTakeActionSuite) TestCompleteTakeAction_NPCAttacker_MissNoPublish() {
+	bobSub, err := s.broker.Subscribe(s.enc.ID(), bobPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = bobSub.Close() }()
+
+	s.resolver.outcomeReturn = &tkenc.AttackOutcome{
+		Hit:         false,
+		AttackRoll:  5,
+		AttackBonus: 4,
+		TargetAC:    12,
+		Damage:      0,
+		DamageType:  damageSlashing,
+	}
+
+	err = s.enc.CompleteTakeAction(goblinAttackBobContext(), nil)
+	s.Require().NoError(err)
+
+	// HP unchanged on a miss.
+	bobData := s.enc.ToData().Players[bobPlayerID]
+	s.Require().NotNil(bobData)
+	s.Equal(18, bobData.HP, "bob HP unchanged on miss")
+
+	// AttackResolved always fires; DamageDealt only on hit.
+	evts := drainEvents(bobSub, 200*time.Millisecond)
+	s.True(hasEventOfType[*events.AttackResolvedEvent](evts), "AttackResolvedEvent fires on miss too")
+	s.False(hasEventOfType[*events.DamageDealtEvent](evts), "DamageDealtEvent must not fire on miss")
+}
+
+func (s *PhasedTakeActionSuite) TestCompleteTakeAction_NPCAttacker_PlayerDeath() {
+	bobSub, err := s.broker.Subscribe(s.enc.ID(), bobPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = bobSub.Close() }()
+
+	// Damage larger than bob's HP forces a death transition.
+	s.resolver.outcomeReturn = &tkenc.AttackOutcome{
+		Hit:         true,
+		AttackRoll:  20,
+		AttackBonus: 4,
+		TargetAC:    12,
+		Damage:      30,
+		DamageType:  damageSlashing,
+	}
+
+	err = s.enc.CompleteTakeAction(goblinAttackBobContext(), nil)
+	s.Require().NoError(err)
+
+	// HP clamped to 0; player remains in the encounter (Wave 2.10 partial
+	// player-death: no removal, no encounter-end).
+	bobData := s.enc.ToData().Players[bobPlayerID]
+	s.Require().NotNil(bobData, "bob is not removed from encounter on death (Wave 2.10 partial)")
+	s.Equal(0, bobData.HP, "bob HP clamped at 0 after lethal damage")
+
+	evts := drainEvents(bobSub, 200*time.Millisecond)
+	s.True(hasEventOfType[*events.AttackResolvedEvent](evts), "AttackResolved fires on lethal hit")
+	s.True(hasEventOfType[*events.DamageDealtEvent](evts), "DamageDealt fires on lethal hit")
+	s.True(hasEventOfType[*events.EntityDiedEvent](evts),
+		"EntityDiedEvent must fire when player HP transitions >0 → 0")
+}
+
+// drainEvents collects events from a subscription until timeout. Unlike
+// collectEventsTyped (in visibility_transition_test.go) it returns the
+// raw EncounterEvent slice so callers use the generic hasEventOfType
+// helper below for type-shaped assertions.
+func drainEvents(sub *tkenc.Subscription, timeout time.Duration) []events.EncounterEvent {
+	out := []events.EncounterEvent{}
+	deadline := time.After(timeout)
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				return out
+			}
+			out = append(out, evt)
+		case <-deadline:
+			return out
+		}
+	}
+}
+
+// hasEventOfType reports whether any event in the slice has the requested
+// concrete type. Saves the per-test type-switch boilerplate.
+func hasEventOfType[T events.EncounterEvent](evts []events.EncounterEvent) bool {
+	for _, e := range evts {
+		if _, ok := e.(T); ok {
+			return true
+		}
+	}
+	return false
 }
