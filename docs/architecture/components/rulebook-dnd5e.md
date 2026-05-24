@@ -67,7 +67,7 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `character/choices/` | Choice system (class/race at creation) | Medium — testdata from external API |
 | `combat/` | AC chain, attack resolution, damage, healing, action economy | High — integration and unit tests |
 | `combatabilities/` | Attack, Dash, Disengage, Dodge, Hide, Move | Medium — `move.go` minimally tested |
-| `actions/` | Strike, OffHandStrike, CheckAndGrant | High — used in integration tests |
+| `actions/` | Strike, OffHandStrike, Disengage, CheckAndGrant | High — used in integration tests |
 | `features/` | Feature loader for dnd5e features | High — Rage, SecondWind, MartialArts, etc. |
 | `conditions/` | Condition loader + all named conditions | High — loader test, individual condition tests |
 | `initiative/` | Initiative roll + tracker | High |
@@ -309,6 +309,56 @@ The pattern is: conditions own their predicate and their publish
 behavior; the encounter SDK owns the prompt fan-out and the player-input
 RPC; the host wires the persistence between phases. No condition has to
 know about reactions-as-RPC; it just knows when to publish a trigger.
+
+## actions/Disengage + Step of the Wind — OA suppression (Wave 2.11e)
+
+Wave 2.11e's playable target — rogue/fighter/barbarian/monk playable —
+requires Disengage support so monks can reposition with Step of the Wind
+without taking opportunity attacks. The OA-suppression mechanism was
+already wired (`DisengagingCondition` adds `OAPreventionSources` on
+MovementChain; `OpportunityAttackCondition` respects `IsOAPrevented()`),
+but no production path applied the condition.
+
+### actions.Disengage
+
+`rulebooks/dnd5e/actions/disengage.go`. Full-action Disengage available to
+all characters. `Activate` consumes one action from the ActionEconomy,
+applies `DisengagingCondition` to the owner on `input.Bus` (so MovementChain
+subscribers add prevention sources during the next move), and publishes
+`DisengageActivatedEvent` for game-server telemetry. The condition removes
+itself automatically on the owner's TurnEnd.
+
+```
+host → Disengage.Activate
+       ↓
+       ActionEconomy.UseAction()
+       ↓
+       conditions.NewDisengagingCondition(ownerID).Apply(ctx, bus)
+       ↓ subscribes to MovementChain + TurnEnd
+       ↓
+       DisengageActivatedTopic.Publish(...)
+       ↓ (telemetry — game server stream consumers)
+       return nil
+```
+
+Bonus-action Disengage (monk's Step of the Wind) is reachable via the
+feature path, not via this constructor. Per director signoff on #666 Q3:
+YAGNI on the bonus-action constructor; future class features add the
+variant when needed.
+
+### features.StepOfTheWind — disengage branch
+
+`rulebooks/dnd5e/features/step_of_the_wind.go`. When `Activate` runs with
+`action="disengage"`, the feature now applies `DisengagingCondition` to
+the owner directly (in addition to the existing `StepOfTheWindActivatedEvent`
+publish kept for stream consumers). Per `project_toolkit_as_product`
+framing: rule application belongs toolkit-side; the orchestrator (rpg-api)
+doesn't need to know "Step of the Wind activated" means "apply
+DisengagingCondition."
+
+The `action="dash"` branch keeps event-only behavior. Dash doesn't suppress
+OAs in 5e rules, and the Dash action itself isn't part of Wave 2.11e's
+scope.
 
 ## character/choices/ — service-shaped surface
 
