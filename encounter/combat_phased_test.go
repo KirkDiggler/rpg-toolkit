@@ -431,3 +431,52 @@ func hasEventOfType[T events.EncounterEvent](evts []events.EncounterEvent) bool 
 	}
 	return false
 }
+
+// --- Collision guards (Copilot PR #664 review) ---
+//
+// AddPlayer / AddMonster do not enforce cross-map uniqueness of entity
+// IDs, so a player's EntityID and a monster's ID can collide. The
+// dispatch in CompleteTakeAction must reject the resume rather than
+// silently routing to the wrong publish path.
+
+// collidingEntitySuite reuses PhasedTakeActionSuite scaffolding but
+// injects a colliding entity ID on bob (the player) matching the
+// existing goblin's monster ID.
+func (s *PhasedTakeActionSuite) addCollidingPlayerOnGoblinID() {
+	// Re-add bob with EntityID = gobEntityID. AddPlayer guards on
+	// PlayerID, not EntityID, so this is permitted today.
+	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
+		PlayerID: "carol", EntityID: gobEntityID,
+		Position: encountercore.Hex{Q: 3, R: 0, S: -3}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 12, AttackBonus: 4,
+		DamageDice: "1d4", DamageType: damageSlashing,
+	}))
+}
+
+func (s *PhasedTakeActionSuite) TestCompleteTakeAction_AmbiguousAttacker_Rejected() {
+	s.addCollidingPlayerOnGoblinID()
+
+	// AttackerID = gobEntityID now matches BOTH carol (player) and the
+	// goblin (monster). Resume must reject.
+	err := s.enc.CompleteTakeAction(&tkenc.PhasedAttackContext{
+		Rulebook:   "stub",
+		AttackerID: gobEntityID,
+		TargetID:   bobEntityID,
+	}, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "ambiguous attacker", "must surface the collision, not silently dispatch")
+}
+
+func (s *PhasedTakeActionSuite) TestCompleteTakeAction_AmbiguousTarget_Rejected() {
+	s.addCollidingPlayerOnGoblinID()
+
+	// TargetID = gobEntityID matches BOTH carol (player) and the goblin
+	// (monster). Resume must reject.
+	err := s.enc.CompleteTakeAction(&tkenc.PhasedAttackContext{
+		Rulebook:   "stub",
+		AttackerID: aliceEntityID,
+		TargetID:   gobEntityID,
+	}, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "ambiguous target", "must surface the collision, not silently dispatch")
+}

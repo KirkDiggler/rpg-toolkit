@@ -238,10 +238,21 @@ func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers
 	// Resolve attacker against both maps; CompleteTakeAction is the only
 	// resume verb so the direction must be inferred from the persisted
 	// context (the orchestrator does not pass a direction hint).
+	//
+	// Cross-map uniqueness of entity IDs is not enforced at AddPlayer /
+	// AddMonster time (PlayerData is keyed by PlayerID with EntityID as a
+	// separate field; MonsterData is keyed by its EntityID directly), so
+	// a player and a monster CAN share an EntityID. If that happens, the
+	// dispatch below is ambiguous — reject the resume call rather than
+	// silently routing to the wrong publish helper.
 	attackerPlayer := e.findPlayerByEntityID(attackCtx.AttackerID)
 	attackerMonster := e.data.Monsters[attackCtx.AttackerID]
 	if attackerPlayer == nil && attackerMonster == nil {
 		return fmt.Errorf("attacker %q not in encounter", attackCtx.AttackerID)
+	}
+	if attackerPlayer != nil && attackerMonster != nil {
+		return fmt.Errorf("ambiguous attacker %q: matches both a player and a monster",
+			attackCtx.AttackerID)
 	}
 
 	// Resolve target against both maps for the symmetric reason.
@@ -249,6 +260,10 @@ func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers
 	targetPlayer := e.findPlayerByEntityID(attackCtx.TargetID)
 	if targetMonster == nil && targetPlayer == nil {
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, attackCtx.TargetID)
+	}
+	if targetMonster != nil && targetPlayer != nil {
+		return fmt.Errorf("ambiguous target %q: matches both a player and a monster",
+			attackCtx.TargetID)
 	}
 
 	outcome, err := phased.ApplyAttackOutcome(attackCtx, modifiers)
