@@ -1,8 +1,8 @@
 ---
 name: encounter module
-description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, discrete-phase combat orchestration
-updated: 2026-05-23
-confidence: high — Wave 2.11d shipped the discrete-phase combat surface; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction (verified by shipped tests + ADR-0027 cross-reference)
+description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, discrete-phase combat orchestration, MovementResolver seam
+updated: 2026-05-24
+confidence: high — Wave 2.11d shipped the discrete-phase combat surface; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement (NPC-OA scope; player-pause deferred to #665)
 ---
 
 # encounter module
@@ -116,6 +116,60 @@ The Wave 2.11e fix resolves direction polymorphically by checking the AttackerID
 The single SDK call site is unchanged from the orchestrator's perspective: rpg-api's `submit_check_reaction.go` calls `enc.CompleteTakeAction(phasedCtx, modifiers)` regardless of direction. The SDK figures out which `applyAndPublish*` to dispatch from `attackCtx.AttackerID`.
 
 PvP and monster-vs-monster directions return `ErrUnsupportedAttackDirection` (maps to gRPC `Unimplemented`). A future wave that wants either direction would add the corresponding `applyAndPublish*` helper to the dispatch switch; the SDK surface stays the same.
+
+## MovementResolver (Wave 2.11e)
+
+`MovementResolver` is the second instance of the resolver-per-verb pattern that `PhasedCombatResolver` established. It lets the encounter SDK delegate per-step movement mechanics (MovementChain execution, OA triggering) to a rulebook implementation without importing rulebook packages.
+
+```go
+type MovementResolver interface {
+    ResolveStep(input MovementStepInput) (*MovementStepResult, error)
+}
+
+type MovementStepInput struct {
+    EntityID encountercore.EntityID
+    FromHex  encountercore.Hex
+    ToHex    encountercore.Hex
+}
+
+type MovementStepResult struct {
+    Prevented     bool
+    PreventReason string
+}
+```
+
+Triggers flow via the buffered bus subscription only — there is intentionally no resolver-returned trigger slot on the result. Chain subscribers (Disengage marker, OA condition) publish `ReactionTriggerEvent`s on the encounter bus during `ResolveStep`; the SDK installs a buffered subscriber per step to observe them. The bus path is canonical for OA/reaction handoff and matches `PhasedCombatResolver`'s shape applied to attack reactions.
+
+The orchestrator (rpg-api) wires a resolver via `WithMovementResolver(...)`. The orchestrator's implementation wraps the rulebook's `combat.MoveEntity` so chain subscribers (Disengage marker, OpportunityAttackCondition) fire per step and OAs resolve inline via the rulebook's `triggerOpportunityAttack` → `combat.ResolveAttack` path.
+
+### Per-step iteration vs legacy single-jump
+
+`Encounter.Move` has two paths gated on resolver presence:
+
+| Resolver wired? | Path | Encounter SDK position update | Chain executes | OA fires |
+|---|---|---|---|---|
+| No | Legacy single-jump | once, to `path[-1]` | never | never |
+| Yes | Per-step iteration | once, to the final hex of the traveled path (after loop completes) | per step via resolver | inline (NPC-OA scope) |
+
+The per-step path accumulates `traveled` as it iterates; the SDK only mutates `Player.View.Position` once, after the loop, via `applyAndPublishMove`. Step-by-step position mutation happens externally in the resolver impl (combat.MoveEntity calls `room.MoveEntity` per step on the spatial-room side), but the encounter SDK keeps its own position state in sync by committing once at the end.
+
+When no resolver is wired, the legacy single-jump behavior is preserved for non-combat encounters (free-roam, social). The shape was load-bearing for Wave 2.11d's verification gate: the active.md B8 probe asserted that movement without a resolver does NOT trigger OAs. The new per-step path activates only when a resolver is explicitly supplied.
+
+### Truncated-traveled-path event publication
+
+When chain prevention (Disengage, etc.) blocks a step mid-path, the encounter SDK stops at the previous successfully-traveled hex. The `MoveEvent` published carries only the actually-traveled segments, NOT the requested path. Same for `HexRevealedEvent` (computed from the final traveled hex) and `EntityAppeared/Disappeared` events. Wire clients see the truthful outcome, not the intent.
+
+`applyAndPublishMove` is the helper shared between the legacy single-jump path (called with `traveledPath = requested path`) and the per-step path (called with `traveledPath = actually-moved subset`).
+
+### Trigger buffer drain
+
+The SDK installs a buffered subscriber on `ReactionTriggerTopic` per step. Chain subscribers (`OpportunityAttackCondition.onMovementChain`) publish `ReactionTriggerEvent`s when their predicate matches; the buffered subscriber catches them. In Wave 2.11e NPC-OA-only scope the SDK does not partition or act on captured triggers — NPC OAs are resolved inline by the resolver impl during the same `ResolveStep` call (combat.MoveEntity → triggerOpportunityAttack → ResolveAttack runs end-to-end, applying damage + publishing AttackResolved on the bus before ResolveStep returns).
+
+The buffer infrastructure is installed for shape parity with `TakeActionPhased` and to flush subscriptions cleanly per step. The second-branch consumer (player-pause for Sentinel-shape or spell reactions) is deferred to issue #665.
+
+### Scope deferred (#665)
+
+When a player-bearer reaction becomes a goal-shaped feature (Sentinel feat, Shield/Counterspell, etc.), the per-step iteration loop gains a second branch: partition triggers by reactor type, persist `PendingReactionPrompt` for player-bearer triggers, publish a sentinel `errPlayerPausedForReactionDuringMove`, and resume via the existing `SubmitCheck{take_reaction}` path. The design sketch lives on #665; the structural seam is already in place (the per-step iteration + buffer drain are the load-bearing infrastructure).
 
 ## Implementation notes worth keeping
 

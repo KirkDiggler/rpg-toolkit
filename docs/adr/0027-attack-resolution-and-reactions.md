@@ -104,6 +104,30 @@ actually uses:
     Player→player and monster→monster attacks return
     `ErrUnsupportedAttackDirection` until a wave adds the corresponding
     publish helper; the SDK surface stays the same.
+  - **MovementResolver (Wave 2.11e, 2026-05-24).** Second instance of
+    the resolver-per-verb pattern. `Encounter.Move` delegates per-step
+    movement mechanics (MovementChain execution, OA triggering) to a
+    rulebook implementation via `MovementResolver.ResolveStep`. When a
+    resolver is wired, `Move` iterates per-step with a buffered
+    subscriber on `ReactionTriggerTopic` installed per step; chain
+    subscribers (`OpportunityAttackCondition.onMovementChain`, Disengage
+    marker) fire per step and the resolver impl resolves NPC OAs inline
+    via combat.MoveEntity → triggerOpportunityAttack → ResolveAttack.
+    The legacy single-jump path is preserved when no resolver is wired
+    (non-combat encounters). Truncated-traveled-path events: when chain
+    prevention blocks a step, the published `MoveEvent` carries only
+    the actually-traveled segments — wire clients see the truthful
+    outcome, not the intent. NPC-OA-only scope; player-pause branch
+    (Sentinel-shape / spell reactions like Shield-during-movement)
+    deferred to issue
+    [#665](https://github.com/KirkDiggler/rpg-toolkit/issues/665).
+
+  **The resolver-per-verb pattern is now the canonical seam for any
+  future SDK verbs that need rulebook-aware chain execution.** Define a
+  resolver interface in the encounter package, wire it via a `WithX`
+  option, and the verb iterates with a trigger buffer per atomic
+  operation. `PhasedCombatResolver` (attacks) and `MovementResolver`
+  (movement) are the two shipped instances.
 
   See `rulebooks/dnd5e/conditions/opportunity_attack.go` and
   `shield_spell.go` for the canonical reaction-condition implementations
