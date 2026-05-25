@@ -185,6 +185,17 @@ The fix mirrors the `applyCapturedDamage` shape used by `NPCAct` (which has the 
 
 The capture/apply happens BEFORE the `Prevented` check: OAs fire whether or not the chain ends up preventing the step, so damage applies either way.
 
+### Subscriber-window scoping in NPCAct (#677)
+
+`NPCAct` owns two windows that publish `DamageReceivedEvent` on the encounter bus: the **movement window** (`applyNPCMovement` → `iterateMovementStepsForEntity` → resolver fires OAs that go through `combat.ResolveAttack`) and the **attack-resolution window** (`applyCapturedAttacks` → `combat.ResolveAttack`). Each window has its own subscriber installed at the right scope:
+
+- **Inner per-step** subscriber (from #675) owns the movement window. It applies HP delta + publishes encounter-side events via `applyMoveDamage` before the next step runs.
+- **Outer** subscriber (the original `subscribeDamage` at NPCAct setup) owns the attack-resolution window. It applies HP delta via `applyCapturedDamage` after `applyCapturedAttacks` returns.
+
+The outer is installed AFTER `applyNPCMovement` returns, not at NPCAct entry. If it were installed at entry, both subscribers would fire on the same movement-OA `DamageReceivedEvent` — `applyMoveDamage` would apply HP during iteration, then `applyCapturedDamage` would apply the same delta again after movement returns. A 7-HP goblin hit by a 5-damage OA would land at -3 HP (clamped to 0) and the kill chain would fire twice. Wave-2.11e-goal-blocking double-apply bug — caught by director review of #677.
+
+Tests cover the production path explicitly (`TestNPCAct_MovementOA_AppliesDamageOnce` in `npc_test.go`). The earlier movement tests in `move_resolver_test.go` exercise `MoveNPCSteps` directly, which bypasses NPCAct's outer subscriber entirely — useful for walker-level coverage, but not a substitute for the production-path regression guard.
+
 ### Scope deferred (#665)
 
 When a player-bearer reaction becomes a goal-shaped feature (Sentinel feat, Shield/Counterspell, etc.), the per-step iteration loop gains a second branch: partition triggers by reactor type, persist `PendingReactionPrompt` for player-bearer triggers, publish a sentinel `errPlayerPausedForReactionDuringMove`, and resume via the existing `SubmitCheck{take_reaction}` path. The design sketch lives on #665; the structural seam is already in place (the per-step iteration + buffer drain are the load-bearing infrastructure).

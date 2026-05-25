@@ -710,7 +710,13 @@ func (s *MovementResolverSuite) TestMove_OAKillsMonster_FiresKillChain() {
 	s.False(stillPresent, "goblin should be removed from encounter state after lethal OA")
 
 	// Full kill chain observed in alice's stream: EntityDied → EntityRemoved
-	// → EncounterEnded (goblin was the lone monster).
+	// → EncounterEnded (goblin was the lone monster). The drain breaks on
+	// EncounterEndedEvent — safe because killEntity publishes in order
+	// (Died, Removed, then encounterEnd-check triggers EncounterEnded), so
+	// by the time we see EncounterEnded the prior two must have fired. The
+	// order-dependence is noted in case a future refactor changes the
+	// publish sequence; if so, this drain needs to be widened to read past
+	// EncounterEnded.
 	var diedEvt *events.EntityDiedEvent
 	sawRemoved := false
 	sawEnded := false

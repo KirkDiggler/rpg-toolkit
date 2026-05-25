@@ -68,11 +68,20 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	}
 	defer func() { _ = unsubAttack() }()
 
-	capturedDmg, unsubDmg, err := subscribeDamage(ctx, bus)
-	if err != nil {
-		return fmt.Errorf("subscribe dnd5e damage: %w", err)
-	}
-	defer func() { _ = unsubDmg() }()
+	// Outer damage subscriber is installed AFTER applyNPCMovement (see
+	// below). Movement-window OAs are captured by the inner per-step
+	// subscriber in iterateMovementStepsForEntity (#675); installing the
+	// outer before movement would double-capture and double-apply HP via
+	// applyCapturedDamage. The outer's purpose is the attack-resolution
+	// window (applyCapturedAttacks → ResolveAttack → DamageReceivedEvent).
+	// Wave 2.11e (#677 director review).
+	var capturedDmg *[]dnd5eEvents.DamageReceivedEvent
+	var unsubDmg func() error
+	defer func() {
+		if unsubDmg != nil {
+			_ = unsubDmg()
+		}
+	}()
 
 	capturedCond, unsubCond, err := subscribeConditions(ctx, bus)
 	if err != nil {
@@ -123,6 +132,19 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	if err := e.applyNPCMovement(mon, result.Movement); err != nil {
 		return err
 	}
+
+	// Install the outer damage subscriber AFTER movement, scoped to the
+	// upcoming attack-resolution window (applyCapturedAttacks).
+	// iterateMovementStepsForEntity owned the movement window via its own
+	// per-step subscribers (#675). Installing here means movement-OA
+	// damage doesn't double-flow through applyCapturedDamage below.
+	dmgSlice, dmgUnsub, err := subscribeDamage(ctx, bus)
+	if err != nil {
+		return fmt.Errorf("subscribe damage for attack-resolution window: %w", err)
+	}
+	capturedDmg = dmgSlice
+	unsubDmg = dmgUnsub
+
 	if err := e.applyCapturedAttacks(mon, *captured); err != nil {
 		// errNPCPausedForReaction propagates as-is; the orchestrator
 		// detects it via IsNPCPausedForReaction. Other captured-event
