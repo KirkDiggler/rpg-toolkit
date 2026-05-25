@@ -48,20 +48,18 @@ type stubMovementResolver struct {
 	// subscription per director review on PR #667 — there is no
 	// resolver-returned trigger slot to stub.
 	publishOnStep func(bus dnd5events.EventBus, stepIdx int)
-
-	// bus is captured from the first call so we can publish into it.
-	bus dnd5events.EventBus
 }
 
 func (s *stubMovementResolver) ResolveStep(input tkenc.MovementStepInput) (*tkenc.MovementStepResult, error) {
 	stepIdx := len(s.calls)
 	s.calls = append(s.calls, input)
 
-	// Stub captures the bus from the encounter's WithMovementResolver wiring
-	// path. Real resolvers know their own bus; the stub uses whatever is
-	// stashed by SetupTest.
-	if s.publishOnStep != nil && s.bus != nil {
-		s.publishOnStep(s.bus, stepIdx)
+	// Bus arrives via input.EventBus (Wave 2.11e #673). Pre-#673 the stub
+	// captured the bus from a post-construction setter — that test-only
+	// hack masked the production gap until rpg-api#539's resolver impl
+	// surfaced it.
+	if s.publishOnStep != nil && input.EventBus != nil {
+		s.publishOnStep(input.EventBus, stepIdx)
 	}
 
 	result := &tkenc.MovementStepResult{}
@@ -105,10 +103,6 @@ func (s *MovementResolverSuite) SetupTest() {
 	s.resolver = &stubMovementResolver{}
 	s.enc = tkenc.New("enc-moveres", s.broker,
 		tkenc.WithMovementResolver(s.resolver))
-
-	// Stash the bus on the resolver so publishOnStep can inject triggers.
-	// The Encounter's bus is exposed via EventBus() (Wave 2.11d).
-	s.resolver.bus = s.enc.EventBus()
 
 	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,

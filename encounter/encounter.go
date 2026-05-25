@@ -512,6 +512,7 @@ func (e *Encounter) iterateMovementStepsForEntity(
 				EntityID: moverID,
 				FromHex:  from,
 				ToHex:    to,
+				EventBus: e.bus,
 			})
 		}()
 		if stepErr != nil {
