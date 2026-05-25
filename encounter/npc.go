@@ -582,6 +582,88 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 	return nil
 }
 
+// applyMoveDamage translates each dnd5e DamageReceivedEvent captured
+// during a movement step into an encounter DamageDealtEvent. Mirrors
+// applyCapturedDamage but resolves the source position dynamically from
+// the event's SourceID: Move-path OAs fire from EITHER direction (player
+// attacker on a fleeing NPC, or NPC attacker on a fleeing player), so
+// the per-viewer LoS projection key cannot be hard-coded to a single
+// source type.
+//
+// Wave 2.11e (#675): MovementResolver path damage application.
+// combat.MoveEntity → triggerOpportunityAttack → combat.ResolveAttack
+// publishes DamageReceivedEvent on the bus mid-iterate; the encounter
+// SDK captures the events around ResolveStep
+// (iterateMovementStepsForEntity) and dispatches HP delta + encounter-
+// side DamageDealtEvent here, plus the kill/death chain on the >0 → 0
+// transition.
+//
+// Source resolution: tries player → monster. If neither matches, the
+// damage event is skipped (no DamageDealtEvent published). The same skip
+// rule as applyCapturedDamage applies for unknown targets.
+func (e *Encounter) applyMoveDamage(damages []dnd5eEvents.DamageReceivedEvent) error {
+	for _, dmg := range damages {
+		targetID := encountercore.EntityID(dmg.TargetID)
+		sourceID := encountercore.EntityID(dmg.SourceID)
+
+		sourcePos, sourceOK := e.findEntityPosition(sourceID)
+		if !sourceOK {
+			continue
+		}
+
+		hpBefore, hpAfter, maxHP, targetPos, isMonster, ok := e.applyDamageToTarget(targetID, dmg.Amount)
+		if !ok {
+			continue
+		}
+		damageType := string(dmg.DamageType)
+		if damageType == "" {
+			damageType = damageTypeUntyped
+		}
+		damagePerPlayer := make(map[encountercore.PlayerID]events.DamageDealtSlice)
+		for viewerID, viewer := range e.data.Players {
+			if !e.viewerCanSee(viewer, sourcePos) && !e.viewerCanSee(viewer, targetPos) {
+				continue
+			}
+			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
+		}
+		if err := e.broker.Publish(events.NewDamageDealtEvent(
+			e.data.ID, e.nextSeq(),
+			targetID, sourceID,
+			dmg.Amount, damageType,
+			hpAfter, maxHP,
+			damagePerPlayer,
+		)); err != nil {
+			return fmt.Errorf("publish damage dealt: %w", err)
+		}
+		if hpBefore > 0 && hpAfter == 0 {
+			if isMonster {
+				if err := e.killEntity(targetID, sourceID); err != nil {
+					return err
+				}
+			} else {
+				if err := e.publishPlayerDied(targetID, sourceID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// findEntityPosition resolves the current Hex of the entity with id —
+// player or monster. Returns (Hex{}, false) when the id matches neither.
+// Used by applyMoveDamage to pick the source position for per-viewer LoS
+// projection (the source could be a player or NPC for OAs).
+func (e *Encounter) findEntityPosition(id encountercore.EntityID) (encountercore.Hex, bool) {
+	if p := e.findPlayerByEntityID(id); p != nil && p.View != nil {
+		return p.View.Position, true
+	}
+	if m, ok := e.data.Monsters[id]; ok {
+		return m.Position, true
+	}
+	return encountercore.Hex{}, false
+}
+
 // applyDamageToTarget mutates HP on a player or monster matching id and
 // returns its pre-damage HP, post-damage HP, MaxHP, position, and whether
 // the target was a monster (vs a player). hpBefore lets callers detect

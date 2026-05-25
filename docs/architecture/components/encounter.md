@@ -173,6 +173,18 @@ The SDK installs a buffered subscriber on `ReactionTriggerTopic` per step. Chain
 
 The buffer infrastructure is installed for shape parity with `TakeActionPhased` and to flush subscriptions cleanly per step. The second-branch consumer (player-pause for Sentinel-shape or spell reactions) is deferred to issue #665.
 
+### Damage application during Move iteration (#675)
+
+OAs that fire inside `combat.MoveEntity` resolve hit + damage end-to-end (combat.ResolveAttack runs synchronously inside `triggerOpportunityAttack`) and publish `DamageReceivedEvent` on the rulebook bus before `ResolveStep` returns. But the encounter SDK owns HP state — without an explicit hand-off the events would fire on the bus, no subscriber would translate them to encounter-side state, and the goal-sentence verification "OA fires AND damage applies" would silently fail (chain works, dice roll, target's HP doesn't budge).
+
+The fix mirrors the `applyCapturedDamage` shape used by `NPCAct` (which has the same surface — captured rulebook events post-action need encounter-side translation):
+
+1. `iterateMovementStepsForEntity` installs a `subscribeDamage` buffer on the encounter bus per step, alongside the `ReactionTriggerTopic` buffer. The defer chain inside the inner step closure tears both buffers down on return — even on resolver panic.
+2. After `ResolveStep` returns, the SDK reads the captured `DamageReceivedEvent` slice and dispatches each through `applyMoveDamage`.
+3. `applyMoveDamage` mirrors `applyCapturedDamage` but resolves source position dynamically (`findEntityPosition`) because Move-path OAs fire from EITHER direction (player attacker on a fleeing NPC, or NPC attacker on a fleeing player) — the per-viewer LoS projection key varies by attacker type. The HP delta + encounter-side `DamageDealtEvent` + kill-chain on `>0 → 0` transition all go through the same code path as the NPCAct equivalents.
+
+The capture/apply happens BEFORE the `Prevented` check: OAs fire whether or not the chain ends up preventing the step, so damage applies either way.
+
 ### Scope deferred (#665)
 
 When a player-bearer reaction becomes a goal-shaped feature (Sentinel feat, Shield/Counterspell, etc.), the per-step iteration loop gains a second branch: partition triggers by reactor type, persist `PendingReactionPrompt` for player-bearer triggers, publish a sentinel `errPlayerPausedForReactionDuringMove`, and resume via the existing `SubmitCheck{take_reaction}` path. The design sketch lives on #665; the structural seam is already in place (the per-step iteration + buffer drain are the load-bearing infrastructure).

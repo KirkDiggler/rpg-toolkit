@@ -23,6 +23,7 @@ import (
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -519,4 +520,216 @@ func (s *MovementResolverSuite) TestNPCMove_ResolverPublishesTrigger_BufferDrain
 	// Goblin reached the final hex.
 	mon := s.enc.ToData().Monsters[gobEntityID]
 	s.Equal(path[1], mon.Position)
+}
+
+// --- Wave 2.11e (#675) — Move-iteration OA damage application ---
+//
+// The goal-sentence direction for #675: when an OA fires mid-Move (player
+// or NPC mover provokes a reaction attack that the rulebook resolves
+// inline), the encounter SDK must observe the resulting damage on the bus
+// and apply HP delta + publish encounter-side DamageDealtEvent. Without
+// this, the goal sentence "OA-class reactions work end-to-end" doesn't
+// hold — chain fires, dice roll, but target's HP never moves.
+//
+// These tests use the stub resolver to publish DamageReceivedEvent on the
+// bus during ResolveStep (simulating combat.ResolveAttack inside
+// combat.MoveEntity's triggerOpportunityAttack path) and verify the SDK
+// dispatches HP + DamageDealtEvent.
+
+// TestMove_PlayerMoves_OADamagesPlayer verifies the player-mover direction:
+// alice moves past goblin (who has an OA condition); resolver publishes a
+// DamageReceivedEvent targeting alice during step 0; encounter SDK applies
+// HP delta to alice + publishes DamageDealtEvent.
+func (s *MovementResolverSuite) TestMove_PlayerMoves_OADamagesPlayer() {
+	s.addGoblinForNPCMovementTests()
+
+	// Seed alice's HP so we can detect the delta.
+	aliceBefore := s.enc.ToData().Players[alicePlayerID]
+	s.Require().NotNil(aliceBefore)
+	aliceBefore.HP = 20
+	aliceBefore.MaxHP = 20
+
+	// Stub publishes a DamageReceivedEvent on the bus during step 0 — the
+	// step where alice leaves the goblin's reach (the rulebook fires
+	// triggerOpportunityAttack → ResolveAttack here).
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
+			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
+				TargetID:   string(aliceEntityID),
+				SourceID:   string(gobEntityID),
+				Amount:     6,
+				DamageType: damage.Slashing,
+			})
+		}
+	}
+
+	// Subscribe alice to her own viewer stream to observe DamageDealtEvent.
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	err = s.enc.Move(alicePlayerID, path)
+	s.Require().NoError(err)
+
+	// HP applied: alice 20 → 14.
+	aliceAfter := s.enc.ToData().Players[alicePlayerID]
+	s.Equal(14, aliceAfter.HP, "alice HP should drop by OA damage amount (6)")
+
+	// DamageDealtEvent published with target=alice, source=goblin, amount=6.
+	var dmgEvt *events.DamageDealtEvent
+	deadline := time.After(2 * time.Second)
+drainLoop:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoop
+			}
+			if de, isDmg := evt.(*events.DamageDealtEvent); isDmg {
+				dmgEvt = de
+				break drainLoop
+			}
+		case <-deadline:
+			break drainLoop
+		}
+	}
+	s.Require().NotNil(dmgEvt, "DamageDealtEvent should have been published")
+	s.Equal(encountercore.EntityID(aliceEntityID), dmgEvt.TargetID)
+	s.Equal(encountercore.EntityID(gobEntityID), dmgEvt.SourceID)
+	s.Equal(6, dmgEvt.Amount)
+	s.Equal("slashing", dmgEvt.DamageType)
+	s.Equal(14, dmgEvt.HPAfter)
+}
+
+// TestNPCMove_NPCMoves_OADamagesMonster verifies the NPC-mover direction:
+// goblin retreats past alice (who has an OA condition); resolver publishes
+// a DamageReceivedEvent targeting goblin during step 0; encounter SDK
+// applies HP delta to the monster + publishes DamageDealtEvent.
+func (s *MovementResolverSuite) TestNPCMove_NPCMoves_OADamagesMonster() {
+	s.addGoblinForNPCMovementTests()
+
+	// Seed alice in melee range so the OA fiction makes sense (positions
+	// are not validated by the SDK in this test — pure event flow).
+	aliceBefore := s.enc.ToData().Players[alicePlayerID]
+	s.Require().NotNil(aliceBefore)
+	aliceBefore.HP = 20
+	aliceBefore.MaxHP = 20
+
+	// Stub publishes DamageReceivedEvent on step 0: alice (player) hits the
+	// goblin (NPC) on its way out. Source = alice (player), Target = goblin.
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
+			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
+				TargetID:   string(gobEntityID),
+				SourceID:   string(aliceEntityID),
+				Amount:     5,
+				DamageType: damage.Slashing,
+			})
+		}
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+	}
+	err = s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err)
+
+	// HP applied: goblin 7 → 2.
+	monAfter := s.enc.ToData().Monsters[gobEntityID]
+	s.Equal(2, monAfter.HP, "goblin HP should drop by OA damage amount (5)")
+
+	// DamageDealtEvent published with target=goblin, source=alice, amount=5.
+	var dmgEvt *events.DamageDealtEvent
+	deadline := time.After(2 * time.Second)
+drainLoop:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoop
+			}
+			if de, isDmg := evt.(*events.DamageDealtEvent); isDmg {
+				dmgEvt = de
+				break drainLoop
+			}
+		case <-deadline:
+			break drainLoop
+		}
+	}
+	s.Require().NotNil(dmgEvt, "DamageDealtEvent should have been published for NPC-target OA")
+	s.Equal(encountercore.EntityID(gobEntityID), dmgEvt.TargetID)
+	s.Equal(encountercore.EntityID(aliceEntityID), dmgEvt.SourceID)
+	s.Equal(5, dmgEvt.Amount)
+	s.Equal(2, dmgEvt.HPAfter)
+}
+
+// TestMove_OAKillsMonster_FiresKillChain verifies that when Move-path OA
+// damage drops a monster's HP from >0 to 0, the SDK fires the kill chain
+// (EntityDiedEvent + EntityRemovedEvent + checkEncounterEnd) — the same
+// chain applyCapturedDamage drives for NPCAct-path damage.
+func (s *MovementResolverSuite) TestMove_OAKillsMonster_FiresKillChain() {
+	s.addGoblinForNPCMovementTests()
+
+	// Stub damage exceeds goblin's HP (7) so the kill chain triggers.
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
+			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
+				TargetID:   string(gobEntityID),
+				SourceID:   string(aliceEntityID),
+				Amount:     10,
+				DamageType: damage.Slashing,
+			})
+		}
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 9, R: 0, S: -9},
+		{Q: 8, R: 0, S: -8},
+	}
+	err = s.enc.MoveNPCSteps(gobEntityID, path)
+	s.Require().NoError(err)
+
+	// HP clamped at 0.
+	monAfter := s.enc.ToData().Monsters[gobEntityID]
+	if monAfter != nil {
+		s.Equal(0, monAfter.HP, "goblin HP should clamp at 0 after lethal OA")
+	}
+
+	// EntityDiedEvent observed in alice's stream.
+	var diedEvt *events.EntityDiedEvent
+	deadline := time.After(2 * time.Second)
+drainLoop:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoop
+			}
+			if de, isDied := evt.(*events.EntityDiedEvent); isDied {
+				diedEvt = de
+				break drainLoop
+			}
+		case <-deadline:
+			break drainLoop
+		}
+	}
+	s.Require().NotNil(diedEvt, "EntityDiedEvent should fire on >0 → 0 transition")
+	s.Equal(encountercore.EntityID(gobEntityID), diedEvt.EntityID)
+	s.Equal(encountercore.EntityID(aliceEntityID), diedEvt.KillerID)
 }
