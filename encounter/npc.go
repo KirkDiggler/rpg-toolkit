@@ -598,18 +598,16 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 // side DamageDealtEvent here, plus the kill/death chain on the >0 → 0
 // transition.
 //
-// Source resolution: tries player → monster. If neither matches, the
-// damage event is skipped (no DamageDealtEvent published). The same skip
-// rule as applyCapturedDamage applies for unknown targets.
+// Source resolution: tries player → monster. If neither matches, HP is
+// still applied (damage application is more important than the wire
+// event) but the per-viewer LoS projection falls back to target-only
+// visibility — viewers who can see the target see the event, viewers
+// who can't, don't. The same skip rule as applyCapturedDamage applies
+// for unknown targets (we can't mutate HP on something we can't find).
 func (e *Encounter) applyMoveDamage(damages []dnd5eEvents.DamageReceivedEvent) error {
 	for _, dmg := range damages {
 		targetID := encountercore.EntityID(dmg.TargetID)
 		sourceID := encountercore.EntityID(dmg.SourceID)
-
-		sourcePos, sourceOK := e.findEntityPosition(sourceID)
-		if !sourceOK {
-			continue
-		}
 
 		hpBefore, hpAfter, maxHP, targetPos, isMonster, ok := e.applyDamageToTarget(targetID, dmg.Amount)
 		if !ok {
@@ -619,9 +617,16 @@ func (e *Encounter) applyMoveDamage(damages []dnd5eEvents.DamageReceivedEvent) e
 		if damageType == "" {
 			damageType = damageTypeUntyped
 		}
+		// Per-viewer projection: a viewer is included if they have LoS to
+		// the source OR the target. Source lookup is best-effort — if it
+		// fails (unknown SourceID), the projection falls back to
+		// target-only visibility rather than dropping the event entirely.
+		sourcePos, sourceOK := e.findEntityPosition(sourceID)
 		damagePerPlayer := make(map[encountercore.PlayerID]events.DamageDealtSlice)
 		for viewerID, viewer := range e.data.Players {
-			if !e.viewerCanSee(viewer, sourcePos) && !e.viewerCanSee(viewer, targetPos) {
+			canSeeSource := sourceOK && e.viewerCanSee(viewer, sourcePos)
+			canSeeTarget := e.viewerCanSee(viewer, targetPos)
+			if !canSeeSource && !canSeeTarget {
 				continue
 			}
 			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}

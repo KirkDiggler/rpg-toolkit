@@ -705,14 +705,15 @@ func (s *MovementResolverSuite) TestMove_OAKillsMonster_FiresKillChain() {
 	err = s.enc.MoveNPCSteps(gobEntityID, path)
 	s.Require().NoError(err)
 
-	// HP clamped at 0.
-	monAfter := s.enc.ToData().Monsters[gobEntityID]
-	if monAfter != nil {
-		s.Equal(0, monAfter.HP, "goblin HP should clamp at 0 after lethal OA")
-	}
+	// Goblin removed from encounter state (killEntity drops the entry).
+	_, stillPresent := s.enc.ToData().Monsters[gobEntityID]
+	s.False(stillPresent, "goblin should be removed from encounter state after lethal OA")
 
-	// EntityDiedEvent observed in alice's stream.
+	// Full kill chain observed in alice's stream: EntityDied → EntityRemoved
+	// → EncounterEnded (goblin was the lone monster).
 	var diedEvt *events.EntityDiedEvent
+	sawRemoved := false
+	sawEnded := false
 	deadline := time.After(2 * time.Second)
 drainLoop:
 	for {
@@ -721,8 +722,13 @@ drainLoop:
 			if !ok {
 				break drainLoop
 			}
-			if de, isDied := evt.(*events.EntityDiedEvent); isDied {
-				diedEvt = de
+			switch e := evt.(type) {
+			case *events.EntityDiedEvent:
+				diedEvt = e
+			case *events.EntityRemovedEvent:
+				sawRemoved = true
+			case *events.EncounterEndedEvent:
+				sawEnded = true
 				break drainLoop
 			}
 		case <-deadline:
@@ -732,4 +738,6 @@ drainLoop:
 	s.Require().NotNil(diedEvt, "EntityDiedEvent should fire on >0 → 0 transition")
 	s.Equal(encountercore.EntityID(gobEntityID), diedEvt.EntityID)
 	s.Equal(encountercore.EntityID(aliceEntityID), diedEvt.KillerID)
+	s.True(sawRemoved, "EntityRemovedEvent should fire after EntityDied")
+	s.True(sawEnded, "EncounterEndedEvent should fire when last monster dies")
 }
