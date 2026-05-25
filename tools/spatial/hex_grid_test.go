@@ -411,8 +411,8 @@ type AxialHexGridTestSuite struct {
 // SetupTest creates a large-bounds grid matching typical encounter usage.
 func (s *AxialHexGridTestSuite) SetupTest() {
 	s.grid = spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
-		Width:  1000,
-		Height: 1000,
+		SpanWidth:  1000,
+		SpanHeight: 1000,
 	})
 }
 
@@ -444,13 +444,15 @@ func (s *AxialHexGridTestSuite) TestAxialHexGridDistance() {
 		})
 	}
 
-	// Positions that are distance-2 in cube space (NOT adjacent).
-	// These were distance √2≈1.414 in Euclidean, causing the original bug.
+	// Positions that are axial hex-distance 2 from the origin (NOT adjacent).
+	// These span a range of Cartesian distances: (2,0) is Euclidean-distance 2,
+	// (2,-1) is Euclidean-distance √5≈2.24 — but all are uniformly hex-distance
+	// 2 in cube coordinates. None should be treated as adjacent.
 	distance2 := []spatial.Position{
-		{X: 2, Y: 0},  // two Q-steps away
-		{X: 0, Y: 2},  // two R-steps away
-		{X: 2, Y: -1}, // Q+2, R-1: also non-adjacent
-		{X: 1, Y: -2}, // Q+1, R-2
+		{X: 2, Y: 0},  // two Q-steps away; Euclidean 2
+		{X: 0, Y: 2},  // two R-steps away; Euclidean 2
+		{X: 2, Y: -1}, // Q+2, R-1; Euclidean √5≈2.24
+		{X: 1, Y: -2}, // Q+1, R-2; Euclidean √5≈2.24
 	}
 	for _, pos := range distance2 {
 		s.Run("distance-2 position "+pos.String(), func() {

@@ -290,12 +290,15 @@ type AxialHexGrid struct {
 }
 
 // AxialHexGridConfig holds configuration for creating an AxialHexGrid.
-// Width and Height set the bounding box for IsValidPosition checks; pass
-// large values (e.g. 1000×1000) for encounter rooms where position bounds
-// are not meaningful.
+// SpanWidth and SpanHeight define the total span of valid axial coordinates.
+// IsValidPosition checks are centered on the origin — a position (Q, R) is
+// valid when Q ∈ [-SpanWidth/2, SpanWidth/2) and R ∈ [-SpanHeight/2,
+// SpanHeight/2). This differs from SquareGrid/HexGrid, whose Width/Height
+// are one-sided bounds starting at (0,0). Pass large values (e.g. 1000×1000)
+// for encounter rooms where position bounds are not meaningful.
 type AxialHexGridConfig struct {
-	Width  float64
-	Height float64
+	SpanWidth  float64
+	SpanHeight float64
 }
 
 // NewAxialHexGrid creates a new hex grid that treats Position.X/Y as axial
@@ -303,7 +306,7 @@ type AxialHexGridConfig struct {
 // in axial (not offset) form.
 func NewAxialHexGrid(config AxialHexGridConfig) *AxialHexGrid {
 	return &AxialHexGrid{
-		dimensions: Dimensions(config),
+		dimensions: Dimensions{Width: config.SpanWidth, Height: config.SpanHeight},
 	}
 }
 
@@ -317,10 +320,10 @@ func (a *AxialHexGrid) GetDimensions() Dimensions {
 	return a.dimensions
 }
 
-// IsValidPosition reports whether the position falls within the configured
-// bounding box. Axial Q/R can be negative, so the check is symmetric around
-// the origin: |X| < Width/2 and |Y| < Height/2. Pass Width=Height=1000 (or
-// similar) when you do not want meaningful bounds.
+// IsValidPosition reports true when (Q, R) falls within ±SpanWidth/2 along Q
+// and ±SpanHeight/2 along R. The check is centered on the origin because axial
+// hex coordinates are symmetric — positions can have negative Q or R. This
+// differs from SquareGrid/HexGrid whose bounds start at (0,0).
 func (a *AxialHexGrid) IsValidPosition(pos Position) bool {
 	half := a.dimensions.Width / 2
 	halfH := a.dimensions.Height / 2
@@ -350,7 +353,7 @@ func (a *AxialHexGrid) GetNeighbors(pos Position) []Position {
 	return neighbors
 }
 
-// IsAdjacent reports whether two positions are adjacent (hex distance == 1).
+// IsAdjacent reports whether two positions are adjacent (hex distance <= 1).
 func (a *AxialHexGrid) IsAdjacent(pos1, pos2 Position) bool {
 	return a.Distance(pos1, pos2) <= 1
 }
@@ -431,7 +434,7 @@ func (a *AxialHexGrid) GetPositionsInLine(from, to Position) []Position {
 func (a *AxialHexGrid) GetPositionsInCone(origin, direction Position, length, angle float64) []Position {
 	dirLength := math.Sqrt(direction.X*direction.X + direction.Y*direction.Y)
 	if dirLength == 0 {
-		return nil
+		return []Position{}
 	}
 	dirX := direction.X / dirLength
 	dirY := direction.Y / dirLength
