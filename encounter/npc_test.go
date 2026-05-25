@@ -10,6 +10,9 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
@@ -167,4 +170,85 @@ func (s *NPCSuite) TestNPCAct_Scripted_ErrNoCombatResolver() {
 
 	err := enc.NPCAct(s.ctx, gobEntityID)
 	s.ErrorIs(err, encounter.ErrNoCombatResolver)
+}
+
+// TestNPCAct_MovementOA_AppliesDamageOnce is the production-path regression
+// guard from PR #677 director review: NPCAct installs outer subscribeAttack/
+// subscribeDamage listeners for the entire call, and applyNPCMovement runs
+// INSIDE that window. Without per-window scoping, an OA-triggered
+// DamageReceivedEvent published during the movement step is captured by
+// BOTH the inner per-step subscriber (iterateMovementStepsForEntity, #675)
+// and the outer NPCAct subscriber — HP delta then applies twice when
+// applyCapturedDamage runs after applyNPCMovement returns. A 5-damage OA
+// drops a 7-HP goblin to -3 HP and fires the kill chain twice.
+//
+// The earlier TestNPCMove_NPCMoves_OADamagesMonster used MoveNPCSteps
+// which bypasses NPCAct's outer subscribers entirely, so the double-apply
+// passed test review unnoticed. This test exercises NPCAct directly with
+// a MovementResolver wired, simulating an OA during movement, and asserts
+// HP delta applies exactly once.
+func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
+	gob := monster.NewGoblin(gobEntityID)
+	gobData := gob.ToData()
+	dataJSON, err := json.Marshal(gobData)
+	s.Require().NoError(err)
+
+	// Stub MovementResolver that publishes a DamageReceivedEvent targeting
+	// the goblin (mover) during step 0 — simulating an OA the player has
+	// already taken against the retreating monster. combat.ResolveAttack
+	// would do this in production.
+	const oaDamage = 5
+	resolver := &stubMovementResolver{
+		publishOnStep: func(bus dnd5events.EventBus, stepIdx int) {
+			if stepIdx == 0 {
+				topic := dnd5eEvents.DamageReceivedTopic.On(bus)
+				_ = topic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
+					TargetID:   string(gobEntityID),
+					SourceID:   string(aliceEntityID),
+					Amount:     oaDamage,
+					DamageType: damage.Slashing,
+				})
+			}
+		},
+	}
+
+	// Rebuild an encounter with both the combat resolver (NPCAct guard)
+	// AND the movement resolver wired. Alice at distance 10 so the goblin
+	// AI walks toward her but doesn't enter scimitar reach this turn —
+	// keeps the test focused on the movement-OA path (no attack publishes
+	// to confound the captured-damage slice post-movement).
+	enc := encounter.New("enc-npcact-move-oa", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+		encounter.WithMovementResolver(resolver),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 10, R: 0, S: -10}, SightRange: 12,
+		HP: 12, MaxHP: 12, AC: 14,
+	}))
+	const startHP = 7
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:       gobEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0},
+		HP:       startHP, MaxHP: startHP, AC: 15, Speed: 6,
+		MonsterRef:  monsterRefGoblin,
+		DataJSON:    dataJSON,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	err = enc.NPCAct(s.ctx, gobEntityID)
+	s.Require().NoError(err)
+
+	// HP applied exactly once: 7 - 5 = 2. If the outer subscriber
+	// double-applied, HP would be -3 (clamped to 0) and the kill chain
+	// would have fired.
+	mon := enc.ToData().Monsters[gobEntityID]
+	s.Require().NotNil(mon, "goblin must still be present (5 damage on 7 HP is non-lethal)")
+	s.Equal(startHP-oaDamage, mon.HP,
+		"OA damage must apply exactly once on the NPCAct path (no double-apply)")
 }

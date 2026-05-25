@@ -62,6 +62,16 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **Move-iteration OA damage application** — PR for issue #675 (2026-05-24) — Wave 2.11e
+  SDK seam: `iterateMovementStepsForEntity` now captures `DamageReceivedEvent` on the
+  encounter bus per step (alongside the existing `ReactionTriggerTopic` buffer) and
+  dispatches HP delta + encounter-side `DamageDealtEvent` via new `applyMoveDamage`
+  helper. Without this, Move-path OAs fired and rolled but never moved target HP — the
+  goal sentence "OA-class reactions work end-to-end" silently failed at the encounter
+  boundary. Mirror of `applyCapturedDamage` pattern with polymorphic source lookup.
+  Director-review fix-up (#677) scoped NPCAct's outer damage subscriber to the
+  attack-resolution window only, eliminating a double-apply path where movement-OA
+  damage flowed through both the inner per-step subscriber AND the outer subscriber.
 - **Monk Unarmored Defense WIS AC chain** — PR #609 (2026-04-05) — adds WIS modifier
   to AC when Monk is unarmored and has no shield; test covers the full chain.
 - **Martial Arts DEX label fix** — PR #607 (2026-04-05) — `SourceRef.Label` was

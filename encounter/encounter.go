@@ -1,6 +1,7 @@
 package encounter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // OAReactionRef is the canonical reaction ref string for Opportunity Attack.
@@ -494,7 +496,7 @@ func (e *Encounter) iterateMovementStepsForEntity(
 		// is torn down via defer even if the resolver panics. Without
 		// this, a panic in the rulebook chain would leak the subscription
 		// and pollute subsequent encounter operations.
-		result, stepErr := func() (*MovementStepResult, error) {
+		result, capturedDmg, stepErr := func() (*MovementStepResult, []dnd5eEvents.DamageReceivedEvent, error) {
 			// Install a buffered subscriber on ReactionTriggerTopic per
 			// step. The subscriber catches any triggers that chain
 			// subscribers publish during this step's resolver call. In
@@ -504,22 +506,49 @@ func (e *Encounter) iterateMovementStepsForEntity(
 			// flush subscriptions cleanly per step.
 			_, drainCleanup, err := e.installTriggerBuffer()
 			if err != nil {
-				return nil, fmt.Errorf("install trigger buffer: %w", err)
+				return nil, nil, fmt.Errorf("install trigger buffer: %w", err)
 			}
 			defer drainCleanup()
 
-			return e.movementResolver.ResolveStep(MovementStepInput{
+			// Wave 2.11e (#675): capture DamageReceivedEvent published by
+			// the resolver's chain (combat.MoveEntity →
+			// triggerOpportunityAttack → ResolveAttack). OA fires AND
+			// resolves end-to-end inside the rulebook; the encounter SDK
+			// observes the damage post-hoc on the bus and applies HP delta
+			// + encounter-side DamageDealtEvent below.
+			ctx := context.Background()
+			dmgCaptured, unsubDmg, err := subscribeDamage(ctx, e.bus)
+			if err != nil {
+				return nil, nil, fmt.Errorf("subscribe move damage: %w", err)
+			}
+			defer func() { _ = unsubDmg() }()
+
+			res, err := e.movementResolver.ResolveStep(MovementStepInput{
 				EntityID: moverID,
 				FromHex:  from,
 				ToHex:    to,
 				EventBus: e.bus,
 			})
+			var dmgCopy []dnd5eEvents.DamageReceivedEvent
+			if dmgCaptured != nil {
+				dmgCopy = *dmgCaptured
+			}
+			return res, dmgCopy, err
 		}()
 		if stepErr != nil {
 			return traveled, fmt.Errorf("resolve movement step: %w", stepErr)
 		}
 		if result == nil {
 			return traveled, fmt.Errorf("movement resolver: nil result with nil error")
+		}
+
+		// Apply any OA damage captured during this step. Done before the
+		// Prevented check because OAs fire whether or not the chain ends
+		// up preventing the step — damage applies either way.
+		if len(capturedDmg) > 0 {
+			if err := e.applyMoveDamage(capturedDmg); err != nil {
+				return traveled, fmt.Errorf("apply move damage: %w", err)
+			}
 		}
 
 		if result.Prevented {
