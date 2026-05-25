@@ -20,7 +20,7 @@ package encounter
 
 import (
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
-	"github.com/KirkDiggler/rpg-toolkit/events"
+	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 )
 
 // MovementResolver bridges the encounter SDK to a rulebook implementation
@@ -78,7 +78,11 @@ type MovementStepInput struct {
 	// requires a bus to publish MovementChain so OA/Disengage conditions
 	// can fire. Wave 2.11e (#673) — added after #658 design surfaced the
 	// publish-side gap when implementing rpg-api#539's Dnd5eMovementResolver.
-	EventBus events.EventBus
+	//
+	// Import aliased as dnd5events to avoid confusion with encounter/events
+	// (the SDK's own event package). Convention used throughout the
+	// encounter package (see encounter.go, combat_resolver.go).
+	EventBus dnd5events.EventBus
 }
 
 // MovementStepResult is the per-step output shape for MovementResolver.
