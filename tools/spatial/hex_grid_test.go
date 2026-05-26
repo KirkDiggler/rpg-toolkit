@@ -399,3 +399,110 @@ func (s *HexGridTestSuite) TestCoordinateConversionMethods() {
 func TestHexGridSuite(t *testing.T) {
 	suite.Run(t, new(HexGridTestSuite))
 }
+
+// AxialHexGridTestSuite tests the AxialHexGrid which treats Position.X as Q
+// and Position.Y as R (axial cube coordinates). This is the grid used by
+// rpg-api's encounter hex map adapter.
+type AxialHexGridTestSuite struct {
+	suite.Suite
+	grid *spatial.AxialHexGrid
+}
+
+// SetupTest creates a large-bounds grid matching typical encounter usage.
+func (s *AxialHexGridTestSuite) SetupTest() {
+	s.grid = spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
+		SpanWidth:  1000,
+		SpanHeight: 1000,
+	})
+}
+
+// TestAxialHexGridShape confirms the grid reports GridShapeHex.
+func (s *AxialHexGridTestSuite) TestAxialHexGridShape() {
+	s.Equal(spatial.GridShapeHex, s.grid.GetShape())
+}
+
+// TestAxialHexGridDistance verifies the cube-formula distance for axial positions.
+// All 6 immediate neighbors of the origin must be exactly distance 1.
+func (s *AxialHexGridTestSuite) TestAxialHexGridDistance() {
+	origin := spatial.Position{X: 0, Y: 0}
+
+	// The 6 axial neighbors of (0,0) in cube coordinates:
+	// (+1,0), (-1,0), (0,+1), (0,-1), (+1,-1), (-1,+1)
+	adjacentNeighbors := []spatial.Position{
+		{X: 1, Y: 0},  // Q+1
+		{X: -1, Y: 0}, // Q-1
+		{X: 0, Y: 1},  // R+1
+		{X: 0, Y: -1}, // R-1
+		{X: 1, Y: -1}, // Q+1, R-1  — the "diagonal" that Euclidean gets wrong
+		{X: -1, Y: 1}, // Q-1, R+1  — same
+	}
+	for _, neighbor := range adjacentNeighbors {
+		s.Run("adjacent neighbor "+neighbor.String(), func() {
+			dist := s.grid.Distance(origin, neighbor)
+			s.Equal(1.0, dist,
+				"hex neighbor %v must be distance 1 from origin; got %v", neighbor, dist)
+		})
+	}
+
+	// Positions that are axial hex-distance 2 from the origin (NOT adjacent).
+	// These span a range of Cartesian distances: (2,0) is Euclidean-distance 2,
+	// (2,-1) is Euclidean-distance √5≈2.24 — but all are uniformly hex-distance
+	// 2 in cube coordinates. None should be treated as adjacent.
+	distance2 := []spatial.Position{
+		{X: 2, Y: 0},  // two Q-steps away; Euclidean 2
+		{X: 0, Y: 2},  // two R-steps away; Euclidean 2
+		{X: 2, Y: -1}, // Q+2, R-1; Euclidean √5≈2.24
+		{X: 1, Y: -2}, // Q+1, R-2; Euclidean √5≈2.24
+	}
+	for _, pos := range distance2 {
+		s.Run("distance-2 position "+pos.String(), func() {
+			dist := s.grid.Distance(origin, pos)
+			s.Equal(2.0, dist,
+				"position %v must be distance 2 from origin; got %v", pos, dist)
+		})
+	}
+}
+
+// TestAxialHexGridDistance_PlaytestScenario is the exact pair that broke the
+// Wave 2.11e MCP playtest: goblin at Q=2,R=-1 vs alice at Q=1,R=0. In
+// axial coords the hex distance is 1 (adjacent). The previous Euclidean
+// check returned √2≈1.414 and failed the ≤1.0 gate, suppressing the OA.
+func (s *AxialHexGridTestSuite) TestAxialHexGridDistance_PlaytestScenario() {
+	goblin := spatial.Position{X: 2, Y: -1} // goblin at (Q=2, R=-1)
+	alice := spatial.Position{X: 1, Y: 0}   // alice at (Q=1, R=0)
+	dist := s.grid.Distance(goblin, alice)
+	s.Equal(1.0, dist,
+		"goblin at (2,-1) and alice at (1,0) must be hex-adjacent (distance 1); "+
+			"Euclidean would give √2≈1.414 which incorrectly fails the reach check")
+}
+
+// TestAxialHexGridNeighbors verifies exactly 6 neighbors are returned for an
+// interior origin, all at distance 1.
+func (s *AxialHexGridTestSuite) TestAxialHexGridNeighbors() {
+	origin := spatial.Position{X: 0, Y: 0}
+	neighbors := s.grid.GetNeighbors(origin)
+	s.Len(neighbors, 6, "interior hex must have exactly 6 neighbors")
+	for _, n := range neighbors {
+		s.Equal(1.0, s.grid.Distance(origin, n),
+			"all neighbors of origin must be distance 1; got %v for %v", s.grid.Distance(origin, n), n)
+	}
+}
+
+// TestAxialHexGridIsAdjacent spot-checks the adjacency predicate.
+func (s *AxialHexGridTestSuite) TestAxialHexGridIsAdjacent() {
+	origin := spatial.Position{X: 0, Y: 0}
+	s.True(s.grid.IsAdjacent(origin, spatial.Position{X: 1, Y: -1}), "diagonal neighbor must be adjacent")
+	s.False(s.grid.IsAdjacent(origin, spatial.Position{X: 2, Y: 0}), "two hexes away must not be adjacent")
+}
+
+// TestAxialHexGridImplementsGrid is a compile-time witness that AxialHexGrid
+// satisfies the Grid interface; the test itself just calls a method.
+func (s *AxialHexGridTestSuite) TestAxialHexGridImplementsGrid() {
+	var g spatial.Grid = s.grid
+	s.Equal(spatial.GridShapeHex, g.GetShape())
+}
+
+// Run the axial grid test suite.
+func TestAxialHexGridSuite(t *testing.T) {
+	suite.Run(t, new(AxialHexGridTestSuite))
+}
