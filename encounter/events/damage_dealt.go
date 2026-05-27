@@ -18,6 +18,9 @@ type DamageDealtEvent struct {
 	HPAfter    int
 	MaxHP      int
 	PerPlayer  map[core.PlayerID]DamageDealtSlice
+	// Components is the optional per-source breakdown forwarded from the
+	// combat resolver's AttackOutcome.Components. Nil means no breakdown.
+	Components []core.DamageComponent
 }
 
 // DamageDealtSlice is each viewer's projection. Visible says whether the
@@ -73,6 +76,7 @@ type damageDealtWire struct {
 	HPAfter    int                                `json:"hp_after"`
 	MaxHP      int                                `json:"max_hp"`
 	PerPlayer  map[core.PlayerID]DamageDealtSlice `json:"per_player"`
+	Components []core.DamageComponent             `json:"components,omitempty"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names.
@@ -88,6 +92,7 @@ func (e *DamageDealtEvent) MarshalJSON() ([]byte, error) {
 		HPAfter:    e.HPAfter,
 		MaxHP:      e.MaxHP,
 		PerPlayer:  e.PerPlayer,
+		Components: e.Components,
 	})
 }
 
@@ -107,5 +112,6 @@ func (e *DamageDealtEvent) UnmarshalJSON(b []byte) error {
 	e.HPAfter = w.HPAfter
 	e.MaxHP = w.MaxHP
 	e.PerPlayer = w.PerPlayer
+	e.Components = w.Components
 	return nil
 }

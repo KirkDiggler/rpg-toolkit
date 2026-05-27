@@ -237,6 +237,13 @@ type AttackOutcome struct {
 	// to the entity's stored damage type if the resolver leaves it
 	// empty on a hit.
 	DamageType string
+
+	// Components is the optional per-source breakdown of the total Damage.
+	// Rulebook resolvers populate this when they have rich breakdown data
+	// (e.g. weapon damage + sneak attack). The encounter SDK forwards it to
+	// DamageDealtEvent.Components without inspecting it; nil is valid and
+	// means "no breakdown available".
+	Components []encountercore.DamageComponent
 }
 
 // toolkitRef converts the encounter SDK's local ActionRef shape (plain
