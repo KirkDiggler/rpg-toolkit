@@ -13,8 +13,8 @@ package core
 // DamageDealtEvent field for components that carry a distinct damage type.
 // IsCritical flags components that were doubled for a critical hit.
 type DamageComponent struct {
-	Source     string
-	Amount     int
-	DamageType string
-	IsCritical bool
+	Source     string `json:"source"`
+	Amount     int    `json:"amount"`
+	DamageType string `json:"damage_type,omitempty"`
+	IsCritical bool   `json:"is_critical,omitempty"`
 }
