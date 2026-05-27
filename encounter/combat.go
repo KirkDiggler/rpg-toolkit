@@ -288,13 +288,15 @@ func (e *Encounter) publishAttackOutcome(
 		return fmt.Errorf("publish attack resolved: %w", err)
 	}
 	if outcome.Hit {
-		if err := e.broker.Publish(events.NewDamageDealtEvent(
+		evt := events.NewDamageDealtEvent(
 			e.data.ID, e.nextSeq(),
 			targetID, attackerID,
 			outcome.Damage, damageType,
 			targetHPAfter, targetMaxHP,
 			damagePerPlayer,
-		)); err != nil {
+		)
+		evt.Components = outcome.Components
+		if err := e.broker.Publish(evt); err != nil {
 			return fmt.Errorf("publish damage dealt: %w", err)
 		}
 	}

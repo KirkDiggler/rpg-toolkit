@@ -18,6 +18,9 @@ type DamageDealtEvent struct {
 	HPAfter    int
 	MaxHP      int
 	PerPlayer  map[core.PlayerID]DamageDealtSlice
+	// Components is the optional per-source breakdown forwarded from the
+	// combat resolver's AttackOutcome.Components. Nil means no breakdown.
+	Components []core.DamageComponent
 }
 
 // DamageDealtSlice is each viewer's projection. Visible says whether the
