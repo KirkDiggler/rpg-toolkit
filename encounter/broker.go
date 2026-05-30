@@ -242,6 +242,8 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "EncounterEndedEvent"
 	case *events.InputRequiredDeliveredEvent:
 		typeName = "InputRequiredDeliveredEvent"
+	case *events.ResourceChangedEvent:
+		typeName = "ResourceChangedEvent"
 	default:
 		return nil, fmt.Errorf("unknown event type %T", evt)
 	}
@@ -350,6 +352,12 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "InputRequiredDeliveredEvent":
 		var e events.InputRequiredDeliveredEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "ResourceChangedEvent":
+		var e events.ResourceChangedEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}
