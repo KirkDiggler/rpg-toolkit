@@ -586,10 +586,12 @@ func (e *Encounter) PendingPhasedAttackContext(reactorPlayerID encountercore.Pla
 // encounter DamageDealtEvent. In the standard NPC-attack path this slice
 // is empty (applyCapturedAttacks drains the resolver's internal notify
 // events — see #684). This function is the future-facing path for monster
-// actions that deal damage via DealDamage rather than ResolveAttack (e.g.,
-// breath weapons or environmental hazards). Those actions publish a
-// DamageReceivedEvent without a preceding AttackEvent, so they are not
-// consumed by applyCapturedAttacks and correctly arrive here.
+// actions that deal direct damage via DealDamage rather than through
+// ResolveAttack (e.g., a goblin's breath weapon or a splash damage action).
+// Those actions publish a DamageReceivedEvent without a preceding AttackEvent,
+// so they are not consumed by applyCapturedAttacks and correctly arrive here.
+// The function is NPC-scoped: mon.Position is used for the per-viewer LoS
+// projection, so only NPC-originated damage belongs in this path.
 //
 // Target resolution: tries player → monster. If neither matches, the
 // damage event is skipped (no DamageDealtEvent published) — emitting
