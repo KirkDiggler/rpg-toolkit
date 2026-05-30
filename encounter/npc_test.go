@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	encevents "github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -251,4 +252,115 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 	s.Require().NotNil(mon, "goblin must still be present (5 damage on 7 HP is non-lethal)")
 	s.Equal(startHP-oaDamage, mon.HP,
 		"OA damage must apply exactly once on the NPCAct path (no double-apply)")
+}
+
+// busPublishingResolver is a test CombatResolver that mimics the production
+// dnd5e resolver: it returns an AttackOutcome AND publishes a
+// DamageReceivedEvent on the encounter bus (the "notify" step that
+// combat.ApplyAttackOutcome performs after running the damage chain).
+// This is the minimal reproducer for #684 — the standard alwaysHitResolver
+// does NOT publish on the bus and so cannot trigger the double-apply.
+type busPublishingResolver struct {
+	damage     int
+	damageType string
+}
+
+func (r busPublishingResolver) ResolveAttack(input encounter.AttackInput) (*encounter.AttackOutcome, error) {
+	if input.EventBus != nil {
+		topic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
+		_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
+			TargetID:   string(input.TargetID),
+			SourceID:   string(input.AttackerID),
+			Amount:     r.damage,
+			DamageType: damage.Type(r.damageType),
+		})
+	}
+	return &encounter.AttackOutcome{
+		Hit:         true,
+		AttackRoll:  20,
+		AttackBonus: 4,
+		TargetAC:    10,
+		Damage:      r.damage,
+		DamageType:  r.damageType,
+	}, nil
+}
+
+// TestNPCAct_SingleDamageDealtEvent_PerAttack is the regression guard for
+// #684: a single NPC attack must produce exactly one DamageDealtEvent and
+// apply HP exactly once. Before the fix, the resolver's internal
+// DamageReceivedEvent notify was captured by the outer subscribeDamage
+// listener in NPCAct and then re-applied by applyCapturedDamage, producing
+// a second DamageDealtEvent with empty Components and a second HP mutation.
+//
+// This test uses busPublishingResolver which reproduces the production
+// resolver pattern: returns AttackOutcome AND publishes DamageReceivedEvent
+// on the encounter bus. Without the #684 fix, alice (12 HP) would take 10
+// HP of damage from a 5-damage hit and be at 2 HP; with the fix she is at 7.
+func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
+	const attackDamage = 5
+	const aliceStartHP = 12
+
+	gob := monster.NewGoblin(gobEntityID)
+	gobData := gob.ToData()
+	dataJSON, err := json.Marshal(gobData)
+	s.Require().NoError(err)
+
+	// Build a fresh encounter with the bus-publishing resolver so the
+	// DamageReceivedEvent notify fires during the attack-resolution window.
+	enc := encounter.New("enc-npc-single-dmg", s.broker,
+		encounter.WithCombatResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: aliceStartHP, MaxHP: aliceStartHP, AC: 14,
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:       gobEntityID,
+		Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
+		MonsterRef:  monsterRefGoblin,
+		DataJSON:    dataJSON,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+	sub, subErr := s.broker.Subscribe("enc-npc-single-dmg", alicePlayerID)
+	s.Require().NoError(subErr)
+	defer func() { _ = sub.Close() }()
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	drainSub(sub, 100*time.Millisecond)
+
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+
+	// Collect all events delivered to alice from the NPC attack.
+	var dmgEvents []*encevents.DamageDealtEvent
+	deadline := time.After(time.Second)
+drainLoop:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoop
+			}
+			if de, isDmg := evt.(*encevents.DamageDealtEvent); isDmg {
+				dmgEvents = append(dmgEvents, de)
+			}
+		case <-deadline:
+			break drainLoop
+		}
+	}
+
+	// ASSERT: exactly one DamageDealtEvent (not two).
+	s.Require().Len(dmgEvents, 1,
+		"exactly one DamageDealtEvent per NPC attack (#684: before fix, two events fire — "+
+			"one from publishAttackOutcome with Components, one from applyCapturedDamage without)")
+
+	// ASSERT: HP applied exactly once — alice goes from 12 → 7, not 12 → 2.
+	aliceAfter := enc.ToData().Players[alicePlayerID]
+	s.Equal(aliceStartHP-attackDamage, aliceAfter.HP,
+		"HP must drop by damage exactly once; if 12→2, applyCapturedDamage double-applied (#684)")
 }

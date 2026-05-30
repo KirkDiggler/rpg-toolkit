@@ -145,7 +145,7 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	capturedDmg = dmgSlice
 	unsubDmg = dmgUnsub
 
-	if err := e.applyCapturedAttacks(mon, *captured); err != nil {
+	if err := e.applyCapturedAttacks(mon, *captured, capturedDmg); err != nil {
 		// errNPCPausedForReaction propagates as-is; the orchestrator
 		// detects it via IsNPCPausedForReaction. Other captured-event
 		// processing (damage, conditions) is skipped because the early
@@ -153,6 +153,10 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 		// chain itself is suspended awaiting the player's response.
 		return err
 	}
+	// applyCapturedAttacks drained the resolver's internal DamageReceivedEvents
+	// from capturedDmg (#684). Any remaining events are from non-attack damage
+	// sources (e.g., a future breath-weapon monster action using DealDamage
+	// directly) and must still be processed here.
 	if err := e.applyCapturedDamage(mon, *capturedDmg); err != nil {
 		return err
 	}
@@ -326,7 +330,26 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 // Death is published only on the HP transition (hpBefore > 0 && hpAfter == 0),
 // not whenever HP happens to be 0 — so multi-attack NPCs and re-hits on a
 // downed player do not duplicate EntityDiedEvent.
-func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents.AttackEvent) error {
+//
+// #684 consume semantics: capturedDmg is the live slice that the NPCAct
+// outer subscribeDamage listener writes into. After each attack resolves,
+// this function drains whatever the resolver added to that slice — those
+// events are the rulebook's internal DamageReceivedEvent notify step
+// (combat.ApplyAttackOutcome publishes one after running the damage chain).
+// HP and the encounter-side DamageDealtEvent are already handled by
+// applyAndPublishNPCOutcome; draining prevents applyCapturedDamage from
+// re-applying the same damage a second time.
+//
+// applyCapturedDamage remains in place for the speculative future case
+// where a monster action deals damage via DealDamage (not ResolveAttack)
+// — e.g., a breath weapon action. That path would publish a
+// DamageReceivedEvent without a preceding AttackEvent, so it would not be
+// consumed here and would correctly flow through applyCapturedDamage.
+func (e *Encounter) applyCapturedAttacks(
+	mon *MonsterData,
+	attacks []dnd5eEvents.AttackEvent,
+	capturedDmg *[]dnd5eEvents.DamageReceivedEvent,
+) error {
 	for _, atk := range attacks {
 		targetID := encountercore.EntityID(atk.TargetID)
 		targetPlayer := e.findPlayerByEntityID(targetID)
@@ -344,6 +367,13 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 			TargetAC:            targetPlayer.AC,
 			EventBus:            e.bus,
 		}
+
+		// Snapshot the damage slice length before the resolver runs. The
+		// resolver publishes DamageReceivedEvent internally (the "notify"
+		// step in combat.ApplyAttackOutcome). We drain those events after
+		// applyAndPublishNPCOutcome so applyCapturedDamage doesn't re-apply
+		// them. See #684.
+		dmgLenBefore := len(*capturedDmg)
 
 		// Wave 2.11d: route NPC attacks through the phased path when the
 		// resolver supports it so player Shield prompts can fire on hits
@@ -370,6 +400,15 @@ func (e *Encounter) applyCapturedAttacks(mon *MonsterData, attacks []dnd5eEvents
 		if err := e.applyAndPublishNPCOutcome(mon, targetPlayer, outcome); err != nil {
 			return err
 		}
+
+		// Drain the DamageReceivedEvents the resolver published during this
+		// attack's resolution window. applyAndPublishNPCOutcome has already
+		// applied HP and emitted the encounter-side DamageDealtEvent (with
+		// full Components); these captured events are the rulebook's internal
+		// notify step and must not flow through applyCapturedDamage again.
+		// We keep only events that appeared before this attack ran (i.e., any
+		// that future non-attack monster actions may add after this loop).
+		*capturedDmg = (*capturedDmg)[:dmgLenBefore]
 	}
 	return nil
 }
@@ -544,9 +583,15 @@ func (e *Encounter) PendingPhasedAttackContext(reactorPlayerID encountercore.Pla
 }
 
 // applyCapturedDamage translates each dnd5e DamageReceivedEvent into an
-// encounter DamageDealtEvent. Today no shipped action publishes one
-// through this bus, but the wiring is in place so downstream changes
-// flow automatically.
+// encounter DamageDealtEvent. In the standard NPC-attack path this slice
+// is empty (applyCapturedAttacks drains the resolver's internal notify
+// events — see #684). This function is the future-facing path for monster
+// actions that deal direct damage via DealDamage rather than through
+// ResolveAttack (e.g., a goblin's breath weapon or a splash damage action).
+// Those actions publish a DamageReceivedEvent without a preceding AttackEvent,
+// so they are not consumed by applyCapturedAttacks and correctly arrive here.
+// The function is NPC-scoped: mon.Position is used for the per-viewer LoS
+// projection, so only NPC-originated damage belongs in this path.
 //
 // Target resolution: tries player → monster. If neither matches, the
 // damage event is skipped (no DamageDealtEvent published) — emitting
