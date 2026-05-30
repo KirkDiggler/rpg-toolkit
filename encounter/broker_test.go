@@ -147,3 +147,39 @@ func (s *BrokerSuite) assertNoReceive(sub *encounter.Subscription) {
 		// expected
 	}
 }
+
+// ResourceChangedEvent round-trips through the broker codec (encode→transport→decode).
+func (s *BrokerSuite) TestBrokerCodec_ResourceChangedEvent_RoundTrip() {
+	sub, err := s.broker.Subscribe("enc:1", "p-alice")
+	s.Require().NoError(err)
+
+	original := events.NewResourceChangedEvent(
+		"enc:1", 7,
+		"char-bob",
+		"rage_charges",
+		1, 2,
+		map[core.PlayerID]events.ResourceChangedSlice{
+			"p-alice": {Visible: true},
+		},
+	)
+	s.Require().NoError(s.broker.Publish(original))
+
+	var received *events.ResourceChangedEvent
+	select {
+	case evt, ok := <-sub.Events():
+		s.Require().True(ok, "channel closed unexpectedly")
+		casted, ok := evt.(*events.ResourceChangedEvent)
+		s.Require().True(ok, "expected *events.ResourceChangedEvent, got %T", evt)
+		received = casted
+	case <-time.After(time.Second):
+		s.FailNow("did not receive ResourceChangedEvent in 1s")
+	}
+
+	s.Equal(core.EncounterID("enc:1"), received.EncounterID())
+	s.Equal(uint64(7), received.Sequence())
+	s.Equal(core.EntityID("char-bob"), received.EntityID)
+	s.Equal("rage_charges", received.ResourceRef)
+	s.Equal(1, received.NewCurrent)
+	s.Equal(2, received.Max)
+	s.True(received.PerPlayer["p-alice"].Visible)
+}

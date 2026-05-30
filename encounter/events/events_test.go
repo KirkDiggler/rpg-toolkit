@@ -33,6 +33,7 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.EntityDiedEvent)(nil)
 	var _ events.EncounterEvent = (*events.EntityRemovedEvent)(nil)
 	var _ events.EncounterEvent = (*events.EncounterEndedEvent)(nil)
+	var _ events.EncounterEvent = (*events.ResourceChangedEvent)(nil)
 }
 
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.
