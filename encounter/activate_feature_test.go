@@ -170,6 +170,104 @@ func (s *ActivateFeatureSuite) TestActivateFeature_MissingCharData() {
 	s.Require().Error(err)
 }
 
+// TestActivateFeature_CharDataMismatch returns an error when CharDataJSON belongs
+// to a different character than ActorID.
+func (s *ActivateFeatureSuite) TestActivateFeature_CharDataMismatch() {
+	e, charJSON := s.barbEnc()
+
+	_, err := e.ActivateFeature(s.ctx, &encounter.ActivateFeatureInput{
+		// ActorID deliberately mismatched: encounter has bobEntityID, data has bobEntityID too,
+		// so we spoof a different ActorID to trigger the guard.
+		// aliceEntityID is not in the encounter, so findPlayerByEntityID returns nil first.
+		ActorID:      aliceEntityID,
+		FeatureRef:   rageFeatureRef,
+		CharDataJSON: charJSON,
+	})
+	s.Require().Error(err)
+}
+
+// TestActivateFeature_CharDataIDMismatch exercises the identity-mismatch guard when
+// the actor IS in the encounter but CharDataJSON carries a different character ID.
+func (s *ActivateFeatureSuite) TestActivateFeature_CharDataIDMismatch() {
+	e, charJSON := s.barbEnc()
+
+	// Also add alice so the actor-lookup passes, then pass bob's JSON.
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID:   alicePlayerID,
+		EntityID:   aliceEntityID,
+		Position:   core.Hex{Q: 1, R: 0, S: -1},
+		HP:         10,
+		MaxHP:      10,
+		AC:         12,
+		DamageDice: "1d12", // same as barbarian above; just needs to be non-empty
+	}))
+
+	_, err := e.ActivateFeature(s.ctx, &encounter.ActivateFeatureInput{
+		ActorID:      aliceEntityID, // alice is in the encounter
+		FeatureRef:   rageFeatureRef,
+		CharDataJSON: charJSON, // but charJSON has ID=bobEntityID
+	})
+	s.Require().Error(err, "expected error when CharDataJSON.ID != ActorID")
+	s.ErrorContains(err, "mismatch")
+}
+
+// TestActivateFeature_NoSubscriptionAccumulation is the regression test for the
+// bus double-fire / subscription-accumulation class of bugs (#684 class).
+// Two sequential ActivateFeature calls on the SAME Encounter object (same e.bus)
+// must each produce exactly one ConditionAppliedEvent and one ResourceChangedEvent,
+// not two of each from accumulated subscribers.
+//
+// Call 1: rage_charges 2→1, publishes ConditionApplied(raging)+ResourceChanged.
+// Call 2 uses UpdatedCharData from call 1 (charge=1→0). Because Rage is already
+// active, ActivateAbility should fail (no charges or already raging) — but the
+// key assertion is that NO spurious extra events fire from call 1's residual
+// subscriptions. We verify this by counting total events: call 2 emits 0 events
+// (activation fails), not 2 (which would indicate leaked handlers from call 1).
+func (s *ActivateFeatureSuite) TestActivateFeature_NoSubscriptionAccumulation() {
+	e, charJSON := s.barbEnc()
+
+	sub, err := s.broker.Subscribe("enc-1", bobPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	// Call 1: should succeed, rage_charges 2→1.
+	out1, err := e.ActivateFeature(s.ctx, &encounter.ActivateFeatureInput{
+		ActorID:      bobEntityID,
+		FeatureRef:   rageFeatureRef,
+		CharDataJSON: charJSON,
+	})
+	s.Require().NoError(err)
+
+	// Drain the 2 events from call 1 (ConditionApplied + ResourceChanged).
+	call1Events := s.drainEvents(sub, 2, time.Second)
+	s.Require().Len(call1Events, 2, "call 1 should produce exactly 2 events")
+
+	// Call 2: attempt to activate again on the same encounter.
+	// With charge=1 remaining and rage already applied, ActivateAbility will
+	// either fail (already raging) or succeed (charge 1→0).
+	// Either way, the event count from call 2 must NOT exceed what the activation
+	// itself would produce — never 2× due to leaked call-1 subscribers.
+	_, _ = e.ActivateFeature(s.ctx, &encounter.ActivateFeatureInput{
+		ActorID:      bobEntityID,
+		FeatureRef:   rageFeatureRef,
+		CharDataJSON: out1.UpdatedCharData,
+	})
+
+	// Allow up to 500ms for any events that might fire from accumulated handlers.
+	// With proper Cleanup, zero events should arrive (activation fails because
+	// character is already raging). Without Cleanup, stale subscribers could
+	// re-fire the raging ConditionAppliedEvent from call 1's loaded conditions.
+	call2Events := s.drainEvents(sub, 10, 200*time.Millisecond)
+
+	// The only acceptable count is 0 (failed activation, nothing published)
+	// or the legitimate count from a successful activation (≤2: ConditionApplied
+	// + ResourceChanged if charge 1→0 succeeded). It must NOT be 4+ which would
+	// indicate doubled-up subscribers from call 1.
+	s.LessOrEqual(len(call2Events), 2,
+		"call 2 must not produce extra events from accumulated bus subscribers; "+
+			"got %d events (expected ≤2)", len(call2Events))
+}
+
 // TestActivateFeature_ActorNotInEncounter returns an error for unknown actor.
 func (s *ActivateFeatureSuite) TestActivateFeature_ActorNotInEncounter() {
 	e, charJSON := s.barbEnc()

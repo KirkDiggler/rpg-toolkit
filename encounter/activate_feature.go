@@ -80,6 +80,17 @@ func (e *Encounter) ActivateFeature(ctx context.Context, in *ActivateFeatureInpu
 		return nil, fmt.Errorf("unmarshal character data: %w", err)
 	}
 
+	// Validate that CharDataJSON belongs to the actor. This is the SDK's own
+	// consistency guard: events are published under ActorID, so mismatched
+	// data would produce condition/resource events for the wrong identity.
+	// Player-ownership (ActorID == request.EntityID) stays at the rpg-api layer.
+	if charData.ID != string(in.ActorID) {
+		return nil, fmt.Errorf(
+			"CharDataJSON identity mismatch: data.ID=%q does not match ActorID=%q",
+			charData.ID, in.ActorID,
+		)
+	}
+
 	// Snapshot the full resource set before activation so we can diff post.
 	preSources := snapshotResources(charData.Resources)
 
@@ -90,6 +101,13 @@ func (e *Encounter) ActivateFeature(ctx context.Context, in *ActivateFeatureInpu
 	if err != nil {
 		return nil, fmt.Errorf("load character: %w", err)
 	}
+	// Tear down the character's bus subscriptions after the verb completes so
+	// that repeated ActivateFeature calls on the same Encounter object (e.g. in
+	// tests) do not accumulate duplicate subscribers on e.bus.
+	// In production each RPC creates a fresh Encounter via LoadFromData (fresh
+	// e.bus), but the SDK must be safe regardless. Mirrors the defer unsubCond()
+	// pattern already used for the condition-capture subscriber.
+	defer func() { _ = char.Cleanup(ctx) }()
 
 	// Capture the condition the character's bus will emit during ActivateAbility.
 	capturedCond, unsubCond, err := subscribeConditions(ctx, e.bus)
