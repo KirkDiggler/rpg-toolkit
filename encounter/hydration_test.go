@@ -153,6 +153,10 @@ func (s *HydrationCascadeSuite) TestSneakAttack_UsedThisTurn_PersistsAndResets()
 	_, err := s.executeDamageChain(enc.EventBus())
 	s.Require().NoError(err)
 
+	// ToData write-back of the held entities must succeed cleanly.
+	_ = enc.ToData()
+	s.Require().NoError(enc.SyncErr(), "ToData write-back must not drop a marshal error")
+
 	// (b) ToData re-serializes the held character, capturing UsedThisTurn=true;
 	// a fresh load sees it (cross-RPC once-per-turn enforcement).
 	enc2 := s.reloadVia(enc)

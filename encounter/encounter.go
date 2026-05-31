@@ -57,6 +57,13 @@ type Encounter struct {
 	// the held entity (AttackInput.Attacker/Defender, MovementStepInput.Mover)
 	// and never re-load. Empty when no entities carry rehydratable data.
 	combatants map[core.EntityID]combat.Combatant
+
+	// syncErr holds the most recent error from the ToData write-back cascade
+	// (syncCombatantsToData). Surfaced via SyncErr() so a host can detect a
+	// dropped persistence write before Save — a re-marshal failure is a
+	// correctness loss (e.g. unsaved per-turn condition state). Nil when the
+	// last ToData synced cleanly. #689.
+	syncErr error
 }
 
 // Option configures an Encounter at construction.
@@ -162,13 +169,12 @@ type MonsterInput struct {
 
 // New constructs a fresh encounter with the given ID.
 //
-// #689: New takes a ctx for signature parity with LoadFromData (the cascade is
-// a no-op on a fresh encounter — no combatants are seeded yet — but seats added
-// later via AddPlayer/AddMonster are hydrated lazily by the verbs that need
-// them is NOT how it works; the cascade only runs at load. A fresh encounter
-// constructed via New and then populated with AddPlayer/AddMonster carrying
-// DataJSON is hydrated on its next LoadFromData round-trip, matching the
-// production lifecycle of create → persist → load-per-RPC).
+// #689: New takes a ctx for signature parity with LoadFromData. The hydration
+// cascade runs ONLY inside LoadFromData — New does not hydrate (a fresh
+// encounter has no combatants yet). A freshly New'd encounter populated with
+// AddPlayer/AddMonster carrying DataJSON is therefore not hydrated until its
+// next round-trip through LoadFromData, matching the production lifecycle of
+// create → persist → load-per-RPC.
 func New(_ context.Context, id core.EncounterID, b *Broker, opts ...Option) *Encounter {
 	e := &Encounter{
 		data:       NewData(id),
@@ -379,20 +385,44 @@ type Snapshot struct {
 // ToData returns the persisted shape. Caller saves this to the KV store.
 //
 // #689: ToData first cascades held-combatant state back into the snapshot —
-// the mirror of the LoadFromData hydration cascade. For each held entity whose
-// condition state mutated during the encounter (e.g. SneakAttack.UsedThisTurn
-// flipped, a resource was spent), its ToData() is re-serialized into the
-// owning PlayerData.DataJSON / MonsterData.DataJSON so the next load sees the
-// current state. The write-back is gated by the rulebook entity's own
-// IsDirty() so clean entities are not re-serialized. This replaces the host's
-// scattered save-back (rpg-api's saveAttackerConditionState +
-// publishTurnEndAndPersistReset). The SDK still never STORES — the caller saves
-// the returned *Data; the encounter is the entity-aware authority and Data is
-// its serialization view.
+// the mirror of the LoadFromData hydration cascade. Each held entity's ToData()
+// is re-serialized into the owning PlayerData.DataJSON / MonsterData.DataJSON so
+// the next load sees the current state (e.g. SneakAttack.UsedThisTurn). This
+// replaces the host's scattered save-back (rpg-api's saveAttackerConditionState
+// + publishTurnEndAndPersistReset). The SDK still never STORES — the caller
+// saves the returned *Data; the encounter is the entity-aware authority and
+// Data is its serialization view.
+//
+// The write-back is UNCONDITIONAL, not gated on IsDirty(): the rulebook
+// entities' dirty flag tracks only HP-shaped mutations, NOT condition-state
+// changes like UsedThisTurn — which is exactly the per-turn state #689 must
+// round-trip. Gating on IsDirty() would silently drop it. A dirty flag that
+// covers condition mutations is the future enhancement tracked in toolkit#692;
+// until then we always re-serialize held entities. See ADR-0030 + hydration.go.
+//
+// ToData MUTATES e.data in place (overwriting the held entities' DataJSON) — it
+// is intentionally NOT a pure read. This keeps Data a faithful serialization
+// view of the entity-aware authority rather than a rival source that drifts.
+// The mutation is idempotent (re-serializing the same live entities yields the
+// same bytes) and the package is not safe for concurrent use: the host drives
+// one encounter through load → verbs → ToData → Save per RPC on a single
+// goroutine, so there is no concurrent ToData/verb access to guard. A host that
+// shares an Encounter across goroutines must serialize access itself.
+//
+// A write-back marshal failure is recorded on the encounter; check SyncErr()
+// after ToData and before Save to detect a dropped persistence write.
 func (e *Encounter) ToData() *Data {
-	e.syncCombatantsToData()
+	e.syncErr = e.syncCombatantsToData()
 	return e.data
 }
+
+// SyncErr returns the error (if any) from the most recent ToData write-back
+// cascade — a non-nil value means at least one held entity failed to
+// re-serialize into its DataJSON, so the returned *Data carries that entity's
+// PRIOR blob (its latest in-memory state was not persisted). Hosts that care
+// about persistence integrity check this after ToData and before Save. Nil when
+// the last ToData (or a never-called ToData) synced cleanly. #689.
+func (e *Encounter) SyncErr() error { return e.syncErr }
 
 // EventBus returns the encounter-scoped dnd5e event bus. Callers (rpg-api)
 // use this bus to Apply() character conditions during rehydration so that

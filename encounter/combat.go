@@ -177,11 +177,19 @@ func (e *Encounter) EndTurn(
 
 	// Emit the rulebook turn-boundary on the encounter bus so held conditions
 	// reset per-turn state (SneakAttack.UsedThisTurn → false) with no re-load.
-	// Best-effort: a publish hiccup must not fail the turn; state resets on the
-	// next natural rehydration.
-	_ = dnd5eEvents.TurnEndTopic.On(e.bus).Publish(ctx, dnd5eEvents.TurnEndEvent{
+	// This is NOT best-effort: it is the ONLY thing that resets per-turn state.
+	// If it fails, UsedThisTurn (and similar) would persist into the next turn —
+	// nothing else flips the flag, so "resets on the next rehydration" is false.
+	// We fail the turn-end before advancing initiative (mirroring the broker
+	// publish above) so the host sees the boundary did not fully apply rather
+	// than silently carrying stale per-turn state forward. The bus is in-process
+	// and synchronous, so this realistically never fails — but a failure is a
+	// real error, not something to swallow.
+	if pubErr := dnd5eEvents.TurnEndTopic.On(e.bus).Publish(ctx, dnd5eEvents.TurnEndEvent{
 		CharacterID: string(actorID),
-	})
+	}); pubErr != nil {
+		return "", false, fmt.Errorf("publish turn boundary (per-turn reset): %w", pubErr)
+	}
 
 	e.data.ActiveIdx++
 	if e.data.ActiveIdx >= len(e.data.Initiative) {

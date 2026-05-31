@@ -40,8 +40,13 @@ serialized↔runtime pattern applied one level up:
   `LoadFromData`: players from the new `PlayerData.DataJSON` via
   `character.LoadFromData`; monsters from `MonsterData.DataJSON` via
   `monster.LoadFromData` + `monsteractions.LoadMonsterActions` +
-  `monstertraits.LoadMonsterConditions`. Default reaction conditions (OA/Shield),
-  driven by the SDK-owned `ReactionReadiness` map, are applied in the same step.
+  `monstertraits.LoadMonsterConditions`. The Opportunity Attack reaction
+  condition is applied in the same step (universal for combatants; its fire-time
+  predicate gates on the SDK-owned `ReactionReadiness` map). Shield is
+  intentionally NOT auto-applied — none of the four shipped level-1 classes
+  (Barbarian/Fighter/Monk/Rogue) cast it; "only build what we need." The
+  `ShieldSpellCondition` stays in the conditions library, just unused by this
+  cascade.
 - The runtime entities are **held** on the `Encounter` as `combat.Combatant`
   (`e.combatants`), reconstructed (not serialized) each load — exactly like
   `e.bus`. This single cascade is the **only** place conditions `Apply` to the
@@ -85,7 +90,18 @@ enforcement. So the write-back is **unconditional** for held entities (one JSON
 marshal per combatant per `ToData`); `character.ToData()` already re-serializes
 every held condition via `condition.ToJSON()`, capturing the current state.
 `MarkClean()` is still called for consumers that track HP dirtiness. Code wins
-over the plan here.
+over the plan here. Extending `IsDirty()` to cover condition mutations so the
+write-back can be efficiency-gated is the tracked follow-up **toolkit#692**.
+
+A `ToData` marshal failure is recorded and surfaced via `Encounter.SyncErr()`
+(checked by the host after `ToData`, before `Save`) rather than silently
+dropped — a dropped write-back is a correctness loss (unsaved per-turn state),
+so it must be observable. `ToData` keeps its `*Data` (non-error) signature
+because many consumers call `enc.ToData()` inline; `ToData` also mutates
+`e.data` in place to keep `Data` a faithful serialization view of the
+entity-aware authority. The package is single-goroutine-per-encounter (load →
+verbs → ToData → Save per RPC); it is not safe for concurrent use and does not
+guard against it.
 
 ## Consequences
 

@@ -26,6 +26,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
@@ -45,7 +46,12 @@ import (
 //
 // A single per-entity hydration failure is fatal: a half-hydrated encounter
 // (some combatants on the bus, others not) would resolve attacks inconsistently
-// and is harder to debug than a clean load error.
+// and is harder to debug than a clean load error. On failure we explicitly
+// Cleanup the already-hydrated entities (unwinding their bus subscriptions)
+// before returning, then LoadFromData discards e. The explicit unwind is
+// defense-in-depth: the new e.bus is unreferenced on the failure path and would
+// be GC'd anyway, but unwinding keeps the failure path honest and safe against a
+// future change that recovers from / reuses a partially-loaded encounter.
 func (e *Encounter) hydrateCombatants(ctx context.Context) error {
 	for _, pd := range e.data.Players {
 		if len(pd.DataJSON) == 0 {
@@ -53,6 +59,7 @@ func (e *Encounter) hydrateCombatants(ctx context.Context) error {
 		}
 		char, err := e.hydratePlayer(ctx, pd)
 		if err != nil {
+			e.cleanupHydrated(ctx)
 			return fmt.Errorf("hydrate player %q: %w", pd.EntityID, err)
 		}
 		e.combatants[pd.EntityID] = char
@@ -64,11 +71,33 @@ func (e *Encounter) hydrateCombatants(ctx context.Context) error {
 		}
 		mon, err := e.hydrateMonster(ctx, md)
 		if err != nil {
+			e.cleanupHydrated(ctx)
 			return fmt.Errorf("hydrate monster %q: %w", md.ID, err)
 		}
 		e.combatants[md.ID] = mon
 	}
 	return nil
+}
+
+// cleanupHydrated unwinds each held entity's own bus subscriptions (the ones
+// its LoadFromData applied) and drops it from the map, best-effort, on the
+// hydrateCombatants error path. This is defense-in-depth: LoadFromData discards
+// the partially-hydrated encounter and its fresh, now-unreferenced e.bus is
+// GC'd, so the subscriptions are already harmless — fatality comes from
+// discarding e, not from this unwind. Note Cleanup only removes the entity's
+// OWN conditions; the OA reaction we Apply separately onto e.bus is not unwound
+// here, but that too dies with the discarded bus. Errors are ignored — the
+// encounter is about to be thrown away.
+func (e *Encounter) cleanupHydrated(ctx context.Context) {
+	for id, c := range e.combatants {
+		switch ent := c.(type) {
+		case *character.Character:
+			_ = ent.Cleanup(ctx)
+		case *monster.Monster:
+			_ = ent.Cleanup(ctx)
+		}
+		delete(e.combatants, id)
+	}
 }
 
 // hydratePlayer rehydrates a *character.Character from PlayerData.DataJSON onto
@@ -120,78 +149,50 @@ func (e *Encounter) hydrateMonster(ctx context.Context, md *MonsterData) (*monst
 	return mon, nil
 }
 
-// applyPlayerReactionConditions applies the default reaction conditions (OA +
-// Shield) to a hydrated character, driven by the encounter-owned
-// ReactionReadiness map. #689 folds this in from rpg-api's reaction_conditions.go
-// so the host stops constructing conditions.New* per attack.
+// applyPlayerReactionConditions applies Opportunity Attack to a hydrated
+// character. #689 folds this in from rpg-api's reaction_conditions.go so the
+// host stops constructing conditions.New* per attack.
 //
-//   - Opportunity Attack: applied when the entity has OA seeded ready (melee
-//     combatants get it default-on at AddPlayer). The condition's own predicate
-//     (gamectx.IsReactionReady + leaving threatened reach) gates whether it ever
-//     publishes a trigger; applying it is harmless for non-melee characters.
-//   - Shield: applied only for spellcasters (1st-level slot heuristic). Default
-//     readiness is OFF; the player opts in via SetReactionReady.
+// OA only — Shield is intentionally NOT applied. The four shipped level-1
+// classes (Barbarian, Fighter, Monk, Rogue) include no Shield caster (it is a
+// wizard spell), so auto-applying ShieldSpellCondition would wire a reaction we
+// never implement. "Only build what we need." (The toolkit's
+// ShieldSpellCondition stays available in the conditions library, just not
+// auto-applied by this cascade.)
+//
+// Subscribe-time vs fire-time (verified against the condition impl): Apply()
+// only SUBSCRIBES the condition to the bus — it is a silent no-op until the
+// condition's own predicate fires. OpportunityAttackCondition
+// (opportunity_attack.go:163) gates firing on gamectx.IsReactionReady, which
+// reads the encounter-owned ReactionReadiness map at attack time. So readiness
+// is a FIRE-time concern the condition already enforces; it is NOT a
+// subscribe-time gate. OA is applied universally, matching the original host
+// behavior + the condition's documented "universal for melee combatants"
+// contract; the fire predicate makes it a no-op for non-melee / not-readied
+// characters. OA readiness is seeded default-on for melee combatants at
+// AddPlayer.
 func (e *Encounter) applyPlayerReactionConditions(ctx context.Context, char *character.Character) error {
 	id := char.GetID()
-	if e.reactionSeeded(core.EntityID(id), OAReactionRef) {
-		oa := conditions.NewOpportunityAttackCondition(id)
-		if err := oa.Apply(ctx, e.bus); err != nil {
-			return fmt.Errorf("apply OA condition for %q: %w", id, err)
-		}
-	}
-	if hasFirstLevelSpellSlot(char) {
-		shield := conditions.NewShieldSpellCondition(id)
-		if err := shield.Apply(ctx, e.bus); err != nil {
-			return fmt.Errorf("apply Shield condition for %q: %w", id, err)
-		}
+	oa := conditions.NewOpportunityAttackCondition(id)
+	if err := oa.Apply(ctx, e.bus); err != nil {
+		return fmt.Errorf("apply OA condition for %q: %w", id, err)
 	}
 	return nil
 }
 
 // applyMonsterReactionConditions applies the monster's default reaction
-// conditions (OA only — monsters don't cast Shield), gated by the readiness
-// map. Without this the monster's OpportunityAttackCondition.onMovementChain
-// subscriber never fires for NPC-OA-on-player-fleeing.
+// conditions (OA only — monsters don't cast Shield). Applied universally for the
+// same reason as players: Apply only subscribes; the OA fire predicate gates on
+// IsReactionReady (seeded default-on for melee monsters at AddMonster). Without
+// this the monster's OpportunityAttackCondition.onMovementChain subscriber never
+// exists, so NPC-OA-on-player-fleeing never fires.
 func (e *Encounter) applyMonsterReactionConditions(ctx context.Context, mon *monster.Monster) error {
 	id := mon.GetID()
-	if e.reactionSeeded(core.EntityID(id), OAReactionRef) {
-		oa := conditions.NewOpportunityAttackCondition(id)
-		if err := oa.Apply(ctx, e.bus); err != nil {
-			return fmt.Errorf("apply OA condition for monster %q: %w", id, err)
-		}
+	oa := conditions.NewOpportunityAttackCondition(id)
+	if err := oa.Apply(ctx, e.bus); err != nil {
+		return fmt.Errorf("apply OA condition for monster %q: %w", id, err)
 	}
 	return nil
-}
-
-// reactionSeeded reports whether the named reaction has an entry (true or false)
-// in the entity's readiness map. OA is seeded (=true) for melee combatants at
-// AddPlayer/AddMonster; an entry's presence is the signal that the condition is
-// relevant for this entity. Absence means "never wired" → skip the Apply.
-func (e *Encounter) reactionSeeded(id core.EntityID, reactionRef string) bool {
-	m, ok := e.data.ReactionReadiness[id]
-	if !ok {
-		return false
-	}
-	_, present := m[reactionRef]
-	return present
-}
-
-// hasFirstLevelSpellSlot reports whether the character has at least one
-// 1st-level spell slot (max > 0) — the eligibility heuristic for applying the
-// Shield reaction condition. Folded in from rpg-api's reaction_conditions.go.
-func hasFirstLevelSpellSlot(char *character.Character) bool {
-	if char == nil {
-		return false
-	}
-	data := char.ToData()
-	if data == nil || data.SpellSlots == nil {
-		return false
-	}
-	slot, ok := data.SpellSlots[1]
-	if !ok {
-		return false
-	}
-	return slot.Max > 0
 }
 
 // syncCombatantsToData is the ToData mirror of the hydration cascade: for each
@@ -207,37 +208,50 @@ func hasFirstLevelSpellSlot(char *character.Character) bool {
 // write-back is unconditional for held entities. character.ToData() already
 // re-serializes every held condition via condition.ToJSON(), so the current
 // condition state is captured. (Design plan said "dirty-gated"; the shipped
-// IsDirty() does not cover condition state, so code wins — see the ADR.)
+// IsDirty() does not cover condition state, so code wins — see ADR-0030.)
+// Extending IsDirty() to cover condition mutations so this can be
+// efficiency-gated is the future enhancement tracked in toolkit#692.
 //
 // Cost: one JSON marshal per held combatant per ToData (per RPC). Modest, and
 // correctness-critical. MarkClean is still called so any HP-dirty tracking by
 // other consumers stays consistent.
 //
-// Serialization errors are swallowed per-entity: a failed write-back keeps the
-// prior blob (status-quo before this mutation), safer than failing a verb that
-// produced a valid in-memory result; the next load re-derives from the prior
-// blob.
-func (e *Encounter) syncCombatantsToData() {
+// Serialization errors are NOT silently dropped. A failed write-back keeps the
+// prior blob for that entity (so we never persist a half-marshaled entity), but
+// the error is collected and returned so ToData can surface it via SyncErr() —
+// a dropped write-back is a correctness regression (lost UsedThisTurn etc.) and
+// must be observable. ToData keeps its pure *Data signature (many consumers call
+// enc.ToData() inline); callers that care about persistence integrity check
+// enc.SyncErr() after ToData and before Save.
+func (e *Encounter) syncCombatantsToData() error {
+	var errs []error
 	for _, pd := range e.data.Players {
 		c, ok := e.combatants[pd.EntityID].(*character.Character)
 		if !ok || c == nil {
 			continue
 		}
-		if raw, err := json.Marshal(c.ToData()); err == nil {
-			pd.DataJSON = raw
-			c.MarkClean()
+		raw, err := json.Marshal(c.ToData())
+		if err != nil {
+			errs = append(errs, fmt.Errorf("marshal player %q: %w", pd.EntityID, err))
+			continue
 		}
+		pd.DataJSON = raw
+		c.MarkClean()
 	}
 	for _, md := range e.data.Monsters {
 		m, ok := e.combatants[md.ID].(*monster.Monster)
 		if !ok || m == nil {
 			continue
 		}
-		if raw, err := json.Marshal(m.ToData()); err == nil {
-			md.DataJSON = raw
-			m.MarkClean()
+		raw, err := json.Marshal(m.ToData())
+		if err != nil {
+			errs = append(errs, fmt.Errorf("marshal monster %q: %w", md.ID, err))
+			continue
 		}
+		md.DataJSON = raw
+		m.MarkClean()
 	}
+	return errors.Join(errs...)
 }
 
 // combatantFor returns the held runtime entity for the given id, or nil if the
