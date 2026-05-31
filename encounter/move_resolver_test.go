@@ -88,7 +88,7 @@ func TestMovementResolverSuite(t *testing.T) {
 func (s *MovementResolverSuite) setupNoResolver() {
 	s.transport = tkenc.NewInMemoryTransport()
 	s.broker = tkenc.NewBroker(s.transport)
-	s.enc = tkenc.New("enc-moveres", s.broker)
+	s.enc = tkenc.New(context.Background(), "enc-moveres", s.broker)
 	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: encountercore.Hex{}, SightRange: 10,
@@ -102,7 +102,7 @@ func (s *MovementResolverSuite) SetupTest() {
 	s.transport = tkenc.NewInMemoryTransport()
 	s.broker = tkenc.NewBroker(s.transport)
 	s.resolver = &stubMovementResolver{}
-	s.enc = tkenc.New("enc-moveres", s.broker,
+	s.enc = tkenc.New(context.Background(), "enc-moveres", s.broker,
 		tkenc.WithMovementResolver(s.resolver))
 
 	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
@@ -328,7 +328,7 @@ func (s *MovementResolverSuite) TestNPCMove_NoResolver_LegacyBehavior() {
 	// Setup without resolver — rebuild the encounter wiring-free.
 	s.transport = tkenc.NewInMemoryTransport()
 	s.broker = tkenc.NewBroker(s.transport)
-	s.enc = tkenc.New("enc-moveres-npc", s.broker)
+	s.enc = tkenc.New(context.Background(), "enc-moveres-npc", s.broker)
 	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: encountercore.Hex{}, SightRange: 10,

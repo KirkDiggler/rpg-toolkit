@@ -6,6 +6,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // ErrNoCombatResolver is returned by combat verbs when the encounter was
@@ -204,6 +205,21 @@ type AttackInput struct {
 	// May be nil for resolvers that manage their own bus internally.
 	// rpg-api's Dnd5eCombatResolver MUST use this bus when non-nil.
 	EventBus dnd5events.EventBus
+
+	// Attacker and Defender are the SDK-held, already-hydrated runtime
+	// entities for AttackerID / TargetID. #689: the encounter's LoadFromData
+	// cascade hydrated these once and subscribed their conditions to EventBus;
+	// the resolver MUST use them and MUST NOT re-load (re-loading on the same
+	// bus is the #684 double-subscribe class). Either may be nil when the seat
+	// carried no rehydratable DataJSON — in that case the resolver falls back
+	// to its stat-snapshot stand-in path using the Attacker* fields above.
+	//
+	// Typed as combat.Combatant (the interface both *character.Character and
+	// *monster.Monster satisfy and the resolver chain looks up via
+	// CombatantLookup). The resolver type-asserts to the concrete type when it
+	// needs richer surface (e.g. equipped weapon).
+	Attacker combat.Combatant
+	Defender combat.Combatant
 }
 
 // AttackOutcome is the encounter-SDK-side result shape from ResolveAttack.

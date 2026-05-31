@@ -88,6 +88,8 @@ func (e *Encounter) TakeActionPhased(
 		AttackerDamageType:  player.DamageType,
 		TargetAC:            monster.AC,
 		EventBus:            e.bus,
+		Attacker:            e.combatantFor(player.EntityID),
+		Defender:            e.combatantFor(target.EntityID),
 	}
 
 	// Type-assert for the optional phased interface. Resolvers that only

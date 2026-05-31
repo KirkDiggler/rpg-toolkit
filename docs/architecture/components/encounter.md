@@ -1,8 +1,8 @@
 ---
 name: encounter module
-description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, discrete-phase combat orchestration, MovementResolver seam (both movement directions)
-updated: 2026-05-24
-confidence: high — Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions (player-Move and NPC applyNPCMovement; NPC-OA scope; player-pause deferred to #665)
+description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, combatant hydration cascade, discrete-phase combat orchestration, MovementResolver seam (both movement directions)
+updated: 2026-05-30
+confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions
 ---
 
 # encounter module
@@ -39,6 +39,41 @@ One Go module with three subpackages forming a linear DAG (`core ← events ← 
 ## Cause vs effect events
 
 Action events (cause) describe what happened in the world — `MoveEvent`, `DoorOpenedEvent`. Effect events describe perception changes — `HexRevealedEvent`. **The two are decoupled**: any cause that changes vision (Move, OpenDoor, future LightChanged, future ConditionRemoved) emits the same `HexRevealedEvent` shape alongside its action event. New cause types don't touch existing event types. Symmetric `HexHiddenEvent` is reserved for vision-loss cases (walking out of LoS, lights out, gaining Blinded) — not in slice 1.
+
+## Combatant hydration cascade (#689)
+
+`Encounter.LoadFromData(ctx, ...)` owns combatant hydration: it cascades into
+each combatant's own `LoadFromData` — players from `PlayerData.DataJSON` via
+`character.LoadFromData`, monsters from `MonsterData.DataJSON` via
+`monster.LoadFromData` + `monsteractions.LoadMonsterActions` +
+`monstertraits.LoadMonsterConditions` — and applies default reaction conditions
+(OA/Shield, driven by the `ReactionReadiness` map) in the same step. The runtime
+entities are **held** on the `Encounter` as `combat.Combatant` (reconstructed,
+not serialized, each load — like the bus).
+
+This single cascade is the **only** place conditions `Apply` to the encounter
+bus: one load, one subscribe. It cures the #684 "modifier ID already exists"
+double-subscribe class that arose when the host re-loaded entities per attack and
+per turn-boundary, each re-`Apply`'ing conditions to the same bus.
+
+- **Resolvers receive the held entity.** `AttackInput.Attacker/Defender` and
+  `MovementStepInput.Mover` are `combat.Combatant`; resolvers use them and MUST
+  NOT re-load. Nil when a seat carried no rehydratable data → resolver falls back
+  to its stat-snapshot stand-in.
+- **`EndTurn(ctx, ...)` emits the turn-boundary** (`dnd5eEvents.TurnEndTopic`)
+  directly on the bus for the ending actor, so held conditions reset per-turn
+  state (`SneakAttack.UsedThisTurn`) in place with no re-load.
+- **`ToData()` mirrors the cascade**: it re-serializes each held entity's
+  `ToData()` back into the owning `PlayerData/MonsterData.DataJSON` (unconditional
+  — `IsDirty()` tracks only HP, not condition state; see ADR-0030), so the next
+  load sees current state. The SDK still never *stores* — the host saves the
+  returned `Data`.
+- **`NPCAct`** reuses the cascade-held monster; it only loads when there is no
+  held instance (the `New`-without-`LoadFromData` path).
+
+Boundary note: the SDK is dnd5e-coupled by precedent (`npc.go`/`activate_feature.go`
+already called the rulebook loaders); #689 makes that coupling single-sourced
+rather than scattered across the host. See ADR-0030 + journey 050.
 
 ## Discrete-phase combat orchestration (Wave 2.11d)
 

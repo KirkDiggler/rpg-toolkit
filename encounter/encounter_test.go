@@ -1,6 +1,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -32,7 +33,7 @@ func (s *EncounterSuite) TearDownTest() {
 }
 
 func (s *EncounterSuite) TestAddPlayer_PopulatesView() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID:   "alice",
 		EntityID:   "char-alice",
@@ -47,7 +48,7 @@ func (s *EncounterSuite) TestAddPlayer_PopulatesView() {
 }
 
 func (s *EncounterSuite) TestAddPlayer_RejectsDuplicate() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	input := encounter.PlayerInput{PlayerID: "alice", EntityID: "char-1", SightRange: 3}
 	s.Require().NoError(e.AddPlayer(input))
 	s.Error(e.AddPlayer(input))
@@ -58,7 +59,7 @@ func (s *EncounterSuite) TestAddPlayer_RejectsDuplicate() {
 // round-trip for HexSet (struct map keys) — the types subpackage's
 // MarshalJSON now fixes that and this test guards against regression.
 func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
-	e1 := encounter.New("enc-1", s.broker)
+	e1 := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e1.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-1",
 		Position: core.Hex{Q: 1, R: -1, S: 0}, SightRange: 5,
@@ -71,7 +72,7 @@ func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
 	var data encounter.Data
 	s.Require().NoError(json.Unmarshal(payload, &data))
 
-	e2, err := encounter.LoadFromData(&data, s.broker)
+	e2, err := encounter.LoadFromData(context.Background(), &data, s.broker)
 	s.Require().NoError(err)
 
 	s.Equal(core.EncounterID("enc-1"), e2.ID())
@@ -82,7 +83,7 @@ func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
 }
 
 func (s *EncounterSuite) TestSnapshotFor_UnknownPlayer() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	snap := e.SnapshotFor("nobody")
 	s.Equal(encounter.Snapshot{}, snap)
 }
@@ -90,7 +91,7 @@ func (s *EncounterSuite) TestSnapshotFor_UnknownPlayer() {
 // Move publishes MoveEvent. Mover and viewers in range get a slice; viewers
 // out of range are absent from PerPlayer.
 func (s *EncounterSuite) TestMove_PublishesMoveEvent() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
 		Position: core.Hex{}, SightRange: 5,
@@ -119,7 +120,7 @@ func (s *EncounterSuite) TestMove_PublishesMoveEvent() {
 // guards against a regression where the delta was computed AFTER applying
 // reveal — making the delta always empty.
 func (s *EncounterSuite) TestMove_PublishesHexRevealedEventForMover() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
 		Position: core.Hex{}, SightRange: 2,
@@ -135,7 +136,7 @@ func (s *EncounterSuite) TestMove_PublishesHexRevealedEventForMover() {
 }
 
 func (s *EncounterSuite) TestMove_Validations() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-1", SightRange: 3,
 	}))
@@ -145,7 +146,7 @@ func (s *EncounterSuite) TestMove_Validations() {
 }
 
 func (s *EncounterSuite) TestOpenDoor_PublishesEvents() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
 		Position: core.Hex{}, SightRange: 4,
@@ -169,7 +170,7 @@ func (s *EncounterSuite) TestOpenDoor_PublishesEvents() {
 }
 
 func (s *EncounterSuite) TestOpenDoor_Validations() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-1", SightRange: 3,
 	}))

@@ -45,7 +45,7 @@ func (s *CombatSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-combat", s.broker,
+	s.enc = encounter.New(context.Background(), "enc-combat", s.broker,
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 
@@ -59,7 +59,7 @@ func (s *CombatSuite) SetupTest() {
 		PlayerID: "bob", EntityID: bobEntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
 		HP: 10, MaxHP: 10, AC: 13, AttackBonus: 3,
-		DamageDice: "1d6+1", DamageType: "piercing",
+		DamageDice: "1d6+1", DamageType: damagePiercing,
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID:       gobEntityID,
@@ -155,7 +155,7 @@ func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
 func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != aliceEntityID {
-		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
+		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -176,7 +176,7 @@ func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 // fields opt the seat out of combat verbs.
 func (s *CombatSuite) TestTakeAction_RejectsNonCombatant() {
 	// Build a fresh encounter with a non-combatant alice.
-	enc := encounter.New("enc-noncomb", s.broker)
+	enc := encounter.New(context.Background(), "enc-noncomb", s.broker)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -188,7 +188,7 @@ func (s *CombatSuite) TestTakeAction_RejectsNonCombatant() {
 	}))
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, err := enc.EndTurn(enc.ActiveActor())
+		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	err := enc.TakeAction("alice",
@@ -205,7 +205,7 @@ func (s *CombatSuite) TestEndTurn_AdvancesInitiative() {
 	drainSub(s.aliceSub, 100*time.Millisecond)
 	drainSub(s.bobSub, 100*time.Millisecond)
 
-	next, _, err := s.enc.EndTurn(first)
+	next, _, err := s.enc.EndTurn(context.Background(), first)
 	s.Require().NoError(err)
 	s.NotEqual(first, next)
 	s.Equal(next, s.enc.ActiveActor())
@@ -223,13 +223,13 @@ func (s *CombatSuite) TestEndTurn_RejectsWrongActor() {
 	if active == aliceEntityID {
 		other = bobEntityID
 	}
-	_, _, err := s.enc.EndTurn(other)
+	_, _, err := s.enc.EndTurn(context.Background(), other)
 	s.ErrorIs(err, encounter.ErrNotYourTurn)
 }
 
 // EndTurn outside TURN_BASED returns ErrNotTurnBased.
 func (s *CombatSuite) TestEndTurn_RequiresTurnBased() {
-	_, _, err := s.enc.EndTurn(aliceEntityID)
+	_, _, err := s.enc.EndTurn(context.Background(), aliceEntityID)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
@@ -237,13 +237,13 @@ func (s *CombatSuite) TestEndTurn_RequiresTurnBased() {
 // is empty (e.g. SetMode(TurnBased) flipped on an empty encounter).
 // Regression test for the out-of-range panic Copilot flagged in #638.
 func (s *CombatSuite) TestEndTurn_GuardsEmptyInitiative() {
-	enc := encounter.New("enc-empty", s.broker)
+	enc := encounter.New(context.Background(), "enc-empty", s.broker)
 	// SetMode would normally roll initiative, but with no players or
 	// monsters the Initiative slice ends up empty.
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	s.Empty(enc.ActiveActor())
 
-	_, _, err := enc.EndTurn("anyone")
+	_, _, err := enc.EndTurn(context.Background(), "anyone")
 	s.ErrorIs(err, encounter.ErrNoCombatants)
 }
 
@@ -252,7 +252,7 @@ func (s *CombatSuite) TestEndTurn_GuardsEmptyInitiative() {
 func (s *CombatSuite) TestNPCAct_ScriptedAttackPublishes() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != gobEntityID {
-		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
+		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -269,7 +269,7 @@ func (s *CombatSuite) TestNPCAct_ScriptedAttackPublishes() {
 // entirely so the broker does not deliver to them. Mirrors Move /
 // OpenDoor audience-routing.
 func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
-	enc := encounter.New("enc-combat-2", s.broker,
+	enc := encounter.New(context.Background(), "enc-combat-2", s.broker,
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -297,7 +297,7 @@ func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(farAliceSub, 100*time.Millisecond)
@@ -329,7 +329,7 @@ func (s *CombatSuite) TestMonsterData_RoundTrips() {
 	persisted := s.enc.ToData()
 	s.Require().Contains(persisted.Monsters, core.EntityID(gobEntityID))
 
-	rehydrated, err := encounter.LoadFromData(persisted, s.broker)
+	rehydrated, err := encounter.LoadFromData(context.Background(), persisted, s.broker)
 	s.Require().NoError(err)
 	s.Equal(core.ModeTurnBased, rehydrated.Mode())
 	s.NotEqual(core.EntityID(""), rehydrated.ActiveActor())

@@ -1,6 +1,8 @@
 package encounter
 
 import (
+	"encoding/json"
+
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 )
@@ -110,6 +112,17 @@ type PlayerData struct {
 	AttackBonus int    `json:"attack_bonus,omitempty"`
 	DamageDice  string `json:"damage_dice,omitempty"`
 	DamageType  string `json:"damage_type,omitempty"`
+
+	// DataJSON is the host-supplied serialized dnd5e character.Data for this
+	// player. #689: the encounter's LoadFromData cascade rehydrates the
+	// character from this blob (character.LoadFromData) so its conditions
+	// subscribe to the encounter bus exactly once — the single subscribe point
+	// that cures the #684 double-subscribe class. The host fetches the blob
+	// from its character store and attaches it before LoadFromData; it is a
+	// transient serialization seam (mirrors MonsterData.DataJSON and
+	// ActivateFeatureInput.CharDataJSON). Omitted from the wire when empty —
+	// players without a blob fall back to the stat-snapshot stand-in path.
+	DataJSON json.RawMessage `json:"data_json,omitempty"`
 }
 
 // DoorData persists a door entity.

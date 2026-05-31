@@ -2,6 +2,7 @@ package encounter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -46,6 +48,15 @@ type Encounter struct {
 	// adapter into PendingReactionPrompt.AttackContextJSON before saving the
 	// encounter snapshot. Wave 2.11d.
 	pendingPhasedAttacks map[core.PlayerID]*PhasedAttackContext
+
+	// combatants holds the runtime rulebook entities (characters + monsters)
+	// hydrated once by the LoadFromData cascade. #689: this is the single place
+	// combatants are loaded and their conditions Apply()'d to e.bus, curing the
+	// #684 double-subscribe class. Reconstructed (not serialized) at each
+	// LoadFromData — exactly like e.bus. The combat/movement resolvers receive
+	// the held entity (AttackInput.Attacker/Defender, MovementStepInput.Mover)
+	// and never re-load. Empty when no entities carry rehydratable data.
+	combatants map[core.EntityID]combat.Combatant
 }
 
 // Option configures an Encounter at construction.
@@ -119,6 +130,13 @@ type PlayerInput struct {
 	AttackBonus int
 	DamageDice  string
 	DamageType  string
+
+	// DataJSON is the host-supplied serialized dnd5e character.Data for this
+	// player. #689: when present, the LoadFromData cascade rehydrates the
+	// character from it (character.LoadFromData) onto the encounter bus so its
+	// conditions subscribe exactly once. Optional — a seat without it falls
+	// back to the stat-snapshot stand-in path in the resolver.
+	DataJSON json.RawMessage
 }
 
 // MonsterInput populates a monster seat at AddMonster time.
@@ -143,12 +161,21 @@ type MonsterInput struct {
 }
 
 // New constructs a fresh encounter with the given ID.
-func New(id core.EncounterID, b *Broker, opts ...Option) *Encounter {
+//
+// #689: New takes a ctx for signature parity with LoadFromData (the cascade is
+// a no-op on a fresh encounter — no combatants are seeded yet — but seats added
+// later via AddPlayer/AddMonster are hydrated lazily by the verbs that need
+// them is NOT how it works; the cascade only runs at load. A fresh encounter
+// constructed via New and then populated with AddPlayer/AddMonster carrying
+// DataJSON is hydrated on its next LoadFromData round-trip, matching the
+// production lifecycle of create → persist → load-per-RPC).
+func New(_ context.Context, id core.EncounterID, b *Broker, opts ...Option) *Encounter {
 	e := &Encounter{
-		data:   NewData(id),
-		broker: b,
-		roller: dice.NewRoller(),
-		bus:    dnd5events.NewEventBus(),
+		data:       NewData(id),
+		broker:     b,
+		roller:     dice.NewRoller(),
+		bus:        dnd5events.NewEventBus(),
+		combatants: make(map[core.EntityID]combat.Combatant),
 	}
 	for _, o := range opts {
 		o(e)
@@ -158,10 +185,19 @@ func New(id core.EncounterID, b *Broker, opts ...Option) *Encounter {
 
 // LoadFromData rehydrates an encounter from persisted state.
 //
-// Wave 2.11c: a fresh encounter-scoped dnd5e EventBus is created at this
-// point. Callers (typically rpg-api) then rehydrate character conditions
-// via the bus exposed by EventBus() so subscriptions persist across attacks.
-func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
+// #689: LoadFromData OWNS combatant hydration. A fresh encounter-scoped dnd5e
+// EventBus is created here, then the cascade rehydrates every combatant that
+// carries rehydratable data (PlayerData.DataJSON → character.LoadFromData;
+// MonsterData.DataJSON → monster.LoadFromData) onto that bus exactly once,
+// applying their persistent conditions + default reaction conditions. This
+// single cascade is the only subscribe point — it cures the #684
+// double-subscribe class that arose when the host loaded entities per attack.
+// The held entities are exposed to the resolvers (AttackInput.Attacker/Defender,
+// MovementStepInput.Mover); resolvers MUST NOT re-load.
+//
+// ctx flows into the rulebook loaders (they take a context). The bus + held
+// combatants are reconstructed fresh on each call — they are not serialized.
+func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 	if data == nil {
 		return nil, errors.New("nil Data")
 	}
@@ -187,13 +223,17 @@ func LoadFromData(data *Data, b *Broker, opts ...Option) (*Encounter, error) {
 		data.Mode = core.ModeFreeRoam
 	}
 	e := &Encounter{
-		data:   data,
-		broker: b,
-		roller: dice.NewRoller(),
-		bus:    dnd5events.NewEventBus(),
+		data:       data,
+		broker:     b,
+		roller:     dice.NewRoller(),
+		bus:        dnd5events.NewEventBus(),
+		combatants: make(map[core.EntityID]combat.Combatant),
 	}
 	for _, o := range opts {
 		o(e)
+	}
+	if err := e.hydrateCombatants(ctx); err != nil {
+		return nil, fmt.Errorf("hydrate combatants: %w", err)
 	}
 	return e, nil
 }
@@ -223,6 +263,7 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 		AttackBonus: input.AttackBonus,
 		DamageDice:  input.DamageDice,
 		DamageType:  input.DamageType,
+		DataJSON:    input.DataJSON,
 	}
 	// Seed default OA readiness for combatants. Free-cost reactions default
 	// on so players do not need to opt in every fight.
@@ -336,7 +377,22 @@ type Snapshot struct {
 }
 
 // ToData returns the persisted shape. Caller saves this to the KV store.
-func (e *Encounter) ToData() *Data { return e.data }
+//
+// #689: ToData first cascades held-combatant state back into the snapshot —
+// the mirror of the LoadFromData hydration cascade. For each held entity whose
+// condition state mutated during the encounter (e.g. SneakAttack.UsedThisTurn
+// flipped, a resource was spent), its ToData() is re-serialized into the
+// owning PlayerData.DataJSON / MonsterData.DataJSON so the next load sees the
+// current state. The write-back is gated by the rulebook entity's own
+// IsDirty() so clean entities are not re-serialized. This replaces the host's
+// scattered save-back (rpg-api's saveAttackerConditionState +
+// publishTurnEndAndPersistReset). The SDK still never STORES — the caller saves
+// the returned *Data; the encounter is the entity-aware authority and Data is
+// its serialization view.
+func (e *Encounter) ToData() *Data {
+	e.syncCombatantsToData()
+	return e.data
+}
 
 // EventBus returns the encounter-scoped dnd5e event bus. Callers (rpg-api)
 // use this bus to Apply() character conditions during rehydration so that
@@ -528,6 +584,7 @@ func (e *Encounter) iterateMovementStepsForEntity(
 				FromHex:  from,
 				ToHex:    to,
 				EventBus: e.bus,
+				Mover:    e.combatantFor(moverID),
 			})
 			var dmgCopy []dnd5eEvents.DamageReceivedEvent
 			if dmgCaptured != nil {

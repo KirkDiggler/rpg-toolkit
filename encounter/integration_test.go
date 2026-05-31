@@ -1,6 +1,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"sync/atomic"
@@ -29,7 +30,7 @@ func TestIntegrationSuite(t *testing.T) {
 func (s *IntegrationSuite) SetupTest() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-walking-skel", s.broker)
+	s.enc = encounter.New(context.Background(), "enc-walking-skel", s.broker)
 
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
@@ -99,7 +100,7 @@ func (s *IntegrationSuite) TestSlice_RoundTripPersistence() {
 
 	var loaded encounter.Data
 	s.Require().NoError(json.Unmarshal(payload, &loaded))
-	enc2, err := encounter.LoadFromData(&loaded, s.broker)
+	enc2, err := encounter.LoadFromData(context.Background(), &loaded, s.broker)
 	s.Require().NoError(err)
 
 	aliceSub2, err := s.broker.Subscribe("enc-walking-skel", "alice")
@@ -210,7 +211,7 @@ func (s *ConditionPersistenceSuite) TearDownTest() {
 // SneakAttack.UsedThisTurn to hold for a whole turn, etc.).
 func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttacks() {
 	resolver := &busCapturingResolver{damage: 3}
-	enc := encounter.New("enc-bus-test", s.broker,
+	enc := encounter.New(context.Background(), "enc-bus-test", s.broker,
 		encounter.WithCombatResolver(resolver),
 	)
 
@@ -229,13 +230,13 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 		ID:       "goblin-1",
 		Position: core.Hex{Q: 1},
 		HP:       20, MaxHP: 20, AC: 12,
-		DamageDice: "1d6", DamageType: "piercing",
+		DamageDice: dice1d6, DamageType: damagePiercing,
 	}))
 
 	// Start combat — alice must go first for the test to be deterministic.
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != "char-alice" {
-		_, _, err := enc.EndTurn(enc.ActiveActor())
+		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 
@@ -274,7 +275,7 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 // resolver receives a non-nil bus after rehydration.
 func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRoundTrip() {
 	resolver := &busCapturingResolver{damage: 2}
-	enc := encounter.New("enc-rt-test", s.broker,
+	enc := encounter.New(context.Background(), "enc-rt-test", s.broker,
 		encounter.WithCombatResolver(resolver),
 	)
 
@@ -282,13 +283,13 @@ func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRo
 		PlayerID: "alice", EntityID: "char-alice",
 		Position: core.Hex{}, SightRange: 4,
 		HP: 15, MaxHP: 15, AC: 13,
-		DamageDice: "1d6", DamageType: "slashing",
+		DamageDice: dice1d6, DamageType: "slashing",
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID:       "goblin-1",
 		Position: core.Hex{Q: 1},
 		HP:       10, MaxHP: 10, AC: 11,
-		DamageDice: "1d4", DamageType: "piercing",
+		DamageDice: "1d4", DamageType: damagePiercing,
 	}))
 
 	// Mutate readiness before serialising.
@@ -302,7 +303,7 @@ func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRo
 	// Rehydrate.
 	var restored encounter.Data
 	s.Require().NoError(json.Unmarshal(raw, &restored))
-	enc2, err := encounter.LoadFromData(&restored, s.broker,
+	enc2, err := encounter.LoadFromData(context.Background(), &restored, s.broker,
 		encounter.WithCombatResolver(resolver),
 	)
 	s.Require().NoError(err)

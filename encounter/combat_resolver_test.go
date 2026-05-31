@@ -1,6 +1,7 @@
 package encounter_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -58,7 +59,7 @@ func (s *CombatResolverWiringSuite) TearDownTest() {
 // wired. Production must wire one via WithCombatResolver; this guards
 // against misconfiguration.
 func (s *CombatResolverWiringSuite) TestTakeAction_ErrNoCombatResolver() {
-	enc := encounter.New("enc-no-resolver", s.broker)
+	enc := encounter.New(context.Background(), "enc-no-resolver", s.broker)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -71,7 +72,7 @@ func (s *CombatResolverWiringSuite) TestTakeAction_ErrNoCombatResolver() {
 	}))
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, err := enc.EndTurn(enc.ActiveActor())
+		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 
@@ -85,7 +86,7 @@ func (s *CombatResolverWiringSuite) TestTakeAction_ErrNoCombatResolver() {
 // TakeAction calls the wired CombatResolver and uses its outcome to
 // mutate state and publish events.
 func (s *CombatResolverWiringSuite) TestTakeAction_UsesResolverOutcome() {
-	enc := encounter.New("enc-resolver", s.broker,
+	enc := encounter.New(context.Background(), "enc-resolver", s.broker,
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 5, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -100,7 +101,7 @@ func (s *CombatResolverWiringSuite) TestTakeAction_UsesResolverOutcome() {
 	}))
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, err := enc.EndTurn(enc.ActiveActor())
+		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 

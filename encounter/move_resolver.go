@@ -21,6 +21,7 @@ package encounter
 import (
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // MovementResolver bridges the encounter SDK to a rulebook implementation
@@ -83,6 +84,13 @@ type MovementStepInput struct {
 	// (the SDK's own event package). Convention used throughout the
 	// encounter package (see encounter.go, combat_resolver.go).
 	EventBus dnd5events.EventBus
+
+	// Mover is the SDK-held, already-hydrated runtime entity for EntityID.
+	// #689: the LoadFromData cascade hydrated it once with its conditions
+	// subscribed to EventBus; the resolver MUST use it and MUST NOT re-load.
+	// Nil when the moving seat carried no rehydratable DataJSON — the resolver
+	// then falls back to its own lookup.
+	Mover combat.Combatant
 }
 
 // MovementStepResult is the per-step output shape for MovementResolver.

@@ -1,6 +1,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -26,7 +27,7 @@ func TestReactionReadinessSuite(t *testing.T) {
 func (s *ReactionReadinessSuite) SetupTest() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-readiness", s.broker)
+	s.enc = encounter.New(context.Background(), "enc-readiness", s.broker)
 }
 
 func (s *ReactionReadinessSuite) TearDownTest() {
@@ -62,8 +63,8 @@ func (s *ReactionReadinessSuite) addCombatMonster(id string) {
 		HP:         10,
 		MaxHP:      10,
 		AC:         12,
-		DamageDice: "1d6",
-		DamageType: "piercing",
+		DamageDice: dice1d6,
+		DamageType: damagePiercing,
 	}))
 }
 
@@ -186,7 +187,7 @@ func (s *ReactionReadinessSuite) TestReactionReadiness_RoundTrip() {
 	s.Require().NoError(json.Unmarshal(raw, &restored))
 
 	// Rehydrate
-	enc2, err := encounter.LoadFromData(&restored, s.broker)
+	enc2, err := encounter.LoadFromData(context.Background(), &restored, s.broker)
 	s.Require().NoError(err)
 
 	// Assertions
@@ -207,7 +208,7 @@ func (s *ReactionReadinessSuite) TestReactionReadiness_EmptyData_RoundTrip() {
 	var restored encounter.Data
 	s.Require().NoError(json.Unmarshal(raw, &restored))
 
-	enc2, err := encounter.LoadFromData(&restored, s.broker)
+	enc2, err := encounter.LoadFromData(context.Background(), &restored, s.broker)
 	s.Require().NoError(err)
 
 	// No entries — unknown entities return false.
@@ -237,7 +238,7 @@ func (s *ReactionReadinessSuite) TestEventBus_SameInstanceAfterVerbs() {
 
 func (s *ReactionReadinessSuite) TestEventBus_RestoredAfterLoadFromData() {
 	data := s.enc.ToData()
-	enc2, err := encounter.LoadFromData(data, s.broker)
+	enc2, err := encounter.LoadFromData(context.Background(), data, s.broker)
 	s.Require().NoError(err)
 	s.NotNil(enc2.EventBus(), "rehydrated encounter must have a non-nil event bus")
 }

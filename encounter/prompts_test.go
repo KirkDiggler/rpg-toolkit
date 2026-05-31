@@ -1,6 +1,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -63,7 +64,7 @@ func (s *PromptsSuite) TearDownTest() {
 // locked door at a position the player can perceive, and the suite's
 // resolver wired up.
 func (s *PromptsSuite) newEncounterWithLockedDoor() *encounter.Encounter {
-	e := encounter.New("enc-1", s.broker, encounter.WithCharacterResolver(s.resolver))
+	e := encounter.New(context.Background(), "enc-1", s.broker, encounter.WithCharacterResolver(s.resolver))
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 5,
@@ -81,7 +82,7 @@ func (s *PromptsSuite) newEncounterWithLockedDoor() *encounter.Encounter {
 
 // DoorData with Wave 2.9 lock fields round-trips through JSON unchanged.
 func (s *PromptsSuite) TestRoundTrip_DoorDataLockFields() {
-	e1 := encounter.New("enc-1", s.broker)
+	e1 := encounter.New(context.Background(), "enc-1", s.broker)
 	e1.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false)
 	door := e1.ToData().Doors["door-1"]
 	door.Locked = true
@@ -141,7 +142,7 @@ func (s *PromptsSuite) TestRoundTrip_PendingPrompts() {
 // Empty PendingPrompts is omitted from the wire (omitempty) so legacy
 // snapshots stay byte-identical.
 func (s *PromptsSuite) TestRoundTrip_PendingPromptsOmitWhenEmpty() {
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	payload, err := json.Marshal(e.ToData())
 	s.Require().NoError(err)
 	s.NotContains(string(payload), "pending_prompts")
@@ -177,7 +178,7 @@ func (s *PromptsSuite) TestAttemptUnlock_SecondCallRejected() {
 }
 
 func (s *PromptsSuite) TestAttemptUnlock_UnlockedDoor() {
-	e := encounter.New("enc-1", s.broker, encounter.WithCharacterResolver(s.resolver))
+	e := encounter.New(context.Background(), "enc-1", s.broker, encounter.WithCharacterResolver(s.resolver))
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 5,
@@ -372,7 +373,7 @@ func (s *PromptsSuite) newEncounterWithResolver(r encounter.CharacterResolver) *
 	if r != nil {
 		opts = append(opts, encounter.WithCharacterResolver(r))
 	}
-	e := encounter.New("enc-1", s.broker, opts...)
+	e := encounter.New(context.Background(), "enc-1", s.broker, opts...)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 5,
