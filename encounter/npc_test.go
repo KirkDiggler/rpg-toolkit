@@ -39,7 +39,7 @@ func (s *NPCSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-npc", s.broker,
+	s.enc = encounter.New(context.Background(), "enc-npc", s.broker,
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 	)
 
@@ -82,7 +82,7 @@ func (s *NPCSuite) TearDownTest() {
 func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != gobEntityID {
-		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
+		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -108,7 +108,7 @@ func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
 	// for a non-existent npc — the test exercises ErrNotYourTurn (the
 	// active-actor check fires before the existence check).
 	for s.enc.ActiveActor() != gobEntityID {
-		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
+		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	err := s.enc.NPCAct(s.ctx, "ghost")
@@ -124,7 +124,7 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
 
-	enc := encounter.New("enc-npc-no-resolver", s.broker)
+	enc := encounter.New(context.Background(), "enc-npc-no-resolver", s.broker)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -139,7 +139,7 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 	}))
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 
@@ -150,7 +150,7 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 // NPCAct (scripted path — no DataJSON) returns ErrNoCombatResolver when
 // no resolver is wired.
 func (s *NPCSuite) TestNPCAct_Scripted_ErrNoCombatResolver() {
-	enc := encounter.New("enc-npc-scripted-no-resolver", s.broker)
+	enc := encounter.New(context.Background(), "enc-npc-scripted-no-resolver", s.broker)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -165,7 +165,7 @@ func (s *NPCSuite) TestNPCAct_Scripted_ErrNoCombatResolver() {
 	}))
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 
@@ -218,7 +218,7 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 	// AI walks toward her but doesn't enter scimitar reach this turn —
 	// keeps the test focused on the movement-OA path (no attack publishes
 	// to confound the captured-damage slice post-movement).
-	enc := encounter.New("enc-npcact-move-oa", s.broker,
+	enc := encounter.New(context.Background(), "enc-npcact-move-oa", s.broker,
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 		encounter.WithMovementResolver(resolver),
 	)
@@ -238,7 +238,7 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 	}))
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 
@@ -307,7 +307,7 @@ func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
 
 	// Build a fresh encounter with the bus-publishing resolver so the
 	// DamageReceivedEvent notify fires during the attack-resolution window.
-	enc := encounter.New("enc-npc-single-dmg", s.broker,
+	enc := encounter.New(context.Background(), "enc-npc-single-dmg", s.broker,
 		encounter.WithCombatResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -329,7 +329,7 @@ func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(sub, 100*time.Millisecond)

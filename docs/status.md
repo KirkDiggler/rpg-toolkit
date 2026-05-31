@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-14
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; Wave 2.11d updates verified against shipped code
+updated: 2026-05-30
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code
 ---
 
 # rpg-toolkit: Where We Are
@@ -10,6 +10,20 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**#689 — encounter owns combatant hydration via the LoadFromData cascade
+(2026-05-30, cross-repo unit with rpg-api#582; NOT yet merged).**
+`Encounter.LoadFromData(ctx, ...)` now cascades into each combatant's own
+`LoadFromData` (players from new `PlayerData.DataJSON`, monsters from
+`MonsterData.DataJSON`), holds the runtime entities as `combat.Combatant`, and
+applies their conditions to the bus exactly once — the source-level cure for the
+#684 "modifier ID already exists" double-subscribe class. Resolvers receive the
+held entity (`AttackInput.Attacker/Defender`, `MovementStepInput.Mover`) and
+never re-load; `EndTurn(ctx, ...)` emits the dnd5e turn-boundary on the bus so
+held conditions reset with no re-load; `ToData()` cascades held state back.
+Breaking: `ctx` on `LoadFromData`/`EndTurn`/`New`. Bumped `rulebooks/dnd5e` to
+v0.59.0. See ADR-0030 + journey 050. The host (rpg-api#582) wires against a local
+replace; toolkit PR ships a real tag at the end of the unit.
 
 **Wave 2.11d toolkit half landed (PR #656, 2026-05-14)** — opt-in player
 reactions through the v2 stack. Toolkit ships the SDK surface; rpg-api
@@ -199,7 +213,7 @@ See quality.md for grade and rationale.
 | core | High — stable foundation, clean interfaces, good tests |
 | events | Medium-high — typed topics work well; dual-bus split undocumented |
 | dice | High — well-tested including pool, lazy, modifier, notation |
-| encounter | Medium-high — discrete-phase orchestration + reaction prompts shipped in Wave 2.11d (TakeActionPhased, CompleteTakeAction, PendingReactionPrompts, InputRequiredDeliveredEvent, IsNPCPausedForReaction); HOST CONTRACT smell on AttackContextJSON tracked in #657 |
+| encounter | High — #689 made LoadFromData own combatant hydration (held entities, #684 double-subscribe cured at source); discrete-phase orchestration + reaction prompts from Wave 2.11d; HOST CONTRACT smell on AttackContextJSON tracked in #657; ActivateFeature self-load (defer Cleanup) folding into the held entity is a tracked follow-up |
 | mechanics/conditions | Medium — good coverage for dnd5e conditions; base module has go.mod drift |
 | mechanics/resources | Medium-high — passes tests, no known gaps |
 | mechanics/effects | Medium — no suite-pattern tests; functional |

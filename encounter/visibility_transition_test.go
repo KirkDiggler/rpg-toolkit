@@ -13,6 +13,7 @@ package encounter_test
 // (mirrors the patterns in encounter/events/events_test.go).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -51,7 +52,7 @@ func TestVisibilityTransitionSuite(t *testing.T) {
 func (s *VisibilityTransitionSuite) SetupTest() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New("enc-vis", s.broker)
+	s.enc = encounter.New(context.Background(), "enc-vis", s.broker)
 
 	// carol is far away — she will never see alice in any test.
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{

@@ -90,7 +90,7 @@ func (s *ActivateFeatureSuite) barbEnc() (*encounter.Encounter, json.RawMessage)
 	charJSON, err := json.Marshal(charData)
 	s.Require().NoError(err)
 
-	e := encounter.New("enc-1", s.broker)
+	e := encounter.New(context.Background(), "enc-1", s.broker)
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID:   bobPlayerID,
 		EntityID:   bobEntityID,

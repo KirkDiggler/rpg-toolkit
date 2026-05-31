@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // Combat-verb sentinel errors. Wrap with fmt.Errorf for context; the
@@ -143,7 +144,18 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 // Returns ErrEncounterEnded when the encounter is in the terminal state
 // (ModeEnded). Returns ErrNoCombatants if Initiative is empty (can happen
 // if SetMode flipped to TURN_BASED with no players or monsters).
-func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, isNPC bool, err error) {
+//
+// #689: EndTurn now emits the rulebook turn-boundary signal
+// (dnd5eEvents.TurnEndTopic) directly on e.bus for the actor whose turn ended,
+// so held conditions (e.g. SneakAttack) reset their per-turn state in place
+// with NO re-load. This replaces the host's re-loading
+// publishTurnEndAndPersistReset + its defer Cleanup #684 patch. ctx flows to
+// the publish. The SDK already imports dnd5eEvents; emitting directly here
+// (rather than via a pluggable signaler) matches the existing publish pattern
+// in this dnd5e-coupled package.
+func (e *Encounter) EndTurn(
+	ctx context.Context, actorID core.EntityID,
+) (newActiveID core.EntityID, isNPC bool, err error) {
 	if e.data.Mode == core.ModeEnded {
 		return "", false, ErrEncounterEnded
 	}
@@ -161,6 +173,22 @@ func (e *Encounter) EndTurn(actorID core.EntityID) (newActiveID core.EntityID, i
 		e.data.ID, e.nextSeq(), actorID, e.allViewersTurnEnded(),
 	)); pubErr != nil {
 		return "", false, fmt.Errorf("publish turn ended: %w", pubErr)
+	}
+
+	// Emit the rulebook turn-boundary on the encounter bus so held conditions
+	// reset per-turn state (SneakAttack.UsedThisTurn → false) with no re-load.
+	// This is NOT best-effort: it is the ONLY thing that resets per-turn state.
+	// If it fails, UsedThisTurn (and similar) would persist into the next turn —
+	// nothing else flips the flag, so "resets on the next rehydration" is false.
+	// We fail the turn-end before advancing initiative (mirroring the broker
+	// publish above) so the host sees the boundary did not fully apply rather
+	// than silently carrying stale per-turn state forward. The bus is in-process
+	// and synchronous, so this realistically never fails — but a failure is a
+	// real error, not something to swallow.
+	if pubErr := dnd5eEvents.TurnEndTopic.On(e.bus).Publish(ctx, dnd5eEvents.TurnEndEvent{
+		CharacterID: string(actorID),
+	}); pubErr != nil {
+		return "", false, fmt.Errorf("publish turn boundary (per-turn reset): %w", pubErr)
 	}
 
 	e.data.ActiveIdx++

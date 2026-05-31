@@ -73,7 +73,7 @@ func (s *DeathSuite) TearDownTest() {
 // the fixed-max roller and pre-flipped to ModeTurnBased on alice's turn.
 // Returns the encounter; subscriptions are written into the suite fields.
 func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Encounter {
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -85,7 +85,7 @@ func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Enco
 		PlayerID: "bob", EntityID: bobEntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
 		HP: 10, MaxHP: 10, AC: 13, AttackBonus: 3,
-		DamageDice: "1d6+1", DamageType: "piercing",
+		DamageDice: "1d6+1", DamageType: damagePiercing,
 	}))
 	// Goblin starts at 1 HP so a single max-roll hit is guaranteed-lethal
 	// regardless of crit math.
@@ -105,7 +105,7 @@ func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Enco
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -164,7 +164,7 @@ func (s *DeathSuite) TestSlice_PostEnd_ErrEncounterEnded() {
 	)
 	s.ErrorIs(err, encounter.ErrEncounterEnded)
 
-	_, _, err = enc.EndTurn(aliceEntityID)
+	_, _, err = enc.EndTurn(context.Background(), aliceEntityID)
 	s.ErrorIs(err, encounter.ErrEncounterEnded)
 
 	err = enc.NPCAct(s.ctx, gobEntityID)
@@ -176,7 +176,7 @@ func (s *DeathSuite) TestSlice_PostEnd_ErrEncounterEnded() {
 // does NOT publish EncounterEndedEvent.
 func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 	encID := core.EncounterID("enc-death-3")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -209,7 +209,7 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -242,7 +242,7 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 // (NOT the dead goblin). Regression for ActiveIdx splice math.
 func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 	encID := core.EncounterID("enc-death-4")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -267,7 +267,7 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 
@@ -282,7 +282,7 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 
 	// alice ends her turn; the next active actor must be a live entity
 	// (alice or goblin-2), never the dead goblin.
-	next, _, err := enc.EndTurn(aliceEntityID)
+	next, _, err := enc.EndTurn(context.Background(), aliceEntityID)
 	s.Require().NoError(err)
 	s.NotEqual(core.EntityID(gobEntityID), next,
 		"EndTurn must not land on the dead goblin")
@@ -293,7 +293,7 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 // player (PerPlayer covers all of them, regardless of LoS to the kill).
 func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 	encID := core.EncounterID("enc-death-5")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -321,7 +321,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != aliceEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -347,7 +347,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 // encounter (TPK is Wave 2.11+).
 func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	encID := core.EncounterID("enc-death-6")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	// alice has 1 HP — guaranteed kill on first NPC hit.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -369,7 +369,7 @@ func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	// Cycle to the goblin's turn.
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	drainSub(s.aliceSub, 100*time.Millisecond)
@@ -406,7 +406,7 @@ func (s *DeathSuite) TestSlice_PostEndRoundTrips() {
 	persisted := enc.ToData()
 	s.Equal(core.ModeEnded, persisted.Mode)
 
-	rehydrated, err := encounter.LoadFromData(persisted, s.broker)
+	rehydrated, err := encounter.LoadFromData(context.Background(), persisted, s.broker)
 	s.Require().NoError(err)
 	s.Equal(core.ModeEnded, rehydrated.Mode())
 
@@ -462,7 +462,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedReasonAllHostilesDefeated() {
 // the death event" risk Copilot raised on the first review pass.
 func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 	encID := core.EncounterID("enc-death-rehit-player")
-	enc := encounter.New(encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
+	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -482,7 +482,7 @@ func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 
@@ -496,7 +496,7 @@ func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 	// initiative per Wave 2.10 partial player-death). NPCAct again —
 	// goblin re-hits the downed player. NO new EntityDiedEvent.
 	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(enc.ActiveActor())
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
 	}
 	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
@@ -508,7 +508,7 @@ func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 // SetMode rejects ModeEnded — terminal state is internal-only, set by
 // checkEncounterEnd, never via the public SetMode verb.
 func (s *DeathSuite) TestSetMode_RejectsModeEnded() {
-	enc := encounter.New("enc-setmode-end", s.broker)
+	enc := encounter.New(context.Background(), "enc-setmode-end", s.broker)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,

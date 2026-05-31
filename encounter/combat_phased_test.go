@@ -113,7 +113,7 @@ func (s *PhasedTakeActionSuite) SetupTest() {
 	s.transport = tkenc.NewInMemoryTransport()
 	s.broker = tkenc.NewBroker(s.transport)
 	s.resolver = &stubPhasedResolver{}
-	s.enc = tkenc.New("enc-1", s.broker, tkenc.WithCombatResolver(s.resolver))
+	s.enc = tkenc.New(context.Background(), "enc-1", s.broker, tkenc.WithCombatResolver(s.resolver))
 
 	// Two players so we can route a reactor that isn't the attacker.
 	s.Require().NoError(s.enc.AddPlayer(tkenc.PlayerInput{
@@ -143,7 +143,7 @@ func (s *PhasedTakeActionSuite) makeAliceActive() {
 		if s.enc.ActiveActor() == aliceEntityID {
 			return
 		}
-		_, _, err := s.enc.EndTurn(s.enc.ActiveActor())
+		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 	s.Require().Equal(encountercore.EntityID(aliceEntityID), s.enc.ActiveActor(),
@@ -257,7 +257,7 @@ func (s *PhasedTakeActionSuite) TestLegacyResolverFallback() {
 	transport := tkenc.NewInMemoryTransport()
 	broker := tkenc.NewBroker(transport)
 	resolver := &stubLegacyResolver{}
-	enc := tkenc.New("enc-2", broker, tkenc.WithCombatResolver(resolver))
+	enc := tkenc.New(context.Background(), "enc-2", broker, tkenc.WithCombatResolver(resolver))
 	s.Require().NoError(enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: encountercore.Hex{}, SightRange: 10,
@@ -274,7 +274,7 @@ func (s *PhasedTakeActionSuite) TestLegacyResolverFallback() {
 		if enc.ActiveActor() == aliceEntityID {
 			break
 		}
-		_, _, err := enc.EndTurn(enc.ActiveActor())
+		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
 	}
 

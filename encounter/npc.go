@@ -89,23 +89,16 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	}
 	defer func() { _ = unsubCond() }()
 
-	var data monster.Data
-	if err := json.Unmarshal(mon.DataJSON, &data); err != nil {
-		return fmt.Errorf("unmarshal monster data: %w", err)
-	}
-	// MonsterData is the encounter SDK's authoritative state; the
-	// serialized monster.Data may be stale (e.g. HP after damage from a
-	// prior turn lives only on MonsterData). Sync the volatile fields
-	// from MonsterData onto data before LoadFromData so the loaded
-	// *Monster sees current HP / AC / Speed and so its targeting / AI
-	// scoring use the authoritative numbers.
-	syncMonsterDataFromSnapshot(&data, mon)
-	loaded, err := monster.LoadFromData(ctx, &data, bus)
+	// #689: prefer the cascade-held monster. LoadFromData already hydrated it
+	// onto e.bus (with actions + conditions + OA reaction) exactly once. Loading
+	// it again here would re-subscribe its conditions to the same bus — the
+	// #684 double-subscribe class this work cures. Only load when there is no
+	// held instance (the New-without-LoadFromData path used by some tests and
+	// by orchestrators that construct an encounter in-process without a
+	// round-trip).
+	loaded, err := e.npcMonster(ctx, npcID, mon, bus)
 	if err != nil {
-		return fmt.Errorf("load monster: %w", err)
-	}
-	if err := monsteractions.LoadMonsterActions(loaded, data.Actions); err != nil {
-		return fmt.Errorf("load monster actions: %w", err)
+		return err
 	}
 
 	perception := e.buildPerception(mon)
@@ -164,6 +157,43 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 		return err
 	}
 	return nil
+}
+
+// npcMonster returns the live *monster.Monster for NPCAct to drive. #689: it
+// prefers the cascade-held instance (hydrated once at LoadFromData with its
+// conditions on e.bus) so NPCAct does NOT re-load + re-subscribe (the #684
+// double-subscribe class). When no held instance exists — the
+// New-without-LoadFromData path used by tests and in-process orchestrators —
+// it falls back to loading the monster from DataJSON onto the bus and applying
+// its actions + conditions, matching the prior NPCAct behavior.
+func (e *Encounter) npcMonster(
+	ctx context.Context, npcID encountercore.EntityID, mon *MonsterData, bus dnd5events.EventBus,
+) (*monster.Monster, error) {
+	if held, ok := e.combatants[npcID].(*monster.Monster); ok && held != nil {
+		// The held monster was hydrated by the LoadFromData cascade, which ran
+		// syncMonsterDataFromSnapshot (hydration.go) so its HP/AC/Speed already
+		// reflect the authoritative MonsterData snapshot at load time. Since a
+		// fresh Encounter is loaded per RPC, the held instance is current for
+		// this turn — no re-sync needed.
+		return held, nil
+	}
+
+	var data monster.Data
+	if err := json.Unmarshal(mon.DataJSON, &data); err != nil {
+		return nil, fmt.Errorf("unmarshal monster data: %w", err)
+	}
+	// MonsterData is the encounter SDK's authoritative volatile state; sync it
+	// onto the deserialized data before load so the *Monster sees current
+	// HP/AC/Speed.
+	syncMonsterDataFromSnapshot(&data, mon)
+	loaded, err := monster.LoadFromData(ctx, &data, bus)
+	if err != nil {
+		return nil, fmt.Errorf("load monster: %w", err)
+	}
+	if err := monsteractions.LoadMonsterActions(loaded, data.Actions); err != nil {
+		return nil, fmt.Errorf("load monster actions: %w", err)
+	}
+	return loaded, nil
 }
 
 // syncMonsterDataFromSnapshot copies authoritative volatile state from
@@ -366,6 +396,8 @@ func (e *Encounter) applyCapturedAttacks(
 			AttackerDamageType:  mon.DamageType,
 			TargetAC:            targetPlayer.AC,
 			EventBus:            e.bus,
+			Attacker:            e.combatantFor(mon.ID),
+			Defender:            e.combatantFor(targetID),
 		}
 
 		// Snapshot the damage slice length before the resolver runs. The
@@ -833,6 +865,8 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 		AttackerDamageType:  mon.DamageType,
 		TargetAC:            target.AC,
 		EventBus:            e.bus,
+		Attacker:            e.combatantFor(mon.ID),
+		Defender:            e.combatantFor(target.EntityID),
 	})
 	if err != nil {
 		return fmt.Errorf("combat resolver: %w", err)
