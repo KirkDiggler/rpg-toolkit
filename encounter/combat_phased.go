@@ -331,6 +331,7 @@ func (e *Encounter) applyAndPublishNPCOutcome(monster *MonsterData, player *Play
 		monster.ID, player.EntityID, outcome,
 		player.HP, player.MaxHP, damageType,
 		monster.Position, player.View.Position,
+		attackActionRef, attackEconomyConsumed(),
 	); err != nil {
 		return err
 	}
@@ -367,6 +368,7 @@ func (e *Encounter) applyAndPublishOutcome(player *PlayerData, monster *MonsterD
 		player.EntityID, monster.ID, outcome,
 		monster.HP, monster.MaxHP, damageType,
 		player.View.Position, monster.Position,
+		attackActionRef, attackEconomyConsumed(),
 	); err != nil {
 		return err
 	}

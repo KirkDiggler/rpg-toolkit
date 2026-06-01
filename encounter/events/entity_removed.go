@@ -19,6 +19,7 @@ import (
 //
 // Maps to the proto EntityRemoved wire shape.
 type EntityRemovedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	EntityID  core.EntityID
@@ -62,6 +63,7 @@ func (e *EntityRemovedEvent) Sequence() uint64 { return e.seq }
 func (e *EntityRemovedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type entityRemovedWire struct {
+	metaWire
 	EncID     core.EncounterID                     `json:"encounter_id"`
 	Seq       uint64                               `json:"sequence"`
 	EntityID  core.EntityID                        `json:"entity_id"`
@@ -73,6 +75,7 @@ type entityRemovedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *EntityRemovedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(entityRemovedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		EntityID:  e.EntityID,
@@ -88,6 +91,7 @@ func (e *EntityRemovedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.EntityID = w.EntityID

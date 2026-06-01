@@ -9,6 +9,7 @@ import (
 // ConditionAppliedEvent is the effect event published when a condition is
 // applied to an entity. Maps to the proto StatusApplied wire shape.
 type ConditionAppliedEvent struct {
+	eventMeta
 	encID          core.EncounterID
 	seq            uint64
 	TargetID       core.EntityID
@@ -58,6 +59,7 @@ func (e *ConditionAppliedEvent) Sequence() uint64 { return e.seq }
 func (e *ConditionAppliedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type conditionAppliedWire struct {
+	metaWire
 	EncID          core.EncounterID                        `json:"encounter_id"`
 	Seq            uint64                                  `json:"sequence"`
 	TargetID       core.EntityID                           `json:"target_id"`
@@ -71,6 +73,7 @@ type conditionAppliedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *ConditionAppliedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(conditionAppliedWire{
+		metaWire:       e.toWire(),
 		EncID:          e.encID,
 		Seq:            e.seq,
 		TargetID:       e.TargetID,
@@ -88,6 +91,7 @@ func (e *ConditionAppliedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.TargetID = w.TargetID

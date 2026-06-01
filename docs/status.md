@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-30
+updated: 2026-06-01
 confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code
 ---
 
@@ -10,6 +10,21 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**#697 (TakeAction wave, event-faithfulness PR) — encounter event spine:
+causation + game-event time + resolved-action event (2026-06-01).**
+Added `OccurredAt()` / `CorrelationID()` / `Stamp()` to the `EncounterEvent`
+interface (single-sourced on an embedded `eventMeta`), made `Broker.Publish` the
+single game-event-time stamp authority via an injected `core.Clock`
+(`NewBrokerWithClock`; default `SystemClock`, tests use `FixedClock`), and added
+the first-class `ActionResolvedEvent` (`action_ref` + `economy_consumed`).
+Attack resolution now publishes a correlated `ActionResolved → AttackResolved →
+DamageDealt` group sharing one correlation id. See ADR-0031. This is the FIRST
+of two separable #697 PRs; the menu/economy unification (reconcile the encounter
+verb path with the character action menu, non-attack actions, validate+deduct)
+is the next chunk. Proto mirror (new `ActionResolved` oneof variant +
+`occurred_at`/`correlation_id` on the envelope) is the dependency-ordered
+follow-on before rpg-api un-suppresses.
 
 **#689 — encounter owns combatant hydration via the LoadFromData cascade
 (2026-05-30, cross-repo unit with rpg-api#582; NOT yet merged).**

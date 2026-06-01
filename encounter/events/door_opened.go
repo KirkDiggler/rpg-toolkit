@@ -13,6 +13,7 @@ import (
 // HexRevealedEvent published alongside this one — see the decoupled
 // cause/effect decision.
 type DoorOpenedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	DoorID    core.EntityID
@@ -56,6 +57,7 @@ func (e *DoorOpenedEvent) Sequence() uint64 { return e.seq }
 func (e *DoorOpenedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type doorOpenedWire struct {
+	metaWire
 	EncID     core.EncounterID                        `json:"encounter_id"`
 	Seq       uint64                                  `json:"sequence"`
 	DoorID    core.EntityID                           `json:"door_id"`
@@ -67,7 +69,8 @@ type doorOpenedWire struct {
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *DoorOpenedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(doorOpenedWire{
-		EncID: e.encID, Seq: e.seq,
+		metaWire: e.toWire(),
+		EncID:    e.encID, Seq: e.seq,
 		DoorID: e.DoorID, OpenedBy: e.OpenedBy,
 		PerPlayer: e.PerPlayer,
 	})
@@ -80,6 +83,7 @@ func (e *DoorOpenedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.DoorID = w.DoorID

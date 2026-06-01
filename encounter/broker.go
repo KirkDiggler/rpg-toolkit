@@ -15,6 +15,7 @@ import (
 // to distribute event bytes (locally and, in future, across processes).
 type Broker struct {
 	transport Transport
+	clock     core.Clock
 
 	mu          sync.Mutex
 	subscribers map[subscriberKey][]*Subscription
@@ -28,18 +29,36 @@ type subscriberKey struct {
 	PlayerID core.PlayerID
 }
 
-// NewBroker constructs a Broker over the given Transport.
+// NewBroker constructs a Broker over the given Transport, stamping events with
+// the system wall clock at publish. Use NewBrokerWithClock to inject a
+// deterministic clock in tests.
 func NewBroker(t Transport) *Broker {
+	return NewBrokerWithClock(t, core.SystemClock{})
+}
+
+// NewBrokerWithClock constructs a Broker that stamps each published event's
+// game-event time (Invariant 5) from the supplied clock. A nil clock falls
+// back to the system wall clock.
+func NewBrokerWithClock(t Transport, clock core.Clock) *Broker {
+	if clock == nil {
+		clock = core.SystemClock{}
+	}
 	return &Broker{
 		transport:   t,
+		clock:       clock,
 		subscribers: make(map[subscriberKey][]*Subscription),
 		listeners:   make(map[core.EncounterID]TransportSubscription),
 	}
 }
 
-// Publish encodes the event and writes it to the encounter's transport channel.
-// Encounters call this from inside verb methods.
+// Publish stamps the event with game-event time at the literal publish moment
+// (Invariant 5), preserving any correlation id the encounter set on it
+// (Invariant 8), then encodes and writes it to the encounter's transport
+// channel. The broker is the single publish authority, so stamping here makes
+// "game-event time at publish" literal for every event with no per-call-site
+// boilerplate. Encounters call this from inside verb methods.
 func (b *Broker) Publish(evt events.EncounterEvent) error {
+	evt.Stamp(b.clock.Now(), evt.CorrelationID())
 	payload, err := encodeEvent(evt)
 	if err != nil {
 		return fmt.Errorf("encode event: %w", err)
@@ -222,6 +241,8 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "EntityAppearedEvent"
 	case *events.EntityDisappearedEvent:
 		typeName = "EntityDisappearedEvent"
+	case *events.ActionResolvedEvent:
+		typeName = "ActionResolvedEvent"
 	case *events.AttackResolvedEvent:
 		typeName = "AttackResolvedEvent"
 	case *events.DamageDealtEvent:
@@ -292,6 +313,12 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "EntityDisappearedEvent":
 		var e events.EntityDisappearedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "ActionResolvedEvent":
+		var e events.ActionResolvedEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}

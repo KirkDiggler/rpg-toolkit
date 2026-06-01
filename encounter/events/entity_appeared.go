@@ -18,6 +18,7 @@ import (
 // first visible one), Move() emits one EntityAppearedEvent per distinct Position
 // with the viewers for that position grouped into PerPlayer.
 type EntityAppearedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	Entity    core.EntityID
@@ -57,6 +58,7 @@ func (e *EntityAppearedEvent) Audience() AudienceSet { return audienceFromMap(e.
 
 // entityAppearedWire is the on-wire shape — used only by MarshalJSON / UnmarshalJSON.
 type entityAppearedWire struct {
+	metaWire
 	EncID     core.EncounterID           `json:"encounter_id"`
 	Seq       uint64                     `json:"sequence"`
 	Entity    core.EntityID              `json:"entity"`
@@ -68,6 +70,7 @@ type entityAppearedWire struct {
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *EntityAppearedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(entityAppearedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		Entity:    e.Entity,
@@ -83,6 +86,7 @@ func (e *EntityAppearedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.Entity = w.Entity

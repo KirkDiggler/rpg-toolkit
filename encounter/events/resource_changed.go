@@ -10,6 +10,7 @@ import (
 // resource (e.g. rage charges, ki) changes during an encounter verb.
 // Maps to the proto ResourceChanged wire shape.
 type ResourceChangedEvent struct {
+	eventMeta
 	encID       core.EncounterID
 	seq         uint64
 	EntityID    core.EntityID
@@ -57,6 +58,7 @@ func (e *ResourceChangedEvent) Sequence() uint64 { return e.seq }
 func (e *ResourceChangedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type resourceChangedWire struct {
+	metaWire
 	EncID       core.EncounterID                       `json:"encounter_id"`
 	Seq         uint64                                 `json:"sequence"`
 	EntityID    core.EntityID                          `json:"entity_id"`
@@ -70,6 +72,7 @@ type resourceChangedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *ResourceChangedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(resourceChangedWire{
+		metaWire:    e.toWire(),
 		EncID:       e.encID,
 		Seq:         e.seq,
 		EntityID:    e.EntityID,
@@ -87,6 +90,7 @@ func (e *ResourceChangedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.EntityID = w.EntityID

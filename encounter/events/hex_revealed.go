@@ -14,6 +14,7 @@ import (
 // The cause stays in the parallel action event; this event describes the
 // effect on perception with the same shape across all causes.
 type HexRevealedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	PerPlayer map[core.PlayerID]HexRevealedSlice
@@ -62,6 +63,7 @@ func (e *HexRevealedEvent) Sequence() uint64 { return e.seq }
 func (e *HexRevealedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type hexRevealedWire struct {
+	metaWire
 	EncID     core.EncounterID                   `json:"encounter_id"`
 	Seq       uint64                             `json:"sequence"`
 	PerPlayer map[core.PlayerID]HexRevealedSlice `json:"per_player"`
@@ -70,7 +72,12 @@ type hexRevealedWire struct {
 // MarshalJSON exposes encID and seq under stable JSON field names without
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *HexRevealedEvent) MarshalJSON() ([]byte, error) {
-	return json.Marshal(hexRevealedWire{EncID: e.encID, Seq: e.seq, PerPlayer: e.PerPlayer})
+	return json.Marshal(hexRevealedWire{
+		metaWire:  e.toWire(),
+		EncID:     e.encID,
+		Seq:       e.seq,
+		PerPlayer: e.PerPlayer,
+	})
 }
 
 // UnmarshalJSON populates the unexported fields from JSON.
@@ -80,6 +87,7 @@ func (e *HexRevealedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.PerPlayer = w.PerPlayer

@@ -19,6 +19,7 @@ import (
 //
 // Maps to the proto EncounterEnded wire shape.
 type EncounterEndedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	Reason    string
@@ -59,6 +60,7 @@ func (e *EncounterEndedEvent) Sequence() uint64 { return e.seq }
 func (e *EncounterEndedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type encounterEndedWire struct {
+	metaWire
 	EncID     core.EncounterID                      `json:"encounter_id"`
 	Seq       uint64                                `json:"sequence"`
 	Reason    string                                `json:"reason,omitempty"`
@@ -69,6 +71,7 @@ type encounterEndedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *EncounterEndedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(encounterEndedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		Reason:    e.Reason,
@@ -83,6 +86,7 @@ func (e *EncounterEndedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.Reason = w.Reason

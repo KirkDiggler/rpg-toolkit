@@ -30,6 +30,7 @@ import (
 // 2.9-style skill checks could reuse this with kind "skill_check" (today
 // they ride the response payload directly).
 type InputRequiredDeliveredEvent struct {
+	eventMeta
 	encID      core.EncounterID
 	seq        uint64
 	ReactorID  core.PlayerID
@@ -72,6 +73,7 @@ func (e *InputRequiredDeliveredEvent) Audience() AudienceSet {
 }
 
 type inputRequiredDeliveredWire struct {
+	metaWire
 	EncID      core.EncounterID `json:"encounter_id"`
 	Seq        uint64           `json:"sequence"`
 	ReactorID  core.PlayerID    `json:"reactor_id"`
@@ -82,6 +84,7 @@ type inputRequiredDeliveredWire struct {
 // Implements encoding/json.Marshaler.
 func (e *InputRequiredDeliveredEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(inputRequiredDeliveredWire{
+		metaWire:   e.toWire(),
 		EncID:      e.encID,
 		Seq:        e.seq,
 		ReactorID:  e.ReactorID,
@@ -96,6 +99,7 @@ func (e *InputRequiredDeliveredEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.ReactorID = w.ReactorID

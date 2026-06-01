@@ -3,6 +3,7 @@ package events_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
@@ -34,6 +35,92 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.EntityRemovedEvent)(nil)
 	var _ events.EncounterEvent = (*events.EncounterEndedEvent)(nil)
 	var _ events.EncounterEvent = (*events.ResourceChangedEvent)(nil)
+	var _ events.EncounterEvent = (*events.ActionResolvedEvent)(nil)
+}
+
+// Every event exposes the spine metadata accessors (Invariants 5, 8) via the
+// embedded eventMeta — and Stamp sets them. A representative sample is enough;
+// the methods are single-sourced on eventMeta so what holds for one holds for
+// all.
+func (s *EventsSuite) TestSpineMeta_StampAndAccessors() {
+	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	corr := core.CorrelationID("corr-enc-1-7")
+
+	samples := []events.EncounterEvent{
+		events.NewMoveEvent("enc-1", 1, "bob", nil, nil),
+		events.NewAttackResolvedEvent("enc-1", 2, "a", "b", true, false, 1, 1, 1, nil),
+		events.NewDamageDealtEvent("enc-1", 3, "a", "b", 1, "slashing", 1, 1, nil),
+		events.NewActionResolvedEvent("enc-1", 4, "a", "dnd5e:action:attack", "b",
+			events.EconomyConsumed{Actions: 1}, nil),
+	}
+	for _, e := range samples {
+		s.Equal(time.Time{}, e.OccurredAt(), "unstamped event has zero time")
+		s.Equal(core.CorrelationID(""), e.CorrelationID(), "unstamped event has empty correlation")
+		e.Stamp(at, corr)
+		s.Equal(at, e.OccurredAt())
+		s.Equal(corr, e.CorrelationID())
+	}
+}
+
+// The spine metadata survives the JSON round-trip on an existing event — proves
+// the embedded metaWire serializes inline under stable field names.
+func (s *EventsSuite) TestSpineMeta_JSONRoundTrip() {
+	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	corr := core.CorrelationID("corr-enc-1-11")
+
+	original := events.NewAttackResolvedEvent(
+		"enc-1", 11, "char-alice", "goblin-1",
+		true, false, 17, 4, 15,
+		map[core.PlayerID]events.AttackResolvedSlice{"alice": {Visible: true}},
+	)
+	original.Stamp(at, corr)
+
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+	s.Contains(string(payload), `"occurred_at"`)
+	s.Contains(string(payload), `"correlation_id"`)
+
+	var decoded events.AttackResolvedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+	s.Equal(at, decoded.OccurredAt())
+	s.Equal(corr, decoded.CorrelationID())
+}
+
+// ActionResolvedEvent JSON round-trip — action_ref + economy_consumed + spine
+// meta all survive encoding; audience derives from PerPlayer keys.
+func (s *EventsSuite) TestActionResolvedEvent_JSONRoundTrip() {
+	at := time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC)
+	corr := core.CorrelationID("corr-enc-1-21")
+
+	original := events.NewActionResolvedEvent(
+		"enc-1", 21, "char-alice", "dnd5e:actions:strike", "goblin-1",
+		events.EconomyConsumed{
+			Actions:         1,
+			GrantedConsumed: map[string]int{"attacks": 1},
+		},
+		map[core.PlayerID]events.ActionResolvedSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: false},
+		},
+	)
+	original.Stamp(at, corr)
+
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.ActionResolvedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(21), decoded.Sequence())
+	s.Equal(core.EntityID("char-alice"), decoded.ActorID)
+	s.Equal("dnd5e:actions:strike", decoded.ActionRef)
+	s.Equal(core.EntityID("goblin-1"), decoded.TargetID)
+	s.Equal(1, decoded.EconomyConsumed.Actions)
+	s.Equal(1, decoded.EconomyConsumed.GrantedConsumed["attacks"])
+	s.Equal(at, decoded.OccurredAt())
+	s.Equal(corr, decoded.CorrelationID())
+	s.ElementsMatch(events.AudienceSet{"alice", "bob"}, decoded.Audience())
 }
 
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.

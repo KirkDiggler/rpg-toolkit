@@ -1,17 +1,31 @@
 package events
 
-import "github.com/KirkDiggler/rpg-toolkit/encounter/core"
+import (
+	"time"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+)
 
 // EncounterEvent is the sealed sum type of events the broker carries.
 //
 // External packages cannot implement this interface — the marker method
 // isEncounterEvent() is unexported, and only types declared in this
 // package can satisfy it. Consumers type-switch on the concrete type.
+//
+// OccurredAt and CorrelationID are the spine metadata added for the TakeAction
+// wave (North-Star Invariants 5 and 8): every event is stamped with game-event
+// time at publish, and effect events carry the correlation id of the action
+// that caused them so the toolkit-owned combat log is reassemblable. Stamp is
+// the single mutator the encounter calls just before broker.Publish. All three
+// are satisfied for free by the embedded events.eventMeta.
 type EncounterEvent interface {
 	isEncounterEvent()
 	EncounterID() core.EncounterID
 	Sequence() uint64
 	Audience() AudienceSet
+	OccurredAt() time.Time
+	CorrelationID() core.CorrelationID
+	Stamp(at time.Time, corr core.CorrelationID)
 }
 
 // AudienceSet is the set of player IDs that can perceive an event.

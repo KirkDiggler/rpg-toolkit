@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
@@ -53,6 +54,24 @@ const damageTypeUntyped = "untyped"
 // attack. Used as AttackInput.ActionRef.ID for both the player path
 // (TakeAction) and the NPC path (NPCAct / npcActScripted).
 const actionIDAttack = "attack"
+
+// attackActionRef is the canonical ref string the ActionResolvedEvent carries
+// for a standard attack. Mirrors the {Module:"dnd5e", Type:"action",
+// ID:"attack"} shape the SDK threads into AttackInput.ActionRef (npc.go), in
+// the toolkit-canonical "module:type:id" string form so the encounter SDK
+// stays free of rulebook ref types. The menu/economy unification PR will
+// generalize the attack publish path to carry the actor's submitted ref so
+// non-attack actions (Dodge / Dash / the Monk bonus strike) report their own.
+const attackActionRef = "dnd5e:action:attack"
+
+// attackEconomyConsumed reports the turn-economy cost the event-faithfulness
+// wave attributes to a standard attack: one standard action. This is the
+// honest cost the attack path knows today; the menu/economy unification PR
+// sources richer consumption (the two-level "Attack ability grants attacks,
+// each strike consumes one" model) from the character action economy.
+func attackEconomyConsumed() events.EconomyConsumed {
+	return events.EconomyConsumed{Actions: 1}
+}
 
 // isPlayerCombatant reports whether a player seat carries the minimum
 // combat snapshot required for TakeAction. PlayerInput documents that a
@@ -280,9 +299,22 @@ func rollD20(r dice.Roller) int {
 	return v
 }
 
-// publishAttackOutcome emits the AttackResolvedEvent (always) plus the
-// DamageDealtEvent (only on hit) with per-viewer projection determined by
-// LoS to attacker OR target.
+// publishAttackOutcome emits the first-class ActionResolvedEvent (the cause
+// beat, Invariant 9), the AttackResolvedEvent (attack roll detail, always),
+// and the DamageDealtEvent (only on hit) with per-viewer projection determined
+// by LoS to attacker OR target.
+//
+// All three events share one correlation id (Invariant 8), derived from the
+// ActionResolvedEvent's own (encounter id + sequence) identity so the
+// toolkit-owned combat log can group "this damage came from that action"
+// without relying on adjacent sequence numbers. The correlation id is set on
+// each event before publish; the broker stamps game-event time at the publish
+// moment (Invariant 5).
+//
+// actionRef names the action taken (e.g. "dnd5e:actions:strike") and consumed
+// reports what it spent off the turn economy. Wave: the inline attack path
+// supplies the known cost; the menu/economy unification PR will source richer
+// consumption.
 //
 // Audience routing matches Move / OpenDoor: viewers who cannot perceive
 // the attacker or the target are omitted from PerPlayer entirely (and so
@@ -294,7 +326,10 @@ func (e *Encounter) publishAttackOutcome(
 	targetHPAfter, targetMaxHP int,
 	damageType string,
 	attackerPos, targetPos core.Hex,
+	actionRef string,
+	consumed events.EconomyConsumed,
 ) error {
+	actionPerPlayer := make(map[core.PlayerID]events.ActionResolvedSlice)
 	attackPerPlayer := make(map[core.PlayerID]events.AttackResolvedSlice)
 	damagePerPlayer := make(map[core.PlayerID]events.DamageDealtSlice)
 	for viewerID, viewer := range e.data.Players {
@@ -302,17 +337,32 @@ func (e *Encounter) publishAttackOutcome(
 			!perception.CanSeeAt(viewer.View, targetPos) {
 			continue
 		}
+		actionPerPlayer[viewerID] = events.ActionResolvedSlice{Visible: true}
 		attackPerPlayer[viewerID] = events.AttackResolvedSlice{Visible: true}
 		if outcome.Hit {
 			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
 		}
 	}
-	if err := e.broker.Publish(events.NewAttackResolvedEvent(
+
+	// The resolved-action event is the cause beat; its identity seeds the
+	// correlation id every effect of this action carries.
+	actionSeq := e.nextSeq()
+	corrID := e.correlationFor(actionSeq)
+	actionEvt := events.NewActionResolvedEvent(
+		e.data.ID, actionSeq,
+		attackerID, actionRef, targetID,
+		consumed, actionPerPlayer,
+	)
+	if err := e.publishCorrelated(actionEvt, corrID); err != nil {
+		return fmt.Errorf("publish action resolved: %w", err)
+	}
+
+	if err := e.publishCorrelated(events.NewAttackResolvedEvent(
 		e.data.ID, e.nextSeq(),
 		attackerID, targetID,
 		outcome.Hit, outcome.Critical, outcome.AttackRoll, outcome.AttackBonus, outcome.TargetAC,
 		attackPerPlayer,
-	)); err != nil {
+	), corrID); err != nil {
 		return fmt.Errorf("publish attack resolved: %w", err)
 	}
 	if outcome.Hit {
@@ -324,11 +374,28 @@ func (e *Encounter) publishAttackOutcome(
 			damagePerPlayer,
 		)
 		evt.Components = outcome.Components
-		if err := e.broker.Publish(evt); err != nil {
+		if err := e.publishCorrelated(evt, corrID); err != nil {
 			return fmt.Errorf("publish damage dealt: %w", err)
 		}
 	}
 	return nil
+}
+
+// correlationFor derives the correlation id for an action-resolution group
+// from the resolved-action event's own (encounter, sequence) identity. Riding
+// the existing monotonic sequence keeps it deterministic (no new dependency,
+// trivially assertable in tests) and unique per action within an encounter.
+func (e *Encounter) correlationFor(actionSeq uint64) core.CorrelationID {
+	return core.CorrelationID(fmt.Sprintf("corr-%s-%d", e.data.ID, actionSeq))
+}
+
+// publishCorrelated sets the correlation id on an event (Invariant 8) and
+// publishes it through the broker, which stamps game-event time (Invariant 5).
+// The OccurredAt arg to Stamp is zero here — the broker overwrites it at the
+// literal publish moment, preserving the correlation id we set.
+func (e *Encounter) publishCorrelated(evt events.EncounterEvent, corrID core.CorrelationID) error {
+	evt.Stamp(time.Time{}, corrID)
+	return e.broker.Publish(evt)
 }
 
 // allViewersModeChanged builds a per-player slice marking every player as

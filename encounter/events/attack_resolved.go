@@ -11,6 +11,7 @@ import (
 // does not itself describe the HP outcome — that lives on the parallel
 // DamageDealtEvent published alongside on hit.
 type AttackResolvedEvent struct {
+	eventMeta
 	encID       core.EncounterID
 	seq         uint64
 	AttackerID  core.EntityID
@@ -69,6 +70,7 @@ func (e *AttackResolvedEvent) Sequence() uint64 { return e.seq }
 func (e *AttackResolvedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type attackResolvedWire struct {
+	metaWire
 	EncID       core.EncounterID                      `json:"encounter_id"`
 	Seq         uint64                                `json:"sequence"`
 	AttackerID  core.EntityID                         `json:"attacker_id"`
@@ -85,6 +87,7 @@ type attackResolvedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *AttackResolvedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(attackResolvedWire{
+		metaWire:    e.toWire(),
 		EncID:       e.encID,
 		Seq:         e.seq,
 		AttackerID:  e.AttackerID,
@@ -105,6 +108,7 @@ func (e *AttackResolvedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.AttackerID = w.AttackerID
