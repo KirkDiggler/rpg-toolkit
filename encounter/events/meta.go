@@ -36,10 +36,16 @@ func (m *eventMeta) OccurredAt() time.Time { return m.eventOccurredAt }
 // not part of a correlated action group. Part of the EncounterEvent interface.
 func (m *eventMeta) CorrelationID() core.CorrelationID { return m.eventCorrelationID }
 
-// Stamp sets the publish-time spine metadata. Called once by the encounter
-// just before handing the event to the broker — the single stamp point that
-// makes "game-event time at publish" literal. Part of the EncounterEvent
-// interface (callers in the encounter package stamp via this).
+// Stamp sets the spine metadata. Two callers, two responsibilities:
+//   - The encounter sets the correlation id before publish (via
+//     publishCorrelated, passing a zero time) so an action's effect events
+//     group under one id (Invariant 8).
+//   - The Broker re-stamps at the literal publish moment to set game-event time
+//     (Invariant 5), preserving the correlation id already set. The broker is
+//     therefore the single timestamp authority; "game-event time at publish" is
+//     literal because the broker is the one publish point.
+//
+// Part of the EncounterEvent interface.
 func (m *eventMeta) Stamp(at time.Time, corr core.CorrelationID) {
 	m.eventOccurredAt = at
 	m.eventCorrelationID = corr
