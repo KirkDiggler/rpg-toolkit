@@ -782,6 +782,10 @@ func (s *ActionEconomyTestSuite) TestExecuteAction_UnarmedStrike() {
 	s.Require().NoError(err)
 	s.True(output.Success)
 	s.Equal(0, char.actionEconomy.Granted[GrantedMartialArtsBonus])
+	// The Monk Martial Arts unarmed strike is a bonus action (PHB p.78): taking
+	// it spends the bonus-action slot, not just the granted capacity.
+	s.Equal(0, char.actionEconomy.BonusActionsRemaining,
+		"unarmed strike consumes the bonus action that pays for it")
 }
 
 func (s *ActionEconomyTestSuite) TestGrantCapacity() {

@@ -470,6 +470,31 @@ newChar, err := character.LoadFromData(ctx, data, bus)
 their handlers on reconstruct. This is the critical step that makes the
 toolkit stateless from rpg-api's perspective.
 
+### Two-level action economy + the action menu as data (rpg-toolkit#697, ADR-0032)
+
+The character owns the D&D 5e two-level model: `StartTurn` seeds the economy
+(1 action / 1 bonus / 1 reaction / movement = speed), `ActivateAbility` spends a
+primary slot and grants capacity (Attack → attacks) or a condition (Dodge),
+`ExecuteAction` consumes granted capacity (Strike → one attack; the Monk
+unarmed strike → the Martial Arts bonus). `AvailableAbilities` / `AvailableActions`
+compute the menu from that state. The encounter SDK delegates to these directly
+on the held character (ADR-0032) — it never re-derives availability.
+
+Each menu entry (`AvailableAbility` / `AvailableAction`) carries two
+toolkit-authored enums the game server projects field-for-field:
+
+- `EconomySlot` — `{Unspecified, Action, BonusAction, Reaction, Movement, Free}`,
+  for grouping the menu by slot.
+- `TargetKind` — `{Unspecified, Self, SingleEntity, Position, Area, None}`, so a
+  UI raises the right prompt. `Self` (Dodge — targets the actor) is distinct from
+  `None` (Dash — deliberately untargeted, no prompt); `Unspecified` is the
+  not-set defect value. Class features not yet classified return `Unspecified`.
+
+The Monk Martial Arts unarmed strike is a bonus action (PHB p.78):
+`executeUnarmedStrike` spends both the granted martial-arts capacity AND the
+`BonusActionsRemaining` slot — without the slot decrement the bonus action was
+silently never spent.
+
 ## Activation surface — features Activate, conditions Apply
 
 Per audit Section 3 Claim 1, the activation surface has **two halves**:
