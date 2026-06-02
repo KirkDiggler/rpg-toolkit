@@ -530,7 +530,7 @@ func (s *TurnManagerTestSuite) TestGetAvailableAbilities() {
 		s.Require().NoError(err)
 
 		available := tm.GetAvailableAbilities(s.ctx)
-		s.Require().Len(available, 4) // Attack, Dash, Disengage, Dodge
+		s.Require().Len(available, 6) // Attack, Dash, Disengage, Dodge, Help, Hide
 
 		// All should be usable initially
 		for _, a := range available {

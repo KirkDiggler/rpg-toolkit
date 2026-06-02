@@ -594,6 +594,8 @@ func initStandardCombatAbilities(char *Character) {
 	_ = char.AddCombatAbility(combatabilities.NewDash(char.id + "-dash"))
 	_ = char.AddCombatAbility(combatabilities.NewDodge(char.id + "-dodge"))
 	_ = char.AddCombatAbility(combatabilities.NewDisengage(char.id + "-disengage"))
+	_ = char.AddCombatAbility(combatabilities.NewHelp(char.id + "-help"))
+	_ = char.AddCombatAbility(combatabilities.NewHide(char.id + "-hide"))
 }
 
 // GetCombatAbility returns a specific combat ability by ID, or nil if not found.

@@ -153,16 +153,16 @@ func (s *CombatAbilitiesTestSuite) TestCharacterGetsStandardCombatAbilities() {
 		s.Assert().Equal("Disengage", disengageAbility.Name())
 	})
 
-	s.Run("finalized character has all four standard combat abilities", func() {
+	s.Run("finalized character has all standard combat abilities", func() {
 		draft := s.createFighterDraft()
 
 		char, err := draft.ToCharacter(s.ctx, "char-005", s.bus)
 		s.Require().NoError(err)
 
 		abilities := char.GetCombatAbilities()
-		s.Assert().Len(abilities, 4, "character should have exactly 4 standard combat abilities")
+		s.Assert().Len(abilities, 6, "character should have exactly 6 standard combat abilities")
 
-		// Verify all four are present
+		// Verify all six are present
 		abilityNames := make(map[string]bool)
 		for _, ability := range abilities {
 			abilityNames[ability.Name()] = true
@@ -172,6 +172,8 @@ func (s *CombatAbilitiesTestSuite) TestCharacterGetsStandardCombatAbilities() {
 		s.Assert().True(abilityNames["Dash"], "should have Dash")
 		s.Assert().True(abilityNames["Dodge"], "should have Dodge")
 		s.Assert().True(abilityNames["Disengage"], "should have Disengage")
+		s.Assert().True(abilityNames["Help"], "should have Help")
+		s.Assert().True(abilityNames["Hide"], "should have Hide")
 	})
 }
 
