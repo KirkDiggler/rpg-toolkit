@@ -87,6 +87,18 @@ func (e *Encounter) TakeActionPhased(
 		return nil, ErrNoCombatResolver
 	}
 
+	// Validate + deduct the attack off the held character's two-level economy
+	// BEFORE resolving. This gates the attack on the economy: a character with no
+	// action left is rejected here (ErrActionUnaffordable) and the resolver never
+	// runs — no damage from an unaffordable attack (#697 Beat-1: economy enforced
+	// server-side). A flat stat-snapshot seat (no character) returns the honest
+	// one-action cost and is not gated. consumed flows onto the resolved-action
+	// event so it reports the true cost.
+	consumed, err := e.spendAttackEconomy(player)
+	if err != nil {
+		return nil, err
+	}
+
 	input := AttackInput{
 		AttackerID:          player.EntityID,
 		TargetID:            target.EntityID,
@@ -112,7 +124,7 @@ func (e *Encounter) TakeActionPhased(
 			return nil, fmt.Errorf("combat resolver: nil outcome with nil error")
 		}
 		if err := e.applyAndPublishOutcome(
-			player, monster, outcome, input.ActionRef.String(), e.attackEconomyConsumedFor(player),
+			player, monster, outcome, input.ActionRef.String(), consumed,
 		); err != nil {
 			return nil, err
 		}
@@ -152,7 +164,7 @@ func (e *Encounter) TakeActionPhased(
 			return nil, fmt.Errorf("combat resolver: nil outcome with nil error")
 		}
 		if err := e.applyAndPublishOutcome(
-			player, monster, outcome, input.ActionRef.String(), e.attackEconomyConsumedFor(player),
+			player, monster, outcome, input.ActionRef.String(), consumed,
 		); err != nil {
 			return nil, err
 		}

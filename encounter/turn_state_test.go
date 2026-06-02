@@ -336,6 +336,42 @@ func (s *TurnStateSuite) TestTakeAction_RejectsDeferredMove() {
 	s.ErrorIs(err, encounter.ErrActionDeferred)
 }
 
+// TestTakeAction_AttackRejectedWhenActionSpent proves the attack verb is gated
+// on the economy server-side (the done-bar: economy enforced). After the Monk
+// spends its standard action on Dodge, an Attack (which costs a standard action)
+// is rejected with ErrActionUnaffordable and deals NO damage — the resolver
+// never runs. This is the structural backstop behind the menu's available=false
+// (Inv 11/12): the verb never resolves an unaffordable action.
+func (s *TurnStateSuite) TestTakeAction_AttackRejectedWhenActionSpent() {
+	enc := s.combatMonkEncounter()
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != monkEntityID {
+		_, _, err := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+
+	// Spend the standard action on Dodge.
+	s.Require().NoError(enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: refs.CombatAbilities.Dodge().Type, ID: refs.CombatAbilities.Dodge().ID},
+		encounter.ActionTarget{EntityID: monkEntityID},
+	))
+	s.Require().Equal(0, enc.ActorTurnState(monkEntityID).Economy.ActionsRemaining)
+
+	goblinHPBefore := enc.ToData().Monsters["goblin-1"].HP
+
+	// Attempt an Attack with no standard action left — must be rejected, no damage.
+	err := enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	)
+	s.ErrorIs(err, encounter.ErrActionUnaffordable,
+		"attack with no action left must be rejected by the economy gate")
+
+	goblinHPAfter := enc.ToData().Monsters["goblin-1"].HP
+	s.Equal(goblinHPBefore, goblinHPAfter,
+		"a rejected attack must not resolve damage — the resolver never ran")
+}
+
 // TestTakeAction_RejectsUnknownRefOnHydratedCharacter proves that an unknown
 // ref on a HYDRATED character (one with a real menu) is rejected with
 // ErrUnsupportedAction — the character's engine reports it has no such

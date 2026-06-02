@@ -34,6 +34,13 @@ var (
 	// available=false; the verb rejects them to stay consistent. Maps to gRPC
 	// Unimplemented.
 	ErrActionDeferred = errors.New("action deferred to a later beat")
+	// ErrActionUnaffordable is returned when a hydrated character takes an
+	// action whose action-economy cost it cannot pay this turn (e.g. an attack
+	// with no standard action left). The toolkit owns the economy and gates the
+	// verb here so an unaffordable action never resolves; the menu's
+	// available=false pre-empts it at the UI (Inv 11/12), and this is the
+	// structural backstop. Maps to gRPC FailedPrecondition.
+	ErrActionUnaffordable = errors.New("action economy cannot afford this action")
 	// ErrUnknownTarget is returned when an action targets an entity that
 	// is not in the encounter. Maps to gRPC FailedPrecondition.
 	ErrUnknownTarget = errors.New("unknown target entity")
@@ -81,9 +88,14 @@ func attackEconomyConsumed() events.EconomyConsumed {
 	return events.EconomyConsumed{Actions: 1}
 }
 
-// attackEconomyConsumedFor reports what a player's attack spent off the turn
-// economy, driving the held character's two-level model so the attack verb is a
-// citizen of the same economy every other action uses (#697 Beat-1):
+// spendAttackEconomy validates and deducts a player's attack off the held
+// character's two-level economy, returning what it consumed. It runs BEFORE the
+// combat resolver so the economy gates the attack: a character with no action
+// left is rejected here and no damage is resolved (#697 Beat-1: economy enforced
+// server-side, end-to-end — the menu's available=false pre-empts the case, and
+// this is the structural backstop so the verb never resolves an unaffordable
+// attack). The attack verb is thus a citizen of the same economy every other
+// action uses:
 //
 //   - ActivateAbility(attack) spends the standard action and grants one attack
 //     (capacity), plus any Extra Attack the character has.
@@ -95,28 +107,32 @@ func attackEconomyConsumed() events.EconomyConsumed {
 //
 // The real pre/post economy diff is returned so the resolved-action event
 // reports the true cost. When no character is hydrated (a flat stat-snapshot
-// seat), the verb falls back to the honest one-action cost — those seats have
-// no two-level economy to drive.
+// seat) there is no two-level economy to drive: the honest one-action cost is
+// returned and no economy gate applies (those seats opt out of the menu).
 //
-// Damage/hit resolution is unchanged — it still runs through the combat
-// resolver. This only threads the economy bookkeeping the snapshot path lacked.
-func (e *Encounter) attackEconomyConsumedFor(player *PlayerData) events.EconomyConsumed {
+// Damage/hit resolution is unchanged — it still runs through the combat resolver
+// after this returns. This only owns the economy validate+deduct the snapshot
+// path lacked.
+func (e *Encounter) spendAttackEconomy(player *PlayerData) (events.EconomyConsumed, error) {
 	char := e.heldCharacter(player.EntityID)
 	if char == nil {
-		return attackEconomyConsumed()
+		return attackEconomyConsumed(), nil
 	}
 
 	pre := snapshotEconomy(char.GetActionEconomy())
 
 	ctx := context.Background()
 	// Activate the Attack ability: spends the action, grants attack capacity.
-	if out, err := char.ActivateAbility(ctx, &dnd5eCharacter.ActivateAbilityInput{
+	// A failure here means the economy can't afford the attack (no action) —
+	// reject so the resolver never runs (structural enforcement of Inv 11/12).
+	out, err := char.ActivateAbility(ctx, &dnd5eCharacter.ActivateAbilityInput{
 		AbilityRef: refs.CombatAbilities.Attack(),
-	}); err != nil || !out.Success {
-		// The character could not take the Attack action this turn (economy
-		// exhausted). Report no spend — the menu's availability gate pre-empts
-		// this case; the snapshot resolver still published the outcome.
-		return events.EconomyConsumed{}
+	})
+	if err != nil {
+		return events.EconomyConsumed{}, fmt.Errorf("activate attack ability: %w", err)
+	}
+	if !out.Success {
+		return events.EconomyConsumed{}, fmt.Errorf("%w: attack: %s", ErrActionUnaffordable, out.Error)
 	}
 	// Execute one strike: consumes an attack, fires post-strike grants
 	// (Monk Martial Arts bonus when a bonus action remains).
@@ -124,11 +140,11 @@ func (e *Encounter) attackEconomyConsumedFor(player *PlayerData) events.EconomyC
 		ActionRef: refs.Actions.Strike(),
 	}); err != nil {
 		// Strike bookkeeping failed after the action was spent — report the
-		// action spend captured so far.
-		return economyConsumedDiff(pre, char.GetActionEconomy())
+		// action spend captured so far (the action is gone either way).
+		return economyConsumedDiff(pre, char.GetActionEconomy()), nil
 	}
 
-	return economyConsumedDiff(pre, char.GetActionEconomy())
+	return economyConsumedDiff(pre, char.GetActionEconomy()), nil
 }
 
 // isPlayerCombatant reports whether a player seat carries the minimum
