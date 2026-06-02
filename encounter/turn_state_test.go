@@ -411,6 +411,7 @@ func (s *TurnStateSuite) TestTakeAction_HelpAndHideFlowThroughDelegation() {
 	s.Equal(dnd5eCharacter.TargetKindSingleEntity, byID[refs.CombatAbilities.Help().ID].TargetKind)
 	s.Equal(dnd5eCharacter.EconomySlotAction, byID[refs.CombatAbilities.Help().ID].EconomySlot)
 	s.Equal(dnd5eCharacter.TargetKindSelf, byID[refs.CombatAbilities.Hide().ID].TargetKind)
+	s.Equal(dnd5eCharacter.EconomySlotAction, byID[refs.CombatAbilities.Hide().ID].EconomySlot)
 
 	// Take Hide through the unified verb — spends the standard action.
 	err := enc.TakeAction(monkPlayerID,
@@ -420,14 +421,18 @@ func (s *TurnStateSuite) TestTakeAction_HelpAndHideFlowThroughDelegation() {
 	s.Require().NoError(err, "Hide must flow through the general delegation")
 	s.Equal(0, enc.ActorTurnState(monkEntityID).Economy.ActionsRemaining, "Hide spends the standard action")
 
-	// With the action spent, Help is now unavailable in the menu (no action left).
-	after := enc.ActorTurnState(monkEntityID)
-	for _, a := range after.Abilities {
-		if a.Ref.ID == refs.CombatAbilities.Help().ID {
-			s.False(a.CanUse, "Help is unavailable once the action is spent")
-			s.NotEmpty(a.Reason)
-		}
+	// With the action spent, Help is still LISTED in the menu but unavailable
+	// (no action left) — the menu pre-empts the illegal action rather than
+	// dropping the entry.
+	afterByID := map[string]dnd5eCharacter.AvailableAbility{}
+	for _, a := range enc.ActorTurnState(monkEntityID).Abilities {
+		afterByID[a.Ref.ID] = a
 	}
+	s.Require().Contains(afterByID, refs.CombatAbilities.Help().ID,
+		"Help stays listed after the action is spent (pre-empted, not dropped)")
+	help := afterByID[refs.CombatAbilities.Help().ID]
+	s.False(help.CanUse, "Help is unavailable once the action is spent")
+	s.NotEmpty(help.Reason, "unavailable Help carries a reason")
 }
 
 // silence unused import if coreCombat ends up unreferenced in future edits.
