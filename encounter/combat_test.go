@@ -143,11 +143,18 @@ func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
 	if playerID == "" {
 		s.T().Skip("active actor is an NPC; this test only covers player turns")
 	}
+	// #697: the attack-only hard gate is gone — non-attack refs now delegate to
+	// the held character's rules engine. This suite's seats are flat
+	// stat-snapshots (no DataJSON → no hydrated character), so a non-attack ref
+	// is rejected with ErrNonCombatant ("no character to take menu actions
+	// with"), not ErrUnsupportedAction. Unknown-ref rejection on a HYDRATED
+	// character (the ErrUnsupportedAction path) is covered by
+	// TurnStateSuite.TestTakeAction_RejectsUnknownRefOnHydratedCharacter.
 	err := s.enc.TakeAction(playerID,
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "shove"},
 		encounter.ActionTarget{EntityID: gobEntityID},
 	)
-	s.ErrorIs(err, encounter.ErrUnsupportedAction)
+	s.ErrorIs(err, encounter.ErrNonCombatant)
 }
 
 // TakeAction publishes AttackResolvedEvent (always); on hit a

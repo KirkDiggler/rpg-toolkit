@@ -1,8 +1,8 @@
 ---
 name: encounter module
 description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, combatant hydration cascade, discrete-phase combat orchestration, MovementResolver seam (both movement directions)
-updated: 2026-05-30
-confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions
+updated: 2026-06-01
+confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions; #697 (TakeAction wave, ADR-0032) deleted the attack-only gate — non-attack refs delegate to the held character's economy/menu, turn-start seeding moved into the engine, ActorTurnState exposes the menu as data
 ---
 
 # encounter module
@@ -279,3 +279,42 @@ handling. Wave 2.11d shipped the combat slice of that list:
   `View.KnownEntities`) but not emitted yet — future slice.
 
 Catch-up policy: snapshot-only on reconnect (load `Snapshot`, attach live stream). Event-replay catch-up is a future slice that adds an `EventLog` interface alongside `Transport`. Sequence numbers on events are already in place; the addition is non-breaking.
+
+## TakeAction unifies the verb path with the character economy/menu (rpg-toolkit#697, ADR-0032)
+
+`TakeActionPhased` no longer hard-gates on `ref.ID == "attack"`. The attack ref
+keeps its two-phase resolver path (above); **every other ref delegates to the
+held character's own rules engine** via `takeCharacterAction` —
+`character.ActivateAbility` for abilities/features, `character.ExecuteAction` for
+granted-capacity actions. No ref is enumerated in the encounter; the character's
+menu is the membership test. The action runs on the `*character.Character` the
+`LoadFromData` cascade already holds on `e.bus` (ADR-0030) — never a re-load.
+
+Turn-start economy seeding moved into the engine: `Encounter` calls
+`character.StartTurn` on the held character at each turn boundary (the
+`SetMode→TURN_BASED` first actor and `EndTurn`'s next actor), so rpg-api no longer
+injects `ActionEconomyData{1,1,1}` (North-Star Invariant 2).
+
+`Encounter.ActorTurnState(actorID)` exposes the held character's two-level menu
+(`AvailableAbilities` + `AvailableActions`, each with an `EconomySlot` and a
+`TargetKind`) and economy as toolkit domain types — the read surface rpg-api
+projects to the wire `TurnState` field-for-field (Invariant 11). NPC and
+flat-stat seats return an empty `ActorTurnState`.
+
+The character menu reports rules truth (a level-1 character *can* move, so
+`Move.CanUse == true`), but `ActorTurnState` composes the **effective**
+takeability the wire `available` flag means: refs this build defers (the
+`deferredActionRefs` set — `move` is its one Beat-1 member, movement lands in
+Beat 2) are projected `available=false` with an honest reason, and the verb
+rejects them with `ErrActionDeferred` so menu and verb never disagree (D17,
+ADR-0032). Beat 2 removes the entry in one line.
+
+Every action now emits a first-class `ActionResolvedEvent` (Invariant 9): the
+non-attack path publishes the umbrella event with the real ref + economy
+consumed; the attack path threads the actor's real submitted ref + economy
+instead of the prior placeholder constant.
+
+Known gaps left as follow-ups (see ADR-0032): Dodge's `DodgingCondition` is not
+yet applied on `DodgeActivated`; the two Monk-bonus-strike implementations are
+not collapsed; the `CompleteTakeAction` resume path reports the attack default
+ref because `PhasedAttackContext` does not carry the submitted ref.

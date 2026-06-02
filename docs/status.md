@@ -20,11 +20,28 @@ single game-event-time stamp authority via an injected `core.Clock`
 the first-class `ActionResolvedEvent` (`action_ref` + `economy_consumed`).
 Attack resolution now publishes a correlated `ActionResolved → AttackResolved →
 DamageDealt` group sharing one correlation id. See ADR-0031. This is the FIRST
-of two separable #697 PRs; the menu/economy unification (reconcile the encounter
-verb path with the character action menu, non-attack actions, validate+deduct)
-is the next chunk. Proto mirror (new `ActionResolved` oneof variant +
+of two separable #697 PRs. Proto mirror (new `ActionResolved` oneof variant +
 `occurred_at`/`correlation_id` on the envelope) is the dependency-ordered
 follow-on before rpg-api un-suppresses.
+
+**#697 (TakeAction wave, menu/economy unification PR) — in flight on
+`feat/697-takeaction-menu-economy` (2026-06-01, ADR-0032).** The SECOND #697
+chunk: deleted the `ref.ID == "attack"` hard gate in `combat_phased.go` — every
+non-attack ref now delegates to the held character's own engine
+(`character.ActivateAbility` / `ExecuteAction`), no ref special-cased. Turn-start
+economy seeding moved into the engine (`character.StartTurn` on the held
+character at each turn boundary), removing the rpg-api `ActionEconomyData{1,1,1}`
+injection (Invariant 2). `Encounter.ActorTurnState` exposes the two-level menu +
+economy as toolkit domain types, each entry carrying an `EconomySlot` +
+`TargetKind`. Attack is now a citizen of the two-level economy (drives
+`ActivateAbility(attack)` + `ExecuteAction(strike)` on the held character) and
+the resolved-action event carries the actor's real submitted ref. Found + fixed a
+rules gap: `executeUnarmedStrike` now spends the bonus-action slot (the Monk
+Martial Arts bonus strike costs a bonus action). Goal behavior proven on the real
+broker path: a Monk takes an action (Attack) and a bonus action (Martial Arts
+unarmed strike), both economy slots decrement. Spans two modules
+(`rulebooks/dnd5e` char-pkg + `encounter`) — char-pkg tags before the encounter
+module requires it.
 
 **#689 — encounter owns combatant hydration via the LoadFromData cascade
 (2026-05-30, cross-repo unit with rpg-api#582; NOT yet merged).**
