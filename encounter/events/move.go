@@ -12,6 +12,7 @@ import (
 // parallel HexRevealedEvent published alongside this one. See the decoupled
 // cause/effect decision in sdk-direction.md.
 type MoveEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	Mover     core.EntityID
@@ -64,6 +65,7 @@ func (e *MoveEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer)
 // the construction invariant: only NewMoveEvent and UnmarshalJSON can set
 // the encounter ID and sequence number.
 type moveEventWire struct {
+	metaWire
 	EncID     core.EncounterID                  `json:"encounter_id"`
 	Seq       uint64                            `json:"sequence"`
 	Mover     core.EntityID                     `json:"mover"`
@@ -75,6 +77,7 @@ type moveEventWire struct {
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *MoveEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(moveEventWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		Mover:     e.Mover,
@@ -90,6 +93,7 @@ func (e *MoveEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.Mover = w.Mover

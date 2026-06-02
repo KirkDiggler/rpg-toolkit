@@ -9,6 +9,7 @@ import (
 // TurnEndedEvent is published when an actor's turn ends, before initiative
 // advances to the next actor. Audience is all players in the encounter.
 type TurnEndedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	ActorID   core.EntityID
@@ -49,6 +50,7 @@ func (e *TurnEndedEvent) Sequence() uint64 { return e.seq }
 func (e *TurnEndedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type turnEndedWire struct {
+	metaWire
 	EncID     core.EncounterID                 `json:"encounter_id"`
 	Seq       uint64                           `json:"sequence"`
 	ActorID   core.EntityID                    `json:"actor_id"`
@@ -59,6 +61,7 @@ type turnEndedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *TurnEndedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(turnEndedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		ActorID:   e.ActorID,
@@ -73,6 +76,7 @@ func (e *TurnEndedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.ActorID = w.ActorID

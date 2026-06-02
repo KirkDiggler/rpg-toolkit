@@ -16,6 +16,7 @@ import (
 // move), so per-viewer last-known position is required. For movement-driven
 // disappearance this is the last hex of that viewer's SeenSegments.
 type EntityDisappearedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	Entity    core.EntityID
@@ -52,6 +53,7 @@ func (e *EntityDisappearedEvent) Audience() AudienceSet { return audienceFromMap
 
 // entityDisappearedWire is the on-wire shape — used only by MarshalJSON / UnmarshalJSON.
 type entityDisappearedWire struct {
+	metaWire
 	EncID     core.EncounterID           `json:"encounter_id"`
 	Seq       uint64                     `json:"sequence"`
 	Entity    core.EntityID              `json:"entity"`
@@ -62,6 +64,7 @@ type entityDisappearedWire struct {
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *EntityDisappearedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(entityDisappearedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		Entity:    e.Entity,
@@ -76,6 +79,7 @@ func (e *EntityDisappearedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.Entity = w.Entity

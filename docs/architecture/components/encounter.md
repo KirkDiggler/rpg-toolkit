@@ -32,13 +32,16 @@ One Go module with three subpackages forming a linear DAG (`core ← events ← 
 
 - `Encounter` — transient. Constructed per-call from `Data`. Verbs (`Move`, `OpenDoor`) compute per-player projections, mutate state, publish events.
 - `Data` — persisted shape. Carries Players (with `View`), Doors, monotonic Sequence counter.
-- `Broker` — process-scoped, holds in-process subscription registry (keyed by `(encID, playerID)`), routes via Transport.
-- `EncounterEvent` — sealed sum interface. Concrete events implement `isEncounterEvent()`, `EncounterID()`, `Sequence()`, `Audience()`.
+- `Broker` — process-scoped, holds in-process subscription registry (keyed by `(encID, playerID)`), routes via Transport. The **single publish authority**: `Broker.Publish` stamps each event's game-event time from an injected `core.Clock` (default `SystemClock`; `NewBrokerWithClock` injects a `FixedClock` in tests) at the literal publish moment, preserving any correlation id the encounter set on it. See ADR-0031.
+- `EncounterEvent` — sealed sum interface. Concrete events implement `isEncounterEvent()`, `EncounterID()`, `Sequence()`, `Audience()`, plus the spine metadata `OccurredAt()` (game-event time, Inv 5), `CorrelationID()` (causation grouping, Inv 8), and `Stamp(at, corr)`. The last three are single-sourced on the embedded `eventMeta` so adding a spine field touches one struct, not every event.
+- `ActionResolvedEvent` — first-class "an action was taken" event (Inv 9): `ActorID`, `ActionRef` (string), optional `TargetID`, and `EconomyConsumed` (actions/bonus/reactions/movement + a `granted_consumed` map). Emitted for every player-facing action as the cause beat; attack-specific roll detail stays on the parallel `AttackResolvedEvent`. The effect events of one action share the `ActionResolvedEvent`'s correlation id so the toolkit-owned combat log is reassemblable.
 - `Transport` — pluggable bytes-level pub/sub. Channel keys opaque (`enc:<id>`); payloads opaque bytes; encoding is the Broker's concern.
 
 ## Cause vs effect events
 
-Action events (cause) describe what happened in the world — `MoveEvent`, `DoorOpenedEvent`. Effect events describe perception changes — `HexRevealedEvent`. **The two are decoupled**: any cause that changes vision (Move, OpenDoor, future LightChanged, future ConditionRemoved) emits the same `HexRevealedEvent` shape alongside its action event. New cause types don't touch existing event types. Symmetric `HexHiddenEvent` is reserved for vision-loss cases (walking out of LoS, lights out, gaining Blinded) — not in slice 1.
+Action events (cause) describe what happened in the world — `MoveEvent`, `DoorOpenedEvent`, `ActionResolvedEvent`. Effect events describe perception/state changes — `HexRevealedEvent`, `DamageDealtEvent`, `ConditionAppliedEvent`. **The two are decoupled**: any cause that changes vision (Move, OpenDoor, future LightChanged, future ConditionRemoved) emits the same `HexRevealedEvent` shape alongside its action event. New cause types don't touch existing event types. Symmetric `HexHiddenEvent` is reserved for vision-loss cases (walking out of LoS, lights out, gaining Blinded) — not in slice 1.
+
+**Causation (Inv 8):** the `ActionResolvedEvent` and every effect event it produces in one resolution carry the same `CorrelationID` (derived from the resolved-action event's `(encID, sequence)` identity — deterministic, rides the existing monotonic sequence, no extra dependency). A consumer reassembles "this damage came from that attack" from the correlation id, not from adjacent sequence numbers. See ADR-0031.
 
 ## Combatant hydration cascade (#689)
 

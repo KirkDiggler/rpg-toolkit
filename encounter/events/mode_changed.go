@@ -9,6 +9,7 @@ import (
 // ModeChangedEvent is published when the encounter mode flips (e.g.
 // FREE_ROAM <-> TURN_BASED). Audience is all players in the encounter.
 type ModeChangedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	From      core.EncounterMode
@@ -55,6 +56,7 @@ func (e *ModeChangedEvent) Sequence() uint64 { return e.seq }
 func (e *ModeChangedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type modeChangedWire struct {
+	metaWire
 	EncID     core.EncounterID                   `json:"encounter_id"`
 	Seq       uint64                             `json:"sequence"`
 	From      core.EncounterMode                 `json:"from"`
@@ -67,6 +69,7 @@ type modeChangedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *ModeChangedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(modeChangedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		From:      e.From,
@@ -83,6 +86,7 @@ func (e *ModeChangedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.From = w.From

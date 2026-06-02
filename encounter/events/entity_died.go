@@ -18,6 +18,7 @@ import (
 // Maps to the proto EntityDied wire shape. Cause-only — see
 // EntityRemovedEvent for the state mutation.
 type EntityDiedEvent struct {
+	eventMeta
 	encID     core.EncounterID
 	seq       uint64
 	EntityID  core.EntityID
@@ -62,6 +63,7 @@ func (e *EntityDiedEvent) Sequence() uint64 { return e.seq }
 func (e *EntityDiedEvent) Audience() AudienceSet { return audienceFromMap(e.PerPlayer) }
 
 type entityDiedWire struct {
+	metaWire
 	EncID     core.EncounterID                  `json:"encounter_id"`
 	Seq       uint64                            `json:"sequence"`
 	EntityID  core.EntityID                     `json:"entity_id"`
@@ -73,6 +75,7 @@ type entityDiedWire struct {
 // Implements encoding/json.Marshaler.
 func (e *EntityDiedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(entityDiedWire{
+		metaWire:  e.toWire(),
 		EncID:     e.encID,
 		Seq:       e.seq,
 		EntityID:  e.EntityID,
@@ -88,6 +91,7 @@ func (e *EntityDiedEvent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &w); err != nil {
 		return err
 	}
+	e.fromWire(w.metaWire)
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.EntityID = w.EntityID
