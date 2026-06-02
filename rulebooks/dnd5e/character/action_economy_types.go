@@ -42,6 +42,8 @@ func economySlotForActionType(at coreCombat.ActionType) EconomySlot {
 		return EconomySlotReaction
 	case coreCombat.ActionFree:
 		return EconomySlotFree
+	case coreCombat.ActionMovement:
+		return EconomySlotMovement
 	default:
 		return EconomySlotUnspecified
 	}

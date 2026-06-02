@@ -321,12 +321,20 @@ func (c *Character) buildAvailableActions() []AvailableAction {
 	// Unarmed Strike (Martial Arts Bonus): listed if granted. The Monk martial
 	// arts bonus strike is a bonus-action strike.
 	if c.actionEconomy.Granted[GrantedMartialArtsBonus] > 0 {
+		// The unarmed strike costs a bonus action (PHB p.78): it is only usable
+		// while the bonus-action slot is unspent, so the menu reflects that.
+		canUse := c.actionEconomy.BonusActionsRemaining > 0
+		reason := ""
+		if !canUse {
+			reason = "no bonus action remaining"
+		}
 		result = append(result, AvailableAction{
 			Ref:         refs.Actions.UnarmedStrike(),
 			Name:        "Unarmed Strike",
 			EconomySlot: EconomySlotBonusAction,
 			TargetKind:  targetKindForRef(refs.Actions.UnarmedStrike()),
-			CanUse:      true,
+			CanUse:      canUse,
+			Reason:      reason,
 		})
 	}
 
@@ -507,12 +515,20 @@ func (c *Character) executeUnarmedStrike() (*ExecuteActionOutput, error) {
 		}, nil
 	}
 
-	c.actionEconomy.Granted[GrantedMartialArtsBonus]--
-	// Spend the bonus action that the unarmed strike costs (guard against
-	// going negative if the slot was already spent by another bonus action).
-	if c.actionEconomy.BonusActionsRemaining > 0 {
-		c.actionEconomy.BonusActionsRemaining--
+	// The unarmed strike costs a bonus action (PHB p.78). Reject before spending
+	// the granted capacity if the bonus-action slot is already gone, so
+	// enforcement does not depend on call order.
+	if c.actionEconomy.BonusActionsRemaining <= 0 {
+		return &ExecuteActionOutput{
+			Success:   false,
+			Error:     "no bonus action remaining",
+			Abilities: c.buildAvailableAbilities(),
+			Actions:   c.buildAvailableActions(),
+		}, nil
 	}
+
+	c.actionEconomy.Granted[GrantedMartialArtsBonus]--
+	c.actionEconomy.BonusActionsRemaining--
 
 	return &ExecuteActionOutput{
 		Success:   true,
