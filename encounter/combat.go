@@ -228,6 +228,12 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 		)); err != nil {
 			return fmt.Errorf("publish first turn started: %w", err)
 		}
+		// Push the fresh turn state after announcing the turn (Invariant 12):
+		// cause (turn started) before the menu/economy refresh. No correlation
+		// id — a turn-start refresh is not caused by an action.
+		if err := e.publishTurnStateChanged(e.data.Initiative[0], ""); err != nil {
+			return fmt.Errorf("publish first turn state: %w", err)
+		}
 	}
 	return nil
 }
@@ -307,6 +313,11 @@ func (e *Encounter) EndTurn(
 		e.data.ID, e.nextSeq(), newActive, e.data.Round, e.allViewersTurnStarted(),
 	)); pubErr != nil {
 		return "", false, fmt.Errorf("publish turn started: %w", pubErr)
+	}
+	// Push the new actor's fresh turn state after announcing their turn
+	// (Invariant 12). No-op for NPCs / stat-snapshot seats. No correlation id.
+	if tsErr := e.publishTurnStateChanged(newActive, ""); tsErr != nil {
+		return "", false, fmt.Errorf("publish turn state: %w", tsErr)
 	}
 
 	return newActive, e.IsNPC(newActive), nil
@@ -414,7 +425,7 @@ func (e *Encounter) publishAttackOutcome(
 	attackerPos, targetPos core.Hex,
 	actionRef string,
 	consumed events.EconomyConsumed,
-) error {
+) (core.CorrelationID, error) {
 	actionPerPlayer := make(map[core.PlayerID]events.ActionResolvedSlice)
 	attackPerPlayer := make(map[core.PlayerID]events.AttackResolvedSlice)
 	damagePerPlayer := make(map[core.PlayerID]events.DamageDealtSlice)
@@ -440,7 +451,7 @@ func (e *Encounter) publishAttackOutcome(
 		consumed, actionPerPlayer,
 	)
 	if err := e.publishCorrelated(actionEvt, corrID); err != nil {
-		return fmt.Errorf("publish action resolved: %w", err)
+		return corrID, fmt.Errorf("publish action resolved: %w", err)
 	}
 
 	if err := e.publishCorrelated(events.NewAttackResolvedEvent(
@@ -449,7 +460,7 @@ func (e *Encounter) publishAttackOutcome(
 		outcome.Hit, outcome.Critical, outcome.AttackRoll, outcome.AttackBonus, outcome.TargetAC,
 		attackPerPlayer,
 	), corrID); err != nil {
-		return fmt.Errorf("publish attack resolved: %w", err)
+		return corrID, fmt.Errorf("publish attack resolved: %w", err)
 	}
 	if outcome.Hit {
 		evt := events.NewDamageDealtEvent(
@@ -461,10 +472,10 @@ func (e *Encounter) publishAttackOutcome(
 		)
 		evt.Components = outcome.Components
 		if err := e.publishCorrelated(evt, corrID); err != nil {
-			return fmt.Errorf("publish damage dealt: %w", err)
+			return corrID, fmt.Errorf("publish damage dealt: %w", err)
 		}
 	}
-	return nil
+	return corrID, nil
 }
 
 // correlationFor derives the correlation id for an action-resolution group

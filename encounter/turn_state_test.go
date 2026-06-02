@@ -232,6 +232,104 @@ func (s *TurnStateSuite) TestTakeAction_DodgeFlowsThroughGeneralDelegation() {
 	s.Equal(1, action.EconomyConsumed.Actions, "Dodge consumed one standard action")
 }
 
+// TestTakeAction_PushesTurnStateChanged is the push-refresh proof (North-Star
+// Invariant 12): taking an action emits a TurnStateChangedEvent on the broker
+// carrying the post-action economy + menu snapshot, correlated to the action
+// that caused it (Invariant 8). The client refreshes the menu off the stream —
+// it never goes silently stale.
+func (s *TurnStateSuite) TestTakeAction_PushesTurnStateChanged() {
+	enc := s.loadedMonkEncounter()
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.Require().Equal(monkEntityID, enc.ActiveActor())
+
+	sub, err := s.broker.Subscribe("enc-ts", monkPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	err = enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: refs.CombatAbilities.Dodge().Type, ID: refs.CombatAbilities.Dodge().ID},
+		encounter.ActionTarget{EntityID: monkEntityID},
+	)
+	s.Require().NoError(err)
+
+	var (
+		action *events.ActionResolvedEvent
+		ts     *events.TurnStateChangedEvent
+	)
+	for _, e := range collectEventsTyped(sub, 500*time.Millisecond) {
+		switch ev := e.(type) {
+		case *events.ActionResolvedEvent:
+			action = ev
+		case *events.TurnStateChangedEvent:
+			ts = ev
+		}
+	}
+
+	s.Require().NotNil(ts, "taking an action must push a TurnStateChangedEvent (Inv 12)")
+	s.Equal(monkEntityID, ts.ActorID)
+
+	// The snapshot reflects the POST-action economy (the standard action is gone).
+	s.True(ts.State.InCombat)
+	s.Equal(0, ts.State.ActionsRemaining, "pushed snapshot reflects the spent action")
+	s.NotEmpty(ts.State.Menu, "pushed snapshot carries the refreshed menu")
+
+	// The menu marks Attack unavailable now (no action left) with a reason —
+	// the pushed delta pre-empts the illegal action (Inv 12), not a stale menu.
+	var attack *events.MenuEntry
+	for i := range ts.State.Menu {
+		if ts.State.Menu[i].Ref == refs.CombatAbilities.Attack().String() {
+			attack = &ts.State.Menu[i]
+		}
+	}
+	s.Require().NotNil(attack, "Attack stays listed in the pushed menu")
+	s.False(attack.Available, "Attack is unavailable in the pushed snapshot (action spent)")
+	s.NotEmpty(attack.Reason)
+
+	// The push is correlated to the action that caused it (Inv 8).
+	s.Require().NotNil(action)
+	s.NotEmpty(ts.CorrelationID())
+	s.Equal(action.CorrelationID(), ts.CorrelationID(),
+		"the turn-state push shares the causing action's correlation id")
+}
+
+// TestSetMode_PushesTurnStateChangedAtTurnStart proves turn-start seeding also
+// pushes a TurnStateChangedEvent (Inv 12) so the menu is live the moment the
+// turn begins — with no correlation id (not caused by an action).
+func (s *TurnStateSuite) TestSetMode_PushesTurnStateChangedAtTurnStart() {
+	enc := s.loadedMonkEncounter()
+
+	sub, err := s.broker.Subscribe("enc-ts", monkPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+
+	var (
+		ts      *events.TurnStateChangedEvent
+		started *events.TurnStartedEvent
+	)
+	for _, e := range collectEventsTyped(sub, 500*time.Millisecond) {
+		switch ev := e.(type) {
+		case *events.TurnStateChangedEvent:
+			ts = ev
+		case *events.TurnStartedEvent:
+			started = ev
+		}
+	}
+	s.Require().NotNil(ts, "turn start must push a TurnStateChangedEvent (Inv 12)")
+	s.Equal(monkEntityID, ts.ActorID)
+	s.True(ts.State.InCombat, "turn-start snapshot is in combat with a seeded economy")
+	s.Equal(1, ts.State.ActionsRemaining, "fresh turn: one standard action")
+	s.Equal(1, ts.State.BonusActionsRemaining)
+	s.Empty(ts.CorrelationID(), "turn-start refresh is not caused by an action — no correlation id")
+
+	// Ordering: the cause (TurnStarted) precedes the consequence (the menu
+	// refresh) in sequence, so a consumer sees "turn started" before the menu.
+	s.Require().NotNil(started, "TurnStartedEvent is delivered to the actor's player")
+	s.Less(started.Sequence(), ts.Sequence(),
+		"TurnStarted must precede the turn-state refresh in sequence")
+}
+
 // combatMonkEncounter builds a TURN_BASED encounter with a hydrated Monk seat
 // AND a goblin target + an always-hit resolver, so the Monk can take a real
 // attack and exercise the two-level economy.
@@ -314,6 +412,56 @@ func (s *TurnStateSuite) TestGoalBehavior_MonkTakesActionThenBonusAction() {
 
 	afterBonus := enc.ActorTurnState(monkEntityID)
 	s.Equal(0, afterBonus.Economy.BonusActionsRemaining, "the bonus unarmed strike consumed the bonus action")
+}
+
+// TestTakeAction_AttackPushesTurnStateChanged proves the ATTACK path also pushes
+// a TurnStateChangedEvent (Inv 12) with the post-attack economy, correlated to
+// the attack (Inv 8) — the attack verb is a citizen of the same push-refresh as
+// every other action.
+func (s *TurnStateSuite) TestTakeAction_AttackPushesTurnStateChanged() {
+	enc := s.combatMonkEncounter()
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != monkEntityID {
+		_, _, err := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+
+	sub, err := s.broker.Subscribe("enc-ts", monkPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	s.Require().NoError(enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	))
+
+	var (
+		action *events.ActionResolvedEvent
+		ts     *events.TurnStateChangedEvent
+	)
+	for _, e := range collectEventsTyped(sub, 500*time.Millisecond) {
+		switch ev := e.(type) {
+		case *events.ActionResolvedEvent:
+			action = ev
+		case *events.TurnStateChangedEvent:
+			ts = ev
+		}
+	}
+	s.Require().NotNil(ts, "the attack path must push a TurnStateChangedEvent (Inv 12)")
+	s.Equal(monkEntityID, ts.ActorID)
+	s.Equal(0, ts.State.ActionsRemaining, "pushed snapshot reflects the attack's spent action")
+	// The Monk's Martial Arts bonus strike now appears in the pushed menu.
+	var bonus *events.MenuEntry
+	for i := range ts.State.Menu {
+		if ts.State.Menu[i].Ref == refs.Actions.UnarmedStrike().String() {
+			bonus = &ts.State.Menu[i]
+		}
+	}
+	s.Require().NotNil(bonus, "pushed menu surfaces the granted Martial Arts bonus strike")
+	s.Equal("bonus_action", bonus.EconomySlot)
+	s.Require().NotNil(action)
+	s.Equal(action.CorrelationID(), ts.CorrelationID(),
+		"the attack's turn-state push shares the attack's correlation id")
 }
 
 // TestTakeAction_RejectsDeferredMove proves the menu↔verb consistency for a

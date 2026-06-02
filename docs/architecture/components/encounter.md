@@ -305,6 +305,17 @@ injects `ActionEconomyData{1,1,1}` (North-Star Invariant 2).
 projects to the wire `TurnState` field-for-field (Invariant 11). NPC and
 flat-stat seats return an empty `ActorTurnState`.
 
+**Turn state is push-refreshed, never silently stale (Invariant 12, ADR-0033).**
+Whenever an actor's turn state mutates — turn start (seeding) and every action
+taken (economy deducted) — the encounter publishes a `TurnStateChangedEvent`
+through the broker carrying a full snapshot (economy + menu) of
+`ActorTurnState`, flattened to rulebook-agnostic primitives
+(`events.TurnStateSnapshot` / `MenuEntry`) so the spine stays rulebook-free.
+Audience is the actor's own controlling player (their private "what can I do
+now" view). The post-action push shares the causing action's correlation id
+(Invariant 8); the turn-start push carries none (not caused by an action).
+rpg-api projects this onto the proto `TurnStateChanged` (envelope field 45).
+
 The character menu reports rules truth (a level-1 character *can* move, so
 `Move.CanUse == true`), but `ActorTurnState` composes the **effective**
 takeability the wire `available` flag means: refs this build defers (the
