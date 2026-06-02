@@ -373,7 +373,17 @@ func (s *ActionEconomyTestSuite) TestSeededEconomy_RoundTrip_ActivateAbility_NoN
 	data := char.ToData()
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)
-	s.NotContains(string(raw), `"granted"`, "empty Granted is omitted from the JSON (omitempty)")
+
+	// Assert the omitempty drop precisely on the action_economy object (a
+	// substring scan of the whole blob could false-fail on an unrelated
+	// "granted" key in some other serialized field).
+	var envelope struct {
+		ActionEconomy map[string]json.RawMessage `json:"action_economy"`
+	}
+	s.Require().NoError(json.Unmarshal(raw, &envelope))
+	s.Require().NotNil(envelope.ActionEconomy, "action_economy is present in the JSON")
+	s.NotContains(envelope.ActionEconomy, "granted",
+		"empty Granted is omitted from the action_economy JSON (omitempty)")
 
 	var reloadedData Data
 	s.Require().NoError(json.Unmarshal(raw, &reloadedData))
