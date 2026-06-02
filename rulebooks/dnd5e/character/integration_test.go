@@ -249,7 +249,7 @@ func (s *FullAttackFlowIntegrationSuite) TestFullAttackFlow() {
 		// =====================================================================
 
 		combatAbilities := char.GetCombatAbilities()
-		s.Assert().Len(combatAbilities, 4, "character should have 4 standard combat abilities")
+		s.Assert().Len(combatAbilities, 6, "character should have 6 standard combat abilities")
 
 		attackAbility := char.GetCombatAbility("fighter-001-attack")
 		s.Require().NotNil(attackAbility, "character should have Attack ability")

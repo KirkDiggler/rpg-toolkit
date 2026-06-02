@@ -1592,6 +1592,14 @@ func (d *Draft) initializeStandardCombatAbilities(char *Character) {
 	// Disengage - consumes action economy to grant Disengaging condition
 	disengageAbility := combatabilities.NewDisengage(char.id + "-disengage")
 	_ = char.AddCombatAbility(disengageAbility)
+
+	// Help - consumes action economy to aid an ally (advantage on their next roll)
+	helpAbility := combatabilities.NewHelp(char.id + "-help")
+	_ = char.AddCombatAbility(helpAbility)
+
+	// Hide - consumes action economy to attempt a Stealth check (become hidden)
+	hideAbility := combatabilities.NewHide(char.id + "-hide")
+	_ = char.AddCombatAbility(hideAbility)
 }
 
 // initializeStandardActions adds standard permanent actions to the character.

@@ -742,6 +742,24 @@ type DisengageActivatedEvent struct {
 	CharacterID string // ID of the character who is disengaging
 }
 
+// HelpActivatedEvent is published when a character uses the Help action.
+// The helper aids an ally: the next ability check or attack roll the ally makes
+// (against the helped target, for attacks) gains advantage. The mechanical
+// effect (granting advantage) is applied by a subscriber in a later beat; this
+// event is the activation signal.
+type HelpActivatedEvent struct {
+	CharacterID string // ID of the character taking the Help action
+	AllyID      string // ID of the ally being helped (the action's target)
+}
+
+// HideActivatedEvent is published when a character uses the Hide action.
+// The character attempts to become hidden (a Stealth check vs observers' passive
+// Perception). The check + the resulting Hidden condition are resolved by a
+// subscriber in a later beat; this event is the activation signal.
+type HideActivatedEvent struct {
+	CharacterID string // ID of the character taking the Hide action
+}
+
 // =============================================================================
 // Topic Definitions
 // =============================================================================
@@ -827,6 +845,12 @@ var (
 
 	// DisengageActivatedTopic provides typed pub/sub for Disengage ability activation
 	DisengageActivatedTopic = events.DefineTypedTopic[DisengageActivatedEvent]("dnd5e.ability.disengage.activated")
+
+	// HelpActivatedTopic provides typed pub/sub for Help ability activation
+	HelpActivatedTopic = events.DefineTypedTopic[HelpActivatedEvent]("dnd5e.ability.help.activated")
+
+	// HideActivatedTopic provides typed pub/sub for Hide ability activation
+	HideActivatedTopic = events.DefineTypedTopic[HideActivatedEvent]("dnd5e.ability.hide.activated")
 
 	// StrikeExecutedTopic provides typed pub/sub for Strike action execution
 	StrikeExecutedTopic = events.DefineTypedTopic[StrikeExecutedEvent]("dnd5e.action.strike.executed")

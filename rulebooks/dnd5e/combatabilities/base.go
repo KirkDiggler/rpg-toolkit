@@ -216,12 +216,18 @@ func LoadJSON(data json.RawMessage) (CombatAbility, error) {
 		return disengage, nil
 
 	case refs.CombatAbilities.Help().ID:
-		// Help ability will be implemented in a future phase
-		return nil, fmt.Errorf("help ability not yet implemented")
+		help := &Help{}
+		if err := help.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load help ability: %w", err)
+		}
+		return help, nil
 
 	case refs.CombatAbilities.Hide().ID:
-		// Hide ability will be implemented in a future phase
-		return nil, fmt.Errorf("hide ability not yet implemented")
+		hide := &Hide{}
+		if err := hide.loadJSON(data); err != nil {
+			return nil, fmt.Errorf("failed to load hide ability: %w", err)
+		}
+		return hide, nil
 
 	case refs.CombatAbilities.Ready().ID:
 		// Ready ability will be implemented in a future phase
