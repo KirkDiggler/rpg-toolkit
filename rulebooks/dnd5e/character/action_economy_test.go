@@ -782,6 +782,31 @@ func (s *ActionEconomyTestSuite) TestExecuteAction_UnarmedStrike() {
 	s.Require().NoError(err)
 	s.True(output.Success)
 	s.Equal(0, char.actionEconomy.Granted[GrantedMartialArtsBonus])
+	// The Monk Martial Arts unarmed strike is a bonus action (PHB p.78): taking
+	// it spends the bonus-action slot, not just the granted capacity.
+	s.Equal(0, char.actionEconomy.BonusActionsRemaining,
+		"unarmed strike consumes the bonus action that pays for it")
+}
+
+func (s *ActionEconomyTestSuite) TestExecuteAction_UnarmedStrike_NoBonusAction() {
+	char := createTestMonkCharacter(s.T(), s.bus)
+
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+	s.Require().NoError(err)
+
+	// Granted the martial arts bonus strike, but the bonus action is already spent.
+	char.actionEconomy.Granted[GrantedMartialArtsBonus] = 1
+	char.actionEconomy.BonusActionsRemaining = 0
+
+	output, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
+		ActionRef: refs.Actions.UnarmedStrike(),
+	})
+	s.Require().NoError(err)
+	s.False(output.Success, "unarmed strike must fail when no bonus action remains")
+	// The granted capacity must NOT be spent on a failed strike — enforcement
+	// is order-independent (the bonus-action slot gates the strike).
+	s.Equal(1, char.actionEconomy.Granted[GrantedMartialArtsBonus],
+		"granted capacity must not be consumed when the bonus action is unavailable")
 }
 
 func (s *ActionEconomyTestSuite) TestGrantCapacity() {

@@ -166,6 +166,41 @@ func (c *Character) HasGranted(key GrantedActionKey) bool {
 
 // --- Available builders ---
 
+// targetKindForRef returns the UI target prompt a menu entry needs, keyed off
+// the action/ability ref. This is toolkit-authored rules knowledge (the toolkit
+// owns "what does this action target") — the game server never computes it.
+// An unknown ref returns TargetKindUnspecified so a new ref surfaces as a
+// visible defect rather than silently defaulting.
+func targetKindForRef(ref *core.Ref) TargetKind {
+	if ref == nil {
+		return TargetKindUnspecified
+	}
+	switch ref.ID {
+	// Attacks and the strikes they grant target one entity.
+	case refs.CombatAbilities.Attack().ID,
+		refs.CombatAbilities.OffHandAttack().ID,
+		refs.CombatAbilities.Help().ID,
+		refs.Actions.Strike().ID,
+		refs.Actions.OffHandStrike().ID,
+		refs.Actions.FlurryStrike().ID,
+		refs.Actions.UnarmedStrike().ID:
+		return TargetKindSingleEntity
+	// Self-affecting abilities (grant a condition on the actor).
+	case refs.CombatAbilities.Dodge().ID,
+		refs.CombatAbilities.Disengage().ID,
+		refs.CombatAbilities.Hide().ID:
+		return TargetKindSelf
+	// Movement targets a position.
+	case refs.Actions.Move().ID:
+		return TargetKindPosition
+	// Deliberately untargeted (fire without a prompt).
+	case refs.CombatAbilities.Dash().ID:
+		return TargetKindNone
+	default:
+		return TargetKindUnspecified
+	}
+}
+
 // buildAvailableAbilities builds the list of available abilities from combat abilities and features.
 func (c *Character) buildAvailableAbilities() []AvailableAbility {
 	result := make([]AvailableAbility, 0, len(c.combatAbilities)+len(c.features))
@@ -176,11 +211,13 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 		reason := c.actionTypeExhaustedReason(ca.ActionType())
 
 		result = append(result, AvailableAbility{
-			Ref:        ca.Ref(),
-			Name:       ca.Name(),
-			ActionType: ca.ActionType(),
-			CanUse:     canUse,
-			Reason:     c.actionReason(canUse, reason),
+			Ref:         ca.Ref(),
+			Name:        ca.Name(),
+			ActionType:  ca.ActionType(),
+			EconomySlot: economySlotForActionType(ca.ActionType()),
+			TargetKind:  targetKindForRef(ca.Ref()),
+			CanUse:      canUse,
+			Reason:      c.actionReason(canUse, reason),
 		})
 	}
 
@@ -203,6 +240,8 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 			Ref:             f.Ref(),
 			Name:            f.Name(),
 			ActionType:      f.ActionType(),
+			EconomySlot:     economySlotForActionType(f.ActionType()),
+			TargetKind:      targetKindForRef(f.Ref()),
 			CanUse:          canUse,
 			Reason:          c.actionReason(canUse, reason),
 			ResourceCurrent: current,
@@ -215,11 +254,13 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 		canUse := c.canUseAbilityByActionType(coreCombat.ActionBonus)
 		reason := c.actionTypeExhaustedReason(coreCombat.ActionBonus)
 		result = append(result, AvailableAbility{
-			Ref:        refs.CombatAbilities.OffHandAttack(),
-			Name:       "Off-Hand Attack",
-			ActionType: coreCombat.ActionBonus,
-			CanUse:     canUse,
-			Reason:     c.actionReason(canUse, reason),
+			Ref:         refs.CombatAbilities.OffHandAttack(),
+			Name:        "Off-Hand Attack",
+			ActionType:  coreCombat.ActionBonus,
+			EconomySlot: economySlotForActionType(coreCombat.ActionBonus),
+			TargetKind:  targetKindForRef(refs.CombatAbilities.OffHandAttack()),
+			CanUse:      canUse,
+			Reason:      c.actionReason(canUse, reason),
 		})
 	}
 
@@ -230,48 +271,70 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 func (c *Character) buildAvailableActions() []AvailableAction {
 	result := make([]AvailableAction, 0)
 
-	// Move is always listed
+	// Move is always listed. It draws from movement and targets a position.
 	moveCanUse := c.actionEconomy.MovementRemaining > 0
 	result = append(result, AvailableAction{
-		Ref:    refs.Actions.Move(),
-		Name:   "Move",
-		CanUse: moveCanUse,
-		Reason: c.actionReason(moveCanUse, "no movement remaining"),
+		Ref:         refs.Actions.Move(),
+		Name:        "Move",
+		EconomySlot: EconomySlotMovement,
+		TargetKind:  targetKindForRef(refs.Actions.Move()),
+		CanUse:      moveCanUse,
+		Reason:      c.actionReason(moveCanUse, "no movement remaining"),
 	})
 
-	// Strike: listed if attacks granted
+	// Strike: listed if attacks granted. Each strike spends one granted attack
+	// from the Attack action, so it belongs to the action slot.
 	if c.actionEconomy.Granted[GrantedAttacks] > 0 {
 		result = append(result, AvailableAction{
-			Ref:    refs.Actions.Strike(),
-			Name:   "Strike",
-			CanUse: true,
+			Ref:         refs.Actions.Strike(),
+			Name:        "Strike",
+			EconomySlot: EconomySlotAction,
+			TargetKind:  targetKindForRef(refs.Actions.Strike()),
+			CanUse:      true,
 		})
 	}
 
-	// Off-Hand Strike: listed if granted
+	// Off-Hand Strike: listed if granted. Two-weapon fighting grants it off the
+	// bonus action.
 	if c.actionEconomy.Granted[GrantedOffHandStrikes] > 0 {
 		result = append(result, AvailableAction{
-			Ref:    refs.Actions.OffHandStrike(),
-			Name:   "Off-Hand Strike",
-			CanUse: true,
+			Ref:         refs.Actions.OffHandStrike(),
+			Name:        "Off-Hand Strike",
+			EconomySlot: EconomySlotBonusAction,
+			TargetKind:  targetKindForRef(refs.Actions.OffHandStrike()),
+			CanUse:      true,
 		})
 	}
 
-	// Flurry Strike: listed if granted
+	// Flurry Strike: listed if granted. Flurry of Blows grants strikes off the
+	// bonus action.
 	if c.actionEconomy.Granted[GrantedFlurryStrikes] > 0 {
 		result = append(result, AvailableAction{
-			Ref:    refs.Actions.FlurryStrike(),
-			Name:   "Flurry Strike",
-			CanUse: true,
+			Ref:         refs.Actions.FlurryStrike(),
+			Name:        "Flurry Strike",
+			EconomySlot: EconomySlotBonusAction,
+			TargetKind:  targetKindForRef(refs.Actions.FlurryStrike()),
+			CanUse:      true,
 		})
 	}
 
-	// Unarmed Strike (Martial Arts Bonus): listed if granted
+	// Unarmed Strike (Martial Arts Bonus): listed if granted. The Monk martial
+	// arts bonus strike is a bonus-action strike.
 	if c.actionEconomy.Granted[GrantedMartialArtsBonus] > 0 {
+		// The unarmed strike costs a bonus action (PHB p.78): it is only usable
+		// while the bonus-action slot is unspent, so the menu reflects that.
+		canUse := c.actionEconomy.BonusActionsRemaining > 0
+		reason := ""
+		if !canUse {
+			reason = "no bonus action remaining"
+		}
 		result = append(result, AvailableAction{
-			Ref:    refs.Actions.UnarmedStrike(),
-			Name:   "Unarmed Strike",
-			CanUse: true,
+			Ref:         refs.Actions.UnarmedStrike(),
+			Name:        "Unarmed Strike",
+			EconomySlot: EconomySlotBonusAction,
+			TargetKind:  targetKindForRef(refs.Actions.UnarmedStrike()),
+			CanUse:      canUse,
+			Reason:      reason,
 		})
 	}
 
@@ -435,7 +498,13 @@ func (c *Character) executeFlurryStrike() (*ExecuteActionOutput, error) {
 	}, nil
 }
 
-// executeUnarmedStrike decrements granted martial arts bonus strikes.
+// executeUnarmedStrike consumes a granted martial arts bonus strike AND the
+// bonus action that pays for it. The Monk's Martial Arts unarmed strike is a
+// bonus action (PHB p.78: "you can make one unarmed strike as a bonus action"):
+// the granted capacity tracks that the strike is available this turn, and the
+// bonus-action slot is the economy cost spent when the strike is actually taken.
+// Decrementing both here keeps the two-level model honest — without the slot
+// decrement the actor could appear to still have a bonus action after using it.
 func (c *Character) executeUnarmedStrike() (*ExecuteActionOutput, error) {
 	if c.actionEconomy.Granted[GrantedMartialArtsBonus] <= 0 {
 		return &ExecuteActionOutput{
@@ -446,7 +515,20 @@ func (c *Character) executeUnarmedStrike() (*ExecuteActionOutput, error) {
 		}, nil
 	}
 
+	// The unarmed strike costs a bonus action (PHB p.78). Reject before spending
+	// the granted capacity if the bonus-action slot is already gone, so
+	// enforcement does not depend on call order.
+	if c.actionEconomy.BonusActionsRemaining <= 0 {
+		return &ExecuteActionOutput{
+			Success:   false,
+			Error:     "no bonus action remaining",
+			Abilities: c.buildAvailableAbilities(),
+			Actions:   c.buildAvailableActions(),
+		}, nil
+	}
+
 	c.actionEconomy.Granted[GrantedMartialArtsBonus]--
+	c.actionEconomy.BonusActionsRemaining--
 
 	return &ExecuteActionOutput{
 		Success:   true,
