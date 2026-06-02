@@ -159,11 +159,19 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		resources:       make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 	}
 
-	// Deep-copy action economy state to avoid aliasing mutable Granted map
+	// Deep-copy action economy state to avoid aliasing mutable Granted map.
+	// Granted is tagged json:"granted,omitempty", so a freshly-StartTurn-seeded
+	// EMPTY map is omitted from the serialized JSON and comes back nil after a
+	// round-trip. fromToolkitActionEconomy writes into Granted unconditionally,
+	// so a nil map there panics ("assignment to entry in nil map") on the next
+	// ability activation. Always re-init: clone when non-nil, else make a fresh
+	// empty map so the loaded economy is immediately writable (#706).
 	if d.ActionEconomy != nil {
 		aeCopy := *d.ActionEconomy
 		if d.ActionEconomy.Granted != nil {
 			aeCopy.Granted = maps.Clone(d.ActionEconomy.Granted)
+		} else {
+			aeCopy.Granted = make(map[GrantedActionKey]int)
 		}
 		char.actionEconomy = &aeCopy
 	}
