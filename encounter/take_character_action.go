@@ -84,8 +84,15 @@ func (e *Encounter) takeCharacterAction(
 	// event for this action (Invariant 9 — every action emits one, not just
 	// attacks).
 	consumed := economyConsumedDiff(preEconomy, char.GetActionEconomy())
-	if err := e.publishActionResolved(player.EntityID, target.EntityID, tRef.String(), consumed); err != nil {
+	corrID, err := e.publishActionResolved(player.EntityID, target.EntityID, tRef.String(), consumed)
+	if err != nil {
 		return nil, fmt.Errorf("publish action resolved: %w", err)
+	}
+
+	// Push the post-action turn state so the menu/economy refreshes live
+	// (Invariant 12), correlated to the action that caused it (Invariant 8).
+	if err := e.publishTurnStateChanged(player.EntityID, corrID); err != nil {
+		return nil, fmt.Errorf("publish turn-state changed: %w", err)
 	}
 
 	return &TakeActionOutcome{Resolved: true}, nil
@@ -210,9 +217,12 @@ func positiveDrop(pre, post int) int {
 // non-attack action (Invariant 9). Audience is per-viewer LoS to the actor.
 // Unlike the attack path this publishes only the umbrella event — there is no
 // AttackResolved/Damage for a non-attack action.
+//
+// Returns the correlation id stamped on the event so the caller can tie the
+// follow-on turn-state refresh to the same action (Invariant 8).
 func (e *Encounter) publishActionResolved(
 	actorID, targetID core.EntityID, actionRef string, consumed events.EconomyConsumed,
-) error {
+) (core.CorrelationID, error) {
 	actor := e.findPlayerByEntityID(actorID)
 	perPlayer := make(map[core.PlayerID]events.ActionResolvedSlice)
 	for viewerID, viewer := range e.data.Players {
@@ -226,8 +236,9 @@ func (e *Encounter) publishActionResolved(
 	}
 
 	seq := e.nextSeq()
+	corrID := e.correlationFor(seq)
 	evt := events.NewActionResolvedEvent(
 		e.data.ID, seq, actorID, actionRef, targetID, consumed, perPlayer,
 	)
-	return e.publishCorrelated(evt, e.correlationFor(seq))
+	return corrID, e.publishCorrelated(evt, corrID)
 }

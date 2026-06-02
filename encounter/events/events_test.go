@@ -36,6 +36,65 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.EncounterEndedEvent)(nil)
 	var _ events.EncounterEvent = (*events.ResourceChangedEvent)(nil)
 	var _ events.EncounterEvent = (*events.ActionResolvedEvent)(nil)
+	var _ events.EncounterEvent = (*events.TurnStateChangedEvent)(nil)
+}
+
+// TurnStateChangedEvent JSON round-trip — the nested economy + menu snapshot and
+// spine meta all survive encoding; audience derives from PerPlayer keys.
+func (s *EventsSuite) TestTurnStateChangedEvent_JSONRoundTrip() {
+	at := time.Date(2026, 6, 1, 10, 15, 0, 0, time.UTC)
+	corr := core.CorrelationID("corr-enc-1-31")
+
+	original := events.NewTurnStateChangedEvent(
+		"enc-1", 31, "char-alice",
+		events.TurnStateSnapshot{
+			InCombat:              true,
+			TurnNumber:            2,
+			ActionsRemaining:      0,
+			BonusActionsRemaining: 1,
+			ReactionsRemaining:    1,
+			MovementRemaining:     30,
+			Menu: []events.MenuEntry{
+				{
+					Ref: "dnd5e:combat_abilities:attack", Name: "Attack",
+					EconomySlot: "action", TargetKind: "single_entity",
+					Available: false, Reason: "no action remaining",
+				},
+				{
+					Ref: "dnd5e:actions:move", Name: "Move",
+					EconomySlot: "movement", TargetKind: "position", Available: true,
+				},
+			},
+		},
+		map[core.PlayerID]events.TurnStateChangedSlice{"alice": {Visible: true}},
+	)
+	original.Stamp(at, corr)
+
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.TurnStateChangedEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(31), decoded.Sequence())
+	s.Equal(core.EntityID("char-alice"), decoded.ActorID)
+	s.True(decoded.State.InCombat)
+	s.Equal(2, decoded.State.TurnNumber)
+	s.Equal(0, decoded.State.ActionsRemaining)
+	s.Equal(1, decoded.State.BonusActionsRemaining)
+	s.Equal(30, decoded.State.MovementRemaining)
+	s.Require().Len(decoded.State.Menu, 2)
+	s.Equal("dnd5e:combat_abilities:attack", decoded.State.Menu[0].Ref)
+	s.Equal("action", decoded.State.Menu[0].EconomySlot)
+	s.Equal("single_entity", decoded.State.Menu[0].TargetKind)
+	s.False(decoded.State.Menu[0].Available)
+	s.Equal("no action remaining", decoded.State.Menu[0].Reason)
+	s.Equal("dnd5e:actions:move", decoded.State.Menu[1].Ref)
+	s.True(decoded.State.Menu[1].Available)
+	s.Equal(at, decoded.OccurredAt())
+	s.Equal(corr, decoded.CorrelationID())
+	s.ElementsMatch(events.AudienceSet{"alice"}, decoded.Audience())
 }
 
 // Every event exposes the spine metadata accessors (Invariants 5, 8) via the

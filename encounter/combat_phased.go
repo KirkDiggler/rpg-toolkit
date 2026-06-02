@@ -357,7 +357,9 @@ func (e *Encounter) applyAndPublishNPCOutcome(monster *MonsterData, player *Play
 	if damageType == "" {
 		damageType = damageTypeUntyped
 	}
-	if err := e.publishAttackOutcome(
+	// NPC attacker has no action menu/economy to refresh, so the corr id is
+	// discarded — no turn-state push for the monster.
+	if _, err := e.publishAttackOutcome(
 		monster.ID, player.EntityID, outcome,
 		player.HP, player.MaxHP, damageType,
 		monster.Position, player.View.Position,
@@ -403,12 +405,18 @@ func (e *Encounter) applyAndPublishOutcome(
 	if damageType == "" {
 		damageType = damageTypeUntyped
 	}
-	if err := e.publishAttackOutcome(
+	corrID, err := e.publishAttackOutcome(
 		player.EntityID, monster.ID, outcome,
 		monster.HP, monster.MaxHP, damageType,
 		player.View.Position, monster.Position,
 		actionRef, consumed,
-	); err != nil {
+	)
+	if err != nil {
+		return err
+	}
+	// Push the post-attack turn state so the attacker's menu/economy refreshes
+	// live (Invariant 12), correlated to the attack that caused it (Invariant 8).
+	if err := e.publishTurnStateChanged(player.EntityID, corrID); err != nil {
 		return err
 	}
 	if outcome.Hit && hpBefore > 0 && monster.HP == 0 {

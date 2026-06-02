@@ -48,6 +48,9 @@ func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) er
 	}); err != nil {
 		return fmt.Errorf("seed turn economy for %q: %w", actorID, err)
 	}
+	// The TurnStateChangedEvent push happens at the call site AFTER the
+	// TurnStartedEvent, so the client sees the cause (turn started) before the
+	// menu/economy refresh (Invariant 12) — seedActorTurn only mutates.
 	return nil
 }
 

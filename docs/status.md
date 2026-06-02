@@ -11,6 +11,17 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Active work
 
+**#704 (TakeAction wave) — encounter pushes TurnStateChangedEvent on
+turn-state/economy mutation (2026-06-01, ADR-0033).** Closes the push-refresh
+gap (North-Star Invariant 12): the encounter now emits a `TurnStateChangedEvent`
+through the broker on turn start and every action taken, carrying a
+rulebook-agnostic snapshot (economy + flattened menu) built from
+`ActorTurnState`. Audience is the actor's controlling player; the post-action
+push shares the causing action's correlation id (Inv 8), turn-start carries
+none. rpg-api projects it onto the proto `TurnStateChanged` (envelope field 45).
+Registered in the broker codec; real-path tests prove the push fires on
+non-attack, attack, and turn-start.
+
 **#697 (TakeAction wave, event-faithfulness PR) — encounter event spine:
 causation + game-event time + resolved-action event (2026-06-01).**
 Added `OccurredAt()` / `CorrelationID()` / `Stamp()` to the `EncounterEvent`

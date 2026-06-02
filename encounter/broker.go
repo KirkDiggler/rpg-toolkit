@@ -243,6 +243,8 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "EntityDisappearedEvent"
 	case *events.ActionResolvedEvent:
 		typeName = "ActionResolvedEvent"
+	case *events.TurnStateChangedEvent:
+		typeName = "TurnStateChangedEvent"
 	case *events.AttackResolvedEvent:
 		typeName = "AttackResolvedEvent"
 	case *events.DamageDealtEvent:
@@ -319,6 +321,12 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "ActionResolvedEvent":
 		var e events.ActionResolvedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "TurnStateChangedEvent":
+		var e events.TurnStateChangedEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}
