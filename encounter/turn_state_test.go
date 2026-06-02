@@ -388,5 +388,52 @@ func (s *TurnStateSuite) TestTakeAction_RejectsUnknownRefOnHydratedCharacter() {
 	s.ErrorIs(err, encounter.ErrUnsupportedAction)
 }
 
+// TestTakeAction_HelpAndHideFlowThroughDelegation proves the Help and Hide
+// combat abilities (the remaining two of the universal catalog, landed in the
+// dnd5e half rpg-toolkit#702 / v0.61.0) reach the held character's rules engine
+// through the SAME unified verb — no per-ref code in the encounter — with the
+// right target-kind exposed on the menu and the standard action enforced.
+// Like Dodge, Beat-1 proves dispatch generality + economy spend, not the full
+// mechanical effect (Help's advantage / Hide's Stealth check are later beats).
+func (s *TurnStateSuite) TestTakeAction_HelpAndHideFlowThroughDelegation() {
+	enc := s.loadedMonkEncounter()
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.Require().Equal(monkEntityID, enc.ActiveActor())
+
+	// The menu carries Help (single-entity) and Hide (self) with the action slot.
+	ts := enc.ActorTurnState(monkEntityID)
+	byID := map[string]dnd5eCharacter.AvailableAbility{}
+	for _, a := range ts.Abilities {
+		byID[a.Ref.ID] = a
+	}
+	s.Require().Contains(byID, refs.CombatAbilities.Help().ID, "Help must be in the menu")
+	s.Require().Contains(byID, refs.CombatAbilities.Hide().ID, "Hide must be in the menu")
+	s.Equal(dnd5eCharacter.TargetKindSingleEntity, byID[refs.CombatAbilities.Help().ID].TargetKind)
+	s.Equal(dnd5eCharacter.EconomySlotAction, byID[refs.CombatAbilities.Help().ID].EconomySlot)
+	s.Equal(dnd5eCharacter.TargetKindSelf, byID[refs.CombatAbilities.Hide().ID].TargetKind)
+	s.Equal(dnd5eCharacter.EconomySlotAction, byID[refs.CombatAbilities.Hide().ID].EconomySlot)
+
+	// Take Hide through the unified verb — spends the standard action.
+	err := enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: refs.CombatAbilities.Hide().Type, ID: refs.CombatAbilities.Hide().ID},
+		encounter.ActionTarget{EntityID: monkEntityID},
+	)
+	s.Require().NoError(err, "Hide must flow through the general delegation")
+	s.Equal(0, enc.ActorTurnState(monkEntityID).Economy.ActionsRemaining, "Hide spends the standard action")
+
+	// With the action spent, Help is still LISTED in the menu but unavailable
+	// (no action left) — the menu pre-empts the illegal action rather than
+	// dropping the entry.
+	afterByID := map[string]dnd5eCharacter.AvailableAbility{}
+	for _, a := range enc.ActorTurnState(monkEntityID).Abilities {
+		afterByID[a.Ref.ID] = a
+	}
+	s.Require().Contains(afterByID, refs.CombatAbilities.Help().ID,
+		"Help stays listed after the action is spent (pre-empted, not dropped)")
+	help := afterByID[refs.CombatAbilities.Help().ID]
+	s.False(help.CanUse, "Help is unavailable once the action is spent")
+	s.NotEmpty(help.Reason, "unavailable Help carries a reason")
+}
+
 // silence unused import if coreCombat ends up unreferenced in future edits.
 var _ = coreCombat.ActionStandard
