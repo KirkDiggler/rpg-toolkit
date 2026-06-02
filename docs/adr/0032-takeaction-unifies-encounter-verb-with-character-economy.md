@@ -119,11 +119,20 @@ of the Beat-1 goal behavior (action + bonus action, both enforced) hold.
   instance.
 - rpg-api stops seeding the economy and stops authoring the menu; it projects
   `ActorTurnState` field-for-field.
+- **Non-attack catalog complete:** Dodge, Dash, Disengage, **Help, and Hide** are
+  all seeded on every character and flow through the unified verb. Help/Hide
+  constructors landed in the dnd5e half (rpg-toolkit#702, v0.61.0); the encounter
+  module bumped to v0.61.0 and a real-path test proves both flow through
+  `TakeAction` with the right target-kind + standard-action enforcement.
 - **Known gaps left as follow-ups under #54 (not regressions of this wave):**
-  - Activating Dodge spends the action and publishes `DodgeActivatedEvent`, but
-    nothing wires `DodgeActivated → DodgingCondition.Apply`, so Dodge's
-    mechanical effect (attackers get disadvantage) is not yet applied. Beat 1
-    proves the *dispatch* generality, not Dodge's full effect.
+  - The combat-ability *mechanical effects* for Dodge / Help / Hide are not yet
+    applied: Dodge publishes `DodgeActivatedEvent` but nothing wires it to
+    `DodgingCondition.Apply` (attackers' disadvantage); Help publishes
+    `HelpActivatedEvent` with an empty `AllyID` (the ally is not threaded through
+    `ActivateAbility`) and nothing grants the advantage; Hide publishes
+    `HideActivatedEvent` but nothing resolves the Stealth check or applies Hidden.
+    Beat 1 proves the *dispatch* generality + economy spend, not these full
+    effects.
   - Two implementations of the Monk bonus strike coexist (the character-package
     `GrantedMartialArtsBonus` path used here, and the weapon-aware
     `actions.MartialArtsBonusStrike` granter); they are not yet collapsed.

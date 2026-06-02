@@ -290,6 +290,10 @@ granted-capacity actions. No ref is enumerated in the encounter; the character's
 menu is the membership test. The action runs on the `*character.Character` the
 `LoadFromData` cascade already holds on `e.bus` (ADR-0030) — never a re-load.
 
+The non-attack catalog seeded on every character — Dodge, Dash, Disengage, Help,
+Hide — all flow through this one verb. Help/Hide constructors landed in the dnd5e
+half (rpg-toolkit#702, v0.61.0); the encounter module pins v0.61.0.
+
 Turn-start economy seeding moved into the engine: `Encounter` calls
 `character.StartTurn` on the held character at each turn boundary (the
 `SetMode→TURN_BASED` first actor and `EndTurn`'s next actor), so rpg-api no longer
