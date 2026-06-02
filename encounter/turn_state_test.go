@@ -226,7 +226,7 @@ func (s *TurnStateSuite) TestTakeAction_DodgeFlowsThroughGeneralDelegation() {
 		}
 	}
 	s.Require().NotNil(action, "every action emits an ActionResolvedEvent, incl. non-attacks (Inv 9)")
-	s.Equal(core.EntityID(monkEntityID), action.ActorID)
+	s.Equal(monkEntityID, action.ActorID)
 	s.Equal(refs.CombatAbilities.Dodge().String(), action.ActionRef,
 		"the resolved-action event carries the actor's real submitted ref")
 	s.Equal(1, action.EconomyConsumed.Actions, "Dodge consumed one standard action")
