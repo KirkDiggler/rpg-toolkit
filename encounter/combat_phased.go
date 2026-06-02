@@ -62,9 +62,17 @@ func (e *Encounter) TakeActionPhased(
 	if active := e.ActiveActor(); active != player.EntityID {
 		return nil, fmt.Errorf("%w: active=%q got=%q", ErrNotYourTurn, active, player.EntityID)
 	}
+
+	// General dispatch (Beat-1): the attack ref keeps the two-phase resolver
+	// path below (it carries reaction-prompt handling); every other ref
+	// delegates to the held character's own rules engine (ActivateAbility /
+	// ExecuteAction). This replaces the former `ref.ID != "attack"` hard gate —
+	// "default to one system": the character package's dispatch is the catalog,
+	// not a parallel registry built here.
 	if ref.ID != actionIDAttack {
-		return nil, fmt.Errorf("%w: %q", ErrUnsupportedAction, ref.ID)
+		return e.takeCharacterAction(context.Background(), player, ref, target)
 	}
+
 	if !isPlayerCombatant(player) {
 		return nil, fmt.Errorf("%w: player %q missing HP/AC/DamageDice", ErrNonCombatant, playerID)
 	}
@@ -103,7 +111,9 @@ func (e *Encounter) TakeActionPhased(
 		if outcome == nil {
 			return nil, fmt.Errorf("combat resolver: nil outcome with nil error")
 		}
-		if err := e.applyAndPublishOutcome(player, monster, outcome); err != nil {
+		if err := e.applyAndPublishOutcome(
+			player, monster, outcome, input.ActionRef.String(), e.attackEconomyConsumedFor(player),
+		); err != nil {
 			return nil, err
 		}
 		return &TakeActionOutcome{Resolved: true}, nil
@@ -141,7 +151,9 @@ func (e *Encounter) TakeActionPhased(
 		if outcome == nil {
 			return nil, fmt.Errorf("combat resolver: nil outcome with nil error")
 		}
-		if err := e.applyAndPublishOutcome(player, monster, outcome); err != nil {
+		if err := e.applyAndPublishOutcome(
+			player, monster, outcome, input.ActionRef.String(), e.attackEconomyConsumedFor(player),
+		); err != nil {
 			return nil, err
 		}
 		return &TakeActionOutcome{Resolved: true}, nil
@@ -281,7 +293,13 @@ func (e *Encounter) CompleteTakeAction(attackCtx *PhasedAttackContext, modifiers
 	// corresponding verb.
 	switch {
 	case attackerPlayer != nil && targetMonster != nil:
-		return e.applyAndPublishOutcome(attackerPlayer, targetMonster, outcome)
+		// Resume path: the original submitted ref is not carried on
+		// PhasedAttackContext, so a resumed attack reports the attack defaults.
+		// (Beat-1 scope: reactions are a later wave; the resume ref fidelity
+		// rides with that work.)
+		return e.applyAndPublishOutcome(
+			attackerPlayer, targetMonster, outcome, attackActionRef, attackEconomyConsumed(),
+		)
 	case attackerMonster != nil && targetPlayer != nil:
 		return e.applyAndPublishNPCOutcome(attackerMonster, targetPlayer, outcome)
 	default:
@@ -348,7 +366,16 @@ func (e *Encounter) applyAndPublishNPCOutcome(monster *MonsterData, player *Play
 // chain on the >0 → 0 transition. Shared between the legacy single-phase
 // path and the phased CompleteTakeAction path (player→monster direction).
 // applyAndPublishNPCOutcome is the monster→player mirror.
-func (e *Encounter) applyAndPublishOutcome(player *PlayerData, monster *MonsterData, outcome *AttackOutcome) error {
+//
+// actionRef + consumed are the real submitted ref and economy spend the player
+// path threads (#697 Beat-1: the resolved-action event carries the actor's own
+// ref and what the action actually cost, not a placeholder). The
+// CompleteTakeAction resume path, which lacks the live economy diff, passes the
+// attack defaults.
+func (e *Encounter) applyAndPublishOutcome(
+	player *PlayerData, monster *MonsterData, outcome *AttackOutcome,
+	actionRef string, consumed events.EconomyConsumed,
+) error {
 	hpBefore := monster.HP
 	if outcome.Hit {
 		monster.HP -= outcome.Damage
@@ -368,7 +395,7 @@ func (e *Encounter) applyAndPublishOutcome(player *PlayerData, monster *MonsterD
 		player.EntityID, monster.ID, outcome,
 		monster.HP, monster.MaxHP, damageType,
 		player.View.Position, monster.Position,
-		attackActionRef, attackEconomyConsumed(),
+		actionRef, consumed,
 	); err != nil {
 		return err
 	}

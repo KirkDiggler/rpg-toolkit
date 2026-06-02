@@ -11,7 +11,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Combat-verb sentinel errors. Wrap with fmt.Errorf for context; the
@@ -26,6 +28,12 @@ var (
 	// ErrUnsupportedAction is returned when TakeAction is called with an
 	// action ref the encounter doesn't dispatch. Maps to gRPC Unimplemented.
 	ErrUnsupportedAction = errors.New("unsupported action ref")
+	// ErrActionDeferred is returned when TakeAction is called with a ref this
+	// build surfaces in the menu but defers resolving to a later beat (e.g.
+	// move — movement lands in Beat 2). The menu marks such refs
+	// available=false; the verb rejects them to stay consistent. Maps to gRPC
+	// Unimplemented.
+	ErrActionDeferred = errors.New("action deferred to a later beat")
 	// ErrUnknownTarget is returned when an action targets an entity that
 	// is not in the encounter. Maps to gRPC FailedPrecondition.
 	ErrUnknownTarget = errors.New("unknown target entity")
@@ -71,6 +79,56 @@ const attackActionRef = "dnd5e:action:attack"
 // each strike consumes one" model) from the character action economy.
 func attackEconomyConsumed() events.EconomyConsumed {
 	return events.EconomyConsumed{Actions: 1}
+}
+
+// attackEconomyConsumedFor reports what a player's attack spent off the turn
+// economy, driving the held character's two-level model so the attack verb is a
+// citizen of the same economy every other action uses (#697 Beat-1):
+//
+//   - ActivateAbility(attack) spends the standard action and grants one attack
+//     (capacity), plus any Extra Attack the character has.
+//   - ExecuteAction(strike) consumes one of those attacks and runs the
+//     character's post-strike grants — for a Monk with a bonus action in hand,
+//     this grants the Martial Arts bonus unarmed strike, which then surfaces in
+//     the action menu as a bonus-action option (the bonus-action axis of the
+//     Beat-1 done-bar).
+//
+// The real pre/post economy diff is returned so the resolved-action event
+// reports the true cost. When no character is hydrated (a flat stat-snapshot
+// seat), the verb falls back to the honest one-action cost — those seats have
+// no two-level economy to drive.
+//
+// Damage/hit resolution is unchanged — it still runs through the combat
+// resolver. This only threads the economy bookkeeping the snapshot path lacked.
+func (e *Encounter) attackEconomyConsumedFor(player *PlayerData) events.EconomyConsumed {
+	char := e.heldCharacter(player.EntityID)
+	if char == nil {
+		return attackEconomyConsumed()
+	}
+
+	pre := snapshotEconomy(char.GetActionEconomy())
+
+	ctx := context.Background()
+	// Activate the Attack ability: spends the action, grants attack capacity.
+	if out, err := char.ActivateAbility(ctx, &dnd5eCharacter.ActivateAbilityInput{
+		AbilityRef: refs.CombatAbilities.Attack(),
+	}); err != nil || !out.Success {
+		// The character could not take the Attack action this turn (economy
+		// exhausted). Report no spend — the menu's availability gate pre-empts
+		// this case; the snapshot resolver still published the outcome.
+		return events.EconomyConsumed{}
+	}
+	// Execute one strike: consumes an attack, fires post-strike grants
+	// (Monk Martial Arts bonus when a bonus action remains).
+	if _, err := char.ExecuteAction(ctx, &dnd5eCharacter.ExecuteActionInput{
+		ActionRef: refs.Actions.Strike(),
+	}); err != nil {
+		// Strike bookkeeping failed after the action was spent — report the
+		// action spend captured so far.
+		return economyConsumedDiff(pre, char.GetActionEconomy())
+	}
+
+	return economyConsumedDiff(pre, char.GetActionEconomy())
 }
 
 // isPlayerCombatant reports whether a player seat carries the minimum
@@ -142,6 +200,12 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	}
 
 	if mode == core.ModeTurnBased && len(e.data.Initiative) > 0 {
+		// Seed the first actor's economy before announcing their turn, so the
+		// menu/economy is ready when the TurnStartedEvent lands (Beat-1: the
+		// engine owns turn-start seeding, not the host).
+		if err := e.seedActorTurn(context.Background(), e.data.Initiative[0]); err != nil {
+			return err
+		}
 		if err := e.broker.Publish(events.NewTurnStartedEvent(
 			e.data.ID, e.nextSeq(), e.data.Initiative[0], e.data.Round,
 			e.allViewersTurnStarted(),
@@ -216,6 +280,12 @@ func (e *Encounter) EndTurn(
 		e.data.Round++
 	}
 	newActive := e.data.Initiative[e.data.ActiveIdx]
+
+	// Seed the new actor's economy before announcing their turn (Beat-1: the
+	// engine owns turn-start seeding). No-op for NPCs and stat-snapshot seats.
+	if seedErr := e.seedActorTurn(ctx, newActive); seedErr != nil {
+		return "", false, seedErr
+	}
 
 	if pubErr := e.broker.Publish(events.NewTurnStartedEvent(
 		e.data.ID, e.nextSeq(), newActive, e.data.Round, e.allViewersTurnStarted(),
