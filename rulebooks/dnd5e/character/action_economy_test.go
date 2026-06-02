@@ -351,6 +351,66 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 	s.Equal(2, roundTripped.ActionEconomy.Granted[GrantedAttacks])
 }
 
+// TestSeededEconomy_RoundTrip_ActivateAbility_NoNilMapPanic is the #706
+// regression: StartTurn seeds an EMPTY Granted map, which json:"granted,omitempty"
+// drops from the serialized JSON, so after a full JSON round-trip the loaded
+// character's Granted is nil. Activating an ability then writes into Granted via
+// fromToolkitActionEconomy and would panic ("assignment to entry in nil map")
+// without the LoadFromData re-init. Reproduces the api seeding path (#598) — and
+// the toolkit's own EndTurn→persist→reload — by marshaling to JSON and back, not
+// just passing the struct.
+func (s *ActionEconomyTestSuite) TestSeededEconomy_RoundTrip_ActivateAbility_NoNilMapPanic() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+
+	// Seed the turn economy — this sets Granted to an empty map.
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+	s.Require().NoError(err)
+	s.Require().NotNil(char.actionEconomy)
+	s.Require().Empty(char.actionEconomy.Granted, "StartTurn seeds an empty Granted map")
+
+	// Serialize → JSON → back, faithfully reproducing the omitempty drop the
+	// host (rpg-api) hits when it persists and reloads the character.
+	data := char.ToData()
+	raw, err := json.Marshal(data)
+	s.Require().NoError(err)
+
+	// Assert the omitempty drop precisely on the action_economy object (a
+	// substring scan of the whole blob could false-fail on an unrelated
+	// "granted" key in some other serialized field).
+	var envelope struct {
+		ActionEconomy map[string]json.RawMessage `json:"action_economy"`
+	}
+	s.Require().NoError(json.Unmarshal(raw, &envelope))
+	s.Require().NotNil(envelope.ActionEconomy, "action_economy is present in the JSON")
+	s.NotContains(envelope.ActionEconomy, "granted",
+		"empty Granted is omitted from the action_economy JSON (omitempty)")
+
+	var reloadedData Data
+	s.Require().NoError(json.Unmarshal(raw, &reloadedData))
+	s.Nil(reloadedData.ActionEconomy.Granted, "Granted comes back nil after the omitempty round-trip")
+
+	loaded, err := LoadFromData(s.ctx, &reloadedData, events.NewEventBus())
+	s.Require().NoError(err)
+
+	// The fix: the loaded economy's Granted is a fresh writable map, not nil.
+	s.Require().NotNil(loaded.GetActionEconomy())
+	s.NotNil(loaded.GetActionEconomy().Granted, "LoadFromData must re-init a writable Granted map (#706)")
+
+	// Activating the Attack ability writes into Granted (grants attacks). This
+	// is the line that panicked on the nil map before the fix.
+	s.Require().NotPanics(func() {
+		out, actErr := loaded.ActivateAbility(s.ctx, &ActivateAbilityInput{
+			AbilityRef: refs.CombatAbilities.Attack(),
+		})
+		s.Require().NoError(actErr)
+		s.True(out.Success, "Attack should activate after a seeded-economy round-trip")
+	})
+
+	// The granted capacity was recorded (proves Granted is live, not just non-nil).
+	s.Positive(loaded.GetActionEconomy().Granted[GrantedAttacks],
+		"activating Attack must grant attack capacity into the reloaded economy")
+}
+
 func (s *ActionEconomyTestSuite) TestLoadFromData_NilActionEconomy() {
 	// Create minimal valid Data without action economy
 	data := &Data{
