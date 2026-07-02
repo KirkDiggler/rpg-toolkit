@@ -675,6 +675,28 @@ func (s *ActionEconomyTestSuite) TestExecuteAction_Move_ExactBudget() {
 	s.Equal(0, char.actionEconomy.MovementRemaining)
 }
 
+// TestExecuteAction_Move_RejectsNonPositiveDistance proves the public
+// rules-layer API guards its input: a zero distance is a no-op defect and a
+// negative distance would otherwise INCREASE the budget (an exploit). Both are
+// rejected without mutating MovementRemaining (Copilot review on #714).
+func (s *ActionEconomyTestSuite) TestExecuteAction_Move_RejectsNonPositiveDistance() {
+	for _, dist := range []int{0, -5} {
+		char := createTestFighterCharacter(s.T(), s.bus)
+		_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+		s.Require().NoError(err)
+
+		out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
+			ActionRef: refs.Actions.Move(),
+			Distance:  dist,
+		})
+		s.Require().NoError(err)
+		s.False(out.Success, "distance %d must be rejected", dist)
+		s.NotEmpty(out.Error)
+		s.Equal(30, char.actionEconomy.MovementRemaining,
+			"rejected move (distance %d) must not mutate the budget", dist)
+	}
+}
+
 func (s *ActionEconomyTestSuite) TestActivateAbility_NoActionRemaining() {
 	char := createTestFighterCharacter(s.T(), s.bus)
 
