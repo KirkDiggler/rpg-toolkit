@@ -58,6 +58,7 @@ func (ma *MartialArtsCondition) Apply(ctx context.Context, bus events.EventBus) 
 	damageChain := dnd5eEvents.DamageChain.On(bus)
 	subID, err := damageChain.SubscribeWithChain(ctx, ma.onDamageChain)
 	if err != nil {
+		ma.bus = nil
 		return rpgerr.Wrap(err, "failed to subscribe to damage chain")
 	}
 	ma.subscriptionIDs = append(ma.subscriptionIDs, subID)
@@ -69,6 +70,9 @@ func (ma *MartialArtsCondition) Apply(ctx context.Context, bus events.EventBus) 
 	attackChain := dnd5eEvents.AttackChain.On(bus)
 	attackSubID, err := attackChain.SubscribeWithChain(ctx, ma.onAttackChain)
 	if err != nil {
+		// Roll back the damage-chain subscription so a failed Apply leaves no
+		// partial state (mirrors DodgingCondition.Apply).
+		_ = ma.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to attack chain")
 	}
 	ma.subscriptionIDs = append(ma.subscriptionIDs, attackSubID)
