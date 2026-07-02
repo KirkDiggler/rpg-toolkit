@@ -704,6 +704,19 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 // (Invariant 8) — one id per OA, derived from that OA's own
 // AttackResolvedEvent identity since (unlike TakeAction) there is no
 // ActionResolvedEvent cause-beat for an OA to seed from.
+//
+// Copilot review on #718 flagged that a strict roll-driven loop can
+// silently drop damage: a MovementResolver implementation that publishes
+// DamageReceivedEvent without a preceding PostAttackRollEvent (a non-attack
+// movement hazard, or a resolver that doesn't route through
+// combat.ResolveAttackHit) would never reach the loop body, and its HP
+// delta would be lost. Any damages left unconsumed after the roll loop —
+// whether from more damage entries than hit rolls, or no rolls at all —
+// still apply via applyMoveDamage's fallback shape (HP + DamageDealtEvent,
+// no paired AttackResolvedEvent and no correlation id, since there's no
+// roll — and therefore no causing OA identity — to report or derive one
+// from). HP correctness takes priority over the attackResolved-shape
+// guarantee when the two signals disagree.
 func (e *Encounter) applyMoveAttackOutcomes(
 	rolls []dnd5eEvents.PostAttackRollEvent, damages []dnd5eEvents.DamageReceivedEvent,
 ) error {
@@ -724,6 +737,14 @@ func (e *Encounter) applyMoveAttackOutcomes(
 			continue
 		}
 		if err := e.applyMoveDamage(*dmg, corrID); err != nil {
+			return err
+		}
+	}
+	// Unpaired damage: no matching roll, so no AttackResolvedEvent (and no
+	// derived correlation id) to publish alongside it — apply HP +
+	// DamageDealtEvent on their own, uncorrelated.
+	for _, dmg := range damages[dmgIdx:] {
+		if err := e.applyMoveDamage(dmg, ""); err != nil {
 			return err
 		}
 	}
