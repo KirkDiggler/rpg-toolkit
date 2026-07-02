@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
@@ -681,21 +682,119 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 	return nil
 }
 
-// applyMoveDamage translates each dnd5e DamageReceivedEvent captured
-// during a movement step into an encounter DamageDealtEvent. Mirrors
-// applyCapturedDamage but resolves the source position dynamically from
-// the event's SourceID: Move-path OAs fire from EITHER direction (player
-// attacker on a fleeing NPC, or NPC attacker on a fleeing player), so
-// the per-viewer LoS projection key cannot be hard-coded to a single
-// source type.
+// applyMoveAttackOutcomes translates the PostAttackRollEvents (and, for
+// hits, the paired DamageReceivedEvents) captured during one movement step
+// into encounter events, mirroring publishAttackOutcome's shape for the
+// TakeAction path: AttackResolvedEvent is published for every roll — hit or
+// miss — and DamageDealtEvent only for rolls that hit. Closes #715: before
+// this, the Move-path OA seam only observed DamageReceivedTopic, so a miss
+// (which combat.ApplyAttackOutcome never publishes damage for) produced no
+// event at all, and a hit produced a bare DamageDealtEvent with no
+// AttackResolvedEvent alongside it.
+//
+// Matching rolls to damages: combat.ResolveAttackHit unconditionally
+// publishes one PostAttackRollEvent before combat.ApplyAttackOutcome
+// conditionally publishes one DamageReceivedEvent (hit only) — both within
+// the same synchronous combat.ResolveAttack call, and OAs resolve one at a
+// time (not concurrently). So within a step, the two captured slices line
+// up positionally: the Nth hit roll consumes the Nth entry in damages.
+//
+// Copilot review on #718 flagged that a strict roll-driven loop can
+// silently drop damage: a MovementResolver implementation that publishes
+// DamageReceivedEvent without a preceding PostAttackRollEvent (a non-attack
+// movement hazard, or a resolver that doesn't route through
+// combat.ResolveAttackHit) would never reach the loop body, and its HP
+// delta would be lost. Any damages left unconsumed after the roll loop —
+// whether from more damage entries than hit rolls, or no rolls at all —
+// still apply via applyMoveDamage's fallback shape (HP + DamageDealtEvent,
+// no paired AttackResolvedEvent since there's no roll to report). HP
+// correctness takes priority over the attackResolved-shape guarantee when
+// the two signals disagree.
+func (e *Encounter) applyMoveAttackOutcomes(
+	rolls []dnd5eEvents.PostAttackRollEvent, damages []dnd5eEvents.DamageReceivedEvent,
+) error {
+	dmgIdx := 0
+	for _, roll := range rolls {
+		var dmg *dnd5eEvents.DamageReceivedEvent
+		if roll.WouldHit && dmgIdx < len(damages) {
+			d := damages[dmgIdx]
+			dmg = &d
+			dmgIdx++
+		}
+
+		if err := e.publishMoveAttackResolved(roll); err != nil {
+			return err
+		}
+		if dmg == nil {
+			continue
+		}
+		if err := e.applyMoveDamage(*dmg); err != nil {
+			return err
+		}
+	}
+	// Unpaired damage: no matching roll, so no AttackResolvedEvent to
+	// publish alongside it — apply HP + DamageDealtEvent on their own.
+	for _, dmg := range damages[dmgIdx:] {
+		if err := e.applyMoveDamage(dmg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// publishMoveAttackResolved publishes an encounter AttackResolvedEvent for
+// one Move-path attack roll (hit or miss). Per-viewer projection mirrors
+// applyMoveDamage: a viewer is included if they can see the attacker or the
+// target. Critical is approximated from IsNaturalTwenty — the rulebook's
+// PostAttackRollEvent does not carry the attacker's CriticalThreshold, so an
+// extended crit range (e.g. Champion's Improved Critical) is not reflected
+// here; that gap exists only for the Move-path OA projection, not the
+// underlying damage roll (which does apply the extended threshold).
+func (e *Encounter) publishMoveAttackResolved(roll dnd5eEvents.PostAttackRollEvent) error {
+	attackerID := encountercore.EntityID(roll.AttackerID)
+	targetID := encountercore.EntityID(roll.TargetID)
+
+	attackerPos, attackerOK := e.findEntityPosition(attackerID)
+	targetPos, targetOK := e.findEntityPosition(targetID)
+
+	attackPerPlayer := make(map[encountercore.PlayerID]events.AttackResolvedSlice)
+	for viewerID, viewer := range e.data.Players {
+		seesAttacker := attackerOK && e.viewerCanSee(viewer, attackerPos)
+		seesTarget := targetOK && e.viewerCanSee(viewer, targetPos)
+		if !seesAttacker && !seesTarget {
+			continue
+		}
+		attackPerPlayer[viewerID] = events.AttackResolvedSlice{Visible: true}
+	}
+
+	if err := e.broker.Publish(events.NewAttackResolvedEvent(
+		e.data.ID, e.nextSeq(),
+		attackerID, targetID,
+		roll.WouldHit, roll.IsNaturalTwenty,
+		roll.AttackRoll, roll.AttackBonus, roll.OriginalAC,
+		attackPerPlayer,
+	)); err != nil {
+		return fmt.Errorf("publish attack resolved: %w", err)
+	}
+	return nil
+}
+
+// applyMoveDamage translates one dnd5e DamageReceivedEvent captured during a
+// movement step into an encounter DamageDealtEvent. Mirrors
+// applyCapturedDamage but resolves the source position dynamically from the
+// event's SourceID: Move-path OAs fire from EITHER direction (player
+// attacker on a fleeing NPC, or NPC attacker on a fleeing player), so the
+// per-viewer LoS projection key cannot be hard-coded to a single source
+// type.
 //
 // Wave 2.11e (#675): MovementResolver path damage application.
 // combat.MoveEntity → triggerOpportunityAttack → combat.ResolveAttack
-// publishes DamageReceivedEvent on the bus mid-iterate; the encounter
-// SDK captures the events around ResolveStep
-// (iterateMovementStepsForEntity) and dispatches HP delta + encounter-
-// side DamageDealtEvent here, plus the kill/death chain on the >0 → 0
-// transition.
+// publishes DamageReceivedEvent on the bus mid-iterate; the encounter SDK
+// captures the events around ResolveStep (iterateMovementStepsForEntity)
+// and dispatches HP delta + encounter-side DamageDealtEvent here, plus the
+// kill/death chain on the >0 → 0 transition. #715: called only for hits —
+// applyMoveAttackOutcomes matches each hit roll to its damage entry and
+// publishes the roll's AttackResolvedEvent before calling in here.
 //
 // Source resolution: tries player → monster. If neither matches, HP is
 // still applied (damage application is more important than the wire
@@ -703,51 +802,49 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 // visibility — viewers who can see the target see the event, viewers
 // who can't, don't. The same skip rule as applyCapturedDamage applies
 // for unknown targets (we can't mutate HP on something we can't find).
-func (e *Encounter) applyMoveDamage(damages []dnd5eEvents.DamageReceivedEvent) error {
-	for _, dmg := range damages {
-		targetID := encountercore.EntityID(dmg.TargetID)
-		sourceID := encountercore.EntityID(dmg.SourceID)
+func (e *Encounter) applyMoveDamage(dmg dnd5eEvents.DamageReceivedEvent) error {
+	targetID := encountercore.EntityID(dmg.TargetID)
+	sourceID := encountercore.EntityID(dmg.SourceID)
 
-		hpBefore, hpAfter, maxHP, targetPos, isMonster, ok := e.applyDamageToTarget(targetID, dmg.Amount)
-		if !ok {
+	hpBefore, hpAfter, maxHP, targetPos, isMonster, ok := e.applyDamageToTarget(targetID, dmg.Amount)
+	if !ok {
+		return nil
+	}
+	damageType := string(dmg.DamageType)
+	if damageType == "" {
+		damageType = damageTypeUntyped
+	}
+	// Per-viewer projection: a viewer is included if they have LoS to
+	// the source OR the target. Source lookup is best-effort — if it
+	// fails (unknown SourceID), the projection falls back to
+	// target-only visibility rather than dropping the event entirely.
+	sourcePos, sourceOK := e.findEntityPosition(sourceID)
+	damagePerPlayer := make(map[encountercore.PlayerID]events.DamageDealtSlice)
+	for viewerID, viewer := range e.data.Players {
+		canSeeSource := sourceOK && e.viewerCanSee(viewer, sourcePos)
+		canSeeTarget := e.viewerCanSee(viewer, targetPos)
+		if !canSeeSource && !canSeeTarget {
 			continue
 		}
-		damageType := string(dmg.DamageType)
-		if damageType == "" {
-			damageType = damageTypeUntyped
-		}
-		// Per-viewer projection: a viewer is included if they have LoS to
-		// the source OR the target. Source lookup is best-effort — if it
-		// fails (unknown SourceID), the projection falls back to
-		// target-only visibility rather than dropping the event entirely.
-		sourcePos, sourceOK := e.findEntityPosition(sourceID)
-		damagePerPlayer := make(map[encountercore.PlayerID]events.DamageDealtSlice)
-		for viewerID, viewer := range e.data.Players {
-			canSeeSource := sourceOK && e.viewerCanSee(viewer, sourcePos)
-			canSeeTarget := e.viewerCanSee(viewer, targetPos)
-			if !canSeeSource && !canSeeTarget {
-				continue
+		damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
+	}
+	if err := e.broker.Publish(events.NewDamageDealtEvent(
+		e.data.ID, e.nextSeq(),
+		targetID, sourceID,
+		dmg.Amount, damageType,
+		hpAfter, maxHP,
+		damagePerPlayer,
+	)); err != nil {
+		return fmt.Errorf("publish damage dealt: %w", err)
+	}
+	if hpBefore > 0 && hpAfter == 0 {
+		if isMonster {
+			if err := e.killEntity(targetID, sourceID); err != nil {
+				return err
 			}
-			damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
-		}
-		if err := e.broker.Publish(events.NewDamageDealtEvent(
-			e.data.ID, e.nextSeq(),
-			targetID, sourceID,
-			dmg.Amount, damageType,
-			hpAfter, maxHP,
-			damagePerPlayer,
-		)); err != nil {
-			return fmt.Errorf("publish damage dealt: %w", err)
-		}
-		if hpBefore > 0 && hpAfter == 0 {
-			if isMonster {
-				if err := e.killEntity(targetID, sourceID); err != nil {
-					return err
-				}
-			} else {
-				if err := e.publishPlayerDied(targetID, sourceID); err != nil {
-					return err
-				}
+		} else {
+			if err := e.publishPlayerDied(targetID, sourceID); err != nil {
+				return err
 			}
 		}
 	}
@@ -1015,6 +1112,39 @@ func subscribeDamage(
 	subID, err := topic.Subscribe(ctx, func(_ context.Context, evt dnd5eEvents.DamageReceivedEvent) error {
 		*captured = append(*captured, evt)
 		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	unsub := func() error { return topic.Unsubscribe(ctx, subID) }
+	return captured, unsub, nil
+}
+
+// subscribeAttackRolls attaches a pure observer to the dnd5e
+// PostAttackRollChain. combat.ResolveAttackHit publishes one
+// PostAttackRollEvent per attack — hit or miss — before
+// combat.ApplyAttackOutcome conditionally publishes DamageReceivedEvent
+// (hit only). #715: this is the toolkit-side signal the Move-path OA seam
+// (iterateMovementStepsForEntity) uses to detect attack-roll outcomes;
+// the MovementResolver interface itself only returns Prevented/
+// PreventReason, so roll detail (roll, bonus, AC, hit/miss) only reaches
+// the encounter SDK via the bus.
+//
+// The handler does not modify the chain — it observes and passes it
+// through unchanged, matching the pattern used elsewhere for read-only
+// chain observers (e.g. ShieldSpellCondition.onPostAttackRoll).
+func subscribeAttackRolls(
+	ctx context.Context, bus dnd5events.EventBus,
+) (*[]dnd5eEvents.PostAttackRollEvent, func() error, error) {
+	captured := &[]dnd5eEvents.PostAttackRollEvent{}
+	topic := dnd5eEvents.PostAttackRollChain.On(bus)
+	subID, err := topic.SubscribeWithChain(ctx, func(
+		_ context.Context, evt *dnd5eEvents.PostAttackRollEvent, c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
+	) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
+		if evt != nil {
+			*captured = append(*captured, *evt)
+		}
+		return c, nil
 	})
 	if err != nil {
 		return nil, nil, err
