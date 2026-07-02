@@ -699,6 +699,12 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 // time (not concurrently). So within a step, the two captured slices line
 // up positionally: the Nth hit roll consumes the Nth entry in damages.
 //
+// #710: each roll's AttackResolvedEvent + its matched DamageDealtEvent (if
+// any) share one correlation id, mirroring publishAttackOutcome's grouping
+// (Invariant 8) — one id per OA, derived from that OA's own
+// AttackResolvedEvent identity since (unlike TakeAction) there is no
+// ActionResolvedEvent cause-beat for an OA to seed from.
+//
 // Copilot review on #718 flagged that a strict roll-driven loop can
 // silently drop damage: a MovementResolver implementation that publishes
 // DamageReceivedEvent without a preceding PostAttackRollEvent (a non-attack
@@ -707,9 +713,10 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 // delta would be lost. Any damages left unconsumed after the roll loop —
 // whether from more damage entries than hit rolls, or no rolls at all —
 // still apply via applyMoveDamage's fallback shape (HP + DamageDealtEvent,
-// no paired AttackResolvedEvent since there's no roll to report). HP
-// correctness takes priority over the attackResolved-shape guarantee when
-// the two signals disagree.
+// no paired AttackResolvedEvent and no correlation id, since there's no
+// roll — and therefore no causing OA identity — to report or derive one
+// from). HP correctness takes priority over the attackResolved-shape
+// guarantee when the two signals disagree.
 func (e *Encounter) applyMoveAttackOutcomes(
 	rolls []dnd5eEvents.PostAttackRollEvent, damages []dnd5eEvents.DamageReceivedEvent,
 ) error {
@@ -722,20 +729,22 @@ func (e *Encounter) applyMoveAttackOutcomes(
 			dmgIdx++
 		}
 
-		if err := e.publishMoveAttackResolved(roll); err != nil {
+		corrID, err := e.publishMoveAttackResolved(roll)
+		if err != nil {
 			return err
 		}
 		if dmg == nil {
 			continue
 		}
-		if err := e.applyMoveDamage(*dmg); err != nil {
+		if err := e.applyMoveDamage(*dmg, corrID); err != nil {
 			return err
 		}
 	}
-	// Unpaired damage: no matching roll, so no AttackResolvedEvent to
-	// publish alongside it — apply HP + DamageDealtEvent on their own.
+	// Unpaired damage: no matching roll, so no AttackResolvedEvent (and no
+	// derived correlation id) to publish alongside it — apply HP +
+	// DamageDealtEvent on their own, uncorrelated.
 	for _, dmg := range damages[dmgIdx:] {
-		if err := e.applyMoveDamage(dmg); err != nil {
+		if err := e.applyMoveDamage(dmg, ""); err != nil {
 			return err
 		}
 	}
@@ -743,14 +752,21 @@ func (e *Encounter) applyMoveAttackOutcomes(
 }
 
 // publishMoveAttackResolved publishes an encounter AttackResolvedEvent for
-// one Move-path attack roll (hit or miss). Per-viewer projection mirrors
-// applyMoveDamage: a viewer is included if they can see the attacker or the
-// target. Critical is approximated from IsNaturalTwenty — the rulebook's
-// PostAttackRollEvent does not carry the attacker's CriticalThreshold, so an
-// extended crit range (e.g. Champion's Improved Critical) is not reflected
-// here; that gap exists only for the Move-path OA projection, not the
-// underlying damage roll (which does apply the extended threshold).
-func (e *Encounter) publishMoveAttackResolved(roll dnd5eEvents.PostAttackRollEvent) error {
+// one Move-path attack roll (hit or miss), and returns the correlation id
+// derived from its own (encounter, sequence) identity — mirroring
+// publishAttackOutcome's correlationFor pattern — so the caller can stamp
+// the same id on the matched DamageDealtEvent (#710, Invariant 8).
+//
+// Per-viewer projection mirrors applyMoveDamage: a viewer is included if
+// they can see the attacker or the target. Critical is approximated from
+// IsNaturalTwenty — the rulebook's PostAttackRollEvent does not carry the
+// attacker's CriticalThreshold, so an extended crit range (e.g. Champion's
+// Improved Critical) is not reflected here; that gap exists only for the
+// Move-path OA projection, not the underlying damage roll (which does
+// apply the extended threshold).
+func (e *Encounter) publishMoveAttackResolved(
+	roll dnd5eEvents.PostAttackRollEvent,
+) (encountercore.CorrelationID, error) {
 	attackerID := encountercore.EntityID(roll.AttackerID)
 	targetID := encountercore.EntityID(roll.TargetID)
 
@@ -767,34 +783,48 @@ func (e *Encounter) publishMoveAttackResolved(roll dnd5eEvents.PostAttackRollEve
 		attackPerPlayer[viewerID] = events.AttackResolvedSlice{Visible: true}
 	}
 
-	if err := e.broker.Publish(events.NewAttackResolvedEvent(
-		e.data.ID, e.nextSeq(),
+	seq := e.nextSeq()
+	corrID := e.correlationFor(seq)
+	evt := events.NewAttackResolvedEvent(
+		e.data.ID, seq,
 		attackerID, targetID,
 		roll.WouldHit, roll.IsNaturalTwenty,
 		roll.AttackRoll, roll.AttackBonus, roll.OriginalAC,
 		attackPerPlayer,
-	)); err != nil {
-		return fmt.Errorf("publish attack resolved: %w", err)
+	)
+	if err := e.publishCorrelated(evt, corrID); err != nil {
+		return corrID, fmt.Errorf("publish attack resolved: %w", err)
 	}
-	return nil
+	return corrID, nil
 }
 
 // applyMoveDamage translates one dnd5e DamageReceivedEvent captured during a
-// movement step into an encounter DamageDealtEvent. Mirrors
-// applyCapturedDamage but resolves the source position dynamically from the
-// event's SourceID: Move-path OAs fire from EITHER direction (player
-// attacker on a fleeing NPC, or NPC attacker on a fleeing player), so the
-// per-viewer LoS projection key cannot be hard-coded to a single source
-// type.
+// movement step into an encounter DamageDealtEvent, stamped with corrID
+// (#710, Invariant 8). Mirrors applyCapturedDamage but resolves the source
+// position dynamically from the event's SourceID: Move-path OAs fire from
+// EITHER direction (player attacker on a fleeing NPC, or NPC attacker on a
+// fleeing player), so the per-viewer LoS projection key cannot be
+// hard-coded to a single source type.
+//
+// corrID is the causing OA's correlation id — shared with the
+// AttackResolvedEvent publishMoveAttackResolved already published for a
+// matched hit roll — or the zero value ("") for unpaired damage
+// (applyMoveAttackOutcomes' unpaired-damage fallback, which has no roll and
+// therefore no OA identity to derive a correlation id from). Stamping only
+// takes effect when corrID is non-empty; publishCorrelated always calls
+// Stamp, but an empty corrID means "not part of a correlated action group"
+// (the same convention used elsewhere, e.g. TurnStateChangedEvent on a
+// turn-start refresh).
 //
 // Wave 2.11e (#675): MovementResolver path damage application.
 // combat.MoveEntity → triggerOpportunityAttack → combat.ResolveAttack
 // publishes DamageReceivedEvent on the bus mid-iterate; the encounter SDK
 // captures the events around ResolveStep (iterateMovementStepsForEntity)
 // and dispatches HP delta + encounter-side DamageDealtEvent here, plus the
-// kill/death chain on the >0 → 0 transition. #715: called only for hits —
-// applyMoveAttackOutcomes matches each hit roll to its damage entry and
-// publishes the roll's AttackResolvedEvent before calling in here.
+// kill/death chain on the >0 → 0 transition. #715: applyMoveAttackOutcomes
+// matches each hit roll to its damage entry and publishes the roll's
+// AttackResolvedEvent before calling in here; unpaired damage (no matching
+// roll) calls in directly with corrID="".
 //
 // Source resolution: tries player → monster. If neither matches, HP is
 // still applied (damage application is more important than the wire
@@ -802,7 +832,7 @@ func (e *Encounter) publishMoveAttackResolved(roll dnd5eEvents.PostAttackRollEve
 // visibility — viewers who can see the target see the event, viewers
 // who can't, don't. The same skip rule as applyCapturedDamage applies
 // for unknown targets (we can't mutate HP on something we can't find).
-func (e *Encounter) applyMoveDamage(dmg dnd5eEvents.DamageReceivedEvent) error {
+func (e *Encounter) applyMoveDamage(dmg dnd5eEvents.DamageReceivedEvent, corrID encountercore.CorrelationID) error {
 	targetID := encountercore.EntityID(dmg.TargetID)
 	sourceID := encountercore.EntityID(dmg.SourceID)
 
@@ -828,13 +858,13 @@ func (e *Encounter) applyMoveDamage(dmg dnd5eEvents.DamageReceivedEvent) error {
 		}
 		damagePerPlayer[viewerID] = events.DamageDealtSlice{Visible: true}
 	}
-	if err := e.broker.Publish(events.NewDamageDealtEvent(
+	if err := e.publishCorrelated(events.NewDamageDealtEvent(
 		e.data.ID, e.nextSeq(),
 		targetID, sourceID,
 		dmg.Amount, damageType,
 		hpAfter, maxHP,
 		damagePerPlayer,
-	)); err != nil {
+	), corrID); err != nil {
 		return fmt.Errorf("publish damage dealt: %w", err)
 	}
 	if hpBefore > 0 && hpAfter == 0 {
