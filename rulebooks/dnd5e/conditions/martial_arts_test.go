@@ -689,6 +689,158 @@ func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 	s.Equal(abilities.STR, finalEvent.AbilityUsed)
 }
 
+// runAttackChain publishes an AttackChainEvent through the attack modifier
+// chain and returns the executed (final) event.
+func (s *MartialArtsTestSuite) runAttackChain(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+	s.T().Helper()
+	attackChain := dnd5eEvents.AttackChain.On(s.bus)
+	chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+
+	modifiedChain, err := attackChain.PublishWithChain(s.ctx, event, chain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+	return finalEvent
+}
+
+// TestAttackBonusUsesDEX is the regression test for
+// https://github.com/KirkDiggler/rpg-toolkit/issues/709: the Martial Arts
+// "use DEX when higher" swap applied to the damage chain but NOT the attack
+// chain, so a DEX monk's unarmed attack rolled with STR + prof while its
+// damage credited DEX — attack and damage disagreed on the governing ability.
+func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
+	s.Run("unarmed strike with DEX > STR - attack bonus swaps to DEX", func() {
+		// Registry has DEX=16 (+3), STR=10 (+0); base bonus = STR 0 + prof 2.
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+		s.Require().NoError(condition.Apply(s.ctx, s.bus))
+		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+		finalEvent := s.runAttackChain(dnd5eEvents.AttackChainEvent{
+			AttackerID:  s.characterID,
+			TargetID:    "target-1",
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
+			IsMelee:     true,
+			AttackBonus: 2, // STR (+0) + proficiency (+2)
+			TargetAC:    12,
+		})
+
+		// DEX (+3) replaces STR (+0): 2 - 0 + 3 = 5, matching the damage swap.
+		s.Equal(5, finalEvent.AttackBonus,
+			"attack bonus must use DEX + prof when DEX is higher (same governing ability as damage)")
+	})
+
+	s.Run("unarmed strike with STR >= DEX - attack bonus unchanged", func() {
+		strongMonk := "monk-str-attack"
+		s.registry.AddAbilityScores(strongMonk, &gamectx.AbilityScores{
+			Strength:  16, // +3
+			Dexterity: 14, // +2
+		})
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: strongMonk,
+			MonkLevel:   1,
+		})
+		s.Require().NoError(condition.Apply(s.ctx, s.bus))
+		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+		finalEvent := s.runAttackChain(dnd5eEvents.AttackChainEvent{
+			AttackerID:  strongMonk,
+			TargetID:    "target-1",
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
+			IsMelee:     true,
+			AttackBonus: 5, // STR (+3) + proficiency (+2)
+			TargetAC:    12,
+		})
+
+		s.Equal(5, finalEvent.AttackBonus, "STR stays when DEX is not higher")
+	})
+
+	s.Run("non-finesse monk weapon (quarterstaff) - attack bonus swaps to DEX", func() {
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+		s.Require().NoError(condition.Apply(s.ctx, s.bus))
+		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+		finalEvent := s.runAttackChain(dnd5eEvents.AttackChainEvent{
+			AttackerID:  s.characterID,
+			TargetID:    "target-1",
+			WeaponRef:   refs.Weapons.Quarterstaff(),
+			IsMelee:     true,
+			AttackBonus: 2, // STR (+0) + proficiency (+2)
+			TargetAC:    12,
+		})
+
+		s.Equal(5, finalEvent.AttackBonus, "monk weapons use DEX when higher")
+	})
+
+	s.Run("finesse monk weapon (shortsword) - not double-adjusted", func() {
+		// The base attack path already picks the higher mod for finesse
+		// weapons; Martial Arts must not add the delta a second time.
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+		s.Require().NoError(condition.Apply(s.ctx, s.bus))
+		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+		finalEvent := s.runAttackChain(dnd5eEvents.AttackChainEvent{
+			AttackerID:  s.characterID,
+			TargetID:    "target-1",
+			WeaponRef:   refs.Weapons.Shortsword(),
+			IsMelee:     true,
+			AttackBonus: 5, // finesse base already used DEX (+3) + prof (+2)
+			TargetAC:    12,
+		})
+
+		s.Equal(5, finalEvent.AttackBonus, "finesse weapons already use the higher mod")
+	})
+
+	s.Run("non-monk weapon (greatsword) - attack bonus unchanged", func() {
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+		s.Require().NoError(condition.Apply(s.ctx, s.bus))
+		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+		finalEvent := s.runAttackChain(dnd5eEvents.AttackChainEvent{
+			AttackerID:  s.characterID,
+			TargetID:    "target-1",
+			WeaponRef:   refs.Weapons.Greatsword(),
+			IsMelee:     true,
+			AttackBonus: 2,
+			TargetAC:    12,
+		})
+
+		s.Equal(2, finalEvent.AttackBonus, "Martial Arts does not apply to non-monk weapons")
+	})
+
+	s.Run("other character's attack - unchanged", func() {
+		condition := NewMartialArtsCondition(MartialArtsInput{
+			CharacterID: s.characterID,
+			MonkLevel:   1,
+		})
+		s.Require().NoError(condition.Apply(s.ctx, s.bus))
+		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+		finalEvent := s.runAttackChain(dnd5eEvents.AttackChainEvent{
+			AttackerID:  "someone-else",
+			TargetID:    "target-1",
+			WeaponRef:   refs.Weapons.UnarmedStrike(),
+			IsMelee:     true,
+			AttackBonus: 2,
+			TargetAC:    12,
+		})
+
+		s.Equal(2, finalEvent.AttackBonus, "only this monk's attacks are modified")
+	})
+}
+
 // TestSerialization tests JSON serialization round-trip
 func (s *MartialArtsTestSuite) TestSerialization() {
 	original := NewMartialArtsCondition(MartialArtsInput{

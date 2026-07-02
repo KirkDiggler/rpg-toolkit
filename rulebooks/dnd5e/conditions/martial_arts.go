@@ -62,6 +62,17 @@ func (ma *MartialArtsCondition) Apply(ctx context.Context, bus events.EventBus) 
 	}
 	ma.subscriptionIDs = append(ma.subscriptionIDs, subID)
 
+	// Subscribe to AttackChain so the ATTACK ROLL uses DEX when it is higher,
+	// matching the damage swap above — attack and damage must agree on the
+	// governing ability (#709: the swap applied to damage only, so a DEX monk
+	// attacked at STR + prof while its damage credited DEX).
+	attackChain := dnd5eEvents.AttackChain.On(bus)
+	attackSubID, err := attackChain.SubscribeWithChain(ctx, ma.onAttackChain)
+	if err != nil {
+		return rpgerr.Wrap(err, "failed to subscribe to attack chain")
+	}
+	ma.subscriptionIDs = append(ma.subscriptionIDs, attackSubID)
+
 	return nil
 }
 
@@ -137,19 +148,10 @@ func (ma *MartialArtsCondition) onDamageChain(
 	}
 
 	// Check if this is an unarmed strike or monk weapon
-	isUnarmed := event.WeaponRef == nil || event.WeaponRef == refs.Weapons.UnarmedStrike()
-	isMonkWeaponAttack := false
-
-	if !isUnarmed && event.WeaponRef != nil {
-		// Try to get the weapon to check if it's a monk weapon
-		weapon, err := weapons.GetByID(event.WeaponRef.ID)
-		if err == nil {
-			isMonkWeaponAttack = isMonkWeapon(&weapon)
-		}
-	}
+	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
 
 	// Only modify if it's an unarmed strike or monk weapon
-	if !isUnarmed && !isMonkWeaponAttack {
+	if !isUnarmed && monkWeapon == nil {
 		return c, nil
 	}
 
@@ -230,6 +232,76 @@ func (ma *MartialArtsCondition) onDamageChain(
 	}
 
 	return c, nil
+}
+
+// onAttackChain swaps the attack roll's governing ability to DEX for unarmed
+// strikes and monk weapons when DEX is higher — the attack-roll mirror of the
+// damage swap in onDamageChain, so attack and damage agree on the governing
+// ability (#709: the swap applied to damage only, leaving the attack at STR).
+func (ma *MartialArtsCondition) onAttackChain(
+	ctx context.Context,
+	event dnd5eEvents.AttackChainEvent,
+	c chain.Chain[dnd5eEvents.AttackChainEvent],
+) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+	// Only modify attacks by this character
+	if event.AttackerID != ma.CharacterID {
+		return c, nil
+	}
+
+	// Get character registry to check ability scores
+	registry, err := gamectx.RequireCharacters(ctx)
+	if err != nil {
+		return c, err
+	}
+	abilityScores := registry.GetCharacterAbilityScores(ma.CharacterID)
+	if abilityScores == nil {
+		return c, nil
+	}
+
+	// Only modify if it's an unarmed strike or monk weapon
+	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
+	if !isUnarmed && monkWeapon == nil {
+		return c, nil
+	}
+
+	// Finesse monk weapons (e.g. shortsword) already attack with the higher of
+	// STR/DEX on the base path — adjusting again would double-count DEX.
+	if monkWeapon != nil && monkWeapon.HasProperty(weapons.PropertyFinesse) {
+		return c, nil
+	}
+
+	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+		dexMod := abilityScores.DexterityMod()
+		strMod := abilityScores.StrengthMod()
+		if dexMod > strMod {
+			// The base bonus used STR (melee, non-finesse); replace it with
+			// DEX by applying the difference — same rule the damage chain
+			// applies to the ability component.
+			e.AttackBonus += dexMod - strMod
+		}
+		return e, nil
+	}
+
+	if err = c.Add(combat.StageFeatures, "martial_arts", modifyAttack); err != nil {
+		return c, rpgerr.Wrapf(err, "failed to apply martial arts attack bonus for character %s", ma.CharacterID)
+	}
+
+	return c, nil
+}
+
+// martialArtsWeaponKind classifies an attack's weapon for Martial Arts
+// purposes: whether it is an unarmed strike (nil ref or the unarmed-strike
+// ref), and otherwise whether it is a monk weapon (returned so callers can
+// inspect properties, e.g. Finesse). A non-monk weapon returns (false, nil).
+func martialArtsWeaponKind(weaponRef *core.Ref) (isUnarmed bool, monkWeapon *weapons.Weapon) {
+	if weaponRef == nil || weaponRef.ID == refs.Weapons.UnarmedStrike().ID {
+		return true, nil
+	}
+	weapon, err := weapons.GetByID(weaponRef.ID)
+	if err != nil || !isMonkWeapon(&weapon) {
+		return false, nil
+	}
+	return false, &weapon
 }
 
 // getMartialArtsDice returns the damage dice for unarmed strikes based on monk level
