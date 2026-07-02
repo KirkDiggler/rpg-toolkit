@@ -11,8 +11,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
+	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // OAReactionRef is the canonical reaction ref string for Opportunity Attack.
@@ -495,6 +497,29 @@ func (e *Encounter) nextSeq() uint64 {
 	return e.data.Sequence
 }
 
+// moveFeetPerHex is the D&D 5e grid unit: one hex step costs 5 feet of
+// movement (mirrors combat.FeetPerGridUnit for the encounter SDK's own
+// cube-coordinate hexes, which the combat package's grid units don't share a
+// type with).
+const moveFeetPerHex = 5
+
+// pathCostFeet sums the cube-coordinate hex distance between consecutive
+// waypoints — moverStart, then each entry in path in turn — and converts to
+// feet. Summing distances (not counting slice length) keeps the cost correct
+// regardless of whether the caller supplies a dense hex-by-hex path or a
+// sparse endpoints-only path (#714): the total feet moved is the same either
+// way, even though the per-step chain iteration below treats each path entry
+// as one resolver step.
+func pathCostFeet(moverStart core.Hex, path []core.Hex) int {
+	hexes := 0
+	from := moverStart
+	for _, to := range path {
+		hexes += perception.HexDistance(from, to)
+		from = to
+	}
+	return hexes * moveFeetPerHex
+}
+
 // Move applies a move action by playerID along path. Validates, mutates
 // player position, and publishes the cause event (MoveEvent) plus a
 // HexRevealedEvent for any viewer whose vision grew.
@@ -508,8 +533,21 @@ func (e *Encounter) nextSeq() uint64 {
 // resolver is wired, the legacy single-jump behavior is preserved for
 // non-combat encounters.
 //
-// Slice scope: no action economy, no turn-order enforcement, no
-// path-contiguity validation beyond non-empty.
+// #714: when the mover has a hydrated, in-combat character (a seeded turn
+// economy), Move enforces and spends its movement budget. The requested
+// path's cost is checked against MovementRemaining BEFORE running any
+// per-step chain — an over-budget request is rejected outright
+// (ErrInsufficientMovement), with no state mutation, no OA triggering, no
+// partial move. Once the move resolves (traveledPath may be shorter than the
+// request if a chain subscriber like Disengage stops it early), the ACTUAL
+// traveled distance is spent from the budget and a TurnStateChangedEvent
+// pushes the new movement_remaining to the client (Invariant 12). A mover
+// with no hydrated character, or one not currently in combat (no seeded
+// economy — free-roam/pre-combat), is not gated: movement stays free, as
+// before.
+//
+// Remaining slice scope: no turn-order enforcement, no path-contiguity
+// validation beyond non-empty.
 func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	if len(path) == 0 {
 		return errors.New("empty path")
@@ -520,6 +558,17 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	}
 
 	moverStart := p.View.Position
+
+	char := e.heldCharacter(p.EntityID)
+	tracksMovement := char != nil && char.InCombat()
+	if tracksMovement {
+		requestedCost := pathCostFeet(moverStart, path)
+		remaining := char.GetActionEconomy().MovementRemaining
+		if requestedCost > remaining {
+			return fmt.Errorf("%w: path costs %dft, %dft remaining",
+				ErrInsufficientMovement, requestedCost, remaining)
+		}
+	}
 
 	// Determine the actually-traveled path. Without a resolver, the legacy
 	// single-jump path is the entire requested path. With a resolver, the
@@ -534,12 +583,65 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		traveledPath = traveled
 		if len(traveledPath) == 0 {
 			// Movement was prevented at the very first step. Nothing to
-			// publish — position unchanged, no events fire.
+			// publish — position unchanged, no events fire, nothing spent.
 			return nil
 		}
 	}
 
-	return e.applyAndPublishMove(p, playerID, moverStart, traveledPath)
+	// Spend the movement budget BEFORE mutating encounter-side state or
+	// publishing the MoveEvent (#714 review). The affordability gate is the
+	// pre-check above — it runs before ANY side effect and is the only place an
+	// over-budget move is rejected ("rejected outright, no state mutation").
+	// This spend is structurally guaranteed to succeed (actualCost <=
+	// requestedCost, already checked against remaining), so ordering it first
+	// means an unreachable spend failure cannot leave a published MoveEvent
+	// behind it. actualCost may be less than requestedCost when a chain
+	// subscriber truncated the path; a zero-cost move (a degenerate path back
+	// to the same hex) spends nothing and is not sent to the rules layer, which
+	// rejects non-positive distances.
+	//
+	// Full atomicity is not achievable at this seam and is not claimed: the
+	// MovementResolver already applied physical side effects (room position,
+	// OA damage) during iterateMovementSteps, before the traveled distance —
+	// and thus the spend — could be known. The pre-check is the atomic gate;
+	// this is the accounting that follows a move that physically happened.
+	spentMovement := false
+	if tracksMovement {
+		if actualCost := pathCostFeet(moverStart, traveledPath); actualCost > 0 {
+			out, err := char.ExecuteAction(context.Background(), &dnd5eCharacter.ExecuteActionInput{
+				ActionRef: refs.Actions.Move(),
+				Distance:  actualCost,
+			})
+			if err != nil {
+				return fmt.Errorf("spend movement economy: %w", err)
+			}
+			if !out.Success {
+				// Structurally unreachable: actualCost <= requestedCost, and
+				// requestedCost was already checked against remaining above.
+				// Surfaced rather than swallowed so a future divergence between
+				// the pre-check and the spend is loud, not silent.
+				return fmt.Errorf("%w: %s", ErrInsufficientMovement, out.Error)
+			}
+			spentMovement = true
+		}
+	}
+
+	corrID, err := e.applyAndPublishMove(p, playerID, moverStart, traveledPath)
+	if err != nil {
+		return err
+	}
+
+	// Push the post-move economy refresh so the client sees the new
+	// movement_remaining live (Invariant 12), correlated to the MoveEvent that
+	// caused it (Invariant 8). Only when movement was actually spent — a
+	// zero-cost move changes no economy, so there is nothing to refresh.
+	if spentMovement {
+		if err := e.publishTurnStateChanged(p.EntityID, corrID); err != nil {
+			return fmt.Errorf("publish turn-state changed: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // iterateMovementSteps walks the path one hex at a time for the given
@@ -684,9 +786,14 @@ func (e *Encounter) iterateMovementStepsForEntity(
 //
 // Wave 2.11e (#658 Q3): events carry the truncated traveled path, not the
 // requested path. Wire clients see the actual outcome, not the intent.
+//
+// Returns the correlation id derived from the published MoveEvent's sequence
+// (#714) so the caller can tie a follow-on TurnStateChanged economy refresh
+// to the move that caused it (Invariant 8), the same shape
+// publishActionResolved uses for other verbs.
 func (e *Encounter) applyAndPublishMove(
 	p *PlayerData, playerID core.PlayerID, moverStart core.Hex, traveledPath []core.Hex,
-) error {
+) (core.CorrelationID, error) {
 	// 1. Compute the mover's reveal delta BEFORE mutating position/view.
 	//    - moverStart is needed for visibility-transition detection (so viewers
 	//      can determine if the mover was visible to them before the move).
@@ -760,16 +867,18 @@ func (e *Encounter) applyAndPublishMove(
 
 	// 4. Publish — cause event always; effect event only when someone's
 	//    vision changed. The two events get sequential sequence numbers.
+	moveSeq := e.nextSeq()
+	corrID := e.correlationFor(moveSeq)
 	if err := e.broker.Publish(events.NewMoveEvent(
-		e.data.ID, e.nextSeq(), p.EntityID, traveledPath, movePerPlayer,
+		e.data.ID, moveSeq, p.EntityID, moverStart, traveledPath, movePerPlayer,
 	)); err != nil {
-		return fmt.Errorf("publish move: %w", err)
+		return "", fmt.Errorf("publish move: %w", err)
 	}
 	if len(revealPerPlayer) > 0 {
 		if err := e.broker.Publish(events.NewHexRevealedEvent(
 			e.data.ID, e.nextSeq(), revealPerPlayer,
 		)); err != nil {
-			return fmt.Errorf("publish reveal: %w", err)
+			return "", fmt.Errorf("publish reveal: %w", err)
 		}
 	}
 
@@ -782,7 +891,7 @@ func (e *Encounter) applyAndPublishMove(
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), p.EntityID, hex, viewers,
 		)); err != nil {
-			return fmt.Errorf("publish entity appeared: %w", err)
+			return "", fmt.Errorf("publish entity appeared: %w", err)
 		}
 	}
 
@@ -793,10 +902,10 @@ func (e *Encounter) applyAndPublishMove(
 		if err := e.broker.Publish(events.NewEntityDisappearedEvent(
 			e.data.ID, e.nextSeq(), p.EntityID, disappearedPerPlayer,
 		)); err != nil {
-			return fmt.Errorf("publish entity disappeared: %w", err)
+			return "", fmt.Errorf("publish entity disappeared: %w", err)
 		}
 	}
-	return nil
+	return corrID, nil
 }
 
 // OpenDoor applies an open-door action. Marks the door open and publishes

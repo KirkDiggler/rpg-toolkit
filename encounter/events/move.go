@@ -13,9 +13,17 @@ import (
 // cause/effect decision in sdk-direction.md.
 type MoveEvent struct {
 	eventMeta
-	encID     core.EncounterID
-	seq       uint64
-	Mover     core.EntityID
+	encID core.EncounterID
+	seq   uint64
+	Mover core.EntityID
+	// From is the mover's position BEFORE this move (#714). Path is the
+	// traveled destinations — the encounter's own publish paths build it from
+	// completed steps and do not prepend the origin — so a consumer deriving
+	// "from" via Path[0] risks reading the first destination, not the origin.
+	// (The SDK does not validate Path contents supplied by callers, so treat
+	// this as guidance, not an invariant.) Use From for the true starting hex
+	// regardless of what Path contains.
+	From      core.Hex
 	Path      []core.Hex
 	PerPlayer map[core.PlayerID]MovePlayerSlice
 }
@@ -36,6 +44,7 @@ func NewMoveEvent(
 	encID core.EncounterID,
 	seq uint64,
 	mover core.EntityID,
+	from core.Hex,
 	path []core.Hex,
 	perPlayer map[core.PlayerID]MovePlayerSlice,
 ) *MoveEvent {
@@ -43,6 +52,7 @@ func NewMoveEvent(
 		encID:     encID,
 		seq:       seq,
 		Mover:     mover,
+		From:      from,
 		Path:      path,
 		PerPlayer: perPlayer,
 	}
@@ -69,6 +79,7 @@ type moveEventWire struct {
 	EncID     core.EncounterID                  `json:"encounter_id"`
 	Seq       uint64                            `json:"sequence"`
 	Mover     core.EntityID                     `json:"mover"`
+	From      core.Hex                          `json:"from"`
 	Path      []core.Hex                        `json:"path"`
 	PerPlayer map[core.PlayerID]MovePlayerSlice `json:"per_player"`
 }
@@ -81,6 +92,7 @@ func (e *MoveEvent) MarshalJSON() ([]byte, error) {
 		EncID:     e.encID,
 		Seq:       e.seq,
 		Mover:     e.Mover,
+		From:      e.From,
 		Path:      e.Path,
 		PerPlayer: e.PerPlayer,
 	})
@@ -97,6 +109,7 @@ func (e *MoveEvent) UnmarshalJSON(b []byte) error {
 	e.encID = w.EncID
 	e.seq = w.Seq
 	e.Mover = w.Mover
+	e.From = w.From
 	e.Path = w.Path
 	e.PerPlayer = w.PerPlayer
 	return nil

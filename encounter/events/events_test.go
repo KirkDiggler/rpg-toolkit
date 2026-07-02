@@ -106,7 +106,7 @@ func (s *EventsSuite) TestSpineMeta_StampAndAccessors() {
 	corr := core.CorrelationID("corr-enc-1-7")
 
 	samples := []events.EncounterEvent{
-		events.NewMoveEvent("enc-1", 1, "bob", nil, nil),
+		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil),
 		events.NewAttackResolvedEvent("enc-1", 2, "a", "b", true, false, 1, 1, 1, nil),
 		events.NewDamageDealtEvent("enc-1", 3, "a", "b", 1, "slashing", 1, 1, nil),
 		events.NewActionResolvedEvent("enc-1", 4, "a", "dnd5e:action:attack", "b",
@@ -184,7 +184,7 @@ func (s *EventsSuite) TestActionResolvedEvent_JSONRoundTrip() {
 
 // MoveEvent.Audience derives from PerPlayer keys; absent players are not in audience.
 func (s *EventsSuite) TestMoveEvent_AudienceFromPerPlayer() {
-	e := events.NewMoveEvent("enc-1", 7, "bob",
+	e := events.NewMoveEvent("enc-1", 7, "bob", core.Hex{},
 		[]core.Hex{{Q: 0, R: 0, S: 0}},
 		map[core.PlayerID]events.MovePlayerSlice{
 			"alice": {SeenSegments: []core.Hex{{Q: 0, R: 0, S: 0}}},
@@ -197,9 +197,12 @@ func (s *EventsSuite) TestMoveEvent_AudienceFromPerPlayer() {
 	s.ElementsMatch(events.AudienceSet{"alice", "carol"}, e.Audience())
 }
 
-// MoveEvent JSON round-trip preserves all fields, including unexported encID/seq.
+// MoveEvent JSON round-trip preserves all fields, including unexported
+// encID/seq and From (#714 — From is the honest origin hex, distinct from
+// Path[0] which is the first traveled STEP; a real, non-zero From here
+// guards against the two silently collapsing back to the same value).
 func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
-	original := events.NewMoveEvent("enc-1", 42, "bob",
+	original := events.NewMoveEvent("enc-1", 42, "bob", core.Hex{Q: 0, R: 0, S: 0},
 		[]core.Hex{{Q: 1, R: -1, S: 0}, {Q: 2, R: -1, S: -1}},
 		map[core.PlayerID]events.MovePlayerSlice{
 			"alice": {SeenSegments: []core.Hex{{Q: 1, R: -1, S: 0}}},
@@ -215,6 +218,8 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
 	s.Equal(uint64(42), decoded.Sequence())
 	s.Equal(core.EntityID("bob"), decoded.Mover)
+	s.Equal(core.Hex{Q: 0, R: 0, S: 0}, decoded.From)
+	s.NotEqual(decoded.Path[0], decoded.From, "From (origin) must differ from Path[0] (first step) in this fixture")
 	s.Equal(original.Path, decoded.Path)
 	s.Require().Contains(decoded.PerPlayer, core.PlayerID("alice"))
 	s.Equal(original.PerPlayer["alice"].SeenSegments, decoded.PerPlayer["alice"].SeenSegments)
@@ -293,7 +298,7 @@ func (s *EventsSuite) TestEntityDisappearedEvent_JSONRoundTrip() {
 // Type switch returns the concrete type.
 func (s *EventsSuite) TestTypeSwitch_RecoversConcrete() {
 	evts := []events.EncounterEvent{
-		events.NewMoveEvent("enc-1", 1, "bob", nil, nil),
+		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil),
 		events.NewHexRevealedEvent("enc-1", 2, nil),
 		events.NewDoorOpenedEvent("enc-1", 3, "door-1", "bob", nil),
 		events.NewEntityAppearedEvent("enc-1", 4, "bob", core.Hex{}, nil),
