@@ -135,7 +135,7 @@ func (c *Character) ExecuteAction(_ context.Context, input *ExecuteActionInput) 
 	case refs.Actions.UnarmedStrike().ID:
 		return c.executeUnarmedStrike()
 	case refs.Actions.Move().ID:
-		return c.executeMove()
+		return c.executeMove(input.Distance)
 	default:
 		return &ExecuteActionOutput{
 			Success: false,
@@ -537,19 +537,26 @@ func (c *Character) executeUnarmedStrike() (*ExecuteActionOutput, error) {
 	}, nil
 }
 
-// executeMove handles movement (placeholder - always succeeds if movement remaining).
-func (c *Character) executeMove() (*ExecuteActionOutput, error) {
-	if c.actionEconomy.MovementRemaining <= 0 {
+// executeMove spends distance feet from the movement budget (#714). Movement
+// is granted capacity like attacks/strikes (see executeStrike et al.), but the
+// unit is feet rather than a use-count: distance is supplied by the caller
+// (Encounter.Move computes it from the hex path) rather than fixed at 1 per
+// call. Fails without mutating state when distance exceeds
+// MovementRemaining — the caller (Encounter.Move) is expected to have already
+// rejected an over-budget request before running any movement chain, so this
+// is the structural backstop, not the primary gate.
+func (c *Character) executeMove(distance int) (*ExecuteActionOutput, error) {
+	if distance > c.actionEconomy.MovementRemaining {
 		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     "no movement remaining",
+			Success: false,
+			Error: fmt.Sprintf("insufficient movement: %dft requested, %dft remaining",
+				distance, c.actionEconomy.MovementRemaining),
 			Abilities: c.buildAvailableAbilities(),
 			Actions:   c.buildAvailableActions(),
 		}, nil
 	}
 
-	// Movement amount would be specified by the caller in a real implementation.
-	// For now, this just validates that movement is available.
+	c.actionEconomy.MovementRemaining -= distance
 
 	return &ExecuteActionOutput{
 		Success:   true,

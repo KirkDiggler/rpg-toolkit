@@ -611,6 +611,70 @@ func (s *ActionEconomyTestSuite) TestActivateAbility_Dash() {
 	s.Equal(60, char.actionEconomy.MovementRemaining)
 }
 
+// --- #714: ExecuteAction(Move) spends the movement budget ---
+
+// TestExecuteAction_Move_DeductsDistance proves a move consumes exactly its
+// requested distance from MovementRemaining rather than being a no-op
+// (rpg-toolkit#714 — Move verb had no economy accounting).
+func (s *ActionEconomyTestSuite) TestExecuteAction_Move_DeductsDistance() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+	s.Require().NoError(err)
+
+	output, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
+		ActionRef: refs.Actions.Move(),
+		Distance:  5,
+	})
+	s.Require().NoError(err)
+	s.True(output.Success)
+	s.Equal(25, char.actionEconomy.MovementRemaining)
+}
+
+// TestExecuteAction_Move_AccumulatesAcrossCalls proves sequential moves keep
+// spending against the same budget instead of each starting fresh — the exact
+// shape of the playtest bug (1 hex then 7 hexes both landing in full).
+func (s *ActionEconomyTestSuite) TestExecuteAction_Move_AccumulatesAcrossCalls() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+	s.Require().NoError(err)
+
+	// First move: 1 hex = 5ft.
+	out1, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
+		ActionRef: refs.Actions.Move(),
+		Distance:  5,
+	})
+	s.Require().NoError(err)
+	s.True(out1.Success)
+	s.Equal(25, char.actionEconomy.MovementRemaining)
+
+	// Second move: 7 hexes = 35ft — exceeds the 25ft left. Must be rejected,
+	// not silently accepted (the bug let 40ft happen on a 30ft speed).
+	out2, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
+		ActionRef: refs.Actions.Move(),
+		Distance:  35,
+	})
+	s.Require().NoError(err)
+	s.False(out2.Success, "over-budget move must be rejected")
+	s.NotEmpty(out2.Error)
+	s.Equal(25, char.actionEconomy.MovementRemaining, "rejected move must not mutate the budget")
+}
+
+// TestExecuteAction_Move_ExactBudget proves a move costing exactly the
+// remaining movement succeeds and zeroes it out (boundary, not off-by-one).
+func (s *ActionEconomyTestSuite) TestExecuteAction_Move_ExactBudget() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+	s.Require().NoError(err)
+
+	output, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
+		ActionRef: refs.Actions.Move(),
+		Distance:  30,
+	})
+	s.Require().NoError(err)
+	s.True(output.Success)
+	s.Equal(0, char.actionEconomy.MovementRemaining)
+}
+
 func (s *ActionEconomyTestSuite) TestActivateAbility_NoActionRemaining() {
 	char := createTestFighterCharacter(s.T(), s.bus)
 

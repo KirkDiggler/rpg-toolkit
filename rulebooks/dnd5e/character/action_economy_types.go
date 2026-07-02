@@ -130,6 +130,7 @@ type ActivateAbilityOutput struct {
 type ExecuteActionInput struct {
 	ActionRef *core.Ref // which action to execute
 	TargetID  string    // target entity ID (for strikes)
+	Distance  int       // feet of movement to spend (for move; #714)
 }
 
 // ExecuteActionOutput contains the result of executing an action.
