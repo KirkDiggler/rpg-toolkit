@@ -536,6 +536,44 @@ func (s *MovementResolverSuite) TestNPCMove_ResolverPublishesTrigger_BufferDrain
 // combat.MoveEntity's triggerOpportunityAttack path) and verify the SDK
 // dispatches HP + DamageDealtEvent.
 
+// oaHitAttackRoll, oaHitAttackBonus, oaHitTargetAC are the fixed roll
+// detail publishOAHit uses for every simulated OA hit (18 + 4 = 22 beats
+// AC 15 across every fixture in this file). Only attacker/target/amount
+// vary between call sites.
+const (
+	oaHitAttackRoll  = 18
+	oaHitAttackBonus = 4
+	oaHitTargetAC    = 15
+)
+
+// publishOAHit publishes the pair of bus events a real resolver publishes
+// for one OA hit — combat.ResolveAttackHit's PostAttackRollEvent (always)
+// followed by combat.ApplyAttackOutcome's DamageReceivedEvent (hit only).
+// Test stubs simulate both, in that order, matching production's
+// synchronous ResolveAttack call. See #715: before the fix, tests only
+// simulated the damage half, which masked the OA path never publishing
+// AttackResolvedEvent at all.
+func publishOAHit(bus dnd5events.EventBus, attackerID, targetID string, amount int) {
+	rolls := dnd5eEvents.PostAttackRollChain.On(bus)
+	_, _ = rolls.PublishWithChain(context.Background(), &dnd5eEvents.PostAttackRollEvent{
+		AttackerID:  attackerID,
+		TargetID:    targetID,
+		OriginalAC:  oaHitTargetAC,
+		AttackRoll:  oaHitAttackRoll,
+		AttackBonus: oaHitAttackBonus,
+		TotalAttack: oaHitAttackRoll + oaHitAttackBonus,
+		WouldHit:    true,
+	}, dnd5events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](nil))
+
+	dmg := dnd5eEvents.DamageReceivedTopic.On(bus)
+	_ = dmg.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
+		TargetID:   targetID,
+		SourceID:   attackerID,
+		Amount:     amount,
+		DamageType: damage.Slashing,
+	})
+}
+
 // TestMove_PlayerMoves_OADamagesPlayer verifies the player-mover direction:
 // alice moves past goblin (who has an OA condition); resolver publishes a
 // DamageReceivedEvent targeting alice during step 0; encounter SDK applies
@@ -549,18 +587,12 @@ func (s *MovementResolverSuite) TestMove_PlayerMoves_OADamagesPlayer() {
 	aliceBefore.HP = 20
 	aliceBefore.MaxHP = 20
 
-	// Stub publishes a DamageReceivedEvent on the bus during step 0 — the
+	// Stub publishes the roll + damage pair on the bus during step 0 — the
 	// step where alice leaves the goblin's reach (the rulebook fires
 	// triggerOpportunityAttack → ResolveAttack here).
 	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
 		if stepIdx == 0 {
-			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
-			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
-				TargetID:   string(aliceEntityID),
-				SourceID:   string(gobEntityID),
-				Amount:     6,
-				DamageType: damage.Slashing,
-			})
+			publishOAHit(bus, string(gobEntityID), string(aliceEntityID), 6)
 		}
 	}
 
@@ -620,17 +652,12 @@ func (s *MovementResolverSuite) TestNPCMove_NPCMoves_OADamagesMonster() {
 	aliceBefore.HP = 20
 	aliceBefore.MaxHP = 20
 
-	// Stub publishes DamageReceivedEvent on step 0: alice (player) hits the
-	// goblin (NPC) on its way out. Source = alice (player), Target = goblin.
+	// Stub publishes the roll + damage pair on step 0: alice (player) hits
+	// the goblin (NPC) on its way out. Source = alice (player), Target =
+	// goblin.
 	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
 		if stepIdx == 0 {
-			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
-			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
-				TargetID:   string(gobEntityID),
-				SourceID:   string(aliceEntityID),
-				Amount:     5,
-				DamageType: damage.Slashing,
-			})
+			publishOAHit(bus, string(aliceEntityID), string(gobEntityID), 5)
 		}
 	}
 
@@ -684,13 +711,7 @@ func (s *MovementResolverSuite) TestMove_OAKillsMonster_FiresKillChain() {
 	// Stub damage exceeds goblin's HP (7) so the kill chain triggers.
 	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
 		if stepIdx == 0 {
-			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
-			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
-				TargetID:   string(gobEntityID),
-				SourceID:   string(aliceEntityID),
-				Amount:     10,
-				DamageType: damage.Slashing,
-			})
+			publishOAHit(bus, string(aliceEntityID), string(gobEntityID), 10)
 		}
 	}
 
@@ -746,4 +767,164 @@ drainLoop:
 	s.Equal(encountercore.EntityID(aliceEntityID), diedEvt.KillerID)
 	s.True(sawRemoved, "EntityRemovedEvent should fire after EntityDied")
 	s.True(sawEnded, "EncounterEndedEvent should fire when last monster dies")
+}
+
+// --- Issue #715 — Move-path OA emits the same shape as the normal attack
+// path: AttackResolvedEvent always (hit or miss), DamageDealtEvent only on
+// hit.
+//
+// Before this fix, iterateMovementStepsForEntity only observed
+// DamageReceivedTopic: a miss (which combat.ApplyAttackOutcome never
+// publishes damage for) produced no encounter event at all, and a hit
+// produced a bare DamageDealtEvent with no AttackResolvedEvent alongside
+// it — a different shape than TakeAction's publishAttackOutcome, which
+// always emits AttackResolvedEvent and gates DamageDealtEvent on Hit.
+//
+// combat.ResolveAttackHit unconditionally publishes one PostAttackRollEvent
+// per attack (hit or miss) via PostAttackRollChain; these tests simulate
+// that real behavior directly through the stub resolver.
+
+// TestMove_OAMisses_EmitsAttackResolvedNoDamage verifies that an OA miss
+// triggered during Move publishes AttackResolvedEvent{Hit: false} with the
+// roll detail, and does NOT publish DamageDealtEvent. Mirrors the normal
+// attack path's miss shape (attackResolved only, HP unchanged).
+func (s *MovementResolverSuite) TestMove_OAMisses_EmitsAttackResolvedNoDamage() {
+	s.addGoblinForNPCMovementTests()
+
+	aliceBefore := s.enc.ToData().Players[alicePlayerID]
+	s.Require().NotNil(aliceBefore)
+	aliceBefore.HP = 20
+	aliceBefore.MaxHP = 20
+
+	// Stub publishes ONLY a PostAttackRollEvent with WouldHit=false — no
+	// DamageReceivedEvent, matching combat.ApplyAttackOutcome's `if !hit {
+	// return }` early-out (attack_phases.go) which never reaches the
+	// damage-publish step on a miss.
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			rolls := dnd5eEvents.PostAttackRollChain.On(bus)
+			_, _ = rolls.PublishWithChain(context.Background(), &dnd5eEvents.PostAttackRollEvent{
+				AttackerID:  string(gobEntityID),
+				TargetID:    string(aliceEntityID),
+				OriginalAC:  15,
+				AttackRoll:  8,
+				AttackBonus: 4,
+				TotalAttack: 12,
+				WouldHit:    false,
+			}, dnd5events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](nil))
+		}
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	err = s.enc.Move(alicePlayerID, path)
+	s.Require().NoError(err)
+
+	// HP unchanged.
+	aliceAfter := s.enc.ToData().Players[alicePlayerID]
+	s.Equal(20, aliceAfter.HP, "a miss must not change HP")
+
+	var attackEvt *events.AttackResolvedEvent
+	var dmgEvt *events.DamageDealtEvent
+	deadline := time.After(2 * time.Second)
+drainLoopMiss:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoopMiss
+			}
+			switch e := evt.(type) {
+			case *events.AttackResolvedEvent:
+				attackEvt = e
+			case *events.DamageDealtEvent:
+				dmgEvt = e
+			}
+		case <-deadline:
+			break drainLoopMiss
+		}
+	}
+
+	s.Require().NotNil(attackEvt, "AttackResolvedEvent must be published on an OA miss")
+	s.False(attackEvt.Hit, "attack-resolved must report the miss")
+	s.Equal(encountercore.EntityID(gobEntityID), attackEvt.AttackerID)
+	s.Equal(encountercore.EntityID(aliceEntityID), attackEvt.TargetID)
+	s.Equal(8, attackEvt.AttackRoll)
+	s.Equal(4, attackEvt.AttackBonus)
+	s.Equal(15, attackEvt.TargetAC)
+	s.Nil(dmgEvt, "a miss must not publish DamageDealtEvent")
+}
+
+// TestMove_OAHits_EmitsAttackResolvedAndDamage verifies that an OA hit
+// triggered during Move publishes BOTH AttackResolvedEvent{Hit: true} and
+// DamageDealtEvent, matching the normal attack path's hit shape.
+func (s *MovementResolverSuite) TestMove_OAHits_EmitsAttackResolvedAndDamage() {
+	s.addGoblinForNPCMovementTests()
+
+	aliceBefore := s.enc.ToData().Players[alicePlayerID]
+	s.Require().NotNil(aliceBefore)
+	aliceBefore.HP = 20
+	aliceBefore.MaxHP = 20
+
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			publishOAHit(bus, string(gobEntityID), string(aliceEntityID), 6)
+		}
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	err = s.enc.Move(alicePlayerID, path)
+	s.Require().NoError(err)
+
+	aliceAfter := s.enc.ToData().Players[alicePlayerID]
+	s.Equal(14, aliceAfter.HP, "alice HP should drop by OA damage amount (6)")
+
+	var attackEvt *events.AttackResolvedEvent
+	var dmgEvt *events.DamageDealtEvent
+	deadline := time.After(2 * time.Second)
+drainLoopHit:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoopHit
+			}
+			switch e := evt.(type) {
+			case *events.AttackResolvedEvent:
+				attackEvt = e
+			case *events.DamageDealtEvent:
+				dmgEvt = e
+			}
+			if attackEvt != nil && dmgEvt != nil {
+				break drainLoopHit
+			}
+		case <-deadline:
+			break drainLoopHit
+		}
+	}
+
+	s.Require().NotNil(attackEvt, "AttackResolvedEvent must be published on an OA hit")
+	s.True(attackEvt.Hit)
+	s.Equal(18, attackEvt.AttackRoll)
+	s.Equal(4, attackEvt.AttackBonus)
+	s.Equal(15, attackEvt.TargetAC)
+
+	s.Require().NotNil(dmgEvt, "DamageDealtEvent must be published on an OA hit")
+	s.Equal(encountercore.EntityID(aliceEntityID), dmgEvt.TargetID)
+	s.Equal(encountercore.EntityID(gobEntityID), dmgEvt.SourceID)
+	s.Equal(6, dmgEvt.Amount)
+	s.Equal(14, dmgEvt.HPAfter)
 }

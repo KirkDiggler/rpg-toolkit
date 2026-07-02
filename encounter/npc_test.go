@@ -194,21 +194,17 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
 
-	// Stub MovementResolver that publishes a DamageReceivedEvent targeting
-	// the goblin (mover) during step 0 — simulating an OA the player has
-	// already taken against the retreating monster. combat.ResolveAttack
-	// would do this in production.
+	// Stub MovementResolver that publishes the PostAttackRollEvent +
+	// DamageReceivedEvent pair targeting the goblin (mover) during step 0 —
+	// simulating an OA the player has already taken against the retreating
+	// monster. combat.ResolveAttack would do this in production (#715:
+	// ResolveAttackHit always publishes the roll event before
+	// ApplyAttackOutcome conditionally publishes the damage event).
 	const oaDamage = 5
 	resolver := &stubMovementResolver{
 		publishOnStep: func(bus dnd5events.EventBus, stepIdx int) {
 			if stepIdx == 0 {
-				topic := dnd5eEvents.DamageReceivedTopic.On(bus)
-				_ = topic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-					TargetID:   string(gobEntityID),
-					SourceID:   string(aliceEntityID),
-					Amount:     oaDamage,
-					DamageType: damage.Slashing,
-				})
+				publishOAHit(bus, string(aliceEntityID), string(gobEntityID), oaDamage)
 			}
 		},
 	}
