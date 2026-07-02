@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-06-01
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code
+updated: 2026-07-02
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02
 ---
 
 # rpg-toolkit: Where We Are
@@ -10,6 +10,22 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**#714 — encounter Move verb enforces + spends the movement budget
+(2026-07-02, PR #720).** `Encounter.Move` had no economy accounting at all (its
+own doc said "Slice scope: no action economy") — `movement_remaining` never
+decremented and a second move landed in full after the first was already spent
+(live playtest: 40ft on a 30ft speed). Move now, for an in-combat hydrated
+mover, pre-checks the requested path's cost (hex-distance × 5ft) against
+`MovementRemaining` before any per-step chain runs (over budget →
+`ErrInsufficientMovement`, no mutation), spends the *actual* traveled distance
+via `character.ExecuteAction(Move, Distance)`, and pushes a `TurnStateChanged`
+with the new budget (Inv 12). `character.executeMove` gained a `Distance` arg
+and rejects non-positive distances. Also added `MoveEvent.From` (true origin —
+`Path` is destinations-only). Spans two modules (`rulebooks/dnd5e` char-pkg +
+`encounter`). Deferred: player wire moves carry `actualPath:[from,to]` only vs
+NPC hex-by-hex — budget math is granularity-independent, so this is an rpg-api
+follow-up, not a toolkit gap.
 
 **#704 (TakeAction wave) — encounter pushes TurnStateChangedEvent on
 turn-state/economy mutation (2026-06-01, ADR-0033).** Closes the push-refresh
