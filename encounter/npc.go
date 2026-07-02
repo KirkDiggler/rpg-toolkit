@@ -799,23 +799,32 @@ func (e *Encounter) publishMoveAttackResolved(
 }
 
 // applyMoveDamage translates one dnd5e DamageReceivedEvent captured during a
-// movement step into an encounter DamageDealtEvent, stamped with corrID so
-// it shares its causing OA's correlation id with the AttackResolvedEvent
-// publishMoveAttackResolved already published (#710, Invariant 8). Mirrors
-// applyCapturedDamage but resolves the source position dynamically from the
-// event's SourceID: Move-path OAs fire from EITHER direction (player
-// attacker on a fleeing NPC, or NPC attacker on a fleeing player), so the
-// per-viewer LoS projection key cannot be hard-coded to a single source
-// type.
+// movement step into an encounter DamageDealtEvent, stamped with corrID
+// (#710, Invariant 8). Mirrors applyCapturedDamage but resolves the source
+// position dynamically from the event's SourceID: Move-path OAs fire from
+// EITHER direction (player attacker on a fleeing NPC, or NPC attacker on a
+// fleeing player), so the per-viewer LoS projection key cannot be
+// hard-coded to a single source type.
+//
+// corrID is the causing OA's correlation id — shared with the
+// AttackResolvedEvent publishMoveAttackResolved already published for a
+// matched hit roll — or the zero value ("") for unpaired damage
+// (applyMoveAttackOutcomes' unpaired-damage fallback, which has no roll and
+// therefore no OA identity to derive a correlation id from). Stamping only
+// takes effect when corrID is non-empty; publishCorrelated always calls
+// Stamp, but an empty corrID means "not part of a correlated action group"
+// (the same convention used elsewhere, e.g. TurnStateChangedEvent on a
+// turn-start refresh).
 //
 // Wave 2.11e (#675): MovementResolver path damage application.
 // combat.MoveEntity → triggerOpportunityAttack → combat.ResolveAttack
 // publishes DamageReceivedEvent on the bus mid-iterate; the encounter SDK
 // captures the events around ResolveStep (iterateMovementStepsForEntity)
 // and dispatches HP delta + encounter-side DamageDealtEvent here, plus the
-// kill/death chain on the >0 → 0 transition. #715: called only for hits —
-// applyMoveAttackOutcomes matches each hit roll to its damage entry and
-// publishes the roll's AttackResolvedEvent before calling in here.
+// kill/death chain on the >0 → 0 transition. #715: applyMoveAttackOutcomes
+// matches each hit roll to its damage entry and publishes the roll's
+// AttackResolvedEvent before calling in here; unpaired damage (no matching
+// roll) calls in directly with corrID="".
 //
 // Source resolution: tries player → monster. If neither matches, HP is
 // still applied (damage application is more important than the wire
