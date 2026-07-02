@@ -16,11 +16,13 @@ type MoveEvent struct {
 	encID core.EncounterID
 	seq   uint64
 	Mover core.EntityID
-	// From is the mover's position BEFORE this move (#714). Path never
-	// includes the origin — it is the traveled destinations only, one entry
-	// per completed step — so a consumer deriving "from" via Path[0] gets the
-	// first STEP, not the origin. This field is the honest source: it always
-	// carries the true starting hex, even when Path has a single entry.
+	// From is the mover's position BEFORE this move (#714). Path is the
+	// traveled destinations — the encounter's own publish paths build it from
+	// completed steps and do not prepend the origin — so a consumer deriving
+	// "from" via Path[0] risks reading the first destination, not the origin.
+	// (The SDK does not validate Path contents supplied by callers, so treat
+	// this as guidance, not an invariant.) Use From for the true starting hex
+	// regardless of what Path contains.
 	From      core.Hex
 	Path      []core.Hex
 	PerPlayer map[core.PlayerID]MovePlayerSlice
