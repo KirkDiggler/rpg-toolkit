@@ -2,15 +2,17 @@ package encounter
 
 // Beat-1 of the TakeAction wave (rpg-project #54 / #697 chunk 2).
 //
-// General (non-attack) action dispatch. The attack ref keeps its dedicated
-// two-phase resolver path in TakeActionPhased (it carries reaction prompts and
-// damage resolution); every OTHER action ref flows through here, delegating to
-// the held character's own rules engine. There is no per-ref logic in the
-// encounter beyond "is this an ability or a granted-capacity action" — the
-// character package owns the catalog (ActivateAbility routes combat abilities +
-// features; ExecuteAction routes the granted-capacity strikes / move). This is
-// the "default to one system" unification: the encounter deletes its hardcoded
-// attack gate and consults the menu/economy engine that already exists.
+// General (non-attack) action dispatch. The attack ref AND the granted-capacity
+// strike refs keep their dedicated two-phase resolver path in TakeActionPhased
+// (they carry attack rolls, damage resolution, and reaction prompts — #708);
+// every OTHER action ref flows through here, delegating to the held
+// character's own rules engine. There is no per-ref logic in the encounter
+// beyond "is this an ability or a granted-capacity action" — the character
+// package owns the catalog (ActivateAbility routes combat abilities +
+// features; ExecuteAction routes the remaining granted-capacity actions, e.g.
+// move). This is the "default to one system" unification: the encounter
+// deletes its hardcoded attack gate and consults the menu/economy engine that
+// already exists.
 //
 // The action runs on the held *character.Character (the LoadFromData-cascade
 // instance, #689) — never a re-load. It captures any condition the action
@@ -100,8 +102,11 @@ func (e *Encounter) takeCharacterAction(
 
 // dispatchCharacterAction routes the ref to the character engine: an ability
 // (combat ability or feature) goes through ActivateAbility; a granted-capacity
-// action (strike, move) goes through ExecuteAction. Membership is decided by
-// the character's own menu, so no ref is enumerated here.
+// action goes through ExecuteAction. Membership is decided by the character's
+// own menu, so no ref is enumerated here. Note the granted STRIKES never reach
+// this path — TakeActionPhased routes them down the attack-resolver path
+// (spendStrikeEconomy owns their ExecuteAction spend) so they swing (#708);
+// today only move (deferred) and future non-attack granted actions land here.
 func (e *Encounter) dispatchCharacterAction(
 	ctx context.Context, char *dnd5eCharacter.Character, ref ActionRef, tRef *toolkitcore.Ref,
 ) error {
