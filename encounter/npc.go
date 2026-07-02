@@ -340,7 +340,7 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 		return nil
 	}
 	if err := e.broker.Publish(events.NewMoveEvent(
-		e.data.ID, e.nextSeq(), mon.ID, traveledPath, movePerPlayer,
+		e.data.ID, e.nextSeq(), mon.ID, moverStart, traveledPath, movePerPlayer,
 	)); err != nil {
 		return fmt.Errorf("publish npc move: %w", err)
 	}

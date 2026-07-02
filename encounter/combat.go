@@ -58,6 +58,14 @@ var (
 	// player and monster→monster are out of scope until a wave adds the
 	// corresponding verb. Maps to gRPC Unimplemented.
 	ErrUnsupportedAttackDirection = errors.New("unsupported attack direction")
+	// ErrInsufficientMovement is returned by Move when the requested path
+	// costs more feet than the mover's remaining movement budget for the
+	// turn (rpg-toolkit#714). The move is rejected outright — no partial
+	// move, no state mutation, no chain execution — rather than silently
+	// accepted. A hydrated character not currently in combat (economy
+	// unseeded) is not gated; this only fires once a turn economy exists.
+	// Maps to gRPC FailedPrecondition.
+	ErrInsufficientMovement = errors.New("insufficient movement remaining")
 )
 
 // damageTypeUntyped is the fallback damage type emitted when an attacker's

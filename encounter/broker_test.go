@@ -38,7 +38,7 @@ func (s *BrokerSuite) TestPublish_RoutesByAudience() {
 	bobSub, err := s.broker.Subscribe("enc:1", "bob")
 	s.Require().NoError(err)
 
-	move := events.NewMoveEvent("enc:1", 1, "monster-1",
+	move := events.NewMoveEvent("enc:1", 1, "monster-1", core.Hex{},
 		[]core.Hex{{Q: 0, R: 0, S: 0}},
 		map[core.PlayerID]events.MovePlayerSlice{
 			"alice": {SeenSegments: []core.Hex{{Q: 0, R: 0, S: 0}}},
@@ -56,7 +56,7 @@ func (s *BrokerSuite) TestPublish_IsolatesEncounters() {
 	sub1, _ := s.broker.Subscribe("enc:1", "alice")
 	sub2, _ := s.broker.Subscribe("enc:2", "alice")
 
-	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x",
+	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x", core.Hex{},
 		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
 
 	s.assertReceivesType(sub1, "*events.MoveEvent")
@@ -68,7 +68,7 @@ func (s *BrokerSuite) TestSubscribe_MultiSubsForSamePlayer() {
 	a1, _ := s.broker.Subscribe("enc:1", "alice")
 	a2, _ := s.broker.Subscribe("enc:1", "alice")
 
-	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x",
+	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x", core.Hex{},
 		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
 
 	s.assertReceivesType(a1, "*events.MoveEvent")
@@ -81,7 +81,7 @@ func (s *BrokerSuite) TestClose_RemovesOnlyClosedSub() {
 	a2, _ := s.broker.Subscribe("enc:1", "alice")
 	s.Require().NoError(a1.Close())
 
-	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x",
+	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x", core.Hex{},
 		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
 
 	// a2 still receives — the meaningful assertion.
