@@ -414,6 +414,142 @@ func (s *TurnStateSuite) TestGoalBehavior_MonkTakesActionThenBonusAction() {
 	s.Equal(0, afterBonus.Economy.BonusActionsRemaining, "the bonus unarmed strike consumed the bonus action")
 }
 
+// recordingResolver wraps alwaysHitResolver and records every AttackInput it
+// receives, so tests can assert WHICH refs reached the resolver (a granted
+// strike must swing through the resolver, not just book economy — #708).
+type recordingResolver struct {
+	alwaysHitResolver
+	inputs []encounter.AttackInput
+}
+
+func (r *recordingResolver) ResolveAttack(input encounter.AttackInput) (*encounter.AttackOutcome, error) {
+	r.inputs = append(r.inputs, input)
+	return r.alwaysHitResolver.ResolveAttack(input)
+}
+
+// TestTakeAction_GrantedStrikeResolvesAttack is the #708 regression proof: a
+// granted strike (the Monk's Martial Arts bonus unarmed strike) taken through
+// TakeAction is a REAL attack — it reaches the combat resolver with the
+// strike's own ref + target, deals damage (target HP drops), and publishes the
+// full attack event group (ActionResolved + AttackResolved + DamageDealt on
+// one correlation id) — in addition to consuming the granted capacity and the
+// bonus action. Before the fix the strike consumed economy and emitted only
+// ActionResolved: no attack roll, no damage (economy-only no-op).
+func (s *TurnStateSuite) TestTakeAction_GrantedStrikeResolvesAttack() {
+	resolver := &recordingResolver{alwaysHitResolver: alwaysHitResolver{damage: 3, damageType: "bludgeoning"}}
+	view := perception.NewView(monkPlayerID, core.Hex{}, 10)
+	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10))
+	data := encounter.NewData("enc-ts")
+	data.Players[monkPlayerID] = &encounter.PlayerData{
+		ID:         monkPlayerID,
+		EntityID:   monkEntityID,
+		View:       view,
+		HP:         9,
+		MaxHP:      9,
+		AC:         15,
+		DamageDice: "1d4",
+		DamageType: "bludgeoning",
+		DataJSON:   s.monkCharJSON(),
+	}
+	data.Monsters["goblin-1"] = &encounter.MonsterData{
+		ID:       "goblin-1",
+		Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP:       7,
+		MaxHP:    7,
+		AC:       12,
+	}
+	enc, err := encounter.LoadFromData(s.ctx, data, s.broker, encounter.WithCombatResolver(resolver))
+	s.Require().NoError(err)
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != monkEntityID {
+		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	// 1) Attack grants the Monk's Martial Arts bonus strike (and damages 7→4).
+	s.Require().NoError(enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	))
+	s.Require().Equal(4, enc.ToData().Monsters["goblin-1"].HP, "the Attack itself dealt damage")
+
+	sub, err := s.broker.Subscribe("enc-ts", monkPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	// 2) The granted bonus unarmed strike — this must SWING, not just book economy.
+	strikeRef := refs.Actions.UnarmedStrike()
+	s.Require().NoError(enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: strikeRef.Type, ID: strikeRef.ID},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	))
+
+	// The strike reached the resolver with its own ref + target (#708).
+	s.Require().Len(resolver.inputs, 2, "attack AND bonus strike must both reach the resolver")
+	strikeInput := resolver.inputs[1]
+	s.Equal(strikeRef.ID, strikeInput.ActionRef.ID, "the strike's own ref reaches the resolver")
+	s.Equal(core.EntityID("goblin-1"), strikeInput.TargetID, "the request's target reaches the resolver")
+
+	// The strike dealt damage: goblin HP dropped again (4 → 1).
+	s.Equal(1, enc.ToData().Monsters["goblin-1"].HP, "the granted strike must deal damage")
+
+	// Economy: the granted capacity AND the bonus action are spent.
+	after := enc.ActorTurnState(monkEntityID)
+	s.Equal(0, after.Economy.BonusActionsRemaining, "the bonus strike consumed the bonus action")
+
+	// The full attack event group fired for the strike, on ONE correlation id,
+	// with the resolved-action event carrying the strike's ref + real spend.
+	var (
+		action *events.ActionResolvedEvent
+		attack *events.AttackResolvedEvent
+		damage *events.DamageDealtEvent
+	)
+	for _, e := range collectEventsTyped(sub, 500*time.Millisecond) {
+		switch ev := e.(type) {
+		case *events.ActionResolvedEvent:
+			action = ev
+		case *events.AttackResolvedEvent:
+			attack = ev
+		case *events.DamageDealtEvent:
+			damage = ev
+		}
+	}
+	s.Require().NotNil(action, "the strike emits ActionResolved (Inv 9)")
+	s.Equal(strikeRef.String(), action.ActionRef, "ActionResolved carries the strike's own ref")
+	s.Equal(1, action.EconomyConsumed.BonusActions, "the strike's real economy spend is reported")
+	s.Equal(1, action.EconomyConsumed.GrantedConsumed["martial_arts_bonus"],
+		"the granted capacity spend is reported")
+	s.Require().NotNil(attack, "the strike emits AttackResolved — it is a real attack")
+	s.Require().NotNil(damage, "the strike emits DamageDealt on hit")
+	s.Equal(action.CorrelationID(), attack.CorrelationID(), "one correlation id for the group")
+	s.Equal(action.CorrelationID(), damage.CorrelationID(), "one correlation id for the group")
+}
+
+// TestTakeAction_GrantedStrikeRejectedWithoutGrant proves the economy gate on
+// the strike path: a bonus unarmed strike with NO granted capacity (no Attack
+// taken this turn) is rejected with ErrActionUnaffordable and deals no damage —
+// the resolver never runs.
+func (s *TurnStateSuite) TestTakeAction_GrantedStrikeRejectedWithoutGrant() {
+	enc := s.combatMonkEncounter()
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != monkEntityID {
+		_, _, err := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+
+	hpBefore := enc.ToData().Monsters["goblin-1"].HP
+	strikeRef := refs.Actions.UnarmedStrike()
+	err := enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: strikeRef.Type, ID: strikeRef.ID},
+		encounter.ActionTarget{EntityID: "goblin-1"},
+	)
+	s.ErrorIs(err, encounter.ErrActionUnaffordable,
+		"a strike without granted capacity must be rejected by the economy gate")
+	s.Equal(hpBefore, enc.ToData().Monsters["goblin-1"].HP,
+		"a rejected strike must not resolve damage")
+}
+
 // TestTakeAction_AttackPushesTurnStateChanged proves the ATTACK path also pushes
 // a TurnStateChangedEvent (Inv 12) with the post-attack economy, correlated to
 // the attack (Inv 8) — the attack verb is a citizen of the same push-refresh as

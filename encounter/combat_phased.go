@@ -63,13 +63,16 @@ func (e *Encounter) TakeActionPhased(
 		return nil, fmt.Errorf("%w: active=%q got=%q", ErrNotYourTurn, active, player.EntityID)
 	}
 
-	// General dispatch (Beat-1): the attack ref keeps the two-phase resolver
-	// path below (it carries reaction-prompt handling); every other ref
+	// General dispatch (Beat-1): the attack ref AND the granted-capacity
+	// strike refs resolve as attacks through the two-phase resolver path below
+	// (attack roll, damage, reaction-prompt handling) — a granted strike is a
+	// real swing, not an economy bookkeeping entry (#708). Every other ref
 	// delegates to the held character's own rules engine (ActivateAbility /
 	// ExecuteAction). This replaces the former `ref.ID != "attack"` hard gate —
 	// "default to one system": the character package's dispatch is the catalog,
 	// not a parallel registry built here.
-	if ref.ID != actionIDAttack {
+	isStrike := isGrantedStrikeRef(ref)
+	if ref.ID != actionIDAttack && !isStrike {
 		return e.takeCharacterAction(context.Background(), player, ref, target)
 	}
 
@@ -92,9 +95,19 @@ func (e *Encounter) TakeActionPhased(
 	// action left is rejected here (ErrActionUnaffordable) and the resolver never
 	// runs — no damage from an unaffordable attack (#697 Beat-1: economy enforced
 	// server-side). A flat stat-snapshot seat (no character) returns the honest
-	// one-action cost and is not gated. consumed flows onto the resolved-action
-	// event so it reports the true cost.
-	consumed, err := e.spendAttackEconomy(player)
+	// one-action cost and is not gated (attack ref only — a granted strike has
+	// no snapshot equivalent). consumed flows onto the resolved-action event so
+	// it reports the true cost.
+	var consumed events.EconomyConsumed
+	var err error
+	if isStrike {
+		// A granted strike spends its capacity (plus any slot cost — the Monk
+		// bonus strike also spends the bonus action) via the character's own
+		// engine, then swings through the same resolver path below (#708).
+		consumed, err = e.spendStrikeEconomy(player, ref, target)
+	} else {
+		consumed, err = e.spendAttackEconomy(player)
+	}
 	if err != nil {
 		return nil, err
 	}

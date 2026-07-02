@@ -147,6 +147,67 @@ func (e *Encounter) spendAttackEconomy(player *PlayerData) (events.EconomyConsum
 	return economyConsumedDiff(pre, char.GetActionEconomy()), nil
 }
 
+// isGrantedStrikeRef reports whether the ref is one of the granted-capacity
+// strike actions (Strike / Off-Hand Strike / Flurry Strike / the Monk's
+// Martial Arts bonus Unarmed Strike). A granted strike is a REAL attack —
+// it resolves through the same combat-resolver path as the attack ref
+// (attack roll, damage, reaction prompts), not just an economy deduction
+// (#708: before this, granted strikes consumed capacity but never swung).
+func isGrantedStrikeRef(ref ActionRef) bool {
+	switch ref.ID {
+	case refs.Actions.Strike().ID,
+		refs.Actions.OffHandStrike().ID,
+		refs.Actions.FlurryStrike().ID,
+		refs.Actions.UnarmedStrike().ID:
+		return true
+	default:
+		return false
+	}
+}
+
+// spendStrikeEconomy validates and deducts a granted strike off the held
+// character's two-level economy, returning what it consumed. The strike-path
+// mirror of spendAttackEconomy: it runs BEFORE the combat resolver so the
+// economy gates the swing — a strike with no granted capacity (or, for the
+// Monk bonus strike, no bonus action) is rejected with ErrActionUnaffordable
+// and the resolver never runs.
+//
+// The spend goes through the character's own engine (ExecuteAction), which
+// owns the per-strike rules: which capacity key it draws from, any slot cost
+// (the Monk bonus strike also spends the bonus action), and post-strike
+// grants (a main-hand Strike re-checks Martial Arts / two-weapon grants).
+// The request's target is passed through on ExecuteActionInput.TargetID.
+//
+// Unlike the attack ref, a granted strike only exists on a hydrated
+// character's economy — a flat stat-snapshot seat has no granted capacity to
+// spend, so ErrNonCombatant is returned rather than a permissive fallback.
+func (e *Encounter) spendStrikeEconomy(
+	player *PlayerData, ref ActionRef, target ActionTarget,
+) (events.EconomyConsumed, error) {
+	char := e.heldCharacter(player.EntityID)
+	if char == nil {
+		return events.EconomyConsumed{}, fmt.Errorf(
+			"%w: player %q has no hydrated character for strike %q",
+			ErrNonCombatant, player.ID, ref.ID)
+	}
+
+	pre := snapshotEconomy(char.GetActionEconomy())
+
+	tRef := toolkitRef(ref)
+	out, err := char.ExecuteAction(context.Background(), &dnd5eCharacter.ExecuteActionInput{
+		ActionRef: &tRef,
+		TargetID:  string(target.EntityID),
+	})
+	if err != nil {
+		return events.EconomyConsumed{}, fmt.Errorf("execute strike %q: %w", ref.ID, err)
+	}
+	if !out.Success {
+		return events.EconomyConsumed{}, fmt.Errorf("%w: %q: %s", ErrActionUnaffordable, ref.ID, out.Error)
+	}
+
+	return economyConsumedDiff(pre, char.GetActionEconomy()), nil
+}
+
 // isPlayerCombatant reports whether a player seat carries the minimum
 // combat snapshot required for TakeAction. PlayerInput documents that a
 // zero combat snapshot opts a seat out of combat verbs; this helper is
