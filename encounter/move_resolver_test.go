@@ -928,3 +928,69 @@ drainLoopHit:
 	s.Equal(6, dmgEvt.Amount)
 	s.Equal(14, dmgEvt.HPAfter)
 }
+
+// TestMove_DamageWithoutRoll_StillApplies is the Copilot review regression
+// guard from PR #718: a MovementResolver implementation that publishes
+// DamageReceivedEvent WITHOUT a preceding PostAttackRollEvent (a non-attack
+// movement hazard, or a resolver that doesn't route through
+// combat.ResolveAttackHit) must still have its damage applied — a strict
+// roll-driven loop would otherwise silently drop the HP delta because the
+// damage has no roll to pair with. Verifies HP still applies and
+// DamageDealtEvent still publishes even with zero captured rolls.
+func (s *MovementResolverSuite) TestMove_DamageWithoutRoll_StillApplies() {
+	s.addGoblinForNPCMovementTests()
+
+	aliceBefore := s.enc.ToData().Players[alicePlayerID]
+	s.Require().NotNil(aliceBefore)
+	aliceBefore.HP = 20
+	aliceBefore.MaxHP = 20
+
+	// Stub publishes ONLY a DamageReceivedEvent — no PostAttackRollEvent —
+	// simulating a resolver/damage-source that doesn't produce roll detail.
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			topic := dnd5eEvents.DamageReceivedTopic.On(bus)
+			_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
+				TargetID:   string(aliceEntityID),
+				SourceID:   string(gobEntityID),
+				Amount:     4,
+				DamageType: damage.Slashing,
+			})
+		}
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	err = s.enc.Move(alicePlayerID, path)
+	s.Require().NoError(err)
+
+	aliceAfter := s.enc.ToData().Players[alicePlayerID]
+	s.Equal(16, aliceAfter.HP, "unpaired damage must still apply, not be silently dropped")
+
+	var dmgEvt *events.DamageDealtEvent
+	deadline := time.After(2 * time.Second)
+drainLoopUnpaired:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoopUnpaired
+			}
+			if de, isDmg := evt.(*events.DamageDealtEvent); isDmg {
+				dmgEvt = de
+				break drainLoopUnpaired
+			}
+		case <-deadline:
+			break drainLoopUnpaired
+		}
+	}
+	s.Require().NotNil(dmgEvt, "DamageDealtEvent must still publish for unpaired damage")
+	s.Equal(4, dmgEvt.Amount)
+	s.Equal(16, dmgEvt.HPAfter)
+}
