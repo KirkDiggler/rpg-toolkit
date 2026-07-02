@@ -928,3 +928,70 @@ drainLoopHit:
 	s.Equal(6, dmgEvt.Amount)
 	s.Equal(14, dmgEvt.HPAfter)
 }
+
+// --- Issue #710 — Move-path OA's DamageDealtEvent shares its sibling
+// AttackResolvedEvent's correlation id (Invariant 8), matching TakeAction's
+// publishAttackOutcome. Before this fix, applyMoveDamage published
+// DamageDealtEvent via a raw broker.Publish call that never stamped a
+// correlation id (Stamp is only called by publishCorrelated), so the event
+// always carried an empty correlation id on the wire — unlike its
+// TakeAction-path sibling, which is correlated to the causing action.
+
+// TestMove_OAHit_DamageSharesAttackResolvedCorrelationID verifies that an
+// OA hit's AttackResolvedEvent and DamageDealtEvent carry the same
+// non-empty correlation id.
+func (s *MovementResolverSuite) TestMove_OAHit_DamageSharesAttackResolvedCorrelationID() {
+	s.addGoblinForNPCMovementTests()
+
+	aliceBefore := s.enc.ToData().Players[alicePlayerID]
+	s.Require().NotNil(aliceBefore)
+	aliceBefore.HP = 20
+	aliceBefore.MaxHP = 20
+
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx == 0 {
+			publishOAHit(bus, string(gobEntityID), string(aliceEntityID), 6)
+		}
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	err = s.enc.Move(alicePlayerID, path)
+	s.Require().NoError(err)
+
+	var attackEvt *events.AttackResolvedEvent
+	var dmgEvt *events.DamageDealtEvent
+	deadline := time.After(2 * time.Second)
+drainLoopCorr:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoopCorr
+			}
+			switch e := evt.(type) {
+			case *events.AttackResolvedEvent:
+				attackEvt = e
+			case *events.DamageDealtEvent:
+				dmgEvt = e
+			}
+			if attackEvt != nil && dmgEvt != nil {
+				break drainLoopCorr
+			}
+		case <-deadline:
+			break drainLoopCorr
+		}
+	}
+
+	s.Require().NotNil(attackEvt, "AttackResolvedEvent must be published on an OA hit")
+	s.Require().NotNil(dmgEvt, "DamageDealtEvent must be published on an OA hit")
+	s.NotEmpty(attackEvt.CorrelationID(), "attack-resolved must carry a correlation id")
+	s.Equal(attackEvt.CorrelationID(), dmgEvt.CorrelationID(),
+		"damage-dealt must share the OA's correlation id (Inv 8)")
+}
