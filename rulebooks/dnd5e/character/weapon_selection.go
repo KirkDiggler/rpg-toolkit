@@ -79,6 +79,16 @@ func (c *Character) WeaponForActionRef(ref *core.Ref) (*WeaponSelection, error) 
 	}
 }
 
+// MeleeWeapon implements combat.MeleeWeaponProvider (rpg-toolkit#722): it
+// resolves the weapon this character swings for a reflexive melee attack
+// outside the normal action economy (an opportunity attack). Mirrors
+// WeaponForActionRef's default case — the equipped main-hand weapon,
+// falling back to unarmed strike — since an OA is a standard attack, not a
+// granted strike or off-hand swing.
+func (c *Character) MeleeWeapon() *weapons.Weapon {
+	return c.mainHandWeaponSelection().Weapon
+}
+
 // mainHandWeaponSelection resolves the equipped main-hand weapon, falling
 // back to the canonical unarmed-strike weapon when the slot is empty.
 func (c *Character) mainHandWeaponSelection() *WeaponSelection {

@@ -14,9 +14,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	mock_combat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/mock"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -484,6 +486,93 @@ func (s *MovementTestSuite) TestMoveEntity_NoRoomInContext() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "room")
+}
+
+// armedTestCombatant wraps a combat.Combatant mock and additionally
+// implements combat.MeleeWeaponProvider, so tests can control which weapon
+// an OA attacker swings without regenerating the gomock MockCombatant to
+// cover the new optional interface (rpg-toolkit#722).
+type armedTestCombatant struct {
+	combat.Combatant
+	weapon *weapons.Weapon
+}
+
+// MeleeWeapon implements combat.MeleeWeaponProvider.
+func (a *armedTestCombatant) MeleeWeapon() *weapons.Weapon { return a.weapon }
+
+// TestMoveEntity_OAUsesAttackersRealWeapon is the failing-first regression
+// test for rpg-toolkit#722: an OA attacker with a real melee weapon
+// (goblin + scimitar) must resolve the reaction attack with that weapon's
+// damage dice and damage type — not the unarmed-strike fallback.
+//
+// Before the fix, getAttackerMeleeWeapon always returned the catalog
+// unarmed-strike weapon regardless of the attacker, so this OA would deal
+// unarmed damage (1 bludgeoning) instead of the scimitar's 1d6+DEX
+// slashing.
+func (s *MovementTestSuite) TestMoveEntity_OAUsesAttackersRealWeapon() {
+	// Place fighter at (2, 2), goblin at (2, 3) - adjacent (within reach).
+	fighter := &testCombatant{id: "fighter-1", entityType: "character"}
+	s.Require().NoError(s.room.PlaceEntity(fighter, spatial.Position{X: 2, Y: 2}))
+	goblin := &testCombatant{id: "goblin-1", entityType: "monster"}
+	s.Require().NoError(s.room.PlaceEntity(goblin, spatial.Position{X: 2, Y: 3}))
+
+	mockFighter := mock_combat.NewMockCombatant(s.ctrl)
+	mockFighter.EXPECT().GetID().Return("fighter-1").AnyTimes()
+	mockFighter.EXPECT().AC().Return(16).AnyTimes()
+
+	mockGoblin := mock_combat.NewMockCombatant(s.ctrl)
+	mockGoblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	mockGoblin.EXPECT().AbilityScores().Return(shared.AbilityScores{
+		abilities.STR: 8,  // -1 modifier
+		abilities.DEX: 14, // +2 modifier — scimitar is Finesse, so DEX applies
+	}).AnyTimes()
+	mockGoblin.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
+
+	scimitar, err := weapons.GetByID(weapons.Scimitar)
+	s.Require().NoError(err)
+	armedGoblin := &armedTestCombatant{Combatant: mockGoblin, weapon: &scimitar}
+
+	s.lookup.EXPECT().Get("fighter-1").Return(mockFighter, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(armedGoblin, nil).AnyTimes()
+
+	// d20=18 hits AC 16 (18 + 2 DEX + 2 prof = 22). Damage die rolls max (6)
+	// on the scimitar's 1d6, plus the +2 DEX modifier = 8 total, matching
+	// the "scimitar 8 (6+2) slashing" shape from the #722 playtest report.
+	mockRoller := mock_dice.NewMockRoller(s.ctrl)
+	mockRoller.EXPECT().Roll(gomock.Any(), 20).Return(18, nil)
+	mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{6}, nil)
+
+	var damageEvt *dnd5eEvents.DamageReceivedEvent
+	damages := dnd5eEvents.DamageReceivedTopic.On(s.eventBus)
+	_, err = damages.Subscribe(s.ctx, func(_ context.Context, e dnd5eEvents.DamageReceivedEvent) error {
+		damageEvt = &e
+		return nil
+	})
+	s.Require().NoError(err)
+
+	path := []spatial.Position{
+		{X: 2, Y: 1},
+		{X: 2, Y: 0},
+	}
+	input := &combat.MoveEntityInput{
+		EntityID:   "fighter-1",
+		EntityType: "character",
+		Path:       path,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
+	}
+
+	result, err := combat.MoveEntity(s.ctx, input)
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Require().Len(result.OAsTriggered, 1)
+	s.True(result.OAsTriggered[0].Hit)
+	s.Equal(8, result.OAsTriggered[0].Damage, "scimitar 1d6(6)+DEX(2) = 8, not unarmed's 1")
+
+	s.Require().NotNil(damageEvt, "OA hit must publish a DamageReceivedEvent")
+	s.Equal(8, damageEvt.Amount)
+	s.Equal(damage.Slashing, damageEvt.DamageType, "scimitar deals slashing, not unarmed's bludgeoning")
 }
 
 func (s *MovementTestSuite) TestMoveEntity_OAMissDoesNotStopMovement() {

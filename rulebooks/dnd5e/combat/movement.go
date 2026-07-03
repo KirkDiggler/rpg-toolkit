@@ -343,9 +343,10 @@ func triggerOpportunityAttack(
 		return nil, rpgerr.Wrapf(err, "failed to get attacker %s for opportunity attack", attackerID)
 	}
 
-	// Get the attacker's melee weapon
-	// For now, use unarmed strike as fallback
-	weapon := getAttackerMeleeWeapon(ctx, attackerID)
+	// Get the attacker's real melee weapon (rpg-toolkit#722). Falls back to
+	// unarmed strike when the attacker doesn't implement MeleeWeaponProvider
+	// or has nothing equipped.
+	weapon := getAttackerMeleeWeapon(attacker)
 	if weapon == nil {
 		// No melee weapon available - cannot make opportunity attack
 		return nil, nil
@@ -353,8 +354,6 @@ func triggerOpportunityAttack(
 
 	// TODO: Use attacker to check and consume reaction availability via ActionEconomy.
 	// Opportunity attacks require a reaction, which should be checked and consumed here.
-	// Until reaction checks are implemented, attacker is retrieved but not otherwise used.
-	_ = attacker
 
 	// Resolve the opportunity attack
 	attackResult, err := ResolveAttack(ctx, &AttackInput{
@@ -380,11 +379,37 @@ func triggerOpportunityAttack(
 	}, nil
 }
 
-// getAttackerMeleeWeapon returns the melee weapon the attacker would use for an opportunity attack.
-// Returns nil if the attacker has no melee weapon available.
-func getAttackerMeleeWeapon(_ context.Context, _ string) *weapons.Weapon {
-	// For now, return the registered unarmed strike
-	// Future: Look up equipped weapon from character/monster state
+// MeleeWeaponProvider is implemented by combatants that know which weapon
+// they would swing for a reflexive melee attack outside the normal action
+// economy (an opportunity attack). It is optional — combat.Combatant does
+// not require it — because triggerOpportunityAttack falls back to unarmed
+// strike for combatants that don't implement it.
+//
+// combat cannot import character or monster directly (both import combat,
+// so importing them back would cycle), so this interface is the seam:
+// character.Character and monster.Monster implement it structurally.
+// Character mirrors the ref->weapon mapping's default case from #712
+// (equipped main-hand weapon, falling back to unarmed). Monster walks its
+// melee actions in order and returns the first whose ID matches the
+// weapons catalog (e.g. a "scimitar" action maps to weapons.Scimitar),
+// skipping any that don't; if none match — natural weapons like bite/claw
+// — it returns nil and the unarmed-strike fallback below takes over.
+type MeleeWeaponProvider interface {
+	// MeleeWeapon returns the weapon this combatant uses for a reflexive
+	// melee attack. Returns nil if none is resolvable.
+	MeleeWeapon() *weapons.Weapon
+}
+
+// getAttackerMeleeWeapon returns the melee weapon the attacker would use for
+// an opportunity attack. Falls back to the canonical unarmed-strike weapon
+// when the attacker doesn't implement MeleeWeaponProvider or reports none.
+// Returns nil only if even the unarmed-strike catalog lookup fails.
+func getAttackerMeleeWeapon(attacker Combatant) *weapons.Weapon {
+	if provider, ok := attacker.(MeleeWeaponProvider); ok {
+		if w := provider.MeleeWeapon(); w != nil {
+			return w
+		}
+	}
 	w, err := weapons.GetByID(weapons.UnarmedStrike)
 	if err != nil {
 		return nil
