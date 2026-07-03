@@ -212,3 +212,39 @@ func (s *WeaponSelectionTestSuite) TestNormalAttackRef_UnarmedCharacter_FallsBac
 	s.Equal(weapons.UnarmedStrike, sel.Weapon.ID)
 	s.Equal(combat.AttackHandMain, sel.AttackHand)
 }
+
+// --- MeleeWeapon: combat.MeleeWeaponProvider for opportunity attacks (#722) ---
+
+// TestMeleeWeapon_ArmedCharacter_ReturnsEquippedMainHand proves a character
+// with a main-hand weapon reports it for a reflexive melee attack (an OA),
+// matching WeaponForActionRef's default case.
+func (s *WeaponSelectionTestSuite) TestMeleeWeapon_ArmedCharacter_ReturnsEquippedMainHand() {
+	char := createTWFCharacter(s.T(), s.bus) // shortsword main, dagger off
+
+	w := char.MeleeWeapon()
+
+	s.Require().NotNil(w)
+	s.Equal(weapons.Shortsword, w.ID, "OA must swing the equipped main-hand weapon, not unarmed")
+}
+
+// TestMeleeWeapon_UnarmedCharacter_FallsBackToUnarmed proves a character with
+// nothing equipped still resolves (to the canonical unarmed-strike weapon),
+// matching combat.getAttackerMeleeWeapon's contract that MeleeWeapon may
+// return the unarmed fallback itself rather than nil.
+func (s *WeaponSelectionTestSuite) TestMeleeWeapon_UnarmedCharacter_FallsBackToUnarmed() {
+	char := createTestMonkCharacter(s.T(), s.bus)
+
+	w := char.MeleeWeapon()
+
+	s.Require().NotNil(w)
+	s.Equal(weapons.UnarmedStrike, w.ID)
+}
+
+// TestMeleeWeapon_SatisfiesCombatInterface is a compile-time-flavored check
+// that *Character actually satisfies combat.MeleeWeaponProvider — the
+// interface triggerOpportunityAttack type-asserts against.
+func (s *WeaponSelectionTestSuite) TestMeleeWeapon_SatisfiesCombatInterface() {
+	char := createTWFCharacter(s.T(), s.bus)
+	var provider combat.MeleeWeaponProvider = char
+	s.Require().NotNil(provider.MeleeWeapon())
+}

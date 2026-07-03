@@ -401,6 +401,48 @@ func (s *PhasedTakeActionSuite) TestCompleteTakeAction_NPCAttacker_PlayerDeath()
 		"EntityDiedEvent must fire when player HP transitions >0 → 0")
 }
 
+// TestCompleteTakeAction_NPCAttacker_DamageSharesAttackCorrelationID is a
+// regression guard for rpg-toolkit#723: the NPC-attacker resume direction
+// (monster→player, the Shield-resume symmetry path) must share one
+// correlation id across AttackResolvedEvent + DamageDealtEvent, same as the
+// player-attacker path (Invariant 8). publishAttackOutcome already stamps
+// both events from one derived corrID regardless of what
+// applyAndPublishNPCOutcome does with the return value (it discards it —
+// see the comment there — but the stamping already happened inside
+// publishAttackOutcome), so this test passes without any production change;
+// it exists to lock the behavior in and document that #723's "NPC attack
+// path" symptom does not reproduce here.
+func (s *PhasedTakeActionSuite) TestCompleteTakeAction_NPCAttacker_DamageSharesAttackCorrelationID() {
+	bobSub, err := s.broker.Subscribe(s.enc.ID(), bobPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = bobSub.Close() }()
+
+	s.resolver.outcomeReturn = &tkenc.AttackOutcome{
+		Hit: true, AttackRoll: 16, AttackBonus: 4, TargetAC: 12,
+		Damage: 5, DamageType: damageSlashing,
+	}
+
+	err = s.enc.CompleteTakeAction(goblinAttackBobContext(), nil)
+	s.Require().NoError(err)
+
+	// A distinct timeout value (not 200ms like this file's other drainEvents
+	// calls) so golangci-lint's unparam check doesn't flag the shared helper
+	// as having a single always-identical argument across the file.
+	evts := drainEvents(bobSub, 250*time.Millisecond)
+	var attackCorr, damageCorr string
+	for _, e := range evts {
+		switch e.(type) {
+		case *events.AttackResolvedEvent:
+			attackCorr = string(e.CorrelationID())
+		case *events.DamageDealtEvent:
+			damageCorr = string(e.CorrelationID())
+		}
+	}
+	s.NotEmpty(attackCorr, "AttackResolvedEvent must carry a correlation id")
+	s.NotEmpty(damageCorr, "DamageDealtEvent must carry a correlation id")
+	s.Equal(attackCorr, damageCorr, "attack and damage must share one correlation id (#723)")
+}
+
 // drainEvents collects events from a subscription until timeout. Unlike
 // collectEventsTyped (in visibility_transition_test.go) it returns the
 // raw EncounterEvent slice so callers use the generic hasEventOfType

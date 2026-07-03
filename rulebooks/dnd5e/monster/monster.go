@@ -15,6 +15,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -283,6 +284,35 @@ func (m *Monster) Actions() []MonsterAction {
 // AddAction adds an action to the monster's available actions
 func (m *Monster) AddAction(action MonsterAction) {
 	m.actions = append(m.actions, action)
+}
+
+// MeleeWeapon implements combat.MeleeWeaponProvider (rpg-toolkit#722): it
+// resolves the weapon this monster swings for a reflexive melee attack
+// outside the normal action economy (an opportunity attack).
+//
+// Monster actions don't carry a *weapons.Weapon reference (their damage
+// dice/type are private, action-specific fields — see ScimitarAction,
+// actions.MeleeAction), so this resolves by convention instead: the first
+// TypeMeleeAttack action's ID is looked up against the weapons catalog
+// (e.g. NewGoblin's "scimitar" action ID matches weapons.Scimitar). This
+// covers equipment-wielding monsters, whose action IDs are named after real
+// weapons. Monsters whose melee action has no catalog match — natural
+// weapons like bite or claw — return nil, and the caller's unarmed-strike
+// fallback takes over. A generalized natural-weapon damage profile is
+// future work (would need MonsterAction to expose damage dice/type/bonus
+// directly rather than this catalog convention).
+func (m *Monster) MeleeWeapon() *weapons.Weapon {
+	for _, action := range m.actions {
+		if action.ActionType() != TypeMeleeAttack {
+			continue
+		}
+		w, err := weapons.GetByID(weapons.WeaponID(action.GetID()))
+		if err != nil {
+			continue
+		}
+		return &w
+	}
+	return nil
 }
 
 // AddCondition adds a condition/trait to the monster's active conditions.

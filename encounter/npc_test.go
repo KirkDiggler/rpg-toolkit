@@ -250,6 +250,83 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 		"OA damage must apply exactly once on the NPCAct path (no double-apply)")
 }
 
+// TestNPCAct_RegularAttack_DamageSharesAttackCorrelationID is a regression
+// guard for rpg-toolkit#723 ("entityDamaged lacks correlationId on the
+// NPC-attack / OA reaction path"). It exercises a plain single-hit NPC
+// attack turn — applyCapturedAttacks → applyAndPublishNPCOutcome, via the
+// legacy non-phased resolver branch (busPublishingResolver does not
+// implement PhasedCombatResolver) — with the same "notify" double-publish
+// shape #684 reproduced, and asserts AttackResolvedEvent and
+// DamageDealtEvent share one correlation id.
+//
+// This already passes on main: publishAttackOutcome (encounter/combat.go)
+// derives one corrID and stamps every event it publishes with it,
+// regardless of what the caller does with the returned value. #723's
+// "regular goblin attack hit" symptom does not reproduce against current
+// rpg-toolkit — see the OA-hit companion coverage in move_resolver_test.go
+// (TestMove_OAHit_DamageSharesAttackResolvedCorrelationID, added by #719)
+// and TestCompleteTakeAction_NPCAttacker_DamageSharesAttackCorrelationID in
+// combat_phased_test.go for the other two NPC-attack shapes.
+func (s *NPCSuite) TestNPCAct_RegularAttack_DamageSharesAttackCorrelationID() {
+	const attackDamage = 5
+	gob := monster.NewGoblin(gobEntityID)
+	gobData := gob.ToData()
+	dataJSON, err := json.Marshal(gobData)
+	s.Require().NoError(err)
+
+	enc := encounter.New(context.Background(), "enc-npc-probe-corr", s.broker,
+		encounter.WithCombatResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14,
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID:       gobEntityID,
+		Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
+		MonsterRef:  monsterRefGoblin,
+		DataJSON:    dataJSON,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+	sub, subErr := s.broker.Subscribe("enc-npc-probe-corr", alicePlayerID)
+	s.Require().NoError(subErr)
+	defer func() { _ = sub.Close() }()
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	drainSub(sub, 100*time.Millisecond)
+
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+
+	var attackCorr, damageCorr string
+	deadline := time.After(time.Second)
+probeDrain:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break probeDrain
+			}
+			switch e := evt.(type) {
+			case *encevents.AttackResolvedEvent:
+				attackCorr = string(e.CorrelationID())
+			case *encevents.DamageDealtEvent:
+				damageCorr = string(e.CorrelationID())
+			}
+		case <-deadline:
+			break probeDrain
+		}
+	}
+	s.NotEmpty(attackCorr, "AttackResolvedEvent must carry a correlation id")
+	s.NotEmpty(damageCorr, "DamageDealtEvent must carry a correlation id")
+	s.Equal(attackCorr, damageCorr, "attack and damage must share one correlation id (#723)")
+}
+
 // busPublishingResolver is a test CombatResolver that mimics the production
 // dnd5e resolver: it returns an AttackOutcome AND publishes a
 // DamageReceivedEvent on the encounter bus (the "notify" step that
