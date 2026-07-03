@@ -389,11 +389,11 @@ func triggerOpportunityAttack(
 // so importing them back would cycle), so this interface is the seam:
 // character.Character and monster.Monster implement it structurally.
 // Character mirrors the ref->weapon mapping's default case from #712
-// (equipped main-hand weapon, falling back to unarmed). Monster resolves
-// its first melee action's ID against the weapons catalog (e.g. a
-// "scimitar" action maps to weapons.Scimitar); monsters whose melee action
-// has no catalog match (natural weapons like bite/claw) return nil and the
-// unarmed-strike fallback below takes over.
+// (equipped main-hand weapon, falling back to unarmed). Monster walks its
+// melee actions in order and returns the first whose ID matches the
+// weapons catalog (e.g. a "scimitar" action maps to weapons.Scimitar),
+// skipping any that don't; if none match — natural weapons like bite/claw
+// — it returns nil and the unarmed-strike fallback below takes over.
 type MeleeWeaponProvider interface {
 	// MeleeWeapon returns the weapon this combatant uses for a reflexive
 	// melee attack. Returns nil if none is resolvable.

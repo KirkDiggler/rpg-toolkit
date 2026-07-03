@@ -292,15 +292,17 @@ func (m *Monster) AddAction(action MonsterAction) {
 //
 // Monster actions don't carry a *weapons.Weapon reference (their damage
 // dice/type are private, action-specific fields — see ScimitarAction,
-// actions.MeleeAction), so this resolves by convention instead: the first
-// TypeMeleeAttack action's ID is looked up against the weapons catalog
-// (e.g. NewGoblin's "scimitar" action ID matches weapons.Scimitar). This
-// covers equipment-wielding monsters, whose action IDs are named after real
-// weapons. Monsters whose melee action has no catalog match — natural
-// weapons like bite or claw — return nil, and the caller's unarmed-strike
-// fallback takes over. A generalized natural-weapon damage profile is
-// future work (would need MonsterAction to expose damage dice/type/bonus
-// directly rather than this catalog convention).
+// actions.MeleeAction), so this resolves by convention instead: it walks
+// the monster's TypeMeleeAttack actions in order and returns the first
+// whose ID successfully maps to a catalog weapon (e.g. NewGoblin's
+// "scimitar" action ID matches weapons.Scimitar), skipping any melee
+// action ID that has no catalog match. This covers equipment-wielding
+// monsters, whose action IDs are named after real weapons. If none of the
+// monster's melee actions match — natural weapons like bite or claw —
+// this returns nil, and the caller's unarmed-strike fallback takes over.
+// A generalized natural-weapon damage profile is future work (would need
+// MonsterAction to expose damage dice/type/bonus directly rather than
+// this catalog convention).
 func (m *Monster) MeleeWeapon() *weapons.Weapon {
 	for _, action := range m.actions {
 		if action.ActionType() != TypeMeleeAttack {
