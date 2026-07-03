@@ -29,6 +29,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
 // takeCharacterAction dispatches a non-attack action ref to the held
@@ -73,7 +74,7 @@ func (e *Encounter) takeCharacterAction(
 	}
 	defer func() { _ = unsubCond() }()
 
-	if err := e.dispatchCharacterAction(ctx, char, ref, &tRef); err != nil {
+	if err := e.dispatchCharacterAction(ctx, char, ref, &tRef, target); err != nil {
 		return nil, err
 	}
 
@@ -107,11 +108,29 @@ func (e *Encounter) takeCharacterAction(
 // this path — TakeActionPhased routes them down the attack-resolver path
 // (spendStrikeEconomy owns their ExecuteAction spend) so they swing (#708);
 // today only move (deferred) and future non-attack granted actions land here.
+//
+// Target-threading (rpg-toolkit#716 R1): target.EntityID is resolved to a
+// core.Entity via e.heldCharacter before dispatch — this is the fix for
+// Help's ally target, which the character package cannot resolve itself (it
+// has no combatant registry). Populated unconditionally for every ability,
+// not just Help — mirrors the file's "no per-ref logic" stance; abilities
+// that don't need a target simply ignore the field.
 func (e *Encounter) dispatchCharacterAction(
-	ctx context.Context, char *dnd5eCharacter.Character, ref ActionRef, tRef *toolkitcore.Ref,
+	ctx context.Context, char *dnd5eCharacter.Character, ref ActionRef, tRef *toolkitcore.Ref, target ActionTarget,
 ) error {
 	if characterHasAbility(char, ref.ID) {
-		out, err := char.ActivateAbility(ctx, &dnd5eCharacter.ActivateAbilityInput{AbilityRef: tRef})
+		activateInput := &dnd5eCharacter.ActivateAbilityInput{
+			AbilityRef:                 tRef,
+			ObserverPassivePerceptions: e.observerPassivePerceptions(char.GetID()),
+		}
+		if target.EntityID != "" {
+			activateInput.TargetID = string(target.EntityID)
+			if targetChar := e.heldCharacter(target.EntityID); targetChar != nil {
+				activateInput.Target = targetChar
+			}
+		}
+
+		out, err := char.ActivateAbility(ctx, activateInput)
 		if err != nil {
 			return fmt.Errorf("activate ability %q: %w", ref.ID, err)
 		}
@@ -133,6 +152,36 @@ func (e *Encounter) dispatchCharacterAction(
 	}
 
 	return fmt.Errorf("%w: %q", ErrUnsupportedAction, ref.ID)
+}
+
+// observerPassivePerceptions returns the passive Perception of every
+// opposing combatant that could observe hiderID, gathered via
+// combat.Combatant.PassivePerception() — never recomputed inline; the
+// accessor is the seam between the position-aware SDK and the rules-aware
+// rulebook (see the interface's own guardrail comment).
+//
+// Wave 2 Beat 2 (rpg-toolkit#716): monsters carry no sight-range/View data
+// (players have perception.View.SightRange; MonsterData has no analog), so —
+// mirroring buildPerception's existing "every player is a visible enemy"
+// simplification for the monster-perceives-player direction — every monster
+// combatant is treated as a potential observer, with no LOS/range gate. Real
+// LOS for monster observers is future work; Hide's observer-set computation
+// inherits perception.CanSeeAt's range-only-stub limitation the same way the
+// rest of the encounter SDK already does (named, not hidden, per the design
+// doc's non-goals).
+func (e *Encounter) observerPassivePerceptions(hiderID string) []int {
+	var out []int
+	for id, c := range e.combatants {
+		if string(id) == hiderID {
+			continue
+		}
+		mon, ok := c.(*monster.Monster)
+		if !ok {
+			continue // only opposing (monster) combatants observe a player hiding
+		}
+		out = append(out, mon.PassivePerception())
+	}
+	return out
 }
 
 // characterHasAbility reports whether the ref matches one of the character's

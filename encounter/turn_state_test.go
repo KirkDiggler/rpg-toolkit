@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -721,3 +722,229 @@ func (s *TurnStateSuite) TestTakeAction_HelpAndHideFlowThroughDelegation() {
 
 // silence unused import if coreCombat ends up unreferenced in future edits.
 var _ = coreCombat.ActionStandard
+
+// allyCharJSON builds a minimal level-1 Fighter character.Data blob, used as
+// the cross-entity target for Help (rpg-toolkit#716). It doesn't need its
+// own combat abilities exercised in these tests — only a valid hydrated
+// identity so e.heldCharacter can resolve it as a core.Entity.
+func (s *TurnStateSuite) allyCharJSON(id, name string) json.RawMessage {
+	s.T().Helper()
+	charData := &dnd5eCharacter.Data{
+		ID:       id,
+		PlayerID: id,
+		Name:     name,
+		Level:    1,
+		ClassID:  classes.Fighter,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 15,
+			abilities.DEX: 13,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 10,
+			abilities.CHA: 10,
+		},
+		HitPoints:        11,
+		MaxHitPoints:     11,
+		ArmorClass:       16,
+		ProficiencyBonus: 2,
+	}
+	raw, err := json.Marshal(charData)
+	s.Require().NoError(err)
+	return raw
+}
+
+// helpTargetingEncounter builds a TURN_BASED-ready encounter with three
+// seats, positioned specifically to exercise the R1 audience/label fix
+// (rpg-toolkit#716):
+//   - the Monk (helper) at the origin
+//   - a Fighter ally far from the Monk
+//   - a Rogue viewer next to the Fighter but out of sight of the Monk
+//
+// Under the pre-fix bug, applyActivatedConditions projected the broker
+// audience from the ACTOR's (helper's) position — the Rogue would never see
+// the condition, since they can't see the Monk. The fix projects audience
+// from the condition's Target (the ally), which the Rogue CAN see.
+func (s *TurnStateSuite) helpTargetingEncounter() (
+	enc *encounter.Encounter, fighterID core.EntityID, roguePlayerID core.PlayerID,
+) {
+	s.T().Helper()
+
+	monkView := perception.NewView(monkPlayerID, core.Hex{}, 5)
+	monkView.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 5))
+
+	fighterPos := core.Hex{Q: 20, R: 0, S: -20}
+	fighterEntityID := core.EntityID("char-fighter")
+	fighterPlayerID := core.PlayerID("finn")
+	fighterView := perception.NewView(fighterPlayerID, fighterPos, 5)
+	fighterView.ApplyReveal(perception.VisibleHexesAt(fighterPos, 5))
+
+	roguePos := core.Hex{Q: 21, R: 0, S: -21} // adjacent to the fighter, far from the monk
+	rogueEntityID := core.EntityID("char-rogue")
+	roguePlID := core.PlayerID("remy")
+	rogueView := perception.NewView(roguePlID, roguePos, 5)
+	rogueView.ApplyReveal(perception.VisibleHexesAt(roguePos, 5))
+
+	data := encounter.NewData("enc-help")
+	data.Players[monkPlayerID] = &encounter.PlayerData{
+		ID: monkPlayerID, EntityID: monkEntityID, View: monkView,
+		HP: 9, MaxHP: 9, AC: 15, DamageDice: "1d4", DamageType: "bludgeoning",
+		DataJSON: s.monkCharJSON(),
+	}
+	data.Players[fighterPlayerID] = &encounter.PlayerData{
+		ID: fighterPlayerID, EntityID: fighterEntityID, View: fighterView,
+		HP: 11, MaxHP: 11, AC: 16, DamageDice: "1d8", DamageType: "slashing",
+		DataJSON: s.allyCharJSON(string(fighterEntityID), "Finn the Fighter"),
+	}
+	data.Players[roguePlID] = &encounter.PlayerData{
+		ID: roguePlID, EntityID: rogueEntityID, View: rogueView,
+		HP: 8, MaxHP: 8, AC: 13, DamageDice: "1d6", DamageType: "piercing",
+		// No DataJSON — a pure viewer for the audience assertion, not an actor.
+	}
+
+	e, err := encounter.LoadFromData(s.ctx, data, s.broker)
+	s.Require().NoError(err)
+	return e, fighterEntityID, roguePlID
+}
+
+// makeMonkActive cycles EndTurn until the Monk is the active actor,
+// tolerating the other seats' random initiative placement.
+func (s *TurnStateSuite) makeMonkActive(enc *encounter.Encounter) {
+	for i := 0; i < 10 && enc.ActiveActor() != monkEntityID; i++ {
+		_, _, err := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+	s.Require().Equal(monkEntityID, enc.ActiveActor(), "monk must be active for this test")
+}
+
+// TestTakeAction_Help_LabelsAndProjectsAudienceFromAllyPosition is the R1
+// regression test (rpg-toolkit#716): applyActivatedConditions used to
+// hardcode targetID := actorID (labeling the broker event with the HELPER,
+// not the ally) and project the viewer audience from the actor's position.
+// Both bugs are exercised here at once: the Rogue can see the ally (Finn)
+// but NOT the helper (the Monk), so under the old code the Rogue would never
+// receive this event at all, and the event's TargetID would have named the
+// Monk instead of Finn.
+func (s *TurnStateSuite) TestTakeAction_Help_LabelsAndProjectsAudienceFromAllyPosition() {
+	enc, fighterID, roguePlayerID := s.helpTargetingEncounter()
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.makeMonkActive(enc)
+
+	sub, err := s.broker.Subscribe("enc-help", roguePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	err = enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: refs.CombatAbilities.Help().Type, ID: refs.CombatAbilities.Help().ID},
+		encounter.ActionTarget{EntityID: fighterID},
+	)
+	s.Require().NoError(err, "Help must succeed with a hydrated ally target")
+
+	var condApplied *events.ConditionAppliedEvent
+	for _, e := range collectEventsTyped(sub, 500*time.Millisecond) {
+		if ev, ok := e.(*events.ConditionAppliedEvent); ok {
+			condApplied = ev
+		}
+	}
+	s.Require().NotNil(condApplied,
+		"the Rogue (sees the ally, not the helper) must still receive the event — "+
+			"the pre-fix code projected audience from the HELPER's position and would have dropped this viewer")
+	s.Equal(fighterID, condApplied.TargetID,
+		"the condition must be labeled with the ALLY's id, not the helper's (the pre-fix targetID:=actorID bug)")
+	s.Equal(refs.Conditions.Helped().ID, condApplied.ConditionRef)
+}
+
+// TestTakeAction_Help_ViewerWhoSeesNeitherPartyGetsNothing is the audience
+// negative-control: a viewer with line of sight to neither the helper nor
+// the ally must NOT receive the ConditionAppliedEvent — proving the R1 fix
+// is real position-based filtering, not "broadcast to everyone".
+func (s *TurnStateSuite) TestTakeAction_Help_ViewerWhoSeesNeitherPartyGetsNothing() {
+	enc, fighterID, _ := s.helpTargetingEncounter()
+
+	farView := perception.NewView("nomi", core.Hex{Q: -50, R: 0, S: 50}, 5)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "nomi", EntityID: "char-nomi",
+		Position: farView.Position, SightRange: 5,
+		HP: 6, MaxHP: 6, AC: 11, DamageDice: "1d4",
+	}))
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.makeMonkActive(enc)
+
+	sub, err := s.broker.Subscribe("enc-help", "nomi")
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	err = enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: refs.CombatAbilities.Help().Type, ID: refs.CombatAbilities.Help().ID},
+		encounter.ActionTarget{EntityID: fighterID},
+	)
+	s.Require().NoError(err)
+
+	for _, e := range collectEventsTyped(sub, 300*time.Millisecond) {
+		if _, ok := e.(*events.ConditionAppliedEvent); ok {
+			s.Fail("a viewer who sees neither party must not receive the ConditionAppliedEvent")
+		}
+	}
+}
+
+// TestTakeAction_Hide_AppliesHiddenConditionAgainstLowObserverPerception
+// proves the encounter SDK gathers the observer set's passive Perception
+// (via Combatant.PassivePerception(), never inlining the formula) and
+// threads it into Hide's Stealth check: a goblin observer with passive
+// Perception 1 lets the Monk's check succeed virtually unconditionally,
+// applying HiddenCondition end-to-end through the unified TakeAction verb.
+func (s *TurnStateSuite) TestTakeAction_Hide_AppliesHiddenConditionAgainstLowObserverPerception() {
+	view := perception.NewView(monkPlayerID, core.Hex{}, 10)
+	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10))
+
+	data := encounter.NewData("enc-hide")
+	data.Players[monkPlayerID] = &encounter.PlayerData{
+		ID: monkPlayerID, EntityID: monkEntityID, View: view,
+		HP: 9, MaxHP: 9, AC: 15, DamageDice: "1d4", DamageType: "bludgeoning",
+		DataJSON: s.monkCharJSON(),
+	}
+
+	monData := &monster.Data{
+		ID: "goblin-1", Name: "Goblin", HitPoints: 7, MaxHitPoints: 7, ArmorClass: 12,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 8, abilities.DEX: 14, abilities.CON: 10,
+			abilities.INT: 10, abilities.WIS: 8, abilities.CHA: 8,
+		},
+		Senses: monster.SensesData{PassivePerception: 1},
+	}
+	monJSON, err := json.Marshal(monData)
+	s.Require().NoError(err)
+	data.Monsters["goblin-1"] = &encounter.MonsterData{
+		ID: "goblin-1", Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 12,
+		DataJSON: monJSON,
+	}
+
+	enc, err := encounter.LoadFromData(s.ctx, data, s.broker)
+	s.Require().NoError(err)
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.makeMonkActive(enc)
+
+	sub, err := s.broker.Subscribe("enc-hide", monkPlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	err = enc.TakeAction(monkPlayerID,
+		encounter.ActionRef{Module: "dnd5e", Type: refs.CombatAbilities.Hide().Type, ID: refs.CombatAbilities.Hide().ID},
+		encounter.ActionTarget{EntityID: monkEntityID},
+	)
+	s.Require().NoError(err, "Hide must flow through the general delegation")
+	s.Equal(0, enc.ActorTurnState(monkEntityID).Economy.ActionsRemaining, "Hide spends the standard action")
+
+	var condApplied *events.ConditionAppliedEvent
+	for _, e := range collectEventsTyped(sub, 500*time.Millisecond) {
+		if ev, ok := e.(*events.ConditionAppliedEvent); ok {
+			condApplied = ev
+		}
+	}
+	s.Require().NotNil(condApplied,
+		"Hide should succeed against a passive Perception of 1 and apply HiddenCondition")
+	s.Equal(monkEntityID, condApplied.TargetID)
+	s.Equal(refs.Conditions.Hidden().ID, condApplied.ConditionRef)
+}
