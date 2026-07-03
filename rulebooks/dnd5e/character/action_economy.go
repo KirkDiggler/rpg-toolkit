@@ -345,15 +345,19 @@ func (c *Character) buildAvailableActions() []AvailableAction {
 
 // activateCombatAbility uses the bridge pattern to activate a combat ability.
 // Converts ActionEconomyData to toolkit ActionEconomy, calls the ability, then syncs back.
-func (c *Character) activateCombatAbility(ca combatabilities.CombatAbility, _ *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
+func (c *Character) activateCombatAbility(
+	ca combatabilities.CombatAbility, activateInput *ActivateAbilityInput,
+) (*ActivateAbilityOutput, error) {
 	ae := c.toToolkitActionEconomy()
 
 	ctx := context.Background()
 	input := combatabilities.CombatAbilityInput{
-		Bus:           c.bus,
-		ActionEconomy: ae,
-		Speed:         c.GetSpeed(),
-		ExtraAttacks:  c.GetExtraAttacksCount(),
+		Bus:                        c.bus,
+		ActionEconomy:              ae,
+		Speed:                      c.GetSpeed(),
+		ExtraAttacks:               c.GetExtraAttacksCount(),
+		Target:                     activateInput.Target,
+		ObserverPassivePerceptions: activateInput.ObserverPassivePerceptions,
 	}
 
 	// Check if ability can be activated

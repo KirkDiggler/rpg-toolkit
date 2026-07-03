@@ -139,6 +139,20 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return dodging, nil
 
+	case refs.Conditions.Hidden().ID:
+		hidden := &HiddenCondition{}
+		if err := hidden.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load hidden condition")
+		}
+		return hidden, nil
+
+	case refs.Conditions.Helped().ID:
+		helped := &HelpedCondition{}
+		if err := helped.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load helped condition")
+		}
+		return helped, nil
+
 	case refs.Conditions.Unconscious().ID:
 		uc := &UnconsciousCondition{}
 		if err := uc.loadJSON(data); err != nil {
