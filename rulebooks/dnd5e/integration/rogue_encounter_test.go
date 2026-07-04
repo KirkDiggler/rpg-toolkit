@@ -77,6 +77,7 @@ func (m *mockRogueCharacter) GetMaxHitPoints() int                           { r
 func (m *mockRogueCharacter) AC() int                                        { return m.armorClass }
 func (m *mockRogueCharacter) IsDirty() bool                                  { return false }
 func (m *mockRogueCharacter) MarkClean()                                     {}
+func (m *mockRogueCharacter) PassivePerception() int                         { return 10 }
 func (m *mockRogueCharacter) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
 
 func (m *mockRogueCharacter) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {

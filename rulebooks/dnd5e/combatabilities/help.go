@@ -11,21 +11,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Help represents the Help combat ability (PHB p.192).
-// When activated, it consumes 1 action and publishes a HelpActivatedEvent.
-// The helped ally gains advantage on their next ability check, or (when helping
-// against a creature within 5 feet) advantage on their next attack roll against
-// that creature before the start of the helper's next turn.
+// When activated, it consumes 1 action, publishes a HelpActivatedEvent, and
+// grants the targeted ally advantage on their next attack roll via
+// HelpedCondition.
 //
-// Mirrors the Dodge/Disengage bar: this consumes the action and emits the
-// activation signal. Applying the advantage to the ally (and threading which
-// ally is helped) is a later beat — the ally target is not yet carried through
-// the character ActivateAbility path, so HelpActivatedEvent.AllyID is empty for
-// now (documented gap).
+// Beat 2 (rpg-project#75) scopes Help to the ATTACK branch only — advantage
+// on an ally's next ability check (the "helping a task" branch of PHB p.192)
+// is explicitly deferred (R4): the fixture that would exercise it doesn't
+// exist yet, and HelpedCondition ships with no AbilityCheckChain subscriber
+// this wave.
 type Help struct {
 	*BaseCombatAbility
 }
@@ -51,7 +51,7 @@ func NewHelp(id string) *Help {
 }
 
 // CanActivate checks if the Help ability can be activated.
-// Requires an available action and an event bus.
+// Requires an available action, an event bus, and a target ally.
 func (h *Help) CanActivate(ctx context.Context, owner core.Entity, input CombatAbilityInput) error {
 	if err := h.BaseCombatAbility.CanActivate(ctx, owner, input); err != nil {
 		return err
@@ -59,23 +59,47 @@ func (h *Help) CanActivate(ctx context.Context, owner core.Entity, input CombatA
 	if input.Bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus required for Help")
 	}
+	if input.Target == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "target ally required for Help")
+	}
 	return nil
 }
 
-// Activate consumes 1 action and publishes a HelpActivatedEvent.
-// A subscriber in a later beat applies the advantage to the helped ally.
+// Activate consumes 1 action, publishes a HelpActivatedEvent, and applies
+// HelpedCondition to the targeted ally via a cross-entity
+// ConditionAppliedEvent{Target: input.Target} — the same
+// ConditionAppliedTopic path Rage uses for self-targeting, extended to a
+// target other than the activator.
 func (h *Help) Activate(ctx context.Context, owner core.Entity, input CombatAbilityInput) error {
 	if input.Bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus required for Help")
 	}
+	if input.Target == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "target ally required for Help")
+	}
 	if err := h.BaseCombatAbility.Activate(ctx, owner, input); err != nil {
 		return err
 	}
+
+	allyID := input.Target.GetID()
+
 	if err := dnd5eEvents.HelpActivatedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.HelpActivatedEvent{
 		CharacterID: owner.GetID(),
+		AllyID:      allyID,
 	}); err != nil {
 		return fmt.Errorf("failed to publish help activated event: %w", err)
 	}
+
+	helpedCondition := conditions.NewHelpedCondition(allyID, owner.GetID())
+	if err := dnd5eEvents.ConditionAppliedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    input.Target,
+		Type:      dnd5eEvents.ConditionHelped,
+		Source:    dnd5eEvents.ConditionSourceCombatAbility,
+		Condition: helpedCondition,
+	}); err != nil {
+		return fmt.Errorf("failed to publish helped condition applied event: %w", err)
+	}
+
 	return nil
 }
 

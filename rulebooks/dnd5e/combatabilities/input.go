@@ -1,6 +1,8 @@
 package combatabilities
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -34,4 +36,24 @@ type CombatAbilityInput struct {
 	// 0 = normal (1 attack), 1 = Extra Attack (2 attacks), etc.
 	// Required for the Attack ability to set correct attack capacity.
 	ExtraAttacks int `json:"-"`
+
+	// Target is the resolved target entity for abilities that target someone
+	// other than the owner (e.g. Help). Required for Help.Activate, which
+	// publishes a cross-entity ConditionAppliedEvent{Target: ...} — the
+	// ability needs the entity, not just an id. The caller (encounter SDK)
+	// resolves this via its own combatant registry; Character has no entity
+	// lookup of its own.
+	Target core.Entity `json:"-"`
+
+	// ObserverPassivePerceptions is the passive Perception of every opposing
+	// combatant that could observe this ability's actor, gathered by the
+	// caller via Combatant.PassivePerception() (never recomputed here).
+	// Required for Hide, which succeeds only if its Stealth total beats the
+	// highest value in this slice (binary success, not per-observer).
+	ObserverPassivePerceptions []int `json:"-"`
+
+	// Roller is the dice roller to use for abilities that roll checks (e.g.
+	// Hide's Stealth check). If nil, defaults to dice.NewRoller(). Pass a
+	// mock roller here for deterministic tests.
+	Roller dice.Roller `json:"-"`
 }

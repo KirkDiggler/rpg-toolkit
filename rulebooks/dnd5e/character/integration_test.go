@@ -1142,6 +1142,7 @@ func (g *testGoblin) AbilityScores() shared.AbilityScores {
 		abilities.DEX: 14, // +2
 	}
 }
+func (g *testGoblin) PassivePerception() int { return 10 }
 func (g *testGoblin) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	total := 0
 	for _, inst := range input.Instances {
