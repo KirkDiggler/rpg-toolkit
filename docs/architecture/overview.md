@@ -22,19 +22,19 @@ rpg-toolkit is a Go rules engine for tabletop RPG mechanics. Its mandate is to i
 
 ## Layer rules & module dependency map
 
-**Higher layers may import lower; reversing is a defect.** The only arrow into
-the top is `encounter → rulebooks/dnd5e`: the dnd5e encounter SDK, decided in
-**ADR-0034** (it is *the* D&D 5e encounter, not a generic engine). Every other
-module sits at or below the Rulebooks layer, and **nothing imports rpg-api or
-rpg-api-protos** (the toolkit never knows its host).
+**Higher layers may import lower; reversing is a defect.** The diagram shows the
+**decided end-state** (ADR-0034): the encounter is *the* D&D 5e encounter, so it
+lives **inside** the `rulebooks/dnd5e` module as `rulebooks/dnd5e/encounter`.
+Every module sits at or below the Rulebooks layer, and **nothing imports rpg-api
+or rpg-api-protos** (the toolkit never knows its host). The dashed encounter node
+and the note flag the migration that is scheduled but not yet done.
 
 ```mermaid
 flowchart TD
-  subgraph ENCL["Encounter — the D&D 5e encounter SDK (ADR-0034)"]
-    ENC["encounter"]
-  end
-  subgraph RB["Rulebooks"]
-    DND["rulebooks/dnd5e"]
+  subgraph RB["Rulebooks — the rulebooks/dnd5e module (D&D 5e)"]
+    DND["dnd5e rules<br/>character · combat · monsters · conditions"]
+    ENC["encounter<br/>rulebooks/dnd5e/encounter"]
+    ENC --> DND
   end
   subgraph TOOLS["Tools"]
     SPATIAL["tools/spatial"]
@@ -59,8 +59,7 @@ flowchart TD
     ITEMS["items"]
   end
 
-  ENC ==>|"the only module above the rulebook"| DND
-  ENC --> SPATIAL & EV & C & DICE
+  ENC --> SPATIAL & EV
   DND --> RES & ENV & SPATIAL & EV & C & DICE
   SPAWN --> ENV & SPATIAL
   ENV --> SPATIAL
@@ -68,17 +67,22 @@ flowchart TD
   COND --> EFFECTS
   EFFECTS --> EV & C
 
-  linkStyle 0 stroke:#d33,stroke-width:3px,color:#d33
+  MIG["MIGRATION PENDING — ADR-0034<br/>Today the encounter is a separate top-level module that<br/>requires rulebooks/dnd5e by pseudo-version. It moves + merges<br/>into this module after Beat 2, killing the pseudo-version dance."]
+  ENC -.->|"scheduled move"| MIG
+
+  style ENC stroke:#d33,stroke-width:2px,stroke-dasharray:6 4
+  style MIG fill:#fff3cd,stroke:#d39e00,color:#663c00
 ```
 
-Nodes are modules; arrows are `go.mod` dependencies; the red arrow is the
-ADR-0034 exception. Uniform arrows are omitted for legibility: every Mechanics
-module also requires `core` + `events` (`conditions` also `effects`, shown), and
-`rpgerr` / `dice` / `game` / `items` are Core-layer leaves that higher layers
-require as needed. **Maintenance rule:** when a module is added, moved, or
-changes a dependency, update this diagram in the *same* PR — the prose list this
-replaced went stale (it claimed "nothing depends on `rulebooks/dnd5e`" long after
-the encounter did); a diagram that travels with the change cannot.
+Nodes are modules (the encounter is a package *within* the dnd5e module in the
+end-state); arrows are dependencies. Uniform arrows are omitted for legibility:
+every Mechanics module also requires `core` + `events` (`conditions` also
+`effects`, shown), and `rpgerr` / `dice` / `game` / `items` are Core-layer leaves
+higher layers require as needed. **Maintenance rule:** when a module is added,
+moved, or changes a dependency — including when the pending encounter move lands —
+update this diagram in the *same* PR. The prose list this replaced went stale (it
+claimed "nothing depends on `rulebooks/dnd5e`" long after the encounter did); a
+diagram that travels with the change cannot.
 
 ## The persistence pattern
 
@@ -115,11 +119,13 @@ Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains 
 
 ## The dnd5e encounter: rules vs room
 
-The `encounter → rulebooks/dnd5e` arrow above has a load-bearing internal seam
-(ADR-0034). The **rulebook** owns what the rules *say*; the **encounter** owns
-the *room* those rules happen in. The encounter publishes the turn-tick
-vocabulary onto the bus and asks the rulebook for verdicts; the rulebook returns
-receipts and the per-entity state the encounter serializes.
+Inside the D&D 5e module there is a load-bearing seam (ADR-0034). The **rulebook**
+owns what the rules *say*; the **encounter** owns the *room* those rules happen in.
+The encounter publishes the turn-tick vocabulary onto the bus and asks the
+rulebook for verdicts; the rulebook returns receipts and the per-entity state the
+encounter serializes. Post-migration this is a package boundary *within* one
+module rather than a cross-module arrow — the seam is the same, the go.mod tax is
+gone.
 
 ```mermaid
 flowchart LR
@@ -146,11 +152,14 @@ flowchart LR
 ```
 
 The room half (broker, transport, perception, audience routing) is
-rulebook-agnostic and, per ADR-0034, is a *candidate primitive*: it stays inside
-the dnd5e encounter until a consumer outside it pulls it down into its own layer
-(the way hex math already lives in `tools/spatial` and effect infrastructure in
-`mechanics/effects`). Extraction is deferred until pulled — the encounter is not
-kept generic on speculation.
+rulebook-agnostic and, per ADR-0034, is a *candidate primitive* — the **event
+broker is the named next extraction candidate**. Such a primitive is lifted
+*down* to its own lower-layer module only when a consumer outside the dnd5e
+encounter pulls for it (the way hex math already lives in `tools/spatial` and
+effect infrastructure in `mechanics/effects`). This is orthogonal to the
+encounter living inside the rulebook: the whole is D&D-specific, but its
+genuinely-general internals still graduate downward on demand. Extraction is
+deferred until pulled — the encounter is not kept generic on speculation.
 
 ## Module map
 
@@ -172,8 +181,8 @@ kept generic on speculation.
 | tools/environments | `tools/environments/` | Tools | Environment persistence, graph generation, multi-room dungeon graph |
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |
 | tools/spawn | `tools/spawn/` | Tools | 4-phase entity spawn engine |
-| rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Full D&D 5e rules: character, combat, initiative, spells, monsters, dungeon |
-| encounter | `encounter/` | Encounter (above Rulebooks) | The dnd5e encounter/game-loop SDK: turn loop, hydration cascade, resolver seam, event broker/transport, perception, prompts. The one module that imports `rulebooks/dnd5e` — see ADR-0034. |
+| rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Full D&D 5e rules: character, combat, initiative, spells, monsters, dungeon — plus the encounter (post-migration) |
+| encounter | `rulebooks/dnd5e/encounter/` *(migration pending; today `encounter/`)* | Rulebooks (D&D 5e) | The dnd5e encounter/game-loop SDK: turn loop, hydration cascade, resolver seam, event broker/transport, perception, prompts. Decided (ADR-0034) to move under and merge into the `rulebooks/dnd5e` module after Beat 2. |
 
 ## Code violations against these rules (2026-05-02)
 
