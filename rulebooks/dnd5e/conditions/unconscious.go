@@ -40,6 +40,17 @@ type UnconsciousCondition struct {
 // Ensure UnconsciousCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnconsciousCondition)(nil)
 
+// NewUnconsciousCondition creates a new Unconscious condition for the
+// specified character, using roller for its auto-rolled death saves.
+// Mirrors NewDodgingCondition's constructor pattern; Unconscious additionally
+// needs a dice.Roller since (unlike Dodging) it rolls dice on its own.
+func NewUnconsciousCondition(characterID string, roller dice.Roller) *UnconsciousCondition {
+	return &UnconsciousCondition{
+		CharacterID: characterID,
+		Roller:      roller,
+	}
+}
+
 // IsApplied returns true if this condition is currently applied
 func (c *UnconsciousCondition) IsApplied() bool {
 	return c.bus != nil
@@ -151,8 +162,20 @@ func (c *UnconsciousCondition) onTurnStart(ctx context.Context, event dnd5eEvent
 		return nil
 	}
 
+	// Reload survives CharacterID + death-save counters (loadJSON) but NOT
+	// Roller — every RPC reconstructs the encounter/character fresh from
+	// persisted JSON, so a character that went unconscious on a prior RPC
+	// has Roller == nil here on the next one. Lazy-fallback at point-of-use,
+	// mirroring BrutalCriticalCondition.onDamageChain / SneakAttackCondition.
+	// onDamageChain, rather than depending on construction-time injection
+	// surviving a reload (rpg-toolkit#733).
+	roller := c.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
+
 	result, err := saves.MakeDeathSave(ctx, &saves.DeathSaveInput{
-		Roller: c.Roller,
+		Roller: roller,
 		State:  c.deathSaveState,
 	})
 	if err != nil {

@@ -478,6 +478,60 @@ func (s *UnconsciousConditionTestSuite) TestOnDamageReceived_StabilizedCreature_
 	s.False(uc.deathSaveState.Stabilized, "stabilization should be reset")
 }
 
+// TestReload_NoRollerAfterReload_StillRollsRealDeathSave is the rpg-toolkit#733
+// regression test: loadJSON restores CharacterID + death-save counters but
+// NEVER Roller (it isn't part of UnconsciousData — nothing to unmarshal it
+// from). In production, Encounter/Character are reconstructed fresh on every
+// RPC: a player goes unconscious this RPC (Roller injected via
+// NewUnconsciousCondition, fine), the encounter persists, the next RPC
+// reloads via conditions.LoadJSON — a BRAND NEW instance with Roller == nil —
+// and Apply()s it onto a fresh bus. This proves that reload-then-fire-again
+// shape actually works: no panic, no nil dereference, a real death save still
+// rolls (onTurnStart's lazy dice.NewRoller() fallback, mirroring
+// BrutalCriticalCondition/SneakAttackCondition's onDamageChain).
+func (s *UnconsciousConditionTestSuite) TestReload_NoRollerAfterReload_StillRollsRealDeathSave() {
+	original := NewUnconsciousCondition("char-reload", s.mockRoller)
+	err := original.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	data, err := original.ToJSON()
+	s.Require().NoError(err)
+
+	// Simulate the next RPC's reload: a fresh instance via the same
+	// registration path unconscious_test's sibling loader.go uses.
+	reloadedAny, err := LoadJSON(data)
+	s.Require().NoError(err)
+	reloaded, ok := reloadedAny.(*UnconsciousCondition)
+	s.Require().True(ok)
+	s.Nil(reloaded.Roller, "reload must not carry over the original Roller — this is the bug's precondition")
+
+	// Apply to a fresh bus, mirroring LoadFromData reconstructing e.bus fresh
+	// every RPC.
+	freshBus := events.NewEventBus()
+	s.Require().NoError(reloaded.Apply(s.ctx, freshBus))
+
+	var rolled *dnd5eEvents.DeathSaveRolledEvent
+	_, err = dnd5eEvents.DeathSaveRolledTopic.On(freshBus).Subscribe(s.ctx,
+		func(_ context.Context, e dnd5eEvents.DeathSaveRolledEvent) error {
+			rolled = &e
+			return nil
+		})
+	s.Require().NoError(err)
+
+	s.Require().NotPanics(func() {
+		err = dnd5eEvents.TurnStartTopic.On(freshBus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
+			CharacterID: "char-reload",
+			Round:       1,
+		})
+	}, "a nil Roller after reload must not panic")
+	s.Require().NoError(err)
+
+	s.Require().NotNil(rolled, "a real death save must still roll after reload with a nil Roller")
+	s.Equal("char-reload", rolled.CharacterID)
+	s.GreaterOrEqual(rolled.Roll, 1, "roll must be a real d20 result, not a zero-value stand-in")
+	s.LessOrEqual(rolled.Roll, 20)
+}
+
 func (s *UnconsciousConditionTestSuite) TestIsApplied_ReflectsBusState() {
 	uc := s.newCondition("char-1")
 
