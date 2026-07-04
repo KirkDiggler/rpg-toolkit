@@ -790,6 +790,7 @@ func (e *Encounter) publishMoveAttackResolved(
 		attackerID, targetID,
 		roll.WouldHit, roll.IsNaturalTwenty,
 		roll.AttackRoll, roll.AttackBonus, roll.OriginalAC,
+		roll.HasAdvantage, roll.HasDisadvantage, roll.AdvantageSources, roll.DisadvantageSources,
 		attackPerPlayer,
 	)
 	if err := e.publishCorrelated(evt, corrID); err != nil {
