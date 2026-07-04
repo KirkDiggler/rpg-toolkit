@@ -14,8 +14,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	mock_combat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/mock"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -365,6 +367,9 @@ func (s *AttackTestSuite) TestResolveAttack_WithDisadvantage() {
 	s.Equal([]int{18, 5}, result.AllRolls, "should record both rolls")
 	s.False(result.HasAdvantage)
 	s.True(result.HasDisadvantage, "should indicate disadvantage was used")
+	s.Require().Len(result.DisadvantageSources, 1)
+	s.Equal(&core.Ref{Module: "dnd5e", Type: "fighting_styles", ID: "protection"}, result.DisadvantageSources[0])
+	s.Empty(result.AdvantageSources)
 
 	// Attack: 5 (roll) + 2 (STR) + 2 (prof) = 9 vs AC 15
 	s.Equal(9, result.TotalAttack)
@@ -440,10 +445,68 @@ func (s *AttackTestSuite) TestResolveAttack_AdvantageAndDisadvantageCancelOut() 
 	s.Equal([]int{12}, result.AllRolls, "should only have one roll when cancelled")
 	s.False(result.HasAdvantage, "advantage should be cancelled")
 	s.False(result.HasDisadvantage, "disadvantage should be cancelled")
+	s.Empty(result.AdvantageSources, "advantage sources should be cleared when cancelled")
+	s.Empty(result.DisadvantageSources, "disadvantage sources should be cleared when cancelled")
 
 	// Attack: 12 (roll) + 2 (STR) + 2 (prof) = 16 vs AC 15
 	s.Equal(16, result.TotalAttack)
 	s.True(result.Hit)
+}
+
+// TestResolveAttack_DodgingConditionSurfacesDisadvantageSource proves the
+// real DodgingCondition's disadvantage -- and the SourceRef it stamps
+// (refs.Conditions.Dodging()) -- rides all the way out to AttackResult
+// verbatim. DodgingCondition itself already computes this correctly
+// (rulebooks/dnd5e/conditions/dodging.go); this test guards against it being
+// dropped anywhere between the attack chain and the returned AttackResult.
+func (s *AttackTestSuite) TestResolveAttack_DodgingConditionSurfacesDisadvantageSource() {
+	attacker := mock_combat.NewMockCombatant(s.ctrl)
+	attacker.EXPECT().GetID().Return("fighter-1").AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{
+		abilities.STR: 14, // +2 modifier
+	}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
+
+	goblin := mock_combat.NewMockCombatant(s.ctrl)
+	goblin.EXPECT().GetID().Return("goblin-1").AnyTimes()
+	goblin.EXPECT().AC().Return(15).AnyTimes()
+
+	s.lookup.EXPECT().Get("fighter-1").Return(attacker, nil).AnyTimes()
+	s.lookup.EXPECT().Get("goblin-1").Return(goblin, nil).AnyTimes()
+
+	longsword := &weapons.Weapon{
+		ID:         weapons.Longsword,
+		Name:       "Longsword",
+		Damage:     "1d8",
+		DamageType: damage.Slashing,
+	}
+
+	// Goblin is Dodging -- the real condition subscribes itself onto the
+	// attack chain and imposes disadvantage on attacks targeting it.
+	dodging := conditions.NewDodgingCondition("goblin-1")
+	s.Require().NoError(dodging.Apply(s.ctx, s.eventBus))
+
+	// Disadvantage roll: take the lower of 18 and 5.
+	mockRoller := mock_dice.NewMockRoller(s.ctrl)
+	mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
+	// 5 + 2 (STR) + 2 (prof) = 9, misses AC 15 -- no damage roll expected.
+
+	input := &combat.AttackInput{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longsword,
+		EventBus:   s.eventBus,
+		Roller:     mockRoller,
+	}
+
+	result, err := combat.ResolveAttack(s.ctx, input)
+	s.Require().NoError(err)
+
+	s.False(result.HasAdvantage)
+	s.True(result.HasDisadvantage, "Dodging should impose disadvantage")
+	s.Require().Len(result.DisadvantageSources, 1)
+	s.Equal(refs.Conditions.Dodging(), result.DisadvantageSources[0],
+		"Dodging's SourceRef should ride the AttackResult verbatim, not be recomputed")
 }
 
 func (s *AttackTestSuite) TestResolveAttack_ReactionsConsumedPublishesEvents() {

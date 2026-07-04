@@ -599,6 +599,17 @@ type PostAttackRollEvent struct {
 
 	// IsNaturalOne is true if the natural d20 was 1 (always misses).
 	IsNaturalOne bool
+
+	// HasAdvantage is true if the roll was made with advantage.
+	HasAdvantage bool
+
+	// HasDisadvantage is true if the roll was made with disadvantage.
+	HasDisadvantage bool
+
+	// AdvantageSources/DisadvantageSources name the condition(s)/feature(s)
+	// that granted advantage or imposed disadvantage, for narration.
+	AdvantageSources    []*core.Ref
+	DisadvantageSources []*core.Ref
 }
 
 // =============================================================================

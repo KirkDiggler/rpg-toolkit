@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -14,6 +15,21 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
+
+// attackModifierRefs extracts the SourceRef of each AttackModifierSource,
+// preserving order and skipping any nil refs. Used to carry forward (never
+// recompute) the condition/feature refs that granted advantage or imposed
+// disadvantage, for narration on the encounter-side AttackOutcome/
+// AttackResolvedEvent.
+func attackModifierRefs(sources []dnd5eEvents.AttackModifierSource) []*core.Ref {
+	var refs []*core.Ref
+	for _, src := range sources {
+		if src.SourceRef != nil {
+			refs = append(refs, src.SourceRef)
+		}
+	}
+	return refs
+}
 
 // AttackContext carries the complete state of a phase-1 (hit determination)
 // attack through the RPC boundary to phase 2 (damage application).
@@ -49,6 +65,13 @@ type AttackContext struct {
 	// Advantage/disadvantage (carried to phase 2 for damage chain context)
 	HasAdvantage    bool
 	HasDisadvantage bool
+
+	// AdvantageSources/DisadvantageSources name the condition(s)/feature(s)
+	// that granted advantage or imposed disadvantage (e.g. refs.Conditions.Dodging()),
+	// for narration. Populated verbatim from the attack chain event's
+	// AttackModifierSource.SourceRef entries -- never recomputed here.
+	AdvantageSources    []*core.Ref
+	DisadvantageSources []*core.Ref
 
 	// Chain outputs (carried to phase 2 for damage chain)
 	CriticalThreshold int // Roll >= this value is a critical hit (default 20)
@@ -259,6 +282,8 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 	// Determine advantage/disadvantage and roll
 	hasAdvantage := len(finalAttackEvent.AdvantageSources) > 0
 	hasDisadvantage := len(finalAttackEvent.DisadvantageSources) > 0
+	advantageSources := attackModifierRefs(finalAttackEvent.AdvantageSources)
+	disadvantageSources := attackModifierRefs(finalAttackEvent.DisadvantageSources)
 
 	var attackRoll int
 	var allRolls []int
@@ -272,6 +297,8 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		allRolls = []int{attackRoll}
 		hasAdvantage = false
 		hasDisadvantage = false
+		advantageSources = nil
+		disadvantageSources = nil
 	case hasAdvantage:
 		allRolls, err = roller.RollN(ctx, 2, 20)
 		if err != nil {
@@ -328,15 +355,19 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 	// typically do not modify the chain — the AC bonus from a taken Shield
 	// reaction is applied in phase 2 (ApplyAttackOutcome) via ReactionModifier.
 	postRollEvent := &dnd5eEvents.PostAttackRollEvent{
-		AttackerID:      input.AttackerID,
-		TargetID:        input.TargetID,
-		OriginalAC:      defenderAC,
-		AttackRoll:      attackRoll,
-		AttackBonus:     finalAttackEvent.AttackBonus,
-		TotalAttack:     totalAttack,
-		WouldHit:        wouldHit,
-		IsNaturalTwenty: isNatural20,
-		IsNaturalOne:    isNatural1,
+		AttackerID:          input.AttackerID,
+		TargetID:            input.TargetID,
+		OriginalAC:          defenderAC,
+		AttackRoll:          attackRoll,
+		AttackBonus:         finalAttackEvent.AttackBonus,
+		TotalAttack:         totalAttack,
+		WouldHit:            wouldHit,
+		IsNaturalTwenty:     isNatural20,
+		IsNaturalOne:        isNatural1,
+		HasAdvantage:        hasAdvantage,
+		HasDisadvantage:     hasDisadvantage,
+		AdvantageSources:    advantageSources,
+		DisadvantageSources: disadvantageSources,
 	}
 	postRollChain := events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](ModifierStages)
 	postRolls := dnd5eEvents.PostAttackRollChain.On(input.EventBus)
@@ -345,24 +376,26 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 	}
 
 	return &AttackContext{
-		AttackerID:        input.AttackerID,
-		TargetID:          input.TargetID,
-		Weapon:            input.Weapon,
-		OriginalAC:        defenderAC,
-		WouldHit:          wouldHit,
-		AttackRoll:        attackRoll,
-		AttackBonus:       finalAttackEvent.AttackBonus,
-		TotalAttack:       totalAttack,
-		IsNaturalTwenty:   isNatural20,
-		IsNaturalOne:      isNatural1,
-		AllRolls:          allRolls,
-		HasAdvantage:      hasAdvantage,
-		HasDisadvantage:   hasDisadvantage,
-		CriticalThreshold: finalAttackEvent.CriticalThreshold,
-		ReactionsConsumed: finalAttackEvent.ReactionsConsumed,
-		AbilityMod:        abilityMod,
-		AbilityUsed:       determineAbilityUsed(input.Weapon, attackerScores),
-		IsOffHandAttack:   isOffHandAttack,
+		AttackerID:          input.AttackerID,
+		TargetID:            input.TargetID,
+		Weapon:              input.Weapon,
+		OriginalAC:          defenderAC,
+		WouldHit:            wouldHit,
+		AttackRoll:          attackRoll,
+		AttackBonus:         finalAttackEvent.AttackBonus,
+		TotalAttack:         totalAttack,
+		IsNaturalTwenty:     isNatural20,
+		IsNaturalOne:        isNatural1,
+		AllRolls:            allRolls,
+		HasAdvantage:        hasAdvantage,
+		HasDisadvantage:     hasDisadvantage,
+		AdvantageSources:    advantageSources,
+		DisadvantageSources: disadvantageSources,
+		CriticalThreshold:   finalAttackEvent.CriticalThreshold,
+		ReactionsConsumed:   finalAttackEvent.ReactionsConsumed,
+		AbilityMod:          abilityMod,
+		AbilityUsed:         determineAbilityUsed(input.Weapon, attackerScores),
+		IsOffHandAttack:     isOffHandAttack,
 	}, nil
 }
 
@@ -415,18 +448,20 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	isCritical := hit && ac.AttackRoll >= ac.CriticalThreshold
 
 	result := &AttackResult{
-		AttackRoll:      ac.AttackRoll,
-		AttackBonus:     ac.AttackBonus,
-		TotalAttack:     ac.TotalAttack,
-		TargetAC:        effectiveAC,
-		Hit:             hit,
-		Critical:        isCritical,
-		IsNaturalTwenty: ac.IsNaturalTwenty,
-		IsNaturalOne:    ac.IsNaturalOne,
-		AllRolls:        ac.AllRolls,
-		HasAdvantage:    ac.HasAdvantage,
-		HasDisadvantage: ac.HasDisadvantage,
-		DamageType:      ac.Weapon.DamageType,
+		AttackRoll:          ac.AttackRoll,
+		AttackBonus:         ac.AttackBonus,
+		TotalAttack:         ac.TotalAttack,
+		TargetAC:            effectiveAC,
+		Hit:                 hit,
+		Critical:            isCritical,
+		IsNaturalTwenty:     ac.IsNaturalTwenty,
+		IsNaturalOne:        ac.IsNaturalOne,
+		AllRolls:            ac.AllRolls,
+		HasAdvantage:        ac.HasAdvantage,
+		HasDisadvantage:     ac.HasDisadvantage,
+		AdvantageSources:    ac.AdvantageSources,
+		DisadvantageSources: ac.DisadvantageSources,
+		DamageType:          ac.Weapon.DamageType,
 	}
 
 	if !hit {
