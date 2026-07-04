@@ -19,6 +19,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
 	tkenc "github.com/KirkDiggler/rpg-toolkit/encounter"
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
@@ -636,6 +637,70 @@ drainLoop:
 	s.Equal(6, dmgEvt.Amount)
 	s.Equal("slashing", dmgEvt.DamageType)
 	s.Equal(14, dmgEvt.HPAfter)
+}
+
+// TestMove_OAAttackResolved_CarriesAdvantageDisadvantage verifies the
+// Move-path OA route (npc.go's publishMoveAttackResolved, distinct from the
+// TakeAction path's publishAttackOutcome) also threads HasDisadvantage +
+// DisadvantageSources onto its AttackResolvedEvent (#726). This route
+// builds the event straight from dnd5eEvents.PostAttackRollEvent -- not
+// from AttackOutcome/CombatResolver -- so it needs its own field-threading
+// check; PostAttackRollEvent gained the same two bool + two ref-slice
+// fields for exactly this reason.
+func (s *MovementResolverSuite) TestMove_OAAttackResolved_CarriesAdvantageDisadvantage() {
+	s.addGoblinForNPCMovementTests()
+
+	dodgingRef := &toolkitcore.Ref{Module: refModuleDnd5e, Type: "conditions", ID: "dodging"}
+	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
+		if stepIdx != 0 {
+			return
+		}
+		rolls := dnd5eEvents.PostAttackRollChain.On(bus)
+		_, _ = rolls.PublishWithChain(context.Background(), &dnd5eEvents.PostAttackRollEvent{
+			AttackerID:          string(gobEntityID),
+			TargetID:            string(aliceEntityID),
+			OriginalAC:          oaHitTargetAC,
+			AttackRoll:          5,
+			AttackBonus:         oaHitAttackBonus,
+			TotalAttack:         5 + oaHitAttackBonus,
+			WouldHit:            false,
+			HasDisadvantage:     true,
+			DisadvantageSources: []*toolkitcore.Ref{dodgingRef},
+		}, dnd5events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](nil))
+	}
+
+	sub, err := s.broker.Subscribe(s.enc.ID(), alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	path := []encountercore.Hex{
+		{Q: 1, R: 0, S: -1},
+		{Q: 2, R: 0, S: -2},
+	}
+	s.Require().NoError(s.enc.Move(alicePlayerID, path))
+
+	var attackEvt *events.AttackResolvedEvent
+	deadline := time.After(2 * time.Second)
+drainLoop:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoop
+			}
+			if ae, isAttack := evt.(*events.AttackResolvedEvent); isAttack {
+				attackEvt = ae
+				break drainLoop
+			}
+		case <-deadline:
+			break drainLoop
+		}
+	}
+	s.Require().NotNil(attackEvt, "AttackResolvedEvent should have been published for the OA roll")
+	s.False(attackEvt.HasAdvantage)
+	s.True(attackEvt.HasDisadvantage)
+	s.Require().Len(attackEvt.DisadvantageSources, 1)
+	s.Equal(dodgingRef, attackEvt.DisadvantageSources[0])
 }
 
 // TestNPCMove_NPCMoves_OADamagesMonster verifies the NPC-mover direction:

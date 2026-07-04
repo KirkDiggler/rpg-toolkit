@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 )
@@ -19,16 +20,29 @@ import (
 type alwaysHitResolver struct {
 	damage     int
 	damageType string
+
+	// hasAdvantage/hasDisadvantage/advantageSources/disadvantageSources let
+	// tests configure the canned AttackOutcome the same way a real resolver
+	// would copy them from combat.AttackResult (#726). Zero values (false,
+	// nil) preserve every existing caller's behavior.
+	hasAdvantage        bool
+	hasDisadvantage     bool
+	advantageSources    []*toolkitcore.Ref
+	disadvantageSources []*toolkitcore.Ref
 }
 
 func (r alwaysHitResolver) ResolveAttack(_ encounter.AttackInput) (*encounter.AttackOutcome, error) {
 	return &encounter.AttackOutcome{
-		Hit:         true,
-		AttackRoll:  20,
-		AttackBonus: 4,
-		TargetAC:    10,
-		Damage:      r.damage,
-		DamageType:  r.damageType,
+		Hit:                 true,
+		AttackRoll:          20,
+		AttackBonus:         4,
+		TargetAC:            10,
+		Damage:              r.damage,
+		DamageType:          r.damageType,
+		HasAdvantage:        r.hasAdvantage,
+		HasDisadvantage:     r.hasDisadvantage,
+		AdvantageSources:    r.advantageSources,
+		DisadvantageSources: r.disadvantageSources,
 	}, nil
 }
 

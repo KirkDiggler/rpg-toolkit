@@ -142,6 +142,12 @@ type AttackResult struct {
 	HasAdvantage    bool  // True if rolled with advantage
 	HasDisadvantage bool  // True if rolled with disadvantage
 
+	// AdvantageSources/DisadvantageSources name the condition(s)/feature(s)
+	// that granted advantage or imposed disadvantage (e.g. refs.Conditions.Dodging()),
+	// for narration. Copied verbatim from AttackContext -- never recomputed.
+	AdvantageSources    []*core.Ref
+	DisadvantageSources []*core.Ref
+
 	// Damage details
 	DamageRolls []int       // Individual damage dice rolls (flattened)
 	DamageBonus int         // Total damage bonus

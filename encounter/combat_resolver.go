@@ -245,6 +245,16 @@ type AttackOutcome struct {
 	// attack (after the AC chain — Shield spell, cover, etc.).
 	TargetAC int
 
+	// HasAdvantage/HasDisadvantage report whether the attack roll was made
+	// with advantage/disadvantage. AdvantageSources/DisadvantageSources name
+	// the granting/imposing condition(s) (e.g. refs.Conditions.Dodging()),
+	// for narration. The resolver copies these verbatim from the rulebook's
+	// AttackResult (e.g. dnd5e/combat.AttackResult) — never recomputed here.
+	HasAdvantage        bool
+	HasDisadvantage     bool
+	AdvantageSources    []*core.Ref
+	DisadvantageSources []*core.Ref
+
 	// Damage is the final damage dealt on a hit. Zero on miss.
 	Damage int
 
