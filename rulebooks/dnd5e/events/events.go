@@ -68,6 +68,11 @@ const (
 
 	// ConditionFightingStyle represents an active fighting style
 	ConditionFightingStyle ConditionType = "fighting_style"
+
+	// ConditionDodging is applied when a character uses the Dodge combat ability.
+	// Attackers have disadvantage against the character and the character has
+	// advantage on DEX saves, until the start of the character's next turn.
+	ConditionDodging ConditionType = "dodging"
 )
 
 // ConditionSource identifies where a condition originated
@@ -78,6 +83,8 @@ const (
 	ConditionSourceClass ConditionSource = "class"
 	// ConditionSourceFeature indicates condition from feature activation (e.g., rage)
 	ConditionSourceFeature ConditionSource = "feature"
+	// ConditionSourceCombatAbility indicates condition from a combat ability activation (e.g., dodge)
+	ConditionSourceCombatAbility ConditionSource = "combat_ability"
 )
 
 // ConditionBehavior represents the behavior of an active condition.
