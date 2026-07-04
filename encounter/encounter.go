@@ -195,6 +195,7 @@ func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *E
 	// returns no error, so this is deliberately swallowed rather than
 	// widening New's contract for something structurally infallible here.
 	_ = e.subscribeCharacterDiedBridge(ctx)
+	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
 	}
@@ -253,6 +254,7 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	if err := e.subscribeCharacterDiedBridge(ctx); err != nil {
 		return nil, fmt.Errorf("subscribe character died bridge: %w", err)
 	}
+	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
 	}
