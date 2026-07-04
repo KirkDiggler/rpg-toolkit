@@ -131,9 +131,11 @@ func (h *Hide) Activate(ctx context.Context, owner core.Entity, input CombatAbil
 }
 
 // highestPassivePerception returns the highest value in observerPP, or 0 if
-// empty (no observers means the Stealth check trivially succeeds). Hide's
-// own "beat the highest" comparison — the caller only gathers the raw
-// values via Combatant.PassivePerception(), never the DC itself.
+// empty (no observers means DC 0 — the check still rolls, but a Stealth
+// total below 0 is essentially unreachable in practice, not structurally
+// impossible). Hide's own "beat the highest" comparison — the caller only
+// gathers the raw values via Combatant.PassivePerception(), never the DC
+// itself.
 func highestPassivePerception(observerPP []int) int {
 	highest := 0
 	for _, pp := range observerPP {

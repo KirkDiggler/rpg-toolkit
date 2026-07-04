@@ -22,12 +22,17 @@ type AbilityCheckInput struct {
 	Roller dice.Roller
 
 	// EventBus is the event bus for chain modifiers. If nil, no chain events
-	// are fired. This allows conditions like Hidden to grant advantage on
-	// checks.
+	// are fired. This allows conditions/features that subscribe to
+	// AbilityCheckChain to grant advantage, disadvantage, or bonuses on
+	// checks (no condition subscribes to it yet this wave — see R4 in
+	// rpg-toolkit#716 — but the chain exists so future ones can, the same
+	// way SavingThrowChain fires whether or not a subscriber exists).
 	EventBus events.EventBus
 
 	// CheckerID is the ID of the entity making the check.
-	// Required when EventBus is provided.
+	// Required when EventBus is provided — MakeAbilityCheck rejects the
+	// combination of a non-nil EventBus with an empty CheckerID, since chain
+	// subscribers key off this id.
 	CheckerID string
 
 	// Skill is the skill being checked (Stealth, Perception, etc).
@@ -96,6 +101,9 @@ type AbilityCheckResult struct {
 func MakeAbilityCheck(ctx context.Context, input *AbilityCheckInput) (*AbilityCheckResult, error) {
 	if input == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+	}
+	if input.EventBus != nil && input.CheckerID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "CheckerID is required when EventBus is provided")
 	}
 
 	roller := input.Roller
