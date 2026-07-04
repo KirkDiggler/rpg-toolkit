@@ -690,6 +690,7 @@ func (m *mockEntity) IsDirty() bool                       { return false }
 func (m *mockEntity) MarkClean()                          {}
 func (m *mockEntity) AbilityScores() shared.AbilityScores { return m.abilityScores }
 func (m *mockEntity) ProficiencyBonus() int               { return m.proficiencyBonus }
+func (m *mockEntity) PassivePerception() int              { return 10 }
 
 func (m *mockEntity) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
@@ -860,6 +861,7 @@ func (m *mockCombatantTarget) IsDirty() bool                       { return m.di
 func (m *mockCombatantTarget) MarkClean()                          { m.dirty = false }
 func (m *mockCombatantTarget) AbilityScores() shared.AbilityScores { return m.abilityScores }
 func (m *mockCombatantTarget) ProficiencyBonus() int               { return m.proficiencyBonus }
+func (m *mockCombatantTarget) PassivePerception() int              { return 10 }
 
 func (m *mockCombatantTarget) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

@@ -115,6 +115,22 @@ type StartTurnOutput struct {
 // ActivateAbilityInput provides input for activating a combat ability or feature.
 type ActivateAbilityInput struct {
 	AbilityRef *core.Ref // which ability to activate
+
+	// TargetID is the target entity ID (for abilities like Help that target
+	// an ally). Mirrors ExecuteActionInput.TargetID.
+	TargetID string
+
+	// Target is the resolved target entity, required alongside TargetID when
+	// the ability needs to construct a cross-entity effect (e.g. Help's
+	// ConditionAppliedEvent{Target: ally}). The caller (encounter SDK)
+	// resolves this via its own combatant registry — Character has no entity
+	// lookup of its own, so it cannot derive Target from TargetID alone.
+	Target core.Entity
+
+	// ObserverPassivePerceptions is the passive Perception of every opposing
+	// combatant that could observe this activation (e.g. Hide's Stealth
+	// check DC). Gathered by the caller via Combatant.PassivePerception().
+	ObserverPassivePerceptions []int
 }
 
 // ActivateAbilityOutput contains the result of activating an ability.

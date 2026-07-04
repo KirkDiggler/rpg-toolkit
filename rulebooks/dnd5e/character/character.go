@@ -197,6 +197,12 @@ func (c *Character) GetSkillModifier(skill skills.Skill) int {
 	return modifier
 }
 
+// PassivePerception returns the character's passive Perception score
+// (10 + Perception skill modifier). Implements combat.Combatant.
+func (c *Character) PassivePerception() int {
+	return 10 + c.GetSkillModifier(skills.Perception)
+}
+
 // GetSavingThrowModifier returns the total modifier for a saving throw
 func (c *Character) GetSavingThrowModifier(ability abilities.Ability) int {
 	modifier := c.GetAbilityModifier(ability)

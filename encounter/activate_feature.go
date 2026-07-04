@@ -200,8 +200,21 @@ func (e *Encounter) publishChangedResources(
 }
 
 // applyActivatedConditions bridges dnd5e ConditionAppliedEvents emitted
-// during a player feature activation to broker ConditionAppliedEvents.
+// during a player feature/ability activation to broker ConditionAppliedEvents.
 // Template: applyCapturedConditions (npc.go:776).
+//
+// R1 fix (rpg-toolkit#716): this used to hardcode targetID := actorID and
+// project the audience from the ACTOR's position — correct for self-applying
+// conditions (Rage, Dodge) but wrong for a cross-entity condition like Help's
+// HelpedCondition, whose Target is the ally, not the helper. Both the label
+// and the audience now read from each cond.Target — the same
+// core.Entity every condition (self- or cross-targeting) already sets — and
+// fall back to the actor only when a condition's Target IS the actor
+// (self-applying conditions resolve to the same PlayerData either way, so
+// there's no behavior change for Rage/Dodge). This mirrors
+// applyCapturedConditions's existing cond.Target.GetID() + findPlayerByEntityID
+// resolution for the monster path exactly — the player path just hadn't
+// caught up to it yet.
 func (e *Encounter) applyActivatedConditions(
 	actor *PlayerData,
 	actorID encountercore.EntityID,
@@ -209,7 +222,22 @@ func (e *Encounter) applyActivatedConditions(
 ) error {
 	for _, cond := range conds {
 		targetID := actorID
+		if cond.Target != nil {
+			targetID = encountercore.EntityID(cond.Target.GetID())
+		}
 		condRef := string(cond.Type)
+
+		var targetPos encountercore.Hex
+		haveTargetPos := false
+		if targetID == actorID {
+			if actor != nil && actor.View != nil {
+				targetPos = actor.View.Position
+				haveTargetPos = true
+			}
+		} else if p := e.findPlayerByEntityID(targetID); p != nil && p.View != nil {
+			targetPos = p.View.Position
+			haveTargetPos = true
+		}
 
 		condPerPlayer := make(map[encountercore.PlayerID]events.ConditionAppliedSlice)
 		for viewerID, viewer := range e.data.Players {
@@ -217,11 +245,10 @@ func (e *Encounter) applyActivatedConditions(
 			if viewer == nil || viewer.View == nil {
 				continue
 			}
-			// Nil-guard: skip if actor has no View (malformed encounter data).
-			if actor == nil || actor.View == nil {
-				break
+			if !haveTargetPos {
+				continue
 			}
-			if !e.viewerCanSee(viewer, actor.View.Position) {
+			if !e.viewerCanSee(viewer, targetPos) {
 				continue
 			}
 			condPerPlayer[viewerID] = events.ConditionAppliedSlice{Visible: true}

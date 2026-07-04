@@ -79,6 +79,13 @@ type Combatant interface {
 
 	// ProficiencyBonus returns the proficiency bonus for attack calculations
 	ProficiencyBonus() int
+
+	// PassivePerception returns the combatant's passive Perception score
+	// (10 + Perception modifier, or a monster's fixed sense value). This is a
+	// rulebook computation — callers (e.g. the encounter SDK's observer-set
+	// gathering for Hide) must call this accessor rather than inlining the
+	// 10+WIS+proficiency formula themselves.
+	PassivePerception() int
 }
 
 // EffectiveACCalculator is implemented by combatants that support dynamic AC calculation.
