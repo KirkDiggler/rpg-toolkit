@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit architecture overview
-description: Layer rules, module map, persistence pattern, and boundary with rpg-api — lead-framed with toolkit-as-product
-updated: 2026-05-23
-confidence: high — verified by full code read-through of go.mod files, key source files, and test suites
+description: Module dependency map + rules-vs-room seam (two diagrams), persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
+updated: 2026-07-04
+confidence: high — diagrams verified against go.mod files 2026-07-04; encounter boundary per ADR-0034
 ---
 
 # rpg-toolkit architecture overview
@@ -20,43 +20,65 @@ That framing has two operational consequences worth naming up-front, since they 
 
 rpg-toolkit is a Go rules engine for tabletop RPG mechanics. Its mandate is to implement game rules and return rich breakdowns. It never orchestrates data, never persists state, and never knows about rpg-api or proto definitions. If a caller (rpg-api) needs to know what Rage does, it asks the toolkit.
 
-## Layer rules
+## Layer rules & module dependency map
 
+**Higher layers may import lower; reversing is a defect.** The only arrow into
+the top is `encounter → rulebooks/dnd5e`: the dnd5e encounter SDK, decided in
+**ADR-0034** (it is *the* D&D 5e encounter, not a generic engine). Every other
+module sits at or below the Rulebooks layer, and **nothing imports rpg-api or
+rpg-api-protos** (the toolkit never knows its host).
+
+```mermaid
+flowchart TD
+  subgraph ENCL["Encounter — the D&D 5e encounter SDK (ADR-0034)"]
+    ENC["encounter"]
+  end
+  subgraph RB["Rulebooks"]
+    DND["rulebooks/dnd5e"]
+  end
+  subgraph TOOLS["Tools"]
+    SPATIAL["tools/spatial"]
+    ENV["tools/environments"]
+    SEL["tools/selectables"]
+    SPAWN["tools/spawn"]
+  end
+  subgraph MECH["Mechanics"]
+    EFFECTS["mechanics/effects"]
+    COND["mechanics/conditions"]
+    RES["mechanics/resources"]
+    FEAT["mechanics/features"]
+    PROF["mechanics/proficiency"]
+    SPELLS["mechanics/spells"]
+  end
+  subgraph CORELYR["Core"]
+    C["core"]
+    EV["events"]
+    DICE["dice"]
+    GAME["game"]
+    ERR["rpgerr"]
+    ITEMS["items"]
+  end
+
+  ENC ==>|"the only module above the rulebook"| DND
+  ENC --> SPATIAL & EV & C & DICE
+  DND --> RES & ENV & SPATIAL & EV & C & DICE
+  SPAWN --> ENV & SPATIAL
+  ENV --> SPATIAL
+  SPATIAL --> GAME & EV & C
+  COND --> EFFECTS
+  EFFECTS --> EV & C
+
+  linkStyle 0 stroke:#d33,stroke-width:3px,color:#d33
 ```
-Core
-  ▲
-  │  Entity, EntityType, Ref, TypedRef, action primitives, dice, error
-  │
-Events
-  ▲
-  │  EventBus, BusEffect, TypedTopic, ChainedTopic
-  │
-Mechanics  (conditions, effects, features, proficiency, resources, spells)
-  ▲
-  │  Conditions, modifiers, resource pools, spell slots, the chain pipeline
-  │
-Tools  (spatial, environments, selectables, spawn)
-  ▲
-  │  Rooms, grids, entity placement, weighted tables, spawn engine
-  │
-Rulebooks  (rulebooks/dnd5e)
-             Character, Combat, Initiative, Monsters, Features, Conditions, Dungeon
-```
 
-**Higher layers may import lower; reversing is a defect.** Verified dependencies in published go.mod files as of 2026-05-02:
-
-- `core` depends on nothing inside the toolkit.
-- `events` depends on nothing inside the toolkit.
-- `dice` depends on nothing inside the toolkit.
-- `mechanics/*` depends on `core` and `events`; `conditions` also imports `effects`.
-- `tools/spatial` depends on `core`, `events`, `game`.
-- `tools/environments` depends on `core`, `events`, `tools/spatial`.
-- `tools/selectables` depends on `core`.
-- `tools/spawn` depends on `core`, `events`, `tools/spatial`, `tools/environments`.
-- `rulebooks/dnd5e` depends on `core`, `dice`, `events`, `mechanics/resources`, `rpgerr`, `tools/environments`, `tools/spatial`.
-- Nothing depends on `rulebooks/dnd5e`. It is the top of the dependency tree.
-
-**No module currently imports rpg-api or rpg-api-protos.** Verified: `grep -r "rpg-api" */go.mod` returns empty.
+Nodes are modules; arrows are `go.mod` dependencies; the red arrow is the
+ADR-0034 exception. Uniform arrows are omitted for legibility: every Mechanics
+module also requires `core` + `events` (`conditions` also `effects`, shown), and
+`rpgerr` / `dice` / `game` / `items` are Core-layer leaves that higher layers
+require as needed. **Maintenance rule:** when a module is added, moved, or
+changes a dependency, update this diagram in the *same* PR — the prose list this
+replaced went stale (it claimed "nothing depends on `rulebooks/dnd5e`" long after
+the encounter did); a diagram that travels with the change cannot.
 
 ## The persistence pattern
 
@@ -91,6 +113,45 @@ Toolkit implements RULES            → returns rich breakdowns for rendering
 
 Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains the full modifier chain — base value, per-modifier deltas, sources, labels — so the UI can render the reasoning without re-implementing rules.
 
+## The dnd5e encounter: rules vs room
+
+The `encounter → rulebooks/dnd5e` arrow above has a load-bearing internal seam
+(ADR-0034). The **rulebook** owns what the rules *say*; the **encounter** owns
+the *room* those rules happen in. The encounter publishes the turn-tick
+vocabulary onto the bus and asks the rulebook for verdicts; the rulebook returns
+receipts and the per-entity state the encounter serializes.
+
+```mermaid
+flowchart LR
+  subgraph RBOX["rulebooks/dnd5e — what the RULES say"]
+    direction TB
+    R1["Resolution math<br/>attack · damage · saves"]
+    R2["Condition behaviors<br/>Sneak Attack · Dodging · …"]
+    R3["Per-entity state<br/>economy · HP · once-per-turn"]
+    R4["Checks and saves receipts<br/>the Breakdown"]
+  end
+  subgraph EBOX["encounter — the ROOM where they happen"]
+    direction TB
+    E1["Turn loop + tick publishes"]
+    E2["Hydration cascade"]
+    E3["Positions · perception · audience"]
+    E4["Event broker + transport"]
+    E5["Verb dispatch — TakeAction"]
+  end
+  EBOX ==>|"tick vocabulary: TurnStart · TurnEnd (live)<br/>combat-ended (designed, #596)"| RBOX
+  EBOX -->|"asks for rule verdicts"| RBOX
+  RBOX -->|"returns Breakdown + per-entity state"| EBOX
+
+  linkStyle 0 stroke:#d33,stroke-width:2px,color:#d33
+```
+
+The room half (broker, transport, perception, audience routing) is
+rulebook-agnostic and, per ADR-0034, is a *candidate primitive*: it stays inside
+the dnd5e encounter until a consumer outside it pulls it down into its own layer
+(the way hex math already lives in `tools/spatial` and effect infrastructure in
+`mechanics/effects`). Extraction is deferred until pulled — the encounter is not
+kept generic on speculation.
+
 ## Module map
 
 | Module | Path | Layer | Purpose |
@@ -112,6 +173,7 @@ Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains 
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |
 | tools/spawn | `tools/spawn/` | Tools | 4-phase entity spawn engine |
 | rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Full D&D 5e rules: character, combat, initiative, spells, monsters, dungeon |
+| encounter | `encounter/` | Encounter (above Rulebooks) | The dnd5e encounter/game-loop SDK: turn loop, hydration cascade, resolver seam, event broker/transport, perception, prompts. The one module that imports `rulebooks/dnd5e` — see ADR-0034. |
 
 ## Code violations against these rules (2026-05-02)
 
