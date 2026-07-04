@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -75,8 +76,12 @@ func (d *Dodge) CanActivate(ctx context.Context, owner core.Entity, input Combat
 	return nil
 }
 
-// Activate consumes 1 action and publishes a DodgeActivatedEvent.
-// Subscribers to the event can apply the Dodging condition.
+// Activate consumes 1 action, applies the Dodging condition, and publishes a
+// DodgeActivatedEvent (kept as a narration signal alongside the condition).
+// Mirrors Rage.Activate's ConditionAppliedTopic pattern verbatim: constructs
+// the condition here and publishes it with Condition set so the owning
+// character's onConditionApplied subscriber calls Condition.Apply, which is
+// what actually subscribes DodgingCondition's handlers onto the bus.
 func (d *Dodge) Activate(ctx context.Context, owner core.Entity, input CombatAbilityInput) error {
 	// Validate event bus before consuming action
 	if input.Bus == nil {
@@ -88,13 +93,25 @@ func (d *Dodge) Activate(ctx context.Context, owner core.Entity, input CombatAbi
 		return err
 	}
 
-	// Publish the dodge activated event
-	// A DodgingCondition (to be implemented in a future phase) will subscribe
-	// to this event and apply the actual mechanical effects
+	// Publish the dodge activated event (narration signal).
 	if err := dnd5eEvents.DodgeActivatedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.DodgeActivatedEvent{
 		CharacterID: owner.GetID(),
 	}); err != nil {
 		return fmt.Errorf("failed to publish dodge activated event: %w", err)
+	}
+
+	// Construct and publish the DodgingCondition so it actually applies:
+	// disadvantage to attackers, advantage on DEX saves, self-removal at the
+	// owner's next turn start.
+	dodgingCondition := conditions.NewDodgingCondition(owner.GetID())
+	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
+	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    owner,
+		Type:      dnd5eEvents.ConditionDodging,
+		Source:    dnd5eEvents.ConditionSourceCombatAbility,
+		Condition: dodgingCondition,
+	}); err != nil {
+		return fmt.Errorf("failed to publish dodging condition: %w", err)
 	}
 
 	return nil

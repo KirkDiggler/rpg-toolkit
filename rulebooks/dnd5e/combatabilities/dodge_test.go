@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
@@ -125,6 +126,40 @@ func (s *DodgeAbilityTestSuite) TestActivate_PublishesDodgeActivatedEvent() {
 	s.Require().NoError(err)
 	s.Assert().True(eventReceived, "DodgeActivatedEvent should be published")
 	s.Assert().Equal(s.owner.GetID(), receivedEvent.CharacterID)
+}
+
+// TestActivate_PublishesDodgingCondition mirrors Rage/RecklessAttack's
+// ConditionAppliedTopic pattern: Activate must construct a *conditions.
+// DodgingCondition for the owner and publish it via ConditionAppliedTopic, not
+// just the narration-only DodgeActivatedEvent above.
+func (s *DodgeAbilityTestSuite) TestActivate_PublishesDodgingCondition() {
+	// Arrange
+	var receivedEvent *dnd5eEvents.ConditionAppliedEvent
+	_, err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(
+		s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			receivedEvent = &event
+			return nil
+		},
+	)
+	s.Require().NoError(err)
+
+	// Act
+	err = s.dodge.Activate(s.ctx, s.owner, combatabilities.CombatAbilityInput{
+		ActionEconomy: s.actionEconomy,
+		Bus:           s.bus,
+	})
+
+	// Assert
+	s.Require().NoError(err)
+	s.Require().NotNil(receivedEvent, "ConditionAppliedEvent should be published")
+	s.Assert().Equal(s.owner, receivedEvent.Target)
+	s.Assert().Equal(dnd5eEvents.ConditionDodging, receivedEvent.Type)
+	s.Assert().Equal(dnd5eEvents.ConditionSourceCombatAbility, receivedEvent.Source)
+
+	dodgingCond, ok := receivedEvent.Condition.(*conditions.DodgingCondition)
+	s.Require().True(ok, "Event condition should be *DodgingCondition")
+	s.Assert().Equal(s.owner.GetID(), dodgingCond.CharacterID)
 }
 
 func (s *DodgeAbilityTestSuite) TestActivate_NoActionEconomy() {

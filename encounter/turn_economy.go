@@ -15,6 +15,19 @@ package encounter
 // no hydrated character (a flat stat-snapshot seat, or an NPC) are skipped:
 // their turn structure is driven by the snapshot path, not the character
 // economy.
+//
+// rpg-project#75 (Beat 2, #699): seedActorTurn also revives the rulebook
+// turn-start boundary signal (dnd5eEvents.TurnStartTopic) on e.bus, mirroring
+// EndTurn's existing dnd5eEvents.TurnEndTopic publish (combat.go) — same bus,
+// same not-best-effort error handling. This wakes THREE dormant subscribers,
+// not just Dodging: DodgingCondition's self-removal (dodging.go), Barbarian
+// RecklessAttackCondition's self-removal (reckless_attack.go — this wave does
+// not touch Reckless Attack's code, but its lifecycle now actually fires), and
+// UnconsciousCondition's auto-death-save roll (unconscious.go) — the mechanism
+// behind the wave's own player-gets-hit/death-gate playtest beat (rpg-api#612).
+// The publish is unconditional (unlike the economy-seed below it), because
+// conditions key off event.CharacterID == their own owner id regardless of
+// whether that actor has a hydrated *character.Character.
 
 import (
 	"context"
@@ -22,21 +35,36 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// seedActorTurn initializes the action economy for the actor whose turn is
-// beginning, when that actor is a player with a hydrated character. It calls
-// character.StartTurn on the held instance, which sets one action, one bonus
-// action, one reaction, and movement from the character's speed, and clears
-// granted capacity from the prior turn.
+// seedActorTurn publishes the rulebook turn-start boundary for the actor whose
+// turn is beginning, then — when that actor is a player with a hydrated
+// character — initializes their action economy. It calls character.StartTurn
+// on the held instance, which sets one action, one bonus action, one reaction,
+// and movement from the character's speed, and clears granted capacity from
+// the prior turn.
 //
-// NPCs and stat-snapshot seats (no hydrated character) are skipped — they carry
-// no character economy to seed. A nil or non-player actor id is a no-op.
+// NPCs and stat-snapshot seats (no hydrated character) still receive the
+// turn-start boundary publish (see package doc above) but skip economy
+// seeding — they carry no character economy to seed.
 //
 // Called from the two turn-start sites: SetMode's flip to ModeTurnBased (first
-// actor) and EndTurn (the next actor). Errors from StartTurn are returned so the
-// caller fails the turn-boundary rather than advancing with an unseeded economy.
+// actor) and EndTurn (the next actor). Errors are returned so the caller fails
+// the turn-boundary rather than advancing with an unseeded economy or a
+// silently-dropped turn-start signal.
 func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) error {
+	// NOT best-effort: the same failure semantics as EndTurn's TurnEndTopic
+	// publish. If this fails, Dodging/RecklessAttack never self-remove and
+	// Unconscious never auto-rolls death saves for this turn — a real error,
+	// not something to swallow.
+	if pubErr := dnd5eEvents.TurnStartTopic.On(e.bus).Publish(ctx, dnd5eEvents.TurnStartEvent{
+		CharacterID: string(actorID),
+		Round:       e.data.Round,
+	}); pubErr != nil {
+		return fmt.Errorf("publish turn boundary (turn start) for %q: %w", actorID, pubErr)
+	}
+
 	char := e.heldCharacter(actorID)
 	if char == nil {
 		return nil // NPC or stat-snapshot seat — no character economy to seed.

@@ -70,6 +70,10 @@ const (
 	// ConditionFightingStyle represents an active fighting style
 	ConditionFightingStyle ConditionType = "fighting_style"
 
+	// ConditionDodging is applied when a character uses the Dodge combat ability.
+	// Attackers have disadvantage against the character and the character has
+	// advantage on DEX saves, until the start of the character's next turn.
+	ConditionDodging ConditionType = "dodging"
 	// ConditionHidden is applied when a character successfully hides
 	// (a Stealth check beating observers' passive Perception). Grants
 	// advantage on the hidden character's attacks and disadvantage on
@@ -90,7 +94,7 @@ const (
 	// ConditionSourceFeature indicates condition from feature activation (e.g., rage)
 	ConditionSourceFeature ConditionSource = "feature"
 	// ConditionSourceCombatAbility indicates condition from a universal combat
-	// ability activation (e.g., Hide, Help)
+	// ability activation (e.g., Dodge, Hide, Help)
 	ConditionSourceCombatAbility ConditionSource = "combat_ability"
 )
 
