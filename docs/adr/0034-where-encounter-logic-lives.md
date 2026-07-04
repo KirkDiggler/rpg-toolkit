@@ -1,28 +1,27 @@
-# ADR-0034: Where Encounter Logic Lives
+# ADR-0034: Where Encounter Logic Lives — It Is the D&D 5e Encounter
 
 Date: 2026-07-04
 
 ## Status
 
-**Proposed.** This ADR is a decision instrument for the architect/owner (Kirk)
-to ratify one of the options below. It records the honest inventory, the real
-costs of each direction, and a recommendation — but **no code moves until it is
-Accepted.** The only change shipped with it is a documentation correction that is
-true regardless of which option wins (see *Housekeeping*).
+**Accepted** — decided by Kirk (architect/owner) on 2026-07-04. The alternatives
+prepared for the decision are preserved below under *Options considered*. One
+mechanical sub-choice (module placement) is left open for the owner on this PR;
+everything else is decided.
 
 ## Context
 
 ### The divergence this ADR exists to resolve
 
-The architect's mental model is *"encounter logic lives in the rulebook."* The
-code says otherwise: a top-level `encounter` module **imports
-`rulebooks/dnd5e`**. No prior ADR ever made this a first-class decision.
-ADR-0030 ratified the import *direction* in passing while solving the #684
-double-subscribe bug (its "Boundary stance" section: "lean into the existing
-precedent, track a fully-agnostic engine separately"), and Journey 050 records
-that an `EntityHydrator` abstraction was drafted and **rejected** in favour of
-that precedent. The question *"where SHOULD encounter logic live"* was never put
-on the table by itself. This ADR puts it there.
+The remembered model was *"encounter logic lives in the rulebook."* The code
+diverged: a top-level `encounter` module **imports `rulebooks/dnd5e`**. No prior
+ADR ever made this a first-class decision. ADR-0030 ratified the import
+*direction* in passing while solving the #684 double-subscribe bug (its
+"Boundary stance": "lean into the existing precedent, track a fully-agnostic
+engine separately"), and Journey 050 records that an `EntityHydrator` abstraction
+was drafted and **rejected** in favour of that precedent. The question *"where
+SHOULD encounter logic live?"* had never been put on the table by itself. This
+ADR puts it there and records the owner's answer.
 
 ### What the `encounter` module actually contains
 
@@ -52,34 +51,33 @@ Inventoried by responsibility, split by whether the file imports
 | `transport.go`, `transport_inmem.go` | Pluggable per-player delivery (InMemory / Redis) |
 | `perception/` | Vision projection — pure spatial functions, explicitly "no broker or transport dependencies" |
 | `core/` | Encounter IDs + `Hex`/`HexSet` spatial primitives |
-| `events/` | The sealed `EncounterEvent` spine (~23 concrete events) + `AudienceSet` |
+| `events/` | The sealed `EncounterEvent` spine (~23 concrete events) + `AudienceSet` viewer routing |
 | `prompts.go` | Skill-check prompt machinery + the `CharacterResolver` host hook |
 | `data.go`, `death.go` | `Data` serialization struct; death handling |
 
 The shape is stark: **the "room" half (broker, transport, perception, core
-spatial, event spine, prompts) is already rulebook-agnostic; the dnd5e coupling
-is concentrated in ~10 verb/hydration files.** Notably the event spine
+spatial, event spine, audience routing) is already rulebook-agnostic; the dnd5e
+coupling is concentrated in ~10 verb/hydration files.** The event spine
 (`encounter/events`) — the substrate a future combat log reassembles from — is
 itself agnostic, yet carries dnd5e ref strings (e.g. `ActionRef` =
 `"dnd5e:action:attack"`) as **opaque data**. The room already speaks in generic
 events; only the verb layer binds to rulebook types.
 
-### The de facto boundary that has emerged (Beat 2)
+### The de facto boundary that had emerged (Beat 2)
 
 Beats 1–2 (rpg-toolkit#697 / #727 / #728) deepened the coupling *productively*
-and, in doing so, settled a working boundary:
+and, in doing so, settled a working boundary that the decision below now ratifies:
 
 - **RULEBOOK = what the rules say** — resolution math, condition behaviour,
-  per-entity state, the action economy/menu.
+  per-entity state, the checks/saves receipts (the `Breakdown`).
 - **ENCOUNTER = the room where they happen** — the loop, positions, audiences,
   orchestration, event delivery.
 
-Worked examples: the encounter gathers `PassivePerception` through the
-rulebook-owned `Combatant` interface (asks the rules, doesn't compute them); it
+Worked example: the encounter gathers `PassivePerception` through the
+rulebook-owned `Combatant` interface (asks the rules, doesn't compute them) and
 computes Hide **observer-sets** in the encounter layer (gate-endorsed: "who sees
 whom" is spatial), while the Stealth-vs-Perception **verdict** stays
-rulebook-side. That split — *audiences here, verdicts there* — is the boundary
-this ADR proposes to name.
+rulebook-side. *Audiences here, verdicts there.*
 
 ### The fossil record
 
@@ -90,187 +88,202 @@ this ADR proposes to name.
 `turn_manager.go` itself and its own tests — **nothing in `encounter`, and
 nothing in rpg-api (verified zero live callers 2026-07-03), constructs it.** It
 is the remnant of when the turn loop lived *rulebook-side*, before ADR-0030 /
-ADR-0032 moved the loop into the encounter. It is almost certainly why the
-architect remembers turn logic living in the rulebook: **it literally did, and
-this fossil is still there.**
+ADR-0032 moved the loop into the encounter. It is almost certainly why the loop
+was remembered as living in the rulebook: **it literally did, and this fossil is
+still there.**
 
-The fossil is caught mid-decay, and the detail is load-bearing for sequencing:
-on `origin/main` the encounter has taken over publishing `TurnEndTopic`
-(`combat.go`) but **not** `TurnStartTopic` — `seedActorTurn` seeds the economy
+The fossil is caught mid-decay, which makes its removal sequence-sensitive: on
+`origin/main` the encounter has taken over publishing `TurnEndTopic`
+(`combat.go`) but not yet `TurnStartTopic` — `seedActorTurn` seeds the economy
 without publishing it. So `TurnManager` is currently the **only** live publisher
-of `TurnStartTopic`, while **four conditions** (`Dodging`, `Helped`,
-`RecklessAttack`, `Unconscious`) *subscribe* to it. The subscribers are live;
-the publisher is orphaned. (An in-flight branch, `feat/699-dodge-turnstart`,
-closes the gap by having the encounter publish `TurnStartTopic` in
-`turn_economy.go`.) **Deleting `TurnManager` therefore cannot precede the
-encounter taking over `TurnStart` publishing** — see *Housekeeping*.
+of `TurnStartTopic`, while four conditions (`Dodging`, `Helped`, `RecklessAttack`,
+`Unconscious`) *subscribe* to it. The subscribers are live; the publisher is
+orphaned. Moving `TurnStart` publishing into the encounter is tracked under
+rpg-toolkit#699. **Deleting `TurnManager` therefore cannot precede that handoff**
+(see *Consequences → follow-ups*).
 
 ### The stale doc
 
-`docs/architecture/overview.md` (updated 2026-05-23) asserts at line 57:
-*"Nothing depends on `rulebooks/dnd5e`. It is the top of the dependency tree."*
-That is **false**: `encounter` depends on it. Verified — `encounter/go.mod` and
-`rulebooks/dnd5e/go.mod` are the only two `go.mod`s that require
-`rulebooks/dnd5e`, so `encounter` is its sole external consumer. The module map
-in the same doc omits the `encounter` module entirely. This is the concrete
-artifact of the divergence, and it is corrected in this PR regardless of the
-decision.
+`docs/architecture/overview.md` asserted *"Nothing depends on `rulebooks/dnd5e`.
+It is the top of the dependency tree."* That is **false**: `encounter` depends on
+it. Verified — `encounter/go.mod` is the **only** external module whose `go.mod`
+has a `require` on `rulebooks/dnd5e`. The module map in the same doc omitted the
+`encounter` module entirely. This PR corrects overview.md and rebuilds it around
+two architecture diagrams (a maintenance rule now travels with them so the map
+cannot silently rot again).
+
+## Decision
+
+**The `encounter` module is the Dungeons & Dragons 5th Edition encounter. It is
+rulebook-specific by design — these are D&D rules — not a generic engine wearing
+a dnd5e coat.** The import arrow `encounter → rulebooks/dnd5e` is correct and
+intentional. The owner's decision has four parts:
+
+1. **Rulebook-specific, owned.** The encounter is the dnd5e game-loop SDK. It
+   depends on `rulebooks/dnd5e` on purpose and is free to speak dnd5e directly.
+   There is no obligation to keep it rulebook-agnostic, and the aspiration to a
+   "fully agnostic engine" is explicitly **not** a goal of this design.
+
+2. **General capability lives as PRIMITIVES beneath, composed by the dnd5e
+   encounter.** Where a capability is genuinely general, it is built as a
+   primitive at the layer where it truly belongs, and the dnd5e encounter
+   *composes* it — it is not reinvented rulebook-side, and the encounter is not
+   forced to stay generic to host it. The pattern already in the tree is the
+   template: **`mechanics/effects` is the general form; conditions are the
+   rulebook-specific expression of it.** Likewise hex/spatial math is a primitive
+   (`tools/spatial`), and the typed event bus is a primitive (`events`). The
+   *general vs D&D-shaped* line for every encounter internal is drawn in the
+   table below.
+
+3. **Extraction is deferred until pulled.** "We can always move it out when it
+   makes sense." No generic-engine inversion now; no speculative interface seams.
+   The revisit triggers are named below — a genuinely general internal is
+   extracted to its own primitive module only when a real consumer outside the
+   dnd5e encounter pulls for it (or a second rulebook does).
+
+4. **Get the dnd5e encounter right first.** The known near-term needs are
+   **conditions** and the **turn-tick vocabulary** — `TurnStart` / `TurnEnd` are
+   live now; a `combat-ended` tick is designed in the parked rpg-toolkit#596 doc,
+   not yet built. The consequence to state plainly: **rpg-api's product surface
+   *is* the dnd5e encounter SDK, period.** If the encounter boundary is right,
+   the API and web layers fall into place as thin consumers — the API
+   orchestrates the encounter's verbs and projects its events; it does not
+   re-derive rules.
+
+### The primitive line: general vs D&D-shaped (decision part 2)
+
+| Internal | Classification | Where it lives / goes |
+|---|---|---|
+| Hex / spatial math | **General primitive (already extracted)** | `tools/spatial`; encounter's `core/Hex` is a slice-local copy pending consolidation there |
+| Typed event bus | **General primitive (already extracted)** | `events` module |
+| Effect infrastructure | **General primitive (already extracted)** | `mechanics/effects`; dnd5e conditions are its rulebook-specific expression |
+| Event broker (pub/sub + timestamp authority) | **General, extractable when pulled** | `encounter/broker.go` today; candidate primitive |
+| Transport (per-player delivery) | **General, extractable when pulled** | `encounter/transport*.go`; candidate primitive |
+| Perception / vision projection | **General (spatial), extractable when pulled** | `encounter/perception/`; candidate to join `tools/spatial` |
+| Audience / viewer routing | **General, extractable when pulled** | `encounter/events/AudienceSet`; candidate primitive |
+| Event-spine mechanism (sealed interface + meta) | **General mechanism, dnd5e content** | stays with the encounter; the *shape* is generic, the *events* are dnd5e |
+| Turn loop + tick publishes | **D&D-shaped** | the dnd5e encounter |
+| Hydration cascade | **D&D-shaped** | the dnd5e encounter (ADR-0030) |
+| Resolver seam (attack / move) | **D&D-shaped** | the dnd5e encounter |
+| Verb dispatch (`TakeAction`) + economy seeding | **D&D-shaped** | the dnd5e encounter (ADR-0032) |
+| NPC dispatch, turn-state menu | **D&D-shaped** | the dnd5e encounter |
+
+The "candidate primitive" rows are **not** work items for now (part 3: deferred
+until pulled). They are the map of where the general/specific seam runs *inside*
+today's encounter, so a future extraction is a lift-and-name rather than a
+rediscovery.
+
+### The one open sub-choice: module placement (for the owner on this PR)
+
+Both mechanical sub-options honour the decision (encounter = dnd5e-owned). They
+differ only in where the module physically sits:
+
+- **Sub-option 1 — keep `encounter/` top-level, *declared* dnd5e (recommended).**
+  The module stays at its current import path; `doc.go`, this ADR, and the
+  overview diagrams declare it the dnd5e encounter SDK.
+  - *Pro:* zero import-path churn — rpg-api keeps importing
+    `github.com/KirkDiggler/rpg-toolkit/encounter`. The encounter is an
+    orchestration module that sits *above* `rulebooks/dnd5e` and composes several
+    lower modules (`tools/spatial`, `events`, and the rulebook); a module that
+    *depends on* the rulebook reads oddly nested *inside* it.
+  - *Con:* a top-level name `encounter/` still looks generic at a glance;
+    legibility rests on the declaration (doc + diagrams), not the path.
+
+- **Sub-option 2 — relocate under `rulebooks/dnd5e/` (e.g.
+  `rulebooks/dnd5e/encounter/`).**
+  - *Pro:* the location itself declares "this is dnd5e"; no separate top-level
+    module implying generality.
+  - *Con:* a breaking import-path change for every consumer (rpg-api, tests), and
+    a module-boundary question — either it folds into the `rulebooks/dnd5e`
+    module (losing independent versioning and inheriting the rulebook's full
+    dependency/release surface) or it stays a separate `go.mod` nested inside the
+    rulebook (unusual, and the import path still churns). Nesting a module that
+    *requires* `rulebooks/dnd5e` underneath `rulebooks/dnd5e` also inverts the
+    intuitive "contains" reading of the path.
+
+**Recommendation: Sub-option 1.** Declare, don't relocate. The churn of
+Sub-option 2 buys path-level self-documentation that the declaration + diagrams
+already deliver, and physically nesting an above-the-rulebook orchestration
+module inside the rulebook misrepresents the dependency direction. Relocation
+stays available as a later, deliberate move if the top-level name proves
+misleading in practice.
 
 ## Options considered
 
-### Option A — Encounter logic moves INTO `rulebooks/dnd5e`
+### Option A — Encounter logic moves INTO `rulebooks/dnd5e` (the remembered model)
+The rulebook owns the game loop; rpg-api consumes the rulebook directly, no
+separate encounter module. **Rejected.** The genuinely-generic "room" (broker,
+transport, perception, event spine) is host-infrastructure a rulebook has no
+business owning; folding it in welds transport/delivery into the rules layer and
+inverts the layering (the rulebook becomes *rules + server*). The parts that are
+"genuinely the rules" already live in `rulebooks/dnd5e`; the encounter is the
+orchestration around them. (Note: Option A is about moving the *loop and its
+infrastructure* into the rulebook. The chosen decision's Sub-option 2 — merely
+relocating the already-coupled encounter module's *path* under `rulebooks/dnd5e/`
+without dragging the generic infra into the rules — is a different, narrower
+question left open above.)
 
-The architect's remembered model: the rulebook owns the game loop; rpg-api
-consumes the rulebook directly, with no separate `encounter` module.
+### Option B — The encounter IS the dnd5e game-loop SDK, primitives beneath — **CHOSEN**
+Keep the arrow; name it honestly; push genuinely-general internals down into
+primitive layers as they are pulled. This is the decision recorded above.
 
-- **What is genuinely dnd5e** already sits in the ~10 verb files (turn
-  semantics, resolvers, hydration cascade, economy/menu delegation, NPC
-  dispatch). Moving *those* into the rulebook is a short trip — they already
-  import it.
-- **What is genuinely generic** is the problem: the broker, transport,
-  perception, event spine, and prompts are **host-infrastructure**. A rulebook
-  has no business owning Redis delivery or per-player event projection. So
-  Option A forces a choice: (a) drag that infra *into* `rulebooks/dnd5e` —
-  which welds transport/delivery concerns into the rules layer and makes them
-  unreusable by any other consumer; or (b) split the infra into its own
-  module(s) and move only the verbs — which is Option C's decomposition done
-  eagerly and without the interface payoff.
-- **rpg-api's import surface** does not shrink. It would import
-  `rulebooks/dnd5e` for the loop *and* still import the agnostic infra module
-  for transport/broker. Its reach into the rulebook grows.
-- **What it breaks:** the spirit of the boundary rule ("toolkit implements
-  rules, returns breakdowns"). A rulebook that also owns the turn loop, the
-  broker, and per-player projection is no longer *the rules* — it is *the rules
-  plus the server*. It also forecloses the toolkit-as-product framing: a second
-  rulebook could never reuse the loop/broker/perception welded inside dnd5e.
+### Option C — Invert to a generic engine (pluggable rulebook behind interfaces)
+The deferred `EntityHydrator` direction (Journey 050), generalized: the encounter
+depends on an abstract rules seam and dnd5e is injected. **Deferred, not chosen.**
+It re-introduces exactly the abstraction the ADR-0030 hydration cascade *deleted*
+("hydration is not a new subsystem — it is the existing `ToData`/`LoadFromData`
+round-trip, composed"), paying indirection at every call site, and the interfaces
+would be designed against a sample size of one (dnd5e) — almost certainly the
+wrong shape. The trigger that would justify it is external: a real second
+rulebook.
 
-Honest verdict: the parts of the encounter that are "genuinely the rules"
-**already live in `rulebooks/dnd5e`** (economy, resolution, conditions). The
-encounter is the *orchestration around them*. Folding orchestration + transport
-back into the rulebook **inverts the layering** — the rulebook becomes both
-top-of-stack and owner of delivery. The code moved away from this model
-deliberately; A moves back.
-
-### Option B — Status quo, named honestly: `encounter` IS the dnd5e game-loop SDK
-
-Keep the arrow (`encounter → rulebooks/dnd5e`). Fix the **story**, not the code:
-
-- Re-document `encounter/doc.go` + a component doc to state plainly: *this is the
-  dnd5e encounter SDK — the orchestration layer that runs a dnd5e fight; it
-  depends on `rulebooks/dnd5e` by design.*
-- Correct `overview.md` (line 57 + module map) and point to this ADR + ADR-0030.
-- **Delete the dead `TurnManager`** (the fossil that seeds the wrong mental
-  model), sequenced behind the `TurnStart` handoff (*Housekeeping*).
-- Ratify the **rules-vs-room** split as the load-bearing boundary: rule logic
-  drifting into the encounter's agnostic half, or transport/positions drifting
-  into the rulebook, become nameable defects.
-
-Cost is almost entirely conceptual, not code: you are ratifying that the toolkit
-has **two top-of-stack modules** — the rulebook (rules) and the encounter (the
-dnd5e loop) — and that the encounter is **dnd5e-specific**, not a generic
-engine. A second rulebook would then need its own encounter-equivalent, or a
-later Option C extraction.
-
-### Option C — Invert to a generic engine: pluggable rulebook behind interfaces
-
-The deferred `EntityHydrator` direction (Journey 050), generalized. The encounter
-depends on an abstract rules seam; `rulebooks/dnd5e` is injected. The arrow
-reverses: `encounter → interfaces ← dnd5e`.
-
-- **What it takes:** define every seam the encounter currently reaches across —
-  hydration (load a combatant from opaque data), turn semantics (economy shape +
-  turn-boundary signals), resolution (attack/move outcome), and the action menu.
-  Journey 050 sketched the first of these (`EntityHydrator`); C needs the full
-  set. Then dnd5e implements them and the encounter stops importing it.
-- **The cost is real and it is why C was already rejected once:** it
-  re-introduces exactly the abstraction the hydration cascade *deleted*.
-  ADR-0030's win was "hydration is not a new subsystem — it is the existing
-  `ToData`/`LoadFromData` round-trip, composed." An interface seam re-abstracts
-  that, paying indirection at every call site the encounter currently makes
-  directly into `character` / `monster`.
-- **What pain justifies it:** a **second rulebook**. Until a concrete second
-  ruleset must run through the same loop, the interfaces would be designed
-  against a sample size of one and would almost certainly abstract *dnd5e's*
-  shape rather than a *general* shape. The trigger is external, not internal.
-
-## Recommendation: Option B
-
-The code has already voted. The rules genuinely live in `rulebooks/dnd5e`; the
-encounter is the orchestration around them, and its agnostic half
-(broker/transport/perception/events/prompts) is host-infrastructure that belongs
-neither inside a rulebook (A) nor behind speculative interfaces (C) until a
-second rulebook forces the question. The divergence flagged is a
-**documentation defect, not an architecture defect**: `overview.md` claims
-"nothing depends on `rulebooks/dnd5e`" while the encounter has depended on it —
-coherently and single-sourced — since ADR-0030. Option B closes the gap between
-the map and the territory at near-zero risk, deletes the fossil that seeds the
-wrong mental model, and names the rules-vs-room boundary that Beat 2 already
-enforces. Option A inverts the layering (the rulebook would own the server);
-Option C buys a generality no current requirement needs. Neither delivers
-anything today that B does not, and both cost more.
-
-The recommendation is **not** "never do C." It is "do B now, and let a second
-rulebook be the event that promotes B → C." B is the honest name for where the
-code is; C is where it goes *if* the product needs two rulebooks.
-
-## What tips the decision later
-
-- **B → C:** a concrete second rulebook (or a genuinely rules-agnostic host)
-  that must run through the same loop. That is the only signal that makes the
-  interface seam worth its indirection — and it supplies the second data point
-  that lets the seam be designed right rather than as a dnd5e mould. Cheap
-  down-payment that serves B too: if the agnostic half keeps growing and a
-  **non-encounter** consumer wants it, extract broker/transport/perception/core
-  into their own module first.
-- **B → A:** if the "room" concerns turn out to be things a rulebook genuinely
-  wants to own **and** there is never a second rulebook — i.e. the product
-  collapses to "one rulebook forever" and the separate module is pure overhead.
-  Unlikely under the toolkit-as-product framing, but that is the world where
-  folding the loop into dnd5e stops being a layering inversion and becomes
-  simplification.
-
-## Housekeeping (lands regardless of the option chosen)
-
-1. **`overview.md` is corrected in this PR** — line 57 no longer claims a false
-   invariant, and the encounter exception is documented with a pointer to this
-   ADR and ADR-0030. This is true under every option, so it ships now.
-2. **The dead `TurnManager` is deleted as a follow-up after ratification** (this
-   PR is docs-only). Sequencing is mandatory: deleting it removes the last live
-   publisher of `TurnStartTopic`, so the deletion **must land together with, or
-   after, the encounter taking over `TurnStart` publishing** (in-flight
-   `feat/699-dodge-turnstart`). Delete it first and the four subscriber
-   conditions lose their turn-start signal entirely.
-
-## Consequences (of the recommended Option B)
+## Consequences
 
 ### Positive
-- The map matches the territory: `overview.md` stops asserting a false
-  invariant, and the encounter's dnd5e dependency is documented as intentional.
-- The rules-vs-room boundary becomes a named, enforceable rule — drift in either
-  direction is now a nameable defect (Beat 2's Hide observer-set split is the
-  worked example of applying it).
-- Deleting the fossil `TurnManager` removes the artifact that seeds the "turn
-  logic lives in the rulebook" mental model.
-- Near-zero code risk: the shipped change is documentation.
+- The map matches the territory: `overview.md` stops asserting a false invariant,
+  documents the encounter's dnd5e dependency as intentional, and is rebuilt
+  around two diagrams that make the module graph and the rules-vs-room seam
+  legible at a glance.
+- The rules-vs-room boundary becomes a **named, enforceable rule**: rule logic
+  drifting into the encounter's generic half, or transport/positions drifting
+  into the rulebook, are now nameable defects (Beat 2's Hide observer-set split
+  is the worked example).
+- The primitive line is drawn, so future extraction of broker/perception/audience
+  is a lift-and-name, not a rediscovery.
+- rpg-api's product surface is settled: it is the dnd5e encounter SDK. Getting
+  the encounter boundary right is what makes the API and web thin.
 
 ### Negative
-- Ratifies two top-of-stack modules and that the encounter is dnd5e-specific; a
-  second rulebook pays the Option C cost later rather than now.
-- The rules-vs-room line is a judgment boundary, not a compiler-enforced one; it
-  depends on this ADR + the component doc to stay legible.
+- Ratifies that the toolkit has a dnd5e-specific module *above* the rulebook, and
+  that a second rulebook would need its own encounter (or a later Option C
+  extraction). This is an accepted cost, not a surprise.
+- The rules-vs-room and general-vs-D&D lines are judgment boundaries, not
+  compiler-enforced ones; they depend on this ADR + the overview diagrams staying
+  legible. The diagram-maintenance rule in this PR is the mitigation.
 
-### Neutral
-- `TurnManager` deletion and the `TurnStart` publisher handoff are sequenced as a
-  follow-up, not in this PR.
-- Option C stays the named evolution; this ADR records its trigger (a second
-  rulebook) so a future reader knows exactly when to reopen it.
+### Neutral / follow-ups
+- **Delete the fossil `TurnManager`** — a named follow-up, **not** this PR (which
+  is docs-only). Sequencing is mandatory: deleting it removes the last live
+  publisher of `TurnStartTopic`, so it must land together with, or after, the
+  encounter taking over `TurnStart` publishing (rpg-toolkit#699). Delete it first
+  and the four subscriber conditions lose their turn-start signal.
+- **Module placement** (Sub-option 1 vs 2) is the owner's call on this PR;
+  Sub-option 1 (declare, don't relocate) is recommended and is the default if
+  nothing else is said.
+- **`combat-ended` tick** is designed in the parked rpg-toolkit#596 doc and built
+  when the dnd5e encounter needs it (decision part 4).
+- Option C stays the named evolution; its trigger (a second rulebook) is recorded
+  so a future reader knows exactly when to reopen it.
 
 ## Related
 
-- ADR-0030 — encounter owns combatant hydration (ratified the import direction
-  in passing; this ADR makes it a first-class decision).
+- ADR-0030 — encounter owns combatant hydration (ratified the import direction in
+  passing; this ADR makes it a first-class decision).
 - ADR-0031 / ADR-0032 — the event spine and the TakeAction unification, both of
   which deepened the encounter → rulebook coupling coherently.
 - Journey 050 — the `EntityHydrator` that was drafted and rejected (the Option C
   seed).
+- rpg-toolkit#596 — the parked `combat-ended` tick design.
+- rpg-toolkit#699 — moving `TurnStart` publishing into the encounter (unblocks the
+  `TurnManager` deletion).
 - rpg-project#75 — the chapter ledger tracking this decision.
