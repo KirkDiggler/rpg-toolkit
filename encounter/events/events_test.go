@@ -107,7 +107,7 @@ func (s *EventsSuite) TestSpineMeta_StampAndAccessors() {
 
 	samples := []events.EncounterEvent{
 		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil),
-		events.NewAttackResolvedEvent("enc-1", 2, "a", "b", true, false, 1, 1, 1, nil),
+		events.NewAttackResolvedEvent("enc-1", 2, "a", "b", true, false, 1, 1, 1, false, false, nil, nil, nil),
 		events.NewDamageDealtEvent("enc-1", 3, "a", "b", 1, "slashing", 1, 1, nil),
 		events.NewActionResolvedEvent("enc-1", 4, "a", "dnd5e:action:attack", "b",
 			events.EconomyConsumed{Actions: 1}, nil),
@@ -130,6 +130,7 @@ func (s *EventsSuite) TestSpineMeta_JSONRoundTrip() {
 	original := events.NewAttackResolvedEvent(
 		"enc-1", 11, "char-alice", "goblin-1",
 		true, false, 17, 4, 15,
+		false, false, nil, nil,
 		map[core.PlayerID]events.AttackResolvedSlice{"alice": {Visible: true}},
 	)
 	original.Stamp(at, corr)
@@ -330,6 +331,7 @@ func (s *EventsSuite) TestAttackResolvedEvent_JSONRoundTrip() {
 	original := events.NewAttackResolvedEvent(
 		"enc-1", 11, "char-alice", "goblin-1",
 		true, false, 17, 4, 15,
+		false, false, nil, nil,
 		map[core.PlayerID]events.AttackResolvedSlice{
 			"alice": {Visible: true},
 			"bob":   {Visible: false},

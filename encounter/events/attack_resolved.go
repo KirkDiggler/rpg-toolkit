@@ -3,6 +3,7 @@ package events
 import (
 	"encoding/json"
 
+	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 )
 
@@ -21,7 +22,17 @@ type AttackResolvedEvent struct {
 	AttackRoll  int
 	AttackBonus int
 	TargetAC    int
-	PerPlayer   map[core.PlayerID]AttackResolvedSlice
+
+	// HasAdvantage/HasDisadvantage report whether the attack roll was made
+	// with advantage/disadvantage. AdvantageSources/DisadvantageSources name
+	// the granting/imposing condition(s) (e.g. Dodging), for narration.
+	// Sourced verbatim from the rulebook's AttackResult -- never recomputed.
+	HasAdvantage        bool
+	HasDisadvantage     bool
+	AdvantageSources    []*toolkitcore.Ref
+	DisadvantageSources []*toolkitcore.Ref
+
+	PerPlayer map[core.PlayerID]AttackResolvedSlice
 }
 
 // AttackResolvedSlice is each viewer's projection. Visible says whether the
@@ -41,19 +52,27 @@ func NewAttackResolvedEvent(
 	attackRoll int,
 	attackBonus int,
 	targetAC int,
+	hasAdvantage bool,
+	hasDisadvantage bool,
+	advantageSources []*toolkitcore.Ref,
+	disadvantageSources []*toolkitcore.Ref,
 	perPlayer map[core.PlayerID]AttackResolvedSlice,
 ) *AttackResolvedEvent {
 	return &AttackResolvedEvent{
-		encID:       encID,
-		seq:         seq,
-		AttackerID:  attackerID,
-		TargetID:    targetID,
-		Hit:         hit,
-		Critical:    critical,
-		AttackRoll:  attackRoll,
-		AttackBonus: attackBonus,
-		TargetAC:    targetAC,
-		PerPlayer:   perPlayer,
+		encID:               encID,
+		seq:                 seq,
+		AttackerID:          attackerID,
+		TargetID:            targetID,
+		Hit:                 hit,
+		Critical:            critical,
+		AttackRoll:          attackRoll,
+		AttackBonus:         attackBonus,
+		TargetAC:            targetAC,
+		HasAdvantage:        hasAdvantage,
+		HasDisadvantage:     hasDisadvantage,
+		AdvantageSources:    advantageSources,
+		DisadvantageSources: disadvantageSources,
+		PerPlayer:           perPlayer,
 	}
 }
 
@@ -71,33 +90,41 @@ func (e *AttackResolvedEvent) Audience() AudienceSet { return audienceFromMap(e.
 
 type attackResolvedWire struct {
 	metaWire
-	EncID       core.EncounterID                      `json:"encounter_id"`
-	Seq         uint64                                `json:"sequence"`
-	AttackerID  core.EntityID                         `json:"attacker_id"`
-	TargetID    core.EntityID                         `json:"target_id"`
-	Hit         bool                                  `json:"hit"`
-	Critical    bool                                  `json:"critical"`
-	AttackRoll  int                                   `json:"attack_roll"`
-	AttackBonus int                                   `json:"attack_bonus"`
-	TargetAC    int                                   `json:"target_ac"`
-	PerPlayer   map[core.PlayerID]AttackResolvedSlice `json:"per_player"`
+	EncID               core.EncounterID                      `json:"encounter_id"`
+	Seq                 uint64                                `json:"sequence"`
+	AttackerID          core.EntityID                         `json:"attacker_id"`
+	TargetID            core.EntityID                         `json:"target_id"`
+	Hit                 bool                                  `json:"hit"`
+	Critical            bool                                  `json:"critical"`
+	AttackRoll          int                                   `json:"attack_roll"`
+	AttackBonus         int                                   `json:"attack_bonus"`
+	TargetAC            int                                   `json:"target_ac"`
+	HasAdvantage        bool                                  `json:"has_advantage"`
+	HasDisadvantage     bool                                  `json:"has_disadvantage"`
+	AdvantageSources    []*toolkitcore.Ref                    `json:"advantage_sources,omitempty"`
+	DisadvantageSources []*toolkitcore.Ref                    `json:"disadvantage_sources,omitempty"`
+	PerPlayer           map[core.PlayerID]AttackResolvedSlice `json:"per_player"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names.
 // Implements encoding/json.Marshaler.
 func (e *AttackResolvedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(attackResolvedWire{
-		metaWire:    e.toWire(),
-		EncID:       e.encID,
-		Seq:         e.seq,
-		AttackerID:  e.AttackerID,
-		TargetID:    e.TargetID,
-		Hit:         e.Hit,
-		Critical:    e.Critical,
-		AttackRoll:  e.AttackRoll,
-		AttackBonus: e.AttackBonus,
-		TargetAC:    e.TargetAC,
-		PerPlayer:   e.PerPlayer,
+		metaWire:            e.toWire(),
+		EncID:               e.encID,
+		Seq:                 e.seq,
+		AttackerID:          e.AttackerID,
+		TargetID:            e.TargetID,
+		Hit:                 e.Hit,
+		Critical:            e.Critical,
+		AttackRoll:          e.AttackRoll,
+		AttackBonus:         e.AttackBonus,
+		TargetAC:            e.TargetAC,
+		HasAdvantage:        e.HasAdvantage,
+		HasDisadvantage:     e.HasDisadvantage,
+		AdvantageSources:    e.AdvantageSources,
+		DisadvantageSources: e.DisadvantageSources,
+		PerPlayer:           e.PerPlayer,
 	})
 }
 
@@ -118,6 +145,10 @@ func (e *AttackResolvedEvent) UnmarshalJSON(b []byte) error {
 	e.AttackRoll = w.AttackRoll
 	e.AttackBonus = w.AttackBonus
 	e.TargetAC = w.TargetAC
+	e.HasAdvantage = w.HasAdvantage
+	e.HasDisadvantage = w.HasDisadvantage
+	e.AdvantageSources = w.AdvantageSources
+	e.DisadvantageSources = w.DisadvantageSources
 	e.PerPlayer = w.PerPlayer
 	return nil
 }

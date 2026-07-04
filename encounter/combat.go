@@ -527,6 +527,7 @@ func (e *Encounter) publishAttackOutcome(
 		e.data.ID, e.nextSeq(),
 		attackerID, targetID,
 		outcome.Hit, outcome.Critical, outcome.AttackRoll, outcome.AttackBonus, outcome.TargetAC,
+		outcome.HasAdvantage, outcome.HasDisadvantage, outcome.AdvantageSources, outcome.DisadvantageSources,
 		attackPerPlayer,
 	), corrID); err != nil {
 		return corrID, fmt.Errorf("publish attack resolved: %w", err)

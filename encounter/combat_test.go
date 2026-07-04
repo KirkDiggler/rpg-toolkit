@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
@@ -176,6 +177,71 @@ func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 
 	seenAlice := collectTypes(s.aliceSub, 500*time.Millisecond)
 	s.Contains(seenAlice, "*events.AttackResolvedEvent")
+}
+
+// TakeAction copies HasAdvantage/HasDisadvantage/AdvantageSources/
+// DisadvantageSources from the resolver's AttackOutcome onto the published
+// AttackResolvedEvent verbatim (#726). The stub resolver here hands back
+// canned values the same way rpg-api's real resolver copies them from
+// combat.AttackResult -- this proves the encounter-side plumbing does not
+// drop or recompute them, not that any rule fired.
+func (s *CombatSuite) TestTakeAction_PublishesAdvantageDisadvantageOnAttackResolved() {
+	dodgingRef := &toolkitcore.Ref{Module: "dnd5e", Type: "conditions", ID: "dodging"}
+	enc := encounter.New(context.Background(), "enc-adv", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{
+			damage: 8, damageType: damageSlashing,
+			hasDisadvantage:     true,
+			disadvantageSources: []*toolkitcore.Ref{dodgingRef},
+		}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: "1d8+2", DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != aliceEntityID {
+		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+
+	sub, err := s.broker.Subscribe(enc.ID(), "alice")
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	s.Require().NoError(enc.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	))
+
+	var attackEvt *events.AttackResolvedEvent
+	deadline := time.After(2 * time.Second)
+drainLoop:
+	for {
+		select {
+		case evt, ok := <-sub.Events():
+			if !ok {
+				break drainLoop
+			}
+			if ae, isAttack := evt.(*events.AttackResolvedEvent); isAttack {
+				attackEvt = ae
+				break drainLoop
+			}
+		case <-deadline:
+			break drainLoop
+		}
+	}
+	s.Require().NotNil(attackEvt, "AttackResolvedEvent should have been published")
+	s.False(attackEvt.HasAdvantage)
+	s.True(attackEvt.HasDisadvantage)
+	s.Require().Len(attackEvt.DisadvantageSources, 1)
+	s.Equal(dodgingRef, attackEvt.DisadvantageSources[0])
+	s.Empty(attackEvt.AdvantageSources)
 }
 
 // TakeAction returns ErrNonCombatant when the active player has no
