@@ -170,7 +170,7 @@ func (e *Encounter) dispatchCharacterAction(
 // rest of the encounter SDK already does (named, not hidden, per the design
 // doc's non-goals).
 func (e *Encounter) observerPassivePerceptions(hiderID string) []int {
-	var out []int
+	out := make([]int, 0, len(e.combatants))
 	for id, c := range e.combatants {
 		if string(id) == hiderID {
 			continue
