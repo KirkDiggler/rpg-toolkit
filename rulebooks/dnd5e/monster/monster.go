@@ -200,6 +200,12 @@ func (m *Monster) ProficiencyBonus() int {
 	return m.proficiencyBonus
 }
 
+// PassivePerception returns the monster's passive Perception score, from the
+// static Senses field seeded at load time. Implements combat.Combatant.
+func (m *Monster) PassivePerception() int {
+	return m.senses.PassivePerception
+}
+
 // TakeDamage reduces HP (returns actual damage taken)
 func (m *Monster) TakeDamage(amount int) int {
 	if amount < 0 {

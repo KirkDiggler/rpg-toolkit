@@ -98,6 +98,10 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition = NewDisengagingCondition(input.CharacterID)
 	case refs.Conditions.Dodging().ID:
 		condition = NewDodgingCondition(input.CharacterID)
+	case refs.Conditions.Hidden().ID:
+		condition = NewHiddenCondition(input.CharacterID)
+	case refs.Conditions.Helped().ID:
+		condition, err = createHelped(input.Config, input.CharacterID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -299,4 +303,27 @@ func createSneakAttack(config json.RawMessage, characterID string) (*SneakAttack
 		Level:       level,
 		// Roller is nil - will use default roller when needed
 	}), nil
+}
+
+// helpedConfig is the config structure for the helped condition
+type helpedConfig struct {
+	HelperID string `json:"helper_id"`
+}
+
+// createHelped creates a helped condition from config. HelperID identifies
+// whose next turn is the safety-net removal trigger (PHB p.192: "before the
+// start of your [the helper's] next turn").
+func createHelped(config json.RawMessage, characterID string) (*HelpedCondition, error) {
+	var cfg helpedConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to parse helped config")
+		}
+	}
+
+	if cfg.HelperID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "helped config requires 'helper_id' field")
+	}
+
+	return NewHelpedCondition(characterID, cfg.HelperID), nil
 }

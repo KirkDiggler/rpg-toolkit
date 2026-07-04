@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // ConditionType represents D&D 5e conditions
@@ -68,6 +69,16 @@ const (
 
 	// ConditionFightingStyle represents an active fighting style
 	ConditionFightingStyle ConditionType = "fighting_style"
+
+	// ConditionHidden is applied when a character successfully hides
+	// (a Stealth check beating observers' passive Perception). Grants
+	// advantage on the hidden character's attacks and disadvantage on
+	// attacks against them; removed when the hider makes their own attack.
+	ConditionHidden ConditionType = "hidden"
+	// ConditionHelped is applied to the ally targeted by the Help combat
+	// ability. Grants advantage on the ally's next attack roll; removed
+	// when consumed or at the helper's next turn if unused.
+	ConditionHelped ConditionType = "helped"
 )
 
 // ConditionSource identifies where a condition originated
@@ -78,6 +89,9 @@ const (
 	ConditionSourceClass ConditionSource = "class"
 	// ConditionSourceFeature indicates condition from feature activation (e.g., rage)
 	ConditionSourceFeature ConditionSource = "feature"
+	// ConditionSourceCombatAbility indicates condition from a universal combat
+	// ability activation (e.g., Hide, Help)
+	ConditionSourceCombatAbility ConditionSource = "combat_ability"
 )
 
 // ConditionBehavior represents the behavior of an active condition.
@@ -321,6 +335,58 @@ func (e *SavingThrowChainEvent) HasDisadvantage() bool {
 
 // TotalBonus returns the sum of all bonus sources
 func (e *SavingThrowChainEvent) TotalBonus() int {
+	total := 0
+	for _, source := range e.BonusSources {
+		total += source.Bonus
+	}
+	return total
+}
+
+// =============================================================================
+// Ability Check Chain Types
+// =============================================================================
+
+// CheckModifierSource tracks the source of an ability check modifier.
+// Mirrors SaveModifierSource.
+type CheckModifierSource struct {
+	Name       string    // Display name (e.g., "Hidden", "Guidance")
+	SourceType string    // Type of source ("condition", "feature", "spell", etc)
+	SourceRef  *core.Ref // Reference to the source
+	EntityID   string    // ID of entity providing the modifier
+}
+
+// CheckBonusSource tracks a bonus to an ability check.
+// Mirrors SaveBonusSource.
+type CheckBonusSource struct {
+	CheckModifierSource     // Embedded modifier source
+	Bonus               int // The bonus amount
+}
+
+// AbilityCheckChainEvent represents an ability check flowing through the
+// modifier chain. This event fires BEFORE the d20 roll to allow
+// advantage/disadvantage/bonuses to be collected. Mirrors SavingThrowChainEvent.
+type AbilityCheckChainEvent struct {
+	CheckerID string       // ID of the entity making the check
+	Skill     skills.Skill // The skill being checked (Stealth, Perception, etc)
+	DC        int          // Difficulty class (or the value being beaten)
+
+	AdvantageSources    []CheckModifierSource // Sources granting advantage
+	DisadvantageSources []CheckModifierSource // Sources imposing disadvantage
+	BonusSources        []CheckBonusSource    // Sources adding bonuses to the roll
+}
+
+// HasAdvantage returns true if any advantage sources have been added to this event
+func (e *AbilityCheckChainEvent) HasAdvantage() bool {
+	return len(e.AdvantageSources) > 0
+}
+
+// HasDisadvantage returns true if any disadvantage sources have been added to this event
+func (e *AbilityCheckChainEvent) HasDisadvantage() bool {
+	return len(e.DisadvantageSources) > 0
+}
+
+// TotalBonus returns the sum of all bonus sources
+func (e *AbilityCheckChainEvent) TotalBonus() int {
 	total := 0
 	for _, source := range e.BonusSources {
 		total += source.Bonus
@@ -907,4 +973,10 @@ var (
 	// Disengaging to prevent opportunity attacks, or features like Sentinel
 	// to stop movement entirely.
 	MovementChain = events.DefineChainedTopic[*MovementChainEvent]("dnd5e.combat.movement.chain")
+
+	// AbilityCheckChain provides typed chained topic for ability check modifiers
+	// (advantage/disadvantage/bonuses). Mirrors SavingThrowChain. Fired by
+	// checks.MakeAbilityCheck whenever an EventBus is provided — the same
+	// pattern SavingThrowChain uses, whether or not any subscriber exists.
+	AbilityCheckChain = events.DefineChainedTopic[*AbilityCheckChainEvent]("dnd5e.checks.chain")
 )

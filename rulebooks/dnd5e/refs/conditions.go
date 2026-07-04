@@ -39,6 +39,10 @@ var (
 	conditionDodging     = &core.Ref{Module: Module, Type: TypeConditions, ID: "dodging"}
 	conditionDisengaging = &core.Ref{Module: Module, Type: TypeConditions, ID: "disengaging"}
 
+	// Combat-ability conditions (Beat 2: Help + Hide)
+	conditionHidden = &core.Ref{Module: Module, Type: TypeConditions, ID: "hidden"}
+	conditionHelped = &core.Ref{Module: Module, Type: TypeConditions, ID: "helped"}
+
 	// Reaction conditions (Wave 2.11d) — universal-by-default reactions that
 	// subscribe to the appropriate chain and publish ReactionTriggerEvents
 	// when their predicate matches AND gamectx.IsReactionReady returns true.
@@ -94,6 +98,14 @@ func (n conditionsNS) FightingStyleTwoWeaponFighting() *core.Ref {
 // Turn-based conditions (from actions)
 func (n conditionsNS) Dodging() *core.Ref     { return conditionDodging }
 func (n conditionsNS) Disengaging() *core.Ref { return conditionDisengaging }
+
+// Hidden returns the ref for the HiddenCondition, applied on a successful
+// Hide stealth check.
+func (n conditionsNS) Hidden() *core.Ref { return conditionHidden }
+
+// Helped returns the ref for the HelpedCondition, applied to the ally
+// targeted by the Help combat ability.
+func (n conditionsNS) Helped() *core.Ref { return conditionHelped }
 
 // OpportunityAttack returns the ref for the OpportunityAttackCondition
 // applied by default to every melee combatant. The condition subscribes to

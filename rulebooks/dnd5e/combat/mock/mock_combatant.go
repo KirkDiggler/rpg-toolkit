@@ -152,6 +152,20 @@ func (mr *MockCombatantMockRecorder) MarkClean() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkClean", reflect.TypeOf((*MockCombatant)(nil).MarkClean))
 }
 
+// PassivePerception mocks base method.
+func (m *MockCombatant) PassivePerception() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PassivePerception")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// PassivePerception indicates an expected call of PassivePerception.
+func (mr *MockCombatantMockRecorder) PassivePerception() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PassivePerception", reflect.TypeOf((*MockCombatant)(nil).PassivePerception))
+}
+
 // ProficiencyBonus mocks base method.
 func (m *MockCombatant) ProficiencyBonus() int {
 	m.ctrl.T.Helper()
