@@ -54,7 +54,8 @@ Rulebooks  (rulebooks/dnd5e)
 - `tools/selectables` depends on `core`.
 - `tools/spawn` depends on `core`, `events`, `tools/spatial`, `tools/environments`.
 - `rulebooks/dnd5e` depends on `core`, `dice`, `events`, `mechanics/resources`, `rpgerr`, `tools/environments`, `tools/spatial`.
-- Nothing depends on `rulebooks/dnd5e`. It is the top of the dependency tree.
+- `encounter` depends on `core`, `dice`, `events`, `tools/spatial`, **and `rulebooks/dnd5e`**. It is the encounter/game-loop SDK that orchestrates a dnd5e fight — the one module that sits *above* the rulebook.
+- **One module depends on `rulebooks/dnd5e`: the `encounter` SDK** (`encounter/go.mod` and `rulebooks/dnd5e/go.mod` are the only two `go.mod`s that require it). This is by design, not drift — see ADR-0034 (where encounter logic lives) and ADR-0030 (encounter owns combatant hydration). Nothing else depends on the rulebook.
 
 **No module currently imports rpg-api or rpg-api-protos.** Verified: `grep -r "rpg-api" */go.mod` returns empty.
 
@@ -112,6 +113,7 @@ Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains 
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |
 | tools/spawn | `tools/spawn/` | Tools | 4-phase entity spawn engine |
 | rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Full D&D 5e rules: character, combat, initiative, spells, monsters, dungeon |
+| encounter | `encounter/` | Encounter (above Rulebooks) | The dnd5e encounter/game-loop SDK: turn loop, hydration cascade, resolver seam, event broker/transport, perception, prompts. The one module that imports `rulebooks/dnd5e` — see ADR-0034. |
 
 ## Code violations against these rules (2026-05-02)
 
