@@ -1,12 +1,15 @@
 package encounter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // ErrEncounterEnded is returned by combat verbs (TakeAction, EndTurn,
@@ -130,6 +133,96 @@ func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) er
 		e.data.ID, e.nextSeq(), playerEntityID, killerID, diedPerPlayer,
 	)); err != nil {
 		return fmt.Errorf("publish entity died (player): %w", err)
+	}
+	return nil
+}
+
+// applyUnconsciousOnZeroHP replaces the old "player hits 0 HP -> immediately
+// dead" behavior (#733). Instead of calling publishPlayerDied directly, a
+// player whose HP just transitioned >0 -> 0 has the Unconscious condition
+// applied, which engages the death-save mechanism (auto-roll at their own
+// next turn start, auto-fail on further damage, wake on healing — all
+// already implemented in conditions.UnconsciousCondition and wired live by
+// rpg-toolkit#729's turn-start revival). EntityDiedEvent for the player now
+// only fires via the CharacterDied bridge (subscribeCharacterDiedBridge)
+// after 3 failed death saves.
+//
+// Falls back to the pre-#733 publishPlayerDied behavior when the target has
+// no hydrated *character.Character (a flat stat-snapshot seat) — there is no
+// rulebook object to carry death-save state onto, so this is a deliberate,
+// narrow scope call rather than building unconscious-tracking for
+// non-hydrated seats.
+//
+// Monster HP-zero handling (killEntity) is completely untouched by this —
+// this helper is player-only, called from the three sites that used to call
+// publishPlayerDied for the player branch of their isMonster check.
+func (e *Encounter) applyUnconsciousOnZeroHP(ctx context.Context, target *PlayerData, sourceID core.EntityID) error {
+	char := e.heldCharacter(target.EntityID)
+	if char == nil {
+		return e.publishPlayerDied(target.EntityID, sourceID)
+	}
+
+	uc := conditions.NewUnconsciousCondition(string(target.EntityID), e.roller)
+	evt := dnd5eEvents.ConditionAppliedEvent{
+		Target:    char,
+		Type:      dnd5eEvents.ConditionUnconscious,
+		Source:    dnd5eEvents.ConditionSourceDamage,
+		Condition: uc,
+	}
+	// Publishing on ConditionAppliedTopic is what actually applies the
+	// condition: character.Character.onConditionApplied is permanently
+	// subscribed to this topic and calls evt.Condition.Apply(ctx, c.bus)
+	// itself (the Dodge/Rage pattern — see combatabilities/dodge.go).
+	if err := dnd5eEvents.ConditionAppliedTopic.On(e.bus).Publish(ctx, evt); err != nil {
+		return fmt.Errorf("publish unconscious condition: %w", err)
+	}
+
+	// Bridge the same event to the broker-facing ConditionAppliedEvent so
+	// live clients see the status, reusing applyActivatedConditions (which
+	// already resolves target/audience from cond.Target — the R1 fix from
+	// #716) rather than writing new broker-bridging code. sourceID as the
+	// actorID arg gives correct "who did this" narration; audience
+	// resolution is unaffected by it since cond.Target is always set here.
+	if err := e.applyActivatedConditions(nil, sourceID, []dnd5eEvents.ConditionAppliedEvent{evt}); err != nil {
+		return fmt.Errorf("bridge unconscious condition: %w", err)
+	}
+	return nil
+}
+
+// subscribeCharacterDiedBridge installs a PERMANENT subscription to the
+// rulebook's CharacterDiedTopic on e.bus, bridging final death-save-death (3
+// failed death saves) to the broker-facing EntityDiedEvent. Unlike the
+// transient capture-buffers used elsewhere in this package (subscribeAttacks,
+// subscribeConditions, installTriggerBuffer), CharacterDiedEvent can fire
+// from multiple, unrelated call sites over the encounter's lifetime — a
+// turn-start auto-roll (UnconsciousCondition.onTurnStart) or getting hit
+// again while already down (UnconsciousCondition.onDamageReceived) — not
+// just once per verb call. So this is installed once, immediately after e.bus
+// is constructed, and lives for the encounter's lifetime; both New and
+// LoadFromData call this right after building a fresh bus.
+//
+// Handler: resolves the dying character to a seated player; if found,
+// publishes EntityDiedEvent via publishPlayerDied with an empty killer id —
+// there is no specific final blow at 3-failed-saves death.
+// publishPlayerDied/positionFor already handle an empty id gracefully (it
+// simply contributes nothing to the per-viewer LoS projection beyond the
+// dying player's own position). Does NOT call killEntity, remove the player
+// from initiative, or trigger checkEncounterEnd — Wave 2.10's "player is NOT
+// removed from initiative, dying-state/TPK is future work" call still stands;
+// this only wires the missing broker event. A no-op (not an error) if the
+// dead character doesn't resolve to a seated player — e.g. a future monster
+// with an Unconscious condition would simply not match here.
+func (e *Encounter) subscribeCharacterDiedBridge(ctx context.Context) error {
+	_, err := dnd5eEvents.CharacterDiedTopic.On(e.bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.CharacterDiedEvent) error {
+			p := e.findPlayerByEntityID(core.EntityID(event.CharacterID))
+			if p == nil {
+				return nil
+			}
+			return e.publishPlayerDied(p.EntityID, "")
+		})
+	if err != nil {
+		return fmt.Errorf("subscribe character died bridge: %w", err)
 	}
 	return nil
 }

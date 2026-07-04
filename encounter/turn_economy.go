@@ -70,6 +70,21 @@ func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) er
 		return nil // NPC or stat-snapshot seat — no character economy to seed.
 	}
 
+	// #733: an unconscious/downed player (HP<=0) gets no seeded action economy
+	// — the TurnStartTopic publish above still drives their auto-death-save
+	// roll, but they cannot act. char.EndTurn is a pure local mutation
+	// (zeroes actions/bonus/reaction/movement remaining, resets Granted, no
+	// event side effects — see action_economy.go) reused here instead of
+	// inventing new zeroing logic. Design intent: "ActionEconomy for an
+	// unconscious actor should not offer actions" (rpg-project#75 Beat 2
+	// mechanical-effects design doc, "Turn-start is dead code").
+	if p := e.findPlayerByEntityID(actorID); p != nil && p.HP <= 0 {
+		if _, err := char.EndTurn(ctx, &character.EndTurnInput{}); err != nil {
+			return fmt.Errorf("zero turn economy for downed actor %q: %w", actorID, err)
+		}
+		return nil
+	}
+
 	if _, err := char.StartTurn(ctx, &character.StartTurnInput{
 		Speed:      char.GetSpeed(),
 		TurnNumber: e.data.Round,

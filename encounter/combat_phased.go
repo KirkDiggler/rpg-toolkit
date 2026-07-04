@@ -381,7 +381,11 @@ func (e *Encounter) applyAndPublishNPCOutcome(monster *MonsterData, player *Play
 		return err
 	}
 	if outcome.Hit && hpBefore > 0 && player.HP == 0 {
-		if err := e.publishPlayerDied(player.EntityID, monster.ID); err != nil {
+		// #733: apply Unconscious (death saves) instead of dying outright.
+		// ctx: not threaded through this call chain today; context.Background()
+		// is an established precedent in this exact file (see the
+		// topic.Subscribe(context.Background(), ...) call below).
+		if err := e.applyUnconsciousOnZeroHP(context.Background(), player, monster.ID); err != nil {
 			return err
 		}
 	}
