@@ -23,9 +23,9 @@ rpg-toolkit is a Go rules engine for tabletop RPG mechanics. Its mandate is to i
 ## Layer rules & module dependency map
 
 **Higher layers may import lower; reversing is a defect.** The diagram shows the
-**decided end-state** (ADR-0034 — the *split*): the D&D-5e encounter loop lives
+**decided end-state** (ADR-0034 — the *split*): the D&D 5e encounter loop lives
 **inside** the `rulebooks/dnd5e` module, and the encounter's already-agnostic
-layers become their own primitive modules **below** the rulebook. Everything sits
+layers become their own modules **below** the rulebook. Everything sits
 at or below the Rulebooks layer, and **nothing imports rpg-api or rpg-api-protos**
 (the toolkit never knows its host). Dashed nodes flag the migration that is
 decided but not yet executed.
@@ -35,9 +35,8 @@ flowchart TD
   subgraph RB["rulebooks/dnd5e module — D&D 5e rules + encounter loop"]
     DND["dnd5e rules<br/>character · combat · monsters · conditions"]
     ENC["encounter loop<br/>verbs · hydration · resolvers · turn logic"]
-    ENC --> DND
   end
-  subgraph PRIM["New agnostic primitives (extracted from the encounter)"]
+  subgraph PRIM["New modules extracted from the encounter"]
     BROKER["broker<br/>pub/sub + timestamp + Transport seam"]
     SPINE["eventspine<br/>sealed event interface + audience routing"]
     PERC["tools/perception<br/>vision projection"]
@@ -88,8 +87,9 @@ flowchart TD
 
 Nodes are modules — **except** `encounter loop`, which in the end-state is a
 *package inside* the `rulebooks/dnd5e` module (drawn separately to show the seam).
-Green dashed nodes are the new agnostic primitive modules the split creates; the
-red dashed loop is the dnd5e code merging into the rulebook module. Arrows are
+Green dashed nodes are the new modules the split extracts (each lands at its own
+layer — `broker` and `eventspine` as primitives, `tools/perception` in Tools);
+the red dashed loop is the dnd5e code merging into the rulebook module. Arrows are
 dependencies; uniform ones are omitted for legibility — the loop shares the
 `rulebooks/dnd5e` module's dependencies (`core`, `dice`, `events`, `tools/spatial`,
 …), every Mechanics module requires `core` + `events` (`conditions` also

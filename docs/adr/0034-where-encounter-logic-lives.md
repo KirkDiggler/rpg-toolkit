@@ -19,7 +19,7 @@ focused restructure after Beat 2); this document moves no code.
 > strong foundation for our idea to evolve on."
 
 Not to make things *appear* correct by declaration. A module named `encounter`
-sitting at the top level while being D&D-5e-specific is a **structural lie** — the
+sitting at the top level while being specific to D&D 5e is a **structural lie** — the
 same species of untruth as the `overview.md` claim that "nothing depends on
 `rulebooks/dnd5e`" (false the moment the encounter imported it). This ADR does not
 merely *describe* the boundary; it commits the structure to change so the layout
