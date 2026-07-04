@@ -177,7 +177,7 @@ type MonsterInput struct {
 // AddPlayer/AddMonster carrying DataJSON is therefore not hydrated until its
 // next round-trip through LoadFromData, matching the production lifecycle of
 // create → persist → load-per-RPC.
-func New(_ context.Context, id core.EncounterID, b *Broker, opts ...Option) *Encounter {
+func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *Encounter {
 	e := &Encounter{
 		data:       NewData(id),
 		broker:     b,
@@ -185,6 +185,7 @@ func New(_ context.Context, id core.EncounterID, b *Broker, opts ...Option) *Enc
 		bus:        dnd5events.NewEventBus(),
 		combatants: make(map[core.EntityID]combat.Combatant),
 	}
+	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
 	}
@@ -237,6 +238,7 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 		bus:        dnd5events.NewEventBus(),
 		combatants: make(map[core.EntityID]combat.Combatant),
 	}
+	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
 	}
