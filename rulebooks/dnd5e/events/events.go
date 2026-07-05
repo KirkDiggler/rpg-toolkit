@@ -274,6 +274,7 @@ type DamageChainEvent struct {
 	WeaponRef       *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
 	IsOffHandAttack bool              // True for bonus action off-hand attacks (two-weapon fighting)
 	AbilityModifier int               // The ability modifier (STR/DEX) for this attack
+	IsMelee         bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
 }
 
 // =============================================================================

@@ -70,6 +70,17 @@ type DealDamageInput struct {
 	// HasAdvantage indicates if the attack had advantage (for sneak attack eligibility, etc.)
 	HasAdvantage bool
 
+	// AbilityUsed is which ability was used for the attack, if any (e.g. STR for a
+	// melee weapon attack). Used by modifiers like Rage that only apply to
+	// attacks using a specific ability. Leave empty for non-attack damage
+	// (spells, conditions, environment).
+	AbilityUsed abilities.Ability
+
+	// IsMelee indicates this damage came from a melee attack, as opposed to a
+	// ranged one. Used alongside AbilityUsed by modifiers like Rage that only
+	// apply to melee weapon attacks. Leave false for non-attack damage.
+	IsMelee bool
+
 	// EventBus is the event bus for publishing chain and notification events
 	EventBus events.EventBus
 }
@@ -154,6 +165,8 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 		Components:   components,
 		IsCritical:   input.IsCritical,
 		HasAdvantage: input.HasAdvantage,
+		AbilityUsed:  input.AbilityUsed,
+		IsMelee:      input.IsMelee,
 		EventBus:     input.EventBus,
 	})
 	if err != nil {
@@ -236,6 +249,10 @@ type ResolveDamageInput struct {
 	// AbilityModifier is the ability modifier for this attack (STR or DEX mod).
 	// Used by Two-Weapon Fighting style to add modifier to off-hand damage.
 	AbilityModifier int
+
+	// IsMelee indicates this is a melee attack (mirrors AttackChainEvent.IsMelee).
+	// Used by modifiers like Rage that only apply to melee weapon attacks.
+	IsMelee bool
 }
 
 // ResolveDamageOutput contains the result of damage resolution (before HP application).
@@ -283,6 +300,7 @@ func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDama
 		WeaponDamage: input.WeaponDamage,
 		AbilityUsed:  input.AbilityUsed,
 		WeaponRef:    input.WeaponRef,
+		IsMelee:      input.IsMelee,
 	}
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](ModifierStages)

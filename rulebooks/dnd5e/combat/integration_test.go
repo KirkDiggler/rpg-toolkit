@@ -763,7 +763,11 @@ func (s *CombatIntegrationSuite) TestDealDamageWithRageBonus() {
 			Instances: []combat.DamageInstanceInput{
 				{Amount: baseDamage, Type: "slashing"},
 			},
-			EventBus: s.bus,
+			// Grog's swing is a STR-based melee attack, so the rage damage
+			// bonus applies (RAW gates rage damage to STR melee weapon attacks).
+			AbilityUsed: abilities.STR,
+			IsMelee:     true,
+			EventBus:    s.bus,
 		})
 
 		s.Require().NoError(err)

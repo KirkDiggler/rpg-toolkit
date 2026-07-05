@@ -13,9 +13,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // RagingData is the JSON structure for persisting raging condition state
@@ -106,6 +108,26 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID5)
+
+	// Subscribe to saving throw chain to grant advantage on STR saves
+	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	subID6, err := saveChain.SubscribeWithChain(ctx, r.onSavingThrowChain)
+	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID6)
+
+	// Subscribe to ability check chain to grant advantage on STR checks
+	checkChain := dnd5eEvents.AbilityCheckChain.On(bus)
+	subID7, err := checkChain.SubscribeWithChain(ctx, r.onAbilityCheckChain)
+	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID7)
 
 	return nil
 }
@@ -251,27 +273,33 @@ func (r *RagingCondition) onDamageChain(
 	// Handle attacker side: add rage damage bonus
 	if event.AttackerID == r.CharacterID {
 		// Track that we successfully hit an enemy this turn
-		// (damage chain only fires when an attack hits)
+		// (damage chain only fires when an attack hits). Any successful attack
+		// counts as combat activity for keeping rage active, regardless of
+		// whether it qualifies for the rage damage bonus below.
 		r.DidAttackThisTurn = true
 
-		// Add rage damage modifier in the StageFeatures stage
-		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-			// Append rage damage component
-			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-				Source:            dnd5eEvents.DamageSourceCondition,
-				SourceRef:         refs.Conditions.Raging(),
-				OriginalDiceRolls: nil, // No dice
-				FinalDiceRolls:    nil,
-				Rerolls:           nil,
-				FlatBonus:         r.DamageBonus,
-				DamageType:        e.DamageType, // Same as weapon damage type
-				IsCritical:        e.IsCritical,
-			})
-			return e, nil
-		}
-		err := c.Add(combat.StageFeatures, "rage", modifyDamage)
-		if err != nil {
-			return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
+		// RAW: the rage damage bonus only applies to melee weapon attacks that
+		// use Strength (including unarmed strikes) -- not ranged or DEX-based attacks.
+		if event.AbilityUsed == abilities.STR && event.IsMelee {
+			// Add rage damage modifier in the StageFeatures stage
+			modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+				// Append rage damage component
+				e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+					Source:            dnd5eEvents.DamageSourceCondition,
+					SourceRef:         refs.Conditions.Raging(),
+					OriginalDiceRolls: nil, // No dice
+					FinalDiceRolls:    nil,
+					Rerolls:           nil,
+					FlatBonus:         r.DamageBonus,
+					DamageType:        e.DamageType, // Same as weapon damage type
+					IsCritical:        e.IsCritical,
+				})
+				return e, nil
+			}
+			err := c.Add(combat.StageFeatures, "rage", modifyDamage)
+			if err != nil {
+				return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
+			}
 		}
 	}
 
@@ -291,6 +319,74 @@ func (r *RagingCondition) onDamageChain(
 		if err != nil {
 			return c, rpgerr.Wrapf(err, "error applying rage resistance for character id %s", r.CharacterID)
 		}
+	}
+
+	return c, nil
+}
+
+// onSavingThrowChain grants advantage on Strength saving throws while raging (PHB rage benefits).
+func (r *RagingCondition) onSavingThrowChain(
+	_ context.Context,
+	event *dnd5eEvents.SavingThrowChainEvent,
+	c chain.Chain[*dnd5eEvents.SavingThrowChainEvent],
+) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+	// Only apply to this character's saves
+	if event.SaverID != r.CharacterID {
+		return c, nil
+	}
+
+	// Only apply to STR saves
+	if event.Ability != abilities.STR {
+		return c, nil
+	}
+
+	// Add advantage at the conditions stage
+	modifySave := func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
+		e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.SaveModifierSource{
+			Name:       "Raging",
+			SourceType: "condition",
+			SourceRef:  refs.Conditions.Raging(),
+			EntityID:   r.CharacterID,
+		})
+		return e, nil
+	}
+
+	if err := c.Add(combat.StageConditions, "raging_str_advantage", modifySave); err != nil {
+		return c, rpgerr.Wrapf(err, "failed to add raging STR advantage modifier for character %s", r.CharacterID)
+	}
+
+	return c, nil
+}
+
+// onAbilityCheckChain grants advantage on Strength checks while raging (PHB rage benefits).
+func (r *RagingCondition) onAbilityCheckChain(
+	_ context.Context,
+	event *dnd5eEvents.AbilityCheckChainEvent,
+	c chain.Chain[*dnd5eEvents.AbilityCheckChainEvent],
+) (chain.Chain[*dnd5eEvents.AbilityCheckChainEvent], error) {
+	// Only apply to this character's checks
+	if event.CheckerID != r.CharacterID {
+		return c, nil
+	}
+
+	// Only apply to Strength-based skill checks (e.g., Athletics)
+	if skills.Ability(event.Skill) != abilities.STR {
+		return c, nil
+	}
+
+	// Add advantage at the conditions stage
+	modifyCheck := func(_ context.Context, e *dnd5eEvents.AbilityCheckChainEvent) (*dnd5eEvents.AbilityCheckChainEvent, error) {
+		e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.CheckModifierSource{
+			Name:       "Raging",
+			SourceType: "condition",
+			SourceRef:  refs.Conditions.Raging(),
+			EntityID:   r.CharacterID,
+		})
+		return e, nil
+	}
+
+	if err := c.Add(combat.StageConditions, "raging_str_check_advantage", modifyCheck); err != nil {
+		return c, rpgerr.Wrapf(err, "failed to add raging STR check advantage modifier for character %s", r.CharacterID)
 	}
 
 	return c, nil

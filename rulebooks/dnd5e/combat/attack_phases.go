@@ -85,6 +85,7 @@ type AttackContext struct {
 	AbilityMod      int
 	AbilityUsed     abilities.Ability
 	IsOffHandAttack bool
+	IsMelee         bool // True for melee attacks, false for ranged (from the attack chain's weapon check)
 }
 
 // ReactionModifier represents an AC or roll modification chosen by a player
@@ -396,6 +397,7 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		AbilityMod:          abilityMod,
 		AbilityUsed:         determineAbilityUsed(input.Weapon, attackerScores),
 		IsOffHandAttack:     isOffHandAttack,
+		IsMelee:             finalAttackEvent.IsMelee,
 	}, nil
 }
 
@@ -514,6 +516,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		WeaponDamage:    ac.Weapon.Damage,
 		AbilityUsed:     ac.AbilityUsed,
 		WeaponRef:       weaponToRef(ac.Weapon),
+		IsMelee:         ac.IsMelee,
 	})
 	if err != nil {
 		return nil, err
