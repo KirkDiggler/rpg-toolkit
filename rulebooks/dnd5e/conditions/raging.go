@@ -278,28 +278,36 @@ func (r *RagingCondition) onDamageChain(
 		// whether it qualifies for the rage damage bonus below.
 		r.DidAttackThisTurn = true
 
-		// RAW: the rage damage bonus only applies to melee weapon attacks that
-		// use Strength (including unarmed strikes) -- not ranged or DEX-based attacks.
-		if event.AbilityUsed == abilities.STR && event.IsMelee {
-			// Add rage damage modifier in the StageFeatures stage
-			modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-				// Append rage damage component
-				e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-					Source:            dnd5eEvents.DamageSourceCondition,
-					SourceRef:         refs.Conditions.Raging(),
-					OriginalDiceRolls: nil, // No dice
-					FinalDiceRolls:    nil,
-					Rerolls:           nil,
-					FlatBonus:         r.DamageBonus,
-					DamageType:        e.DamageType, // Same as weapon damage type
-					IsCritical:        e.IsCritical,
-				})
+		// Add rage damage modifier in the StageFeatures stage. Gated inside the
+		// modifier (on the live e.AbilityUsed/e.IsMelee) rather than on the
+		// publish-time event above, since other StageFeatures modifiers (e.g.
+		// Martial Arts) can change AbilityUsed while the chain executes --
+		// checking the pre-chain snapshot would let Rage's bonus survive a
+		// swap away from STR.
+		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+			// RAW: the rage damage bonus only applies to melee weapon attacks
+			// that use Strength (including unarmed strikes) -- not ranged or
+			// DEX-based attacks.
+			if e.AbilityUsed != abilities.STR || !e.IsMelee {
 				return e, nil
 			}
-			err := c.Add(combat.StageFeatures, "rage", modifyDamage)
-			if err != nil {
-				return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
-			}
+
+			// Append rage damage component
+			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+				Source:            dnd5eEvents.DamageSourceCondition,
+				SourceRef:         refs.Conditions.Raging(),
+				OriginalDiceRolls: nil, // No dice
+				FinalDiceRolls:    nil,
+				Rerolls:           nil,
+				FlatBonus:         r.DamageBonus,
+				DamageType:        e.DamageType, // Same as weapon damage type
+				IsCritical:        e.IsCritical,
+			})
+			return e, nil
+		}
+		err := c.Add(combat.StageFeatures, "rage", modifyDamage)
+		if err != nil {
+			return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
 		}
 	}
 
