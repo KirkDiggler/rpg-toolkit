@@ -1554,14 +1554,19 @@ func (d *Draft) initializeClassResources(char *Character) {
 		}
 
 	case classes.Monk:
-		// Ki points - equal to monk level, recovered on short or long rest
-		kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.Ki),
-			Maximum:     level,
-			CharacterID: char.id,
-			ResetType:   coreResources.ResetShortRest,
-		})
-		char.resources[resources.Ki] = kiResource
+		// Ki points - equal to monk level, recovered on short or long rest.
+		// SRD: Ki starts at Monk level 2 (Flurry of Blows, Patient Defense, and
+		// Step of the Wind -- the features that spend Ki -- are all level-2
+		// features), so a level 1 Monk gets no Ki resource at all.
+		if level >= 2 {
+			kiResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.Ki),
+				Maximum:     level,
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetShortRest,
+			})
+			char.resources[resources.Ki] = kiResource
+		}
 	}
 
 	// Hit dice - all classes get hit dice for short rest healing
