@@ -65,7 +65,10 @@ func (alwaysFailDeathSaveRoller) RollN(_ context.Context, count, size int) ([]in
 // alwaysSuccessDeathSaveRoller always rolls a 15 on a d20 (a plain death-save
 // success — not a natural 20, which would instead regain consciousness) so a
 // downed character's death saves succeed deterministically, three turn-starts
-// in a row, stabilizing rather than reviving or dying.
+// in a row, stabilizing rather than reviving or dying. Non-d20 rolls (RollN,
+// or Roll for any other size) pass through at max face — irrelevant here
+// since nothing else in these fixtures rolls dice via RollN (same
+// convention as alwaysFailDeathSaveRoller above).
 type alwaysSuccessDeathSaveRoller struct{}
 
 func (alwaysSuccessDeathSaveRoller) Roll(_ context.Context, size int) (int, error) {
@@ -137,12 +140,15 @@ func (s *UnconsciousZeroHPSuite) charDataJSON(id, playerID string) json.RawMessa
 	return raw
 }
 
-// buildEncounter constructs a 1-hydrated-player (alice, HP=aliceHP) +
-// 1-scripted-monster (goblin, no DataJSON) encounter wired with roller, then
-// round-trips through ToData/LoadFromData so the cascade hydrates alice's
-// character (mirrors turn_start_revival_test.go's loadEncounter).
+// buildEncounter constructs a 1-hydrated-player (alice, HP=1 — always
+// guaranteed lethal via alwaysHitResolver's 999 damage) + 1-scripted-monster
+// (goblin, no DataJSON) encounter wired with roller, then round-trips
+// through ToData/LoadFromData so the cascade hydrates alice's character
+// (mirrors turn_start_revival_test.go's loadEncounter). alice's starting HP
+// is not a caller-varying concern across this file's tests — every one of
+// them needs the same guaranteed-knockdown setup.
 func (s *UnconsciousZeroHPSuite) buildEncounter(
-	encID core.EncounterID, aliceHP int, roller encounter.Option,
+	encID core.EncounterID, roller encounter.Option,
 ) *encounter.Encounter {
 	s.T().Helper()
 	enc := encounter.New(s.ctx, encID, s.broker, roller,
@@ -151,7 +157,7 @@ func (s *UnconsciousZeroHPSuite) buildEncounter(
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
-		HP: aliceHP, MaxHP: 12, AC: 10, AttackBonus: 4,
+		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
 		DamageDice: damage1d8plus2, DamageType: damageSlashing,
 		DataJSON: s.charDataJSON(string(aliceEntityID), string(alicePlayerID)),
 	}))
@@ -180,7 +186,7 @@ func (s *UnconsciousZeroHPSuite) buildEncounter(
 // same partial-death shape Wave 2.10 established, just gated behind death
 // saves now instead of firing instantly.
 func (s *UnconsciousZeroHPSuite) TestPlayerHitsZeroHP_AppliesUnconscious_NotImmediateEntityDied() {
-	enc := s.buildEncounter("enc-uzh-1", 1, encounter.WithRoller(fixedMaxRoller{}))
+	enc := s.buildEncounter("enc-uzh-1", encounter.WithRoller(fixedMaxRoller{}))
 
 	sub, err := s.broker.Subscribe("enc-uzh-1", alicePlayerID)
 	s.Require().NoError(err)
@@ -231,7 +237,7 @@ func (s *UnconsciousZeroHPSuite) TestPlayerHitsZeroHP_AppliesUnconscious_NotImme
 // New/LoadFromData (subscribeCharacterDiedBridge). KillerID is empty: there
 // is no specific final blow at 3-failed-saves death.
 func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_BridgesToEntityDied() {
-	enc := s.buildEncounter("enc-uzh-2", 1, encounter.WithRoller(alwaysFailDeathSaveRoller{}))
+	enc := s.buildEncounter("enc-uzh-2", encounter.WithRoller(alwaysFailDeathSaveRoller{}))
 
 	aliceSub, err := s.broker.Subscribe("enc-uzh-2", alicePlayerID)
 	s.Require().NoError(err)
@@ -346,7 +352,7 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_AcrossPerRPCReloads_B
 	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 	opts := []encounter.Option{roller, resolver}
 
-	enc := s.buildEncounter("enc-uzh-3", 1, roller)
+	enc := s.buildEncounter("enc-uzh-3", roller)
 
 	aliceSub, err := s.broker.Subscribe("enc-uzh-3", alicePlayerID)
 	s.Require().NoError(err)
@@ -457,7 +463,7 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_AcrossPerRPCReloads_B
 // crit) via alwaysFailDeathSaveRoller, and the broker DeathSaveRolledEvent
 // must carry the roll detail.
 func (s *UnconsciousZeroHPSuite) TestDeathSaveRolledBridge_EveryRollBridgesToEvent() {
-	enc := s.buildEncounter("enc-dsr-1", 1, encounter.WithRoller(alwaysFailDeathSaveRoller{}))
+	enc := s.buildEncounter("enc-dsr-1", encounter.WithRoller(alwaysFailDeathSaveRoller{}))
 
 	aliceSub, err := s.broker.Subscribe("enc-dsr-1", alicePlayerID)
 	s.Require().NoError(err)
@@ -512,7 +518,7 @@ func (s *UnconsciousZeroHPSuite) TestDeathSaveRolledBridge_EveryRollBridgesToEve
 // 3 coverage, complementing the single-roll proof above with the
 // multi-roll/no-double-count shape).
 func (s *UnconsciousZeroHPSuite) TestCharacterStabilizedBridge_ThreeSuccessfulDeathSaves_BridgesToEntityStabilized() {
-	enc := s.buildEncounter("enc-csb-1", 1, encounter.WithRoller(alwaysSuccessDeathSaveRoller{}))
+	enc := s.buildEncounter("enc-csb-1", encounter.WithRoller(alwaysSuccessDeathSaveRoller{}))
 
 	aliceSub, err := s.broker.Subscribe("enc-csb-1", alicePlayerID)
 	s.Require().NoError(err)

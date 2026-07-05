@@ -109,7 +109,7 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 // goblin" without committing to a dying-state model that hasn't shipped.
 //
 // Visibility: a viewer is in PerPlayer iff they have LoS to the dying
-// player OR the killing NPC. The dying player themselves is ALWAYS included
+// player OR the killing NPC. The dying player is ALWAYS included
 // unconditionally (rpg-toolkit#741 hardening) — a player learning of their
 // own death must never depend on a LoS/perception computation over their
 // own position; that dependency is real (CanSeeAt reads live position +
