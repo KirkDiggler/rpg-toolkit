@@ -151,7 +151,7 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	// from capturedDmg (#684). Any remaining events are from non-attack damage
 	// sources (e.g., a future breath-weapon monster action using DealDamage
 	// directly) and must still be processed here.
-	if err := e.applyCapturedDamage(mon, *capturedDmg); err != nil {
+	if err := e.applyCapturedDamage(ctx, mon, *capturedDmg); err != nil {
 		return err
 	}
 	if err := e.applyCapturedConditions(mon, *capturedCond); err != nil {
@@ -637,7 +637,9 @@ func (e *Encounter) PendingPhasedAttackContext(reactorPlayerID encountercore.Pla
 // player-death per Wave 2.10 architectural call). Re-applying damage to
 // an already-zero target does NOT re-fire death events — death is gated
 // on the >0 → 0 transition.
-func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.DamageReceivedEvent) error {
+func (e *Encounter) applyCapturedDamage(
+	ctx context.Context, mon *MonsterData, damages []dnd5eEvents.DamageReceivedEvent,
+) error {
 	for _, dmg := range damages {
 		targetID := encountercore.EntityID(dmg.TargetID)
 		sourceID := encountercore.EntityID(dmg.SourceID)
@@ -673,7 +675,10 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 					return err
 				}
 			} else {
-				if err := e.publishPlayerDied(targetID, sourceID); err != nil {
+				// #733: apply Unconscious (death saves) instead of dying
+				// outright. See applyUnconsciousOnZeroHP (death.go).
+				target := e.findPlayerByEntityID(targetID)
+				if err := e.applyUnconsciousOnZeroHP(ctx, target, sourceID); err != nil {
 					return err
 				}
 			}
@@ -718,7 +723,7 @@ func (e *Encounter) applyCapturedDamage(mon *MonsterData, damages []dnd5eEvents.
 // from). HP correctness takes priority over the attackResolved-shape
 // guarantee when the two signals disagree.
 func (e *Encounter) applyMoveAttackOutcomes(
-	rolls []dnd5eEvents.PostAttackRollEvent, damages []dnd5eEvents.DamageReceivedEvent,
+	ctx context.Context, rolls []dnd5eEvents.PostAttackRollEvent, damages []dnd5eEvents.DamageReceivedEvent,
 ) error {
 	dmgIdx := 0
 	for _, roll := range rolls {
@@ -736,7 +741,7 @@ func (e *Encounter) applyMoveAttackOutcomes(
 		if dmg == nil {
 			continue
 		}
-		if err := e.applyMoveDamage(*dmg, corrID); err != nil {
+		if err := e.applyMoveDamage(ctx, *dmg, corrID); err != nil {
 			return err
 		}
 	}
@@ -744,7 +749,7 @@ func (e *Encounter) applyMoveAttackOutcomes(
 	// derived correlation id) to publish alongside it — apply HP +
 	// DamageDealtEvent on their own, uncorrelated.
 	for _, dmg := range damages[dmgIdx:] {
-		if err := e.applyMoveDamage(dmg, ""); err != nil {
+		if err := e.applyMoveDamage(ctx, dmg, ""); err != nil {
 			return err
 		}
 	}
@@ -833,7 +838,9 @@ func (e *Encounter) publishMoveAttackResolved(
 // visibility — viewers who can see the target see the event, viewers
 // who can't, don't. The same skip rule as applyCapturedDamage applies
 // for unknown targets (we can't mutate HP on something we can't find).
-func (e *Encounter) applyMoveDamage(dmg dnd5eEvents.DamageReceivedEvent, corrID encountercore.CorrelationID) error {
+func (e *Encounter) applyMoveDamage(
+	ctx context.Context, dmg dnd5eEvents.DamageReceivedEvent, corrID encountercore.CorrelationID,
+) error {
 	targetID := encountercore.EntityID(dmg.TargetID)
 	sourceID := encountercore.EntityID(dmg.SourceID)
 
@@ -874,7 +881,10 @@ func (e *Encounter) applyMoveDamage(dmg dnd5eEvents.DamageReceivedEvent, corrID 
 				return err
 			}
 		} else {
-			if err := e.publishPlayerDied(targetID, sourceID); err != nil {
+			// #733: apply Unconscious (death saves) instead of dying
+			// outright. See applyUnconsciousOnZeroHP (death.go).
+			target := e.findPlayerByEntityID(targetID)
+			if err := e.applyUnconsciousOnZeroHP(ctx, target, sourceID); err != nil {
 				return err
 			}
 		}
@@ -1011,12 +1021,21 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 // buildPerception assembles the PerceptionData a monster needs to choose
 // and target an action. Wave 2.8 treats every player as an enemy and
 // computes distances directly from hex coordinates — no walls or cover.
+//
+// #733: a player at HP<=0 (dead or unconscious) is never perceived as an
+// enemy — this is the fix for the observed soft-lock where a goblin kept
+// attacking a downed player round after round. D&D RAW's auto-crit-on-
+// unconscious-target is deliberately NOT implemented here; the issue only
+// asks to skip dead/unconscious targets, not add that rule.
 func (e *Encounter) buildPerception(mon *MonsterData) *monster.PerceptionData {
 	pos := spatial.CubeCoordinate{X: mon.Position.Q, Y: mon.Position.R, Z: mon.Position.S}
 	pd := &monster.PerceptionData{
 		MyPosition: pos,
 	}
 	for _, p := range e.data.Players {
+		if p.HP <= 0 {
+			continue
+		}
 		dist := hexDistance(mon.Position, p.View.Position)
 		pd.Enemies = append(pd.Enemies, monster.PerceivedEntity{
 			Entity:   &playerEntity{id: string(p.EntityID), name: string(p.ID)},
@@ -1045,12 +1064,19 @@ func (p *playerEntity) GetID() string            { return p.id }
 func (p *playerEntity) GetType() core.EntityType { return "character" }
 func (p *playerEntity) GetName() string          { return p.name }
 
-// closestPlayer returns the player nearest the given hex, or nil if the
-// encounter has no players.
+// closestPlayer returns the LIVE player (HP>0) nearest the given hex, or nil
+// if the encounter has no live players. #733: a downed player (HP<=0) is
+// never returned — before this fix, npcActScripted (the caller) would keep
+// targeting/attacking a downed player round after round, since nothing
+// filtered by HP. The existing "no players" nil-return path already covers
+// the all-downed case correctly (the caller treats nil as "nothing to do").
 func (e *Encounter) closestPlayer(from encountercore.Hex) *PlayerData {
 	var best *PlayerData
 	bestDist := -1
 	for _, p := range e.data.Players {
+		if p.HP <= 0 {
+			continue
+		}
 		d := hexDistance(from, p.View.Position)
 		if best == nil || d < bestDist {
 			best = p

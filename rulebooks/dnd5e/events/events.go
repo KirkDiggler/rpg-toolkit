@@ -96,6 +96,10 @@ const (
 	// ConditionSourceCombatAbility indicates condition from a universal combat
 	// ability activation (e.g., Dodge, Hide, Help)
 	ConditionSourceCombatAbility ConditionSource = "combat_ability"
+	// ConditionSourceDamage indicates a condition applied as a direct
+	// consequence of taking damage (e.g., Unconscious at 0 HP) rather than
+	// an actor's own ability activation.
+	ConditionSourceDamage ConditionSource = "damage"
 )
 
 // ConditionBehavior represents the behavior of an active condition.

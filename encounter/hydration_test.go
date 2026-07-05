@@ -84,7 +84,17 @@ func (s *HydrationCascadeSuite) rogueCharDataJSON() json.RawMessage {
 		Name:             "Rogue",
 		Level:            3,
 		ProficiencyBonus: 2,
-		Conditions:       []json.RawMessage{sneakJSON},
+		// HitPoints/MaxHitPoints must match the PlayerInput{HP: 24, MaxHP: 24}
+		// the two call sites below construct this blob for. Before #733,
+		// seedActorTurn's downed check read the encounter's PlayerData.HP
+		// snapshot, so this held character's own (previously zero-value)
+		// HitPoints never mattered. It now gates turn-start economy seeding
+		// directly (char.GetHitPoints() <= 0 — see turn_economy.go), so a
+		// live rogue's held character must actually carry a positive HP or
+		// her own turn-start spuriously treats her as downed.
+		HitPoints:    24,
+		MaxHitPoints: 24,
+		Conditions:   []json.RawMessage{sneakJSON},
 	}
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)

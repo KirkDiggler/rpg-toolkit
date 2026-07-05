@@ -185,6 +185,16 @@ func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *E
 		bus:        dnd5events.NewEventBus(),
 		combatants: make(map[core.EntityID]combat.Combatant),
 	}
+	// #733: permanent bridge from the rulebook's CharacterDiedTopic (3 failed
+	// death saves) to the broker EntityDiedEvent — installed once, right after
+	// the fresh bus is constructed, for the encounter's lifetime (see
+	// subscribeCharacterDiedBridge's doc for why this can't be a transient
+	// per-verb capture buffer like the rest of this package's subscriptions).
+	// Subscribing against a just-constructed simpleEventBus cannot fail (its
+	// Subscribe implementation only ever returns nil) — New's signature
+	// returns no error, so this is deliberately swallowed rather than
+	// widening New's contract for something structurally infallible here.
+	_ = e.subscribeCharacterDiedBridge(ctx)
 	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
@@ -237,6 +247,12 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 		roller:     dice.NewRoller(),
 		bus:        dnd5events.NewEventBus(),
 		combatants: make(map[core.EntityID]combat.Combatant),
+	}
+	// #733: same permanent CharacterDied -> EntityDied bridge as New — see
+	// subscribeCharacterDiedBridge's doc. Unlike New, LoadFromData already
+	// returns an error, so failure here is propagated rather than swallowed.
+	if err := e.subscribeCharacterDiedBridge(ctx); err != nil {
+		return nil, fmt.Errorf("subscribe character died bridge: %w", err)
 	}
 	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
@@ -761,8 +777,15 @@ func (e *Encounter) iterateMovementStepsForEntity(
 		// before the Prevented check because OAs fire whether or not the
 		// chain ends up preventing the step — the attack (and any damage)
 		// applies either way.
+		//
+		// context.Background(): iterateMovementStepsForEntity and Move (its
+		// only caller) don't thread a ctx through this call chain today,
+		// mirroring the ctx := context.Background() already used a few
+		// lines up in this same function's per-step closure (#733: needed
+		// by applyMoveAttackOutcomes -> applyMoveDamage -> the new
+		// applyUnconsciousOnZeroHP helper's ConditionAppliedTopic publish).
 		if len(capture.rolls) > 0 || len(capture.dmg) > 0 {
-			if err := e.applyMoveAttackOutcomes(capture.rolls, capture.dmg); err != nil {
+			if err := e.applyMoveAttackOutcomes(context.Background(), capture.rolls, capture.dmg); err != nil {
 				return traveled, fmt.Errorf("apply move attack outcomes: %w", err)
 			}
 		}
