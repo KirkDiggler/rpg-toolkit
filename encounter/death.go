@@ -109,9 +109,13 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 // goblin" without committing to a dying-state model that hasn't shipped.
 //
 // Visibility: a viewer is in PerPlayer iff they have LoS to the dying
-// player OR the killing NPC. The dying player themselves are always
-// considered to perceive their own death (their position is, by
-// definition, in their own view).
+// player OR the killing NPC. The dying player themselves is ALWAYS included
+// unconditionally (rpg-toolkit#741 hardening) — a player learning of their
+// own death must never depend on a LoS/perception computation over their
+// own position; that dependency is real (CanSeeAt reads live position +
+// sight range) but conceptually unnecessary, and any future change to LoS
+// rules (multi-room, forced movement, senses) should not be able to hide a
+// player's own death from them.
 func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) error {
 	playerData := e.findPlayerByEntityID(playerEntityID)
 	if playerData == nil || playerData.View == nil {
@@ -121,7 +125,11 @@ func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) er
 	killerPos, killerHasPos := e.positionFor(killerID)
 
 	diedPerPlayer := make(map[core.PlayerID]events.EntityDiedSlice)
+	diedPerPlayer[playerData.ID] = events.EntityDiedSlice{Visible: true}
 	for viewerID, viewer := range e.data.Players {
+		if viewerID == playerData.ID {
+			continue
+		}
 		seesDying := perception.CanSeeAt(viewer.View, dyingPos)
 		seesKiller := killerHasPos && perception.CanSeeAt(viewer.View, killerPos)
 		if !seesDying && !seesKiller {
@@ -225,6 +233,147 @@ func (e *Encounter) subscribeCharacterDiedBridge(ctx context.Context) error {
 		return fmt.Errorf("subscribe character died bridge: %w", err)
 	}
 	return nil
+}
+
+// subscribeCharacterStabilizedBridge installs a PERMANENT subscription to
+// the rulebook's CharacterStabilizedTopic on e.bus, bridging "3 successful
+// death saves" to the broker-facing EntityStabilizedEvent (rpg-toolkit#741 —
+// previously this topic had zero production subscribers anywhere in
+// encounter/, so stabilization was completely wire-invisible). Same
+// lifetime shape as subscribeCharacterDiedBridge: CharacterStabilizedEvent
+// can fire from a turn-start auto-roll at any point in the encounter's
+// life, not just once per verb call, so this is installed once alongside
+// the other permanent bridges in both New and LoadFromData.
+//
+// A no-op (not an error) if the stabilized character doesn't resolve to a
+// seated player, mirroring subscribeCharacterDiedBridge's same fallback.
+func (e *Encounter) subscribeCharacterStabilizedBridge(ctx context.Context) error {
+	_, err := dnd5eEvents.CharacterStabilizedTopic.On(e.bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.CharacterStabilizedEvent) error {
+			return e.bridgeCharacterStabilized(core.EntityID(event.CharacterID))
+		})
+	if err != nil {
+		return fmt.Errorf("subscribe character stabilized bridge: %w", err)
+	}
+	return nil
+}
+
+// bridgeCharacterStabilized publishes an EntityStabilizedEvent for the
+// stabilized entity. Visibility policy mirrors publishPlayerDied's
+// EntityDied projection: the stabilized player is always included
+// unconditionally, and any other viewer with LoS to their position is added
+// alongside — same "own state is never LoS-gated" reasoning documented on
+// publishPlayerDied. No-op if the entity doesn't resolve to a seated player.
+func (e *Encounter) bridgeCharacterStabilized(entityID core.EntityID) error {
+	p := e.findPlayerByEntityID(entityID)
+	if p == nil {
+		return nil
+	}
+	perPlayer := e.deathSaveAudience(p)
+	if err := e.broker.Publish(events.NewEntityStabilizedEvent(
+		e.data.ID, e.nextSeq(), entityID, perPlayer,
+	)); err != nil {
+		return fmt.Errorf("publish entity stabilized: %w", err)
+	}
+	return nil
+}
+
+// subscribeDeathSaveRolledBridge installs a PERMANENT subscription to the
+// rulebook's DeathSaveRolledTopic on e.bus, bridging EVERY death save roll
+// (or automatic damage-while-unconscious failure) to the broker-facing
+// DeathSaveRolledEvent (rpg-toolkit#741 — previously zero production
+// subscribers, so individual rolls never reached the wire even though the
+// terminal Died/Stabilized outcomes now do). Same permanent-lifetime shape
+// as the other two death-save bridges: rolls happen at turn-start or on
+// damage, not confined to one verb call.
+//
+// A no-op (not an error) if the rolling character doesn't resolve to a
+// seated player.
+func (e *Encounter) subscribeDeathSaveRolledBridge(ctx context.Context) error {
+	_, err := dnd5eEvents.DeathSaveRolledTopic.On(e.bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
+			return e.bridgeDeathSaveRolled(event)
+		})
+	if err != nil {
+		return fmt.Errorf("subscribe death save rolled bridge: %w", err)
+	}
+	return nil
+}
+
+// bridgeDeathSaveRolled publishes a DeathSaveRolledEvent carrying the roll
+// detail (roll value, running successes/failures, crit flags, and the
+// nat-20-revival fields) for the rolling entity. Visibility policy mirrors
+// bridgeCharacterStabilized. No-op if the entity doesn't resolve to a
+// seated player.
+func (e *Encounter) bridgeDeathSaveRolled(event dnd5eEvents.DeathSaveRolledEvent) error {
+	entityID := core.EntityID(event.CharacterID)
+	p := e.findPlayerByEntityID(entityID)
+	if p == nil {
+		return nil
+	}
+	perPlayer := e.deathSaveRolledAudience(p)
+	if err := e.broker.Publish(events.NewDeathSaveRolledEvent(&events.NewDeathSaveRolledEventInput{
+		EncID:                 e.data.ID,
+		Seq:                   e.nextSeq(),
+		EntityID:              entityID,
+		Roll:                  event.Roll,
+		Successes:             event.Successes,
+		Failures:              event.Failures,
+		IsCriticalFail:        event.IsCriticalFail,
+		IsCriticalSuccess:     event.IsCriticalSuccess,
+		Stabilized:            event.Stabilized,
+		Dead:                  event.Dead,
+		RegainedConsciousness: event.RegainedConsciousness,
+		HPRestored:            event.HPRestored,
+		PerPlayer:             perPlayer,
+	})); err != nil {
+		return fmt.Errorf("publish death save rolled: %w", err)
+	}
+	return nil
+}
+
+// deathSaveAudience builds the per-viewer projection shared by the
+// Stabilized and (via deathSaveRolledAudience) DeathSaveRolled bridges: the
+// rolling/stabilizing player themselves is always included unconditionally
+// (same "own state is never LoS-gated" reasoning as publishPlayerDied),
+// plus any other viewer with LoS to their current position.
+func (e *Encounter) deathSaveAudience(p *PlayerData) map[core.PlayerID]events.EntityStabilizedSlice {
+	perPlayer := make(map[core.PlayerID]events.EntityStabilizedSlice)
+	perPlayer[p.ID] = events.EntityStabilizedSlice{Visible: true}
+	if p.View == nil {
+		return perPlayer
+	}
+	pos := p.View.Position
+	for viewerID, viewer := range e.data.Players {
+		if viewerID == p.ID {
+			continue
+		}
+		if perception.CanSeeAt(viewer.View, pos) {
+			perPlayer[viewerID] = events.EntityStabilizedSlice{Visible: true}
+		}
+	}
+	return perPlayer
+}
+
+// deathSaveRolledAudience is deathSaveAudience's DeathSaveRolledSlice
+// counterpart — identical projection, different slice type (the two events
+// are not structurally related beyond sharing this visibility policy).
+func (e *Encounter) deathSaveRolledAudience(p *PlayerData) map[core.PlayerID]events.DeathSaveRolledSlice {
+	perPlayer := make(map[core.PlayerID]events.DeathSaveRolledSlice)
+	perPlayer[p.ID] = events.DeathSaveRolledSlice{Visible: true}
+	if p.View == nil {
+		return perPlayer
+	}
+	pos := p.View.Position
+	for viewerID, viewer := range e.data.Players {
+		if viewerID == p.ID {
+			continue
+		}
+		if perception.CanSeeAt(viewer.View, pos) {
+			perPlayer[viewerID] = events.DeathSaveRolledSlice{Visible: true}
+		}
+	}
+	return perPlayer
 }
 
 // checkEncounterEnd evaluates the encounter-end predicate and, if true,

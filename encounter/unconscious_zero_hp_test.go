@@ -32,8 +32,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	dnd5eConditions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -53,6 +55,27 @@ func (alwaysFailDeathSaveRoller) Roll(_ context.Context, size int) (int, error) 
 }
 
 func (alwaysFailDeathSaveRoller) RollN(_ context.Context, count, size int) ([]int, error) {
+	out := make([]int, count)
+	for i := range out {
+		out[i] = size
+	}
+	return out, nil
+}
+
+// alwaysSuccessDeathSaveRoller always rolls a 15 on a d20 (a plain death-save
+// success — not a natural 20, which would instead regain consciousness) so a
+// downed character's death saves succeed deterministically, three turn-starts
+// in a row, stabilizing rather than reviving or dying.
+type alwaysSuccessDeathSaveRoller struct{}
+
+func (alwaysSuccessDeathSaveRoller) Roll(_ context.Context, size int) (int, error) {
+	if size == 20 {
+		return 15, nil
+	}
+	return size, nil
+}
+
+func (alwaysSuccessDeathSaveRoller) RollN(_ context.Context, count, size int) ([]int, error) {
 	out := make([]int, count)
 	for i := range out {
 		out[i] = size
@@ -269,4 +292,305 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_BridgesToEntityDied()
 	persisted := enc.ToData()
 	s.Contains(persisted.Players, core.PlayerID(alicePlayerID))
 	s.NotEmpty(persisted.Initiative)
+}
+
+// reloadEncounter round-trips enc through ToData/LoadFromData with the given
+// opts, mirroring the real per-RPC production lifecycle: hydration.go's
+// package doc states the hydration cascade is "the only place conditions
+// Apply() to e.bus" and runs from a FRESH bus on every LoadFromData call —
+// which is what rpg-api actually does once per verb RPC (load, call the
+// verb, persist, discard). encounter.Option values (roller, resolver) are
+// NOT persisted, so callers must re-supply the same opts on every reload,
+// exactly as rpg-api's orchestrator does with its fixed construction.
+func (s *UnconsciousZeroHPSuite) reloadEncounter(
+	enc *encounter.Encounter, opts ...encounter.Option,
+) *encounter.Encounter {
+	s.T().Helper()
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, opts...)
+	s.Require().NoError(err)
+	return loaded
+}
+
+// TestThreeFailedDeathSaves_AcrossPerRPCReloads_BridgesToEntityDied is the
+// rpg-toolkit#741 root-cause repro. TestThreeFailedDeathSaves_BridgesToEntityDied
+// above proves the CharacterDied bridge fires when the entire 3-failure
+// sequence runs against ONE long-lived in-memory *Encounter — but production
+// never holds an Encounter across RPCs; every verb call is its own
+// LoadFromData round-trip (see hydration.go's package doc and
+// hydration_test.go's reloadVia, which mirrors the same "per-RPC" lifecycle
+// for its own regression).
+//
+// Failures are driven via repeated damage while unconscious
+// (UnconsciousCondition.onDamageReceived — 1 automatic death-save failure
+// per hit, no dice roll involved: rpg-toolkit/rulebooks/dnd5e/saves.
+// TakeDamageWhileUnconscious), published directly on the encounter-held bus
+// rather than routed through NPCAct/monster AI. Two independent reasons a
+// turn-start-roll-driven, NPCAct-driven repro cannot give a deterministic
+// signal here: (1) buildPerception (encounter/npc.go) deliberately excludes
+// HP<=0 players from a monster's target list (rpg-toolkit#733's
+// closestPlayer fix — "don't keep attacking a downed player"), so NPCAct
+// against an already-downed alice is a silent no-op, not a failure source;
+// (2) onTurnStart's Roller is NOT restored by conditions.LoadJSON (documented
+// in unconscious.go's onTurnStart comment — reload survives CharacterID +
+// counters but not Roller, falling back to a fresh, un-injectable
+// dice.NewRoller() every time), so even a turn-start roll can't be forced
+// deterministic across reloads. Publishing DamageReceivedEvent directly
+// exercises the identical onDamageReceived -> CharacterDiedTopic code path
+// death saves ultimately use, without depending on either gap.
+func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_AcrossPerRPCReloads_BridgesToEntityDied() {
+	roller := encounter.WithRoller(fixedMaxRoller{})
+	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	opts := []encounter.Option{roller, resolver}
+
+	enc := s.buildEncounter("enc-uzh-3", 1, roller)
+
+	aliceSub, err := s.broker.Subscribe("enc-uzh-3", alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = aliceSub.Close() }()
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	enc = s.reloadEncounter(enc, opts...)
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(endErr)
+		enc = s.reloadEncounter(enc, opts...)
+	}
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	// Knockdown: 1 HP -> 0 applies UnconsciousCondition, 0 failures yet.
+	// Reload before the next verb call, matching one RPC per verb.
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+	enc = s.reloadEncounter(enc, opts...)
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	// 3 more automatic death-save failures via direct DamageReceivedEvent
+	// publishes on the freshly-reloaded bus, reloading again after each one.
+	// The 3rd pushes Failures to 3 -> Dead -> rulebook CharacterDiedTopic ->
+	// subscribeCharacterDiedBridge -> broker EntityDiedEvent. Reloading fresh
+	// before/after each publish exercises the exact per-RPC
+	// bridge-resubscription path #741 reports as broken.
+	for i := 0; i < 3; i++ {
+		bus := enc.EventBus()
+		s.Require().NotNil(bus)
+
+		var diedRulebook bool
+		_, subErr := dnd5eEvents.CharacterDiedTopic.On(bus).Subscribe(s.ctx,
+			func(_ context.Context, e dnd5eEvents.CharacterDiedEvent) error {
+				if e.CharacterID == string(aliceEntityID) {
+					diedRulebook = true
+				}
+				return nil
+			})
+		s.Require().NoError(subErr)
+
+		pubErr := dnd5eEvents.DamageReceivedTopic.On(bus).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
+			TargetID: string(aliceEntityID), SourceID: string(gobEntityID),
+			Amount: 5, DamageType: damageSlashing,
+		})
+		s.Require().NoError(pubErr)
+
+		var successes, failures int
+		var dead, stabilized bool
+		for _, pd := range enc.ToData().Players {
+			if pd.EntityID != aliceEntityID {
+				continue
+			}
+			var charData dnd5eCharacter.Data
+			s.Require().NoError(json.Unmarshal(pd.DataJSON, &charData))
+			for _, raw := range charData.Conditions {
+				var uc dnd5eConditions.UnconsciousData
+				if jerr := json.Unmarshal(raw, &uc); jerr == nil && uc.Ref != nil && uc.Ref.ID == refs.Conditions.Unconscious().ID {
+					successes, failures, dead, stabilized = uc.Successes, uc.Failures, uc.Dead, uc.Stabilized
+				}
+			}
+		}
+		s.T().Logf(
+			"hit=%d diedRulebook=%v successes=%d failures=%d dead=%v stabilized=%v",
+			i, diedRulebook, successes, failures, dead, stabilized,
+		)
+
+		enc = s.reloadEncounter(enc, opts...)
+	}
+
+	seen := collectEventsTyped(aliceSub, 500*time.Millisecond)
+	var died *events.EntityDiedEvent
+	for _, e := range seen {
+		if d, ok := e.(*events.EntityDiedEvent); ok {
+			died = d
+		}
+	}
+	s.Require().NotNil(died,
+		"3 failed death saves across per-RPC reloads must bridge to a broker EntityDiedEvent")
+	s.Equal(core.EntityID(aliceEntityID), died.EntityID)
+	s.Empty(died.KillerID, "final death-save death has no specific killer")
+
+	persisted := enc.ToData()
+	for _, pd := range persisted.Players {
+		if pd.EntityID != aliceEntityID {
+			continue
+		}
+		var charData dnd5eCharacter.Data
+		s.Require().NoError(json.Unmarshal(pd.DataJSON, &charData))
+		var found bool
+		for _, raw := range charData.Conditions {
+			var uc dnd5eConditions.UnconsciousData
+			if jerr := json.Unmarshal(raw, &uc); jerr == nil && uc.Ref != nil && uc.Ref.ID == refs.Conditions.Unconscious().ID {
+				found = true
+				s.GreaterOrEqual(uc.Failures, 3)
+				s.True(uc.Dead)
+			}
+		}
+		s.True(found, "persisted state must carry the dead unconscious condition")
+	}
+}
+
+// TestDeathSaveRolledBridge_EveryRollBridgesToEvent is rpg-toolkit#741 part 3
+// regression coverage: before this fix, dnd5eEvents.DeathSaveRolledTopic had
+// zero production subscribers anywhere in encounter/*.go — every death save
+// roll (not just the terminal Dead/Stabilized outcome) was wire-invisible.
+// One turn-start roll is enough to prove the bridge: alice is knocked to 0 HP,
+// then her own next turn start rolls a single plain failure (roll=2, not a
+// crit) via alwaysFailDeathSaveRoller, and the broker DeathSaveRolledEvent
+// must carry the roll detail.
+func (s *UnconsciousZeroHPSuite) TestDeathSaveRolledBridge_EveryRollBridgesToEvent() {
+	enc := s.buildEncounter("enc-dsr-1", 1, encounter.WithRoller(alwaysFailDeathSaveRoller{}))
+
+	aliceSub, err := s.broker.Subscribe("enc-dsr-1", alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = aliceSub.Close() }()
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	// Goblin's attack drops alice to 0 HP — Unconscious applied, not dead.
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	// Cycle to alice's own next turn start — her one auto-rolled death save.
+	active := enc.ActiveActor()
+	for active != aliceEntityID {
+		next, _, endErr := enc.EndTurn(s.ctx, active)
+		s.Require().NoError(endErr)
+		active = next
+	}
+
+	seen := collectEventsTyped(aliceSub, 500*time.Millisecond)
+	var rolled *events.DeathSaveRolledEvent
+	for _, e := range seen {
+		if d, ok := e.(*events.DeathSaveRolledEvent); ok {
+			rolled = d
+		}
+	}
+	s.Require().NotNil(rolled, "a death save roll must bridge to a broker DeathSaveRolledEvent")
+	s.Equal(core.EntityID(aliceEntityID), rolled.EntityID)
+	s.Equal(2, rolled.Roll)
+	s.Equal(0, rolled.Successes)
+	s.Equal(1, rolled.Failures)
+	s.False(rolled.IsCriticalFail)
+	s.False(rolled.IsCriticalSuccess)
+	s.False(rolled.Stabilized)
+	s.False(rolled.Dead)
+}
+
+// TestCharacterStabilizedBridge_ThreeSuccessfulDeathSaves_BridgesToEntityStabilized
+// is rpg-toolkit#741 part 2 regression coverage: before this fix,
+// dnd5eEvents.CharacterStabilizedTopic had zero production subscribers
+// anywhere in encounter/*.go — a character who stabilized (3 successful
+// death saves) never told any client. Mirrors
+// TestThreeFailedDeathSaves_BridgesToEntityDied's shape exactly but with
+// alwaysSuccessDeathSaveRoller instead of alwaysFailDeathSaveRoller, so all
+// three of alice's own turn-start rolls succeed instead of fail. Also
+// asserts a DeathSaveRolledEvent appeared for each of the three rolls (part
+// 3 coverage, complementing the single-roll proof above with the
+// multi-roll/no-double-count shape).
+func (s *UnconsciousZeroHPSuite) TestCharacterStabilizedBridge_ThreeSuccessfulDeathSaves_BridgesToEntityStabilized() {
+	enc := s.buildEncounter("enc-csb-1", 1, encounter.WithRoller(alwaysSuccessDeathSaveRoller{}))
+
+	aliceSub, err := s.broker.Subscribe("enc-csb-1", alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = aliceSub.Close() }()
+
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	// Goblin's attack drops alice to 0 HP — Unconscious applied, not dead.
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	bus := enc.EventBus()
+	s.Require().NotNil(bus)
+	var stabilizedRulebook bool
+	_, err = dnd5eEvents.CharacterStabilizedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, e dnd5eEvents.CharacterStabilizedEvent) error {
+			if e.CharacterID == string(aliceEntityID) {
+				stabilizedRulebook = true
+			}
+			return nil
+		})
+	s.Require().NoError(err)
+
+	// Cycle turns (goblin <-> alice) until alice's own turn-start has fired
+	// exactly 3 times — 3 consecutive plain death-save successes
+	// (alwaysSuccessDeathSaveRoller never rolls a failure/crit).
+	aliceTurnStarts := 0
+	active := enc.ActiveActor()
+	for i := 0; i < 20 && aliceTurnStarts < 3; i++ {
+		next, _, endErr := enc.EndTurn(s.ctx, active)
+		s.Require().NoError(endErr)
+		active = next
+		if active == aliceEntityID {
+			aliceTurnStarts++
+		}
+	}
+	s.Require().Equal(3, aliceTurnStarts, "must reach alice's own turn 3 times to accumulate 3 successes")
+	s.Require().True(stabilizedRulebook, "3 successful death saves must publish the rulebook CharacterStabilizedEvent")
+
+	seen := collectEventsTyped(aliceSub, 500*time.Millisecond)
+	var stabilized *events.EntityStabilizedEvent
+	rolledCount := 0
+	for _, e := range seen {
+		switch ev := e.(type) {
+		case *events.EntityStabilizedEvent:
+			stabilized = ev
+		case *events.DeathSaveRolledEvent:
+			if ev.EntityID == core.EntityID(aliceEntityID) {
+				rolledCount++
+			}
+		}
+	}
+	s.Require().NotNil(stabilized,
+		"3 successful death saves must bridge to a broker EntityStabilizedEvent")
+	s.Equal(core.EntityID(aliceEntityID), stabilized.EntityID)
+	s.Equal(3, rolledCount, "all 3 rolls must each bridge their own DeathSaveRolledEvent")
+
+	persisted := enc.ToData()
+	for _, pd := range persisted.Players {
+		if pd.EntityID != aliceEntityID {
+			continue
+		}
+		var charData dnd5eCharacter.Data
+		s.Require().NoError(json.Unmarshal(pd.DataJSON, &charData))
+		var found bool
+		for _, raw := range charData.Conditions {
+			var uc dnd5eConditions.UnconsciousData
+			if jerr := json.Unmarshal(raw, &uc); jerr == nil && uc.Ref != nil && uc.Ref.ID == refs.Conditions.Unconscious().ID {
+				found = true
+				s.GreaterOrEqual(uc.Successes, 3)
+				s.True(uc.Stabilized)
+			}
+		}
+		s.True(found, "persisted state must carry the stabilized unconscious condition")
+	}
 }

@@ -195,6 +195,12 @@ func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *E
 	// returns no error, so this is deliberately swallowed rather than
 	// widening New's contract for something structurally infallible here.
 	_ = e.subscribeCharacterDiedBridge(ctx)
+	// #741: same permanent-bridge shape and same "cannot fail" reasoning as
+	// subscribeCharacterDiedBridge above — CharacterStabilizedTopic and
+	// DeathSaveRolledTopic previously had zero production subscribers
+	// anywhere in this package.
+	_ = e.subscribeCharacterStabilizedBridge(ctx)
+	_ = e.subscribeDeathSaveRolledBridge(ctx)
 	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
@@ -253,6 +259,15 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	// returns an error, so failure here is propagated rather than swallowed.
 	if err := e.subscribeCharacterDiedBridge(ctx); err != nil {
 		return nil, fmt.Errorf("subscribe character died bridge: %w", err)
+	}
+	// #741: same permanent-bridge shape as subscribeCharacterDiedBridge —
+	// CharacterStabilizedTopic and DeathSaveRolledTopic previously had zero
+	// production subscribers anywhere in this package.
+	if err := e.subscribeCharacterStabilizedBridge(ctx); err != nil {
+		return nil, fmt.Errorf("subscribe character stabilized bridge: %w", err)
+	}
+	if err := e.subscribeDeathSaveRolledBridge(ctx); err != nil {
+		return nil, fmt.Errorf("subscribe death save rolled bridge: %w", err)
 	}
 	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
