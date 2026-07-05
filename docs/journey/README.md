@@ -62,6 +62,7 @@ This directory contains the ongoing architectural journey of the RPG Toolkit. Un
 43. [Feature Implementation Workflows](046-feature-implementation-workflows.md) - Patterns for adding class features
 44. [Class-Level Grants Architecture](047-class-level-grants-architecture.md) - Self-contained class definitions with level-based grants
 45. [Refs Package Design](047-refs-package-design.md) - Pointers vs values for discoverable type-safe references
+46. [Beat 2: Paved Road and the Dual-Home Family](051-beat2-paved-road-and-the-dual-home-family.md) - Three verbs paving a reusable effects spine, the checks package, turn-start tick revival, the badge-clear gap, the death-save arc, and the snapshot-vs-live bug family
 
 
 ## Document Types

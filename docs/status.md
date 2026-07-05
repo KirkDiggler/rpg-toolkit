@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-02
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02
+updated: 2026-07-05
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; Beat 2 close-out added 2026-07-05
 ---
 
 # rpg-toolkit: Where We Are
@@ -10,6 +10,28 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**Beat 2 (mechanical effects: Dodge/Help/Hide) CLOSED — 2026-07-05, retro on
+rpg-project#75.** Current tags: `encounter/v0.24.3`, `rulebooks/dnd5e/v0.64.1`.
+Shipped as 14 PRs across 4 repos, signed off via a 5/5 MCP playtest verify on
+pure `main`. What landed: Dodge/Help/Hide now construct real conditions
+(`DodgingCondition`, Hidden, Helped) instead of economy-only no-ops; a new
+`checks` package (mirrors `saves`) backs Hide's Stealth check; reviving
+`dnd5eEvents.TurnStartTopic` in `encounter.seedActorTurn` woke three dormant
+subscribers (Dodging self-removal, Barbarian Reckless Attack self-removal,
+Unconscious's auto-death-save); a permanent (non-transient) bus subscription
+bridges `ConditionRemovedTopic` to the broker so status badges clear
+correctly (`#734`); and the death-save arc (roll → resolve → stabilize/die →
+revival) is now fully client-visible end to end (`#742`, api `#612`/`#622`-`#624`).
+Full ledger + retro write-up: rpg-project#75. Engine narrative:
+[Journey 051](journey/051-beat2-paved-road-and-the-dual-home-family.md).
+
+Beat 2 also surfaced (not resolved) a **snapshot-vs-live dual-home family**:
+`#736` (AC dual-homed: static field vs `EffectiveAC()`), `#740` (NPC
+targeting reads a stale HP snapshot instead of the live character), and
+api`#612`'s original shape. Together with the ADR-0034 restructure and
+api`#616` (encounter/v2 layering), this is queued as a **structural window**
+for after the next planning session — not scheduled yet, deliberately.
 
 **#714 — encounter Move verb enforces + spends the movement budget
 (2026-07-02, PR #720).** `Encounter.Move` had no economy accounting at all (its
