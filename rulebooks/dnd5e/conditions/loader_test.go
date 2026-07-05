@@ -57,6 +57,7 @@ func (s *LoaderTestSuite) executeDamageChain(
 		DamageType:   damage.Slashing,
 		WeaponDamage: "1d8",
 		AbilityUsed:  abilities.STR,
+		IsMelee:      true, // Simulates a STR-based melee attack (rage bonus applies)
 	}
 
 	ch := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

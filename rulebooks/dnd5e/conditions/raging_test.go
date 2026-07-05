@@ -16,6 +16,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // errorOnUnsubscribeBus wraps an EventBus to return errors for specific subscription IDs.
@@ -292,6 +294,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		IsCritical:   false,
 		WeaponDamage: "1d8",
 		AbilityUsed:  abilities.STR,
+		IsMelee:      true, // Simulates a STR-based melee attack (rage bonus applies)
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -303,6 +306,96 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 	}
 
 	return modifiedChain.Execute(s.ctx, damageEvent)
+}
+
+// executeDamageChainWithAbility creates and executes a damage chain event with an
+// explicit ability/melee combination, for testing the rage damage bonus gate.
+func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
+	attackerID string,
+	abilityUsed abilities.Ability,
+	isMelee bool,
+) (*dnd5eEvents.DamageChainEvent, error) {
+	weaponComp := dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		OriginalDiceRolls: []int{5},
+		FinalDiceRolls:    []int{5},
+		DamageType:        damage.Slashing,
+	}
+
+	abilityComp := dnd5eEvents.DamageComponent{
+		Source:     dnd5eEvents.DamageSourceAbility,
+		FlatBonus:  3,
+		DamageType: damage.Slashing,
+	}
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:   attackerID,
+		TargetID:     "goblin-1",
+		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		DamageType:   damage.Slashing,
+		WeaponDamage: "1d8",
+		AbilityUsed:  abilityUsed,
+		IsMelee:      isMelee,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	if err != nil {
+		return nil, err
+	}
+
+	return modifiedChain.Execute(s.ctx, damageEvent)
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionDamageBonusRequiresSTRMelee() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       3,
+		Source:      "dnd5e:features:rage",
+	})
+
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	testCases := []struct {
+		name        string
+		abilityUsed abilities.Ability
+		isMelee     bool
+	}{
+		{"DEX melee attack (finesse weapon)", abilities.DEX, true},
+		{"STR ranged attack (thrown weapon)", abilities.STR, false},
+		{"DEX ranged attack", abilities.DEX, false},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			finalEvent, err := s.executeDamageChainWithAbility("barbarian-1", tc.abilityUsed, tc.isMelee)
+			s.Require().NoError(err)
+			s.Require().Len(finalEvent.Components, 2, "no rage damage bonus should be added")
+		})
+	}
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionDamageBonusAppliesToSTRMelee() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       3,
+		Source:      "dnd5e:features:rage",
+	})
+
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	finalEvent, err := s.executeDamageChainWithAbility("barbarian-1", abilities.STR, true)
+	s.Require().NoError(err)
+
+	s.Require().Len(finalEvent.Components, 3, "rage damage bonus should be added for STR melee attacks")
+	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
+	s.Equal(2, finalEvent.Components[2].FlatBonus)
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
@@ -613,7 +706,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceOnlyAffectsOwnCh
 }
 
 func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
-	// Apply a raging condition (creates 5 subscriptions)
+	// Apply a raging condition (creates 7 subscriptions: damage received, turn end,
+	// condition applied, damage chain, rest, saving throw chain, ability check chain)
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
@@ -623,7 +717,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 
 	err := raging.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
-	s.Require().Len(raging.subscriptionIDs, 5)
+	s.Require().Len(raging.subscriptionIDs, 7)
 
 	// Wrap the bus so that the first subscription ID fails on unsubscribe
 	failBus := &errorOnUnsubscribeBus{
@@ -634,10 +728,138 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 	// Remove should return an error but still clean up all other subscriptions
 	err = raging.Remove(s.ctx, failBus)
 	s.Require().Error(err, "Remove should report the failed unsubscribe")
-	s.Contains(err.Error(), "1/5", "error should report count of failures vs total")
+	s.Contains(err.Error(), "1/7", "error should report count of failures vs total")
 
 	// Condition should be fully cleaned up despite the error
 	s.Nil(raging.subscriptionIDs, "subscriptionIDs should be nil after Remove")
 	s.Nil(raging.bus, "bus should be nil after Remove")
 	s.False(raging.IsApplied(), "condition should no longer be applied")
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionGrantsAdvantageOnSTRSaves() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	s.Run("adds advantage on STR saves for this character", func() {
+		saveEvent := &dnd5eEvents.SavingThrowChainEvent{
+			SaverID: "barbarian-1",
+			Ability: abilities.STR,
+			DC:      15,
+		}
+
+		saveChain := events.NewStagedChain[*dnd5eEvents.SavingThrowChainEvent](combat.ModifierStages)
+		saves := dnd5eEvents.SavingThrowChain.On(s.bus)
+		modifiedChain, err := saves.PublishWithChain(s.ctx, saveEvent, saveChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, saveEvent)
+		s.Require().NoError(err)
+		s.Require().Len(finalEvent.AdvantageSources, 1)
+		s.Equal(refs.Conditions.Raging(), finalEvent.AdvantageSources[0].SourceRef)
+		s.Equal("Raging", finalEvent.AdvantageSources[0].Name)
+	})
+
+	s.Run("does not add advantage on non-STR saves", func() {
+		saveEvent := &dnd5eEvents.SavingThrowChainEvent{
+			SaverID: "barbarian-1",
+			Ability: abilities.CON,
+			DC:      15,
+		}
+
+		saveChain := events.NewStagedChain[*dnd5eEvents.SavingThrowChainEvent](combat.ModifierStages)
+		saves := dnd5eEvents.SavingThrowChain.On(s.bus)
+		modifiedChain, err := saves.PublishWithChain(s.ctx, saveEvent, saveChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, saveEvent)
+		s.Require().NoError(err)
+		s.Empty(finalEvent.AdvantageSources)
+	})
+
+	s.Run("does not add advantage for other characters", func() {
+		saveEvent := &dnd5eEvents.SavingThrowChainEvent{
+			SaverID: "other-character",
+			Ability: abilities.STR,
+			DC:      15,
+		}
+
+		saveChain := events.NewStagedChain[*dnd5eEvents.SavingThrowChainEvent](combat.ModifierStages)
+		saves := dnd5eEvents.SavingThrowChain.On(s.bus)
+		modifiedChain, err := saves.PublishWithChain(s.ctx, saveEvent, saveChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, saveEvent)
+		s.Require().NoError(err)
+		s.Empty(finalEvent.AdvantageSources)
+	})
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionGrantsAdvantageOnSTRChecks() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+
+	s.Run("adds advantage on Athletics (STR) checks for this character", func() {
+		checkEvent := &dnd5eEvents.AbilityCheckChainEvent{
+			CheckerID: "barbarian-1",
+			Skill:     skills.Athletics,
+			DC:        15,
+		}
+
+		checkChain := events.NewStagedChain[*dnd5eEvents.AbilityCheckChainEvent](combat.ModifierStages)
+		checks := dnd5eEvents.AbilityCheckChain.On(s.bus)
+		modifiedChain, err := checks.PublishWithChain(s.ctx, checkEvent, checkChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, checkEvent)
+		s.Require().NoError(err)
+		s.Require().Len(finalEvent.AdvantageSources, 1)
+		s.Equal(refs.Conditions.Raging(), finalEvent.AdvantageSources[0].SourceRef)
+		s.Equal("Raging", finalEvent.AdvantageSources[0].Name)
+	})
+
+	s.Run("does not add advantage on non-STR checks", func() {
+		checkEvent := &dnd5eEvents.AbilityCheckChainEvent{
+			CheckerID: "barbarian-1",
+			Skill:     skills.Stealth,
+			DC:        15,
+		}
+
+		checkChain := events.NewStagedChain[*dnd5eEvents.AbilityCheckChainEvent](combat.ModifierStages)
+		checks := dnd5eEvents.AbilityCheckChain.On(s.bus)
+		modifiedChain, err := checks.PublishWithChain(s.ctx, checkEvent, checkChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, checkEvent)
+		s.Require().NoError(err)
+		s.Empty(finalEvent.AdvantageSources)
+	})
+
+	s.Run("does not add advantage for other characters", func() {
+		checkEvent := &dnd5eEvents.AbilityCheckChainEvent{
+			CheckerID: "other-character",
+			Skill:     skills.Athletics,
+			DC:        15,
+		}
+
+		checkChain := events.NewStagedChain[*dnd5eEvents.AbilityCheckChainEvent](combat.ModifierStages)
+		checks := dnd5eEvents.AbilityCheckChain.On(s.bus)
+		modifiedChain, err := checks.PublishWithChain(s.ctx, checkEvent, checkChain)
+		s.Require().NoError(err)
+
+		finalEvent, err := modifiedChain.Execute(s.ctx, checkEvent)
+		s.Require().NoError(err)
+		s.Empty(finalEvent.AdvantageSources)
+	})
 }
