@@ -172,6 +172,118 @@ func (s *TurnEconomyDownedSuite) TestDownedPlayerTurnStart_ZeroesEconomy_NotRese
 	s.Equal(0, ts.State.MovementRemaining, "a downed player's turn start must NOT reseed movement")
 }
 
+// aliceAliveSeededCharDataJSON builds a hydratable Fighter at 1 HP (alive,
+// about to be knocked down) with a pre-seeded ActionEconomy — same shape as
+// unconscious_zero_hp_test.go's charDataJSON, duplicated here so this file
+// stays self-contained (no cross-suite coupling to UnconsciousZeroHPSuite).
+func (s *TurnEconomyDownedSuite) aliceAliveSeededCharDataJSON() json.RawMessage {
+	s.T().Helper()
+	data := &dnd5eCharacter.Data{
+		ID:               string(aliceEntityID),
+		PlayerID:         string(alicePlayerID),
+		Name:             string(aliceEntityID),
+		Level:            3,
+		ProficiencyBonus: 2,
+		ClassID:          classes.Fighter,
+		RaceID:           races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 14, abilities.DEX: 12, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 10,
+		},
+		HitPoints:    1,
+		MaxHitPoints: 12,
+		ArmorClass:   10,
+		ActionEconomy: &dnd5eCharacter.ActionEconomyData{
+			TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
+			ReactionsRemaining: 1, MovementRemaining: 30,
+		},
+	}
+	raw, err := json.Marshal(data)
+	s.Require().NoError(err)
+	return raw
+}
+
+// TestDownedPlayerRevivedByNat20MidTurnStart_ReseedsEconomy is the regression
+// proof for the Copilot review on PR #739 (turn_economy.go): seedActorTurn
+// used to gate the downed/unconscious check on the encounter's PlayerData.HP
+// snapshot. That snapshot is written once — when a hit first drops a player
+// to 0 (combat_phased.go / npc.go) — and is never refreshed afterward; it does
+// NOT track the held character's live HP. But the TurnStartTopic publish
+// immediately above the check is synchronous, and can itself revive the
+// actor: a natural-20 death save (UnconsciousCondition.onTurnStart) publishes
+// HealingReceivedEvent, which character.onHealingReceived applies straight to
+// the held character's live hitPoints. Gating on the stale PlayerData.HP
+// snapshot would still read 0 and zero the just-revived actor's action
+// economy for a turn they can now fully act in. This proves the fix — reading
+// char.GetHitPoints() instead — reseeds a full economy for the revived actor.
+func (s *TurnEconomyDownedSuite) TestDownedPlayerRevivedByNat20MidTurnStart_ReseedsEconomy() {
+	encID := core.EncounterID("enc-ted-nat20")
+	roller := encounter.WithRoller(fixedMaxRoller{})
+	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+
+	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
+		DamageDice: damage1d8plus2, DamageType: damageSlashing,
+		DataJSON: s.aliceAliveSeededCharDataJSON(),
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, roller, resolver)
+	s.Require().NoError(err)
+
+	sub, err := s.broker.Subscribe(encID, alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	s.Require().NoError(loaded.SetMode(core.ModeTurnBased))
+	for loaded.ActiveActor() != gobEntityID {
+		_, _, endErr := loaded.EndTurn(s.ctx, loaded.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	drainSub(sub, 100*time.Millisecond)
+
+	// Goblin's attack drops alice (1 HP) to 0 — applies UnconsciousCondition
+	// (constructed with e.roller == fixedMaxRoller, per applyUnconsciousOnZeroHP).
+	s.Require().NoError(loaded.NPCAct(s.ctx, gobEntityID))
+	drainSub(sub, 100*time.Millisecond)
+
+	// Cycle back to alice's own turn start. Her turn-start publish drives
+	// UnconsciousCondition's auto-death-save roll; fixedMaxRoller guarantees a
+	// nat 20, reviving her to 1 HP via HealingReceivedEvent synchronously,
+	// before seedActorTurn's downed check runs.
+	active := loaded.ActiveActor()
+	for active != aliceEntityID {
+		next, _, endErr := loaded.EndTurn(s.ctx, active)
+		s.Require().NoError(endErr)
+		active = next
+	}
+
+	seen := collectEventsTyped(sub, 500*time.Millisecond)
+	var ts *events.TurnStateChangedEvent
+	for _, e := range seen {
+		if t, ok := e.(*events.TurnStateChangedEvent); ok && t.ActorID == aliceEntityID {
+			ts = t
+		}
+	}
+	s.Require().NotNil(ts, "alice's revived turn-start must still push a TurnStateChangedEvent")
+	s.Equal(1, ts.State.ActionsRemaining,
+		"a nat-20-revived player must get a fresh action, not a zeroed economy carried over from the stale HP snapshot")
+	s.Equal(1, ts.State.BonusActionsRemaining)
+	s.Equal(1, ts.State.ReactionsRemaining)
+	s.Positive(ts.State.MovementRemaining)
+}
+
 // TestAlivePlayerTurnStart_StillSeedsNormalEconomy is the negative control:
 // an ALIVE player's turn start is completely unaffected by this fix — still
 // gets the normal freshly-seeded 1/1/1/30 economy.

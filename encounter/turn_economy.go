@@ -78,7 +78,17 @@ func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) er
 	// inventing new zeroing logic. Design intent: "ActionEconomy for an
 	// unconscious actor should not offer actions" (rpg-project#75 Beat 2
 	// mechanical-effects design doc, "Turn-start is dead code").
-	if p := e.findPlayerByEntityID(actorID); p != nil && p.HP <= 0 {
+	//
+	// Gated on char.GetHitPoints() — the held character's LIVE HP — not the
+	// encounter's PlayerData.HP snapshot. The TurnStartTopic publish above is
+	// synchronous and can itself change the held character's HP before this
+	// check runs: UnconsciousCondition's nat-20 death-save path publishes
+	// HealingReceivedEvent, which character.onHealingReceived applies to
+	// c.hitPoints directly. PlayerData.HP is only refreshed from the held
+	// character at ToData() time, so reading the snapshot here would still see
+	// the pre-revival value and zero the economy of an actor who just came
+	// back to 1 HP (Copilot review, PR #739).
+	if char.GetHitPoints() <= 0 {
 		if _, err := char.EndTurn(ctx, &character.EndTurnInput{}); err != nil {
 			return fmt.Errorf("zero turn economy for downed actor %q: %w", actorID, err)
 		}
