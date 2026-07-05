@@ -1,3 +1,4 @@
+//nolint:dupl // Event scaffold intentionally mirrors other concretes in this package.
 package events
 
 import (
