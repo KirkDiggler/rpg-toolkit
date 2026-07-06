@@ -135,20 +135,22 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
-- **Rage RAW fixes: STR-melee damage gate + STR check/save advantage** — PRs
-  #747 and #748 (2026-07-05), tagged `rulebooks/dnd5e/v0.65.0`. Rage's damage
-  bonus was applying to any Strength-ability damage, including ranged
-  (thrown Strength weapons); it now gates on `IsMelee` too, matching RAW. That
-  required threading a new `IsMelee` field through `DamageChainEvent` — a
-  general-purpose signal future damage-chain modifiers can read directly
-  instead of re-deriving melee-ness from weapon/ability data. Raging also
-  gained the STR check/save advantage the condition was missing (advantage on
-  Strength checks and saving throws while raging), subscribing to
-  `SavingThrowChain` the same way `DodgingCondition` does for DEX saves —
-  Rage is the second consumer of that pattern — plus a new `AbilityCheckChain`
-  subscription for the check side. Separately, `character/draft.go` now gates
-  Monk Ki resource creation to level 2+ (a level-1 Monk was getting a phantom
-  Ki resource).
+- **Rage RAW fixes: STR-melee damage gate + STR check/save advantage** — PR
+  #747 (2026-07-05), tagged `rulebooks/dnd5e/v0.65.0`. Rage's damage bonus had
+  no ability/range check at all — it applied to *any* hit landed by the
+  raging character, including DEX and ranged attacks; it now gates on
+  `AbilityUsed == STR` and `IsMelee`, matching RAW. That required threading a
+  new `IsMelee` field through `DamageChainEvent` — a general-purpose signal
+  future damage-chain modifiers can read directly instead of re-deriving
+  melee-ness from weapon/ability data. Raging also gained the STR check/save
+  advantage the condition was missing (advantage on Strength checks and
+  saving throws while raging), subscribing to `SavingThrowChain` the same way
+  `DodgingCondition` does for DEX saves — Rage is the second consumer of that
+  pattern — plus a new `AbilityCheckChain` subscription for the check side.
+- **Monk Ki resource gated to level 2+** — PR #748 (2026-07-05), tagged
+  `rulebooks/dnd5e/v0.65.0`. `character/draft.go` was creating a Ki resource
+  for level-1 Monks, who don't have Ki per RAW (it's a level-2 feature); draft
+  finalization now gates Ki resource creation on level >= 2.
 - **Move-iteration OA damage application** — PR for issue #675 (2026-05-24) — Wave 2.11e
   SDK seam: `iterateMovementStepsForEntity` now captures `DamageReceivedEvent` on the
   encounter bus per step (alongside the existing `ReactionTriggerTopic` buffer) and
@@ -263,8 +265,8 @@ See "Paused / on hold" below.
   `testdata/api/races/`). The provenance and freshness of this data is not
   documented. If the upstream API changes, tests silently test stale data.
 
-- **Same-stage `DamageChain` modifier execution order is registration-order-
-  dependent, not explicitly ordered.** Rage and Martial Arts both modify
+- **Same-stage `DamageChain` modifier execution order is
+  registration-order-dependent, not explicitly ordered.** Rage and Martial Arts both modify
   damage at the same chain stage; which one runs first depends on subscribe
   order rather than a declared priority. SneakAttack has the same latent
   shape. Irrelevant at level 1 single-class (today's only playtest shape) —
