@@ -2,6 +2,7 @@ package encounter_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
+	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 )
 
 // Test-package fixture identifiers (extracted to satisfy goconst).
@@ -269,6 +271,64 @@ func (s *CombatSuite) TestTakeAction_RejectsNonCombatant() {
 		encounter.ActionTarget{EntityID: gobEntityID},
 	)
 	s.ErrorIs(err, encounter.ErrNonCombatant)
+}
+
+// TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate is the #634 gate
+// relaxation: a player seat carrying NO flat AC/DamageDice snapshot — the
+// honest state a host lands in when it hydrates real characters but has no
+// rules-legitimate way to also invent an attack-bonus/damage-dice snapshot
+// (rpg-api's lobby StartEncounter, see rpg-api#634) — still passes
+// isPlayerCombatant once hydrated via DataJSON. alwaysHitResolver is a stub
+// that ignores its input, so this proves the GATE specifically, mirroring
+// TestTakeAction_RejectsNonCombatant's scope for the un-hydrated case.
+func (s *CombatSuite) TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate() {
+	charData := &dnd5eCharacter.Data{
+		ID:               aliceEntityID,
+		Name:             "Alice",
+		Level:            1,
+		ProficiencyBonus: 2,
+		HitPoints:        12,
+		MaxHitPoints:     12,
+	}
+	charJSON, err := json.Marshal(charData)
+	s.Require().NoError(err)
+
+	enc := encounter.New(context.Background(), "enc-hydrated-gate", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, // No AC, no DamageDice — the honest StartEncounter snapshot.
+		DataJSON: charJSON,
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15,
+	}))
+
+	// Round-trip through Data so the hydration cascade runs — New/AddPlayer
+	// never hydrate; only LoadFromData does (mirrors hydration_test.go).
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(context.Background(), &data, s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+	)
+	s.Require().NoError(err)
+
+	s.Require().NoError(loaded.SetMode(core.ModeTurnBased))
+	for loaded.ActiveActor() != aliceEntityID {
+		_, _, endErr := loaded.EndTurn(context.Background(), loaded.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	err = loaded.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	)
+	s.Require().NoError(err, "hydrated seat must pass the combatant gate without a flat AC/DamageDice snapshot")
 }
 
 // EndTurn publishes TurnEnded + TurnStarted; rotates Initiative.

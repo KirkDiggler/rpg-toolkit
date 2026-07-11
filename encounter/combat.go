@@ -221,11 +221,31 @@ func (e *Encounter) spendStrikeEconomy(
 // zero combat snapshot opts a seat out of combat verbs; this helper is
 // the gate that contract enforces. AttackBonus may legitimately be 0
 // (no proficiency bonus), so it is NOT required.
+//
+// A hydrated seat (DataJSON present) is always combat-ready regardless of
+// the flat AC/DamageDice snapshot: Dnd5eCombatResolver routes a held
+// attacker through the real rules chain (character.WeaponForActionRef +
+// combat.ResolveAttack), which reads the held character's actual equipped
+// weapon and ability scores and never consults the flat snapshot fields —
+// see the resolver's doc comment ("Stand-in fallback"). Those fields are
+// load-bearing ONLY for a seat with no held character (the stat-snapshot
+// stand-in path), so a host that hydrates every seat (e.g. via a
+// character-store cascade keyed by EntityID) has no honest way to also
+// populate a real AttackBonus/DamageDice/DamageType without duplicating
+// rules math the resolver already owns — see rpg-api#634 (lobby
+// StartEncounter seeds real characters but has no honest attack-bonus/
+// damage-dice snapshot to offer).
 func isPlayerCombatant(p *PlayerData) bool {
 	if p == nil {
 		return false
 	}
-	return p.MaxHP > 0 && p.AC > 0 && p.DamageDice != ""
+	if p.MaxHP <= 0 {
+		return false
+	}
+	if len(p.DataJSON) > 0 {
+		return true
+	}
+	return p.AC > 0 && p.DamageDice != ""
 }
 
 // ActionRef identifies an action via the toolkit's three-part ref shape
