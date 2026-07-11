@@ -76,7 +76,7 @@ func (e *Encounter) TakeActionPhased(
 		return e.takeCharacterAction(context.Background(), player, ref, target)
 	}
 
-	if !isPlayerCombatant(player) {
+	if !e.isPlayerCombatant(player) {
 		return nil, fmt.Errorf("%w: player %q missing HP/AC/DamageDice", ErrNonCombatant, playerID)
 	}
 	if target.EntityID == "" {

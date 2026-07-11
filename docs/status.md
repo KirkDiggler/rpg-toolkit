@@ -11,6 +11,27 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Active work
 
+**#750 — isPlayerCombatant honors hydration, not just the flat AC/DamageDice
+snapshot (2026-07-11, branch fix/combat-gate-hydration).** `isPlayerCombatant`
+(`encounter/combat.go`) gated TakeAction on `MaxHP > 0 && AC > 0 && DamageDice
+!= ""` regardless of whether the seat was hydrated — but the real
+`Dnd5eCombatResolver` (rpg-api) ignores that flat snapshot entirely once a seat
+carries `DataJSON`, driving damage off the held `*character.Character`'s real
+equipped weapon instead (`Character.WeaponForActionRef`). The flat snapshot
+only feeds the stand-in fallback for an un-hydrated seat. This stranded any
+host that hydrates real characters but has no honest value to offer for a
+precomputed attack-bonus/damage-dice field — rpg-api's lobby `StartEncounter`
+seeds real HP/AC from the stored character but has no rules-legitimate way to
+also invent AttackBonus/DamageDice/DamageType (not stored fields; derived at
+attack time). `isPlayerCombatant` (now an `*Encounter` method) treats an
+ACTUALLY HELD seat (`e.heldCharacter(...) != nil`) as sufficient on its own —
+deliberately NOT `len(DataJSON) > 0`, since DataJSON being set on a
+`PlayerInput` means a seat carries rehydratable data, not that it has been
+hydrated: `New()`+`AddPlayer` never hydrate, only a `LoadFromData` round-trip
+does (Copilot review catch on #751). The flat-snapshot check remains the gate
+for un-hydrated seats (devseed-style fixtures, tests without a character
+store). Consumer-side proof: rpg-api#635.
+
 **#714 — encounter Move verb enforces + spends the movement budget
 (2026-07-02, PR #720).** `Encounter.Move` had no economy accounting at all (its
 own doc said "Slice scope: no action economy") — `movement_remaining` never

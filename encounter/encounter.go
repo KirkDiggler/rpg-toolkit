@@ -122,11 +122,17 @@ func WithMovementResolver(r MovementResolver) Option {
 // PlayerInput populates a player seat at construction / AddPlayer time.
 //
 // Combat fields are optional. A seat is treated as a combatant for
-// TakeAction iff MaxHP > 0, AC > 0, and DamageDice is non-empty (see
-// isPlayerCombatant in combat.go). AttackBonus may be 0 (no proficiency)
-// and DamageType defaults to "untyped" when empty. Seats added without
-// these fields cannot call combat verbs and TakeAction returns
-// ErrNonCombatant for them.
+// TakeAction iff MaxHP > 0 AND EITHER the seat is actually HELD — hydrated
+// via the LoadFromData cascade, which happens when DataJSON was present at
+// load time, NOT merely when DataJSON is set on this input (New()+AddPlayer
+// never hydrates; only a LoadFromData round-trip does) — OR AC > 0 and
+// DamageDice is non-empty (the stat-snapshot stand-in path). A held
+// character resolves attacks through the real rules chain, which never reads
+// the flat AC/DamageDice snapshot — see isPlayerCombatant in combat.go.
+// AttackBonus may be 0 (no proficiency) and DamageType defaults to "untyped"
+// when empty. Seats added without MaxHP and one of the two combat-readiness
+// paths cannot call combat verbs and TakeAction returns ErrNonCombatant for
+// them.
 type PlayerInput struct {
 	PlayerID   core.PlayerID
 	EntityID   core.EntityID

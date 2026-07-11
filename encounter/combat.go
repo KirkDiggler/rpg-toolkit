@@ -221,11 +221,42 @@ func (e *Encounter) spendStrikeEconomy(
 // zero combat snapshot opts a seat out of combat verbs; this helper is
 // the gate that contract enforces. AttackBonus may legitimately be 0
 // (no proficiency bonus), so it is NOT required.
-func isPlayerCombatant(p *PlayerData) bool {
+//
+// An ACTUALLY HELD seat (e.heldCharacter returns non-nil) is always
+// combat-ready regardless of the flat AC/DamageDice snapshot:
+// Dnd5eCombatResolver routes a held attacker through the real rules chain
+// (character.WeaponForActionRef + combat.ResolveAttack), which reads the
+// held character's actual equipped weapon and ability scores and never
+// consults the flat snapshot fields — see the resolver's doc comment
+// ("Stand-in fallback"). Those fields are load-bearing ONLY for a seat
+// with no held character (the stat-snapshot stand-in path), so a host
+// that hydrates every seat (e.g. via a character-store cascade keyed by
+// EntityID) has no honest way to also populate a real AttackBonus/
+// DamageDice/DamageType without duplicating rules math the resolver
+// already owns — see rpg-api#634 (lobby StartEncounter seeds real
+// characters but has no honest attack-bonus/damage-dice snapshot to
+// offer).
+//
+// Deliberately checks e.heldCharacter, NOT len(p.DataJSON) > 0: DataJSON
+// presence on PlayerData means a seat CARRIES rehydratable data, not that
+// it HAS BEEN hydrated — New()+AddPlayer never hydrates (only
+// LoadFromData's cascade does), so a seat built via New() with DataJSON
+// set but never round-tripped through LoadFromData would report
+// combat-ready here while e.combatants holds nothing for it, and the
+// resolver would silently fall through to the (likely underpopulated)
+// stand-in path instead of the real rules chain this check is meant to
+// vouch for.
+func (e *Encounter) isPlayerCombatant(p *PlayerData) bool {
 	if p == nil {
 		return false
 	}
-	return p.MaxHP > 0 && p.AC > 0 && p.DamageDice != ""
+	if p.MaxHP <= 0 {
+		return false
+	}
+	if e.heldCharacter(p.EntityID) != nil {
+		return true
+	}
+	return p.AC > 0 && p.DamageDice != ""
 }
 
 // ActionRef identifies an action via the toolkit's three-part ref shape
