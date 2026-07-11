@@ -63,6 +63,14 @@ per turn-boundary, each re-`Apply`'ing conditions to the same bus.
   `MovementStepInput.Mover` are `combat.Combatant`; resolvers use them and MUST
   NOT re-load. Nil when a seat carried no rehydratable data → resolver falls back
   to its stat-snapshot stand-in.
+- **Hydration alone satisfies the combatant gate (#750).** `isPlayerCombatant`
+  (`combat.go`) treats a seat as combat-ready when `DataJSON` is present, not just
+  when the flat `AC`/`DamageDice` snapshot is set — a hydrated resolver ignores
+  the flat snapshot entirely (per the bullet above), so requiring it too would
+  strand any host that hydrates real characters but has no honest value to offer
+  for a precomputed attack-bonus/damage-dice field (e.g. rpg-api's lobby
+  `StartEncounter`, which seeds real HP/AC but leaves those three fields
+  zero-value on purpose).
 - **`EndTurn(ctx, ...)` emits the turn-boundary** (`dnd5eEvents.TurnEndTopic`)
   directly on the bus for the ending actor, so held conditions reset per-turn
   state (`SneakAttack.UsedThisTurn`) in place with no re-load.
