@@ -331,6 +331,48 @@ func (s *CombatSuite) TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate() {
 	s.Require().NoError(err, "hydrated seat must pass the combatant gate without a flat AC/DamageDice snapshot")
 }
 
+// TestTakeAction_DataJSONWithoutLoadFromData_StillRejected is the regression
+// guard for Copilot review on rpg-toolkit#751: DataJSON being SET on a
+// PlayerInput is not the same as a seat being HYDRATED — New()+AddPlayer
+// never hydrate; only a LoadFromData round-trip's hydrateCombatants cascade
+// does (see hydration.go). A seat built via New()+AddPlayer(DataJSON: ...)
+// and used directly, with no LoadFromData round-trip, must still be
+// rejected — e.heldCharacter returns nil for it, and it carries no flat
+// AC/DamageDice snapshot either.
+func (s *CombatSuite) TestTakeAction_DataJSONWithoutLoadFromData_StillRejected() {
+	charData := &dnd5eCharacter.Data{
+		ID: aliceEntityID, Name: "Alice", Level: 1,
+		HitPoints: 12, MaxHitPoints: 12,
+	}
+	charJSON, err := json.Marshal(charData)
+	s.Require().NoError(err)
+
+	enc := encounter.New(context.Background(), "enc-unhydrated-datajson", s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, // No AC, no DamageDice.
+		DataJSON: charJSON, // Set, but never round-tripped through LoadFromData — not actually hydrated.
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	for enc.ActiveActor() != aliceEntityID {
+		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+
+	err = enc.TakeAction("alice",
+		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	)
+	s.ErrorIs(err, encounter.ErrNonCombatant, "DataJSON alone (no LoadFromData round-trip) must not satisfy the gate")
+}
+
 // EndTurn publishes TurnEnded + TurnStarted; rotates Initiative.
 func (s *CombatSuite) TestEndTurn_AdvancesInitiative() {
 	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))

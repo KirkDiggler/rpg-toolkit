@@ -64,13 +64,17 @@ per turn-boundary, each re-`Apply`'ing conditions to the same bus.
   NOT re-load. Nil when a seat carried no rehydratable data → resolver falls back
   to its stat-snapshot stand-in.
 - **Hydration alone satisfies the combatant gate (#750).** `isPlayerCombatant`
-  (`combat.go`) treats a seat as combat-ready when `DataJSON` is present, not just
-  when the flat `AC`/`DamageDice` snapshot is set — a hydrated resolver ignores
-  the flat snapshot entirely (per the bullet above), so requiring it too would
-  strand any host that hydrates real characters but has no honest value to offer
-  for a precomputed attack-bonus/damage-dice field (e.g. rpg-api's lobby
+  (now an `*Encounter` method, `combat.go`) treats a seat as combat-ready when
+  it is ACTUALLY HELD (`e.heldCharacter(...) != nil`), not just when the flat
+  `AC`/`DamageDice` snapshot is set — a hydrated resolver ignores the flat
+  snapshot entirely (per the bullet above), so requiring it too would strand
+  any host that hydrates real characters but has no honest value to offer for
+  a precomputed attack-bonus/damage-dice field (e.g. rpg-api's lobby
   `StartEncounter`, which seeds real HP/AC but leaves those three fields
-  zero-value on purpose).
+  zero-value on purpose). Deliberately checks the held-character map, not
+  `len(DataJSON) > 0` on the input: DataJSON being set means a seat carries
+  rehydratable data, not that hydration happened — `New()`+`AddPlayer` never
+  hydrate, only a `LoadFromData` round-trip's cascade does.
 - **`EndTurn(ctx, ...)` emits the turn-boundary** (`dnd5eEvents.TurnEndTopic`)
   directly on the bus for the ending actor, so held conditions reset per-turn
   state (`SneakAttack.UsedThisTurn`) in place with no re-load.

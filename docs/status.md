@@ -23,10 +23,14 @@ host that hydrates real characters but has no honest value to offer for a
 precomputed attack-bonus/damage-dice field — rpg-api's lobby `StartEncounter`
 seeds real HP/AC from the stored character but has no rules-legitimate way to
 also invent AttackBonus/DamageDice/DamageType (not stored fields; derived at
-attack time). `isPlayerCombatant` now treats `len(DataJSON) > 0` as
-sufficient on its own; the flat-snapshot check remains the gate for
-un-hydrated seats (devseed-style fixtures, tests without a character store).
-Consumer-side proof: rpg-api#635.
+attack time). `isPlayerCombatant` (now an `*Encounter` method) treats an
+ACTUALLY HELD seat (`e.heldCharacter(...) != nil`) as sufficient on its own —
+deliberately NOT `len(DataJSON) > 0`, since DataJSON being set on a
+`PlayerInput` means a seat carries rehydratable data, not that it has been
+hydrated: `New()`+`AddPlayer` never hydrate, only a `LoadFromData` round-trip
+does (Copilot review catch on #751). The flat-snapshot check remains the gate
+for un-hydrated seats (devseed-style fixtures, tests without a character
+store). Consumer-side proof: rpg-api#635.
 
 **#714 — encounter Move verb enforces + spends the movement budget
 (2026-07-02, PR #720).** `Encounter.Move` had no economy accounting at all (its
