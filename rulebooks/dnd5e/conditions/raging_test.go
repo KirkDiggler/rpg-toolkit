@@ -572,6 +572,93 @@ func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterRest(
 	s.True(raging.IsApplied(), "rage should still be applied")
 }
 
+// TestRagingConditionEndsOnCombatEnd is the regression test for
+// rpg-toolkit#752: rage must end when combat ends, the same way it already
+// ends on a rest, so it can never survive into a persisted character's next
+// encounter.
+func (s *RagingConditionTestSuite) TestRagingConditionEndsOnCombatEnd() {
+	// Create a raging condition
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to events
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	s.True(raging.IsApplied(), "rage should be applied")
+
+	// Track if condition removed event is published
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish a combat-end event for this character (no attack, no hit,
+	// no rest — just the encounter ending, e.g. the killing blow that ended
+	// the fight).
+	combatEndTopic := dnd5eEvents.CombatEndTopic.On(s.bus)
+	err = combatEndTopic.Publish(s.ctx, dnd5eEvents.CombatEndEvent{
+		CharacterID: "barbarian-1",
+	})
+	s.Require().NoError(err)
+
+	// Verify condition published removal event
+	s.Require().NotNil(removedEvent, "rage should be removed when combat ends")
+	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
+	s.Equal("combat_ended", removedEvent.Reason)
+
+	// Verify condition is no longer applied
+	s.False(raging.IsApplied(), "rage should no longer be applied after combat ends")
+}
+
+// TestRagingConditionIgnoresOtherCharacterCombatEnd mirrors
+// TestRagingConditionIgnoresOtherCharacterRest: CombatEndEvent is published
+// per-character (the encounter sweeps every held player), so one character's
+// combat-end must not remove another's rage.
+func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterCombatEnd() {
+	// Create a raging condition for barbarian-1
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to events
+	err := raging.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	s.True(raging.IsApplied(), "rage should be applied")
+
+	// Track if condition removed event is published
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Publish a combat-end event for a DIFFERENT character
+	combatEndTopic := dnd5eEvents.CombatEndTopic.On(s.bus)
+	err = combatEndTopic.Publish(s.ctx, dnd5eEvents.CombatEndEvent{
+		CharacterID: "barbarian-2", // Different character
+	})
+	s.Require().NoError(err)
+
+	// Verify condition did NOT publish removal event
+	s.Nil(removedEvent, "rage should NOT be removed when another character's combat ends")
+
+	// Verify condition is still applied
+	s.True(raging.IsApplied(), "rage should still be applied")
+}
+
 // executeDamageChainAgainstTarget creates a damage chain event where a specific target is hit
 // and executes it through the damage chain topic. Used to test resistance.
 func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
@@ -706,8 +793,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceOnlyAffectsOwnCh
 }
 
 func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
-	// Apply a raging condition (creates 7 subscriptions: damage received, turn end,
-	// condition applied, damage chain, rest, saving throw chain, ability check chain)
+	// Apply a raging condition (creates 8 subscriptions: damage received, turn end,
+	// condition applied, damage chain, rest, saving throw chain, ability check chain,
+	// combat end)
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
@@ -717,7 +805,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 
 	err := raging.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
-	s.Require().Len(raging.subscriptionIDs, 7)
+	s.Require().Len(raging.subscriptionIDs, 8)
 
 	// Wrap the bus so that the first subscription ID fails on unsubscribe
 	failBus := &errorOnUnsubscribeBus{
@@ -728,7 +816,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 	// Remove should return an error but still clean up all other subscriptions
 	err = raging.Remove(s.ctx, failBus)
 	s.Require().Error(err, "Remove should report the failed unsubscribe")
-	s.Contains(err.Error(), "1/7", "error should report count of failures vs total")
+	s.Contains(err.Error(), "1/8", "error should report count of failures vs total")
 
 	// Condition should be fully cleaned up despite the error
 	s.Nil(raging.subscriptionIDs, "subscriptionIDs should be nil after Remove")

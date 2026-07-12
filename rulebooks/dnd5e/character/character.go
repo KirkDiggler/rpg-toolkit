@@ -503,6 +503,31 @@ func (c *Character) ShortRest(ctx context.Context) error {
 	return nil
 }
 
+// EndCombat publishes CombatEndEvent so combat-scoped conditions can remove
+// themselves (RAW: rage ends when combat ends) — mirrors LongRest/ShortRest's
+// RestEvent publish. A condition opts into combat-scoped lifetime by
+// subscribing to CombatEndTopic in its own Apply (see
+// RagingCondition.onCombatEnd); a condition that should outlive combat (e.g.
+// a curse) simply does not subscribe, so this is not a lifetime taxonomy on
+// Character — each condition decides its own scope. Unlike LongRest/ShortRest,
+// EndCombat does not touch HP or resources: the encounter-end lifecycle is
+// orthogonal to resting.
+func (c *Character) EndCombat(ctx context.Context) error {
+	if c.bus == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
+	}
+
+	combatEndTopic := dnd5eEvents.CombatEndTopic.On(c.bus)
+	err := combatEndTopic.Publish(ctx, dnd5eEvents.CombatEndEvent{
+		CharacterID: c.id,
+	})
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to publish combat end event")
+	}
+
+	return nil
+}
+
 // GetFeatures returns all character features
 func (c *Character) GetFeatures() []features.Feature {
 	return c.features
