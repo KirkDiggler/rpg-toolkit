@@ -409,9 +409,15 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 	// rpg-toolkit#752: without this, a raging character survives to
 	// ToData() with the condition still in Conditions, and it silently
 	// re-hydrates into the character's NEXT encounter.
-	if err := e.endCombatForPlayers(); err != nil {
-		return true, err
-	}
+	//
+	// Best-effort: a sweep failure must NOT skip the terminal publish below.
+	// Mode is already flipped to ModeEnded above — if we returned here
+	// without publishing, the encounter would be stuck ended with no client
+	// ever told so (every subsequent verb fails ErrEncounterEnded with no
+	// recovery path), which is strictly worse than a condition failing to
+	// sweep. Capture the error and surface it after the publish instead
+	// (Copilot review, PR #753).
+	sweepErr := e.endCombatForPlayers()
 
 	if err := e.broker.Publish(events.NewEncounterEndedEvent(
 		e.data.ID, e.nextSeq(),
@@ -419,6 +425,9 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 		e.allViewersEncounterEnded(),
 	)); err != nil {
 		return true, fmt.Errorf("publish encounter ended: %w", err)
+	}
+	if sweepErr != nil {
+		return true, fmt.Errorf("end combat for players: %w", sweepErr)
 	}
 	return true, nil
 }
