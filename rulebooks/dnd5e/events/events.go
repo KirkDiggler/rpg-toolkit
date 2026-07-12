@@ -536,6 +536,16 @@ type RestEvent struct {
 	CharacterID string              // ID of the character resting
 }
 
+// CombatEndEvent is published when the combat/encounter a character was
+// participating in has ended. Combat-scoped conditions (e.g. RagingCondition)
+// subscribe to CombatEndTopic in their Apply to remove themselves — RAW: rage
+// ends when combat ends. This is an opt-in, per-condition lifetime: a
+// condition that should outlive combat (e.g. a curse) simply does not
+// subscribe. Mirrors the RestEvent self-termination pattern.
+type CombatEndEvent struct {
+	CharacterID string // ID of the character whose combat just ended
+}
+
 // ResourceConsumedEvent is published when a character uses a resource
 type ResourceConsumedEvent struct {
 	CharacterID string                // ID of the character consuming the resource
@@ -878,6 +888,9 @@ var (
 
 	// RestTopic provides typed pub/sub for rest events
 	RestTopic = events.DefineTypedTopic[RestEvent]("dnd5e.rest")
+
+	// CombatEndTopic provides typed pub/sub for combat-end events
+	CombatEndTopic = events.DefineTypedTopic[CombatEndEvent]("dnd5e.combat.end")
 
 	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
 	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")

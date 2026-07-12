@@ -129,6 +129,16 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID7)
 
+	// Subscribe to combat-end events - RAW: rage ends when combat ends
+	combatEnds := dnd5eEvents.CombatEndTopic.On(bus)
+	subID8, err := combatEnds.Subscribe(ctx, r.onCombatEnd)
+	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID8)
+
 	return nil
 }
 
@@ -239,6 +249,19 @@ func (r *RagingCondition) onRest(ctx context.Context, event dnd5eEvents.RestEven
 		return nil
 	}
 	return r.endRage(ctx, "rest")
+}
+
+// onCombatEnd handles combat-end events - RAW: rage ends when combat ends.
+// Without this, a raging character whose encounter ends via a route other
+// than "no combat activity this turn" (e.g. the killing blow itself ends the
+// encounter) would carry the condition into persisted character data and
+// silently re-apply it in the next encounter (rpg-toolkit#752).
+func (r *RagingCondition) onCombatEnd(ctx context.Context, event dnd5eEvents.CombatEndEvent) error {
+	// Only end rage if this is our character
+	if event.CharacterID != r.CharacterID {
+		return nil
+	}
+	return r.endRage(ctx, "combat_ended")
 }
 
 // endRage publishes the removal event and unsubscribes from all events
