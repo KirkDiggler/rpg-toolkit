@@ -402,6 +402,17 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 	e.data.ActiveIdx = 0
 	e.data.Round = 0
 
+	// Sweep combat-scoped conditions (rage, etc.) BEFORE publishing the
+	// terminal event, so any StatusRemoved a condition emits lands ahead of
+	// EncounterEndedEvent in sequence — clients see the drop, then the
+	// terminal transition, rather than a stale status surviving past "over."
+	// rpg-toolkit#752: without this, a raging character survives to
+	// ToData() with the condition still in Conditions, and it silently
+	// re-hydrates into the character's NEXT encounter.
+	if err := e.endCombatForPlayers(); err != nil {
+		return true, err
+	}
+
 	if err := e.broker.Publish(events.NewEncounterEndedEvent(
 		e.data.ID, e.nextSeq(),
 		EncounterEndedReasonAllHostilesDefeated,
@@ -410,6 +421,35 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 		return true, fmt.Errorf("publish encounter ended: %w", err)
 	}
 	return true, nil
+}
+
+// endCombatForPlayers publishes CombatEnd for every hydrated player
+// character, giving combat-scoped conditions (e.g. raging) the same
+// self-terminating opportunity LongRest/ShortRest already give them via
+// RestEvent (see character.Character.EndCombat, conditions.RagingCondition
+// .onCombatEnd). Conditions with no reason to end at combat's close (a
+// curse, say) simply never subscribed to CombatEndTopic, so they are
+// untouched — this sweeps by opt-in, not by an encounter-side allowlist of
+// condition types.
+//
+// Flat stat-snapshot seats (no hydrated *character.Character — heldCharacter
+// returns nil) have nothing to sweep and are skipped.
+//
+// ctx: not threaded through checkEncounterEnd's callers today — killEntity
+// is invoked from both ctx-having and ctx-less call sites. context.Background()
+// per the existing precedent (applyUnconsciousOnZeroHP, combat_phased.go).
+func (e *Encounter) endCombatForPlayers() error {
+	ctx := context.Background()
+	for _, pd := range e.data.Players {
+		char := e.heldCharacter(pd.EntityID)
+		if char == nil {
+			continue
+		}
+		if err := char.EndCombat(ctx); err != nil {
+			return fmt.Errorf("end combat for %q: %w", pd.EntityID, err)
+		}
+	}
+	return nil
 }
 
 // spliceFromInitiative removes id from Initiative (if present) and adjusts

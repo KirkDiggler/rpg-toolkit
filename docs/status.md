@@ -156,6 +156,25 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **Encounter-end condition sweep (rage no longer leaks across encounters)**
+  — PR for issue #752 (2026-07-12). Rage (and any future combat-scoped
+  condition) previously had no way to hear "the encounter is over" — it only
+  self-removed on no-combat-activity-this-turn, duration expiry,
+  unconsciousness, or rest. A raging character whose own killing blow ended
+  the fight skipped all of those, so the condition survived into
+  `ToData()`'s persisted `character.Data.Conditions` and silently
+  re-`Apply`'d in the character's next encounter via `LoadFromData`,
+  granting the rage damage bonus with zero rage charges spent. Fix: a new
+  `dnd5eEvents.CombatEndEvent`/`CombatEndTopic`, published per held player
+  by `checkEncounterEnd` (death.go) before the terminal
+  `EncounterEndedEvent`; `RagingCondition` subscribes to it in `Apply` and
+  self-removes the same way it already does for `RestEvent` — opt-in per
+  condition, not a lifetime taxonomy on `Encounter`. See
+  [encounter.md](architecture/components/encounter.md#encounter-end-condition-sweep-rpg-toolkit752).
+  Known follow-up gap (not fixed here): encounter snapshots don't carry
+  active statuses, so a condition that rode in via `LoadFromData` is
+  invisible to a client that (re)connects mid-encounter — see Known rough
+  edges below.
 - **Rage RAW fixes: STR-melee damage gate + STR check/save advantage** — PR
   #747 (2026-07-05), tagged `rulebooks/dnd5e/v0.65.0`. Rage's damage bonus had
   no ability/range check at all — it applied to *any* hit landed by the
@@ -292,6 +311,20 @@ See "Paused / on hold" below.
   order rather than a declared priority. SneakAttack has the same latent
   shape. Irrelevant at level 1 single-class (today's only playtest shape) —
   revisit if multiclass ordering is ever exercised.
+
+### Encounter SDK
+
+- **Snapshots don't carry active statuses (rpg-toolkit#752 follow-up).** The
+  broker only streams `StatusApplied`/`StatusRemoved` live; `Encounter.Data`
+  has no field projecting a held character's currently-active conditions. A
+  condition hydrated in via `LoadFromData` (as opposed to activated while a
+  client is connected and watching) is mechanically active but invisible to
+  any viewer who wasn't already connected when it was applied — including a
+  client that reconnects mid-encounter. Not a data-loss bug (the condition
+  still functions correctly server-side), but a client-rendering gap. Not
+  addressed by the encounter-end condition sweep (which prevents conditions
+  from surviving *past* their encounter, not this in-encounter visibility
+  gap) — tracked as a separate follow-up.
 
 ### Events
 

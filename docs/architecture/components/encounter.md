@@ -167,6 +167,18 @@ The single SDK call site is unchanged from the orchestrator's perspective: rpg-a
 
 PvP and monster-vs-monster directions return `ErrUnsupportedAttackDirection` (maps to gRPC `Unimplemented`). A future wave that wants either direction would add the corresponding `applyAndPublish*` helper to the dispatch switch; the SDK surface stays the same.
 
+### Encounter-end condition sweep (rpg-toolkit#752)
+
+`checkEncounterEnd` (death.go) is the single chokepoint every encounter-end predicate feeds through (today: all hostiles defeated). Before it publishes the terminal `EncounterEndedEvent`, it calls `endCombatForPlayers`, which publishes `dnd5eEvents.CombatEndEvent` (via `character.Character.EndCombat`) for every held player character.
+
+This exists because combat-scoped conditions (rage being the motivating case) previously had no way to hear "the encounter is over" — `RagingCondition` only self-removed on no-combat-activity-this-turn, duration expiry, unconsciousness, or rest. A raging character whose *own killing blow* ended the fight skipped all of those triggers, so the condition rode all the way to `ToData()` still present in the persisted `character.Data.Conditions`, and the next encounter's `LoadFromData` cascade silently re-`Apply`'d it — granting the rage damage bonus to a character who never activated rage in that encounter and had no charges left.
+
+**Lifetime model: opt-in per condition, not a taxonomy on Encounter.** `CombatEndTopic` is just another self-termination trigger a condition can subscribe to in its own `Apply`, the same shape `RestTopic` already established (`RagingCondition.onRest` / `onCombatEnd` sit side by side). A condition that should outlive combat (a curse, say) simply never subscribes — the encounter package has no allowlist or type-switch over condition kinds, and doesn't need one to add the next combat-scoped condition.
+
+Flat stat-snapshot seats (no hydrated `*character.Character`) have nothing to sweep and are skipped. Ordering: the sweep runs *before* `EncounterEndedEvent` publishes, so any `StatusRemoved` a condition emits is sequenced ahead of the terminal event on the broker stream.
+
+**Known gap (not fixed here):** encounter snapshots don't carry active statuses — a client that (re)connects mid-encounter only ever learns about a condition from the live `StatusApplied`/`StatusRemoved` stream, never from state. A condition that was hydrated in via `LoadFromData` (as opposed to activated live) is invisible to any viewer who wasn't already connected, even though it's mechanically active. Tracked as a follow-up, not part of this fix.
+
 ## MovementResolver (Wave 2.11e)
 
 `MovementResolver` is the second instance of the resolver-per-verb pattern that `PhasedCombatResolver` established. It lets the encounter SDK delegate per-step movement mechanics (MovementChain execution, OA triggering) to a rulebook implementation without importing rulebook packages.
