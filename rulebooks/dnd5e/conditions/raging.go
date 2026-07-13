@@ -433,9 +433,9 @@ func (r *RagingCondition) onAbilityCheckChain(
 // regardless of whether it hits. RAW (PHB rage): rage continues if you've
 // "attacked a hostile creature since your last turn" -- an attempt counts,
 // hit or miss. PostAttackRollChain fires once per attack roll (after the d20
-// is rolled, before the hit/miss outcome is applied), unlike the damage
-// chain below, which only fires on a hit and was silently dropping rage on a
-// miss (rpg-toolkit#755). The chain itself is not modified.
+// is rolled, before the hit/miss outcome is applied), unlike onDamageChain
+// above, which only fires on a hit and was silently dropping rage on a miss
+// (rpg-toolkit#755). The chain itself is not modified.
 func (r *RagingCondition) onPostAttackRoll(
 	_ context.Context,
 	event *dnd5eEvents.PostAttackRollEvent,

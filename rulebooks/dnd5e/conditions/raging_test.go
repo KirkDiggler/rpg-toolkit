@@ -91,21 +91,21 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksAttackAttempts() {
 
 	s.Run("hit sets DidAttackThisTurn", func() {
 		raging.DidAttackThisTurn = false
-		_, err := s.executePostAttackRoll("barbarian-1", "goblin-1", true)
+		err := s.executePostAttackRoll("barbarian-1", "goblin-1", true)
 		s.Require().NoError(err)
 		s.True(raging.DidAttackThisTurn)
 	})
 
 	s.Run("miss also sets DidAttackThisTurn -- RAW: an attempt counts", func() {
 		raging.DidAttackThisTurn = false
-		_, err := s.executePostAttackRoll("barbarian-1", "goblin-1", false)
+		err := s.executePostAttackRoll("barbarian-1", "goblin-1", false)
 		s.Require().NoError(err)
 		s.True(raging.DidAttackThisTurn, "a missed attack attempt should still count as combat activity")
 	})
 
 	s.Run("other character's attack does not set DidAttackThisTurn", func() {
 		raging.DidAttackThisTurn = false
-		_, err := s.executePostAttackRoll("barbarian-2", "goblin-1", true)
+		err := s.executePostAttackRoll("barbarian-2", "goblin-1", true)
 		s.Require().NoError(err)
 		s.False(raging.DidAttackThisTurn)
 	})
@@ -141,7 +141,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionSustainsOnMissedAttack() {
 
 	// Barbarian attacks goblin-1 and MISSES (mirrors the playtest log: "MISS
 	// (6+5 vs AC 15)").
-	_, err = s.executePostAttackRoll("barbarian-1", "goblin-1", false)
+	err = s.executePostAttackRoll("barbarian-1", "goblin-1", false)
 	s.Require().NoError(err)
 
 	// End the barbarian's turn.
@@ -248,7 +248,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 
 	// Execute a post-attack-roll chain event (simulates an attack attempt --
 	// combat activity, regardless of hit or miss)
-	_, err = s.executePostAttackRoll("barbarian-1", "goblin-1", true)
+	err = s.executePostAttackRoll("barbarian-1", "goblin-1", true)
 	s.Require().NoError(err)
 
 	// Publish turn end event
@@ -296,7 +296,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	for round := 1; round <= 10; round++ {
 		// Execute a post-attack-roll chain event each round to keep rage active
 		// (simulates an attack attempt, regardless of hit or miss)
-		_, err = s.executePostAttackRoll("barbarian-1", "goblin-1", true)
+		err = s.executePostAttackRoll("barbarian-1", "goblin-1", true)
 		s.Require().NoError(err)
 
 		// End turn
@@ -319,13 +319,18 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	s.Equal("duration_expired", removedEvent.Reason)
 }
 
-// executePostAttackRoll creates a PostAttackRollEvent and executes it through
+// executePostAttackRoll publishes a PostAttackRollEvent through
 // PostAttackRollChain, simulating an attack roll (hit or miss) for the
-// sustain-flag tests.
+// sustain-flag tests. Matches ResolveAttackHit's real usage of the topic
+// (attack_phases.go): it calls PublishWithChain and discards the returned
+// chain -- it never calls Execute. Subscribers that only inspect the event
+// and don't call c.Add (like onPostAttackRoll here and Shield's handler) run
+// their side effects during the publish itself, so Execute is unnecessary
+// and would exercise a codepath production never runs.
 func (s *RagingConditionTestSuite) executePostAttackRoll(
 	attackerID, targetID string,
 	wouldHit bool,
-) (*dnd5eEvents.PostAttackRollEvent, error) {
+) error {
 	postRollEvent := &dnd5eEvents.PostAttackRollEvent{
 		AttackerID: attackerID,
 		TargetID:   targetID,
@@ -335,12 +340,8 @@ func (s *RagingConditionTestSuite) executePostAttackRoll(
 	chain := events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages)
 	postRolls := dnd5eEvents.PostAttackRollChain.On(s.bus)
 
-	modifiedChain, err := postRolls.PublishWithChain(s.ctx, postRollEvent, chain)
-	if err != nil {
-		return nil, err
-	}
-
-	return modifiedChain.Execute(s.ctx, postRollEvent)
+	_, err := postRolls.PublishWithChain(s.ctx, postRollEvent, chain)
+	return err
 }
 
 // executeDamageChain creates a damage chain event and executes it through the damage chain topic.
