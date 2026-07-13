@@ -139,6 +139,18 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID8)
 
+	// Subscribe to the post-attack-roll chain to track attack attempts for
+	// the sustain flag. This fires once per attack roll, hit or miss --
+	// unlike the damage chain, which only fires on a hit (rpg-toolkit#755).
+	postRolls := dnd5eEvents.PostAttackRollChain.On(bus)
+	subID9, err := postRolls.SubscribeWithChain(ctx, r.onPostAttackRoll)
+	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subID9)
+
 	return nil
 }
 
@@ -295,12 +307,6 @@ func (r *RagingCondition) onDamageChain(
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Handle attacker side: add rage damage bonus
 	if event.AttackerID == r.CharacterID {
-		// Track that we successfully hit an enemy this turn
-		// (damage chain only fires when an attack hits). Any successful attack
-		// counts as combat activity for keeping rage active, regardless of
-		// whether it qualifies for the rage damage bonus below.
-		r.DidAttackThisTurn = true
-
 		// Add rage damage modifier in the StageFeatures stage. Gated inside the
 		// modifier (on the live e.AbilityUsed/e.IsMelee) rather than on the
 		// publish-time event above, since other StageFeatures modifiers (e.g.
@@ -420,5 +426,23 @@ func (r *RagingCondition) onAbilityCheckChain(
 		return c, rpgerr.Wrapf(err, "failed to add raging STR check advantage modifier for character %s", r.CharacterID)
 	}
 
+	return c, nil
+}
+
+// onPostAttackRoll tracks that this character attempted an attack this turn,
+// regardless of whether it hits. RAW (PHB rage): rage continues if you've
+// "attacked a hostile creature since your last turn" -- an attempt counts,
+// hit or miss. PostAttackRollChain fires once per attack roll (after the d20
+// is rolled, before the hit/miss outcome is applied), unlike the damage
+// chain below, which only fires on a hit and was silently dropping rage on a
+// miss (rpg-toolkit#755). The chain itself is not modified.
+func (r *RagingCondition) onPostAttackRoll(
+	_ context.Context,
+	event *dnd5eEvents.PostAttackRollEvent,
+	c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
+) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
+	if event.AttackerID == r.CharacterID {
+		r.DidAttackThisTurn = true
+	}
 	return c, nil
 }
