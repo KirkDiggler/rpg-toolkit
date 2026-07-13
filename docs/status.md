@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-05
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05
+updated: 2026-07-12
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12
 ---
 
 # rpg-toolkit: Where We Are
@@ -156,6 +156,18 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **Rage sustains on a missed attack** — PR for issue #755 (2026-07-12), found
+  in the rage-sweep verification playtest. `RagingCondition.DidAttackThisTurn`
+  was only set inside `onDamageChain`, which fires only on a hit — a raging
+  character who attacked and missed lost rage at turn end
+  (`no_combat_activity`), even though RAW (PHB rage) sustains rage on any
+  attack attempt against a hostile creature, hit or miss. Fix: the sustain
+  flag now comes from a new `onPostAttackRoll` handler subscribed to
+  `PostAttackRollChain` — which fires once per attack roll regardless of
+  outcome (the same signal `ShieldSpellCondition` already reads for its
+  predicate) — instead of the hit-only damage chain. The damage chain
+  subscription is unchanged and still owns the rage damage bonus and B/P/S
+  resistance.
 - **Encounter-end condition sweep (rage no longer leaks across encounters)**
   — PR for issue #752 (2026-07-12). Rage (and any future combat-scoped
   condition) previously had no way to hear "the encounter is over" — it only

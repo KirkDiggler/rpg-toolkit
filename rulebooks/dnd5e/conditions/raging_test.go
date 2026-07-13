@@ -69,7 +69,11 @@ func TestRagingConditionTestSuite(t *testing.T) {
 	suite.Run(t, new(RagingConditionTestSuite))
 }
 
-func (s *RagingConditionTestSuite) TestRagingConditionTracksHits() {
+// TestRagingConditionTracksAttackAttempts is the regression test for
+// rpg-toolkit#755: DidAttackThisTurn must be set from the post-attack-roll
+// chain, which fires on both a hit and a miss -- not from the damage chain,
+// which only fires on a hit and was silently dropping rage on a miss.
+func (s *RagingConditionTestSuite) TestRagingConditionTracksAttackAttempts() {
 	// Create a raging condition
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
@@ -85,13 +89,72 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksHits() {
 	// Verify initial state
 	s.False(raging.DidAttackThisTurn)
 
-	// Execute damage chain (simulates a successful hit)
-	// Note: DamageChain only fires when an attack hits
-	_, err = s.executeDamageChain("barbarian-1", 5, 3)
+	s.Run("hit sets DidAttackThisTurn", func() {
+		raging.DidAttackThisTurn = false
+		err := s.executePostAttackRoll("barbarian-1", "goblin-1", true)
+		s.Require().NoError(err)
+		s.True(raging.DidAttackThisTurn)
+	})
+
+	s.Run("miss also sets DidAttackThisTurn -- RAW: an attempt counts", func() {
+		raging.DidAttackThisTurn = false
+		err := s.executePostAttackRoll("barbarian-1", "goblin-1", false)
+		s.Require().NoError(err)
+		s.True(raging.DidAttackThisTurn, "a missed attack attempt should still count as combat activity")
+	})
+
+	s.Run("other character's attack does not set DidAttackThisTurn", func() {
+		raging.DidAttackThisTurn = false
+		err := s.executePostAttackRoll("barbarian-2", "goblin-1", true)
+		s.Require().NoError(err)
+		s.False(raging.DidAttackThisTurn)
+	})
+}
+
+// TestRagingConditionSustainsOnMissedAttack is the end-to-end regression test
+// for rpg-toolkit#755, mirroring the rage-sweep playtest log exactly: a
+// barbarian rages, attacks, MISSES, and ends their turn. RAW (PHB rage):
+// rage ends early only if the character hasn't "attacked a hostile creature
+// since your last turn or taken damage" -- a missed attack attempt still
+// counts, so rage must sustain here.
+func (s *RagingConditionTestSuite) TestRagingConditionSustainsOnMissedAttack() {
+	// Create a raging condition
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+
+	// Apply it to subscribe to events
+	err := raging.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// Check that the condition tracked the successful hit
-	s.True(raging.DidAttackThisTurn)
+	// Track if condition removed event is published
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
+	_, err = removalTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+		removedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	// Barbarian attacks goblin-1 and MISSES (mirrors the playtest log: "MISS
+	// (6+5 vs AC 15)").
+	err = s.executePostAttackRoll("barbarian-1", "goblin-1", false)
+	s.Require().NoError(err)
+
+	// End the barbarian's turn.
+	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		CharacterID: "barbarian-1",
+		Round:       1,
+	})
+	s.Require().NoError(err)
+
+	// Rage must still be active -- a miss is still an attack attempt.
+	s.Nil(removedEvent, "rage should sustain after a missed attack attempt")
+	s.True(raging.IsApplied(), "rage should still be applied after a missed attack")
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
@@ -183,9 +246,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	})
 	s.Require().NoError(err)
 
-	// Execute damage chain (simulates a successful hit - combat activity)
-	// Note: DamageChain only fires when an attack hits
-	_, err = s.executeDamageChain("barbarian-1", 5, 3)
+	// Execute a post-attack-roll chain event (simulates an attack attempt --
+	// combat activity, regardless of hit or miss)
+	err = s.executePostAttackRoll("barbarian-1", "goblin-1", true)
 	s.Require().NoError(err)
 
 	// Publish turn end event
@@ -229,10 +292,11 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 
-	// Simulate 10 rounds of combat with successful hits
+	// Simulate 10 rounds of combat with attack attempts
 	for round := 1; round <= 10; round++ {
-		// Execute damage chain each round to keep rage active (simulates successful hit)
-		_, err = s.executeDamageChain("barbarian-1", 5, 3)
+		// Execute a post-attack-roll chain event each round to keep rage active
+		// (simulates an attack attempt, regardless of hit or miss)
+		err = s.executePostAttackRoll("barbarian-1", "goblin-1", true)
 		s.Require().NoError(err)
 
 		// End turn
@@ -253,6 +317,31 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 	s.Equal("barbarian-1", removedEvent.CharacterID)
 	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
 	s.Equal("duration_expired", removedEvent.Reason)
+}
+
+// executePostAttackRoll publishes a PostAttackRollEvent through
+// PostAttackRollChain, simulating an attack roll (hit or miss) for the
+// sustain-flag tests. Matches ResolveAttackHit's real usage of the topic
+// (attack_phases.go): it calls PublishWithChain and discards the returned
+// chain -- it never calls Execute. Subscribers that only inspect the event
+// and don't call c.Add (like onPostAttackRoll here and Shield's handler) run
+// their side effects during the publish itself, so Execute is unnecessary
+// and would exercise a codepath production never runs.
+func (s *RagingConditionTestSuite) executePostAttackRoll(
+	attackerID, targetID string,
+	wouldHit bool,
+) error {
+	postRollEvent := &dnd5eEvents.PostAttackRollEvent{
+		AttackerID: attackerID,
+		TargetID:   targetID,
+		WouldHit:   wouldHit,
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages)
+	postRolls := dnd5eEvents.PostAttackRollChain.On(s.bus)
+
+	_, err := postRolls.PublishWithChain(s.ctx, postRollEvent, chain)
+	return err
 }
 
 // executeDamageChain creates a damage chain event and executes it through the damage chain topic.
@@ -793,9 +882,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceOnlyAffectsOwnCh
 }
 
 func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
-	// Apply a raging condition (creates 8 subscriptions: damage received, turn end,
+	// Apply a raging condition (creates 9 subscriptions: damage received, turn end,
 	// condition applied, damage chain, rest, saving throw chain, ability check chain,
-	// combat end)
+	// combat end, post-attack-roll chain)
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
@@ -805,7 +894,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 
 	err := raging.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
-	s.Require().Len(raging.subscriptionIDs, 8)
+	s.Require().Len(raging.subscriptionIDs, 9)
 
 	// Wrap the bus so that the first subscription ID fails on unsubscribe
 	failBus := &errorOnUnsubscribeBus{
@@ -816,7 +905,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 	// Remove should return an error but still clean up all other subscriptions
 	err = raging.Remove(s.ctx, failBus)
 	s.Require().Error(err, "Remove should report the failed unsubscribe")
-	s.Contains(err.Error(), "1/8", "error should report count of failures vs total")
+	s.Contains(err.Error(), "1/9", "error should report count of failures vs total")
 
 	// Condition should be fully cleaned up despite the error
 	s.Nil(raging.subscriptionIDs, "subscriptionIDs should be nil after Remove")
