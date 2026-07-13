@@ -1,8 +1,8 @@
 ---
 name: encounter module
-description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, combatant hydration cascade, discrete-phase combat orchestration, MovementResolver seam (both movement directions)
-updated: 2026-06-01
-confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions; #697 (TakeAction wave, ADR-0032) deleted the attack-only gate — non-attack refs delegate to the held character's economy/menu, turn-start seeding moved into the engine, ActorTurnState exposes the menu as data
+description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, combatant hydration cascade, discrete-phase combat orchestration, MovementResolver seam (both movement directions), walled-room space + wall-aware LoS + inline combat entry
+updated: 2026-07-13
+confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions; #697 (TakeAction wave, ADR-0032) deleted the attack-only gate — non-attack refs delegate to the held character's economy/menu, turn-start seeding moved into the engine, ActorTurnState exposes the menu as data; #757 (the walled room) added SpaceData, wall-aware VisibleHexesAt/CanSeeAt, wall-blocked movement, and inline combat-entry self-transition
 ---
 
 # encounter module
@@ -22,10 +22,10 @@ back via `ToData`, and save. Player-facing events flow through a process-scoped
 
 One Go module with three subpackages forming a linear DAG (`core ← events ← perception ← encounter`):
 
-- `encounter/core` — identity primitives (`EncounterID`, `PlayerID`, `EntityID`) and spatial primitives (`Hex`, `HexSet`). Exists to break the encounter↔events package import cycle. `HexSet` has custom `MarshalJSON`/`UnmarshalJSON` (struct map keys can't serialize via the default codec). `Hex`/`HexSet` may move to `tools/spatial` in a future slice once the encounter SDK is ready to depend on the spatial module directly.
+- `encounter/core` — identity primitives (`EncounterID`, `PlayerID`, `EntityID`) and spatial primitives (`Hex`, `HexSet`). Exists to break the encounter↔events package import cycle. `HexSet` has custom `MarshalJSON`/`UnmarshalJSON` (struct map keys can't serialize via the default codec). Since #757, `core` also depends on `tools/spatial`: `Hex.ToCube`/`HexFromCube` (field-rename bridge to `spatial.CubeCoordinate`) and `Hex.ToPosition`/`HexFromPosition` (offset-coordinate bridge to `spatial.Position`, pointy-top orientation) — see "Walled rooms" below.
 - `encounter/events` — sealed `EncounterEvent` interface, three concrete events (`MoveEvent`, `HexRevealedEvent`, `DoorOpenedEvent`), and `AudienceSet` (event-routing concept; lives with events).
 - `encounter/events` — sealed `EncounterEvent` interface (AWS v2 SDK marker pattern: unexported `isEncounterEvent()` makes the interface externally unsatisfiable). Concrete events implemented in slice 1: `MoveEvent`, `HexRevealedEvent`, `DoorOpenedEvent`. Each has its own `MarshalJSON`/`UnmarshalJSON` so unexported `encID`/`seq` fields round-trip without leaking construction-only state.
-- `encounter/perception` — pure projection functions (`ProjectMove`, `ProjectDoorOpen`) and `View` value type. Stub LoS today (Manhattan radius); real LoS is a future slice.
+- `encounter/perception` — pure projection functions (`ProjectMove`, `ProjectDoorOpen`) and `View` value type. `VisibleHexesAt`/`CanSeeAt` take a `room spatial.Room` parameter since #757 — nil room is the original pure-radius stub (unchanged for encounters with no `SpaceData`); a non-nil room additionally excludes hexes `room.IsLineOfSightBlocked` reports as wall-blocked. SightRange always caps distance first, regardless of room.
 - `encounter` (top-level) — `Encounter` aggregate, `Broker`, `Transport`, `InMemoryTransport`, JSON codec. The `Broker` is process-scoped — one per game-server process — and uses `sync.WaitGroup` to ensure listener goroutines exit before subscription channels close on shutdown (no double-close races).
 
 ## Key types
@@ -262,6 +262,123 @@ Tests cover the production path explicitly (`TestNPCAct_MovementOA_AppliesDamage
 
 When a player-bearer reaction becomes a goal-shaped feature (Sentinel feat, Shield/Counterspell, etc.), the per-step iteration loop gains a second branch: partition triggers by reactor type, persist `PendingReactionPrompt` for player-bearer triggers, publish a sentinel `errPlayerPausedForReactionDuringMove`, and resume via the existing `SubmitCheck{take_reaction}` path. The design sketch lives on #665; the structural seam is already in place (the per-step iteration + buffer drain are the load-bearing infrastructure).
 
+## Walled rooms, wall-aware LoS, and inline combat entry (rpg-toolkit#757)
+
+Wave 1 of "the walled room" bridges the encounter SDK to `tools/spatial` +
+`tools/environments` — the heavy machinery (wall LoS, movement blocking,
+serialization, spawn engine) already existed in those modules; this wave
+connects it. Design doc: `rpg-project/ideas/the-dungeon/design.md`.
+
+### SpaceData: snapshot, not seed-regeneration
+
+`Data.Space *SpaceData` (`Walls []environments.WallSegmentData`, `Width`,
+`Height`) persists a room as a **snapshot**, not a regeneration seed —
+`environments.QuickRoom`'s wall generator (`RandomPattern`) is only
+deterministic because `QuickRoom`'s 3-arg convenience wrapper never sets
+`RandomSeed` (defaults to 0); nothing else about the design intends to
+replay a seed. `DoorData` already persists mutable state directly, and
+destroyed walls / opened doors (wave 2+) can't replay from a seed either —
+picking the snapshot representation now avoids a representation split
+later.
+
+`Encounter.InitRoom(width, height, pattern)` builds a room via
+`environments.QuickRoom`, and `LoadFromData` rebuilds one from `Data.Space`
+on every call (`rebuildRoomFromData`, transient — reconstructed each load,
+like `e.bus`/`e.combatants`, never serialized). Both are nil-safe: an
+encounter that never calls `InitRoom` (every pre-#757 fixture) has
+`e.room == nil`, and every room-aware call site in this package checks for
+that — LoS falls back to pure radius, movement is unblocked.
+
+**Position precision gotcha (why InitRoom doesn't use QuickRoom's room
+directly):** `environments`' wall generator (`generateRandomWall`,
+`wall_patterns.go`) places walls at **continuous** float positions (e.g.
+`X=3.7`) — it was not built assuming hex-cell-snapped placement. Every
+LoS/movement check in this package queries at the **integer** positions
+`core.Hex.ToPosition()` produces. Those two essentially never collide in a
+`spatial.Room`'s position-keyed occupancy map, which would make most
+generated walls silently non-blocking. `InitRoom` avoids this by never
+registering `QuickRoom`'s own room as `e.room` — it snapshots the walls
+(rounding each wall entity's position to the nearest integer hex cell:
+`space.go`'s `snapshotWalls`) and calls the same `rebuildRoomFromData` path
+`LoadFromData` uses, so `e.room`'s walls always sit at exact integer hex
+positions. One degenerate (`Start == End`) `WallSegmentData` entry per
+discretized wall hex — wave 1 needs per-hex blocking, not polyline
+geometry; per-viewer wall reveal (which would want real geometry) is a
+wave-2+ concern.
+
+### Hex ↔ CubeCoordinate ↔ Position bridge
+
+`encounter/core`'s `Hex{Q,R,S}` and `spatial.CubeCoordinate{X,Y,Z}` are the
+same cube math with different field names — `Hex.ToCube`/`HexFromCube` is a
+pure rename, no computation. `spatial.Position{X,Y float64}` is a
+**different** representation (hex-grid offset coordinates, not cube) that
+`spatial.Room`'s LoS/movement methods actually take; `Hex.ToPosition`/
+`HexFromPosition` compose the cube bridge with `spatial`'s existing
+`ToOffsetCoordinateWithOrientation`/`OffsetCoordinateToCubeWithOrientation`,
+hardcoded to `HexOrientationPointyTop` (the only orientation
+`environments.QuickRoom`'s room builder constructs — D&D 5e standard).
+`npc.go`'s three pre-existing inline `spatial.CubeCoordinate{X: h.Q, ...}`
+conversions were refactored onto `Hex.ToCube`/`HexFromCube` in the same
+change — one bridge, not four copies of the same field mapping.
+
+### Wall-blocked movement
+
+`Encounter.truncateAtWall(path)` (space.go) returns the prefix of a
+requested path up to (not including) the first hex `room.CanPlaceEntity`
+rejects — checked via a throwaway `wallCheckEntity` (players/monsters are
+never themselves placed into the spatial room; only walls occupy it, so
+`CanPlaceEntity`'s occupancy check only ever finds walls). Applied at the
+top of both `Move` (player direction) and `applyNPCMovementSteps` (NPC
+direction, shared by `NPCAct` and the `MoveNPCSteps` test seam) — before
+any movement-budget/resolver logic sees the path, mirroring how a
+resolver's chain-prevented truncation already works. A fully-blocked first
+hex is a no-op (nil error, no state change, no events), matching the
+resolver's own "prevented at first step" semantics.
+
+### Inline combat-entry self-transition
+
+`checkCombatEntry` (combat.go) mirrors `checkEncounterEnd`'s self-transition
+at combat's *other* edge (death.go): when the encounter is `ModeFreeRoam`
+and any player has LoS (`perception.CanSeeAt`, wall-aware) to any monster,
+it calls `SetMode(ModeTurnBased)` — the exact same initiative-roll +
+`ModeChanged`/`TurnStarted` publish path `SetMode` always used for any other
+FreeRoam→TurnBased flip. Called inline at the mutation sites (`Move`,
+`AddMonster`) rather than as a kicked/deferred check — a forgotten kick call
+would silently mean combat never starts, a worse failure mode than a
+redundant inline check. The mode gate at the top makes repeated calls
+idempotent (no re-roll, no "already TURN_BASED" error) once combat has
+started.
+
+"Hostile" == "is a monster" for wave 1 — no faction model exists yet, so
+player-player visibility never triggers this, and every monster is a valid
+trigger for every player. `AddMonster` checks visibility against existing
+players (a monster's visibility to anyone is inherently "newly formed" the
+moment it's added — there's no "before" state for an entity that didn't
+exist); `Move` checks after the mover's `View` has updated, so a player
+walking around a corner into a goblin's hex triggers combat the moment the
+wall no longer blocks LoS between them.
+
+**Pre-hydration entry + the turn-seed catch-up.** Combat entry can now fire
+on an **un-hydrated** encounter: the production creation flow is
+`New()`+`AddPlayer`+`AddMonster` (rpg-api's `StartEncounter`), and `New`
+never hydrates — only a `LoadFromData` round-trip does. `SetMode`'s
+`seedActorTurn` finds no held character at that moment and correctly skips,
+but `SetMode` and `EndTurn` were the only two seeding sites — so the first
+active player's action economy would never be seeded, and every `TakeAction`
+would fail `"not in combat"` (a latent gap that predates #757 for any host
+calling `SetMode` on a fresh encounter — devseed's `--inject-combat` shape —
+which combat entry turned into the default path; surfaced as a ~50%-flaky
+`TestResolver_ReceivesHeldEntity` during #757's test run, the flake being
+initiative order). The fix: `LoadFromData` ends with
+`seedActiveActorIfUnseeded` (turn_economy.go) — if the mode is TURN_BASED
+and the active actor's held character reports `!InCombat()` (economy nil,
+i.e. never seeded; the economy persists through `ToData`/`LoadFromData`, so
+a mid-turn reload sees `InCombat() == true` and is never re-seeded), it runs
+the missed `seedActorTurn` and pushes a fresh `TurnStateChangedEvent`
+(Invariant 12 — the flip-time push snapshotted an un-hydrated empty menu).
+No `TurnStartedEvent` re-publish: the turn already started and was announced
+at the flip; the catch-up completes its seeding, it doesn't restart it.
+
 ## Implementation notes worth keeping
 
 Three lessons surfaced while building slice 1 that are likely to bite future toolkit work:
@@ -297,7 +414,9 @@ handling. Wave 2.11d shipped the combat slice of that list:
   `SubmitCheck` (lives on rpg-api today; the SDK only sees the resumed
   attack flow via `CompleteTakeAction`), `EndTurn` (lives on rpg-api),
   action economy beyond what `combatabilities` ships, conditions beyond
-  the dnd5e rulebook's set, senses, real LoS (still Manhattan stub),
+  the dnd5e rulebook's set, senses, per-viewer wall reveal (wave 1 ships
+  whole-room wall visibility — see "Walled rooms" below), faction model
+  (combat-entry's "hostile" == "is a monster" is a wave-1 stand-in),
   Redis transport, gRPC handler. Entity-visibility accumulation is
   reserved in the type shapes (`HexRevealedSlice.Entities`,
   `View.KnownEntities`) but not emitted yet — future slice.

@@ -6,12 +6,12 @@ github.com/KirkDiggler/rpg-toolkit/events v0.6.2 h1:lRtKXko35bGw/l2TKYsN7JKOODUi
 github.com/KirkDiggler/rpg-toolkit/events v0.6.2/go.mod h1:JNzyCw1l/RL4nyoCpx3tSko8Dsocwye9eFg33Ot6mUw=
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbspR6748sO/KYqE=
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
-github.com/KirkDiggler/rpg-toolkit/tools/environments v0.1.2 h1:warO6dvk/Ymyc3lnVU7x1xIM0T6dw7h6DQ8Clz4z/PI=
-github.com/KirkDiggler/rpg-toolkit/tools/environments v0.1.2/go.mod h1:IwhSpU197TgOvI/ZjnJMJabykFnivhCywj5gFENQV9c=
+github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.2 h1:kPc3FZSRAB/gIzTBvlOYxzqp9mdL0akkeRW/8EZcI9A=
+github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.2/go.mod h1:tchpvtZ7MTh7P5J1efr2Wigw108VzQBQEojlVFbw8rM=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2 h1:81iz712+EXhitPNgcf0tMDqvqI/0u9k26Hbdph62QZU=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2/go.mod h1:tnhhn+fRcklWqwIu5lOtBA2uCn1amkp5ZAARsqAgJqI=
-github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.2.1 h1:gN+TL6PiZHSckyvy/rhHCJQsoXnb+lZYqjOJeqo8FV0=
-github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.2.1/go.mod h1:z5WFtaT46GCz4lmDOKzeuFbSk8SRuZbKCf441M0yDa8=
+github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.0 h1:weKsLlsRV9kgoD/y68VWy0lpsu5zhwCmbnr5MUkLpsA=
+github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.0/go.mod h1:z5WFtaT46GCz4lmDOKzeuFbSk8SRuZbKCf441M0yDa8=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=

@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-12
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12
+updated: 2026-07-13
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13
 ---
 
 # rpg-toolkit: Where We Are
@@ -10,6 +10,37 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**#757 — the walled room: SpaceData, wall-aware LoS, wall-blocked movement,
+inline combat entry, spawn engine unblocked (2026-07-13).** Toolkit half of
+"The Dungeon" wave 1 (design: `rpg-project/ideas/the-dungeon/design.md`).
+Encounters gain a real room: `Data.Space *SpaceData` snapshots wall geometry
+(built via `environments.QuickRoom` at `Encounter.InitRoom`, reconstructed on
+every `LoadFromData` — a replay, not a re-roll). `perception.VisibleHexesAt`/
+`CanSeeAt` take a `room spatial.Room` and exclude wall-blocked hexes via
+`room.IsLineOfSightBlocked` (nil room = unchanged pure-radius behavior).
+`Move`/`applyNPCMovementSteps` truncate a requested path at the first
+`room.CanPlaceEntity`-rejected hex. `checkCombatEntry` (combat.go) mirrors
+`checkEncounterEnd`'s self-transition at combat's other edge: a
+player-monster visibility pair forming while `ModeFreeRoam` flips the
+encounter to `ModeTurnBased` inline at the `Move`/`AddMonster` mutation
+sites, reusing `SetMode` rather than duplicating its initiative-roll +
+event-publish logic. `tools/spawn`'s `getRoomFromSpatial` and
+`placeEntityInRoom` — both literal Phase-1 stubs (the second silently
+discarded every entity without ever calling `room.PlaceEntity`, so
+`PopulateRoom` could report success while placing nothing) — are now real via
+a new `BasicSpawnEngineConfig.RoomOrchestrator` field. Found and fixed along
+the way: `environments`' wall generator places walls at continuous
+(non-hex-snapped) positions, which would have made most `QuickRoom`-generated
+walls silently non-blocking against this package's integer-hex LoS/movement
+checks — `InitRoom` rounds wall positions to the nearest hex cell before
+building the room encounters actually query, rather than using
+`QuickRoom`'s room object directly. See
+[encounter.md](architecture/components/encounter.md#walled-rooms-wall-aware-los-and-inline-combat-entry-rpg-toolkit757)
+and [tools-spawn.md](architecture/components/tools-spawn.md#spatial-wiring-rpg-toolkit757).
+Zero proto/contract changes — rpg-api (Space.Walls projection, spawn-engine
+wiring at StartEncounter) and web (wall rendering) wave-1 steps follow in
+separate PRs/repos.
 
 **#750 — isPlayerCombatant honors hydration, not just the flat AC/DamageDice
 snapshot (2026-07-11, branch fix/combat-gate-hydration).** `isPlayerCombatant`
@@ -147,7 +178,10 @@ landed earlier. New top-level `encounter/` module with subpackages `core`
 `Encounter` aggregate with `Move` and `OpenDoor` verbs,
 `ToData`/`LoadFromData` persistence, `SnapshotFor` for stream snapshots.
 Stub Manhattan-radius LoS in `encounter/perception/`; real LoS is a
-future slice.
+future slice. **Superseded 2026-07-13 by #757** — see the Active work entry
+below: `VisibleHexesAt`/`CanSeeAt` now take a `room spatial.Room` and are
+wall-aware when one is supplied; the pure-radius behavior remains the
+fallback for a nil room (every encounter with no `Data.Space`).
 
 Earlier active state: no open PRs as of 2026-05-02; last merge was PR #609.
 A large number of stale remote branches remain (40+) from earlier

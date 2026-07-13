@@ -192,7 +192,11 @@ func (s *UnconsciousZeroHPSuite) TestPlayerHitsZeroHP_AppliesUnconscious_NotImme
 	s.Require().NoError(err)
 	defer func() { _ = sub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so buildEncounter's AddMonster
+	// already auto-transitioned to TURN_BASED (alice's DataJSON carries a
+	// pre-seeded ActionEconomy, so this doesn't depend on SetMode's
+	// seedActorTurn call); an explicit SetMode here would be redundant and
+	// error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -243,7 +247,11 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_BridgesToEntityDied()
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so buildEncounter's AddMonster
+	// already auto-transitioned to TURN_BASED (alice's DataJSON carries a
+	// pre-seeded ActionEconomy, so this doesn't depend on SetMode's
+	// seedActorTurn call); an explicit SetMode here would be redundant and
+	// error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -358,7 +366,11 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_AcrossPerRPCReloads_B
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so buildEncounter's AddMonster
+	// already auto-transitioned to TURN_BASED (alice's DataJSON carries a
+	// pre-seeded ActionEconomy, so this doesn't depend on SetMode's
+	// seedActorTurn call); an explicit SetMode here would be redundant and
+	// error.
 	enc = s.reloadEncounter(enc, opts...)
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
@@ -469,7 +481,11 @@ func (s *UnconsciousZeroHPSuite) TestDeathSaveRolledBridge_EveryRollBridgesToEve
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so buildEncounter's AddMonster
+	// already auto-transitioned to TURN_BASED (alice's DataJSON carries a
+	// pre-seeded ActionEconomy, so this doesn't depend on SetMode's
+	// seedActorTurn call); an explicit SetMode here would be redundant and
+	// error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -524,7 +540,11 @@ func (s *UnconsciousZeroHPSuite) TestCharacterStabilizedBridge_ThreeSuccessfulDe
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so buildEncounter's AddMonster
+	// already auto-transitioned to TURN_BASED (alice's DataJSON carries a
+	// pre-seeded ActionEconomy, so this doesn't depend on SetMode's
+	// seedActorTurn call); an explicit SetMode here would be redundant and
+	// error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
 		s.Require().NoError(endErr)

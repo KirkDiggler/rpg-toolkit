@@ -7,8 +7,8 @@ toolchain go1.24.5
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.9.6
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
-	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.1.2
-	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.2.1
+	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.2
+	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.0
 	github.com/stretchr/testify v1.10.0
 )
 

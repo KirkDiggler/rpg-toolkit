@@ -19,6 +19,7 @@ type BasicSpawnEngine struct {
 	spatialHandler     spatial.QueryHandler
 	environmentHandler *environments.BasicQueryHandler
 	selectablesReg     SelectablesRegistry
+	roomOrchestrator   spatial.RoomOrchestrator
 	// Type-safe event publishers (replaces eventBus events.EventBus)
 	entitySpawned    events.TypedTopic[EntitySpawnedEvent]
 	enableEvents     bool
@@ -34,6 +35,10 @@ type BasicSpawnEngineConfig struct {
 	SpatialHandler     spatial.QueryHandler
 	EnvironmentHandler *environments.BasicQueryHandler
 	SelectablesReg     SelectablesRegistry
+	// RoomOrchestrator resolves room IDs to spatial.Room for getRoomFromSpatial
+	// (rpg-toolkit#757). Required for PopulateRoom/PopulateSpace/PopulateSplitRooms
+	// to place entities — without it, getRoomFromSpatial returns an error.
+	RoomOrchestrator spatial.RoomOrchestrator
 	// EventBus removed - use ConnectToEventBus() method after creation
 	EnableEvents bool
 	MaxAttempts  int
@@ -54,6 +59,7 @@ func NewBasicSpawnEngine(config BasicSpawnEngineConfig) *BasicSpawnEngine {
 		spatialHandler:     config.SpatialHandler,
 		environmentHandler: config.EnvironmentHandler,
 		selectablesReg:     config.SelectablesReg,
+		roomOrchestrator:   config.RoomOrchestrator,
 		// Event topics will be connected via ConnectToEventBus()
 		enableEvents:     config.EnableEvents,
 		maxAttempts:      config.MaxAttempts,
@@ -196,11 +202,18 @@ func (e *BasicSpawnEngine) selectEntitiesForGroup(group EntityGroup) ([]core.Ent
 	return entities, nil
 }
 
-// getRoomFromSpatial gets room from spatial module (Phase 1: not implemented)
-func (e *BasicSpawnEngine) getRoomFromSpatial(_ string) (spatial.Room, error) {
-	// Phase 1: Spatial integration not yet implemented
-	// Real implementation would query e.spatialHandler.GetRoom(roomID)
-	return nil, fmt.Errorf("spatial integration not implemented in Phase 1")
+// getRoomFromSpatial resolves roomID to a spatial.Room via the configured
+// RoomOrchestrator (rpg-toolkit#757). Returns an error if no orchestrator was
+// configured, or if roomID isn't registered with it.
+func (e *BasicSpawnEngine) getRoomFromSpatial(roomID string) (spatial.Room, error) {
+	if e.roomOrchestrator == nil {
+		return nil, fmt.Errorf("spawn engine has no RoomOrchestrator configured")
+	}
+	room, ok := e.roomOrchestrator.GetRoom(roomID)
+	if !ok {
+		return nil, fmt.Errorf("room %q not found in orchestrator", roomID)
+	}
+	return room, nil
 }
 
 // findValidPosition finds a valid position for an entity (simplified for Phase 1)
@@ -289,10 +302,13 @@ func (e *BasicSpawnEngine) hasValidConstraints(constraints SpatialConstraints) b
 		constraints.PathingRules.MaintainExitAccess
 }
 
-// placeEntityInRoom places entity in the spatial room
-func (e *BasicSpawnEngine) placeEntityInRoom(_ spatial.Room, _ core.Entity, _ spatial.Position) error {
-	// Phase 1: This would call room.PlaceEntity(entity, position)
-	// For now, just validate the basic operation
+// placeEntityInRoom places entity in the spatial room (rpg-toolkit#757: this
+// was a no-op stub — PopulateRoom reported spawned entities without ever
+// actually occupying the room).
+func (e *BasicSpawnEngine) placeEntityInRoom(room spatial.Room, entity core.Entity, position spatial.Position) error {
+	if err := room.PlaceEntity(entity, position); err != nil {
+		return fmt.Errorf("place entity %s: %w", entity.GetID(), err)
+	}
 	return nil
 }
 

@@ -107,6 +107,55 @@ func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) er
 	return nil
 }
 
+// seedActiveActorIfUnseeded is LoadFromData's catch-up for a turn seed that
+// was structurally impossible at the moment the turn started (rpg-toolkit#757).
+//
+// The gap: SetMode's flip to ModeTurnBased can now fire on an UN-hydrated
+// encounter — checkCombatEntry runs inline at AddMonster, and the production
+// creation flow is New()+AddPlayer+AddMonster, where nothing is hydrated (New
+// never hydrates; only a LoadFromData round-trip does). seedActorTurn at that
+// moment finds no held character for the first active player and correctly
+// skips — but SetMode and EndTurn are the only two turn-start seeding sites,
+// so without this catch-up that player's economy would never be seeded for
+// their first turn: every TakeAction fails "not in combat". The same latent
+// gap predates #757 for any host that called SetMode on a fresh encounter
+// (devseed's --inject-combat shape); combat entry just made it the default
+// production path.
+//
+// Detection is the held character's own persisted combat state: InCombat()
+// (== actionEconomy != nil) survives ToData/LoadFromData round-trips, so a
+// mid-turn reload (economy seeded, partially spent) sees InCombat() == true
+// and skips — this catch-up cannot re-seed (and thereby refill) a live
+// turn's economy. It fires exactly once: the first load after the missed
+// seed, after which the seeded economy persists.
+//
+// The refreshed turn state is push-published after seeding (Invariant 12):
+// the TurnStateChangedEvent the client got at the SetMode flip snapshotted an
+// un-hydrated (empty) menu/economy; without a fresh push the real menu would
+// be silently stale until the actor's next action. No TurnStartedEvent —
+// the turn already started and was announced at the flip; this completes its
+// seeding, it doesn't restart it.
+func (e *Encounter) seedActiveActorIfUnseeded(ctx context.Context) error {
+	if e.data.Mode != core.ModeTurnBased || len(e.data.Initiative) == 0 {
+		return nil
+	}
+	if e.data.ActiveIdx < 0 || e.data.ActiveIdx >= len(e.data.Initiative) {
+		return nil
+	}
+	actorID := e.data.Initiative[e.data.ActiveIdx]
+	char := e.heldCharacter(actorID)
+	if char == nil || char.InCombat() {
+		return nil // NPC / stat-snapshot seat, or already seeded — nothing missed.
+	}
+	if err := e.seedActorTurn(ctx, actorID); err != nil {
+		return err
+	}
+	if err := e.publishTurnStateChanged(actorID, ""); err != nil {
+		return fmt.Errorf("publish caught-up turn state: %w", err)
+	}
+	return nil
+}
+
 // heldCharacter returns the hydrated *character.Character for the given entity
 // id, or nil if the id is not a player seat or carries no hydrated character
 // (no DataJSON at load time). It reads the LoadFromData-cascade-held combatant

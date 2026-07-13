@@ -5,6 +5,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
 // Data is the persisted shape of an Encounter. The orchestrator
@@ -58,6 +59,37 @@ type Data struct {
 	//
 	// Cleared when the reactor's SubmitCheck resolves (take or skip).
 	PendingReactionPrompts map[core.PlayerID]*PendingReactionPrompt `json:"pending_reaction_prompts,omitempty"`
+
+	// Space is the encounter's room snapshot (walls + dimensions), populated
+	// once from environments.QuickRoom at encounter creation (see
+	// Encounter.InitRoom). Nil for encounters with no spatial room —
+	// pre-wave-1 fixtures and non-spatial (social/free-form) encounters —
+	// which fall back to the pure-radius LoS and unblocked movement that
+	// predates this field. Persists as a snapshot, not a regeneration seed:
+	// wave 2+ wall destruction / door state would otherwise be unable to
+	// replay from a pattern.
+	Space *SpaceData `json:"space,omitempty"`
+}
+
+// SpaceData is the persisted snapshot of an encounter's room: the wall
+// layout and grid dimensions needed to reconstruct the spatial.Room (and
+// its wall entities) on every LoadFromData, without re-running the
+// (non-deterministic) room generator. Walls reuse environments.WallSegmentData
+// rather than a toolkit-local type — same shape environments.EnvironmentData
+// already persists, no reason to duplicate it.
+type SpaceData struct {
+	// Walls are the room's wall segments in absolute cube coordinates. Wave 1
+	// stores one degenerate (Start == End) segment per discretized wall hex —
+	// geometry fidelity beyond per-hex blocking isn't needed until per-viewer
+	// wall reveal (wave 2+).
+	Walls []environments.WallSegmentData `json:"walls"`
+
+	// Width and Height are the room's grid dimensions (offset-coordinate
+	// bounds), needed to reconstruct a HexGrid that agrees with the original
+	// on IsValidPosition — without these, a reconstructed room would need a
+	// guessed bound, silently accepting or rejecting edge positions wrong.
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // PendingReactionPrompt is the persisted shape of a reaction prompt waiting

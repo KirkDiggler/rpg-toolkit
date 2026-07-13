@@ -79,8 +79,10 @@ func (s *NPCSuite) TearDownTest() {
 // NPCAct via monster.TakeTurn captures the dnd5e AttackEvent the goblin's
 // scimitar action emits and re-publishes it as an encounter
 // AttackResolvedEvent.
+// alice and the goblin are in mutual LoS, so SetupTest's AddMonster already
+// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+// redundant and error.
 func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != gobEntityID {
 		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
@@ -94,16 +96,24 @@ func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
 	s.Contains(seen, "*events.AttackResolvedEvent")
 }
 
-// NPCAct outside TURN_BASED returns ErrNotTurnBased.
+// NPCAct outside TURN_BASED returns ErrNotTurnBased. Own monster-less
+// encounter so the fixture stays FreeRoam (the shared s.enc is already
+// TURN_BASED by setup time — alice and the goblin start in mutual LoS).
 func (s *NPCSuite) TestNPCAct_RequiresTurnBased() {
-	err := s.enc.NPCAct(s.ctx, gobEntityID)
+	enc := encounter.New(context.Background(), "enc-npc-notb", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+	}))
+	err := enc.NPCAct(s.ctx, gobEntityID)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
 // NPCAct against an unknown id returns ErrNotYourTurn (the active-actor
-// check fires before the existence check).
+// check fires before the existence check). alice and the goblin are in
+// mutual LoS, so SetupTest's AddMonster already auto-transitioned to
+// TURN_BASED; an explicit SetMode here would be redundant and error.
 func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	// Cycle to goblin to satisfy the active-actor gate, then try to act
 	// for a non-existent npc — the test exercises ErrNotYourTurn (the
 	// active-actor check fires before the existence check).
@@ -137,7 +147,9 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 		MonsterRef: monsterRefGoblin,
 		DataJSON:   dataJSON,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -163,7 +175,9 @@ func (s *NPCSuite) TestNPCAct_Scripted_ErrNoCombatResolver() {
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -232,7 +246,9 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 		DataJSON:    dataJSON,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice (distance 10) is within the goblin's mutual LoS (sight 12), so
+	// AddMonster already auto-transitioned to TURN_BASED; an explicit
+	// SetMode here would be redundant and error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -294,7 +310,9 @@ func (s *NPCSuite) TestNPCAct_RegularAttack_DamageSharesAttackCorrelationID() {
 	s.Require().NoError(subErr)
 	defer func() { _ = sub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -400,7 +418,9 @@ func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
 	s.Require().NoError(subErr)
 	defer func() { _ = sub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)

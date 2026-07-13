@@ -156,7 +156,9 @@ func (s *HydrationCascadeSuite) TestSneakAttack_SubscribesExactlyOnce_AcrossAtta
 // boundary with NO re-load (EndTurn emits the turn signal on the held bus).
 func (s *HydrationCascadeSuite) TestSneakAttack_UsedThisTurn_PersistsAndResets() {
 	enc := s.loadEncounterWithRogue()
-	s.Require().NoError(enc.SetMode(encountercore.ModeTurnBased))
+	// The rogue and the goblin are in mutual LoS, so loadEncounterWithRogue's
+	// AddMonster already auto-transitioned to TURN_BASED; an explicit
+	// SetMode here would be redundant and error.
 
 	// Fire the rogue's sneak attack once — sets UsedThisTurn=true on the held
 	// condition instance.
@@ -258,7 +260,10 @@ func (s *HydrationCascadeSuite) TestNPCAct_UsesHeldMonster_NoDoubleSubscribe() {
 	// Round-trip so the cascade hydrates the goblin onto the held bus.
 	spy := &spyCombatResolver{}
 	enc2 := s.reloadViaWithResolver(enc, spy)
-	s.Require().NoError(enc2.SetMode(encountercore.ModeTurnBased))
+	// The rogue and the goblin are in mutual LoS, so AddMonster (above, on
+	// enc) already auto-transitioned to TURN_BASED before the round-trip;
+	// enc2 inherits that mode. An explicit SetMode here would be redundant
+	// and error.
 
 	// Advance to the goblin's turn and run NPCAct. If NPCAct re-loaded the
 	// goblin onto the bus, the monster's conditions would double-subscribe.
@@ -309,7 +314,10 @@ func (s *HydrationCascadeSuite) TestResolver_ReceivesHeldEntity() {
 	}))
 
 	enc2 := s.reloadViaWithResolver(enc, spy)
-	s.Require().NoError(enc2.SetMode(encountercore.ModeTurnBased))
+	// AddMonster auto-transitioned to TURN_BASED (mutual LoS, #757), and the
+	// reload's LoadFromData catch-up seeded the active actor's economy —
+	// including the pre-hydration-entry case this test previously hit as a
+	// flaky "not in combat" failure.
 	s.driveAttackFromRogue(enc2)
 
 	s.Require().Positive(spy.calls, "resolver should have been called")
@@ -338,7 +346,10 @@ func (s *HydrationCascadeSuite) TestResolver_NoDataJSON_FallsBack() {
 	}))
 
 	enc2 := s.reloadViaWithResolver(enc, spy)
-	s.Require().NoError(enc2.SetMode(encountercore.ModeTurnBased))
+	// The rogue and the goblin are in mutual LoS, so AddMonster (above, on
+	// enc) already auto-transitioned to TURN_BASED before the round-trip;
+	// enc2 inherits that mode. An explicit SetMode here would be redundant
+	// and error.
 	s.driveAttackFromRogue(enc2)
 
 	s.Require().Positive(spy.calls)

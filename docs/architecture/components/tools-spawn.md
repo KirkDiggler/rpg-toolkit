@@ -1,7 +1,7 @@
 ---
 name: tools/spawn module
 description: 4-phase entity spawn engine — selection, patterns, constraints, environment integration (toolkit-internal; not directly imported by rpg-api)
-updated: 2026-05-04
+updated: 2026-07-13
 confidence: medium-high — verified by reading go.mod and test file names; logic verified through quality.md first-pass; consumer view per audit 049
 ---
 
@@ -55,11 +55,33 @@ basic engine integration tests. This is the primary quality gap.
 - Room scaling based on actual entity count
 - Split-room recommendations when capacity is exceeded
 
+## Spatial wiring (rpg-toolkit#757)
+
+`getRoomFromSpatial` and `placeEntityInRoom` were both literal Phase-1 stubs:
+the first unconditionally returned `"spatial integration not implemented"`,
+the second silently discarded the entity without ever calling
+`room.PlaceEntity` — so even a caller that worked around the first stub would
+get a `SpawnResult` reporting success with nothing actually placed in the
+room. Both are now real: `BasicSpawnEngineConfig.RoomOrchestrator` resolves
+room IDs via `RoomOrchestrator.GetRoom`, and `placeEntityInRoom` calls
+`room.PlaceEntity`. `PopulateRoom`'s existing patterns (scattered, formation,
+team-based, player-choice, clustered) now actually occupy a registered room
+end to end — see `room_wiring_test.go`.
+
+`findValidPosition` (the no-constraints position-picking path) remains a
+Phase-1 stub: it returns a uniform-random `Position` within a hardcoded
+0–10 range, ignoring the room's actual dimensions and never checking for
+walls/occupancy. `findValidPositionWithConstraints` (used whenever
+`SpatialRules` are non-empty) is the real, room-aware path via
+`ConstraintSolver.FindValidPositions`. A caller that needs correct placement
+against non-trivial room geometry should supply `SpatialRules`, not rely on
+the constraint-free scattered default.
+
 ## go.mod status
 
 Clean. Uses published versions:
-- `tools/spatial v0.2.1`
-- `tools/environments v0.1.2`
+- `tools/spatial v0.5.0`
+- `tools/environments v0.4.2`
 
 No replace directives. This is the cleanest dependency chain in the tools layer.
 
@@ -67,6 +89,7 @@ No replace directives. This is the cleanest dependency chain in the tools layer.
 
 - `spawning_patterns.go` and `capacity_analysis.go` have no standalone tests. A bug in formation logic would not be caught until it manifests in the encounter.
 - No documented behavior for spawning in gridless rooms — the spawn engine was designed with hex/square rooms in mind.
+- `findValidPosition`'s hardcoded-random-range stub (see above) — a real fix is unseeded scope, not part of #757.
 
 ## Verification
 

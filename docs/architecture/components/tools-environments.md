@@ -94,6 +94,21 @@ Clean. Published versions, no replace directives.
 - `graph_generator.go` is load-bearing but untested in isolation.
 - No test for `SelectablesTable` integration within environment generation (mentioned as "missing" in `quality.md`).
 - Large environments (100+ rooms) are not load-tested. Performance is extrapolated from small (4-8 room) tests.
+- **Wall placement is not hex-cell-snapped (found by rpg-toolkit#757, tracked as rpg-toolkit#758).**
+  `wall_patterns.go`'s `generateRandomWall`/`calculateWallPositions` place
+  `WallEntity` instances at continuous float positions (e.g. `X=3.7`) — the
+  generator was built assuming a continuous coordinate space, not discrete
+  hex cells, even when `QuickRoom` builds the room on a `spatial.HexGrid`.
+  A consumer that queries `room.CanPlaceEntity`/`IsLineOfSightBlocked` at
+  integer hex positions (as `encounter/core.Hex.ToPosition()` always does)
+  will essentially never collide with those fractional-position walls in the
+  room's position-keyed occupancy map — most generated walls would be
+  silently non-blocking for a hex-grid consumer. `encounter#757` works
+  around this at the call site (rounds wall positions to the nearest hex
+  cell before building the room it actually queries — see
+  [encounter.md](encounter.md#walled-rooms-wall-aware-los-and-inline-combat-entry-rpg-toolkit757));
+  the real fix belongs here, snapping wall placement to the grid's cells
+  when the room is hex-shaped.
 
 ## Verification
 

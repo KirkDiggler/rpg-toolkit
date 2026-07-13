@@ -69,8 +69,10 @@ func (s *ActionResolvedSuite) TearDownTest() {
 // A real TakeAction attack emits ActionResolved + AttackResolved + DamageDealt;
 // all three share one correlation id, the ActionResolved carries action_ref +
 // economy_consumed, and every event is stamped with the fixed clock time.
+// alice and the goblin start in mutual LoS, so SetupTest's AddMonster
+// already auto-transitioned the encounter to TURN_BASED; an explicit
+// SetMode here would be redundant and error.
 func (s *ActionResolvedSuite) TestTakeAction_EmitsCorrelatedResolvedAction() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != aliceEntityID {
 		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
