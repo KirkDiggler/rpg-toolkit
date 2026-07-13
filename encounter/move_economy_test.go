@@ -95,7 +95,7 @@ func (s *MoveEconomySuite) charliCharJSON() json.RawMessage {
 func (s *MoveEconomySuite) loadedEncounter() *encounter.Encounter {
 	s.T().Helper()
 	view := perception.NewView(moveEconPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10))
+	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
 	data := encounter.NewData("enc-move-econ")
 	data.Players[moveEconPlayerID] = &encounter.PlayerData{
 		ID:         moveEconPlayerID,
@@ -211,7 +211,7 @@ func (s *MoveEconomySuite) TestMove_PublishesTurnStateChangedAfterSuccessfulMove
 // the fix must not regress non-combat movement.
 func (s *MoveEconomySuite) TestMove_NotInCombat_SkipsEconomyEnforcement() {
 	view := perception.NewView(moveEconPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10))
+	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
 	data := encounter.NewData("enc-move-econ-free")
 	data.Players[moveEconPlayerID] = &encounter.PlayerData{
 		ID:         moveEconPlayerID,

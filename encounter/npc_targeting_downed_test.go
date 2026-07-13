@@ -90,7 +90,9 @@ func (s *NPCTargetingDownedSuite) TestScriptedPath_ClosestPlayer_NeverTargetsDow
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// The downed player is in LoS of the goblin, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 
 	for turn := 0; turn < 3; turn++ {
 		for enc.ActiveActor() != gobEntityID {
@@ -160,7 +162,9 @@ func (s *NPCTargetingDownedSuite) TestFullAIPath_BuildPerception_NeverTargetsDow
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// Both players are in LoS of the goblin, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 
 	for turn := 0; turn < 2; turn++ {
 		for enc.ActiveActor() != gobEntityID {

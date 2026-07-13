@@ -249,7 +249,7 @@ func (e *Encounter) applyNPCMovement(mon *MonsterData, movement []spatial.CubeCo
 	// encounter SDK's core.Hex path.
 	path := make([]encountercore.Hex, 0, len(movement))
 	for _, hop := range movement {
-		path = append(path, encountercore.Hex{Q: hop.X, R: hop.Y, S: hop.Z})
+		path = append(path, encountercore.HexFromCube(hop))
 	}
 	return e.applyNPCMovementSteps(mon, path)
 }
@@ -302,6 +302,13 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 	}
 	if len(path) == 0 {
 		return nil // No real movement — moving to where you already are.
+	}
+
+	// Wall-blocked movement (rpg-toolkit#757): same truncation as the player
+	// path — an NPC cannot walk through a wall either. Nil room is a no-op.
+	path = e.truncateAtWall(path)
+	if len(path) == 0 {
+		return nil // Blocked at the very first hex.
 	}
 
 	traveledPath := path
@@ -1028,7 +1035,7 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 // unconscious-target is deliberately NOT implemented here; the issue only
 // asks to skip dead/unconscious targets, not add that rule.
 func (e *Encounter) buildPerception(mon *MonsterData) *monster.PerceptionData {
-	pos := spatial.CubeCoordinate{X: mon.Position.Q, Y: mon.Position.R, Z: mon.Position.S}
+	pos := mon.Position.ToCube()
 	pd := &monster.PerceptionData{
 		MyPosition: pos,
 	}
@@ -1039,7 +1046,7 @@ func (e *Encounter) buildPerception(mon *MonsterData) *monster.PerceptionData {
 		dist := hexDistance(mon.Position, p.View.Position)
 		pd.Enemies = append(pd.Enemies, monster.PerceivedEntity{
 			Entity:   &playerEntity{id: string(p.EntityID), name: string(p.ID)},
-			Position: spatial.CubeCoordinate{X: p.View.Position.Q, Y: p.View.Position.R, Z: p.View.Position.S},
+			Position: p.View.Position.ToCube(),
 			Distance: dist,
 			Adjacent: dist == 1,
 			HP:       p.HP,

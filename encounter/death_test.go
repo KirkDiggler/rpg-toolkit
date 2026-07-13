@@ -103,7 +103,9 @@ func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Enco
 	s.bobSub, err = s.broker.Subscribe(encID, "bob")
 	s.Require().NoError(err)
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice/bob are in mutual LoS of the goblin, so AddMonster (above)
+	// already auto-transitioned to TURN_BASED; an explicit SetMode here
+	// would be redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -178,17 +180,15 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 	encID := core.EncounterID("enc-death-3")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
-	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: aliceEntityID,
-		Position: core.Hex{}, SightRange: 10,
-		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
-		DamageDice: damage1d8plus2, DamageType: damageSlashing,
-	}))
-	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "bob", EntityID: bobEntityID,
-		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
-		HP: 10, MaxHP: 10, AC: 13,
-	}))
+	// Both monsters are added BEFORE any player: AddMonster's combat-entry
+	// check no-ops while Players is empty, and AddPlayer never triggers the
+	// check itself. This keeps the encounter FreeRoam through setup so the
+	// explicit SetMode below rolls initiative with all four combatants
+	// present — adding a player before the second goblin would auto-enter
+	// combat on the first AddMonster call and silently drop goblin-2 from
+	// Initiative (rollInitiative only sees combatants present at that
+	// moment).
+	//
 	// Two goblins; goblin-1 has 1 HP (instakill target), goblin-2 has 7.
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
@@ -199,6 +199,17 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 		ID: gob2EntityID, Position: core.Hex{Q: 2, R: 0, S: -2},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: damage1d8plus2, DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "bob", EntityID: bobEntityID,
+		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
+		HP: 10, MaxHP: 10, AC: 13,
 	}))
 
 	var err error
@@ -244,12 +255,12 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 	encID := core.EncounterID("enc-death-4")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
-	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: aliceEntityID,
-		Position: core.Hex{}, SightRange: 10,
-		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
-		DamageDice: damage1d8plus2, DamageType: damageSlashing,
-	}))
+	// Both monsters added BEFORE the player, same reasoning as
+	// TestSlice_OneOfTwoMonstersDies_EncounterContinues: this test needs
+	// goblin-2 in Initiative to prove EndTurn skips the dead goblin rather
+	// than landing on it, and adding alice before goblin-2 would auto-enter
+	// combat on the first AddMonster call, dropping goblin-2 from the
+	// initiative roll entirely.
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 1, MaxHP: 7, AC: 15, Speed: 6,
@@ -259,6 +270,12 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 		ID: gob2EntityID, Position: core.Hex{Q: 2, R: 0, S: -2},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: damage1d8plus2, DamageType: damageSlashing,
 	}))
 
 	var err error
@@ -319,7 +336,9 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 	s.bobSub, err = s.broker.Subscribe(encID, "bob")
 	s.Require().NoError(err)
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice is in LoS of the goblin (bob is far away and out of range), so
+	// AddMonster already auto-transitioned to TURN_BASED; an explicit
+	// SetMode here would be redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -366,7 +385,8 @@ func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	s.aliceSub, err = s.broker.Subscribe(encID, "alice")
 	s.Require().NoError(err)
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice is in LoS of the goblin, so AddMonster already auto-transitioned
+	// to TURN_BASED; an explicit SetMode here would be redundant and error.
 	// Cycle to the goblin's turn.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
@@ -480,7 +500,8 @@ func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 	s.aliceSub, err = s.broker.Subscribe(encID, "alice")
 	s.Require().NoError(err)
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice is in LoS of the goblin, so AddMonster already auto-transitioned
+	// to TURN_BASED; an explicit SetMode here would be redundant and error.
 	for enc.ActiveActor() != gobEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)

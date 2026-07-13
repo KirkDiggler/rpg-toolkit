@@ -338,6 +338,42 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	return nil
 }
 
+// checkCombatEntry evaluates whether any player currently has line of sight
+// to any monster and, if so and the encounter is still FREE_ROAM,
+// self-transitions to TURN_BASED by calling SetMode — the exact same
+// initiative-roll + ModeChanged/TurnStarted publish path SetMode already
+// runs for any other FreeRoam->TurnBased flip. This mirrors
+// checkEncounterEnd's self-transition at combat's other edge (death.go): the
+// toolkit owns both entry and exit of combat, not just exit.
+//
+// Called inline at the mutation sites (Move, AddMonster) — not a kicked
+// method — per Kirk's fork-1 call on the design doc: a forgotten kick call
+// silently never starts combat, which is a worse failure mode than a
+// redundant inline check.
+//
+// "Hostile" == "is a monster" for wave 1 — no faction model exists yet, so
+// every monster is a valid combat-entry trigger for every player.
+//
+// The mode gate at the top makes this idempotent: once TURN_BASED, repeated
+// Move/AddMonster calls short-circuit here without re-checking visibility or
+// re-rolling initiative.
+func (e *Encounter) checkCombatEntry() error {
+	if e.data.Mode != core.ModeFreeRoam {
+		return nil
+	}
+	if len(e.data.Players) == 0 || len(e.data.Monsters) == 0 {
+		return nil
+	}
+	for _, p := range e.data.Players {
+		for _, m := range e.data.Monsters {
+			if perception.CanSeeAt(p.View, m.Position, e.room) {
+				return e.SetMode(core.ModeTurnBased)
+			}
+		}
+	}
+	return nil
+}
+
 // EndTurn ends the active actor's turn and advances initiative. Returns
 // the new active actor's id and whether it is an NPC, so the orchestrator
 // can decide whether to call NPCAct next.
@@ -530,8 +566,8 @@ func (e *Encounter) publishAttackOutcome(
 	attackPerPlayer := make(map[core.PlayerID]events.AttackResolvedSlice)
 	damagePerPlayer := make(map[core.PlayerID]events.DamageDealtSlice)
 	for viewerID, viewer := range e.data.Players {
-		if !perception.CanSeeAt(viewer.View, attackerPos) &&
-			!perception.CanSeeAt(viewer.View, targetPos) {
+		if !perception.CanSeeAt(viewer.View, attackerPos, e.room) &&
+			!perception.CanSeeAt(viewer.View, targetPos, e.room) {
 			continue
 		}
 		actionPerPlayer[viewerID] = events.ActionResolvedSlice{Visible: true}

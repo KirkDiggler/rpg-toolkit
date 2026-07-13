@@ -233,8 +233,9 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 		DamageDice: dice1d6, DamageType: damagePiercing,
 	}))
 
-	// Start combat — alice must go first for the test to be deterministic.
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error. Cycle until alice is active for determinism.
 	for enc.ActiveActor() != "char-alice" {
 		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)

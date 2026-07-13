@@ -133,8 +133,10 @@ func (s *PhasedTakeActionSuite) SetupTest() {
 		HP: 10, MaxHP: 10, AC: 13, Speed: 30, AttackBonus: 4,
 		DamageDice: damage1d6plus1, DamageType: damageSlashing,
 	}))
-	// Initiative is random per-roll; tests cycle EndTurn until alice is active.
-	s.Require().NoError(s.enc.SetMode(encountercore.ModeTurnBased))
+	// alice/bob are in mutual LoS of the goblin, so AddMonster (above)
+	// already auto-transitioned to TURN_BASED; an explicit SetMode here
+	// would be redundant and error. Initiative is random per-roll; tests
+	// cycle EndTurn until alice is active.
 }
 
 // makeAliceActive cycles EndTurn until alice is the active actor.
@@ -269,7 +271,8 @@ func (s *PhasedTakeActionSuite) TestLegacyResolverFallback() {
 		HP: 10, MaxHP: 10, AC: 13, Speed: 30, AttackBonus: 4,
 		DamageDice: damage1d6plus1, DamageType: damageSlashing,
 	}))
-	s.Require().NoError(enc.SetMode(encountercore.ModeTurnBased))
+	// alice is in LoS of the goblin, so AddMonster already auto-transitioned
+	// to TURN_BASED; an explicit SetMode here would be redundant and error.
 	for i := 0; i < 5; i++ {
 		if enc.ActiveActor() == aliceEntityID {
 			break

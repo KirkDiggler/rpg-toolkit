@@ -154,7 +154,13 @@ func (s *EncounterEndConditionSweepSuite) loadRagingBarbVsGoblin(charJSON json.R
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(err)
 
-	s.Require().NoError(loaded.SetMode(encountercore.ModeTurnBased))
+	// bob and the goblin are in mutual LoS, so AddMonster (above, on enc)
+	// already auto-transitioned to TURN_BASED before the Data round-trip;
+	// loaded inherits that mode. An explicit SetMode here would be
+	// redundant and error. bob's DataJSON carries a pre-seeded
+	// ActionEconomy (simulating a barbarian already mid-encounter), so this
+	// fixture — unlike TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate
+	// — doesn't depend on SetMode's seedActorTurn call to populate economy.
 	for i := 0; loaded.ActiveActor() != encountercore.EntityID(bobEntityID) && i < 4; i++ {
 		_, _, err := loaded.EndTurn(s.ctx, loaded.ActiveActor())
 		s.Require().NoError(err)

@@ -246,7 +246,12 @@ func (s *TurnEconomyDownedSuite) TestDownedPlayerRevivedByNat20MidTurnStart_Rese
 	s.Require().NoError(err)
 	defer func() { _ = sub.Close() }()
 
-	s.Require().NoError(loaded.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster (above, on enc)
+	// already auto-transitioned to TURN_BASED before the Data round-trip;
+	// loaded inherits that mode. An explicit SetMode here would be
+	// redundant and error. alice's DataJSON carries a pre-seeded
+	// ActionEconomy (aliceAliveSeededCharDataJSON), so this fixture doesn't
+	// depend on SetMode's seedActorTurn call to populate her economy.
 	for loaded.ActiveActor() != gobEntityID {
 		_, _, endErr := loaded.EndTurn(s.ctx, loaded.ActiveActor())
 		s.Require().NoError(endErr)

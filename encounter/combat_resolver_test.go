@@ -84,7 +84,9 @@ func (s *CombatResolverWiringSuite) TestTakeAction_ErrNoCombatResolver() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
@@ -113,7 +115,9 @@ func (s *CombatResolverWiringSuite) TestTakeAction_UsesResolverOutcome() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)

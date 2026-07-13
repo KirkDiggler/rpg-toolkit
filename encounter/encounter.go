@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // OAReactionRef is the canonical reaction ref string for Opportunity Attack.
@@ -66,6 +67,15 @@ type Encounter struct {
 	// correctness loss (e.g. unsaved per-turn condition state). Nil when the
 	// last ToData synced cleanly. #689.
 	syncErr error
+
+	// room and roomOrchestrator are the encounter's spatial room, built by
+	// InitRoom (fresh encounter) or rebuildRoomFromData (LoadFromData) from
+	// data.Space. Transient — reconstructed on every New/LoadFromData call,
+	// exactly like bus and combatants, never serialized. Both remain nil for
+	// encounters with no room (data.Space == nil); every room-aware call
+	// site in this package nil-checks before using them.
+	room             spatial.Room
+	roomOrchestrator spatial.RoomOrchestrator
 }
 
 // Option configures an Encounter at construction.
@@ -282,6 +292,14 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	if err := e.hydrateCombatants(ctx); err != nil {
 		return nil, fmt.Errorf("hydrate combatants: %w", err)
 	}
+	if err := e.rebuildRoomFromData(); err != nil {
+		return nil, fmt.Errorf("rebuild room: %w", err)
+	}
+	// #757: catch up the active actor's turn seed when combat entry fired on
+	// an un-hydrated encounter (see seedActiveActorIfUnseeded's doc).
+	if err := e.seedActiveActorIfUnseeded(ctx); err != nil {
+		return nil, fmt.Errorf("seed active actor: %w", err)
+	}
 	return e, nil
 }
 
@@ -298,7 +316,7 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 		return fmt.Errorf("player %q already in encounter", input.PlayerID)
 	}
 	view := perception.NewView(input.PlayerID, input.Position, input.SightRange)
-	view.ApplyReveal(perception.VisibleHexesAt(input.Position, input.SightRange))
+	view.ApplyReveal(perception.VisibleHexesAt(input.Position, input.SightRange, e.room))
 
 	e.data.Players[input.PlayerID] = &PlayerData{
 		ID:          input.PlayerID,
@@ -357,7 +375,10 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 	if input.DamageDice != "" {
 		e.seedOAReadiness(input.ID)
 	}
-	return nil
+	// Combat-entry check (rpg-toolkit#757): a newly-added monster may already
+	// be visible to an existing player (e.g. spawned inside an already-open
+	// LoS), so this mutation site needs the same check as Move.
+	return e.checkCombatEntry()
 }
 
 // seedOAReadiness initialises an entity's readiness map (if needed) and
@@ -598,6 +619,18 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 
 	moverStart := p.View.Position
 
+	// Wall-blocked movement (rpg-toolkit#757): truncate the requested path at
+	// the first wall-occupied hex before ANY downstream cost/resolver logic
+	// sees it, so a blocked path is never partially budgeted or chain-run.
+	// Nil room (no SpaceData) is a no-op — pre-wave-1 unblocked movement.
+	path = e.truncateAtWall(path)
+	if len(path) == 0 {
+		// Blocked at the very first requested hex. Nothing to publish —
+		// position unchanged, no events fire, nothing spent. Mirrors the
+		// movementResolver's own "prevented at first step" early return below.
+		return nil
+	}
+
 	char := e.heldCharacter(p.EntityID)
 	tracksMovement := char != nil && char.InCombat()
 	if tracksMovement {
@@ -678,6 +711,14 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		if err := e.publishTurnStateChanged(p.EntityID, corrID); err != nil {
 			return fmt.Errorf("publish turn-state changed: %w", err)
 		}
+	}
+
+	// Combat-entry check (rpg-toolkit#757): the mover's view just updated,
+	// so this is a mutation site where a player-monster visibility pair can
+	// newly form. Runs after the MoveEvent/reveal/economy publishes above so
+	// a client sees "you moved" before "combat starts" (cause before effect).
+	if err := e.checkCombatEntry(); err != nil {
+		return err
 	}
 
 	return nil
@@ -846,7 +887,7 @@ func (e *Encounter) applyAndPublishMove(
 	//    - The reveal delta = (visible-from-new-position) MINUS (already-revealed).
 	//      Critical: if we apply the reveal first, the diff is always empty.
 	end := traveledPath[len(traveledPath)-1]
-	newVisible := perception.VisibleHexesAt(end, p.View.SightRange)
+	newVisible := perception.VisibleHexesAt(end, p.View.SightRange, e.room)
 	moverNewHexes := diffHexes(p.View.RevealedHexes, newVisible)
 
 	// 2. Mutate state: position, then apply the reveal delta we just computed.
@@ -881,7 +922,7 @@ func (e *Encounter) applyAndPublishMove(
 		}
 		// ProjectMove returns the visible set so we can pass it directly to
 		// ProjectVisibilityTransition without recomputing VisibleHexesAt.
-		moveSlice, revealSlice, visible := perception.ProjectMove(p.EntityID, traveledPath, other.View)
+		moveSlice, revealSlice, visible := perception.ProjectMove(p.EntityID, traveledPath, other.View, e.room)
 		if moveSlice != nil {
 			movePerPlayer[otherID] = *moveSlice
 		}
@@ -977,7 +1018,7 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 
 	for viewerID, viewer := range e.data.Players {
 		doorSlice, revealSlice := perception.ProjectDoorOpen(
-			doorID, door.Position, p.EntityID, viewer.View,
+			doorID, door.Position, p.EntityID, viewer.View, e.room,
 		)
 		if doorSlice != nil {
 			doorPerPlayer[viewerID] = *doorSlice

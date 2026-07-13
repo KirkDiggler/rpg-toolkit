@@ -3,6 +3,7 @@ package perception
 import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ProjectVisibilityTransition determines whether the mover entered or left the
@@ -98,11 +99,12 @@ func ProjectMove(
 	_ core.EntityID, // mover — reserved for future-slice entity-visibility
 	path []core.Hex,
 	viewer *View,
+	room spatial.Room,
 ) (moveSlice *events.MovePlayerSlice, revealSlice *events.HexRevealedSlice, visible core.HexSet) {
 	if viewer == nil || len(path) == 0 {
 		return nil, nil, make(core.HexSet)
 	}
-	visible = VisibleHexesAt(viewer.Position, viewer.SightRange)
+	visible = VisibleHexesAt(viewer.Position, viewer.SightRange, room)
 
 	var seen []core.Hex
 	for _, hex := range path {
@@ -135,11 +137,12 @@ func ProjectDoorOpen(
 	doorPos core.Hex,
 	_ core.EntityID, // openedBy — reserved for future-slice entity-visibility
 	viewer *View,
+	room spatial.Room,
 ) (doorSlice *events.DoorOpenedPlayerSlice, revealSlice *events.HexRevealedSlice) {
 	if viewer == nil {
 		return nil, nil
 	}
-	visible := VisibleHexesAt(viewer.Position, viewer.SightRange)
+	visible := VisibleHexesAt(viewer.Position, viewer.SightRange, room)
 	if !visible.Has(doorPos) {
 		return nil, nil
 	}

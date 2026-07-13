@@ -67,8 +67,8 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 
 	diedPerPlayer := make(map[core.PlayerID]events.EntityDiedSlice)
 	for viewerID, viewer := range e.data.Players {
-		seesDying := perception.CanSeeAt(viewer.View, dyingPos)
-		seesKiller := killerHasPos && perception.CanSeeAt(viewer.View, killerPos)
+		seesDying := perception.CanSeeAt(viewer.View, dyingPos, e.room)
+		seesKiller := killerHasPos && perception.CanSeeAt(viewer.View, killerPos, e.room)
 		if !seesDying && !seesKiller {
 			continue
 		}
@@ -130,8 +130,8 @@ func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) er
 		if viewerID == playerData.ID {
 			continue
 		}
-		seesDying := perception.CanSeeAt(viewer.View, dyingPos)
-		seesKiller := killerHasPos && perception.CanSeeAt(viewer.View, killerPos)
+		seesDying := perception.CanSeeAt(viewer.View, dyingPos, e.room)
+		seesKiller := killerHasPos && perception.CanSeeAt(viewer.View, killerPos, e.room)
 		if !seesDying && !seesKiller {
 			continue
 		}
@@ -348,7 +348,7 @@ func (e *Encounter) deathSaveAudience(p *PlayerData) map[core.PlayerID]events.En
 		if viewerID == p.ID {
 			continue
 		}
-		if perception.CanSeeAt(viewer.View, pos) {
+		if perception.CanSeeAt(viewer.View, pos, e.room) {
 			perPlayer[viewerID] = events.EntityStabilizedSlice{Visible: true}
 		}
 	}
@@ -369,7 +369,7 @@ func (e *Encounter) deathSaveRolledAudience(p *PlayerData) map[core.PlayerID]eve
 		if viewerID == p.ID {
 			continue
 		}
-		if perception.CanSeeAt(viewer.View, pos) {
+		if perception.CanSeeAt(viewer.View, pos, e.room) {
 			perPlayer[viewerID] = events.DeathSaveRolledSlice{Visible: true}
 		}
 	}

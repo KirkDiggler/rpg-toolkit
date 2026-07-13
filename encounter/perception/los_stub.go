@@ -1,6 +1,9 @@
 package perception
 
-import "github.com/KirkDiggler/rpg-toolkit/encounter/core"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
 
 // HexDistance is the cube-coordinate hex distance between two hexes.
 // Exported for use by the encounter package's verbs.
@@ -20,12 +23,17 @@ func HexDistance(a, b core.Hex) int {
 	return ds
 }
 
-// VisibleHexesAt returns the hexes within sightRange of from, including from.
+// VisibleHexesAt returns the hexes within sightRange of from, including from,
+// that are not wall-blocked from from.
 //
-// STUB: ignores walls, lighting, conditions. Replaced with real LoS in a
-// future slice.
-func VisibleHexesAt(from core.Hex, sightRange int) core.HexSet {
+// room is wall-aware LoS (Wave 1, rpg-toolkit#757): a hex within range is
+// excluded when room.IsLineOfSightBlocked reports a wall between from and
+// that hex. room may be nil — encounters with no SpaceData (pre-wave-1
+// fixtures, non-spatial encounters) get the original pure-radius behavior.
+// SightRange always caps distance regardless of room.
+func VisibleHexesAt(from core.Hex, sightRange int, room spatial.Room) core.HexSet {
 	out := make(core.HexSet)
+	fromPos := from.ToPosition()
 	for dq := -sightRange; dq <= sightRange; dq++ {
 		for dr := -sightRange; dr <= sightRange; dr++ {
 			ds := -dq - dr
@@ -34,20 +42,30 @@ func VisibleHexesAt(from core.Hex, sightRange int) core.HexSet {
 				continue
 			}
 			h := core.Hex{Q: from.Q + dq, R: from.R + dr, S: from.S + ds}
+			if room != nil && room.IsLineOfSightBlocked(fromPos, h.ToPosition()) {
+				continue
+			}
 			out[h] = struct{}{}
 		}
 	}
 	return out
 }
 
-// CanSeeAt reports whether a viewer can currently see the given hex,
-// using the stub LoS rules: a hex is visible iff it is within the
-// viewer's SightRange (cube distance). Returns false for a nil viewer.
-func CanSeeAt(viewer *View, target core.Hex) bool {
+// CanSeeAt reports whether a viewer can currently see the given hex: within
+// the viewer's SightRange (cube distance) AND, when room is non-nil, not
+// wall-blocked (room.IsLineOfSightBlocked). Returns false for a nil viewer.
+// room may be nil for the pre-wave-1 pure-radius behavior.
+func CanSeeAt(viewer *View, target core.Hex, room spatial.Room) bool {
 	if viewer == nil {
 		return false
 	}
-	return HexDistance(viewer.Position, target) <= viewer.SightRange
+	if HexDistance(viewer.Position, target) > viewer.SightRange {
+		return false
+	}
+	if room != nil && room.IsLineOfSightBlocked(viewer.Position.ToPosition(), target.ToPosition()) {
+		return false
+	}
+	return true
 }
 
 // HexNeighbors returns the six adjacent hexes (cube coords).

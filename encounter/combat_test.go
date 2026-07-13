@@ -92,37 +92,68 @@ func (s *CombatSuite) TearDownTest() {
 
 // SetMode flip to TURN_BASED rolls initiative, fires ModeChangedEvent +
 // TurnStartedEvent, and gates verbs on mode.
+// The shared s.enc fixture (SetupTest) has alice/bob/goblin in mutual LoS,
+// so AddMonster auto-transitions it to TURN_BASED before any test body runs.
+// This test verifies the FreeRoam->TurnBased flip itself, so it needs its
+// own encounter with no monster (checkCombatEntry no-ops with zero monsters)
+// to observe the actual FreeRoam starting state.
 func (s *CombatSuite) TestSetMode_FlipsAndPublishes() {
-	s.Equal(core.ModeFreeRoam, s.enc.Mode())
-	s.Equal(core.EntityID(""), s.enc.ActiveActor())
+	enc := encounter.New(context.Background(), "enc-mode-flip", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: "1d8+2", DamageType: damageSlashing,
+	}))
+	sub, err := s.broker.Subscribe(enc.ID(), "alice")
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
 
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
-	s.Equal(core.ModeTurnBased, s.enc.Mode())
-	s.NotEqual(core.EntityID(""), s.enc.ActiveActor())
+	s.Equal(core.ModeFreeRoam, enc.Mode())
+	s.Equal(core.EntityID(""), enc.ActiveActor())
 
-	seen := collectTypes(s.aliceSub, 500*time.Millisecond)
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.Equal(core.ModeTurnBased, enc.Mode())
+	s.NotEqual(core.EntityID(""), enc.ActiveActor())
+
+	seen := collectTypes(sub, 500*time.Millisecond)
 	s.Contains(seen, "*events.ModeChangedEvent")
 	s.Contains(seen, "*events.TurnStartedEvent")
 }
 
-// SetMode rejects redundant flips.
+// SetMode rejects redundant flips. Own monster-less encounter for the same
+// reason as TestSetMode_FlipsAndPublishes: the shared fixture is already
+// TURN_BASED by the time this test body runs.
 func (s *CombatSuite) TestSetMode_RejectsRedundant() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
-	s.Error(s.enc.SetMode(core.ModeTurnBased))
+	enc := encounter.New(context.Background(), "enc-mode-redundant", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+	}))
+	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	s.Error(enc.SetMode(core.ModeTurnBased))
 }
 
-// TakeAction in FreeRoam mode returns ErrNotTurnBased.
+// TakeAction in FreeRoam mode returns ErrNotTurnBased. Own monster-less
+// encounter so the fixture stays FreeRoam (the shared s.enc is already
+// TURN_BASED by setup time); TakeAction's mode gate fires before any target
+// lookup, so no monster needs to exist for this assertion.
 func (s *CombatSuite) TestTakeAction_RejectedOutsideTurnBased() {
-	err := s.enc.TakeAction("alice",
+	enc := encounter.New(context.Background(), "enc-mode-notb", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+	}))
+	err := enc.TakeAction("alice",
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
 		encounter.ActionTarget{EntityID: gobEntityID},
 	)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
-// TakeAction by a non-active player returns ErrNotYourTurn.
+// TakeAction by a non-active player returns ErrNotYourTurn. s.enc is
+// already TURN_BASED by SetupTest (alice/bob/goblin start in mutual LoS).
 func (s *CombatSuite) TestTakeAction_RejectedWhenNotYourTurn() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	active := s.enc.ActiveActor()
 	// Find the OTHER player and try to act.
 	var attackerID core.PlayerID
@@ -139,8 +170,8 @@ func (s *CombatSuite) TestTakeAction_RejectedWhenNotYourTurn() {
 }
 
 // TakeAction with an unknown action ref returns ErrUnsupportedAction.
+// s.enc is already TURN_BASED by SetupTest.
 func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	active := s.enc.ActiveActor()
 	playerID := s.playerIDFor(active)
 	if playerID == "" {
@@ -162,8 +193,9 @@ func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
 
 // TakeAction publishes AttackResolvedEvent (always); on hit a
 // DamageDealtEvent rides alongside.
+// s.enc is already TURN_BASED by SetupTest (alice/bob/goblin start in
+// mutual LoS, auto-triggering combat entry at AddMonster time).
 func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != aliceEntityID {
 		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
@@ -206,7 +238,9 @@ func (s *CombatSuite) TestTakeAction_PublishesAdvantageDisadvantageOnAttackResol
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
@@ -261,7 +295,9 @@ func (s *CombatSuite) TestTakeAction_RejectsNonCombatant() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, err := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(err)
@@ -318,7 +354,10 @@ func (s *CombatSuite) TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate() {
 	)
 	s.Require().NoError(err)
 
-	s.Require().NoError(loaded.SetMode(core.ModeTurnBased))
+	// AddMonster auto-transitioned to TURN_BASED (mutual LoS, #757) back on
+	// the pre-round-trip encounter; LoadFromData's catch-up seeded the active
+	// actor's economy (the seed was structurally impossible at the flip —
+	// nothing was hydrated yet).
 	for loaded.ActiveActor() != aliceEntityID {
 		_, _, endErr := loaded.EndTurn(context.Background(), loaded.ActiveActor())
 		s.Require().NoError(endErr)
@@ -360,7 +399,9 @@ func (s *CombatSuite) TestTakeAction_DataJSONWithoutLoadFromData_StillRejected()
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
 	}))
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice and the goblin are in mutual LoS, so AddMonster already
+	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
+	// redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -373,9 +414,9 @@ func (s *CombatSuite) TestTakeAction_DataJSONWithoutLoadFromData_StillRejected()
 	s.ErrorIs(err, encounter.ErrNonCombatant, "DataJSON alone (no LoadFromData round-trip) must not satisfy the gate")
 }
 
-// EndTurn publishes TurnEnded + TurnStarted; rotates Initiative.
+// EndTurn publishes TurnEnded + TurnStarted; rotates Initiative. s.enc is
+// already TURN_BASED by SetupTest.
 func (s *CombatSuite) TestEndTurn_AdvancesInitiative() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	first := s.enc.ActiveActor()
 	drainSub(s.aliceSub, 100*time.Millisecond)
 	drainSub(s.bobSub, 100*time.Millisecond)
@@ -390,9 +431,9 @@ func (s *CombatSuite) TestEndTurn_AdvancesInitiative() {
 	s.Contains(seen, "*events.TurnStartedEvent")
 }
 
-// EndTurn called by a non-active actor errors with ErrNotYourTurn.
+// EndTurn called by a non-active actor errors with ErrNotYourTurn. s.enc is
+// already TURN_BASED by SetupTest.
 func (s *CombatSuite) TestEndTurn_RejectsWrongActor() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	active := s.enc.ActiveActor()
 	other := core.EntityID(aliceEntityID)
 	if active == aliceEntityID {
@@ -402,9 +443,16 @@ func (s *CombatSuite) TestEndTurn_RejectsWrongActor() {
 	s.ErrorIs(err, encounter.ErrNotYourTurn)
 }
 
-// EndTurn outside TURN_BASED returns ErrNotTurnBased.
+// EndTurn outside TURN_BASED returns ErrNotTurnBased. Own monster-less
+// encounter so the fixture stays FreeRoam (the shared s.enc is already
+// TURN_BASED by setup time).
 func (s *CombatSuite) TestEndTurn_RequiresTurnBased() {
-	_, _, err := s.enc.EndTurn(context.Background(), aliceEntityID)
+	enc := encounter.New(context.Background(), "enc-mode-endturn-notb", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+	}))
+	_, _, err := enc.EndTurn(context.Background(), aliceEntityID)
 	s.ErrorIs(err, encounter.ErrNotTurnBased)
 }
 
@@ -424,8 +472,8 @@ func (s *CombatSuite) TestEndTurn_GuardsEmptyInitiative() {
 
 // NPCAct (scripted path — no DataJSON) emits an attack event when a
 // player is reachable.
+// s.enc is already TURN_BASED by SetupTest.
 func (s *CombatSuite) TestNPCAct_ScriptedAttackPublishes() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	for s.enc.ActiveActor() != gobEntityID {
 		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
@@ -470,7 +518,9 @@ func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
 	s.Require().NoError(err)
 	defer func() { _ = farBobSub.Close() }()
 
-	s.Require().NoError(enc.SetMode(core.ModeTurnBased))
+	// alice is in LoS of gob2 (bob is far away and out of range), so
+	// AddMonster already auto-transitioned to TURN_BASED; an explicit
+	// SetMode here would be redundant and error.
 	for enc.ActiveActor() != aliceEntityID {
 		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
 		s.Require().NoError(endErr)
@@ -498,9 +548,9 @@ func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
 	s.Nil(bobEvent, "bob is out of LoS; no AttackResolvedEvent should be delivered")
 }
 
-// MonsterData round-trips through ToData / LoadFromData.
+// MonsterData round-trips through ToData / LoadFromData. s.enc is already
+// TURN_BASED by SetupTest.
 func (s *CombatSuite) TestMonsterData_RoundTrips() {
-	s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	persisted := s.enc.ToData()
 	s.Require().Contains(persisted.Monsters, core.EntityID(gobEntityID))
 
