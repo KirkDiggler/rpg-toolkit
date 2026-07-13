@@ -6,6 +6,7 @@ package encounter_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -113,6 +114,25 @@ func (s *SpaceSuite) TestMove_BlockedByWall_TruncatesAtFirstBlockedHex() {
 
 	after := enc.ToData().Players["alice"].View.Position
 	s.Equal(start, after, "player must not have moved onto the wall hex")
+}
+
+// TestInitRoom_DimensionsThatPreviouslyCollided covers the actual reported
+// blocker directly (not just a hand-built proxy): before snapshotWalls
+// deduped by rounded cube coordinate, environments.QuickRoom's own wall
+// generator produced discretized wall hexes that rounded to the same cell at
+// several width/height combinations — gate review on PR #759 deterministically
+// reproduced failures at 5x20, 7x15, and 20x15 (22 of 512 dimension pairs
+// probed failed); 10x10, used by every other test in this file, happens not
+// to collide. InitRoom must succeed at dimension pairs that DID collide
+// pre-fix.
+func (s *SpaceSuite) TestInitRoom_DimensionsThatPreviouslyCollided() {
+	for _, dims := range [][2]int{{5, 20}, {7, 15}, {20, 15}} {
+		id := core.EncounterID(fmt.Sprintf("enc-space-collide-%dx%d", dims[0], dims[1]))
+		enc := encounter.New(context.Background(), id, s.broker)
+		err := enc.InitRoom(dims[0], dims[1], environments.PatternRandom)
+		s.Require().NoError(err, "InitRoom(%d,%d) must not fail on duplicate rounded wall cells", dims[0], dims[1])
+		s.Require().NotNil(enc.Room())
+	}
 }
 
 // TestLoadFromData_DuplicateWallEntries_Tolerated covers the Copilot catch on
