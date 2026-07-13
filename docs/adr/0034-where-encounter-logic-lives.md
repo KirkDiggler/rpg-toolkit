@@ -277,3 +277,22 @@ composable foundation.
 - rpg-toolkit#699 (merged as PR #729, 2026-07-04) — the turn-start revival that
   fully orphaned the fossil.
 - rpg-project#75 — the chapter ledger tracking this decision.
+
+### Amendment (2026-07-13): #757 executes part of this ADR's intent early, without the module split
+
+"The walled room" (rpg-toolkit#757) gives `encounter` a real dependency on
+`tools/spatial` + `tools/environments` (`Data.Space`, wall-aware LoS,
+wall-blocked movement — see
+[encounter.md](architecture/components/encounter.md#walled-rooms-wall-aware-los-and-inline-combat-entry-rpg-toolkit757)).
+This is directionally what "Primitives out: ... fold `encounter/core` hex
+into `tools/spatial`" describes above, but it is **not** that migration:
+`encounter/core.Hex` still exists as its own type (bridged to
+`spatial.CubeCoordinate`/`spatial.Position` via new converter methods, not
+replaced by them), `encounter/go.mod` is untouched as a module boundary, and
+none of the migration sketch's other steps (rulebook-coupled files moving to
+`rulebooks/dnd5e/encounter`, `broker`/`eventspine`/`tools/perception`
+extraction, rpg-api import rewrite) happened. The timing gate above ("starts
+only after Beat 2's playtest + retro close... never mid-wave") still governs
+the actual split — this PR only adds a new downward dependency edge the
+split will eventually have to account for, it doesn't pull the split
+forward.

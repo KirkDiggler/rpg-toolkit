@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit quality scorecard
 description: Per-module grade with rationale — graded from code read, test run, and go.mod inspection 2026-05-02
-updated: 2026-05-14
-confidence: medium — first-pass grades from read-through and live test run; Wave 2.11d grades from shipped-code verification; no coverage tooling run
+updated: 2026-07-13
+confidence: medium — first-pass grades from read-through and live test run; Wave 2.11d grades from shipped-code verification; rpg-toolkit#757 (encounter, tools/spawn) verified against shipped code 2026-07-13; no coverage tooling run
 ---
 
 # Quality scorecard
@@ -63,14 +63,17 @@ Subpackages (unchanged from slice 1):
 
 - `encounter/core` — identity primitives (EncounterID, PlayerID, EntityID)
   + spatial primitives (Hex, HexSet) with custom `HexSet` JSON (struct map
-  keys can't serialize via the default codec). Hex/HexSet may move to
-  `tools/spatial` in a future slice.
+  keys can't serialize via the default codec). Since rpg-toolkit#757, `core`
+  depends on `tools/spatial` for the `Hex.ToCube`/`ToPosition` bridge
+  (field-rename to `CubeCoordinate`; offset-coordinate bridge to `Position`).
 - `encounter/events` — concrete events (Move, HexRevealed, DoorOpened,
   Wave 2.11d adds `InputRequiredDelivered`), each with
   `MarshalJSON`/`UnmarshalJSON` so unexported `encID`/`seq` round-trip
   cleanly. Also holds `AudienceSet` (event-routing concept).
-- `encounter/perception` — pure `ProjectMove`/`ProjectDoorOpen` over
-  Manhattan-radius stub LoS.
+- `encounter/perception` — pure `ProjectMove`/`ProjectDoorOpen`. Since
+  rpg-toolkit#757, `VisibleHexesAt`/`CanSeeAt` take a `room spatial.Room` and
+  are wall-aware when one is supplied (nil room = the original Manhattan-radius
+  stub, unchanged — the fallback for every encounter with no `Data.Space`).
 - `encounter` (top-level) — Encounter aggregate, Broker (with `sync.WaitGroup`
   for clean shutdown — no double-close races), Transport, InMemoryTransport,
   JSON codec, **Wave 2.11d** combat orchestration (combat.go,
@@ -86,6 +89,19 @@ meaningful architectural surface addition that lifts the module above
 on `PendingReactionPrompt.AttackContextJSON` (issue #657 — SDK trusts
 host to populate the bytes; resolver-supplied serializer would close it)
 and by no coverage tooling run yet.
+
+**rpg-toolkit#757 (the walled room, 2026-07-13) adds `Data.Space`, wall-aware
+LoS/movement, and inline combat-entry self-transition** — see
+[encounter.md](architecture/components/encounter.md#walled-rooms-wall-aware-los-and-inline-combat-entry-rpg-toolkit757).
+Caught and fixed during implementation: `environments`' wall generator places
+walls at continuous (non-hex-snapped) positions, which would have made most
+`environments.QuickRoom`-generated walls silently non-blocking against this
+package's integer-hex LoS/movement checks — worth flagging here since it's
+exactly the kind of cross-module assumption mismatch that doesn't show up
+until two modules are actually wired together, not from reading either one
+in isolation. Grade unchanged (B+) — the new surface is well-tested
+(`space_test.go`, `combat_entry_test.go`, `perception/room_los_test.go`,
+`core/core_test.go`) but doesn't change what's holding the module back from A.
 
 ### events — B+
 
@@ -213,12 +229,20 @@ distribution (all zero, single item, overflow).
 ### tools/spawn — B
 
 All four spawn phases (basic engine, advanced patterns, constraints, environment
-integration) are tested. `basic_engine_test.go`, `constraints_test.go`, and
-`environment_integration_test.go` all pass. The module depends on
-`tools/spatial v0.2.1` and `tools/environments v0.1.2` — these are published
-versions with no replace directives. Clean go.mod. Grade held at B because
+integration) are tested. `basic_engine_test.go`, `constraints_test.go`,
+`environment_integration_test.go`, and (new, rpg-toolkit#757) `room_wiring_test.go`
+all pass. The module depends on `tools/spatial v0.5.0` and
+`tools/environments v0.4.2` — these are published versions with no replace
+directives. Clean go.mod. Grade held at B: `getRoomFromSpatial` and
+`placeEntityInRoom` were both literal stubs — the second silently discarded
+every entity without calling `room.PlaceEntity`, so a caller could get
+`SpawnResult.Success == true` with nothing actually placed — fixed in #757 via
+a new `BasicSpawnEngineConfig.RoomOrchestrator` field, but
 `spawning_patterns.go` (formation, team, clustered) and `capacity_analysis.go`
-have no standalone tests; they are exercised through the engine.
+still have no standalone tests, and `findValidPosition` (the no-constraints
+position-picking path) is still a stub that returns a hardcoded 0–10 random
+range ignoring the room's actual dimensions — see
+[tools-spawn.md](architecture/components/tools-spawn.md#spatial-wiring-rpg-toolkit757).
 
 ---
 
