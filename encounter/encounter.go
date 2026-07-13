@@ -375,6 +375,18 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 	if input.DamageDice != "" {
 		e.seedOAReadiness(input.ID)
 	}
+	// A monster added while combat is already running joins the initiative
+	// order — appended to the end, acting last in the round (the common
+	// reinforcement house rule; a full mid-round initiative roll + insertion
+	// is a future refinement). Without this, sequential monster seeding
+	// (rpg-api's StartEncounter adds its goblins one AddMonster at a time)
+	// would strand every monster after the first visible one: checkCombatEntry
+	// below flips the mode on the FIRST visible add, and rollInitiative only
+	// includes combatants present at that moment (Copilot review, PR #759).
+	// Appending never disturbs ActiveIdx — existing turn order is untouched.
+	if e.data.Mode == core.ModeTurnBased {
+		e.data.Initiative = append(e.data.Initiative, input.ID)
+	}
 	// Combat-entry check (rpg-toolkit#757): a newly-added monster may already
 	// be visible to an existing player (e.g. spawned inside an already-open
 	// LoS), so this mutation site needs the same check as Move.

@@ -115,6 +115,41 @@ func (s *SpaceSuite) TestMove_BlockedByWall_TruncatesAtFirstBlockedHex() {
 	s.Equal(start, after, "player must not have moved onto the wall hex")
 }
 
+// TestLoadFromData_DuplicateWallEntries_Tolerated covers the Copilot catch on
+// PR #759: room.PlaceEntity rejects stacking a blocking entity on an occupied
+// hex, so a snapshot carrying two wall entries on the same cube coordinate
+// (hand-built, or written before snapshotWalls deduped) must not fail the
+// whole LoadFromData — the rebuild skips the duplicate and the wall still
+// blocks.
+func (s *SpaceSuite) TestLoadFromData_DuplicateWallEntries_Tolerated() {
+	// Hex{3,-5,2} = offset position (3,3) under pointy-top — safely inside
+	// the 10x10 grid with all its neighbors in-bounds too.
+	wallCube := core.Hex{Q: 3, R: -5, S: 2}.ToCube()
+	dupWall := environments.WallSegmentData{
+		Start: wallCube, End: wallCube, BlocksMovement: true, BlocksLoS: true,
+	}
+	data := encounter.NewData("enc-space-dup")
+	data.Space = &encounter.SpaceData{
+		Walls:  []environments.WallSegmentData{dupWall, dupWall},
+		Width:  10,
+		Height: 10,
+	}
+
+	reloaded, err := encounter.LoadFromData(context.Background(), data, s.broker)
+	s.Require().NoError(err, "duplicate wall entries must be skipped, not fail the load")
+	s.Require().NotNil(reloaded.Room())
+
+	wallHex := core.HexFromCube(wallCube)
+	start := perception.HexNeighbors(wallHex)[0]
+	s.Require().NoError(reloaded.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: start, SightRange: 10,
+	}))
+	s.Require().NoError(reloaded.Move("alice", []core.Hex{wallHex}))
+	s.Equal(start, reloaded.ToData().Players["alice"].View.Position,
+		"the deduplicated wall must still block movement")
+}
+
 func (s *SpaceSuite) TestMove_NilRoom_Unblocked() {
 	enc := encounter.New(context.Background(), "enc-space-nil-move", s.broker)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{

@@ -103,11 +103,16 @@ func (s *CombatEntrySuite) TestIdempotent_AddMonsterAndMoveAfterCombatStarted() 
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode())
 
 	// A second monster, also visible, must not error even though the
-	// encounter is already TURN_BASED.
+	// encounter is already TURN_BASED — and it must JOIN the running
+	// initiative (appended, acts last): rollInitiative only saw the
+	// combatants present at the flip, so without the append a sequentially
+	// seeded second goblin would never get a turn (Copilot review, PR #759).
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-2", Position: core.Hex{Q: 2, R: -2, S: 0}, HP: 7, MaxHP: 7,
 	}))
 	s.Equal(core.ModeTurnBased, s.enc.Mode())
+	s.Contains(s.enc.ToData().Initiative, core.EntityID("goblin-2"),
+		"late-added monster must be appended to the running initiative")
 
 	// A further move by the same player must not error either.
 	s.Require().NoError(s.enc.Move("alice", []core.Hex{{Q: 0, R: 1, S: -1}}))

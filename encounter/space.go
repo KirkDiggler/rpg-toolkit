@@ -58,17 +58,29 @@ func (e *Encounter) RoomOrchestrator() spatial.RoomOrchestrator { return e.roomO
 // discretized wall hex — see SpaceData.Walls doc. Positions are rounded to
 // the nearest integer hex cell before converting to cube coordinates — see
 // InitRoom's doc for why this matters (environments' wall generator doesn't
-// snap to hex cells on its own). Adjacent discretized wall entities from the
-// same original segment may round to the same cell; duplicate WallSegmentData
-// entries are harmless (rebuildRoomFromData just places two wall entities on
-// one hex), not deduplicated for wave 1's simplicity.
+// snap to hex cells on its own).
+//
+// Adjacent discretized wall entities from the same original segment can
+// round to the SAME cell, so entries are deduplicated by cube coordinate,
+// OR-merging the blocking flags. This is load-bearing, not tidiness:
+// rebuildRoomFromData places each entry via room.PlaceEntity, which rejects
+// placing a blocking entity onto an already-occupied hex — a duplicate entry
+// would make every InitRoom/LoadFromData of that snapshot fail (Copilot
+// review, PR #759).
 func snapshotWalls(room spatial.Room) []environments.WallSegmentData {
 	entities := environments.GetWallEntitiesInRoom(room)
 	walls := make([]environments.WallSegmentData, 0, len(entities))
+	seen := make(map[spatial.CubeCoordinate]int, len(entities))
 	for _, w := range entities {
 		pos := w.GetPosition()
 		rounded := spatial.Position{X: math.Round(pos.X), Y: math.Round(pos.Y)}
 		cube := spatial.OffsetCoordinateToCubeWithOrientation(rounded, spatial.HexOrientationPointyTop)
+		if i, dup := seen[cube]; dup {
+			walls[i].BlocksMovement = walls[i].BlocksMovement || w.BlocksMovement()
+			walls[i].BlocksLoS = walls[i].BlocksLoS || w.BlocksLineOfSight()
+			continue
+		}
+		seen[cube] = len(walls)
 		walls = append(walls, environments.WallSegmentData{
 			Start:          cube,
 			End:            cube,
@@ -114,7 +126,16 @@ func (e *Encounter) rebuildRoomFromData() error {
 		Type: "encounter_room",
 		Grid: grid,
 	})
+	placed := make(map[spatial.CubeCoordinate]struct{}, len(sd.Walls))
 	for i, w := range sd.Walls {
+		// snapshotWalls dedupes on write; this read-side skip additionally
+		// tolerates a hand-built or legacy snapshot carrying duplicates —
+		// PlaceEntity rejects stacking a blocking entity on an occupied hex,
+		// which would otherwise fail the whole load.
+		if _, dup := placed[w.Start]; dup {
+			continue
+		}
+		placed[w.Start] = struct{}{}
 		pos := w.Start.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 		entity := environments.NewWallEntity(environments.WallEntityConfig{
 			SegmentID: fmt.Sprintf("space-%d", i),
