@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-13
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13
+updated: 2026-07-15
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,39 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **Monster EntityAppeared/EntityDisappeared on player moves (rpg-toolkit#761,
+  2026-07-15).** Found in The Dungeon wave 1's closing playtest (rpg-api
+  #645): `checkCombatEntry` correctly detected a player-monster sightline and
+  flipped the encounter to `ModeTurnBased`, but nothing published
+  `EntityAppearedEvent` for the sighted monster, so no goblin sprite ever
+  appeared client-side even though combat started. `applyAndPublishMove`
+  already computed player-sees-player appear/disappear transitions via
+  `perception.ProjectMove` + `perception.ProjectVisibilityTransition`; a new
+  `Encounter.monsterVisibilityTransitions` (combat.go) reuses the identical
+  machinery for the player-sees-monster direction by modeling each stationary
+  monster as a synthetic, non-moving `perception.View` at the monster's own
+  position carrying the mover's sight range — valid because
+  `CanSeeAt`/`VisibleHexesAt`'s wall check treats the two compared positions
+  symmetrically for distances below 22 hexes on the current grid (bounded,
+  not unconditional: `HexGrid.lerpCube`'s `int()` truncation, tools/spatial
+  `hex_grid.go:528`, makes `GetLineOfSight`'s interior-cell set diverge by
+  direction starting at 22 hexes — a pre-existing gap, filed as a follow-up,
+  not fixed here). Wave 1 sight ranges max out at 10, well under that
+  boundary, but a future 120ft darkvision (24 hexes) would cross it. Wired
+  into `applyAndPublishMove`, not
+  `checkCombatEntry`: the latter's `ModeFreeRoam` gate exists to make
+  repeated `Move`/`AddMonster` calls idempotent for the *entry* transition
+  only, and would have silently stopped firing appear/disappear events for
+  the rest of the encounter the instant combat started — missing the
+  ongoing-combat case (a player losing sight of a monster mid-fight by
+  moving around a corner) this issue also covers. A monster's published
+  `Position`/last-known-hex is always its own fixed hex, never the transition
+  hex `ProjectVisibilityTransition` computes (that hex lives on the *player's*
+  path and is meaningless for where to draw a stationary entity). Scope: the
+  player-move side only — NPC-move-side transitions (`npc.go`'s simpler
+  visibility model) and populated `View.KnownEntities` remain future work,
+  same as before. See
+  [encounter.md](architecture/components/encounter.md#monster-visibility-events-rpg-toolkit761).
 - **Rage sustains on a missed attack** — PR for issue #755 (2026-07-12), found
   in the rage-sweep verification playtest. `RagingCondition.DidAttackThisTurn`
   was only set inside `onDamageChain`, which fires only on a hit — a raging

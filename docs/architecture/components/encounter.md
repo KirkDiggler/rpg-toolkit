@@ -379,6 +379,60 @@ the missed `seedActorTurn` and pushes a fresh `TurnStateChangedEvent`
 No `TurnStartedEvent` re-publish: the turn already started and was announced
 at the flip; the catch-up completes its seeding, it doesn't restart it.
 
+### Monster visibility events (rpg-toolkit#761)
+
+`checkCombatEntry` flips the encounter mode on a newly-formed player-monster
+sightline, but flipping the mode alone doesn't tell a client which monster it
+can now see — `EntityAppearedEvent`/`EntityDisappearedEvent` previously only
+fired for the player-sees-player direction (`applyAndPublishMove`, via
+`perception.ProjectMove` + `perception.ProjectVisibilityTransition`), so a
+goblin sighted by the same move that started combat never appeared
+client-side.
+
+`Encounter.monsterVisibilityTransitions` (combat.go) closes this by reusing
+that exact machinery for the player-sees-monster direction. Each stationary
+monster is modeled as a synthetic, non-moving `perception.View` at the
+monster's own position, carrying the moving player's own sight range — so
+"can the player see monster M" and "can a stationary viewer at M's hex, with
+the player's sight range, see the player" evaluate identically, the same
+predicate `checkCombatEntry` already uses via `perception.CanSeeAt(player,
+monster)`.
+
+This substitution's validity is **bounded, not unconditional**:
+`CanSeeAt`/`VisibleHexesAt`'s wall check treats the two compared positions
+symmetrically only for distances below 22 hexes on the current grid.
+`HexGrid.lerpCube` (`tools/spatial/hex_grid.go:528`) truncates its
+interpolated cube coordinates with `int()` instead of rounding, so
+`GetLineOfSight`'s interior-cell set for A→B and B→A starts to diverge at
+distance 22 hexes (concrete counterexample: player `{0,0,0}`, monster
+`{9,-22,13}`, wall `{6,-14,8}` — one direction is blocked, the reverse
+isn't). Wave 1's sight ranges max out at 10, well inside the safe zone, so
+this cannot manifest today — but a future sense with range ≥22 hexes (e.g.
+120ft darkvision = 24 hexes) would cross the boundary. The `lerpCube`
+truncation is a pre-existing gap tracked as a follow-up issue; it was not
+fixed as part of #761.
+
+Wired into `applyAndPublishMove`, immediately after the existing
+player-sees-player transition loop — not into `checkCombatEntry` — because
+`checkCombatEntry`'s `ModeFreeRoam` gate exists to make repeated
+`Move`/`AddMonster` calls idempotent for the *entry* transition only.
+Detecting monster visibility there would silently stop firing
+appear/disappear events for the rest of the encounter the moment combat
+started, missing the ongoing-combat case (a player losing sight of a monster
+mid-fight by moving around a corner) this issue also needs covered.
+`applyAndPublishMove` runs on every `Move` regardless of mode, so it's the
+correct home for a general per-move visibility diff.
+
+One difference from the player-sees-player case: a monster's published
+`Position` (appeared) / last-known hex (disappeared) is always its own fixed
+hex, never the transition hex `ProjectVisibilityTransition` computes — that
+hex lives on the *player's* path (where the player crossed into or out of
+range) and is meaningless for where to draw an entity that never moved.
+
+Scope: player-move side only. `npc.go`'s simpler NPC-move visibility model
+and populated `View.KnownEntities` remain future work, unchanged by this
+issue.
+
 ## Implementation notes worth keeping
 
 Three lessons surfaced while building slice 1 that are likely to bite future toolkit work:

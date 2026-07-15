@@ -374,6 +374,60 @@ func (e *Encounter) checkCombatEntry() error {
 	return nil
 }
 
+// monsterVisibilityTransitions detects which monsters newly entered or left
+// a single moving player's line of sight during a move (rpg-toolkit#761),
+// reusing the exact machinery applyAndPublishMove already uses to detect
+// OTHER PLAYERS' visibility of the mover (perception.ProjectMove +
+// perception.ProjectVisibilityTransition), rather than re-deriving a
+// parallel appear/disappear predicate.
+//
+// Monsters are stationary, so each monster is modeled as a synthetic,
+// non-moving *perception.View at the monster's own position, carrying the
+// MOVING PLAYER's own sight range. This substitution requires
+// perception.CanSeeAt/VisibleHexesAt's wall check to treat the two compared
+// positions symmetrically — true on the current grid, but BOUNDED, not
+// unconditional: HexGrid.lerpCube (tools/spatial/hex_grid.go:528) truncates
+// its interpolated cube coordinates with int() instead of rounding, so
+// GetLineOfSight's interior-cell set for A->B and B->A starts to diverge at
+// distance 22 hexes (concrete counterexample: player {0,0,0}, monster
+// {9,-22,13}, wall {6,-14,8} — CanSeeAt(player->monster) is blocked, the
+// reverse direction is not). Symmetry holds for every distance below 22
+// hexes on the current grid. Wave 1's sight ranges max out at 10, so
+// asymmetry cannot manifest here — but this is NOT a general guarantee: a
+// future sense with range >=22 hexes (e.g. 120ft darkvision = 24 hexes)
+// would cross the boundary and needs the lerpCube truncation fixed (tracked
+// as a follow-up issue), not another workaround at this call site.
+//
+// Returns the monsters that newly appeared / disappeared to the mover.
+// Unlike the player-sees-player case, callers should NOT use the transition
+// hex ProjectVisibilityTransition computes as the event's Position: that hex
+// lives on the MOVING PLAYER's path (it's where the player crossed into or
+// out of the monster's effective range), which is meaningless for where to
+// draw a monster that never moved. A monster's Position is always its own
+// fixed hex — see applyAndPublishMove's publish loop.
+func (e *Encounter) monsterVisibilityTransitions(
+	moverID core.EntityID, sightRange int, moverStart core.Hex, traveledPath []core.Hex,
+) (appeared, disappeared []*MonsterData) {
+	for _, m := range e.data.Monsters {
+		synthetic := &perception.View{Position: m.Position, SightRange: sightRange}
+		moveSlice, _, visible := perception.ProjectMove(moverID, traveledPath, synthetic, e.room)
+		var seenSegments []core.Hex
+		if moveSlice != nil {
+			seenSegments = moveSlice.SeenSegments
+		}
+		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(
+			moverStart, traveledPath, seenSegments, synthetic, visible,
+		)
+		if appearedAt != nil {
+			appeared = append(appeared, m)
+		}
+		if disappearedAt != nil {
+			disappeared = append(disappeared, m)
+		}
+	}
+	return appeared, disappeared
+}
+
 // EndTurn ends the active actor's turn and advances initiative. Returns
 // the new active actor's id and whether it is an NPC, so the orchestrator
 // can decide whether to call NPCAct next.
