@@ -1004,6 +1004,36 @@ func (e *Encounter) applyAndPublishMove(
 			return "", fmt.Errorf("publish entity disappeared: %w", err)
 		}
 	}
+
+	// Emit EntityAppeared/EntityDisappeared for MONSTERS whose visibility to
+	// playerID (the mover) changed during this move (rpg-toolkit#761).
+	// Published here — not from inside checkCombatEntry — because
+	// checkCombatEntry's mode gate short-circuits once the encounter has left
+	// FREE_ROAM (it exists to make repeated Move/AddMonster calls idempotent
+	// for the ENTRY transition only); wiring detection there would silently
+	// stop firing appear/disappear events for the rest of the encounter the
+	// moment combat starts, missing the ongoing-combat case (a player
+	// rounding a corner mid-fight) this issue also needs. applyAndPublishMove
+	// runs on every Move regardless of mode and already computes the
+	// identical player-sees-player transition just above, so the monster
+	// case is wired in right alongside it, sharing the same machinery.
+	monsterAppeared, monsterDisappeared := e.monsterVisibilityTransitions(p.View.SightRange, moverStart, traveledPath)
+	for _, m := range monsterAppeared {
+		if err := e.broker.Publish(events.NewEntityAppearedEvent(
+			e.data.ID, e.nextSeq(), m.ID, m.Position,
+			map[core.PlayerID]struct{}{playerID: {}},
+		)); err != nil {
+			return "", fmt.Errorf("publish monster appeared: %w", err)
+		}
+	}
+	for _, m := range monsterDisappeared {
+		if err := e.broker.Publish(events.NewEntityDisappearedEvent(
+			e.data.ID, e.nextSeq(), m.ID,
+			map[core.PlayerID]core.Hex{playerID: m.Position},
+		)); err != nil {
+			return "", fmt.Errorf("publish monster disappeared: %w", err)
+		}
+	}
 	return corrID, nil
 }
 
