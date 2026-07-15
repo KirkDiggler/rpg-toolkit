@@ -1017,7 +1017,9 @@ func (e *Encounter) applyAndPublishMove(
 	// runs on every Move regardless of mode and already computes the
 	// identical player-sees-player transition just above, so the monster
 	// case is wired in right alongside it, sharing the same machinery.
-	monsterAppeared, monsterDisappeared := e.monsterVisibilityTransitions(p.View.SightRange, moverStart, traveledPath)
+	monsterAppeared, monsterDisappeared := e.monsterVisibilityTransitions(
+		p.EntityID, p.View.SightRange, moverStart, traveledPath,
+	)
 	for _, m := range monsterAppeared {
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), m.ID, m.Position,

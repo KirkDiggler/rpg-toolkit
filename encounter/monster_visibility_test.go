@@ -93,31 +93,43 @@ func (s *MonsterVisibilitySuite) TestMoveIntoMonsterLOS_AppearsOnTheSameMoveThat
 }
 
 // TestMoveOutOfMonsterLOS_Disappears covers the mid-combat case: a monster
-// already visible (and already in TURN_BASED) that the player loses sight
-// of on a later move must fire EntityDisappearedEvent. This exercises the
-// path OUTSIDE checkCombatEntry's FREE_ROAM gate, proving detection isn't
-// tied to the entry transition.
+// the player has actually SEEN appear (not merely one that happened to be in
+// range when added — AddMonster flips the mode but does not itself publish
+// an EntityAppearedEvent) must fire EntityDisappearedEvent when a later move
+// takes the player out of range. This exercises the path OUTSIDE
+// checkCombatEntry's FREE_ROAM gate, proving detection isn't tied to the
+// entry transition.
 func (s *MonsterVisibilitySuite) TestMoveOutOfMonsterLOS_Disappears() {
+	// Alice starts out of the goblin's sight range (distance 10 > sight 4),
+	// so no combat entry and no appearance fire at setup time.
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
-		Position: core.Hex{Q: 2, R: 0, S: -2}, SightRange: 4,
+		Position: core.Hex{Q: 10, R: 0, S: -10}, SightRange: 4,
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
 	}))
-	s.Require().Equal(core.ModeTurnBased, s.enc.Mode(), "goblin visible at add time — combat starts immediately")
+	s.Require().Equal(core.ModeFreeRoam, s.enc.Mode(), "goblin out of LoS at add time")
 
-	// Drain the AddMonster-triggered events (appeared + mode change) before
-	// exercising the move under test.
-	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond)
-
-	// Alice moves away, out of the goblin's range (distance 10 > sight 4).
+	// Alice moves into range: this is the move that both triggers combat
+	// entry AND fires the goblin's EntityAppearedEvent (the scenario the
+	// other test in this suite pins in detail). Drain those events so this
+	// test can isolate the disappear behavior below.
 	path := []core.Hex{
+		{Q: 4, R: 0, S: -4}, // distance 4 — visible (edge)
+		{Q: 2, R: 0, S: -2}, // distance 2 — clearly visible
+	}
+	s.Require().NoError(s.enc.Move("alice", path))
+	s.Require().Equal(core.ModeTurnBased, s.enc.Mode(), "moving into LoS must have triggered combat entry")
+	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond) // drain appeared + mode-change events
+
+	// Now alice moves away, out of the goblin's range (distance 10 > sight 4).
+	outPath := []core.Hex{
 		{Q: 3, R: 0, S: -3},   // distance 3 — still visible
 		{Q: 4, R: 0, S: -4},   // distance 4 — still visible (edge)
 		{Q: 10, R: 0, S: -10}, // distance 10 — outside
 	}
-	s.Require().NoError(s.enc.Move("alice", path))
+	s.Require().NoError(s.enc.Move("alice", outPath))
 
 	aliceEvts := collectEventsTyped(s.aliceSub, 500*time.Millisecond)
 
@@ -145,7 +157,10 @@ func (s *MonsterVisibilitySuite) TestStaysVisible_NoAppearDisappearEvents() {
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
 	}))
-	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond) // drain AddMonster events
+	// AddMonster flips the mode (goblin is visible at add time) but does not
+	// itself publish an EntityAppearedEvent — drain the mode-change events
+	// only, so the assertions below are scoped to the move under test.
+	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond)
 
 	// Alice moves from Q=1 to Q=2, staying well inside sight range of the
 	// stationary goblin at the origin.

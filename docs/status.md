@@ -201,9 +201,15 @@ See "Paused / on hold" below.
   `Encounter.monsterVisibilityTransitions` (combat.go) reuses the identical
   machinery for the player-sees-monster direction by modeling each stationary
   monster as a synthetic, non-moving `perception.View` at the monster's own
-  position carrying the mover's sight range — legitimate because
-  `CanSeeAt`/`VisibleHexesAt`'s distance and wall checks are symmetric in the
-  two positions compared. Wired into `applyAndPublishMove`, not
+  position carrying the mover's sight range — valid because
+  `CanSeeAt`/`VisibleHexesAt`'s wall check treats the two compared positions
+  symmetrically for distances below 22 hexes on the current grid (bounded,
+  not unconditional: `HexGrid.lerpCube`'s `int()` truncation, tools/spatial
+  `hex_grid.go:528`, makes `GetLineOfSight`'s interior-cell set diverge by
+  direction starting at 22 hexes — a pre-existing gap, filed as a follow-up,
+  not fixed here). Wave 1 sight ranges max out at 10, well under that
+  boundary, but a future 120ft darkvision (24 hexes) would cross it. Wired
+  into `applyAndPublishMove`, not
   `checkCombatEntry`: the latter's `ModeFreeRoam` gate exists to make
   repeated `Move`/`AddMonster` calls idempotent for the *entry* transition
   only, and would have silently stopped firing appear/disappear events for
