@@ -208,7 +208,7 @@ See "Paused / on hold" below.
   rejects it), so this closes 100% of the toolkit's current encounter-end
   surface. rpg-api's `StartEncounter` backstop stays in place: the
   predicate is `len(data.Monsters)==0`, so a TPK (all players dead, monsters
-  alive) never reaches this sweep — tracked as a separate, pre-existing gap.
+  alive) never reaches this sweep — tracked as rpg-toolkit#772.
   Scoping `ActionEconomy` to an encounter ID (defense-in-depth against a
   *future* path forgetting to call `ExitCombat`) is deferred to a follow-up
   issue, not part of this fix. See
