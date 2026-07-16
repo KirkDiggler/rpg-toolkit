@@ -29,6 +29,7 @@ func (s *EventsSuite) TestConcretes_SatisfyInterface() {
 	var _ events.EncounterEvent = (*events.DamageDealtEvent)(nil)
 	var _ events.EncounterEvent = (*events.ConditionAppliedEvent)(nil)
 	var _ events.EncounterEvent = (*events.ModeChangedEvent)(nil)
+	var _ events.EncounterEvent = (*events.InitiativeRolledEvent)(nil)
 	var _ events.EncounterEvent = (*events.TurnStartedEvent)(nil)
 	var _ events.EncounterEvent = (*events.TurnEndedEvent)(nil)
 	var _ events.EncounterEvent = (*events.EntityDiedEvent)(nil)
@@ -422,6 +423,30 @@ func (s *EventsSuite) TestModeChangedEvent_JSONRoundTrip() {
 	s.Equal(core.ModeTurnBased, decoded.To)
 	s.Equal("ambush", decoded.Reason)
 	s.Len(decoded.PerPlayer, 2)
+}
+
+// InitiativeRolledEvent JSON round-trip — Order and PerPlayer survive
+// encoding, audience derives from PerPlayer keys.
+func (s *EventsSuite) TestInitiativeRolledEvent_JSONRoundTrip() {
+	original := events.NewInitiativeRolledEvent(
+		"enc-1", 15, []core.EntityID{"goblin-1", "char-alice", "char-bob"},
+		map[core.PlayerID]events.InitiativeRolledSlice{
+			"alice": {Visible: true},
+			"bob":   {Visible: true},
+		},
+	)
+	payload, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var decoded events.InitiativeRolledEvent
+	s.Require().NoError(json.Unmarshal(payload, &decoded))
+
+	s.Equal(core.EncounterID("enc-1"), decoded.EncounterID())
+	s.Equal(uint64(15), decoded.Sequence())
+	s.Equal([]core.EntityID{"goblin-1", "char-alice", "char-bob"}, decoded.Order)
+	s.Len(decoded.PerPlayer, 2)
+	s.True(decoded.PerPlayer["alice"].Visible)
+	s.ElementsMatch(events.AudienceSet{"alice", "bob"}, decoded.Audience())
 }
 
 // EntityDiedEvent JSON round-trip — KillerID and PerPlayer survive encoding,

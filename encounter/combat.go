@@ -278,7 +278,24 @@ type ActionTarget struct {
 // the round/active-idx are initialized.
 //
 // Publishes ModeChangedEvent in both directions; on the FreeRoam->TurnBased
-// flip also publishes a TurnStartedEvent for the first actor.
+// flip also publishes InitiativeRolledEvent (rpg-toolkit#765) and a
+// TurnStartedEvent for the first actor.
+//
+// Ordering contract for this transition: ModeChangedEvent ->
+// InitiativeRolledEvent -> TurnStartedEvent. ModeChanged is the cause (the
+// transition itself, matching the cause-before-effect ordering this SDK
+// applies everywhere else — e.g. Move/reveal published before the
+// combat-entry check that can trigger this very SetMode call);
+// InitiativeRolled and TurnStarted are both effects of that cause, but
+// InitiativeRolled comes first because it describes STATE the encounter is
+// now in (the full roster) while TurnStarted describes an ACTION the
+// encounter is now taking (announcing whose turn it is) — a client building
+// its combat-order UI wants the full roster in hand before it's told who's
+// first, not after. InitiativeRolled is published exactly once per
+// transition, not on every later per-turn TurnStartedEvent (EndTurn), since
+// the roster itself doesn't change turn to turn — pinned by
+// TestSetMode_InitiativeRolled_SequencedBetweenModeChangedAndTurnStarted and
+// TestEndTurn_DoesNotRepublishInitiativeRolled.
 func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	if mode == core.ModeUnspecified {
 		return errors.New("mode unspecified")
@@ -316,6 +333,29 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	}
 
 	if mode == core.ModeTurnBased && len(e.data.Initiative) > 0 {
+		// InitiativeRolledEvent (rpg-toolkit#765): published right after
+		// ModeChanged, before TurnStarted — see this method's doc comment for
+		// the full ordering rationale. Deletes the need for rpg-api's
+		// synthesized envelope + racy repo-read-back (rpg-api#647): the
+		// roster is now on the wire the moment SetMode rolls it, from the
+		// same in-memory e.data.Initiative rollInitiative just populated, no
+		// persistence round-trip involved.
+		//
+		// Copies the slice before handing it to the event (mirrors
+		// applyAndPublishMove's append([]core.Hex(nil), traveledPath...)
+		// pattern): e.data.Initiative can grow later via AddMonster's
+		// mid-combat reinforcement append, and while rollInitiative's
+		// make([]core.EntityID, len(seeds)) currently always leaves zero
+		// spare capacity (guaranteeing that append reallocates rather than
+		// mutating this event's backing array in place), the copy removes
+		// any dependency on that allocation detail staying true.
+		if err := e.broker.Publish(events.NewInitiativeRolledEvent(
+			e.data.ID, e.nextSeq(),
+			append([]core.EntityID(nil), e.data.Initiative...),
+			e.allViewersInitiativeRolled(),
+		)); err != nil {
+			return fmt.Errorf("publish initiative rolled: %w", err)
+		}
 		// Seed the first actor's economy before announcing their turn, so the
 		// menu/economy is ready when the TurnStartedEvent lands (Beat-1: the
 		// engine owns turn-start seeding, not the host).
@@ -726,6 +766,16 @@ func (e *Encounter) allViewersModeChanged() map[core.PlayerID]events.ModeChanged
 	out := make(map[core.PlayerID]events.ModeChangedSlice, len(e.data.Players))
 	for id := range e.data.Players {
 		out[id] = events.ModeChangedSlice{Visible: true}
+	}
+	return out
+}
+
+// allViewersInitiativeRolled builds a per-player slice marking every player
+// as a viewer of the rolled initiative roster (rpg-toolkit#765).
+func (e *Encounter) allViewersInitiativeRolled() map[core.PlayerID]events.InitiativeRolledSlice {
+	out := make(map[core.PlayerID]events.InitiativeRolledSlice, len(e.data.Players))
+	for id := range e.data.Players {
+		out[id] = events.InitiativeRolledSlice{Visible: true}
 	}
 	return out
 }
