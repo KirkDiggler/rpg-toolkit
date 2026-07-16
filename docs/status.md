@@ -2,7 +2,7 @@
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
 updated: 2026-07-16
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,29 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **ExitCombat wired at encounter-end — no more stale combat economy
+  leaking across encounters (rpg-toolkit#767, 2026-07-16).**
+  `character.Character.ExitCombat` — the toolkit's own API for clearing
+  `ActionEconomy` back to nil, whose own doc says "call this when the
+  encounter ends" — had zero call sites anywhere in rpg-toolkit.
+  `ActionEconomy` is a flat, encounter-unscoped field on the persisted
+  character that `ToData()`/`LoadFromData` round-trip verbatim, so a
+  character who ever finished a fight carried their depleted economy (e.g.
+  `movement_remaining: 0`) into every SUBSEQUENT encounter forever — found
+  live via Redis inspection in The Dungeon wave 1's closing playtest
+  (rpg-api PR #645, commit 759eca9, which added a `StartEncounter`-side
+  defensive clear as an explicit backstop, not the fix). `endCombatForPlayers`
+  (death.go, `checkEncounterEnd`'s sweep) now calls `ExitCombat` alongside
+  the `EndCombat` call #752 already wired there — `checkEncounterEnd` is the
+  toolkit's SOLE transition point to `ModeEnded` (`SetMode` explicitly
+  rejects it), so this closes 100% of the toolkit's current encounter-end
+  surface. rpg-api's `StartEncounter` backstop stays in place: the
+  predicate is `len(data.Monsters)==0`, so a TPK (all players dead, monsters
+  alive) never reaches this sweep — tracked as a separate, pre-existing gap.
+  Scoping `ActionEconomy` to an encounter ID (defense-in-depth against a
+  *future* path forgetting to call `ExitCombat`) is deferred to a follow-up
+  issue, not part of this fix. See
+  [encounter.md](architecture/components/encounter.md#encounter-end-condition-sweep-rpg-toolkit752--action-economy-clear-rpg-toolkit767).
 - **InitiativeRolledEvent — the roster on the wire (rpg-toolkit#765,
   2026-07-16).** `SetMode` always rolled `data.Initiative` on the
   FreeRoam→TurnBased flip but published no event carrying it, forcing
@@ -283,7 +306,8 @@ See "Paused / on hold" below.
   `EncounterEndedEvent`; `RagingCondition` subscribes to it in `Apply` and
   self-removes the same way it already does for `RestEvent` — opt-in per
   condition, not a lifetime taxonomy on `Encounter`. See
-  [encounter.md](architecture/components/encounter.md#encounter-end-condition-sweep-rpg-toolkit752).
+  [encounter.md](architecture/components/encounter.md#encounter-end-condition-sweep-rpg-toolkit752--action-economy-clear-rpg-toolkit767)
+  (section since extended by #767's `ExitCombat` wiring, above).
   Known follow-up gap (not fixed here): encounter snapshots don't carry
   active statuses, so a condition that rode in via `LoadFromData` is
   invisible to a client that (re)connects mid-encounter — see Known rough

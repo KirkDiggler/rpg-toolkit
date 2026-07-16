@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -441,6 +442,27 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 // untouched — this sweeps by opt-in, not by an encounter-side allowlist of
 // condition types.
 //
+// Also calls character.Character.ExitCombat (rpg-toolkit#767), clearing
+// ActionEconomy back to nil for every held player. ExitCombat's own doc
+// says "Call this when the encounter ends" but nothing ever did —
+// checkEncounterEnd (this function's caller) is the toolkit's SOLE
+// transition point to ModeEnded (SetMode explicitly rejects ModeEnded — see
+// its doc), so it is the correct and complete place for it: ActionEconomy
+// is a flat, encounter-unscoped field on the persisted character
+// field on the persisted character (rulebooks/dnd5e/character/data.go),
+// and ToData()/LoadFromData round-trip whatever is in it verbatim with no
+// encounter-identity check. Without this, a character who ever finished a
+// fight carried their depleted economy (e.g. movement_remaining: 0) into
+// every SUBSEQUENT encounter forever — found live via Redis inspection in
+// The Dungeon wave 1's closing playtest (rpg-api PR #645, commit 759eca9),
+// which added a StartEncounter-side defensive clear as a backstop, NOT the
+// fix. That backstop stays in place after this change: checkEncounterEnd's
+// predicate is len(data.Monsters)==0, so it never fires on a TPK (all
+// players dead, monsters alive) — an abandoned/TPK'd encounter's
+// participants still need the StartEncounter backstop to catch stale
+// economy on their next encounter, until a TPK-end predicate exists
+// (tracked separately).
+//
 // Flat stat-snapshot seats (no hydrated *character.Character — heldCharacter
 // returns nil) have nothing to sweep and are skipped.
 //
@@ -456,6 +478,9 @@ func (e *Encounter) endCombatForPlayers() error {
 		}
 		if err := char.EndCombat(ctx); err != nil {
 			return fmt.Errorf("end combat for %q: %w", pd.EntityID, err)
+		}
+		if _, err := char.ExitCombat(ctx, &character.ExitCombatInput{}); err != nil {
+			return fmt.Errorf("exit combat for %q: %w", pd.EntityID, err)
 		}
 	}
 	return nil
