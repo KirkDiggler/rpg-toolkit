@@ -123,21 +123,83 @@ func (s *RoomAwareSuite) TestLineOfSight_WallAware() {
 // constraint vocabulary doesn't cover (e.g. "not visible to any viewer") as
 // a PositionOracle instead of discarding the search's chosen position and
 // recomputing placement itself. The oracle must AND with room-derived
-// validity, not replace it.
+// validity, not replace it — proven here by planting a wall on a cell the
+// oracle accepts: if the oracle replaced room validity instead of composing
+// with it, that walled cell would still come back.
 func (s *RoomAwareSuite) TestPositionOracle_ComposesWithSearch() {
 	room := s.newRoom("oracle-room", 4, 1) // a thin corridor: x in [0,4), y=0
+	wall := &blockingEntity{id: "wall", blocksMovement: true}
+	s.Require().NoError(room.PlaceEntity(wall, spatial.Position{X: 1, Y: 0}))
+
 	solver := NewConstraintSolver()
 	entity := &MockEntity{id: "goblin", entityType: "monster"}
 
-	// Oracle rejects everything except x == 3.
+	// Oracle accepts both x==1 (walled) and x==3 (free).
 	oracle := PositionOracle(func(pos spatial.Position) bool {
-		return pos.X == 3
+		return pos.X == 1 || pos.X == 3
 	})
 
 	positions, err := solver.FindValidPositions(room, entity, SpatialConstraints{}, nil, 10, oracle, nil)
 	s.Require().NoError(err)
-	s.Require().Len(positions, 1)
+	s.Require().Len(positions, 1, "the walled cell must be excluded even though the oracle accepts it")
 	s.Assert().Equal(spatial.Position{X: 3, Y: 0}, positions[0])
+}
+
+// TestFindValidPositions_AxialGrid pins the #770 review fix: enumeration
+// must work correctly on grids centered on zero (AxialHexGrid, valid range
+// [-span/2, span/2) on both axes), not just 0-based offset grids — the
+// search must find every valid negative-coordinate cell, not silently skip
+// half the grid because it assumed a 0-based origin.
+func (s *RoomAwareSuite) TestFindValidPositions_AxialGrid() {
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 4, SpanHeight: 4}) // Q,R in [-2,2)
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: "axial-room", Type: "test", Grid: grid})
+
+	solver := NewConstraintSolver()
+	entity := &MockEntity{id: "goblin", entityType: "monster"}
+
+	positions, err := solver.FindValidPositions(room, entity, SpatialConstraints{}, nil, 100, nil, nil)
+	s.Require().NoError(err)
+
+	seen := make(map[spatial.Position]bool)
+	for _, pos := range positions {
+		s.Assert().GreaterOrEqual(pos.X, -2.0)
+		s.Assert().Less(pos.X, 2.0)
+		s.Assert().GreaterOrEqual(pos.Y, -2.0)
+		s.Assert().Less(pos.Y, 2.0)
+		seen[pos] = true
+	}
+	s.Assert().Len(seen, 16, "every one of the 4x4 axial cells must be found, including negative coordinates")
+}
+
+// TestWallProximity_AxialGridNegativeCoordinates pins the real #770 review
+// bug: validateWallProximity used to assume the room boundary sits at
+// 0..Width/Height, so any negative coordinate on an AxialHexGrid (valid
+// range centered on zero) always failed the boundary check regardless of
+// its actual distance from a wall.
+func (s *RoomAwareSuite) TestWallProximity_AxialGridNegativeCoordinates() {
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 10, SpanHeight: 10}) // Q,R in [-5,5)
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: "axial-room", Type: "test", Grid: grid})
+
+	solver := NewConstraintSolver()
+	entity := &MockEntity{id: "goblin", entityType: "monster"}
+	constraints := SpatialConstraints{WallProximity: 1.0}
+
+	// Well inside the valid [-5,5) range on both axes — must NOT be
+	// rejected just because its coordinates are negative.
+	interior := spatial.Position{X: -3, Y: -3}
+	s.Assert().NoError(
+		solver.ValidatePosition(room, interior, entity, constraints, nil),
+		"a negative-coordinate position well inside an axial grid must pass wall-proximity",
+	)
+
+	// Within 1.0 of the real boundary at X=-5 — must be rejected, proving
+	// the check uses the grid's actual bound, not just "always pass
+	// negative coordinates."
+	tooClose := spatial.Position{X: -4.5, Y: -3}
+	s.Assert().Error(
+		solver.ValidatePosition(room, tooClose, entity, constraints, nil),
+		"a position within minWallDistance of the axial grid's real boundary must be rejected",
+	)
 }
 
 func TestRoomAwareSuite(t *testing.T) {

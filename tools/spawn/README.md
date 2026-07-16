@@ -407,6 +407,11 @@ type SpawnConfig struct {
     // Player spawn zones and choices
     PlayerSpawnZones []SpawnZone         `json:"player_spawn_zones,omitempty"`
     PlayerChoices    []PlayerSpawnChoice `json:"player_choices,omitempty"`
+
+    // Seed makes this call's position search reproducible (both the
+    // unconstrained and constraint-aware paths). Nil uses a non-deterministic
+    // source.
+    Seed *int64 `json:"seed,omitempty"`
 }
 ```
 
@@ -420,6 +425,15 @@ type EntityGroup struct {
     Type           string       `json:"type"`            // Entity category
     SelectionTable string       `json:"selection_table"` // Selectables table ID
     Quantity       QuantitySpec `json:"quantity"`        // How many to spawn
+
+    // FixedPositions supplies exact positions for this group's entities, in
+    // order, bypassing search (still validated against the real room).
+    FixedPositions []spatial.Position `json:"fixed_positions,omitempty"`
+
+    // PositionOracle is a caller predicate ANDed into the search alongside
+    // room validity and SpatialRules — e.g. "not visible to any viewer,"
+    // for placement requirements the constraint vocabulary doesn't cover.
+    PositionOracle PositionOracle `json:"-"`
 }
 
 type QuantitySpec struct {

@@ -85,18 +85,22 @@ func (cs *ConstraintSolver) FindValidPositions(
 
 	var validPositions []spatial.Position
 	dims := grid.GetDimensions()
-	for _, position := range allGridPositions(room) {
-		if len(validPositions) >= maxPositions {
-			break
-		}
-		if !room.CanPlaceEntity(entity, position) {
-			continue // wall-occupied or otherwise blocked
-		}
-		if oracle != nil && !oracle(position) {
-			continue
-		}
-		if cs.ValidatePosition(room, position, entity, constraints, existingEntities) == nil {
-			validPositions = append(validPositions, position)
+	minX, minY := gridOrigin(grid, dims)
+	for x := minX; x < minX+dims.Width && len(validPositions) < maxPositions; x++ {
+		for y := minY; y < minY+dims.Height && len(validPositions) < maxPositions; y++ {
+			position := spatial.Position{X: x, Y: y}
+			if !grid.IsValidPosition(position) {
+				continue // defensive: today's grids are rectangular, but the interface doesn't promise it
+			}
+			if !room.CanPlaceEntity(entity, position) {
+				continue // wall-occupied or otherwise blocked
+			}
+			if oracle != nil && !oracle(position) {
+				continue
+			}
+			if cs.ValidatePosition(room, position, entity, constraints, existingEntities) == nil {
+				validPositions = append(validPositions, position)
+			}
 		}
 	}
 
@@ -110,20 +114,23 @@ func (cs *ConstraintSolver) FindValidPositions(
 	return validPositions, nil
 }
 
-// allGridPositions enumerates every position the room's grid considers
-// valid, via Grid.GetPositionsInRange with a generously oversized radius
-// anchored at the bounding box's midpoint. Using each grid implementation's
-// own range query (rather than re-deriving a coordinate sweep here) keeps
-// this correct regardless of the grid's coordinate origin — 0-based offset
-// grids (SquareGrid, HexGrid) and grids centered on zero (AxialHexGrid)
-// alike — since GetPositionsInRange always filters through the grid's own
-// IsValidPosition.
-func allGridPositions(room spatial.Room) []spatial.Position {
-	grid := room.GetGrid()
-	dims := grid.GetDimensions()
-	center := spatial.Position{X: dims.Width / 2, Y: dims.Height / 2}
-	radius := dims.Width + dims.Height
-	return grid.GetPositionsInRange(center, radius)
+// gridOrigin returns the lower bound (minX, minY) of grid's valid
+// coordinate range, so callers can sweep exactly [minX, minX+dims.Width) x
+// [minY, minY+dims.Height) instead of guessing. Grids in this package use
+// one of two conventions: 0-based offset (SquareGrid, HexGrid — valid range
+// starts at (0,0)) or axial, centered on zero (AxialHexGrid — valid range
+// starts at (-dims.Width/2, -dims.Height/2)). (0,0) is a valid position
+// under both conventions, so this probes with IsValidPosition instead of
+// assuming one — a linear sweep anchored at the wrong origin would silently
+// skip an entire grid's worth of valid cells.
+func gridOrigin(grid spatial.Grid, dims spatial.Dimensions) (minX, minY float64) {
+	if grid.IsValidPosition(spatial.Position{X: -dims.Width / 2, Y: 0}) {
+		minX = -dims.Width / 2
+	}
+	if grid.IsValidPosition(spatial.Position{X: 0, Y: -dims.Height / 2}) {
+		minY = -dims.Height / 2
+	}
+	return minX, minY
 }
 
 // validateMinDistance checks minimum distance requirements between entity types.
@@ -167,11 +174,27 @@ func (cs *ConstraintSolver) validateWallProximity(
 		return nil // No wall proximity constraint
 	}
 
-	dims := room.GetGrid().GetDimensions()
-	if position.X < minWallDistance || position.Y < minWallDistance ||
-		position.X > dims.Width-minWallDistance || position.Y > dims.Height-minWallDistance {
-		return fmt.Errorf("position too close to room boundary: (%.2f, %.2f), minimum distance %.2f",
-			position.X, position.Y, minWallDistance)
+	// Probe minWallDistance out from position in each cardinal direction:
+	// if any probe falls outside the grid's valid range, position is too
+	// close to the boundary. This works regardless of the grid's coordinate
+	// origin — 0-based offset grids (SquareGrid, HexGrid) and axial grids
+	// centered on zero (AxialHexGrid) alike — since it only relies on the
+	// grid's own IsValidPosition, never an assumed 0..Width/Height range
+	// (a room.GetGrid() of nil, which the Room interface doesn't forbid,
+	// skips the boundary probe rather than panicking).
+	if grid := room.GetGrid(); grid != nil {
+		probes := []spatial.Position{
+			{X: position.X - minWallDistance, Y: position.Y},
+			{X: position.X + minWallDistance, Y: position.Y},
+			{X: position.X, Y: position.Y - minWallDistance},
+			{X: position.X, Y: position.Y + minWallDistance},
+		}
+		for _, probe := range probes {
+			if !grid.IsValidPosition(probe) {
+				return fmt.Errorf("position too close to room boundary: (%.2f, %.2f), minimum distance %.2f",
+					position.X, position.Y, minWallDistance)
+			}
+		}
 	}
 
 	for _, nearby := range room.GetEntitiesInRange(position, minWallDistance) {
@@ -376,7 +399,13 @@ func (cs *ConstraintSolver) findValidPositionsGridless(
 
 	var validPositions []spatial.Position
 
-	roomDimensions := room.GetGrid().GetDimensions()
+	// A nil grid routes here via isGridlessRoom, and the Room interface
+	// doesn't forbid GetGrid() returning nil — fall back to a reasonable
+	// default span instead of panicking on GetDimensions().
+	roomDimensions := spatial.Dimensions{Width: 10.0, Height: 10.0}
+	if grid := room.GetGrid(); grid != nil {
+		roomDimensions = grid.GetDimensions()
+	}
 	attempts := 0
 	maxAttempts := cs.maxAttempts * 2 // More attempts for gridless
 
