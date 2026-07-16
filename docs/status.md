@@ -2,7 +2,7 @@
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
 updated: 2026-07-15
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,23 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **AddMonster-side EntityAppeared (rpg-toolkit#764, 2026-07-15).** Found by
+  the review gate on #762: a monster spawned via `AddMonster` directly into
+  an already-visible position started combat (`checkCombatEntry` fired) but
+  emitted no `EntityAppearedEvent` — #761/#762 only wired detection into the
+  player-Move path. `AddMonster` now publishes `EntityAppearedEvent` for
+  every player who can already see the new monster
+  (`Encounter.playersWhoCanSee`, combat.go), sequenced before the
+  `ModeChangedEvent` it may trigger — same ordering contract as #762. No
+  `ProjectVisibilityTransition` machinery needed here (a brand-new monster
+  has no "before" state to diff against); not gated on encounter mode, so a
+  mid-combat reinforcement/door-spawn still appears even when
+  `checkCombatEntry`'s entry-only gate no-ops. Considered folding in
+  `npc.go`'s NPC-move-side gap (#637, "same family" per the issue) —
+  decided against it: that's a genuine moving-entity problem needing the
+  player-sees-player shape of the transition machinery, different mechanics,
+  already tracked separately. See
+  [encounter.md](architecture/components/encounter.md#monster-visibility-events-rpg-toolkit761-764).
 - **Monster EntityAppeared/EntityDisappeared on player moves (rpg-toolkit#761,
   2026-07-15).** Found in The Dungeon wave 1's closing playtest (rpg-api
   #645): `checkCombatEntry` correctly detected a player-monster sightline and

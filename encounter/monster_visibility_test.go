@@ -93,12 +93,14 @@ func (s *MonsterVisibilitySuite) TestMoveIntoMonsterLOS_AppearsOnTheSameMoveThat
 }
 
 // TestMoveOutOfMonsterLOS_Disappears covers the mid-combat case: a monster
-// the player has actually SEEN appear (not merely one that happened to be in
-// range when added — AddMonster flips the mode but does not itself publish
-// an EntityAppearedEvent) must fire EntityDisappearedEvent when a later move
-// takes the player out of range. This exercises the path OUTSIDE
-// checkCombatEntry's FREE_ROAM gate, proving detection isn't tied to the
-// entry transition.
+// the player has actually SEEN appear must fire EntityDisappearedEvent when
+// a later move takes the player out of range. This exercises the path
+// OUTSIDE checkCombatEntry's FREE_ROAM gate, proving detection isn't tied to
+// the entry transition. The setup deliberately keeps the goblin out of
+// alice's range at AddMonster time (see rpg-toolkit#764: AddMonster DOES
+// publish EntityAppearedEvent for a monster that's already visible when
+// added) so the appearance under test is unambiguously the one caused by
+// alice's own move below, not the add.
 func (s *MonsterVisibilitySuite) TestMoveOutOfMonsterLOS_Disappears() {
 	// Alice starts out of the goblin's sight range (distance 10 > sight 4),
 	// so no combat entry and no appearance fire at setup time.
@@ -157,9 +159,9 @@ func (s *MonsterVisibilitySuite) TestStaysVisible_NoAppearDisappearEvents() {
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
 	}))
-	// AddMonster flips the mode (goblin is visible at add time) but does not
-	// itself publish an EntityAppearedEvent — drain the mode-change events
-	// only, so the assertions below are scoped to the move under test.
+	// AddMonster flips the mode AND publishes EntityAppearedEvent (the goblin
+	// is visible at add time — rpg-toolkit#764) — drain both so the
+	// assertions below are scoped to the move under test.
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond)
 
 	// Alice moves from Q=1 to Q=2, staying well inside sight range of the
