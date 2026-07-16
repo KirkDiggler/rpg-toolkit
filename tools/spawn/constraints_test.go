@@ -112,7 +112,7 @@ func (s *ConstraintSolverTestSuite) TestFindValidPositions() {
 			WallProximity: 1.0,
 		}
 
-		positions, err := s.solver.FindValidPositions(s.room, s.mockEntity, constraints, []SpawnedEntity{}, 3)
+		positions, err := s.solver.FindValidPositions(s.room, s.mockEntity, constraints, []SpawnedEntity{}, 3, nil, nil)
 		s.Assert().NoError(err)
 		s.Assert().NotEmpty(positions)
 		s.Assert().LessOrEqual(len(positions), 3)
@@ -130,7 +130,7 @@ func (s *ConstraintSolverTestSuite) TestFindValidPositions() {
 			WallProximity: 15.0, // Impossible in 10x10 room
 		}
 
-		positions, err := s.solver.FindValidPositions(s.room, s.mockEntity, constraints, []SpawnedEntity{}, 3)
+		positions, err := s.solver.FindValidPositions(s.room, s.mockEntity, constraints, []SpawnedEntity{}, 3, nil, nil)
 		s.Assert().Error(err)
 		s.Assert().Empty(positions)
 	})

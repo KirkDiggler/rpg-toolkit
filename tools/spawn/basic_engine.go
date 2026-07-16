@@ -123,18 +123,26 @@ func (e *BasicSpawnEngine) PopulateRoom(
 		return result, fmt.Errorf("capacity analysis failed: %w", err)
 	}
 
+	// A seeded config gets its own rng for this call so results are
+	// reproducible; otherwise every position-search call in this call tree
+	// shares the engine's own (non-deterministic) source.
+	rng := e.random
+	if config.Seed != nil {
+		rng = rand.New(rand.NewSource(*config.Seed)) // #nosec G404
+	}
+
 	// Route to appropriate spawning method based on pattern
 	switch config.Pattern {
 	case PatternScattered:
-		return e.applyScatteredSpawning(ctx, roomID, config, result)
+		return e.applyScatteredSpawning(ctx, roomID, config, result, rng)
 	case PatternFormation:
-		return e.applyFormationSpawning(ctx, roomID, config, result)
+		return e.applyFormationSpawning(ctx, roomID, config, result, rng)
 	case PatternTeamBased:
-		return e.applyTeamBasedSpawning(ctx, roomID, config, result)
+		return e.applyTeamBasedSpawning(ctx, roomID, config, result, rng)
 	case PatternPlayerChoice:
-		return e.applyPlayerChoiceSpawning(ctx, roomID, config, result)
+		return e.applyPlayerChoiceSpawning(ctx, roomID, config, result, rng)
 	case PatternClustered:
-		return e.applyClusteredSpawning(ctx, roomID, config, result)
+		return e.applyClusteredSpawning(ctx, roomID, config, result, rng)
 	default:
 		return result, fmt.Errorf("unsupported spawn pattern: %s", config.Pattern)
 	}
@@ -216,35 +224,38 @@ func (e *BasicSpawnEngine) getRoomFromSpatial(roomID string) (spatial.Room, erro
 	return room, nil
 }
 
-// findValidPosition finds a valid position for an entity (simplified for Phase 1)
-func (e *BasicSpawnEngine) findValidPosition(_ spatial.Room, _ core.Entity) spatial.Position {
-	// Phase 1: Simple random position within reasonable bounds
-	// Real implementation would query the spatial room for valid positions
-	x := e.random.Float64() * 10.0
-	y := e.random.Float64() * 10.0
-
-	return spatial.Position{X: x, Y: y}
+// findValidPosition finds a valid position for an entity using the real
+// room's dimensions and Room.CanPlaceEntity (bounds + wall/occupancy),
+// delegating to the constraint solver with an empty SpatialConstraints —
+// "unconstrained" still means "actually in the room and not on a wall,"
+// not "anywhere." rng nil uses the engine's own default source.
+func (e *BasicSpawnEngine) findValidPosition(
+	room spatial.Room, entity core.Entity, oracle PositionOracle, rng *rand.Rand,
+) (spatial.Position, error) {
+	return e.findValidPositionWithConstraints(room, entity, SpatialConstraints{}, nil, oracle, rng)
 }
 
-// findValidPositionWithConstraints finds a position that satisfies spatial constraints.
+// findValidPositionWithConstraints finds a position that satisfies
+// room-derived validity (bounds, walls/occupancy), an optional caller
+// PositionOracle, and the given spatial constraints.
 // Purpose: Phase 3 constraint-aware position finding.
 func (e *BasicSpawnEngine) findValidPositionWithConstraints(
 	room spatial.Room, entity core.Entity, constraints SpatialConstraints,
-	existingEntities []SpawnedEntity,
+	existingEntities []SpawnedEntity, oracle PositionOracle, rng *rand.Rand,
 ) (spatial.Position, error) {
+	if rng == nil {
+		rng = e.random
+	}
+
 	validPositions, err := e.constraintSolver.FindValidPositions(
-		room, entity, constraints, existingEntities, 10,
+		room, entity, constraints, existingEntities, 10, oracle, rng,
 	)
 	if err != nil {
 		return spatial.Position{}, err
 	}
 
-	if len(validPositions) == 0 {
-		return spatial.Position{}, fmt.Errorf("no valid positions found for entity %s", entity.GetType())
-	}
-
 	// Select random position from valid options
-	selectedIndex := e.random.Intn(len(validPositions))
+	selectedIndex := rng.Intn(len(validPositions))
 	return validPositions[selectedIndex], nil
 }
 
