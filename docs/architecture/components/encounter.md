@@ -341,8 +341,8 @@ resolver's own "prevented at first step" semantics.
 at combat's *other* edge (death.go): when the encounter is `ModeFreeRoam`
 and any player has LoS (`perception.CanSeeAt`, wall-aware) to any monster,
 it calls `SetMode(ModeTurnBased)` — the exact same initiative-roll +
-`ModeChanged`/`TurnStarted` publish path `SetMode` always used for any other
-FreeRoam→TurnBased flip. Called inline at the mutation sites (`Move`,
+`ModeChanged`/`InitiativeRolled`/`TurnStarted` publish path `SetMode` always
+used for any other FreeRoam→TurnBased flip. Called inline at the mutation sites (`Move`,
 `AddMonster`) rather than as a kicked/deferred check — a forgotten kick call
 would silently mean combat never starts, a worse failure mode than a
 redundant inline check. The mode gate at the top makes repeated calls
@@ -463,6 +463,59 @@ is a genuine moving-entity problem needing the *player-sees-player* shape of
 `ProjectVisibilityTransition` (stationary viewers, a real moving entity) —
 different mechanics, already tracked separately, and folding it in here
 would have widened this fix past a single reviewable change.
+
+### Initiative roster event (rpg-toolkit#765)
+
+`SetMode`'s FreeRoam→TurnBased flip always rolled `data.Initiative`
+(`rollInitiative`) but published no event carrying it — only
+`ModeChangedEvent` (the transition itself) and `TurnStartedEvent` (the first
+actor's turn) hit the wire. Consumers that need the roster had to read it
+back from persisted state, which races the orchestrator's Save (the toolkit
+publishes synchronously inside the verb call, before the caller persists) —
+rpg-api's stream handler carried a bounded 15×10ms retry around exactly this
+(rpg-api#647), plus a synthesized envelope that reused `ModeChangedEvent`'s
+sequence number since the handler has no way to mint a real broker sequence.
+
+`SetMode` now publishes `events.InitiativeRolledEvent{Order
+[]core.EntityID}` between `ModeChanged` and `TurnStarted`. Design choice —
+**dedicated event, not fields on `ModeChangedEvent`**:
+
+- The wire proto already models this as its own message
+  (`InitiativeRolled{order}`, `EncounterEvent` oneof field 41, added ahead of
+  this toolkit seam and left unpopulated until now). A dedicated toolkit
+  event maps onto it 1:1, so rpg-api's translator drops the special-cased
+  `translateForStream` branch entirely (repo read, retry, shared-sequence
+  hack, and all) and treats `InitiativeRolledEvent` like every other event —
+  a plain `TranslateEvent` case. Growing `ModeChangedEvent` with roster
+  fields instead would still leave that branch in place (still splitting one
+  broker event into two wire envelopes by hand), just without the repo read.
+- `ModeChangedEvent` is generic — it fires for every mode pair, including
+  TurnBased→FreeRoam, where a roster field would have to be empty/absent.
+  Every other roster-adjacent fact in this taxonomy (`TurnStarted`,
+  `TurnEnded`, `EntityDied`, `EntityRemoved`) is already its own dedicated
+  event type; bundling roster data onto the mode-transition event breaks
+  that precedent for a shape that only makes sense on one specific
+  transition.
+
+**Ordering contract**: `ModeChangedEvent` → `InitiativeRolledEvent` →
+`TurnStartedEvent`. `ModeChanged` is the cause; both the roster and the
+first turn are effects of it, but the roster (STATE — "here is the full
+turn order") is placed before the turn announcement (an ACTION — "it's this
+actor's turn") since a client building a combat-order UI wants the full
+roster before being told who's first. Published only on the FreeRoam→
+TurnBased direction, and only once per transition — not re-sent on every
+later per-turn `TurnStartedEvent` from `EndTurn`, since the roster doesn't
+change turn to turn. Pinned by
+`TestSetMode_InitiativeRolled_SequencedBetweenModeChangedAndTurnStarted`,
+`TestEndTurn_DoesNotRepublishInitiativeRolled`, and
+`TestSetMode_FreeRoamTransition_NoInitiativeRolled`
+(`initiative_rolled_test.go`).
+
+The published `Order` is a defensive copy of `e.data.Initiative`, not the
+same backing slice — mirrors `applyAndPublishMove`'s
+`append([]core.Hex(nil), traveledPath...)` pattern, since `AddMonster`'s
+mid-combat reinforcement path (`e.data.Initiative = append(e.data.Initiative,
+input.ID)`, #757) can grow the roster after this event already published.
 
 ## Implementation notes worth keeping
 

@@ -255,6 +255,8 @@ func encodeEvent(evt events.EncounterEvent) ([]byte, error) {
 		typeName = "ConditionRemovedEvent"
 	case *events.ModeChangedEvent:
 		typeName = "ModeChangedEvent"
+	case *events.InitiativeRolledEvent:
+		typeName = "InitiativeRolledEvent"
 	case *events.TurnStartedEvent:
 		typeName = "TurnStartedEvent"
 	case *events.TurnEndedEvent:
@@ -363,6 +365,12 @@ func decodeEvent(b []byte) (events.EncounterEvent, error) {
 		return &e, nil
 	case "ModeChangedEvent":
 		var e events.ModeChangedEvent
+		if err := json.Unmarshal(env.Payload, &e); err != nil {
+			return nil, err
+		}
+		return &e, nil
+	case "InitiativeRolledEvent":
+		var e events.InitiativeRolledEvent
 		if err := json.Unmarshal(env.Payload, &e); err != nil {
 			return nil, err
 		}

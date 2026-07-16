@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-15
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15
+updated: 2026-07-16
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,23 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **InitiativeRolledEvent — the roster on the wire (rpg-toolkit#765,
+  2026-07-16).** `SetMode` always rolled `data.Initiative` on the
+  FreeRoam→TurnBased flip but published no event carrying it, forcing
+  rpg-api to read it back from persisted state on a bounded 15×10ms retry
+  (racing the orchestrator's Save, which runs synchronously after the
+  toolkit's in-call publish — rpg-api#647) plus a synthesized wire envelope
+  that reused `ModeChangedEvent`'s sequence number. `SetMode` now publishes
+  `InitiativeRolledEvent{Order []EntityID}`, sequenced between
+  `ModeChangedEvent` and `TurnStartedEvent`, published once per transition
+  (not re-sent on later per-turn `TurnStartedEvent`s from `EndTurn`). Chose
+  a dedicated event over fields on `ModeChangedEvent`: the wire proto
+  already models `InitiativeRolled` as its own message, so a dedicated
+  toolkit event lets rpg-api delete its special-cased translator branch
+  entirely rather than just dropping the repo read from it; `ModeChanged` is
+  also generic across every mode pair, and a roster field would be
+  meaningless on the TurnBased→FreeRoam direction. See
+  [encounter.md](architecture/components/encounter.md#initiative-roster-event-rpg-toolkit765).
 - **AddMonster-side EntityAppeared (rpg-toolkit#764, 2026-07-15).** Found by
   the review gate on #762: a monster spawned via `AddMonster` directly into
   an already-visible position started combat (`checkCombatEntry` fired) but
