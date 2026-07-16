@@ -3,14 +3,42 @@ package spawn
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+// findGroupPosition resolves the position for the i-th entity in group:
+// group.FixedPositions[i] if supplied (validated against the real room, not
+// just trusted), otherwise a search seeded with group.PositionOracle and
+// config.SpatialRules.
+func (e *BasicSpawnEngine) findGroupPosition(
+	room spatial.Room, entity core.Entity, group EntityGroup, i int,
+	config SpawnConfig, existingEntities []SpawnedEntity, rng *rand.Rand,
+) (spatial.Position, error) {
+	if i < len(group.FixedPositions) {
+		position := group.FixedPositions[i]
+		if !room.CanPlaceEntity(entity, position) {
+			return spatial.Position{}, fmt.Errorf(
+				"fixed position (%.2f, %.2f) is not placeable", position.X, position.Y,
+			)
+		}
+		return position, nil
+	}
+
+	if e.hasValidConstraints(config.SpatialRules) || group.PositionOracle != nil {
+		return e.findValidPositionWithConstraints(
+			room, entity, config.SpatialRules, existingEntities, group.PositionOracle, rng,
+		)
+	}
+
+	return e.findValidPosition(room, entity, nil, rng)
+}
+
 // applyScatteredSpawning implements scattered spawning pattern
 func (e *BasicSpawnEngine) applyScatteredSpawning(
-	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult, rng *rand.Rand,
 ) (SpawnResult, error) {
 	// Get room from spatial handler
 	room, err := e.getRoomFromSpatial(roomID)
@@ -30,22 +58,14 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(
 		}
 
 		// Place entities using scattered pattern
-		for _, entity := range entities {
-			// Phase 3: Use constraint-aware positioning if spatial rules provided
-			var position spatial.Position
-			var err error
-
-			if e.hasValidConstraints(config.SpatialRules) {
-				position, err = e.findValidPositionWithConstraints(room, entity, config.SpatialRules, result.SpawnedEntities)
-				if err != nil {
-					result.Failures = append(result.Failures, SpawnFailure{
-						EntityType: string(entity.GetType()), // Convert core.EntityType to string
-						Reason:     fmt.Sprintf("constraint validation failed: %v", err),
-					})
-					continue
-				}
-			} else {
-				position = e.findValidPosition(room, entity)
+		for i, entity := range entities {
+			position, err := e.findGroupPosition(room, entity, group, i, config, result.SpawnedEntities, rng)
+			if err != nil {
+				result.Failures = append(result.Failures, SpawnFailure{
+					EntityType: string(entity.GetType()), // Convert core.EntityType to string
+					Reason:     fmt.Sprintf("position search failed: %v", err),
+				})
+				continue
 			}
 
 			// Place entity in room
@@ -73,16 +93,16 @@ func (e *BasicSpawnEngine) applyScatteredSpawning(
 
 // applyFormationSpawning implements formation-based spawning pattern
 func (e *BasicSpawnEngine) applyFormationSpawning(
-	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult, rng *rand.Rand,
 ) (SpawnResult, error) {
 	// Phase 2: Simple implementation - delegate to scattered for now
 	// TODO: Implement actual formation logic
-	return e.applyScatteredSpawning(ctx, roomID, config, result)
+	return e.applyScatteredSpawning(ctx, roomID, config, result, rng)
 }
 
 // applyTeamBasedSpawning implements team-based spawning pattern
 func (e *BasicSpawnEngine) applyTeamBasedSpawning(
-	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult, rng *rand.Rand,
 ) (SpawnResult, error) {
 	// Phase 2: Basic implementation
 	if config.TeamConfiguration == nil {
@@ -91,12 +111,12 @@ func (e *BasicSpawnEngine) applyTeamBasedSpawning(
 
 	// For now, delegate to scattered spawning
 	// TODO: Implement actual team separation logic
-	return e.applyScatteredSpawning(ctx, roomID, config, result)
+	return e.applyScatteredSpawning(ctx, roomID, config, result, rng)
 }
 
 // applyPlayerChoiceSpawning implements player choice spawning pattern
 func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
-	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult, rng *rand.Rand,
 ) (SpawnResult, error) {
 	// Phase 2: Basic implementation
 	if len(config.PlayerSpawnZones) == 0 {
@@ -121,7 +141,7 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 		}
 
 		// For player entities, use zones; for others, use scattered
-		for _, entity := range entities {
+		for i, entity := range entities {
 			if e.isPlayerEntity(entity) {
 				position, err := e.findPlayerSpawnPosition(entity, config.PlayerSpawnZones, config.PlayerChoices)
 				if err != nil {
@@ -139,20 +159,13 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 				})
 			} else {
 				// Non-player entities use scattered placement
-				var position spatial.Position
-				var err error
-
-				if e.hasValidConstraints(config.SpatialRules) {
-					position, err = e.findValidPositionWithConstraints(room, entity, config.SpatialRules, result.SpawnedEntities)
-					if err != nil {
-						result.Failures = append(result.Failures, SpawnFailure{
-							EntityType: string(entity.GetType()), // Convert core.EntityType to string
-							Reason:     fmt.Sprintf("constraint validation failed: %v", err),
-						})
-						continue
-					}
-				} else {
-					position = e.findValidPosition(room, entity)
+				position, err := e.findGroupPosition(room, entity, group, i, config, result.SpawnedEntities, rng)
+				if err != nil {
+					result.Failures = append(result.Failures, SpawnFailure{
+						EntityType: string(entity.GetType()), // Convert core.EntityType to string
+						Reason:     fmt.Sprintf("position search failed: %v", err),
+					})
+					continue
 				}
 
 				result.SpawnedEntities = append(result.SpawnedEntities, SpawnedEntity{
@@ -172,11 +185,11 @@ func (e *BasicSpawnEngine) applyPlayerChoiceSpawning(
 
 // applyClusteredSpawning implements clustered spawning pattern
 func (e *BasicSpawnEngine) applyClusteredSpawning(
-	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult,
+	ctx context.Context, roomID string, config SpawnConfig, result SpawnResult, rng *rand.Rand,
 ) (SpawnResult, error) {
 	// Phase 2: Simple implementation - delegate to scattered for now
 	// TODO: Implement actual clustering logic
-	return e.applyScatteredSpawning(ctx, roomID, config, result)
+	return e.applyScatteredSpawning(ctx, roomID, config, result, rng)
 }
 
 // isPlayerEntity determines if an entity is a player
