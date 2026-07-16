@@ -210,8 +210,8 @@ See "Paused / on hold" below.
   predicate is `len(data.Monsters)==0`, so a TPK (all players dead, monsters
   alive) never reaches this sweep — tracked as rpg-toolkit#772.
   Scoping `ActionEconomy` to an encounter ID (defense-in-depth against a
-  *future* path forgetting to call `ExitCombat`) is deferred to a follow-up
-  issue, not part of this fix. See
+  *future* path forgetting to call `ExitCombat`) is deferred to
+  rpg-toolkit#773, not part of this fix. See
   [encounter.md](architecture/components/encounter.md#encounter-end-condition-sweep-rpg-toolkit752--action-economy-clear-rpg-toolkit767).
 - **InitiativeRolledEvent — the roster on the wire (rpg-toolkit#765,
   2026-07-16).** `SetMode` always rolled `data.Initiative` on the
