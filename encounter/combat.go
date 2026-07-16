@@ -396,9 +396,12 @@ func (e *Encounter) checkCombatEntry() error {
 // occupied room — the wave-2 case this issue calls out) must still emit
 // EntityAppearedEvent even though checkCombatEntry itself will no-op.
 func (e *Encounter) playersWhoCanSee(m *MonsterData) map[core.PlayerID]struct{} {
-	viewers := make(map[core.PlayerID]struct{})
+	var viewers map[core.PlayerID]struct{}
 	for playerID, p := range e.data.Players {
 		if perception.CanSeeAt(p.View, m.Position, e.room) {
+			if viewers == nil {
+				viewers = make(map[core.PlayerID]struct{})
+			}
 			viewers[playerID] = struct{}{}
 		}
 	}
