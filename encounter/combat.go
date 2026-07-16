@@ -374,6 +374,40 @@ func (e *Encounter) checkCombatEntry() error {
 	return nil
 }
 
+// playersWhoCanSee returns the set of players who currently have LoS to m,
+// via the same perception.CanSeeAt predicate checkCombatEntry uses. Used by
+// AddMonster (rpg-toolkit#764) to publish EntityAppearedEvent for a
+// brand-new monster.
+//
+// Unlike monsterVisibilityTransitions (which diffs a MOVING player's
+// before/after visibility against STATIONARY monsters, since a move can
+// enter, leave, or pass through a monster's range), a freshly-added monster
+// has no "before" state to diff against — its visibility to any existing
+// player is inherently newly formed the moment it's added (the same
+// reasoning checkCombatEntry's own doc comment already gives for why
+// AddMonster needs the combat-entry check at all). A plain per-player
+// CanSeeAt scan is therefore sufficient; no ProjectVisibilityTransition or
+// synthetic-View machinery is needed here.
+//
+// Deliberately NOT gated on e.data.Mode: checkCombatEntry's ModeFreeRoam
+// gate exists to make repeated Move/AddMonster calls idempotent for the
+// *entry* transition only. A monster added mid-combat (a reinforcement
+// spawned into an already-visible position, or a door opening onto an
+// occupied room — the wave-2 case this issue calls out) must still emit
+// EntityAppearedEvent even though checkCombatEntry itself will no-op.
+func (e *Encounter) playersWhoCanSee(m *MonsterData) map[core.PlayerID]struct{} {
+	var viewers map[core.PlayerID]struct{}
+	for playerID, p := range e.data.Players {
+		if perception.CanSeeAt(p.View, m.Position, e.room) {
+			if viewers == nil {
+				viewers = make(map[core.PlayerID]struct{})
+			}
+			viewers[playerID] = struct{}{}
+		}
+	}
+	return viewers
+}
+
 // monsterVisibilityTransitions detects which monsters newly entered or left
 // a single moving player's line of sight during a move (rpg-toolkit#761),
 // reusing the exact machinery applyAndPublishMove already uses to detect

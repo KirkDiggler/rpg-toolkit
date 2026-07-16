@@ -387,6 +387,23 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 	if e.data.Mode == core.ModeTurnBased {
 		e.data.Initiative = append(e.data.Initiative, input.ID)
 	}
+
+	// EntityAppearedEvent for any player who can already see the newly-added
+	// monster (rpg-toolkit#764) — published BEFORE checkCombatEntry so a
+	// triggering add's ModeChangedEvent is preceded by the appearance that
+	// caused it, matching #762's ordering contract (appearance before mode
+	// change on the triggering action). Not gated on mode — see
+	// playersWhoCanSee's doc comment for why a mid-combat reinforcement must
+	// still appear even when checkCombatEntry itself is a no-op.
+	mon := e.data.Monsters[input.ID]
+	if viewers := e.playersWhoCanSee(mon); len(viewers) > 0 {
+		if err := e.broker.Publish(events.NewEntityAppearedEvent(
+			e.data.ID, e.nextSeq(), mon.ID, mon.Position, viewers,
+		)); err != nil {
+			return fmt.Errorf("publish monster appeared on add: %w", err)
+		}
+	}
+
 	// Combat-entry check (rpg-toolkit#757): a newly-added monster may already
 	// be visible to an existing player (e.g. spawned inside an already-open
 	// LoS), so this mutation site needs the same check as Move.

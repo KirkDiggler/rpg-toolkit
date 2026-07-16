@@ -379,7 +379,7 @@ the missed `seedActorTurn` and pushes a fresh `TurnStateChangedEvent`
 No `TurnStartedEvent` re-publish: the turn already started and was announced
 at the flip; the catch-up completes its seeding, it doesn't restart it.
 
-### Monster visibility events (rpg-toolkit#761)
+### Monster visibility events (rpg-toolkit#761, #764)
 
 `checkCombatEntry` flips the encounter mode on a newly-formed player-monster
 sightline, but flipping the mode alone doesn't tell a client which monster it
@@ -430,8 +430,39 @@ hex lives on the *player's* path (where the player crossed into or out of
 range) and is meaningless for where to draw an entity that never moved.
 
 Scope: player-move side only. `npc.go`'s simpler NPC-move visibility model
-and populated `View.KnownEntities` remain future work, unchanged by this
-issue.
+(tracked separately, #637) and populated `View.KnownEntities` remain future
+work, unchanged by this issue.
+
+**The spawn-side gap (#764).** #761/#762 only wired detection into
+`applyAndPublishMove` (the player-Move path), so a monster added via
+`AddMonster` directly into an already-visible position started combat
+(`checkCombatEntry` fired) but never told the client which monster it was —
+found by the review gate on PR #762. `AddMonster` now also publishes
+`EntityAppearedEvent` for every player who can already see the newly-added
+monster (`Encounter.playersWhoCanSee`, combat.go), published *before*
+`checkCombatEntry` so the appearance precedes the `ModeChangedEvent` it
+causes, same ordering contract as the Move path. Unlike
+`monsterVisibilityTransitions`, this needs no `ProjectVisibilityTransition`
+machinery: a freshly-added monster has no "before" state to diff against —
+its visibility to any existing player is inherently newly formed the moment
+it exists (the same reasoning `checkCombatEntry`'s own doc comment already
+gives) — so a plain per-player `CanSeeAt` scan is sufficient. Deliberately
+NOT gated on encounter mode: a reinforcement or door-triggered spawn added
+mid-combat must still appear even though `checkCombatEntry`'s
+`ModeFreeRoam` gate makes the mode-change half of the check a no-op at that
+point. When more than one player can already see the new monster (only
+possible via `AddMonster` — a single player `Move` can only ever change
+that one player's own visibility), all of them are grouped into one
+`EntityAppearedEvent`'s `PerPlayer` set, since the monster's `Position` is
+the same fixed hex for every viewer.
+
+Considered folding `npc.go`'s NPC-move-side gap (#637) into the same change
+since the issue named it as "same family" — decided against it: `AddMonster`
+needs no transition machinery at all (see above), while the NPC-move case
+is a genuine moving-entity problem needing the *player-sees-player* shape of
+`ProjectVisibilityTransition` (stationary viewers, a real moving entity) —
+different mechanics, already tracked separately, and folding it in here
+would have widened this fix past a single reviewable change.
 
 ## Implementation notes worth keeping
 
