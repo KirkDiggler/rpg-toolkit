@@ -32,7 +32,14 @@ func TestInitiativeRolledSuite(t *testing.T) {
 func (s *InitiativeRolledSuite) SetupTest() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
-	s.enc = encounter.New(context.Background(), "enc-initiative-rolled", s.broker)
+	// fixedMaxRoller (death_test.go) makes every d20 roll 20, so initiative
+	// ties are broken deterministically by rollInitiative's ascending-id
+	// tiebreak ("char-alice" < "goblin-1") — alice always acts first. Without
+	// this, a real roll can put the goblin first, and TestEndTurn's EndTurn
+	// call would need a wired CombatResolver to run NPCAct on it; determinism
+	// here is simpler and correct than exercising both branches.
+	s.enc = encounter.New(context.Background(), "enc-initiative-rolled", s.broker,
+		encounter.WithRoller(fixedMaxRoller{}))
 
 	var err error
 	s.aliceSub, err = s.broker.Subscribe("enc-initiative-rolled", "alice")
@@ -46,10 +53,12 @@ func (s *InitiativeRolledSuite) TearDownTest() {
 }
 
 // TestSetMode_InitiativeRolled_SequencedBetweenModeChangedAndTurnStarted
-// pins the ordering contract stated in SetMode's doc comment: ModeChanged ->
-// InitiativeRolled -> TurnStarted, all three from the same FREE_ROAM ->
-// TURN_BASED transition (triggered here via AddMonster's checkCombatEntry
-// call, the same combat-entry path #764 exercises).
+// pins the FULL ordering contract this AddMonster call produces: the
+// goblin's EntityAppearedEvent (#764) -> ModeChanged -> InitiativeRolled ->
+// TurnStarted, all from the same FREE_ROAM -> TURN_BASED transition
+// (triggered here via AddMonster's checkCombatEntry call, the same
+// combat-entry path #764 exercises). Consumers bind to this order, so all
+// four are pinned together in one place rather than split across tests.
 func (s *InitiativeRolledSuite) TestSetMode_InitiativeRolled_SequencedBetweenModeChangedAndTurnStarted() {
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
@@ -62,10 +71,14 @@ func (s *InitiativeRolledSuite) TestSetMode_InitiativeRolled_SequencedBetweenMod
 
 	aliceEvts := collectEventsTyped(s.aliceSub, 500*time.Millisecond)
 
-	modeChangedIdx, rolledIdx, turnStartedIdx := -1, -1, -1
+	appearedIdx, modeChangedIdx, rolledIdx, turnStartedIdx := -1, -1, -1, -1
 	var rolled *events.InitiativeRolledEvent
 	for i, evt := range aliceEvts {
 		switch e := evt.(type) {
+		case *events.EntityAppearedEvent:
+			if e.Entity == core.EntityID("goblin-1") {
+				appearedIdx = i
+			}
 		case *events.ModeChangedEvent:
 			modeChangedIdx = i
 		case *events.InitiativeRolledEvent:
@@ -75,9 +88,11 @@ func (s *InitiativeRolledSuite) TestSetMode_InitiativeRolled_SequencedBetweenMod
 			turnStartedIdx = i
 		}
 	}
+	s.Require().GreaterOrEqual(appearedIdx, 0, "goblin-1's EntityAppearedEvent must have fired")
 	s.Require().GreaterOrEqual(modeChangedIdx, 0, "ModeChangedEvent must have fired")
 	s.Require().GreaterOrEqual(rolledIdx, 0, "InitiativeRolledEvent must have fired")
 	s.Require().GreaterOrEqual(turnStartedIdx, 0, "TurnStartedEvent must have fired")
+	s.Less(appearedIdx, modeChangedIdx, "the goblin's appearance must precede the ModeChanged it caused")
 	s.Less(modeChangedIdx, rolledIdx, "InitiativeRolled must come after ModeChanged")
 	s.Less(rolledIdx, turnStartedIdx, "InitiativeRolled must come before TurnStarted")
 
@@ -93,6 +108,9 @@ func (s *InitiativeRolledSuite) TestSetMode_InitiativeRolled_SequencedBetweenMod
 // TestEndTurn_DoesNotRepublishInitiativeRolled: the roster doesn't change
 // turn to turn, so InitiativeRolledEvent must fire exactly once at the
 // FREE_ROAM->TURN_BASED transition, never again on later EndTurn advances.
+// The suite's fixedMaxRoller makes alice deterministically win the initiative
+// tiebreak (ascending entity id), so EndTurn always runs the player path
+// here — no NPCAct / CombatResolver dependency.
 func (s *InitiativeRolledSuite) TestEndTurn_DoesNotRepublishInitiativeRolled() {
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",
@@ -102,15 +120,11 @@ func (s *InitiativeRolledSuite) TestEndTurn_DoesNotRepublishInitiativeRolled() {
 		ID: "goblin-1", Position: core.Hex{Q: 1, R: 0, S: -1}, HP: 7, MaxHP: 7,
 	}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode())
+	s.Require().Equal(core.EntityID("char-alice"), s.enc.ActiveActor(),
+		"fixedMaxRoller's ascending-id tiebreak must put alice first")
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond) // drain the entry transition's events
 
-	active := s.enc.ActiveActor()
-	if active == "goblin-1" {
-		// Deterministic tie-break in rollInitiative is by entity id; whichever
-		// combatant is active, end their turn once to exercise EndTurn.
-		s.Require().NoError(s.enc.NPCAct(context.Background(), "goblin-1"))
-	}
-	_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
+	_, _, err := s.enc.EndTurn(context.Background(), "char-alice")
 	s.Require().NoError(err)
 
 	aliceEvts := collectEventsTyped(s.aliceSub, 300*time.Millisecond)
