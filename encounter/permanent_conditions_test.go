@@ -30,9 +30,11 @@ import (
 // TestStructurallyPermanentConditionRefs_GoldenList pins the exact character
 // -side derived set: 3 Grant.Conditions entries (UnarmoredDefense,
 // MartialArts, SneakAttack — Barbarian/Monk/Rogue level-1 grants) + 6
-// fighting-style refs (every entry in fightingstyles.All()). Order-
-// independent (ElementsMatch) since the underlying derivation walks a map
-// (classes.All) with no ordering guarantee.
+// fighting-style refs (every entry in fightingstyles.All()). The
+// derivation walks classes.ClassData (a map, so no ordering guarantee
+// there) but does sort its own output before returning — ElementsMatch is
+// used anyway, order-independently, rather than depending on that sort
+// staying implemented exactly this way.
 func TestStructurallyPermanentConditionRefs_GoldenList(t *testing.T) {
 	got := dnd5eCharacter.StructurallyPermanentConditionRefs()
 
