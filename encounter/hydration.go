@@ -230,12 +230,14 @@ func (e *Encounter) syncCombatantsToData() error {
 		if !ok || c == nil {
 			continue
 		}
-		raw, err := json.Marshal(c.ToData())
+		charData := c.ToData()
+		raw, err := json.Marshal(charData)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("marshal player %q: %w", pd.EntityID, err))
 			continue
 		}
 		pd.DataJSON = raw
+		pd.ActiveConditions = activeConditionRefs(charData.Conditions)
 		c.MarkClean()
 	}
 	for _, md := range e.data.Monsters {
@@ -243,12 +245,14 @@ func (e *Encounter) syncCombatantsToData() error {
 		if !ok || m == nil {
 			continue
 		}
-		raw, err := json.Marshal(m.ToData())
+		monData := m.ToData()
+		raw, err := json.Marshal(monData)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("marshal monster %q: %w", md.ID, err))
 			continue
 		}
 		md.DataJSON = raw
+		md.ActiveConditions = activeConditionRefs(monData.Conditions)
 		m.MarkClean()
 	}
 	return errors.Join(errs...)

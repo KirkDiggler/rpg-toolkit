@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-16
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16
+updated: 2026-07-17
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,32 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **Snapshot-visible active conditions — toolkit half only (rpg-toolkit#754,
+  2026-07-17).** Encounter snapshots carried no projection of a held
+  entity's active conditions — a client that (re)connected mid-encounter
+  only learned about a condition from the live `StatusApplied`/
+  `StatusRemoved` broker stream, never from state; a condition hydrated in
+  via `LoadFromData` was mechanically active but invisible (confirmed
+  during #752: the leaked raging condition added a damage component with
+  no 🔥 badge anywhere). `PlayerData.ActiveConditions` /
+  `MonsterData.ActiveConditions` (`[]string` ref lists) now carry this,
+  populated by `syncCombatantsToData` from the already-serialized
+  `Data.Conditions` blobs `ToData()` produces (not a second
+  `GetConditions()`+`ToJSON()` pass — an earlier draft did that and paid
+  the per-condition serialization cost twice per RPC, per Copilot + gate
+  review) — generic ref extraction via each blob's shared `Ref *core.Ref`
+  field, no rulebook type-switch. Monsters included: `monstertraits`
+  (Immunity/PackTactics/etc.) become genuine `ConditionBehavior` instances
+  once loaded, same as any battlefield condition. **The wire proto already
+  has a home for this**
+  (`Entity.status_effects`, unpopulated until now) — no proto change
+  needed — but rpg-api's snapshot-building code has never read
+  `ActiveConditions` or populated `status_effects` from anything (verified:
+  `StatusEffect{}` is built in exactly one place, the live
+  `translateConditionAppliedEvent` path). This PR proves the fix at the
+  `ToData()` level only; the rpg-api-side projection is a separate,
+  explicitly-flagged follow-up. See
+  [encounter.md](architecture/components/encounter.md#snapshot-visible-active-conditions-rpg-toolkit754).
 - **ExitCombat wired at encounter-end — no more stale combat economy
   leaking across encounters (rpg-toolkit#767, 2026-07-16).**
   `character.Character.ExitCombat` — the toolkit's own API for clearing

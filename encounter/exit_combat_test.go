@@ -29,11 +29,17 @@ import (
 )
 
 // TestKillingBlow_ClearsActionEconomy_AndStillSweepsRagingCondition is the
-// primary goal-behavior proof for #767, plus the #752 regression guard, in
-// one assertion pair: a barbarian who is BOTH raging AND mid-turn (live
-// ActionEconomy) when their own attack ends the encounter must come out of
-// ToData() with ActionEconomy == nil (this fix) AND Conditions empty
-// (#752, unregressed).
+// primary goal-behavior proof for #767, plus the #752 regression guard, plus
+// the #754 composition proof, in one call: a barbarian who is BOTH raging
+// AND mid-turn (live ActionEconomy) when their own attack ends the
+// encounter must come out of ToData() with ActionEconomy == nil (#767),
+// Conditions empty (#752, unregressed), AND — since #754's
+// ActiveConditions is populated from the SAME post-sweep condition state —
+// ActiveConditions must ALSO no longer report raging. #754's snapshot
+// projection and #752/#767's end-of-combat sweep touch the same
+// character.Character in the same syncCombatantsToData call; this pins
+// that a swept condition doesn't linger in the newer field just because it
+// reads from a different accessor than the DataJSON round-trip does.
 func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ClearsActionEconomy_AndStillSweepsRagingCondition() {
 	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID))
 	enc := s.loadRagingBarbVsGoblin(charJSON)
@@ -54,6 +60,9 @@ func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ClearsActionEconomy_An
 			"otherwise the character carries depleted combat state into every subsequent encounter")
 	s.Empty(charData.Conditions,
 		"raging must still be swept (rpg-toolkit#752) — adding ExitCombat must not regress EndCombat")
+	s.Nil(playerData.ActiveConditions,
+		"a condition swept at encounter-end (rpg-toolkit#752) must not still appear in the #754 "+
+			"snapshot projection — the two features read the same post-sweep condition state")
 }
 
 // TestKillingBlow_ExitCombat_IdempotentOnNonHeldSeats: a monster (no
