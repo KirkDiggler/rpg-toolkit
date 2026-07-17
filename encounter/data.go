@@ -155,6 +155,24 @@ type PlayerData struct {
 	// ActivateFeatureInput.CharDataJSON). Omitted from the wire when empty —
 	// players without a blob fall back to the stat-snapshot stand-in path.
 	DataJSON json.RawMessage `json:"data_json,omitempty"`
+
+	// ActiveConditions lists the canonical ref strings (e.g.
+	// "dnd5e:conditions:raging") of every condition currently applied to
+	// this player's held character (rpg-toolkit#754). Refreshed by ToData's
+	// write-back cascade from the held character's GetConditions(), the same
+	// accessor checkEncounterEnd's sweep would use — not read back from
+	// DataJSON, so it reflects the LIVE in-memory state at snapshot time, not
+	// whatever was last persisted. Nil (omitted from the wire) when the seat
+	// has no held character or no active conditions. Exists so a client that
+	// (re)connects mid-encounter learns about a condition that was hydrated
+	// in via LoadFromData or applied while it was disconnected — previously
+	// only the live StatusApplied/StatusRemoved broker stream carried this,
+	// which a reconnecting viewer never saw. Deliberately minimal (ref only,
+	// no duration/source) — matches ConditionAppliedEvent's own cause-event
+	// shape; the consumer enriches display_name/icon_hint itself, the same
+	// division of labor translateConditionAppliedEvent already uses for the
+	// live path.
+	ActiveConditions []string `json:"active_conditions,omitempty"`
 }
 
 // DoorData persists a door entity.
@@ -208,6 +226,22 @@ type MonsterData struct {
 	AttackBonus int    `json:"attack_bonus,omitempty"`
 	DamageDice  string `json:"damage_dice,omitempty"`
 	DamageType  string `json:"damage_type,omitempty"`
+
+	// ActiveConditions lists the canonical ref strings (e.g.
+	// "dnd5e:monster_traits:pack_tactics") of every condition currently
+	// applied to this monster (rpg-toolkit#754) — same mechanics and same
+	// rationale as PlayerData.ActiveConditions, refreshed from the held
+	// monster's GetConditions() at ToData() time. Monster "conditions" in
+	// this rulebook include monstertraits (Immunity/Vulnerability/
+	// PackTactics/UndeadFortitude) alongside anything a live encounter
+	// applies (poisoned, etc.) — both are genuinely-Applied
+	// dnd5eEvents.ConditionBehavior instances once a monster has been
+	// through any LoadFromData cycle (AddTraitData's pre-bus staging only
+	// matters before the first such cycle), so this field does not
+	// distinguish "innate trait" from "battlefield condition"; neither does
+	// the toolkit's own condition model. Nil when the seat has no held
+	// monster or no active conditions.
+	ActiveConditions []string `json:"active_conditions,omitempty"`
 }
 
 // NewData constructs an empty Data with a fresh ID. Mode defaults to

@@ -236,6 +236,7 @@ func (e *Encounter) syncCombatantsToData() error {
 			continue
 		}
 		pd.DataJSON = raw
+		pd.ActiveConditions = activeConditionRefs(c.GetConditions())
 		c.MarkClean()
 	}
 	for _, md := range e.data.Monsters {
@@ -249,6 +250,7 @@ func (e *Encounter) syncCombatantsToData() error {
 			continue
 		}
 		md.DataJSON = raw
+		md.ActiveConditions = activeConditionRefs(m.GetConditions())
 		m.MarkClean()
 	}
 	return errors.Join(errs...)
