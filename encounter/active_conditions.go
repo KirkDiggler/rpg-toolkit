@@ -4,12 +4,43 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
+
+// structurallyPermanentConditionRefs is the union of every condition ref
+// that Draft.Finalize (character side) or monster construction (monster
+// side) attaches once, permanently, never through Encounter.ActivateFeature's
+// live broker bridge — rpg-toolkit#778. Computed once at package init from
+// the rulebook's own authored data (character.StructurallyPermanentConditionRefs
+// walks classes.GetGrants + fightingstyles.All(); monstertraits.AllTraitRefs
+// mirrors monstertraits' own LoadJSON dispatch), not a hand-maintained
+// literal duplicated here — see both functions' doc comments for the
+// structural invariant this depends on and what breaks it.
+var structurallyPermanentConditionRefs = buildStructurallyPermanentConditionRefs()
+
+func buildStructurallyPermanentConditionRefs() map[string]struct{} {
+	out := make(map[string]struct{})
+	for _, ref := range character.StructurallyPermanentConditionRefs() {
+		out[ref] = struct{}{}
+	}
+	for _, ref := range monstertraits.AllTraitRefs() {
+		out[ref] = struct{}{}
+	}
+	return out
+}
 
 // activeConditionRefs extracts the canonical ref string (e.g.
 // "dnd5e:conditions:raging") for each currently-applied condition, for the
 // PlayerData.ActiveConditions / MonsterData.ActiveConditions snapshot
-// projection (rpg-toolkit#754).
+// projection (rpg-toolkit#754) — EXCLUDING conditions attached permanently
+// at character/monster construction (rpg-toolkit#778), since those are
+// structurally never announced on the live broker ConditionApplied stream
+// either; including them would make ActiveConditions a strict superset of
+// what a continuously-connected client ever sees (PR #776's gate finding
+// #1), badging every Monk with "MartialArts" and every goblin with
+// "PackTactics" forever, on every snapshot, starting the moment they're
+// created.
 //
 // Takes the ALREADY-serialized condition blobs — character.Data.Conditions /
 // monster.Data.Conditions, as returned by the ToData() call
@@ -52,7 +83,11 @@ func activeConditionRefs(conditionBlobs []json.RawMessage) []string {
 		if err := json.Unmarshal(raw, &wire); err != nil || wire.Ref == nil {
 			continue
 		}
-		refs = append(refs, wire.Ref.String())
+		ref := wire.Ref.String()
+		if _, permanent := structurallyPermanentConditionRefs[ref]; permanent {
+			continue
+		}
+		refs = append(refs, ref)
 	}
 	if len(refs) == 0 {
 		return nil

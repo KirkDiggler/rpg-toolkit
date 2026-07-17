@@ -2,7 +2,7 @@
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
 updated: 2026-07-17
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,29 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **ActiveConditions excludes build-time-granted conditions
+  (rpg-toolkit#778, 2026-07-17).** #754's `ActiveConditions` was the full
+  `GetConditions()` set, unfiltered — mixing genuinely live-activated
+  conditions (`Raging`, announced on the broker `ConditionApplied` stream
+  via `Encounter.ActivateFeature`) with conditions attached once,
+  permanently, at construction (`MartialArts`/`UnarmoredDefense` — Monk/
+  Barbarian `Grant.Conditions` — and monster traits like `PackTactics`),
+  which are structurally never live-announced. Unfiltered, every Monk's
+  snapshot would carry a permanent "MartialArts" badge forever (found by
+  the #776 review gate). Verified by call graph — not just current data —
+  that `conditions.CreateFromRef` (the factory `Grant.Conditions` entries
+  go through) has exactly one caller in the rulebook, so attachment
+  mechanism correlates 1:1 with ref identity today; a static, ref-keyed
+  exclusion set is therefore sufficient — no per-instance runtime
+  provenance marker needed, simpler than either shape the issue proposed.
+  `character.StructurallyPermanentConditionRefs()` derives the
+  character-side set from `classes.ClassData`/`GetGrants`/
+  `fightingstyles.All()` (rulebook-authored data, not a hand-maintained
+  literal); `monstertraits.AllTraitRefs()` mirrors `LoadJSON`'s dispatch
+  switch for the monster side. A golden-list regression test pins the
+  exact derived set so a future class/style/trait addition forces a human
+  to confirm the new ref really is build-time-only. See
+  [encounter.md](architecture/components/encounter.md#excluding-build-time-granted-conditions-rpg-toolkit778).
 - **Snapshot-visible active conditions — toolkit half only (rpg-toolkit#754,
   2026-07-17).** Encounter snapshots carried no projection of a held
   entity's active conditions — a client that (re)connected mid-encounter

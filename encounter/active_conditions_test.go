@@ -14,6 +14,14 @@ package encounter_test
 // after some other action ran, that would prove the LIVE stream still
 // works (already true, not the gap), not that the SNAPSHOT itself carries
 // the condition.
+//
+// Also covers rpg-toolkit#778: ActiveConditions must exclude conditions
+// attached permanently at construction (a Monk's MartialArts, a goblin's
+// PackTactics) since those are structurally never announced on the live
+// broker stream either — including them would make ActiveConditions a
+// strict superset of what a continuously-connected client ever sees. See
+// TestReconnect_MonsterTrait_ExcludedFromSnapshot and
+// permanent_conditions_test.go's golden-list regression test.
 
 import (
 	"context"
@@ -137,6 +145,52 @@ func (s *ActiveConditionsSuite) TestReconnect_PlayerCondition_VisibleInSnapshot_
 		"a condition hydrated in via LoadFromData must appear in the snapshot without any verb call")
 }
 
+// TestReconnect_MonkMartialArts_ExcludedFromSnapshot pins rpg-toolkit#778's
+// motivating example directly: a Monk's MartialArts (a Grant.Conditions
+// entry, attached once at Draft.Finalize — character creation, never
+// through Encounter.ActivateFeature) must NOT appear in ActiveConditions.
+// Contrast with TestReconnect_PlayerCondition_VisibleInSnapshot_NoVerbCalled
+// above: Raging is genuinely runtime-activated (never in any class's
+// Grant.Conditions list) and must still appear; MartialArts is
+// Grant-attached and must not — the same snapshot, two condition refs,
+// opposite outcomes, is the actual behavior rpg-toolkit#778 fixes.
+func (s *ActiveConditionsSuite) TestReconnect_MonkMartialArts_ExcludedFromSnapshot() {
+	martialArtsJSON, err := json.Marshal(conditions.MartialArtsData{
+		Ref: refs.Conditions.MartialArts(), CharacterID: "char-finn", MonkLevel: 1,
+	})
+	s.Require().NoError(err)
+
+	charData := &dnd5eCharacter.Data{
+		ID: "char-finn", PlayerID: "finn", Name: "finn",
+		Level: 1, ProficiencyBonus: 2,
+		ClassID: classes.Monk, RaceID: races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 13,
+			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
+		},
+		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 15,
+		Conditions: []json.RawMessage{martialArtsJSON},
+	}
+	raw, err := json.Marshal(charData)
+	s.Require().NoError(err)
+
+	enc := encounter.New(s.ctx, "enc-active-conditions-monk", s.broker)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "finn", EntityID: "char-finn",
+		Position: encountercore.Hex{}, SightRange: 10,
+		HP: 10, MaxHP: 10, AC: 15,
+		DataJSON: raw,
+	}))
+
+	loaded := s.loadEncounterFromData(enc)
+	persisted := loaded.ToData()
+	playerData := persisted.Players["finn"]
+	s.Require().NotNil(playerData)
+	s.Nil(playerData.ActiveConditions,
+		"MartialArts is Grant-attached (rpg-toolkit#778) — it must not appear in ActiveConditions, "+
+			"the same way a live broker viewer would never see it announced")
+}
+
 // TestReconnect_PlayerNoConditions_ActiveConditionsOmitted is the negative
 // case: a player with no conditions must have a nil (omitted) ActiveConditions,
 // not an empty-but-present slice.
@@ -174,18 +228,21 @@ func (s *ActiveConditionsSuite) TestReconnect_PlayerNoConditions_ActiveCondition
 		"empty ActiveConditions must be omitted from the wire (omitempty), not sent as []")
 }
 
-// TestReconnect_MonsterCondition_VisibleInSnapshot mirrors the player test
-// for a monster: PackTactics (a monstertraits.ConditionBehavior, applied via
-// the same LoadFromData -> LoadMonsterConditions cascade players go
-// through) must appear in MonsterData.ActiveConditions after a load, with no
-// verb called. Monster "conditions" in this rulebook include innate traits
-// (Immunity/Vulnerability/PackTactics/UndeadFortitude) alongside anything
-// applied mid-fight — both become genuinely-Applied ConditionBehavior
-// instances once loaded (AddTraitData's pre-bus staging only matters before
-// the first LoadFromData cycle), so this snapshot field does not — and the
-// toolkit's own condition model does not — distinguish "innate" from
-// "battlefield" conditions.
-func (s *ActiveConditionsSuite) TestReconnect_MonsterCondition_VisibleInSnapshot() {
+// TestReconnect_MonsterTrait_ExcludedFromSnapshot pins rpg-toolkit#778's
+// fix for the sibling monster-side case: PackTactics is attached at monster
+// construction (AddTraitData's pre-bus staging, unified into a genuine
+// ConditionBehavior on the first LoadFromData cycle — mechanically
+// identical to a character's Grant.Conditions), never through
+// Encounter.ActivateFeature's live broker bridge, so it must NOT appear in
+// ActiveConditions — otherwise every goblin would carry a permanent
+// "PackTactics" badge on every snapshot forever, the same disease as a
+// Monk's MartialArts leaking through (#778's motivating example).
+//
+// This test used to assert the OPPOSITE (PackTactics present) under #754's
+// original unfiltered ActiveConditions — inverted here, not just relaxed,
+// once #778 established that monster traits are structurally build-time
+// -only, same as a character's Grant.Conditions entries.
+func (s *ActiveConditionsSuite) TestReconnect_MonsterTrait_ExcludedFromSnapshot() {
 	packTacticsJSON, err := json.Marshal(monstertraits.PackTacticsData{
 		Ref:     refs.MonsterTraits.PackTactics(),
 		OwnerID: "goblin-1",
@@ -215,6 +272,7 @@ func (s *ActiveConditionsSuite) TestReconnect_MonsterCondition_VisibleInSnapshot
 	persisted := loaded.ToData()
 	monsterData := persisted.Monsters["goblin-1"]
 	s.Require().NotNil(monsterData)
-	s.Contains(monsterData.ActiveConditions, "dnd5e:monster_traits:pack_tactics",
-		"a monster trait hydrated in via LoadFromData must appear in the snapshot without any verb call")
+	s.Nil(monsterData.ActiveConditions,
+		"PackTactics is structurally build-time-only (rpg-toolkit#778) — it must not appear in ActiveConditions, "+
+			"the same way a live broker viewer would never see it announced")
 }
