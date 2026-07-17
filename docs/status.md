@@ -199,12 +199,15 @@ See "Paused / on hold" below.
   during #752: the leaked raging condition added a damage component with
   no 🔥 badge anywhere). `PlayerData.ActiveConditions` /
   `MonsterData.ActiveConditions` (`[]string` ref lists) now carry this,
-  populated by `syncCombatantsToData` from the held entity's
-  `GetConditions()` — generic ref extraction via each condition's `ToJSON`
-  and its shared `Ref *core.Ref` field, no rulebook type-switch. Monsters
-  included: `monstertraits` (Immunity/PackTactics/etc.) become genuine
-  `ConditionBehavior` instances once loaded, same as any battlefield
-  condition. **The wire proto already has a home for this**
+  populated by `syncCombatantsToData` from the already-serialized
+  `Data.Conditions` blobs `ToData()` produces (not a second
+  `GetConditions()`+`ToJSON()` pass — an earlier draft did that and paid
+  the per-condition serialization cost twice per RPC, per Copilot + gate
+  review) — generic ref extraction via each blob's shared `Ref *core.Ref`
+  field, no rulebook type-switch. Monsters included: `monstertraits`
+  (Immunity/PackTactics/etc.) become genuine `ConditionBehavior` instances
+  once loaded, same as any battlefield condition. **The wire proto already
+  has a home for this**
   (`Entity.status_effects`, unpopulated until now) — no proto change
   needed — but rpg-api's snapshot-building code has never read
   `ActiveConditions` or populated `status_effects` from anything (verified:

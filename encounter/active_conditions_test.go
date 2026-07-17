@@ -166,7 +166,7 @@ func (s *ActiveConditionsSuite) TestReconnect_PlayerNoConditions_ActiveCondition
 	persisted := loaded.ToData()
 	playerData := persisted.Players["alice"]
 	s.Require().NotNil(playerData)
-	s.Empty(playerData.ActiveConditions, "a character with no conditions must have ActiveConditions empty/nil")
+	s.Nil(playerData.ActiveConditions, "a character with no conditions must have ActiveConditions nil, not an empty slice")
 
 	wire, err := json.Marshal(playerData)
 	s.Require().NoError(err)
