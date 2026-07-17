@@ -56,13 +56,13 @@ func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ClearsActionEconomy_An
 		"raging must still be swept (rpg-toolkit#752) — adding ExitCombat must not regress EndCombat")
 }
 
-// TestKillingBlow_ExitCombat_IdempotentOnNonHeldSeats: a monster (no
-// hydrated *character.Character — heldCharacter returns nil for it) must
-// not cause endCombatForPlayers to error just because ExitCombat now runs
-// alongside EndCombat in the same loop. This is the same "flat stat-snapshot
-// seats are skipped" guarantee #752 already relied on; re-asserted here
-// because the new ExitCombat call is a second call site added to that same
-// skip-on-nil branch.
+// TestKillingBlow_ExitCombat_IdempotentOnNonHeldSeats: a PLAYER seat with no
+// hydrated *character.Character (a flat stat-snapshot seat — no DataJSON,
+// so heldCharacter returns nil for it) must not cause endCombatForPlayers
+// to error just because ExitCombat now runs alongside EndCombat in the same
+// loop. This is the same "flat stat-snapshot seats are skipped" guarantee
+// #752 already relied on; re-asserted here because the new ExitCombat call
+// is a second call site added to that same skip-on-nil branch.
 func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ExitCombat_IdempotentOnNonHeldSeats() {
 	// bob carries no DataJSON — a flat stat-snapshot seat, not a held
 	// character — so heldCharacter(bob) is nil and both EndCombat/ExitCombat

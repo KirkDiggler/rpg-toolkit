@@ -449,19 +449,18 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 // transition point to ModeEnded (SetMode explicitly rejects ModeEnded — see
 // its doc), so it is the correct and complete place for it: ActionEconomy
 // is a flat, encounter-unscoped field on the persisted character
-// field on the persisted character (rulebooks/dnd5e/character/data.go),
-// and ToData()/LoadFromData round-trip whatever is in it verbatim with no
-// encounter-identity check. Without this, a character who ever finished a
-// fight carried their depleted economy (e.g. movement_remaining: 0) into
-// every SUBSEQUENT encounter forever — found live via Redis inspection in
-// The Dungeon wave 1's closing playtest (rpg-api PR #645, commit 759eca9),
-// which added a StartEncounter-side defensive clear as a backstop, NOT the
-// fix. That backstop stays in place after this change: checkEncounterEnd's
-// predicate is len(data.Monsters)==0, so it never fires on a TPK (all
-// players dead, monsters alive) — an abandoned/TPK'd encounter's
-// participants still need the StartEncounter backstop to catch stale
-// economy on their next encounter, until a TPK-end predicate exists
-// (tracked separately).
+// (rulebooks/dnd5e/character/data.go), and ToData()/LoadFromData round-trip
+// whatever is in it verbatim with no encounter-identity check. Without
+// this, a character who ever finished a fight carried their depleted
+// economy (e.g. movement_remaining: 0) into every SUBSEQUENT encounter
+// forever — found live via Redis inspection in The Dungeon wave 1's closing
+// playtest (rpg-api PR #645, commit 759eca9), which added a
+// StartEncounter-side defensive clear as a backstop, NOT the fix. That
+// backstop stays in place after this change: checkEncounterEnd's predicate
+// is len(data.Monsters)==0, so it never fires on a TPK (all players dead,
+// monsters alive) — an abandoned/TPK'd encounter's participants still need
+// the StartEncounter backstop to catch stale economy on their next
+// encounter, until a TPK-end predicate exists (rpg-toolkit#772).
 //
 // Flat stat-snapshot seats (no hydrated *character.Character — heldCharacter
 // returns nil) have nothing to sweep and are skipped.
