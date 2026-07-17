@@ -42,10 +42,10 @@ import (
 // function's correctness depends on that separation holding: if some
 // future condition becomes reachable through BOTH a Grant.Conditions entry
 // AND a live ActivateFeature call, this function would still exclude it
-// from ActiveConditions even on the encounters where it WAS genuinely live
-// -activated and IS announced on the broker stream — the fix at that point
-// is a real per-instance provenance marker (rpg-toolkit#778's option (b)),
-// not this static derivation.
+// from ActiveConditions even on the encounters where it was genuinely
+// live-activated and announced on the broker stream — the fix at that
+// point is a real per-instance provenance marker (rpg-toolkit#778's option
+// (b)), not this static derivation.
 //
 // Derived from classes.ClassData + classes.GetGrants + fightingstyles.All()
 // rather than a hand-maintained literal, so a newly migrated class's

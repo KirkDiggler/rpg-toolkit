@@ -81,6 +81,13 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 // equivalent of a character's Grant.Conditions — and never go through
 // Encounter.ActivateFeature's live broker bridge, so they belong in the
 // same excluded set as character.StructurallyPermanentConditionRefs.
+//
+// This hand-mirror is a real, documented drift risk: TestAllTraitRefs_NoPhantomEntries
+// (loader_test.go) catches a phantom entry (a ref listed here LoadJSON
+// doesn't actually recognize), but cannot catch a missing entry (a new
+// LoadJSON case forgotten here) — that direction needs LoadJSON
+// restructured around an enumerable registry this function could derive
+// from instead of mirroring. Tracked as rpg-toolkit#780.
 func AllTraitRefs() []string {
 	return []string{
 		refs.MonsterTraits.Immunity().String(),
