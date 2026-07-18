@@ -327,6 +327,133 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_BridgesToEntityDied()
 	s.Require().ErrorIs(endErr, encounter.ErrEncounterEnded)
 }
 
+// TestDeathSaveRoll_SurvivesPerRPCReload_ViaRealEndTurn is the rpg-api-shape
+// regression the death-wave gate asked for after a live playtest raised a
+// question: does the turn-start death-save auto-roll (UnconsciousCondition.
+// onTurnStart) actually fire when driven through the REAL per-RPC lifecycle
+// — reload before AND after every verb call, exactly like rpg-api's
+// orchestrator (load, call the verb, persist, discard; never holds an
+// Encounter across RPCs) — rather than TestThreeFailedDeathSaves_
+// AcrossPerRPCReloads_BridgesToEntityDied's approach of publishing raw
+// DamageReceivedEvents directly on the bus to sidestep the turn-start
+// roller not surviving reload (onTurnStart's own comment: reload restores
+// CharacterID + death-save counters via loadJSON but not Roller, falling
+// back to dice.NewRoller() — real, non-deterministic — every time).
+//
+// That non-determinism is exactly why NO existing test drove EndTurn
+// through a reload cycle and asserted the roll itself happens — this one
+// does, accepting non-determinism over the OUTCOME while asserting the
+// PROCESS. Deliberately watches the broker DeathSaveRolledEvent stream
+// rather than inspecting the persisted Unconscious condition's counters:
+// a roll's OUTCOME can remove the condition entirely (a nat-20 regains
+// consciousness) or freeze its counters permanently at a valid non-zero
+// value (3 successes = stabilized, no more rolls by RAW) — inspecting
+// condition state after the fact can't distinguish "never rolled" from
+// "rolled and resolved," but DeathSaveRolledEvent fires unconditionally,
+// before any outcome branching (unconscious.go's onTurnStart), for EVERY
+// roll regardless of what it resolves to. Counting that event directly is
+// what actually answers the live playtest's question.
+//
+// Live playtest context (rpg-toolkit#772/#781/#782): a gate review flagged
+// that toolkit suites "never ride rpg-api's per-RPC reload + dirty-gated
+// persist cycle" as a possible explanation for zero observed
+// DeathSaveRolledEvents across seven live rounds. This test closes that
+// specific coverage gap. It could not reproduce a failure here, nor across
+// three independent live grpcurl+Redis reproductions against the actual
+// rpg-api per-RPC lifecycle (see the PR discussion) — this test is the
+// automated, CI-run backstop for what those live checks already showed.
+func (s *UnconsciousZeroHPSuite) TestDeathSaveRoll_SurvivesPerRPCReload_ViaRealEndTurn() {
+	roller := encounter.WithRoller(fixedMaxRoller{}) // guarantees the goblin's knockdown hit; irrelevant to onTurnStart's own roll (uncontrollable across reload, by design here)
+	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	opts := []encounter.Option{roller, resolver}
+
+	enc := s.buildEncounter("enc-uzh-realendturn", roller)
+	enc = s.reloadEncounter(enc, opts...)
+
+	aliceSub, err := s.broker.Subscribe("enc-uzh-realendturn", alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = aliceSub.Close() }()
+
+	// Cycle to the goblin's turn, reloading before AND after every EndTurn
+	// call — this is the exact "load, call the verb, persist, discard"
+	// shape rpg-api's orchestrator uses.
+	for enc.ActiveActor() != gobEntityID {
+		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(endErr)
+		enc = s.reloadEncounter(enc, opts...)
+	}
+
+	// Goblin's attack drops alice (1 HP) to 0 — Unconscious applied via a
+	// REAL NPCAct call (not a synthesized fixture), then reload. This is
+	// the reload boundary between "condition applied" and "condition's
+	// own subscriptions must still be live" that the live playtest
+	// questioned.
+	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
+	enc = s.reloadEncounter(enc, opts...)
+	drainSub(aliceSub, 100*time.Millisecond)
+
+	// Cycle turns (goblin's own act, then alice's turn-start; repeat),
+	// reloading before AND after every EndTurn call, counting
+	// DeathSaveRolledEvents on the broker stream as they arrive — drained
+	// incrementally each iteration rather than buffered to the end, so a
+	// long run can't overflow the subscription channel. Stops as soon as
+	// alice reaches ANY terminal outcome the encounter itself reports
+	// (ModeEnded == death/TPK; HP > 0 == nat-20 revival), so the loop
+	// never asserts past a state where RAW says no more rolls should
+	// happen. Bounded at 6 of alice's own turns — generous (P(neither 3
+	// successes nor 3 failures nor a nat-20 within 6 independent rolls) is
+	// small) without being so large a genuinely-stuck mechanism hangs the
+	// suite.
+	rolledCount := 0
+	aliceTurnsSeen := 0
+	stabilized := false
+	for aliceTurnsSeen < 6 {
+		_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+		s.Require().NoError(endErr)
+		enc = s.reloadEncounter(enc, opts...)
+
+		// enc.ActiveActor() here is the actor whose turn just STARTED —
+		// seedActorTurn (and thus onTurnStart, and thus any death-save
+		// roll) already ran, inside the EndTurn call above, for THIS
+		// actor before it returned.
+		newActive := enc.ActiveActor()
+		// 500ms, matching this suite's established drain-window convention
+		// elsewhere (not 200ms): Broker.Publish only places the payload on
+		// the transport's channel synchronously — actual delivery to
+		// sub.events happens on Broker.listen's separate goroutine
+		// (broker.go), a real async hop even though it's normally
+		// microseconds. 200ms proved marginal under load (many sequential
+		// go test invocations in a tight shell loop create real scheduler
+		// pressure); it is not a signal about production event delivery.
+		for _, e := range collectEventsTyped(aliceSub, 500*time.Millisecond) {
+			if dsr, ok := e.(*events.DeathSaveRolledEvent); ok {
+				rolledCount++
+				if dsr.Stabilized {
+					stabilized = true
+				}
+			}
+		}
+
+		if newActive == aliceEntityID {
+			aliceTurnsSeen++
+		}
+		if enc.Mode() == core.ModeEnded {
+			break // death/TPK — confirmed dead, no more rolls possible by design.
+		}
+		if aliceData := enc.ToData().Players[alicePlayerID]; aliceData != nil && aliceData.HP > 0 {
+			break // nat-20 revival — no longer unconscious, nothing left to roll for.
+		}
+		if stabilized {
+			break // 3 successes — RAW correctly stops rolling once stable; no more turns should add to rolledCount.
+		}
+	}
+
+	s.Positive(aliceTurnsSeen, "the turn cycle must have reached alice's own turn at least once")
+	s.GreaterOrEqual(rolledCount, aliceTurnsSeen,
+		"expected at least one DeathSaveRolledEvent per turn-start alice remained unconscious for (saw %d rolls across %d of her turns) — fewer rolls than turns means at least one turn-start silently failed to roll, the exact live-playtest symptom",
+		rolledCount, aliceTurnsSeen)
+}
+
 // reloadEncounter round-trips enc through ToData/LoadFromData with the given
 // opts, mirroring the real per-RPC production lifecycle: hydration.go's
 // package doc states the hydration cascade is "the only place conditions

@@ -429,6 +429,56 @@ func (e *Encounter) bridgeDeathSaveRolled(event dnd5eEvents.DeathSaveRolledEvent
 	return nil
 }
 
+// subscribeHealingReceivedBridge installs a PERMANENT subscription to the
+// rulebook's HealingReceivedTopic on e.bus, syncing PlayerData.HP from
+// whatever healing just landed on a held character. Same permanent-lifetime
+// shape as the other bridges in this file: healing (a nat-20 death save's
+// "regain 1 HP," and any future healing spell/feature) can fire from any
+// future turn or action, not just once per verb call.
+//
+// rpg-toolkit#772/#781/#784: nothing synced PlayerData.HP from the held
+// character's own HP in the healing direction before this — combat
+// damage (applyAndPublishNPCOutcome / applyCapturedDamage) mutates
+// PlayerData.HP directly, but character.onHealingReceived only ever
+// touched c.hitPoints. A player revived by a nat-20 death save correctly
+// regained consciousness and 1 HP server-side (UnconsciousCondition's own
+// state, and the Unconscious condition itself, were both correctly
+// updated/removed), but PlayerData.HP — and anything reading it, a
+// reconnecting client's snapshot included — stayed stuck at 0 forever.
+// Found writing the per-RPC-reload regression test for this wave: the
+// test's own "has alice been revived" check read PlayerData.HP and could
+// not tell a real revival from a mechanism that was still stuck.
+//
+// Deliberately does NOT read char.GetHitPoints() and take the live value
+// wholesale (that was tried and reverted — see git history on this
+// function's addition): char.GetHitPoints() is stale-LOW for un-synced
+// combat damage (rpg-toolkit#784's still-open general per-hit-sync gap),
+// so blindly trusting it here would silently overwrite a correct,
+// freshly-damaged PlayerData.HP with a stale, higher, pre-damage value
+// every time ToData() ran. Applying the event's own Amount as a targeted
+// delta — mirroring exactly what character.onHealingReceived does to
+// c.hitPoints, on the same signal, clamped to the same MaxHP — cannot
+// make that mistake: it only ever reacts to a genuine healing event, never
+// to reading a possibly-stale snapshot.
+func (e *Encounter) subscribeHealingReceivedBridge(ctx context.Context) error {
+	_, err := dnd5eEvents.HealingReceivedTopic.On(e.bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+			p := e.findPlayerByEntityID(core.EntityID(event.TargetID))
+			if p == nil {
+				return nil
+			}
+			p.HP += event.Amount
+			if p.MaxHP > 0 && p.HP > p.MaxHP {
+				p.HP = p.MaxHP
+			}
+			return nil
+		})
+	if err != nil {
+		return fmt.Errorf("subscribe healing received bridge: %w", err)
+	}
+	return nil
+}
+
 // deathSaveAudience builds the per-viewer projection shared by the
 // Stabilized and (via deathSaveRolledAudience) DeathSaveRolled bridges: the
 // rolling/stabilizing player themselves is always included unconditionally

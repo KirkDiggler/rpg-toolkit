@@ -217,6 +217,11 @@ func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *E
 	// anywhere in this package.
 	_ = e.subscribeCharacterStabilizedBridge(ctx)
 	_ = e.subscribeDeathSaveRolledBridge(ctx)
+	// rpg-toolkit#772/#781/#784: syncs PlayerData.HP from held-character
+	// healing (nat-20 death-save revival today; any future healing spell/
+	// feature) — see subscribeHealingReceivedBridge's doc for why this
+	// couldn't just be "read char.GetHitPoints() at ToData() time."
+	_ = e.subscribeHealingReceivedBridge(ctx)
 	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {
 		o(e)
@@ -284,6 +289,11 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	}
 	if err := e.subscribeDeathSaveRolledBridge(ctx); err != nil {
 		return nil, fmt.Errorf("subscribe death save rolled bridge: %w", err)
+	}
+	// rpg-toolkit#772/#781/#784: same permanent-bridge shape as the others
+	// above — see subscribeHealingReceivedBridge's doc.
+	if err := e.subscribeHealingReceivedBridge(ctx); err != nil {
+		return nil, fmt.Errorf("subscribe healing received bridge: %w", err)
 	}
 	e.subscribeConditionRemovedBridge(ctx)
 	for _, o := range opts {

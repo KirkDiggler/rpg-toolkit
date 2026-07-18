@@ -259,7 +259,26 @@ See "Paused / on hold" below.
   (turn_economy_downed_test.go) knocks a player down via a REAL `NPCAct`
   hit (no synthesized HP) and checks zero economy + rejected `TakeAction`
   across two subsequent turn-starts, the shape none of the file's other
-  tests could exercise. See
+  tests could exercise. **A third, opposite-direction gap found
+  live-testing this wave against a locally-built rpg-api (devseed +
+  grpcurl, no browser):** a live playtest reported TPK blocked with no
+  death-save progress observed; three independent live reproductions plus
+  a new per-RPC-reload toolkit regression
+  (`TestDeathSaveRoll_SurvivesPerRPCReload_ViaRealEndTurn`,
+  unconscious_zero_hp_test.go) showed the auto-roll itself firing
+  correctly and repeatedly — but building that regression test surfaced
+  that `PlayerData.HP` never synced back up after a nat-20 death-save
+  revival (`character.onHealingReceived` only ever touched `c.hitPoints`),
+  so a revived player's snapshot stayed stuck at 0 HP / "still
+  unconscious" forever even though the character had genuinely revived
+  server-side. Fixed by a new permanent bridge,
+  `subscribeHealingReceivedBridge` (death.go, same lifetime shape as
+  `subscribeCharacterDiedBridge` et al.), applying `HealingReceivedEvent`'s
+  own `Amount` directly to `PlayerData.HP`. Deliberately NOT "trust
+  `char.GetHitPoints()` wholesale at sync time" — tried first, reverted
+  after it regressed `TestAliveActivePlayer_UnaffectedByFix` by
+  overwriting a correct, freshly-damaged `PlayerData.HP` with #784's
+  still-stale `char.GetHitPoints()`. See
   [encounter.md](architecture/components/encounter.md#encounter-end-predicate-tpk-rpg-toolkit772-782).
 - **ActiveConditions excludes build-time-granted conditions
   (rpg-toolkit#778, 2026-07-17).** #754's `ActiveConditions` was the full
