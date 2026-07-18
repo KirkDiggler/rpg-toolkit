@@ -363,7 +363,10 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_BridgesToEntityDied()
 // rpg-api per-RPC lifecycle (see the PR discussion) — this test is the
 // automated, CI-run backstop for what those live checks already showed.
 func (s *UnconsciousZeroHPSuite) TestDeathSaveRoll_SurvivesPerRPCReload_ViaRealEndTurn() {
-	roller := encounter.WithRoller(fixedMaxRoller{}) // guarantees the goblin's knockdown hit; irrelevant to onTurnStart's own roll (uncontrollable across reload, by design here)
+	// fixedMaxRoller guarantees the goblin's knockdown hit; irrelevant to
+	// onTurnStart's own death-save roll (uncontrollable across reload, by
+	// design here — see the doc comment above).
+	roller := encounter.WithRoller(fixedMaxRoller{})
 	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 	opts := []encounter.Option{roller, resolver}
 
@@ -450,7 +453,8 @@ func (s *UnconsciousZeroHPSuite) TestDeathSaveRoll_SurvivesPerRPCReload_ViaRealE
 
 	s.Positive(aliceTurnsSeen, "the turn cycle must have reached alice's own turn at least once")
 	s.GreaterOrEqual(rolledCount, aliceTurnsSeen,
-		"expected at least one DeathSaveRolledEvent per turn-start alice remained unconscious for (saw %d rolls across %d of her turns) — fewer rolls than turns means at least one turn-start silently failed to roll, the exact live-playtest symptom",
+		"expected >=1 DeathSaveRolledEvent per turn-start alice remained unconscious for (saw %d rolls / %d turns) — "+
+			"fewer rolls than turns means a turn-start silently failed to roll, the live-playtest symptom",
 		rolledCount, aliceTurnsSeen)
 }
 
