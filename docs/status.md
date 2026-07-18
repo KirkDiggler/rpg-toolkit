@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-17
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17
+updated: 2026-07-18
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,45 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **TPK ends the encounter; mid-turn unconscious economy hole closed
+  (rpg-toolkit#772, #781, #782, 2026-07-18).** `checkEncounterEnd`
+  (death.go) had exactly one predicate — `len(data.Monsters)==0` — so
+  player death never fed into it: a solo PC's confirmed death (3 failed
+  death saves, or the non-hydrated instant-death fallback) left the
+  encounter running forever, looping the corpse's turns (#772, confirmed
+  live 2026-07-18). `publishPlayerDied` is now the single chokepoint for
+  every player-death path (the `CharacterDied` bridge and the non-hydrated
+  fallback both funnel through it); it marks the new `PlayerData.Dead`
+  field and re-evaluates a second `checkEncounterEnd` predicate
+  (`allPlayersDead`), publishing `EncounterEndedEvent{Reason:"tpk"}` — no
+  wire/proto change, `Reason` was already a bare string and `"tpk"` was
+  already pre-declared as a future value in the event's own doc comment.
+  Keyed on CONFIRMED death, not mere unconsciousness, so the death-save
+  mechanic still gets to matter for the last conscious player (a nat-20
+  revival isn't preempted). Wiring TPK detection into the turn-start
+  death-save-roll chain surfaced a reentrancy hazard: `checkEncounterEnd`
+  can now fire *synchronously inside* `seedActorTurn`'s own
+  `TurnStartTopic` publish — all three `seedActorTurn` call sites
+  (`EndTurn`, `SetMode`'s first-actor seed, `seedActiveActorIfUnseeded`'s
+  LoadFromData catch-up) now bail out once `Mode == ModeEnded`, closing a
+  latent panic in `SetMode` (`e.data.Initiative[0]` indexed after the seed
+  call, on a slice `checkEncounterEnd` can null out) and a bug where the
+  code would otherwise re-seed a full economy that immediately undid
+  `checkEncounterEnd`'s own `ExitCombat` cleanup. Separately (#781):
+  `applyUnconsciousOnZeroHP` now zeroes the rest of a just-downed *active*
+  actor's turn economy (reusing `char.EndTurn`) when the HP-zero transition
+  happens mid-turn (e.g. an opportunity attack triggered by the player's
+  own `Move`) — previously only turn-start seeding zeroed a downed
+  player's economy, so a mid-turn drop left an already-seeded economy
+  spendable, letting an unconscious player still land an attack.
+  **Discovered but explicitly out of scope:** `applyAndPublishNPCOutcome`/
+  `applyCapturedDamage` (npc.go, combat_phased.go) mutate `PlayerData.HP`
+  on combat-inflicted damage but never call `char.ApplyDamage` on a
+  hydrated defender, so `char.GetHitPoints()` can silently diverge from
+  the encounter's own HP snapshot for combat-inflicted (as opposed to
+  load-time) damage — pre-existing, not introduced here, tracked as a
+  follow-up. See
+  [encounter.md](architecture/components/encounter.md#encounter-end-predicate-tpk-rpg-toolkit772-782).
 - **ActiveConditions excludes build-time-granted conditions
   (rpg-toolkit#778, 2026-07-17).** #754's `ActiveConditions` was the full
   `GetConditions()` set, unfiltered — mixing genuinely live-activated
@@ -255,9 +294,13 @@ See "Paused / on hold" below.
   the `EndCombat` call #752 already wired there — `checkEncounterEnd` is the
   toolkit's SOLE transition point to `ModeEnded` (`SetMode` explicitly
   rejects it), so this closes 100% of the toolkit's current encounter-end
-  surface. rpg-api's `StartEncounter` backstop stays in place: the
-  predicate is `len(data.Monsters)==0`, so a TPK (all players dead, monsters
-  alive) never reaches this sweep — tracked as rpg-toolkit#772.
+  surface. At the time this landed, rpg-api's `StartEncounter` backstop
+  still mattered for the TPK case (`len(data.Monsters)==0` was the only
+  predicate, so a TPK never reached this sweep) — closed by rpg-toolkit#772
+  /#782 (2026-07-18), which added the second `allPlayersDead` predicate;
+  see the entry above. The backstop itself stays in place regardless — it
+  also covers abandoned/disconnected encounters that never reach ANY
+  toolkit-side end predicate.
   Scoping `ActionEconomy` to an encounter ID (defense-in-depth against a
   *future* path forgetting to call `ExitCombat`) is deferred to
   rpg-toolkit#773, not part of this fix. See
