@@ -71,6 +71,32 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 	}
 }
 
+// AllTraitRefs returns the canonical ref strings for every monster trait
+// type this package knows how to load (rpg-toolkit#778) — mirrors LoadJSON's
+// dispatch switch exactly; a trait ref added as a new LoadJSON case must be
+// added here too, or it won't be recognized as structurally permanent
+// (never live-announced) by encounter's ActiveConditions snapshot
+// projection. Monster traits (Immunity/Vulnerability/PackTactics/
+// UndeadFortitude) are attached at monster construction — the monster-side
+// equivalent of a character's Grant.Conditions — and never go through
+// Encounter.ActivateFeature's live broker bridge, so they belong in the
+// same excluded set as character.StructurallyPermanentConditionRefs.
+//
+// This hand-mirror is a real, documented drift risk: TestAllTraitRefs_NoPhantomEntries
+// (loader_test.go) catches a phantom entry (a ref listed here LoadJSON
+// doesn't actually recognize), but cannot catch a missing entry (a new
+// LoadJSON case forgotten here) — that direction needs LoadJSON
+// restructured around an enumerable registry this function could derive
+// from instead of mirroring. Tracked as rpg-toolkit#780.
+func AllTraitRefs() []string {
+	return []string{
+		refs.MonsterTraits.Immunity().String(),
+		refs.MonsterTraits.Vulnerability().String(),
+		refs.MonsterTraits.PackTactics().String(),
+		refs.MonsterTraits.UndeadFortitude().String(),
+	}
+}
+
 // LoadMonsterConditions is a helper function that loads conditions/traits from JSON data
 // and applies them to a monster. This is needed because the monster package
 // cannot import the monstertraits package directly (import cycle).
