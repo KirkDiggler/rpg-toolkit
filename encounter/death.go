@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -26,8 +27,24 @@ const EntityRemovedReasonDestroyed = "destroyed"
 // EncounterEndedReasonAllHostilesDefeated is the Reason value on
 // EncounterEndedEvent when the last hostile died. Wave 2.10 ships only
 // this end condition; future waves add others ("fled", "negotiated",
-// "tpk", "time_out", etc.).
+// "time_out", etc.).
 const EncounterEndedReasonAllHostilesDefeated = "all_hostiles_defeated"
+
+// EncounterEndedReasonTPK is the Reason value on EncounterEndedEvent when
+// every seated player has died within the encounter (a Total Party Kill) —
+// rpg-toolkit#772/#782. Symmetric with EncounterEndedReasonAllHostilesDefeated
+// on the monster side: the same terminal-transition machinery
+// (checkEncounterEnd) fires either reason, clearing Initiative/ActiveIdx/
+// Round and sweeping combat-scoped conditions identically regardless of
+// which side lost.
+//
+// "Dead" here means CONFIRMED death (3 failed death saves, or the
+// non-hydrated instant-death fallback — see PlayerData.Dead), not merely
+// unconscious (HP<=0, still death-saving, could nat-20 revive) — a
+// merely-unconscious last player does NOT trigger this, so the death-save
+// mechanic still gets its chance to matter even when only one player is
+// left standing.
+const EncounterEndedReasonTPK = "tpk"
 
 // killEntity is the toolkit-side state-mutation helper for "monster died."
 // Callers (post-damage paths in TakeAction and NPCAct) invoke it after a
@@ -96,18 +113,20 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 	}
 
 	// Check terminal-state predicate; may publish EncounterEndedEvent.
-	if _, err := e.checkEncounterEnd(); err != nil {
+	if err := e.checkEncounterEnd(); err != nil {
 		return err
 	}
 	return nil
 }
 
 // publishPlayerDied fires an EntityDiedEvent for a player whose HP reached
-// zero, with NPC-as-killer visibility projection. It does NOT mutate any
-// state and does NOT publish EntityRemovedEvent — player dying-state is
-// Wave 2.11+ territory. Wave 2.10 limits the player-death surface to a
-// single narrative event so the web can surface "alice was downed by
-// goblin" without committing to a dying-state model that hasn't shipped.
+// zero, with NPC-as-killer visibility projection, marks the seat Dead, and
+// re-evaluates the encounter-end predicate (rpg-toolkit#772/#782). It does
+// NOT publish EntityRemovedEvent and does NOT remove the player from
+// Initiative — "seats stay on death" is a deliberate, still-standing Wave
+// 2.10 call: a dead player's corpse keeps a nominal turn slot (auto-skipped
+// via seedActorTurn's HP<=0 branch) rather than disturbing initiative
+// order; killEntity's monster-only splice logic is not reused here.
 //
 // Visibility: a viewer is in PerPlayer iff they have LoS to the dying
 // player OR the killing NPC. The dying player is ALWAYS included
@@ -117,6 +136,12 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 // sight range) but conceptually unnecessary, and any future change to LoS
 // rules (multi-room, forced movement, senses) should not be able to hide a
 // player's own death from them.
+//
+// This is the single chokepoint both death paths funnel through — the
+// CharacterDied bridge (3 failed death saves, subscribeCharacterDiedBridge)
+// and applyUnconsciousOnZeroHP's non-hydrated instant-death fallback — so
+// marking Dead + checking checkEncounterEnd here covers every current and
+// future death path without any call site needing to remember to do it.
 func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) error {
 	playerData := e.findPlayerByEntityID(playerEntityID)
 	if playerData == nil || playerData.View == nil {
@@ -142,6 +167,15 @@ func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) er
 		e.data.ID, e.nextSeq(), playerEntityID, killerID, diedPerPlayer,
 	)); err != nil {
 		return fmt.Errorf("publish entity died (player): %w", err)
+	}
+
+	// #772/#782: this player is now CONFIRMED dead. Mark the seat and
+	// re-evaluate the encounter-end predicate — a no-op unless every other
+	// seated player is also Dead, in which case this transitions the
+	// encounter to ModeEnded with Reason "tpk".
+	playerData.Dead = true
+	if err := e.checkEncounterEnd(); err != nil {
+		return fmt.Errorf("check encounter end after player death: %w", err)
 	}
 	return nil
 }
@@ -171,6 +205,39 @@ func (e *Encounter) applyUnconsciousOnZeroHP(ctx context.Context, target *Player
 		return e.publishPlayerDied(target.EntityID, sourceID)
 	}
 
+	// rpg-toolkit#781/#784: combat-inflicted damage (NPCAct, Move-triggered
+	// opportunity attacks) mutates PlayerData.HP directly and never calls
+	// char.ApplyDamage — neither the legacy nor phased attack-resolution
+	// path in rulebooks/dnd5e/combat touches a hydrated defender's HP; that
+	// remains entirely the encounter package's job. So by the time this
+	// function runs, char.GetHitPoints() can still read whatever stale,
+	// pre-knockdown value it held (target.HP is already authoritatively 0 —
+	// that IS the trigger for this function being called; char's own copy
+	// never got the memo). seedActorTurn's downed-actor gate
+	// (turn_economy.go) reads char.GetHitPoints(), not PlayerData.HP, so an
+	// unsynced character re-seeds a full economy on every turn AFTER the
+	// knockdown, not just the same one — the #781 mid-turn fix below only
+	// ever closed the current-turn window.
+	//
+	// Correct it here, once, at the single existing chokepoint every
+	// player's >0->0 transition already funnels through: apply "however
+	// much char.hitPoints currently (staleness included) shows" as a
+	// bookkeeping-only damage instance, bringing it to exactly 0. No need
+	// to know the real attack's damage number — the target is already
+	// authoritatively down; this just makes the held character agree.
+	// char.ApplyDamage (character.go) is a pure c.hitPoints -= total
+	// mutation with no event publish and no resistance/vulnerability
+	// lookup (DamageInstance.Amount's own doc: "after modifiers, before
+	// resistance" — resistance lives upstream in the damage chain's
+	// StageFinal, never consulted here), so this can't be softened by a
+	// raging barbarian's physical resistance or double-fire anything the
+	// Unconscious condition application below owns.
+	if hp := char.GetHitPoints(); hp > 0 {
+		char.ApplyDamage(ctx, &combat.ApplyDamageInput{
+			Instances: []combat.DamageInstance{{Amount: hp, Type: "untyped"}},
+		})
+	}
+
 	uc := conditions.NewUnconsciousCondition(string(target.EntityID), e.roller)
 	evt := dnd5eEvents.ConditionAppliedEvent{
 		Target:    char,
@@ -194,6 +261,35 @@ func (e *Encounter) applyUnconsciousOnZeroHP(ctx context.Context, target *Player
 	// resolution is unaffected by it since cond.Target is always set here.
 	if err := e.applyActivatedConditions(nil, sourceID, []dnd5eEvents.ConditionAppliedEvent{evt}); err != nil {
 		return fmt.Errorf("bridge unconscious condition: %w", err)
+	}
+
+	// #781: if this player is the CURRENTLY ACTIVE actor, they went
+	// unconscious mid-turn — e.g. an opportunity attack triggered by their
+	// own Move (npc.go's applyCapturedDamage / applyMoveDamage paths). Their
+	// action economy for this turn was already seeded in full at turn start
+	// (seedActorTurn), and nothing else re-checks it before their next
+	// TakeAction call. Without this, a player could trigger an OA, drop to 0
+	// HP, and still land an attack of their own with the remainder of an
+	// already-seeded-but-unspent economy — "landed a killing blow while
+	// unconscious." This closes the CURRENT-turn half of that bug; the
+	// EVERY-SUBSEQUENT-turn half (a combat-downed player re-seeding a full
+	// economy again and again) was a second, independent bug — the
+	// char.GetHitPoints() staleness the HP-sync above this block fixes
+	// (#784). Both together are what "full economy one round, zero
+	// another" actually described.
+	//
+	// Reuses char.EndTurn — the exact zeroing call seedActorTurn's own
+	// downed-at-turn-start branch (turn_economy.go) already uses — rather
+	// than inventing new zeroing logic. A player who is NOT the active
+	// actor has no reachable economy to close off: TakeAction gates on
+	// ActiveActor() == player.EntityID, so stale economy from a turn that
+	// already ended is already unusable; ActiveActor() itself safely
+	// returns "" outside ModeTurnBased, so no extra mode guard is needed
+	// here.
+	if e.ActiveActor() == target.EntityID {
+		if _, err := char.EndTurn(ctx, &character.EndTurnInput{}); err != nil {
+			return fmt.Errorf("zero turn economy for newly-unconscious actor %q: %w", target.EntityID, err)
+		}
 	}
 	return nil
 }
@@ -333,6 +429,56 @@ func (e *Encounter) bridgeDeathSaveRolled(event dnd5eEvents.DeathSaveRolledEvent
 	return nil
 }
 
+// subscribeHealingReceivedBridge installs a PERMANENT subscription to the
+// rulebook's HealingReceivedTopic on e.bus, syncing PlayerData.HP from
+// whatever healing just landed on a held character. Same permanent-lifetime
+// shape as the other bridges in this file: healing (a nat-20 death save's
+// "regain 1 HP," and any future healing spell/feature) can fire from any
+// future turn or action, not just once per verb call.
+//
+// rpg-toolkit#772/#781/#784: nothing synced PlayerData.HP from the held
+// character's own HP in the healing direction before this — combat
+// damage (applyAndPublishNPCOutcome / applyCapturedDamage) mutates
+// PlayerData.HP directly, but character.onHealingReceived only ever
+// touched c.hitPoints. A player revived by a nat-20 death save correctly
+// regained consciousness and 1 HP server-side (UnconsciousCondition's own
+// state, and the Unconscious condition itself, were both correctly
+// updated/removed), but PlayerData.HP — and anything reading it, a
+// reconnecting client's snapshot included — stayed stuck at 0 forever.
+// Found writing the per-RPC-reload regression test for this wave: the
+// test's own "has alice been revived" check read PlayerData.HP and could
+// not tell a real revival from a mechanism that was still stuck.
+//
+// Deliberately does NOT read char.GetHitPoints() and take the live value
+// wholesale (that was tried and reverted — see git history on this
+// function's addition): char.GetHitPoints() is stale-LOW for un-synced
+// combat damage (rpg-toolkit#784's still-open general per-hit-sync gap),
+// so blindly trusting it here would silently overwrite a correct,
+// freshly-damaged PlayerData.HP with a stale, higher, pre-damage value
+// every time ToData() ran. Applying the event's own Amount as a targeted
+// delta — mirroring exactly what character.onHealingReceived does to
+// c.hitPoints, on the same signal, clamped to the same MaxHP — cannot
+// make that mistake: it only ever reacts to a genuine healing event, never
+// to reading a possibly-stale snapshot.
+func (e *Encounter) subscribeHealingReceivedBridge(ctx context.Context) error {
+	_, err := dnd5eEvents.HealingReceivedTopic.On(e.bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+			p := e.findPlayerByEntityID(core.EntityID(event.TargetID))
+			if p == nil {
+				return nil
+			}
+			p.HP += event.Amount
+			if p.MaxHP > 0 && p.HP > p.MaxHP {
+				p.HP = p.MaxHP
+			}
+			return nil
+		})
+	if err != nil {
+		return fmt.Errorf("subscribe healing received bridge: %w", err)
+	}
+	return nil
+}
+
 // deathSaveAudience builds the per-viewer projection shared by the
 // Stabilized and (via deathSaveRolledAudience) DeathSaveRolled bridges: the
 // rolling/stabilizing player themselves is always included unconditionally
@@ -379,24 +525,45 @@ func (e *Encounter) deathSaveRolledAudience(p *PlayerData) map[core.PlayerID]eve
 
 // checkEncounterEnd evaluates the encounter-end predicate and, if true,
 // transitions the encounter to ModeEnded and publishes EncounterEndedEvent.
-// Returns (ended, err) — ended is true when the predicate fired this call.
+// Returns nil whether or not the predicate fired this call — both callers
+// (killEntity, publishPlayerDied) only care whether the check itself
+// errored, never whether it actually ended the encounter, so there is no
+// "ended" bool to report.
 //
-// Wave 2.10 predicate: len(data.Monsters) == 0 (all hostiles defeated).
-// Encapsulated here so future waves swap the predicate (boss-only kill,
-// fled, negotiated peace, time-out) without touching the kill path.
+// Two predicates, checked in order:
+//  1. len(data.Monsters) == 0 (all hostiles defeated) — Wave 2.10, victory.
+//  2. allPlayersDead() (every seated player confirmed dead) — Wave 2.11/
+//     #772/#782, TPK/defeat.
+//
+// Encapsulated here so future waves swap or extend the predicate (boss-only
+// kill, fled, negotiated peace, time-out) without touching the kill/death
+// paths that call this. Victory is checked first: the two predicates are
+// not expected to both go true in the same call (they fire from disjoint
+// call sites — killEntity for monsters, publishPlayerDied for players — and
+// this function returns early once Mode is already ModeEnded), but victory
+// winning any theoretical tie is an arbitrary, harmless default.
 //
 // On transition: clears Initiative + ActiveIdx + Round so the verb-gate
 // in EndTurn / TakeAction (which checks len(Initiative)) consistently
 // rejects post-end calls with ErrEncounterEnded once the mode check
 // above also rejects them. The mode check is the primary gate; clearing
 // the turn state keeps the persisted snapshot tidy for clients reading
-// it post-end.
-func (e *Encounter) checkEncounterEnd() (bool, error) {
+// it post-end. This part of the transition is reason-agnostic — it runs
+// identically for victory and defeat, which is what gives TPK the same
+// #752 (condition sweep) and #767 (ExitCombat/economy clear) composition
+// victory already had, with no special-casing.
+func (e *Encounter) checkEncounterEnd() error {
 	if e.data.Mode == core.ModeEnded {
-		return false, nil
+		return nil
 	}
-	if len(e.data.Monsters) > 0 {
-		return false, nil
+	var reason string
+	switch {
+	case len(e.data.Monsters) == 0:
+		reason = EncounterEndedReasonAllHostilesDefeated
+	case e.allPlayersDead():
+		reason = EncounterEndedReasonTPK
+	default:
+		return nil
 	}
 	e.data.Mode = core.ModeEnded
 	e.data.Initiative = nil
@@ -422,15 +589,33 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 
 	if err := e.broker.Publish(events.NewEncounterEndedEvent(
 		e.data.ID, e.nextSeq(),
-		EncounterEndedReasonAllHostilesDefeated,
+		reason,
 		e.allViewersEncounterEnded(),
 	)); err != nil {
-		return true, fmt.Errorf("publish encounter ended: %w", err)
+		return fmt.Errorf("publish encounter ended: %w", err)
 	}
 	if sweepErr != nil {
-		return true, fmt.Errorf("end combat for players: %w", sweepErr)
+		return fmt.Errorf("end combat for players: %w", sweepErr)
 	}
-	return true, nil
+	return nil
+}
+
+// allPlayersDead reports whether every seated player carries Dead=true —
+// the TPK predicate (rpg-toolkit#772/#782). False when there are no
+// players at all (an empty encounter is not a TPK); in practice this is
+// only ever called from checkEncounterEnd, itself only ever called
+// (for the defeat branch) from publishPlayerDied right after it just
+// confirmed one player's death, guaranteeing len(data.Players) > 0.
+func (e *Encounter) allPlayersDead() bool {
+	if len(e.data.Players) == 0 {
+		return false
+	}
+	for _, p := range e.data.Players {
+		if !p.Dead {
+			return false
+		}
+	}
+	return true
 }
 
 // endCombatForPlayers publishes CombatEnd for every hydrated player

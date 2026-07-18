@@ -79,8 +79,18 @@ func (s *EncounterEndConditionSweepSuite) TearDownTest() {
 // barbarian who is ALREADY raging — Conditions carries the raging condition
 // blob, matching what an earlier in-encounter ActivateFeature("rage") call
 // would have produced and rpg-api would have fed back into this seat's
-// DataJSON.
-func ecsRagingBarbDataJSON(t *testing.T, id, playerID string) json.RawMessage {
+// DataJSON. hp sets current HitPoints only (MaxHitPoints is always 16) —
+// callers that need the barbarian to be the one going DOWN (tpk_test.go's
+// TPK composition case, as opposed to this file's barb-kills-goblin case)
+// pass a low value instead of the full 16.
+//
+// Shared (not duplicated per-file) deliberately, unlike most fixture
+// helpers in this package (see turn_economy_downed_test.go's "no cross-
+// suite coupling" precedent) — golangci-lint's dupl check flagged the
+// near-identical copy this file and tpk_test.go each carried before this,
+// and a raging-barbarian character.Data builder has no meaningful per-file
+// variation beyond starting HP, which the parameter now covers.
+func ecsRagingBarbDataJSON(t *testing.T, id, playerID string, hp int) json.RawMessage {
 	t.Helper()
 
 	ragingJSON, err := json.Marshal(conditions.RagingData{
@@ -104,7 +114,7 @@ func ecsRagingBarbDataJSON(t *testing.T, id, playerID string) json.RawMessage {
 			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 15,
 			abilities.INT: 8, abilities.WIS: 10, abilities.CHA: 10,
 		},
-		HitPoints:    16,
+		HitPoints:    hp,
 		MaxHitPoints: 16,
 		ArmorClass:   14,
 		Conditions:   []json.RawMessage{ragingJSON},
@@ -176,7 +186,7 @@ func (s *EncounterEndConditionSweepSuite) loadRagingBarbVsGoblin(charJSON json.R
 // "combat_ended", sequenced BEFORE EncounterEndedEvent, and the persisted
 // character data (ToData) no longer carries the condition.
 func (s *EncounterEndConditionSweepSuite) TestKillingBlow_SweepsRagingCondition_BeforeEncounterEnded() {
-	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID))
+	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID), 16)
 	enc := s.loadRagingBarbVsGoblin(charJSON)
 
 	sub, err := s.broker.Subscribe(ecsEncounterID, bobPlayerID)
@@ -224,7 +234,7 @@ func (s *EncounterEndConditionSweepSuite) TestKillingBlow_SweepsRagingCondition_
 // way the playtest's Encounter B fight would have.
 func (s *EncounterEndConditionSweepSuite) TestTwoEncounterLeak_CleanedCharacterNeverReappliesRaging() {
 	// --- Encounter A: rage active, killing blow ends the encounter ---
-	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID))
+	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID), 16)
 	encA := s.loadRagingBarbVsGoblin(charJSON)
 	s.Require().NoError(encA.TakeAction(bobPlayerID,
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},

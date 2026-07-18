@@ -330,3 +330,114 @@ func (s *TurnEconomyDownedSuite) TestAlivePlayerTurnStart_StillSeedsNormalEconom
 	s.Equal(1, ts.State.ReactionsRemaining)
 	s.Positive(ts.State.MovementRemaining)
 }
+
+// TestDownedPlayerViaRealCombat_StaysZeroedAcrossMultipleTurns is the
+// rpg-toolkit#781/#784 goal-behavior proof the gate named directly: every
+// OTHER test in this file knocks a player down by SYNTHESIZING
+// HitPoints:0 straight into DataJSON — combat never produces that shape.
+// The real production path (NPCAct, or Move-triggered opportunity
+// attacks) mutates PlayerData.HP only; neither the legacy nor phased
+// attack-resolution path in rulebooks/dnd5e/combat ever calls
+// char.ApplyDamage on a hydrated defender, so char.GetHitPoints() stayed
+// stale-full — and seedActorTurn's downed-actor gate reads
+// char.GetHitPoints(), not PlayerData.HP. Pre-fix, that meant a player
+// downed by REAL combat re-seeded a full 1/1/1/30 economy on every turn
+// after the knockdown (not just the first), letting them keep attacking
+// indefinitely — the actual shape of the reported bug ("landed a killing
+// blow while unconscious"), which the file's other synthesized-HP:0
+// fixtures structurally cannot reproduce.
+//
+// alice is knocked down by a REAL NPCAct hit (no synthesized 0 HP
+// anywhere in her fixture), then checked across TWO subsequent turn
+// starts (deliberately stopping at 2 death-save failures, not the 3rd/
+// fatal one — a solo player's 3rd failure ends the encounter via TPK,
+// rpg-toolkit#772/#782, which is a different test's concern) to prove the
+// zero-economy state holds continuously, not just once.
+func (s *TurnEconomyDownedSuite) TestDownedPlayerViaRealCombat_StaysZeroedAcrossMultipleTurns() {
+	encID := core.EncounterID("enc-ted-realcombat")
+	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
+	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+
+	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
+		DamageDice: damage1d8plus2, DamageType: damageSlashing,
+		DataJSON: s.aliceAliveSeededCharDataJSON(),
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+	}))
+
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, roller, resolver)
+	s.Require().NoError(err)
+
+	sub, err := s.broker.Subscribe(encID, alicePlayerID)
+	s.Require().NoError(err)
+	defer func() { _ = sub.Close() }()
+
+	// alice and the goblin are in mutual LoS, so AddMonster (above, on enc)
+	// already auto-transitioned to TURN_BASED before the Data round-trip;
+	// loaded inherits that mode. alice's DataJSON carries a pre-seeded
+	// ActionEconomy, so this doesn't depend on SetMode's seedActorTurn call.
+	for loaded.ActiveActor() != gobEntityID {
+		_, _, endErr := loaded.EndTurn(s.ctx, loaded.ActiveActor())
+		s.Require().NoError(endErr)
+	}
+	drainSub(sub, 100*time.Millisecond)
+
+	// Goblin's attack drops alice (1 HP) to 0 via REAL combat damage —
+	// applyAndPublishNPCOutcome mutates PlayerData.HP; applyUnconsciousOnZeroHP
+	// is what must sync char.hitPoints (rpg-toolkit#781 fix under test).
+	s.Require().NoError(loaded.NPCAct(s.ctx, gobEntityID))
+	drainSub(sub, 100*time.Millisecond)
+
+	// checkTurnZeroedAndCantAct advances AT LEAST one full turn (do-while,
+	// not a pre-check loop) until alice's own turn starts again, asserts
+	// the pushed TurnStateChangedEvent shows a fully zeroed economy, and
+	// confirms TakeAction is rejected as unaffordable — not silently
+	// resolved. Do-while matters on the second call: after the first
+	// check, alice IS already the active actor (her failed TakeAction
+	// attempt didn't end her turn), so a plain "loop while not alice"
+	// would do zero iterations and re-inspect the SAME turn-start instead
+	// of advancing through goblin's turn to alice's NEXT one.
+	checkTurnZeroedAndCantAct := func(label string) {
+		s.T().Helper()
+		for {
+			_, _, endErr := loaded.EndTurn(s.ctx, loaded.ActiveActor())
+			s.Require().NoError(endErr)
+			if loaded.ActiveActor() == aliceEntityID {
+				break
+			}
+		}
+		seen := collectEventsTyped(sub, 500*time.Millisecond)
+		var ts *events.TurnStateChangedEvent
+		for _, e := range seen {
+			if t, ok := e.(*events.TurnStateChangedEvent); ok && t.ActorID == aliceEntityID {
+				ts = t
+			}
+		}
+		s.Require().NotNil(ts, "%s: alice's turn-start must still push a TurnStateChangedEvent", label)
+		s.Equal(0, ts.State.ActionsRemaining, "%s: downed player must not get a reseeded action", label)
+		s.Equal(0, ts.State.BonusActionsRemaining, "%s: downed player must not get a reseeded bonus action", label)
+		s.Equal(0, ts.State.ReactionsRemaining, "%s: downed player must not get a reseeded reaction", label)
+		s.Equal(0, ts.State.MovementRemaining, "%s: downed player must not get reseeded movement", label)
+
+		err := loaded.TakeAction(alicePlayerID,
+			encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
+			encounter.ActionTarget{EntityID: gobEntityID},
+		)
+		s.Require().Error(err, "%s: alice must not be able to act while unconscious", label)
+		s.ErrorIs(err, encounter.ErrActionUnaffordable, "%s: rejection must be economy-based", label)
+	}
+
+	checkTurnZeroedAndCantAct("next turn (1st death-save failure)")
+	checkTurnZeroedAndCantAct("turn after (2nd death-save failure)")
+}

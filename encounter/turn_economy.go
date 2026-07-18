@@ -65,6 +65,25 @@ func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) er
 		return fmt.Errorf("publish turn boundary (turn start) for %q: %w", actorID, pubErr)
 	}
 
+	// #772/#782: the publish above is synchronous and, for a downed actor
+	// whose own turn-start auto-rolls a death save, can itself end the
+	// encounter — a fatal 3rd failure bridges through publishPlayerDied
+	// straight into checkEncounterEnd (death.go), which already ran
+	// endCombatForPlayers (char.EndCombat + char.ExitCombat, nils this
+	// actor's action economy) by the time this publish returns. Without
+	// this guard, the code below would go on to seed a FRESH economy for
+	// this actor regardless of which branch it takes: either
+	// char.StartTurn (a full 1/1/1/0-Round reseed, since e.data.Round was
+	// just cleared to 0 — directly undoing ExitCombat's cleanup moments
+	// after it ran) or, if it happened to read HP<=0 correctly,
+	// char.EndTurn on an already-nil economy (harmless, but still dead
+	// code work for an encounter that's over). Bail out — there is no
+	// turn to seed for an actor whose encounter just ended inside this
+	// very call.
+	if e.data.Mode == core.ModeEnded {
+		return nil
+	}
+
 	char := e.heldCharacter(actorID)
 	if char == nil {
 		return nil // NPC or stat-snapshot seat — no character economy to seed.
@@ -149,6 +168,14 @@ func (e *Encounter) seedActiveActorIfUnseeded(ctx context.Context) error {
 	}
 	if err := e.seedActorTurn(ctx, actorID); err != nil {
 		return err
+	}
+	// #772/#782: see EndTurn's identical guard (combat.go) — seedActorTurn's
+	// synchronous TurnStartTopic publish can itself end the encounter (a
+	// first-ever seed for a character who loads in already carrying 2 prior
+	// death-save failures can roll the fatal 3rd here). Once ended, there is
+	// no live turn to push a refreshed state for.
+	if e.data.Mode == core.ModeEnded {
+		return nil
 	}
 	if err := e.publishTurnStateChanged(actorID, ""); err != nil {
 		return fmt.Errorf("publish caught-up turn state: %w", err)
