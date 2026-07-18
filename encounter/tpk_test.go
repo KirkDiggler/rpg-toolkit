@@ -40,7 +40,6 @@ import (
 )
 
 const (
-	tpkAlicePlayerID = encountercore.PlayerID("tpk-alice")
 	tpkAliceEntityID = encountercore.EntityID("char-tpk-alice")
 	tpkBobPlayerID   = encountercore.PlayerID("tpk-bob")
 	tpkBobEntityID   = encountercore.EntityID("char-tpk-bob")
