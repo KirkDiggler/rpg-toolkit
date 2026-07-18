@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	tkevents "github.com/KirkDiggler/rpg-toolkit/events"
@@ -35,14 +34,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 const (
@@ -154,51 +148,6 @@ func (s *TPKSuite) TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsA
 	s.Equal(encounter.EncounterEndedReasonTPK, ended.Reason)
 }
 
-// tpkRagingBarbDataJSON builds a serialized dnd5e character.Data for a solo
-// barbarian who is ALREADY raging, at 1 HP (guaranteed knockdown on the
-// goblin's first always-hit attack) — mirrors
-// encounter_end_condition_sweep_test.go's ecsRagingBarbDataJSON, duplicated
-// here (not imported as a method off that suite) so this file stays
-// self-contained, matching the convention turn_economy_downed_test.go's own
-// duplicated-not-shared helper comment documents.
-func tpkRagingBarbDataJSON(t *testing.T, id, playerID string) json.RawMessage {
-	t.Helper()
-
-	ragingJSON, err := json.Marshal(conditions.RagingData{
-		Ref:         refs.Conditions.Raging(),
-		CharacterID: id,
-		DamageBonus: 2,
-		Level:       3,
-		Source:      "dnd5e:features:rage",
-	})
-	require.NoError(t, err)
-
-	data := &dnd5eCharacter.Data{
-		ID:               id,
-		PlayerID:         playerID,
-		Name:             id,
-		Level:            3,
-		ProficiencyBonus: 2,
-		ClassID:          classes.Barbarian,
-		RaceID:           races.Human,
-		AbilityScores: shared.AbilityScores{
-			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 15,
-			abilities.INT: 8, abilities.WIS: 10, abilities.CHA: 10,
-		},
-		HitPoints:    1,
-		MaxHitPoints: 16,
-		ArmorClass:   14,
-		Conditions:   []json.RawMessage{ragingJSON},
-		ActionEconomy: &dnd5eCharacter.ActionEconomyData{
-			TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
-			ReactionsRemaining: 1, MovementRemaining: 30,
-		},
-	}
-	raw, err := json.Marshal(data)
-	require.NoError(t, err)
-	return raw
-}
-
 // TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy proves checkEncounterEnd's
 // terminal-transition code (death.go) is exactly as reason-agnostic in
 // practice as it is by construction: it still calls endCombatForPlayers
@@ -225,7 +174,7 @@ func tpkRagingBarbDataJSON(t *testing.T, id, playerID string) json.RawMessage {
 // ExitCombat/economy-clear is the meaningful, actually-reachable half of
 // the composition guarantee this test can verify for TPK specifically.
 func (s *TPKSuite) TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy() {
-	charJSON := tpkRagingBarbDataJSON(s.T(), string(tpkBobEntityID), string(tpkBobPlayerID))
+	charJSON := ecsRagingBarbDataJSON(s.T(), string(tpkBobEntityID), string(tpkBobPlayerID), 1)
 
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
 	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
@@ -339,7 +288,7 @@ func (s *TPKSuite) TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy() {
 // true by construction, but the round-trip is exercised explicitly rather
 // than left as an unverified claim.
 func (s *TPKSuite) TestTPK_DeadFlagDoesNotLeakAcrossEncounters() {
-	charJSON := tpkRagingBarbDataJSON(s.T(), string(tpkBobEntityID), string(tpkBobPlayerID))
+	charJSON := ecsRagingBarbDataJSON(s.T(), string(tpkBobEntityID), string(tpkBobPlayerID), 1)
 
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
 	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})

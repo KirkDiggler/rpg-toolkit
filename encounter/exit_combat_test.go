@@ -41,7 +41,7 @@ import (
 // that a swept condition doesn't linger in the newer field just because it
 // reads from a different accessor than the DataJSON round-trip does.
 func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ClearsActionEconomy_AndStillSweepsRagingCondition() {
-	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID))
+	charJSON := ecsRagingBarbDataJSON(s.T(), bobEntityID, string(bobPlayerID), 16)
 	enc := s.loadRagingBarbVsGoblin(charJSON)
 
 	s.Require().NoError(enc.TakeAction(bobPlayerID,

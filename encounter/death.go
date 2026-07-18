@@ -112,7 +112,7 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 	}
 
 	// Check terminal-state predicate; may publish EncounterEndedEvent.
-	if _, err := e.checkEncounterEnd(); err != nil {
+	if err := e.checkEncounterEnd(); err != nil {
 		return err
 	}
 	return nil
@@ -173,7 +173,7 @@ func (e *Encounter) publishPlayerDied(playerEntityID, killerID core.EntityID) er
 	// seated player is also Dead, in which case this transitions the
 	// encounter to ModeEnded with Reason "tpk".
 	playerData.Dead = true
-	if _, err := e.checkEncounterEnd(); err != nil {
+	if err := e.checkEncounterEnd(); err != nil {
 		return fmt.Errorf("check encounter end after player death: %w", err)
 	}
 	return nil
@@ -440,7 +440,10 @@ func (e *Encounter) deathSaveRolledAudience(p *PlayerData) map[core.PlayerID]eve
 
 // checkEncounterEnd evaluates the encounter-end predicate and, if true,
 // transitions the encounter to ModeEnded and publishes EncounterEndedEvent.
-// Returns (ended, err) — ended is true when the predicate fired this call.
+// Returns nil whether or not the predicate fired this call — both callers
+// (killEntity, publishPlayerDied) only care whether the check itself
+// errored, never whether it actually ended the encounter, so there is no
+// "ended" bool to report.
 //
 // Two predicates, checked in order:
 //  1. len(data.Monsters) == 0 (all hostiles defeated) — Wave 2.10, victory.
@@ -464,9 +467,9 @@ func (e *Encounter) deathSaveRolledAudience(p *PlayerData) map[core.PlayerID]eve
 // identically for victory and defeat, which is what gives TPK the same
 // #752 (condition sweep) and #767 (ExitCombat/economy clear) composition
 // victory already had, with no special-casing.
-func (e *Encounter) checkEncounterEnd() (bool, error) {
+func (e *Encounter) checkEncounterEnd() error {
 	if e.data.Mode == core.ModeEnded {
-		return false, nil
+		return nil
 	}
 	var reason string
 	switch {
@@ -475,7 +478,7 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 	case e.allPlayersDead():
 		reason = EncounterEndedReasonTPK
 	default:
-		return false, nil
+		return nil
 	}
 	e.data.Mode = core.ModeEnded
 	e.data.Initiative = nil
@@ -504,12 +507,12 @@ func (e *Encounter) checkEncounterEnd() (bool, error) {
 		reason,
 		e.allViewersEncounterEnded(),
 	)); err != nil {
-		return true, fmt.Errorf("publish encounter ended: %w", err)
+		return fmt.Errorf("publish encounter ended: %w", err)
 	}
 	if sweepErr != nil {
-		return true, fmt.Errorf("end combat for players: %w", sweepErr)
+		return fmt.Errorf("end combat for players: %w", sweepErr)
 	}
-	return true, nil
+	return nil
 }
 
 // allPlayersDead reports whether every seated player carries Dead=true —
