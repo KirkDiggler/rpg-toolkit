@@ -3,19 +3,29 @@ package encounter_test
 // rpg-toolkit#781 — "unconscious PCs take full turns, inconsistently across
 // rounds ... landed a killing blow while unconscious."
 //
-// Root cause: seedActorTurn (turn_economy.go) correctly zeroes a player's
-// action economy when their OWN turn starts and they are already at 0 HP —
-// see turn_economy_downed_test.go. But nothing re-checked economy when a
-// player instead went unconscious MID-turn, after their economy was already
-// seeded in full. The concrete vector: a player's own Move triggers an
-// opportunity attack (combat.MoveEntity -> triggerOpportunityAttack ->
-// ResolveAttack) that drops them to 0 HP partway through their turn.
-// applyUnconsciousOnZeroHP (death.go) applies the Unconscious condition but,
-// pre-fix, left the player's already-seeded 1/1/1/30 economy untouched —
-// they could still call TakeAction and land an attack after going down.
-// This file proves the fix: going unconscious while ACTIVE zeroes the
-// remainder of that turn's economy immediately (reusing char.EndTurn, the
-// same call seedActorTurn's own downed-at-turn-start branch uses).
+// This file covers the MID-TURN half of the bug specifically: a player's
+// own Move triggers an opportunity attack (combat.MoveEntity ->
+// triggerOpportunityAttack -> ResolveAttack) that drops them to 0 HP
+// partway through their OWN turn, after their action economy was already
+// seeded in full at turn start. applyUnconsciousOnZeroHP (death.go)
+// applies the Unconscious condition but, pre-fix, left the player's
+// already-seeded 1/1/1/30 economy untouched — they could still call
+// TakeAction and land an attack after going down. Proves the fix: going
+// unconscious while ACTIVE zeroes the remainder of that turn's economy
+// immediately (reusing char.EndTurn, the same call seedActorTurn's own
+// downed-at-turn-start branch uses).
+//
+// This is NOT the whole #781 bug. seedActorTurn's downed-actor gate
+// (turn_economy.go) reads char.GetHitPoints() to decide whether a player's
+// OWN upcoming turn should get a full economy or a zeroed one — and, until
+// rpg-toolkit#784's fix (a one-time HP sync in applyUnconsciousOnZeroHP,
+// same chokepoint this file's fix lives in), char.GetHitPoints() never
+// reflected combat-inflicted damage at all, only PlayerData.HP did. That
+// meant a combat-downed player re-seeded a FULL economy on every turn
+// AFTER the one this file covers, not just the same one — see
+// turn_economy_downed_test.go's TestDownedPlayerViaRealCombat_
+// StaysZeroedAcrossMultipleTurns for that half's regression coverage
+// (real NPCAct knockdown, checked across two subsequent turn-starts).
 
 import (
 	"context"

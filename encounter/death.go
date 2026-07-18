@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -204,6 +205,39 @@ func (e *Encounter) applyUnconsciousOnZeroHP(ctx context.Context, target *Player
 		return e.publishPlayerDied(target.EntityID, sourceID)
 	}
 
+	// rpg-toolkit#781/#784: combat-inflicted damage (NPCAct, Move-triggered
+	// opportunity attacks) mutates PlayerData.HP directly and never calls
+	// char.ApplyDamage — neither the legacy nor phased attack-resolution
+	// path in rulebooks/dnd5e/combat touches a hydrated defender's HP; that
+	// remains entirely the encounter package's job. So by the time this
+	// function runs, char.GetHitPoints() can still read whatever stale,
+	// pre-knockdown value it held (target.HP is already authoritatively 0 —
+	// that IS the trigger for this function being called; char's own copy
+	// never got the memo). seedActorTurn's downed-actor gate
+	// (turn_economy.go) reads char.GetHitPoints(), not PlayerData.HP, so an
+	// unsynced character re-seeds a full economy on every turn AFTER the
+	// knockdown, not just the same one — the #781 mid-turn fix below only
+	// ever closed the current-turn window.
+	//
+	// Correct it here, once, at the single existing chokepoint every
+	// player's >0->0 transition already funnels through: apply "however
+	// much char.hitPoints currently (staleness included) shows" as a
+	// bookkeeping-only damage instance, bringing it to exactly 0. No need
+	// to know the real attack's damage number — the target is already
+	// authoritatively down; this just makes the held character agree.
+	// char.ApplyDamage (character.go) is a pure c.hitPoints -= total
+	// mutation with no event publish and no resistance/vulnerability
+	// lookup (DamageInstance.Amount's own doc: "after modifiers, before
+	// resistance" — resistance lives upstream in the damage chain's
+	// StageFinal, never consulted here), so this can't be softened by a
+	// raging barbarian's physical resistance or double-fire anything the
+	// Unconscious condition application below owns.
+	if hp := char.GetHitPoints(); hp > 0 {
+		char.ApplyDamage(ctx, &combat.ApplyDamageInput{
+			Instances: []combat.DamageInstance{{Amount: hp, Type: "untyped"}},
+		})
+	}
+
 	uc := conditions.NewUnconsciousCondition(string(target.EntityID), e.roller)
 	evt := dnd5eEvents.ConditionAppliedEvent{
 		Target:    char,
@@ -237,11 +271,12 @@ func (e *Encounter) applyUnconsciousOnZeroHP(ctx context.Context, target *Player
 	// TakeAction call. Without this, a player could trigger an OA, drop to 0
 	// HP, and still land an attack of their own with the remainder of an
 	// already-seeded-but-unspent economy — "landed a killing blow while
-	// unconscious," and the source of the "full economy one round, zero
-	// another" inconsistency: whether a downed player's economy reads zero
-	// depends entirely on whether they went down before their own turn
-	// started (correctly zeroed by seedActorTurn) or mid-turn (previously
-	// not re-checked at all).
+	// unconscious." This closes the CURRENT-turn half of that bug; the
+	// EVERY-SUBSEQUENT-turn half (a combat-downed player re-seeding a full
+	// economy again and again) was a second, independent bug — the
+	// char.GetHitPoints() staleness the HP-sync above this block fixes
+	// (#784). Both together are what "full economy one round, zero
+	// another" actually described.
 	//
 	// Reuses char.EndTurn — the exact zeroing call seedActorTurn's own
 	// downed-at-turn-start branch (turn_economy.go) already uses — rather

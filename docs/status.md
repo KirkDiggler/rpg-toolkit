@@ -214,20 +214,52 @@ See "Paused / on hold" below.
   latent panic in `SetMode` (`e.data.Initiative[0]` indexed after the seed
   call, on a slice `checkEncounterEnd` can null out) and a bug where the
   code would otherwise re-seed a full economy that immediately undid
-  `checkEncounterEnd`'s own `ExitCombat` cleanup. Separately (#781):
-  `applyUnconsciousOnZeroHP` now zeroes the rest of a just-downed *active*
-  actor's turn economy (reusing `char.EndTurn`) when the HP-zero transition
-  happens mid-turn (e.g. an opportunity attack triggered by the player's
-  own `Move`) — previously only turn-start seeding zeroed a downed
-  player's economy, so a mid-turn drop left an already-seeded economy
-  spendable, letting an unconscious player still land an attack.
-  **Discovered but explicitly out of scope:** `applyAndPublishNPCOutcome`/
-  `applyCapturedDamage` (npc.go, combat_phased.go) mutate `PlayerData.HP`
-  on combat-inflicted damage but never call `char.ApplyDamage` on a
-  hydrated defender, so `char.GetHitPoints()` can silently diverge from
-  the encounter's own HP snapshot for combat-inflicted (as opposed to
-  load-time) damage — pre-existing, not introduced here, tracked as a
-  follow-up. See
+  `checkEncounterEnd`'s own `ExitCombat` cleanup.
+  **#781 has two independent windows, both closed here.** First pass only
+  fixed the CURRENT-turn window: `applyUnconsciousOnZeroHP` now zeroes the
+  rest of a just-downed *active* actor's turn economy (reusing
+  `char.EndTurn`) when the HP-zero transition happens mid-turn (e.g. an
+  opportunity attack triggered by the player's own `Move`) — without it, a
+  mid-turn drop left an already-seeded economy spendable, letting an
+  unconscious player still land an attack. A gate review caught that the
+  premise behind that fix — "turn-start seeding already zeroes a downed
+  player's economy correctly" — was FALSE for any player downed by real
+  combat damage (as opposed to a fixture that synthesizes `HitPoints:0`
+  directly into `DataJSON`, which is all the pre-existing
+  `turn_economy_downed_test.go` coverage ever did): `seedActorTurn`'s
+  downed-actor gate reads `char.GetHitPoints()`, and neither
+  `applyAndPublishNPCOutcome` (combat_phased.go) nor `applyCapturedDamage`
+  (npc.go) — the two sites that mutate a player's HP on NPC-inflicted or
+  Move-OA damage — ever called `char.ApplyDamage` on the hydrated
+  defender; only `PlayerData.HP` got updated. So a combat-downed player's
+  held character kept reporting its stale pre-damage HP, and
+  `seedActorTurn` re-seeded a FULL 1/1/1/30 economy on every turn AFTER
+  the knockdown, not just the one this paragraph's first fix covers — the
+  actual shape of "landed a killing blow while unconscious" and "full
+  economy one round, zero another." Second pass (rpg-toolkit#784, same
+  PR): `applyUnconsciousOnZeroHP` now also does a one-time HP correction —
+  applies `char.GetHitPoints()`'s own (stale) value back to itself via
+  `char.ApplyDamage`, landing exactly at 0 — right before the Unconscious
+  condition is applied, the single existing chokepoint every player's
+  `>0`→`0` transition already funnels through. Verified this doesn't
+  regress the nat-20 revival window (`onHealingReceived`'s `+1` now lands
+  on a truly-zero base instead of a stale nonzero one — a strict
+  correctness improvement) and doesn't double-count against any other
+  sync path: `Combatant.ApplyDamage` has exactly one caller anywhere in
+  the rulebook today (`combat.DealDamage`, damage.go), which itself has
+  zero callers anywhere — dead code. Neither the legacy `ResolveAttack`
+  nor the phased `ResolveAttackHit`/`ApplyAttackOutcome` (what
+  `combat_phased.go` and the Move-OA capture path actually dispatch
+  through) ever touch a hydrated defender's HP. **#784 is only partially
+  closed by this**: the fix is knockdown-transition-only — damage that
+  does NOT down a player (20 HP → 5 HP) still leaves `char.hitPoints`
+  stale until a knockdown or a reload; general per-hit sync, and the
+  monster-side equivalent, remain open on #784. New regression coverage:
+  `TestDownedPlayerViaRealCombat_StaysZeroedAcrossMultipleTurns`
+  (turn_economy_downed_test.go) knocks a player down via a REAL `NPCAct`
+  hit (no synthesized HP) and checks zero economy + rejected `TakeAction`
+  across two subsequent turn-starts, the shape none of the file's other
+  tests could exercise. See
   [encounter.md](architecture/components/encounter.md#encounter-end-predicate-tpk-rpg-toolkit772-782).
 - **ActiveConditions excludes build-time-granted conditions
   (rpg-toolkit#778, 2026-07-17).** #754's `ActiveConditions` was the full
