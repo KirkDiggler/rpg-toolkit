@@ -301,11 +301,30 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_BridgesToEntityDied()
 	s.Equal(core.EntityID(aliceEntityID), died.EntityID)
 	s.Empty(died.KillerID, "final death-save death has no specific killer")
 
-	// Wave 2.10's "player is NOT removed from initiative" call still stands —
-	// this fix only wires the missing event, not removal/TPK semantics.
+	// rpg-toolkit#772/#782: alice was the only player, and this death is
+	// CONFIRMED (3 failed saves), not merely unconscious — the TPK predicate
+	// must fire. This is the direct fix for #772 ("solo PC died, encounter
+	// looped the corpse's turns forever"): Initiative must now be cleared,
+	// not left non-empty (which is what this test asserted before this
+	// wave, encoding the bug as expected behavior).
+	var ended *events.EncounterEndedEvent
+	for _, e := range seen {
+		if e2, ok := e.(*events.EncounterEndedEvent); ok {
+			ended = e2
+		}
+	}
+	s.Require().NotNil(ended, "the last living player's confirmed death must publish EncounterEndedEvent")
+	s.Equal(encounter.EncounterEndedReasonTPK, ended.Reason)
+
+	s.Equal(core.ModeEnded, enc.Mode())
 	persisted := enc.ToData()
 	s.Contains(persisted.Players, core.PlayerID(alicePlayerID))
-	s.NotEmpty(persisted.Initiative)
+	s.True(persisted.Players[alicePlayerID].Dead)
+	s.Empty(persisted.Initiative, "TPK must clear initiative, same as a victory ending")
+
+	// The encounter is over — further turn dispatch must reject.
+	_, _, endErr := enc.EndTurn(s.ctx, enc.ActiveActor())
+	s.Require().ErrorIs(endErr, encounter.ErrEncounterEnded)
 }
 
 // reloadEncounter round-trips enc through ToData/LoadFromData with the given
@@ -446,7 +465,25 @@ func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_AcrossPerRPCReloads_B
 	s.Equal(core.EntityID(aliceEntityID), died.EntityID)
 	s.Empty(died.KillerID, "final death-save death has no specific killer")
 
+	// rpg-toolkit#772/#782: this must also hold across the per-RPC reload
+	// cycle, not just the single-long-lived-Encounter shape
+	// TestThreeFailedDeathSaves_BridgesToEntityDied covers — the TPK
+	// predicate is re-derived from persisted PlayerData.Dead on every
+	// LoadFromData, not cached in memory, so it must survive the reload
+	// that happens inside the very same call that confirms alice's death.
+	var ended *events.EncounterEndedEvent
+	for _, e := range seen {
+		if e2, ok := e.(*events.EncounterEndedEvent); ok {
+			ended = e2
+		}
+	}
+	s.Require().NotNil(ended, "the last living player's confirmed death must publish EncounterEndedEvent")
+	s.Equal(encounter.EncounterEndedReasonTPK, ended.Reason)
+	s.Equal(core.ModeEnded, enc.Mode())
+
 	persisted := enc.ToData()
+	s.True(persisted.Players[alicePlayerID].Dead)
+	s.Empty(persisted.Initiative, "TPK must clear initiative, same as a victory ending")
 	for _, pd := range persisted.Players {
 		if pd.EntityID != aliceEntityID {
 			continue

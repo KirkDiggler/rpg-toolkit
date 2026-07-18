@@ -8,9 +8,16 @@ import (
 )
 
 // EncounterEndedEvent is the terminal event published once when the
-// encounter-end predicate first goes true. Wave 2.10 emits it with
-// Reason = "all_hostiles_defeated"; future waves may add "fled",
-// "negotiated", "tpk", "time_out", etc.
+// encounter-end predicate first goes true. Reason is either
+// "all_hostiles_defeated" (Wave 2.10: every monster died, a victory) or
+// "tpk" (Wave 2.11/rpg-toolkit#772/#782: every seated player died, a
+// defeat); future waves may add "fled", "negotiated", "time_out", etc.
+// Consumers wanting a victory/defeat framing treat "all_hostiles_defeated"
+// as victory and any other reason as non-victory — no separate outcome
+// field exists or is planned; the reason string is the whole contract
+// (verified against rpg-api-protos's EncounterEnded{reason} wire shape,
+// which this event maps to field-for-field with no reason-string
+// allowlist on the consumer side).
 //
 // Audience is BROADCAST — every player in the encounter is in PerPlayer.
 // The terminal-state transition affects everyone uniformly: orchestrator

@@ -371,7 +371,13 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 // NPCAct that drops a player to 0 HP fires EntityDiedEvent for the
 // player (with the NPC as killer) but does NOT publish EntityRemovedEvent
 // for them, does NOT remove them from initiative, and does NOT end the
-// encounter (TPK is Wave 2.11+).
+// encounter — because bob is still alive. Wave 2.11/#772/#782: a flat
+// stat-snapshot seat (no DataJSON, alice here) has no death-save mechanic
+// and dies INSTANTLY on hitting 0 HP (the applyUnconsciousOnZeroHP
+// char==nil fallback), same as a monster — so this scenario needs a second,
+// living player to prove "partial death continues the encounter" is really
+// about bob surviving, not about TPK being unimplemented. See
+// TestSlice_TPK_* for the all-players-dead terminal case.
 func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	encID := core.EncounterID("enc-death-6")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
@@ -382,6 +388,13 @@ func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 		Position: core.Hex{}, SightRange: 10,
 		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
 		DamageDice: damage1d8plus2, DamageType: damageSlashing,
+	}))
+	// bob stays alive and far out of LoS of the fight — the "partial" half
+	// of this test's proof.
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "bob", EntityID: bobEntityID,
+		Position: core.Hex{Q: 50, R: -25, S: -25}, SightRange: 5,
+		HP: 10, MaxHP: 10, AC: 13,
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
@@ -412,7 +425,7 @@ func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	s.NotContains(seen, "*events.EntityRemovedEvent",
 		"Wave 2.10: player death is partial — no EntityRemovedEvent")
 	s.NotContains(seen, "*events.EncounterEndedEvent",
-		"Wave 2.10: TPK does not auto-end — no EncounterEndedEvent")
+		"bob is still alive — alice's death alone must not end the encounter")
 
 	// Player still seated.
 	persisted := enc.ToData()
@@ -486,8 +499,25 @@ func (s *DeathSuite) TestSlice_EncounterEndedReasonAllHostilesDefeated() {
 }
 
 // Re-attacking a player who is already at HP=0 must not re-fire
-// EntityDiedEvent. Regression for the "multi-attack NPC could double up
-// the death event" risk Copilot raised on the first review pass.
+// EntityDiedEvent. Originally a regression for the "multi-attack NPC could
+// double up the death event" risk Copilot raised on the first review pass.
+//
+// rpg-toolkit#772/#782: a flat-snapshot solo player's death is now
+// CONFIRMED and instant, which ends the encounter (TPK) on the very hit
+// that kills her — so there is no reachable "goblin re-hits the downed
+// player" turn to exercise anymore: closestPlayer (npc.go) permanently
+// excludes any player at HP<=0 from NPC targeting regardless of distance or
+// LoS, so a second living player would only cause the goblin to retarget
+// THEM, not re-hit alice, and a solo second player can't exist to be
+// re-hit because the encounter already ended. What this test now proves is
+// the stronger successor guarantee: the encounter cannot be coaxed into a
+// second attack on anyone at all once the last player is confirmed dead —
+// NPCAct itself rejects with ErrEncounterEnded. The original hpBefore>0
+// gate in applyAndPublishNPCOutcome/applyCapturedDamage (npc.go,
+// combat_phased.go) that prevented the double-fire is untouched by this
+// wave and still covered structurally: it is what makes "the encounter
+// ends on the FIRST >0->0 transition, never a second one for the same
+// entity" true in the first place.
 func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 	encID := core.EncounterID("enc-death-rehit-player")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
@@ -515,23 +545,23 @@ func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 		s.Require().NoError(endErr)
 	}
 
-	// Goblin's first turn: kills alice. EntityDiedEvent fires.
+	// Goblin's first turn: kills alice. EntityDiedEvent fires exactly once,
+	// and — alice being the only player — the encounter ends (TPK) in the
+	// very same call.
 	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
 	firstSeen := collectTypes(s.aliceSub, 500*time.Millisecond)
 	s.Equal(1, countOf(firstSeen, "*events.EntityDiedEvent"),
 		"first NPC kill must fire exactly one EntityDiedEvent")
+	s.Equal(1, countOf(firstSeen, "*events.EncounterEndedEvent"),
+		"the last living player's death must end the encounter exactly once")
+	s.Equal(core.ModeEnded, enc.Mode())
 
-	// Cycle back to the goblin's turn (alice is at 0 HP but still in
-	// initiative per Wave 2.10 partial player-death). NPCAct again —
-	// goblin re-hits the downed player. NO new EntityDiedEvent.
-	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
-		s.Require().NoError(endErr)
-	}
-	s.Require().NoError(enc.NPCAct(s.ctx, gobEntityID))
-	secondSeen := collectTypes(s.aliceSub, 500*time.Millisecond)
-	s.Equal(0, countOf(secondSeen, "*events.EntityDiedEvent"),
-		"re-hitting a downed player must NOT re-fire EntityDiedEvent")
+	// No second attack is reachable at all: EndTurn and NPCAct both reject
+	// once the encounter has ended, so there is no way to "re-hit" alice
+	// (or anyone else) into a duplicate death event.
+	_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
+	s.Require().ErrorIs(endErr, encounter.ErrEncounterEnded)
+	s.Require().ErrorIs(enc.NPCAct(s.ctx, gobEntityID), encounter.ErrEncounterEnded)
 }
 
 // SetMode rejects ModeEnded — terminal state is internal-only, set by

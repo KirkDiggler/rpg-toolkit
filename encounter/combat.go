@@ -359,11 +359,29 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 		// Seed the first actor's economy before announcing their turn, so the
 		// menu/economy is ready when the TurnStartedEvent lands (Beat-1: the
 		// engine owns turn-start seeding, not the host).
-		if err := e.seedActorTurn(context.Background(), e.data.Initiative[0]); err != nil {
+		//
+		// firstActive is captured BEFORE the seed call and reused below
+		// instead of re-indexing e.data.Initiative[0]: seedActorTurn's
+		// TurnStartTopic publish is synchronous and can itself end the
+		// encounter (rpg-toolkit#772/#782) — a first actor who loads in
+		// already carrying 2 prior death-save failures (persisted Unconscious
+		// condition state from an earlier, unresolved encounter) can roll
+		// the fatal 3rd right here, and checkEncounterEnd (death.go) clears
+		// e.data.Initiative to nil on that transition. Re-indexing
+		// e.data.Initiative[0] after the seed call would panic in that case.
+		firstActive := e.data.Initiative[0]
+		if err := e.seedActorTurn(context.Background(), firstActive); err != nil {
 			return err
 		}
+		// See EndTurn's identical guard for the fuller rationale: once the
+		// encounter has ended inside the seed call above, there is no turn
+		// to announce — skip the TurnStarted/TurnStateChanged publishes
+		// rather than describing a turn that will never be played.
+		if e.data.Mode == core.ModeEnded {
+			return nil
+		}
 		if err := e.broker.Publish(events.NewTurnStartedEvent(
-			e.data.ID, e.nextSeq(), e.data.Initiative[0], e.data.Round,
+			e.data.ID, e.nextSeq(), firstActive, e.data.Round,
 			e.allViewersTurnStarted(),
 		)); err != nil {
 			return fmt.Errorf("publish first turn started: %w", err)
@@ -371,7 +389,7 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 		// Push the fresh turn state after announcing the turn (Invariant 12):
 		// cause (turn started) before the menu/economy refresh. No correlation
 		// id — a turn-start refresh is not caused by an action.
-		if err := e.publishTurnStateChanged(e.data.Initiative[0], ""); err != nil {
+		if err := e.publishTurnStateChanged(firstActive, ""); err != nil {
 			return fmt.Errorf("publish first turn state: %w", err)
 		}
 	}
@@ -571,6 +589,23 @@ func (e *Encounter) EndTurn(
 	// engine owns turn-start seeding). No-op for NPCs and stat-snapshot seats.
 	if seedErr := e.seedActorTurn(ctx, newActive); seedErr != nil {
 		return "", false, seedErr
+	}
+
+	// #772/#782: seedActorTurn's TurnStartTopic publish is synchronous and
+	// can itself end the encounter — a downed player's own turn-start
+	// auto-rolls a death save (UnconsciousCondition.onTurnStart), and a
+	// fatal 3rd failure now bridges through publishPlayerDied straight into
+	// checkEncounterEnd (death.go) if they were the last living player.
+	// Unlike the monster-kill path (TakeAction's killEntity, a completely
+	// separate verb from EndTurn), this can happen mid-EndTurn, so it needs
+	// its own guard here: without it, this function would go on to publish
+	// TurnStartedEvent/TurnStateChangedEvent for a turn that will never be
+	// played, carrying Round/menu state checkEncounterEnd already zeroed —
+	// describing a turn for an encounter that is already over. newActive is
+	// still correct to return (the caller's turn-dispatch loop needs to know
+	// who WOULD have gone next), just with no further turn-start publishing.
+	if e.data.Mode == core.ModeEnded {
+		return newActive, e.IsNPC(newActive), nil
 	}
 
 	if pubErr := e.broker.Publish(events.NewTurnStartedEvent(

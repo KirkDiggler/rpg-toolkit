@@ -693,21 +693,45 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	// publishing the MoveEvent (#714 review). The affordability gate is the
 	// pre-check above — it runs before ANY side effect and is the only place an
 	// over-budget move is rejected ("rejected outright, no state mutation").
-	// This spend is structurally guaranteed to succeed (actualCost <=
-	// requestedCost, already checked against remaining), so ordering it first
-	// means an unreachable spend failure cannot leave a published MoveEvent
-	// behind it. actualCost may be less than requestedCost when a chain
-	// subscriber truncated the path; a zero-cost move (a degenerate path back
-	// to the same hex) spends nothing and is not sent to the rules layer, which
-	// rejects non-positive distances.
+	// This spend is structurally guaranteed to succeed for a mover who is
+	// still conscious (actualCost <= requestedCost, already checked against
+	// remaining), so ordering it first means an unreachable spend failure
+	// cannot leave a published MoveEvent behind it. actualCost may be less
+	// than requestedCost when a chain subscriber truncated the path; a
+	// zero-cost move (a degenerate path back to the same hex) spends nothing
+	// and is not sent to the rules layer, which rejects non-positive
+	// distances.
 	//
 	// Full atomicity is not achievable at this seam and is not claimed: the
 	// MovementResolver already applied physical side effects (room position,
 	// OA damage) during iterateMovementSteps, before the traveled distance —
 	// and thus the spend — could be known. The pre-check is the atomic gate;
 	// this is the accounting that follows a move that physically happened.
+	//
+	// #781: the p.HP > 0 guard handles the one way the spend CAN now
+	// legitimately fail post-pre-check: an opportunity attack captured
+	// during iterateMovementSteps above dropped the mover to 0 HP mid-move.
+	// applyUnconsciousOnZeroHP (death.go) already zeroed their action
+	// economy — including MovementRemaining — via the same char.EndTurn
+	// call seedActorTurn's own downed-at-turn-start branch uses, the moment
+	// they went unconscious. Without this guard, the spend below would fail
+	// with a "0ft remaining" ErrInsufficientMovement even though the move
+	// DID physically happen (position updates below; damage/Unconscious
+	// already published inside iterateMovementSteps) — turning a real,
+	// already-observable mutation into what looks like a no-op failure to
+	// the caller. There is nothing left to spend against for an
+	// incapacitated mover this turn regardless (their whole economy is
+	// already zero), so skipping the spend is a pure no-op on the economy
+	// side, not a bypass of anything.
+	//
+	// Reads p.HP (the encounter's own PlayerData snapshot) rather than
+	// char.GetHitPoints(): p.HP is exactly the signal applyDamageToTarget /
+	// applyCapturedDamage already used to decide a >0->0 transition
+	// occurred and call applyUnconsciousOnZeroHP in the first place (npc.go)
+	// — the same authoritative fact this guard needs, not a second,
+	// potentially-unsynced source of truth.
 	spentMovement := false
-	if tracksMovement {
+	if tracksMovement && p.HP > 0 {
 		if actualCost := pathCostFeet(moverStart, traveledPath); actualCost > 0 {
 			out, err := char.ExecuteAction(context.Background(), &dnd5eCharacter.ExecuteActionInput{
 				ActionRef: refs.Actions.Move(),
@@ -717,10 +741,13 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 				return fmt.Errorf("spend movement economy: %w", err)
 			}
 			if !out.Success {
-				// Structurally unreachable: actualCost <= requestedCost, and
-				// requestedCost was already checked against remaining above.
-				// Surfaced rather than swallowed so a future divergence between
-				// the pre-check and the spend is loud, not silent.
+				// Structurally unreachable for a still-conscious mover:
+				// actualCost <= requestedCost, and requestedCost was already
+				// checked against remaining above; the only other way to
+				// reach 0 remaining (going unconscious mid-move) is now
+				// excluded by the guard on this if-statement. Surfaced
+				// rather than swallowed so a future divergence between the
+				// pre-check and the spend is loud, not silent.
 				return fmt.Errorf("%w: %s", ErrInsufficientMovement, out.Error)
 			}
 			spentMovement = true

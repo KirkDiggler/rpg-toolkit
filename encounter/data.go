@@ -173,6 +173,52 @@ type PlayerData struct {
 	// division of labor translateConditionAppliedEvent already uses for the
 	// live path.
 	ActiveConditions []string `json:"active_conditions,omitempty"`
+
+	// Dead marks a player-seat entity as having died within THIS encounter
+	// (either 3 failed death saves via the CharacterDied bridge, or the
+	// non-hydrated flat-snapshot instant-death fallback — see
+	// publishPlayerDied in death.go, the single site that sets this).
+	// rpg-toolkit#772/#782: drives checkEncounterEnd's TPK predicate — once
+	// every seated player carries Dead=true, the encounter transitions to
+	// ModeEnded with Reason "tpk", mirroring the monster-side
+	// len(Monsters)==0 predicate.
+	//
+	// Deliberately does NOT mean "unconscious" — a player at HP<=0 who is
+	// still death-saving (could nat-20 revive) has Dead==false; only a
+	// CONFIRMED death sets it. This preserves the death-save mechanic's
+	// (rpg-toolkit#729/#741) chance to matter even for the last conscious
+	// player, rather than ending the encounter the instant everyone hits 0
+	// HP.
+	//
+	// Terminal within the encounter: nothing in the toolkit today clears
+	// Dead back to false — there is no in-encounter revival mechanic (no
+	// Raise Dead / Revivify verb exists yet). It is set at most once and
+	// persists for the rest of THIS encounter's lifetime.
+	//
+	// Scoped to the encounter snapshot ONLY — never written into the held
+	// character's own DataJSON/character.Data, so it cannot leak across
+	// encounters. A character who died in encounter A and is later seated
+	// (narratively revived, or simply re-added for a fresh fight/test) in
+	// encounter B gets a brand-new PlayerData with Dead defaulting to
+	// false; cross-encounter cleanliness is the character record's job
+	// (mirrors the raging-condition leak fix, rpg-toolkit#752/PR#753 —
+	// see encounter_end_condition_sweep_test.go), not this flag's.
+	//
+	// Persistence / restart safety: set and checked within one synchronous
+	// call stack — publishPlayerDied sets Dead=true and then calls
+	// checkEncounterEnd() inline, before the triggering verb call returns
+	// to the host. There is no intermediate point where Dead=true could be
+	// persisted without the resulting Mode==ModeEnded transition (when
+	// Dead=true completes the TPK predicate) also being persisted alongside
+	// it — a host only calls ToData() after a verb call fully returns.
+	// LoadFromData therefore does NOT need a defensive re-check of this
+	// predicate the way seedActiveActorIfUnseeded (turn_economy.go)
+	// re-checks turn-start seeding — that gap exists because SetMode and
+	// seedActorTurn are two separate entry points that can race a reload;
+	// here the mutation and the predicate check are the same function call,
+	// so the "mutated but not yet checked" state this field's persistence
+	// story worries about is unreachable, not merely untested.
+	Dead bool `json:"dead,omitempty"`
 }
 
 // DoorData persists a door entity.
