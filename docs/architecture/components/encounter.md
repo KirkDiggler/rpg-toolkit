@@ -398,6 +398,48 @@ discretized wall hex — wave 1 needs per-hex blocking, not polyline
 geometry; per-viewer wall reveal (which would want real geometry) is a
 wave-2+ concern.
 
+### Doors block via the same wall machinery, not a parallel system (rpg-toolkit#790)
+
+Before wave 2 slice 1, `OpenDoor` flipped `DoorData.Open` and called
+`perception.ProjectDoorOpen`, but never touched `e.room` — a closed door
+blocked neither movement nor LoS, and opening one only re-revealed its
+already-visible immediate neighbors (`ProjectDoorOpen`'s `door` param was
+explicitly reserved for this). Fixed by reusing exactly the wall machinery
+`SpaceData.Walls` already uses, rather than inventing a second door-blocking
+system:
+
+- `rebuildRoomFromData` (space.go) places a blocking `WallEntity` at every
+  **closed** door's `Position`, derived fresh from `Data.Doors` on every
+  call — never persisted into `Space.Walls`. `DoorData` stays the single
+  source of door truth; an open door places nothing, so the block drops the
+  next time this function runs.
+- `AddDoor` and `OpenDoor` both call `rebuildRoomFromData` again after
+  mutating `Data.Doors` (`AddDoor` now returns an `error` for this reason),
+  so a door starts blocking the moment it's added and stops the moment it
+  opens — no separate "sync the door's wall state" step to forget.
+- `ProjectDoorOpen`'s reveal slice is the full delta between the viewer's
+  current `VisibleHexesAt` (computed against the now-open room) and their
+  cumulative `RevealedHexes`, not just the door's six immediate neighbors —
+  a corridor or chamber beyond the doorway reveals in the same action that
+  opened the door, not hex-by-hex as the viewer walks toward it.
+- Movement blocking needed no new code at all: `truncateAtWall` already
+  queries `room.CanPlaceEntity`, which sees the door's blocking `WallEntity`
+  the same as any solid wall.
+
+**Folded in the rpg-api#648 gate finding in the same PR:** `viewerCanSee`
+(npc.go) — the predicate gating whether an NPC-originated event (damage,
+attack, move) or a player-action event (feature activation, condition
+removal) reaches a given viewer — was a pure `hexDistance <= SightRange`
+check with no wall awareness at all, independent of `perception.CanSeeAt`'s
+wall-aware LoS. A closed door (or any wall) never stopped these events from
+reaching a player standing right next to it. Now delegates to
+`perception.CanSeeAt(p.View, h, e.room)`, the same predicate
+`checkCombatEntry`/`monsterVisibilityTransitions` already use — one LoS rule
+in this package, not two. Does **not** touch `buildPerception`/
+`closestPlayer` (npc.go) — those compute monster AI targeting inputs, an
+explicitly-scoped-as-"no walls or cover" concern documented separately, not
+an event-visibility gate.
+
 ### Hex ↔ CubeCoordinate ↔ Position bridge
 
 `encounter/core`'s `Hex{Q,R,S}` and `spatial.CubeCoordinate{X,Y,Z}` are the

@@ -393,8 +393,33 @@ func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.
 
 // AddDoor registers a door (slice scope; future slices use a richer entity
 // system).
-func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) {
+//
+// rpg-toolkit#790: if the encounter already has a room (InitRoom/
+// LoadFromData ran), a closed door must immediately start blocking
+// movement/LoS, so this rebuilds e.room from the now-updated Data.Doors
+// (see rebuildRoomFromData). A no-op, not an error, when there's no room
+// yet — InitRoom's own rebuild will pick up any door added before it.
+//
+// On rebuild failure, the door registration is rolled back (removed from
+// Data.Doors) rather than left half-applied — a Copilot catch on this PR:
+// without the rollback, a failed rebuild would leave the door persisted
+// but not reflected in e.room, so a subsequent OpenDoor/rebuild could
+// behave inconsistently with what ToData() reports.
+//
+// rebuildRoomFromData replaces e.room/e.roomOrchestrator with fresh
+// objects rather than mutating the existing ones — see OpenDoor's doc for
+// why a caller holding an old Room()/RoomOrchestrator() reference across
+// this call would observe stale geometry.
+func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) error {
 	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
+	if e.data.Space == nil {
+		return nil
+	}
+	if err := e.rebuildRoomFromData(); err != nil {
+		delete(e.data.Doors, id)
+		return fmt.Errorf("rebuild room after adding door %q: %w", id, err)
+	}
+	return nil
 }
 
 // AddMonster registers a monster seat. Mirrors AddPlayer / AddDoor and is
@@ -1136,9 +1161,24 @@ func (e *Encounter) applyAndPublishMove(
 	return corrID, nil
 }
 
-// OpenDoor applies an open-door action. Marks the door open and publishes
-// the cause event (DoorOpenedEvent) plus a HexRevealedEvent for any viewer
-// whose vision grew.
+// OpenDoor applies an open-door action. Marks the door open, rebuilds
+// e.room so the door's cell stops blocking movement/LoS (rpg-toolkit#790 —
+// see rebuildRoomFromData), and publishes the cause event (DoorOpenedEvent)
+// plus a HexRevealedEvent for any viewer whose vision grew — the room
+// rebuild happens BEFORE the per-viewer ProjectDoorOpen calls below so
+// their VisibleHexesAt sees through the now-open doorway. On rebuild
+// failure, door.Open is rolled back to false (a Copilot catch on this PR)
+// so DoorData and e.room can't disagree about whether the door blocks.
+//
+// Stale-reference caveat: rebuildRoomFromData replaces e.room and
+// e.roomOrchestrator with FRESH objects rather than mutating the existing
+// ones in place. A caller that fetched Room()/RoomOrchestrator() before
+// this call and holds onto that reference (e.g. a host wiring the spawn
+// engine to "the encounter's room" once at startup) will keep observing
+// the pre-open geometry — it must re-fetch Room()/RoomOrchestrator() after
+// any OpenDoor/AddDoor call rather than caching them long-term. No caller
+// does this yet (doors are toolkit-only through Slice 1), but it's a live
+// trap for Slice 2+ wiring.
 func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error {
 	p, ok := e.data.Players[playerID]
 	if !ok {
@@ -1153,6 +1193,12 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 	}
 
 	door.Open = true
+	if e.data.Space != nil {
+		if err := e.rebuildRoomFromData(); err != nil {
+			door.Open = false
+			return fmt.Errorf("rebuild room after opening door %q: %w", doorID, err)
+		}
+	}
 
 	doorPerPlayer := make(map[core.PlayerID]events.DoorOpenedPlayerSlice)
 	revealPerPlayer := make(map[core.PlayerID]events.HexRevealedSlice)

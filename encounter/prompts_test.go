@@ -69,7 +69,7 @@ func (s *PromptsSuite) newEncounterWithLockedDoor() *encounter.Encounter {
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 5,
 	}))
-	e.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false)
+	s.Require().NoError(e.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false))
 	door := e.ToData().Doors["door-1"]
 	door.Locked = true
 	door.LockDC = 15
@@ -83,7 +83,7 @@ func (s *PromptsSuite) newEncounterWithLockedDoor() *encounter.Encounter {
 // DoorData with Wave 2.9 lock fields round-trips through JSON unchanged.
 func (s *PromptsSuite) TestRoundTrip_DoorDataLockFields() {
 	e1 := encounter.New(context.Background(), "enc-1", s.broker)
-	e1.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false)
+	s.Require().NoError(e1.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false))
 	door := e1.ToData().Doors["door-1"]
 	door.Locked = true
 	door.LockDC = 17
@@ -183,7 +183,7 @@ func (s *PromptsSuite) TestAttemptUnlock_UnlockedDoor() {
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 5,
 	}))
-	e.AddDoor("door-unlocked", core.Hex{Q: 1, R: 0, S: -1}, false)
+	s.Require().NoError(e.AddDoor("door-unlocked", core.Hex{Q: 1, R: 0, S: -1}, false))
 
 	_, err := e.AttemptUnlock("alice", "door-unlocked")
 	s.Require().Error(err)
@@ -378,7 +378,7 @@ func (s *PromptsSuite) newEncounterWithResolver(r encounter.CharacterResolver) *
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 5,
 	}))
-	e.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false)
+	s.Require().NoError(e.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false))
 	d := e.ToData().Doors["door-1"]
 	d.Locked = true
 	d.LockDC = 10

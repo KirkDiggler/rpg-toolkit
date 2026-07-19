@@ -50,7 +50,8 @@ func (e *Encounter) InitRoom(width, height int, pattern string, seed ...int64) e
 }
 
 // Room returns the encounter's spatial room, or nil if InitRoom was never
-// called (or LoadFromData found no persisted Space).
+// called (or LoadFromData found no persisted Space). Not stable across a
+// door mutation — see RoomOrchestrator's doc.
 func (e *Encounter) Room() spatial.Room { return e.room }
 
 // RoomOrchestrator returns the orchestrator the encounter's room is
@@ -58,6 +59,13 @@ func (e *Encounter) Room() spatial.Room { return e.room }
 // host (e.g. rpg-api's spawn-engine wiring) can share the exact same room
 // instance the encounter uses for LoS/movement, rather than reconstructing
 // its own from Data.Space.
+//
+// Not stable across a door mutation (rpg-toolkit#790): AddDoor/OpenDoor
+// call rebuildRoomFromData, which replaces e.room/e.roomOrchestrator with
+// FRESH objects rather than mutating the existing ones. A caller holding a
+// reference from before such a call is holding stale geometry — re-fetch
+// Room()/RoomOrchestrator() after any door mutates rather than caching
+// them for the encounter's lifetime.
 func (e *Encounter) RoomOrchestrator() spatial.RoomOrchestrator { return e.roomOrchestrator }
 
 // snapshotWalls converts a built room's wall entities into the persisted
@@ -118,6 +126,15 @@ func (e *Encounter) registerRoom(room spatial.Room) error {
 // exactly as persisted, not regenerated from a pattern — the snapshot
 // decision (SpaceData doc) exists precisely so this is a replay, not a
 // re-roll. No-op when data.Space is nil (no room to rebuild).
+//
+// rpg-toolkit#790: also places a blocking wall entity at every CLOSED
+// door's Position, derived fresh from Data.Doors each call rather than
+// persisted into Space.Walls — DoorData stays the single source of door
+// truth, and reuses the exact same wall machinery (PlaceEntity,
+// BlocksMovement/BlocksLoS, room.IsLineOfSightBlocked/CanPlaceEntity) that
+// already gates movement and LoS for solid walls, instead of a parallel
+// door-blocking system. An OPEN door places nothing, so re-running this
+// after OpenDoor flips door.Open naturally drops that door's block.
 func (e *Encounter) rebuildRoomFromData() error {
 	sd := e.data.Space
 	if sd == nil {
@@ -133,7 +150,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 		Type: "encounter_room",
 		Grid: grid,
 	})
-	placed := make(map[spatial.CubeCoordinate]struct{}, len(sd.Walls))
+	placed := make(map[spatial.CubeCoordinate]struct{}, len(sd.Walls)+len(e.data.Doors))
 	for i, w := range sd.Walls {
 		// snapshotWalls dedupes on write; this read-side skip additionally
 		// tolerates a hand-built or legacy snapshot carrying duplicates —
@@ -159,6 +176,33 @@ func (e *Encounter) rebuildRoomFromData() error {
 		})
 		if err := room.PlaceEntity(entity, pos); err != nil {
 			return fmt.Errorf("place wall %d: %w", i, err)
+		}
+	}
+	for id, door := range e.data.Doors {
+		if door.Open {
+			continue
+		}
+		cube := door.Position.ToCube()
+		// A door co-located with a solid wall cell (shouldn't happen by
+		// design, but PlaceEntity would reject stacking a second blocker on
+		// an occupied hex) is skipped defensively rather than failing the
+		// whole rebuild — the existing wall already blocks that cell.
+		if _, dup := placed[cube]; dup {
+			continue
+		}
+		placed[cube] = struct{}{}
+		pos := door.Position.ToPosition()
+		entity := environments.NewWallEntity(environments.WallEntityConfig{
+			SegmentID: fmt.Sprintf("door-%s", id),
+			WallType:  environments.WallTypeIndestructible,
+			Properties: environments.WallProperties{
+				BlocksMovement: true,
+				BlocksLoS:      true,
+			},
+			Position: pos,
+		})
+		if err := room.PlaceEntity(entity, pos); err != nil {
+			return fmt.Errorf("place door wall %s: %w", id, err)
 		}
 	}
 	return e.registerRoom(room)

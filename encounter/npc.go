@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	encountercore "github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -1103,12 +1104,25 @@ func (e *Encounter) findPlayerByEntityID(id encountercore.EntityID) *PlayerData 
 	return nil
 }
 
-// viewerCanSee delegates to the perception stub LoS but tolerates a nil view.
+// viewerCanSee reports whether the viewing player currently perceives hex h:
+// within sight range and, when the encounter has a room, not wall-blocked.
+//
+// rpg-toolkit#790 (folding in the rpg-api#648 gate finding): this used to
+// be a pure hexDistance<=SightRange check, so every event gated on it
+// (damage, attacks, moves, feature activation, condition removal — every
+// caller of this method) leaked through walls and closed doors, e.g. a
+// player standing next to a closed door could still receive "visible"
+// event slices for whatever was happening in the next chamber. Delegates
+// to perception.CanSeeAt, the same wall-aware predicate checkCombatEntry/
+// monsterVisibilityTransitions already use, so this package has one LoS
+// rule, not two. perception.CanSeeAt already handles a nil *View safely
+// (returns false); the p == nil check below is the only one still needed
+// here, guarding the p.View field access itself against a nil *PlayerData.
 func (e *Encounter) viewerCanSee(p *PlayerData, h encountercore.Hex) bool {
-	if p == nil || p.View == nil {
+	if p == nil {
 		return false
 	}
-	return hexDistance(p.View.Position, h) <= p.View.SightRange
+	return perception.CanSeeAt(p.View, h, e.room)
 }
 
 // hexDistance is the cube-coordinate hex distance between two hexes.
