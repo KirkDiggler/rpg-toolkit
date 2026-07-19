@@ -12,8 +12,8 @@ github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 h1:MtAEpVskb0lfb+oXO8xGrSQsDoHZ
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1/go.mod h1:wsyJmmf1X0iLFGy5Iyy5sUoZhXZQvuYVsKdXfc4b/T4=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.65.4-0.20260719050524-6d8daa22a8c1 h1:gLPNaagYErLKDUSp2r6hv45c7qlvD1ScQP/TZ3ActnE=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.65.4-0.20260719050524-6d8daa22a8c1/go.mod h1:vx1sByl/MceFEzfdmi+HP5hGotGJ8u5uR5T1RVQMqn4=
-github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.2 h1:kPc3FZSRAB/gIzTBvlOYxzqp9mdL0akkeRW/8EZcI9A=
-github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.2/go.mod h1:tchpvtZ7MTh7P5J1efr2Wigw108VzQBQEojlVFbw8rM=
+github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.3-0.20260719192245-bb98112c5ba3 h1:MIfL0WWHeeVJIDHntEDlzN+mXphq7HGYuadxa/I6pEc=
+github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.3-0.20260719192245-bb98112c5ba3/go.mod h1:tchpvtZ7MTh7P5J1efr2Wigw108VzQBQEojlVFbw8rM=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2 h1:81iz712+EXhitPNgcf0tMDqvqI/0u9k26Hbdph62QZU=
 github.com/KirkDiggler/rpg-toolkit/tools/selectables v0.1.2/go.mod h1:tnhhn+fRcklWqwIu5lOtBA2uCn1amkp5ZAARsqAgJqI=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.0 h1:weKsLlsRV9kgoD/y68VWy0lpsu5zhwCmbnr5MUkLpsA=

@@ -7,7 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.65.4-0.20260719050524-6d8daa22a8c1
-	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.2
+	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.3-0.20260719192245-bb98112c5ba3
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.0
 	github.com/stretchr/testify v1.11.1
 )

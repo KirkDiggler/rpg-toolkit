@@ -357,22 +357,29 @@ connects it. Design doc: `rpg-project/ideas/the-dungeon/design.md`.
 ### SpaceData: snapshot, not seed-regeneration
 
 `Data.Space *SpaceData` (`Walls []environments.WallSegmentData`, `Width`,
-`Height`) persists a room as a **snapshot**, not a regeneration seed —
-`environments.QuickRoom`'s wall generator (`RandomPattern`) is only
-deterministic because `QuickRoom`'s 3-arg convenience wrapper never sets
-`RandomSeed` (defaults to 0); nothing else about the design intends to
-replay a seed. `DoorData` already persists mutable state directly, and
-destroyed walls / opened doors (wave 2+) can't replay from a seed either —
-picking the snapshot representation now avoids a representation split
-later.
+`Height`) persists a room as a **snapshot**, not a regeneration seed.
+`DoorData` already persists mutable state directly, and destroyed walls /
+opened doors (wave 2+) can't replay from a seed either — picking the
+snapshot representation now avoids a representation split later. (Before
+rpg-toolkit#787, `QuickRoom`'s 3-arg convenience wrapper never called
+`WithRandomSeed`, so `RandomPattern` was *accidentally* deterministic —
+`rand.NewSource(0)` on every call, meaning every encounter shipped the same
+wall layout. That's fixed now: `Build()` entropy-seeds `RandomSeed`
+whenever a caller leaves it unset. Irrelevant to the snapshot-vs-seed
+design choice either way — SpaceData was never going to replay from a seed
+regardless of whether generation happened to be deterministic.)
 
-`Encounter.InitRoom(width, height, pattern)` builds a room via
-`environments.QuickRoom`, and `LoadFromData` rebuilds one from `Data.Space`
-on every call (`rebuildRoomFromData`, transient — reconstructed each load,
-like `e.bus`/`e.combatants`, never serialized). Both are nil-safe: an
-encounter that never calls `InitRoom` (every pre-#757 fixture) has
-`e.room == nil`, and every room-aware call site in this package checks for
-that — LoS falls back to pure radius, movement is unblocked.
+`Encounter.InitRoom(width, height, pattern, seed ...int64)` builds a room
+via `environments.QuickRoom`, and `LoadFromData` rebuilds one from
+`Data.Space` on every call (`rebuildRoomFromData`, transient — reconstructed
+each load, like `e.bus`/`e.combatants`, never serialized). Both are
+nil-safe: an encounter that never calls `InitRoom` (every pre-#757 fixture)
+has `e.room == nil`, and every room-aware call site in this package checks
+for that — LoS falls back to pure radius, movement is unblocked. The
+trailing `seed` is optional and threads straight through to `QuickRoom`
+(only the first value is used) — omit it for real gameplay's entropy
+default, pass one for devseed fixtures / regression tests that want the
+same room every run.
 
 **Position precision gotcha (why InitRoom doesn't use QuickRoom's room
 directly):** `environments`' wall generator (`generateRandomWall`,

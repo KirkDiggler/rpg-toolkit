@@ -29,8 +29,15 @@ import (
 // An encounter with no room (InitRoom never called) falls back to the
 // pre-wave-1 radius-only LoS and unblocked movement throughout this package —
 // every room-aware call site is nil-checked.
-func (e *Encounter) InitRoom(width, height int, pattern string) error {
-	room, err := environments.QuickRoom(width, height, pattern)
+//
+// Wall-pattern generation is entropy-seeded by default (rpg-toolkit#787):
+// two InitRoom calls with the same pattern produce different layouts. Pass
+// an explicit seed for a reproducible layout instead -- e.g. devseed
+// fixtures or regression tests. Only the first seed argument is used; it's
+// optional so most callers (including rpg-api's spawn-engine wiring today)
+// never need to think about it. See environments.QuickRoom.
+func (e *Encounter) InitRoom(width, height int, pattern string, seed ...int64) error {
+	room, err := environments.QuickRoom(width, height, pattern, seed...)
 	if err != nil {
 		return fmt.Errorf("build room: %w", err)
 	}
