@@ -116,7 +116,13 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 	if err := e.checkEncounterEnd(); err != nil {
 		return err
 	}
-	return nil
+	// rpg-toolkit#794: if the whole dungeon didn't just clear (some
+	// monsters remain elsewhere — checkEncounterEnd above was a no-op),
+	// check whether THIS pocket (the current Initiative) is now clear of
+	// monsters. If so, non-terminally exit back to FREE_ROAM instead of
+	// soft-locking on a rotation of player-only turns with no monster left
+	// to fight.
+	return e.checkPocketCleared()
 }
 
 // publishPlayerDied fires an EntityDiedEvent for a player whose HP reached

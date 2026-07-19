@@ -432,6 +432,62 @@ func (e *Encounter) checkCombatEntry() error {
 	return nil
 }
 
+// engagedMonsters returns the monsters at least one player currently has
+// LoS to — the ENGAGED pocket (rpg-toolkit#794), via the same
+// perception.CanSeeAt predicate checkCombatEntry itself uses to trigger
+// combat. rollInitiative calls this instead of ranging e.data.Monsters
+// directly so a monster behind a closed door (or simply out of every
+// player's sight range) doesn't join a fight no one has reached yet.
+func (e *Encounter) engagedMonsters() []*MonsterData {
+	var engaged []*MonsterData
+	for _, m := range e.data.Monsters {
+		for _, p := range e.data.Players {
+			if perception.CanSeeAt(p.View, m.Position, e.room) {
+				engaged = append(engaged, m)
+				break
+			}
+		}
+	}
+	return engaged
+}
+
+// checkPocketCleared evaluates whether the CURRENT combat pocket — the
+// monsters still in e.data.Initiative — has been fully cleared while live
+// monsters remain elsewhere in the space, and if so, non-terminally exits
+// combat back to FREE_ROAM (rpg-toolkit#794 / design doc Fork 2) via the
+// existing SetMode(ModeFreeRoam) mechanism (already correct and already
+// used for the entry direction; nothing new needed there).
+//
+// Called from killEntity, right after checkEncounterEnd — deliberately
+// AFTER, not instead of: checkEncounterEnd's terminal all-monsters-dead
+// check takes priority (whole-dungeon clear ends the encounter outright),
+// and this only runs its own check when that one was a no-op, i.e. only
+// when e.data.Mode is still ModeTurnBased (checkEncounterEnd would have
+// flipped it to ModeEnded otherwise).
+//
+// Re-entry: the next Move/AddMonster that puts a player back in LoS of a
+// monster re-triggers checkCombatEntry exactly as it does for a fresh
+// encounter, rolling a NEW initiative (via rollInitiative, itself scoped
+// to whatever pocket is newly engaged) with Round reset to 1 — SetMode
+// already does this unconditionally for any FreeRoam->TurnBased flip, so
+// no separate "re-arm" step is needed here.
+func (e *Encounter) checkPocketCleared() error {
+	if e.data.Mode != core.ModeTurnBased {
+		return nil
+	}
+	for _, id := range e.data.Initiative {
+		if _, isMonster := e.data.Monsters[id]; isMonster {
+			return nil // pocket still has a live monster
+		}
+	}
+	// No monster remains in the current pocket. checkEncounterEnd (called
+	// before this, from the same killEntity chokepoint) already handled
+	// the case where e.data.Monsters is now empty entirely — reaching here
+	// with Mode still ModeTurnBased means monsters exist, just not in this
+	// pocket's initiative.
+	return e.SetMode(core.ModeFreeRoam)
+}
+
 // playersWhoCanSee returns the set of players who currently have LoS to m,
 // via the same perception.CanSeeAt predicate checkCombatEntry uses. Used by
 // AddMonster (rpg-toolkit#764) to publish EntityAppearedEvent for a
@@ -657,18 +713,49 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 	return nil
 }
 
-// rollInitiative seeds Initiative with all combatants in d20-roll-desc
-// order. Ties broken by entity id for determinism.
+// rollInitiative seeds Initiative with every player plus the ENGAGED
+// monster pocket (rpg-toolkit#794) in d20-roll-desc order. Ties broken by
+// entity id for determinism.
+//
+// Combat pockets: before this, every seeded monster anywhere in the space
+// joined initiative on the first sighting, so a locked-away boss (behind a
+// door no one has reached) rolled into a fight nothing could ever clear
+// (gap 5 / design doc Fork 2). Monsters are scoped to engagedMonsters() —
+// the ones at least one player currently has LoS to, the same predicate
+// that triggered this call via checkCombatEntry. Players are NOT scoped
+// the same way: the issue and design doc only call out monster-side
+// scoping ("initiative scoped to engaged... monsters"), and every current
+// player already has a seat regardless of which pocket engages — a player
+// elsewhere in the dungeon simply takes an uneventful turn, not something
+// this slice changes.
 func (e *Encounter) rollInitiative() {
 	type seed struct {
 		id   core.EntityID
 		roll int
 	}
-	seeds := make([]seed, 0, len(e.data.Players)+len(e.data.Monsters))
+
+	// Roll order must not depend on Go's randomized map iteration order
+	// (e.data.Players and e.data.Monsters are both maps) -- the same roll
+	// VALUES get drawn either way, but WHICH entity receives WHICH draw
+	// would otherwise vary run to run even with a deterministic/seeded
+	// roller, breaking devseed fixture reproducibility (Copilot catch on
+	// PR #796). Sorting both id lists before rolling makes the assignment
+	// itself deterministic; irrelevant to the FINAL order below (sorted by
+	// roll, ties by id) but load-bearing for which roll each id gets.
+	playerIDs := make([]core.EntityID, 0, len(e.data.Players))
 	for _, p := range e.data.Players {
-		seeds = append(seeds, seed{id: p.EntityID, roll: rollD20(e.roller)})
+		playerIDs = append(playerIDs, p.EntityID)
 	}
-	for _, m := range e.data.Monsters {
+	sort.Slice(playerIDs, func(i, j int) bool { return playerIDs[i] < playerIDs[j] })
+
+	engaged := e.engagedMonsters()
+	sort.Slice(engaged, func(i, j int) bool { return engaged[i].ID < engaged[j].ID })
+
+	seeds := make([]seed, 0, len(playerIDs)+len(engaged))
+	for _, id := range playerIDs {
+		seeds = append(seeds, seed{id: id, roll: rollD20(e.roller)})
+	}
+	for _, m := range engaged {
 		seeds = append(seeds, seed{id: m.ID, roll: rollD20(e.roller)})
 	}
 	sort.Slice(seeds, func(i, j int) bool {

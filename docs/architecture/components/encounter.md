@@ -513,6 +513,65 @@ the missed `seedActorTurn` and pushes a fresh `TurnStateChangedEvent`
 No `TurnStartedEvent` re-publish: the turn already started and was announced
 at the flip; the catch-up completes its seeding, it doesn't restart it.
 
+### Combat pockets: LoS-scoped initiative + non-terminal pocket-clear exit (rpg-toolkit#794)
+
+Before wave 2 slice 1b, `rollInitiative` seeded EVERY seeded monster
+anywhere in the space on the first sighting — a monster behind a closed
+door (unreachable, never sighted) still rolled into the same initiative as
+whatever triggered combat entry, and the only exit (`checkEncounterEnd`,
+death.go) was terminal, gated on `len(e.data.Monsters) == 0` (every
+monster ANYWHERE, not just the current fight). A locked-away boss meant an
+un-endable fight: nothing could ever clear the boss out of `Monsters`, so
+the encounter could never reach `ModeEnded` (design doc gap 5 / Fork 2).
+
+Two changes, both reusing existing machinery rather than inventing new
+transition shapes:
+
+- `rollInitiative` now seeds only `engagedMonsters()` — the monsters at
+  least one player currently has LoS to, via the exact same
+  `perception.CanSeeAt` predicate `checkCombatEntry` itself uses to trigger
+  the call in the first place. Players are NOT scoped the same way (every
+  seated player keeps a turn regardless of which pocket engages — the
+  issue and design doc only call out monster-side scoping).
+- `killEntity` (death.go) calls a new `checkPocketCleared` right after its
+  existing `checkEncounterEnd` call: if the whole dungeon didn't just
+  clear (checkEncounterEnd was a no-op, i.e. `e.data.Monsters` is still
+  non-empty) but the CURRENT pocket (`e.data.Initiative`) no longer
+  contains any monster, it exits back to `ModeFreeRoam` via
+  `SetMode(ModeFreeRoam)` — the exact FreeRoam-clearing branch `SetMode`
+  already had ("the mechanism exists... but no rule calls it," per the
+  design doc); no new mode-transition code, no wire/protos change
+  (`ModeChangedEvent{From:TURN_BASED,To:FREE_ROAM}` is already a distinct
+  event type from `EncounterEndedEvent`, unambiguous on the wire as-is).
+
+`checkEncounterEnd`'s own victory predicate (`len(e.data.Monsters) == 0`)
+needed no change: `killEntity` already `delete()`s a dead monster from
+`e.data.Monsters` (not just marks it dead), so that check was ALREADY
+"the last monster anywhere in the whole space," not merely "the current
+pocket" — it correctly stayed the terminal, whole-dungeon-clear predicate
+throughout this change.
+
+Re-entry is free: `checkCombatEntry`'s `ModeFreeRoam` gate passes again the
+moment mode resets, and the next Move/AddMonster that puts a player back in
+a monster's LoS re-triggers it exactly like a fresh encounter — a NEW
+`rollInitiative` call, scoped to whatever pocket is newly engaged, with
+`Round` reset to 1 by the same `SetMode` branch that always resets it on a
+FreeRoam→TurnBased flip. No separate "re-arm" step exists or is needed.
+
+**Known, deliberately untouched gap:** `AddMonster`'s existing
+"reinforcement" behavior — a monster added while `e.data.Mode ==
+ModeTurnBased` is appended to `e.data.Initiative` unconditionally,
+regardless of whether it's actually engaged (encounter.go, predates this
+slice). This is correct for its intended shape (something spawns INTO an
+already-running fight — a reinforcement, a summon), but means a monster
+`AddMonster`'d after combat has already started elsewhere joins the CURRENT
+pocket even if it's behind a closed door. Not exercised by any real caller
+today (`StartEncounter`-style world-seeding calls `AddMonster` for every
+chamber before any player can move, i.e. always while still `ModeFreeRoam`)
+and out of this issue's explicit scope (which named `rollInitiative`, not
+`AddMonster`) — flagged here for whoever builds Slice 2's multi-chamber
+seeding sequencing to watch for.
+
 ### Monster visibility events (rpg-toolkit#761, #764)
 
 `checkCombatEntry` flips the encounter mode on a newly-formed player-monster
