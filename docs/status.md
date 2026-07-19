@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-18
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18
+updated: 2026-07-19
+confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18; #785 arcade recovery (dead/0-HP characters restored entering a new encounter) added 2026-07-19
 ---
 
 # rpg-toolkit: Where We Are
@@ -190,6 +190,7 @@ See "Paused / on hold" below.
 
 ## Recently landed (last 30 days, highlights)
 
+- **Arcade recovery — dead/0-HP characters restore on entering a NEW encounter (rpg-toolkit#785, 2026-07-19).** `character.RestoreForNewEncounter`, called only from `Encounter.AddPlayer` (never `LoadFromData`, so a mid-encounter reload never heals), restores HP, clears death-save state, and strips the Unconscious condition — see [encounter.md](architecture/components/encounter.md#cross-encounter-recovery-arcade-recovery-rpg-toolkit785).
 - **TPK ends the encounter; mid-turn unconscious economy hole closed
   (rpg-toolkit#772, #781, #782, 2026-07-18).** `checkEncounterEnd`
   (death.go) had exactly one predicate — `len(data.Monsters)==0` — so

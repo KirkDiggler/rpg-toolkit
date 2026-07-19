@@ -58,11 +58,23 @@ func (s *TurnEconomyDownedSuite) TearDownTest() {
 }
 
 // charDataJSONWithSeededEconomy builds a hydratable dnd5e character.Data blob
-// carrying a PRE-SEEDED ActionEconomy (1/1/1/30, TurnNumber 1) — simulating a
-// character already mid-combat (a real StartTurn already ran) before going
-// down. This makes the regression meaningful: pre-fix, seedActorTurn would
-// call char.StartTurn and RESEED 1/1/1/30 (visibly nonzero) at the downed
-// player's next turn start; post-fix, char.EndTurn zeroes it instead.
+// at 1 HP (alive, about to be knocked down by real combat) carrying a
+// PRE-SEEDED ActionEconomy (1/1/1/30, TurnNumber 1) — simulating a character
+// already mid-combat (a real StartTurn already ran). This makes the
+// regression meaningful: pre-fix, seedActorTurn would call char.StartTurn and
+// RESEED 1/1/1/30 (visibly nonzero) at the downed player's next turn start;
+// post-fix, char.EndTurn zeroes it instead.
+//
+// rpg-toolkit#785 (arcade recovery): this used to synthesize HitPoints:0
+// directly into the seat's DataJSON at AddPlayer time. Encounter.AddPlayer
+// now restores any 0-HP-or-less incoming DataJSON to full HP (a brand-new
+// seat IS a brand-new encounter, per #785's decision) — a synthesized-dead
+// fixture would be silently revived before the test even ran, which is
+// correct production behavior but breaks the "already downed" premise this
+// suite needs. The caller must knock this character down via a REAL combat
+// hit (NPCAct) within the loaded encounter, matching
+// TestDownedPlayerViaRealCombat_StaysZeroedAcrossMultipleTurns' established
+// pattern, not synthesize the down state here.
 func (s *TurnEconomyDownedSuite) charDataJSONWithSeededEconomy(id, playerID string) json.RawMessage {
 	s.T().Helper()
 	data := &dnd5eCharacter.Data{
@@ -77,7 +89,7 @@ func (s *TurnEconomyDownedSuite) charDataJSONWithSeededEconomy(id, playerID stri
 			abilities.STR: 14, abilities.DEX: 12, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 10,
 		},
-		HitPoints:    0,
+		HitPoints:    1,
 		MaxHitPoints: 20,
 		ArmorClass:   15,
 		ActionEconomy: &dnd5eCharacter.ActionEconomyData{
@@ -120,41 +132,67 @@ func (s *TurnEconomyDownedSuite) buddyCharDataJSON(id, playerID string) json.Raw
 // proof: at the downed player's own turn start, the pushed
 // TurnStateChangedEvent shows ZERO actions/bonus/reactions/movement — not
 // the normal freshly-seeded 1/1/1/30 values.
+//
+// rpg-toolkit#785: ted is seated ALIVE (1 HP) and knocked down by a REAL
+// goblin hit within this encounter, not synthesized at 0 HP via AddPlayer —
+// see charDataJSONWithSeededEconomy's doc for why AddPlayer can no longer be
+// used to fabricate an already-dead seat.
 func (s *TurnEconomyDownedSuite) TestDownedPlayerTurnStart_ZeroesEconomy_NotReseeds() {
 	downedData := s.charDataJSONWithSeededEconomy(string(tedDownedEntityID), string(tedDownedPlayerID))
-	buddyData := s.buddyCharDataJSON(string(tedBuddyEntityID), string(tedBuddyPlayerID))
 
 	encID := core.EncounterID("enc-ted-1")
-	enc := encounter.New(s.ctx, encID, s.broker)
+	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
+	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+
+	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: tedDownedPlayerID, EntityID: tedDownedEntityID,
 		Position: core.Hex{}, SightRange: 10,
-		HP: 0, MaxHP: 20, AC: 15, DataJSON: downedData,
+		HP: 1, MaxHP: 20, AC: 15, AttackBonus: 4,
+		DamageDice: damage1d8plus2, DamageType: damageSlashing,
+		DataJSON: downedData,
 	}))
-	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: tedBuddyPlayerID, EntityID: tedBuddyEntityID,
-		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
-		HP: 20, MaxHP: 20, AC: 15, DataJSON: buddyData,
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
+		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
+		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
 	}))
 
 	raw, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
 	var data encounter.Data
 	s.Require().NoError(json.Unmarshal(raw, &data))
-	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker)
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, roller, resolver)
 	s.Require().NoError(err)
 
 	sub, err := s.broker.Subscribe(encID, tedDownedPlayerID)
 	s.Require().NoError(err)
 	defer func() { _ = sub.Close() }()
 
-	// Subscribe before flipping to TURN_BASED so we catch the push
-	// regardless of whether the downed player rolls first (SetMode itself
-	// seeds the first actor) or second (via one EndTurn cycle).
-	s.Require().NoError(loaded.SetMode(core.ModeTurnBased))
-	for loaded.ActiveActor() != tedDownedEntityID {
+	// ted and the goblin are in mutual LoS, so AddMonster (above, on enc)
+	// already auto-transitioned to TURN_BASED before the Data round-trip;
+	// loaded inherits that mode. ted's DataJSON carries a pre-seeded
+	// ActionEconomy, so this doesn't depend on SetMode's seedActorTurn call.
+	for loaded.ActiveActor() != gobEntityID {
 		_, _, endErr := loaded.EndTurn(s.ctx, loaded.ActiveActor())
 		s.Require().NoError(endErr)
+	}
+	drainSub(sub, 100*time.Millisecond)
+
+	// Goblin's attack drops ted (1 HP) to 0 via REAL combat damage —
+	// applyUnconsciousOnZeroHP is what syncs char.hitPoints and applies
+	// Unconscious, exactly the production path.
+	s.Require().NoError(loaded.NPCAct(s.ctx, gobEntityID))
+	drainSub(sub, 100*time.Millisecond)
+
+	// Cycle to ted's own next turn start — the CORE #733 assertion: it must
+	// zero the stale pre-seeded economy (via char.EndTurn), not reseed a
+	// fresh one (via char.StartTurn).
+	active := loaded.ActiveActor()
+	for active != tedDownedEntityID {
+		next, _, endErr := loaded.EndTurn(s.ctx, active)
+		s.Require().NoError(endErr)
+		active = next
 	}
 
 	seen := collectEventsTyped(sub, 500*time.Millisecond)
