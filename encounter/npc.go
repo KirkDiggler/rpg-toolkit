@@ -1115,8 +1115,9 @@ func (e *Encounter) findPlayerByEntityID(id encountercore.EntityID) *PlayerData 
 // event slices for whatever was happening in the next chamber. Delegates
 // to perception.CanSeeAt, the same wall-aware predicate checkCombatEntry/
 // monsterVisibilityTransitions already use, so this package has one LoS
-// rule, not two. perception.CanSeeAt tolerates a nil viewer itself; p's own
-// nil check stays because p.View is a field access that would panic first.
+// rule, not two. perception.CanSeeAt already handles a nil *View safely
+// (returns false); the p == nil check below is the only one still needed
+// here, guarding the p.View field access itself against a nil *PlayerData.
 func (e *Encounter) viewerCanSee(p *PlayerData, h encountercore.Hex) bool {
 	if p == nil {
 		return false

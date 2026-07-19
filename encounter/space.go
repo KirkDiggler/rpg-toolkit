@@ -50,7 +50,8 @@ func (e *Encounter) InitRoom(width, height int, pattern string, seed ...int64) e
 }
 
 // Room returns the encounter's spatial room, or nil if InitRoom was never
-// called (or LoadFromData found no persisted Space).
+// called (or LoadFromData found no persisted Space). Not stable across a
+// door mutation — see RoomOrchestrator's doc.
 func (e *Encounter) Room() spatial.Room { return e.room }
 
 // RoomOrchestrator returns the orchestrator the encounter's room is
@@ -58,6 +59,13 @@ func (e *Encounter) Room() spatial.Room { return e.room }
 // host (e.g. rpg-api's spawn-engine wiring) can share the exact same room
 // instance the encounter uses for LoS/movement, rather than reconstructing
 // its own from Data.Space.
+//
+// Not stable across a door mutation (rpg-toolkit#790): AddDoor/OpenDoor
+// call rebuildRoomFromData, which replaces e.room/e.roomOrchestrator with
+// FRESH objects rather than mutating the existing ones. A caller holding a
+// reference from before such a call is holding stale geometry — re-fetch
+// Room()/RoomOrchestrator() after any door mutates rather than caching
+// them for the encounter's lifetime.
 func (e *Encounter) RoomOrchestrator() spatial.RoomOrchestrator { return e.roomOrchestrator }
 
 // snapshotWalls converts a built room's wall entities into the persisted
