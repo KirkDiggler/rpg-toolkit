@@ -3,6 +3,7 @@ package environments
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 
@@ -120,13 +121,68 @@ func EmptyPattern(
 	return walls, nil
 }
 
-// RandomPattern generates random wall segments based on density parameter
+// maxGenerationAttempts bounds RandomPattern's retry loop before it
+// surrenders to PathSafetyParams.EmergencyFallback (rpg-toolkit#792).
+// Validation rejects a single random layout often enough at typical game
+// sizes (20x20) that a rejection is not evidence the room is unbuildable --
+// a fresh layout from a different seed usually passes.
+const maxGenerationAttempts = 10
+
+// RandomPattern generates random wall segments based on density parameter.
+//
+// A single generated layout frequently fails validateAndFixPathfinding's
+// path-safety checks, especially at larger room sizes -- see
+// rpg-toolkit#792. Rather than surrendering to the emergency-empty fallback
+// on the first miss, generation retries up to maxGenerationAttempts times
+// with fresh layouts before giving up. Retry seeds are derived
+// deterministically from params.RandomSeed via a dedicated RNG (never the
+// global entropy source), so the same input seed always retries through the
+// same sequence of attempts and explicit-seed callers stay fully
+// reproducible -- including the first attempt, which uses params.RandomSeed
+// directly and is therefore identical to pre-#792 behavior whenever it
+// already passes validation.
 func RandomPattern(
 	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams,
 ) ([]WallSegment, error) {
+	// #nosec G404 - deterministic seed derivation from params.RandomSeed, not cryptographic
+	retrySeeds := rand.New(rand.NewSource(params.RandomSeed))
+
+	var lastErr error
+	for attempt := 0; attempt < maxGenerationAttempts; attempt++ {
+		seed := params.RandomSeed
+		if attempt > 0 {
+			seed = retrySeeds.Int63()
+		}
+
+		walls, err := generateAndValidateWalls(ctx, shape, size, params, seed)
+		if err == nil {
+			return walls, nil
+		}
+		lastErr = err
+	}
+
+	if params.Safety.EmergencyFallback {
+		log.Printf(
+			"environments: RandomPattern emergency fallback to empty room after %d attempts "+
+				"(seed=%d, size=%.0fx%.0f): %v",
+			maxGenerationAttempts, params.RandomSeed, size.Width, size.Height, lastErr,
+		)
+		return []WallSegment{}, nil
+	}
+
+	return nil, fmt.Errorf("random pattern failed validation after %d attempts: %w", maxGenerationAttempts, lastErr)
+}
+
+// generateAndValidateWalls generates one candidate wall layout from seed and
+// runs it through path-safety validation/fixup. It does not apply the
+// emergency-empty fallback -- that decision belongs to RandomPattern, which
+// knows whether more retry attempts remain.
+func generateAndValidateWalls(
+	ctx context.Context, shape *RoomShape, size spatial.Dimensions, params PatternParams, seed int64,
+) ([]WallSegment, error) {
 	// #nosec G404 - Using math/rand for seeded, reproducible wall pattern generation
-	// Same RandomSeed must produce identical wall layouts for consistent gameplay
-	random := rand.New(rand.NewSource(params.RandomSeed))
+	// Same seed must produce identical wall layouts for consistent gameplay
+	random := rand.New(rand.NewSource(seed))
 	var walls []WallSegment
 
 	// Calculate number of walls based on density
@@ -151,12 +207,7 @@ func RandomPattern(
 	walls = applyDestructibleRatio(walls, params.DestructibleRatio, random)
 
 	// Validate and fix pathfinding
-	validatedWalls, err := validateAndFixPathfinding(ctx, walls, shape, size, params.Safety, params)
-	if err != nil {
-		return nil, fmt.Errorf("random pattern failed validation: %w", err)
-	}
-
-	return validatedWalls, nil
+	return validateAndFixPathfinding(ctx, walls, shape, size, params.Safety)
 }
 
 // Helper functions for wall generation
@@ -245,9 +296,14 @@ func validatePathSafety(walls []WallSegment, shape *RoomShape, size spatial.Dime
 	return nil
 }
 
+// validateAndFixPathfinding validates a candidate wall layout, attempting a
+// handful of local fixes (clearing required paths, connection access,
+// trimming for open space) before giving up. It returns an error -- never
+// the emergency-empty fallback -- when the layout can't be salvaged; the
+// caller (RandomPattern) owns the retry-then-fallback decision.
 func validateAndFixPathfinding(
 	_ context.Context, walls []WallSegment, shape *RoomShape, size spatial.Dimensions,
-	safety PathSafetyParams, _ PatternParams,
+	safety PathSafetyParams,
 ) ([]WallSegment, error) {
 	// First, try to validate as-is
 	if err := validatePathSafety(walls, shape, size, safety); err == nil {
@@ -278,11 +334,6 @@ func validateAndFixPathfinding(
 
 	// Final validation
 	if err := validatePathSafety(fixedWalls, shape, size, safety); err != nil {
-		if safety.EmergencyFallback {
-			// Emergency fallback: return empty room
-			// TODO: Consider how to notify callers about fallback usage
-			return []WallSegment{}, nil
-		}
 		return nil, fmt.Errorf("could not fix pathfinding issues: %w", err)
 	}
 
