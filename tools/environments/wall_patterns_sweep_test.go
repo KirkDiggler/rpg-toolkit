@@ -1,7 +1,7 @@
 package environments
 
 import (
-	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -74,7 +74,7 @@ func TestRandomPattern_EmptyRoomRate_Determinism(t *testing.T) {
 	for _, seed := range []int64{1, 2, 3, 17, 99} {
 		first := build(seed)
 		second := build(seed)
-		if fmt.Sprint(first) != fmt.Sprint(second) {
+		if !slices.Equal(first, second) {
 			t.Errorf(
 				"seed %d: layout not reproducible across repeated Build() calls\nfirst:  %v\nsecond: %v",
 				seed, first, second,
