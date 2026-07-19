@@ -139,6 +139,19 @@ func (s *HexGridTestSuite) TestGetLineOfSight() {
 		s.Assert().Contains(los, spatial.Position{X: 6, Y: 5})
 	})
 
+	s.Run("different float positions truncating to the same cube", func() {
+		// from != to (fails the exact-equality fast path) but both truncate
+		// to cube col=3,row=5 -- would have computed t := 0/0 (NaN) before
+		// the distance==0 guard (Copilot catch on PR #789).
+		from := spatial.Position{X: 3.2, Y: 5.1}
+		to := spatial.Position{X: 3.9, Y: 5.9}
+		s.Require().False(from.Equals(to))
+		s.Require().Zero(s.grid.Distance(from, to), "test premise: both positions must truncate to the same cube")
+
+		los := s.grid.GetLineOfSight(from, to)
+		s.Assert().Equal([]spatial.Position{from}, los)
+	})
+
 	s.Run("longer line", func() {
 		los := s.grid.GetLineOfSight(spatial.Position{X: 2, Y: 2}, spatial.Position{X: 5, Y: 5})
 		s.Assert().True(len(los) >= 2) // Should have at least start and end
@@ -474,6 +487,20 @@ func (s *AxialHexGridTestSuite) TestAxialHexGridDistance_PlaytestScenario() {
 	s.Equal(1.0, dist,
 		"goblin at (2,-1) and alice at (1,0) must be hex-adjacent (distance 1); "+
 			"Euclidean would give √2≈1.414 which incorrectly fails the reach check")
+}
+
+// TestAxialHexGridGetLineOfSight_SameCubeDifferentFloatPositions covers the
+// same Copilot catch on PR #789 as HexGrid's equivalent test: from != to
+// (fails the exact-equality fast path) but both truncate to the same
+// cube -- would have computed t := 0/0 (NaN) before the dist==0 guard.
+func (s *AxialHexGridTestSuite) TestAxialHexGridGetLineOfSight_SameCubeDifferentFloatPositions() {
+	from := spatial.Position{X: 3.2, Y: 5.1}
+	to := spatial.Position{X: 3.9, Y: 5.9}
+	s.Require().False(from.Equals(to))
+	s.Require().Zero(s.grid.Distance(from, to), "test premise: both positions must truncate to the same cube")
+
+	los := s.grid.GetLineOfSight(from, to)
+	s.Assert().Equal([]spatial.Position{from}, los)
 }
 
 // TestAxialHexGridNeighbors verifies exactly 6 neighbors are returned for an

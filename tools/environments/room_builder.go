@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -157,6 +156,20 @@ func (b *BasicRoomBuilder) Build() (spatial.Room, error) {
 		return nil, fmt.Errorf("invalid room configuration: %w", err)
 	}
 
+	// Entropy-seed wall-pattern generation and random rotation unless the
+	// caller requested a specific seed via WithRandomSeed. Zero is the
+	// "unset" sentinel (see WithRandomSeed), so every unseeded Build gets a
+	// distinct layout instead of always reproducing RandomPattern's seed-0
+	// layout (rpg-toolkit#787). Draws from math/rand's auto-seeded global
+	// source (Go 1.20+) rather than time.Now().UnixNano(): a dungeon can
+	// build several rooms back-to-back fast enough to land in the same
+	// wall-clock tick, which would silently reintroduce this bug's
+	// symptom (identical layouts) for those rooms specifically.
+	if b.patternParams.RandomSeed == 0 {
+		//nolint:gosec // G404: Deterministic game generation, not cryptographic
+		b.patternParams.RandomSeed = rand.Int63()
+	}
+
 	// Load shape if not already set
 	if b.shape == nil {
 		if err := b.loadDefaultShape(); err != nil {
@@ -167,17 +180,11 @@ func (b *BasicRoomBuilder) Build() (spatial.Room, error) {
 	// Apply rotation if needed
 	rotatedShape := b.shape
 	if b.randomRotation {
-		// Generate random rotation using seeded random if available
-		// Note: Using math/rand (not crypto/rand) for deterministic game generation
-		// This allows reproducible room layouts when using the same seed
-		var rng *rand.Rand
-		if b.patternParams.RandomSeed != 0 {
-			//nolint:gosec // G404: Deterministic game generation, not cryptographic
-			rng = rand.New(rand.NewSource(b.patternParams.RandomSeed))
-		} else {
-			//nolint:gosec // G404: Deterministic game generation, not cryptographic
-			rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-		}
+		// Reuses patternParams.RandomSeed (always set above) so an explicit
+		// WithRandomSeed call reproduces both the rotation and the wall
+		// pattern together.
+		//nolint:gosec // G404: Deterministic game generation, not cryptographic
+		rng := rand.New(rand.NewSource(b.patternParams.RandomSeed))
 		// Random rotation: 0°, 90°, 180°, or 270°
 		rotations := []int{0, 90, 180, 270}
 		randomRotation := rotations[rng.Intn(len(rotations))]
@@ -276,7 +283,14 @@ func (b *BasicRoomBuilder) WithRandomRotation() RoomBuilder {
 	return b
 }
 
-// WithRandomSeed sets the random seed for reproducible generation
+// WithRandomSeed sets the random seed for reproducible generation.
+//
+// 0 is reserved as the "unset" sentinel, not a valid explicit seed: Build()
+// treats a RandomSeed of 0 as "the caller didn't call WithRandomSeed" and
+// overwrites it with an entropy seed (see Build's doc). Passing
+// WithRandomSeed(0) is therefore equivalent to not calling it at all --
+// still entropy-seeded, not a reproducible all-zeros layout. Pass any
+// non-zero seed for a reproducible layout.
 func (b *BasicRoomBuilder) WithRandomSeed(seed int64) RoomBuilder {
 	b.patternParams.RandomSeed = seed
 	return b
@@ -455,16 +469,28 @@ func (f *FeatureEntity) BlocksLineOfSight() bool { return false } // Features do
 
 // Convenience functions
 
-// QuickRoom creates a room with sensible defaults
-func QuickRoom(width, height int, pattern string) (spatial.Room, error) {
+// QuickRoom creates a room with sensible defaults.
+//
+// Wall-pattern generation (e.g. PatternRandom) is entropy-seeded by
+// default, so repeated calls produce different layouts (rpg-toolkit#787).
+// Pass an explicit seed for a reproducible layout instead -- e.g. devseed
+// fixtures or regression tests that want the same room every run. Only the
+// first seed argument is used; it exists as an optional trailing parameter
+// rather than a required one so most callers never think about it. A seed
+// of 0 (explicit or the zero value from omitting the argument) is treated
+// as unset and still gets the entropy default -- see WithRandomSeed.
+func QuickRoom(width, height int, pattern string, seed ...int64) (spatial.Room, error) {
 	builder := NewBasicRoomBuilder(BasicRoomBuilderConfig{
 		ShapeLoader: NewShapeLoader("tools/environments/shapes"),
-	})
-
-	return builder.
+	}).
 		WithSize(width, height).
-		WithWallPattern(pattern).
-		Build()
+		WithWallPattern(pattern)
+
+	if len(seed) > 0 && seed[0] != 0 {
+		builder = builder.WithRandomSeed(seed[0])
+	}
+
+	return builder.Build()
 }
 
 // buildRoomWithTables is a helper function that reduces duplication across room generation functions

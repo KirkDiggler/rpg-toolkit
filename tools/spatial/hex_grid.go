@@ -99,12 +99,19 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 	toCube := OffsetCoordinateToCubeWithOrientation(to, hg.orientation)
 
 	distance := fromCube.Distance(toCube)
+	if distance == 0 {
+		// from != to (the Equals check above only catches exact float
+		// equality) but both truncate to the same cube cell -- e.g.
+		// fractional positions in the same hex. t := i/distance below would
+		// be 0/0 (NaN) otherwise.
+		return []Position{from}
+	}
 	positions := make([]Position, 0, distance+1)
 
 	for i := 0; i <= distance; i++ {
 		t := float64(i) / float64(distance)
-		lerpedCube := hg.lerpCube(fromCube, toCube, t)
-		roundedCube := hg.roundCube(lerpedCube)
+		lerpedCube := lerpCube(fromCube, toCube, t)
+		roundedCube := roundCube(lerpedCube)
 		pos := roundedCube.ToOffsetCoordinateWithOrientation(hg.orientation)
 
 		if hg.IsValidPosition(pos) {
@@ -367,11 +374,18 @@ func (a *AxialHexGrid) GetLineOfSight(from, to Position) []Position {
 	fromCube := axialToCube(from)
 	toCube := axialToCube(to)
 	dist := fromCube.Distance(toCube)
+	if dist == 0 {
+		// from != to (the Equals check above only catches exact float
+		// equality) but both truncate to the same cube cell -- e.g.
+		// fractional positions in the same hex. t := i/dist below would be
+		// 0/0 (NaN) otherwise.
+		return []Position{from}
+	}
 	positions := make([]Position, 0, dist+1)
 	for i := 0; i <= dist; i++ {
 		t := float64(i) / float64(dist)
-		lerped := lerpCubeAxial(fromCube, toCube, t)
-		rounded := roundCubeAxial(lerped)
+		lerped := lerpCube(fromCube, toCube, t)
+		rounded := roundCube(lerped)
 		pos := cubeToAxial(rounded)
 		if a.IsValidPosition(pos) {
 			positions = append(positions, pos)
@@ -471,9 +485,12 @@ func cubeToAxial(c CubeCoordinate) Position {
 	return Position{X: float64(c.X), Y: float64(c.Y)}
 }
 
-// lerpCubeAxial linearly interpolates between two CubeCoordinates.
-// Uses float arithmetic before rounding so the cube invariant is preserved.
-func lerpCubeAxial(from, to CubeCoordinate, t float64) cubeFloat {
+// lerpCube linearly interpolates between two CubeCoordinates. Uses float
+// arithmetic before rounding (via roundCube) so the cube invariant is
+// preserved — see rpg-toolkit#788, where HexGrid used to truncate here
+// with int() instead, producing a path-direction-dependent (asymmetric)
+// line at distance >= 22 hexes.
+func lerpCube(from, to CubeCoordinate, t float64) cubeFloat {
 	return cubeFloat{
 		x: float64(from.X) + t*float64(to.X-from.X),
 		y: float64(from.Y) + t*float64(to.Y-from.Y),
@@ -485,9 +502,9 @@ func lerpCubeAxial(from, to CubeCoordinate, t float64) cubeFloat {
 // interpolation to avoid premature integer truncation.
 type cubeFloat struct{ x, y, z float64 }
 
-// roundCubeAxial rounds a floating-point cube to the nearest valid hex,
+// roundCube rounds a floating-point cube to the nearest valid hex,
 // preserving the cube constraint x+y+z=0.
-func roundCubeAxial(c cubeFloat) CubeCoordinate {
+func roundCube(c cubeFloat) CubeCoordinate {
 	rx := math.Round(c.x)
 	ry := math.Round(c.y)
 	rz := math.Round(c.z)
@@ -523,34 +540,3 @@ func intMin(a, b int) int {
 
 // compile-time check: AxialHexGrid satisfies the Grid interface.
 var _ Grid = (*AxialHexGrid)(nil)
-
-// lerpCube performs linear interpolation between two cube coordinates
-func (hg *HexGrid) lerpCube(from, to CubeCoordinate, t float64) CubeCoordinate {
-	return CubeCoordinate{
-		X: int(float64(from.X) + t*float64(to.X-from.X)),
-		Y: int(float64(from.Y) + t*float64(to.Y-from.Y)),
-		Z: int(float64(from.Z) + t*float64(to.Z-from.Z)),
-	}
-}
-
-// roundCube rounds a cube coordinate to the nearest valid hex
-func (hg *HexGrid) roundCube(cube CubeCoordinate) CubeCoordinate {
-	rx := math.Round(float64(cube.X))
-	ry := math.Round(float64(cube.Y))
-	rz := math.Round(float64(cube.Z))
-
-	xDiff := math.Abs(rx - float64(cube.X))
-	yDiff := math.Abs(ry - float64(cube.Y))
-	zDiff := math.Abs(rz - float64(cube.Z))
-
-	switch {
-	case xDiff > yDiff && xDiff > zDiff:
-		rx = -ry - rz
-	case yDiff > zDiff:
-		ry = -rx - rz
-	default:
-		rz = -rx - ry
-	}
-
-	return CubeCoordinate{X: int(rx), Y: int(ry), Z: int(rz)}
-}

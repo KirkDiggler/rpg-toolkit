@@ -32,10 +32,18 @@ func (s *SpaceSuite) SetupTest() {
 	s.broker = encounter.NewBroker(s.transport)
 }
 
+// spaceTestSeed is the explicit seed this file's tests pass to InitRoom.
+// InitRoom is entropy-seeded by default (rpg-toolkit#787), so an unseeded
+// 10x10 PatternRandom room only generates walls part of the time (its
+// safety validation falls back to an empty room for most seeds at this
+// size); tests that need a real wall to interact with must pin one that's
+// verified to produce blocking walls, rather than relying on the old
+// accidental every-call-gets-seed-0 determinism.
+const spaceTestSeed = int64(4)
+
 // firstBlockingWall returns the hex of the first wall segment that blocks
 // movement, from an encounter's persisted Space snapshot. Fails the test if
-// none exists — environments.QuickRoom with PatternRandom is deterministic
-// (unseeded => RandomSeed 0), so a 10x10 room reliably generates walls.
+// none exists.
 func (s *SpaceSuite) firstBlockingWall(enc *encounter.Encounter) core.Hex {
 	space := enc.ToData().Space
 	s.Require().NotNil(space)
@@ -50,7 +58,7 @@ func (s *SpaceSuite) firstBlockingWall(enc *encounter.Encounter) core.Hex {
 
 func (s *SpaceSuite) TestInitRoom_ToData_LoadFromData_RoundTrip() {
 	enc := encounter.New(context.Background(), "enc-space-rt", s.broker)
-	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternRandom))
+	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternRandom, spaceTestSeed))
 	s.Require().NotNil(enc.Room())
 	s.Require().NotNil(enc.RoomOrchestrator())
 
@@ -97,7 +105,7 @@ func (s *SpaceSuite) TestLoadFromData_NilSpace_NoRoom() {
 
 func (s *SpaceSuite) TestMove_BlockedByWall_TruncatesAtFirstBlockedHex() {
 	enc := encounter.New(context.Background(), "enc-space-move", s.broker)
-	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternRandom))
+	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternRandom, spaceTestSeed))
 
 	wallHex := s.firstBlockingWall(enc)
 	// Approach the wall from one of its neighbors so a single-hex move lands
@@ -124,12 +132,14 @@ func (s *SpaceSuite) TestMove_BlockedByWall_TruncatesAtFirstBlockedHex() {
 // reproduced failures at 5x20, 7x15, and 20x15 (22 of 512 dimension pairs
 // probed failed); 10x10, used by every other test in this file, happens not
 // to collide. InitRoom must succeed at dimension pairs that DID collide
-// pre-fix.
+// pre-fix. Pins spaceTestSeed for reproducibility (rpg-toolkit#787 made
+// InitRoom entropy-seeded by default); the dedup fix under test doesn't
+// depend on which seed produces the collision.
 func (s *SpaceSuite) TestInitRoom_DimensionsThatPreviouslyCollided() {
 	for _, dims := range [][2]int{{5, 20}, {7, 15}, {20, 15}} {
 		id := core.EncounterID(fmt.Sprintf("enc-space-collide-%dx%d", dims[0], dims[1]))
 		enc := encounter.New(context.Background(), id, s.broker)
-		err := enc.InitRoom(dims[0], dims[1], environments.PatternRandom)
+		err := enc.InitRoom(dims[0], dims[1], environments.PatternRandom, spaceTestSeed)
 		s.Require().NoError(err, "InitRoom(%d,%d) must not fail on duplicate rounded wall cells", dims[0], dims[1])
 		s.Require().NotNil(enc.Room())
 	}
