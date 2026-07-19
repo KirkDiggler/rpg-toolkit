@@ -733,10 +733,27 @@ func (e *Encounter) rollInitiative() {
 		id   core.EntityID
 		roll int
 	}
-	engaged := e.engagedMonsters()
-	seeds := make([]seed, 0, len(e.data.Players)+len(engaged))
+
+	// Roll order must not depend on Go's randomized map iteration order
+	// (e.data.Players and e.data.Monsters are both maps) -- the same roll
+	// VALUES get drawn either way, but WHICH entity receives WHICH draw
+	// would otherwise vary run to run even with a deterministic/seeded
+	// roller, breaking devseed fixture reproducibility (Copilot catch on
+	// PR #796). Sorting both id lists before rolling makes the assignment
+	// itself deterministic; irrelevant to the FINAL order below (sorted by
+	// roll, ties by id) but load-bearing for which roll each id gets.
+	playerIDs := make([]core.EntityID, 0, len(e.data.Players))
 	for _, p := range e.data.Players {
-		seeds = append(seeds, seed{id: p.EntityID, roll: rollD20(e.roller)})
+		playerIDs = append(playerIDs, p.EntityID)
+	}
+	sort.Slice(playerIDs, func(i, j int) bool { return playerIDs[i] < playerIDs[j] })
+
+	engaged := e.engagedMonsters()
+	sort.Slice(engaged, func(i, j int) bool { return engaged[i].ID < engaged[j].ID })
+
+	seeds := make([]seed, 0, len(playerIDs)+len(engaged))
+	for _, id := range playerIDs {
+		seeds = append(seeds, seed{id: id, roll: rollD20(e.roller)})
 	}
 	for _, m := range engaged {
 		seeds = append(seeds, seed{id: m.ID, roll: rollD20(e.roller)})
