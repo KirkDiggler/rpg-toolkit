@@ -99,6 +99,13 @@ func (hg *HexGrid) GetLineOfSight(from, to Position) []Position {
 	toCube := OffsetCoordinateToCubeWithOrientation(to, hg.orientation)
 
 	distance := fromCube.Distance(toCube)
+	if distance == 0 {
+		// from != to (the Equals check above only catches exact float
+		// equality) but both truncate to the same cube cell -- e.g.
+		// fractional positions in the same hex. t := i/distance below would
+		// be 0/0 (NaN) otherwise.
+		return []Position{from}
+	}
 	positions := make([]Position, 0, distance+1)
 
 	for i := 0; i <= distance; i++ {
@@ -367,6 +374,13 @@ func (a *AxialHexGrid) GetLineOfSight(from, to Position) []Position {
 	fromCube := axialToCube(from)
 	toCube := axialToCube(to)
 	dist := fromCube.Distance(toCube)
+	if dist == 0 {
+		// from != to (the Equals check above only catches exact float
+		// equality) but both truncate to the same cube cell -- e.g.
+		// fractional positions in the same hex. t := i/dist below would be
+		// 0/0 (NaN) otherwise.
+		return []Position{from}
+	}
 	positions := make([]Position, 0, dist+1)
 	for i := 0; i <= dist; i++ {
 		t := float64(i) / float64(dist)

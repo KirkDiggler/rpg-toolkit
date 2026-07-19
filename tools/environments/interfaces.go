@@ -125,7 +125,10 @@ type RoomBuilder interface {
 	// WithShape sets the room shape by name
 	WithShape(shapeName string) RoomBuilder
 
-	// WithRandomSeed sets the random seed
+	// WithRandomSeed sets the random seed for reproducible generation. 0 is
+	// reserved as the "unset" sentinel -- Build() entropy-seeds whenever
+	// RandomSeed is 0, so WithRandomSeed(0) behaves the same as never
+	// calling this method, not a reproducible all-zeros layout.
 	WithRandomSeed(seed int64) RoomBuilder
 
 	// WithSafety sets the path safety parameters

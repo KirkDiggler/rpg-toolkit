@@ -283,7 +283,14 @@ func (b *BasicRoomBuilder) WithRandomRotation() RoomBuilder {
 	return b
 }
 
-// WithRandomSeed sets the random seed for reproducible generation
+// WithRandomSeed sets the random seed for reproducible generation.
+//
+// 0 is reserved as the "unset" sentinel, not a valid explicit seed: Build()
+// treats a RandomSeed of 0 as "the caller didn't call WithRandomSeed" and
+// overwrites it with an entropy seed (see Build's doc). Passing
+// WithRandomSeed(0) is therefore equivalent to not calling it at all --
+// still entropy-seeded, not a reproducible all-zeros layout. Pass any
+// non-zero seed for a reproducible layout.
 func (b *BasicRoomBuilder) WithRandomSeed(seed int64) RoomBuilder {
 	b.patternParams.RandomSeed = seed
 	return b
@@ -469,7 +476,9 @@ func (f *FeatureEntity) BlocksLineOfSight() bool { return false } // Features do
 // Pass an explicit seed for a reproducible layout instead -- e.g. devseed
 // fixtures or regression tests that want the same room every run. Only the
 // first seed argument is used; it exists as an optional trailing parameter
-// rather than a required one so most callers never think about it.
+// rather than a required one so most callers never think about it. A seed
+// of 0 (explicit or the zero value from omitting the argument) is treated
+// as unset and still gets the entropy default -- see WithRandomSeed.
 func QuickRoom(width, height int, pattern string, seed ...int64) (spatial.Room, error) {
 	builder := NewBasicRoomBuilder(BasicRoomBuilderConfig{
 		ShapeLoader: NewShapeLoader("tools/environments/shapes"),
