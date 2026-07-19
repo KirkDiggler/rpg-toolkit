@@ -328,17 +328,22 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 	view := perception.NewView(input.PlayerID, input.Position, input.SightRange)
 	view.ApplyReveal(perception.VisibleHexesAt(input.Position, input.SightRange, e.room))
 
+	hp, maxHP, dataJSON, err := restoreForNewSeat(input.HP, input.MaxHP, input.DataJSON)
+	if err != nil {
+		return fmt.Errorf("restore player %q for new seat: %w", input.PlayerID, err)
+	}
+
 	e.data.Players[input.PlayerID] = &PlayerData{
 		ID:          input.PlayerID,
 		EntityID:    input.EntityID,
 		View:        view,
-		HP:          input.HP,
-		MaxHP:       input.MaxHP,
+		HP:          hp,
+		MaxHP:       maxHP,
 		AC:          input.AC,
 		AttackBonus: input.AttackBonus,
 		DamageDice:  input.DamageDice,
 		DamageType:  input.DamageType,
-		DataJSON:    input.DataJSON,
+		DataJSON:    dataJSON,
 	}
 	// Seed default OA readiness for combatants. Free-cost reactions default
 	// on so players do not need to opt in every fight.
@@ -346,6 +351,44 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 		e.seedOAReadiness(input.EntityID)
 	}
 	return nil
+}
+
+// restoreForNewSeat applies arcade recovery (rpg-toolkit#785,
+// dnd5eCharacter.RestoreForNewEncounter) to an incoming player's DataJSON
+// before AddPlayer stores it, and — when the restore actually fires — keeps
+// the encounter-level HP/MaxHP snapshot (PlayerData.HP/MaxHP, what combat
+// resolution reads directly) in sync with whatever the character-side
+// restore decided (character.Data.HitPoints/MaxHitPoints, what the next
+// LoadFromData hydration reads). rpg-toolkit#783/#784 already document
+// these two HP representations as a live divergence-bug class; silently
+// reviving the embedded character while leaving a caller-supplied hp=0
+// snapshot in place would add a third, differently-shaped incoherent seat
+// instead of fixing the one #785 is about.
+//
+// AddPlayer is the only call site. That matters: it fires exactly once per
+// new seat (guarded by the "already in encounter" check above) and is never
+// reached by LoadFromData's per-RPC rehydration of an EXISTING seat — see
+// RestoreForNewEncounter's own contract doc for why that distinction is the
+// whole point.
+//
+// A seat with no DataJSON (a flat stat-snapshot player) has no rulebook
+// object to restore; hp/maxHP/dataJSON pass through unchanged.
+func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.RawMessage, error) {
+	if len(dataJSON) == 0 {
+		return hp, maxHP, dataJSON, nil
+	}
+	var data dnd5eCharacter.Data
+	if err := json.Unmarshal(dataJSON, &data); err != nil {
+		return 0, 0, nil, fmt.Errorf("unmarshal character data: %w", err)
+	}
+	if !dnd5eCharacter.RestoreForNewEncounter(&data) {
+		return hp, maxHP, dataJSON, nil
+	}
+	restored, err := json.Marshal(data)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("marshal restored character data: %w", err)
+	}
+	return data.HitPoints, data.MaxHitPoints, restored, nil
 }
 
 // AddDoor registers a door (slice scope; future slices use a richer entity
