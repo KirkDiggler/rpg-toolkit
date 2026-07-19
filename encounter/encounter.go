@@ -393,8 +393,21 @@ func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.
 
 // AddDoor registers a door (slice scope; future slices use a richer entity
 // system).
-func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) {
+//
+// rpg-toolkit#790: if the encounter already has a room (InitRoom/
+// LoadFromData ran), a closed door must immediately start blocking
+// movement/LoS, so this rebuilds e.room from the now-updated Data.Doors
+// (see rebuildRoomFromData). A no-op, not an error, when there's no room
+// yet — InitRoom's own rebuild will pick up any door added before it.
+func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) error {
 	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
+	if e.data.Space == nil {
+		return nil
+	}
+	if err := e.rebuildRoomFromData(); err != nil {
+		return fmt.Errorf("rebuild room after adding door %q: %w", id, err)
+	}
+	return nil
 }
 
 // AddMonster registers a monster seat. Mirrors AddPlayer / AddDoor and is
@@ -1136,9 +1149,12 @@ func (e *Encounter) applyAndPublishMove(
 	return corrID, nil
 }
 
-// OpenDoor applies an open-door action. Marks the door open and publishes
-// the cause event (DoorOpenedEvent) plus a HexRevealedEvent for any viewer
-// whose vision grew.
+// OpenDoor applies an open-door action. Marks the door open, rebuilds
+// e.room so the door's cell stops blocking movement/LoS (rpg-toolkit#790 —
+// see rebuildRoomFromData), and publishes the cause event (DoorOpenedEvent)
+// plus a HexRevealedEvent for any viewer whose vision grew — the room
+// rebuild happens BEFORE the per-viewer ProjectDoorOpen calls below so
+// their VisibleHexesAt sees through the now-open doorway.
 func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error {
 	p, ok := e.data.Players[playerID]
 	if !ok {
@@ -1153,6 +1169,11 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 	}
 
 	door.Open = true
+	if e.data.Space != nil {
+		if err := e.rebuildRoomFromData(); err != nil {
+			return fmt.Errorf("rebuild room after opening door %q: %w", doorID, err)
+		}
+	}
 
 	doorPerPlayer := make(map[core.PlayerID]events.DoorOpenedPlayerSlice)
 	revealPerPlayer := make(map[core.PlayerID]events.HexRevealedSlice)

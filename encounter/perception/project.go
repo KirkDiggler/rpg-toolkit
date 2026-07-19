@@ -124,16 +124,21 @@ func ProjectMove(
 
 // ProjectDoorOpen computes per-viewer slices when a door opens.
 //
-// Stub LoS: opening a door doesn't change which hexes the viewer can see
-// (no walls modeled), but if the door is in the viewer's sight range we
-// emit a DoorOpenedPlayerSlice. The reveal slice covers the door's
-// immediate neighbors that the viewer hadn't seen before.
+// rpg-toolkit#790: room is expected to already reflect the door as OPEN
+// (the caller rebuilds e.room before calling this — see
+// Encounter.OpenDoor), so VisibleHexesAt's wall-aware scan now sees through
+// the doorway into whatever lies beyond, SightRange-capped and blocked by
+// that space's own walls, same as any other line of sight. The reveal
+// slice is every currently-visible hex the viewer's cumulative
+// RevealedHexes doesn't have yet — not just the door's immediate
+// neighbors — so a corridor or chamber beyond the doorway reveals in one
+// step, not hex-by-hex as the viewer physically walks up to it.
 //
-// The door and openedBy parameters are reserved for future slices (real LoS
-// will need door identity for wall logic; entity-visibility accumulation
-// for openedBy).
+// The door and openedBy parameters are reserved for future slices (entity-
+// visibility accumulation for openedBy; door itself is unused here since
+// wall logic now lives in the caller's room rebuild, not this function).
 func ProjectDoorOpen(
-	_ core.EntityID, // door — reserved for future-slice wall logic
+	_ core.EntityID, // door — wall logic lives in the caller's room rebuild
 	doorPos core.Hex,
 	_ core.EntityID, // openedBy — reserved for future-slice entity-visibility
 	viewer *View,
@@ -150,9 +155,9 @@ func ProjectDoorOpen(
 	doorSlice = &events.DoorOpenedPlayerSlice{Visible: true}
 
 	newHexes := make(core.HexSet)
-	for _, neighbor := range HexNeighbors(doorPos) {
-		if visible.Has(neighbor) && !viewer.RevealedHexes.Has(neighbor) {
-			newHexes[neighbor] = struct{}{}
+	for hex := range visible {
+		if !viewer.RevealedHexes.Has(hex) {
+			newHexes[hex] = struct{}{}
 		}
 	}
 	if len(newHexes) > 0 {

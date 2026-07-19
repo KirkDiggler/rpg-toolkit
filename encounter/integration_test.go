@@ -40,7 +40,7 @@ func (s *IntegrationSuite) SetupTest() {
 		PlayerID: "bob", EntityID: "char-bob",
 		Position: core.Hex{Q: 2, R: 0, S: -2}, SightRange: 4,
 	}))
-	s.enc.AddDoor("door-east", core.Hex{Q: 4, R: 0, S: -4}, false)
+	s.Require().NoError(s.enc.AddDoor("door-east", core.Hex{Q: 4, R: 0, S: -4}, false))
 
 	var err error
 	s.aliceSub, err = s.broker.Subscribe("enc-walking-skel", "alice")

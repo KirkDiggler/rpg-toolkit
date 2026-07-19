@@ -64,7 +64,7 @@ func (s *EncounterSuite) TestRoundTrip_ToDataLoadFromData() {
 		PlayerID: "alice", EntityID: "char-1",
 		Position: core.Hex{Q: 1, R: -1, S: 0}, SightRange: 5,
 	}))
-	e1.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false)
+	s.Require().NoError(e1.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false))
 
 	payload, err := json.Marshal(e1.ToData())
 	s.Require().NoError(err)
@@ -155,7 +155,7 @@ func (s *EncounterSuite) TestOpenDoor_PublishesEvents() {
 		PlayerID: "bob", EntityID: "char-bob",
 		Position: core.Hex{Q: 50, R: -25, S: -25}, SightRange: 4,
 	}))
-	e.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false)
+	s.Require().NoError(e.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false))
 
 	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
 	bobSub, _ := s.broker.Subscribe("enc-1", "bob")
@@ -174,7 +174,7 @@ func (s *EncounterSuite) TestOpenDoor_Validations() {
 	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-1", SightRange: 3,
 	}))
-	e.AddDoor("door-1", core.Hex{}, false)
+	s.Require().NoError(e.AddDoor("door-1", core.Hex{}, false))
 
 	s.Error(e.OpenDoor("nobody", "door-1"))
 	s.Error(e.OpenDoor("alice", "nonexistent"))
