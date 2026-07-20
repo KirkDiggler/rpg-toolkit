@@ -90,6 +90,50 @@ type SpaceData struct {
 	// guessed bound, silently accepting or rejecting edge positions wrong.
 	Width  int `json:"width"`
 	Height int `json:"height"`
+
+	// Entrance is the designated spawn-anchor cell for chamber 1, set by
+	// multi-chamber generators (Wave 2 Slice 2's InitTwoChamberRoom).
+	// Replaces the roomCenterHex() placeholder downstream (rpg-api#648).
+	// Zero value (the zero Hex) for single-room InitRoom spaces, which have
+	// no entrance concept — callers fall back to their own placement (e.g.
+	// room center) when Entrance is the zero Hex.
+	Entrance core.Hex `json:"entrance"`
+
+	// Regions tags every hex by chamber for multi-chamber spaces (Wave 2
+	// Slice 2) — scopes spawn placement and, via LoS, combat pockets
+	// (rpg-toolkit#796). Empty for single-room InitRoom spaces, which have
+	// exactly one implicit region.
+	Regions []RegionData `json:"regions,omitempty"`
+}
+
+// RegionData tags a named set of hexes as one chamber/region within a
+// SpaceData. IDs are generator-defined (InitTwoChamberRoom uses
+// RegionChamber1/RegionChamber2); hosts key spawn/seeding decisions off
+// them without knowing generator internals.
+type RegionData struct {
+	ID    string      `json:"id"`
+	Hexes core.HexSet `json:"hexes"`
+}
+
+// RegionAt returns the region ID containing hex, and whether one was
+// found. Nil-receiver safe — Data.Space is nil for encounters with no
+// spatial room (pre-wave-1 fixtures, non-spatial encounters), and this is
+// an exported helper hosts call directly off ToData().Space without
+// necessarily nil-checking first — so a nil *SpaceData behaves exactly
+// like a SpaceData with no regions ("", false) rather than panicking.
+// O(n) over the region hex sets otherwise — fine at slice-2 scale (a
+// couple dozen hexes per chamber); revisit with an index if regions grow
+// large.
+func (sd *SpaceData) RegionAt(h core.Hex) (string, bool) {
+	if sd == nil {
+		return "", false
+	}
+	for _, r := range sd.Regions {
+		if r.Hexes.Has(h) {
+			return r.ID, true
+		}
+	}
+	return "", false
 }
 
 // PendingReactionPrompt is the persisted shape of a reaction prompt waiting

@@ -572,6 +572,78 @@ and out of this issue's explicit scope (which named `rollInitiative`, not
 `AddMonster`) — flagged here for whoever builds Slice 2's multi-chamber
 seeding sequencing to watch for.
 
+### Two-chamber generator: region tags, entrance cell, connectivity by construction (rpg-toolkit#804)
+
+Wave 2 slice 2's toolkit leg: `Encounter.InitTwoChamberRoom(TwoChamberRoomParams)`
+builds a two-chamber dungeon inside ONE continuous `Space` — design doc Fork
+1, "chambers are a cheap region TAG, not separate `spatial.Room`s." Not a
+reuse of `InitRoom`/`QuickRoom` directly (those build one independent room);
+`two_chamber.go` composes the same `environments` wall-pattern machinery
+(`WallPatterns`, `ScaleShape`, `GetDefaultShapes`, `CreateWallEntities`) that
+`QuickRoom` uses internally, entirely within the `encounter` module — no
+`tools/environments` source changes, so this is a SINGLE-module PR.
+
+**Layout, in offset coordinates.** Chamber 1 occupies columns
+`[0, ChamberWidth)`; a boundary ("party wall") column sits at `ChamberWidth`,
+solid on every row except `doorRow = ChamberHeight/2`, which carries no wall
+— that gap cell is where `AddDoor` places the plain door; chamber 2 occupies
+columns `[ChamberWidth+1, 2*ChamberWidth+1)`. The combined `SpaceData.Width`
+is `2*ChamberWidth+1`. `SpaceData.Entrance` is chamber 1's far edge (column
+0, `doorRow`) — "just inside chamber 1's entrance, not center" per the
+design doc's playtest script — replacing the `roomCenterHex()` placeholder
+downstream (rpg-api#648) once the api leg wires it.
+
+**Connectivity is guaranteed BY CONSTRUCTION, not validated after
+generation.** Each chamber's interior wall pattern is generated with a
+required straight-line path — chamber 1 from its entrance to its
+door-adjacent cell, chamber 2 from its door-adjacent cell to its own
+midpoint — via `PatternParams.Safety.RequiredPaths`, the same mechanism
+`RandomPattern` already uses to keep a shape's own connection points clear.
+This is called directly against `environments.WallPatterns[pattern]` rather
+than through `environments.BasicRoomBuilder`: `BasicRoomBuilder.generateWalls`
+unconditionally overwrites `Safety.RequiredPaths` with a path derived from
+the room shape's own connections, which would silently drop this
+generator's entrance/door guarantee.
+
+**Region tags.** `SpaceData.Regions []RegionData{ID string, Hexes
+core.HexSet}` tags every hex (wall and floor cells alike) in each chamber's
+full rectangle with `RegionChamber1`/`RegionChamber2`. `SpaceData.RegionAt(h)`
+looks up which region (if any) contains a hex. This is the "cheap toolkit
+chamber tag" the design doc calls for — the wire `Zone` stays non-structural;
+region *logic* (scoping spawn placement, and via LoS, combat pockets
+rpg-toolkit#794) stays toolkit-side. The door's own cell belongs to neither
+region — it's the threshold, not part of either chamber.
+
+**The door itself rides existing Slice 1 machinery unchanged**
+(rpg-toolkit#790): `InitTwoChamberRoom` calls `AddDoor(DoorID, doorHex,
+open:false)`, so the two chambers start LoS+movement-disconnected exactly
+like a hand-placed door, and `OpenDoor` reveals + connects them through the
+doorway with no new code.
+
+**Seeding.** `RandomSeed` reproduces the WHOLE layout (both chambers derive
+independent sub-seeds from the one input seed via a dedicated `math/rand`
+source, so they don't roll identical wall patterns) — entropy-seeded by
+default, matching `InitRoom` (rpg-toolkit#787). At small/moderate chamber
+sizes, `RandomPattern`'s own safety validation can legitimately fall back to
+an empty (boundary-only) interior layout for a real fraction of seeds — the
+same documented behavior `InitRoom`'s entropy tests already account for
+(`space_test.go`'s `spaceTestSeed` comment) — so a single entropy-vs-entropy
+comparison isn't a reliable "must differ" assertion; the integration test
+samples several independent pairs.
+
+**Test fixture:** `two_chamber_test.go`'s `slice2TwoChambersSeed` (a named
+constant, 12x8 chambers) is the `slice2-two-chambers` fixture the issue
+calls for — deterministic under that seed, reused by
+`TestLayout_DeterministicSeedVsEntropyDefault`.
+
+**Owed sweeps closed alongside this** (from PR #791's gate note):
+`reload_door_blocking_test.go` commits the `InitRoom → AddDoor → ToData →
+LoadFromData → still blocks` proof PR #791's adversarial gate review only
+ran as a throwaway test, and adds a regression test for
+`rebuildRoomFromData`'s co-located door+wall dedup (a door placed directly
+on an existing wall cell doesn't fail the rebuild, and the cell still
+blocks from the pre-existing wall).
+
 ### Monster visibility events (rpg-toolkit#761, #764)
 
 `checkCombatEntry` flips the encounter mode on a newly-formed player-monster
