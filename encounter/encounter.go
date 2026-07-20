@@ -749,8 +749,15 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 		return nil
 	}
 
+	// rpg-toolkit#808: movement budgeting is structurally a turn-based-only
+	// concept, gated on Mode as well as InCombat(). InCombat() alone isn't
+	// enough — checkPocketCleared (combat.go) now tears down the held
+	// player's economy on a non-terminal pocket exit (the primary #808
+	// fix), but this Mode check is defense-in-depth: any FUTURE path that
+	// leaves a stale in-combat economy behind in FREE_ROAM must still not
+	// gate movement, rather than resurrecting this exact bug.
 	char := e.heldCharacter(p.EntityID)
-	tracksMovement := char != nil && char.InCombat()
+	tracksMovement := char != nil && char.InCombat() && e.data.Mode == core.ModeTurnBased
 	if tracksMovement {
 		requestedCost := pathCostFeet(moverStart, path)
 		remaining := char.GetActionEconomy().MovementRemaining
