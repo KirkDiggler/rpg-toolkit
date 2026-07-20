@@ -7,14 +7,22 @@ package encounter_test
 // never fires on a per-RPC reload of an EXISTING seat within the SAME
 // encounter — only AddPlayer's first-seating path may revive; resuming is
 // not re-seating.
+//
+// rpg-toolkit#795 extends the same goal-behavior + negative-control shape
+// to resource pools (rage charges, ki, hit dice): a new seating refreshes
+// them regardless of HP, and a mid-encounter reload of an EXISTING seat
+// must never touch them either — the same "resuming is not re-seating"
+// contract, now for resources too.
 
 import (
 	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -23,6 +31,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	dnd5eResources "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -256,4 +265,144 @@ func (s *ArcadeRecoverySuite) TestExistingSeat_MidEncounterReload_DoesNotHeal() 
 	}
 	s.True(foundUnconscious,
 		"the Unconscious condition must still be applied across a mid-encounter reload — resuming is not re-seating")
+}
+
+// ─── rpg-toolkit#795: resource pool restoration, end to end ────────────────
+
+const arcBarbEntityID = core.EntityID("char-arc-barb")
+
+// barbarianDataJSON builds a barbarian character record with rage charges
+// spent down to 1 of 3, at the given HP -- the exact shape a persisted
+// record carries after Rage.Activate consumed from Data.Resources
+// mid-encounter, whether the character survived (alive, some HP left) or
+// died still raging (0 HP, death-save state, Unconscious condition).
+func (s *ArcadeRecoverySuite) barbarianDataJSON(hp int, dead bool) json.RawMessage {
+	s.T().Helper()
+	data := &dnd5eCharacter.Data{
+		ID:               string(arcBarbEntityID),
+		PlayerID:         string(arcBobPlayerID),
+		Name:             string(arcBarbEntityID),
+		Level:            3,
+		ProficiencyBonus: 2,
+		ClassID:          classes.Barbarian,
+		RaceID:           races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 15,
+			abilities.INT: 8, abilities.WIS: 10, abilities.CHA: 10,
+		},
+		HitPoints:    hp,
+		MaxHitPoints: 20,
+		ArmorClass:   14,
+		Resources: map[coreResources.ResourceKey]dnd5eCharacter.RecoverableResourceData{
+			dnd5eResources.RageCharges: {
+				Current: 1, Maximum: 3, ResetType: coreResources.ResetLongRest,
+			},
+		},
+	}
+	if dead {
+		data.DeathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
+		data.Conditions = []json.RawMessage{
+			mustMarshal(s.T(), conditions.UnconsciousData{
+				Ref: refs.Conditions.Unconscious(), CharacterID: string(arcBarbEntityID),
+				Failures: 3, Dead: true,
+			}),
+		}
+	}
+	return mustMarshal(s.T(), data)
+}
+
+func mustMarshal(t require.TestingT, v any) json.RawMessage {
+	raw, err := json.Marshal(v)
+	// require.NoError (not a bare Errorf) so a marshal failure stops the
+	// test immediately rather than continuing with a nil/empty payload
+	// that would produce a confusing downstream failure (Copilot catch on
+	// PR #801).
+	require.NoError(t, err)
+	return raw
+}
+
+// rageChargesCurrent unmarshals a seated player's DataJSON and returns its
+// RageCharges Resources entry's Current value, failing the test if the
+// entry is missing entirely (a missing entry is itself a bug worth failing
+// loudly on, not silently treating as "0 charges").
+func (s *ArcadeRecoverySuite) rageChargesCurrent(dataJSON json.RawMessage) int {
+	s.T().Helper()
+	var data dnd5eCharacter.Data
+	s.Require().NoError(json.Unmarshal(dataJSON, &data))
+	res, ok := data.Resources[dnd5eResources.RageCharges]
+	s.Require().True(ok, "RageCharges must round-trip through DataJSON")
+	return res.Current
+}
+
+// TestAliveBarbarian_SpentRage_NewSeating_RageRestoredHPUntouched is #795's
+// goal-behavior proof for the scope change over #785: an ALIVE barbarian
+// (above 0 HP) seated into a brand-new encounter gets rage charges back
+// even though nothing about their HP needed fixing.
+func (s *ArcadeRecoverySuite) TestAliveBarbarian_SpentRage_NewSeating_RageRestoredHPUntouched() {
+	encID := core.EncounterID("enc-arc-rage-alive")
+	enc := encounter.New(s.ctx, encID, s.broker)
+
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: arcBobPlayerID, EntityID: arcBarbEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 14, MaxHP: 20, AC: 14,
+		DataJSON: s.barbarianDataJSON(14, false),
+	}))
+
+	s.Equal(14, enc.ToData().Players[arcBobPlayerID].HP,
+		"an alive character's encounter-level HP snapshot must not change at seating")
+	s.Equal(3, s.rageChargesCurrent(enc.ToData().Players[arcBobPlayerID].DataJSON),
+		"rage charges must refresh to their maximum even though the character was never down")
+}
+
+// TestDeadBarbarian_SpentRage_NewSeating_FullHPAndFullRage combines #785's
+// HP recovery with #795's resource recovery in one seating -- a barbarian
+// who died mid-rage comes back whole on both axes.
+func (s *ArcadeRecoverySuite) TestDeadBarbarian_SpentRage_NewSeating_FullHPAndFullRage() {
+	encID := core.EncounterID("enc-arc-rage-dead")
+	enc := encounter.New(s.ctx, encID, s.broker)
+
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: arcBobPlayerID, EntityID: arcBarbEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 0, MaxHP: 20, AC: 14,
+		DataJSON: s.barbarianDataJSON(0, true),
+	}))
+
+	s.Equal(20, enc.ToData().Players[arcBobPlayerID].HP, "HP must restore alongside rage")
+	s.Equal(3, s.rageChargesCurrent(enc.ToData().Players[arcBobPlayerID].DataJSON))
+}
+
+// TestExistingSeat_MidEncounterReload_DoesNotRestoreRage is the resource
+// counterpart to TestExistingSeat_MidEncounterReload_DoesNotHeal: an alive
+// barbarian seated with spent rage must stay spent across a mid-encounter
+// LoadFromData reload of that SAME seat — resuming is not re-seating, for
+// resources exactly as much as for HP.
+func (s *ArcadeRecoverySuite) TestExistingSeat_MidEncounterReload_DoesNotRestoreRage() {
+	encID := core.EncounterID("enc-arc-rage-resume")
+	enc := encounter.New(s.ctx, encID, s.broker)
+
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: arcBobPlayerID, EntityID: arcBarbEntityID,
+		Position: core.Hex{}, SightRange: 10,
+		HP: 14, MaxHP: 20, AC: 14,
+		DataJSON: s.barbarianDataJSON(14, false),
+	}))
+	// AddPlayer's own restore already refreshed rage to 3/3 (proven by
+	// TestAliveBarbarian_SpentRage_NewSeating_RageRestoredHPUntouched
+	// above) -- overwrite the persisted DataJSON with a freshly-spent 1/3
+	// blob before reloading, standing in for whatever real mid-encounter
+	// Rage.Activate calls would have done. The reload must see THIS spent
+	// state and leave it alone, exactly like rpg-api's per-RPC load would.
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	data.Players[arcBobPlayerID].DataJSON = s.barbarianDataJSON(14, false)
+
+	reloaded, err := encounter.LoadFromData(s.ctx, &data, s.broker)
+	s.Require().NoError(err)
+
+	s.Equal(1, s.rageChargesCurrent(reloaded.ToData().Players[arcBobPlayerID].DataJSON),
+		"a mid-encounter LoadFromData reload must never refresh an existing seat's resources")
 }

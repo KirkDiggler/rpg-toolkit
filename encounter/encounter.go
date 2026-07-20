@@ -353,7 +353,7 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 	return nil
 }
 
-// restoreForNewSeat applies arcade recovery (rpg-toolkit#785,
+// restoreForNewSeat applies arcade recovery (rpg-toolkit#785/#795,
 // dnd5eCharacter.RestoreForNewEncounter) to an incoming player's DataJSON
 // before AddPlayer stores it, and — when the restore actually fires — keeps
 // the encounter-level HP/MaxHP snapshot (PlayerData.HP/MaxHP, what combat
@@ -365,11 +365,22 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 // snapshot in place would add a third, differently-shaped incoherent seat
 // instead of fixing the one #785 is about.
 //
+// rpg-toolkit#795 widened what "the restore actually fires" means: resource
+// pools (rage charges, ki, hit dice) now refresh at EVERY new seating,
+// regardless of HP, not only when the HP/death-save branch also fires. In
+// practice this means RestoreForNewEncounter returns true — and this
+// function re-marshals dataJSON — for most resource-bearing characters on
+// most new seatings, where before it was true only for a revived seat. That
+// does not change this function's own logic (still "conditionally
+// re-marshal based on the bool"), only how often the "unchanged passthrough"
+// branch below is actually taken.
+//
 // AddPlayer is the only call site. That matters: it fires exactly once per
 // new seat (guarded by the "already in encounter" check above) and is never
 // reached by LoadFromData's per-RPC rehydration of an EXISTING seat — see
 // RestoreForNewEncounter's own contract doc for why that distinction is the
-// whole point.
+// whole point, resources included: resuming an existing seat must never
+// refresh its resources either, the same as it must never heal it.
 //
 // A seat with no DataJSON (a flat stat-snapshot player) has no rulebook
 // object to restore; hp/maxHP/dataJSON pass through unchanged.
