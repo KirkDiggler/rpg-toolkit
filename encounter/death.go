@@ -30,6 +30,17 @@ const EntityRemovedReasonDestroyed = "destroyed"
 // "time_out", etc.).
 const EncounterEndedReasonAllHostilesDefeated = "all_hostiles_defeated"
 
+// EncounterEndedReasonAbandoned is the Reason value on EncounterEndedEvent
+// when the encounter is administratively ended via End rather than reaching
+// a natural victory/TPK conclusion — rpg-toolkit#797 (rpg-api#663). The slot
+// was reserved by #783's reason-taxonomy comment on this same constant
+// block. Typical caller: rpg-api's abandon path, invoked by a lobby host (or
+// the liveness/resume check) on an encounter with no other way to end —
+// e.g. a FREE_ROAM encounter stuck by #483's movement deadlock, which never
+// reaches checkEncounterEnd's victory/TPK predicates because those only
+// evaluate from combat kill paths.
+const EncounterEndedReasonAbandoned = "abandoned"
+
 // EncounterEndedReasonTPK is the Reason value on EncounterEndedEvent when
 // every seated player has died within the encounter (a Total Party Kill) —
 // rpg-toolkit#772/#782. Symmetric with EncounterEndedReasonAllHostilesDefeated
@@ -571,6 +582,51 @@ func (e *Encounter) checkEncounterEnd() error {
 	default:
 		return nil
 	}
+	return e.endWithReason(reason)
+}
+
+// End administratively ends the encounter with the given reason, driving
+// the SAME terminal transition checkEncounterEnd uses for a natural
+// victory/TPK conclusion (Mode -> ModeEnded, Initiative/ActiveIdx/Round
+// cleared, combat-scoped conditions swept, ActionEconomy cleared via
+// ExitCombat, EncounterEndedEvent published) rather than a parallel path.
+// rpg-toolkit#797 (rpg-api#663).
+//
+// Unlike checkEncounterEnd, End does not evaluate the victory/TPK
+// predicates — it forces the transition unconditionally, regardless of the
+// encounter's current Mode. This is what makes it usable on a FREE_ROAM
+// encounter (checkEncounterEnd's predicates only ever get evaluated from
+// combat kill paths — killEntity, publishPlayerDied — so a stuck FREE_ROAM
+// encounter can never reach them) as well as a TURN_BASED one.
+//
+// Returns ErrEncounterEnded if the encounter has already ended — abandoning
+// an already-terminal encounter is a caller bug (the caller should have
+// seen ModeEnded and not tried again), surfaced rather than silently
+// swallowed. This mirrors the same sentinel every other post-end verb
+// (TakeAction, EndTurn, NPCAct, SetMode) already returns, so callers can
+// treat "encounter already over" identically everywhere.
+//
+// The caller supplies reason; rpg-api's abandon path passes
+// EncounterEndedReasonAbandoned. Any string is accepted with no validation
+// — EncounterEndedEvent.Reason is a bare passthrough string all the way to
+// the wire (see #783's "no proto or rpg-api change needed" note), so End
+// imposes no new constraint on that contract.
+func (e *Encounter) End(reason string) error {
+	if e.data.Mode == core.ModeEnded {
+		return ErrEncounterEnded
+	}
+	return e.endWithReason(reason)
+}
+
+// endWithReason performs the terminal-state transition shared by every
+// encounter-end path (natural, via checkEncounterEnd, and administrative,
+// via End): flips Mode -> ModeEnded, clears Initiative/ActiveIdx/Round,
+// sweeps combat-scoped conditions + ActionEconomy, and publishes
+// EncounterEndedEvent with the given reason. Callers are responsible for
+// the ModeEnded re-entrancy guard — this function assumes the caller
+// already confirmed e.data.Mode != core.ModeEnded, so it is not itself
+// idempotent.
+func (e *Encounter) endWithReason(reason string) error {
 	e.data.Mode = core.ModeEnded
 	e.data.Initiative = nil
 	e.data.ActiveIdx = 0

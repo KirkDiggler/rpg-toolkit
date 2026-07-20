@@ -493,7 +493,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedReasonAllHostilesDefeated() {
 		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
 		encounter.ActionTarget{EntityID: gobEntityID},
 	))
-	ended := waitForEncounterEnded(s.T(), s.aliceSub, time.Second)
+	ended := waitForEncounterEnded(s.T(), s.aliceSub)
 	s.Require().NotNil(ended)
 	s.Equal(encounter.EncounterEndedReasonAllHostilesDefeated, ended.Reason)
 }
@@ -652,10 +652,10 @@ func waitForEntityRemoved(
 }
 
 func waitForEncounterEnded(
-	t *testing.T, sub *encounter.Subscription, timeout time.Duration,
+	t *testing.T, sub *encounter.Subscription,
 ) *events.EncounterEndedEvent {
 	t.Helper()
-	deadline := time.After(timeout)
+	deadline := time.After(time.Second)
 	for {
 		select {
 		case evt, ok := <-sub.Events():

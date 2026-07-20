@@ -301,10 +301,12 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 		return errors.New("mode unspecified")
 	}
 	if mode == core.ModeEnded {
-		// Terminal state is gameplay-driven (Encounter.checkEncounterEnd
-		// fires when the last hostile dies), never set externally. Reject
-		// so callers don't accidentally bypass the kill chain.
-		return errors.New("ModeEnded is set internally by checkEncounterEnd, not via SetMode")
+		// Terminal state is driven internally — either gameplay
+		// (Encounter.checkEncounterEnd fires when the last hostile dies or
+		// a TPK is confirmed) or administrative (Encounter.End,
+		// rpg-toolkit#797) — never set externally via this verb. Reject so
+		// callers don't accidentally bypass either path.
+		return errors.New("ModeEnded is set internally by checkEncounterEnd or End, not via SetMode")
 	}
 	if e.data.Mode == core.ModeEnded {
 		return ErrEncounterEnded
