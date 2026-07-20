@@ -492,7 +492,49 @@ func (e *Encounter) checkPocketCleared() error {
 	// the case where e.data.Monsters is now empty entirely — reaching here
 	// with Mode still ModeTurnBased means monsters exist, just not in this
 	// pocket's initiative.
+	if err := e.exitCombatForHeldPlayers(); err != nil {
+		return err
+	}
 	return e.SetMode(core.ModeFreeRoam)
+}
+
+// exitCombatForHeldPlayers clears ActionEconomy (character.Character
+// .ExitCombat, rpg-toolkit#767) for every held player as the current
+// combat pocket clears back to FREE_ROAM (rpg-toolkit#808).
+//
+// Before this, checkPocketCleared flipped Mode to FREE_ROAM but left every
+// held player's ActionEconomy exactly as the fight left it — so
+// char.InCombat() (actionEconomy != nil) stayed true, and Move's budget
+// gate (encounter.go's tracksMovement, keyed on InCombat(), not Mode)
+// wrongly kept enforcing whatever MovementRemaining the player had left,
+// rejecting free-roam movement that is meant to be unmetered.
+//
+// Deliberately ExitCombat-ONLY, NOT the terminal path's fuller
+// endCombatForPlayers (death.go): this exit is non-terminal — the pocket
+// cleared, not the whole encounter — so it does not call
+// char.EndCombat / publish CombatEndEvent, and combat-scoped conditions
+// (e.g. Raging, which subscribes to CombatEndTopic) correctly PERSIST
+// across the breather instead of being swept. Only the movement-gating
+// side effect of an in-combat economy needs tearing down here; re-entering
+// the next pocket re-seeds a fresh economy via SetMode(TurnBased)'s
+// existing seedActorTurn->StartTurn call. Making the condition sweep on
+// this path configurable is a separate, deferred issue.
+//
+// Flat stat-snapshot seats (no hydrated *character.Character —
+// heldCharacter returns nil) have nothing to tear down and are skipped,
+// mirroring endCombatForPlayers.
+func (e *Encounter) exitCombatForHeldPlayers() error {
+	ctx := context.Background()
+	for _, pd := range e.data.Players {
+		char := e.heldCharacter(pd.EntityID)
+		if char == nil {
+			continue
+		}
+		if _, err := char.ExitCombat(ctx, &dnd5eCharacter.ExitCombatInput{}); err != nil {
+			return fmt.Errorf("exit combat for %q: %w", pd.EntityID, err)
+		}
+	}
+	return nil
 }
 
 // playersWhoCanSee returns the set of players who currently have LoS to m,
