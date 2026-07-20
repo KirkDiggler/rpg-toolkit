@@ -594,16 +594,40 @@ design doc's playtest script — replacing the `roomCenterHex()` placeholder
 downstream (rpg-api#648) once the api leg wires it.
 
 **Connectivity is guaranteed BY CONSTRUCTION, not validated after
-generation.** Each chamber's interior wall pattern is generated with a
-required straight-line path — chamber 1 from its entrance to its
-door-adjacent cell, chamber 2 from its door-adjacent cell to its own
-midpoint — via `PatternParams.Safety.RequiredPaths`, the same mechanism
-`RandomPattern` already uses to keep a shape's own connection points clear.
-This is called directly against `environments.WallPatterns[pattern]` rather
-than through `environments.BasicRoomBuilder`: `BasicRoomBuilder.generateWalls`
+generation — but the hard guarantee comes from `RandomPattern`'s own margin
+confinement, not from the RequiredPaths reservation this file's first draft
+credited.** `generateRandomWall` (wall_patterns.go) draws every wall's FIXED
+coordinate (`centerY` for a horizontal wall, `centerX` for a vertical one)
+from `[margin, size-margin]` where `margin = max(2, MinPathWidth)`, and
+rejects any wall whose *other* extent would exceed that same band — so
+regardless of orientation, no surviving wall ever touches columns
+`{0, 1, ChamberWidth-1}` or rows `{0, 1, ChamberHeight-1}` (for `margin=2`).
+Those cells form a connected border loop around each chamber, for EVERY
+seed, with no dependency on wall placement — and both the entrance (column
+0) and each chamber's door-adjacent cell (column `ChamberWidth-1`/0) sit
+directly on that loop. This is the actual proof the integration test relies
+on: it only asserts reachability up to the door-adjacent border cells, which
+the margin alone already guarantees.
+
+`PatternParams.Safety.RequiredPaths` (chamber 1: entrance→door-adjacent;
+chamber 2: door-adjacent→its own midpoint) is an ADDITIONAL reservation on
+top of that, not the source of the hard guarantee — it clears interior
+space near the doorway for tactical variety, but its straight-line
+clearance check only tests each wall's two continuous-space endpoints
+against the path, then a LATER discretization step re-rounds every ~1-unit
+point along a kept wall onto the nearest hex cell (see `chamberWallSegments`
+below); a wall running near-parallel to the path can pass the endpoint
+check while still rounding onto the path's own row post-discretization. So
+RequiredPaths narrows the odds but isn't by itself airtight the way the
+margin border is.
+
+This is still called directly against `environments.WallPatterns[pattern]`
+rather than through `environments.BasicRoomBuilder`, for a composition
+reason independent of the guarantee above: `BasicRoomBuilder.generateWalls`
 unconditionally overwrites `Safety.RequiredPaths` with a path derived from
-the room shape's own connections, which would silently drop this
-generator's entrance/door guarantee.
+the (single) room shape's own connections, which doesn't fit two
+independently-patterned chambers sharing one custom (non-shape-generated)
+boundary wall in one continuous `Space`.
 
 **Region tags.** `SpaceData.Regions []RegionData{ID string, Hexes
 core.HexSet}` tags every hex (wall and floor cells alike) in each chamber's
@@ -611,7 +635,7 @@ full rectangle with `RegionChamber1`/`RegionChamber2`. `SpaceData.RegionAt(h)`
 looks up which region (if any) contains a hex. This is the "cheap toolkit
 chamber tag" the design doc calls for — the wire `Zone` stays non-structural;
 region *logic* (scoping spawn placement, and via LoS, combat pockets
-rpg-toolkit#794) stays toolkit-side. The door's own cell belongs to neither
+rpg-toolkit#796) stays toolkit-side. The door's own cell belongs to neither
 region — it's the threshold, not part of either chamber.
 
 **The door itself rides existing Slice 1 machinery unchanged**
