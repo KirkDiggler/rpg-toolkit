@@ -29,11 +29,8 @@ import (
 //     slots deliberately left untouched" note no longer holds for
 //     resources specifically — this is where that's revisited, as its own
 //     doc promised. Data.ClassResources and Data.SpellSlots are NOT
-//     touched: neither is ever decremented by any live consumption path
-//     today (confirmed by grep — Character.UseResource/IsResourceAvailable
-//     only ever read/write d.Resources), so there is nothing in them to
-//     restore; wiring them in now would be dead code guarding against a
-//     mechanic that doesn't exist yet.
+//     touched — see restoreResourcePools' doc for why (tracked as
+//     rpg-toolkit#800 and #799 respectively, both out of this scope).
 //
 // Contract — read before calling this from anywhere new: it fires only at
 // first seating, never on rehydration. Callers own distinguishing the two.
@@ -87,6 +84,24 @@ func RestoreForNewEncounter(d *Data) bool {
 // special-casing, because d.Resources is already the single generic pools
 // map every live resource-consuming feature reads and writes through
 // (Character.UseResource/IsResourceAvailable, core/resources.ResourceKey).
+//
+// Deliberate divergence from RAW rest rules, worth calling out explicitly
+// (arcade semantics, not a bug): hit dice's own RestEvent-triggered
+// recovery (dnd5eResources.NewHitDiceResource's RecoveryFunc,
+// combat/recoverable_resource.go) restores only HALF of maximum
+// (minimum 1) on a long rest, per PHB p.186 — but a fresh arcade seating
+// restores hit dice to their FULL maximum here, same as every other pool.
+// The point of arcade recovery is a clean run start, not a simulated rest;
+// applying the half-on-long-rest rule would be re-litigating a real-world
+// rest mechanic this function isn't modeling.
+//
+// Does NOT touch Data.ClassResources (dead map, never written outside
+// Finalize — cleanup tracked as rpg-toolkit#800) or Data.SpellSlots
+// (orphaned: no live consumption, no reset even on LongRest — tracked as
+// rpg-toolkit#799). Both are out of this function's scope; restoring
+// fields nothing spends from would be dead code guarding mechanics that
+// don't exist yet.
+//
 // Returns true iff at least one pool was actually below its maximum.
 func restoreResourcePools(d *Data) bool {
 	changed := false

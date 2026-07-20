@@ -6,6 +6,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -259,7 +260,13 @@ func (s *ArcadeRecoveryTestSuite) TestFullRage_AboveZeroHP_IsFullNoOp() {
 			dnd5eResources.RageCharges: {Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest},
 		},
 	}
+	// before is a real, independent snapshot, not a shallow struct copy --
+	// *data alone would leave before.Resources pointing at the SAME map as
+	// data.Resources, making the s.Equal below compare the map to itself
+	// (trivially "equal" no matter what RestoreForNewEncounter does to it,
+	// proving nothing about the no-op claim). Copilot catch on PR #801.
 	before := *data
+	before.Resources = maps.Clone(data.Resources)
 
 	restored := RestoreForNewEncounter(data)
 

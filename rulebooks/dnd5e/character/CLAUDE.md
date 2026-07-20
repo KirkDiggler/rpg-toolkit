@@ -217,7 +217,7 @@ rulebooks/dnd5e/character/
 ├── draft.go               - Draft type and choice recording (MAIN FILE)
 ├── draft_data.go          - Draft serialization
 ├── character.go           - Finalized Character type
-├── character_data.go      - Character serialization
+├── data.go                - Character serialization (Data struct, LoadFromData)
 ├── choices/
 │   ├── choice_data.go     - ChoiceData structure
 │   ├── choice_ids.go      - Constants for choice IDs
