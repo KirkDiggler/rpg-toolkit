@@ -16,19 +16,21 @@ const (
 	ModeFreeRoam
 	// ModeTurnBased is initiative-locked combat. Verbs gate on the active actor.
 	ModeTurnBased
-	// ModeEnded is the terminal state for an encounter — entered when the
-	// encounter-end predicate first goes true (Wave 2.10: all hostiles
-	// defeated). Combat verbs (TakeAction, EndTurn, NPCAct) reject with
-	// ErrEncounterEnded; the orchestrator stops dispatching turns. The
+	// ModeEnded is the terminal state for an encounter — entered either when
+	// the encounter-end predicate first goes true (Wave 2.10: all hostiles
+	// defeated; #772/#782: TPK) or via an administrative Encounter.End call
+	// (rpg-toolkit#797). Combat verbs (TakeAction, EndTurn, NPCAct) reject
+	// with ErrEncounterEnded; the orchestrator stops dispatching turns. The
 	// encounter persists in storage with this mode so reconnects see the
 	// terminal state via snapshot replay.
 	//
 	// The transition to ModeEnded happens inside the kill chain
-	// (Encounter.checkEncounterEnd, in death.go), not via SetMode.
-	// SetMode does NOT accept ModeEnded as a target — terminal state is
-	// always orchestrator-driven through gameplay (last hostile dies),
-	// never through an explicit "set the mode to ended" call. The
-	// transition clears Initiative / ActiveIdx / Round.
+	// (Encounter.checkEncounterEnd, in death.go) or the administrative End
+	// path (also death.go) — both funnel through the same endWithReason
+	// helper — never via SetMode. SetMode does NOT accept ModeEnded as a
+	// target: terminal state is always driven through one of those two
+	// purpose-built entry points, never through an explicit "set the mode
+	// to ended" call. The transition clears Initiative / ActiveIdx / Round.
 	ModeEnded
 )
 
