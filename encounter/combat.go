@@ -305,8 +305,13 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 		// (Encounter.checkEncounterEnd fires when the last hostile dies or
 		// a TPK is confirmed) or administrative (Encounter.End,
 		// rpg-toolkit#797) — never set externally via this verb. Reject so
-		// callers don't accidentally bypass either path.
-		return errors.New("ModeEnded is set internally by checkEncounterEnd or End, not via SetMode")
+		// callers don't accidentally bypass either path. The error message
+		// stays action-oriented rather than naming the private
+		// checkEncounterEnd function: this error is user-facing all the way
+		// through rpg-api, and "checkEncounterEnd" means nothing to an API
+		// consumer (Copilot review, PR #798).
+		return errors.New("cannot set mode to ended directly — the encounter ends automatically on victory or TPK, " +
+			"or call End(reason) for an administrative end")
 	}
 	if e.data.Mode == core.ModeEnded {
 		return ErrEncounterEnded
