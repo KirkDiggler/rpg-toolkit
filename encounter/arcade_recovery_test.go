@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -310,14 +311,13 @@ func (s *ArcadeRecoverySuite) barbarianDataJSON(hp int, dead bool) json.RawMessa
 	return mustMarshal(s.T(), data)
 }
 
-func mustMarshal(t interface {
-	Helper()
-	Errorf(string, ...any)
-}, v any) json.RawMessage {
+func mustMarshal(t require.TestingT, v any) json.RawMessage {
 	raw, err := json.Marshal(v)
-	if err != nil {
-		t.Errorf("marshal: %v", err)
-	}
+	// require.NoError (not a bare Errorf) so a marshal failure stops the
+	// test immediately rather than continuing with a nil/empty payload
+	// that would produce a confusing downstream failure (Copilot catch on
+	// PR #801).
+	require.NoError(t, err)
 	return raw
 }
 
