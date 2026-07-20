@@ -12,9 +12,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	dnd5eResources "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -181,4 +183,109 @@ func (s *ArcadeRecoveryTestSuite) TestRoundTrip_HydratesCleanly() {
 		s.False(ref.Equals(refs.Conditions.Unconscious()),
 			"a restored character must not re-hydrate with Unconscious applied")
 	}
+}
+
+// ─── rpg-toolkit#795: resource pool restoration ────────────────────────────
+
+// spentRageResources builds a Data.Resources map for a barbarian who has
+// spent 2 of 3 rage charges -- the exact shape Character.ToData() persists
+// after Rage.Activate consumes from the resource via UseResource
+// (character.go:833).
+func spentRageResources() map[coreResources.ResourceKey]RecoverableResourceData {
+	return map[coreResources.ResourceKey]RecoverableResourceData{
+		dnd5eResources.RageCharges: {
+			Current: 1, Maximum: 3, ResetType: coreResources.ResetLongRest,
+		},
+	}
+}
+
+// TestDeadBarbarian_SpentRage_SeatedAlive_FullHPAndFullRage: rpg-toolkit#795's
+// primary goal-behavior proof, combining #785's death recovery with #795's
+// resource recovery in one seating -- a barbarian who died mid-rage (0 HP,
+// death-save failures, rage down to 1/3) must come back whole on both axes,
+// not just HP.
+func (s *ArcadeRecoveryTestSuite) TestDeadBarbarian_SpentRage_SeatedAlive_FullHPAndFullRage() {
+	data := &Data{
+		ID:             "barb-1",
+		HitPoints:      0,
+		MaxHitPoints:   20,
+		DeathSaveState: &saves.DeathSaveState{Failures: 3, Dead: true},
+		Conditions:     []json.RawMessage{unconsciousBlob(s.T(), "barb-1", 3, true)},
+		Resources:      spentRageResources(),
+	}
+
+	restored := RestoreForNewEncounter(data)
+
+	s.True(restored)
+	s.Equal(20, data.HitPoints, "HP must restore to MaxHitPoints")
+	s.Nil(data.DeathSaveState, "death save state must be cleared")
+	s.Empty(data.Conditions, "the Unconscious condition must be stripped")
+	s.Equal(3, data.Resources[dnd5eResources.RageCharges].Current,
+		"rage charges must refresh to their maximum alongside HP")
+}
+
+// TestAliveBarbarian_SpentRage_SeatedWithFullRage_HPUntouched: the scope
+// change #795 makes over #785 -- an ALIVE barbarian (above 0 HP) who spent
+// rage earlier in the run must still get rage back at a new seating, even
+// though the HP/death-save branch has nothing to do (HitPoints > 0). Before
+// #795, RestoreForNewEncounter returned false and touched nothing for any
+// character above 0 HP; this is the case that changes.
+func (s *ArcadeRecoveryTestSuite) TestAliveBarbarian_SpentRage_SeatedWithFullRage_HPUntouched() {
+	data := &Data{
+		ID:           "barb-2",
+		HitPoints:    14,
+		MaxHitPoints: 20,
+		Resources:    spentRageResources(),
+	}
+
+	restored := RestoreForNewEncounter(data)
+
+	s.True(restored, "resource restoration alone must still report true")
+	s.Equal(14, data.HitPoints, "an alive character's HP must not be touched by this seating")
+	s.Nil(data.DeathSaveState)
+	s.Equal(3, data.Resources[dnd5eResources.RageCharges].Current,
+		"rage charges must refresh even though the character was never down")
+}
+
+// TestFullRage_AboveZeroHP_IsFullNoOp: the negative control for the negative
+// control -- a character already at full HP AND full resources must report
+// false and be left byte-for-byte untouched, so restoreForNewSeat's caller
+// (encounter.go) correctly skips an unnecessary re-marshal.
+func (s *ArcadeRecoveryTestSuite) TestFullRage_AboveZeroHP_IsFullNoOp() {
+	data := &Data{
+		HitPoints:    20,
+		MaxHitPoints: 20,
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			dnd5eResources.RageCharges: {Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest},
+		},
+	}
+	before := *data
+
+	restored := RestoreForNewEncounter(data)
+
+	s.False(restored, "a character already whole on both HP and resources must be a full no-op")
+	s.Equal(before.HitPoints, data.HitPoints)
+	s.Equal(before.Resources, data.Resources)
+}
+
+// TestMultipleResourcePools_AllRestoreIndependently: ki and hit dice
+// restore the same way rage does -- proving the generic loop over
+// d.Resources, not a rage-specific special case.
+func (s *ArcadeRecoveryTestSuite) TestMultipleResourcePools_AllRestoreIndependently() {
+	data := &Data{
+		HitPoints:    10,
+		MaxHitPoints: 10,
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			dnd5eResources.RageCharges: {Current: 0, Maximum: 3, ResetType: coreResources.ResetLongRest},
+			dnd5eResources.Ki:          {Current: 1, Maximum: 5, ResetType: coreResources.ResetShortRest},
+			dnd5eResources.HitDice:     {Current: 2, Maximum: 6, ResetType: coreResources.ResetLongRest},
+		},
+	}
+
+	restored := RestoreForNewEncounter(data)
+
+	s.True(restored)
+	s.Equal(3, data.Resources[dnd5eResources.RageCharges].Current)
+	s.Equal(5, data.Resources[dnd5eResources.Ki].Current)
+	s.Equal(6, data.Resources[dnd5eResources.HitDice].Current)
 }
