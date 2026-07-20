@@ -116,9 +116,18 @@ type RegionData struct {
 }
 
 // RegionAt returns the region ID containing hex, and whether one was
-// found. O(n) over the region hex sets — fine at slice-2 scale (a couple
-// dozen hexes per chamber); revisit with an index if regions grow large.
+// found. Nil-receiver safe — Data.Space is nil for encounters with no
+// spatial room (pre-wave-1 fixtures, non-spatial encounters), and this is
+// an exported helper hosts call directly off ToData().Space without
+// necessarily nil-checking first — so a nil *SpaceData behaves exactly
+// like a SpaceData with no regions ("", false) rather than panicking.
+// O(n) over the region hex sets otherwise — fine at slice-2 scale (a
+// couple dozen hexes per chamber); revisit with an index if regions grow
+// large.
 func (sd *SpaceData) RegionAt(h core.Hex) (string, bool) {
+	if sd == nil {
+		return "", false
+	}
 	for _, r := range sd.Regions {
 		if r.Hexes.Has(h) {
 			return r.ID, true

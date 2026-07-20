@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
@@ -228,6 +229,17 @@ func (s *TwoChamberSuite) TestRegions_PartitionTheChambers() {
 	regionID, ok := data.Space.RegionAt(data.Space.Entrance)
 	s.True(ok)
 	s.Equal(encounter.RegionChamber1, regionID)
+}
+
+// TestRegionAt_NilReceiver: RegionAt is an exported helper hosts call
+// directly off ToData().Space (Data.Space is nil for encounters with no
+// spatial room, e.g. pre-wave-1 fixtures) — a nil *SpaceData must behave
+// like a SpaceData with no regions ("", false), not panic.
+func TestRegionAt_NilReceiver(t *testing.T) {
+	var sd *encounter.SpaceData
+	id, ok := sd.RegionAt(core.Hex{Q: 0, R: 0, S: 0})
+	require.Equal(t, "", id)
+	require.False(t, ok)
 }
 
 // TestLayout_DeterministicSeedVsEntropyDefault: the named fixture seed
