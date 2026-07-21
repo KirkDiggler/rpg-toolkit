@@ -178,6 +178,9 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 	s.Require().NotNil(view)
 	s.Assert().Equal(18, view.ACTotal)
 	s.Assert().Equal("16 chain mail + 2 shield", view.ACNote)
+	// shield occupies off hand, so the versatile longsword is gripped
+	// one-handed: its base die, not the versatile two-handed upgrade.
+	s.Assert().Equal("1d8 slashing", view.MainHandDamage)
 	s.Require().Len(view.Items, 3)
 
 	byID := make(map[string]EquippedItemView, len(view.Items))
@@ -212,4 +215,80 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
 	s.Require().Len(view.Items, 1)
 	s.Assert().Equal(InventorySlot(""), view.Items[0].Slot)
 	s.Assert().Equal("1d6 slashing · light, thrown 20/60", view.Items[0].StatLine)
+}
+
+// TestEquipmentView_VersatileFreeOffHand proves a versatile weapon grips
+// two-handed (upgraded die) when the off hand is completely empty — the
+// occupancy-dependent half of contract §5's main_hand_damage.
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_VersatileFreeOffHand() {
+	longsword := weapons.All[weapons.Longsword]
+
+	char := &Character{
+		id:            "char-3",
+		bus:           s.bus,
+		abilityScores: shared.AbilityScores{abilities.DEX: 10},
+		inventory:     []InventoryItem{{Equipment: &longsword, Quantity: 1}},
+		equipmentSlots: EquipmentSlots{
+			SlotMainHand: "longsword",
+		},
+	}
+
+	view := char.EquipmentView(s.ctx)
+	s.Assert().Equal("1d10 slashing", view.MainHandDamage)
+}
+
+// TestEquipmentView_DualWield proves dual-wielding folds the off-hand
+// weapon's die into the display, e.g. "1d4 piercing · off-hand 1d4".
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_DualWield() {
+	// Two distinct inventory entries of the same weapon type need distinct
+	// IDs (EquipmentID() would otherwise collide and both slots would
+	// resolve to the same inventory item). weapons.All returns copies, so
+	// mutating the ID on each copy is safe — the registry is untouched.
+	daggerMain := weapons.All[weapons.Dagger]
+	daggerMain.ID = "dagger-main"
+	daggerOff := weapons.All[weapons.Dagger]
+	daggerOff.ID = "dagger-off"
+
+	char := &Character{
+		id:            "char-4",
+		bus:           s.bus,
+		abilityScores: shared.AbilityScores{abilities.DEX: 10},
+		inventory: []InventoryItem{
+			{Equipment: &daggerMain, Quantity: 1},
+			{Equipment: &daggerOff, Quantity: 1},
+		},
+		equipmentSlots: EquipmentSlots{
+			SlotMainHand: "dagger-main",
+			SlotOffHand:  "dagger-off",
+		},
+	}
+
+	view := char.EquipmentView(s.ctx)
+	s.Assert().Equal("1d4 piercing · off-hand 1d4", view.MainHandDamage)
+}
+
+func (s *EquipmentDisplayTestSuite) TestMainHandDamage() {
+	longsword := weapons.All[weapons.Longsword]
+	greatsword := weapons.All[weapons.Greatsword]
+	dagger := weapons.All[weapons.Dagger]
+	shield := armor.All[armor.Shield]
+
+	testCases := []struct {
+		name       string
+		mainWeapon *weapons.Weapon
+		offHand    *EquippedItem
+		expected   string
+	}{
+		{"no main-hand weapon", nil, nil, ""},
+		{"versatile, off hand free", &longsword, nil, "1d10 slashing"},
+		{"versatile, shield in off hand", &longsword, &EquippedItem{Item: &shield}, "1d8 slashing"},
+		{"two-handed weapon, off hand free", &greatsword, nil, "2d6 slashing"},
+		{"dual-wield, non-versatile", &dagger, &EquippedItem{Item: &dagger}, "1d4 piercing · off-hand 1d4"},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.Assert().Equal(tc.expected, MainHandDamage(tc.mainWeapon, tc.offHand))
+		})
+	}
 }

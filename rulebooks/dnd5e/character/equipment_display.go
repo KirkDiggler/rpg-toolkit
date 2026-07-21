@@ -6,6 +6,7 @@ package character
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
@@ -25,18 +26,20 @@ type EquippedItemView struct {
 
 // EquipmentView is the display projection rpg-api needs to serve
 // equipped/inventory items and armor class (rpg-toolkit#811) — every item
-// the character owns, the composed AC total and note. rpg-api passes
-// these through verbatim; it never assembles them from rules data.
+// the character owns, the composed AC total and note, and the resolved
+// main-hand damage display (contract §5). rpg-api passes these through
+// verbatim; it never assembles them from rules data.
 type EquipmentView struct {
-	Items   []EquippedItemView
-	ACTotal int
-	ACNote  string
+	Items          []EquippedItemView
+	ACTotal        int
+	ACNote         string
+	MainHandDamage string
 }
 
 // EquipmentView composes the display projection for this character's
 // inventory and effective AC: a stat_line per owned item (equipped or
-// carried) plus AC total + note. Consumable by rpg-api with zero rules
-// knowledge.
+// carried), AC total + note, and the resolved main-hand damage display.
+// Consumable by rpg-api with zero rules knowledge.
 func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 	items := make([]EquippedItemView, 0, len(c.inventory))
 	for _, invItem := range c.inventory {
@@ -49,11 +52,66 @@ func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 	}
 
 	breakdown := c.EffectiveAC(ctx)
+	mainHand := c.GetEquippedSlot(SlotMainHand)
 	return &EquipmentView{
-		Items:   items,
-		ACTotal: breakdown.Total,
-		ACNote:  ACNote(breakdown),
+		Items:          items,
+		ACTotal:        breakdown.Total,
+		ACNote:         ACNote(breakdown),
+		MainHandDamage: MainHandDamage(mainHand.AsWeapon(), c.GetEquippedSlot(SlotOffHand)),
 	}
+}
+
+// MainHandDamage composes the resolved main-hand damage display for the
+// given equipped state (rpg-toolkit#811, contract §5): occupancy changes
+// the die. A versatile weapon grips two-handed — its die steps up one
+// notch (e.g. "1d8" -> "1d10") — only when offHand is nil (the off hand
+// is completely empty, not merely holding a shield). Whenever offHand
+// holds a weapon, its damage folds in as a dual-wield fragment, e.g.
+// "1d4 piercing · off-hand 1d4". Returns "" if mainWeapon is nil.
+func MainHandDamage(mainWeapon *weapons.Weapon, offHand *EquippedItem) string {
+	if mainWeapon == nil {
+		return ""
+	}
+
+	damage := mainWeapon.Damage
+	if mainWeapon.HasProperty(weapons.PropertyVersatile) && offHand == nil {
+		damage = versatileTwoHandedDamage(damage)
+	}
+
+	line := fmt.Sprintf("%s %s", damage, mainWeapon.DamageType)
+	if offWeapon := offHand.AsWeapon(); offWeapon != nil {
+		line += fmt.Sprintf(" · off-hand %s", offWeapon.Damage)
+	}
+	return line
+}
+
+// versatileStepUp is the standard 5e versatile-weapon die progression: a
+// versatile weapon's two-handed die is always exactly one step up from
+// its one-handed die on this table (longsword 1d8 -> 1d10, spear 1d6 ->
+// 1d8, etc — no versatile weapon in the ruleset skips a step).
+var versatileStepUp = map[int]int{4: 6, 6: 8, 8: 10, 10: 12}
+
+// versatileTwoHandedDamage steps a "NdM" damage notation's die size up
+// one notch per versatileStepUp, e.g. "1d8" -> "1d10". Returns damage
+// unchanged if it doesn't parse as "NdM" or the size isn't in the table.
+func versatileTwoHandedDamage(damage string) string {
+	parts := strings.SplitN(damage, "d", 2)
+	if len(parts) != 2 {
+		return damage
+	}
+	count, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return damage
+	}
+	size, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return damage
+	}
+	next, ok := versatileStepUp[size]
+	if !ok {
+		return damage
+	}
+	return fmt.Sprintf("%dd%d", count, next)
 }
 
 // slotFor returns the slot itemID is equipped in, or "" if it's carried
