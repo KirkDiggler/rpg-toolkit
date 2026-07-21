@@ -190,12 +190,28 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 
 	s.Assert().Equal(SlotArmor, byID[armor.ChainMail].Slot)
 	s.Assert().Equal("AC 16 · heavy", byID[armor.ChainMail].StatLine)
+	s.Assert().Equal("Chain Mail", byID[armor.ChainMail].Name)
+	s.Assert().Equal("armor", byID[armor.ChainMail].Kind)
+	s.Assert().Equal([]string{"armor"}, byID[armor.ChainMail].SlotKeys)
 
 	s.Assert().Equal(SlotOffHand, byID[armor.Shield].Slot)
 	s.Assert().Equal("+2 AC", byID[armor.Shield].StatLine)
+	s.Assert().Equal("Shield", byID[armor.Shield].Name)
+	s.Assert().Equal("shield", byID[armor.Shield].Kind)
+	s.Assert().Equal([]string{"off_hand"}, byID[armor.Shield].SlotKeys)
 
 	s.Assert().Equal(InventorySlot(SlotMainHand), byID["longsword"].Slot)
 	s.Assert().Equal("1d8 slashing · versatile", byID["longsword"].StatLine)
+	s.Assert().Equal("Longsword", byID["longsword"].Name)
+	s.Assert().Equal("weapon", byID["longsword"].Kind)
+	s.Assert().Equal([]string{"main_hand", "off_hand"}, byID["longsword"].SlotKeys)
+
+	s.Require().Len(view.Slots, 3)
+	s.Assert().Equal([]SlotDefView{
+		{Key: "main_hand", DisplayLabel: "Main hand", Accepts: []string{"weapon"}},
+		{Key: "off_hand", DisplayLabel: "Off hand", Accepts: []string{"weapon", "shield"}},
+		{Key: "armor", DisplayLabel: "Armor", Accepts: []string{"armor"}},
+	}, view.Slots)
 }
 
 // TestEquipmentView_CarriedItemHasNoSlot proves inventory items that
@@ -215,6 +231,29 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
 	s.Require().Len(view.Items, 1)
 	s.Assert().Equal(InventorySlot(""), view.Items[0].Slot)
 	s.Assert().Equal("1d6 slashing · light, thrown 20/60", view.Items[0].StatLine)
+	s.Assert().Equal("Handaxe", view.Items[0].Name)
+	s.Assert().Equal("weapon", view.Items[0].Kind)
+	s.Assert().Equal([]string{"main_hand", "off_hand"}, view.Items[0].SlotKeys)
+}
+
+// TestEquipmentView_SlotlessGear proves gear with no combat-relevant slot
+// projects with an empty SlotKeys and Kind "gear".
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_SlotlessGear() {
+	pouch := items.All[items.ComponentPouch]
+
+	char := &Character{
+		id:             "char-5",
+		bus:            s.bus,
+		abilityScores:  shared.AbilityScores{abilities.DEX: 10},
+		inventory:      []InventoryItem{{Equipment: &pouch, Quantity: 1}},
+		equipmentSlots: make(EquipmentSlots),
+	}
+
+	view := char.EquipmentView(s.ctx)
+	s.Require().Len(view.Items, 1)
+	s.Assert().Equal("gear", view.Items[0].Kind)
+	s.Assert().Nil(view.Items[0].SlotKeys)
+	s.Assert().Equal("", view.Items[0].StatLine)
 }
 
 // TestEquipmentView_VersatileFreeOffHand proves a versatile weapon grips

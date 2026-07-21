@@ -16,36 +16,68 @@ import (
 )
 
 // EquippedItemView is the display projection of one inventory item: its
-// identity, the slot it currently occupies (empty if merely carried), and
-// the server-composed stat_line the web renders verbatim.
+// identity (Name, Kind — "weapon" | "shield" | "armor" | "gear"), the
+// slots it MAY occupy (SlotKeys, from CompatibleSlots), the slot it
+// currently occupies (Slot — empty if merely carried), and the
+// server-composed stat_line the web renders verbatim.
 type EquippedItemView struct {
 	ItemID   string
+	Name     string
+	Kind     string
+	SlotKeys []string
 	Slot     InventorySlot
 	StatLine string
 }
 
+// SlotDefView is one entry in the character's equip-slot taxonomy: which
+// slots exist, their display label, and which item Kinds each accepts.
+// Static for now (main hand / off hand / armor, mirroring
+// rpg-dnd5e-web#557 fixtures.ts's MARTIAL_SLOTS) — a future class- or
+// module-driven taxonomy plugs in here without changing the shape rpg-api
+// consumes.
+type SlotDefView struct {
+	Key          string
+	DisplayLabel string
+	Accepts      []string
+}
+
+// equipSlotTaxonomy is the static slot taxonomy EquipmentView.Slots
+// returns. See SlotDefView's doc for why it's static today.
+var equipSlotTaxonomy = []SlotDefView{
+	{Key: string(SlotMainHand), DisplayLabel: "Main hand", Accepts: []string{"weapon"}},
+	{Key: string(SlotOffHand), DisplayLabel: "Off hand", Accepts: []string{"weapon", "shield"}},
+	{Key: string(SlotArmor), DisplayLabel: "Armor", Accepts: []string{"armor"}},
+}
+
 // EquipmentView is the display projection rpg-api needs to serve
 // equipped/inventory items and armor class (rpg-toolkit#811) — every item
-// the character owns, the composed AC total and note, and the resolved
-// main-hand damage display (contract §5). rpg-api passes these through
-// verbatim; it never assembles them from rules data.
+// the character owns, the slot taxonomy, the composed AC total and note,
+// and the resolved main-hand damage display (contract §5). This is THE
+// single projection rpg-api maps to the wire CharacterData: every display
+// field comes from here, composed with zero rules knowledge required
+// upstream.
 type EquipmentView struct {
 	Items          []EquippedItemView
+	Slots          []SlotDefView
 	ACTotal        int
 	ACNote         string
 	MainHandDamage string
 }
 
 // EquipmentView composes the display projection for this character's
-// inventory and effective AC: a stat_line per owned item (equipped or
-// carried), AC total + note, and the resolved main-hand damage display.
-// Consumable by rpg-api with zero rules knowledge.
+// inventory and effective AC: identity + SlotKeys + stat_line per owned
+// item (equipped or carried), the slot taxonomy, AC total + note, and the
+// resolved main-hand damage display. Consumable by rpg-api with zero
+// rules knowledge.
 func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 	items := make([]EquippedItemView, 0, len(c.inventory))
 	for _, invItem := range c.inventory {
 		id := invItem.Equipment.EquipmentID()
 		items = append(items, EquippedItemView{
 			ItemID:   id,
+			Name:     invItem.Equipment.EquipmentName(),
+			Kind:     itemKind(invItem.Equipment),
+			SlotKeys: slotKeys(CompatibleSlots(invItem.Equipment)),
 			Slot:     c.equipmentSlots.slotFor(id),
 			StatLine: StatLine(equipment.ResolveEquipmentDetail(id)),
 		})
@@ -55,10 +87,25 @@ func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 	mainHand := c.GetEquippedSlot(SlotMainHand)
 	return &EquipmentView{
 		Items:          items,
+		Slots:          equipSlotTaxonomy,
 		ACTotal:        breakdown.Total,
 		ACNote:         ACNote(breakdown),
 		MainHandDamage: MainHandDamage(mainHand.AsWeapon(), c.GetEquippedSlot(SlotOffHand)),
 	}
+}
+
+// slotKeys converts CompatibleSlots' typed InventorySlots into the plain
+// strings EquippedItemView.SlotKeys carries. Returns nil for no
+// compatible slots (slotless gear).
+func slotKeys(slots []InventorySlot) []string {
+	if len(slots) == 0 {
+		return nil
+	}
+	keys := make([]string, len(slots))
+	for i, s := range slots {
+		keys[i] = string(s)
+	}
+	return keys
 }
 
 // MainHandDamage composes the resolved main-hand damage display for the
