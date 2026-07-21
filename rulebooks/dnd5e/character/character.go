@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
@@ -917,13 +918,20 @@ func (c *Character) GetEquippedSlot(slot InventorySlot) *EquippedItem {
 	return nil
 }
 
-// EquipItem equips an inventory item to the specified slot.
-// Returns error if the item is not in inventory.
+// EquipItem equips an inventory item to the specified slot, enforcing
+// two-handed weapon occupancy (rpg-toolkit#811): a two-handed weapon
+// always claims main hand and clears the off hand; equipping into the off
+// hand while a two-handed weapon is held frees the main hand for the new
+// item. Equipping into an occupied slot overwrites the slot mapping — the
+// previous occupant remains in inventory, simply no longer equipped.
+// Returns error if the item is not in inventory or cannot occupy the slot.
 func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 	// Verify item exists in inventory
+	var item equipment.Equipment
 	found := false
 	for _, invItem := range c.inventory {
 		if invItem.Equipment.EquipmentID() == itemID {
+			item = invItem.Equipment
 			found = true
 			break
 		}
@@ -933,10 +941,41 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 		return rpgerr.New(rpgerr.CodeNotFound, "item not found in inventory")
 	}
 
+	if !equipmentFitsSlot(item, slot) {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "item cannot be equipped in that slot",
+			rpgerr.WithMeta("item_id", itemID),
+			rpgerr.WithMeta("slot", slot))
+	}
+
 	// Initialize map if nil
 	if c.equipmentSlots == nil {
 		c.equipmentSlots = make(EquipmentSlots)
 	}
+
+	// A two-handed weapon claims main hand and forces the off hand empty.
+	// equipmentFitsSlot above already limits two-handed weapons to main
+	// hand, so slot == SlotMainHand whenever this branch runs.
+	if isTwoHanded(item) {
+		c.equipmentSlots.Clear(SlotOffHand)
+		c.equipmentSlots.Set(SlotMainHand, itemID)
+		return nil
+	}
+
+	// Moving an equipped item into a new slot vacates its old slot.
+	for s, id := range c.equipmentSlots {
+		if id == itemID {
+			c.equipmentSlots.Clear(s)
+		}
+	}
+
+	// Main hand holding a two-handed weapon blocks the off hand until
+	// something is equipped there, which frees the main hand.
+	if slot == SlotOffHand {
+		if mainHand := c.GetEquippedSlot(SlotMainHand); mainHand != nil && isTwoHanded(mainHand.Item) {
+			c.equipmentSlots.Clear(SlotMainHand)
+		}
+	}
+
 	c.equipmentSlots.Set(slot, itemID)
 	return nil
 }
@@ -1304,7 +1343,7 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 		if dexMod != 0 {
 			breakdown.AddComponent(combat.ACComponent{
 				Type:   combat.ACSourceAbility,
-				Source: nil, // Ability modifiers don't have specific refs
+				Source: refs.Abilities.Dexterity(),
 				Value:  dexMod,
 			})
 		}
@@ -1320,7 +1359,7 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 		if dexMod != 0 {
 			breakdown.AddComponent(combat.ACComponent{
 				Type:   combat.ACSourceAbility,
-				Source: nil,
+				Source: refs.Abilities.Dexterity(),
 				Value:  dexMod,
 			})
 		}
