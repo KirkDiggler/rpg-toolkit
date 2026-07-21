@@ -41,12 +41,26 @@ type SlotDefView struct {
 	Accepts      []string
 }
 
-// equipSlotTaxonomy is the static slot taxonomy EquipmentView.Slots
-// returns. See SlotDefView's doc for why it's static today.
+// equipSlotTaxonomy is the static slot taxonomy EquipmentView.Slots is
+// cloned from. See SlotDefView's doc for why it's static today.
 var equipSlotTaxonomy = []SlotDefView{
 	{Key: string(SlotMainHand), DisplayLabel: "Main hand", Accepts: []string{"weapon"}},
 	{Key: string(SlotOffHand), DisplayLabel: "Off hand", Accepts: []string{"weapon", "shield"}},
 	{Key: string(SlotArmor), DisplayLabel: "Armor", Accepts: []string{"armor"}},
+}
+
+// cloneSlotTaxonomy deep-copies equipSlotTaxonomy — including each
+// SlotDefView's Accepts slice — so a caller mutating one EquipmentView's
+// Slots can never affect the shared package-level taxonomy (or a
+// concurrent/later EquipmentView call).
+func cloneSlotTaxonomy() []SlotDefView {
+	view := make([]SlotDefView, len(equipSlotTaxonomy))
+	for i, def := range equipSlotTaxonomy {
+		accepts := make([]string, len(def.Accepts))
+		copy(accepts, def.Accepts)
+		view[i] = SlotDefView{Key: def.Key, DisplayLabel: def.DisplayLabel, Accepts: accepts}
+	}
+	return view
 }
 
 // EquipmentView is the display projection rpg-api needs to serve
@@ -87,7 +101,7 @@ func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 	mainHand := c.GetEquippedSlot(SlotMainHand)
 	return &EquipmentView{
 		Items:          items,
-		Slots:          equipSlotTaxonomy,
+		Slots:          cloneSlotTaxonomy(),
 		ACTotal:        breakdown.Total,
 		ACNote:         ACNote(breakdown),
 		MainHandDamage: MainHandDamage(mainHand.AsWeapon(), c.GetEquippedSlot(SlotOffHand)),

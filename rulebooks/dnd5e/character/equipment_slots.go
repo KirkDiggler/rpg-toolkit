@@ -76,7 +76,7 @@ func CompatibleSlots(item equipment.Equipment) []InventorySlot {
 		}
 		return []InventorySlot{SlotMainHand, SlotOffHand}
 	case *armor.Armor:
-		if it.Category == shieldCategory {
+		if it.Category == armor.CategoryShield {
 			return []InventorySlot{SlotOffHand}
 		}
 		return []InventorySlot{SlotArmor}
@@ -110,7 +110,7 @@ func itemKind(item equipment.Equipment) string {
 	case *weapons.Weapon:
 		return "weapon"
 	case *armor.Armor:
-		if it.Category == shieldCategory {
+		if it.Category == armor.CategoryShield {
 			return "shield"
 		}
 		return "armor"

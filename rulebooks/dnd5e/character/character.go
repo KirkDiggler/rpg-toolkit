@@ -31,11 +31,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-const (
-	// shieldCategory is the category value for shield items
-	shieldCategory = "shield"
-)
-
 // Compile-time check that Character implements ActionHolder and CombatAbilityHolder
 var _ actions.ActionHolder = (*Character)(nil)
 var _ combatabilities.CombatAbilityHolder = (*Character)(nil)
@@ -952,6 +947,20 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 		c.equipmentSlots = make(EquipmentSlots)
 	}
 
+	// Moving an equipped item into a new slot vacates its old slot(s).
+	// Runs before either occupancy branch below: EquipItem alone can
+	// never leave itemID mapped under more than one slot (a two-handed
+	// weapon's only compatible slot is main hand, so it can never already
+	// sit elsewhere when this runs), but corrupted/legacy persisted state
+	// could (LoadFromData copies EquipmentSlots verbatim, unvalidated) —
+	// running this first keeps that invariant regardless of how state
+	// arrived, instead of only guarding the non-two-handed path.
+	for s, id := range c.equipmentSlots {
+		if id == itemID {
+			c.equipmentSlots.Clear(s)
+		}
+	}
+
 	// A two-handed weapon claims main hand and forces the off hand empty.
 	// equipmentFitsSlot above already limits two-handed weapons to main
 	// hand, so slot == SlotMainHand whenever this branch runs.
@@ -959,13 +968,6 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 		c.equipmentSlots.Clear(SlotOffHand)
 		c.equipmentSlots.Set(SlotMainHand, itemID)
 		return nil
-	}
-
-	// Moving an equipped item into a new slot vacates its old slot.
-	for s, id := range c.equipmentSlots {
-		if id == itemID {
-			c.equipmentSlots.Clear(s)
-		}
 	}
 
 	// Main hand holding a two-handed weapon blocks the off hand until
@@ -1366,7 +1368,7 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 	}
 
 	// Add shield bonus if equipped
-	if shieldItem != nil && shieldItem.Category == shieldCategory {
+	if shieldItem != nil && shieldItem.Category == armor.CategoryShield {
 		breakdown.AddComponent(calculateShieldAC(shieldItem))
 	}
 
@@ -1375,7 +1377,7 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 		CharacterID: c.id,
 		Breakdown:   breakdown,
 		HasArmor:    armorItem != nil,
-		HasShield:   shieldItem != nil && shieldItem.Category == shieldCategory,
+		HasShield:   shieldItem != nil && shieldItem.Category == armor.CategoryShield,
 	}
 
 	// Create and publish through AC chain

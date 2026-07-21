@@ -136,3 +136,30 @@ func (s *EquipOccupancyTestSuite) TestEquippingOccupiedSlotSwapsOccupant() {
 	}
 	s.Assert().True(found, "unequipped item should remain in inventory")
 }
+
+// TestTwoHandedEquipVacatesStaleSlot is a regression test for a Copilot
+// finding on #812: the two-handed branch's early return used to run
+// before the vacate-old-slot loop, so if EquipmentSlots ever held the
+// same itemID under a stale key OTHER than off_hand (unreachable through
+// EquipItem alone — equipmentFitsSlot only ever lets a two-handed weapon
+// occupy main hand — but possible via corrupted/legacy persisted state,
+// since LoadFromData copies EquipmentSlots verbatim with no validation),
+// that stale mapping would survive equipping the two-hander into main
+// hand, leaving the same item nominally equipped in two slots at once.
+// (A stale off_hand entry specifically doesn't exercise this: the
+// two-handed branch already unconditionally clears off_hand as its own
+// occupancy rule, incidentally masking that case — this uses armor,
+// which nothing in the two-handed branch touches, to isolate the bug.)
+func (s *EquipOccupancyTestSuite) TestTwoHandedEquipVacatesStaleSlot() {
+	// Simulate corrupted/legacy state directly — greatsword already
+	// (invalidly) mapped under armor, as no legitimate EquipItem call
+	// could produce.
+	s.char.equipmentSlots[SlotArmor] = weapons.Greatsword
+
+	err := s.char.EquipItem(SlotMainHand, weapons.Greatsword)
+	s.Require().NoError(err)
+
+	s.Assert().Equal(weapons.Greatsword, s.char.equipmentSlots[SlotMainHand])
+	_, armorSlotStillHoldsIt := s.char.equipmentSlots[SlotArmor]
+	s.Assert().False(armorSlotStillHoldsIt, "stale armor-slot mapping must be vacated, not left duplicated")
+}

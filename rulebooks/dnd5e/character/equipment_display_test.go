@@ -214,6 +214,34 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 	}, view.Slots)
 }
 
+// TestEquipmentView_SlotsIsDefensiveCopy proves Slots (and each
+// SlotDefView.Accepts) is a copy, not a reference into the shared
+// package-level taxonomy — mutating one view's Slots must not leak into
+// a later EquipmentView call (Copilot finding on #812: returning the
+// shared slice/nested slices directly risked exactly this).
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_SlotsIsDefensiveCopy() {
+	char := &Character{
+		id:             "char-6",
+		bus:            s.bus,
+		abilityScores:  shared.AbilityScores{abilities.DEX: 10},
+		inventory:      []InventoryItem{},
+		equipmentSlots: make(EquipmentSlots),
+	}
+
+	first := char.EquipmentView(s.ctx)
+	first.Slots[0].Accepts[0] = "MUTATED"
+	first.Slots = append(first.Slots, SlotDefView{Key: "mutated_slot"})
+
+	second := char.EquipmentView(s.ctx)
+	s.Require().Len(second.Slots, 3)
+	s.Assert().Equal("weapon", second.Slots[0].Accepts[0])
+	s.Assert().Equal([]SlotDefView{
+		{Key: "main_hand", DisplayLabel: "Main hand", Accepts: []string{"weapon"}},
+		{Key: "off_hand", DisplayLabel: "Off hand", Accepts: []string{"weapon", "shield"}},
+		{Key: "armor", DisplayLabel: "Armor", Accepts: []string{"armor"}},
+	}, second.Slots)
+}
+
 // TestEquipmentView_CarriedItemHasNoSlot proves inventory items that
 // aren't equipped are still listed, just with an empty Slot.
 func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
