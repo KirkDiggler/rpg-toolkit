@@ -1,8 +1,8 @@
 ---
 name: rulebooks/dnd5e module
 description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 31 sub-packages (character/ alone in 24 files)
-updated: 2026-05-14
-confidence: high — verified by directory listing, grep over public symbols, rpg-api import-graph audit 049, and Wave 2.11d shipped-code verification
+updated: 2026-07-21
+confidence: high — verified by directory listing, grep over public symbols, rpg-api import-graph audit 049, and Wave 2.11d shipped-code verification; #811/#812 equip rules section added 2026-07-21, verified against merged code (rulebooks/dnd5e/v0.67.0)
 ---
 
 # rulebooks/dnd5e module
@@ -79,7 +79,7 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `monstertraits/` | Special monster abilities | Medium |
 | `resources/` | Resource loading (ki, rage uses, spell slots) | Medium |
 | `spells/` | Spell list, slot management | Medium |
-| `equipment/` | Equipment slots + item interface | Medium |
+| `equipment/` | Item interface + detail resolution (`ResolveEquipmentDetail`) — slot occupancy itself lives in `character/`, see below | Medium |
 | `weapons/` | Weapon definitions and proficiencies | High — used in combat tests |
 | `dungeon/` | Procedural dungeon: room types, wall perimeters, door spawning | Medium (336 test lines) |
 | `gamectx/` | D&D-specific game-context plumbing — combatant registry, characters, room | Low |
@@ -447,7 +447,8 @@ Persistence pattern matches the broader `ToData`/`LoadFromData` convention
 | `character.DraftData`, `character.DraftConfig`, `character.NewDraft`, `character.LoadDraftFromData` | draft lifecycle |
 | `character.SetRaceInput`, `character.SetClassInput`, `character.SetBackgroundInput`, `character.SetAbilityScoresInput`, `character.SetNameInput` | per-step setters |
 | `character.Progress`, `character.ProgressClass`, `character.ProgressRace`, `character.ProgressName` | draft progress |
-| `character.EquipmentSlots`, `character.SlotMainHand`, `character.SlotOffHand` | equipment slots |
+| `character.EquipmentSlots`, `character.SlotMainHand`, `character.SlotOffHand`, `character.EquipItem`, `character.CompatibleSlots` | equipment slots + occupancy rule |
+| `character.EquipmentView`, `character.EquippedItemView`, `character.SlotDefView`, `character.StatLine`, `character.ACNote`, `character.MainHandDamage` | the wire display projection — see below |
 | `character.ActionEconomyData`, `character.GrantedActionKey` | action-economy |
 | `character.ClassChoices`, `character.RaceChoices` | choice-data conversion |
 | `character.GetCharacterInput`, `character.DeleteCharacterInput` | service-shape inputs |
@@ -494,6 +495,77 @@ The Monk Martial Arts unarmed strike is a bonus action (PHB p.78):
 `executeUnarmedStrike` spends both the granted martial-arts capacity AND the
 `BonusActionsRemaining` slot — without the slot decrement the bonus action was
 silently never spent.
+
+### Equip rules: EquipmentView as the single wire projection (rpg-toolkit#811)
+
+`Character.EquipItem(slot, itemID) error` was a bare `equipmentSlots.Set`
+with no occupancy rule at all before this PR; it now enforces two-handed
+weapon occupancy. A two-handed weapon (`weapons.PropertyTwoHanded`) claims
+main hand and clears off hand; equipping into off hand while a two-hander is
+held frees main hand; equipping into an occupied slot overwrites the mapping
+(the previous occupant stays in inventory, just no longer equipped —
+inventory and equip-state are separate maps by design); equipping an
+incompatible slot now returns an error instead of silently succeeding. The
+compatibility rule itself is exported —
+`CompatibleSlots(item equipment.Equipment) []InventorySlot`
+(`equipment_slots.go`) — as the single source of truth `EquipItem` validates
+against; `equipmentFitsSlot` is just a membership check over it. Ported
+(TDD, red before green) from rpg-dnd5e-web#557 `fixtures.test.ts`'s
+`applyIntent` describe block, the fixture reducer's semantics being the
+acceptance spec — 6 of the file's 9 tests; the other 3 cover `targetSlotFor`,
+a client-side click-targeting convenience computed from wire data with no
+rules knowledge, deliberately not ported.
+
+One invariant worth flagging for anyone touching `EquipItem` again: the
+vacate-old-slot pass runs **unconditionally**, before either occupancy
+branch — not just guarding the non-two-handed path. `EquipItem` alone can
+never leave an itemID mapped under more than one slot (a two-handed weapon's
+only compatible slot is main hand, so it can never already sit elsewhere
+when the two-handed branch runs), but `LoadFromData` copies `EquipmentSlots`
+verbatim with zero validation — corrupted or legacy persisted state could
+carry a stale duplicate mapping, and equipping that item would otherwise
+leave it nominally equipped in two slots at once. Caught by Copilot review
+on #812, traced to confirm it was real (a stale mapping under *off hand*
+specifically does NOT reproduce it — the two-handed branch already
+unconditionally clears off hand as its own rule, incidentally self-healing
+that one slot), and fixed before merge.
+
+`Character.EquipmentView(ctx context.Context) *EquipmentView`
+(`equipment_display.go`) is this slice's real design point: **the one
+projection rpg-api maps field-for-field to `CharacterData`'s equipment
+surface**, composing nothing itself.
+
+| Field | Composed by | Example |
+|---|---|---|
+| `Items[].Name`, `.Kind` | direct from the owned `equipment.Equipment` (`"weapon"｜"shield"｜"armor"｜"gear"`) | `"Longsword"`, `"weapon"` |
+| `Items[].SlotKeys` | `CompatibleSlots`, projected to `[]string` | `["main_hand","off_hand"]`; `nil` for slotless gear |
+| `Items[].Slot` | `equipmentSlots.slotFor` | `""` if carried but not equipped |
+| `Items[].StatLine` | `StatLine(*equipment.EquipmentDetail)` | `"1d8 slashing · versatile"`, `"AC 16 · heavy"`, `"+2 AC"` (shields) |
+| `Slots` | static taxonomy (`equipSlotTaxonomy`, deep-copied per call via `cloneSlotTaxonomy`) | main_hand/off_hand/armor, each with `DisplayLabel` + `Accepts` |
+| `ACTotal`, `ACNote` | `EffectiveAC` + `ACNote(*combat.ACBreakdown)` | `"16 chain mail + 2 shield"`, `"10 + 2 DEX + 3 (Unarmored Defense)"` |
+| `MainHandDamage` | `MainHandDamage(weapon, offHand)` | `"1d10 slashing"` (versatile, off hand free); `"1d4 piercing · off-hand 1d4"` (dual-wield) |
+
+`ACNote` composes generically off `ACBreakdown.Components`' `Type`/`Source`/
+`Value` — a new AC-affecting feature/condition/spell labels itself
+automatically from its component's `Source` ref, no per-source hardcoding in
+`ACNote` as sources are added. This required giving `EffectiveAC`'s DEX
+components a real `Source` ref (`refs.Abilities.Dexterity()`) instead of the
+`nil` they carried before. `MainHandDamage` steps a versatile weapon's
+one-handed die up one notch (`versatileStepUp`: 4→6→8→10→12, the standard 5e
+progression, hardcoded the same way `conditions/martial_arts.go`'s
+monk-level dice table is) only when the off hand is completely empty; a
+shield or a second weapon there forces the one-handed die, and a weapon
+there folds in as a dual-wield fragment instead.
+
+`EquipmentView.Slots` returns a defensive deep copy — both the `Slots` slice
+and each `SlotDefView.Accepts` slice — so a caller mutating one call's
+result can't corrupt the shared package-level taxonomy or a later call
+(another Copilot #812 catch).
+
+Serves the approved rpg-dnd5e-web#557 concept via rpg-api-protos#187 and
+rpg-api#682/#680. No ADR: this is a package-local API design point (one
+struct as the wire-facing shape for a feature), not a cross-module boundary
+or a reversal of a remembered model — the bar the existing ADRs clear.
 
 ## Activation surface — features Activate, conditions Apply
 
