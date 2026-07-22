@@ -24,7 +24,7 @@
       "task": "TDD: DungeonConnectorParams lock fields, generation, validation, persistence, full unlock-flow integration",
       "status": "completed",
       "artifacts": ["encounter/dungeon.go", "encounter/locked_connector_test.go"],
-      "commit": null,
+      "commit": "a5c38cb",
       "notes": "RED: wrote encounter/locked_connector_test.go referencing DungeonConnectorParams.Locked/LockDC/LockAbility/LockTool (did not exist yet) -- go test failed to build with exactly the expected 'undefined field' errors on those 4 fields (9 occurrences across the file), zero other build errors once a pre-existing core.HexSet map-index-as-bool test bug was fixed (View.RevealedHexes is core.HexSet i.e. map[Hex]struct{}, not map[Hex]bool -- switched two assertions to .Has()). GREEN: added Locked/LockDC/LockAbility/LockTool to DungeonConnectorParams (doc'd per CI public-API rules); InitDungeon's door-staging loop copies them onto the generated DoorData when Locked; validateDungeonParams gained a new pre-mutation loop rejecting Locked && LockDC<=0 or Locked && LockAbility==\"\" (mirrors the file's existing duplicate-ID/unknown-archetype gates -- runs before any Space/Doors mutation, so atomicity falls out for free, no rollback logic needed for this new check). All 8 new tests pass; zero other test in the module touched or modified.",
       "tests_added": [
         "TestInitDungeon_RejectsLockedConnectorWithoutDC",
@@ -42,11 +42,22 @@
       "task": "Full verification sweep",
       "status": "completed",
       "artifacts": [],
-      "commit": null,
+      "commit": "0a6f089",
       "notes": "go build ./... clean; go vet ./... clean; go test -count=1 ./... all green (55s, full module incl. new tests); go test -race -count=1 ./... all green (56s); gofmt -s -l . empty; goimports -l -local github.com/KirkDiggler . flags 13 PRE-EXISTING files (none touched by this change) -- confirmed byte-identical list against a throwaway origin/main worktree, so zero new drift introduced; go mod tidy produces no go.mod/go.sum diff. golangci-lint pinned to the repo's CI version (v2.2.1, per .github/workflows/ci-enhanced.yml GOLANGCI_VERSION, installed standalone to /tmp/opencode/toolbin since the ambient global install was v2.12.2) run against --config=../.golangci.yml: 0 issues. Diff confined to encounter/dungeon.go (extended) and encounter/locked_connector_test.go (new) -- no other module, no go.mod/go.work changes, no proto/API/client/monster/obstacle/HP code touched."
+    },
+    {
+      "id": "2026-07-22-004",
+      "task": "Open PR #824, verify CI + automated review",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Pushed feat/815-locked-boss-door; opened PR #824 (ready, not draft), body includes dependency proof, scope, out-of-scope list, test roster, and full verification evidence, signed '-- platform agent, on behalf of KirkDiggler'. Confirmed via GraphQL closingIssuesReferences that PR #824 closes #815. Polled gh pr checks until settled: ci-status=pass, test-changed(encounter,1.25.x)=pass, changes=pass; the other jobs (detect-modules/lint/mod-tidy/test-all/build/test/all-checks-passed) report 'skipping' -- expected, this repo's CI fans out per-module and skips modules the changed-files filter didn't select (only encounter/ changed) while ci-status is the actual required gate. Copilot's automated PR review (copilot-pull-request-reviewer) completed: summary body explicitly states 'Copilot reviewed 4 out of 4 changed files ... and generated no comments.' Confirmed zero inline review threads via GraphQL reviewThreads (nodes: []) and zero PR-level comments (gh pr view --json comments empty) -- nothing to reply to or resolve.",
+      "pr": "https://github.com/KirkDiggler/rpg-toolkit/pull/824",
+      "ci_status": "pass",
+      "copilot_review": "completed, zero comments, zero review threads"
     }
   ],
   "next_steps": [
-    "None outstanding for #815's toolkit scope. Open PR, address any automated review comments, do not merge."
+    "None outstanding. PR #824 open, ready-not-draft, CI green, zero automated review comments to address. Awaiting human merge decision -- not merging per instructions."
   ]
 }
