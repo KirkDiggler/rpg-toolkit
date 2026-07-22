@@ -4,64 +4,73 @@
       "id": "region-archetype-vocabulary",
       "feature": "region-archetype",
       "prompt": "RegionData gains an Archetype field of a generic RegionArchetype type with exactly the values entrance | chamber | corridor | boss.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestRegionArchetype_GenericVocabulary (dungeon_test.go)."
     },
     {
       "id": "space-theme-opaque-passthrough",
       "feature": "space-theme",
       "prompt": "SpaceData gains a Theme string field, distinct from RegionData.Archetype, that InitDungeon copies verbatim from DungeonParams.Theme without branching on its value anywhere in the generator.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestSpaceData_ThemeIsOpaqueAndDistinctFromArchetype + DungeonSuite/TestRegions_ArchetypesThemeAndPartition (Theme='crypt' round-trip). Grepped dungeon.go/two_chamber.go for any `Theme ==`/switch-on-Theme branching: none exists."
     },
     {
       "id": "init-dungeon-validates-region-count",
       "feature": "init-dungeon",
       "prompt": "InitDungeon rejects fewer than 2 regions (a dungeon needs at least an entrance and one connected region).",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsFewerThanTwoRegions."
     },
     {
       "id": "init-dungeon-validates-connector-count",
       "feature": "init-dungeon",
       "prompt": "InitDungeon rejects a Connectors slice whose length is not exactly len(Regions)-1.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsWrongConnectorCount."
     },
     {
       "id": "init-dungeon-validates-dimensions-and-door-ids",
       "feature": "init-dungeon",
       "prompt": "InitDungeon rejects any region narrower than 4, a shared Height under 4, and any connector with an empty DoorID.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsNarrowRegion, TestInitDungeon_RejectsShortSharedHeight, TestInitDungeon_RejectsEmptyDoorID."
     },
     {
       "id": "init-dungeon-boss-scale-invariant",
       "feature": "init-dungeon",
       "prompt": "InitDungeon rejects (generation-time assertion, not eyeballing) any boss-archetype region whose primary playable axis (min(width, shared height)) does not exceed 6 hex steps.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsUndersizedBossRoom (axis==6 rejected), TestInitDungeon_AcceptsBossRoomExceedingScaleInvariant (axis>6 accepted). Enforced in validateDungeonParams, called unconditionally at the top of InitDungeon."
     },
     {
       "id": "init-dungeon-n-region-linear-chain",
       "feature": "init-dungeon",
       "prompt": "A 3-region linear dungeon (entrance chamber -> corridor -> boss chamber, 2 doors) generates with a reproducible seed; every region is reachable from the entrance once its door opens; RegionAt returns the right archetype for each hex; a closed connector door blocks movement+LoS across it, matching the two-chamber behavior generalized to N.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "DungeonSuite (dungeon_test.go): TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors, TestOpeningBothDoors_ConnectsEntranceThroughToBoss, TestRegions_ArchetypesThemeAndPartition, TestLayout_DeterministicSeedVsEntropyDefault. NOTE (concern, not a regression): the fixture's corridor width had to be nudged from 4 to 5 hexes to sidestep a pre-existing tools/environments|tools/spatial pointy-top-hex-grid parity quirk in IsLineOfSightBlocked's short-range raycast across a door column of certain column parity relative to its flanking columns — reproduced and isolated to that dependency, unrelated to InitDungeon's own geometry math (identical wall placement on both doors; only LOS raycast result differed by door-column parity). Movement/BFS reachability was unaffected in both parities. Out of scope for #814 to fix (different module); flagged in the PR body."
     },
     {
       "id": "init-dungeon-crypt-shaped-capability",
       "feature": "init-dungeon",
       "prompt": "InitDungeon's generic parameters are flexible enough to express the first crypt's entrance/corridor/boss shape (Theme='crypt' passthrough only, no crypt-specific branching in the generator) without emitting a chamber archetype.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "DungeonSuite/TestFirstCryptTemplate_EntranceCorridorBossWithoutChamberArchetype."
     },
     {
       "id": "two-chamber-compat-via-generalized-entry-point",
       "feature": "two-chamber-compat",
       "prompt": "InitTwoChamberRoom delegates to the generalized InitDungeon entry point internally (retiring the duplicate wall-generation implementation) while every existing encounter/two_chamber_test.go assertion (region IDs, entrance, door blocking/LoS, determinism-vs-entropy) continues to pass unchanged.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "two_chamber.go rewritten as a thin validating wrapper calling e.InitDungeon(...); two_chamber_test.go untouched and green (TestTwoChamberSuite, TestRegionAt_NilReceiver). Retired duplicate helpers: chamberCubes, chamberWallSegments, generateChamberWalls, hexesFromCubes, chamberPathWidth (now regionCubes/regionWallSegments/generateRegionWalls/hexesFromCubes/dungeonPathWidth in dungeon.go, shared by both entry points)."
     }
   ]
 }
