@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
@@ -339,6 +340,17 @@ func (s *DungeonSuite) TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors(
 		s.False(corridor[h], "closed door 0 must block all movement into the corridor; reached %v", h)
 		s.False(boss[h], "closed doors must block all movement into the boss room; reached %v", h)
 	}
+
+	s.True(
+		s.enc.Room().IsLineOfSightBlocked(
+			dungeonRegionFarEdgeHex(0).ToPosition(), dungeonRegionNearEdgeHex(1).ToPosition()),
+		"closed door 0 must block LoS from the entrance region into the corridor",
+	)
+	s.True(
+		s.enc.Room().IsLineOfSightBlocked(
+			dungeonRegionFarEdgeHex(1).ToPosition(), dungeonRegionNearEdgeHex(2).ToPosition()),
+		"closed door 1 must block LoS from the corridor into the boss room",
+	)
 }
 
 // TestOpeningBothDoors_ConnectsEntranceThroughToBoss: opening both
@@ -486,4 +498,41 @@ func (s *DungeonSuite) TestFirstCryptTemplate_EntranceCorridorBossWithoutChamber
 	s.Require().NotEmpty(boss.ID, "fixture must have a boss region")
 	s.Greater(dungeonBossWidth, 6, "boss region width must exceed 6 hex steps")
 	s.Greater(dungeonHeight, 6, "shared height (boss's other playable axis) must exceed 6 hex steps")
+}
+
+// TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState: InitDungeon's
+// per-connector door placement must be atomic — either the whole dungeon
+// (Space + every connector door) commits, or a failure leaves the
+// encounter exactly as it was before the call. This reproduces the gap a
+// naive "loop e.AddDoor per connector" implementation has: if the shared
+// room-rebuild step fails partway (here, forced by a pre-existing door at
+// an out-of-bounds position, since rebuildRoomFromData otherwise
+// defensively de-duplicates same-cell placements rather than erroring),
+// e.data.Space and any connector doors staged by THIS call must not
+// leak into the encounter's observable state.
+func TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState(t *testing.T) {
+	enc := newTestEncounter(t)
+
+	// Pre-seed a door at a position no dungeon of this size will ever
+	// reach — Space is nil at this point, so AddDoor just records it
+	// without attempting a room rebuild (mirrors a host that added a
+	// hand-placed door before calling InitDungeon). Once InitDungeon sets
+	// Space and rebuilds the room, this decoy's out-of-bounds position
+	// makes spatial.BasicRoom.PlaceEntity fail deterministically.
+	const decoyDoorID = core.EntityID("decoy-out-of-bounds-door")
+	outOfBounds := core.HexFromPosition(spatial.Position{X: 9999, Y: 9999})
+	require.NoError(t, enc.AddDoor(decoyDoorID, outOfBounds, false))
+
+	err := enc.InitDungeon(threeRegionDungeonParams(dungeonSeed))
+	require.Error(t, err, "InitDungeon must fail when the room rebuild fails")
+
+	data := enc.ToData()
+	require.Nil(t, data.Space, "a failed InitDungeon must not leave a partially-built Space")
+	_, hasDoor0 := data.Doors[dungeonDoor0ID]
+	_, hasDoor1 := data.Doors[dungeonDoor1ID]
+	require.False(t, hasDoor0, "a failed InitDungeon must not leave connector 0's door behind")
+	require.False(t, hasDoor1, "a failed InitDungeon must not leave connector 1's door behind")
+	_, hasDecoy := data.Doors[decoyDoorID]
+	require.True(t, hasDecoy, "InitDungeon must not touch doors that existed before the call")
+	require.Nil(t, enc.Room(), "a failed InitDungeon must not leave a partially-rebuilt room registered")
 }

@@ -92,6 +92,19 @@ type DungeonConnectorParams struct {
 // tagged regions (SpaceData.Regions) for spawn placement and, via LoS,
 // combat pockets. Generalizes InitTwoChamberRoom (rpg-toolkit#806) from a
 // fixed two chambers to any N>=2 regions (rpg-toolkit#814).
+//
+// InitDungeon is atomic: either the whole dungeon (Space + every
+// connector door) commits, or a failure leaves the encounter exactly as
+// it was before the call. Connector doors are staged directly into
+// e.data.Doors and committed via a SINGLE rebuildRoomFromData call —
+// rather than looping e.AddDoor once per connector, which would rebuild
+// the room N-1 times and, if a LATER connector's door failed to place,
+// leave the earlier connectors' doors (and the freshly-set Space) behind
+// despite returning an error. rebuildRoomFromData only swaps in
+// e.room/e.roomOrchestrator (via registerRoom) after every wall/door in
+// the batch places successfully, so a failure here never touches the
+// room side; restoring data.Space and removing the doors staged by this
+// call below completes the rollback.
 func (e *Encounter) InitDungeon(params DungeonParams) error {
 	if err := validateDungeonParams(params); err != nil {
 		return err
@@ -102,6 +115,7 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		return fmt.Errorf("generate dungeon layout: %w", err)
 	}
 
+	previousSpace := e.data.Space
 	e.data.Space = &SpaceData{
 		Walls:    layout.walls,
 		Width:    layout.width,
@@ -111,10 +125,19 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		Theme:    params.Theme,
 	}
 
+	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors))
 	for i, door := range layout.doors {
-		if err := e.AddDoor(params.Connectors[i].DoorID, core.HexFromCube(door), false); err != nil {
-			return err
+		doorID := params.Connectors[i].DoorID
+		e.data.Doors[doorID] = &DoorData{ID: doorID, Position: core.HexFromCube(door), Open: false}
+		stagedDoorIDs = append(stagedDoorIDs, doorID)
+	}
+
+	if err := e.rebuildRoomFromData(); err != nil {
+		for _, id := range stagedDoorIDs {
+			delete(e.data.Doors, id)
 		}
+		e.data.Space = previousSpace
+		return fmt.Errorf("init dungeon: rebuild room: %w", err)
 	}
 	return nil
 }
