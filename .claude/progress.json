@@ -55,9 +55,18 @@
       "pr": "https://github.com/KirkDiggler/rpg-toolkit/pull/824",
       "ci_status": "pass",
       "copilot_review": "completed, zero comments, zero review threads"
+    },
+    {
+      "id": "2026-07-22-005",
+      "task": "Merge origin/main (PR #823 landed) to resolve PR #824 staleness",
+      "status": "completed",
+      "artifacts": [".claude/progress.json", ".claude/tests.json"],
+      "commit": null,
+      "notes": "origin/main advanced with PR #823 (#818 static obstacles: encounter/data.go, encounter/space.go, encounter/obstacle_test.go, its own .claude/*.json) merged after this branch was cut. GitHub reported PR #824 mergeable=CONFLICTING/mergeStateStatus=DIRTY. Ran `git fetch origin && git merge origin/main --no-ff` (no rebase, no amend, no force-push, per instruction). Production code merged cleanly with zero conflicts -- #823 never touched dungeon.go or locked_connector_test.go, confirmed via `git diff --stat e1f9840 e1690ec` before merging (data.go/space.go/obstacle_test.go only). The only conflicts were .claude/progress.json and .claude/tests.json, exactly as GitHub reported: #823's branch used the same scratch-file paths for its own unrelated goal/sessions/tests (branch=feat/818-static-obstacles). Resolved by keeping this branch's (#815's) versions verbatim (`git checkout --ours`) -- concatenating #823's contradictory top-level branch/goal/issues fields into this file would produce a nonsensical merged record (two goals, two branches) rather than a coherent one; #823's own history remains fully preserved in git log/PR #823 itself, not lost. No durable #823 fact needed folding in beyond this note -- #815's JSON was already valid and complete without it.",
+      "merge_verification": "encounter build/vet/test/-race/fmt/imports/tidy/golangci-lint(v2.2.1 pinned) all re-run at the merged HEAD; see the following session for exact results."
     }
   ],
   "next_steps": [
-    "None outstanding. PR #824 open, ready-not-draft, CI green, zero automated review comments to address. Awaiting human merge decision -- not merging per instructions."
+    "None outstanding. PR #824 open, ready-not-draft, merged with latest origin/main (#823), CI green, zero automated review comments to address. Awaiting human merge decision -- not merging per instructions."
   ]
 }
