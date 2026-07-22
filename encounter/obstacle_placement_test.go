@@ -1,0 +1,337 @@
+package encounter_test
+
+// obstacle_placement_test.go is the TDD gate for rpg-toolkit#819's GENERIC
+// half: a content-agnostic mechanism on InitDungeon (rpg-toolkit#814) that
+// places rpg-toolkit#818 ObstacleData instances into a region's floor from
+// caller-supplied ObstacleSpec values, safely (never on a required-path or
+// primary-combat-axis cell, never colliding with a wall/door/other
+// obstacle), deterministically by seed, and skipping instances that don't
+// fit rather than failing generation.
+//
+// This file never references crypt/coffin/altar/statue/obelisk/pillar —
+// that content lives in crypt_dungeon_test.go, exercising the SAME
+// mechanism this file proves out. See dungeon.go's ObstacleSpec/
+// DungeonRegionParams.Obstacles doc for why the split: the geometry code
+// must stay themeless, same discipline as Theme/Archetype already
+// documented there.
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
+
+const (
+	opSpecRefA = "test:obstacles:blocker-a"
+	opSpecRefB = "test:obstacles:blocker-b"
+)
+
+// opTwoRegionParams builds a minimal, otherwise-valid 2-region DungeonParams
+// (entrance -> chamber, PatternEmpty so wall placement never competes with
+// obstacle placement for candidate cells) with obstacleSpecs attached to
+// region 1 (the chamber) — the baseline every test in this file starts
+// from and mutates.
+func opTwoRegionParams(seed int64, specs []encounter.ObstacleSpec) encounter.DungeonParams {
+	return encounter.DungeonParams{
+		Height:     8,
+		RandomSeed: seed,
+		Regions: []encounter.DungeonRegionParams{
+			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
+			{
+				ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: 10, Pattern: environments.PatternEmpty,
+				Obstacles: specs,
+			},
+		},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+	}
+}
+
+// opNewEncounter mirrors newTestEncounter (dungeon_test.go) — a bare
+// Encounter for tests that don't need the full suite fixture machinery.
+func opNewEncounter(t *testing.T) *encounter.Encounter {
+	t.Helper()
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() {
+		_ = broker.Close()
+		_ = transport.Close()
+	})
+	return encounter.New(context.Background(), "enc-obstacle-placement-test", broker)
+}
+
+// TestInitDungeon_NoObstacleSpecs_PlacesNoObstacles: a DungeonRegionParams
+// with a nil/empty Obstacles field (every existing InitDungeon caller,
+// including InitTwoChamberRoom and every #814/#817/#818 fixture) must get
+// exactly zero obstacles — the new mechanism is opt-in and fully backward
+// compatible for generic, non-crypt callers.
+func TestInitDungeon_NoObstacleSpecs_PlacesNoObstacles(t *testing.T) {
+	enc := opNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(opTwoRegionParams(1, nil)))
+	data := enc.ToData()
+	require.Empty(t, data.Space.Obstacles, "no ObstacleSpec anywhere must yield zero placed obstacles")
+}
+
+// TestInitDungeon_ObstacleSpec_PlacesRequestedCountWithVerbatimFields:
+// a single ObstacleSpec with Count N places exactly N ObstacleData
+// entries, each carrying the spec's Ref/BlocksMovement/BlocksLoS verbatim
+// — the mechanism never interprets or mutates caller-supplied content.
+func TestInitDungeon_ObstacleSpec_PlacesRequestedCountWithVerbatimFields(t *testing.T) {
+	enc := opNewEncounter(t)
+	specs := []encounter.ObstacleSpec{
+		{Ref: opSpecRefA, Count: 3, BlocksMovement: true, BlocksLoS: false},
+	}
+	require.NoError(t, enc.InitDungeon(opTwoRegionParams(1, specs)))
+	data := enc.ToData()
+	require.Len(t, data.Space.Obstacles, 3)
+	for _, o := range data.Space.Obstacles {
+		require.Equal(t, opSpecRefA, o.Ref)
+		require.True(t, o.BlocksMovement)
+		require.False(t, o.BlocksLoS)
+	}
+}
+
+// TestInitDungeon_MultipleSpecsInOneRegion_AllPlacedWithoutCollision: two
+// distinct specs in the SAME region must place their combined instance
+// count with no two instances sharing a hex (validateObstacles/
+// rebuildRoomFromData's occupancy check would otherwise reject the whole
+// InitDungeon call — this test's NoError already proves no collision, but
+// asserts the position-uniqueness directly too, for a discriminating
+// failure message).
+func TestInitDungeon_MultipleSpecsInOneRegion_AllPlacedWithoutCollision(t *testing.T) {
+	enc := opNewEncounter(t)
+	specs := []encounter.ObstacleSpec{
+		{Ref: opSpecRefA, Count: 2, BlocksMovement: true, BlocksLoS: true},
+		{Ref: opSpecRefB, Count: 2, BlocksMovement: true, BlocksLoS: false},
+	}
+	require.NoError(t, enc.InitDungeon(opTwoRegionParams(2, specs)))
+	data := enc.ToData()
+	require.Len(t, data.Space.Obstacles, 4)
+
+	seen := make(map[core.Hex]bool, 4)
+	for _, o := range data.Space.Obstacles {
+		require.False(t, seen[o.Position], "obstacle %q collides with another at %v", o.ID, o.Position)
+		seen[o.Position] = true
+	}
+}
+
+// TestInitDungeon_ObstacleIDs_StableAndUnique: every placed obstacle's ID
+// is non-empty and unique within the dungeon, and (same seed, same call
+// shape) reproduces the IDENTICAL ID set across two independent Encounters
+// — a host or client keys a future interaction verb off these IDs across
+// ticks/reloads (data.go's ObstacleData.ID doc), so they must not be
+// randomly generated.
+func TestInitDungeon_ObstacleIDs_StableAndUnique(t *testing.T) {
+	build := func() []core.EntityID {
+		enc := opNewEncounter(t)
+		specs := []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 4, BlocksMovement: true}}
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(42, specs)))
+		ids := make([]core.EntityID, 0, 4)
+		seen := make(map[core.EntityID]bool, 4)
+		for _, o := range enc.ToData().Space.Obstacles {
+			require.NotEmpty(t, o.ID)
+			require.False(t, seen[o.ID], "duplicate obstacle ID %q", o.ID)
+			seen[o.ID] = true
+			ids = append(ids, o.ID)
+		}
+		return ids
+	}
+	a := build()
+	b := build()
+	require.Equal(t, a, b, "the same seed and params must reproduce the identical obstacle ID set")
+}
+
+// TestInitDungeon_ObstaclePlacement_DeterministicSameSeed: the same seed
+// reproduces byte-identical obstacle placement (ID, Ref, Position,
+// BlocksMovement, BlocksLoS for every entry) across independent Encounters
+// — mirrors TestLayout_DeterministicSeedVsEntropyDefault's wall-layout gate
+// for obstacles specifically.
+func TestInitDungeon_ObstaclePlacement_DeterministicSameSeed(t *testing.T) {
+	specs := []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 5, BlocksMovement: true, BlocksLoS: true}}
+	build := func() *encounter.Data {
+		enc := opNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(909, specs)))
+		return enc.ToData()
+	}
+	a := build()
+	b := build()
+	require.Equal(t, a.Space.Obstacles, b.Space.Obstacles, "identical seed must reproduce identical obstacle placement")
+}
+
+// TestInitDungeon_ObstaclePlacement_VariesAcrossSeeds: given a candidate
+// pool much larger than the requested count (so the seeded shuffle order
+// actually matters — "where guaranteed" per #819's done bar), different
+// seeds must select different positions at least some of the time. Tries
+// a handful of seed pairs, like TestLayout_DeterministicSeedVsEntropyDefault,
+// to avoid flakiness from an unlucky pair landing on the same shuffle
+// prefix.
+func TestInitDungeon_ObstaclePlacement_VariesAcrossSeeds(t *testing.T) {
+	specs := []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 2, BlocksMovement: true}}
+	build := func(seed int64) *encounter.Data {
+		enc := opNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(seed, specs)))
+		return enc.ToData()
+	}
+	varied := false
+	for seed := int64(1); seed < 20 && !varied; seed++ {
+		a := build(seed)
+		b := build(seed + 1000)
+		if a.Space.Obstacles[0].Position != b.Space.Obstacles[0].Position ||
+			a.Space.Obstacles[1].Position != b.Space.Obstacles[1].Position {
+			varied = true
+		}
+	}
+	require.True(t, varied, "different seeds must vary obstacle placement at least once across the sampled pairs")
+}
+
+// TestInitDungeon_ObstaclePlacement_NeverOnReservedRow: no placed obstacle
+// may sit on the shared doorRow (Height/2) — the row generateDungeonLayout
+// already reserves as every region's required connectivity path, and
+// which (spanning the region's FULL width) also satisfies the boss
+// archetype's primary-playable-axis invariant (#819's hard invariant).
+// Uses a PatternRandom region (unlike this file's other tests) so the
+// reserved-row exclusion is proven against real interior walls too, not
+// just an empty floor.
+func TestInitDungeon_ObstaclePlacement_NeverOnReservedRow(t *testing.T) {
+	enc := opNewEncounter(t)
+	params := encounter.DungeonParams{
+		Height:     8,
+		RandomSeed: 7,
+		Regions: []encounter.DungeonRegionParams{
+			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 10, Pattern: environments.PatternEmpty},
+			{
+				ID: "boss", Archetype: encounter.ArchetypeBoss, Width: 10, Pattern: environments.PatternRandom,
+				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 40, BlocksMovement: true, BlocksLoS: true}},
+			},
+		},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+	}
+	require.NoError(t, enc.InitDungeon(params))
+	data := enc.ToData()
+	require.NotEmpty(t, data.Space.Obstacles, "fixture must actually place obstacles for this to be a real proof")
+
+	doorRow := core.HexFromPosition(spatial.Position{X: 0, Y: 4}) // Height/2 = 4
+	_ = doorRow
+	for _, o := range data.Space.Obstacles {
+		pos := o.Position.ToPosition()
+		require.NotEqual(t, float64(4), pos.Y,
+			"obstacle %q at %v sits on the reserved doorRow (y=4); must never happen", o.ID, o.Position)
+	}
+}
+
+// TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity:
+// after placing a heavy obstacle load into the boss region, opening both
+// doors must still connect the entrance all the way to the boss region —
+// direct end-to-end proof (not just "not on the reserved row" in
+// isolation) that obstacle placement never breaks the connectivity
+// InitDungeon's wall generator already guarantees.
+func TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity(t *testing.T) {
+	enc := opNewEncounter(t)
+	params := encounter.DungeonParams{
+		Height:     8,
+		RandomSeed: 77,
+		Regions: []encounter.DungeonRegionParams{
+			{
+				ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 10, Pattern: environments.PatternEmpty,
+				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 20, BlocksMovement: true, BlocksLoS: true}},
+			},
+			{
+				ID: "corridor", Archetype: encounter.ArchetypeCorridor, Width: 5, Pattern: environments.PatternEmpty,
+				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 10, BlocksMovement: true, BlocksLoS: true}},
+			},
+			{
+				ID: "boss", Archetype: encounter.ArchetypeBoss, Width: 10, Pattern: environments.PatternEmpty,
+				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 20, BlocksMovement: true, BlocksLoS: true}},
+			},
+		},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}, {DoorID: "door-1"}},
+	}
+	require.NoError(t, enc.InitDungeon(params))
+
+	data := enc.ToData()
+	entrance := data.Space.Entrance
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: entrance, SightRange: 30,
+	}))
+	require.NoError(t, enc.OpenDoor(alicePlayerID, "door-0"))
+	require.NoError(t, enc.OpenDoor(alicePlayerID, "door-1"))
+
+	reachable := reachableFrom(enc.Room(), entrance)
+	boss := regionHexSet(enc.ToData().Space, "boss")
+	require.NotEmpty(t, boss)
+	reachedBoss := false
+	for h := range reachable {
+		if boss[h] {
+			reachedBoss = true
+			break
+		}
+	}
+	require.True(t, reachedBoss, "obstacle-heavy entrance/corridor/boss regions must still connect end to end")
+}
+
+// TestInitDungeon_ObstaclePlacement_SkipsWhenNoSafeHexRemains: a spec
+// requesting far more instances than the region has safe candidate cells
+// must place as many as fit and DROP the rest — InitDungeon must still
+// succeed (no error), matching #819's "a crypt missing one statue is
+// fine; a crypt that fails to generate ... is not" done-bar requirement.
+func TestInitDungeon_ObstaclePlacement_SkipsWhenNoSafeHexRemains(t *testing.T) {
+	enc := opNewEncounter(t)
+	// A 4x4 region (the generator's own floor) has 16 cells; one row (4
+	// cells) is the reserved doorRow, leaving at most 12 candidates. Ask
+	// for far more than could ever fit.
+	params := encounter.DungeonParams{
+		Height:     4,
+		RandomSeed: 3,
+		Regions: []encounter.DungeonRegionParams{
+			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 4, Pattern: environments.PatternEmpty},
+			{
+				ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: 4, Pattern: environments.PatternEmpty,
+				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 1000, BlocksMovement: true}},
+			},
+		},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+	}
+	err := enc.InitDungeon(params)
+	require.NoError(t, err, "InitDungeon must never fail because an obstacle spec could not fully fit")
+
+	data := enc.ToData()
+	require.NotEmpty(t, data.Space.Obstacles, "some obstacles should still have fit")
+	require.Less(t, len(data.Space.Obstacles), 1000, "an oversubscribed spec must place fewer than requested, not fail")
+}
+
+// TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData:
+// placed obstacles survive a ToData -> LoadFromData round trip byte for
+// byte, and the reloaded encounter's room re-derives the exact same
+// movement/LoS blocking at each obstacle's position that the original
+// (pre-reload) room had — proving rebuildRoomFromData (already exercised
+// by #818's own tests) agrees with THIS mechanism's output on replay, not
+// just on first build.
+func TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData(t *testing.T) {
+	enc := opNewEncounter(t)
+	specs := []encounter.ObstacleSpec{
+		{Ref: opSpecRefA, Count: 2, BlocksMovement: true, BlocksLoS: true},
+		{Ref: opSpecRefB, Count: 2, BlocksMovement: false, BlocksLoS: false},
+	}
+	require.NoError(t, enc.InitDungeon(opTwoRegionParams(55, specs)))
+	before := enc.ToData()
+
+	transport2 := encounter.NewInMemoryTransport()
+	broker2 := encounter.NewBroker(transport2)
+	t.Cleanup(func() { _ = broker2.Close(); _ = transport2.Close() })
+	reloaded, err := encounter.LoadFromData(context.Background(), before, broker2)
+	require.NoError(t, err)
+
+	after := reloaded.ToData()
+	require.Equal(t, before.Space.Obstacles, after.Space.Obstacles, "obstacles must round-trip byte-for-byte")
+
+	for _, o := range after.Space.Obstacles {
+		blocked := !reloaded.Room().CanPlaceEntity(probeEntity{}, o.Position.ToPosition())
+		require.Equal(t, o.BlocksMovement, blocked,
+			"obstacle %q BlocksMovement=%v must match the reloaded room's actual movement block", o.ID, o.BlocksMovement)
+	}
+}

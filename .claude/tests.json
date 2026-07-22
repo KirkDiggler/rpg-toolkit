@@ -1,3 +1,129 @@
 {
-  "tests": []
+  "tests": [
+    {
+      "id": "obstacle-no-specs-no-obstacles",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Call InitDungeon on a region with a nil/empty ObstacleSpec list (every pre-#819 caller). Verify SpaceData.Obstacles is empty -- fully backward compatible, opt-in mechanism.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_NoObstacleSpecs_PlacesNoObstacles"
+    },
+    {
+      "id": "obstacle-spec-verbatim-fields",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Give one region an ObstacleSpec with Count=3. Verify exactly 3 ObstacleData entries are placed, each carrying the spec's Ref/BlocksMovement/BlocksLoS verbatim.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstacleSpec_PlacesRequestedCountWithVerbatimFields"
+    },
+    {
+      "id": "obstacle-multiple-specs-no-collision",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Give one region two distinct ObstacleSpecs. Verify all instances place without error and no two instances share a hex.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_MultipleSpecsInOneRegion_AllPlacedWithoutCollision",
+      "mutation_verified": true
+    },
+    {
+      "id": "obstacle-ids-stable-and-unique",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build the same InitDungeon call twice with the same seed. Verify every obstacle ID is non-empty, unique within the dungeon, and the ID SET is identical across both builds.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstacleIDs_StableAndUnique",
+      "mutation_verified": true
+    },
+    {
+      "id": "obstacle-deterministic-same-seed",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build the same InitDungeon call (with ObstacleSpecs) twice with the same seed. Verify SpaceData.Obstacles is byte-for-byte identical.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstaclePlacement_DeterministicSameSeed"
+    },
+    {
+      "id": "obstacle-varies-across-seeds",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "With a candidate pool much larger than the requested obstacle count, build with several different seed pairs. Verify at least one pair produces different obstacle positions.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstaclePlacement_VariesAcrossSeeds"
+    },
+    {
+      "id": "obstacle-never-on-reserved-row",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Overload a boss region with a large obstacle count (PatternRandom walls present). Verify no placed obstacle sits on the shared doorRow (the required-path / primary-combat-axis row).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstaclePlacement_NeverOnReservedRow",
+      "mutation_verified": true
+    },
+    {
+      "id": "obstacle-preserves-connectivity",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Heavily obstacle-load an entrance/corridor/boss dungeon. Open both connector doors. Verify the entrance still reaches the boss region via a walkable path.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity"
+    },
+    {
+      "id": "obstacle-skip-on-no-fit",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Request 1000 instances of an obstacle spec in a 4x4 region (at most ~12 safe candidate cells). Verify InitDungeon succeeds (no error) and places fewer than 1000 -- decoration must never fail structural generation.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstaclePlacement_SkipsWhenNoSafeHexRemains",
+      "mutation_verified": true
+    },
+    {
+      "id": "obstacle-roundtrip-and-los-agreement",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Place obstacles with mixed BlocksMovement/BlocksLoS, ToData, then LoadFromData into a fresh Encounter. Verify Obstacles round-trip byte-for-byte and the reloaded room's actual movement-blocking at each obstacle's position matches its declared BlocksMovement.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData"
+    },
+    {
+      "id": "crypt-region-archetype-composition",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build CryptDungeonParams. Verify entrance carries obelisk+pillar (never coffin/altar/statue), corridor carries only a single sparse pillar (never the other 4 refs), and boss carries coffin+altar+2 flanking statues (never obelisk).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeonParams_RegionArchetypeComposition",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-refs-no-model-paths",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify every approved crypt obstacle ref matches the plain opaque 'dnd5e:obstacles:<kind>' shape -- no model filename or Synty-specific path.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths"
+    },
+    {
+      "id": "crypt-generates-placeable-dungeon",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "InitDungeon a real crypt via CryptDungeonParams. Verify it succeeds and every placed obstacle's ref is within the 5 approved crypt refs.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces"
+    },
+    {
+      "id": "crypt-connectivity-survives-set-pieces",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "InitDungeon a real crypt via CryptDungeonParams, open both connector doors. Verify the entrance still reaches the boss region.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_EntranceToBossConnectivity_SurvivesSetPieces"
+    },
+    {
+      "id": "crypt-deterministic-same-seed",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build the same CryptDungeonParams seed twice. Verify walls AND obstacles are identical across both builds.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_DeterministicSameSeed"
+    }
+  ]
 }

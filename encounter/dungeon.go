@@ -74,6 +74,43 @@ type DungeonRegionParams struct {
 	// environments.PatternEmpty for none). Defaults to
 	// environments.PatternRandom when empty.
 	Pattern string
+
+	// Obstacles are generic, content-agnostic physical set-piece specs
+	// InitDungeon places into THIS region's floor as rpg-toolkit#818
+	// ObstacleData instances (rpg-toolkit#819). Nil/empty for a region
+	// with no set pieces — matches every #814/#817/#818 fixture, which
+	// never sets this field and gets zero obstacles. InitDungeon never
+	// interprets Ref/BlocksMovement/BlocksLoS; a themed caller (e.g. the
+	// crypt template — see CryptDungeonParams) decides content, this
+	// package only places it safely. See placeRegionObstacles for the
+	// placement algorithm and its safety invariants.
+	Obstacles []ObstacleSpec
+}
+
+// ObstacleSpec describes one kind of physical set-piece instance a caller
+// wants InitDungeon to place into a specific region's floor —
+// rpg-toolkit#819. Count instances sharing the same opaque Ref/
+// BlocksMovement/BlocksLoS are each placed at their own safe hex within
+// the region (never a wall, door, required-path, or primary-combat-axis
+// cell — see placeRegionObstacles). Content-agnostic: encounter never
+// interprets any field. Placement is best-effort: a region whose safe
+// floor can't fit every requested instance places as many as DID fit
+// (down to zero) rather than failing InitDungeon — rpg-toolkit#819's
+// "a crypt missing one statue is fine; a crypt that fails to generate
+// ... is not" done-bar requirement, generalized to any caller.
+type ObstacleSpec struct {
+	// Ref is copied verbatim into each placed ObstacleData.Ref — an
+	// opaque content identifier (e.g. "dnd5e:obstacles:pillar") this
+	// package never interprets.
+	Ref string
+
+	// Count is how many instances of this spec to attempt to place.
+	Count int
+
+	// BlocksMovement/BlocksLoS are copied verbatim into each placed
+	// ObstacleData.
+	BlocksMovement bool
+	BlocksLoS      bool
 }
 
 // DungeonConnectorParams configures the door joining two consecutive
@@ -148,12 +185,13 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 
 	previousSpace := e.data.Space
 	e.data.Space = &SpaceData{
-		Walls:    layout.walls,
-		Width:    layout.width,
-		Height:   params.Height,
-		Entrance: core.HexFromCube(layout.entrance),
-		Regions:  layout.regions,
-		Theme:    params.Theme,
+		Walls:     layout.walls,
+		Width:     layout.width,
+		Height:    params.Height,
+		Entrance:  core.HexFromCube(layout.entrance),
+		Regions:   layout.regions,
+		Theme:     params.Theme,
+		Obstacles: layout.obstacles,
 	}
 
 	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors))
@@ -286,6 +324,10 @@ type dungeonLayout struct {
 	// doors[i] is the door cube coordinate joining Regions[i] to
 	// Regions[i+1] — parallel to params.Connectors.
 	doors []spatial.CubeCoordinate
+	// obstacles are every placed ObstacleSpec instance across every
+	// region, in absolute coordinates — rpg-toolkit#819. See
+	// placeRegionObstacles.
+	obstacles []ObstacleData
 }
 
 // generateDungeonLayout builds each region's independently wall-generated
@@ -327,6 +369,16 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	for i := range regionSeeds {
 		regionSeeds[i] = sub.Int63()
 	}
+	// A second, independent per-region sub-seed for obstacle placement
+	// (rpg-toolkit#819) — drawn from the SAME `sub` stream right after
+	// every region's wall seed, so adding/removing/reordering
+	// ObstacleSpecs never perturbs wall generation (regionSeeds is
+	// already fully drawn above) and a caller-supplied seed reproduces
+	// the WHOLE layout, obstacles included.
+	obstacleSeeds := make([]int64, n)
+	for i := range obstacleSeeds {
+		obstacleSeeds[i] = sub.Int63()
+	}
 
 	starts := make([]int, n)
 	x := 0
@@ -339,6 +391,7 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	var segs []environments.WallSegmentData
 	regions := make([]RegionData, n)
 	doors := make([]spatial.CubeCoordinate, n-1)
+	var obstacles []ObstacleData
 
 	for i, r := range params.Regions {
 		local := spatial.Position{X: 0, Y: float64(doorRow)}
@@ -380,12 +433,23 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		if err != nil {
 			return nil, fmt.Errorf("generate region %d (%q) walls: %w", i, r.ID, err)
 		}
-		segs = append(segs, regionWallSegments(walls, starts[i], 0)...)
+		regionWalls := regionWallSegments(walls, starts[i], 0)
+		segs = append(segs, regionWalls...)
 		regions[i] = RegionData{
 			ID:        r.ID,
 			Archetype: r.Archetype,
 			Hexes:     core.NewHexSet(hexesFromCubes(regionCubes(r.Width, params.Height, starts[i]))...),
 		}
+		obstacles = append(obstacles, placeRegionObstacles(placeRegionObstaclesParams{
+			regionID:  r.ID,
+			specs:     r.Obstacles,
+			width:     r.Width,
+			height:    params.Height,
+			offsetX:   starts[i],
+			doorRow:   doorRow,
+			wallCubes: wallCubeSet(regionWalls),
+			seed:      obstacleSeeds[i],
+		})...)
 
 		if i < n-1 {
 			doorX := starts[i] + r.Width
@@ -407,11 +471,12 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		spatial.Position{X: 0, Y: float64(doorRow)}, spatial.HexOrientationPointyTop)
 
 	return &dungeonLayout{
-		walls:    segs,
-		width:    totalWidth,
-		regions:  regions,
-		entrance: entrance,
-		doors:    doors,
+		walls:     segs,
+		width:     totalWidth,
+		regions:   regions,
+		entrance:  entrance,
+		doors:     doors,
+		obstacles: obstacles,
 	}, nil
 }
 
@@ -486,6 +551,99 @@ func regionWallSegments(walls []environments.WallSegment, offsetX, offsetY int) 
 			BlocksMovement: we.BlocksMovement(),
 			BlocksLoS:      we.BlocksLineOfSight(),
 		})
+	}
+	return out
+}
+
+// wallCubeSet builds a lookup set of every absolute cube coordinate a
+// region's wall segments occupy — used by placeRegionObstacles to reject
+// wall cells as obstacle candidates. walls is already in absolute
+// coordinates (the caller's regionWallSegments output); Start == End for
+// every entry (see WallSegmentData's doc), so only Start is read.
+func wallCubeSet(walls []environments.WallSegmentData) map[spatial.CubeCoordinate]struct{} {
+	set := make(map[spatial.CubeCoordinate]struct{}, len(walls))
+	for _, w := range walls {
+		set[w.Start] = struct{}{}
+	}
+	return set
+}
+
+// placeRegionObstaclesParams bundles placeRegionObstacles' inputs — one
+// region's geometry plus its caller-supplied specs — so the function
+// signature doesn't grow an eighth positional argument as #819 evolves.
+type placeRegionObstaclesParams struct {
+	regionID  string
+	specs     []ObstacleSpec
+	width     int
+	height    int
+	offsetX   int
+	doorRow   int
+	wallCubes map[spatial.CubeCoordinate]struct{}
+	seed      int64
+}
+
+// placeRegionObstacles computes the ObstacleData instances for every
+// ObstacleSpec in one region — rpg-toolkit#819. Purely geometric and
+// content-agnostic: it never reads Ref/BlocksMovement/BlocksLoS, only
+// copies them verbatim.
+//
+// Candidates are every LOCAL floor cell (x in [0,width), y in [0,height))
+// that is NOT a wall cell AND NOT on doorRow. Excluding the whole doorRow
+// row — not just the narrower required-path segment
+// generateDungeonLayout reserves for connectivity — is deliberately the
+// SAME reservation for every region regardless of archetype: it is a
+// superset of the required path (entrance-to-door / door-to-door /
+// door-to-region-center all run along this exact row), and for a boss-
+// archetype region it ALSO satisfies #819's additional "primary playable
+// axis (>6 hex steps) must stay clear" invariant, because the row spans
+// the region's FULL width — always at least the validateDungeonParams
+// size floor already enforces at construction time. One rule, no
+// archetype-specific branching, provably sufficient for both invariants.
+//
+// The candidate pool is shuffled with a seeded Fisher-Yates (deterministic
+// per seed, varies across seeds) and specs draw from it in order, each
+// instance consuming one candidate so no two specs (or two instances of
+// the same spec) can collide. A spec that asks for more instances than
+// the remaining pool has places as many as fit and drops the rest —
+// #819's "skip rather than invalidate the dungeon" requirement — this
+// function never errors.
+func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
+	if len(p.specs) == 0 {
+		return nil
+	}
+	candidates := make([]spatial.CubeCoordinate, 0, p.width*p.height)
+	for x := 0; x < p.width; x++ {
+		for y := 0; y < p.height; y++ {
+			if y == p.doorRow {
+				continue // reserved: required path / primary combat axis
+			}
+			cube := spatial.OffsetCoordinateToCubeWithOrientation(
+				spatial.Position{X: float64(x + p.offsetX), Y: float64(y)}, spatial.HexOrientationPointyTop)
+			if _, blocked := p.wallCubes[cube]; blocked {
+				continue
+			}
+			candidates = append(candidates, cube)
+		}
+	}
+	//nolint:gosec // G404: deterministic per-region obstacle seed, not cryptographic
+	rng := rand.New(rand.NewSource(p.seed))
+	rng.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
+
+	var out []ObstacleData
+	next := 0
+	for _, spec := range p.specs {
+		for n := 0; n < spec.Count && next < len(candidates); n++ {
+			out = append(out, ObstacleData{
+				ID:             core.EntityID(fmt.Sprintf("obstacle-%s-%d", p.regionID, len(out))),
+				Ref:            spec.Ref,
+				Position:       core.HexFromCube(candidates[next]),
+				BlocksMovement: spec.BlocksMovement,
+				BlocksLoS:      spec.BlocksLoS,
+			})
+			next++
+		}
 	}
 	return out
 }
