@@ -1,4 +1,73 @@
 {
+  "branch": "feat/815-locked-boss-door",
+  "issues": ["#815"],
+  "goal": "Extend InitDungeon's connector spec so a connector can declare its generated door Locked (+ LockDC/LockAbility/LockTool), reusing DoorData's existing Wave 2.9 lock-state fields verbatim. Generated boss door is closed+locked, round-trips through ToData/LoadFromData, and the existing AttemptUnlock/SubmitCheck/OpenDoor loop works against it end to end. Plain connectors and the InitTwoChamberRoom compatibility wrapper stay unlocked.",
+  "design_doc": "rpg-project/ideas/the-dungeon/wave2-design.md (Slice 3: locked boss door + boss chamber)",
+  "dependency": {
+    "issue": "#814 (N-region InitDungeon generator)",
+    "pr": "#821",
+    "verified_merged": true,
+    "merge_commit": "e1f98403ed7c92626e1e3fd69dea3383965febb3",
+    "verified_head_of_origin_main": true
+  },
+  "sessions": [
+    {
+      "id": "2026-07-22-001",
+      "task": "Dependency verification + duplicate check + worktree/artifact setup + clean baseline",
+      "status": "completed",
+      "artifacts": [".claude/progress.json", ".claude/tests.json"],
+      "commit": null,
+      "notes": "Confirmed PR #821 state=MERGED, mergeCommit e1f9840 == origin/main HEAD (git log origin/main --oneline -1). Read #815 body + comments (zero comments) via gh issue view. Searched for duplicate branches/PRs referencing 815 (gh pr list --search 815: none; git ls-remote --heads: only an unrelated worktree-agent-* bootstrap branch). Created worktree .worktrees/feat-815-locked-boss-door on branch feat/815-locked-boss-door from origin/main (matches the repo's existing per-issue worktree convention). Baseline go build/vet/test all green (encounter module, 55s) before any change."
+    },
+    {
+      "id": "2026-07-22-002",
+      "task": "TDD: DungeonConnectorParams lock fields, generation, validation, persistence, full unlock-flow integration",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon.go", "encounter/locked_connector_test.go"],
+      "commit": "a5c38cb",
+      "notes": "RED: wrote encounter/locked_connector_test.go referencing DungeonConnectorParams.Locked/LockDC/LockAbility/LockTool (did not exist yet) -- go test failed to build with exactly the expected 'undefined field' errors on those 4 fields (9 occurrences across the file), zero other build errors once a pre-existing core.HexSet map-index-as-bool test bug was fixed (View.RevealedHexes is core.HexSet i.e. map[Hex]struct{}, not map[Hex]bool -- switched two assertions to .Has()). GREEN: added Locked/LockDC/LockAbility/LockTool to DungeonConnectorParams (doc'd per CI public-API rules); InitDungeon's door-staging loop copies them onto the generated DoorData when Locked; validateDungeonParams gained a new pre-mutation loop rejecting Locked && LockDC<=0 or Locked && LockAbility==\"\" (mirrors the file's existing duplicate-ID/unknown-archetype gates -- runs before any Space/Doors mutation, so atomicity falls out for free, no rollback logic needed for this new check). All 8 new tests pass; zero other test in the module touched or modified.",
+      "tests_added": [
+        "TestInitDungeon_RejectsLockedConnectorWithoutDC",
+        "TestInitDungeon_RejectsLockedConnectorWithoutAbility",
+        "TestInitDungeon_RejectsInvalidLockedConnector_LeavesNoPartialState",
+        "TestInitDungeon_GeneratesLockedBossDoor_ClosedAndLocked",
+        "TestInitTwoChamberRoom_GeneratedDoor_RemainsUnlocked",
+        "TestInitDungeon_LockedBossDoor_RoundTripsThroughToDataLoadFromData",
+        "TestLockedBossDoorSuite/TestFailedCheck_LeavesDoorLockedRecoverableAndBlocking",
+        "TestLockedBossDoorSuite/TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegion"
+      ]
+    },
+    {
+      "id": "2026-07-22-003",
+      "task": "Full verification sweep",
+      "status": "completed",
+      "artifacts": [],
+      "commit": "0a6f089",
+      "notes": "go build ./... clean; go vet ./... clean; go test -count=1 ./... all green (55s, full module incl. new tests); go test -race -count=1 ./... all green (56s); gofmt -s -l . empty; goimports -l -local github.com/KirkDiggler . flags 13 PRE-EXISTING files (none touched by this change) -- confirmed byte-identical list against a throwaway origin/main worktree, so zero new drift introduced; go mod tidy produces no go.mod/go.sum diff. golangci-lint pinned to the repo's CI version (v2.2.1, per .github/workflows/ci-enhanced.yml GOLANGCI_VERSION, installed standalone to /tmp/opencode/toolbin since the ambient global install was v2.12.2) run against --config=../.golangci.yml: 0 issues. Diff confined to encounter/dungeon.go (extended) and encounter/locked_connector_test.go (new) -- no other module, no go.mod/go.work changes, no proto/API/client/monster/obstacle/HP code touched."
+    },
+    {
+      "id": "2026-07-22-004",
+      "task": "Open PR #824, verify CI + automated review",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Pushed feat/815-locked-boss-door; opened PR #824 (ready, not draft), body includes dependency proof, scope, out-of-scope list, test roster, and full verification evidence, signed '-- platform agent, on behalf of KirkDiggler'. Confirmed via GraphQL closingIssuesReferences that PR #824 closes #815. Polled gh pr checks until settled: ci-status=pass, test-changed(encounter,1.25.x)=pass, changes=pass; the other jobs (detect-modules/lint/mod-tidy/test-all/build/test/all-checks-passed) report 'skipping' -- expected, this repo's CI fans out per-module and skips modules the changed-files filter didn't select (only encounter/ changed) while ci-status is the actual required gate. Copilot's automated PR review (copilot-pull-request-reviewer) completed: summary body explicitly states 'Copilot reviewed 4 out of 4 changed files ... and generated no comments.' Confirmed zero inline review threads via GraphQL reviewThreads (nodes: []) and zero PR-level comments (gh pr view --json comments empty) -- nothing to reply to or resolve.",
+      "pr": "https://github.com/KirkDiggler/rpg-toolkit/pull/824",
+      "ci_status": "pass",
+      "copilot_review": "completed, zero comments, zero review threads"
+    },
+    {
+      "id": "2026-07-22-005",
+      "task": "Merge origin/main (PR #823 landed) to resolve PR #824 staleness",
+      "status": "completed",
+      "artifacts": [".claude/progress.json", ".claude/tests.json"],
+      "commit": null,
+      "notes": "origin/main advanced with PR #823 (#818 static obstacles: encounter/data.go, encounter/space.go, encounter/obstacle_test.go, its own .claude/*.json) merged after this branch was cut. GitHub reported PR #824 mergeable=CONFLICTING/mergeStateStatus=DIRTY. Ran `git fetch origin && git merge origin/main --no-ff` (no rebase, no amend, no force-push, per instruction). Production code merged cleanly with zero conflicts -- #823 never touched dungeon.go or locked_connector_test.go, confirmed via `git diff --stat e1f9840 e1690ec` before merging (data.go/space.go/obstacle_test.go only). The only conflicts were .claude/progress.json and .claude/tests.json, exactly as GitHub reported: #823's branch used the same scratch-file paths for its own unrelated goal/sessions/tests (branch=feat/818-static-obstacles). Resolved by keeping this branch's (#815's) versions verbatim (`git checkout --ours`) -- concatenating #823's contradictory top-level branch/goal/issues fields into this file would produce a nonsensical merged record (two goals, two branches) rather than a coherent one; #823's own history remains fully preserved in git log/PR #823 itself, not lost. No durable #823 fact needed folding in beyond this note -- #815's JSON was already valid and complete without it.",
+      "merge_verification": "encounter build/vet/test/-race/fmt/imports/tidy/golangci-lint(v2.2.1 pinned) all re-run at the merged HEAD; see the following session for exact results."
+    }
+  ],
+  "next_steps": [
+    "None outstanding. PR #824 open, ready-not-draft, merged with latest origin/main (#823), CI green, zero automated review comments to address. Awaiting human merge decision -- not merging per instructions."
   "branch": "feat/817-dungeon-completion",
   "issues": ["#817"],
   "goal": "Prove (and, only if a real gap surfaces, fix) whole-dungeon completion: killing the last hostile anywhere in an N-region InitDungeon encounter ends the encounter in victory (canonical EncounterEndedReasonAllHostilesDefeated), clearing a non-final combat pocket exits non-terminally to FREE_ROAM, TPK ends with the canonical EncounterEndedReasonTPK, and the resulting ModeEnded/terminal state is reload-safe via ToData/LoadFromData to the extent the toolkit persists it (Reason itself is an event-only field, not persisted -- rpg-api/#690 owns any reason projection).",

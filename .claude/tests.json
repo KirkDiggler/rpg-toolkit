@@ -1,6 +1,68 @@
 {
   "tests": [
     {
+      "id": "locked-connector-rejects-missing-dc",
+      "feature": "locked-boss-door",
+      "prompt": "Call InitDungeon with a connector marked Locked but LockDC<=0. Verify InitDungeon returns an error identifying the offending connector by index, and mutates no encounter data.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_RejectsLockedConnectorWithoutDC"
+    },
+    {
+      "id": "locked-connector-rejects-missing-ability",
+      "feature": "locked-boss-door",
+      "prompt": "Call InitDungeon with a connector marked Locked, LockDC set, but LockAbility empty. Verify InitDungeon returns an error identifying the offending connector by index.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_RejectsLockedConnectorWithoutAbility"
+    },
+    {
+      "id": "locked-connector-invalid-leaves-no-partial-state",
+      "feature": "locked-boss-door",
+      "prompt": "Call InitDungeon on a 3-region dungeon where connector 1 is Locked but invalid. Verify the rejected call leaves Space nil and Doors empty -- the invariant InitDungeon's atomicity contract already guarantees for its other pre-mutation validation gates.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_RejectsInvalidLockedConnector_LeavesNoPartialState"
+    },
+    {
+      "id": "locked-connector-generates-closed-locked-door",
+      "feature": "locked-boss-door",
+      "prompt": "Build a 3-region dungeon (entrance/corridor/boss) where connector 0 is plain and connector 1 is Locked with a DC/Ability/Tool. Verify connector 1's generated DoorData is Locked=true, Open=false, and carries the exact LockDC/LockAbility/LockTool configured; verify connector 0's generated door stays entirely unlocked (Locked=false, LockDC=0, LockAbility/LockTool empty).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_GeneratesLockedBossDoor_ClosedAndLocked"
+    },
+    {
+      "id": "two-chamber-wrapper-stays-unlocked",
+      "feature": "locked-boss-door",
+      "prompt": "Call InitTwoChamberRoom (the compatibility wrapper over InitDungeon). Verify its generated door is never locked -- the wrapper must not gain locked-door behavior as a side effect of #815.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitTwoChamberRoom_GeneratedDoor_RemainsUnlocked"
+    },
+    {
+      "id": "locked-door-persists-through-todata-loadfromdata",
+      "feature": "locked-boss-door",
+      "prompt": "Build a dungeon with a generated locked boss connector, marshal ToData() to JSON, unmarshal, and LoadFromData. Verify the reloaded door's Locked/LockDC/LockAbility/LockTool are intact and it still blocks LoS into the boss region.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_LockedBossDoor_RoundTripsThroughToDataLoadFromData"
+    },
+    {
+      "id": "locked-door-failed-check-stays-locked-and-recoverable",
+      "feature": "locked-boss-door",
+      "prompt": "Against a generated locked boss door: AttemptUnlock, then SubmitCheck with a roll that fails the DC. Verify the door remains Locked=true, Open=false, still blocks movement/LoS into the boss region, and is recoverable (a second AttemptUnlock succeeds).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestLockedBossDoorSuite/TestFailedCheck_LeavesDoorLockedRecoverableAndBlocking"
+    },
+    {
+      "id": "locked-door-successful-check-unlocks-opens-reveals",
+      "feature": "locked-boss-door",
+      "prompt": "Against a generated locked boss door: AttemptUnlock, then SubmitCheck with a roll that passes the DC. Verify Locked clears, Open becomes true (via the existing dispatchPromptAction -> OpenDoor path, no new verb), the entrance becomes reachable through to the boss region, LoS across the doorway clears, and the player's View reveals into the boss chamber through the doorway.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestLockedBossDoorSuite/TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegion"
       "id": "n-region-early-pocket-clear-returns-freeroam",
       "feature": "dungeon-completion",
       "prompt": "In an N-region InitDungeon (#814) encounter with more than one non-final combat pocket, clearing an early pocket (all monsters in the CURRENT initiative dead) while hostiles remain alive in later, still-unopened regions must exit to FREE_ROAM, not end the encounter.",

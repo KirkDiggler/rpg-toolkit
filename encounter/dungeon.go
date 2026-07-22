@@ -79,10 +79,41 @@ type DungeonRegionParams struct {
 // DungeonConnectorParams configures the door joining two consecutive
 // regions in an InitDungeon chain.
 type DungeonConnectorParams struct {
-	// DoorID is the entity id for the plain door generated at this
-	// connector. Required — mirrors AddDoor, which InitDungeon composes
-	// with internally.
+	// DoorID is the entity id for the door generated at this connector.
+	// Required — mirrors AddDoor, which InitDungeon composes with
+	// internally.
 	DoorID core.EntityID
+
+	// Locked marks this connector's generated door as closed AND locked
+	// (rpg-toolkit#815), reusing DoorData's existing Wave 2.9 lock-state
+	// fields verbatim: AttemptUnlock/SubmitCheck become the path through
+	// it (issuing and resolving a skill-check prompt) until a player
+	// passes the configured check; OpenDoor alone does not gate on it —
+	// see DoorData.Locked's doc for the full contract. Zero value
+	// (false) generates a plain closed door, same as every connector
+	// before #815 and the InitTwoChamberRoom compatibility wrapper,
+	// which never sets this field.
+	Locked bool
+
+	// LockDC is the skill-check DC AttemptUnlock issues when Locked is
+	// true, copied verbatim onto the generated door's DoorData.LockDC.
+	// Required (> 0) when Locked is true — validateDungeonParams rejects
+	// a locked connector with LockDC<=0 before any generation runs.
+	// Ignored when Locked is false.
+	LockDC int
+
+	// LockAbility is the 3-letter ability code (e.g. "DEX") the check
+	// rolls against, copied verbatim onto DoorData.LockAbility. Required
+	// (non-empty) when Locked is true — validateDungeonParams rejects a
+	// locked connector with an empty LockAbility. Ignored when Locked is
+	// false.
+	LockAbility string
+
+	// LockTool is an optional toolkit ref (e.g.
+	// "dnd5e:item:thieves-tools") granting a tool-proficiency bonus on
+	// the check, copied verbatim onto DoorData.LockTool. Empty means no
+	// tool bonus applies; never required. Ignored when Locked is false.
+	LockTool string
 }
 
 // InitDungeon builds an N-region linear-chain dungeon: an ordered list of
@@ -127,8 +158,16 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 
 	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors))
 	for i, door := range layout.doors {
-		doorID := params.Connectors[i].DoorID
-		e.data.Doors[doorID] = &DoorData{ID: doorID, Position: core.HexFromCube(door), Open: false}
+		connector := params.Connectors[i]
+		doorID := connector.DoorID
+		dd := &DoorData{ID: doorID, Position: core.HexFromCube(door), Open: false}
+		if connector.Locked {
+			dd.Locked = true
+			dd.LockDC = connector.LockDC
+			dd.LockAbility = connector.LockAbility
+			dd.LockTool = connector.LockTool
+		}
+		e.data.Doors[doorID] = dd
 		stagedDoorIDs = append(stagedDoorIDs, doorID)
 	}
 
@@ -197,6 +236,25 @@ func validateDungeonParams(params DungeonParams) error {
 			return fmt.Errorf("connector %d (%q): duplicate door id (already used by connector %d)", i, c.DoorID, first)
 		}
 		seenDoorIDs[c.DoorID] = i
+	}
+	// A locked connector's check config is validated contextually, before
+	// InitDungeon mutates any encounter data: LockDC/LockAbility only mean
+	// anything when Locked is true, and AttemptUnlock/SubmitCheck depend
+	// on both being present (a zero DC is never a meaningful skill-check
+	// target; an empty ability leaves the CharacterResolver nothing to
+	// resolve a modifier against). Rejecting here — rather than letting a
+	// half-configured locked door generate — mirrors the file's other
+	// pre-mutation validation gates (duplicate IDs, unknown archetypes).
+	for i, c := range params.Connectors {
+		if !c.Locked {
+			continue
+		}
+		if c.LockDC <= 0 {
+			return fmt.Errorf("connector %d (%q): locked connector requires LockDC > 0 (got %d)", i, c.DoorID, c.LockDC)
+		}
+		if c.LockAbility == "" {
+			return fmt.Errorf("connector %d (%q): locked connector requires LockAbility", i, c.DoorID)
+		}
 	}
 	for i, r := range params.Regions {
 		if r.Archetype != ArchetypeBoss {
