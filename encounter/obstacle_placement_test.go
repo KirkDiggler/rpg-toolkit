@@ -24,7 +24,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 const (
@@ -215,11 +214,10 @@ func TestInitDungeon_ObstaclePlacement_NeverOnReservedRow(t *testing.T) {
 	data := enc.ToData()
 	require.NotEmpty(t, data.Space.Obstacles, "fixture must actually place obstacles for this to be a real proof")
 
-	doorRow := core.HexFromPosition(spatial.Position{X: 0, Y: 4}) // Height/2 = 4
-	_ = doorRow
+	const reservedDoorRowY = 4 // Height/2 = 8/2 = 4
 	for _, o := range data.Space.Obstacles {
 		pos := o.Position.ToPosition()
-		require.NotEqual(t, float64(4), pos.Y,
+		require.NotEqual(t, float64(reservedDoorRowY), pos.Y,
 			"obstacle %q at %v sits on the reserved doorRow (y=4); must never happen", o.ID, o.Position)
 	}
 }
