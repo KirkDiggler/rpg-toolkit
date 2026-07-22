@@ -87,6 +87,30 @@
       "passes": true,
       "last_checked": "2026-07-22",
       "notes": "two_chamber.go rewritten as a thin validating wrapper calling e.InitDungeon(...); two_chamber_test.go untouched and green (TestTwoChamberSuite, TestRegionAt_NilReceiver). Retired duplicate helpers: chamberCubes, chamberWallSegments, generateChamberWalls, hexesFromCubes, chamberPathWidth (now regionCubes/regionWallSegments/generateRegionWalls/hexesFromCubes/dungeonPathWidth in dungeon.go, shared by both entry points)."
+    },
+    {
+      "id": "init-dungeon-region-id-and-archetype-validation",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects an empty region ID, a duplicate region ID across the chain, and any region Archetype outside the documented fixed vocabulary (entrance | chamber | corridor | boss) -- errors must identify the offending region by index.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot review thread (comment 3632233153, resolved): empty/duplicate region IDs make SpaceData.RegionAt ambiguous (returns the first matching region); an open-ended Archetype string undermines the documented 'fixed vocabulary' contract. RED: TestInitDungeon_RejectsEmptyRegionID, TestInitDungeon_RejectsDuplicateRegionIDs, TestInitDungeon_RejectsUnknownArchetype all failed 'want error, got nil' against the prior code. GREEN: validateDungeonParams now tracks seen region IDs in a map (rejecting empty and duplicate) and switches on Archetype against the 4 known constants (rejecting anything else). Errors follow the existing 'region %d (%q): ...' style and name the offending index. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632507283."
+    },
+    {
+      "id": "init-dungeon-duplicate-connector-door-id",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects a duplicate connector DoorID before generation mutates encounter data -- reusing a DoorID across connectors must not silently overwrite an earlier door in e.data.Doors.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot review thread (comment 3632233194, resolved): AddDoor keys e.data.Doors by DoorID, so two connectors sharing an ID silently overwrite each other, leaving the earlier boundary column permanently unblocked (no closed door entity) -- breaks the closed-by-default connectivity contract with no error. Reproduced the symptom directly with a throwaway (uncommitted) test before the fix: duplicate DoorIDs across 2 connectors left err=nil and exactly 1 entry in e.data.Doors (the later connector's door, at the later connector's position). RED: TestInitDungeon_RejectsDuplicateConnectorDoorIDs failed 'want error, got nil' against the prior code (also asserts the rejected call leaves Space nil and Doors empty). GREEN: validateDungeonParams now tracks seen connector DoorIDs in a map alongside the existing non-empty check, rejecting duplicates before InitDungeon ever calls generateDungeonLayout or mutates e.data. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632508545."
+    },
+    {
+      "id": "terminal-region-path-purpose-string",
+      "feature": "init-dungeon",
+      "prompt": "The terminal region's required-path Purpose string must not claim 'chamber' when the terminal region can be any archetype (e.g. boss) -- use an accurate, generic description.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot review thread (comment 3632233223, resolved): 'door-to-chamber' is misleading once the terminal region isn't a chamber. FIX: renamed to 'door-to-region-center', accurate for any archetype, smallest possible change (one string literal). NOT added a new test: confirmed (by reading tools/environments/wall_patterns.go) this string only surfaces via validatePathSafety's 'required path blocked' error, and generateRegionWalls always sets Safety.EmergencyFallback: true, which swallows that error by falling back to an empty layout before it can propagate -- deterministically forcing that exact error would require brittle setup fighting the fallback. Per explicit instruction not to manufacture a brittle test for an internal/cosmetic string, this was left as a documented reasoning in the reply rather than a new assertion. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632509808."
     }
   ]
 }
