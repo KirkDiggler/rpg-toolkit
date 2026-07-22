@@ -1,6 +1,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -205,7 +206,103 @@ func (e *Encounter) rebuildRoomFromData() error {
 			return fmt.Errorf("place door wall %s: %w", id, err)
 		}
 	}
+	if err := validateObstacles(sd.Obstacles); err != nil {
+		return fmt.Errorf("validate obstacles: %w", err)
+	}
+	for _, o := range sd.Obstacles {
+		// Unlike walls/doors, an obstacle's occupancy conflict is NOT
+		// silently tolerated — obstacles are host-authored (via
+		// AddObstacle), not generator output with rounding artifacts, so a
+		// hex collision with an existing wall/door/obstacle is a genuine
+		// data error the caller must see (rpg-toolkit#818 done bar), not a
+		// dedup candidate. room.PlaceEntity itself rejects placing a
+		// blocking entity onto a hex an existing blocker occupies, which
+		// naturally surfaces that error here.
+		pos := o.Position.ToPosition()
+		entity := environments.NewWallEntity(environments.WallEntityConfig{
+			SegmentID: fmt.Sprintf("obstacle-%s", o.ID),
+			WallType:  environments.WallTypeIndestructible,
+			Properties: environments.WallProperties{
+				BlocksMovement: o.BlocksMovement,
+				BlocksLoS:      o.BlocksLoS,
+			},
+			Position: pos,
+		})
+		if err := room.PlaceEntity(entity, pos); err != nil {
+			return fmt.Errorf("place obstacle %q: %w", o.ID, err)
+		}
+	}
 	return e.registerRoom(room)
+}
+
+// validateObstacles checks the structural invariant AddObstacle-authored
+// obstacle data depends on: every obstacle must have a non-empty, unique
+// ID. Obstacles is an order-preserving SLICE (unlike the map-keyed
+// Doors), so a duplicate ID is not rejected implicitly by key-overwrite —
+// room.PlaceEntity keys placement by entity.GetID(), so two obstacles
+// sharing an ID would silently relocate one another's room occupancy
+// (PlaceEntity's own doc: "Remove entity from old position if it exists")
+// rather than erroring, corrupting the room without this check. Run from
+// rebuildRoomFromData so both AddObstacle and a direct LoadFromData of
+// hand-built/legacy Data get the same guarantee.
+func validateObstacles(obstacles []ObstacleData) error {
+	seen := make(map[core.EntityID]int, len(obstacles))
+	for i, o := range obstacles {
+		if o.ID == "" {
+			return fmt.Errorf("obstacle %d: id required", i)
+		}
+		if first, dup := seen[o.ID]; dup {
+			return fmt.Errorf("obstacle %d (%q): duplicate obstacle id (already used by obstacle %d)", i, o.ID, first)
+		}
+		seen[o.ID] = i
+	}
+	return nil
+}
+
+// AddObstacle registers a static obstacle instance into the encounter's
+// SpaceData (rpg-toolkit#818): a generic, content-agnostic blocker at a
+// hex, distinct from a Wall (a boundary-edge segment) or a Door (a
+// connector with open/locked state). Mirrors AddDoor's atomicity: on
+// rebuild failure the newly-appended obstacle is rolled back so a failed
+// AddObstacle leaves Data.Space/e.room exactly as they were before the
+// call — no partial state (rpg-toolkit#818 done bar).
+//
+// Unlike AddDoor, which is a no-op on the room side when there's no room
+// yet (Data.Doors persists regardless), an obstacle's ONLY representation
+// is a SpaceData.Obstacles entry — there is nowhere to persist it without
+// a Space to attach to, so AddObstacle requires InitRoom/InitDungeon to
+// have already run.
+//
+// id must be non-empty and not already used by another obstacle in this
+// Space (see validateObstacles for why a duplicate ID is unsafe, not just
+// unwanted). position, blocksMovement, and blocksLoS are stored verbatim
+// and drive the entity rebuildRoomFromData places into the room.
+func (e *Encounter) AddObstacle(
+	id core.EntityID, ref string, position core.Hex, blocksMovement, blocksLoS bool,
+) error {
+	if e.data.Space == nil {
+		return errors.New("add obstacle: no room initialized (call InitRoom/InitDungeon first)")
+	}
+	if id == "" {
+		return errors.New("add obstacle: id required")
+	}
+	for _, existing := range e.data.Space.Obstacles {
+		if existing.ID == id {
+			return fmt.Errorf("add obstacle: obstacle %q already exists", id)
+		}
+	}
+	e.data.Space.Obstacles = append(e.data.Space.Obstacles, ObstacleData{
+		ID:             id,
+		Ref:            ref,
+		Position:       position,
+		BlocksMovement: blocksMovement,
+		BlocksLoS:      blocksLoS,
+	})
+	if err := e.rebuildRoomFromData(); err != nil {
+		e.data.Space.Obstacles = e.data.Space.Obstacles[:len(e.data.Space.Obstacles)-1]
+		return fmt.Errorf("add obstacle %q: rebuild room: %w", id, err)
+	}
+	return nil
 }
 
 // truncateAtWall returns the prefix of path up to (not including) the first
