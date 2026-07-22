@@ -1,116 +1,108 @@
 {
   "tests": [
     {
-      "id": "region-archetype-vocabulary",
-      "feature": "region-archetype",
-      "prompt": "RegionData gains an Archetype field of a generic RegionArchetype type with exactly the values entrance | chamber | corridor | boss.",
+      "id": "obstacle-serialization-roundtrip",
+      "feature": "obstacle-data",
+      "prompt": "A SpaceData carrying obstacle instances (ID, Ref, Position, BlocksMovement, BlocksLoS) round-trips exactly through Encounter.ToData()/encounter.LoadFromData - every field on every instance preserved.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestRegionArchetype_GenericVocabulary (dungeon_test.go)."
+      "notes": "TestObstacle_ToData_LoadFromData_RoundTrip"
     },
     {
-      "id": "space-theme-opaque-passthrough",
-      "feature": "space-theme",
-      "prompt": "SpaceData gains a Theme string field, distinct from RegionData.Archetype, that InitDungeon copies verbatim from DungeonParams.Theme without branching on its value anywhere in the generator.",
+      "id": "obstacle-rebuild-into-canonical-room",
+      "feature": "obstacle-room-truth",
+      "prompt": "After LoadFromData (or AddObstacle), the obstacle is present in the same spatial.Room the encounter uses for walls - not a parallel/separate representation.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestSpaceData_ThemeIsOpaqueAndDistinctFromArchetype + DungeonSuite/TestRegions_ArchetypesThemeAndPartition (Theme='crypt' round-trip). Grepped dungeon.go/two_chamber.go for any `Theme ==`/switch-on-Theme branching: none exists."
+      "notes": "Implicit in every blocking test below (room.CanPlaceEntity/IsLineOfSightBlocked queried against enc.Room(), the same instance walls/doors use) - not a separate assertion, folded into the movement/LoS tests."
     },
     {
-      "id": "init-dungeon-validates-region-count",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects fewer than 2 regions (a dungeon needs at least an entrance and one connected region).",
+      "id": "obstacle-blocks-movement-true",
+      "feature": "obstacle-movement",
+      "prompt": "An obstacle with BlocksMovement=true truncates a player's Move path at its hex, exactly like a wall.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsFewerThanTwoRegions."
+      "notes": "TestObstacle_BlocksMovement_True"
     },
     {
-      "id": "init-dungeon-validates-connector-count",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects a Connectors slice whose length is not exactly len(Regions)-1.",
+      "id": "obstacle-blocks-movement-false",
+      "feature": "obstacle-movement",
+      "prompt": "An obstacle with BlocksMovement=false does not block movement through its hex.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsWrongConnectorCount."
+      "notes": "TestObstacle_BlocksMovement_False"
     },
     {
-      "id": "init-dungeon-validates-dimensions-and-door-ids",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects any region narrower than 4, a shared Height under 4, and any connector with an empty DoorID.",
+      "id": "obstacle-blocks-los-true",
+      "feature": "obstacle-los",
+      "prompt": "An obstacle with BlocksLoS=true blocks room.IsLineOfSightBlocked between two hexes on either side of it.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsNarrowRegion, TestInitDungeon_RejectsShortSharedHeight, TestInitDungeon_RejectsEmptyDoorID."
+      "notes": "TestObstacle_BlocksLoS_True"
     },
     {
-      "id": "init-dungeon-boss-scale-invariant",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects (generation-time assertion, not eyeballing) any boss-archetype region whose primary playable axis (min(width, shared height)) does not exceed 6 hex steps.",
+      "id": "obstacle-blocks-los-false",
+      "feature": "obstacle-los",
+      "prompt": "An obstacle with BlocksLoS=false does not block line of sight through its hex.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsUndersizedBossRoom (axis==6 rejected), TestInitDungeon_AcceptsBossRoomExceedingScaleInvariant (axis>6 accepted). Enforced in validateDungeonParams, called unconditionally at the top of InitDungeon."
+      "notes": "TestObstacle_BlocksLoS_False"
     },
     {
-      "id": "init-dungeon-n-region-linear-chain",
-      "feature": "init-dungeon",
-      "prompt": "A 3-region linear dungeon (entrance chamber -> corridor -> boss chamber, 2 doors) generates with a reproducible seed; every region is reachable from the entrance once its door opens; RegionAt returns the right archetype for each hex; a closed connector door blocks movement+LoS across it, matching the two-chamber behavior generalized to N.",
+      "id": "obstacle-coexists-with-walls-and-doors",
+      "feature": "obstacle-coexistence",
+      "prompt": "A Space with walls, a door, and an obstacle at distinct hexes all block/unblock independently and correctly after rebuild.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "DungeonSuite (dungeon_test.go): TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors (now asserts IsLineOfSightBlocked for BOTH connectors, not just movement/reachability -- see closed-door-los-coverage below for the discrimination evidence), TestOpeningBothDoors_ConnectsEntranceThroughToBoss, TestRegions_ArchetypesThemeAndPartition, TestLayout_DeterministicSeedVsEntropyDefault. NOTE (concern, not a regression): the fixture's corridor width had to be nudged from 4 to 5 hexes to sidestep a pre-existing tools/environments|tools/spatial pointy-top-hex-grid parity quirk in IsLineOfSightBlocked's short-range raycast across a door column of certain column parity relative to its flanking columns — reproduced and isolated to that dependency, unrelated to InitDungeon's own geometry math (identical wall placement on both doors; only LOS raycast result differed by door-column parity). Movement/BFS reachability was unaffected in both parities. Confirmed direction-SYMMETRIC (not the #763 asymmetry bug) via a throwaway repro test before filing https://github.com/KirkDiggler/rpg-toolkit/issues/822 (boarded #19 The Dungeon Run, Feature=The Dungeon, Team=Platform, Status=Todo) to track it. Out of scope for #814 to fix (different module)."
+      "notes": "TestObstacle_CoexistsWithWallsAndDoors"
     },
     {
-      "id": "closed-door-los-coverage",
-      "feature": "init-dungeon",
-      "prompt": "TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors must actually assert IsLineOfSightBlocked for both connectors (not just movement/reachability), following the two-chamber precedent (TestClosedDoor_BlocksMovementAndLoS_BetweenChambers).",
+      "id": "obstacle-rejects-empty-id",
+      "feature": "obstacle-validation",
+      "prompt": "AddObstacle with an empty ID is rejected with a contextual error and leaves Data.Space/room state unchanged.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "Review finding: the test name promised LoS coverage it didn't have. DISCRIMINATION (before the test fix): temporarily set space.go's closed-door wall Properties.BlocksLoS from true to false (production mutation, reverted immediately) and reran both suites -- TestTwoChamberSuite/TestClosedDoor_BlocksMovementAndLoS_BetweenChambers (which DOES check LoS) correctly FAILED; TestDungeonSuite/TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors (lacking the LoS assertion) still PASSED, proving the exact gap. FIX: added IsLineOfSightBlocked(farEdge(i), nearEdge(i+1)) assertions for both connector 0 and connector 1, mirroring the two-chamber precedent's direct across-the-door check. RED (with the same production mutation still active): both new assertions failed with the expected messages ('closed door 0/1 must block LoS...'). GREEN (mutation reverted): all DungeonSuite + TwoChamberSuite tests pass; `git diff origin/main -- encounter/space.go` is empty, confirming no unrelated production change was kept."
+      "notes": "TestAddObstacle_RejectsEmptyID (mutation-verified: still caught by validateObstacles when AddObstacle's own pre-check was temporarily removed)"
     },
     {
-      "id": "init-dungeon-atomic-on-door-failure",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon's per-connector door placement must be atomic: if the room rebuild fails for any reason, the encounter must be left exactly as it was before the call (no partially-set Space, no leaked connector doors, no partially-rebuilt room) rather than returning an error while leaving observable partial state.",
+      "id": "obstacle-rejects-duplicate-id",
+      "feature": "obstacle-validation",
+      "prompt": "AddObstacle with an ID that already exists among the Space's obstacles is rejected with a contextual error and leaves Data.Space/room state unchanged.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "Review finding: the original `for range layout.doors { e.AddDoor(...) }` loop could leave e.data.Space set and earlier connectors' doors added if a LATER connector's AddDoor failed, despite InitDungeon returning an error. RED: TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState pre-seeds a decoy door at an out-of-bounds position (deterministically fails spatial.BasicRoom.PlaceEntity's grid.IsValidPosition check once InitDungeon sets Space and rebuilds -- same-cell door/wall collisions are defensively skipped rather than erroring, so this is the only reliable failure-injection technique against this code), then asserts Space/both connector doors are absent and enc.Room() is nil after the failed call -- failed for the expected reason (Space non-nil leaked) against the original code. GREEN: InitDungeon now stages both connector doors directly into e.data.Doors, calls rebuildRoomFromData exactly ONCE for the whole batch (instead of once per connector), and on failure restores the pre-call Space and deletes the staged door IDs. rebuildRoomFromData itself only calls registerRoom (swapping in e.room/e.roomOrchestrator) after every wall/door places successfully, so the room side was already atomic; this completes the Data-side half. No changes to AddDoor or any other public API; bonus: 1 rebuild instead of N-1."
+      "notes": "TestAddObstacle_RejectsDuplicateID (mutation-verified, same as above)"
     },
     {
-      "id": "init-dungeon-crypt-shaped-capability",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon's generic parameters are flexible enough to express the first crypt's entrance/corridor/boss shape (Theme='crypt' passthrough only, no crypt-specific branching in the generator) without emitting a chamber archetype.",
+      "id": "obstacle-rejects-out-of-bounds-position",
+      "feature": "obstacle-validation",
+      "prompt": "AddObstacle at a position outside the room's grid bounds is rejected with a contextual error, and the failed add does not leave a partial obstacle entry in Data.Space.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "DungeonSuite/TestFirstCryptTemplate_EntranceCorridorBossWithoutChamberArchetype."
+      "notes": "TestAddObstacle_RejectsOutOfBoundsPosition"
     },
     {
-      "id": "two-chamber-compat-via-generalized-entry-point",
-      "feature": "two-chamber-compat",
-      "prompt": "InitTwoChamberRoom delegates to the generalized InitDungeon entry point internally (retiring the duplicate wall-generation implementation) while every existing encounter/two_chamber_test.go assertion (region IDs, entrance, door blocking/LoS, determinism-vs-entropy) continues to pass unchanged.",
+      "id": "obstacle-rejects-duplicate-occupancy",
+      "feature": "obstacle-validation",
+      "prompt": "AddObstacle at a hex already occupied by a movement-blocking wall/door is rejected with a contextual error, atomically (no partial Data.Space/room state).",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "two_chamber.go rewritten as a thin validating wrapper calling e.InitDungeon(...); two_chamber_test.go untouched and green (TestTwoChamberSuite, TestRegionAt_NilReceiver). Retired duplicate helpers: chamberCubes, chamberWallSegments, generateChamberWalls, hexesFromCubes, chamberPathWidth (now regionCubes/regionWallSegments/generateRegionWalls/hexesFromCubes/dungeonPathWidth in dungeon.go, shared by both entry points)."
+      "notes": "TestAddObstacle_RejectsDuplicateOccupancy"
     },
     {
-      "id": "init-dungeon-region-id-and-archetype-validation",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects an empty region ID, a duplicate region ID across the chain, and any region Archetype outside the documented fixed vocabulary (entrance | chamber | corridor | boss) -- errors must identify the offending region by index.",
+      "id": "obstacle-backward-compatible-no-obstacles",
+      "feature": "obstacle-compat",
+      "prompt": "An encounter/SpaceData with no Obstacles field (nil/empty, e.g. pre-#818 snapshots) loads and round-trips exactly as before - Obstacles omitted from the wire, no room-side change.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "Copilot review thread (comment 3632233153, resolved): empty/duplicate region IDs make SpaceData.RegionAt ambiguous (returns the first matching region); an open-ended Archetype string undermines the documented 'fixed vocabulary' contract. RED: TestInitDungeon_RejectsEmptyRegionID, TestInitDungeon_RejectsDuplicateRegionIDs, TestInitDungeon_RejectsUnknownArchetype all failed 'want error, got nil' against the prior code. GREEN: validateDungeonParams now tracks seen region IDs in a map (rejecting empty and duplicate) and switches on Archetype against the 4 known constants (rejecting anything else). Errors follow the existing 'region %d (%q): ...' style and name the offending index. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632507283."
+      "notes": "TestObstacle_BackwardCompatible_NoObstacles"
     },
     {
-      "id": "init-dungeon-duplicate-connector-door-id",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects a duplicate connector DoorID before generation mutates encounter data -- reusing a DoorID across connectors must not silently overwrite an earlier door in e.data.Doors.",
+      "id": "obstacle-rejects-duplicate-occupancy-both-nonblocking",
+      "feature": "obstacle-validation",
+      "prompt": "Two obstacles with BlocksMovement=false sharing the same hex are rejected as a data error, not silently co-located (Copilot review gap on PR #823: spatial.BasicRoom's occupancy check only rejects when the EXISTING occupant blocks movement).",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "Copilot review thread (comment 3632233194, resolved): AddDoor keys e.data.Doors by DoorID, so two connectors sharing an ID silently overwrite each other, leaving the earlier boundary column permanently unblocked (no closed door entity) -- breaks the closed-by-default connectivity contract with no error. Reproduced the symptom directly with a throwaway (uncommitted) test before the fix: duplicate DoorIDs across 2 connectors left err=nil and exactly 1 entry in e.data.Doors (the later connector's door, at the later connector's position). RED: TestInitDungeon_RejectsDuplicateConnectorDoorIDs failed 'want error, got nil' against the prior code (also asserts the rejected call leaves Space nil and Doors empty). GREEN: validateDungeonParams now tracks seen connector DoorIDs in a map alongside the existing non-empty check, rejecting duplicates before InitDungeon ever calls generateDungeonLayout or mutates e.data. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632508545."
-    },
-    {
-      "id": "terminal-region-path-purpose-string",
-      "feature": "init-dungeon",
-      "prompt": "The terminal region's required-path Purpose string must not claim 'chamber' when the terminal region can be any archetype (e.g. boss) -- use an accurate, generic description.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "Copilot review thread (comment 3632233223, resolved): 'door-to-chamber' is misleading once the terminal region isn't a chamber. FIX: renamed to 'door-to-region-center', accurate for any archetype, smallest possible change (one string literal). NOT added a new test: confirmed (by reading tools/environments/wall_patterns.go) this string only surfaces via validatePathSafety's 'required path blocked' error, and generateRegionWalls always sets Safety.EmergencyFallback: true, which swallows that error by falling back to an empty layout before it can propagate -- deterministically forcing that exact error would require brittle setup fighting the fallback. Per explicit instruction not to manufacture a brittle test for an internal/cosmetic string, this was left as a documented reasoning in the reply rather than a new assertion. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632509808."
+      "notes": "TestAddObstacle_RejectsDuplicateOccupancy_BothNonBlocking. RED confirmed (Error expected, got nil) before the placed-map explicit check was added to rebuildRoomFromData."
     }
   ]
 }

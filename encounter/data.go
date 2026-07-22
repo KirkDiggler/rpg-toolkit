@@ -114,6 +114,62 @@ type SpaceData struct {
 	// vocabulary), not cosmetic theme. Empty for InitRoom/InitTwoChamberRoom
 	// spaces and any InitDungeon call that doesn't set it.
 	Theme string `json:"theme,omitempty"`
+
+	// Obstacles are generic, content-agnostic static obstacle instances —
+	// rpg-toolkit#818. Same category as a Wall (a static blocker the room
+	// must agree with on BlocksMovement/BlocksLoS) but an INSTANCE at one
+	// hex, not a boundary-edge segment, and with a stable ID/Ref a host or
+	// client can key off across ticks/reloads — a set-piece (crypt
+	// sarcophagus, altar, pillar, ...) rather than room geometry. The
+	// toolkit never interprets Ref or branches on it; placement policy
+	// (WHERE obstacles go for a given theme/archetype) is out of scope for
+	// #818 — see the crypt-placement issue that depends on it. Order-
+	// preserving slice, not a map: AddObstacle enforces unique, non-empty
+	// IDs itself (see validateObstacles) rather than relying on map-key
+	// overwrite semantics the way Doors does. Empty for every space
+	// predating #818 — omitted from the wire when empty so old snapshots
+	// round-trip byte-for-byte.
+	Obstacles []ObstacleData `json:"obstacles,omitempty"`
+}
+
+// ObstacleData persists one static obstacle instance: a generic,
+// content-agnostic blocker at a single hex — rpg-toolkit#818. Distinct
+// from a Wall (a boundary-edge segment discretized per-hex, generator-
+// owned) and from a Door (a connector with open/locked state): an
+// obstacle is an INSTANCE a host places (e.g. via AddObstacle) at a
+// specific position, with no notion of "edge" or "connects two regions".
+type ObstacleData struct {
+	// ID is this obstacle's stable identifier — unique within its
+	// SpaceData's Obstacles — so a host or client can reference the SAME
+	// obstacle across ticks/reloads (e.g. to target it with an interaction
+	// verb in a later issue). Required; enforced non-empty and unique by
+	// AddObstacle/validateObstacles, never auto-generated.
+	ID core.EntityID `json:"id"`
+
+	// Ref is an opaque content identifier for this obstacle (e.g.
+	// "dnd5e:obstacles:sarcophagus") — mirrors MonsterData.MonsterRef's
+	// plain-opaque-string convention. The encounter SDK never interprets
+	// Ref; it exists so a host/client can look up dressing, interaction
+	// verbs, or other content-specific behavior keyed off it downstream,
+	// without the toolkit needing to know what a "sarcophagus" is.
+	Ref string `json:"ref"`
+
+	// Position is this obstacle's absolute cube-coordinate-backed hex in
+	// the encounter's Space — the same coordinate space Walls/Doors/
+	// Regions already use (core.Hex, ->ToCube()/->ToPosition() convert to
+	// the spatial package's types rebuildRoomFromData places into).
+	Position core.Hex `json:"position"`
+
+	// BlocksMovement mirrors environments.WallProperties.BlocksMovement —
+	// when true, the reconstructed spatial.Room rejects placing/moving a
+	// blocking entity onto this obstacle's hex, exactly like a wall.
+	BlocksMovement bool `json:"blocks_movement"`
+
+	// BlocksLoS mirrors environments.WallProperties.BlocksLoS — when
+	// true, the reconstructed spatial.Room's IsLineOfSightBlocked reports
+	// true for any line of sight passing through this obstacle's hex,
+	// exactly like a wall.
+	BlocksLoS bool `json:"blocks_los"`
 }
 
 // RegionData tags a named set of hexes as one chamber/region within a
