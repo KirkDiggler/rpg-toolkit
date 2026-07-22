@@ -144,9 +144,10 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 
 // validateDungeonParams checks the structural and scale invariants
 // InitDungeon depends on: at least 2 regions, exactly len(Regions)-1
-// connectors with non-empty DoorIDs, every region/height at least 4, and
-// the boss-room scale invariant (rpg-toolkit#814 Approved Slice 3
-// corrections) — a generation-time assertion, not eyeballing.
+// connectors with non-empty and unique DoorIDs, every region with a
+// non-empty and unique ID, a known Archetype, every region/height at
+// least 4, and the boss-room scale invariant (rpg-toolkit#814 Approved
+// Slice 3 corrections) — a generation-time assertion, not eyeballing.
 func validateDungeonParams(params DungeonParams) error {
 	if len(params.Regions) < 2 {
 		return fmt.Errorf("dungeon needs at least 2 regions (got %d)", len(params.Regions))
@@ -163,10 +164,39 @@ func validateDungeonParams(params DungeonParams) error {
 			return fmt.Errorf("region %d (%q) width must be at least 4 (got %d)", i, r.ID, r.Width)
 		}
 	}
+	// Region IDs must be non-empty and unique: SpaceData.RegionAt returns
+	// the FIRST matching region for a given hex, so an empty or duplicate
+	// ID either produces a meaningless tag or silently makes every hex in
+	// a later region misreport as belonging to an earlier one.
+	seenRegionIDs := make(map[string]int, len(params.Regions))
+	for i, r := range params.Regions {
+		if r.ID == "" {
+			return fmt.Errorf("region %d: id required", i)
+		}
+		if first, dup := seenRegionIDs[r.ID]; dup {
+			return fmt.Errorf("region %d (%q): duplicate region id (already used by region %d)", i, r.ID, first)
+		}
+		seenRegionIDs[r.ID] = i
+	}
+	// Archetype is documented as a fixed, reusable vocabulary (data.go) —
+	// enforce that here rather than letting RegionArchetype's underlying
+	// string type accept anything.
+	for i, r := range params.Regions {
+		switch r.Archetype {
+		case ArchetypeEntrance, ArchetypeChamber, ArchetypeCorridor, ArchetypeBoss:
+		default:
+			return fmt.Errorf("region %d (%q): unknown archetype %q", i, r.ID, r.Archetype)
+		}
+	}
+	seenDoorIDs := make(map[core.EntityID]int, len(params.Connectors))
 	for i, c := range params.Connectors {
 		if c.DoorID == "" {
 			return fmt.Errorf("connector %d: door id required", i)
 		}
+		if first, dup := seenDoorIDs[c.DoorID]; dup {
+			return fmt.Errorf("connector %d (%q): duplicate door id (already used by connector %d)", i, c.DoorID, first)
+		}
+		seenDoorIDs[c.DoorID] = i
 	}
 	for i, r := range params.Regions {
 		if r.Archetype != ArchetypeBoss {
@@ -266,9 +296,15 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			}
 		case i == n-1:
 			// terminal region: incoming-door-adjacent -> local center.
+			// Purpose names the destination generically ("region", not
+			// "chamber") since the terminal region can be any archetype
+			// (boss, chamber, ...) — this string only ever surfaces in
+			// environments.validatePathSafety's "required path '%s' is
+			// blocked" error, but it must still describe what's actually
+			// there.
 			center := spatial.Position{X: float64(r.Width) / 2, Y: float64(doorRow)}
 			requiredPaths = []environments.Path{
-				{From: local, To: center, Width: dungeonPathWidth, Purpose: "door-to-chamber"},
+				{From: local, To: center, Width: dungeonPathWidth, Purpose: "door-to-region-center"},
 			}
 		default:
 			// interior region: incoming-door-adjacent -> outgoing-door-adjacent.

@@ -10,6 +10,7 @@ package encounter_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -138,6 +139,57 @@ func TestInitDungeon_RejectsNarrowRegion(t *testing.T) {
 	}
 }
 
+// TestInitDungeon_RejectsEmptyRegionID: every region's ID is required —
+// SpaceData.RegionAt keys off it, and an empty ID is never a meaningful
+// tag for a host to key spawn/seeding decisions off.
+func TestInitDungeon_RejectsEmptyRegionID(t *testing.T) {
+	enc := newTestEncounter(t)
+	params := validTwoRegionParams()
+	params.Regions[1].ID = ""
+	err := enc.InitDungeon(params)
+	if err == nil {
+		t.Fatal("InitDungeon with an empty region ID: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "region 1") {
+		t.Errorf("error must identify the offending region by index; got %q", err.Error())
+	}
+}
+
+// TestInitDungeon_RejectsDuplicateRegionIDs: region IDs must be unique —
+// SpaceData.RegionAt returns the FIRST matching region for a given hex,
+// so a duplicate ID silently makes every hex in the later region(s)
+// misreport as belonging to the earlier one.
+func TestInitDungeon_RejectsDuplicateRegionIDs(t *testing.T) {
+	enc := newTestEncounter(t)
+	params := validTwoRegionParams()
+	params.Regions[1].ID = params.Regions[0].ID
+	err := enc.InitDungeon(params)
+	if err == nil {
+		t.Fatal("InitDungeon with duplicate region IDs: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "region 1") || !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("error must identify the offending region by index and call out the duplication; got %q", err.Error())
+	}
+}
+
+// TestInitDungeon_RejectsUnknownArchetype: Archetype is documented as a
+// fixed, reusable vocabulary (entrance | chamber | corridor | boss) —
+// RegionArchetype being a string type must not let an arbitrary or empty
+// value through, or the "fixed vocabulary" contract data.go documents is
+// unenforced.
+func TestInitDungeon_RejectsUnknownArchetype(t *testing.T) {
+	enc := newTestEncounter(t)
+	params := validTwoRegionParams()
+	params.Regions[1].Archetype = encounter.RegionArchetype("not-a-real-archetype")
+	err := enc.InitDungeon(params)
+	if err == nil {
+		t.Fatal("InitDungeon with an unknown region archetype: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "region 1") {
+		t.Errorf("error must identify the offending region by index; got %q", err.Error())
+	}
+}
+
 // TestInitDungeon_RejectsShortSharedHeight: the shared Height needs at
 // least 4, same floor as region width.
 func TestInitDungeon_RejectsShortSharedHeight(t *testing.T) {
@@ -158,6 +210,35 @@ func TestInitDungeon_RejectsEmptyDoorID(t *testing.T) {
 	params.Connectors[0].DoorID = ""
 	if err := enc.InitDungeon(params); err == nil {
 		t.Fatal("InitDungeon with an empty connector DoorID: want error, got nil")
+	}
+}
+
+// TestInitDungeon_RejectsDuplicateConnectorDoorIDs: connector DoorIDs
+// must be unique. AddDoor keys e.data.Doors by DoorID, so two connectors
+// reusing the same ID silently overwrite each other in that map — the
+// earlier connector's door entity is never placed, leaving that boundary
+// column permanently unblocked (no closed door), breaking the
+// closed-by-default connectivity contract without any error. This must
+// be rejected before generation mutates encounter data at all.
+func TestInitDungeon_RejectsDuplicateConnectorDoorIDs(t *testing.T) {
+	enc := newTestEncounter(t)
+	params := threeRegionDungeonParams(dungeonSeed)
+	params.Connectors[1].DoorID = params.Connectors[0].DoorID
+
+	err := enc.InitDungeon(params)
+	if err == nil {
+		t.Fatal("InitDungeon with duplicate connector DoorIDs: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "connector 1") || !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("error must identify the offending connector by index and call out the duplication; got %q", err.Error())
+	}
+
+	data := enc.ToData()
+	if data.Space != nil {
+		t.Error("a rejected InitDungeon call must not mutate encounter data (Space)")
+	}
+	if len(data.Doors) != 0 {
+		t.Errorf("a rejected InitDungeon call must not stage any doors; got %d", len(data.Doors))
 	}
 }
 
