@@ -537,7 +537,7 @@ surface**, composing nothing itself.
 
 | Field | Composed by | Example |
 |---|---|---|
-| `Items[].Name`, `.Kind` | direct from the owned `equipment.Equipment` (`"weapon"｜"shield"｜"armor"｜"gear"`) | `"Longsword"`, `"weapon"` |
+| `Items[].Name`, `.Kind` | direct from the owned `equipment.Equipment` (`"weapon"`, `"shield"`, `"armor"`, or `"gear"`) | `"Longsword"`, `"weapon"` |
 | `Items[].SlotKeys` | `CompatibleSlots`, projected to `[]string` | `["main_hand","off_hand"]`; `nil` for slotless gear |
 | `Items[].Slot` | `equipmentSlots.slotFor` | `""` if carried but not equipped |
 | `Items[].StatLine` | `StatLine(*equipment.EquipmentDetail)` | `"1d8 slashing · versatile"`, `"AC 16 · heavy"`, `"+2 AC"` (shields) |
