@@ -37,3 +37,6 @@ Thumbs.db
 # Build artifacts
 dist/
 bin/
+
+# Linked git worktrees (project-local, per rpg-api/rpg-dnd5e-web convention)
+.worktrees/

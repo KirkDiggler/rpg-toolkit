@@ -1,113 +1,83 @@
 {
-  "branch": "feature/abilities-actions-system",
-  "issues": ["#529"],
-  "goal": "Implement two-level action economy: Abilities consume action economy to grant capacity, Actions consume capacity to do things",
-  "design_doc": "docs/plans/2026-01-07-abilities-actions-design.md",
+  "branch": "feat/814-n-region-dungeon",
+  "issues": ["#814"],
+  "goal": "Generalize encounter/two_chamber.go's fixed two-chamber generator into a single generic N-region linear-chain dungeon generator (InitDungeon), adding region archetypes (entrance|chamber|corridor|boss) and an opaque SpaceData.Theme, while preserving InitTwoChamberRoom's existing public behavior by delegating it to the new generator.",
+  "design_doc": "rpg-project/ideas/the-dungeon/wave2-design.md",
   "sessions": [
     {
-      "date": "2026-01-07",
-      "phase": "Phase 1",
-      "completed": [
-        "Added AttacksRemaining and MovementRemaining fields to ActionEconomy struct",
-        "Implemented CanUseAttack(), UseAttack(), SetAttacks() methods for attack capacity",
-        "Implemented CanUseMovement(), UseMovement(), SetMovement(), AddMovement() methods for movement",
-        "Updated Reset() to only reset primary resources, not capacity",
-        "Added comprehensive tests including scenario tests for Fighter/Rogue combat flows"
-      ],
-      "commit": "cb7e741",
-      "notes": "Phase 1 complete. ActionEconomy now supports the two-level action economy where abilities grant capacity and actions consume it."
+      "id": "2026-07-22-001",
+      "task": "Baseline verification + worktree/artifact setup",
+      "status": "completed",
+      "artifacts": [".gitignore", ".claude/progress.json", ".claude/tests.json"],
+      "commit": null,
+      "notes": "Verified no existing branch/PR for #814. Added .worktrees/ to .gitignore (repo had no linked-worktree convention yet, unlike rpg-api/rpg-dnd5e-web). Baseline `go test ./...` in encounter/ green (55s) before any behavioral change."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 2",
-      "completed": [
-        "Created combatabilities package at rulebooks/dnd5e/combatabilities/",
-        "Added TypeCombatAbilities constant to refs/module.go",
-        "Created refs/combat_abilities.go with refs for Attack, Dash, Dodge, Disengage, Help, Hide, Ready",
-        "Created CombatAbility interface extending core.Action[CombatAbilityInput]",
-        "Created CombatAbilityInput struct with Bus, ActionEconomy, ActionHolder, Speed, ExtraAttacks fields",
-        "Created BaseCombatAbility struct providing common functionality",
-        "Created CombatAbilityHolder interface for entities that hold combat abilities",
-        "Implemented LoadJSON function stub for ability deserialization",
-        "Added comprehensive tests for all action economy types (standard, bonus, reaction, free)"
-      ],
-      "notes": "Phase 2 complete. The combatabilities package provides infrastructure for universal combat abilities. Named 'combatabilities' to avoid conflict with existing 'abilities' package (which contains ability scores STR/DEX/etc). The CombatAbility interface follows the same pattern as Feature and Action interfaces."
+      "id": "2026-07-22-002",
+      "task": "TDD RegionArchetype vocabulary + SpaceData.Theme opaque field",
+      "status": "completed",
+      "artifacts": ["encounter/data.go", "encounter/dungeon_test.go"],
+      "commit": null,
+      "notes": "RED/GREEN: TestRegionArchetype_GenericVocabulary, TestSpaceData_ThemeIsOpaqueAndDistinctFromArchetype. Added RegionArchetype type + ArchetypeEntrance/Chamber/Corridor/Boss constants and RegionData.Archetype; added SpaceData.Theme (opaque, omitempty)."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 3",
-      "completed": [
-        "Implemented Attack ability (attack.go) - consumes 1 action, sets AttacksRemaining based on ExtraAttacks",
-        "Implemented Dash ability (dash.go) - consumes 1 action, adds Speed to MovementRemaining",
-        "Implemented Dodge ability (dodge.go) - consumes 1 action, publishes DodgeActivatedEvent",
-        "Implemented Disengage ability (disengage.go) - consumes 1 action, publishes DisengageActivatedEvent",
-        "Added DodgeActivatedEvent and DisengageActivatedEvent to events/events.go",
-        "Added DodgeActivatedTopic and DisengageActivatedTopic for event pub/sub",
-        "Created NewBonusDash, NewBonusDodge, NewBonusDisengage constructors for bonus action variants",
-        "Updated LoadJSON to route to all four implemented abilities",
-        "Added comprehensive tests for all abilities including scenario tests (Fighter Action Surge, Rogue Cunning Action)"
-      ],
-      "notes": "Phase 3 complete. All four standard combat abilities are implemented. Dodge/Disengage publish events that future conditions can subscribe to. The actual Dodging/Disengaging conditions will be implemented in a future phase. Attack sets AttacksRemaining for Strike actions (Phase 4). Dash adds movement for Move actions (Phase 4)."
+      "id": "2026-07-22-003",
+      "task": "TDD InitDungeon validation (region/connector count, dimensions, door IDs, boss scale invariant)",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon.go", "encounter/dungeon_test.go"],
+      "commit": null,
+      "notes": "RED/GREEN per assertion: TestInitDungeon_RejectsFewerThanTwoRegions, RejectsWrongConnectorCount, RejectsNarrowRegion, RejectsShortSharedHeight, RejectsEmptyDoorID, RejectsUndersizedBossRoom (axis==6 rejected), AcceptsBossRoomExceedingScaleInvariant (axis>6 accepted). validateDungeonParams called unconditionally at InitDungeon's entry."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 4",
-      "completed": [
-        "Implemented Strike action (strike.go) - consumes 1 AttacksRemaining, publishes StrikeExecutedEvent",
-        "Implemented Move action (move.go) - consumes MovementRemaining based on distance, publishes MoveExecutedEvent",
-        "Added StrikeExecutedEvent and MoveExecutedEvent to events/events.go",
-        "Added StrikeExecutedTopic and MoveExecutedTopic for event pub/sub",
-        "Added CurrentPosition, Destination, and MovementCostFt fields to ActionInput",
-        "Strike is permanent (not temporary like FlurryStrike/OffHandStrike) with unlimited uses",
-        "Move is permanent with unlimited uses, validates movement cost before activation",
-        "Added comprehensive tests including scenario tests (Fighter Extra Attack, Dash double movement, interleaved combat)"
-      ],
-      "notes": "Phase 4 complete. Strike and Move actions are the 'doing' layer that consume capacity granted by abilities. Strike consumes attacks granted by Attack ability and publishes StrikeExecutedEvent for the game layer to resolve. Move consumes movement and publishes MoveExecutedEvent for position changes. Both are permanent actions (unlike FlurryStrike/OffHandStrike which are temporary)."
+      "id": "2026-07-22-004",
+      "task": "TDD InitDungeon N-region linear-chain generation + retire two_chamber.go's duplicate geometry",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon.go", "encounter/dungeon_test.go", "encounter/two_chamber.go"],
+      "commit": null,
+      "notes": "RED (nil-Space panic) then GREEN: generalized generateTwoChamberLayout -> generateDungeonLayout for N regions (shared Height, per-region Width, required-path-by-construction connectivity: entrance->door for region 0, door->door for interior regions, door->center for the terminal region). Rewrote two_chamber.go as a thin validating wrapper delegating to e.InitDungeon (N=2, chamber-1=ArchetypeEntrance, chamber-2=ArchetypeChamber); retired the now-duplicate chamberCubes/chamberWallSegments/generateChamberWalls/hexesFromCubes/chamberPathWidth in favor of the shared regionCubes/regionWallSegments/generateRegionWalls/hexesFromCubes/dungeonPathWidth in dungeon.go. two_chamber_test.go untouched and green throughout (existing tests pass against the generalized entry point, per the done bar). DungeonSuite added (3-region entrance/corridor/boss fixture): closed-door block, open-door connectivity, region archetype/theme partition, seed determinism, crypt-shaped capability without ArchetypeChamber.",
+      "concerns": "Isolated and worked around (not fixed — different module, out of scope) a pre-existing tools/environments|tools/spatial pointy-top-hex-grid parity quirk: IsLineOfSightBlocked's short-range raycast across a 2-column gap gives a different (incorrect-looking) result depending on which column parity (even/odd) the door sits on, even though wall placement is byte-identical between the two parities and BFS movement reachability is unaffected in both. Fixture's corridor width nudged 4->5 so both connector doors land on the working parity. Documented in tests.json and will flag in the PR body for awareness; not an #814 regression (reproduced identically via a bare two-door layout unrelated to InitDungeon's own logic)."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 5",
-      "completed": [
-        "Added CombatAbilityHolder interface implementation to Character (AddCombatAbility, RemoveCombatAbility, GetCombatAbilities, GetCombatAbility)",
-        "Added combatAbilities []combatabilities.CombatAbility field to Character struct",
-        "Added initializeStandardCombatAbilities() helper - adds Attack, Dash, Dodge, Disengage during ToCharacter",
-        "Added initializeStandardActions() helper - adds Strike and Move actions during ToCharacter",
-        "Updated ToCharacter to initialize combatAbilities and actions slices",
-        "Added comprehensive tests in combat_abilities_test.go verifying character gets all standard abilities"
-      ],
-      "notes": "Phase 5 complete. Characters now receive 4 standard combat abilities (Attack, Dash, Dodge, Disengage) and 2 standard actions (Strike, Move) when finalized via ToCharacter. The CombatAbilityHolder interface follows the same pattern as ActionHolder. Combat abilities are identified by characterID + ability name (e.g., 'char-001-attack')."
+      "id": "2026-07-22-005",
+      "task": "Full verification + lint/scope self-review",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "go build ./..., go vet ./..., go test ./... (55s, all green), go test -race ./... (all green), gofmt -l . / goimports -l . (clean), go mod tidy (no diff), golangci-lint run ./... (66 goconst issues, identical to the pre-existing origin/main baseline count of 65+1 -- verified byte-identical baseline list except zero new hits from dungeon.go/dungeon_test.go after fixing the 2 lll + 3 goconst hits my own new test file introduced). Diff confined to encounter/data.go, encounter/two_chamber.go, encounter/dungeon.go (new), encounter/dungeon_test.go (new); no go.mod/go.sum/go.work changes; no crypt-specific props/monster-seeding/locked-door/API/proto/client code touched."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Phase 6",
-      "completed": [
-        "Added ActionBehavior interface to events/events.go (core.Entity + IsTemporary())",
-        "Added ActionGrantedEvent struct with CharacterID, Action (ActionBehavior), and Source fields",
-        "Added ActionGrantedTopic for typed pub/sub of action granted events",
-        "Added Character.onActionGranted() handler that subscribes to ActionGrantedEvent and adds actions",
-        "Updated Character.subscribeToEvents() to subscribe to ActionGrantedTopic",
-        "Updated FlurryOfBlows.Activate() to publish ActionGrantedEvent instead of direct holder.AddAction()",
-        "Updated TwoWeaponGranter.CheckAndGrantOffHandStrike() to publish ActionGrantedEvent when EventBus is provided",
-        "Updated tests in flurry_of_blows_test.go to subscribe to ActionGrantedEvent",
-        "Updated tests in two_weapon_granter_test.go to subscribe to ActionGrantedEvent",
-        "Added TestEventBasedActionGranting test suite in combat_abilities_test.go with 4 test cases"
-      ],
-      "notes": "Phase 6 complete. Actions are now granted via events for observability. ActionGrantedEvent carries the action via ActionBehavior interface (defined in events package to avoid import cycles). Character type-asserts ActionBehavior to actions.Action when handling the event. FlurryOfBlows now requires an EventBus. TwoWeaponGranter falls back to direct ActionHolder if EventBus is nil for backwards compatibility."
+      "id": "2026-07-22-006",
+      "task": "PR #821 review response: LoS coverage gap in closed-door dungeon test + InitDungeon partial-init atomicity",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon.go", "encounter/dungeon_test.go"],
+      "commit": null,
+      "notes": "Two independent review findings addressed. (1) TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors only checked movement/reachability, never IsLineOfSightBlocked, despite its name. DISCRIMINATION: temporarily mutated space.go's closed-door wall Properties.BlocksLoS from true to false (production code, reverted immediately after) and reran the two suites: TestTwoChamberSuite/TestClosedDoor_BlocksMovementAndLoS_BetweenChambers (which DOES check LoS) correctly failed; TestDungeonSuite/TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors still passed -- proving the exact gap. Added two IsLineOfSightBlocked(farEdge,nearEdge) assertions (one per connector, mirroring the two-chamber precedent's direct across-the-door check) to the dungeon test; reran with the same mutation still active -> both new assertions failed for the expected reason (RED); reverted the mutation -> GREEN, space.go diff empty (no unrelated change kept). (2) InitDungeon's original per-connector `for range layout.doors { e.AddDoor(...) }` loop could leave e.data.Space set and earlier connectors' doors added if a LATER connector's AddDoor failed, despite returning an error -- observable partial state. RED: new top-level test TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState pre-seeds a decoy door at an out-of-bounds position (Space nil at that point, so AddDoor just records it; rebuildRoomFromData's PlaceEntity deterministically fails on out-of-bounds positions, since same-cell collisions are defensively skipped rather than errored) then calls InitDungeon and asserts Space/both connector doors are absent after the failure -- failed for the expected reason (Space non-nil leaked) against the original code. GREEN: rewrote InitDungeon to stage all connector DoorData entries directly into e.data.Doors and call rebuildRoomFromData exactly ONCE (instead of once per connector), snapshotting the pre-call Space and rolling both Space and the newly-staged door IDs back on any rebuild failure -- rebuildRoomFromData itself never calls registerRoom (swapping in e.room/e.roomOrchestrator) until every wall/door places successfully, so the room side was already atomic; the fix completes the Data-side half of that guarantee. Bonus: single rebuild instead of N-1 is also strictly cheaper. No changes to AddDoor or any other public API.",
+      "verification": "go build ./..., go vet ./..., go test -count=1 ./... (54s all green incl. new + full existing suites), go test -race -count=1 ./... (58s all green), gofmt/goimports clean, go mod tidy no diff, golangci-lint run ./... unchanged at 65 goconst issues (byte-identical to origin/main baseline, zero new findings). Diff confined to encounter/dungeon.go and encounter/dungeon_test.go only (space.go's mutation was fully reverted, confirmed via `git diff origin/main -- encounter/space.go` producing no output)."
     },
     {
-      "date": "2026-01-07",
-      "phase": "Integration Test",
-      "completed": [
-        "Created character/integration_test.go with FullAttackFlowIntegrationSuite",
-        "TestFullAttackFlow - verifies complete combat turn with Extra Attack and dual wielding",
-        "TestAttackAbilityVariants - tests different Extra Attack configurations (0-3 extra attacks)",
-        "TestTwoWeaponFightingRequirements - validates dual-wielding requires both light weapons",
-        "TestEventFlowOrder - confirms events are published in correct order during attack sequence"
-      ],
-      "notes": "Integration test added to verify the full attack flow end-to-end. The test creates a fighter character, sets up ActionEconomy, activates Attack ability with Extra Attack (2 attacks), makes two Strikes with StrikeExecutedEvents, grants OffHandStrike via two-weapon fighting with ActionGrantedEvent, and executes the off-hand strike with OffHandStrikeRequestedEvent. All tests pass."
+      "id": "2026-07-22-007",
+      "task": "File tracker issue for the pre-existing LoS parity quirk + board it",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Checked for duplicates first (gh issue search: 'hex grid line of sight', 'IsLineOfSightBlocked parity', 'pointy-top hex grid', 'roundCube', 'door line of sight' -- found #763 'lerpCube truncation makes GetLineOfSight directionally asymmetric at distance >=22', read its full body: different symptom (direction-dependent A vs B disagreement at long range, already has proper cube rounding as the fix target) from ours (a single, direction-SYMMETRIC but wrong short-range answer at distance 2). Confirmed symmetry empirically with a throwaway repro test (both IsLineOfSightBlocked(far1,near2) and the reverse call agreed, both true, for the width-4-corridor/odd-door-column case that exposed the quirk) before concluding it's a distinct issue, not a duplicate of #763 -- repro test deleted after use, not committed. Filed https://github.com/KirkDiggler/rpg-toolkit/issues/822, signed '-- platform agent, on behalf of KirkDiggler'. Added to board #19 'The Dungeon Run' (item PVTI_lAHOAASbwc4Bcj4vzgzvPkM) with Feature=The Dungeon, Team=Platform, Status=Todo."
+    },
+    {
+      "id": "2026-07-22-008",
+      "task": "PR #821 Copilot re-review: 3 unresolved threads (region ID/archetype validation, duplicate DoorID validation, terminal-region path Purpose string)",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon.go", "encounter/dungeon_test.go"],
+      "commit": "a642c72",
+      "notes": "Fetched all 3 unresolved review threads via GraphQL (reviewThreads) before starting: PRRT_kwDOPB8ngM6TADW7 (comment 3632233153, region IDs/archetypes), PRRT_kwDOPB8ngM6TADXf (comment 3632233194, duplicate DoorIDs), PRRT_kwDOPB8ngM6TADXz (comment 3632233223, 'door-to-chamber' purpose string). Addressed all three: (1) validateDungeonParams now rejects empty region IDs, duplicate region IDs, and any Archetype outside the documented fixed vocabulary (entrance|chamber|corridor|boss) -- went slightly beyond the user's literal 'ID non-empty+unique' scope to also close the archetype half of the SAME Copilot comment, since it's a one-line closed-set switch consistent with data.go's own 'fixed vocabulary' documentation and costs nothing in flexibility (future archetypes would be new exported constants in this package, not arbitrary caller strings). RED: TestInitDungeon_RejectsEmptyRegionID, RejectsDuplicateRegionIDs, RejectsUnknownArchetype all failed 'want error, got nil' against prior code. (2) validateDungeonParams now also rejects duplicate connector DoorIDs (existing non-empty check preserved). Reproduced the silent-overwrite symptom with a throwaway test BEFORE the fix: duplicate DoorIDs across 2 connectors left err=nil and exactly 1 entry in e.data.Doors (the later connector's, at the later connector's position) -- the earlier boundary column got no door entity, confirming Copilot's exact 'permanently unblocked, closed-by-default contract broken' claim. RED: TestInitDungeon_RejectsDuplicateConnectorDoorIDs failed the same way; also asserts the rejected call leaves Space nil and Doors empty (consistent with the prior round's atomicity fix). (3) Renamed the terminal region's required-path Purpose from 'door-to-chamber' to 'door-to-region-center' -- accurate for any terminal archetype. Investigated whether to add a test: confirmed Purpose only surfaces via environments.validatePathSafety's 'required path blocked' error, which PathSafetyParams.EmergencyFallback: true (already set in generateRegionWalls) swallows by falling back to an empty layout before it can propagate -- deterministically forcing that exact error would need brittle setup fighting the fallback, so per the user's explicit guidance against manufacturing a brittle test for an internal/cosmetic string, made the string fix only, explained the reasoning in the reply instead.",
+      "verification": "go build ./..., go vet ./..., go test -count=1 ./... (54s all green incl. 4 new tests + all pre-existing suites), go test -race -count=1 ./... (54s all green), gofmt/goimports clean, go mod tidy no diff, golangci-lint run ./... unchanged at 65 goconst issues (byte-identical baseline, zero new). Diff confined to encounter/dungeon.go + encounter/dungeon_test.go (+121/-4 lines). Pushed as a642c72 before posting any reply or resolving any thread. Posted one reply per thread (each citing the commit and exact change) then resolved all 3 threads via GraphQL resolveReviewThread -- verified zero unresolved threads remain on the PR afterward.",
+      "comment_replies": [
+        {"comment_id": 3632233153, "reply_url": "https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632507283", "thread_id": "PRRT_kwDOPB8ngM6TADW7", "resolved": true},
+        {"comment_id": 3632233194, "reply_url": "https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632508545", "thread_id": "PRRT_kwDOPB8ngM6TADXf", "resolved": true},
+        {"comment_id": 3632233223, "reply_url": "https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632509808", "thread_id": "PRRT_kwDOPB8ngM6TADXz", "resolved": true}
+      ]
     }
   ],
   "next_steps": [
-    "Phase 7: Implement Dodging/Disengaging conditions that subscribe to their respective events"
+    "None outstanding -- all 3 Copilot review threads resolved and replied to. Awaiting further review/merge decision on PR #821."
   ]
 }

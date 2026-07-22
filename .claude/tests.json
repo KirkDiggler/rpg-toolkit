@@ -1,98 +1,116 @@
 {
   "tests": [
     {
-      "id": "action-economy-sub-resources",
-      "feature": "action-economy",
-      "prompt": "ActionEconomy should have AttacksRemaining and MovementRemaining fields. Reset() should set primary resources to 1 but NOT set AttacksRemaining (stays 0 until Attack ability used).",
+      "id": "region-archetype-vocabulary",
+      "feature": "region-archetype",
+      "prompt": "RegionData gains an Archetype field of a generic RegionArchetype type with exactly the values entrance | chamber | corridor | boss.",
       "passes": true,
-      "last_checked": "2026-01-07"
+      "last_checked": "2026-07-22",
+      "notes": "TestRegionArchetype_GenericVocabulary (dungeon_test.go)."
     },
     {
-      "id": "ability-interface",
-      "feature": "abilities",
-      "prompt": "CombatAbility interface should extend core.Action[CombatAbilityInput]. CombatAbilityInput should have Bus, ActionEconomy, ActionHolder, Speed, and ExtraAttacks fields.",
+      "id": "space-theme-opaque-passthrough",
+      "feature": "space-theme",
+      "prompt": "SpaceData gains a Theme string field, distinct from RegionData.Archetype, that InitDungeon copies verbatim from DungeonParams.Theme without branching on its value anywhere in the generator.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Named CombatAbility to avoid conflict with abilities package (ability scores). Located at rulebooks/dnd5e/combatabilities/"
+      "last_checked": "2026-07-22",
+      "notes": "TestSpaceData_ThemeIsOpaqueAndDistinctFromArchetype + DungeonSuite/TestRegions_ArchetypesThemeAndPartition (Theme='crypt' round-trip). Grepped dungeon.go/two_chamber.go for any `Theme ==`/switch-on-Theme branching: none exists."
     },
     {
-      "id": "attack-ability-grants-strikes",
-      "feature": "abilities",
-      "prompt": "When Attack ability is activated, it should consume 1 action, set AttacksRemaining based on Extra Attack, and grant Strike action(s) to the character.",
+      "id": "init-dungeon-validates-region-count",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects fewer than 2 regions (a dungeon needs at least an entrance and one connected region).",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Attack ability consumes action and sets AttacksRemaining. Strike action granting will be Phase 4."
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsFewerThanTwoRegions."
     },
     {
-      "id": "dash-ability-adds-movement",
-      "feature": "abilities",
-      "prompt": "When Dash ability is activated, it should consume 1 action and add character's speed to MovementRemaining.",
+      "id": "init-dungeon-validates-connector-count",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects a Connectors slice whose length is not exactly len(Regions)-1.",
       "passes": true,
-      "last_checked": "2026-01-07"
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsWrongConnectorCount."
     },
     {
-      "id": "dodge-ability-grants-condition",
-      "feature": "abilities",
-      "prompt": "When Dodge ability is activated, it should consume 1 action and grant the Dodging condition.",
+      "id": "init-dungeon-validates-dimensions-and-door-ids",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects any region narrower than 4, a shared Height under 4, and any connector with an empty DoorID.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Publishes DodgeActivatedEvent. DodgingCondition will subscribe in future phase."
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsNarrowRegion, TestInitDungeon_RejectsShortSharedHeight, TestInitDungeon_RejectsEmptyDoorID."
     },
     {
-      "id": "disengage-ability-prevents-aoo",
-      "feature": "abilities",
-      "prompt": "When Disengage ability is activated, it should consume 1 action and grant the Disengaging condition.",
+      "id": "init-dungeon-boss-scale-invariant",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects (generation-time assertion, not eyeballing) any boss-archetype region whose primary playable axis (min(width, shared height)) does not exceed 6 hex steps.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Publishes DisengageActivatedEvent. DisengagingCondition will subscribe in future phase."
+      "last_checked": "2026-07-22",
+      "notes": "TestInitDungeon_RejectsUndersizedBossRoom (axis==6 rejected), TestInitDungeon_AcceptsBossRoomExceedingScaleInvariant (axis>6 accepted). Enforced in validateDungeonParams, called unconditionally at the top of InitDungeon."
     },
     {
-      "id": "strike-action-resolves-attack",
-      "feature": "actions",
-      "prompt": "Strike action should consume 1 AttacksRemaining and publish StrikeExecutedEvent for the game layer to resolve.",
+      "id": "init-dungeon-n-region-linear-chain",
+      "feature": "init-dungeon",
+      "prompt": "A 3-region linear dungeon (entrance chamber -> corridor -> boss chamber, 2 doors) generates with a reproducible seed; every region is reachable from the entrance once its door opens; RegionAt returns the right archetype for each hex; a closed connector door blocks movement+LoS across it, matching the two-chamber behavior generalized to N.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Strike consumes AttacksRemaining via ActionEconomy.UseAttack() and publishes StrikeExecutedEvent. The game layer handles attack resolution."
+      "last_checked": "2026-07-22",
+      "notes": "DungeonSuite (dungeon_test.go): TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors (now asserts IsLineOfSightBlocked for BOTH connectors, not just movement/reachability -- see closed-door-los-coverage below for the discrimination evidence), TestOpeningBothDoors_ConnectsEntranceThroughToBoss, TestRegions_ArchetypesThemeAndPartition, TestLayout_DeterministicSeedVsEntropyDefault. NOTE (concern, not a regression): the fixture's corridor width had to be nudged from 4 to 5 hexes to sidestep a pre-existing tools/environments|tools/spatial pointy-top-hex-grid parity quirk in IsLineOfSightBlocked's short-range raycast across a door column of certain column parity relative to its flanking columns — reproduced and isolated to that dependency, unrelated to InitDungeon's own geometry math (identical wall placement on both doors; only LOS raycast result differed by door-column parity). Movement/BFS reachability was unaffected in both parities. Confirmed direction-SYMMETRIC (not the #763 asymmetry bug) via a throwaway repro test before filing https://github.com/KirkDiggler/rpg-toolkit/issues/822 (boarded #19 The Dungeon Run, Feature=The Dungeon, Team=Platform, Status=Todo) to track it. Out of scope for #814 to fix (different module)."
     },
     {
-      "id": "move-action-uses-movement",
-      "feature": "actions",
-      "prompt": "Move action should consume MovementRemaining based on distance and publish MoveExecutedEvent for position changes.",
+      "id": "closed-door-los-coverage",
+      "feature": "init-dungeon",
+      "prompt": "TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors must actually assert IsLineOfSightBlocked for both connectors (not just movement/reachability), following the two-chamber precedent (TestClosedDoor_BlocksMovementAndLoS_BetweenChambers).",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Move consumes movement via ActionEconomy.UseMovement() and publishes MoveExecutedEvent. The game layer handles position updates."
+      "last_checked": "2026-07-22",
+      "notes": "Review finding: the test name promised LoS coverage it didn't have. DISCRIMINATION (before the test fix): temporarily set space.go's closed-door wall Properties.BlocksLoS from true to false (production mutation, reverted immediately) and reran both suites -- TestTwoChamberSuite/TestClosedDoor_BlocksMovementAndLoS_BetweenChambers (which DOES check LoS) correctly FAILED; TestDungeonSuite/TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors (lacking the LoS assertion) still PASSED, proving the exact gap. FIX: added IsLineOfSightBlocked(farEdge(i), nearEdge(i+1)) assertions for both connector 0 and connector 1, mirroring the two-chamber precedent's direct across-the-door check. RED (with the same production mutation still active): both new assertions failed with the expected messages ('closed door 0/1 must block LoS...'). GREEN (mutation reverted): all DungeonSuite + TwoChamberSuite tests pass; `git diff origin/main -- encounter/space.go` is empty, confirming no unrelated production change was kept."
     },
     {
-      "id": "character-has-combat-abilities",
-      "feature": "character",
-      "prompt": "Character should have combatAbilities []CombatAbility slice with AddCombatAbility(), RemoveCombatAbility(), GetCombatAbilities() methods.",
+      "id": "init-dungeon-atomic-on-door-failure",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon's per-connector door placement must be atomic: if the room rebuild fails for any reason, the encounter must be left exactly as it was before the call (no partially-set Space, no leaked connector doors, no partially-rebuilt room) rather than returning an error while leaving observable partial state.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Changed from 'abilities' to 'combatAbilities' to avoid naming conflict. Implemented in character/character.go."
+      "last_checked": "2026-07-22",
+      "notes": "Review finding: the original `for range layout.doors { e.AddDoor(...) }` loop could leave e.data.Space set and earlier connectors' doors added if a LATER connector's AddDoor failed, despite InitDungeon returning an error. RED: TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState pre-seeds a decoy door at an out-of-bounds position (deterministically fails spatial.BasicRoom.PlaceEntity's grid.IsValidPosition check once InitDungeon sets Space and rebuilds -- same-cell door/wall collisions are defensively skipped rather than erroring, so this is the only reliable failure-injection technique against this code), then asserts Space/both connector doors are absent and enc.Room() is nil after the failed call -- failed for the expected reason (Space non-nil leaked) against the original code. GREEN: InitDungeon now stages both connector doors directly into e.data.Doors, calls rebuildRoomFromData exactly ONCE for the whole batch (instead of once per connector), and on failure restores the pre-call Space and deletes the staged door IDs. rebuildRoomFromData itself only calls registerRoom (swapping in e.room/e.roomOrchestrator) after every wall/door places successfully, so the room side was already atomic; this completes the Data-side half. No changes to AddDoor or any other public API; bonus: 1 rebuild instead of N-1."
     },
     {
-      "id": "character-gets-standard-abilities",
-      "feature": "character",
-      "prompt": "When a character is finalized (draft -> character), it should automatically receive standard combat abilities: Attack, Dash, Dodge, Disengage.",
+      "id": "init-dungeon-crypt-shaped-capability",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon's generic parameters are flexible enough to express the first crypt's entrance/corridor/boss shape (Theme='crypt' passthrough only, no crypt-specific branching in the generator) without emitting a chamber archetype.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Added during ToCharacter via initializeStandardCombatAbilities() helper. Also adds Strike and Move actions via initializeStandardActions()."
+      "last_checked": "2026-07-22",
+      "notes": "DungeonSuite/TestFirstCryptTemplate_EntranceCorridorBossWithoutChamberArchetype."
     },
     {
-      "id": "action-granted-event",
-      "feature": "events",
-      "prompt": "ActionGrantedEvent should exist. Character should subscribe to it and add the action to its actions list when received.",
+      "id": "two-chamber-compat-via-generalized-entry-point",
+      "feature": "two-chamber-compat",
+      "prompt": "InitTwoChamberRoom delegates to the generalized InitDungeon entry point internally (retiring the duplicate wall-generation implementation) while every existing encounter/two_chamber_test.go assertion (region IDs, entrance, door blocking/LoS, determinism-vs-entropy) continues to pass unchanged.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "ActionGrantedEvent and ActionBehavior interface added to events/events.go. Character.onActionGranted() handler added to subscribe and add actions. FlurryOfBlows and TwoWeaponGranter updated to publish ActionGrantedEvent."
+      "last_checked": "2026-07-22",
+      "notes": "two_chamber.go rewritten as a thin validating wrapper calling e.InitDungeon(...); two_chamber_test.go untouched and green (TestTwoChamberSuite, TestRegionAt_NilReceiver). Retired duplicate helpers: chamberCubes, chamberWallSegments, generateChamberWalls, hexesFromCubes, chamberPathWidth (now regionCubes/regionWallSegments/generateRegionWalls/hexesFromCubes/dungeonPathWidth in dungeon.go, shared by both entry points)."
     },
     {
-      "id": "full-attack-flow",
-      "feature": "integration",
-      "prompt": "Full flow: Activate Attack ability -> grants Strike(s) -> activate Strike -> attack resolves -> DualWieldingCondition grants OffHandStrike. All via events, no 'requested' indirection.",
+      "id": "init-dungeon-region-id-and-archetype-validation",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects an empty region ID, a duplicate region ID across the chain, and any region Archetype outside the documented fixed vocabulary (entrance | chamber | corridor | boss) -- errors must identify the offending region by index.",
       "passes": true,
-      "last_checked": "2026-01-07",
-      "notes": "Integration test in character/integration_test.go. Tests full combat turn: ActionEconomy setup, Attack ability with Extra Attack (2 attacks), Strike execution with events, two-weapon fighting granting OffHandStrike via ActionGrantedEvent, and OffHandStrike execution with events."
+      "last_checked": "2026-07-22",
+      "notes": "Copilot review thread (comment 3632233153, resolved): empty/duplicate region IDs make SpaceData.RegionAt ambiguous (returns the first matching region); an open-ended Archetype string undermines the documented 'fixed vocabulary' contract. RED: TestInitDungeon_RejectsEmptyRegionID, TestInitDungeon_RejectsDuplicateRegionIDs, TestInitDungeon_RejectsUnknownArchetype all failed 'want error, got nil' against the prior code. GREEN: validateDungeonParams now tracks seen region IDs in a map (rejecting empty and duplicate) and switches on Archetype against the 4 known constants (rejecting anything else). Errors follow the existing 'region %d (%q): ...' style and name the offending index. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632507283."
+    },
+    {
+      "id": "init-dungeon-duplicate-connector-door-id",
+      "feature": "init-dungeon",
+      "prompt": "InitDungeon rejects a duplicate connector DoorID before generation mutates encounter data -- reusing a DoorID across connectors must not silently overwrite an earlier door in e.data.Doors.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot review thread (comment 3632233194, resolved): AddDoor keys e.data.Doors by DoorID, so two connectors sharing an ID silently overwrite each other, leaving the earlier boundary column permanently unblocked (no closed door entity) -- breaks the closed-by-default connectivity contract with no error. Reproduced the symptom directly with a throwaway (uncommitted) test before the fix: duplicate DoorIDs across 2 connectors left err=nil and exactly 1 entry in e.data.Doors (the later connector's door, at the later connector's position). RED: TestInitDungeon_RejectsDuplicateConnectorDoorIDs failed 'want error, got nil' against the prior code (also asserts the rejected call leaves Space nil and Doors empty). GREEN: validateDungeonParams now tracks seen connector DoorIDs in a map alongside the existing non-empty check, rejecting duplicates before InitDungeon ever calls generateDungeonLayout or mutates e.data. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632508545."
+    },
+    {
+      "id": "terminal-region-path-purpose-string",
+      "feature": "init-dungeon",
+      "prompt": "The terminal region's required-path Purpose string must not claim 'chamber' when the terminal region can be any archetype (e.g. boss) -- use an accurate, generic description.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot review thread (comment 3632233223, resolved): 'door-to-chamber' is misleading once the terminal region isn't a chamber. FIX: renamed to 'door-to-region-center', accurate for any archetype, smallest possible change (one string literal). NOT added a new test: confirmed (by reading tools/environments/wall_patterns.go) this string only surfaces via validatePathSafety's 'required path blocked' error, and generateRegionWalls always sets Safety.EmergencyFallback: true, which swallows that error by falling back to an empty layout before it can propagate -- deterministically forcing that exact error would require brittle setup fighting the fallback. Per explicit instruction not to manufacture a brittle test for an internal/cosmetic string, this was left as a documented reasoning in the reply rather than a new assertion. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632509808."
     }
   ]
 }

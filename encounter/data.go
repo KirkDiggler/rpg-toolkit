@@ -104,6 +104,16 @@ type SpaceData struct {
 	// (rpg-toolkit#796). Empty for single-room InitRoom spaces, which have
 	// exactly one implicit region.
 	Regions []RegionData `json:"regions,omitempty"`
+
+	// Theme is opaque cosmetic metadata (e.g. "crypt") that InitDungeon
+	// carries through from DungeonParams.Theme without interpreting —
+	// rpg-toolkit#814's Approved Slice 3 corrections are explicit that the
+	// generator must never branch on Theme's value; it exists purely so a
+	// host/client can key dressing off it downstream. Distinct from
+	// RegionData.Archetype, which identifies region ROLE (a fixed generic
+	// vocabulary), not cosmetic theme. Empty for InitRoom/InitTwoChamberRoom
+	// spaces and any InitDungeon call that doesn't set it.
+	Theme string `json:"theme,omitempty"`
 }
 
 // RegionData tags a named set of hexes as one chamber/region within a
@@ -113,7 +123,43 @@ type SpaceData struct {
 type RegionData struct {
 	ID    string      `json:"id"`
 	Hexes core.HexSet `json:"hexes"`
+
+	// Archetype identifies this region's generic ROLE (entrance | chamber |
+	// corridor | boss) — rpg-toolkit#814. Distinct from SpaceData.Theme:
+	// Archetype is a fixed, reusable vocabulary a host keys spawn tables
+	// off (or a client keys dressing off) without knowing generator
+	// internals or theme content. Omitted from the wire when empty — the
+	// zero value for regions predating #814 (none exist yet, but this
+	// mirrors every other additive field in this package).
+	Archetype RegionArchetype `json:"archetype,omitempty"`
 }
+
+// RegionArchetype identifies a region's generic ROLE within a dungeon.
+// This is a fixed, reusable vocabulary — NOT a per-template or per-theme
+// enum — so hosts and clients can key behavior off it without
+// understanding any specific generator's internals (rpg-toolkit#814,
+// Approved Slice 3 corrections).
+type RegionArchetype string
+
+const (
+	// ArchetypeEntrance tags the region containing SpaceData.Entrance —
+	// the dungeon's starting region.
+	ArchetypeEntrance RegionArchetype = "entrance"
+	// ArchetypeChamber tags a generic interior region with no more
+	// specific role — remains in the vocabulary for future templates even
+	// though the first crypt template (#814's done bar) doesn't emit it.
+	ArchetypeChamber RegionArchetype = "chamber"
+	// ArchetypeCorridor tags a connecting region between two chambers. Not
+	// a distinct geometry primitive (#814 explicitly defers that) — a
+	// corridor is generated exactly like any other region, just narrower.
+	ArchetypeCorridor RegionArchetype = "corridor"
+	// ArchetypeBoss tags the dungeon's climactic region. Any region tagged
+	// ArchetypeBoss must satisfy the boss-room scale invariant: its
+	// primary playable axis (min(region width, the dungeon's shared
+	// height)) must exceed 6 hex steps — enforced at generation time by
+	// InitDungeon, not left to eyeballing.
+	ArchetypeBoss RegionArchetype = "boss"
+)
 
 // RegionAt returns the region ID containing hex, and whether one was
 // found. Nil-receiver safe — Data.Space is nil for encounters with no
