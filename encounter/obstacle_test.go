@@ -268,6 +268,28 @@ func (s *ObstacleSuite) TestAddObstacle_RejectsDuplicateOccupancy() {
 	s.Require().NotNil(enc.Room(), "the room itself must remain intact after the rejected add")
 }
 
+// TestAddObstacle_RejectsDuplicateOccupancy_BothNonBlocking covers the
+// Copilot review gap on PR #823: spatial.BasicRoom's own occupancy check
+// (canPlaceEntityUnsafe) only rejects a placement when the EXISTING
+// occupant BlocksMovement() — so two obstacles that both have
+// BlocksMovement=false (e.g. LoS-only set pieces) sharing a hex would
+// silently co-locate via room.PlaceEntity alone, contradicting this
+// package's stated invariant that ANY hex collision among host-authored
+// obstacles is a data error, regardless of blocking flags. rebuildRoomFromData
+// must reject this explicitly (via the shared `placed` occupancy set),
+// not rely on PlaceEntity's blocks-movement-only check.
+func (s *ObstacleSuite) TestAddObstacle_RejectsDuplicateOccupancy_BothNonBlocking() {
+	enc := encounter.New(context.Background(), "enc-obstacle-dup-occupancy-nonblocking", s.broker)
+	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternEmpty))
+	s.Require().NoError(enc.AddObstacle("haze-1", "dnd5e:obstacles:haze", obstacleTestHex, false, true))
+
+	addErr := enc.AddObstacle("haze-2", "dnd5e:obstacles:haze", obstacleTestHex, false, true)
+	s.Require().Error(addErr,
+		"two non-movement-blocking obstacles sharing a hex must still be rejected as a data error")
+	s.Require().Len(enc.ToData().Space.Obstacles, 1,
+		"a rejected duplicate-occupancy add must not leave a second entry")
+}
+
 // TestObstacle_BackwardCompatible_NoObstacles covers the #818 done bar's
 // backward-compatibility requirement: an encounter/SpaceData predating
 // #818 (nil/empty Obstacles) must load and round-trip exactly as before —

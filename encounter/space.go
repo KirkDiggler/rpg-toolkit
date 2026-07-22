@@ -210,14 +210,24 @@ func (e *Encounter) rebuildRoomFromData() error {
 		return fmt.Errorf("validate obstacles: %w", err)
 	}
 	for _, o := range sd.Obstacles {
+		cube := o.Position.ToCube()
 		// Unlike walls/doors, an obstacle's occupancy conflict is NOT
-		// silently tolerated — obstacles are host-authored (via
-		// AddObstacle), not generator output with rounding artifacts, so a
-		// hex collision with an existing wall/door/obstacle is a genuine
-		// data error the caller must see (rpg-toolkit#818 done bar), not a
-		// dedup candidate. room.PlaceEntity itself rejects placing a
-		// blocking entity onto a hex an existing blocker occupies, which
-		// naturally surfaces that error here.
+		// tolerated at all — obstacles are host-authored (via
+		// AddObstacle), not generator output with rounding artifacts, so
+		// ANY hex collision with an existing wall/door/obstacle is a
+		// genuine data error the caller must see (rpg-toolkit#818 done
+		// bar), regardless of whether the colliding entities block
+		// movement. room.PlaceEntity's own occupancy check
+		// (canPlaceEntityUnsafe) only rejects placement when the EXISTING
+		// occupant BlocksMovement() — so two BlocksMovement=false
+		// obstacles (or an obstacle and a non-blocking wall) sharing a hex
+		// would otherwise silently co-locate rather than erroring. Checked
+		// explicitly against the shared `placed` occupancy set instead
+		// (Copilot review, PR #823) — not delegated to PlaceEntity.
+		if _, dup := placed[cube]; dup {
+			return fmt.Errorf("place obstacle %q: hex %v already occupied", o.ID, cube)
+		}
+		placed[cube] = struct{}{}
 		pos := o.Position.ToPosition()
 		entity := environments.NewWallEntity(environments.WallEntityConfig{
 			SegmentID: fmt.Sprintf("obstacle-%s", o.ID),
@@ -238,13 +248,16 @@ func (e *Encounter) rebuildRoomFromData() error {
 // validateObstacles checks the structural invariant AddObstacle-authored
 // obstacle data depends on: every obstacle must have a non-empty, unique
 // ID. Obstacles is an order-preserving SLICE (unlike the map-keyed
-// Doors), so a duplicate ID is not rejected implicitly by key-overwrite —
-// room.PlaceEntity keys placement by entity.GetID(), so two obstacles
-// sharing an ID would silently relocate one another's room occupancy
-// (PlaceEntity's own doc: "Remove entity from old position if it exists")
-// rather than erroring, corrupting the room without this check. Run from
-// rebuildRoomFromData so both AddObstacle and a direct LoadFromData of
-// hand-built/legacy Data get the same guarantee.
+// Doors), so a duplicate ID is not rejected implicitly by key-overwrite.
+// Uniqueness matters even though environments.WallEntity's derived
+// entity ID embeds position (making a same-ID-different-position pair
+// placement-safe on its own) — a stable ID is this package's contract for
+// referencing the SAME obstacle across ticks/reloads (a host or client
+// keying a future interaction verb off it), and a same-ID-SAME-position
+// pair would collide to one entity via PlaceEntity's move-in-place
+// semantics, silently swallowing what should be a rejected duplicate.
+// Run from rebuildRoomFromData so both AddObstacle and a direct
+// LoadFromData of hand-built/legacy Data get the same guarantee.
 func validateObstacles(obstacles []ObstacleData) error {
 	seen := make(map[core.EntityID]int, len(obstacles))
 	for i, o := range obstacles {

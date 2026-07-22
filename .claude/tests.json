@@ -95,6 +95,14 @@
       "passes": true,
       "last_checked": "2026-07-22",
       "notes": "TestObstacle_BackwardCompatible_NoObstacles"
+    },
+    {
+      "id": "obstacle-rejects-duplicate-occupancy-both-nonblocking",
+      "feature": "obstacle-validation",
+      "prompt": "Two obstacles with BlocksMovement=false sharing the same hex are rejected as a data error, not silently co-located (Copilot review gap on PR #823: spatial.BasicRoom's occupancy check only rejects when the EXISTING occupant blocks movement).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestAddObstacle_RejectsDuplicateOccupancy_BothNonBlocking. RED confirmed (Error expected, got nil) before the placed-map explicit check was added to rebuildRoomFromData."
     }
   ]
 }

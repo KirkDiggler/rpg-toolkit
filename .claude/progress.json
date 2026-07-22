@@ -34,10 +34,18 @@
       "status": "completed",
       "artifacts": [],
       "commit": null,
-      "notes": "go build ./... clean; go vet ./... clean; go test ./... green (4 packages, ~54s); go test -race ./... green (~58s); go mod tidy no diff; gofmt/goimports clean; golangci-lint v2.2.1 (repo-pinned via .github/workflows/ci-enhanced.yml GOLANGCI_VERSION, installed to an isolated temp bin rather than the globally-installed v2.12.2) run --config=../.golangci.yml: 0 issues. Diff scope confirmed via `git diff --stat origin/main...HEAD`: encounter/data.go, encounter/space.go, encounter/obstacle_test.go, .claude/*.json only - no unrelated module/refactor changes."
+      "notes": "go build ./... clean; go vet ./... clean; go test ./... green (4 packages, ~54s); go test -race ./... green (~58s); go mod tidy no diff; gofmt/goimports clean; golangci-lint v2.2.1 (repo-pinned via .github/workflows/ci-enhanced.yml GOLANGCI_VERSION, installed to an isolated temp bin rather than the globally-installed v2.12.2) run --config=../.golangci.yml: 0 issues. Diff scope confirmed via `git diff --stat origin/main...HEAD`: encounter/data.go, encounter/space.go, encounter/obstacle_test.go, .claude/*.json only - no unrelated module/refactor changes. Opened PR #823, requested Copilot review (matches repo convention observed on #821)."
+    },
+    {
+      "id": "2026-07-22-005",
+      "task": "Address Copilot automated review on PR #823",
+      "status": "completed",
+      "artifacts": ["encounter/space.go", "encounter/obstacle_test.go"],
+      "commit": null,
+      "notes": "Two Copilot comments, both verified correct against actual code (not accepted blindly): (1) spatial.BasicRoom.canPlaceEntityUnsafe only rejects placement when the EXISTING occupant BlocksMovement() - so two BlocksMovement=false obstacles sharing a hex would silently co-locate via room.PlaceEntity alone, contradicting this package's stated 'any collision is a data error' invariant. RED: added TestAddObstacle_RejectsDuplicateOccupancy_BothNonBlocking, confirmed it failed (Error asserted, got nil) before any fix. GREEN: rebuildRoomFromData now checks the obstacle's cube against the shared `placed` occupancy set explicitly (same set walls/doors already populate) and rejects ANY collision before calling PlaceEntity, regardless of blocking flags. (2) validateObstacles' doc comment claimed duplicate IDs would 'silently relocate' room occupancy via PlaceEntity's same-ID move semantics - verified against tools/environments/wall_entities.go: WallEntity.GetID() embeds position (`wall_<segment>_<x>_<y>`), so two obstacles with the same stated ID but different positions get DIFFERENT entity IDs and would NOT relocate each other. Rewrote the comment to state the real invariant: unique IDs are the package's contract for referencing the SAME obstacle across ticks/reloads, and a same-ID-SAME-position pair would collide to one entity via PlaceEntity's move-in-place semantics, silently swallowing a should-be-rejected duplicate. Full re-verification (build/vet/test/race/fmt/imports/tidy/lint v2.2.1) all green after the fix. Replied to both review comments individually with the signature footnote."
     }
   ],
   "next_steps": [
-    "Open PR linked to #818, address any immediate automated review comments"
+    "Monitor for further review activity; do not merge (coordinating session merges)"
   ]
 }
