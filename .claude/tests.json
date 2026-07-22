@@ -1,116 +1,44 @@
 {
   "tests": [
     {
-      "id": "region-archetype-vocabulary",
-      "feature": "region-archetype",
-      "prompt": "RegionData gains an Archetype field of a generic RegionArchetype type with exactly the values entrance | chamber | corridor | boss.",
+      "id": "n-region-early-pocket-clear-returns-freeroam",
+      "feature": "dungeon-completion",
+      "prompt": "In an N-region InitDungeon (#814) encounter with more than one non-final combat pocket, clearing an early pocket (all monsters in the CURRENT initiative dead) while hostiles remain alive in later, still-unopened regions must exit to FREE_ROAM, not end the encounter.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestRegionArchetype_GenericVocabulary (dungeon_test.go)."
+      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe (dungeon_completion_test.go), entrance-pocket-clear assertions. Already-shipped behavior: combat.go's checkPocketCleared (rpg-toolkit#794/#796) already implements exactly this, previously proven only against a hand-built single-door room (combat_pockets_test.go) or InitDungeon's OWN geometry tests (dungeon_test.go, no combat lifecycle) -- never both together. DISCRIMINATION: temporarily short-circuited checkPocketCleared (combat.go) to `return nil` unconditionally (production mutation, reverted immediately) and reran -- failed at the first pocket-clear assertion (Mode stayed ModeTurnBased instead of ModeFreeRoam, Initiative non-empty, ModeChangedEvent absent). Reverted -- GREEN; `git diff origin/main -- combat.go` empty afterward, confirming no unrelated change was kept."
     },
     {
-      "id": "space-theme-opaque-passthrough",
-      "feature": "space-theme",
-      "prompt": "SpaceData gains a Theme string field, distinct from RegionData.Archetype, that InitDungeon copies verbatim from DungeonParams.Theme without branching on its value anywhere in the generator.",
+      "id": "n-region-second-early-pocket-clear-also-returns-freeroam",
+      "feature": "dungeon-completion",
+      "prompt": "The same non-terminal pocket-clear-to-FREE_ROAM behavior must hold for a SECOND early pocket too (corridor, cleared after the entrance pocket), not just the first -- proving the rule composes across more than one non-final region, which is the actual gap #817 called for evidence of (every prior test only had 2 pockets total, i.e. only ONE non-final pocket).",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestSpaceData_ThemeIsOpaqueAndDistinctFromArchetype + DungeonSuite/TestRegions_ArchetypesThemeAndPartition (Theme='crypt' round-trip). Grepped dungeon.go/two_chamber.go for any `Theme ==`/switch-on-Theme branching: none exists."
+      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe, corridor-pocket-clear assertions: after the entrance pocket clears, opening door 0 and moving into LoS of the corridor goblin starts a fresh pocket scoped to just that goblin (boss goblin, still behind the closed door 1, is not sighted); clearing it exits to FREE_ROAM a second time, with the boss goblin asserted still alive and untouched. Covered by the same checkPocketCleared discrimination as the row above (both assertions failed together under that mutation)."
     },
     {
-      "id": "init-dungeon-validates-region-count",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects fewer than 2 regions (a dungeon needs at least an entrance and one connected region).",
+      "id": "n-region-last-hostile-anywhere-ends-victory",
+      "feature": "dungeon-completion",
+      "prompt": "Killing the last hostile ANYWHERE in an N-region InitDungeon encounter (here: the boss, in the final region, after two earlier non-terminal pocket-clears) ends the whole encounter, publishing EncounterEndedEvent with the canonical EncounterEndedReasonAllHostilesDefeated -- not a new 'victory' reason string.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsFewerThanTwoRegions."
+      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe, final assertions. Already-shipped: death.go's checkEncounterEnd predicate is `len(e.data.Monsters) == 0` -- data.Monsters is one flat map spanning every region/pocket, so this predicate was ALREADY whole-dungeon-scoped by construction, not pocket-scoped -- #817 did not need new victory logic, only end-to-end proof against the real InitDungeon generator with multiple intervening pockets. DISCRIMINATION: temporarily changed the case guard to `case false && len(e.data.Monsters) == 0:` (production mutation, reverted immediately) and reran -- failed exactly as expected (Mode stayed ModeTurnBased/ModeFreeRoam instead of ModeEnded after the boss died; EncounterEndedEvent never published). Reverted -- GREEN; `git diff origin/main -- death.go` empty afterward."
     },
     {
-      "id": "init-dungeon-validates-connector-count",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects a Connectors slice whose length is not exactly len(Regions)-1.",
+      "id": "n-region-tpk-canonical-reason-hostiles-remain-elsewhere",
+      "feature": "dungeon-completion",
+      "prompt": "A TPK inside an N-region dungeon ends the encounter with the existing, canonical EncounterEndedReasonTPK -- firing regardless of how many hostiles are still alive and completely unengaged elsewhere in the dungeon (never even sighted), proving TPK is not gated on hostile-clearing the way victory is, and does not fire the victory reason instead. #817's 'Approved Slice 3 corrections' comment explicitly required NOT inventing new defeat detection -- this test proves the EXISTING declaration composes correctly with the N-region/combat-pocket machinery rather than re-deriving it.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsWrongConnectorCount."
+      "notes": "TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere (dungeon_completion_test.go): solo flat-snapshot alice (1 HP, no DataJSON, same instant-death fallback tpk_test.go's own multi-player test uses) engages only the entrance goblin; EndTurn-cycled to the goblin's turn, NPCAct kills her -> ModeEnded, EncounterEndedReasonTPK -- with the corridor and boss goblins (never sighted, still behind both closed doors) asserted alive and untouched. Gap this closes: every prior TPK test (tpk_test.go) used a flat, single-monster room; no test previously proved TPK still works correctly (and doesn't accidentally trip the victory branch, or get starved by some pocket-scoping regression) inside the N-region/combat-pocket machinery specifically. DISCRIMINATION: temporarily changed death.go's TPK case guard to `case false && e.allPlayersDead():` (production mutation, reverted immediately) and reran -- failed exactly as expected (Mode stayed ModeTurnBased, no EncounterEndedEvent). Reverted -- GREEN; `git diff origin/main -- death.go` empty afterward."
     },
     {
-      "id": "init-dungeon-validates-dimensions-and-door-ids",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects any region narrower than 4, a shared Height under 4, and any connector with an empty DoorID.",
+      "id": "n-region-ended-state-reload-safe-toolkit-owned-fields",
+      "feature": "dungeon-completion",
+      "prompt": "After either terminal outcome (victory or TPK) inside an N-region dungeon, a ToData/JSON/LoadFromData round trip must preserve Mode == ModeEnded and an empty Initiative -- the fields the toolkit actually persists on Data -- and a post-reload verb call (EndTurn) must be rejected with ErrEncounterEnded rather than resuming as a live, inescapable fight. Reason itself is explicitly NOT asserted post-reload: it lives only on the published EncounterEndedEvent (events/encounter_ended.go), never written onto Data, so there is nothing for LoadFromData to round-trip -- any reason projection for a resumed/reconnecting client is rpg-api's job (#690), out of scope here. This is the 'to the extent the toolkit owns it' boundary #817 draws.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsNarrowRegion, TestInitDungeon_RejectsShortSharedHeight, TestInitDungeon_RejectsEmptyDoorID."
-    },
-    {
-      "id": "init-dungeon-boss-scale-invariant",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects (generation-time assertion, not eyeballing) any boss-archetype region whose primary playable axis (min(width, shared height)) does not exceed 6 hex steps.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "TestInitDungeon_RejectsUndersizedBossRoom (axis==6 rejected), TestInitDungeon_AcceptsBossRoomExceedingScaleInvariant (axis>6 accepted). Enforced in validateDungeonParams, called unconditionally at the top of InitDungeon."
-    },
-    {
-      "id": "init-dungeon-n-region-linear-chain",
-      "feature": "init-dungeon",
-      "prompt": "A 3-region linear dungeon (entrance chamber -> corridor -> boss chamber, 2 doors) generates with a reproducible seed; every region is reachable from the entrance once its door opens; RegionAt returns the right archetype for each hex; a closed connector door blocks movement+LoS across it, matching the two-chamber behavior generalized to N.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "DungeonSuite (dungeon_test.go): TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors (now asserts IsLineOfSightBlocked for BOTH connectors, not just movement/reachability -- see closed-door-los-coverage below for the discrimination evidence), TestOpeningBothDoors_ConnectsEntranceThroughToBoss, TestRegions_ArchetypesThemeAndPartition, TestLayout_DeterministicSeedVsEntropyDefault. NOTE (concern, not a regression): the fixture's corridor width had to be nudged from 4 to 5 hexes to sidestep a pre-existing tools/environments|tools/spatial pointy-top-hex-grid parity quirk in IsLineOfSightBlocked's short-range raycast across a door column of certain column parity relative to its flanking columns — reproduced and isolated to that dependency, unrelated to InitDungeon's own geometry math (identical wall placement on both doors; only LOS raycast result differed by door-column parity). Movement/BFS reachability was unaffected in both parities. Confirmed direction-SYMMETRIC (not the #763 asymmetry bug) via a throwaway repro test before filing https://github.com/KirkDiggler/rpg-toolkit/issues/822 (boarded #19 The Dungeon Run, Feature=The Dungeon, Team=Platform, Status=Todo) to track it. Out of scope for #814 to fix (different module)."
-    },
-    {
-      "id": "closed-door-los-coverage",
-      "feature": "init-dungeon",
-      "prompt": "TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors must actually assert IsLineOfSightBlocked for both connectors (not just movement/reachability), following the two-chamber precedent (TestClosedDoor_BlocksMovementAndLoS_BetweenChambers).",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "Review finding: the test name promised LoS coverage it didn't have. DISCRIMINATION (before the test fix): temporarily set space.go's closed-door wall Properties.BlocksLoS from true to false (production mutation, reverted immediately) and reran both suites -- TestTwoChamberSuite/TestClosedDoor_BlocksMovementAndLoS_BetweenChambers (which DOES check LoS) correctly FAILED; TestDungeonSuite/TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors (lacking the LoS assertion) still PASSED, proving the exact gap. FIX: added IsLineOfSightBlocked(farEdge(i), nearEdge(i+1)) assertions for both connector 0 and connector 1, mirroring the two-chamber precedent's direct across-the-door check. RED (with the same production mutation still active): both new assertions failed with the expected messages ('closed door 0/1 must block LoS...'). GREEN (mutation reverted): all DungeonSuite + TwoChamberSuite tests pass; `git diff origin/main -- encounter/space.go` is empty, confirming no unrelated production change was kept."
-    },
-    {
-      "id": "init-dungeon-atomic-on-door-failure",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon's per-connector door placement must be atomic: if the room rebuild fails for any reason, the encounter must be left exactly as it was before the call (no partially-set Space, no leaked connector doors, no partially-rebuilt room) rather than returning an error while leaving observable partial state.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "Review finding: the original `for range layout.doors { e.AddDoor(...) }` loop could leave e.data.Space set and earlier connectors' doors added if a LATER connector's AddDoor failed, despite InitDungeon returning an error. RED: TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState pre-seeds a decoy door at an out-of-bounds position (deterministically fails spatial.BasicRoom.PlaceEntity's grid.IsValidPosition check once InitDungeon sets Space and rebuilds -- same-cell door/wall collisions are defensively skipped rather than erroring, so this is the only reliable failure-injection technique against this code), then asserts Space/both connector doors are absent and enc.Room() is nil after the failed call -- failed for the expected reason (Space non-nil leaked) against the original code. GREEN: InitDungeon now stages both connector doors directly into e.data.Doors, calls rebuildRoomFromData exactly ONCE for the whole batch (instead of once per connector), and on failure restores the pre-call Space and deletes the staged door IDs. rebuildRoomFromData itself only calls registerRoom (swapping in e.room/e.roomOrchestrator) after every wall/door places successfully, so the room side was already atomic; this completes the Data-side half. No changes to AddDoor or any other public API; bonus: 1 rebuild instead of N-1."
-    },
-    {
-      "id": "init-dungeon-crypt-shaped-capability",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon's generic parameters are flexible enough to express the first crypt's entrance/corridor/boss shape (Theme='crypt' passthrough only, no crypt-specific branching in the generator) without emitting a chamber archetype.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "DungeonSuite/TestFirstCryptTemplate_EntranceCorridorBossWithoutChamberArchetype."
-    },
-    {
-      "id": "two-chamber-compat-via-generalized-entry-point",
-      "feature": "two-chamber-compat",
-      "prompt": "InitTwoChamberRoom delegates to the generalized InitDungeon entry point internally (retiring the duplicate wall-generation implementation) while every existing encounter/two_chamber_test.go assertion (region IDs, entrance, door blocking/LoS, determinism-vs-entropy) continues to pass unchanged.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "two_chamber.go rewritten as a thin validating wrapper calling e.InitDungeon(...); two_chamber_test.go untouched and green (TestTwoChamberSuite, TestRegionAt_NilReceiver). Retired duplicate helpers: chamberCubes, chamberWallSegments, generateChamberWalls, hexesFromCubes, chamberPathWidth (now regionCubes/regionWallSegments/generateRegionWalls/hexesFromCubes/dungeonPathWidth in dungeon.go, shared by both entry points)."
-    },
-    {
-      "id": "init-dungeon-region-id-and-archetype-validation",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects an empty region ID, a duplicate region ID across the chain, and any region Archetype outside the documented fixed vocabulary (entrance | chamber | corridor | boss) -- errors must identify the offending region by index.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "Copilot review thread (comment 3632233153, resolved): empty/duplicate region IDs make SpaceData.RegionAt ambiguous (returns the first matching region); an open-ended Archetype string undermines the documented 'fixed vocabulary' contract. RED: TestInitDungeon_RejectsEmptyRegionID, TestInitDungeon_RejectsDuplicateRegionIDs, TestInitDungeon_RejectsUnknownArchetype all failed 'want error, got nil' against the prior code. GREEN: validateDungeonParams now tracks seen region IDs in a map (rejecting empty and duplicate) and switches on Archetype against the 4 known constants (rejecting anything else). Errors follow the existing 'region %d (%q): ...' style and name the offending index. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632507283."
-    },
-    {
-      "id": "init-dungeon-duplicate-connector-door-id",
-      "feature": "init-dungeon",
-      "prompt": "InitDungeon rejects a duplicate connector DoorID before generation mutates encounter data -- reusing a DoorID across connectors must not silently overwrite an earlier door in e.data.Doors.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "Copilot review thread (comment 3632233194, resolved): AddDoor keys e.data.Doors by DoorID, so two connectors sharing an ID silently overwrite each other, leaving the earlier boundary column permanently unblocked (no closed door entity) -- breaks the closed-by-default connectivity contract with no error. Reproduced the symptom directly with a throwaway (uncommitted) test before the fix: duplicate DoorIDs across 2 connectors left err=nil and exactly 1 entry in e.data.Doors (the later connector's door, at the later connector's position). RED: TestInitDungeon_RejectsDuplicateConnectorDoorIDs failed 'want error, got nil' against the prior code (also asserts the rejected call leaves Space nil and Doors empty). GREEN: validateDungeonParams now tracks seen connector DoorIDs in a map alongside the existing non-empty check, rejecting duplicates before InitDungeon ever calls generateDungeonLayout or mutates e.data. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632508545."
-    },
-    {
-      "id": "terminal-region-path-purpose-string",
-      "feature": "init-dungeon",
-      "prompt": "The terminal region's required-path Purpose string must not claim 'chamber' when the terminal region can be any archetype (e.g. boss) -- use an accurate, generic description.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "Copilot review thread (comment 3632233223, resolved): 'door-to-chamber' is misleading once the terminal region isn't a chamber. FIX: renamed to 'door-to-region-center', accurate for any archetype, smallest possible change (one string literal). NOT added a new test: confirmed (by reading tools/environments/wall_patterns.go) this string only surfaces via validatePathSafety's 'required path blocked' error, and generateRegionWalls always sets Safety.EmergencyFallback: true, which swallows that error by falling back to an empty layout before it can propagate -- deterministically forcing that exact error would require brittle setup fighting the fallback. Per explicit instruction not to manufacture a brittle test for an internal/cosmetic string, this was left as a documented reasoning in the reply rather than a new assertion. Reply: https://github.com/KirkDiggler/rpg-toolkit/pull/821#discussion_r3632509808."
+      "notes": "dcAssertReloadSafe, called from both TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe and TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere. Already-shipped: Mode/Initiative are ordinary Data fields serialized via encoding/json and LoadFromData copies data.Mode straight through (encounter.go's LoadFromData only overrides Mode when it is core.ModeUnspecified, never when it is already core.ModeEnded) -- exhaustively proven already for the flat-room TPK case by tpk_test.go's own persistence tests (TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy, TestTPK_DeadFlagDoesNotLeakAcrossEncounters). No additional discrimination performed on the JSON round trip itself (basic Go struct-field marshaling, not toolkit-specific logic) beyond confirming it holds for this N-region/multi-pocket fixture specifically, which was the untested combination."
     }
   ]
 }
