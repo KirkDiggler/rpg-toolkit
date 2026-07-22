@@ -9,20 +9,35 @@
       "task": "Preflight: verify #821 merged on origin/main, no existing #818 branch/PR, create isolated worktree, baseline tests",
       "status": "completed",
       "artifacts": [],
-      "commit": null,
+      "commit": "1cb306c",
       "notes": "Confirmed merge commit e1f98403ed7c92626e1e3fd69dea3383965febb3 is an ancestor of origin/main. No feat/818* branch or open PR found. Created linked worktree .worktrees/feat-818-static-obstacles from origin/main (not local main, which was 2 commits behind). Baseline `go test ./...` in encounter/ green (56s, 4 packages) before any change. .worktrees/ not in root .gitignore (pre-existing gap predating this branch, shared by 3 sibling worktrees already present) - left untouched per explicit instruction not to modify the shared checkout."
+    },
+    {
+      "id": "2026-07-22-002",
+      "task": "TDD: ObstacleData shape + SpaceData.Obstacles + serialization round-trip",
+      "status": "completed",
+      "artifacts": ["encounter/data.go", "encounter/space.go", "encounter/obstacle_test.go"],
+      "commit": "dda6488",
+      "notes": "RED: TestObstacle_ToData_LoadFromData_RoundTrip failed to compile (AddObstacle/ObstacleData/SpaceData.Obstacles undefined). GREEN: added ObstacleData{ID,Ref,Position,BlocksMovement,BlocksLoS} on SpaceData (Ref is a plain opaque string, mirroring MonsterData.MonsterRef's existing convention in this file); Encounter.AddObstacle mirrors AddDoor's atomicity (append, rebuild, rollback on failure); rebuildRoomFromData places every obstacle into the same spatial.Room walls/doors use via environments.WallEntity (no new entity type); validateObstacles rejects empty/duplicate IDs before touching the room (load-bearing: Obstacles is an order-preserving slice, so an unchecked duplicate ID would silently relocate an earlier obstacle's room occupancy via PlaceEntity's same-ID move semantics)."
+    },
+    {
+      "id": "2026-07-22-003",
+      "task": "TDD: LoS, coexistence, validation boundary, backward compatibility",
+      "status": "completed",
+      "artifacts": ["encounter/obstacle_test.go"],
+      "commit": "1b1615f",
+      "notes": "10 additional tests: BlocksLoS true/false, CoexistsWithWallsAndDoors (wall+door+obstacle at distinct hexes), AddObstacle rejects empty ID/duplicate ID/out-of-bounds/duplicate-occupancy (each asserting no partial Data.Space.Obstacles/room state survives), BackwardCompatible_NoObstacles (nil/empty Obstacles omitted from wire, round-trips unchanged). Most passed immediately since the prior session's implementation was already comprehensive; verified non-vacuous by mutation-testing AddObstacle's empty-ID/duplicate-ID pre-checks (temporarily removed, reran RejectsEmptyID/RejectsDuplicateID - still caught by validateObstacles inside rebuildRoomFromData as defense-in-depth, restored). Out-of-bounds/duplicate-occupancy tests rely on tools/spatial's own pre-existing, independently-tested PlaceEntity/grid.IsValidPosition semantics (same mechanism walls/doors already depend on)."
+    },
+    {
+      "id": "2026-07-22-004",
+      "task": "Full verification + PR",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "go build ./... clean; go vet ./... clean; go test ./... green (4 packages, ~54s); go test -race ./... green (~58s); go mod tidy no diff; gofmt/goimports clean; golangci-lint v2.2.1 (repo-pinned via .github/workflows/ci-enhanced.yml GOLANGCI_VERSION, installed to an isolated temp bin rather than the globally-installed v2.12.2) run --config=../.golangci.yml: 0 issues. Diff scope confirmed via `git diff --stat origin/main...HEAD`: encounter/data.go, encounter/space.go, encounter/obstacle_test.go, .claude/*.json only - no unrelated module/refactor changes."
     }
   ],
   "next_steps": [
-    "Add ObstacleData shape + SpaceData.Obstacles field (data.go)",
-    "TDD: serialization round-trip (ToData/LoadFromData)",
-    "TDD: rebuildRoomFromData places obstacles into the same spatial.Room as walls/doors",
-    "TDD: movement blocking true/false",
-    "TDD: LoS blocking true/false",
-    "TDD: coexistence with walls/doors",
-    "TDD: validation - empty/duplicate obstacle IDs, out-of-bounds position, duplicate occupancy - atomic failure (no partial state)",
-    "TDD: backward compatibility - encounters with no obstacles round-trip unchanged",
-    "Full verification: build/vet/test/race/fmt/imports/tidy/lint for encounter module",
-    "Commit, push, open PR linked to #818"
+    "Open PR linked to #818, address any immediate automated review comments"
   ]
 }

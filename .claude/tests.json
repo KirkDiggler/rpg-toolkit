@@ -4,85 +4,97 @@
       "id": "obstacle-serialization-roundtrip",
       "feature": "obstacle-data",
       "prompt": "A SpaceData carrying obstacle instances (ID, Ref, Position, BlocksMovement, BlocksLoS) round-trips exactly through Encounter.ToData()/encounter.LoadFromData - every field on every instance preserved.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_ToData_LoadFromData_RoundTrip"
     },
     {
       "id": "obstacle-rebuild-into-canonical-room",
       "feature": "obstacle-room-truth",
       "prompt": "After LoadFromData (or AddObstacle), the obstacle is present in the same spatial.Room the encounter uses for walls - not a parallel/separate representation.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Implicit in every blocking test below (room.CanPlaceEntity/IsLineOfSightBlocked queried against enc.Room(), the same instance walls/doors use) - not a separate assertion, folded into the movement/LoS tests."
     },
     {
       "id": "obstacle-blocks-movement-true",
       "feature": "obstacle-movement",
       "prompt": "An obstacle with BlocksMovement=true truncates a player's Move path at its hex, exactly like a wall.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_BlocksMovement_True"
     },
     {
       "id": "obstacle-blocks-movement-false",
       "feature": "obstacle-movement",
       "prompt": "An obstacle with BlocksMovement=false does not block movement through its hex.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_BlocksMovement_False"
     },
     {
       "id": "obstacle-blocks-los-true",
       "feature": "obstacle-los",
       "prompt": "An obstacle with BlocksLoS=true blocks room.IsLineOfSightBlocked between two hexes on either side of it.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_BlocksLoS_True"
     },
     {
       "id": "obstacle-blocks-los-false",
       "feature": "obstacle-los",
       "prompt": "An obstacle with BlocksLoS=false does not block line of sight through its hex.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_BlocksLoS_False"
     },
     {
       "id": "obstacle-coexists-with-walls-and-doors",
       "feature": "obstacle-coexistence",
       "prompt": "A Space with walls, a door, and an obstacle at distinct hexes all block/unblock independently and correctly after rebuild.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_CoexistsWithWallsAndDoors"
     },
     {
       "id": "obstacle-rejects-empty-id",
       "feature": "obstacle-validation",
       "prompt": "AddObstacle with an empty ID is rejected with a contextual error and leaves Data.Space/room state unchanged.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestAddObstacle_RejectsEmptyID (mutation-verified: still caught by validateObstacles when AddObstacle's own pre-check was temporarily removed)"
     },
     {
       "id": "obstacle-rejects-duplicate-id",
       "feature": "obstacle-validation",
       "prompt": "AddObstacle with an ID that already exists among the Space's obstacles is rejected with a contextual error and leaves Data.Space/room state unchanged.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestAddObstacle_RejectsDuplicateID (mutation-verified, same as above)"
     },
     {
       "id": "obstacle-rejects-out-of-bounds-position",
       "feature": "obstacle-validation",
       "prompt": "AddObstacle at a position outside the room's grid bounds is rejected with a contextual error, and the failed add does not leave a partial obstacle entry in Data.Space.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestAddObstacle_RejectsOutOfBoundsPosition"
     },
     {
       "id": "obstacle-rejects-duplicate-occupancy",
       "feature": "obstacle-validation",
       "prompt": "AddObstacle at a hex already occupied by a movement-blocking wall/door is rejected with a contextual error, atomically (no partial Data.Space/room state).",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestAddObstacle_RejectsDuplicateOccupancy"
     },
     {
       "id": "obstacle-backward-compatible-no-obstacles",
       "feature": "obstacle-compat",
       "prompt": "An encounter/SpaceData with no Obstacles field (nil/empty, e.g. pre-#818 snapshots) loads and round-trips exactly as before - Obstacles omitted from the wire, no room-side change.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestObstacle_BackwardCompatible_NoObstacles"
     }
   ]
 }
