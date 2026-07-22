@@ -114,8 +114,8 @@ func dcRowHex(x int) core.Hex {
 
 // dcPathTo returns every hex strictly after fromX up to and including toX on
 // the shared middle row — a movement path Move() can walk one column at a
-// time. toX may be less than fromX is never used by this file (movement is
-// always rightward, entrance->corridor->boss).
+// time. A toX less than fromX (right-to-left movement) is never exercised by
+// this file — movement is always rightward, entrance->corridor->boss.
 func dcPathTo(fromX, toX int) []core.Hex {
 	path := make([]core.Hex, 0, toX-fromX)
 	for x := fromX + 1; x <= toX; x++ {
