@@ -44,9 +44,26 @@
       "artifacts": [],
       "commit": null,
       "notes": "go build ./..., go vet ./..., go test ./... (55s, all green), go test -race ./... (all green), gofmt -l . / goimports -l . (clean), go mod tidy (no diff), golangci-lint run ./... (66 goconst issues, identical to the pre-existing origin/main baseline count of 65+1 -- verified byte-identical baseline list except zero new hits from dungeon.go/dungeon_test.go after fixing the 2 lll + 3 goconst hits my own new test file introduced). Diff confined to encounter/data.go, encounter/two_chamber.go, encounter/dungeon.go (new), encounter/dungeon_test.go (new); no go.mod/go.sum/go.work changes; no crypt-specific props/monster-seeding/locked-door/API/proto/client code touched."
+    },
+    {
+      "id": "2026-07-22-006",
+      "task": "PR #821 review response: LoS coverage gap in closed-door dungeon test + InitDungeon partial-init atomicity",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon.go", "encounter/dungeon_test.go"],
+      "commit": null,
+      "notes": "Two independent review findings addressed. (1) TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors only checked movement/reachability, never IsLineOfSightBlocked, despite its name. DISCRIMINATION: temporarily mutated space.go's closed-door wall Properties.BlocksLoS from true to false (production code, reverted immediately after) and reran the two suites: TestTwoChamberSuite/TestClosedDoor_BlocksMovementAndLoS_BetweenChambers (which DOES check LoS) correctly failed; TestDungeonSuite/TestClosedDoors_BlockMovementAndLoS_AcrossBothConnectors still passed -- proving the exact gap. Added two IsLineOfSightBlocked(farEdge,nearEdge) assertions (one per connector, mirroring the two-chamber precedent's direct across-the-door check) to the dungeon test; reran with the same mutation still active -> both new assertions failed for the expected reason (RED); reverted the mutation -> GREEN, space.go diff empty (no unrelated change kept). (2) InitDungeon's original per-connector `for range layout.doors { e.AddDoor(...) }` loop could leave e.data.Space set and earlier connectors' doors added if a LATER connector's AddDoor failed, despite returning an error -- observable partial state. RED: new top-level test TestInitDungeon_FailedRoomRebuild_LeavesNoPartialState pre-seeds a decoy door at an out-of-bounds position (Space nil at that point, so AddDoor just records it; rebuildRoomFromData's PlaceEntity deterministically fails on out-of-bounds positions, since same-cell collisions are defensively skipped rather than errored) then calls InitDungeon and asserts Space/both connector doors are absent after the failure -- failed for the expected reason (Space non-nil leaked) against the original code. GREEN: rewrote InitDungeon to stage all connector DoorData entries directly into e.data.Doors and call rebuildRoomFromData exactly ONCE (instead of once per connector), snapshotting the pre-call Space and rolling both Space and the newly-staged door IDs back on any rebuild failure -- rebuildRoomFromData itself never calls registerRoom (swapping in e.room/e.roomOrchestrator) until every wall/door places successfully, so the room side was already atomic; the fix completes the Data-side half of that guarantee. Bonus: single rebuild instead of N-1 is also strictly cheaper. No changes to AddDoor or any other public API.",
+      "verification": "go build ./..., go vet ./..., go test -count=1 ./... (54s all green incl. new + full existing suites), go test -race -count=1 ./... (58s all green), gofmt/goimports clean, go mod tidy no diff, golangci-lint run ./... unchanged at 65 goconst issues (byte-identical to origin/main baseline, zero new findings). Diff confined to encounter/dungeon.go and encounter/dungeon_test.go only (space.go's mutation was fully reverted, confirmed via `git diff origin/main -- encounter/space.go` producing no output)."
+    },
+    {
+      "id": "2026-07-22-007",
+      "task": "File tracker issue for the pre-existing LoS parity quirk + board it",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Checked for duplicates first (gh issue search: 'hex grid line of sight', 'IsLineOfSightBlocked parity', 'pointy-top hex grid', 'roundCube', 'door line of sight' -- found #763 'lerpCube truncation makes GetLineOfSight directionally asymmetric at distance >=22', read its full body: different symptom (direction-dependent A vs B disagreement at long range, already has proper cube rounding as the fix target) from ours (a single, direction-SYMMETRIC but wrong short-range answer at distance 2). Confirmed symmetry empirically with a throwaway repro test (both IsLineOfSightBlocked(far1,near2) and the reverse call agreed, both true, for the width-4-corridor/odd-door-column case that exposed the quirk) before concluding it's a distinct issue, not a duplicate of #763 -- repro test deleted after use, not committed. Filed https://github.com/KirkDiggler/rpg-toolkit/issues/822, signed '-- platform agent, on behalf of KirkDiggler'. Added to board #19 'The Dungeon Run' (item PVTI_lAHOAASbwc4Bcj4vzgzvPkM) with Feature=The Dungeon, Team=Platform, Status=Todo."
     }
   ],
   "next_steps": [
-    "Push branch, open ready PR linked to #814"
+    "None outstanding for this review round -- awaiting further review/merge decision on PR #821."
   ]
 }
