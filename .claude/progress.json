@@ -1,51 +1,52 @@
 {
-  "branch": "feat/818-static-obstacles",
-  "issues": ["#818"],
-  "goal": "Generic, dependency-free infrastructure for static obstacle instances in encounter.SpaceData and the underlying spatial room truth: same category as a wall (blocking id/position), but instanced and content-agnostic, with a stable ID/Ref, full ToData/LoadFromData round-trip, and rebuild parity with walls/doors for movement and LoS.",
-  "depends_on": ["#821 (merged, e1f9840, generalizes two-chamber into InitDungeon N-region generator - base for this branch)"],
+  "branch": "feat/817-dungeon-completion",
+  "issues": ["#817"],
+  "goal": "Prove (and, only if a real gap surfaces, fix) whole-dungeon completion: killing the last hostile anywhere in an N-region InitDungeon encounter ends the encounter in victory (canonical EncounterEndedReasonAllHostilesDefeated), clearing a non-final combat pocket exits non-terminally to FREE_ROAM, TPK ends with the canonical EncounterEndedReasonTPK, and the resulting ModeEnded/terminal state is reload-safe via ToData/LoadFromData to the extent the toolkit persists it (Reason itself is an event-only field, not persisted -- rpg-api/#690 owns any reason projection).",
+  "design_doc": "rpg-project/ideas/the-dungeon/wave2-design.md",
+  "depends_on": ["#821 (#814 N-region InitDungeon generator, merged)", "#820 (#816 crypt boss stat block, merged)"],
   "sessions": [
     {
       "id": "2026-07-22-001",
-      "task": "Preflight: verify #821 merged on origin/main, no existing #818 branch/PR, create isolated worktree, baseline tests",
+      "task": "Dependency verification + worktree/artifact setup + issue/duplicate check",
       "status": "completed",
-      "artifacts": [],
-      "commit": "1cb306c",
-      "notes": "Confirmed merge commit e1f98403ed7c92626e1e3fd69dea3383965febb3 is an ancestor of origin/main. No feat/818* branch or open PR found. Created linked worktree .worktrees/feat-818-static-obstacles from origin/main (not local main, which was 2 commits behind). Baseline `go test ./...` in encounter/ green (56s, 4 packages) before any change. .worktrees/ not in root .gitignore (pre-existing gap predating this branch, shared by 3 sibling worktrees already present) - left untouched per explicit instruction not to modify the shared checkout."
+      "artifacts": [".claude/progress.json", ".claude/tests.json"],
+      "commit": null,
+      "notes": "Verified PR #821 (#814) and PR #820 (#816) both MERGED via gh pr view, and their merge commits (e1f9840, a2acb8d) are ancestors of origin/main via git merge-base --is-ancestor. Branched feat/817-dungeon-completion from origin/main (e1f9840) in .worktrees/feat-817-dungeon-completion/, mirroring the existing .worktrees/ convention. Read issue #817's full body (including the 2026-07-21 'Approved Slice 3 corrections' addendum settling the defeat question: preserve the existing TPK declaration, do not invent new defeat detection). Checked for duplicate branch/PR: no existing feat/817* branch, no open/closed PR referencing #817 or 'dungeon-completion'. Read repo CLAUDE.md (testify suite pattern, no go.work/replace directives, pre-commit fmt/tidy/lint/test gate)."
     },
     {
       "id": "2026-07-22-002",
-      "task": "TDD: ObstacleData shape + SpaceData.Obstacles + serialization round-trip",
-      "status": "completed",
-      "artifacts": ["encounter/data.go", "encounter/space.go", "encounter/obstacle_test.go"],
-      "commit": "dda6488",
-      "notes": "RED: TestObstacle_ToData_LoadFromData_RoundTrip failed to compile (AddObstacle/ObstacleData/SpaceData.Obstacles undefined). GREEN: added ObstacleData{ID,Ref,Position,BlocksMovement,BlocksLoS} on SpaceData (Ref is a plain opaque string, mirroring MonsterData.MonsterRef's existing convention in this file); Encounter.AddObstacle mirrors AddDoor's atomicity (append, rebuild, rollback on failure); rebuildRoomFromData places every obstacle into the same spatial.Room walls/doors use via environments.WallEntity (no new entity type); validateObstacles rejects empty/duplicate IDs before touching the room (load-bearing: Obstacles is an order-preserving slice, so an unchecked duplicate ID would silently relocate an earlier obstacle's room occupancy via PlaceEntity's same-ID move semantics)."
-    },
-    {
-      "id": "2026-07-22-003",
-      "task": "TDD: LoS, coexistence, validation boundary, backward compatibility",
-      "status": "completed",
-      "artifacts": ["encounter/obstacle_test.go"],
-      "commit": "1b1615f",
-      "notes": "10 additional tests: BlocksLoS true/false, CoexistsWithWallsAndDoors (wall+door+obstacle at distinct hexes), AddObstacle rejects empty ID/duplicate ID/out-of-bounds/duplicate-occupancy (each asserting no partial Data.Space.Obstacles/room state survives), BackwardCompatible_NoObstacles (nil/empty Obstacles omitted from wire, round-trips unchanged). Most passed immediately since the prior session's implementation was already comprehensive; verified non-vacuous by mutation-testing AddObstacle's empty-ID/duplicate-ID pre-checks (temporarily removed, reran RejectsEmptyID/RejectsDuplicateID - still caught by validateObstacles inside rebuildRoomFromData as defense-in-depth, restored). Out-of-bounds/duplicate-occupancy tests rely on tools/spatial's own pre-existing, independently-tested PlaceEntity/grid.IsValidPosition semantics (same mechanism walls/doors already depend on)."
-    },
-    {
-      "id": "2026-07-22-004",
-      "task": "Full verification + PR",
+      "task": "Trace current production behavior (checkEncounterEnd, checkPocketCleared, TPK) before writing any test",
       "status": "completed",
       "artifacts": [],
       "commit": null,
-      "notes": "go build ./... clean; go vet ./... clean; go test ./... green (4 packages, ~54s); go test -race ./... green (~58s); go mod tidy no diff; gofmt/goimports clean; golangci-lint v2.2.1 (repo-pinned via .github/workflows/ci-enhanced.yml GOLANGCI_VERSION, installed to an isolated temp bin rather than the globally-installed v2.12.2) run --config=../.golangci.yml: 0 issues. Diff scope confirmed via `git diff --stat origin/main...HEAD`: encounter/data.go, encounter/space.go, encounter/obstacle_test.go, .claude/*.json only - no unrelated module/refactor changes. Opened PR #823, requested Copilot review (matches repo convention observed on #821)."
+      "notes": "Read death.go's checkEncounterEnd (data.Monsters is a single flat map spanning every region/pocket -- len==0 already means 'no hostiles ANYWHERE', not 'this pocket empty', so victory is already whole-dungeon-scoped by construction) and combat.go's checkPocketCleared (fires AFTER checkEncounterEnd, only when Mode is still ModeTurnBased, i.e. only when the global victory predicate was a no-op -- exits the CURRENT pocket's initiative to FREE_ROAM without ending the encounter when other monsters remain elsewhere). Confirmed EncounterEndedReasonTPK (death.go, allPlayersDead()) is untouched or newly needed -- read tpk_test.go and confirmed extensive existing multi-player + persistence + condition-sweep + economy-clear coverage for TPK in a flat (non-dungeon) room; the issue's 'Approved Slice 3 corrections' explicitly says preserve this as-is, no new defeat detection. Confirmed via grep that NO existing test exercises InitDungeon (N-region generator, #814) together with the combat-pocket/kill/encounter-end lifecycle: dungeon_test.go (#814) only covers geometry/validation (no AddMonster/TakeAction/NPCAct); combat_pockets_test.go (#794/#796) covers the pocket-clear/whole-dungeon-end lifecycle but on a hand-built single-door room, not the InitDungeon generator. This is the actual, real gap the issue's done bar calls for -- not a missing rule, a missing END-TO-END TEST of an already-generic rule against the new generator."
+    },
+    {
+      "id": "2026-07-22-003",
+      "task": "TDD: write the N-region multi-pocket completion + TPK + reload-safety tests against InitDungeon (RED/GREEN outcome recorded per test)",
+      "status": "completed",
+      "artifacts": ["encounter/dungeon_completion_test.go"],
+      "commit": null,
+      "notes": "New file, package encounter_test. Reuses dungeon_test.go's shared row/region helpers and constants (dungeonHeight, dungeonEntranceWidth/CorridorWidth/BossWidth, dungeonRegionID*, dungeonDoor0ID/1ID, dungeonRegionNearEdgeHex/FarEdgeHex) -- all-PatternEmpty regions (own params fn, not threeRegionDungeonParams) for deterministic LoS/movement, isolating the encounter-lifecycle behavior under test from wall-generation randomness (already covered by dungeon_test.go itself). TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe: entrance goblin (pocket 1) cleared -> FREE_ROAM, corridor+boss goblins still alive; open door0+move, corridor goblin (pocket 2) cleared -> FREE_ROAM again, boss still alive and still hidden behind closed door1; open door1+move, boss goblin (last hostile anywhere) killed -> ModeEnded, EncounterEndedReasonAllHostilesDefeated. Then ToData->JSON->LoadFromData round trip; asserts Mode stays ModeEnded and Initiative stays empty post-reload, and a post-reload TakeAction call returns ErrEncounterEnded (not an inescapable fight). TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere: same dungeon shape, solo flat-snapshot alice (HP 1, no DataJSON) engages only the entrance goblin; EndTurn-cycled to the goblin's turn, NPCAct kills alice -> allPlayersDead() -> ModeEnded, EncounterEndedReasonTPK, with corridor+boss goblins asserted STILL alive and untouched (proving TPK doesn't require/trigger any hostile-clearing, and doesn't fire the victory reason). Same reload-safety round trip appended. RESULT: both tests passed on the FIRST run, no production code changed -- see tests.json for the explicit RED-would-have-looked-like note per test and the discrimination performed to rule out a vacuously-passing test."
+    },
+    {
+      "id": "2026-07-22-004",
+      "task": "Discrimination: prove the new tests are not vacuous (would fail if the rule were actually broken)",
+      "status": "completed",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Per verification-before-completion discipline, three separate mutations, each reverted from a /tmp/opencode backup copy immediately after its rerun (confirmed byte-identical to origin/main via `git diff origin/main -- death.go combat.go` after every revert): (1) death.go's victory case guard `case len(e.data.Monsters) == 0:` -> `case false && len(e.data.Monsters) == 0:` -- TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe correctly FAILED (Mode never reached ModeEnded after the boss died; expected 3 Monsters removed, got 1; EncounterEndedEvent absent). Reverted, reran -- GREEN. (2) combat.go's checkPocketCleared -- inserted `return nil` as its first line (short-circuiting the whole function) -- same test correctly FAILED at the very first pocket-clear assertion (Mode stayed ModeTurnBased, Initiative non-empty, ModeChangedEvent absent). Reverted, GREEN. (3) death.go's TPK case guard `case e.allPlayersDead():` -> `case false && e.allPlayersDead():` -- TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere correctly FAILED (Mode never left ModeTurnBased/ModeFreeRoam after alice's death; EncounterEndedEvent absent). Reverted, GREEN. Confirms all new assertions exercise real, breakable behavior rather than passing vacuously."
     },
     {
       "id": "2026-07-22-005",
-      "task": "Address Copilot automated review on PR #823",
+      "task": "Full verification + repo-pinned lint (fixed 3 new findings) + scope self-review",
       "status": "completed",
-      "artifacts": ["encounter/space.go", "encounter/obstacle_test.go"],
-      "commit": null,
-      "notes": "Two Copilot comments, both verified correct against actual code (not accepted blindly): (1) spatial.BasicRoom.canPlaceEntityUnsafe only rejects placement when the EXISTING occupant BlocksMovement() - so two BlocksMovement=false obstacles sharing a hex would silently co-locate via room.PlaceEntity alone, contradicting this package's stated 'any collision is a data error' invariant. RED: added TestAddObstacle_RejectsDuplicateOccupancy_BothNonBlocking, confirmed it failed (Error asserted, got nil) before any fix. GREEN: rebuildRoomFromData now checks the obstacle's cube against the shared `placed` occupancy set explicitly (same set walls/doors already populate) and rejects ANY collision before calling PlaceEntity, regardless of blocking flags. (2) validateObstacles' doc comment claimed duplicate IDs would 'silently relocate' room occupancy via PlaceEntity's same-ID move semantics - verified against tools/environments/wall_entities.go: WallEntity.GetID() embeds position (`wall_<segment>_<x>_<y>`), so two obstacles with the same stated ID but different positions get DIFFERENT entity IDs and would NOT relocate each other. Rewrote the comment to state the real invariant: unique IDs are the package's contract for referencing the SAME obstacle across ticks/reloads, and a same-ID-SAME-position pair would collide to one entity via PlaceEntity's move-in-place semantics, silently swallowing a should-be-rejected duplicate. Full re-verification (build/vet/test/race/fmt/imports/tidy/lint v2.2.1) all green after the fix. Replied to both review comments individually with the signature footnote."
+      "artifacts": ["encounter/dungeon_completion_test.go"],
+      "commit": "TBD",
+      "notes": "go build ./... clean; go vet ./... clean; go test -count=1 ./... all green (~56-58s, matching baseline runtime); go test -race -count=1 ./... all green (~59-67s); gofmt -l . and goimports -l . both clean; go mod tidy produces no go.mod/go.sum diff. Lint: repo's own Makefile/CI pin (curl install.sh ... v2.3.1, .github/workflows/ci-optimized.yml) differs from the golangci-lint already on PATH (v2.12.2) -- installed the CI-pinned v2.3.1 to /tmp/opencode/bin for an accurate comparison, and ran it against a throwaway `git worktree add ... origin/main --detach` baseline checkout: baseline is 0 issues (clean). The new file's first draft introduced 3 new findings (2 lll long-line, 1 revive context-as-first-arg on the dcEndTurnUntilActive helper) -- all 3 fixed (reordered ctx as dcEndTurnUntilActive's first parameter at all 4 call sites; wrapped the two >120-char assertion lines). Reran v2.3.1: 0 issues, matching the origin/main baseline exactly (zero new findings, not just an unchanged count). Diff confined to encounter/dungeon_completion_test.go (new, 403 lines) plus .claude/progress.json + .claude/tests.json (reset for #817) -- NO production file touched (death.go/combat.go/dungeon.go/two_chamber.go byte-identical to origin/main), consistent with the TDD requirement that a production diff only happens if a test demonstrates a real missing behavior, which none did here. No N-region geometry, boss stat block, locked-door, obstacle, proto, API, or web code touched -- #690 (API persistence orchestration) and #574 (web presentation) untouched, out of scope per the issue."
     }
   ],
   "next_steps": [
-    "Monitor for further review activity; do not merge (coordinating session merges)"
+    "None outstanding for #817's toolkit-owned scope -- open PR as tests-only (characterization/delivery), explaining the already-shipped generic behavior and the new N-region regression-evidence tests added, per the issue's own note that a tests-only PR is the correct outcome when the underlying rule is already implemented generically."
   ]
 }
