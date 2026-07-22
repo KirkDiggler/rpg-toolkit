@@ -63,6 +63,44 @@
       "passes": true,
       "last_checked": "2026-07-22",
       "test_name": "TestLockedBossDoorSuite/TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegion"
+      "id": "n-region-early-pocket-clear-returns-freeroam",
+      "feature": "dungeon-completion",
+      "prompt": "In an N-region InitDungeon (#814) encounter with more than one non-final combat pocket, clearing an early pocket (all monsters in the CURRENT initiative dead) while hostiles remain alive in later, still-unopened regions must exit to FREE_ROAM, not end the encounter.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe (dungeon_completion_test.go), entrance-pocket-clear assertions. Already-shipped behavior: combat.go's checkPocketCleared (rpg-toolkit#794/#796) already implements exactly this, previously proven only against a hand-built single-door room (combat_pockets_test.go) or InitDungeon's OWN geometry tests (dungeon_test.go, no combat lifecycle) -- never both together. DISCRIMINATION: temporarily short-circuited checkPocketCleared (combat.go) to `return nil` unconditionally (production mutation, reverted immediately) and reran -- failed at the first pocket-clear assertion (Mode stayed ModeTurnBased instead of ModeFreeRoam, Initiative non-empty, ModeChangedEvent absent). Reverted -- GREEN; `git diff origin/main -- combat.go` empty afterward, confirming no unrelated change was kept."
+    },
+    {
+      "id": "n-region-second-early-pocket-clear-also-returns-freeroam",
+      "feature": "dungeon-completion",
+      "prompt": "The same non-terminal pocket-clear-to-FREE_ROAM behavior must hold for a SECOND early pocket too (corridor, cleared after the entrance pocket), not just the first -- proving the rule composes across more than one non-final region, which is the actual gap #817 called for evidence of (every prior test only had 2 pockets total, i.e. only ONE non-final pocket).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe, corridor-pocket-clear assertions: after the entrance pocket clears, opening door 0 and moving into LoS of the corridor goblin starts a fresh pocket scoped to just that goblin (boss goblin, still behind the closed door 1, is not sighted); clearing it exits to FREE_ROAM a second time, with the boss goblin asserted still alive and untouched. Covered by the same checkPocketCleared discrimination as the row above (both assertions failed together under that mutation)."
+    },
+    {
+      "id": "n-region-last-hostile-anywhere-ends-victory",
+      "feature": "dungeon-completion",
+      "prompt": "Killing the last hostile ANYWHERE in an N-region InitDungeon encounter (here: the boss, in the final region, after two earlier non-terminal pocket-clears) ends the whole encounter, publishing EncounterEndedEvent with the canonical EncounterEndedReasonAllHostilesDefeated -- not a new 'victory' reason string.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe, final assertions. Already-shipped: death.go's checkEncounterEnd predicate is `len(e.data.Monsters) == 0` -- data.Monsters is one flat map spanning every region/pocket, so this predicate was ALREADY whole-dungeon-scoped by construction, not pocket-scoped -- #817 did not need new victory logic, only end-to-end proof against the real InitDungeon generator with multiple intervening pockets. DISCRIMINATION: temporarily changed the case guard to `case false && len(e.data.Monsters) == 0:` (production mutation, reverted immediately) and reran -- failed exactly as expected (Mode stayed ModeTurnBased/ModeFreeRoam instead of ModeEnded after the boss died; EncounterEndedEvent never published). Reverted -- GREEN; `git diff origin/main -- death.go` empty afterward."
+    },
+    {
+      "id": "n-region-tpk-canonical-reason-hostiles-remain-elsewhere",
+      "feature": "dungeon-completion",
+      "prompt": "A TPK inside an N-region dungeon ends the encounter with the existing, canonical EncounterEndedReasonTPK -- firing regardless of how many hostiles are still alive and completely unengaged elsewhere in the dungeon (never even sighted), proving TPK is not gated on hostile-clearing the way victory is, and does not fire the victory reason instead. #817's 'Approved Slice 3 corrections' comment explicitly required NOT inventing new defeat detection -- this test proves the EXISTING declaration composes correctly with the N-region/combat-pocket machinery rather than re-deriving it.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere (dungeon_completion_test.go): solo flat-snapshot alice (1 HP, no DataJSON, same instant-death fallback tpk_test.go's own multi-player test uses) engages only the entrance goblin; EndTurn-cycled to the goblin's turn, NPCAct kills her -> ModeEnded, EncounterEndedReasonTPK -- with the corridor and boss goblins (never sighted, still behind both closed doors) asserted alive and untouched. Gap this closes: every prior TPK test (tpk_test.go) used a flat, single-monster room; no test previously proved TPK still works correctly (and doesn't accidentally trip the victory branch, or get starved by some pocket-scoping regression) inside the N-region/combat-pocket machinery specifically. DISCRIMINATION: temporarily changed death.go's TPK case guard to `case false && e.allPlayersDead():` (production mutation, reverted immediately) and reran -- failed exactly as expected (Mode stayed ModeTurnBased, no EncounterEndedEvent). Reverted -- GREEN; `git diff origin/main -- death.go` empty afterward."
+    },
+    {
+      "id": "n-region-ended-state-reload-safe-toolkit-owned-fields",
+      "feature": "dungeon-completion",
+      "prompt": "After either terminal outcome (victory or TPK) inside an N-region dungeon, a ToData/JSON/LoadFromData round trip must preserve Mode == ModeEnded and an empty Initiative -- the fields the toolkit actually persists on Data -- and a post-reload verb call (EndTurn) must be rejected with ErrEncounterEnded rather than resuming as a live, inescapable fight. Reason itself is explicitly NOT asserted post-reload: it lives only on the published EncounterEndedEvent (events/encounter_ended.go), never written onto Data, so there is nothing for LoadFromData to round-trip -- any reason projection for a resumed/reconnecting client is rpg-api's job (#690), out of scope here. This is the 'to the extent the toolkit owns it' boundary #817 draws.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "dcAssertReloadSafe, called from both TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe and TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere. Already-shipped: Mode/Initiative are ordinary Data fields serialized via encoding/json and LoadFromData copies data.Mode straight through (encounter.go's LoadFromData only overrides Mode when it is core.ModeUnspecified, never when it is already core.ModeEnded) -- exhaustively proven already for the flat-room TPK case by tpk_test.go's own persistence tests (TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy, TestTPK_DeadFlagDoesNotLeakAcrossEncounters). No additional discrimination performed on the JSON round trip itself (basic Go struct-field marshaling, not toolkit-specific logic) beyond confirming it holds for this N-region/multi-pocket fixture specifically, which was the untested combination."
     }
   ]
 }
