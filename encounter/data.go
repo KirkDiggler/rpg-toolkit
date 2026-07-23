@@ -390,9 +390,10 @@ type DoorData struct {
 	// Locked-door state (Wave 2.9). Locked must be true for AttemptUnlock
 	// to issue a prompt (returns ErrDoorNotLocked otherwise). LockDC,
 	// LockAbility, and LockTool feed the SkillCheck prompt that resolution
-	// runs through. LockAbility uses 3-letter codes ("DEX", "STR"). LockTool
-	// is a toolkit ref (e.g. "dnd5e:item:thieves-tools"); empty means no
-	// tool proficiency applies.
+	// runs through. LockAbility is an opaque host/rulebook-owned ability
+	// identifier; for D&D 5e, the canonical value is lowercase abilities.DEX
+	// ("dex"). LockTool is a toolkit ref (e.g. "dnd5e:item:thieves-tools");
+	// empty means no tool proficiency applies.
 	Locked      bool   `json:"locked,omitempty"`
 	LockDC      int    `json:"lock_dc,omitempty"`
 	LockAbility string `json:"lock_ability,omitempty"`

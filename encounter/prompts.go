@@ -84,13 +84,14 @@ type PendingPrompt struct {
 // outside the toolkit (rpg-api wires it against the character store; tests
 // supply a stub) so the encounter package stays ruleset-agnostic.
 //
-// AbilityModifier returns the modifier for the named ability ("DEX",
-// "STR", ...). ToolProficiencyBonus returns the proficiency bonus to add
-// when the player is proficient with the given tool ref (empty tool means
-// no tool bonus). Both return ok=false to signal the player or modifier
-// is unknown; SubmitCheck treats unknowns as zero rather than erroring,
-// since a missing proficiency is normal play (you may attempt a check
-// without proficiency).
+// AbilityModifier returns the modifier for the supplied opaque ability
+// identifier. The host/rulebook owns its format; for D&D 5e the canonical
+// value is lowercase abilities.DEX ("dex"). ToolProficiencyBonus returns
+// the proficiency bonus to add when the player is proficient with the given
+// tool ref (empty tool means no tool bonus). Both return ok=false to signal
+// the player or modifier is unknown; SubmitCheck treats unknowns as zero
+// rather than erroring, since a missing proficiency is normal play (you may
+// attempt a check without proficiency).
 type CharacterResolver interface {
 	AbilityModifier(playerID core.PlayerID, ability string) (mod int, ok bool)
 	ToolProficiencyBonus(playerID core.PlayerID, tool string) (bonus int, ok bool)
