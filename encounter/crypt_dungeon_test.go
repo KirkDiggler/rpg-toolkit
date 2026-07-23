@@ -11,12 +11,14 @@ package encounter_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 )
 
 const (
@@ -34,6 +36,105 @@ func cdNewEncounter(t *testing.T) *encounter.Encounter {
 		_ = transport.Close()
 	})
 	return encounter.New(context.Background(), "enc-crypt-dungeon-test", broker)
+}
+
+// TestCryptDungeonParams_BossConnectorUsesApprovedLockConfig pins the first
+// crypt's approved door contract: its entrance stays a plain connector while
+// the boss connector requires a DC 12 Dexterity check without a tool.
+func TestCryptDungeonParams_BossConnectorUsesApprovedLockConfig(t *testing.T) {
+	params := encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)
+	require.Len(t, params.Connectors, 2)
+
+	entrance := params.Connectors[0]
+	require.Equal(t, cdEntranceDoorID, entrance.DoorID)
+	require.False(t, entrance.Locked)
+	require.Zero(t, entrance.LockDC)
+	require.Empty(t, entrance.LockAbility)
+	require.Empty(t, entrance.LockTool)
+
+	boss := params.Connectors[1]
+	require.Equal(t, cdBossDoorID, boss.DoorID)
+	require.True(t, boss.Locked)
+	require.Equal(t, 12, boss.LockDC)
+	require.Equal(t, string(abilities.DEX), boss.LockAbility)
+	require.Empty(t, boss.LockTool)
+}
+
+// cryptDexResolver accepts only the canonical D&D Dexterity identifier. It
+// proves the crypt's generated prompt reaches the existing unlock rules with
+// no tool contribution.
+type cryptDexResolver struct {
+	ability string
+}
+
+func (r *cryptDexResolver) AbilityModifier(_ core.PlayerID, ability string) (int, bool) {
+	r.ability = ability
+	return 0, ability == string(abilities.DEX)
+}
+
+func (*cryptDexResolver) ToolProficiencyBonus(_ core.PlayerID, _ string) (int, bool) {
+	return 0, false
+}
+
+// TestCryptDungeon_BossDoorLockPersistsAndUnlocks verifies the crypt preset
+// config drives the existing generated-door state, persistence, and
+// AttemptUnlock/SubmitCheck recovery contract without introducing a new verb.
+func TestCryptDungeon_BossDoorLockPersistsAndUnlocks(t *testing.T) {
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() {
+		_ = broker.Close()
+		_ = transport.Close()
+	})
+	resolver := &cryptDexResolver{}
+	enc := encounter.New(
+		context.Background(), "enc-crypt-locked-door", broker, encounter.WithCharacterResolver(resolver),
+	)
+	require.NoError(t, enc.InitDungeon(encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)))
+
+	data := enc.ToData()
+	require.False(t, data.Doors[cdEntranceDoorID].Open)
+	require.False(t, data.Doors[cdEntranceDoorID].Locked)
+	require.True(t, data.Doors[cdBossDoorID].Locked)
+	require.False(t, data.Doors[cdBossDoorID].Open)
+	require.Equal(t, 12, data.Doors[cdBossDoorID].LockDC)
+	require.Equal(t, string(abilities.DEX), data.Doors[cdBossDoorID].LockAbility)
+	require.Empty(t, data.Doors[cdBossDoorID].LockTool)
+
+	payload, err := json.Marshal(data)
+	require.NoError(t, err)
+	var loaded encounter.Data
+	require.NoError(t, json.Unmarshal(payload, &loaded))
+	reloaded, err := encounter.LoadFromData(
+		context.Background(), &loaded, broker, encounter.WithCharacterResolver(resolver),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, reloaded.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: reloaded.ToData().Space.Entrance, SightRange: 30,
+	}))
+	require.NoError(t, reloaded.OpenDoor(alicePlayerID, cdEntranceDoorID))
+
+	issued, err := reloaded.AttemptUnlock(alicePlayerID, cdBossDoorID)
+	require.NoError(t, err)
+	require.Equal(t, 12, issued.DC)
+	require.Equal(t, string(abilities.DEX), issued.Ability)
+	require.Empty(t, issued.Tool)
+	failed, err := reloaded.SubmitCheck(alicePlayerID, 11)
+	require.NoError(t, err)
+	require.False(t, failed.Success)
+	require.True(t, reloaded.ToData().Doors[cdBossDoorID].Locked)
+	require.False(t, reloaded.ToData().Doors[cdBossDoorID].Open)
+
+	_, err = reloaded.AttemptUnlock(alicePlayerID, cdBossDoorID)
+	require.NoError(t, err, "a failed lock check must remain recoverable")
+	succeeded, err := reloaded.SubmitCheck(alicePlayerID, 12)
+	require.NoError(t, err)
+	require.True(t, succeeded.Success)
+	require.Equal(t, string(abilities.DEX), resolver.ability)
+	require.False(t, reloaded.ToData().Doors[cdBossDoorID].Locked)
+	require.True(t, reloaded.ToData().Doors[cdBossDoorID].Open)
 }
 
 // TestCryptDungeonParams_RegionArchetypeComposition: entrance gets
