@@ -39,9 +39,13 @@ func cdNewEncounter(t *testing.T) *encounter.Encounter {
 // TestCryptDungeonParams_RegionArchetypeComposition: entrance gets
 // obelisk+pillars, corridor gets a sparse pillar only (never coffin/
 // altar/statue — corridor must stay monster-free/easily traversable per
-// the issue), and boss gets coffin/tomb+altar+statues (never obelisk,
-// which is entrance-only per the issue's exact list) — the physical
-// semantic refs are limited to the approved set, nothing else.
+// the issue), and boss gets coffin/tomb+altar+the two exact statue
+// variants (never obelisk, which is entrance-only per the issue's exact
+// list) — the physical semantic refs are limited to the approved set,
+// nothing else. Statues are pinned to the two PROMOTED exact asset
+// variants (statue-reaper, statue-knight-hooded), never the generic
+// "dnd5e:obstacles:statue" — no such key exists in the shipped asset
+// contract (verified finding).
 func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 	params := encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)
 	require.Len(t, params.Regions, 3)
@@ -64,14 +68,16 @@ func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 	require.Contains(t, entranceRefs, encounter.CryptObstacleRefPillar)
 	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefCoffin)
 	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefAltar)
-	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefStatue)
+	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefStatueReaper)
+	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefStatueKnightHooded)
 
 	corridorRefs := refsOf(byArchetype[encounter.ArchetypeCorridor].Obstacles)
 	require.Contains(t, corridorRefs, encounter.CryptObstacleRefPillar)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefObelisk)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefCoffin)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefAltar)
-	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefStatue)
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefStatueReaper)
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefStatueKnightHooded)
 	corridorTotal := 0
 	for _, s := range byArchetype[encounter.ArchetypeCorridor].Obstacles {
 		corridorTotal += s.Count
@@ -81,9 +87,28 @@ func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 	bossRefs := refsOf(byArchetype[encounter.ArchetypeBoss].Obstacles)
 	require.Contains(t, bossRefs, encounter.CryptObstacleRefCoffin)
 	require.Contains(t, bossRefs, encounter.CryptObstacleRefAltar)
-	require.Contains(t, bossRefs, encounter.CryptObstacleRefStatue)
+	require.Contains(t, bossRefs, encounter.CryptObstacleRefStatueReaper)
+	require.Contains(t, bossRefs, encounter.CryptObstacleRefStatueKnightHooded)
 	require.NotContains(t, bossRefs, encounter.CryptObstacleRefObelisk)
-	require.Equal(t, 2, bossRefs[encounter.CryptObstacleRefStatue].Count, "statues flank in a pair")
+	require.Equal(t, 1, bossRefs[encounter.CryptObstacleRefStatueReaper].Count,
+		"exactly one reaper statue -- the promoted default pairing, not a random-variant policy")
+	require.Equal(t, 1, bossRefs[encounter.CryptObstacleRefStatueKnightHooded].Count,
+		"exactly one hooded-knight statue -- the promoted default pairing, not a random-variant policy")
+}
+
+// TestCryptDungeonParams_NoGenericStatueRefExists: the generic,
+// ambiguous "dnd5e:obstacles:statue" key must never appear anywhere in
+// CryptDungeonParams' output -- verified finding: no such key exists in
+// the shipped asset contract. Only the two promoted exact variants are
+// valid statue refs for the first crypt default.
+func TestCryptDungeonParams_NoGenericStatueRefExists(t *testing.T) {
+	params := encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)
+	for _, r := range params.Regions {
+		for _, spec := range r.Obstacles {
+			require.NotEqual(t, "dnd5e:obstacles:statue", spec.Ref,
+				"the generic ambiguous statue ref must never be used -- exact variants only")
+		}
+	}
 }
 
 // TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths: every
@@ -93,10 +118,82 @@ func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 func TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths(t *testing.T) {
 	for _, ref := range []string{
 		encounter.CryptObstacleRefCoffin, encounter.CryptObstacleRefAltar,
-		encounter.CryptObstacleRefStatue, encounter.CryptObstacleRefObelisk, encounter.CryptObstacleRefPillar,
+		encounter.CryptObstacleRefStatueReaper, encounter.CryptObstacleRefStatueKnightHooded,
+		encounter.CryptObstacleRefObelisk, encounter.CryptObstacleRefPillar,
 	} {
 		require.Regexp(t, `^dnd5e:obstacles:[a-z-]+$`, ref)
 	}
+}
+
+// cryptBlockingContractTable is the VERIFIED canonical shipped-asset-
+// contract blocking table (independent finding, not this file's own
+// design guess): coffin/tomb movement=true LoS=false; altar movement=
+// true LoS=true (measured 2.057m, role "obstacle"); statues movement=
+// true LoS=true; obelisk/pillar movement=true LoS=true.
+var cryptBlockingContractTable = []struct {
+	ref            string
+	blocksMovement bool
+	blocksLoS      bool
+}{
+	{encounter.CryptObstacleRefCoffin, true, false},
+	{encounter.CryptObstacleRefAltar, true, true},
+	{encounter.CryptObstacleRefStatueReaper, true, true},
+	{encounter.CryptObstacleRefStatueKnightHooded, true, true},
+	{encounter.CryptObstacleRefObelisk, true, true},
+	{encounter.CryptObstacleRefPillar, true, true},
+}
+
+// TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract: every
+// ObstacleSpec CryptDungeonParams emits for a given ref must carry
+// EXACTLY the verified asset-contract BlocksMovement/BlocksLoS pair —
+// most pointedly, altar must now block LoS (it did not before this
+// fix: the shipped asset contract measures it at 2.057m with role
+// "obstacle", not a low walk-around table).
+func TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract(t *testing.T) {
+	params := encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)
+	seen := make(map[string]encounter.ObstacleSpec)
+	for _, r := range params.Regions {
+		for _, spec := range r.Obstacles {
+			seen[spec.Ref] = spec
+		}
+	}
+	for _, tc := range cryptBlockingContractTable {
+		spec, ok := seen[tc.ref]
+		require.True(t, ok, "ref %q must appear somewhere in CryptDungeonParams", tc.ref)
+		require.Equal(t, tc.blocksMovement, spec.BlocksMovement, "ref %q BlocksMovement mismatch", tc.ref)
+		require.Equal(t, tc.blocksLoS, spec.BlocksLoS, "ref %q BlocksLoS mismatch", tc.ref)
+	}
+}
+
+// TestCryptDungeon_BossStatues_StableExactRefsAndIDs: building a real
+// crypt dungeon must place exactly one statue-reaper and one statue-
+// knight-hooded instance in the boss region, each with a stable,
+// non-empty, unique ID that reproduces identically across independent
+// builds with the same seed -- pinning both the exact refs/counts and
+// the ID stability #819's done bar requires for any placed obstacle.
+func TestCryptDungeon_BossStatues_StableExactRefsAndIDs(t *testing.T) {
+	build := func() (reaperID, hoodedID string) {
+		enc := cdNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)))
+		for _, o := range enc.ToData().Space.Obstacles {
+			switch o.Ref {
+			case encounter.CryptObstacleRefStatueReaper:
+				require.Empty(t, reaperID, "exactly one reaper statue must be placed")
+				reaperID = string(o.ID)
+			case encounter.CryptObstacleRefStatueKnightHooded:
+				require.Empty(t, hoodedID, "exactly one hooded-knight statue must be placed")
+				hoodedID = string(o.ID)
+			}
+		}
+		require.NotEmpty(t, reaperID, "a reaper statue must be placed")
+		require.NotEmpty(t, hoodedID, "a hooded-knight statue must be placed")
+		require.NotEqual(t, reaperID, hoodedID, "the two statue instances must have distinct IDs")
+		return reaperID, hoodedID
+	}
+	r1, h1 := build()
+	r2, h2 := build()
+	require.Equal(t, r1, r2, "the reaper statue's ID must be stable across independent builds with the same seed")
+	require.Equal(t, h1, h2, "the hooded-knight statue's ID must be stable across independent builds with the same seed")
 }
 
 // TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces: building a
@@ -110,11 +207,12 @@ func TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces(t *testing.T) {
 	require.NotEmpty(t, data.Space.Obstacles)
 
 	approved := map[string]bool{
-		encounter.CryptObstacleRefCoffin:  true,
-		encounter.CryptObstacleRefAltar:   true,
-		encounter.CryptObstacleRefStatue:  true,
-		encounter.CryptObstacleRefObelisk: true,
-		encounter.CryptObstacleRefPillar:  true,
+		encounter.CryptObstacleRefCoffin:             true,
+		encounter.CryptObstacleRefAltar:              true,
+		encounter.CryptObstacleRefStatueReaper:       true,
+		encounter.CryptObstacleRefStatueKnightHooded: true,
+		encounter.CryptObstacleRefObelisk:            true,
+		encounter.CryptObstacleRefPillar:             true,
 	}
 	for _, o := range data.Space.Obstacles {
 		require.True(t, approved[o.Ref], "obstacle ref %q is outside the approved crypt vocabulary", o.Ref)

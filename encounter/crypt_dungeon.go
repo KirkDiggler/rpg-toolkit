@@ -44,6 +44,14 @@ import (
 // never interprets them. Deliberately NOT model filenames or Synty-
 // specific paths (#819 scope) — a client resolves theme-appropriate
 // meshes off these refs downstream.
+//
+// Statue refs are the two EXACT promoted asset variants (verified
+// finding, PR #826 review): no generic "dnd5e:obstacles:statue" key
+// exists in the shipped asset contract. Two exact variants are promoted
+// — statue-reaper and statue-knight-hooded — both role "obstacle" with
+// BlocksLoS=true, intended for visual pairing. This file's default boss
+// composition uses exactly one of each (a fixed pairing, not a random-
+// variant policy); see cryptBossObstacles.
 const (
 	// CryptObstacleRefCoffin identifies a stone coffin/sarcophagus set
 	// piece — boss-chamber only.
@@ -51,9 +59,14 @@ const (
 	// CryptObstacleRefAltar identifies a ritual altar set piece —
 	// boss-chamber only.
 	CryptObstacleRefAltar = "dnd5e:obstacles:altar"
-	// CryptObstacleRefStatue identifies a standing statue set piece —
-	// boss-chamber only (flanks the boss, per the issue).
-	CryptObstacleRefStatue = "dnd5e:obstacles:statue"
+	// CryptObstacleRefStatueReaper identifies the "reaper" statue
+	// variant — one of the two promoted exact statue assets,
+	// boss-chamber only.
+	CryptObstacleRefStatueReaper = "dnd5e:obstacles:statue-reaper"
+	// CryptObstacleRefStatueKnightHooded identifies the "hooded knight"
+	// statue variant — the other promoted exact statue asset,
+	// boss-chamber only.
+	CryptObstacleRefStatueKnightHooded = "dnd5e:obstacles:statue-knight-hooded"
 	// CryptObstacleRefObelisk identifies a standing obelisk set piece —
 	// entrance-chamber only.
 	CryptObstacleRefObelisk = "dnd5e:obstacles:obelisk"
@@ -62,17 +75,24 @@ const (
 	CryptObstacleRefPillar = "dnd5e:obstacles:pillar"
 )
 
-// Crypt set-piece blocking properties (rpg-toolkit#819 design decision,
-// documented here since #818's ObstacleData carries no partial-cover
-// math — a piece either blocks LoS or it doesn't): pillars/obelisks/
-// statues are tall, solid, and block both movement and line of sight;
-// a coffin/altar is low enough to walk around but not through — blocks
-// movement, but a combatant can see over it.
+// Crypt set-piece blocking properties: the VERIFIED canonical shipped-
+// asset-contract table (independent finding, PR #826 review — supersedes
+// this file's earlier "low vs tall" design guess, which had altar wrong):
+//
+//	ref                    BlocksMovement  BlocksLoS
+//	coffin/tomb            true            false  (walk around, see over)
+//	altar                  true            true   (measured 2.057m, role "obstacle")
+//	statue-reaper          true            true
+//	statue-knight-hooded   true            true
+//	obelisk                true            true
+//	pillar                 true            true
+//
+// Every approved piece blocks movement; only the coffin/tomb does not
+// also block line of sight.
 const (
-	cryptBlocksMovementTall = true
-	cryptBlocksLoSTall      = true
-	cryptBlocksMovementLow  = true
-	cryptBlocksLoSLow       = false
+	cryptBlocksMovement  = true
+	cryptBlocksLoS       = true
+	cryptCoffinBlocksLoS = false
 )
 
 // The first crypt dungeon's fixed shape: entrance -> corridor -> boss,
@@ -95,8 +115,8 @@ const (
 // entrance chamber's archetype-appropriate set pieces (#819 scope).
 func cryptEntranceObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
-		{Ref: CryptObstacleRefObelisk, Count: 1, BlocksMovement: cryptBlocksMovementTall, BlocksLoS: cryptBlocksLoSTall},
-		{Ref: CryptObstacleRefPillar, Count: 2, BlocksMovement: cryptBlocksMovementTall, BlocksLoS: cryptBlocksLoSTall},
+		{Ref: CryptObstacleRefObelisk, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
+		{Ref: CryptObstacleRefPillar, Count: 2, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 	}
 }
 
@@ -105,19 +125,27 @@ func cryptEntranceObstacles() []ObstacleSpec {
 // deliberately the lightest set-piece load of the three regions.
 func cryptCorridorObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
-		{Ref: CryptObstacleRefPillar, Count: 1, BlocksMovement: cryptBlocksMovementTall, BlocksLoS: cryptBlocksLoSTall},
+		{Ref: CryptObstacleRefPillar, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 	}
 }
 
-// cryptBossObstacles: a coffin/tomb, an altar, and a flanking pair of
-// statues — the boss chamber's archetype-appropriate set pieces (#819
-// scope: "boss chamber with an altar and flanking statues that don't
-// block the path to it").
+// cryptBossObstacles: a coffin/tomb, an altar, and one of each of the
+// two promoted exact statue variants (a fixed reaper+hooded-knight
+// pairing, not a random-variant policy) — the boss chamber's archetype-
+// appropriate set pieces (#819 scope: "boss chamber with an altar and
+// flanking statues that don't block the path to it"). Keeping coffin as
+// coffin only — no tomb/sarcophagus variant is added here; see the PR
+// body for why (#818 v1's single-anchor-per-instance limitation and
+// rpg-dnd5e-web#577's rendering/composition ownership).
 func cryptBossObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
-		{Ref: CryptObstacleRefCoffin, Count: 1, BlocksMovement: cryptBlocksMovementLow, BlocksLoS: cryptBlocksLoSLow},
-		{Ref: CryptObstacleRefAltar, Count: 1, BlocksMovement: cryptBlocksMovementLow, BlocksLoS: cryptBlocksLoSLow},
-		{Ref: CryptObstacleRefStatue, Count: 2, BlocksMovement: cryptBlocksMovementTall, BlocksLoS: cryptBlocksLoSTall},
+		{Ref: CryptObstacleRefCoffin, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptCoffinBlocksLoS},
+		{Ref: CryptObstacleRefAltar, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
+		{Ref: CryptObstacleRefStatueReaper, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
+		{
+			Ref: CryptObstacleRefStatueKnightHooded, Count: 1,
+			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS,
+		},
 	}
 }
 

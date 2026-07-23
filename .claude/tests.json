@@ -87,10 +87,37 @@
     {
       "id": "crypt-region-archetype-composition",
       "feature": "crypt-obstacle-placement",
-      "prompt": "Build CryptDungeonParams. Verify entrance carries obelisk+pillar (never coffin/altar/statue), corridor carries only a single sparse pillar (never the other 4 refs), and boss carries coffin+altar+2 flanking statues (never obelisk).",
+      "prompt": "Build CryptDungeonParams. Verify entrance carries obelisk+pillar (never coffin/altar/statue), corridor carries only a single sparse pillar (never the other refs), and boss carries coffin+altar+exactly one statue-reaper+exactly one statue-knight-hooded (never obelisk, never the generic statue ref).",
       "passes": true,
       "last_checked": "2026-07-22",
       "test_name": "TestCryptDungeonParams_RegionArchetypeComposition",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-no-generic-statue-ref",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify the generic ambiguous 'dnd5e:obstacles:statue' key never appears in CryptDungeonParams' output -- verified finding: no such key exists in the shipped asset contract.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeonParams_NoGenericStatueRefExists",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-blocking-flags-match-asset-contract",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify every crypt obstacle ref's BlocksMovement/BlocksLoS exactly matches the verified shipped-asset-contract table -- coffin(true,false), altar(true,true), statue-reaper(true,true), statue-knight-hooded(true,true), obelisk(true,true), pillar(true,true).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-boss-statues-stable-exact-refs",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "InitDungeon a real crypt twice with the same seed. Verify exactly one statue-reaper and one statue-knight-hooded are placed in the boss region each time, with distinct but seed-stable IDs across both builds.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_BossStatues_StableExactRefsAndIDs",
       "mutation_verified": true
     },
     {
@@ -104,7 +131,7 @@
     {
       "id": "crypt-generates-placeable-dungeon",
       "feature": "crypt-obstacle-placement",
-      "prompt": "InitDungeon a real crypt via CryptDungeonParams. Verify it succeeds and every placed obstacle's ref is within the 5 approved crypt refs.",
+      "prompt": "InitDungeon a real crypt via CryptDungeonParams. Verify it succeeds and every placed obstacle's ref is within the 6 approved crypt refs (coffin, altar, statue-reaper, statue-knight-hooded, obelisk, pillar).",
       "passes": true,
       "last_checked": "2026-07-22",
       "test_name": "TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces"
@@ -124,6 +151,32 @@
       "passes": true,
       "last_checked": "2026-07-22",
       "test_name": "TestCryptDungeon_DeterministicSameSeed"
+    },
+    {
+      "id": "boss-axis-never-blocked-by-generated-walls",
+      "feature": "boss-primary-axis-invariant",
+      "prompt": "Against a bounded table of concretely-failing seeds (independently verified: 335+/3000 boss regions land a PatternRandom wall on the doorRow beyond local center), verify InitDungeon places NO wall anywhere on the boss region's full-width doorRow.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_BossPrimaryAxis_NeverBlockedByGeneratedWalls",
+      "mutation_verified": true,
+      "notes": "RED against pre-fix code with seed=4 (wall at boss local column 2); GREEN after extending the boss required path to farEdge + stripReservedAxisWalls discrete guarantee. Re-scanned 1..3000 seeds post-fix: 0/3000 failures (was 385/3000 pre-fix at this exact fixture shape)."
+    },
+    {
+      "id": "boss-axis-full-row-walkable",
+      "feature": "boss-primary-axis-invariant",
+      "prompt": "Against the same failing-seed table, open both connector doors and verify every hex across the boss region's full doorRow is actually walkable (room.CanPlaceEntity), not just free of a wall segment at that exact coordinate.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_BossPrimaryAxis_FullRowWalkable"
+    },
+    {
+      "id": "boss-axis-clear-with-obstacles-too",
+      "feature": "boss-primary-axis-invariant",
+      "prompt": "Against the same failing-seed table, attach a heavy ObstacleSpec load to the boss region and verify the full doorRow stays walkable under BOTH generated walls and placed obstacles simultaneously.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_BossPrimaryAxis_ClearWithObstaclesToo"
     }
   ]
 }

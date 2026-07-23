@@ -122,13 +122,18 @@ type SpaceData struct {
 	// client can key off across ticks/reloads — a set-piece (crypt
 	// sarcophagus, altar, pillar, ...) rather than room geometry. The
 	// toolkit never interprets Ref or branches on it; placement policy
-	// (WHERE obstacles go for a given theme/archetype) is out of scope for
-	// #818 — see the crypt-placement issue that depends on it. Order-
-	// preserving slice, not a map: AddObstacle enforces unique, non-empty
-	// IDs itself (see validateObstacles) rather than relying on map-key
-	// overwrite semantics the way Doors does. Empty for every space
-	// predating #818 — omitted from the wire when empty so old snapshots
-	// round-trip byte-for-byte.
+	// (WHERE obstacles go for a given theme/archetype) is implemented at
+	// InitDungeon's DungeonRegionParams.Obstacles + placeRegionObstacles
+	// (rpg-toolkit#819 — the crypt-placement issue this comment used to
+	// point at as future work; see CryptDungeonParams for the crypt
+	// template's own composition). This field itself remains the single,
+	// generic, content-agnostic representation regardless of caller —
+	// #818's shape is unchanged by #819's addition. Order-preserving
+	// slice, not a map: AddObstacle enforces unique, non-empty IDs itself
+	// (see validateObstacles) rather than relying on map-key overwrite
+	// semantics the way Doors does. Empty for every space predating #818
+	// — omitted from the wire when empty so old snapshots round-trip
+	// byte-for-byte.
 	Obstacles []ObstacleData `json:"obstacles,omitempty"`
 }
 

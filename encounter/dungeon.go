@@ -405,23 +405,40 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			requiredPaths = []environments.Path{
 				{From: local, To: farEdge, Width: dungeonPathWidth, Purpose: "entrance-to-door"},
 			}
-		case i == n-1:
-			// terminal region: incoming-door-adjacent -> local center.
-			// Purpose names the destination generically ("region", not
-			// "chamber") since the terminal region can be any archetype
-			// (boss, chamber, ...) — this string only ever surfaces in
-			// environments.validatePathSafety's "required path '%s' is
-			// blocked" error, but it must still describe what's actually
-			// there.
+		case i == n-1 && r.Archetype != ArchetypeBoss:
+			// non-boss terminal region: incoming-door-adjacent -> local
+			// center. Purpose names the destination generically
+			// ("region", not "chamber") since the terminal region can be
+			// any non-boss archetype (chamber, ...) — this string only
+			// ever surfaces in environments.validatePathSafety's
+			// "required path '%s' is blocked" error, but it must still
+			// describe what's actually there.
 			center := spatial.Position{X: float64(r.Width) / 2, Y: float64(doorRow)}
 			requiredPaths = []environments.Path{
 				{From: local, To: center, Width: dungeonPathWidth, Purpose: "door-to-region-center"},
 			}
 		default:
-			// interior region: incoming-door-adjacent -> outgoing-door-adjacent.
+			// interior region OR a boss-archetype region regardless of
+			// its position in the chain (including the terminal slot,
+			// which is where every #814 fixture puts it): incoming-
+			// door-adjacent -> local FAR edge, not just center.
+			// rpg-toolkit#819's hard invariant is that a boss region's
+			// full primary playable axis (this exact row, spanning the
+			// region's whole width) stays clear — the same full-width
+			// reservation entrance/interior regions already get for
+			// connectivity, extended to the boss archetype specifically
+			// because "connectivity" alone (door-to-center) is not the
+			// same requirement as "the whole tactical axis stays open."
+			// This is necessary but NOT sufficient on its own — see
+			// stripReservedAxisWalls below for why a second, discrete-
+			// level guarantee is also required.
 			farEdge := spatial.Position{X: float64(r.Width - 1), Y: float64(doorRow)}
+			purpose := "door-to-door"
+			if r.Archetype == ArchetypeBoss {
+				purpose = "boss-primary-axis"
+			}
 			requiredPaths = []environments.Path{
-				{From: local, To: farEdge, Width: dungeonPathWidth, Purpose: "door-to-door"},
+				{From: local, To: farEdge, Width: dungeonPathWidth, Purpose: purpose},
 			}
 		}
 
@@ -434,6 +451,20 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			return nil, fmt.Errorf("generate region %d (%q) walls: %w", i, r.ID, err)
 		}
 		regionWalls := regionWallSegments(walls, starts[i], 0)
+		if r.Archetype == ArchetypeBoss {
+			// Discrete, by-construction guarantee (rpg-toolkit#819):
+			// the required-path extension above declares intent to
+			// tools/environments' continuous-space validator, but that
+			// validator (a separate module, not modified here) checks
+			// path safety against the RAW wall segments before this
+			// package's own hex-cell rounding (regionWallSegments) —
+			// a wall whose continuous position sits just off the
+			// required-path line can still round onto the doorRow hex
+			// cell. Stripping any wall that lands on the primary axis
+			// AFTER discretization closes that gap unconditionally,
+			// independent of the upstream generator's precision.
+			regionWalls = stripReservedAxisWalls(regionWalls, starts[i], r.Width, doorRow)
+		}
 		segs = append(segs, regionWalls...)
 		regions[i] = RegionData{
 			ID:        r.ID,
@@ -566,6 +597,32 @@ func wallCubeSet(walls []environments.WallSegmentData) map[spatial.CubeCoordinat
 		set[w.Start] = struct{}{}
 	}
 	return set
+}
+
+// stripReservedAxisWalls removes any wall segment (already in absolute
+// coordinates — the caller's regionWallSegments output) landing on
+// doorRow within [offsetX, offsetX+width) — a boss-archetype region's
+// primary playable axis, rpg-toolkit#819's hard invariant. This is a
+// discrete, post-rounding guarantee applied BY CONSTRUCTION as part of
+// building this region's layout (not a post-hoc patch to already-
+// committed encounter data, and not a seed retry): see the call site's
+// doc for why the upstream continuous-space required-path declaration
+// alone is necessary but not sufficient. Only ever removes walls —
+// widening the open floor can never violate a safety guarantee the
+// pattern generator already established, so no re-validation is needed.
+func stripReservedAxisWalls(
+	walls []environments.WallSegmentData, offsetX, width, doorRow int,
+) []environments.WallSegmentData {
+	out := make([]environments.WallSegmentData, 0, len(walls))
+	for _, w := range walls {
+		pos := w.Start.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		localX := int(pos.X) - offsetX
+		if int(pos.Y) == doorRow && localX >= 0 && localX < width {
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 // placeRegionObstaclesParams bundles placeRegionObstacles' inputs — one
