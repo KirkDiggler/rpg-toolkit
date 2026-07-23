@@ -1,201 +1,33 @@
 {
+  "feature": "static-obstacle-reveal",
   "tests": [
     {
-      "id": "obstacle-no-specs-no-obstacles",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Call InitDungeon on a region with a nil/empty ObstacleSpec list (every pre-#819 caller). Verify SpaceData.Obstacles is empty -- fully backward compatible, opt-in mechanism.",
+      "id": "move-cross-transition-audience",
+      "test_name": "TestMove_CrossTransitionAudience",
       "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_NoObstacleSpecs_PlacesNoObstacles"
+      "characterization": true,
+      "prompt": "Alice reveals an obstacle first; Bob reveals it in a later move. Each receives exactly one obstacle appearance with only themselves in the audience."
     },
     {
-      "id": "obstacle-spec-verbatim-fields",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Give one region an ObstacleSpec with Count=3. Verify exactly 3 ObstacleData entries are placed, each carrying the spec's Ref/BlocksMovement/BlocksLoS verbatim.",
+      "id": "door-follow-up-no-duplicate",
+      "test_name": "TestOpenDoor_FollowUpMoveDoesNotReappear",
       "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstacleSpec_PlacesRequestedCountWithVerbatimFields"
-    },
-    {
-      "id": "obstacle-multiple-specs-no-collision",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Give one region two distinct ObstacleSpecs. Verify all instances place without error and no two instances share a hex.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_MultipleSpecsInOneRegion_AllPlacedWithoutCollision",
-      "mutation_verified": true
-    },
-    {
-      "id": "obstacle-ids-stable-and-unique",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Build the same InitDungeon call twice with the same seed. Verify every obstacle ID is non-empty, unique within the dungeon, and the ID SET is identical across both builds.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstacleIDs_StableAndUnique",
-      "mutation_verified": true
-    },
-    {
-      "id": "obstacle-deterministic-same-seed",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Build the same InitDungeon call (with ObstacleSpecs) twice with the same seed. Verify SpaceData.Obstacles is byte-for-byte identical.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstaclePlacement_DeterministicSameSeed"
-    },
-    {
-      "id": "obstacle-varies-across-seeds",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "With a candidate pool much larger than the requested obstacle count, build with several different seed pairs. Verify at least one pair produces different obstacle positions.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstaclePlacement_VariesAcrossSeeds"
-    },
-    {
-      "id": "obstacle-never-on-reserved-row",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Overload a boss region with a large obstacle count (PatternRandom walls present). Verify no placed obstacle sits on the shared doorRow (the required-path / primary-combat-axis row).",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstaclePlacement_NeverOnReservedRow",
-      "mutation_verified": true
-    },
-    {
-      "id": "obstacle-preserves-connectivity",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Heavily obstacle-load an entrance/corridor/boss dungeon. Open both connector doors. Verify the entrance still reaches the boss region via a walkable path.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity"
-    },
-    {
-      "id": "obstacle-skip-on-no-fit",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Request 1000 instances of an obstacle spec in a 4x4 region (at most ~12 safe candidate cells). Verify InitDungeon succeeds (no error) and places fewer than 1000 -- decoration must never fail structural generation.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstaclePlacement_SkipsWhenNoSafeHexRemains",
-      "mutation_verified": true
-    },
-    {
-      "id": "obstacle-roundtrip-and-los-agreement",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Place obstacles with mixed BlocksMovement/BlocksLoS, ToData, then LoadFromData into a fresh Encounter. Verify Obstacles round-trip byte-for-byte and the reloaded room's actual movement-blocking at each obstacle's position matches its declared BlocksMovement.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData"
-    },
-    {
-      "id": "crypt-region-archetype-composition",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Build CryptDungeonParams. Verify entrance carries obelisk+pillar (never coffin/altar/statue), corridor carries only a single sparse pillar (never the other refs), and boss carries coffin+altar+exactly one statue-reaper+exactly one statue-knight-hooded (never obelisk, never the generic statue ref).",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeonParams_RegionArchetypeComposition",
-      "mutation_verified": true
-    },
-    {
-      "id": "crypt-no-generic-statue-ref",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Verify the generic ambiguous 'dnd5e:obstacles:statue' key never appears in CryptDungeonParams' output -- verified finding: no such key exists in the shipped asset contract.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeonParams_NoGenericStatueRefExists",
-      "mutation_verified": true
-    },
-    {
-      "id": "crypt-blocking-flags-match-asset-contract",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Verify every crypt obstacle ref's BlocksMovement/BlocksLoS exactly matches the verified shipped-asset-contract table -- coffin(true,false), altar(true,true), statue-reaper(true,true), statue-knight-hooded(true,true), obelisk(true,true), pillar(true,true).",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract",
-      "mutation_verified": true
-    },
-    {
-      "id": "crypt-boss-statues-stable-exact-refs",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "InitDungeon a real crypt twice with the same seed. Verify exactly one statue-reaper and one statue-knight-hooded are placed in the boss region each time, with distinct but seed-stable IDs across both builds.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeon_BossStatues_StableExactRefsAndIDs",
-      "mutation_verified": true
-    },
-    {
-      "id": "crypt-refs-no-model-paths",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Verify every approved crypt obstacle ref matches the plain opaque 'dnd5e:props:<kind>' shape -- no model filename or Synty-specific path.",
-      "passes": true,
-      "last_checked": "2026-07-23",
-      "test_name": "TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths"
-    },
-    {
-      "id": "crypt-generates-placeable-dungeon",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "InitDungeon a real crypt via CryptDungeonParams. Verify it succeeds and every placed obstacle's ref is within the 6 approved crypt refs (coffin, altar, statue-reaper, statue-knight-hooded, obelisk, pillar).",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces"
-    },
-    {
-      "id": "crypt-connectivity-survives-set-pieces",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "InitDungeon a real crypt via CryptDungeonParams, open both connector doors. Verify the entrance still reaches the boss region.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeon_EntranceToBossConnectivity_SurvivesSetPieces"
-    },
-    {
-      "id": "crypt-deterministic-same-seed",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Build the same CryptDungeonParams seed twice. Verify walls AND obstacles are identical across both builds.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestCryptDungeon_DeterministicSameSeed"
-    },
-    {
-      "id": "boss-axis-never-blocked-by-generated-walls",
-      "feature": "boss-primary-axis-invariant",
-      "prompt": "Against a bounded table of concretely-failing seeds (independently verified: 335+/3000 boss regions land a PatternRandom wall on the doorRow beyond local center), verify InitDungeon places NO wall anywhere on the boss region's full-width doorRow.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_BossPrimaryAxis_NeverBlockedByGeneratedWalls",
       "mutation_verified": true,
-      "notes": "RED against pre-fix code with seed=4 (wall at boss local column 2); GREEN after extending the boss required path to farEdge + stripReservedAxisWalls discrete guarantee. Re-scanned 1..3000 seeds post-fix: 0/3000 failures (was 385/3000 pre-fix at this exact fixture shape)."
+      "prompt": "After door-open reveals an obstacle, a later movement reveal does not emit it again."
     },
     {
-      "id": "boss-axis-full-row-walkable",
-      "feature": "boss-primary-axis-invariant",
-      "prompt": "Against the same failing-seed table, open both connector doors and verify every hex across the boss region's full doorRow is actually walkable (room.CanPlaceEntity), not just free of a wall segment at that exact coordinate.",
+      "id": "reveal-order",
+      "test_name": "TestMove_ObstacleAppearanceFollowsHexRevealed; TestOpenDoor_ObstacleAppearanceFollowsHexRevealed",
       "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_BossPrimaryAxis_FullRowWalkable"
+      "characterization": true,
+      "prompt": "Obstacle EntityAppeared follows HexRevealed on move and door-open paths; DoorOpened remains the door-path cause event."
     },
     {
-      "id": "boss-axis-clear-with-obstacles-too",
-      "feature": "boss-primary-axis-invariant",
-      "prompt": "Against the same failing-seed table, attach a heavy ObstacleSpec load to the boss region and verify the full doorRow stays walkable under BOTH generated walls and placed obstacles simultaneously.",
+      "id": "reload-sticky-reveal",
+      "test_name": "TestReload_PersistsStaticObstacleReveal",
       "passes": true,
-      "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_BossPrimaryAxis_ClearWithObstaclesToo"
-    },
-    {
-      "id": "crypt-refs-exact-canonical-manifest-keys",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Verify each CryptObstacleRef* constant equals, byte for byte, the exact canonical shipped asset-manifest key ('dnd5e:props:<id>') -- not merely a shape-matching regex.",
-      "passes": true,
-      "last_checked": "2026-07-23",
-      "test_name": "TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly",
-      "mutation_verified": true
-    },
-    {
-      "id": "crypt-refs-no-obstacles-namespace",
-      "feature": "crypt-obstacle-placement",
-      "prompt": "Verify no crypt obstacle ref ever contains the invented 'obstacles' namespace segment (must be 'dnd5e:props:...', not 'dnd5e:obstacles:...').",
-      "passes": true,
-      "last_checked": "2026-07-23",
-      "test_name": "TestCryptDungeonParams_NoGenericStatueRefExists",
       "mutation_verified": true,
-      "notes": "Strengthened in session 005 with an explicit require.NotContains(spec.Ref, \"obstacles\") guard alongside its original generic-statue-ref check."
+      "prompt": "ToData through JSON and LoadFromData preserve revealed hexes so a later move does not replay the obstacle."
     }
   ]
 }
