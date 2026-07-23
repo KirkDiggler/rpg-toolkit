@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
@@ -1120,6 +1121,9 @@ func (e *Encounter) applyAndPublishMove(
 			return "", fmt.Errorf("publish reveal: %w", err)
 		}
 	}
+	if err := e.publishRevealedObstacles(revealPerPlayer); err != nil {
+		return "", err
+	}
 
 	// Emit EntityAppearedEvent once per distinct appeared-at hex, grouping
 	// viewers who share the same appearance position. Under the endpoints-only
@@ -1246,6 +1250,51 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 			e.data.ID, e.nextSeq(), revealPerPlayer,
 		)); err != nil {
 			return fmt.Errorf("publish reveal: %w", err)
+		}
+	}
+	if err := e.publishRevealedObstacles(revealPerPlayer); err != nil {
+		return err
+	}
+	return nil
+}
+
+// publishRevealedObstacles announces each static obstacle exactly once for a
+// reveal transition. Obstacles use sticky explored-map semantics: only viewers
+// whose newly revealed hex delta contains an obstacle position are included,
+// and the caller has already persisted that delta into their View.
+func (e *Encounter) publishRevealedObstacles(reveals map[core.PlayerID]events.HexRevealedSlice) error {
+	if e.data.Space == nil || len(reveals) == 0 || len(e.data.Space.Obstacles) == 0 {
+		return nil
+	}
+
+	obstacles := append([]ObstacleData(nil), e.data.Space.Obstacles...)
+	sort.Slice(obstacles, func(i, j int) bool {
+		if obstacles[i].ID != obstacles[j].ID {
+			return obstacles[i].ID < obstacles[j].ID
+		}
+		if obstacles[i].Position.Q != obstacles[j].Position.Q {
+			return obstacles[i].Position.Q < obstacles[j].Position.Q
+		}
+		if obstacles[i].Position.R != obstacles[j].Position.R {
+			return obstacles[i].Position.R < obstacles[j].Position.R
+		}
+		return obstacles[i].Position.S < obstacles[j].Position.S
+	})
+
+	for _, obstacle := range obstacles {
+		audience := make(map[core.PlayerID]struct{})
+		for playerID, reveal := range reveals {
+			if reveal.Hexes.Has(obstacle.Position) {
+				audience[playerID] = struct{}{}
+			}
+		}
+		if len(audience) == 0 {
+			continue
+		}
+		if err := e.broker.Publish(events.NewEntityAppearedEvent(
+			e.data.ID, e.nextSeq(), obstacle.ID, obstacle.Position, audience,
+		)); err != nil {
+			return fmt.Errorf("publish revealed obstacle %q: %w", obstacle.ID, err)
 		}
 	}
 	return nil

@@ -7,16 +7,19 @@ import (
 )
 
 // EntityAppearedEvent is published when a moving entity enters one or more
-// viewers' lines of sight during a move. This event lets consumers show entity
-// markers for viewers who could not see the mover before.
+// viewers' lines of sight during a move, or when a static obstacle enters one
+// or more viewers' sticky explored-map reveal delta. This event lets consumers
+// show entity markers only to viewers who newly learned about the entity.
 //
-// Position is the hex where the mover became visible. Under the endpoints-only
-// visibility model, all viewers in the audience will see the mover appear at
-// the same hex (path[len-1] for enter-LoS; SeenSegments[0] for pass-through).
-// If two viewers share different appearedAt hexes (only possible in pass-through
-// when viewers sit at different positions and thus differ in which hex was the
-// first visible one), Move() emits one EntityAppearedEvent per distinct Position
-// with the viewers for that position grouped into PerPlayer.
+// Position is the hex where a mover became visible or the static obstacle's
+// fixed position. Under the endpoints-only visibility model, all viewers in
+// the audience will see a mover appear at the same hex (path[len-1] for
+// enter-LoS; SeenSegments[0] for pass-through). If viewers share different
+// appearedAt hexes (only possible in pass-through when viewers sit at different
+// positions and thus differ in which hex was first visible), Move() emits one
+// EntityAppearedEvent per distinct Position with the viewers grouped into
+// PerPlayer. Static obstacles group viewers whose newly revealed hex delta
+// contains the same fixed obstacle position.
 type EntityAppearedEvent struct {
 	eventMeta
 	encID     core.EncounterID
