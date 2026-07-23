@@ -43,8 +43,8 @@ func cdNewEncounter(t *testing.T) *encounter.Encounter {
 // variants (never obelisk, which is entrance-only per the issue's exact
 // list) — the physical semantic refs are limited to the approved set,
 // nothing else. Statues are pinned to the two PROMOTED exact asset
-// variants (statue-reaper, statue-knight-hooded), never the generic
-// "dnd5e:obstacles:statue" — no such key exists in the shipped asset
+// variants (statue-reaper, statue-knight-hooded), never a generic
+// "dnd5e:props:statue" — no such key exists in the shipped asset
 // contract (verified finding).
 func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 	params := encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)
@@ -97,22 +97,26 @@ func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 }
 
 // TestCryptDungeonParams_NoGenericStatueRefExists: the generic,
-// ambiguous "dnd5e:obstacles:statue" key must never appear anywhere in
+// ambiguous "dnd5e:props:statue" key must never appear anywhere in
 // CryptDungeonParams' output -- verified finding: no such key exists in
 // the shipped asset contract. Only the two promoted exact variants are
-// valid statue refs for the first crypt default.
+// valid statue refs for the first crypt default. Also guards against a
+// regression to this file's now-corrected "dnd5e:obstacles:..." (an
+// invented, non-canonical namespace, PR #826 review second pass).
 func TestCryptDungeonParams_NoGenericStatueRefExists(t *testing.T) {
 	params := encounter.CryptDungeonParams(cdSeed, cdEntranceDoorID, cdBossDoorID)
 	for _, r := range params.Regions {
 		for _, spec := range r.Obstacles {
-			require.NotEqual(t, "dnd5e:obstacles:statue", spec.Ref,
+			require.NotEqual(t, "dnd5e:props:statue", spec.Ref,
 				"the generic ambiguous statue ref must never be used -- exact variants only")
+			require.NotContains(t, spec.Ref, "obstacles",
+				"refs must use the canonical \"dnd5e:props:...\" namespace, not the invented \"obstacles\" one")
 		}
 	}
 }
 
 // TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths: every
-// approved ref is a plain opaque "dnd5e:obstacles:<kind>" string — no
+// approved ref is a plain opaque "dnd5e:props:<kind>" string — no
 // model filename or Synty-specific path ever appears in generic encounter
 // data (rpg-toolkit#819 scope: "No model filenames/Synty paths").
 func TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths(t *testing.T) {
@@ -121,7 +125,46 @@ func TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths(t *testing.
 		encounter.CryptObstacleRefStatueReaper, encounter.CryptObstacleRefStatueKnightHooded,
 		encounter.CryptObstacleRefObelisk, encounter.CryptObstacleRefPillar,
 	} {
-		require.Regexp(t, `^dnd5e:obstacles:[a-z-]+$`, ref)
+		require.Regexp(t, `^dnd5e:props:[a-z-]+$`, ref)
+	}
+}
+
+// cryptCanonicalAssetManifestKeys pins the EXACT full canonical ref
+// string every crypt obstacle constant must equal -- not merely a tail
+// ID or a shape-matching regex (PR #826 review: "assert exact full
+// canonical keys, not merely tail IDs"). These are the shipped asset
+// manifest's own keys, verified independently: module "dnd5e", type
+// "props" (NOT the invented "obstacles" this file used before this
+// fix), one entry per approved crypt set piece.
+var cryptCanonicalAssetManifestKeys = map[string]string{
+	"CryptObstacleRefCoffin":             "dnd5e:props:coffin",
+	"CryptObstacleRefAltar":              "dnd5e:props:altar",
+	"CryptObstacleRefStatueReaper":       "dnd5e:props:statue-reaper",
+	"CryptObstacleRefStatueKnightHooded": "dnd5e:props:statue-knight-hooded",
+	"CryptObstacleRefObelisk":            "dnd5e:props:obelisk",
+	"CryptObstacleRefPillar":             "dnd5e:props:pillar",
+}
+
+// TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly: each
+// exported CryptObstacleRef* constant must equal, byte for byte, the
+// asset manifest's own canonical key -- module "dnd5e", type "props"
+// (verified finding, PR #826 review: the earlier "dnd5e:obstacles:..."
+// namespace was invented, not the shipped contract's actual key). A
+// test that only checked the SHAPE of the ref (e.g. a regex matching
+// any "dnd5e:<type>:<id>" string) would pass even if this constant
+// silently drifted to the wrong type segment -- this test pins the
+// literal value instead.
+func TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly(t *testing.T) {
+	actual := map[string]string{
+		"CryptObstacleRefCoffin":             encounter.CryptObstacleRefCoffin,
+		"CryptObstacleRefAltar":              encounter.CryptObstacleRefAltar,
+		"CryptObstacleRefStatueReaper":       encounter.CryptObstacleRefStatueReaper,
+		"CryptObstacleRefStatueKnightHooded": encounter.CryptObstacleRefStatueKnightHooded,
+		"CryptObstacleRefObelisk":            encounter.CryptObstacleRefObelisk,
+		"CryptObstacleRefPillar":             encounter.CryptObstacleRefPillar,
+	}
+	for name, want := range cryptCanonicalAssetManifestKeys {
+		require.Equal(t, want, actual[name], "%s must equal the exact canonical asset-manifest key", name)
 	}
 }
 

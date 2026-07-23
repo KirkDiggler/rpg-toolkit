@@ -45,8 +45,20 @@ import (
 // specific paths (#819 scope) — a client resolves theme-appropriate
 // meshes off these refs downstream.
 //
+// Module "dnd5e", type "props" (PR #826 review, second pass): these are
+// the EXACT keys the shipped asset manifest itself uses — an earlier
+// revision of this file invented a "dnd5e:obstacles:..." namespace that
+// does not exist in the asset contract; "dnd5e:props:..." is what's
+// actually there. The full canonical string (module:type:id) is what
+// this toolkit persists in ObstacleData.Ref -- a future #692 API
+// projection may reuse whatever existing splitRef-style helper already
+// decomposes a Ref into module/type/id for the wire, and
+// rpg-dnd5e-web#577 (client rendering) only needs the tail id (e.g.
+// "coffin") to resolve a mesh, but the value THIS package persists must
+// match the manifest exactly, not a truncated or reconstructed form.
+//
 // Statue refs are the two EXACT promoted asset variants (verified
-// finding, PR #826 review): no generic "dnd5e:obstacles:statue" key
+// finding, PR #826 review): no generic "dnd5e:props:statue" key
 // exists in the shipped asset contract. Two exact variants are promoted
 // — statue-reaper and statue-knight-hooded — both role "obstacle" with
 // BlocksLoS=true, intended for visual pairing. This file's default boss
@@ -55,24 +67,24 @@ import (
 const (
 	// CryptObstacleRefCoffin identifies a stone coffin/sarcophagus set
 	// piece — boss-chamber only.
-	CryptObstacleRefCoffin = "dnd5e:obstacles:coffin"
+	CryptObstacleRefCoffin = "dnd5e:props:coffin"
 	// CryptObstacleRefAltar identifies a ritual altar set piece —
 	// boss-chamber only.
-	CryptObstacleRefAltar = "dnd5e:obstacles:altar"
+	CryptObstacleRefAltar = "dnd5e:props:altar"
 	// CryptObstacleRefStatueReaper identifies the "reaper" statue
 	// variant — one of the two promoted exact statue assets,
 	// boss-chamber only.
-	CryptObstacleRefStatueReaper = "dnd5e:obstacles:statue-reaper"
+	CryptObstacleRefStatueReaper = "dnd5e:props:statue-reaper"
 	// CryptObstacleRefStatueKnightHooded identifies the "hooded knight"
 	// statue variant — the other promoted exact statue asset,
 	// boss-chamber only.
-	CryptObstacleRefStatueKnightHooded = "dnd5e:obstacles:statue-knight-hooded"
+	CryptObstacleRefStatueKnightHooded = "dnd5e:props:statue-knight-hooded"
 	// CryptObstacleRefObelisk identifies a standing obelisk set piece —
 	// entrance-chamber only.
-	CryptObstacleRefObelisk = "dnd5e:obstacles:obelisk"
+	CryptObstacleRefObelisk = "dnd5e:props:obelisk"
 	// CryptObstacleRefPillar identifies a structural pillar set piece —
 	// shared by the entrance chamber and (sparsely) the corridor.
-	CryptObstacleRefPillar = "dnd5e:obstacles:pillar"
+	CryptObstacleRefPillar = "dnd5e:props:pillar"
 )
 
 // Crypt set-piece blocking properties: the VERIFIED canonical shipped-

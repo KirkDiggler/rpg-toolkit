@@ -212,11 +212,15 @@ func (e *Encounter) rebuildRoomFromData() error {
 	for _, o := range sd.Obstacles {
 		cube := o.Position.ToCube()
 		// Unlike walls/doors, an obstacle's occupancy conflict is NOT
-		// tolerated at all — obstacles are host-authored (via
-		// AddObstacle), not generator output with rounding artifacts, so
-		// ANY hex collision with an existing wall/door/obstacle is a
-		// genuine data error the caller must see (rpg-toolkit#818 done
-		// bar), regardless of whether the colliding entities block
+		// tolerated at all — obstacles are either host-authored (via
+		// AddObstacle) or generator-authored (rpg-toolkit#819's
+		// InitDungeon + placeRegionObstacles, which composes crypt-style
+		// callers like CryptDungeonParams) but never rounding artifacts
+		// either way — AddObstacle takes an exact caller-given position,
+		// and placeRegionObstacles only ever chooses from candidate
+		// cells it has already confirmed are wall-free — so ANY hex
+		// collision with an existing wall/door/obstacle is a genuine
+		// data error the caller must see (rpg-toolkit#818 done bar), regardless of whether the colliding entities block
 		// movement. room.PlaceEntity's own occupancy check
 		// (canPlaceEntityUnsafe) only rejects placement when the EXISTING
 		// occupant BlocksMovement() — so two BlocksMovement=false

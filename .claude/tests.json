@@ -123,9 +123,9 @@
     {
       "id": "crypt-refs-no-model-paths",
       "feature": "crypt-obstacle-placement",
-      "prompt": "Verify every approved crypt obstacle ref matches the plain opaque 'dnd5e:obstacles:<kind>' shape -- no model filename or Synty-specific path.",
+      "prompt": "Verify every approved crypt obstacle ref matches the plain opaque 'dnd5e:props:<kind>' shape -- no model filename or Synty-specific path.",
       "passes": true,
-      "last_checked": "2026-07-22",
+      "last_checked": "2026-07-23",
       "test_name": "TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths"
     },
     {
@@ -177,6 +177,25 @@
       "passes": true,
       "last_checked": "2026-07-22",
       "test_name": "TestInitDungeon_BossPrimaryAxis_ClearWithObstaclesToo"
+    },
+    {
+      "id": "crypt-refs-exact-canonical-manifest-keys",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify each CryptObstacleRef* constant equals, byte for byte, the exact canonical shipped asset-manifest key ('dnd5e:props:<id>') -- not merely a shape-matching regex.",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "test_name": "TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-refs-no-obstacles-namespace",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify no crypt obstacle ref ever contains the invented 'obstacles' namespace segment (must be 'dnd5e:props:...', not 'dnd5e:obstacles:...').",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "test_name": "TestCryptDungeonParams_NoGenericStatueRefExists",
+      "mutation_verified": true,
+      "notes": "Strengthened in session 005 with an explicit require.NotContains(spec.Ref, \"obstacles\") guard alongside its original generic-statue-ref check."
     }
   ]
 }

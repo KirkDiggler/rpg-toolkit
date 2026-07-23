@@ -100,7 +100,7 @@ type DungeonRegionParams struct {
 // ... is not" done-bar requirement, generalized to any caller.
 type ObstacleSpec struct {
 	// Ref is copied verbatim into each placed ObstacleData.Ref — an
-	// opaque content identifier (e.g. "dnd5e:obstacles:pillar") this
+	// opaque content identifier (e.g. "dnd5e:props:pillar") this
 	// package never interprets.
 	Ref string
 
@@ -452,17 +452,26 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		}
 		regionWalls := regionWallSegments(walls, starts[i], 0)
 		if r.Archetype == ArchetypeBoss {
-			// Discrete, by-construction guarantee (rpg-toolkit#819):
-			// the required-path extension above declares intent to
-			// tools/environments' continuous-space validator, but that
-			// validator (a separate module, not modified here) checks
-			// path safety against the RAW wall segments before this
-			// package's own hex-cell rounding (regionWallSegments) —
-			// a wall whose continuous position sits just off the
-			// required-path line can still round onto the doorRow hex
-			// cell. Stripping any wall that lands on the primary axis
-			// AFTER discretization closes that gap unconditionally,
-			// independent of the upstream generator's precision.
+			// Construction-time discrete safeguard (rpg-toolkit#819),
+			// applied BEFORE this call's result is committed to
+			// encounter state — not a seed retry, not a post-commit
+			// repair. The required-path extension above declares
+			// intent to tools/environments' validator, but that
+			// validator's linesIntersect (a separate module, verified
+			// read-only, not modified here — tracked upstream as
+			// rpg-toolkit#827) degenerates to "no intersection" for ANY
+			// wall segment that shares the required path's orientation
+			// (both horizontal, here) — its parallel-lines denominator
+			// is identically zero whenever BOTH lines are horizontal,
+			// regardless of either line's actual Y position, so it
+			// cannot distinguish a genuinely parallel-elsewhere wall
+			// from one collinear with and overlapping the path itself.
+			// The required-path extension alone cannot catch this class
+			// of wall; stripReservedAxisWalls is the actual guarantee.
+			// It only ever REMOVES walls (never adds), so it can't
+			// introduce a new safety violation; a full-dimension sweep
+			// at this crypt's exact dimensions found zero unintended
+			// notches from this removal (see boss_primary_axis_test.go).
 			regionWalls = stripReservedAxisWalls(regionWalls, starts[i], r.Width, doorRow)
 		}
 		segs = append(segs, regionWalls...)
@@ -603,13 +612,18 @@ func wallCubeSet(walls []environments.WallSegmentData) map[spatial.CubeCoordinat
 // coordinates — the caller's regionWallSegments output) landing on
 // doorRow within [offsetX, offsetX+width) — a boss-archetype region's
 // primary playable axis, rpg-toolkit#819's hard invariant. This is a
-// discrete, post-rounding guarantee applied BY CONSTRUCTION as part of
-// building this region's layout (not a post-hoc patch to already-
-// committed encounter data, and not a seed retry): see the call site's
-// doc for why the upstream continuous-space required-path declaration
-// alone is necessary but not sufficient. Only ever removes walls —
-// widening the open floor can never violate a safety guarantee the
-// pattern generator already established, so no re-validation is needed.
+// construction-time discrete safeguard applied as part of building this
+// region's layout, BEFORE the result is committed to encounter state —
+// not a post-hoc patch to already-committed data, and not a seed retry.
+// It exists because tools/environments' upstream RequiredPaths
+// declaration alone (see the call site) cannot catch a wall segment
+// that shares the required path's own orientation — see rpg-toolkit#827
+// (upstream, tools/environments ownership) for the root cause. Only
+// ever removes walls — widening the open floor can never violate a
+// safety guarantee the pattern generator already established, so no
+// re-validation is needed; a full 1..3000-seed sweep at this crypt's
+// exact dimensions found zero unintended notches from this removal
+// (boss_primary_axis_test.go).
 func stripReservedAxisWalls(
 	walls []environments.WallSegmentData, offsetX, width, doorRow int,
 ) []environments.WallSegmentData {
