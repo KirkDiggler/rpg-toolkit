@@ -1,106 +1,201 @@
 {
   "tests": [
     {
-      "id": "locked-connector-rejects-missing-dc",
-      "feature": "locked-boss-door",
-      "prompt": "Call InitDungeon with a connector marked Locked but LockDC<=0. Verify InitDungeon returns an error identifying the offending connector by index, and mutates no encounter data.",
+      "id": "obstacle-no-specs-no-obstacles",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Call InitDungeon on a region with a nil/empty ObstacleSpec list (every pre-#819 caller). Verify SpaceData.Obstacles is empty -- fully backward compatible, opt-in mechanism.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_RejectsLockedConnectorWithoutDC"
+      "test_name": "TestInitDungeon_NoObstacleSpecs_PlacesNoObstacles"
     },
     {
-      "id": "locked-connector-rejects-missing-ability",
-      "feature": "locked-boss-door",
-      "prompt": "Call InitDungeon with a connector marked Locked, LockDC set, but LockAbility empty. Verify InitDungeon returns an error identifying the offending connector by index.",
+      "id": "obstacle-spec-verbatim-fields",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Give one region an ObstacleSpec with Count=3. Verify exactly 3 ObstacleData entries are placed, each carrying the spec's Ref/BlocksMovement/BlocksLoS verbatim.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_RejectsLockedConnectorWithoutAbility"
+      "test_name": "TestInitDungeon_ObstacleSpec_PlacesRequestedCountWithVerbatimFields"
     },
     {
-      "id": "locked-connector-invalid-leaves-no-partial-state",
-      "feature": "locked-boss-door",
-      "prompt": "Call InitDungeon on a 3-region dungeon where connector 1 is Locked but invalid. Verify the rejected call leaves Space nil and Doors empty -- the invariant InitDungeon's atomicity contract already guarantees for its other pre-mutation validation gates.",
+      "id": "obstacle-multiple-specs-no-collision",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Give one region two distinct ObstacleSpecs. Verify all instances place without error and no two instances share a hex.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_RejectsInvalidLockedConnector_LeavesNoPartialState"
+      "test_name": "TestInitDungeon_MultipleSpecsInOneRegion_AllPlacedWithoutCollision",
+      "mutation_verified": true
     },
     {
-      "id": "locked-connector-generates-closed-locked-door",
-      "feature": "locked-boss-door",
-      "prompt": "Build a 3-region dungeon (entrance/corridor/boss) where connector 0 is plain and connector 1 is Locked with a DC/Ability/Tool. Verify connector 1's generated DoorData is Locked=true, Open=false, and carries the exact LockDC/LockAbility/LockTool configured; verify connector 0's generated door stays entirely unlocked (Locked=false, LockDC=0, LockAbility/LockTool empty).",
+      "id": "obstacle-ids-stable-and-unique",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build the same InitDungeon call twice with the same seed. Verify every obstacle ID is non-empty, unique within the dungeon, and the ID SET is identical across both builds.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_GeneratesLockedBossDoor_ClosedAndLocked"
+      "test_name": "TestInitDungeon_ObstacleIDs_StableAndUnique",
+      "mutation_verified": true
     },
     {
-      "id": "two-chamber-wrapper-stays-unlocked",
-      "feature": "locked-boss-door",
-      "prompt": "Call InitTwoChamberRoom (the compatibility wrapper over InitDungeon). Verify its generated door is never locked -- the wrapper must not gain locked-door behavior as a side effect of #815.",
+      "id": "obstacle-deterministic-same-seed",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build the same InitDungeon call (with ObstacleSpecs) twice with the same seed. Verify SpaceData.Obstacles is byte-for-byte identical.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestInitTwoChamberRoom_GeneratedDoor_RemainsUnlocked"
+      "test_name": "TestInitDungeon_ObstaclePlacement_DeterministicSameSeed"
     },
     {
-      "id": "locked-door-persists-through-todata-loadfromdata",
-      "feature": "locked-boss-door",
-      "prompt": "Build a dungeon with a generated locked boss connector, marshal ToData() to JSON, unmarshal, and LoadFromData. Verify the reloaded door's Locked/LockDC/LockAbility/LockTool are intact and it still blocks LoS into the boss region.",
+      "id": "obstacle-varies-across-seeds",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "With a candidate pool much larger than the requested obstacle count, build with several different seed pairs. Verify at least one pair produces different obstacle positions.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestInitDungeon_LockedBossDoor_RoundTripsThroughToDataLoadFromData"
+      "test_name": "TestInitDungeon_ObstaclePlacement_VariesAcrossSeeds"
     },
     {
-      "id": "locked-door-failed-check-stays-locked-and-recoverable",
-      "feature": "locked-boss-door",
-      "prompt": "Against a generated locked boss door: AttemptUnlock, then SubmitCheck with a roll that fails the DC. Verify the door remains Locked=true, Open=false, still blocks movement/LoS into the boss region, and is recoverable (a second AttemptUnlock succeeds).",
+      "id": "obstacle-never-on-reserved-row",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Overload a boss region with a large obstacle count (PatternRandom walls present). Verify no placed obstacle sits on the shared doorRow (the required-path / primary-combat-axis row).",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestLockedBossDoorSuite/TestFailedCheck_LeavesDoorLockedRecoverableAndBlocking"
+      "test_name": "TestInitDungeon_ObstaclePlacement_NeverOnReservedRow",
+      "mutation_verified": true
     },
     {
-      "id": "locked-door-successful-check-unlocks-opens-reveals",
-      "feature": "locked-boss-door",
-      "prompt": "Against a generated locked boss door: AttemptUnlock, then SubmitCheck with a roll that passes the DC. Verify Locked clears, Open becomes true (via the existing dispatchPromptAction -> OpenDoor path, no new verb), the entrance becomes reachable through to the boss region, LoS across the doorway clears, and the player's View reveals into the boss chamber through the doorway.",
+      "id": "obstacle-preserves-connectivity",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Heavily obstacle-load an entrance/corridor/boss dungeon. Open both connector doors. Verify the entrance still reaches the boss region via a walkable path.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "test_name": "TestLockedBossDoorSuite/TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegion"
-      "id": "n-region-early-pocket-clear-returns-freeroam",
-      "feature": "dungeon-completion",
-      "prompt": "In an N-region InitDungeon (#814) encounter with more than one non-final combat pocket, clearing an early pocket (all monsters in the CURRENT initiative dead) while hostiles remain alive in later, still-unopened regions must exit to FREE_ROAM, not end the encounter.",
-      "passes": true,
-      "last_checked": "2026-07-22",
-      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe (dungeon_completion_test.go), entrance-pocket-clear assertions. Already-shipped behavior: combat.go's checkPocketCleared (rpg-toolkit#794/#796) already implements exactly this, previously proven only against a hand-built single-door room (combat_pockets_test.go) or InitDungeon's OWN geometry tests (dungeon_test.go, no combat lifecycle) -- never both together. DISCRIMINATION: temporarily short-circuited checkPocketCleared (combat.go) to `return nil` unconditionally (production mutation, reverted immediately) and reran -- failed at the first pocket-clear assertion (Mode stayed ModeTurnBased instead of ModeFreeRoam, Initiative non-empty, ModeChangedEvent absent). Reverted -- GREEN; `git diff origin/main -- combat.go` empty afterward, confirming no unrelated change was kept."
+      "test_name": "TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity"
     },
     {
-      "id": "n-region-second-early-pocket-clear-also-returns-freeroam",
-      "feature": "dungeon-completion",
-      "prompt": "The same non-terminal pocket-clear-to-FREE_ROAM behavior must hold for a SECOND early pocket too (corridor, cleared after the entrance pocket), not just the first -- proving the rule composes across more than one non-final region, which is the actual gap #817 called for evidence of (every prior test only had 2 pockets total, i.e. only ONE non-final pocket).",
+      "id": "obstacle-skip-on-no-fit",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Request 1000 instances of an obstacle spec in a 4x4 region (at most ~12 safe candidate cells). Verify InitDungeon succeeds (no error) and places fewer than 1000 -- decoration must never fail structural generation.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe, corridor-pocket-clear assertions: after the entrance pocket clears, opening door 0 and moving into LoS of the corridor goblin starts a fresh pocket scoped to just that goblin (boss goblin, still behind the closed door 1, is not sighted); clearing it exits to FREE_ROAM a second time, with the boss goblin asserted still alive and untouched. Covered by the same checkPocketCleared discrimination as the row above (both assertions failed together under that mutation)."
+      "test_name": "TestInitDungeon_ObstaclePlacement_SkipsWhenNoSafeHexRemains",
+      "mutation_verified": true
     },
     {
-      "id": "n-region-last-hostile-anywhere-ends-victory",
-      "feature": "dungeon-completion",
-      "prompt": "Killing the last hostile ANYWHERE in an N-region InitDungeon encounter (here: the boss, in the final region, after two earlier non-terminal pocket-clears) ends the whole encounter, publishing EncounterEndedEvent with the canonical EncounterEndedReasonAllHostilesDefeated -- not a new 'victory' reason string.",
+      "id": "obstacle-roundtrip-and-los-agreement",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Place obstacles with mixed BlocksMovement/BlocksLoS, ToData, then LoadFromData into a fresh Encounter. Verify Obstacles round-trip byte-for-byte and the reloaded room's actual movement-blocking at each obstacle's position matches its declared BlocksMovement.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe, final assertions. Already-shipped: death.go's checkEncounterEnd predicate is `len(e.data.Monsters) == 0` -- data.Monsters is one flat map spanning every region/pocket, so this predicate was ALREADY whole-dungeon-scoped by construction, not pocket-scoped -- #817 did not need new victory logic, only end-to-end proof against the real InitDungeon generator with multiple intervening pockets. DISCRIMINATION: temporarily changed the case guard to `case false && len(e.data.Monsters) == 0:` (production mutation, reverted immediately) and reran -- failed exactly as expected (Mode stayed ModeTurnBased/ModeFreeRoam instead of ModeEnded after the boss died; EncounterEndedEvent never published). Reverted -- GREEN; `git diff origin/main -- death.go` empty afterward."
+      "test_name": "TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData"
     },
     {
-      "id": "n-region-tpk-canonical-reason-hostiles-remain-elsewhere",
-      "feature": "dungeon-completion",
-      "prompt": "A TPK inside an N-region dungeon ends the encounter with the existing, canonical EncounterEndedReasonTPK -- firing regardless of how many hostiles are still alive and completely unengaged elsewhere in the dungeon (never even sighted), proving TPK is not gated on hostile-clearing the way victory is, and does not fire the victory reason instead. #817's 'Approved Slice 3 corrections' comment explicitly required NOT inventing new defeat detection -- this test proves the EXISTING declaration composes correctly with the N-region/combat-pocket machinery rather than re-deriving it.",
+      "id": "crypt-region-archetype-composition",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build CryptDungeonParams. Verify entrance carries obelisk+pillar (never coffin/altar/statue), corridor carries only a single sparse pillar (never the other refs), and boss carries coffin+altar+exactly one statue-reaper+exactly one statue-knight-hooded (never obelisk, never the generic statue ref).",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere (dungeon_completion_test.go): solo flat-snapshot alice (1 HP, no DataJSON, same instant-death fallback tpk_test.go's own multi-player test uses) engages only the entrance goblin; EndTurn-cycled to the goblin's turn, NPCAct kills her -> ModeEnded, EncounterEndedReasonTPK -- with the corridor and boss goblins (never sighted, still behind both closed doors) asserted alive and untouched. Gap this closes: every prior TPK test (tpk_test.go) used a flat, single-monster room; no test previously proved TPK still works correctly (and doesn't accidentally trip the victory branch, or get starved by some pocket-scoping regression) inside the N-region/combat-pocket machinery specifically. DISCRIMINATION: temporarily changed death.go's TPK case guard to `case false && e.allPlayersDead():` (production mutation, reverted immediately) and reran -- failed exactly as expected (Mode stayed ModeTurnBased, no EncounterEndedEvent). Reverted -- GREEN; `git diff origin/main -- death.go` empty afterward."
+      "test_name": "TestCryptDungeonParams_RegionArchetypeComposition",
+      "mutation_verified": true
     },
     {
-      "id": "n-region-ended-state-reload-safe-toolkit-owned-fields",
-      "feature": "dungeon-completion",
-      "prompt": "After either terminal outcome (victory or TPK) inside an N-region dungeon, a ToData/JSON/LoadFromData round trip must preserve Mode == ModeEnded and an empty Initiative -- the fields the toolkit actually persists on Data -- and a post-reload verb call (EndTurn) must be rejected with ErrEncounterEnded rather than resuming as a live, inescapable fight. Reason itself is explicitly NOT asserted post-reload: it lives only on the published EncounterEndedEvent (events/encounter_ended.go), never written onto Data, so there is nothing for LoadFromData to round-trip -- any reason projection for a resumed/reconnecting client is rpg-api's job (#690), out of scope here. This is the 'to the extent the toolkit owns it' boundary #817 draws.",
+      "id": "crypt-no-generic-statue-ref",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify the generic ambiguous 'dnd5e:obstacles:statue' key never appears in CryptDungeonParams' output -- verified finding: no such key exists in the shipped asset contract.",
       "passes": true,
       "last_checked": "2026-07-22",
-      "notes": "dcAssertReloadSafe, called from both TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe and TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere. Already-shipped: Mode/Initiative are ordinary Data fields serialized via encoding/json and LoadFromData copies data.Mode straight through (encounter.go's LoadFromData only overrides Mode when it is core.ModeUnspecified, never when it is already core.ModeEnded) -- exhaustively proven already for the flat-room TPK case by tpk_test.go's own persistence tests (TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy, TestTPK_DeadFlagDoesNotLeakAcrossEncounters). No additional discrimination performed on the JSON round trip itself (basic Go struct-field marshaling, not toolkit-specific logic) beyond confirming it holds for this N-region/multi-pocket fixture specifically, which was the untested combination."
+      "test_name": "TestCryptDungeonParams_NoGenericStatueRefExists",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-blocking-flags-match-asset-contract",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify every crypt obstacle ref's BlocksMovement/BlocksLoS exactly matches the verified shipped-asset-contract table -- coffin(true,false), altar(true,true), statue-reaper(true,true), statue-knight-hooded(true,true), obelisk(true,true), pillar(true,true).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-boss-statues-stable-exact-refs",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "InitDungeon a real crypt twice with the same seed. Verify exactly one statue-reaper and one statue-knight-hooded are placed in the boss region each time, with distinct but seed-stable IDs across both builds.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_BossStatues_StableExactRefsAndIDs",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-refs-no-model-paths",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify every approved crypt obstacle ref matches the plain opaque 'dnd5e:props:<kind>' shape -- no model filename or Synty-specific path.",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "test_name": "TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths"
+    },
+    {
+      "id": "crypt-generates-placeable-dungeon",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "InitDungeon a real crypt via CryptDungeonParams. Verify it succeeds and every placed obstacle's ref is within the 6 approved crypt refs (coffin, altar, statue-reaper, statue-knight-hooded, obelisk, pillar).",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces"
+    },
+    {
+      "id": "crypt-connectivity-survives-set-pieces",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "InitDungeon a real crypt via CryptDungeonParams, open both connector doors. Verify the entrance still reaches the boss region.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_EntranceToBossConnectivity_SurvivesSetPieces"
+    },
+    {
+      "id": "crypt-deterministic-same-seed",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Build the same CryptDungeonParams seed twice. Verify walls AND obstacles are identical across both builds.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestCryptDungeon_DeterministicSameSeed"
+    },
+    {
+      "id": "boss-axis-never-blocked-by-generated-walls",
+      "feature": "boss-primary-axis-invariant",
+      "prompt": "Against a bounded table of concretely-failing seeds (independently verified: 335+/3000 boss regions land a PatternRandom wall on the doorRow beyond local center), verify InitDungeon places NO wall anywhere on the boss region's full-width doorRow.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_BossPrimaryAxis_NeverBlockedByGeneratedWalls",
+      "mutation_verified": true,
+      "notes": "RED against pre-fix code with seed=4 (wall at boss local column 2); GREEN after extending the boss required path to farEdge + stripReservedAxisWalls discrete guarantee. Re-scanned 1..3000 seeds post-fix: 0/3000 failures (was 385/3000 pre-fix at this exact fixture shape)."
+    },
+    {
+      "id": "boss-axis-full-row-walkable",
+      "feature": "boss-primary-axis-invariant",
+      "prompt": "Against the same failing-seed table, open both connector doors and verify every hex across the boss region's full doorRow is actually walkable (room.CanPlaceEntity), not just free of a wall segment at that exact coordinate.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_BossPrimaryAxis_FullRowWalkable"
+    },
+    {
+      "id": "boss-axis-clear-with-obstacles-too",
+      "feature": "boss-primary-axis-invariant",
+      "prompt": "Against the same failing-seed table, attach a heavy ObstacleSpec load to the boss region and verify the full doorRow stays walkable under BOTH generated walls and placed obstacles simultaneously.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "test_name": "TestInitDungeon_BossPrimaryAxis_ClearWithObstaclesToo"
+    },
+    {
+      "id": "crypt-refs-exact-canonical-manifest-keys",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify each CryptObstacleRef* constant equals, byte for byte, the exact canonical shipped asset-manifest key ('dnd5e:props:<id>') -- not merely a shape-matching regex.",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "test_name": "TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly",
+      "mutation_verified": true
+    },
+    {
+      "id": "crypt-refs-no-obstacles-namespace",
+      "feature": "crypt-obstacle-placement",
+      "prompt": "Verify no crypt obstacle ref ever contains the invented 'obstacles' namespace segment (must be 'dnd5e:props:...', not 'dnd5e:obstacles:...').",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "test_name": "TestCryptDungeonParams_NoGenericStatueRefExists",
+      "mutation_verified": true,
+      "notes": "Strengthened in session 005 with an explicit require.NotContains(spec.Ref, \"obstacles\") guard alongside its original generic-statue-ref check."
     }
   ]
 }
