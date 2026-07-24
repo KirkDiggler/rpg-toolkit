@@ -94,6 +94,17 @@ func TestInitDungeon_BossPrimaryAxis_NeverBlockedByGeneratedWalls(t *testing.T) 
 		data := enc.ToData()
 
 		for _, w := range data.Space.Walls {
+			// rpg-toolkit#834: a boundary-edge segment (Start != End) is a
+			// non-blocking render-contract entry for a REAL floor hex on
+			// the space's outer perimeter, not a generated interior wall —
+			// the boss region's far (rightmost) column sits on the whole
+			// dungeon's own right edge, so it legitimately gets one of
+			// these on its primary-axis cell too. This test's invariant is
+			// about GENERATED (blocking) walls only; only degenerate
+			// (Start == End) entries are ever candidates.
+			if w.Start != w.End {
+				continue
+			}
 			pos := w.Start.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 			localX := int(pos.X) - bossStart
 			if localX < 0 || localX >= dungeonBossWidth {

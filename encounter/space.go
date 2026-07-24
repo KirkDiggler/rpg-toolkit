@@ -153,6 +153,20 @@ func (e *Encounter) rebuildRoomFromData() error {
 	})
 	placed := make(map[spatial.CubeCoordinate]struct{}, len(sd.Walls)+len(e.data.Doors))
 	for i, w := range sd.Walls {
+		// rpg-toolkit#834: a boundary-edge perimeter segment (Start != End)
+		// is purely the render contract (rpg-dnd5e-web#566's
+		// hexDistance==1 client branch) catching up to the room's actual
+		// shape, never a spatial.Room blocker in its own right — Start is
+		// real walkable floor (placing a WallEntity there would wrongly
+		// block legitimate floor) and End lies entirely outside this
+		// room's grid bounds (PlaceEntity would reject it, or worse,
+		// silently collide with an unrelated in-bounds cube on a
+		// differently-sized room). Every degenerate (Start == End) entry
+		// below — interior pattern walls, connector boundary columns —
+		// keeps placing exactly as before; this only skips the new shape.
+		if w.Start != w.End {
+			continue
+		}
 		// snapshotWalls dedupes on write; this read-side skip additionally
 		// tolerates a hand-built or legacy snapshot carrying duplicates —
 		// PlaceEntity rejects stacking a blocking entity on an occupied hex,

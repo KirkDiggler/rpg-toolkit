@@ -507,6 +507,15 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		}
 	}
 
+	// rpg-toolkit#834: one boundary-edge segment (Start != End) per
+	// room-facing perimeter edge of the WHOLE combined space, appended
+	// after every region's interior walls and every connector's boundary
+	// column above -- see perimeterEdgeWalls' doc for why this never
+	// touches interior wall emission or the connector columns, and is a
+	// pure, seed-independent function of the floor/wall layout already
+	// built above.
+	segs = append(segs, perimeterEdgeWalls(segs, totalWidth, params.Height)...)
+
 	entrance := spatial.OffsetCoordinateToCubeWithOrientation(
 		spatial.Position{X: 0, Y: float64(doorRow)}, spatial.HexOrientationPointyTop)
 
@@ -518,6 +527,78 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		doors:     doors,
 		obstacles: obstacles,
 	}, nil
+}
+
+// perimeterEdgeWalls computes one boundary-edge WallSegmentData (Start !=
+// End, exactly one hex step apart) per room-facing edge of the combined
+// dungeon space's outer perimeter (rpg-toolkit#834) -- rooms shipped ZERO
+// perimeter wall data before this; blocking came only from grid bounds,
+// and the client's wall renderer had nothing to draw a room's outer walls
+// with. For every FLOOR hex in [0,width) x [0,height) (i.e. not already a
+// blocked cell in walls -- interior pattern walls and connector boundary
+// columns alike, both always degenerate Start==End entries at this point)
+// and every one of its 6 hex-grid neighbor directions that lands OUTSIDE
+// those bounds, one segment {Start: the floor hex, End: the out-of-bounds
+// neighbor} is emitted.
+//
+// Deliberately excludes cells already IN walls, not just those failing an
+// IsValidPosition check on the OUTER rectangle: a connector's boundary
+// column sits at an interior x (strictly between two regions, never the
+// space's x=0 or x=width-1 edge) but spans every y INCLUDING the true
+// edge rows y=0/y=height-1 -- by "floor hex" exclusion those cells never
+// get a NEW edge segment here, keeping them exactly the "interior
+// structure" they already were (this function only ever ADDS segments,
+// never touches walls' existing entries). Doors sit at a boundary
+// column's doorRow cell specifically, which is never on the space's own
+// x=0/x=width-1/y=0/y=height-1 edges either (validateDungeonParams' >=4
+// height/width floor keeps doorRow strictly interior) -- so this function
+// needs no separate door-passage exclusion; the geometry already keeps
+// every connector passage off the outer perimeter (see dungeon_test.go's
+// TestPerimeterEdgeWalls_NeverOnConnectorDoorCells for the assertion).
+//
+// A single floor hex can and does emit MORE than one segment (e.g. a true
+// corner-of-the-map hex, whose skewed odd-q offset neighbor geometry can
+// put several of its 6 sides outside the rectangle) -- "one segment per
+// room-facing edge," not per hex, is exactly what rpg-dnd5e-web#566's
+// client-side hexDistance==1 renderer wants: each exposed edge draws its
+// own clean slab.
+//
+// Purely a function of walls/width/height, already fully determined by
+// the (possibly seeded) region generation above -- no RNG here, so
+// perimeter emission is itself deterministic and seed-independent, unlike
+// the per-region interior pattern it follows.
+//
+// These segments never become a spatial.Room blocker (see
+// rebuildRoomFromData's Start != End skip): Start is real walkable floor
+// and End is entirely outside the grid, already unreachable by
+// construction (every LOS/movement check already runs through
+// spatial.HexGrid.IsValidPosition) -- this is the render contract
+// (rpg-dnd5e-web#566) catching up to the room's actual shape, not a new
+// blocking mechanism, so walkability outcomes are unchanged by this
+// function's output.
+func perimeterEdgeWalls(walls []environments.WallSegmentData, width, height int) []environments.WallSegmentData {
+	blocked := wallCubeSet(walls)
+	var out []environments.WallSegmentData
+	fw, fh := float64(width), float64(height)
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			cube := spatial.OffsetCoordinateToCubeWithOrientation(
+				spatial.Position{X: float64(x), Y: float64(y)}, spatial.HexOrientationPointyTop)
+			if _, isWall := blocked[cube]; isWall {
+				continue
+			}
+			for _, n := range cube.GetNeighbors() {
+				npos := n.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+				if npos.X >= 0 && npos.X < fw && npos.Y >= 0 && npos.Y < fh {
+					continue // neighbor is inside the space -- not a perimeter edge
+				}
+				out = append(out, environments.WallSegmentData{
+					Start: cube, End: n, BlocksMovement: true, BlocksLoS: true,
+				})
+			}
+		}
+	}
+	return out
 }
 
 // generateRegionWalls generates one region's interior wall pattern,
