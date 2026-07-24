@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 const (
@@ -408,4 +409,97 @@ func TestCryptDungeon_DeterministicSameSeed(t *testing.T) {
 	b := build()
 	require.Equal(t, a.Space.Obstacles, b.Space.Obstacles)
 	require.Equal(t, a.Space.Walls, b.Space.Walls)
+}
+
+// cdHeight/cdEntranceWidth/cdCorridorWidth/cdBossWidth duplicate
+// crypt_dungeon.go's own unexported cryptHeight/cryptEntranceWidth/
+// cryptCorridorWidth/cryptBossWidth dimensions (this file lives in
+// package encounter_test and can't see those directly) — the same
+// "assert the generator's construction guarantee actually holds"
+// convention dungeon_test.go's dungeonRegionStarts and
+// two_chamber_test.go's doorAdjacentChamber2Hex already use, not a public
+// API this package exports.
+const (
+	cdHeight        = 8
+	cdEntranceWidth = 10
+	cdCorridorWidth = 5
+	cdBossWidth     = 10
+	cryptDoorRow    = cdHeight / 2
+)
+
+var cryptRegionWidths = []int{cdEntranceWidth, cdCorridorWidth, cdBossWidth}
+
+func cryptRegionStarts() []int {
+	starts := make([]int, len(cryptRegionWidths))
+	x := 0
+	for i, w := range cryptRegionWidths {
+		starts[i] = x
+		x += w + 1 // +1 reserves the boundary/door column after this region
+	}
+	return starts
+}
+
+// cryptBoundaryColumnHexes returns every hex the connector boundary column
+// between region connectorIdx and connectorIdx+1 must carry a blocked wall
+// segment at — every row except cryptDoorRow (that cell is the connector's
+// door), mirroring generateDungeonLayout's own boundary-column construction
+// (dungeon.go). Unaffected by rpg-toolkit#835's Pattern change: this column
+// is emitted unconditionally, independent of either neighboring region's
+// interior wall pattern.
+func cryptBoundaryColumnHexes(connectorIdx int) []core.Hex {
+	starts := cryptRegionStarts()
+	x := starts[connectorIdx] + cryptRegionWidths[connectorIdx]
+	out := make([]core.Hex, 0, cdHeight-1)
+	for y := 0; y < cdHeight; y++ {
+		if y == cryptDoorRow {
+			continue
+		}
+		out = append(out, core.HexFromPosition(spatial.Position{X: float64(x), Y: float64(y)}))
+	}
+	return out
+}
+
+// TestCryptDungeon_EntranceAndBossPatternEmpty_NoInteriorWallsAcrossSeeds
+// pins rpg-toolkit#835: the entrance and boss regions now use
+// environments.PatternEmpty instead of PatternRandom (set pieces carry the
+// cover role per #819; PatternRandom's scattered wall cells rendered as
+// rubble client-side, rpg-dnd5e-web#562), so building the crypt across a
+// spread of seeds must roll ZERO interior wall cells in either region.
+// PatternEmpty never generates interior walls by construction (see
+// environments.EmptyPattern), but this proves that holds for the crypt's
+// actual dimensions/archetypes/obstacle placement, not just in isolation —
+// while the connector boundary columns between regions (always emitted
+// regardless of either neighbor's interior pattern) must still be present,
+// completely unaffected by this change.
+func TestCryptDungeon_EntranceAndBossPatternEmpty_NoInteriorWallsAcrossSeeds(t *testing.T) {
+	for seed := int64(1); seed <= 50; seed++ {
+		enc := cdNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(encounter.CryptDungeonParams(seed, cdEntranceDoorID, cdBossDoorID)),
+			"seed %d", seed)
+
+		data := enc.ToData()
+		entranceHexes := regionHexSet(data.Space, "entrance")
+		bossHexes := regionHexSet(data.Space, "boss")
+		require.NotEmpty(t, entranceHexes, "seed %d: entrance region must have hexes", seed)
+		require.NotEmpty(t, bossHexes, "seed %d: boss region must have hexes", seed)
+
+		for _, w := range data.Space.Walls {
+			h := core.HexFromCube(w.Start)
+			require.False(t, entranceHexes[h],
+				"seed %d: entrance region must roll zero interior walls with PatternEmpty; found one at %v", seed, h)
+			require.False(t, bossHexes[h],
+				"seed %d: boss region must roll zero interior walls with PatternEmpty; found one at %v", seed, h)
+		}
+
+		wallSet := make(map[core.Hex]bool, len(data.Space.Walls))
+		for _, w := range data.Space.Walls {
+			wallSet[core.HexFromCube(w.Start)] = true
+		}
+		for connectorIdx := 0; connectorIdx < 2; connectorIdx++ {
+			for _, h := range cryptBoundaryColumnHexes(connectorIdx) {
+				require.True(t, wallSet[h],
+					"seed %d: connector %d boundary column must still carry a wall at %v", seed, connectorIdx, h)
+			}
+		}
+	}
 }
