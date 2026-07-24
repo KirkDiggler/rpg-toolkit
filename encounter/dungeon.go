@@ -553,8 +553,9 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 // x=0/x=width-1/y=0/y=height-1 edges either (validateDungeonParams' >=4
 // height/width floor keeps doorRow strictly interior) -- so this function
 // needs no separate door-passage exclusion; the geometry already keeps
-// every connector passage off the outer perimeter (see dungeon_test.go's
-// TestPerimeterEdgeWalls_NeverOnConnectorDoorCells for the assertion).
+// every connector passage off the outer perimeter (see
+// perimeter_edge_walls_test.go's TestPerimeterEdgeWalls_NeverAtConnectorDoorCells
+// for the assertion).
 //
 // A single floor hex can and does emit MORE than one segment (e.g. a true
 // corner-of-the-map hex, whose skewed odd-q offset neighbor geometry can
