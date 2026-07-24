@@ -753,18 +753,25 @@ type placeRegionObstaclesParams struct {
 // size floor already enforces at construction time. One rule, no
 // archetype-specific branching, provably sufficient for both invariants.
 //
-// The candidate pool is shuffled with a seeded Fisher-Yates (deterministic
-// per seed, varies across seeds) and specs draw from it in order, each
-// instance consuming one candidate so no two specs (or two instances of
-// the same spec) can collide. A spec that asks for more instances than
-// the remaining pool has places as many as fit and drops the rest —
-// #819's "skip rather than invalidate the dungeon" requirement — this
-// function never errors.
+// The candidate pool is PARTITIONED into border cells (local x==0,
+// x==width-1, y==0, or y==height-1 — hugging the region's own four
+// walls/corners) and interior cells, each independently shuffled with a
+// seeded Fisher-Yates (deterministic per seed, varies across seeds), then
+// concatenated border-first (rpg-toolkit#839's composition ask: "dressing
+// hugs walls/corners; floor centers stay clear" — rpg-dnd5e-web#469).
+// Specs draw from the combined pool in order, each instance consuming
+// one candidate so no two specs (or two instances of the same spec) can
+// collide — a spec whose Count exceeds the border pool naturally spills
+// into interior cells, so this is a DRAW-ORDER preference, not a hard
+// requirement; it changes nothing about which cells are eligible; a spec
+// that asks for more instances than the remaining pool has places as
+// many as fit and drops the rest — #819's "skip rather than invalidate
+// the dungeon" requirement — this function never errors.
 func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 	if len(p.specs) == 0 {
 		return nil
 	}
-	candidates := make([]spatial.CubeCoordinate, 0, p.width*p.height)
+	var border, interior []spatial.CubeCoordinate
 	for x := 0; x < p.width; x++ {
 		for y := 0; y < p.height; y++ {
 			if y == p.doorRow {
@@ -775,14 +782,24 @@ func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 			if _, blocked := p.wallCubes[cube]; blocked {
 				continue
 			}
-			candidates = append(candidates, cube)
+			if x == 0 || x == p.width-1 || y == 0 || y == p.height-1 {
+				border = append(border, cube)
+			} else {
+				interior = append(interior, cube)
+			}
 		}
 	}
 	//nolint:gosec // G404: deterministic per-region obstacle seed, not cryptographic
 	rng := rand.New(rand.NewSource(p.seed))
-	rng.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
+	rng.Shuffle(len(border), func(i, j int) {
+		border[i], border[j] = border[j], border[i]
 	})
+	rng.Shuffle(len(interior), func(i, j int) {
+		interior[i], interior[j] = interior[j], interior[i]
+	})
+	candidates := make([]spatial.CubeCoordinate, 0, len(border)+len(interior))
+	candidates = append(candidates, border...)
+	candidates = append(candidates, interior...)
 
 	var out []ObstacleData
 	next := 0

@@ -333,3 +333,84 @@ func TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData(t *te
 			"obstacle %q BlocksMovement=%v must match the reloaded room's actual movement block", o.ID, o.BlocksMovement)
 	}
 }
+
+// opChamberOffsetX is opTwoRegionParams' chamber region's global column
+// offset (entrance width 8 + 1 boundary column) -- needed to convert a
+// placed obstacle's global Position back to the chamber's own LOCAL
+// coordinates for the border-preference tests below. opChamberWidth/
+// opChamberHeight mirror that same fixture's chamber region dimensions.
+const (
+	opChamberOffsetX = 8 + 1
+	opChamberWidth   = 10
+	opChamberHeight  = 8
+)
+
+// opIsBorderLocal reports whether local (x,y) sits on the chamber
+// region's own four edges -- the "hugs walls/corners" preference
+// placeRegionObstacles now draws from first (rpg-toolkit#839, composition
+// ask from rpg-dnd5e-web#469).
+func opIsBorderLocal(x, y int) bool {
+	return x == 0 || x == opChamberWidth-1 || y == 0 || y == opChamberHeight-1
+}
+
+// TestInitDungeon_ObstaclePlacement_PrefersBorderCellsWhenTheyFit pins
+// rpg-toolkit#839's composition ask ("dressing hugs walls/corners; floor
+// centers stay clear") as implemented: a DRAW-ORDER preference in
+// placeRegionObstacles, where border candidates (local x==0, x==width-1,
+// y==0, y==height-1) are shuffled and drawn before interior candidates.
+// When a spec's Count comfortably fits within the region's border-cell
+// capacity, every placed instance must land on the border -- across a
+// spread of seeds, not just one lucky roll.
+func TestInitDungeon_ObstaclePlacement_PrefersBorderCellsWhenTheyFit(t *testing.T) {
+	for _, seed := range []int64{1, 2, 3, 4, 5, 42, 100, 909091} {
+		enc := opNewEncounter(t)
+		specs := []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 5, BlocksMovement: true, BlocksLoS: true}}
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(seed, specs)), "seed %d", seed)
+
+		data := enc.ToData()
+		require.Len(t, data.Space.Obstacles, 5, "seed %d", seed)
+		for _, o := range data.Space.Obstacles {
+			pos := o.Position.ToPosition()
+			localX := int(pos.X) - opChamberOffsetX
+			localY := int(pos.Y)
+			require.True(t, opIsBorderLocal(localX, localY),
+				"seed %d: obstacle %q at local (%d,%d) must be a border cell when the border pool "+
+					"comfortably fits the requested count", seed, o.ID, localX, localY)
+		}
+	}
+}
+
+// TestInitDungeon_ObstaclePlacement_SpillsToInteriorWhenBorderPoolExhausted:
+// the border preference above is a DRAW-ORDER bias, not a hard
+// requirement on which cells are eligible -- a spec whose Count exceeds
+// the region's border-cell capacity must still place its full
+// best-effort count (never fail generation), with the overflow landing
+// on interior cells. The chamber's border pool is the full-grid
+// perimeter (2*10 + 2*8 - 4 corners = 32 cells) minus the two border
+// cells doorRow's exclusion removes (local (0,4) and (9,4), the only
+// border cells whose row is the reserved doorRow) = 30; total floor
+// candidates are width*height minus one full doorRow (10*8 - 10 = 70).
+// Requesting 40 (comfortably under 70, over 30) must place all 40, with
+// exactly 30 on the border and the remaining 10 spilling to interior.
+func TestInitDungeon_ObstaclePlacement_SpillsToInteriorWhenBorderPoolExhausted(t *testing.T) {
+	enc := opNewEncounter(t)
+	specs := []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 40, BlocksMovement: true, BlocksLoS: true}}
+	require.NoError(t, enc.InitDungeon(opTwoRegionParams(7, specs)))
+
+	data := enc.ToData()
+	require.Len(t, data.Space.Obstacles, 40, "40 comfortably fits the region's 70 total floor candidates")
+
+	var borderCount, interiorCount int
+	for _, o := range data.Space.Obstacles {
+		pos := o.Position.ToPosition()
+		localX := int(pos.X) - opChamberOffsetX
+		localY := int(pos.Y)
+		if opIsBorderLocal(localX, localY) {
+			borderCount++
+		} else {
+			interiorCount++
+		}
+	}
+	require.Equal(t, 30, borderCount, "every border cell must be exhausted before any interior cell is used")
+	require.Equal(t, 10, interiorCount, "the remaining instances must spill to interior cells")
+}
