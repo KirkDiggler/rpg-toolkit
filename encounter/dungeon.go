@@ -111,6 +111,31 @@ type ObstacleSpec struct {
 	// ObstacleData.
 	BlocksMovement bool
 	BlocksLoS      bool
+
+	// PreferBorder opts this spec into placeRegionObstacles' border-
+	// hugging draw-order bias (rpg-toolkit#839's composition ask,
+	// rpg-dnd5e-web#469: "dressing hugs walls/corners; floor centers
+	// stay clear; focal pieces centered") — false by default, matching
+	// every pre-#839 caller/fixture's original uniform-random placement
+	// exactly (see placeRegionObstacles' doc: the zero-value case is a
+	// byte-identical code path to the mechanism before #839, not merely
+	// an equivalent one).
+	//
+	// This is PER-SPEC, not per-region (rpg-toolkit#840 gate finding):
+	// an earlier revision applied the bias to every spec in a region
+	// regardless of intent, which forced FOCAL pieces (a region's own
+	// obelisk/coffin/altar/statues, always listed first) onto the
+	// border before dressing ever got a turn — inverting the art
+	// target instead of achieving it. Set true only on dressing/light-
+	// anchor specs (e.g. CryptDungeonParams' brazier/torch-ornate/
+	// candles/bone-pile/chain/skeleton-remains); leave false on focal/
+	// structural specs so they draw uniformly from whatever the
+	// border-preferring specs left over, which in practice biases them
+	// toward the interior/center precisely because the borders filled
+	// up first — without this package ever hard-coding "focal pieces
+	// go in the center," a claim placeRegionObstacles has no way to
+	// verify structurally.
+	PreferBorder bool
 }
 
 // DungeonConnectorParams configures the door joining two consecutive
@@ -753,24 +778,60 @@ type placeRegionObstaclesParams struct {
 // size floor already enforces at construction time. One rule, no
 // archetype-specific branching, provably sufficient for both invariants.
 //
-// The candidate pool is PARTITIONED into border cells (local x==0,
-// x==width-1, y==0, or y==height-1 — hugging the region's own four
-// walls/corners) and interior cells, each independently shuffled with a
-// seeded Fisher-Yates (deterministic per seed, varies across seeds), then
-// concatenated border-first (rpg-toolkit#839's composition ask: "dressing
-// hugs walls/corners; floor centers stay clear" — rpg-dnd5e-web#469).
-// Specs draw from the combined pool in order, each instance consuming
-// one candidate so no two specs (or two instances of the same spec) can
-// collide — a spec whose Count exceeds the border pool naturally spills
-// into interior cells, so this is a DRAW-ORDER preference, not a hard
-// requirement; it changes nothing about which cells are eligible; a spec
-// that asks for more instances than the remaining pool has places as
-// many as fit and drops the rest — #819's "skip rather than invalidate
-// the dungeon" requirement — this function never errors.
+// The candidate pool's draw order depends on whether ANY spec in this
+// region sets PreferBorder (rpg-toolkit#839/#840):
+//
+//   - No spec prefers the border (every pre-#839 caller/fixture): ONE
+//     flat candidate list in natural (x,y) scan order, ONE seeded
+//     Fisher-Yates shuffle — the exact, byte-identical code path this
+//     function used before #839 ever existed. Zero behavior change for
+//     any caller that never sets PreferBorder.
+//   - At least one spec prefers the border: the pool is PARTITIONED into
+//     border cells (local x==0, x==width-1, y==0, or y==height-1 —
+//     hugging the region's own four walls/corners) and interior cells,
+//     each independently shuffled. PreferBorder specs draw border-first
+//     (falling back to interior on overflow) in TWO PASSES: every
+//     PreferBorder=true spec draws before any PreferBorder=false spec,
+//     regardless of each spec's position in p.specs — rpg-toolkit#840's
+//     gate finding was that applying the border bias to ALL specs in
+//     list order forced focal pieces (always listed first: obelisk;
+//     coffin→altar→statues) onto the border ahead of the dressing that
+//     actually wanted it, inverting the composition target instead of
+//     achieving it. Once every border-preferring spec has drawn, the
+//     UNCONSUMED remainder (border leftovers + all interior, mixed) is
+//     reshuffled once more so PreferBorder=false specs still draw
+//     uniformly over what's left, not a residual border-first order.
+//
+// Either way, specs draw from their pool in order, each instance
+// consuming one candidate so no two specs (or two instances of the same
+// spec) can ever collide — a spec whose Count exceeds its pool's
+// capacity naturally places as many as fit and drops the rest — #819's
+// "skip rather than invalidate the dungeon" requirement — this function
+// never errors regardless of which path runs.
 func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 	if len(p.specs) == 0 {
 		return nil
 	}
+
+	anyPrefersBorder := false
+	for _, spec := range p.specs {
+		if spec.PreferBorder {
+			anyPrefersBorder = true
+			break
+		}
+	}
+
+	//nolint:gosec // G404: deterministic per-region obstacle seed, not cryptographic
+	rng := rand.New(rand.NewSource(p.seed))
+
+	if !anyPrefersBorder {
+		candidates := regionObstacleCandidates(p)
+		rng.Shuffle(len(candidates), func(i, j int) {
+			candidates[i], candidates[j] = candidates[j], candidates[i]
+		})
+		return drawObstacles(p.regionID, p.specs, candidates)
+	}
+
 	var border, interior []spatial.CubeCoordinate
 	for x := 0; x < p.width; x++ {
 		for y := 0; y < p.height; y++ {
@@ -789,24 +850,89 @@ func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 			}
 		}
 	}
-	//nolint:gosec // G404: deterministic per-region obstacle seed, not cryptographic
-	rng := rand.New(rand.NewSource(p.seed))
 	rng.Shuffle(len(border), func(i, j int) {
 		border[i], border[j] = border[j], border[i]
 	})
 	rng.Shuffle(len(interior), func(i, j int) {
 		interior[i], interior[j] = interior[j], interior[i]
 	})
-	candidates := make([]spatial.CubeCoordinate, 0, len(border)+len(interior))
-	candidates = append(candidates, border...)
-	candidates = append(candidates, interior...)
+	preferPool := make([]spatial.CubeCoordinate, 0, len(border)+len(interior))
+	preferPool = append(preferPool, border...)
+	preferPool = append(preferPool, interior...)
 
+	var preferSpecs, normalSpecs []ObstacleSpec
+	for _, spec := range p.specs {
+		if spec.PreferBorder {
+			preferSpecs = append(preferSpecs, spec)
+		} else {
+			normalSpecs = append(normalSpecs, spec)
+		}
+	}
+
+	out := drawObstacles(p.regionID, preferSpecs, preferPool)
+
+	consumed := 0
+	for _, spec := range preferSpecs {
+		consumed += spec.Count
+	}
+	if consumed > len(preferPool) {
+		consumed = len(preferPool)
+	}
+	remainder := append([]spatial.CubeCoordinate(nil), preferPool[consumed:]...)
+	rng.Shuffle(len(remainder), func(i, j int) {
+		remainder[i], remainder[j] = remainder[j], remainder[i]
+	})
+
+	out = append(out, drawObstaclesFrom(p.regionID, normalSpecs, remainder, len(out))...)
+	return out
+}
+
+// regionObstacleCandidates enumerates every LOCAL floor cell (x in
+// [0,width), y in [0,height)) that is NOT a wall cell AND NOT on doorRow
+// — the same reservation placeRegionObstacles' doc explains (a superset
+// of every required path, and sufficient for the boss primary-axis
+// invariant too), in natural (x,y) scan order, unshuffled. Extracted so
+// the no-PreferBorder path (placeRegionObstacles) can build the exact
+// same candidate list the pre-#839 mechanism always built.
+func regionObstacleCandidates(p placeRegionObstaclesParams) []spatial.CubeCoordinate {
+	candidates := make([]spatial.CubeCoordinate, 0, p.width*p.height)
+	for x := 0; x < p.width; x++ {
+		for y := 0; y < p.height; y++ {
+			if y == p.doorRow {
+				continue
+			}
+			cube := spatial.OffsetCoordinateToCubeWithOrientation(
+				spatial.Position{X: float64(x + p.offsetX), Y: float64(y)}, spatial.HexOrientationPointyTop)
+			if _, blocked := p.wallCubes[cube]; blocked {
+				continue
+			}
+			candidates = append(candidates, cube)
+		}
+	}
+	return candidates
+}
+
+// drawObstacles places specs against an already-shuffled candidates pool,
+// starting IDs at 0 — the common case (a single pool, one pass).
+func drawObstacles(regionID string, specs []ObstacleSpec, candidates []spatial.CubeCoordinate) []ObstacleData {
+	return drawObstaclesFrom(regionID, specs, candidates, 0)
+}
+
+// drawObstaclesFrom places specs against an already-shuffled candidates
+// pool, each instance consuming one candidate in order so no two specs
+// (or two instances of the same spec) can collide. idOffset lets a
+// second pass over a second pool continue this region's ID numbering
+// (obstacle-<regionID>-<n>) rather than restarting at 0 and colliding
+// with the first pass's IDs.
+func drawObstaclesFrom(
+	regionID string, specs []ObstacleSpec, candidates []spatial.CubeCoordinate, idOffset int,
+) []ObstacleData {
 	var out []ObstacleData
 	next := 0
-	for _, spec := range p.specs {
+	for _, spec := range specs {
 		for n := 0; n < spec.Count && next < len(candidates); n++ {
 			out = append(out, ObstacleData{
-				ID:             core.EntityID(fmt.Sprintf("obstacle-%s-%d", p.regionID, len(out))),
+				ID:             core.EntityID(fmt.Sprintf("obstacle-%s-%d", regionID, idOffset+len(out))),
 				Ref:            spec.Ref,
 				Position:       core.HexFromCube(candidates[next]),
 				BlocksMovement: spec.BlocksMovement,

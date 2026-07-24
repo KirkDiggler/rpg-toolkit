@@ -119,18 +119,30 @@ const (
 
 // Crypt set-piece blocking properties: the VERIFIED canonical shipped-
 // asset-contract table (independent finding, PR #826 review — supersedes
-// this file's earlier "low vs tall" design guess, which had altar wrong):
+// this file's earlier "low vs tall" design guess, which had altar wrong),
+// now spanning three flag classes across #819's structural vocabulary and
+// rpg-toolkit#839's depth-pass dressing/light-anchor additions:
 //
 //	ref                    BlocksMovement  BlocksLoS
-//	coffin/tomb            true            false  (walk around, see over)
 //	altar                  true            true   (measured 2.057m, role "obstacle")
 //	statue-reaper          true            true
 //	statue-knight-hooded   true            true
 //	obelisk                true            true
 //	pillar                 true            true
+//	coffin/tomb            true            false  (walk around, see over)
+//	brazier                true            false  (physical, but see over the flame)
+//	torch-ornate           true            false  (same shape as brazier)
+//	candles                false           false  (walkable-past floor dressing)
+//	bone-pile              false           false  (walkable-past floor dressing)
+//	chain                  false           false  (walkable-past floor dressing)
+//	skeleton-remains       false           false  (walkable-past floor dressing)
 //
-// Every approved piece blocks movement; only the coffin/tomb does not
-// also block line of sight.
+// Three flag shapes, not one: structural pieces (obelisk/pillar/altar/
+// statues) block both movement and LoS; a see-over class (coffin/tomb,
+// brazier, torch-ornate) is a physical obstruction that never blocks
+// sightline over or around it (coffin: low enough to see over; brazier/
+// torch-ornate: see over the flame); dressing (candles/bone-pile/chain/
+// skeleton-remains) blocks neither.
 const (
 	cryptBlocksMovement = true
 	cryptBlocksLoS      = true
@@ -186,9 +198,12 @@ func cryptEntranceObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
 		{Ref: CryptObstacleRefObelisk, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 		{Ref: CryptObstacleRefPillar, Count: 2, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
-		{Ref: CryptObstacleRefBrazier, Count: 2, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS},
 		{
-			Ref: CryptObstacleRefBonePile, Count: 2,
+			Ref: CryptObstacleRefBrazier, Count: 2, PreferBorder: true,
+			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefBonePile, Count: 2, PreferBorder: true,
 			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
 		},
 	}
@@ -203,7 +218,7 @@ func cryptCorridorObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
 		{Ref: CryptObstacleRefPillar, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 		{
-			Ref: CryptObstacleRefTorchOrnate, Count: 1,
+			Ref: CryptObstacleRefTorchOrnate, Count: 1, PreferBorder: true,
 			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS,
 		},
 	}
@@ -227,16 +242,19 @@ func cryptBossObstacles() []ObstacleSpec {
 			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS,
 		},
 		{
-			Ref: CryptObstacleRefCandles, Count: 2,
-			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
-		},
-		{Ref: CryptObstacleRefBrazier, Count: 2, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS},
-		{
-			Ref: CryptObstacleRefChain, Count: 1,
+			Ref: CryptObstacleRefCandles, Count: 2, PreferBorder: true,
 			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
 		},
 		{
-			Ref: CryptObstacleRefSkeletonRemains, Count: 1,
+			Ref: CryptObstacleRefBrazier, Count: 2, PreferBorder: true,
+			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefChain, Count: 1, PreferBorder: true,
+			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefSkeletonRemains, Count: 1, PreferBorder: true,
 			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
 		},
 	}
