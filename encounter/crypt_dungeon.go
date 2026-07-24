@@ -88,24 +88,87 @@ const (
 	CryptObstacleRefPillar = "dnd5e:props:pillar"
 )
 
+// Crypt dressing + light-anchor refs (rpg-toolkit#839, "the depth pass"):
+// the crypt renders correct-but-flat with zero light sources; these feed
+// the existing light pipeline (client mood-light derivation lights props
+// by ref, capped at 8 — rpg-dnd5e-web#585) and carry decay/dressing that
+// the art target wants instead of broken wall geometry (rpg-dnd5e-
+// web#469). Already promoted + client-registered (rpg-game-assets#22/#23,
+// rpg-dnd5e-web#567) — same "dnd5e:props:..." namespace and opaque-ref
+// convention as the #819 vocabulary above.
+const (
+	// CryptObstacleRefBrazier identifies a standing brazier — a warm
+	// light anchor, shared by the entrance and boss chambers.
+	CryptObstacleRefBrazier = "dnd5e:props:brazier"
+	// CryptObstacleRefBonePile identifies a scattered bone-pile floor
+	// dressing piece — entrance-chamber only.
+	CryptObstacleRefBonePile = "dnd5e:props:bone-pile"
+	// CryptObstacleRefTorchOrnate identifies a wall-mount ornate torch —
+	// the corridor's single light anchor (must stay easily traversable).
+	CryptObstacleRefTorchOrnate = "dnd5e:props:torch-ornate"
+	// CryptObstacleRefCandles identifies a paired-candle floor dressing
+	// piece flanking the boss chamber's coffin.
+	CryptObstacleRefCandles = "dnd5e:props:candles"
+	// CryptObstacleRefChain identifies a hanging-chain dressing piece —
+	// boss-chamber only.
+	CryptObstacleRefChain = "dnd5e:props:chain"
+	// CryptObstacleRefSkeletonRemains identifies a skeletal-remains floor
+	// dressing piece — boss-chamber only.
+	CryptObstacleRefSkeletonRemains = "dnd5e:props:skeleton-remains"
+)
+
 // Crypt set-piece blocking properties: the VERIFIED canonical shipped-
 // asset-contract table (independent finding, PR #826 review — supersedes
-// this file's earlier "low vs tall" design guess, which had altar wrong):
+// this file's earlier "low vs tall" design guess, which had altar wrong),
+// now spanning three flag classes across #819's structural vocabulary and
+// rpg-toolkit#839's depth-pass dressing/light-anchor additions:
 //
 //	ref                    BlocksMovement  BlocksLoS
-//	coffin/tomb            true            false  (walk around, see over)
 //	altar                  true            true   (measured 2.057m, role "obstacle")
 //	statue-reaper          true            true
 //	statue-knight-hooded   true            true
 //	obelisk                true            true
 //	pillar                 true            true
+//	coffin/tomb            true            false  (walk around, see over)
+//	brazier                true            false  (physical, but see over the flame)
+//	torch-ornate           true            false  (same shape as brazier)
+//	candles                false           false  (walkable-past floor dressing)
+//	bone-pile              false           false  (walkable-past floor dressing)
+//	chain                  false           false  (walkable-past floor dressing)
+//	skeleton-remains       false           false  (walkable-past floor dressing)
 //
-// Every approved piece blocks movement; only the coffin/tomb does not
-// also block line of sight.
+// Three flag shapes, not one: structural pieces (obelisk/pillar/altar/
+// statues) block both movement and LoS; a see-over class (coffin/tomb,
+// brazier, torch-ornate) is a physical obstruction that never blocks
+// sightline over or around it (coffin: low enough to see over; brazier/
+// torch-ornate: see over the flame); dressing (candles/bone-pile/chain/
+// skeleton-remains) blocks neither.
 const (
-	cryptBlocksMovement  = true
-	cryptBlocksLoS       = true
-	cryptCoffinBlocksLoS = false
+	cryptBlocksMovement = true
+	cryptBlocksLoS      = true
+	// cryptSeeOverBlocksLoS is BlocksLoS for a piece that's a physical
+	// obstruction (BlocksMovement true) but never blocks sightline over
+	// or around it: the coffin/tomb (table above), and rpg-toolkit#839's
+	// light anchors (brazier, torch-ornate — "you can see over flame").
+	cryptSeeOverBlocksLoS = false
+)
+
+// Crypt floor-dressing blocking properties (rpg-toolkit#839): candles,
+// bone-pile, chain, and skeleton-remains are walkable-past floor
+// dressing, never a physical obstruction or sightline blocker — verified
+// against this package's placement (placeRegionObstacles: each instance
+// still consumes its own unique candidate cell regardless of blocking
+// flags — no collision risk), room-rebuild (rebuildRoomFromData places a
+// WallEntity per obstacle with these exact flags copied verbatim — a
+// BlocksMovement=false entity places but never blocks CanPlaceEntity),
+// and reveal (publishRevealedObstacles keys purely on hex-position
+// overlap with a viewer's newly revealed hexes, never on either blocking
+// flag) machinery — see obstacle_test.go's existing
+// TestObstacle_BlocksMovement_False for the end-to-end proof this
+// already holds. No fallback to blocking=true needed.
+const (
+	cryptDressingBlocksMovement = false
+	cryptDressingBlocksLoS      = false
 )
 
 // The first crypt dungeon's fixed shape: entrance -> corridor -> boss,
@@ -124,40 +187,75 @@ const (
 	cryptRegionIDBoss     = "boss"
 )
 
-// cryptEntranceObstacles: an obelisk plus flanking pillars — the
-// entrance chamber's archetype-appropriate set pieces (#819 scope).
+// cryptEntranceObstacles: an obelisk plus flanking pillars (#819), now
+// joined by rpg-toolkit#839's depth-pass dressing — 2 braziers as the
+// warm light anchors, plus 2 bone-piles as floor dressing. Judgment call
+// on the issue's "1-2x bone-pile": chose 2, matching the fuller "gives
+// the room a depth" composition target rather than the sparser end of
+// the range — flagged in the PR body, easy to dial back to 1 if it reads
+// too busy once rendered.
 func cryptEntranceObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
 		{Ref: CryptObstacleRefObelisk, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 		{Ref: CryptObstacleRefPillar, Count: 2, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
+		{
+			Ref: CryptObstacleRefBrazier, Count: 2, PreferBorder: true,
+			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefBonePile, Count: 2, PreferBorder: true,
+			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
+		},
 	}
 }
 
-// cryptCorridorObstacles: a single sparse pillar — the corridor must
-// stay monster-free and easily traversable (#819 scope), so this is
-// deliberately the lightest set-piece load of the three regions.
+// cryptCorridorObstacles: a single sparse pillar (#819), plus
+// rpg-toolkit#839's one light anchor — the corridor must stay
+// monster-free and easily traversable, so this stays deliberately the
+// lightest set-piece load of the three regions; a single torch is enough
+// to carry a light pool through it without competing for floor space.
 func cryptCorridorObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
 		{Ref: CryptObstacleRefPillar, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
+		{
+			Ref: CryptObstacleRefTorchOrnate, Count: 1, PreferBorder: true,
+			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS,
+		},
 	}
 }
 
 // cryptBossObstacles: a coffin/tomb, an altar, and one of each of the
-// two promoted exact statue variants (a fixed reaper+hooded-knight
-// pairing, not a random-variant policy) — the boss chamber's archetype-
-// appropriate set pieces (#819 scope: "boss chamber with an altar and
-// flanking statues that don't block the path to it"). Keeping coffin as
-// coffin only — no tomb/sarcophagus variant is added here; see the PR
-// body for why (#818 v1's single-anchor-per-instance limitation and
-// rpg-dnd5e-web#577's rendering/composition ownership).
+// two promoted exact statue variants (#819's fixed reaper+hooded-knight
+// pairing, not a random-variant policy), now joined by rpg-toolkit#839's
+// depth-pass dressing: 2 candles flanking the coffin, 2 braziers as
+// light anchors, 1 hanging chain, and 1 skeleton-remains pile. Keeping
+// coffin as coffin only — no tomb/sarcophagus variant is added here; see
+// the PR body for why (#818 v1's single-anchor-per-instance limitation
+// and rpg-dnd5e-web#577's rendering/composition ownership).
 func cryptBossObstacles() []ObstacleSpec {
 	return []ObstacleSpec{
-		{Ref: CryptObstacleRefCoffin, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptCoffinBlocksLoS},
+		{Ref: CryptObstacleRefCoffin, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS},
 		{Ref: CryptObstacleRefAltar, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 		{Ref: CryptObstacleRefStatueReaper, Count: 1, BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS},
 		{
 			Ref: CryptObstacleRefStatueKnightHooded, Count: 1,
 			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefCandles, Count: 2, PreferBorder: true,
+			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefBrazier, Count: 2, PreferBorder: true,
+			BlocksMovement: cryptBlocksMovement, BlocksLoS: cryptSeeOverBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefChain, Count: 1, PreferBorder: true,
+			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
+		},
+		{
+			Ref: CryptObstacleRefSkeletonRemains, Count: 1, PreferBorder: true,
+			BlocksMovement: cryptDressingBlocksMovement, BlocksLoS: cryptDressingBlocksLoS,
 		},
 	}
 }

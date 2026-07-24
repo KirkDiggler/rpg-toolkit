@@ -333,3 +333,174 @@ func TestInitDungeon_ObstaclePlacement_RoundTripsThroughToDataLoadFromData(t *te
 			"obstacle %q BlocksMovement=%v must match the reloaded room's actual movement block", o.ID, o.BlocksMovement)
 	}
 }
+
+// opChamberOffsetX is opTwoRegionParams' chamber region's global column
+// offset (entrance width 8 + 1 boundary column) -- needed to convert a
+// placed obstacle's global Position back to the chamber's own LOCAL
+// coordinates for the border-preference tests below. opChamberWidth/
+// opChamberHeight mirror that same fixture's chamber region dimensions.
+const (
+	opChamberOffsetX = 8 + 1
+	opChamberWidth   = 10
+	opChamberHeight  = 8
+)
+
+// opIsBorderLocal reports whether local (x,y) sits on the chamber
+// region's own four edges -- the "hugs walls/corners" preference
+// placeRegionObstacles now draws from first (rpg-toolkit#839, composition
+// ask from rpg-dnd5e-web#469).
+func opIsBorderLocal(x, y int) bool {
+	return x == 0 || x == opChamberWidth-1 || y == 0 || y == opChamberHeight-1
+}
+
+// TestInitDungeon_ObstaclePlacement_PrefersBorderCellsWhenTheyFit pins
+// rpg-toolkit#839's composition ask ("dressing hugs walls/corners; floor
+// centers stay clear") as implemented: a PER-SPEC, opt-in (PreferBorder
+// bool) DRAW-ORDER preference in placeRegionObstacles, where border
+// candidates (local x==0, x==width-1, y==0, y==height-1) are shuffled
+// and drawn before interior candidates -- but ONLY for a spec that sets
+// PreferBorder (rpg-toolkit#840 gate finding: an earlier revision
+// applied this to every spec regardless of intent, which forced FOCAL
+// pieces onto the border ahead of the dressing that actually wanted it).
+// When a PreferBorder=true spec's Count comfortably fits within the
+// region's border-cell capacity, every placed instance must land on the
+// border -- across a spread of seeds, not just one lucky roll.
+func TestInitDungeon_ObstaclePlacement_PrefersBorderCellsWhenTheyFit(t *testing.T) {
+	for _, seed := range []int64{1, 2, 3, 4, 5, 42, 100, 909091} {
+		enc := opNewEncounter(t)
+		specs := []encounter.ObstacleSpec{
+			{Ref: opSpecRefA, Count: 5, BlocksMovement: true, BlocksLoS: true, PreferBorder: true},
+		}
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(seed, specs)), "seed %d", seed)
+
+		data := enc.ToData()
+		require.Len(t, data.Space.Obstacles, 5, "seed %d", seed)
+		for _, o := range data.Space.Obstacles {
+			pos := o.Position.ToPosition()
+			localX := int(pos.X) - opChamberOffsetX
+			localY := int(pos.Y)
+			require.True(t, opIsBorderLocal(localX, localY),
+				"seed %d: obstacle %q at local (%d,%d) must be a border cell when a PreferBorder=true spec's "+
+					"Count comfortably fits the requested count", seed, o.ID, localX, localY)
+		}
+	}
+}
+
+// TestInitDungeon_ObstaclePlacement_DefaultDoesNotPreferBorder proves
+// PreferBorder's zero value (false) is genuinely UNBIASED, not merely
+// "less biased" -- rpg-toolkit#840's whole reason to make this per-spec
+// and opt-in. Requests the SAME Count (5) the biased test above proves
+// always lands on the border when PreferBorder=true -- but here every
+// spec leaves PreferBorder at its zero value. If this path were still
+// secretly border-biased, every seed would place all 5 on the border,
+// exactly like the test above. A genuine uniform draw must place at
+// least one instance on an interior cell somewhere across this seed
+// spread.
+func TestInitDungeon_ObstaclePlacement_DefaultDoesNotPreferBorder(t *testing.T) {
+	sawInterior := false
+	for _, seed := range []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 42, 100, 909091} {
+		enc := opNewEncounter(t)
+		specs := []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 5, BlocksMovement: true, BlocksLoS: true}}
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(seed, specs)), "seed %d", seed)
+		for _, o := range enc.ToData().Space.Obstacles {
+			pos := o.Position.ToPosition()
+			localX := int(pos.X) - opChamberOffsetX
+			localY := int(pos.Y)
+			if !opIsBorderLocal(localX, localY) {
+				sawInterior = true
+			}
+		}
+		if sawInterior {
+			break
+		}
+	}
+	require.True(t, sawInterior,
+		"PreferBorder's zero value must be genuinely unbiased -- at least one seed in this spread must place "+
+			"an instance on an interior cell when no spec opts into the border preference")
+}
+
+// TestInitDungeon_ObstaclePlacement_SpillsToInteriorWhenBorderPoolExhausted:
+// the border preference above is a DRAW-ORDER bias, not a hard
+// requirement on which cells are eligible -- a PreferBorder=true spec
+// whose Count exceeds the region's border-cell capacity must still place
+// its full best-effort count (never fail generation), with the overflow
+// landing on interior cells. The chamber's border pool is the full-grid
+// perimeter (2*10 + 2*8 - 4 corners = 32 cells) minus the two border
+// cells doorRow's exclusion removes (local (0,4) and (9,4), the only
+// border cells whose row is the reserved doorRow) = 30; total floor
+// candidates are width*height minus one full doorRow (10*8 - 10 = 70).
+// Requesting 40 (comfortably under 70, over 30) must place all 40, with
+// exactly 30 on the border and the remaining 10 spilling to interior.
+func TestInitDungeon_ObstaclePlacement_SpillsToInteriorWhenBorderPoolExhausted(t *testing.T) {
+	enc := opNewEncounter(t)
+	specs := []encounter.ObstacleSpec{
+		{Ref: opSpecRefA, Count: 40, BlocksMovement: true, BlocksLoS: true, PreferBorder: true},
+	}
+	require.NoError(t, enc.InitDungeon(opTwoRegionParams(7, specs)))
+
+	data := enc.ToData()
+	require.Len(t, data.Space.Obstacles, 40, "40 comfortably fits the region's 70 total floor candidates")
+
+	var borderCount, interiorCount int
+	for _, o := range data.Space.Obstacles {
+		pos := o.Position.ToPosition()
+		localX := int(pos.X) - opChamberOffsetX
+		localY := int(pos.Y)
+		if opIsBorderLocal(localX, localY) {
+			borderCount++
+		} else {
+			interiorCount++
+		}
+	}
+	require.Equal(t, 30, borderCount, "every border cell must be exhausted before any interior cell is used")
+	require.Equal(t, 10, interiorCount, "the remaining instances must spill to interior cells")
+}
+
+// TestInitDungeon_ObstaclePlacement_PreferBorderSpecsDrawBeforeNormalSpecs
+// pins rpg-toolkit#840's exact gate finding and fix: a region mixing a
+// PreferBorder=true spec with a PreferBorder=false spec (mirroring
+// CryptDungeonParams' own composition -- e.g. entrance's obelisk/pillar
+// left false, brazier/bone-pile set true) must place the border-
+// preferring spec's instances on the border regardless of which spec is
+// declared FIRST in p.specs -- the earlier revision's bug was that list
+// order (not PreferBorder) decided who got first crack at the border,
+// which put a region's always-first-listed FOCAL piece there instead of
+// its dressing. Declares the NON-preferring spec first (matching every
+// crypt region's own declaration order: focal piece first, dressing
+// after), with a Count (28) deliberately large enough to nearly exhaust
+// the 30-cell border pool on its own -- if list order still controlled
+// draw order (the bug), the non-preferring spec would claim almost all
+// of the border before the preferring spec ever got a turn, forcing most
+// of its 5 instances into the interior. A Count of 1 here would NOT
+// discriminate (confirmed: re-run against a temporarily-reintroduced
+// version of the bug with Count:1 and it stayed green by coincidence --
+// the border pool is large enough that one focal instance never
+// contests it. 28 does.).
+func TestInitDungeon_ObstaclePlacement_PreferBorderSpecsDrawBeforeNormalSpecs(t *testing.T) {
+	for _, seed := range []int64{1, 2, 3, 4, 5, 42} {
+		enc := opNewEncounter(t)
+		specs := []encounter.ObstacleSpec{
+			// Declared FIRST but PreferBorder=false -- mirrors a focal
+			// piece (e.g. crypt's obelisk) declared ahead of its dressing.
+			// Count=28 nearly exhausts the 30-cell border pool on its own.
+			{Ref: opSpecRefB, Count: 28, BlocksMovement: true, BlocksLoS: true},
+			// Declared SECOND but PreferBorder=true -- mirrors dressing
+			// declared after its region's focal piece.
+			{Ref: opSpecRefA, Count: 5, BlocksMovement: true, BlocksLoS: true, PreferBorder: true},
+		}
+		require.NoError(t, enc.InitDungeon(opTwoRegionParams(seed, specs)), "seed %d", seed)
+
+		for _, o := range enc.ToData().Space.Obstacles {
+			if o.Ref != opSpecRefA {
+				continue // only asserting the PreferBorder=true spec's placements
+			}
+			pos := o.Position.ToPosition()
+			localX := int(pos.X) - opChamberOffsetX
+			localY := int(pos.Y)
+			require.True(t, opIsBorderLocal(localX, localY),
+				"seed %d: obstacle %q at local (%d,%d) must be a border cell -- PreferBorder must win over "+
+					"list order, even though the non-preferring spec (Count=28, nearly exhausting the border "+
+					"pool on its own) was declared first", seed, o.ID, localX, localY)
+		}
+	}
+}

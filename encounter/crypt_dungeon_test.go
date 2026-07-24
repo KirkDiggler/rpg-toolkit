@@ -168,34 +168,59 @@ func TestCryptDungeonParams_RegionArchetypeComposition(t *testing.T) {
 	entranceRefs := refsOf(byArchetype[encounter.ArchetypeEntrance].Obstacles)
 	require.Contains(t, entranceRefs, encounter.CryptObstacleRefObelisk)
 	require.Contains(t, entranceRefs, encounter.CryptObstacleRefPillar)
+	require.Contains(t, entranceRefs, encounter.CryptObstacleRefBrazier, "rpg-toolkit#839 depth-pass light anchor")
+	require.Contains(t, entranceRefs, encounter.CryptObstacleRefBonePile, "rpg-toolkit#839 depth-pass dressing")
 	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefCoffin)
 	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefAltar)
 	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefStatueReaper)
 	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefStatueKnightHooded)
+	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefTorchOrnate, "corridor-only light anchor")
+	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefCandles, "boss-only dressing")
+	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefChain, "boss-only dressing")
+	require.NotContains(t, entranceRefs, encounter.CryptObstacleRefSkeletonRemains, "boss-only dressing")
+	require.Equal(t, 2, entranceRefs[encounter.CryptObstacleRefBrazier].Count)
+	require.Equal(t, 2, entranceRefs[encounter.CryptObstacleRefBonePile].Count)
 
 	corridorRefs := refsOf(byArchetype[encounter.ArchetypeCorridor].Obstacles)
 	require.Contains(t, corridorRefs, encounter.CryptObstacleRefPillar)
+	require.Contains(t, corridorRefs, encounter.CryptObstacleRefTorchOrnate, "rpg-toolkit#839 depth-pass light anchor")
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefObelisk)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefCoffin)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefAltar)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefStatueReaper)
 	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefStatueKnightHooded)
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefBrazier, "entrance/boss-only anchor")
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefBonePile, "entrance-only dressing")
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefCandles, "boss-only dressing")
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefChain, "boss-only dressing")
+	require.NotContains(t, corridorRefs, encounter.CryptObstacleRefSkeletonRemains, "boss-only dressing")
 	corridorTotal := 0
 	for _, s := range byArchetype[encounter.ArchetypeCorridor].Obstacles {
 		corridorTotal += s.Count
 	}
-	require.LessOrEqual(t, corridorTotal, 1, "corridor set pieces must stay sparse")
+	require.LessOrEqual(t, corridorTotal, 2,
+		"corridor set pieces must stay sparse (1 pillar + 1 torch, rpg-toolkit#839)")
 
 	bossRefs := refsOf(byArchetype[encounter.ArchetypeBoss].Obstacles)
 	require.Contains(t, bossRefs, encounter.CryptObstacleRefCoffin)
 	require.Contains(t, bossRefs, encounter.CryptObstacleRefAltar)
 	require.Contains(t, bossRefs, encounter.CryptObstacleRefStatueReaper)
 	require.Contains(t, bossRefs, encounter.CryptObstacleRefStatueKnightHooded)
+	require.Contains(t, bossRefs, encounter.CryptObstacleRefCandles, "rpg-toolkit#839 depth-pass dressing")
+	require.Contains(t, bossRefs, encounter.CryptObstacleRefBrazier, "rpg-toolkit#839 depth-pass light anchor")
+	require.Contains(t, bossRefs, encounter.CryptObstacleRefChain, "rpg-toolkit#839 depth-pass dressing")
+	require.Contains(t, bossRefs, encounter.CryptObstacleRefSkeletonRemains, "rpg-toolkit#839 depth-pass dressing")
 	require.NotContains(t, bossRefs, encounter.CryptObstacleRefObelisk)
+	require.NotContains(t, bossRefs, encounter.CryptObstacleRefBonePile, "entrance-only dressing")
+	require.NotContains(t, bossRefs, encounter.CryptObstacleRefTorchOrnate, "corridor-only light anchor")
 	require.Equal(t, 1, bossRefs[encounter.CryptObstacleRefStatueReaper].Count,
 		"exactly one reaper statue -- the promoted default pairing, not a random-variant policy")
 	require.Equal(t, 1, bossRefs[encounter.CryptObstacleRefStatueKnightHooded].Count,
 		"exactly one hooded-knight statue -- the promoted default pairing, not a random-variant policy")
+	require.Equal(t, 2, bossRefs[encounter.CryptObstacleRefCandles].Count, "2 candles flanking the coffin")
+	require.Equal(t, 2, bossRefs[encounter.CryptObstacleRefBrazier].Count)
+	require.Equal(t, 1, bossRefs[encounter.CryptObstacleRefChain].Count)
+	require.Equal(t, 1, bossRefs[encounter.CryptObstacleRefSkeletonRemains].Count)
 }
 
 // TestCryptDungeonParams_NoGenericStatueRefExists: the generic,
@@ -226,6 +251,9 @@ func TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths(t *testing.
 		encounter.CryptObstacleRefCoffin, encounter.CryptObstacleRefAltar,
 		encounter.CryptObstacleRefStatueReaper, encounter.CryptObstacleRefStatueKnightHooded,
 		encounter.CryptObstacleRefObelisk, encounter.CryptObstacleRefPillar,
+		encounter.CryptObstacleRefBrazier, encounter.CryptObstacleRefBonePile,
+		encounter.CryptObstacleRefTorchOrnate, encounter.CryptObstacleRefCandles,
+		encounter.CryptObstacleRefChain, encounter.CryptObstacleRefSkeletonRemains,
 	} {
 		require.Regexp(t, `^dnd5e:props:[a-z-]+$`, ref)
 	}
@@ -245,6 +273,14 @@ var cryptCanonicalAssetManifestKeys = map[string]string{
 	"CryptObstacleRefStatueKnightHooded": "dnd5e:props:statue-knight-hooded",
 	"CryptObstacleRefObelisk":            "dnd5e:props:obelisk",
 	"CryptObstacleRefPillar":             "dnd5e:props:pillar",
+	// rpg-toolkit#839 depth-pass dressing + light anchors -- already
+	// promoted + client-registered (rpg-game-assets#22/#23, web#567).
+	"CryptObstacleRefBrazier":         "dnd5e:props:brazier",
+	"CryptObstacleRefBonePile":        "dnd5e:props:bone-pile",
+	"CryptObstacleRefTorchOrnate":     "dnd5e:props:torch-ornate",
+	"CryptObstacleRefCandles":         "dnd5e:props:candles",
+	"CryptObstacleRefChain":           "dnd5e:props:chain",
+	"CryptObstacleRefSkeletonRemains": "dnd5e:props:skeleton-remains",
 }
 
 // TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly: each
@@ -264,6 +300,12 @@ func TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly(t *testing.T) 
 		"CryptObstacleRefStatueKnightHooded": encounter.CryptObstacleRefStatueKnightHooded,
 		"CryptObstacleRefObelisk":            encounter.CryptObstacleRefObelisk,
 		"CryptObstacleRefPillar":             encounter.CryptObstacleRefPillar,
+		"CryptObstacleRefBrazier":            encounter.CryptObstacleRefBrazier,
+		"CryptObstacleRefBonePile":           encounter.CryptObstacleRefBonePile,
+		"CryptObstacleRefTorchOrnate":        encounter.CryptObstacleRefTorchOrnate,
+		"CryptObstacleRefCandles":            encounter.CryptObstacleRefCandles,
+		"CryptObstacleRefChain":              encounter.CryptObstacleRefChain,
+		"CryptObstacleRefSkeletonRemains":    encounter.CryptObstacleRefSkeletonRemains,
 	}
 	for name, want := range cryptCanonicalAssetManifestKeys {
 		require.Equal(t, want, actual[name], "%s must equal the exact canonical asset-manifest key", name)
@@ -274,7 +316,12 @@ func TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly(t *testing.T) 
 // contract blocking table (independent finding, not this file's own
 // design guess): coffin/tomb movement=true LoS=false; altar movement=
 // true LoS=true (measured 2.057m, role "obstacle"); statues movement=
-// true LoS=true; obelisk/pillar movement=true LoS=true.
+// true LoS=true; obelisk/pillar movement=true LoS=true. rpg-toolkit#839's
+// depth-pass additions per the issue's flag table: braziers/torch-ornate
+// are physical light anchors (movement=true) you can still see over
+// (LoS=false, "you can see over flame"); candles/bone-pile/chain/
+// skeleton-remains are walkable-past floor dressing (movement=false,
+// LoS=false).
 var cryptBlockingContractTable = []struct {
 	ref            string
 	blocksMovement bool
@@ -286,6 +333,12 @@ var cryptBlockingContractTable = []struct {
 	{encounter.CryptObstacleRefStatueKnightHooded, true, true},
 	{encounter.CryptObstacleRefObelisk, true, true},
 	{encounter.CryptObstacleRefPillar, true, true},
+	{encounter.CryptObstacleRefBrazier, true, false},
+	{encounter.CryptObstacleRefTorchOrnate, true, false},
+	{encounter.CryptObstacleRefBonePile, false, false},
+	{encounter.CryptObstacleRefCandles, false, false},
+	{encounter.CryptObstacleRefChain, false, false},
+	{encounter.CryptObstacleRefSkeletonRemains, false, false},
 }
 
 // TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract: every
@@ -358,6 +411,13 @@ func TestCryptDungeon_GeneratesPlaceableDungeon_WithSetPieces(t *testing.T) {
 		encounter.CryptObstacleRefStatueKnightHooded: true,
 		encounter.CryptObstacleRefObelisk:            true,
 		encounter.CryptObstacleRefPillar:             true,
+		// rpg-toolkit#839 depth-pass dressing + light anchors.
+		encounter.CryptObstacleRefBrazier:         true,
+		encounter.CryptObstacleRefBonePile:        true,
+		encounter.CryptObstacleRefTorchOrnate:     true,
+		encounter.CryptObstacleRefCandles:         true,
+		encounter.CryptObstacleRefChain:           true,
+		encounter.CryptObstacleRefSkeletonRemains: true,
 	}
 	for _, o := range data.Space.Obstacles {
 		require.True(t, approved[o.Ref], "obstacle ref %q is outside the approved crypt vocabulary", o.Ref)
@@ -393,6 +453,89 @@ func TestCryptDungeon_EntranceToBossConnectivity_SurvivesSetPieces(t *testing.T)
 		}
 	}
 	require.True(t, reachedBoss, "the crypt template's real set pieces must never sever entrance->boss connectivity")
+}
+
+// cryptDressingSweepSeeds sweeps a spread of seeds for the rpg-toolkit#839
+// depth-pass tests below — the same "prove it across seeds, not just one
+// lucky roll" convention #835's own seed-sweep test established.
+var cryptDressingSweepSeeds = []int64{
+	cdSeed, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 42, 100, 909091, 123456789,
+}
+
+// TestCryptDungeon_DressingSpecCounts_PlaceFullyAcrossSeeds pins
+// rpg-toolkit#839's done bar ("fresh crypt via InitDungeon carries the
+// new specs, counts asserted across seeds"): unlike the generic
+// ObstacleSpec mechanism's best-effort contract (a region whose safe
+// floor can't fit every requested instance places as many as fit, never
+// failing generation), THIS specific composition never actually contests
+// capacity — every region's floor area comfortably exceeds its total
+// requested instance count (entrance: 7 new/70 candidate cells; corridor:
+// 1 new/35; boss: 6 new/70) — so every new dressing/light-anchor spec
+// must place its FULL requested count in every region, every seed, not
+// merely "at least one." A region that silently shrank below its full
+// count here would mean placeRegionObstacles' candidate pool had
+// unexpectedly shrunk (e.g. a doorRow/wall change eating into the shared
+// floor budget), which this test exists to catch.
+func TestCryptDungeon_DressingSpecCounts_PlaceFullyAcrossSeeds(t *testing.T) {
+	wantCounts := map[string]int{
+		encounter.CryptObstacleRefBrazier:         2 + 2, // entrance (2) + boss (2)
+		encounter.CryptObstacleRefBonePile:        2,     // entrance only
+		encounter.CryptObstacleRefTorchOrnate:     1,     // corridor only
+		encounter.CryptObstacleRefCandles:         2,     // boss only
+		encounter.CryptObstacleRefChain:           1,     // boss only
+		encounter.CryptObstacleRefSkeletonRemains: 1,     // boss only
+	}
+
+	for _, seed := range cryptDressingSweepSeeds {
+		enc := cdNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(encounter.CryptDungeonParams(seed, cdEntranceDoorID, cdBossDoorID)),
+			"seed %d", seed)
+
+		gotCounts := make(map[string]int, len(wantCounts))
+		for _, o := range enc.ToData().Space.Obstacles {
+			gotCounts[o.Ref]++
+		}
+		for ref, want := range wantCounts {
+			require.Equal(t, want, gotCounts[ref],
+				"seed %d: ref %q must place its full requested count (ample floor capacity, never contested)",
+				seed, ref)
+		}
+	}
+}
+
+// TestCryptDungeon_EntranceToBossConnectivity_SurvivesDressingAcrossSeeds
+// generalizes TestCryptDungeon_EntranceToBossConnectivity_SurvivesSetPieces
+// (single fixture seed) to a spread of seeds, now that #839 has roughly
+// doubled the crypt's total set-piece load — the depth-pass dressing must
+// never sever entrance->boss connectivity at ANY seed, not just the one
+// the pre-existing fixture happens to use.
+func TestCryptDungeon_EntranceToBossConnectivity_SurvivesDressingAcrossSeeds(t *testing.T) {
+	for _, seed := range cryptDressingSweepSeeds {
+		enc := cdNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(encounter.CryptDungeonParams(seed, cdEntranceDoorID, cdBossDoorID)),
+			"seed %d", seed)
+
+		data := enc.ToData()
+		entrance := data.Space.Entrance
+		require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+			PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: entrance, SightRange: 30,
+		}), "seed %d", seed)
+		require.NoError(t, enc.OpenDoor(alicePlayerID, cdEntranceDoorID), "seed %d", seed)
+		require.NoError(t, enc.OpenDoor(alicePlayerID, cdBossDoorID), "seed %d", seed)
+
+		reachable := reachableFrom(enc.Room(), entrance)
+		boss := regionHexSet(enc.ToData().Space, "boss")
+		require.NotEmpty(t, boss, "seed %d", seed)
+		reachedBoss := false
+		for h := range reachable {
+			if boss[h] {
+				reachedBoss = true
+				break
+			}
+		}
+		require.True(t, reachedBoss,
+			"seed %d: the depth-pass dressing must never sever entrance->boss connectivity", seed)
+	}
 }
 
 // TestCryptDungeon_DeterministicSameSeed: same seed reproduces the
