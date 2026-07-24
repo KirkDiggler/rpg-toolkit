@@ -78,10 +78,24 @@ type Data struct {
 // rather than a toolkit-local type — same shape environments.EnvironmentData
 // already persists, no reason to duplicate it.
 type SpaceData struct {
-	// Walls are the room's wall segments in absolute cube coordinates. Wave 1
-	// stores one degenerate (Start == End) segment per discretized wall hex —
-	// geometry fidelity beyond per-hex blocking isn't needed until per-viewer
-	// wall reveal (wave 2+).
+	// Walls are the room's wall segments in absolute cube coordinates, in
+	// one of two shapes:
+	//
+	//   - Degenerate (Start == End): one blocked interior hex — interior
+	//     pattern walls (RandomPattern etc.) and InitDungeon's connector
+	//     boundary columns between regions. This is the ONLY shape wave 1
+	//     stored, and the only one rebuildRoomFromData turns into an
+	//     actual spatial.Room blocker (see its Start != End skip) —
+	//     geometry fidelity beyond per-hex blocking isn't needed for these.
+	//
+	//   - Boundary-edge (Start != End, exactly one hex step apart): Start
+	//     is a real walkable floor hex, End is the adjacent hex just
+	//     outside the room's grid bounds — InitDungeon's outer-perimeter
+	//     segments (rpg-toolkit#834), one per room-facing edge. Purely a
+	//     render contract (rpg-dnd5e-web#566's client-side hexDistance==1
+	//     branch draws one clean full-width slab on that edge) — never a
+	//     spatial.Room blocker; walkability there already comes from the
+	//     grid's own bounds, not from this entry.
 	Walls []environments.WallSegmentData `json:"walls"`
 
 	// Width and Height are the room's grid dimensions (offset-coordinate
