@@ -179,7 +179,18 @@ func CryptDungeonParams(seed int64, entranceDoorID, bossDoorID core.EntityID) Du
 		Regions: []DungeonRegionParams{
 			{
 				ID: cryptRegionIDEntrance, Archetype: ArchetypeEntrance,
-				Width: cryptEntranceWidth, Pattern: environments.PatternRandom, Obstacles: cryptEntranceObstacles(),
+				// PatternEmpty (rpg-toolkit#835): PatternRandom's scattered
+				// wall cells were designed as tactical cover before the
+				// obstacle layer existed (#819) and now double-book that
+				// role — the entrance's obelisk+pillar set pieces (#819)
+				// already provide cover, and each isolated scattered wall
+				// cell renders client-side as 3-5 crisscrossed slabs (one
+				// per exposed face), reading as rubble rather than the
+				// approved crypt art target of intact walls with decay
+				// carried by dressing, not broken geometry (rpg-dnd5e-
+				// web#469, rpg-dnd5e-web#562). Cover now comes from set
+				// pieces; interior walls stay empty.
+				Width: cryptEntranceWidth, Pattern: environments.PatternEmpty, Obstacles: cryptEntranceObstacles(),
 			},
 			{
 				ID: cryptRegionIDCorridor, Archetype: ArchetypeCorridor,
@@ -190,7 +201,15 @@ func CryptDungeonParams(seed int64, entranceDoorID, bossDoorID core.EntityID) Du
 			},
 			{
 				ID: cryptRegionIDBoss, Archetype: ArchetypeBoss,
-				Width: cryptBossWidth, Pattern: environments.PatternRandom, Obstacles: cryptBossObstacles(),
+				// PatternEmpty (rpg-toolkit#835): same reasoning as the
+				// entrance region above — the boss chamber's coffin,
+				// altar, and paired statues (#819) already carry the cover
+				// role, so PatternRandom's scattered wall cells are now
+				// redundant rubble-rendering noise rather than needed
+				// tactical cover. Side benefit: shrinks this region's
+				// exposure to the doorRow-collision bug class (#826,
+				// #833) since fewer interior walls get rolled at all.
+				Width: cryptBossWidth, Pattern: environments.PatternEmpty, Obstacles: cryptBossObstacles(),
 			},
 		},
 		Connectors: []DungeonConnectorParams{
