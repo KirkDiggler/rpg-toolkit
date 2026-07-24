@@ -484,6 +484,18 @@ func TestCryptDungeon_EntranceAndBossPatternEmpty_NoInteriorWallsAcrossSeeds(t *
 		require.NotEmpty(t, bossHexes, "seed %d: boss region must have hexes", seed)
 
 		for _, w := range data.Space.Walls {
+			// rpg-toolkit#834: a boundary-edge segment (Start != End) is a
+			// non-blocking render-contract entry for a REAL floor hex on
+			// the space's outer perimeter, not a generated interior
+			// wall -- the entrance's west edge and the boss region's own
+			// outer edge legitimately carry one of these even under
+			// PatternEmpty. This test's invariant is about GENERATED
+			// (blocking) interior walls only; only degenerate
+			// (Start == End) entries are ever candidates (same fix as
+			// boss_primary_axis_test.go's analogous filter).
+			if w.Start != w.End {
+				continue
+			}
 			h := core.HexFromCube(w.Start)
 			require.False(t, entranceHexes[h],
 				"seed %d: entrance region must roll zero interior walls with PatternEmpty; found one at %v", seed, h)
