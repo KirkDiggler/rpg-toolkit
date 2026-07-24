@@ -139,11 +139,11 @@ type DungeonConnectorParams struct {
 	// Ignored when Locked is false.
 	LockDC int
 
-	// LockAbility is the 3-letter ability code (e.g. "DEX") the check
-	// rolls against, copied verbatim onto DoorData.LockAbility. Required
-	// (non-empty) when Locked is true — validateDungeonParams rejects a
-	// locked connector with an empty LockAbility. Ignored when Locked is
-	// false.
+	// LockAbility is an opaque ability identifier owned by the host/rulebook,
+	// copied verbatim onto DoorData.LockAbility. For D&D 5e, use the canonical
+	// lowercase abilities.DEX identifier ("dex"). Required (non-empty) when
+	// Locked is true — validateDungeonParams rejects a locked connector with
+	// an empty LockAbility. Ignored when Locked is false.
 	LockAbility string
 
 	// LockTool is an optional toolkit ref (e.g.

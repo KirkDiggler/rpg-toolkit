@@ -34,6 +34,7 @@ package encounter
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
@@ -194,7 +195,10 @@ func CryptDungeonParams(seed int64, entranceDoorID, bossDoorID core.EntityID) Du
 		},
 		Connectors: []DungeonConnectorParams{
 			{DoorID: entranceDoorID},
-			{DoorID: bossDoorID},
+			{
+				DoorID: bossDoorID, Locked: true, LockDC: 12,
+				LockAbility: string(abilities.DEX),
+			},
 		},
 	}
 }
