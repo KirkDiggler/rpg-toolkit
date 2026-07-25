@@ -35,11 +35,14 @@ func TestWorkbenchReport_ValidSpec(t *testing.T) {
 	assert.Contains(t, report, "verdict: VALID")
 	assert.Contains(t, report, "seed 42")
 	assert.Contains(t, report, "dnd5e:monsters:skeleton-captain (boss)") // spawn plan: actual boss spawn
-	// entrance (width 6) + a real wall at the region-boundary column (col
-	// 6) + tomb (width 12, no obstacle on this particular row): a mutant
-	// that draws no walls, or shifts any coordinate by even one column,
-	// cannot produce this exact string.
-	assert.Contains(t, report, "......#............")
+	// Row 3: entrance (width 6) floor, the real wall at the region-boundary
+	// column (col 6), then tomb-local row 3's own two placed obstacles --
+	// the coffin (tomb-local col 6 -> absolute col 13) and the altar
+	// (tomb-local col 9 -> absolute col 16). placedTombYAML has no
+	// count-based (randomly rolled) obstacles, so this row is stable across
+	// seeds. A mutant that draws no walls, drops an obstacle, or shifts any
+	// coordinate by even one column cannot produce this exact string.
+	assert.Contains(t, report, "......#......o..o..")
 }
 
 // TestWorkbenchReport_InvalidSpecShowsVerdict pins the other half of the
