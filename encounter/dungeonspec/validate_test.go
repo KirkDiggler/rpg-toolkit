@@ -63,8 +63,9 @@ func tomb(s *dungeonspec.DungeonSpec) *dungeonspec.RoomSpec {
 
 // Shared substrings used by more than one table row below (goconst).
 const (
-	errRefShape = "must be shaped like module:type:id"
-	errM1Rolled = "rolled monster placement lands in M2"
+	errRefShape    = "must be shaped like module:type:id"
+	errM1Rolled    = "rolled monster placement lands in M2"
+	errOutOfBounds = "out of bounds"
 )
 
 func TestValidate_Table(t *testing.T) {
@@ -86,10 +87,16 @@ func TestValidate_Table(t *testing.T) {
 		{"duplicate room id rejected", "", func(s *dungeonspec.DungeonSpec) { s.Rooms[1].ID = s.Rooms[0].ID },
 			"duplicate room id"},
 		{"broken chain", "", func(s *dungeonspec.DungeonSpec) { s.Connectors[1].To = "tomb" }, "linear chain"},
+		{"connector count mismatch rejected", "", func(s *dungeonspec.DungeonSpec) { s.Connectors = s.Connectors[:1] },
+			"linear chain"}, // distinct branch from "broken chain": the count check, not the per-connector match
 		{"room width below minimum rejected", "", func(s *dungeonspec.DungeonSpec) { s.Rooms[0].Width = 3 },
 			"width must be at least"},
 		{"invalid pattern rejected", "", func(s *dungeonspec.DungeonSpec) { s.Rooms[0].Pattern = "bogus" },
 			"invalid pattern"},
+		// Ordering guard: boss-axis must run before any per-cell place-bounds
+		// check, so shrinking the boss room reports "primary axis" and not an
+		// incidental "out of bounds" on one of its now-too-far-out place
+		// entries (the tomb room's place list uses col 9 for the altar).
 		{"boss width 5 fails axis rule", "", func(s *dungeonspec.DungeonSpec) { s.Rooms[3].Width = 5 }, "primary axis"},
 		{"zero boss rooms rejected", "", func(s *dungeonspec.DungeonSpec) {
 			s.Rooms[3].Archetype = "chamber"
@@ -116,6 +123,9 @@ func TestValidate_Table(t *testing.T) {
 		{"boss ref unresolvable rejected", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Boss.Ref = "dnd5e:monsters:beholder"
 		}, "unknown monster"},
+		{"boss ref must be a monster ref rejected", "", func(s *dungeonspec.DungeonSpec) {
+			tomb(s).Boss.Ref = "dnd5e:props:coffin"
+		}, "must be a monster ref"},
 		{"lock dc out of range rejected", "", func(s *dungeonspec.DungeonSpec) {
 			s.Connectors[2].Locked.DC = 31
 		}, "dc must be between"},
@@ -130,10 +140,10 @@ func TestValidate_Table(t *testing.T) {
 			// double-break (col OOB + reserved row) and this row wouldn't
 			// isolate which check actually fired.
 			tomb(s).Place[0].At = [2]int{99, 3}
-		}, "out of bounds"},
+		}, errOutOfBounds},
 		{"place at out of bounds (row)", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Place[0].At = [2]int{6, 99}
-		}, "out of bounds"},
+		}, errOutOfBounds},
 		{"place ref bad shape rejected", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Place[0].Ref = "no-colons-here"
 		}, errRefShape},
@@ -150,6 +160,10 @@ func TestValidate_Table(t *testing.T) {
 			at := [2]int{7, s.Height / 2}
 			tomb(s).Boss.At = &at
 		}, "reserved row"},
+		{"boss.at out of bounds rejected", "", func(s *dungeonspec.DungeonSpec) {
+			at := [2]int{99, 5}
+			tomb(s).Boss.At = &at
+		}, errOutOfBounds},
 		{"place ref of unknown type rejected", "", func(s *dungeonspec.DungeonSpec) {
 			// Place[2] (statue-reaper) deliberately, NOT Place[0] (coffin,
 			// which sets blocks_los): this row must isolate the ref-type
@@ -184,6 +198,10 @@ func TestValidate_Table(t *testing.T) {
 		{"unpinned boss (no at) rejected in M1", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Boss.At = nil
 		}, errM1Rolled},
+		// Ordering guard: boss-required (non-nil Boss) must be checked in
+		// validateBossCardinality before anything downstream dereferences
+		// bossRoom.Boss (axis, ref resolution, M1 at-pinning, place-block) —
+		// this row proves the guard fires first instead of a nil dereference.
 		{"boss-archetype room with no boss: entry rejected — permanent, not M1-only", "",
 			func(s *dungeonspec.DungeonSpec) { tomb(s).Boss = nil }, "boss room must declare boss"},
 

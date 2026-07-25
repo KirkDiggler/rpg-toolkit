@@ -76,15 +76,12 @@ func Validate(spec *DungeonSpec) error {
 		return err
 	}
 
+	if err := validateM1Restrictions(spec, bossRoom); err != nil {
+		return err
+	}
+
 	for i := range spec.Rooms {
 		room := &spec.Rooms[i]
-		if len(room.Monsters) > 0 {
-			// M1-only restriction (lifted in M2's Task C0): SeedMonsters can't
-			// yet roll count-based spawns, so a spec using them would compile
-			// but fail at runtime — the exact gap the load-time contract exists
-			// to prevent.
-			return fmt.Errorf("room %q: rolled monster placement lands in M2", room.ID)
-		}
 		for _, o := range room.Obstacles {
 			if _, err := refParts(o.Ref); err != nil {
 				return fmt.Errorf("room %q: obstacle %w", room.ID, err)
@@ -99,11 +96,6 @@ func Validate(spec *DungeonSpec) error {
 	if err := validateBossRef(bossRoom); err != nil {
 		return err
 	}
-	if bossRoom.Boss.At == nil {
-		// M1-only restriction, same class as the count-based-monsters check
-		// above: SeedMonsters only handles At-bearing spawns until M2.
-		return fmt.Errorf("room %q: rolled monster placement lands in M2", bossRoom.ID)
-	}
 
 	for i := range spec.Rooms {
 		if err := validatePlaceBlock(&spec.Rooms[i], spec.Height); err != nil {
@@ -111,14 +103,37 @@ func Validate(spec *DungeonSpec) error {
 		}
 	}
 
-	for _, c := range spec.Connectors {
+	for i := range spec.Connectors {
+		c := &spec.Connectors[i]
 		if c.Locked != nil {
-			if err := validateLocked(c.Locked); err != nil {
+			if err := validateLocked(c); err != nil {
 				return err
 			}
 		}
 	}
 
+	return nil
+}
+
+// validateM1Restrictions enforces the M1-only monster/boss.at pinning
+// restriction (design.md, Task B2's "M1-only monster-pinning restriction"):
+// SeedMonsters only handles At-bearing spawns until M2's Task C0 lands
+// count-based rolling, so a spec using count-based monsters: or an unpinned
+// boss.at would compile but fail at runtime — the exact gap the load-time
+// contract exists to prevent. Both checks live in this one function so
+// C0 can lift the restriction as a pure deletion of this function and its
+// one call site in Validate (the boss-required non-nil check in
+// validateBossCardinality is a separate, permanent check C0 never touches).
+func validateM1Restrictions(spec *DungeonSpec, bossRoom *RoomSpec) error {
+	for i := range spec.Rooms {
+		room := &spec.Rooms[i]
+		if len(room.Monsters) > 0 {
+			return fmt.Errorf("room %q: monsters: rolled monster placement lands in M2", room.ID)
+		}
+	}
+	if bossRoom.Boss.At == nil {
+		return fmt.Errorf("room %q: boss.at: rolled monster placement lands in M2", bossRoom.ID)
+	}
 	return nil
 }
 
@@ -154,7 +169,7 @@ func validatePattern(pattern string) error {
 	case "", "empty", "scattered":
 		return nil
 	default:
-		return fmt.Errorf("invalid pattern %q (must be empty or scattered)", pattern)
+		return fmt.Errorf(`invalid pattern %q (must be "", "empty", or "scattered")`, pattern)
 	}
 }
 
@@ -184,10 +199,7 @@ func validateBossCardinality(rooms []RoomSpec) (*RoomSpec, error) {
 }
 
 func validateBossAxis(bossRoom *RoomSpec, height int) error {
-	axis := bossRoom.Width
-	if height < axis {
-		axis = height
-	}
+	axis := min(bossRoom.Width, height)
 	if axis <= bossAxisMin {
 		return fmt.Errorf("room %q: boss room primary axis (min(width, height)=%d) must exceed %d",
 			bossRoom.ID, axis, bossAxisMin)
@@ -294,12 +306,25 @@ func checkCellBounds(room *RoomSpec, height int, at [2]int) error {
 	return nil
 }
 
-func validateLocked(locked *LockedSpec) error {
+// validateLocked checks a connector's lock, prefixing errors with the
+// connector's location (from -> to) since a spec can have several.
+func validateLocked(c *ConnectorSpec) error {
+	locked := c.Locked
 	if locked.DC < minLockDC || locked.DC > maxLockDC {
-		return fmt.Errorf("lock dc must be between %d and %d, got %d", minLockDC, maxLockDC, locked.DC)
+		return fmt.Errorf("connector %q -> %q: lock dc must be between %d and %d, got %d",
+			c.From, c.To, minLockDC, maxLockDC, locked.DC)
 	}
 	if _, err := abilities.GetByID(locked.Ability); err != nil {
-		return fmt.Errorf("lock ability: %w", err)
+		// abilities.GetByID's error (verified empirically) renders as just
+		// "invalid ability" — its valid_options live only in structured
+		// metadata callers don't see via Error(). Build the known-abilities
+		// list ourselves, parallel to the monster known-refs treatment.
+		known := make([]string, 0, len(abilities.List()))
+		for _, a := range abilities.List() {
+			known = append(known, string(a))
+		}
+		return fmt.Errorf("connector %q -> %q: lock ability %q: %w (known: %s)",
+			c.From, c.To, locked.Ability, err, strings.Join(known, ", "))
 	}
 	return nil
 }
