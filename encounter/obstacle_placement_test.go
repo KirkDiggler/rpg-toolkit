@@ -24,6 +24,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 const (
@@ -503,4 +504,195 @@ func TestInitDungeon_ObstaclePlacement_PreferBorderSpecsDrawBeforeNormalSpecs(t 
 					"pool on its own) was declared first", seed, o.ID, localX, localY)
 		}
 	}
+}
+
+// opTwoRegionParamsWithPlaced mirrors opTwoRegionParams but also attaches
+// PlacedObstacleSpecs to the chamber region alongside its rolled specs —
+// proving the two placement mechanisms coexist in the same region
+// (design.md §Design delta: "place coexists with the count-based
+// obstacles... list in the same room; placed entries are honored first,
+// then count-based entries roll into the remaining safe cells").
+func opTwoRegionParamsWithPlaced(
+	seed int64, placed []encounter.PlacedObstacleSpec, specs []encounter.ObstacleSpec,
+) encounter.DungeonParams {
+	return encounter.DungeonParams{
+		Height:     opChamberHeight,
+		RandomSeed: seed,
+		Regions: []encounter.DungeonRegionParams{
+			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
+			{
+				ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: opChamberWidth,
+				Pattern:         environments.PatternEmpty,
+				PlacedObstacles: placed,
+				Obstacles:       specs,
+			},
+		},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+	}
+}
+
+// TestInitDungeon_PlacedObstaclesLandVerbatim proves a PlacedObstacleSpec
+// lands at EXACTLY its declared room-local cell, translated by the
+// region's offsetX — not just "an obstacle with this ref exists somewhere
+// in the region" (design.md §Design delta).
+func TestInitDungeon_PlacedObstaclesLandVerbatim(t *testing.T) {
+	enc := opNewEncounter(t)
+	placed := []encounter.PlacedObstacleSpec{
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 6, Row: 3}, BlocksMovement: true, BlocksLoS: false},
+	}
+	require.NoError(t, enc.InitDungeon(opTwoRegionParamsWithPlaced(1, placed, nil)))
+
+	data := enc.ToData()
+	require.Len(t, data.Space.Obstacles, 1)
+
+	want := core.HexFromPosition(spatial.Position{X: float64(opChamberOffsetX + 6), Y: float64(3)})
+	got := data.Space.Obstacles[0]
+	require.Equal(t, opSpecRefA, got.Ref)
+	require.Equal(t, want, got.Position, "placed obstacle must land at exactly its declared cell, translated by offsetX")
+	require.True(t, got.BlocksMovement)
+	require.False(t, got.BlocksLoS)
+}
+
+// TestInitDungeon_RolledObstaclesNeverUsePlacedCells proves placed cells
+// are excluded from the rolled candidate pool: across a seed sweep, no
+// rolled ObstacleData ever lands on a placed cell's cube coordinate.
+func TestInitDungeon_RolledObstaclesNeverUsePlacedCells(t *testing.T) {
+	placed := []encounter.PlacedObstacleSpec{
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 6, Row: 3}},
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 2, Row: 2}},
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 8, Row: 6}},
+	}
+	rolled := []encounter.ObstacleSpec{{Ref: opSpecRefB, Count: 20, BlocksMovement: true}}
+
+	placedCells := make(map[core.Hex]bool, len(placed))
+	for _, p := range placed {
+		placedCells[core.HexFromPosition(spatial.Position{
+			X: float64(opChamberOffsetX + p.At.Col), Y: float64(p.At.Row),
+		})] = true
+	}
+
+	for seed := int64(1); seed <= 20; seed++ {
+		enc := opNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(opTwoRegionParamsWithPlaced(seed, placed, rolled)), "seed %d", seed)
+		for _, o := range enc.ToData().Space.Obstacles {
+			if o.Ref != opSpecRefB {
+				continue // only the rolled spec's instances are under test here
+			}
+			require.False(t, placedCells[o.Position],
+				"seed %d: rolled obstacle %q landed on a placed cell %v", seed, o.ID, o.Position)
+		}
+	}
+}
+
+// TestInitDungeon_PlacedObstacleOnReservedRowRejected: InitDungeon rejects
+// a PlacedObstacleSpec whose At.Row == height/2 — belt-and-suspenders with
+// dungeonspec's own load-time check (Task B2), since InitDungeon is a
+// public toolkit entry point other callers besides dungeonspec could reach
+// directly.
+func TestInitDungeon_PlacedObstacleOnReservedRowRejected(t *testing.T) {
+	enc := opNewEncounter(t)
+	placed := []encounter.PlacedObstacleSpec{
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 5, Row: opChamberHeight / 2}},
+	}
+	err := enc.InitDungeon(opTwoRegionParamsWithPlaced(1, placed, nil))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reserved row")
+}
+
+// TestInitDungeon_PlacedObstacleCollisionRejected: two PlacedObstacleSpecs
+// at the same At, or one at a wall cell (PatternRandom region), is a hard
+// InitDungeon error — placed entries are guarantees, not best-effort
+// (design.md §Validation).
+func TestInitDungeon_PlacedObstacleCollisionRejected(t *testing.T) {
+	t.Run("two placed obstacles at the same cell", func(t *testing.T) {
+		enc := opNewEncounter(t)
+		placed := []encounter.PlacedObstacleSpec{
+			{Ref: opSpecRefA, At: encounter.LocalHex{Col: 6, Row: 3}},
+			{Ref: opSpecRefB, At: encounter.LocalHex{Col: 6, Row: 3}},
+		}
+		err := enc.InitDungeon(opTwoRegionParamsWithPlaced(1, placed, nil))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "already placed")
+	})
+
+	t.Run("placed obstacle on a wall cell is rejected", func(t *testing.T) {
+		// PatternRandom's interior walls are seed-dependent -- discover an
+		// actual wall cell for some seed first (a plain probe run, no
+		// placed obstacles), then re-run WITH a PlacedObstacleSpec at that
+		// exact cell using the SAME seed, expecting rejection. Wall layout
+		// depends only on RandomSeed + region shape, never on
+		// PlacedObstacles content, so the discovered cell is still a real
+		// wall cell in the second run.
+		var wallCell encounter.LocalHex
+		var seedUsed int64
+		found := false
+		for seed := int64(1); seed <= 50 && !found; seed++ {
+			probeParams := encounter.DungeonParams{
+				Height:     opChamberHeight,
+				RandomSeed: seed,
+				Regions: []encounter.DungeonRegionParams{
+					{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
+					{ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: opChamberWidth, Pattern: environments.PatternRandom},
+				},
+				Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+			}
+			probe := opNewEncounter(t)
+			require.NoError(t, probe.InitDungeon(probeParams), "seed %d", seed)
+			for _, w := range probe.ToData().Space.Walls {
+				if w.Start != w.End {
+					continue // boundary-edge perimeter segment, not an interior wall cell
+				}
+				pos := w.Start.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+				localCol := int(pos.X) - opChamberOffsetX
+				localRow := int(pos.Y)
+				if localCol >= 0 && localCol < opChamberWidth && localRow != opChamberHeight/2 {
+					wallCell = encounter.LocalHex{Col: localCol, Row: localRow}
+					seedUsed = seed
+					found = true
+					break
+				}
+			}
+		}
+		require.True(t, found, "expected at least one seed in [1,50] to produce an interior wall cell in the chamber")
+
+		enc := opNewEncounter(t)
+		params := encounter.DungeonParams{
+			Height:     opChamberHeight,
+			RandomSeed: seedUsed,
+			Regions: []encounter.DungeonRegionParams{
+				{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
+				{
+					ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: opChamberWidth,
+					Pattern:         environments.PatternRandom,
+					PlacedObstacles: []encounter.PlacedObstacleSpec{{Ref: opSpecRefA, At: wallCell}},
+				},
+			},
+			Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+		}
+		err := enc.InitDungeon(params)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "wall cell")
+	})
+}
+
+// TestInitDungeon_PlacedObstaclesDeterministicSameSeed: the same seed
+// reproduces byte-identical placement (placed AND rolled obstacles
+// together) across independent Encounters — mirrors
+// TestInitDungeon_ObstaclePlacement_DeterministicSameSeed's rolled-only
+// gate; determinism must hold with placements present too.
+func TestInitDungeon_PlacedObstaclesDeterministicSameSeed(t *testing.T) {
+	placed := []encounter.PlacedObstacleSpec{
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 6, Row: 3}, BlocksMovement: true},
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 2, Row: 2}, BlocksMovement: true},
+	}
+	rolled := []encounter.ObstacleSpec{{Ref: opSpecRefB, Count: 5, BlocksMovement: true, BlocksLoS: true}}
+	build := func() *encounter.Data {
+		enc := opNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(opTwoRegionParamsWithPlaced(909, placed, rolled)))
+		return enc.ToData()
+	}
+	a := build()
+	b := build()
+	require.Equal(t, a.Space.Obstacles, b.Space.Obstacles,
+		"identical seed must reproduce identical placement, placed and rolled together")
 }
