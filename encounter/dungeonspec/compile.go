@@ -136,10 +136,10 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 	// room.Monsters is unreachable via Load today -- Validate's M1-only
 	// restriction (validateM1Restrictions) rejects any non-empty
 	// room.Monsters -- but compileRoom does not yet know how to compile
-	// count-based rolled monsters (M2's Task C0), so it errors loudly
-	// rather than silently dropping them if that assumption is ever
-	// violated by a future caller, mirroring compile()'s own nil-boss.At
-	// guard.
+	// count-based rolled monsters (M2's Slice C, count-based compiling --
+	// see plan), so it errors loudly rather than silently dropping them if
+	// that assumption is ever violated by a future caller, mirroring
+	// compile()'s own nil-boss.At guard.
 	if len(room.Monsters) > 0 {
 		return encounter.DungeonRegionParams{}, nil,
 			fmt.Errorf("rolled monsters not compiled yet (Validate should have rejected this spec)")
@@ -150,6 +150,17 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 		Archetype: encounter.RegionArchetype(room.Archetype),
 		Width:     room.Width,
 		Pattern:   compilePattern(room.Pattern),
+	}
+
+	// The boss room's own pinned boss.at cell is a MONSTER placement exactly
+	// like a place: monster entry below -- compile() builds its
+	// SpawnInstruction directly from room.Boss, never through this room's
+	// Place loop, so without reserving it here separately, InitDungeon's
+	// rolled-obstacle draw has no idea that cell is spoken for (rpg-toolkit#842
+	// gate finding: see encounter.DungeonRegionParams.ReservedCells' doc).
+	if room.Boss != nil && room.Boss.At != nil {
+		region.ReservedCells = append(region.ReservedCells,
+			encounter.LocalHex{Col: room.Boss.At[0], Row: room.Boss.At[1]})
 	}
 
 	if len(room.Obstacles) > 0 {
@@ -188,6 +199,12 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 			})
 		case refTypeMonsters:
 			at := encounter.LocalHex{Col: entry.At[0], Row: entry.At[1]}
+			// Reserve this cell the same way as the boss's own pinned
+			// boss.at above -- a placed monster never becomes a
+			// PlacedObstacleSpec, so without this InitDungeon's
+			// rolled-obstacle draw would have no idea the cell is taken
+			// (rpg-toolkit#842 gate finding: see ReservedCells' doc).
+			region.ReservedCells = append(region.ReservedCells, at)
 			spawns = append(spawns, SpawnInstruction{
 				RoomID:     room.ID,
 				MonsterRef: entry.Ref,

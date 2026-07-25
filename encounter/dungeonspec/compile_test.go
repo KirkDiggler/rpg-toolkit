@@ -4,6 +4,7 @@
 package dungeonspec_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
@@ -280,4 +281,71 @@ connectors:
 	require.Len(t, compiled.Params.Connectors, 2)
 	assert.Equal(t, core.EntityID("crypt-door-entrance-corridor"), compiled.Params.Connectors[0].DoorID)
 	assert.Equal(t, core.EntityID("crypt-door-corridor-boss"), compiled.Params.Connectors[1].DoorID)
+}
+
+// TestLoad_PlacedMonsterCellsReservedFromRolledObstacles is the regression
+// test for rpg-toolkit#842's gate-blocking cross-task seam bug: a placed
+// monster -- a place: monster entry, or the boss's own pinned boss.at --
+// compiles to a SpawnInstruction, never a PlacedObstacleSpec, so
+// InitDungeon's rolled-obstacle draw had no idea that cell was already
+// spoken for and could roll a count-based obstacle directly onto it. The
+// bug never showed up at compile time (compile()/compileRoom's own output
+// was correct in isolation) -- it only surfaced later, and only on SOME
+// seeds, as Encounter.SeedMonsters failing to place the monster into a
+// cell an obstacle already occupies. Exercising the FULL pipeline (Load ->
+// InitDungeon -> SeedMonsters), not just the compiler or the engine in
+// isolation, is the point: the seam between two independently-correct
+// pieces is exactly what broke.
+//
+// reservedCellRegressionYAML is single-use and deliberately NOT
+// placedTombYAML/validM1YAML: this fixture's tomb room needs BOTH a
+// count-based obstacles: block (to create rollable candidates) and a
+// place: monster entry alongside its boss.at (to create reserved cells to
+// collide with) in the SAME room -- a combination the shared fixtures
+// don't have, and adding one to them would perturb OTHER tests' exact
+// obstacle-position/floor-plan assertions (compile_test.go's own
+// TestLoad_GeneratesDeterministicDoorIDs and workbench_test.go's floor-plan
+// row pins, in particular).
+//
+// Count: 40 count-based obstacles crammed into the tomb room's ~84
+// non-doorRow cells (12x8, minus the shared doorRow row) makes a missing
+// reservation collide on a large fraction of seeds -- the gate's own
+// empirical finding was roughly a third of seeds at a comparable
+// room/count ratio -- so a 50-seed sweep is well past enough to catch a
+// fix that only closes PART of the gap (e.g. the boss.at half but not the
+// place: monster half, or vice versa).
+func TestLoad_PlacedMonsterCellsReservedFromRolledObstacles(t *testing.T) {
+	const reservedCellRegressionYAML = `
+version: 1
+key: reserved-cell-regression
+name: Reserved Cell Regression Check
+height: 8
+rooms:
+  - id: entrance
+    archetype: entrance
+    width: 6
+  - id: tomb
+    archetype: boss
+    width: 12
+    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5] }
+    obstacles:
+      - { ref: "dnd5e:props:pillar", count: 40 }
+    place:
+      - { ref: "dnd5e:monsters:skeleton", at: [4, 2] }
+connectors:
+  - { from: entrance, to: tomb }
+`
+	compiled, err := dungeonspec.Load([]byte(reservedCellRegressionYAML))
+	require.NoError(t, err)
+
+	for seed := int64(1); seed <= 50; seed++ {
+		params := compiled.Params
+		params.RandomSeed = seed
+
+		transport := encounter.NewInMemoryTransport()
+		broker := encounter.NewBroker(transport)
+		enc := encounter.New(context.Background(), "reserved-cell-regression-test", broker)
+		require.NoError(t, enc.InitDungeon(params), "seed %d: InitDungeon", seed)
+		require.NoError(t, enc.SeedMonsters(compiled.Spawns), "seed %d: SeedMonsters", seed)
+	}
 }

@@ -24,7 +24,18 @@ import (
 // spec that Loads successfully is then run through a throwaway
 // Encounter.InitDungeon at seed so the report's floor plan reflects the
 // SAME wall/door/obstacle generation a real encounter would produce at
-// that seed -- not a re-derivation of the compiler's own output.
+// that seed -- not a re-derivation of the compiler's own output -- and
+// then through SeedMonsters (no AddPlayer call first: this is a
+// throwaway single-report encounter, not a live one, and SeedMonsters'
+// combat-entry check is harmless with zero players seated), the third leg
+// of the same pipeline Load's own doc names (InitDungeon -> AddPlayer ->
+// SeedMonsters). Running it here is not optional: rpg-toolkit#842's gate
+// finding was a spec that Loaded and InitDungeon'd cleanly could still
+// fail at THIS step, on some fraction of seeds, because a placed
+// monster's cell hadn't been reserved from the rolled-obstacle draw --
+// without this call, the workbench would report VALID on a spec that
+// SeedMonsters actually rejects, exactly the failure mode this tool
+// exists to catch before an author ships a spec.
 //
 // seed 0 is entropy-seeded (matches DungeonParams.RandomSeed's own zero-
 // value contract) -- pass a non-zero seed for a reproducible report.
@@ -41,6 +52,9 @@ func WorkbenchReport(raw []byte, seed int64) (string, error) {
 	if err := enc.InitDungeon(compiled.Params); err != nil {
 		return fmt.Sprintf("verdict: INVALID\nseed: %d\nerror: init dungeon: %s\n", seed, err), err
 	}
+	if err := enc.SeedMonsters(compiled.Spawns); err != nil {
+		return fmt.Sprintf("verdict: INVALID\nseed: %d\nerror: seed monsters: %s\n", seed, err), err
+	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "verdict: VALID\nseed %d\n\n", seed)
@@ -48,6 +62,7 @@ func WorkbenchReport(raw []byte, seed int64) (string, error) {
 	writeConnectors(&b, compiled.Params.Connectors)
 	writeSpawnPlan(&b, compiled.Spawns)
 	writePlacedObstacles(&b, compiled.Params.Regions)
+	fmt.Fprintf(&b, "seeded %d monster(s)\n\n", len(enc.ToData().Monsters))
 	writeFloorPlan(&b, enc.ToData())
 	return b.String(), nil
 }
