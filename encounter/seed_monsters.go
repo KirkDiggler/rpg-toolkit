@@ -379,7 +379,10 @@ type attackSnapshot struct {
 // (monster/scimitar_action.go, predating the generic actions.MeleeAction)
 // never serializes a damage type at all (damage_bonus instead) — its
 // DamageType comes back empty here; AttackBonus/DamageDice still populate
-// correctly, which is what OA readiness actually needs.
+// correctly, which is what OA readiness actually needs. A broader gap —
+// a ranged-only monster's OA readiness assumes a melee-shaped attack —
+// is tracked separately as rpg-toolkit#844 (a typed attack-snapshot
+// accessor belongs in rulebooks/dnd5e, not patched here).
 func primaryAttackSnapshot(mon *monster.Monster) (attackBonus int, damageDice, damageType string) {
 	for _, action := range mon.Actions() {
 		var snap attackSnapshot
