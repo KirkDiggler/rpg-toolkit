@@ -442,6 +442,28 @@ func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) erro
 // melee capability auto-fire their OA reaction — no prompt needed for NPC
 // reactors per the wave's architectural call.
 func (e *Encounter) AddMonster(input MonsterInput) error {
+	if err := e.addMonsterNoCombatCheck(input); err != nil {
+		return err
+	}
+	// Combat-entry check (rpg-toolkit#757): a newly-added monster may already
+	// be visible to an existing player (e.g. spawned inside an already-open
+	// LoS), so this mutation site needs the same check as Move.
+	return e.checkCombatEntry()
+}
+
+// addMonsterNoCombatCheck does everything AddMonster does except the
+// final combat-entry check. SeedMonsters (#842) uses this to stage every
+// spawn in a batch before running exactly ONE checkCombatEntry pass at
+// the end — so a partial roster mid-batch (e.g. a not-yet-visible boss
+// added before an already-visible entrance monster) can never trigger a
+// premature, incomplete initiative roll the way a naive per-spawn
+// AddMonster loop would (see combat_entry_test.go's
+// TestIdempotent_AddMonsterAndMoveAfterCombatStarted: once combat has
+// started, EVERY subsequent AddMonster joins initiative unconditionally,
+// regardless of that monster's own visibility). AddMonster itself is
+// unchanged for every other caller — this is a pure extraction, not a
+// behavior change.
+func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
 	if input.ID == "" {
 		return errors.New("monster ID required")
 	}
@@ -493,11 +515,7 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 			return fmt.Errorf("publish monster appeared on add: %w", err)
 		}
 	}
-
-	// Combat-entry check (rpg-toolkit#757): a newly-added monster may already
-	// be visible to an existing player (e.g. spawned inside an already-open
-	// LoS), so this mutation site needs the same check as Move.
-	return e.checkCombatEntry()
+	return nil
 }
 
 // seedOAReadiness initialises an entity's readiness map (if needed) and
