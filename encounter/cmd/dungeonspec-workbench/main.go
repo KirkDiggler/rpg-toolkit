@@ -39,10 +39,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Decode/Validate never look at seed, so a spec that fails to Load is
+	// INVALID identically at every seed in a sweep -- check that ONCE up
+	// front and print the (single) resulting report rather than n
+	// identical copies of it.
+	if _, err := dungeonspec.Load(raw); err != nil {
+		report, _ := dungeonspec.WorkbenchReport(raw, *seed)
+		fmt.Println(report)
+		os.Exit(1)
+	}
+
 	// A -n sweep prints every seed's report regardless of individual
 	// failures (an author sweeping seeds wants to see ALL of them, not
 	// have the run abort partway through) -- the exit code just reflects
-	// whether ANY seed in the sweep came back INVALID.
+	// whether ANY seed in the sweep came back INVALID. Unlike the Load
+	// check above, a failure here (InitDungeon, after Load already
+	// succeeded) CAN be seed-dependent -- e.g. a scattered pattern that
+	// occasionally rolls a required path blocked at a particular seed --
+	// so every seed genuinely needs its own attempt.
 	sawInvalid := false
 	for i := 0; i < *n; i++ {
 		report, err := dungeonspec.WorkbenchReport(raw, *seed+int64(i))

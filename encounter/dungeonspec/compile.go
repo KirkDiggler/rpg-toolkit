@@ -88,9 +88,10 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 		at := encounter.LocalHex{Col: bossRoom.Boss.At[0], Row: bossRoom.Boss.At[1]}
 		bossAt = &at
 	}
-	// Capacity is a lower bound, not exact: sized for the boss spawn plus
-	// one per room, but a room's place list can name several monster
-	// entries (or none), so appends can grow this well past the hint.
+	// Capacity is a hint, not a bound: sized for the boss spawn plus one
+	// per room, but a room's place list can name several monster entries
+	// (growing past the hint) or none at all (falling short of it) --
+	// neither direction is guaranteed.
 	spawns := make([]SpawnInstruction, 0, len(spec.Rooms)+1)
 	spawns = append(spawns, SpawnInstruction{
 		RoomID:     bossRoom.ID,

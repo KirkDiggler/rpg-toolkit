@@ -104,6 +104,16 @@ func writeSpawnPlan(b *strings.Builder, spawns []SpawnInstruction) {
 // Space coordinates, since LocalHex is already the same room-local frame
 // the author's own place: block used.
 func writePlacedObstacles(b *strings.Builder, regions []encounter.DungeonRegionParams) {
+	hasPlaced := false
+	for _, r := range regions {
+		if len(r.PlacedObstacles) > 0 {
+			hasPlaced = true
+			break
+		}
+	}
+	if !hasPlaced {
+		return // nothing placed in this spec -- an empty header/section would just be noise
+	}
 	fmt.Fprintln(b, "placed props (exact coordinates):")
 	for _, r := range regions {
 		for _, p := range r.PlacedObstacles {
@@ -115,25 +125,29 @@ func writePlacedObstacles(b *strings.Builder, regions []encounter.DungeonRegionP
 
 // floorPlanLegend documents the ASCII floor plan's marker vocabulary,
 // printed once ahead of the grid so the symbols are self-describing.
-const floorPlanLegend = "floor plan (. floor, # wall/perimeter, D door, o obstacle):"
+const floorPlanLegend = "floor plan (. floor, # wall, D door, o obstacle, @ entrance):"
 
-// writeFloorPlan renders the encounter's committed Space (plus its Doors,
-// which live on Data, not SpaceData) as an ASCII grid: '.' floor, '#'
-// every wall cell, 'D' a door, 'o' an obstacle (rolled or placed alike --
-// writePlacedObstacles already calls out placed ones by name and exact
-// coordinate separately, so the map doesn't need a second, distinct
-// marker to carry that distinction too).
+// writeFloorPlan renders the encounter's committed Space (plus its Doors
+// and Entrance, which live on Data/SpaceData respectively) as an ASCII
+// grid: '.' floor, '#' an actual wall cell, 'D' a door, 'o' an obstacle
+// (rolled or placed alike -- writePlacedObstacles already calls out
+// placed ones by name and exact coordinate separately, so the map doesn't
+// need a second, distinct marker to carry that distinction too), '@' the
+// designated entrance cell (SpaceData.Entrance).
 //
-// PERIMETER-EDGE FOLDING: SpaceData.Walls carries two shapes (see that
-// field's doc) -- degenerate (Start == End, one blocked interior hex) and
-// boundary-edge (Start != End, a render-only outer-perimeter marker whose
-// End lies outside the grid). This renderer only ever looks at Start, so
-// both shapes land on the SAME '#' marker -- a boundary-edge segment's
-// Start is real floor that also happens to sit on the room's outer edge,
-// and this coarse a grid has no sub-cell resolution to draw a distinct
-// edge glyph there. That's the "fold into whatever's cheap" call this
-// package's doc comments elsewhere point authors back to this function
-// for.
+// DEGENERATE WALLS ONLY -- a decision, not a shortcut: SpaceData.Walls
+// carries two shapes (see that field's doc). Degenerate (Start == End) is
+// an actual blocked interior hex; boundary-edge (Start != End) is a
+// render-only outer-perimeter marker added for rpg-dnd5e-web's client
+// (rpg-toolkit#834) whose Start is real WALKABLE floor -- never a
+// spatial.Room blocker. An earlier version of this renderer folded both
+// shapes into the same '#' marker for simplicity; that was wrong, not
+// merely imprecise, because most of a dungeon's outer edge is
+// boundary-edge-only, INCLUDING the entrance region's own spawn column
+// (SpaceData.Entrance sits at the room's far edge, design.md/dungeon.go's
+// "just inside the entrance, not center") -- folding rendered the party's
+// own spawn point as a wall. This renderer skips boundary-edge segments
+// outright instead.
 func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 	fmt.Fprintln(b, floorPlanLegend)
 	sd := data.Space
@@ -149,16 +163,24 @@ func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 			grid[row][col] = '.'
 		}
 	}
+	// set is defensive, not load-bearing: every coordinate passed to it
+	// below is already guaranteed in-bounds -- walls/doors/obstacles by
+	// InitDungeon's own validation, Entrance by construction. The bounds
+	// check exists so a violation of that assumption drops the mark
+	// silently instead of panicking the whole report on a slice index.
 	set := func(h core.Hex, r rune) {
 		pos := h.ToPosition()
 		col, row := int(pos.X), int(pos.Y)
 		if row < 0 || row >= sd.Height || col < 0 || col >= sd.Width {
-			return // out-of-bounds perimeter endpoint (boundary-edge End) -- nothing to mark
+			return
 		}
 		grid[row][col] = r
 	}
 
 	for _, w := range sd.Walls {
+		if w.Start != w.End {
+			continue // boundary-edge: render-only perimeter marker, not a real wall -- see doc above
+		}
 		set(core.HexFromCube(w.Start), '#')
 	}
 	for _, door := range data.Doors {
@@ -167,6 +189,7 @@ func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 	for _, o := range sd.Obstacles {
 		set(o.Position, 'o')
 	}
+	set(sd.Entrance, '@')
 
 	rows := make([]string, sd.Height)
 	for row := range grid {
