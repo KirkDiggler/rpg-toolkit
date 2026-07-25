@@ -68,3 +68,49 @@ func TestDecode_UnknownFieldFailsLoudly(t *testing.T) {
 	require.Error(t, err) // the typo class the design promises dies at load
 	assert.Contains(t, err.Error(), "mosnter")
 }
+
+// placedTombYAML is design.md's "Schema: the place block" tomb fragment
+// (ideas/dungeon-authoring/design.md), wrapped in a complete, valid
+// two-room file — this IS content/dungeons/reference-tomb.yaml's content,
+// not a separate lookalike. height: 8 is load-bearing: the tomb room's
+// placements use rows 1, 2, 3, 5, and 6 (boss at row 5; coffin/altar at
+// row 3; statue/skeleton/braziers at rows 1/1/2/6), so height: 8 puts
+// doorRow (height/2) at row 4, clear of all of them.
+const placedTombYAML = `
+version: 1
+key: reference-tomb
+name: The Reference Tomb
+theme: crypt
+height: 8
+rooms:
+  - id: entrance
+    archetype: entrance
+    width: 6
+  - id: tomb
+    archetype: boss
+    width: 12
+    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5] }
+    place:
+      - { ref: "dnd5e:props:coffin",        at: [6, 3], blocks_los: false }
+      - { ref: "dnd5e:props:altar",         at: [9, 3] }
+      - { ref: "dnd5e:props:statue-reaper", at: [1, 1] }
+      - { ref: "dnd5e:props:brazier",       at: [3, 1] }
+      - { ref: "dnd5e:props:brazier",       at: [3, 6] }
+      - { ref: "dnd5e:monsters:skeleton",   at: [4, 2] }
+connectors:
+  - { from: entrance, to: tomb }
+`
+
+func TestDecode_PlaceBlockRoundTrips(t *testing.T) {
+	spec, err := dungeonspec.Decode([]byte(placedTombYAML))
+	require.NoError(t, err)
+	tomb := spec.Rooms[len(spec.Rooms)-1]
+	require.Len(t, tomb.Place, 6) // coffin, altar, statue-reaper, brazier x2, skeleton
+	assert.Equal(t, "dnd5e:props:coffin", tomb.Place[0].Ref)
+	assert.Equal(t, [2]int{6, 3}, tomb.Place[0].At)
+	require.NotNil(t, tomb.Place[0].BlocksLoS)
+	assert.False(t, *tomb.Place[0].BlocksLoS)
+	assert.Equal(t, "dnd5e:monsters:skeleton", tomb.Place[5].Ref)
+	require.NotNil(t, tomb.Boss.At)
+	assert.Equal(t, [2]int{7, 5}, *tomb.Boss.At)
+}
