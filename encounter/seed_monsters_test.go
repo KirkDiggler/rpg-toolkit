@@ -19,6 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -36,7 +40,13 @@ const (
 	smRefSkeleton        = "dnd5e:monsters:skeleton"
 	smRefZombie          = "dnd5e:monsters:zombie"
 
-	smObstacleRefCrate = "test:obstacles:crate"
+	smObstacleRefCrate  = "test:obstacles:crate"
+	smObstacleRefCandle = "test:obstacles:candle"
+
+	smAlicePlayerID = "alice"
+	smAliceEntityID = "char-alice"
+
+	smLongswordActionName = "longsword"
 )
 
 // smDungeonParams builds a minimal 2-region (entrance -> boss) dungeon,
@@ -160,7 +170,7 @@ func TestSeedMonsters_CombatEntryNeverSeesPartialRoster(t *testing.T) {
 
 	entrance := enc.ToData().Space.Entrance
 	require.NoError(t, enc.AddPlayer(PlayerInput{
-		PlayerID: "alice", EntityID: "char-alice", Position: entrance, SightRange: 30,
+		PlayerID: smAlicePlayerID, EntityID: smAliceEntityID, Position: entrance, SightRange: 30,
 	}))
 	require.Equal(t, core.ModeFreeRoam, enc.Mode())
 
@@ -225,7 +235,7 @@ func TestSeedMonsters_SpawnVisibleStillStartsCombat(t *testing.T) {
 
 	entrance := enc.ToData().Space.Entrance
 	require.NoError(t, enc.AddPlayer(PlayerInput{
-		PlayerID: "alice", EntityID: "char-alice", Position: entrance, SightRange: 30,
+		PlayerID: smAlicePlayerID, EntityID: smAliceEntityID, Position: entrance, SightRange: 30,
 	}))
 	require.Equal(t, core.ModeFreeRoam, enc.Mode())
 
@@ -560,4 +570,126 @@ func TestSeedMonsters_WallCellRejected(t *testing.T) {
 	require.NoError(t, enc.SeedMonsters([]SpawnInstruction{
 		{RoomID: smRoomIDEntrance, MonsterRef: smRefZombie, Count: 1, At: &perimeterAt},
 	}), "a perimeter floor cell (boundary-edge segment only, no interior wall) must be accepted")
+}
+
+// TestSeedMonsters_PlayerCollisionRejected: a player already occupying a
+// cell joins the collision domain, the same as a monster or blocking
+// obstacle — without this, a spawn could silently co-locate with a party
+// member.
+func TestSeedMonsters_PlayerCollisionRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: 1, Row: 2}
+	pos := core.HexFromPosition(spatial.Position{X: float64(at.Col), Y: float64(at.Row)}) // entrance offsetX=0
+	require.NoError(t, enc.AddPlayer(PlayerInput{
+		PlayerID: smAlicePlayerID, EntityID: smAliceEntityID, Position: pos, SightRange: 5,
+	}))
+
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "collides with player")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_ExistingMonsterCollisionRejected: a monster already in
+// the encounter (added directly via AddMonster, not SeedMonsters — so no
+// minted-ID collision is possible here, isolating the position-collision
+// check specifically) joins the collision domain the same as a player or
+// blocking obstacle.
+func TestSeedMonsters_ExistingMonsterCollisionRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: 1, Row: 2}
+	pos := core.HexFromPosition(spatial.Position{X: float64(at.Col), Y: float64(at.Row)})
+	require.NoError(t, enc.AddMonster(MonsterInput{ID: "hand-placed-goblin", Position: pos, HP: 7, MaxHP: 7}))
+
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "collides with monster")
+	require.Len(t, enc.ToData().Monsters, 1,
+		"only the hand-placed monster must remain -- SeedMonsters must not have committed anything")
+}
+
+// TestSeedMonsters_UnknownRoomIDRejected: a RoomID that names no real
+// region is rejected before any commit.
+func TestSeedMonsters_UnknownRoomIDRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: 1, Row: 2}
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: "nonexistent-room", MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no such region")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_BeforeInitDungeonRejected: SeedMonsters on a fresh
+// encounter with no Space initialized yet is rejected outright, not a
+// panic or a nil-pointer crash deeper in validateSpawnBatch.
+func TestSeedMonsters_BeforeInitDungeonRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	at := LocalHex{Col: 1, Row: 2}
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no space initialized")
+}
+
+// TestSeedMonsters_NonBlockingObstacleDoesNotReserveCell: a non-blocking
+// obstacle (BlocksMovement false — candles, bone-pile, chain in the real
+// crypt content) does NOT reserve its cell; a monster may be pinned
+// there. Rolls a spread of non-blocking obstacles and targets one back.
+func TestSeedMonsters_NonBlockingObstacleDoesNotReserveCell(t *testing.T) {
+	enc := smNewEncounter(t)
+	params := smDungeonParams()
+	params.Regions[0].Obstacles = []ObstacleSpec{
+		{Ref: smObstacleRefCandle, Count: 6, BlocksMovement: false, BlocksLoS: false},
+	}
+	require.NoError(t, enc.InitDungeon(params))
+
+	obstacles := enc.ToData().Space.Obstacles
+	require.NotEmpty(t, obstacles, "fixture must actually roll obstacles for this to be a real proof")
+	target := obstacles[0]
+	pos := target.Position.ToPosition()
+	at := LocalHex{Col: int(pos.X), Row: int(pos.Y)} // entrance offsetX=0
+
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.NoError(t, err, "a non-blocking obstacle must not reserve its cell")
+	require.Len(t, enc.ToData().Monsters, 1)
+}
+
+// TestPrimaryAttackSnapshot_SkipsMultiattackAction proves the Multiattack
+// skip directly: every real 11-constructor monster with a Multiattack
+// action happens to register its individual attack action(s) FIRST
+// (skeleton-captain: longsword, then multiattack), so primaryAttackSnapshot
+// never actually needs to skip past one in practice — that ordering
+// coincidence would let a bug (e.g. accidentally treating Multiattack as
+// if it had its own damage_dice) hide. Building a monster with Multiattack
+// registered FIRST isolates the skip from that coincidence.
+func TestPrimaryAttackSnapshot_SkipsMultiattackAction(t *testing.T) {
+	mon := monster.New(monster.Config{
+		ID: "test-multiattack-first", Name: "Test", Ref: refs.Monsters.SkeletonCaptain(), HP: 10, AC: 10,
+	})
+	mon.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{
+		Attacks: []string{smLongswordActionName, smLongswordActionName},
+	}))
+	mon.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+		Name: smLongswordActionName, AttackBonus: 5, DamageDice: "1d8+3", Reach: 1, DamageType: damage.Slashing,
+	}))
+
+	attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+	require.Equal(t, 5, attackBonus)
+	require.Equal(t, "1d8+3", damageDice)
+	require.Equal(t, string(damage.Slashing), damageType)
 }

@@ -43,35 +43,110 @@ type SpawnInstruction struct {
 }
 
 // resolvedSpawn is one SpawnInstruction after it has passed every
-// validation check in SeedMonsters' first pass — everything the commit
-// pass needs, so committing never has to re-derive or re-check anything
-// the validation pass already established.
+// validation check AND had its full MonsterInput derived — everything
+// the commit pass needs to call addMonsterNoCombatCheck directly, with
+// no remaining derivation or fallible step (monster construction,
+// DataJSON marshaling, attack-snapshot extraction) left for commit time.
 type resolvedSpawn struct {
-	id         core.EntityID
-	roomID     string
-	monsterRef string
-	position   core.Hex
-	ctor       monsters.Constructor
+	roomID string
+	input  MonsterInput
+}
+
+// spawnBatch holds one SeedMonsters call's shared validation state: the
+// room geometry (doorRow, wallCubes) and the evolving collision domain
+// (claimed) that every instruction in the batch is checked against, in
+// order. Kept as its own type (rather than local variables in
+// validateSpawnBatch) so M2's Slice C count-based safe-cell roller has
+// the same seam to extend — it needs this exact geometry/claimed shape
+// to pick safe cells for At == nil instructions, not just to reject bad
+// At-bearing ones.
+type spawnBatch struct {
+	doorRow   int
+	wallCubes map[spatial.CubeCoordinate]struct{}
+	claimed   map[core.Hex]string
+}
+
+// newSpawnBatch seeds a spawnBatch's collision domain from the
+// encounter's CURRENT players, monsters, and blocking obstacles, so a
+// spawn can't land on any existing occupant either — not just on another
+// spawn within this same batch. Non-blocking obstacles (candles,
+// bone-pile, chain — data.go's ObstacleData.BlocksMovement doc) are
+// walkable-past floor dressing, so they don't reserve a cell here,
+// matching room-rebuild's own walkability semantics (rebuildRoomFromData
+// only ever rejects a BlocksMovement entity's cell as occupied).
+func newSpawnBatch(e *Encounter, spawnCountHint int) *spawnBatch {
+	b := &spawnBatch{
+		doorRow:   e.data.Space.Height / 2,
+		wallCubes: make(map[spatial.CubeCoordinate]struct{}, len(e.data.Space.Walls)),
+		claimed: make(map[core.Hex]string,
+			spawnCountHint+len(e.data.Players)+len(e.data.Monsters)+len(e.data.Space.Obstacles)),
+	}
+	for _, w := range e.data.Space.Walls {
+		if w.Start != w.End {
+			continue // boundary-edge perimeter segment (rpg-toolkit#834), not a blocking wall cell
+		}
+		b.wallCubes[w.Start] = struct{}{}
+	}
+	for id, p := range e.data.Players {
+		if p.View == nil {
+			continue // no persisted position to check against (shouldn't happen for a real seat, but be defensive)
+		}
+		b.claimed[p.View.Position] = fmt.Sprintf("player %q", id)
+	}
+	for id, m := range e.data.Monsters {
+		b.claimed[m.Position] = fmt.Sprintf("monster %q", id)
+	}
+	for _, o := range e.data.Space.Obstacles {
+		if !o.BlocksMovement {
+			continue
+		}
+		b.claimed[o.Position] = fmt.Sprintf("obstacle %q", o.ID)
+	}
+	return b
+}
+
+// isWall reports whether position is a blocking wall cell.
+func (b *spawnBatch) isWall(position core.Hex) bool {
+	_, wall := b.wallCubes[position.ToCube()]
+	return wall
+}
+
+// claim reports the existing occupant's descriptor if position is
+// already taken; otherwise it reserves position for descriptor and
+// reports ("", false).
+func (b *spawnBatch) claim(position core.Hex, descriptor string) (occupant string, alreadyTaken bool) {
+	if occ, taken := b.claimed[position]; taken {
+		return occ, true
+	}
+	b.claimed[position] = descriptor
+	return "", false
 }
 
 // SeedMonsters places a compiled spawn plan (e.g.
 // dungeonspec.CompiledDungeon.Spawns) into an already-InitDungeon'd
 // encounter under two invariants:
 //
-//  1. All-or-nothing batch validation: EVERY instruction is validated
-//     (At non-nil, Count==1, MonsterRef resolves, RoomID names a real
+//  1. All-or-nothing batch validation: EVERY instruction is validated —
+//     At non-nil, Count==1, MonsterRef resolves, RoomID names a real
 //     region, the cell is in-bounds/not-doorRow/not-a-wall-cell/not
-//     already claimed by this batch or an existing occupant) BEFORE any
-//     monster is added. A single bad instruction anywhere in the batch
-//     leaves the encounter exactly as it was before the call — no
-//     partial commit, no monsters added, mode unchanged — mirroring
-//     placeVerbatimObstacles' own contract one file over (dungeon.go)
-//     and closing the class of bug where an early instruction commits
-//     and only a LATER one fails.
+//     already claimed by this batch or an existing player/monster/
+//     blocking obstacle, and its minted ID isn't already in the
+//     encounter — and has its full MonsterInput derived (monster
+//     construction, DataJSON, attack snapshot), BEFORE any monster is
+//     added. The ONE honest exception to "no partial commit": once
+//     validation passes, the only way a commit-phase call can still fail
+//     is addMonsterNoCombatCheck's own EntityAppearedEvent broker
+//     publish (an I/O-shaped failure, not a spec error) — every
+//     REALISTIC failure mode (bad ref, bad room, OOB, collision, wrong
+//     Count, duplicate ID) is caught in validation and can never reach
+//     commit. This mirrors placeVerbatimObstacles' own contract one file
+//     over (dungeon.go).
 //  2. Atomic combat-entry evaluation: every validated spawn is staged
 //     with combat-entry evaluation suppressed (addMonsterNoCombatCheck),
 //     and exactly ONE checkCombatEntry pass runs after the whole batch
-//     commits. This matters because AddMonster's own per-call
+//     commits (including when spawns is empty — SeedMonsters(nil) still
+//     runs this pass; harmless and intended, not worth special-casing
+//     away). This matters because AddMonster's own per-call
 //     checkCombatEntry would otherwise let a monster added mid-batch
 //     while combat is already running (triggered by an EARLIER spawn's
 //     own visibility) join initiative unconditionally, regardless of
@@ -80,6 +155,11 @@ type resolvedSpawn struct {
 //     partial-roster bug this invariant exists to prevent for spawn
 //     orders (boss-first, per the compiler) where a monster is added
 //     AFTER an earlier one's own visibility already flipped the mode.
+//
+// Caller ordering (Slice E and any other host): players must be added
+// (AddPlayer) BEFORE calling SeedMonsters — combat-entry evaluation only
+// ever sees whoever is already in e.data.Players at call time, the same
+// as any other checkCombatEntry-driven check in this package.
 //
 // M1 scope (this plan's Task N2 scoping call): only At-bearing (placed)
 // instructions are supported — an At == nil (rolled, count-based)
@@ -95,8 +175,9 @@ type resolvedSpawn struct {
 // initial dungeon setup), so this is never an issue today. A second call
 // against the SAME encounter (M2 territory, e.g. re-seeding after a
 // pocket clears) would restart each room's counter at 0 and collide with
-// IDs this call already assigned — M2's Slice C, whichever caller ends
-// up needing repeat calls, must carry the counters forward or use a
+// IDs this call already assigned — validated and rejected outright
+// rather than silently colliding, but M2's Slice C, whichever caller
+// ends up needing repeat calls, must carry the counters forward or use a
 // different scheme; not needed for M1's single-call acceptance path.
 func (e *Encounter) SeedMonsters(spawns []SpawnInstruction) error {
 	if e.data.Space == nil {
@@ -109,66 +190,21 @@ func (e *Encounter) SeedMonsters(spawns []SpawnInstruction) error {
 	}
 
 	for _, r := range resolved {
-		mon := r.ctor(string(r.id))
-		dataJSON, err := json.Marshal(mon.ToData())
-		if err != nil {
-			return fmt.Errorf("room %q: monster %q: marshal monster data: %w", r.roomID, r.monsterRef, err)
-		}
-		attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
-
-		if err := e.addMonsterNoCombatCheck(MonsterInput{
-			ID:          r.id,
-			Position:    r.position,
-			HP:          mon.HP(),
-			MaxHP:       mon.MaxHP(),
-			AC:          mon.AC(),
-			Speed:       mon.Speed().Walk / 5, // feet -> hexes (npc.go/action.go consume Speed in hexes)
-			MonsterRef:  r.monsterRef,
-			DataJSON:    dataJSON,
-			AttackBonus: attackBonus,
-			DamageDice:  damageDice,
-			DamageType:  damageType,
-		}); err != nil {
-			return fmt.Errorf("room %q: monster %q: %w", r.roomID, r.monsterRef, err)
+		if err := e.addMonsterNoCombatCheck(r.input); err != nil {
+			return fmt.Errorf("room %q: monster %q: %w", r.roomID, r.input.MonsterRef, err)
 		}
 	}
 	return e.checkCombatEntry()
 }
 
 // validateSpawnBatch checks every instruction in spawns and resolves it
-// to a resolvedSpawn, WITHOUT mutating the encounter — SeedMonsters only
-// starts committing once every instruction has passed here, so a single
-// bad instruction anywhere in the batch never leaves an earlier one
-// committed.
+// to a resolvedSpawn — including constructing the monster, marshaling
+// its DataJSON, and extracting its attack snapshot — WITHOUT mutating
+// the encounter. SeedMonsters only starts committing once every
+// instruction has passed here, so a single bad instruction anywhere in
+// the batch never leaves an earlier one committed.
 func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpawn, error) {
-	doorRow := e.data.Space.Height / 2
-	wallCubes := make(map[spatial.CubeCoordinate]struct{}, len(e.data.Space.Walls))
-	for _, w := range e.data.Space.Walls {
-		if w.Start != w.End {
-			continue // boundary-edge perimeter segment (rpg-toolkit#834), not a blocking wall cell
-		}
-		wallCubes[w.Start] = struct{}{}
-	}
-
-	// Seeded from any monster or BLOCKING obstacle already in the
-	// encounter, so a spawn can't land on an existing occupant either —
-	// not just on another spawn within this same batch. Non-blocking
-	// obstacles (candles, bone-pile, chain — data.go's ObstacleData.
-	// BlocksMovement doc) are walkable-past floor dressing, so they don't
-	// reserve a cell here, matching room-rebuild's own walkability
-	// semantics (rebuildRoomFromData only ever rejects a BlocksMovement
-	// entity's cell as occupied). occupant is a human-readable descriptor
-	// (kind + ID/ref) for the collision error, not just a bool.
-	claimed := make(map[core.Hex]string, len(spawns)+len(e.data.Monsters)+len(e.data.Space.Obstacles))
-	for id, m := range e.data.Monsters {
-		claimed[m.Position] = fmt.Sprintf("monster %q", id)
-	}
-	for _, o := range e.data.Space.Obstacles {
-		if !o.BlocksMovement {
-			continue
-		}
-		claimed[o.Position] = fmt.Sprintf("obstacle %q", o.ID)
-	}
+	batch := newSpawnBatch(e, len(spawns))
 
 	roomCounts := make(map[string]int, len(spawns))
 	resolved := make([]resolvedSpawn, 0, len(spawns))
@@ -183,31 +219,27 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 		}
 		ctor, ok := monsters.ByRef(spawn.MonsterRef)
 		if !ok {
-			return nil, fmt.Errorf("room %q: unknown monster ref %q", spawn.RoomID, spawn.MonsterRef)
+			return nil, fmt.Errorf("room %q: monster %q: unknown monster ref", spawn.RoomID, spawn.MonsterRef)
 		}
 		region, err := e.regionByID(spawn.RoomID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("room %q: monster %q: %w", spawn.RoomID, spawn.MonsterRef, err)
 		}
 		offsetX := regionOffsetX(region.Hexes)
 		position := core.HexFromPosition(spatial.Position{
 			X: float64(offsetX + spawn.At.Col), Y: float64(spawn.At.Row),
 		})
 		if !region.Hexes.Has(position) {
-			return nil, fmt.Errorf("room %q: monster %q: at %v is out of bounds for this region",
-				spawn.RoomID, spawn.MonsterRef, spawn.At)
+			return nil, fmt.Errorf("room %q: monster %q: at %v is out of bounds for this region (width=%d, height=%d)",
+				spawn.RoomID, spawn.MonsterRef, spawn.At, regionWidth(region.Hexes), e.data.Space.Height)
 		}
-		if spawn.At.Row == doorRow {
+		if spawn.At.Row == batch.doorRow {
 			return nil, fmt.Errorf("room %q: monster %q: at %v is on the reserved row (doorRow=%d)",
-				spawn.RoomID, spawn.MonsterRef, spawn.At, doorRow)
+				spawn.RoomID, spawn.MonsterRef, spawn.At, batch.doorRow)
 		}
-		if _, wall := wallCubes[position.ToCube()]; wall {
+		if batch.isWall(position) {
 			return nil, fmt.Errorf("room %q: monster %q: at %v is on a wall cell",
 				spawn.RoomID, spawn.MonsterRef, spawn.At)
-		}
-		if occupant, taken := claimed[position]; taken {
-			return nil, fmt.Errorf("room %q: monster %q: at %v collides with %s",
-				spawn.RoomID, spawn.MonsterRef, spawn.At, occupant)
 		}
 
 		// Minted here, not just at commit time: the whole point of
@@ -225,9 +257,33 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 				spawn.RoomID, spawn.MonsterRef, id)
 		}
 
-		claimed[position] = fmt.Sprintf("monster %q", id)
+		if occupant, taken := batch.claim(position, fmt.Sprintf("monster %q", id)); taken {
+			return nil, fmt.Errorf("room %q: monster %q: at %v collides with %s",
+				spawn.RoomID, spawn.MonsterRef, spawn.At, occupant)
+		}
+
+		mon := ctor(string(id))
+		dataJSON, err := json.Marshal(mon.ToData())
+		if err != nil {
+			return nil, fmt.Errorf("room %q: monster %q: marshal monster data: %w", spawn.RoomID, spawn.MonsterRef, err)
+		}
+		attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+
 		resolved = append(resolved, resolvedSpawn{
-			id: id, roomID: spawn.RoomID, monsterRef: spawn.MonsterRef, position: position, ctor: ctor,
+			roomID: spawn.RoomID,
+			input: MonsterInput{
+				ID:          id,
+				Position:    position,
+				HP:          mon.HP(),
+				MaxHP:       mon.MaxHP(),
+				AC:          mon.AC(),
+				Speed:       mon.Speed().Walk / 5, // feet -> hexes (npc.go/action.go consume Speed in hexes)
+				MonsterRef:  spawn.MonsterRef,
+				DataJSON:    dataJSON,
+				AttackBonus: attackBonus,
+				DamageDice:  damageDice,
+				DamageType:  damageType,
+			},
 		})
 	}
 	return resolved, nil
@@ -236,16 +292,17 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 // regionByID finds a region by its ID (RegionData.ID) in the encounter's
 // current Space — the lookup direction SpaceData.RegionAt doesn't
 // provide (that's hex -> region id; this is region id -> RegionData).
+// Its only caller (validateSpawnBatch, via SeedMonsters) already checked
+// e.data.Space != nil before this can ever be reached, so there's no
+// nil-Space branch here; callers wrap the returned error with their own
+// room/monster context.
 func (e *Encounter) regionByID(id string) (*RegionData, error) {
-	if e.data.Space == nil {
-		return nil, fmt.Errorf("room %q: no space initialized (call InitDungeon first)", id)
-	}
 	for i := range e.data.Space.Regions {
 		if e.data.Space.Regions[i].ID == id {
 			return &e.data.Space.Regions[i], nil
 		}
 	}
-	return nil, fmt.Errorf("room %q: no such region", id)
+	return nil, errors.New("no such region")
 }
 
 // regionOffsetX recovers a region's generateDungeonLayout offsetX
@@ -265,6 +322,27 @@ func regionOffsetX(hexes core.HexSet) int {
 		}
 	}
 	return minX
+}
+
+// regionWidth recovers a region's Width the same way regionOffsetX
+// recovers its offsetX: RegionData carries no Width field, but Hexes is
+// the region's full local rectangle (regionCubes), so max absolute X -
+// min absolute X + 1 IS the width. Used only for an author-facing
+// out-of-bounds error detail — not on any hot path.
+func regionWidth(hexes core.HexSet) int {
+	minX, maxX := 0, 0
+	first := true
+	for h := range hexes {
+		x := int(math.Round(h.ToPosition().X))
+		if first || x < minX {
+			minX = x
+		}
+		if first || x > maxX {
+			maxX = x
+		}
+		first = false
+	}
+	return maxX - minX + 1
 }
 
 // attackSnapshot mirrors the JSON shape shared by every damage-dealing
