@@ -150,12 +150,24 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 		wallCubes[w.Start] = struct{}{}
 	}
 
-	// Seeded from any monsters already in the encounter, so a spawn can't
-	// land on an existing occupant either — not just on another spawn
-	// within this same batch.
-	claimed := make(map[core.Hex]bool, len(spawns)+len(e.data.Monsters))
-	for _, m := range e.data.Monsters {
-		claimed[m.Position] = true
+	// Seeded from any monster or BLOCKING obstacle already in the
+	// encounter, so a spawn can't land on an existing occupant either —
+	// not just on another spawn within this same batch. Non-blocking
+	// obstacles (candles, bone-pile, chain — data.go's ObstacleData.
+	// BlocksMovement doc) are walkable-past floor dressing, so they don't
+	// reserve a cell here, matching room-rebuild's own walkability
+	// semantics (rebuildRoomFromData only ever rejects a BlocksMovement
+	// entity's cell as occupied). occupant is a human-readable descriptor
+	// (kind + ID/ref) for the collision error, not just a bool.
+	claimed := make(map[core.Hex]string, len(spawns)+len(e.data.Monsters)+len(e.data.Space.Obstacles))
+	for id, m := range e.data.Monsters {
+		claimed[m.Position] = fmt.Sprintf("monster %q", id)
+	}
+	for _, o := range e.data.Space.Obstacles {
+		if !o.BlocksMovement {
+			continue
+		}
+		claimed[o.Position] = fmt.Sprintf("obstacle %q", o.ID)
 	}
 
 	roomCounts := make(map[string]int, len(spawns))
@@ -193,15 +205,27 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 			return nil, fmt.Errorf("room %q: monster %q: at %v is on a wall cell",
 				spawn.RoomID, spawn.MonsterRef, spawn.At)
 		}
-		if claimed[position] {
-			return nil, fmt.Errorf("room %q: monster %q: at %v collides with another monster",
-				spawn.RoomID, spawn.MonsterRef, spawn.At)
+		if occupant, taken := claimed[position]; taken {
+			return nil, fmt.Errorf("room %q: monster %q: at %v collides with %s",
+				spawn.RoomID, spawn.MonsterRef, spawn.At, occupant)
 		}
-		claimed[position] = true
 
+		// Minted here, not just at commit time: the whole point of
+		// validating the ENTIRE batch before committing any of it is that
+		// an ID collision — e.g. a second SeedMonsters call re-minting
+		// "monster-entrance-0" against an encounter that already has one
+		// from a prior call — must be caught here too, not discovered
+		// mid-commit by addMonsterNoCombatCheck's own "already in
+		// encounter" check after earlier spawns in THIS batch already
+		// committed.
 		id := core.EntityID(fmt.Sprintf("monster-%s-%d", spawn.RoomID, roomCounts[spawn.RoomID]))
 		roomCounts[spawn.RoomID]++
+		if _, exists := e.data.Monsters[id]; exists {
+			return nil, fmt.Errorf("room %q: monster %q: minted id %q already in encounter",
+				spawn.RoomID, spawn.MonsterRef, id)
+		}
 
+		claimed[position] = fmt.Sprintf("monster %q", id)
 		resolved = append(resolved, resolvedSpawn{
 			id: id, roomID: spawn.RoomID, monsterRef: spawn.MonsterRef, position: position, ctor: ctor,
 		})

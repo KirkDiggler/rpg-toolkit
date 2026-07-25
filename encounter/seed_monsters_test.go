@@ -13,6 +13,7 @@ package encounter
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,8 @@ const (
 	smRefSkeletonCaptain = "dnd5e:monsters:skeleton-captain"
 	smRefSkeleton        = "dnd5e:monsters:skeleton"
 	smRefZombie          = "dnd5e:monsters:zombie"
+
+	smObstacleRefCrate = "test:obstacles:crate"
 )
 
 // smDungeonParams builds a minimal 2-region (entrance -> boss) dungeon,
@@ -65,6 +68,19 @@ func smNewEncounter(t *testing.T) *Encounter {
 		_ = transport.Close()
 	})
 	return New(context.Background(), "enc-seed-monsters-test", broker)
+}
+
+// marshalData snapshots enc's current state as JSON bytes. ToData()
+// returns e.data directly (the SAME pointer every call, never a copy) —
+// require.Equal on two ToData() results compares a pointer to itself and
+// can never fail regardless of what happened in between. Marshaling to
+// bytes at each call site captures a genuine point-in-time snapshot, so
+// comparing before/after actually proves nothing changed.
+func marshalData(t *testing.T, enc *Encounter) []byte {
+	t.Helper()
+	b, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	return b
 }
 
 // TestSeedMonsters_PlacedMonstersSpawnAtTheirCells: an At-bearing
@@ -319,7 +335,7 @@ func TestSeedMonsters_OpportunityAttackReadySeeded(t *testing.T) {
 func TestSeedMonsters_MidBatchInvalidInstructionLeavesEncounterUnchanged(t *testing.T) {
 	enc := smNewEncounter(t)
 	require.NoError(t, enc.InitDungeon(smDungeonParams()))
-	before := enc.ToData()
+	before := marshalData(t, enc)
 
 	validAt := LocalHex{Col: 1, Row: 2}
 	badAt := LocalHex{Col: 2, Row: 2}
@@ -330,10 +346,10 @@ func TestSeedMonsters_MidBatchInvalidInstructionLeavesEncounterUnchanged(t *test
 	err := enc.SeedMonsters(spawns)
 	require.Error(t, err)
 
-	after := enc.ToData()
-	require.Empty(t, after.Monsters, "a bad instruction anywhere in the batch must commit NOTHING, "+
+	require.Empty(t, enc.ToData().Monsters, "a bad instruction anywhere in the batch must commit NOTHING, "+
 		"not just skip the failing one")
 	require.Equal(t, core.ModeFreeRoam, enc.Mode())
+	after := marshalData(t, enc)
 	require.Equal(t, before, after, "encounter must be byte-identical to before the call")
 }
 
@@ -386,5 +402,143 @@ func TestSeedMonsters_CountGreaterThanOneWithAtRejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "Count")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_ObstacleCollisionRejected: a BLOCKING obstacle already
+// in the encounter's Space joins the collision domain — a monster pinned
+// onto its exact cell is rejected before any commit, the same as
+// colliding with another monster. Non-blocking obstacles (candles,
+// bone-pile, chain — data.go's ObstacleData.BlocksMovement doc) do NOT
+// reserve a cell here, matching room-rebuild's own walkability semantics.
+// Rolls a full spread of blocking obstacles (rolled placement is
+// seed-dependent, so the exact cell can't be hardcoded) and reads one
+// back to target directly.
+func TestSeedMonsters_ObstacleCollisionRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	params := smDungeonParams()
+	params.Regions[0].Obstacles = []ObstacleSpec{
+		{Ref: smObstacleRefCrate, Count: 6, BlocksMovement: true, BlocksLoS: false},
+	}
+	require.NoError(t, enc.InitDungeon(params))
+
+	obstacles := enc.ToData().Space.Obstacles
+	require.NotEmpty(t, obstacles, "fixture must actually roll obstacles for this to be a real proof")
+	target := obstacles[0]
+
+	// Entrance is region 0 (offsetX 0), so absolute position IS local
+	// position directly — no offsetX translation needed.
+	pos := target.Position.ToPosition()
+	at := LocalHex{Col: int(pos.X), Row: int(pos.Y)}
+
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "collides with obstacle")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_SecondCallMintedIDCollisionRejectsNothingCommitted:
+// SeedMonsters mints "monster-<roomID>-<n>" IDs starting at 0 for each
+// room on every call — a second call touching a room an earlier call
+// already seeded would re-mint an ID already in the encounter. This is
+// caught in the VALIDATION pass (not deferred to commit-time, where it
+// would only be caught mid-commit by addMonsterNoCombatCheck's own
+// "already in encounter" check, after any earlier-in-THIS-batch spawns
+// already committed) — a batch mixing a fresh room and a colliding room
+// must commit NOTHING from the second call, including the fresh room's
+// otherwise-valid spawn.
+func TestSeedMonsters_SecondCallMintedIDCollisionRejectsNothingCommitted(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	firstAt := LocalHex{Col: 1, Row: 2}
+	require.NoError(t, enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &firstAt},
+	}))
+	before := marshalData(t, enc)
+
+	// Second call: a fresh room (boss, untouched by the first call) plus
+	// a spawn back in entrance -- which would re-mint "monster-entrance-0",
+	// colliding with the first call's monster.
+	bossAt := LocalHex{Col: 7, Row: 5}
+	secondEntranceAt := LocalHex{Col: 3, Row: 1}
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDBoss, MonsterRef: smRefSkeletonCaptain, Count: 1, At: &bossAt},
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefZombie, Count: 1, At: &secondEntranceAt},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already in encounter")
+
+	after := marshalData(t, enc)
+	require.Equal(t, before, after,
+		"the second call's failure must commit NOTHING -- not even the boss spawn that would have succeeded alone")
+}
+
+// TestSeedMonsters_DoorRowRejected: a cell on the shared doorRow
+// (height/2) is rejected before any commit — belt-and-suspenders with
+// dungeonspec's own load-time check, since SeedMonsters is reachable by
+// callers other than the content-hosting path. Verified by temporarily
+// deleting the check: confirmed this test fails (no error) before
+// restoring it — same discipline as N1's mutation testing.
+func TestSeedMonsters_DoorRowRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: 1, Row: smHeight / 2}
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reserved row")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_WallCellRejected guards the non-obvious Start != End
+// skip in validateSpawnBatch's wallCubes build: SpaceData.Walls also
+// carries boundary-edge perimeter segments (rpg-toolkit#834, Start !=
+// End) that are NOT blocking wall cells — a naive "every Walls entry
+// blocks" reading would wrongly reject cells that are actually walkable
+// floor. PatternRandom's interior walls are seed-dependent, so this
+// discovers an actual wall cell for some seed first (a probe run), then
+// targets that exact cell with the same seed.
+func TestSeedMonsters_WallCellRejected(t *testing.T) {
+	var wallCell LocalHex
+	var seedUsed int64
+	found := false
+	for seed := int64(1); seed <= 50 && !found; seed++ {
+		probe := smNewEncounter(t)
+		params := smDungeonParams()
+		params.RandomSeed = seed
+		params.Regions[0].Pattern = environments.PatternRandom
+		require.NoError(t, probe.InitDungeon(params), "seed %d", seed)
+		for _, w := range probe.ToData().Space.Walls {
+			if w.Start != w.End {
+				continue // boundary-edge perimeter segment, not an interior wall cell
+			}
+			pos := w.Start.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+			col, row := int(pos.X), int(pos.Y) // entrance is region 0, offsetX 0
+			if col >= 0 && col < smEntranceWidth && row != smHeight/2 {
+				wallCell = LocalHex{Col: col, Row: row}
+				seedUsed = seed
+				found = true
+				break
+			}
+		}
+	}
+	require.True(t, found, "expected at least one seed in [1,50] to produce an interior wall cell in the entrance")
+
+	enc := smNewEncounter(t)
+	params := smDungeonParams()
+	params.RandomSeed = seedUsed
+	params.Regions[0].Pattern = environments.PatternRandom
+	require.NoError(t, enc.InitDungeon(params))
+
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &wallCell},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "wall cell")
 	require.Empty(t, enc.ToData().Monsters)
 }
