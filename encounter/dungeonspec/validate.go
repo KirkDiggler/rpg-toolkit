@@ -26,6 +26,13 @@ const (
 	refTypeMonsters = "monsters"
 )
 
+// patternScattered is the one pattern value with special handling on both
+// sides of this package: Validate rejects it in combination with place/
+// pinned boss.at (validatePlaceBlock), and the compiler maps it onto
+// environments.PatternRandom (compile.go's compilePattern) -- shared here
+// so both sides name it the same way instead of repeating the literal.
+const patternScattered = "scattered"
+
 // Validate checks a decoded DungeonSpec against every generator constraint
 // the engine assumes, mirroring design.md's §Validation rules so a spec
 // that loads is a spec that plays. Checks run in a fixed order chosen so an
@@ -166,10 +173,10 @@ func validateChain(spec *DungeonSpec) error {
 
 func validatePattern(pattern string) error {
 	switch pattern {
-	case "", "empty", "scattered":
+	case "", "empty", patternScattered:
 		return nil
 	default:
-		return fmt.Errorf(`invalid pattern %q (must be "", "empty", or "scattered")`, pattern)
+		return fmt.Errorf("invalid pattern %q (must be %q, %q, or %q)", pattern, "", "empty", patternScattered)
 	}
 }
 
@@ -228,7 +235,7 @@ func validateBossRef(bossRoom *RoomSpec) error {
 // pinned boss.at, which share one collision domain.
 func validatePlaceBlock(room *RoomSpec, height int) error {
 	hasPinned := len(room.Place) > 0 || (room.Boss != nil && room.Boss.At != nil)
-	if room.Pattern == "scattered" && hasPinned {
+	if room.Pattern == patternScattered && hasPinned {
 		// Scattered interior walls are seed-rolled — no at cell can be
 		// guaranteed clear or non-wall at author time (design.md §Design
 		// delta), so the load-time contract can't hold for this combination.
