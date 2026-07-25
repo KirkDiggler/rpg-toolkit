@@ -252,3 +252,139 @@ func TestSeedMonsters_UnpinnedInstructionReturnsNotYetSupported(t *testing.T) {
 		})
 	}
 }
+
+// smSeedOneSkeleton spawns a single skeleton at a fixed, valid entrance
+// cell and returns its entity ID.
+func smSeedOneSkeleton(t *testing.T, enc *Encounter) core.EntityID {
+	t.Helper()
+	at := LocalHex{Col: 1, Row: 2}
+	require.NoError(t, enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	}))
+	data := enc.ToData()
+	require.Len(t, data.Monsters, 1)
+	var id core.EntityID
+	for mid := range data.Monsters {
+		id = mid
+	}
+	return id
+}
+
+// TestSeedMonsters_SpeedConvertedFromFeetToHexes: monster.Monster.Speed()
+// reports Walk in FEET (e.g. 30 for a skeleton); npc.go/action.go consume
+// MonsterData.Speed as HEXES directly (movement remaining for the turn).
+// Storing the raw feet value gives a seeded skeleton 30 hexes (150ft) of
+// movement per turn instead of 6 (30ft) — the same feet->hexes conversion
+// devseed/main.go and rpg-api's crypt_monster_seed.go both apply
+// (cryptMinionSpeed = 6 // 30ft / 5ft per hex) must happen here too.
+func TestSeedMonsters_SpeedConvertedFromFeetToHexes(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	id := smSeedOneSkeleton(t, enc)
+	m := enc.ToData().Monsters[id]
+	require.Equal(t, 6, m.Speed, "skeleton's 30ft walk speed must convert to 6 hexes (30/5), not store raw feet")
+}
+
+// TestSeedMonsters_OpportunityAttackReadySeeded: encounter.go only seeds
+// OA readiness when MonsterInput.DamageDice is non-empty, and never
+// derives readiness from DataJSON — rpg-api's gamectx readiness map is
+// built straight from data.ReactionReadiness. A SeedMonsters caller that
+// leaves the flat AttackBonus/DamageDice/DamageType fields empty
+// (reasoning DataJSON alone carries the monster's real stats) silently
+// starves every seeded monster's OA reaction of readiness forever.
+func TestSeedMonsters_OpportunityAttackReadySeeded(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	id := smSeedOneSkeleton(t, enc)
+	require.True(t, enc.IsReactionReady(id, OAReactionRef),
+		"a seeded monster with a real attack action must have its Opportunity Attack reaction seeded ready")
+
+	m := enc.ToData().Monsters[id]
+	require.NotZero(t, m.AttackBonus,
+		"the flat combat-snapshot AttackBonus must be populated from the monster's own attack action")
+	require.NotEmpty(t, m.DamageDice, "the flat combat-snapshot DamageDice must be populated")
+	require.NotEmpty(t, m.DamageType, "the flat combat-snapshot DamageType must be populated")
+}
+
+// TestSeedMonsters_MidBatchInvalidInstructionLeavesEncounterUnchanged:
+// an invalid instruction ANYWHERE in the batch (here: the second of two)
+// must commit NOTHING — no monsters added, mode unchanged, encounter
+// byte-identical to before the call. This is the all-or-nothing batch
+// validation contract (mirrors placeVerbatimObstacles' own contract one
+// file over, dungeon.go): SeedMonsters validates the ENTIRE batch before
+// committing any of it, rather than committing earlier instructions and
+// only failing on a later one.
+func TestSeedMonsters_MidBatchInvalidInstructionLeavesEncounterUnchanged(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+	before := enc.ToData()
+
+	validAt := LocalHex{Col: 1, Row: 2}
+	badAt := LocalHex{Col: 2, Row: 2}
+	spawns := []SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &validAt},
+		{RoomID: smRoomIDEntrance, MonsterRef: "dnd5e:monsters:beholder", Count: 1, At: &badAt}, // unresolvable ref
+	}
+	err := enc.SeedMonsters(spawns)
+	require.Error(t, err)
+
+	after := enc.ToData()
+	require.Empty(t, after.Monsters, "a bad instruction anywhere in the batch must commit NOTHING, "+
+		"not just skip the failing one")
+	require.Equal(t, core.ModeFreeRoam, enc.Mode())
+	require.Equal(t, before, after, "encounter must be byte-identical to before the call")
+}
+
+// TestSeedMonsters_OutOfBoundsAtRejected: a cell outside the target
+// region's own extent (here: one column past its right edge, landing in
+// the connector's boundary/door column) is rejected before any commit.
+func TestSeedMonsters_OutOfBoundsAtRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: smEntranceWidth, Row: 2}
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of bounds")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_TwoInstructionsOnOneCellRejected: two instructions
+// targeting the exact same cell (whether in the same room or not) is
+// rejected before any commit — the batch-internal collision half of the
+// "not already claimed by this batch or existing occupant" check.
+func TestSeedMonsters_TwoInstructionsOnOneCellRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: 1, Row: 2}
+	spawns := []SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefZombie, Count: 1, At: &at},
+	}
+	err := enc.SeedMonsters(spawns)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "collides")
+	require.Empty(t, enc.ToData().Monsters)
+}
+
+// TestSeedMonsters_CountGreaterThanOneWithAtRejected: a placed
+// (At-bearing) instruction must have Count exactly 1 — a caller asking
+// for 5 placed instances at one cell is rejected outright, never
+// silently truncated to 1.
+func TestSeedMonsters_CountGreaterThanOneWithAtRejected(t *testing.T) {
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+
+	at := LocalHex{Col: 1, Row: 2}
+	err := enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 5, At: &at},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Count")
+	require.Empty(t, enc.ToData().Monsters)
+}
