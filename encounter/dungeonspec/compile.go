@@ -59,12 +59,23 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 
 	// Boss spawn goes first, regardless of the boss room's position in the
 	// chain (design.md, defense-in-depth ahead of Slice C's own invariant).
-	bossAt := encounter.LocalHex{Col: bossRoom.Boss.At[0], Row: bossRoom.Boss.At[1]}
+	//
+	// bossRoom.Boss.At is nil only for an unpinned boss -- Validate's M1-only
+	// restriction (Task B2) rejects that shape today, so Load can never
+	// reach this branch; it stays here so compile() never panics regardless
+	// (this function's own doc), and it's exactly where M2's Task C0 lands:
+	// an unpinned boss becomes a rolled (Count-based, no At) spawn candidate,
+	// which is precisely what Count:1, At:nil already expresses.
+	var bossAt *encounter.LocalHex
+	if bossRoom.Boss.At != nil {
+		at := encounter.LocalHex{Col: bossRoom.Boss.At[0], Row: bossRoom.Boss.At[1]}
+		bossAt = &at
+	}
 	spawns := []SpawnInstruction{{
 		RoomID:     bossRoom.ID,
 		MonsterRef: bossRoom.Boss.Ref,
 		Count:      1,
-		At:         &bossAt,
+		At:         bossAt,
 	}}
 
 	regions := make([]encounter.DungeonRegionParams, len(spec.Rooms))

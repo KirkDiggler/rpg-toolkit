@@ -143,3 +143,127 @@ func TestLoad_SameBytesProduceIdenticalCompiledDungeon(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
 }
+
+// TestLoad_PropagatesValidateErrors pins Load's Decode -> Validate ->
+// compile wiring: a Load that skipped the Validate call (calling compile
+// directly on whatever Decode returned) would still pass every other test
+// in this file, since none of their fixtures are M1-invalid. referenceYAML
+// (decode_test.go) IS M1-invalid on two counts at once (count-based
+// monsters: on its entrance/gallery rooms, Task B2's validateM1Restrictions)
+// -- so Load must surface that error, not a CompiledDungeon.
+func TestLoad_PropagatesValidateErrors(t *testing.T) {
+	_, err := dungeonspec.Load([]byte(referenceYAML))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rolled monster placement lands in M2")
+}
+
+// obstacleDefaultsYAML exercises the count-based obstacle loop's
+// nil->true blocking defaults AND explicit-false/PreferBorder carry-
+// through, independent of placedTombYAML (which only has an unflagged
+// place entry, never a count-based obstacle with flags set).
+const obstacleDefaultsYAML = `
+version: 1
+key: obstacle-defaults-check
+name: Obstacle Defaults Check
+height: 8
+rooms:
+  - id: entrance
+    archetype: entrance
+    width: 6
+    obstacles:
+      - { ref: "dnd5e:props:pillar", count: 2, blocks_movement: false, prefer_border: true }
+      - { ref: "dnd5e:props:obelisk", count: 1 }
+  - id: boss-room
+    archetype: boss
+    width: 7
+    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [3, 5] }
+connectors:
+  - { from: entrance, to: boss-room }
+`
+
+func TestLoad_CountBasedObstaclesCompileWithDefaultsAndPreferBorder(t *testing.T) {
+	compiled, err := dungeonspec.Load([]byte(obstacleDefaultsYAML))
+	require.NoError(t, err)
+	entrance := regionByID(t, compiled.Params.Regions, "entrance")
+	require.Len(t, entrance.Obstacles, 2)
+
+	pillar := entrance.Obstacles[0]
+	assert.Equal(t, "dnd5e:props:pillar", pillar.Ref)
+	assert.Equal(t, 2, pillar.Count)
+	assert.False(t, pillar.BlocksMovement) // explicit false carried through, not defaulted
+	assert.True(t, pillar.BlocksLoS)       // unset -> nil -> true
+	assert.True(t, pillar.PreferBorder)
+
+	obelisk := entrance.Obstacles[1]
+	assert.Equal(t, "dnd5e:props:obelisk", obelisk.Ref)
+	assert.True(t, obelisk.BlocksMovement) // unset -> nil -> true
+	assert.True(t, obelisk.BlocksLoS)      // unset -> nil -> true
+	assert.False(t, obelisk.PreferBorder)  // unset, no flip-to-true default for this field
+}
+
+// lockedConnectorYAML exercises locked-connector compilation independent
+// of placedTombYAML (which has no lock at all) -- Locked/LockDC/LockAbility
+// must all copy through from the spec's locked: block.
+const lockedConnectorYAML = `
+version: 1
+key: locked-connector-check
+name: Locked Connector Check
+height: 8
+rooms:
+  - {id: entrance, archetype: entrance, width: 6}
+  - {id: boss-room, archetype: boss, width: 7, boss: {ref: "dnd5e:monsters:skeleton-captain", at: [3, 5]}}
+connectors:
+  - {from: entrance, to: boss-room, locked: {dc: 15, ability: str}}
+`
+
+func TestLoad_LockedConnectorCompilesLockFields(t *testing.T) {
+	compiled, err := dungeonspec.Load([]byte(lockedConnectorYAML))
+	require.NoError(t, err)
+	require.Len(t, compiled.Params.Connectors, 1)
+	conn := compiled.Params.Connectors[0]
+	assert.True(t, conn.Locked)
+	assert.Equal(t, 15, conn.LockDC)
+	assert.Equal(t, "str", conn.LockAbility)
+}
+
+// TestLoad_DoorIDsComposeHyphenatedRoomIDs pins the door-id rule's
+// composition against a room id that itself contains a hyphen
+// ("trap-crossing") -- plain concatenation must not get confused by it.
+// validM1YAML (validate_test.go): key "sunken-crypt", chain entrance ->
+// gallery -> trap-crossing -> tomb.
+func TestLoad_DoorIDsComposeHyphenatedRoomIDs(t *testing.T) {
+	compiled, err := dungeonspec.Load([]byte(validM1YAML))
+	require.NoError(t, err)
+	require.Len(t, compiled.Params.Connectors, 3)
+	assert.Equal(t, core.EntityID("sunken-crypt-door-trap-crossing-tomb"),
+		compiled.Params.Connectors[2].DoorID)
+}
+
+// TestLoad_CryptKeyDoorIDsMatchAPIConstants pins the M2 parity requirement
+// the Door-ID rule exists for: once the crypt migrates to content under
+// key: crypt, the compiler must reproduce rpg-api's own hardcoded test
+// constants byte-for-byte -- cryptEntranceDoorID =
+// "crypt-door-entrance-corridor" and cryptBossDoorID =
+// "crypt-door-corridor-boss" (internal/integration/dungeon_crypt_test.go,
+// internal/handlers/dnd5e/v2/encounter/project_test.go on rpg-api
+// origin/main) -- with zero special-casing in the compiler.
+func TestLoad_CryptKeyDoorIDsMatchAPIConstants(t *testing.T) {
+	const cryptKeyYAML = `
+version: 1
+key: crypt
+name: Crypt Key Door ID Check
+height: 8
+rooms:
+  - {id: entrance, archetype: entrance, width: 6}
+  - {id: corridor, archetype: corridor, width: 6}
+  - {id: boss, archetype: boss, width: 7, boss: {ref: "dnd5e:monsters:skeleton-captain", at: [3, 5]}}
+connectors:
+  - {from: entrance, to: corridor}
+  - {from: corridor, to: boss}
+`
+	compiled, err := dungeonspec.Load([]byte(cryptKeyYAML))
+	require.NoError(t, err)
+	require.Len(t, compiled.Params.Connectors, 2)
+	assert.Equal(t, core.EntityID("crypt-door-entrance-corridor"), compiled.Params.Connectors[0].DoorID)
+	assert.Equal(t, core.EntityID("crypt-door-corridor-boss"), compiled.Params.Connectors[1].DoorID)
+}
