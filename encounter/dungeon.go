@@ -813,7 +813,10 @@ func connectorBoundaryEdgeWalls(
 	flanking map[spatial.CubeCoordinate]struct{},
 	width, height int,
 ) []environments.WallSegmentData {
-	var out []environments.WallSegmentData
+	// Capacity hint only, not exact: each flanking cell has at most 4
+	// region-facing edges (see doc above), plus at most one fallback
+	// entry apiece.
+	out := make([]environments.WallSegmentData, 0, len(flanking)*4)
 	covered := make(map[spatial.CubeCoordinate]struct{}, len(flanking))
 	for x := 0; x < width; x++ {
 		for y := 0; y < height; y++ {
