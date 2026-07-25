@@ -152,45 +152,65 @@ func (e *Encounter) rebuildRoomFromData() error {
 		Grid: grid,
 	})
 	placed := make(map[spatial.CubeCoordinate]struct{}, len(sd.Walls)+len(e.data.Doors))
-	for i, w := range sd.Walls {
-		// rpg-toolkit#834: a boundary-edge perimeter segment (Start != End)
-		// is purely the render contract (rpg-dnd5e-web#566's
-		// hexDistance==1 client branch) catching up to the room's actual
-		// shape, never a spatial.Room blocker in its own right — Start is
-		// real walkable floor (placing a WallEntity there would wrongly
-		// block legitimate floor) and End lies entirely outside this
-		// room's grid bounds (PlaceEntity would reject it, or worse,
-		// silently collide with an unrelated in-bounds cube on a
-		// differently-sized room). Every degenerate (Start == End) entry
-		// below — interior pattern walls, connector boundary columns —
-		// keeps placing exactly as before; this only skips the new shape.
-		if w.Start != w.End {
-			continue
+	// placeWallBlocker places (or, if cube is already occupied, no-ops) an
+	// indestructible blocking WallEntity at cube — shared by both the
+	// degenerate and boundary-edge branches below so they can't drift on
+	// WallType/dedup semantics.
+	placeWallBlocker := func(segmentID string, cube spatial.CubeCoordinate, blocksMovement, blocksLoS bool) error {
+		if _, dup := placed[cube]; dup {
+			return nil
 		}
-		// snapshotWalls dedupes on write; this read-side skip additionally
-		// tolerates a hand-built or legacy snapshot carrying duplicates —
-		// PlaceEntity rejects stacking a blocking entity on an occupied hex,
-		// which would otherwise fail the whole load.
-		if _, dup := placed[w.Start]; dup {
-			continue
-		}
-		placed[w.Start] = struct{}{}
-		pos := w.Start.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		placed[cube] = struct{}{}
+		pos := cube.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 		entity := environments.NewWallEntity(environments.WallEntityConfig{
-			SegmentID: fmt.Sprintf("space-%d", i),
+			SegmentID: segmentID,
 			// Wave 1 doesn't persist WallType (no destruction model yet —
 			// see design doc Wave 2+); Indestructible is the correct default
 			// since BlocksMovement/BlocksLoS (the only behavior wave 1
 			// exercises) are preserved from the original snapshot regardless.
 			WallType: environments.WallTypeIndestructible,
 			Properties: environments.WallProperties{
-				BlocksMovement: w.BlocksMovement,
-				BlocksLoS:      w.BlocksLoS,
+				BlocksMovement: blocksMovement,
+				BlocksLoS:      blocksLoS,
 			},
 			Position: pos,
 		})
-		if err := room.PlaceEntity(entity, pos); err != nil {
-			return fmt.Errorf("place wall %d: %w", i, err)
+		return room.PlaceEntity(entity, pos)
+	}
+	for i, w := range sd.Walls {
+		if w.Start == w.End {
+			// snapshotWalls dedupes on write; this read-side skip
+			// additionally tolerates a hand-built or legacy snapshot
+			// carrying duplicates — PlaceEntity rejects stacking a
+			// blocking entity on an occupied hex, which would otherwise
+			// fail the whole load.
+			if err := placeWallBlocker(fmt.Sprintf("space-%d", i), w.Start, w.BlocksMovement, w.BlocksLoS); err != nil {
+				return fmt.Errorf("place wall %d: %w", i, err)
+			}
+			continue
+		}
+		// A boundary-edge segment (Start != End) is primarily the render
+		// contract (rpg-dnd5e-web#566's hexDistance==1 client branch)
+		// catching up to the room's actual shape — Start is always real
+		// walkable floor (placing a WallEntity there would wrongly block
+		// legitimate floor), so Start itself never becomes a blocker here.
+		// End is one of two cases:
+		//   - outer perimeter (rpg-toolkit#834): End lies entirely outside
+		//     this room's grid bounds — already unreachable by construction
+		//     (every LOS/movement check already runs through
+		//     spatial.HexGrid.IsValidPosition) — so placing anything there
+		//     would either error or collide with an unrelated in-bounds
+		//     cube on a differently-sized room. No-op, exactly as before.
+		//   - connector column flanking cell (rpg-toolkit#848): End IS a
+		//     valid in-grid position — a real, interior cell that must
+		//     keep blocking movement/LOS even though it's no longer its
+		//     own degenerate entry in sd.Walls. Gets its own blocker here.
+		endPos := w.End.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		if !grid.IsValidPosition(endPos) {
+			continue
+		}
+		if err := placeWallBlocker(fmt.Sprintf("space-%d-end", i), w.End, w.BlocksMovement, w.BlocksLoS); err != nil {
+			return fmt.Errorf("place wall %d end: %w", i, err)
 		}
 	}
 	for id, door := range e.data.Doors {

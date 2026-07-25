@@ -35,13 +35,26 @@ import (
 // three-region dungeon fixture (entrance/boss PatternRandom, corridor
 // PatternEmpty) so perimeter-edge behavior is proven across varying
 // interior-wall layouts, not just one lucky seed.
-var perimeterEdgeSeeds = []int64{dungeonSeed, 1, 2, 3, 4, 5, 100, 909091}
+//
+// rpg-toolkit#849 gate review finding 2: the original 8-seed list here
+// (dungeonSeed, 1, 2, 3, 4, 5, 100, 909091) actually produced interior
+// wall cells on only 2 of those 8 seeds (4 and 100, 3 cells each) — the
+// other 6 rolled entirely empty entrance/boss interiors, so the sweep
+// exercised essentially one non-trivial layout, not "varying interior-wall
+// layouts" as the doc above claims. Measured directly (interior wall cell
+// counts per seed against this exact fixture): 4→3, 6→7, 17→9, 19→8,
+// 100→3, 101→10; dungeonSeed and 909091 stay at 0, kept deliberately for
+// the all-empty case (a PatternEmpty-heavy dungeon is itself a real,
+// legitimate shape worth covering, not just an accident of a bad seed
+// pick).
+var perimeterEdgeSeeds = []int64{dungeonSeed, 4, 6, 17, 19, 100, 101, 909091}
 
 // blockedCubesFromDegenerateWalls returns every cube coordinate marked
 // blocked by a degenerate (Start == End) wall entry — interior pattern
-// walls and connector boundary columns alike. Boundary-edge entries
-// (Start != End) never mark a cube blocked; a real floor hex is exactly
-// the complement of this set within the space's bounds.
+// walls only, as of rpg-toolkit#848 (connector boundary columns used to
+// be degenerate entries too; see connectorFlankingCubes below for their
+// replacement). Boundary-edge entries (Start != End) never mark a cube
+// blocked via THIS function.
 func blockedCubesFromDegenerateWalls(walls []environments.WallSegmentData) map[spatial.CubeCoordinate]bool {
 	out := make(map[spatial.CubeCoordinate]bool, len(walls))
 	for _, w := range walls {
@@ -52,21 +65,80 @@ func blockedCubesFromDegenerateWalls(walls []environments.WallSegmentData) map[s
 	return out
 }
 
+// connectorFlankingCubes reconstructs every connector's boundary-column
+// flanking (non-door) cube for a built dungeon, independently of
+// dungeon.go's own starts/width arithmetic (rpg-toolkit#848): a
+// RegionData.Hexes already covers a region's FULL local rectangle —
+// interior pattern walls/obstacles included (rpg-toolkit#814) — so any
+// cube within the combined space's [0,Width)x[0,Height) bounds that
+// belongs to NO region is exactly a connector's boundary column; the
+// door cells themselves (data.Doors, keyed by doorIDs) are excluded,
+// leaving only the flanking cells that must remain blocked without any
+// longer being their own degenerate wire entry.
+func connectorFlankingCubes(data *encounter.Data, doorIDs []core.EntityID) map[spatial.CubeCoordinate]bool {
+	doorCubes := make(map[spatial.CubeCoordinate]bool, len(doorIDs))
+	for _, id := range doorIDs {
+		doorCubes[data.Doors[id].Position.ToCube()] = true
+	}
+	flanking := make(map[spatial.CubeCoordinate]bool)
+	for x := 0; x < data.Space.Width; x++ {
+		for y := 0; y < data.Space.Height; y++ {
+			cube := spatial.OffsetCoordinateToCubeWithOrientation(
+				spatial.Position{X: float64(x), Y: float64(y)}, spatial.HexOrientationPointyTop)
+			if doorCubes[cube] {
+				continue
+			}
+			hex := core.HexFromCube(cube)
+			inRegion := false
+			for _, r := range data.Space.Regions {
+				if r.Hexes.Has(hex) {
+					inRegion = true
+					break
+				}
+			}
+			if !inRegion {
+				flanking[cube] = true
+			}
+		}
+	}
+	return flanking
+}
+
 // assertPerimeterCompletenessAndNoDuplicates re-derives, from first
 // principles against public spatial primitives only (never dungeon.go's
 // own unexported perimeterEdgeWalls/wallCubeSet), every {Start, End}
-// boundary-edge pair a SpaceData's floor/wall layout implies, then proves
-// data.Space.Walls' non-degenerate entries match that set exactly: no
-// extras, no missing edges, no duplicates. Shared by every test in this
-// file that builds a dungeon (varying seed or shape) and checks the same
-// invariant, rather than duplicating the derivation per call site.
-func assertPerimeterCompletenessAndNoDuplicates(t *testing.T, label string, data *encounter.Data, grid spatial.Grid) {
+// OUTER-PERIMETER boundary-edge pair a SpaceData's floor/wall layout
+// implies, then proves data.Space.Walls' non-degenerate, out-of-grid-End
+// entries match that set exactly: no extras, no missing edges, no
+// duplicates. Shared by every test in this file that builds a dungeon
+// (varying seed or shape) and checks the same invariant, rather than
+// duplicating the derivation per call site.
+//
+// doorIDs feeds connectorFlankingCubes (rpg-toolkit#848): a connector's
+// flanking cells must count as "not real floor" here too, exactly like an
+// interior obstacle wall, even though they're no longer degenerate wire
+// entries themselves — otherwise a flanking cell sitting on the space's
+// own true y=0/y=height-1 edge row (which always happens: a connector
+// column always spans every row, only its doorRow cell is ever excluded)
+// would be misidentified as real floor and expected to grow a bogus
+// outward-facing perimeter edge of its own. Connector-to-region boundary
+// edges are a separate concern with their own completeness test — see
+// connector_column_walls_test.go — deliberately excluded from `expected`
+// and filtered out of `gotEdges` here by their in-grid End.
+func assertPerimeterCompletenessAndNoDuplicates(
+	t *testing.T, label string, data *encounter.Data, grid spatial.Grid, doorIDs []core.EntityID,
+) {
 	t.Helper()
 	blocked := blockedCubesFromDegenerateWalls(data.Space.Walls)
+	flanking := connectorFlankingCubes(data, doorIDs)
 	gotEdges := make(map[[2]spatial.CubeCoordinate]int)
 	for _, w := range data.Space.Walls {
 		if w.Start == w.End {
 			continue
+		}
+		endPos := w.End.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		if grid.IsValidPosition(endPos) {
+			continue // a connector boundary edge (#848) -- not this test's concern
 		}
 		gotEdges[[2]spatial.CubeCoordinate{w.Start, w.End}]++
 	}
@@ -79,7 +151,7 @@ func assertPerimeterCompletenessAndNoDuplicates(t *testing.T, label string, data
 		for y := 0; y < data.Space.Height; y++ {
 			pos := spatial.Position{X: float64(x), Y: float64(y)}
 			cube := spatial.OffsetCoordinateToCubeWithOrientation(pos, spatial.HexOrientationPointyTop)
-			if blocked[cube] {
+			if blocked[cube] || flanking[cube] {
 				continue
 			}
 			for _, n := range cube.GetNeighbors() {
@@ -128,27 +200,33 @@ func TestPerimeterEdgeWalls_Completeness(t *testing.T) {
 		enc := newTestEncounter(t)
 		require.NoError(t, enc.InitDungeon(threeRegionDungeonParams(seed)), "seed %d", seed)
 		data := enc.ToData()
-		assertPerimeterCompletenessAndNoDuplicates(t, fmt.Sprintf("seed %d", seed), data, enc.Room().GetGrid())
+		assertPerimeterCompletenessAndNoDuplicates(t, fmt.Sprintf("seed %d", seed), data, enc.Room().GetGrid(),
+			[]core.EntityID{dungeonDoor0ID, dungeonDoor1ID})
 	}
 }
 
 // TestPerimeterEdgeWalls_StartInsideEndOutsideDistanceOne pins the shape
 // contract every boundary-edge segment must satisfy: Start and End are
-// exactly one hex step apart, Start is a real position inside the live
-// room's grid, and End is outside it — plus the BlocksMovement/BlocksLoS
-// semantics match existing (degenerate) walls, per the issue's ask.
+// exactly one hex step apart, Start is always a real position inside the
+// live room's grid, and BlocksMovement/BlocksLoS match existing
+// (degenerate) walls, per the issue's ask. End is outside the room for
+// the outer-perimeter case (#834); rpg-toolkit#848 adds a second, EQUALLY
+// valid shape — End is itself a valid in-grid position that is exactly
+// one of this dungeon's connector flanking cells (never anything else,
+// e.g. never an interior obstacle cell or a door cell) — see
+// connector_column_walls_test.go for that shape's own dedicated coverage.
 func TestPerimeterEdgeWalls_StartInsideEndOutsideDistanceOne(t *testing.T) {
 	enc := newTestEncounter(t)
 	require.NoError(t, enc.InitDungeon(threeRegionDungeonParams(dungeonSeed)))
 	data := enc.ToData()
 	grid := enc.Room().GetGrid()
+	flanking := connectorFlankingCubes(data, []core.EntityID{dungeonDoor0ID, dungeonDoor1ID})
 
-	found := false
+	foundOuter, foundConnector := false, false
 	for _, w := range data.Space.Walls {
 		if w.Start == w.End {
 			continue
 		}
-		found = true
 		require.Equal(t, 1, w.Start.Distance(w.End),
 			"boundary-edge segment %+v must be exactly one hex step apart", w)
 
@@ -156,13 +234,20 @@ func TestPerimeterEdgeWalls_StartInsideEndOutsideDistanceOne(t *testing.T) {
 		endPos := w.End.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 		require.True(t, grid.IsValidPosition(startPos),
 			"boundary-edge segment %+v: Start must be inside the room", w)
-		require.False(t, grid.IsValidPosition(endPos),
-			"boundary-edge segment %+v: End must be outside the room", w)
+
+		if grid.IsValidPosition(endPos) {
+			foundConnector = true
+			require.True(t, flanking[w.End],
+				"boundary-edge segment %+v: an in-grid End must be a connector flanking cell", w)
+		} else {
+			foundOuter = true
+		}
 
 		require.True(t, w.BlocksMovement, "boundary-edge segment %+v must carry BlocksMovement like existing walls", w)
 		require.True(t, w.BlocksLoS, "boundary-edge segment %+v must carry BlocksLoS like existing walls", w)
 	}
-	require.True(t, found, "fixture must actually produce at least one boundary-edge segment")
+	require.True(t, foundOuter, "fixture must actually produce at least one outer-perimeter boundary-edge segment")
+	require.True(t, foundConnector, "fixture must actually produce at least one connector boundary-edge segment")
 }
 
 // TestPerimeterEdgeWalls_EntranceHexHasWestFacingEdge is a concrete,
@@ -308,7 +393,7 @@ func TestPerimeterEdgeWalls_VariedShapes(t *testing.T) {
 			enc := newTestEncounter(t)
 			require.NoError(t, enc.InitDungeon(tc.params))
 			data := enc.ToData()
-			assertPerimeterCompletenessAndNoDuplicates(t, tc.name, data, enc.Room().GetGrid())
+			assertPerimeterCompletenessAndNoDuplicates(t, tc.name, data, enc.Room().GetGrid(), tc.doorIDs)
 			assertNoDoorCellIsPerimeterStart(t, tc.name, data, tc.doorIDs)
 		})
 	}
