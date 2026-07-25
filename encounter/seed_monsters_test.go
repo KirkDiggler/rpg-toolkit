@@ -498,11 +498,17 @@ func TestSeedMonsters_DoorRowRejected(t *testing.T) {
 // TestSeedMonsters_WallCellRejected guards the non-obvious Start != End
 // skip in validateSpawnBatch's wallCubes build: SpaceData.Walls also
 // carries boundary-edge perimeter segments (rpg-toolkit#834, Start !=
-// End) that are NOT blocking wall cells — a naive "every Walls entry
-// blocks" reading would wrongly reject cells that are actually walkable
-// floor. PatternRandom's interior walls are seed-dependent, so this
-// discovers an actual wall cell for some seed first (a probe run), then
-// targets that exact cell with the same seed.
+// End) that are NOT blocking wall cells — Start is real walkable floor,
+// End is the adjacent hex outside the grid. A naive "every Walls entry
+// blocks" reading would wrongly reject a perimeter floor cell (a boss
+// pinned against the back wall is ordinary content, not a rejected
+// placement). This test proves BOTH directions on the SAME seed: a real
+// interior wall cell (Start == End) is rejected, AND a perimeter floor
+// cell (which also appears in Walls, but only via its Start != End
+// boundary segment) is accepted — only the acceptance half actually
+// depends on the skip; deleting it leaves the rejection half green on
+// its own (verified: the skip's removal doesn't touch Start == End
+// entries at all, so the interior-wall assertion alone can't catch it).
 func TestSeedMonsters_WallCellRejected(t *testing.T) {
 	var wallCell LocalHex
 	var seedUsed int64
@@ -541,4 +547,17 @@ func TestSeedMonsters_WallCellRejected(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "wall cell")
 	require.Empty(t, enc.ToData().Monsters)
+
+	// Perimeter acceptance: Col 0 sits on the whole space's own left edge,
+	// so this cell ALSO appears in Space.Walls — but only via a Start !=
+	// End boundary-edge segment (its west-facing side lands outside the
+	// grid); it is real walkable floor. This is what the Start != End
+	// skip actually guards: without it, this cell would wrongly land in
+	// wallCubes too and get rejected, even though it's ordinary content.
+	perimeterAt := LocalHex{Col: 0, Row: 1}
+	require.NotEqual(t, wallCell, perimeterAt,
+		"the discovered interior wall and the perimeter probe must be distinct cells")
+	require.NoError(t, enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: smRefZombie, Count: 1, At: &perimeterAt},
+	}), "a perimeter floor cell (boundary-edge segment only, no interior wall) must be accepted")
 }
