@@ -968,8 +968,11 @@ func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) 
 // p.regionID's numbering, so rolled instances continue from len(placed)
 // via idOffset — and the set of absolute cube coordinates consumed, so
 // the rolled candidate pool can exclude them too.
-func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[spatial.CubeCoordinate]struct{}, error) {
-	placedCubes := make(map[spatial.CubeCoordinate]struct{}, len(p.placed))
+func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[spatial.CubeCoordinate]string, error) {
+	// Keyed by the Ref of whichever PlacedObstacleSpec claimed that cell
+	// first, so a collision error can name BOTH obstacles involved, not
+	// just the later one.
+	placedCubes := make(map[spatial.CubeCoordinate]string, len(p.placed))
 	out := make([]ObstacleData, 0, len(p.placed))
 	for i, spec := range p.placed {
 		// Bounds first: an out-of-bounds cell can still coincidentally
@@ -987,19 +990,23 @@ func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[s
 			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on the reserved row (doorRow=%d)",
 				spec.Ref, spec.At, p.doorRow)
 		}
-		hex := core.HexFromPosition(spatial.Position{X: float64(p.offsetX + spec.At.Col), Y: float64(spec.At.Row)})
-		cube := hex.ToCube()
-		if _, dup := placedCubes[cube]; dup {
-			return nil, nil, fmt.Errorf("placed obstacle %q at %v is already placed", spec.Ref, spec.At)
+		// Same conversion idiom as the sibling loops below (regionObstacleCandidates,
+		// the border/interior partition): OffsetCoordinateToCubeWithOrientation
+		// directly, rather than a HexFromPosition -> ToCube round trip.
+		cube := spatial.OffsetCoordinateToCubeWithOrientation(
+			spatial.Position{X: float64(p.offsetX + spec.At.Col), Y: float64(spec.At.Row)}, spatial.HexOrientationPointyTop)
+		if prevRef, dup := placedCubes[cube]; dup {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v collides with placed obstacle %q",
+				spec.Ref, spec.At, prevRef)
 		}
 		if _, wall := p.wallCubes[cube]; wall {
-			return nil, nil, fmt.Errorf("placed obstacle %q at %v is a wall cell", spec.Ref, spec.At)
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on a wall cell", spec.Ref, spec.At)
 		}
-		placedCubes[cube] = struct{}{}
+		placedCubes[cube] = spec.Ref
 		out = append(out, ObstacleData{
 			ID:             core.EntityID(fmt.Sprintf("obstacle-%s-%d", p.regionID, i)),
 			Ref:            spec.Ref,
-			Position:       hex,
+			Position:       core.HexFromCube(cube),
 			BlocksMovement: spec.BlocksMovement,
 			BlocksLoS:      spec.BlocksLoS,
 		})
@@ -1017,7 +1024,7 @@ func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[s
 // the exact same candidate list the pre-#839 mechanism always built, now
 // also excluding placed cells.
 func regionObstacleCandidates(
-	p placeRegionObstaclesParams, placedCubes map[spatial.CubeCoordinate]struct{},
+	p placeRegionObstaclesParams, placedCubes map[spatial.CubeCoordinate]string,
 ) []spatial.CubeCoordinate {
 	candidates := make([]spatial.CubeCoordinate, 0, p.width*p.height)
 	for x := 0; x < p.width; x++ {

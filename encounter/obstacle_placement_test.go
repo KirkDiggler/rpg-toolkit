@@ -515,20 +515,9 @@ func TestInitDungeon_ObstaclePlacement_PreferBorderSpecsDrawBeforeNormalSpecs(t 
 func opTwoRegionParamsWithPlaced(
 	seed int64, placed []encounter.PlacedObstacleSpec, specs []encounter.ObstacleSpec,
 ) encounter.DungeonParams {
-	return encounter.DungeonParams{
-		Height:     opChamberHeight,
-		RandomSeed: seed,
-		Regions: []encounter.DungeonRegionParams{
-			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
-			{
-				ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: opChamberWidth,
-				Pattern:         environments.PatternEmpty,
-				PlacedObstacles: placed,
-				Obstacles:       specs,
-			},
-		},
-		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
-	}
+	params := opTwoRegionParams(seed, specs)
+	params.Regions[1].PlacedObstacles = placed
+	return params
 }
 
 // TestInitDungeon_PlacedObstaclesLandVerbatim proves a PlacedObstacleSpec
@@ -612,7 +601,10 @@ func TestInitDungeon_PlacedObstacleCollisionRejected(t *testing.T) {
 		}
 		err := enc.InitDungeon(opTwoRegionParamsWithPlaced(1, placed, nil))
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "already placed")
+		require.Contains(t, err.Error(), "collides with placed obstacle")
+		// Names BOTH obstacles involved, not just the later (colliding) one.
+		require.Contains(t, err.Error(), opSpecRefA)
+		require.Contains(t, err.Error(), opSpecRefB)
 	})
 
 	t.Run("placed obstacle on a wall cell is rejected", func(t *testing.T) {
@@ -627,15 +619,8 @@ func TestInitDungeon_PlacedObstacleCollisionRejected(t *testing.T) {
 		var seedUsed int64
 		found := false
 		for seed := int64(1); seed <= 50 && !found; seed++ {
-			probeParams := encounter.DungeonParams{
-				Height:     opChamberHeight,
-				RandomSeed: seed,
-				Regions: []encounter.DungeonRegionParams{
-					{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
-					{ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: opChamberWidth, Pattern: environments.PatternRandom},
-				},
-				Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
-			}
+			probeParams := opTwoRegionParams(seed, nil)
+			probeParams.Regions[1].Pattern = environments.PatternRandom
 			probe := opNewEncounter(t)
 			require.NoError(t, probe.InitDungeon(probeParams), "seed %d", seed)
 			for _, w := range probe.ToData().Space.Walls {
@@ -656,19 +641,9 @@ func TestInitDungeon_PlacedObstacleCollisionRejected(t *testing.T) {
 		require.True(t, found, "expected at least one seed in [1,50] to produce an interior wall cell in the chamber")
 
 		enc := opNewEncounter(t)
-		params := encounter.DungeonParams{
-			Height:     opChamberHeight,
-			RandomSeed: seedUsed,
-			Regions: []encounter.DungeonRegionParams{
-				{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
-				{
-					ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: opChamberWidth,
-					Pattern:         environments.PatternRandom,
-					PlacedObstacles: []encounter.PlacedObstacleSpec{{Ref: opSpecRefA, At: wallCell}},
-				},
-			},
-			Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
-		}
+		placed := []encounter.PlacedObstacleSpec{{Ref: opSpecRefA, At: wallCell}}
+		params := opTwoRegionParamsWithPlaced(seedUsed, placed, nil)
+		params.Regions[1].Pattern = environments.PatternRandom
 		err := enc.InitDungeon(params)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "wall cell")
