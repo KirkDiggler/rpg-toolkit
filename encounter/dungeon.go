@@ -85,6 +85,35 @@ type DungeonRegionParams struct {
 	// package only places it safely. See placeRegionObstacles for the
 	// placement algorithm and its safety invariants.
 	Obstacles []ObstacleSpec
+
+	// PlacedObstacles pin specific obstacle instances to exact room-local
+	// cells — verbatim placement, not a candidate-pool roll (design.md
+	// §Design delta). Unlike Obstacles (best-effort: a region whose safe
+	// floor can't fit every requested instance places as many as fit),
+	// a PlacedObstacleSpec is a hard guarantee: InitDungeon fails outright
+	// if any entry lands on the reserved doorRow, collides with another
+	// placed entry, or lands on a wall cell — see placeRegionObstacles.
+	// Placed cells are excluded from Obstacles' rolled candidate pool, so
+	// the two mechanisms coexist in the same region without collision.
+	PlacedObstacles []PlacedObstacleSpec
+
+	// ReservedCells are cells excluded from rolled-obstacle placement
+	// WITHOUT emitting any obstacle data for them (the compiler reserves
+	// placed-monster/boss cells here) — rpg-toolkit#842 gate finding: a
+	// place: monster entry (or a pinned boss.at) compiles to a
+	// SpawnInstruction, never a PlacedObstacleSpec, so without this field
+	// the rolled-obstacle draw below has no idea that cell is already
+	// spoken for and can roll a count-based obstacle directly onto it —
+	// surfacing much later and far more confusingly as
+	// Encounter.SeedMonsters failing to place the monster into a cell an
+	// obstacle already occupies, on some fraction of seeds rather than
+	// deterministically. Validated the same way as PlacedObstacles (bounds,
+	// doorRow, wall cell, collision with a PlacedObstacles entry) — see
+	// reserveCubes — but a reserved cell is otherwise inert: nothing is
+	// added to SpaceData.Obstacles for it, since whatever occupies it is
+	// the caller's responsibility to place (dungeonspec's SeedMonsters
+	// call, for the case this field exists to fix).
+	ReservedCells []LocalHex
 }
 
 // ObstacleSpec describes one kind of physical set-piece instance a caller
@@ -136,6 +165,40 @@ type ObstacleSpec struct {
 	// go in the center," a claim placeRegionObstacles has no way to
 	// verify structurally.
 	PreferBorder bool
+}
+
+// LocalHex is a region-local (pre-offsetX) grid cell: Col in [0,width),
+// Row in [0,height) (the dungeon-shared height) — exactly the local (x,y)
+// frame regionObstacleCandidates already scans (see that function's doc).
+type LocalHex struct{ Col, Row int }
+
+// String implements fmt.Stringer so error messages print "col=6 row=4"
+// instead of Go's default struct format ("{6 4}"), which doesn't name
+// which number is which.
+func (h LocalHex) String() string {
+	return fmt.Sprintf("col=%d row=%d", h.Col, h.Row)
+}
+
+// PlacedObstacleSpec pins one obstacle instance to an exact room-local cell
+// — verbatim placement, not a candidate-pool roll (design.md §Design delta).
+// encounter never interprets Ref, mirroring ObstacleSpec's existing
+// content-agnostic contract.
+type PlacedObstacleSpec struct {
+	// Ref is copied verbatim into the placed ObstacleData.Ref — same
+	// opaque-content-identifier contract as ObstacleSpec.Ref.
+	Ref string
+
+	// At is this instance's room-local cell. InitDungeon rejects At out of
+	// [0,width)x[0,height) bounds, At.Row == doorRow, a cell already
+	// claimed by another PlacedObstacleSpec in the same region, or a wall
+	// cell — placed entries are guarantees, not best-effort (design.md
+	// §Validation).
+	At LocalHex
+
+	// BlocksMovement/BlocksLoS are copied verbatim into the placed
+	// ObstacleData, same as ObstacleSpec's fields of the same name.
+	BlocksMovement bool
+	BlocksLoS      bool
 }
 
 // DungeonConnectorParams configures the door joining two consecutive
@@ -505,16 +568,22 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			Archetype: r.Archetype,
 			Hexes:     core.NewHexSet(hexesFromCubes(regionCubes(r.Width, params.Height, starts[i]))...),
 		}
-		obstacles = append(obstacles, placeRegionObstacles(placeRegionObstaclesParams{
+		regionObstacles, err := placeRegionObstacles(placeRegionObstaclesParams{
 			regionID:  r.ID,
 			specs:     r.Obstacles,
+			placed:    r.PlacedObstacles,
+			reserved:  r.ReservedCells,
 			width:     r.Width,
 			height:    params.Height,
 			offsetX:   starts[i],
 			doorRow:   doorRow,
 			wallCubes: wallCubeSet(regionWalls),
 			seed:      obstacleSeeds[i],
-		})...)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("place region %d (%q) obstacles: %w", i, r.ID, err)
+		}
+		obstacles = append(obstacles, regionObstacles...)
 
 		if i < n-1 {
 			doorX := starts[i] + r.Width
@@ -752,6 +821,8 @@ func stripReservedAxisWalls(
 type placeRegionObstaclesParams struct {
 	regionID  string
 	specs     []ObstacleSpec
+	placed    []PlacedObstacleSpec
+	reserved  []LocalHex
 	width     int
 	height    int
 	offsetX   int
@@ -806,11 +877,52 @@ type placeRegionObstaclesParams struct {
 // consuming one candidate so no two specs (or two instances of the same
 // spec) can ever collide — a spec whose Count exceeds its pool's
 // capacity naturally places as many as fit and drops the rest — #819's
-// "skip rather than invalidate the dungeon" requirement — this function
-// never errors regardless of which path runs.
-func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
+// "skip rather than invalidate the dungeon" requirement — the ROLLED path
+// never errors regardless of which draw-order branch runs.
+//
+// p.placed (PlacedObstacleSpec, design.md §Design delta) is handled FIRST,
+// verbatim — see placeVerbatimObstacles — and is NOT best-effort: any
+// violation (reserved row, collision with another placed entry, a wall
+// cell) fails this call outright. Placed cells are then excluded from the
+// rolled candidate pool (both draw-order branches below), so the two
+// mechanisms never collide with each other; placed obstacle IDs are
+// numbered first, and rolled instances continue that same region's ID
+// sequence via idOffset, so a region with zero PlacedObstacles produces
+// byte-identical rolled output to before this field existed.
+//
+// p.reserved (DungeonRegionParams.ReservedCells) is validated the same way
+// as p.placed (see reserveCubes) and excluded from the SAME rolled
+// candidate pool, but never emits any ObstacleData of its own — it exists
+// purely to keep the rolled draw off a cell something else (a compiled
+// place: monster, or a pinned boss.at) already occupies.
+func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) {
+	placedData, placedCubes, err := placeVerbatimObstacles(p)
+	if err != nil {
+		return nil, err
+	}
+	idOffset := len(placedData)
+
+	reservedCubes, err := reserveCubes(p, placedCubes)
+	if err != nil {
+		return nil, err
+	}
+	// excluded is the union of placedCubes and reservedCubes: every cube
+	// EITHER rolled draw-order branch below must skip. Built even when
+	// p.specs is empty (the early-return just below), since reserveCubes'
+	// validation above must run regardless of whether there's anything to
+	// roll -- a caller can set ReservedCells with no Obstacles at all.
+	excluded := make(map[spatial.CubeCoordinate]string, len(placedCubes)+len(reservedCubes))
+	for cube, ref := range placedCubes {
+		excluded[cube] = ref
+	}
+	for cube := range reservedCubes {
+		if _, already := excluded[cube]; !already {
+			excluded[cube] = "" // reserved, not placed -- no obstacle name to report
+		}
+	}
+
 	if len(p.specs) == 0 {
-		return nil
+		return placedData, nil
 	}
 
 	anyPrefersBorder := false
@@ -825,11 +937,11 @@ func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 	rng := rand.New(rand.NewSource(p.seed))
 
 	if !anyPrefersBorder {
-		candidates := regionObstacleCandidates(p)
+		candidates := regionObstacleCandidates(p, excluded)
 		rng.Shuffle(len(candidates), func(i, j int) {
 			candidates[i], candidates[j] = candidates[j], candidates[i]
 		})
-		return drawObstacles(p.regionID, p.specs, candidates)
+		return append(placedData, drawObstaclesFrom(p.regionID, p.specs, candidates, idOffset)...), nil
 	}
 
 	var border, interior []spatial.CubeCoordinate
@@ -841,6 +953,9 @@ func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 			cube := spatial.OffsetCoordinateToCubeWithOrientation(
 				spatial.Position{X: float64(x + p.offsetX), Y: float64(y)}, spatial.HexOrientationPointyTop)
 			if _, blocked := p.wallCubes[cube]; blocked {
+				continue
+			}
+			if _, taken := excluded[cube]; taken {
 				continue
 			}
 			if x == 0 || x == p.width-1 || y == 0 || y == p.height-1 {
@@ -869,7 +984,7 @@ func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 		}
 	}
 
-	out := drawObstacles(p.regionID, preferSpecs, preferPool)
+	out := drawObstaclesFrom(p.regionID, preferSpecs, preferPool, idOffset)
 
 	consumed := 0
 	for _, spec := range preferSpecs {
@@ -883,18 +998,127 @@ func placeRegionObstacles(p placeRegionObstaclesParams) []ObstacleData {
 		remainder[i], remainder[j] = remainder[j], remainder[i]
 	})
 
-	out = append(out, drawObstaclesFrom(p.regionID, normalSpecs, remainder, len(out))...)
-	return out
+	out = append(out, drawObstaclesFrom(p.regionID, normalSpecs, remainder, idOffset+len(out))...)
+	return append(placedData, out...), nil
+}
+
+// placeVerbatimObstacles validates and positions one region's
+// PlacedObstacleSpecs (design.md §Design delta) — verbatim placement, not
+// a candidate-pool roll. Unlike rolled ObstacleSpecs (best-effort: skip
+// whatever doesn't fit), a placed entry is a hard guarantee: any violation
+// fails region generation outright rather than silently dropping the
+// entry, mirroring InitDungeon's "either the whole dungeon commits, or a
+// failure leaves the encounter exactly as it was before the call"
+// contract. Returns the placed ObstacleData — IDs 0..len(p.placed)-1 in
+// p.regionID's numbering, so rolled instances continue from len(placed)
+// via idOffset — and the set of absolute cube coordinates consumed, so
+// the rolled candidate pool can exclude them too.
+func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[spatial.CubeCoordinate]string, error) {
+	// Keyed by the Ref of whichever PlacedObstacleSpec claimed that cell
+	// first, so a collision error can name BOTH obstacles involved, not
+	// just the later one.
+	placedCubes := make(map[spatial.CubeCoordinate]string, len(p.placed))
+	out := make([]ObstacleData, 0, len(p.placed))
+	for i, spec := range p.placed {
+		// Bounds first: an out-of-bounds cell can still coincidentally
+		// pass the doorRow/collision/wall checks below (or land in an
+		// adjacent region's own span, or the boundary/door column), which
+		// would report the wrong problem — same defense-in-depth
+		// rationale as the doorRow check below (InitDungeon is a public
+		// entry point; a caller other than dungeonspec's own load-time
+		// Validate could reach an out-of-bounds At directly).
+		if spec.At.Col < 0 || spec.At.Col >= p.width || spec.At.Row < 0 || spec.At.Row >= p.height {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is out of bounds (width=%d, height=%d)",
+				spec.Ref, spec.At, p.width, p.height)
+		}
+		if spec.At.Row == p.doorRow {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on the reserved row (doorRow=%d)",
+				spec.Ref, spec.At, p.doorRow)
+		}
+		// Same conversion idiom as the sibling loops below (regionObstacleCandidates,
+		// the border/interior partition): OffsetCoordinateToCubeWithOrientation
+		// directly, rather than a HexFromPosition -> ToCube round trip.
+		cube := spatial.OffsetCoordinateToCubeWithOrientation(
+			spatial.Position{X: float64(p.offsetX + spec.At.Col), Y: float64(spec.At.Row)}, spatial.HexOrientationPointyTop)
+		if prevRef, dup := placedCubes[cube]; dup {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v collides with placed obstacle %q",
+				spec.Ref, spec.At, prevRef)
+		}
+		if _, wall := p.wallCubes[cube]; wall {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on a wall cell", spec.Ref, spec.At)
+		}
+		placedCubes[cube] = spec.Ref
+		out = append(out, ObstacleData{
+			ID:             core.EntityID(fmt.Sprintf("obstacle-%s-%d", p.regionID, i)),
+			Ref:            spec.Ref,
+			Position:       core.HexFromCube(cube),
+			BlocksMovement: spec.BlocksMovement,
+			BlocksLoS:      spec.BlocksLoS,
+		})
+	}
+	return out, placedCubes, nil
+}
+
+// reserveCubes validates and positions one region's ReservedCells
+// (DungeonRegionParams.ReservedCells) — cells excluded from the rolled-
+// obstacle draw without any ObstacleData ever emitted for them, because
+// something OUTSIDE this obstacle mechanism already occupies the cell (a
+// compiled place: monster or a pinned boss.at — dungeonspec's own use of
+// this field, compile.go). Validated the same way as
+// placeVerbatimObstacles' PlacedObstacleSpecs — bounds, doorRow, wall
+// cell, and collision with an already-placed obstacle — for the same
+// defense-in-depth reason: InitDungeon is a public entry point a caller
+// other than dungeonspec's load-time Validate could reach directly with a
+// bad cell. Two ReservedCells landing on the SAME cell is not itself
+// rejected (harmless — both just mean "this cell is spoken for"), unlike
+// two PlacedObstacleSpecs at the same cell (which would silently drop one
+// obstacle's data if not rejected).
+//
+// This function exists to close a real cross-task seam bug (rpg-toolkit#842
+// gate finding): compileRoom routes a place: monster (or the boss's pinned
+// boss.at) to a SpawnInstruction, never to PlacedObstacles — so without
+// this reservation, the rolled-obstacle draw below has no idea that cell
+// is spoken for, and can roll a count-based obstacle directly onto it. The
+// collision then surfaces much later and far more confusingly, as
+// Encounter.SeedMonsters failing to place the monster into a cell an
+// obstacle already occupies — on some fraction of seeds, not all,
+// depending on whether the shuffle happens to draw that cell.
+func reserveCubes(
+	p placeRegionObstaclesParams, placedCubes map[spatial.CubeCoordinate]string,
+) (map[spatial.CubeCoordinate]struct{}, error) {
+	reserved := make(map[spatial.CubeCoordinate]struct{}, len(p.reserved))
+	for _, cell := range p.reserved {
+		if cell.Col < 0 || cell.Col >= p.width || cell.Row < 0 || cell.Row >= p.height {
+			return nil, fmt.Errorf("reserved cell %v is out of bounds (width=%d, height=%d)", cell, p.width, p.height)
+		}
+		if cell.Row == p.doorRow {
+			return nil, fmt.Errorf("reserved cell %v is on the reserved row (doorRow=%d)", cell, p.doorRow)
+		}
+		cube := spatial.OffsetCoordinateToCubeWithOrientation(
+			spatial.Position{X: float64(p.offsetX + cell.Col), Y: float64(cell.Row)}, spatial.HexOrientationPointyTop)
+		if _, wall := p.wallCubes[cube]; wall {
+			return nil, fmt.Errorf("reserved cell %v is on a wall cell", cell)
+		}
+		if prevRef, dup := placedCubes[cube]; dup {
+			return nil, fmt.Errorf("reserved cell %v collides with placed obstacle %q", cell, prevRef)
+		}
+		reserved[cube] = struct{}{}
+	}
+	return reserved, nil
 }
 
 // regionObstacleCandidates enumerates every LOCAL floor cell (x in
-// [0,width), y in [0,height)) that is NOT a wall cell AND NOT on doorRow
-// — the same reservation placeRegionObstacles' doc explains (a superset
-// of every required path, and sufficient for the boss primary-axis
-// invariant too), in natural (x,y) scan order, unshuffled. Extracted so
-// the no-PreferBorder path (placeRegionObstacles) can build the exact
-// same candidate list the pre-#839 mechanism always built.
-func regionObstacleCandidates(p placeRegionObstaclesParams) []spatial.CubeCoordinate {
+// [0,width), y in [0,height)) that is NOT a wall cell, NOT on doorRow, and
+// NOT already excluded (placed obstacle OR reserved cell, absolute
+// coordinates) — the same reservation placeRegionObstacles' doc explains
+// (a superset of every required path, and sufficient for the boss
+// primary-axis invariant too), in natural (x,y) scan order, unshuffled.
+// Extracted so the no-PreferBorder path (placeRegionObstacles) can build
+// the exact same candidate list the pre-#839 mechanism always built, now
+// also excluding placed and reserved cells.
+func regionObstacleCandidates(
+	p placeRegionObstaclesParams, excluded map[spatial.CubeCoordinate]string,
+) []spatial.CubeCoordinate {
 	candidates := make([]spatial.CubeCoordinate, 0, p.width*p.height)
 	for x := 0; x < p.width; x++ {
 		for y := 0; y < p.height; y++ {
@@ -906,16 +1130,13 @@ func regionObstacleCandidates(p placeRegionObstaclesParams) []spatial.CubeCoordi
 			if _, blocked := p.wallCubes[cube]; blocked {
 				continue
 			}
+			if _, taken := excluded[cube]; taken {
+				continue
+			}
 			candidates = append(candidates, cube)
 		}
 	}
 	return candidates
-}
-
-// drawObstacles places specs against an already-shuffled candidates pool,
-// starting IDs at 0 — the common case (a single pool, one pass).
-func drawObstacles(regionID string, specs []ObstacleSpec, candidates []spatial.CubeCoordinate) []ObstacleData {
-	return drawObstaclesFrom(regionID, specs, candidates, 0)
 }
 
 // drawObstaclesFrom places specs against an already-shuffled candidates
