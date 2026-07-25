@@ -11,9 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// referenceYAML is design.md's §Schema v1 reference example, copied
-// verbatim (ideas/dungeon-authoring/design.md, "Schema v1 — reference
-// example").
+// referenceYAML is the dungeon-authoring design's §Schema v1 reference
+// example, copied verbatim (rpg-toolkit#842).
 const referenceYAML = `
 version: 1
 key: sunken-crypt
@@ -63,14 +62,39 @@ func TestDecode_RoundTripsTheReferenceSpec(t *testing.T) {
 	assert.Equal(t, 12, spec.Connectors[2].Locked.DC)
 }
 
+// Deliberate typos below — the test is that this exact typo class dies at
+// decode, so misspell must not flag (or "fix") either string.
+const (
+	typoYAML  = "version: 1\nmosnters: []\n" //nolint:misspell
+	typoField = "mosnter"                    //nolint:misspell
+)
+
 func TestDecode_UnknownFieldFailsLoudly(t *testing.T) {
-	_, err := dungeonspec.Decode([]byte("version: 1\nmosnters: []\n"))
+	_, err := dungeonspec.Decode([]byte(typoYAML))
 	require.Error(t, err) // the typo class the design promises dies at load
-	assert.Contains(t, err.Error(), "mosnter")
+	assert.Contains(t, err.Error(), typoField)
+	assert.Contains(t, err.Error(), "line 2") // the field+line promise: names both
 }
 
-// placedTombYAML is design.md's "Schema: the place block" tomb fragment
-// (ideas/dungeon-authoring/design.md), wrapped in a complete, valid
+func TestDecode_MultiDocumentYAMLRejected(t *testing.T) {
+	// A stray `---` second document after a valid first one. yaml.v3
+	// otherwise decodes the first document and silently discards the rest —
+	// the same silent-drop class KnownFields already closes for unknown
+	// fields, closed here deliberately for multi-document input.
+	multiDoc := referenceYAML + "\n---\nversion: 1\n"
+	_, err := dungeonspec.Decode([]byte(multiDoc))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multi-document YAML not supported")
+}
+
+func TestDecode_EmptyInputReturnsFriendlyError(t *testing.T) {
+	_, err := dungeonspec.Decode([]byte(""))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty dungeon spec")
+}
+
+// placedTombYAML is the dungeon-authoring design's "Schema: the place
+// block" tomb fragment (rpg-toolkit#842), wrapped in a complete, valid
 // two-room file — this IS content/dungeons/reference-tomb.yaml's content,
 // not a separate lookalike. height: 8 is load-bearing: the tomb room's
 // placements use rows 1, 2, 3, 5, and 6 (boss at row 5; coffin/altar at
@@ -104,7 +128,7 @@ connectors:
 func TestDecode_PlaceBlockRoundTrips(t *testing.T) {
 	spec, err := dungeonspec.Decode([]byte(placedTombYAML))
 	require.NoError(t, err)
-	tomb := spec.Rooms[len(spec.Rooms)-1]
+	tomb := spec.Rooms[1]
 	require.Len(t, tomb.Place, 6) // coffin, altar, statue-reaper, brazier x2, skeleton
 	assert.Equal(t, "dnd5e:props:coffin", tomb.Place[0].Ref)
 	assert.Equal(t, [2]int{6, 3}, tomb.Place[0].At)

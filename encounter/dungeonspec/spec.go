@@ -25,7 +25,7 @@ type RoomSpec struct {
 	Monsters  []MonsterEntry  `yaml:"monsters,omitempty"`
 	Boss      *BossEntry      `yaml:"boss,omitempty"`
 	Obstacles []ObstacleEntry `yaml:"obstacles,omitempty"`
-	Place     []PlacedEntry   `yaml:"place,omitempty"` // design delta — see PlacedEntry
+	Place     []PlacedEntry   `yaml:"place,omitempty"` // static placement — see PlacedEntry
 }
 
 // MonsterEntry is a count-based monster roll for a room.
@@ -49,13 +49,13 @@ type ObstacleEntry struct {
 	PreferBorder   bool   `yaml:"prefer_border,omitempty"`   // post-design delta: toolkit#840
 }
 
-// PlacedEntry is one static placement (design.md §Design delta) — routed by
-// Ref's `module:type:id` type segment at VALIDATE time (props → obstacle,
-// monsters → spawn; see Validate), not at decode time, so a bad ref type
-// fails validation with a clear message instead of a decode error.
+// PlacedEntry is one static placement (static-placement delta, rpg-toolkit#842)
+// — routed by Ref's `module:type:id` type segment at VALIDATE time (props →
+// obstacle, monsters → spawn; see Validate), not at decode time, so a bad
+// ref type fails validation with a clear message instead of a decode error.
 type PlacedEntry struct {
 	Ref            string `yaml:"ref"`
-	At             [2]int `yaml:"at"` // [col, row], room-local — see design.md §Design delta
+	At             [2]int `yaml:"at"` // [col, row], room-local — static-placement delta, rpg-toolkit#842
 	BlocksMovement *bool  `yaml:"blocks_movement,omitempty"`
 	BlocksLoS      *bool  `yaml:"blocks_los,omitempty"`
 }
