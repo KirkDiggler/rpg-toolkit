@@ -773,12 +773,16 @@ func perimeterEdgeWalls(blocked map[spatial.CubeCoordinate]struct{}, width, heig
 // Start here either, matching TestPerimeterEdgeWalls_NeverAtConnectorDoorCells'
 // invariant) and every one of its 6 neighbor directions; whenever that
 // neighbor is one of THIS dungeon's connector flanking cells, emit one
-// {Start: the floor hex, End: the flanking cell} segment. Two regions
-// share a single flanking cell as a neighbor (one on each side), so most
-// flanking cells end up boxed in by exactly two segments -- one contributed
-// by each region's own boundary column -- which is what "the corridor's
-// side walls" (the issue's phrasing) actually looks like once rendered:
-// two clean edges per row, not a floating block.
+// {Start: the floor hex, End: the flanking cell} segment. A flanking cell
+// has up to 4 "region-facing" neighbor candidates (2 toward each adjacent
+// region, matching the "4 exposed sides" diagnosis above) -- one on the
+// space's own true edge row (y=0 or y=height-1) has 2 of those candidates
+// land outside the whole grid rather than in a region, so it receives
+// only 2 edges; every other flanking cell receives all 4. Either way,
+// both of a flanking cell's neighboring regions still contribute at
+// least one edge, which is what "the corridor's side walls" (the issue's
+// phrasing) actually looks like once rendered: clean edges on both
+// sides, not a floating block.
 //
 // Unlike perimeterEdgeWalls' segments, a flanking cell IS a valid in-grid
 // position (an interior column, not the space's true edge) -- these
@@ -787,12 +791,30 @@ func perimeterEdgeWalls(blocked map[spatial.CubeCoordinate]struct{}, width, heig
 // change: it places a blocker at the End of any Start != End segment that
 // is itself a valid in-grid position, leaving the true out-of-grid
 // perimeter case (#834) an unaffected no-op.
+//
+// rpg-toolkit#849 gate review finding 1: without the fallback below, a
+// flanking cell's blocking would be EMERGENT rather than structural --
+// it's only blocked if at least one of its region-facing neighbors is
+// itself real, unblocked floor that emits an edge to it. If every one of
+// a flanking cell's region-facing neighbors happened to already be an
+// interior obstacle-blocked cell, the main loop would emit no edge to it
+// at all, and rebuildRoomFromData would place nothing there -- silently
+// making that cell both walkable and see-through, a real regression
+// versus the old unconditional degenerate block. Never observed across
+// hundreds of seeds of the 3-region fixture (interior density has never
+// been high enough to surround a flanking cell on every side), but the
+// guarantee shouldn't rest on interior density: any flanking cell the
+// main loop never covers falls back to the pre-fix degenerate
+// (Start == End) shape, so it renders as the old "rubble box" only in
+// this fringe case -- never in the common case the main loop already
+// covers.
 func connectorBoundaryEdgeWalls(
 	blocked map[spatial.CubeCoordinate]struct{},
 	flanking map[spatial.CubeCoordinate]struct{},
 	width, height int,
 ) []environments.WallSegmentData {
 	var out []environments.WallSegmentData
+	covered := make(map[spatial.CubeCoordinate]struct{}, len(flanking))
 	for x := 0; x < width; x++ {
 		for y := 0; y < height; y++ {
 			cube := spatial.OffsetCoordinateToCubeWithOrientation(
@@ -804,11 +826,20 @@ func connectorBoundaryEdgeWalls(
 				if _, isFlanking := flanking[n]; !isFlanking {
 					continue
 				}
+				covered[n] = struct{}{}
 				out = append(out, environments.WallSegmentData{
 					Start: cube, End: n, BlocksMovement: true, BlocksLoS: true,
 				})
 			}
 		}
+	}
+	for cube := range flanking {
+		if _, ok := covered[cube]; ok {
+			continue
+		}
+		out = append(out, environments.WallSegmentData{
+			Start: cube, End: cube, BlocksMovement: true, BlocksLoS: true,
+		})
 	}
 	return out
 }
@@ -891,8 +922,15 @@ func regionWallSegments(walls []environments.WallSegment, offsetX, offsetY int) 
 // wallCubeSet builds a lookup set of every absolute cube coordinate a
 // region's wall segments occupy — used by placeRegionObstacles to reject
 // wall cells as obstacle candidates. walls is already in absolute
-// coordinates (the caller's regionWallSegments output); Start == End for
-// every entry (see WallSegmentData's doc), so only Start is read.
+// coordinates (the caller's regionWallSegments output); only Start is
+// read, which is correct as long as every entry passed in is degenerate
+// (Start == End) — true of both current call sites (regionWalls at :590,
+// always degenerate; segs at :631, called BEFORE perimeterEdgeWalls/
+// connectorBoundaryEdgeWalls append any boundary-edge entries to it) but
+// no longer a property of WallSegmentData in general since rpg-toolkit#834/
+// #848 (rpg-toolkit#849 gate review finding 7) — calling this on a wall
+// list that already contains boundary-edge entries would silently fold
+// their real-floor Start cubes into the result as if they were blocked.
 func wallCubeSet(walls []environments.WallSegmentData) map[spatial.CubeCoordinate]struct{} {
 	set := make(map[spatial.CubeCoordinate]struct{}, len(walls))
 	for _, w := range walls {

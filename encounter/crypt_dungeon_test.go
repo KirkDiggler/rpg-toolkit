@@ -652,12 +652,19 @@ func TestCryptDungeon_EntranceAndBossPatternEmpty_NoInteriorWallsAcrossSeeds(t *
 		// no longer degenerate (Start == End) entries of their own — they
 		// are the End of a boundary-edge segment whose Start is a real
 		// region floor hex (see connectorBoundaryEdgeWalls). wallSet must
-		// therefore include End too, or every flanking hex would wrongly
-		// look unreferenced.
-		wallSet := make(map[core.Hex]bool, len(data.Space.Walls)*2)
+		// therefore key on End for those, not Start — a boundary-edge
+		// Start is always real WALKABLE floor (rpg-toolkit#849 gate review
+		// finding 6), never a blocked cell in its own right, so folding it
+		// in unconditionally would let this set silently start meaning
+		// "cell referenced by a wall entry" rather than "cell carrying a
+		// blocked wall reference".
+		wallSet := make(map[core.Hex]bool, len(data.Space.Walls))
 		for _, w := range data.Space.Walls {
-			wallSet[core.HexFromCube(w.Start)] = true
-			wallSet[core.HexFromCube(w.End)] = true
+			if w.Start == w.End {
+				wallSet[core.HexFromCube(w.Start)] = true
+			} else {
+				wallSet[core.HexFromCube(w.End)] = true
+			}
 		}
 		for connectorIdx := 0; connectorIdx < 2; connectorIdx++ {
 			for _, h := range cryptBoundaryColumnHexes(connectorIdx) {

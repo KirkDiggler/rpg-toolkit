@@ -37,7 +37,14 @@ import (
 // TestConnectorColumnWalls_NoLongerDegenerate proves every connector's
 // flanking cell has been converted away from the old degenerate
 // (Start == End) representation, across the same seed sweep
-// perimeter_edge_walls_test.go uses.
+// perimeter_edge_walls_test.go uses. connectorBoundaryEdgeWalls keeps a
+// degenerate fallback for the fringe case where a flanking cell's every
+// region-facing neighbor is itself interior-obstacle-blocked
+// (rpg-toolkit#849 gate review finding 1) -- this test's fixture never
+// reaches that density, so the fallback is never observed to fire here;
+// see TestConnectorColumnWalls_FlankingCellsRemainBlocked for the
+// invariant that matters regardless of which shape actually blocks a
+// given cell.
 func TestConnectorColumnWalls_NoLongerDegenerate(t *testing.T) {
 	for _, seed := range perimeterEdgeSeeds {
 		enc := newTestEncounter(t)
@@ -124,23 +131,93 @@ func TestConnectorColumnWalls_BoundaryEdgeCompleteness(t *testing.T) {
 }
 
 // TestConnectorColumnWalls_FlankingCellsRemainBlocked proves rpg-toolkit#848
-// didn't quietly turn off movement/LOS blocking for a connector's flanking
+// didn't quietly turn off movement blocking for a connector's flanking
 // cells now that they're no longer their own degenerate wall entry —
 // rebuildRoomFromData's companion change must still place a blocker at
-// each one (see space.go's Start != End / in-grid-End branch).
+// each one (see space.go's Start != End / in-grid-End branch), whether
+// that blocker comes from a region-facing edge or connectorBoundaryEdgeWalls'
+// degenerate fallback for an unreachable cell (rpg-toolkit#849 gate review
+// finding 1). Swept across perimeterEdgeSeeds (gate review finding 3) —
+// this is the one test that actually proves the movement invariant rather
+// than just the wire shape, so it's worth exercising varying interior-wall
+// layouts, not just dungeonSeed alone. See
+// TestConnectorColumnWalls_FlankingCellBlocksLineOfSight for the
+// companion LOS check.
 func TestConnectorColumnWalls_FlankingCellsRemainBlocked(t *testing.T) {
+	for _, seed := range perimeterEdgeSeeds {
+		enc := newTestEncounter(t)
+		require.NoError(t, enc.InitDungeon(threeRegionDungeonParams(seed)), "seed %d", seed)
+		data := enc.ToData()
+		flanking := connectorFlankingCubes(data, []core.EntityID{dungeonDoor0ID, dungeonDoor1ID})
+		require.NotEmpty(t, flanking, "seed %d: fixture must actually have connector flanking cells", seed)
+
+		room := enc.Room()
+		for cube := range flanking {
+			pos := cube.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+			require.False(t, room.CanPlaceEntity(probeEntity{}, pos),
+				"seed %d: flanking cell %v must still block movement/LOS", seed, cube)
+		}
+	}
+}
+
+// TestConnectorColumnWalls_FlankingCellBlocksLineOfSight is the explicit
+// LOS coverage rpg-toolkit#849's gate review asked for (finding 4):
+// FlankingCellsRemainBlocked above only ever asserted movement
+// (room.CanPlaceEntity); LOS was verified indirectly (by the reviewer,
+// separately) but never asserted here. Picks one flanking cell and finds
+// TWO of its real region-floor neighbors on genuinely OPPOSITE sides —
+// one with a smaller offset X, one with a larger offset X — via
+// GetNeighbors() rather than hand-derived offset arithmetic, since this
+// hex grid's odd-q parity makes same-row column stepping unsafe to
+// assume (a neighbor toward the adjacent column can land at a DIFFERENT
+// row depending on column parity). Asserts LOS between those two
+// neighbors is blocked — a straight line between genuinely opposite
+// neighbors of a single hex necessarily passes through that hex, so this
+// is a real "blocked straight through the flanking cell" check, not two
+// neighbors that might see each other around it.
+func TestConnectorColumnWalls_FlankingCellBlocksLineOfSight(t *testing.T) {
 	enc := newTestEncounter(t)
 	require.NoError(t, enc.InitDungeon(threeRegionDungeonParams(dungeonSeed)))
 	data := enc.ToData()
 	flanking := connectorFlankingCubes(data, []core.EntityID{dungeonDoor0ID, dungeonDoor1ID})
-	require.NotEmpty(t, flanking, "fixture must actually have connector flanking cells")
-
+	degenerate := blockedCubesFromDegenerateWalls(data.Space.Walls)
 	room := enc.Room()
+	grid := room.GetGrid()
+
+	found := false
 	for cube := range flanking {
-		pos := cube.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
-		require.False(t, room.CanPlaceEntity(probeEntity{}, pos),
-			"flanking cell %v must still block movement/LOS", cube)
+		var left, right *spatial.CubeCoordinate
+		for _, n := range cube.GetNeighbors() {
+			npos := n.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+			if !grid.IsValidPosition(npos) {
+				continue // outside the room entirely -- a true-edge-row flanking cell's outward
+				// neighbor, not a candidate floor cell at all
+			}
+			if flanking[n] || degenerate[n] {
+				continue // not real floor -- either another flanking/door cell or an interior obstacle
+			}
+			switch {
+			case n.X < cube.X && left == nil:
+				nCopy := n
+				left = &nCopy
+			case n.X > cube.X && right == nil:
+				nCopy := n
+				right = &nCopy
+			}
+		}
+		if left == nil || right == nil {
+			continue
+		}
+		leftPos := left.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		rightPos := right.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		require.True(t, room.IsLineOfSightBlocked(leftPos, rightPos),
+			"flanking cell %v must block LOS between its opposite real-floor neighbors %v and %v",
+			cube, leftPos, rightPos)
+		found = true
+		break
 	}
+	require.True(t, found,
+		"fixture must have at least one flanking cell with real-floor neighbors on both sides to check LOS through")
 }
 
 // TestConnectorColumnWalls_DoorCellStaysWalkable is the explicit

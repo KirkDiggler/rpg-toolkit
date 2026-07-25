@@ -35,7 +35,19 @@ import (
 // three-region dungeon fixture (entrance/boss PatternRandom, corridor
 // PatternEmpty) so perimeter-edge behavior is proven across varying
 // interior-wall layouts, not just one lucky seed.
-var perimeterEdgeSeeds = []int64{dungeonSeed, 1, 2, 3, 4, 5, 100, 909091}
+//
+// rpg-toolkit#849 gate review finding 2: the original 8-seed list here
+// (dungeonSeed, 1, 2, 3, 4, 5, 100, 909091) actually produced interior
+// wall cells on only 2 of those 8 seeds (4 and 100, 3 cells each) — the
+// other 6 rolled entirely empty entrance/boss interiors, so the sweep
+// exercised essentially one non-trivial layout, not "varying interior-wall
+// layouts" as the doc above claims. Measured directly (interior wall cell
+// counts per seed against this exact fixture): 4→3, 6→7, 17→9, 19→8,
+// 100→3, 101→10; dungeonSeed and 909091 stay at 0, kept deliberately for
+// the all-empty case (a PatternEmpty-heavy dungeon is itself a real,
+// legitimate shape worth covering, not just an accident of a bad seed
+// pick).
+var perimeterEdgeSeeds = []int64{dungeonSeed, 4, 6, 17, 19, 100, 101, 909091}
 
 // blockedCubesFromDegenerateWalls returns every cube coordinate marked
 // blocked by a degenerate (Start == End) wall entry — interior pattern

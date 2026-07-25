@@ -178,11 +178,15 @@ func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 			grid[row][col] = '.'
 		}
 	}
-	// set is defensive, not load-bearing: every coordinate passed to it
-	// below is already guaranteed in-bounds -- walls/doors/obstacles by
-	// InitDungeon's own validation, Entrance by construction. The bounds
-	// check exists so a violation of that assumption drops the mark
-	// silently instead of panicking the whole report on a slice index.
+	// set's bounds check is load-bearing, not merely defensive
+	// (rpg-toolkit#848/#849 gate review finding 7): every wall/door/
+	// obstacle coordinate is in-bounds by InitDungeon's own validation,
+	// Entrance by construction -- EXCEPT a boundary-edge segment's End
+	// when it lands outside the room (the outer-perimeter case,
+	// rpg-toolkit#834). The loop below calls set(End, '#') unconditionally
+	// for every non-degenerate wall entry and deliberately relies on this
+	// check to silently no-op the out-of-grid ones rather than treat them
+	// as a real cell to mark.
 	set := func(h core.Hex, r rune) {
 		pos := h.ToPosition()
 		col, row := int(pos.X), int(pos.Y)
