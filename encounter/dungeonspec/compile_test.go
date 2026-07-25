@@ -24,18 +24,21 @@ func TestLoad_GeneratesDeterministicDoorIDs(t *testing.T) {
 	require.Len(t, compiled.Params.Connectors, 1)
 	assert.Equal(t, core.EntityID("reference-tomb-door-entrance-tomb"),
 		compiled.Params.Connectors[0].DoorID)
+
+	// Plain scalar carry-throughs -- currently swappable with the suite
+	// green if compile() dropped or mis-wired either field.
+	assert.Equal(t, 8, compiled.Params.Height)
+	assert.Equal(t, "crypt", compiled.Params.Theme)
 }
 
-// PATTERN-DEFAULT TRAP (advisory made explicit): the engine treats an
-// empty DungeonRegionParams.Pattern as PatternRandom. The SPEC's default
-// is empty (design.md). The compiler must therefore map "" and "empty" ->
-// environments.PatternEmpty and "scattered" -> environments.PatternRandom
-// EXPLICITLY -- never pass the zero value through. placedTombYAML's own
-// rooms are both empty-pattern (no room in it is scattered -- Task B2's
-// scattered-rejection rows exercise scattered ONLY in combination with
-// place/boss.at, never the plain mapping), so the scattered->PatternRandom
-// direction needs its OWN small fixture, inline here, decoupled from
-// placedTombYAML/validM1YAML entirely.
+// TestLoad_ScatteredPatternMapsToPatternRandom exercises the
+// scattered->PatternRandom half of the PATTERN-DEFAULT TRAP (see
+// compilePattern's doc, compile.go, for what the trap is and why it
+// matters). placedTombYAML's own rooms are both empty-pattern (no room
+// in it is scattered -- Task B2's scattered-rejection rows exercise
+// scattered ONLY in combination with place/boss.at, never the plain
+// mapping), so this direction needs its own small fixture, decoupled
+// from placedTombYAML/validM1YAML entirely.
 func TestLoad_ScatteredPatternMapsToPatternRandom(t *testing.T) {
 	// Throwaway 2-room fixture threading all three interacting rules
 	// correctly (a fixture missing any one of them fails Validate for an
@@ -86,6 +89,12 @@ func TestLoad_PlaceRoutesByRefType(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(placedTombYAML))
 	require.NoError(t, err)
 	tombRegion := regionByID(t, compiled.Params.Regions, "tomb")
+
+	// Plain scalar carry-throughs -- currently swappable with the suite
+	// green if compileRoom dropped or mis-wired either field.
+	assert.Equal(t, 12, tombRegion.Width)
+	assert.Equal(t, encounter.ArchetypeBoss, tombRegion.Archetype)
+
 	require.Len(t, tombRegion.PlacedObstacles, 5) // coffin, altar, statue-reaper, brazier x2
 	assert.Equal(t, "dnd5e:props:coffin", tombRegion.PlacedObstacles[0].Ref)
 	assert.Equal(t, encounter.LocalHex{Col: 6, Row: 3}, tombRegion.PlacedObstacles[0].At)
@@ -118,6 +127,7 @@ func TestLoad_PlaceRoutesByRefType(t *testing.T) {
 	require.NotNil(t, skeletonSpawn.At)
 	assert.Equal(t, encounter.LocalHex{Col: 4, Row: 2}, *skeletonSpawn.At)
 	assert.Equal(t, 1, skeletonSpawn.Count)
+	assert.Equal(t, "tomb", skeletonSpawn.RoomID)
 }
 
 func TestLoad_BossAtCompilesToSpawnPosition(t *testing.T) {
@@ -157,11 +167,12 @@ func TestLoad_PropagatesValidateErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "rolled monster placement lands in M2")
 }
 
-// obstacleDefaultsYAML exercises the count-based obstacle loop's
-// nil->true blocking defaults AND explicit-false/PreferBorder carry-
-// through, independent of placedTombYAML (which only has an unflagged
-// place entry, never a count-based obstacle with flags set).
-const obstacleDefaultsYAML = `
+func TestLoad_CountBasedObstaclesCompileWithDefaultsAndPreferBorder(t *testing.T) {
+	// obstacleDefaultsYAML exercises the count-based obstacle loop's
+	// nil->true blocking defaults AND explicit-false/PreferBorder carry-
+	// through, independent of placedTombYAML (which only has an unflagged
+	// place entry, never a count-based obstacle with flags set).
+	const obstacleDefaultsYAML = `
 version: 1
 key: obstacle-defaults-check
 name: Obstacle Defaults Check
@@ -180,8 +191,6 @@ rooms:
 connectors:
   - { from: entrance, to: boss-room }
 `
-
-func TestLoad_CountBasedObstaclesCompileWithDefaultsAndPreferBorder(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(obstacleDefaultsYAML))
 	require.NoError(t, err)
 	entrance := regionByID(t, compiled.Params.Regions, "entrance")
@@ -201,10 +210,11 @@ func TestLoad_CountBasedObstaclesCompileWithDefaultsAndPreferBorder(t *testing.T
 	assert.False(t, obelisk.PreferBorder)  // unset, no flip-to-true default for this field
 }
 
-// lockedConnectorYAML exercises locked-connector compilation independent
-// of placedTombYAML (which has no lock at all) -- Locked/LockDC/LockAbility
-// must all copy through from the spec's locked: block.
-const lockedConnectorYAML = `
+func TestLoad_LockedConnectorCompilesLockFields(t *testing.T) {
+	// lockedConnectorYAML exercises locked-connector compilation independent
+	// of placedTombYAML (which has no lock at all) -- Locked/LockDC/
+	// LockAbility must all copy through from the spec's locked: block.
+	const lockedConnectorYAML = `
 version: 1
 key: locked-connector-check
 name: Locked Connector Check
@@ -215,8 +225,6 @@ rooms:
 connectors:
   - {from: entrance, to: boss-room, locked: {dc: 15, ability: str}}
 `
-
-func TestLoad_LockedConnectorCompilesLockFields(t *testing.T) {
 	compiled, err := dungeonspec.Load([]byte(lockedConnectorYAML))
 	require.NoError(t, err)
 	require.Len(t, compiled.Params.Connectors, 1)
@@ -248,6 +256,12 @@ func TestLoad_DoorIDsComposeHyphenatedRoomIDs(t *testing.T) {
 // internal/handlers/dnd5e/v2/encounter/project_test.go on rpg-api
 // origin/main) -- with zero special-casing in the compiler.
 func TestLoad_CryptKeyDoorIDsMatchAPIConstants(t *testing.T) {
+	// cryptKeyYAML is the fourth minimal entrance+boss-room-plus-one-more,
+	// single-linear-chain throwaway fixture in this file (after
+	// scatteredYAML, obstacleDefaultsYAML, lockedConnectorYAML) built just
+	// to isolate one compile rule. If a test needs a fifth, that's the
+	// signal to extract a shared minimal-dungeon builder helper instead of
+	// copy-pasting another one.
 	const cryptKeyYAML = `
 version: 1
 key: crypt

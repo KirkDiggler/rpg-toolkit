@@ -11,17 +11,25 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
-// SpawnInstruction is encounter's OWN type (defined in Task N2's
-// encounter/seed_monsters.go, alongside SeedMonsters) -- dungeonspec
-// re-exports it via a plain type ALIAS, not a second struct, so
-// CompiledDungeon.Spawns can be passed directly to
+// SpawnInstruction is encounter's OWN type (defined in
+// encounter/seed_monsters.go, alongside SeedMonsters -- rpg-toolkit#842)
+// -- dungeonspec re-exports it via a plain type ALIAS, not a second
+// struct, so CompiledDungeon.Spawns can be passed directly to
 // enc.SeedMonsters(compiled.Spawns) with zero conversion.
 type SpawnInstruction = encounter.SpawnInstruction
 
 // CompiledDungeon is a dungeon spec compiled down to what the engine and
 // SeedMonsters actually consume: engine params ready for InitDungeon, and
-// a spawn plan ready for SeedMonsters.
+// a spawn plan ready for SeedMonsters. It is a plain value (no internal
+// state, no mutable shared pointers into the source spec) -- safe to
+// cache and share across concurrent requests, since the engine only ever
+// reads Params/Spawns off of it.
 type CompiledDungeon struct {
+	// Params feeds Encounter.InitDungeon directly. Params.RandomSeed is
+	// deliberately left at its zero value -- Load has no opinion on
+	// reproducibility, so the caller MUST set it before calling
+	// InitDungeon, or repeated encounters compiled from the same spec
+	// bytes won't roll the same layout.
 	Params encounter.DungeonParams
 	Spawns []SpawnInstruction // boss first, then entrance->boss chain order
 }
@@ -30,6 +38,14 @@ type CompiledDungeon struct {
 // entry point callers use. Door entity ids are COMPILER-GENERATED from
 // content ("<key>-door-<from>-<to>" per connector), so callers supply
 // nothing but the bytes.
+//
+// Expected call sequence once Load returns: enc.InitDungeon(compiled.Params)
+// (after setting Params.RandomSeed, see CompiledDungeon.Params), then
+// enc.AddPlayer for each player, then enc.SeedMonsters(compiled.Spawns) --
+// in that order. SeedMonsters' combat-entry check only evaluates players
+// already added; calling it before every AddPlayer silently skips combat
+// entry for that seeding pass rather than erroring, so an author-placed
+// monster in a party's starting sightline needs the party added first.
 func Load(raw []byte) (CompiledDungeon, error) {
 	spec, err := Decode(raw)
 	if err != nil {
@@ -51,10 +67,11 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 	for i := range spec.Rooms {
 		if spec.Rooms[i].Boss != nil {
 			bossRoom = &spec.Rooms[i]
+			break // validateBossCardinality already guarantees exactly one
 		}
 	}
 	if bossRoom == nil {
-		return CompiledDungeon{}, fmt.Errorf("compile: no boss room (Validate should have rejected this spec)")
+		return CompiledDungeon{}, fmt.Errorf("dungeon %q: no boss room (Validate should have rejected this spec)", spec.Key)
 	}
 
 	// Boss spawn goes first, regardless of the boss room's position in the
@@ -71,12 +88,15 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 		at := encounter.LocalHex{Col: bossRoom.Boss.At[0], Row: bossRoom.Boss.At[1]}
 		bossAt = &at
 	}
-	spawns := []SpawnInstruction{{
+	// Capacity is a lower bound, not exact: the boss spawn plus at most one
+	// spawn per room's place list (rooms can also place zero monsters).
+	spawns := make([]SpawnInstruction, 0, len(spec.Rooms)+1)
+	spawns = append(spawns, SpawnInstruction{
 		RoomID:     bossRoom.ID,
 		MonsterRef: bossRoom.Boss.Ref,
 		Count:      1,
 		At:         bossAt,
-	}}
+	})
 
 	regions := make([]encounter.DungeonRegionParams, len(spec.Rooms))
 	for i := range spec.Rooms {
@@ -111,6 +131,18 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 // prepend the boss spawn once, ahead of every room's placed spawns, rather
 // than every call site re-deriving "is this room the boss room."
 func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruction, error) {
+	// room.Monsters is unreachable via Load today -- Validate's M1-only
+	// restriction (validateM1Restrictions) rejects any non-empty
+	// room.Monsters -- but compileRoom does not yet know how to compile
+	// count-based rolled monsters (M2's Task C0), so it errors loudly
+	// rather than silently dropping them if that assumption is ever
+	// violated by a future caller, mirroring compile()'s own nil-boss.At
+	// guard.
+	if len(room.Monsters) > 0 {
+		return encounter.DungeonRegionParams{}, nil,
+			fmt.Errorf("rolled monsters not compiled yet (Validate should have rejected this spec)")
+	}
+
 	region := encounter.DungeonRegionParams{
 		ID:        room.ID,
 		Archetype: encounter.RegionArchetype(room.Archetype),
@@ -118,6 +150,9 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 		Pattern:   compilePattern(room.Pattern),
 	}
 
+	if len(room.Obstacles) > 0 {
+		region.Obstacles = make([]encounter.ObstacleSpec, 0, len(room.Obstacles))
+	}
 	for _, o := range room.Obstacles {
 		region.Obstacles = append(region.Obstacles, encounter.ObstacleSpec{
 			Ref:            o.Ref,
@@ -128,6 +163,13 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 		})
 	}
 
+	if len(room.Place) > 0 {
+		// Capacity is an upper bound, not exact: place entries split between
+		// props (appended below to PlacedObstacles) and monsters (appended
+		// to spawns), so a place block that's all monsters never grows
+		// PlacedObstacles at all.
+		region.PlacedObstacles = make([]encounter.PlacedObstacleSpec, 0, len(room.Place))
+	}
 	var spawns []SpawnInstruction
 	for _, entry := range room.Place {
 		refType, err := refParts(entry.Ref)
@@ -151,7 +193,11 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 				At:         &at,
 			})
 		default:
-			return encounter.DungeonRegionParams{}, nil, fmt.Errorf("place %q: ref type %q must be props or monsters",
+			// Phrasing matches validatePlaceBlock's "must be props or
+			// monsters" message (validate.go) -- this branch is unreachable
+			// via Load (Validate already rejects it), but the two should
+			// read as the same rule stated twice, not two different ones.
+			return encounter.DungeonRegionParams{}, nil, fmt.Errorf("place ref %q must be props or monsters, got type %q",
 				entry.Ref, refType)
 		}
 	}
@@ -159,16 +205,22 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 	return region, spawns, nil
 }
 
-// compilePattern maps the spec's author-facing pattern vocabulary onto the
-// engine's own (design.md's PATTERN-DEFAULT TRAP: the engine treats an
-// empty DungeonRegionParams.Pattern as PatternRandom, but the spec's
-// default -- "" or "empty" -- means no interior walls at all, so the zero
-// value must never pass through unmapped).
+// compilePattern maps the spec's author-facing pattern vocabulary
+// (patternEmpty/patternScattered, validate.go) onto the engine's own.
+//
+// PATTERN-DEFAULT TRAP: the engine treats an empty DungeonRegionParams.
+// Pattern as PatternRandom, but the spec's default -- "" or patternEmpty
+// -- means no interior walls at all, so the zero value must never pass
+// through unmapped. This is the one place that mapping happens; anything
+// that wants to reason about it again should point back here rather than
+// re-deriving it.
 func compilePattern(pattern string) string {
-	if pattern == patternScattered {
+	switch pattern {
+	case patternScattered:
 		return environments.PatternRandom
+	default: // "", patternEmpty, and (Validate having already run) nothing else
+		return environments.PatternEmpty
 	}
-	return environments.PatternEmpty
 }
 
 // compileConnector generates this connector's door id from content

@@ -11,44 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// referenceYAML is the dungeon-authoring design's §Schema v1 reference
-// example, copied verbatim (rpg-toolkit#842).
-const referenceYAML = `
-version: 1
-key: sunken-crypt
-name: The Sunken Crypt
-theme: crypt
-height: 8                      # shared by every room — the generator's real shape
-rooms:
-  - id: entrance
-    archetype: entrance
-    width: 10
-    monsters:
-      - { ref: "dnd5e:monsters:skeleton", count: 2 }
-    obstacles:
-      - { ref: "dnd5e:props:obelisk", count: 1 }
-      - { ref: "dnd5e:props:pillar", count: 2 }
-  - id: gallery
-    archetype: chamber
-    width: 8
-    monsters:
-      - { ref: "dnd5e:monsters:ghoul", count: 1 }
-  - id: trap-crossing            # v1: an empty corridor; trap content lands in the
-    archetype: corridor          # reserved ` + "`interactions`" + ` seat (see Deferred)
-    width: 6
-  - id: tomb
-    archetype: boss
-    width: 12
-    boss: { ref: "dnd5e:monsters:skeleton-captain" }
-    obstacles:
-      - { ref: "dnd5e:props:coffin", count: 1, blocks_los: false }
-      - { ref: "dnd5e:props:altar", count: 1 }
-connectors:
-  - { from: entrance, to: gallery }
-  - { from: gallery, to: trap-crossing }
-  - { from: trap-crossing, to: tomb, locked: { dc: 12, ability: dex } }
-`
-
 func TestDecode_RoundTripsTheReferenceSpec(t *testing.T) {
 	spec, err := dungeonspec.Decode([]byte(referenceYAML))
 	require.NoError(t, err)
@@ -62,14 +24,13 @@ func TestDecode_RoundTripsTheReferenceSpec(t *testing.T) {
 	assert.Equal(t, 12, spec.Connectors[2].Locked.DC)
 }
 
-// Deliberate typos below — the test is that this exact typo class dies at
-// decode, so misspell must not flag (or "fix") either string.
-const (
-	typoYAML  = "version: 1\nmosnters: []\n" //nolint:misspell
-	typoField = "mosnter"                    //nolint:misspell
-)
-
 func TestDecode_UnknownFieldFailsLoudly(t *testing.T) {
+	// Deliberate typos below — the test is that this exact typo class dies
+	// at decode, so misspell must not flag (or "fix") either string.
+	const (
+		typoYAML  = "version: 1\nmosnters: []\n" //nolint:misspell
+		typoField = "mosnter"                    //nolint:misspell
+	)
 	_, err := dungeonspec.Decode([]byte(typoYAML))
 	require.Error(t, err) // the typo class the design promises dies at load
 	assert.Contains(t, err.Error(), typoField)
@@ -92,38 +53,6 @@ func TestDecode_EmptyInputReturnsFriendlyError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty dungeon spec")
 }
-
-// placedTombYAML is the dungeon-authoring design's "Schema: the place
-// block" tomb fragment (rpg-toolkit#842), wrapped in a complete, valid
-// two-room file — this IS content/dungeons/reference-tomb.yaml's content,
-// not a separate lookalike. height: 8 is load-bearing: the tomb room's
-// placements use rows 1, 2, 3, 5, and 6 (boss at row 5; coffin/altar at
-// row 3; statue/skeleton/braziers at rows 1/1/2/6), so height: 8 puts
-// doorRow (height/2) at row 4, clear of all of them.
-const placedTombYAML = `
-version: 1
-key: reference-tomb
-name: The Reference Tomb
-theme: crypt
-height: 8
-rooms:
-  - id: entrance
-    archetype: entrance
-    width: 6
-  - id: tomb
-    archetype: boss
-    width: 12
-    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5] }
-    place:
-      - { ref: "dnd5e:props:coffin",        at: [6, 3], blocks_los: false }
-      - { ref: "dnd5e:props:altar",         at: [9, 3] }
-      - { ref: "dnd5e:props:statue-reaper", at: [1, 1] }
-      - { ref: "dnd5e:props:brazier",       at: [3, 1] }
-      - { ref: "dnd5e:props:brazier",       at: [3, 6] }
-      - { ref: "dnd5e:monsters:skeleton",   at: [4, 2] }
-connectors:
-  - { from: entrance, to: tomb }
-`
 
 func TestDecode_PlaceBlockRoundTrips(t *testing.T) {
 	spec, err := dungeonspec.Decode([]byte(placedTombYAML))

@@ -11,50 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// validM1YAML is the M1-valid variant of referenceYAML's shape (rpg-toolkit#842):
-// same 4-room/3-connector chain (entrance -> gallery -> trap-crossing -> tomb,
-// same ids/widths/archetypes/connectors/lock DC 12), but M1-valid: entrance/
-// gallery drop their count-based monsters: blocks (their count-based
-// obstacles: stay, unaffected by the M1 restriction); the tomb room's boss:
-// gains at: [7, 5] and its obstacles: are replaced by the design delta's full
-// place: list (coffin/altar/statue-reaper/brazier x2/skeleton), occupying
-// rows 1, 2, 3, 5, and 6 — clear of doorRow (row 4, height/2).
-const validM1YAML = `
-version: 1
-key: sunken-crypt
-name: The Sunken Crypt
-theme: crypt
-height: 8
-rooms:
-  - id: entrance
-    archetype: entrance
-    width: 10
-    obstacles:
-      - { ref: "dnd5e:props:obelisk", count: 1 }
-      - { ref: "dnd5e:props:pillar", count: 2 }
-  - id: gallery
-    archetype: chamber
-    width: 8
-  - id: trap-crossing
-    archetype: corridor
-    width: 6
-  - id: tomb
-    archetype: boss
-    width: 12
-    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5] }
-    place:
-      - { ref: "dnd5e:props:coffin",        at: [6, 3], blocks_los: false }
-      - { ref: "dnd5e:props:altar",         at: [9, 3] }
-      - { ref: "dnd5e:props:statue-reaper", at: [1, 1] }
-      - { ref: "dnd5e:props:brazier",       at: [3, 1] }
-      - { ref: "dnd5e:props:brazier",       at: [3, 6] }
-      - { ref: "dnd5e:monsters:skeleton",   at: [4, 2] }
-connectors:
-  - { from: entrance, to: gallery }
-  - { from: gallery, to: trap-crossing }
-  - { from: trap-crossing, to: tomb, locked: { dc: 12, ability: dex } }
-`
-
 // tomb returns validM1YAML's boss room (the last room), so mutate funcs
 // don't repeat magic indices as the fixture grows.
 func tomb(s *dungeonspec.DungeonSpec) *dungeonspec.RoomSpec {
@@ -91,6 +47,19 @@ func TestValidate_Table(t *testing.T) {
 			"linear chain"}, // distinct branch from "broken chain": the count check, not the per-connector match
 		{"room width below minimum rejected", "", func(s *dungeonspec.DungeonSpec) { s.Rooms[0].Width = 3 },
 			"width must be at least"},
+		{"invalid archetype rejected", "",
+			func(s *dungeonspec.DungeonSpec) { s.Rooms[1].Archetype = "chambre" }, //nolint:misspell
+			"invalid archetype"},
+		// gallery (rooms[1]) is a plain chamber room today; neither of these
+		// mutations trips any OTHER invariant (only "boss" is special-cased
+		// elsewhere in Validate) — chamber and boss themselves are already
+		// exercised, as-is, by every row that doesn't touch rooms[1]/[3].
+		{"archetype entrance accepted on a non-entrance room", "", func(s *dungeonspec.DungeonSpec) {
+			s.Rooms[1].Archetype = "entrance"
+		}, ""},
+		{"archetype corridor accepted on a non-corridor room", "", func(s *dungeonspec.DungeonSpec) {
+			s.Rooms[1].Archetype = "corridor"
+		}, ""},
 		{"invalid pattern rejected", "", func(s *dungeonspec.DungeonSpec) { s.Rooms[0].Pattern = "bogus" },
 			"invalid pattern"},
 		// Ordering guard: boss-axis must run before any per-cell place-bounds

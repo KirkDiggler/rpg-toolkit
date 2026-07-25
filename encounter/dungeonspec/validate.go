@@ -26,12 +26,27 @@ const (
 	refTypeMonsters = "monsters"
 )
 
-// patternScattered is the one pattern value with special handling on both
-// sides of this package: Validate rejects it in combination with place/
-// pinned boss.at (validatePlaceBlock), and the compiler maps it onto
-// environments.PatternRandom (compile.go's compilePattern) -- shared here
-// so both sides name it the same way instead of repeating the literal.
-const patternScattered = "scattered"
+// The spec's author-facing pattern vocabulary, shared between
+// validatePattern/validatePlaceBlock (this file) and compile.go's
+// compilePattern, which maps patternEmpty (and "") onto
+// environments.PatternEmpty and patternScattered onto
+// environments.PatternRandom -- named once here so both sides agree.
+const (
+	patternEmpty     = "empty"
+	patternScattered = "scattered"
+)
+
+// The fixed room-archetype vocabulary, matching encounter's own
+// RegionArchetype constants (encounter/data.go) exactly -- shared between
+// validateArchetype (this file) and validateBossCardinality's "boss" check
+// below, so both name the vocabulary the same way instead of repeating the
+// literals.
+const (
+	archetypeEntrance = "entrance"
+	archetypeChamber  = "chamber"
+	archetypeCorridor = "corridor"
+	archetypeBoss     = "boss"
+)
 
 // Validate checks a decoded DungeonSpec against every generator constraint
 // the engine assumes, mirroring design.md's §Validation rules so a spec
@@ -68,6 +83,9 @@ func Validate(spec *DungeonSpec) error {
 		room := &spec.Rooms[i]
 		if room.Width < minWidth {
 			return fmt.Errorf("room %q: width must be at least %d, got %d", room.ID, minWidth, room.Width)
+		}
+		if err := validateArchetype(room.Archetype); err != nil {
+			return fmt.Errorf("room %q: %w", room.ID, err)
 		}
 		if err := validatePattern(room.Pattern); err != nil {
 			return fmt.Errorf("room %q: %w", room.ID, err)
@@ -171,12 +189,32 @@ func validateChain(spec *DungeonSpec) error {
 	return nil
 }
 
-func validatePattern(pattern string) error {
-	switch pattern {
-	case "", "empty", patternScattered:
+// validateArchetype checks a room's archetype against the fixed vocabulary
+// the engine's own RegionArchetype accepts (encounter/data.go). Without
+// this check, an author typo like "chambre" decodes and validates cleanly
+// today, and only surfaces much later as an Internal error at
+// StartEncounter (another repo) once InitDungeon's own archetype switch
+// rejects it -- exactly the failure class this package's load-time
+// contract exists to close, the same way validatePattern already does for
+// the pattern vocabulary.
+//
+//nolint:misspell // "chambre" above is the deliberate typo example, not a real misspelling
+func validateArchetype(archetype string) error {
+	switch archetype {
+	case archetypeEntrance, archetypeChamber, archetypeCorridor, archetypeBoss:
 		return nil
 	default:
-		return fmt.Errorf("invalid pattern %q (must be %q, %q, or %q)", pattern, "", "empty", patternScattered)
+		return fmt.Errorf("invalid archetype %q (must be %q, %q, %q, or %q)",
+			archetype, archetypeEntrance, archetypeChamber, archetypeCorridor, archetypeBoss)
+	}
+}
+
+func validatePattern(pattern string) error {
+	switch pattern {
+	case "", patternEmpty, patternScattered:
+		return nil
+	default:
+		return fmt.Errorf("invalid pattern %q (must be %q, %q, or %q)", pattern, "", patternEmpty, patternScattered)
 	}
 }
 
@@ -189,7 +227,7 @@ func validateBossCardinality(rooms []RoomSpec) (*RoomSpec, error) {
 	bossCount := 0
 	for i := range rooms {
 		room := &rooms[i]
-		if room.Archetype == "boss" {
+		if room.Archetype == archetypeBoss {
 			bossCount++
 			if room.Boss == nil {
 				return nil, fmt.Errorf("room %q: boss room must declare boss", room.ID)
