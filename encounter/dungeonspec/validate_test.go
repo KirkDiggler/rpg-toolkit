@@ -146,6 +146,10 @@ func TestValidate_Table(t *testing.T) {
 		{"place on reserved row (height/2) rejected", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Place[0].At = [2]int{6, s.Height / 2}
 		}, "reserved row"},
+		{"boss.at on reserved row (height/2) rejected", "", func(s *dungeonspec.DungeonSpec) {
+			at := [2]int{7, s.Height / 2}
+			tomb(s).Boss.At = &at
+		}, "reserved row"},
 		{"place ref of unknown type rejected", "", func(s *dungeonspec.DungeonSpec) {
 			// Place[2] (statue-reaper) deliberately, NOT Place[0] (coffin,
 			// which sets blocks_los): this row must isolate the ref-type
@@ -157,6 +161,10 @@ func TestValidate_Table(t *testing.T) {
 			f := false
 			tomb(s).Place[5].BlocksLoS = &f // Place[5] is the skeleton (monster) entry
 		}, "blocks_los only valid on props"},
+		{"blocks_movement set on a monster place entry is rejected", "", func(s *dungeonspec.DungeonSpec) {
+			b := true
+			tomb(s).Place[5].BlocksMovement = &b // Place[5] is the skeleton (monster) entry
+		}, "blocks_movement only valid on props"},
 		{"boss ref duplicated in place is rejected", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Place = append(tomb(s).Place, dungeonspec.PlacedEntry{Ref: tomb(s).Boss.Ref, At: [2]int{0, 0}})
 		}, "boss ref may not also appear in place"},
