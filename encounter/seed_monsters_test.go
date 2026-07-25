@@ -376,6 +376,7 @@ func TestSeedMonsters_OutOfBoundsAtRejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of bounds")
+	require.Contains(t, err.Error(), "width=8") // pins the region's own width in the detail, not just "out of bounds"
 	require.Empty(t, enc.ToData().Monsters)
 }
 
