@@ -696,3 +696,137 @@ func TestInitDungeon_PlacedObstaclesDeterministicSameSeed(t *testing.T) {
 	require.Equal(t, a.Space.Obstacles, b.Space.Obstacles,
 		"identical seed must reproduce identical placement, placed and rolled together")
 }
+
+// TestInitDungeon_PlacedObstacleOutOfBoundsRejected: InitDungeon rejects a
+// PlacedObstacleSpec whose At falls outside [0,width)x[0,height) — the
+// same defense-in-depth rationale as the reserved-row check, since
+// InitDungeon is a public toolkit entry point other callers besides
+// dungeonspec's own load-time Validate could reach directly. Without this
+// check, an out-of-bounds col lands in the connector's boundary/door
+// column or an adjacent region's own span (failing downstream in
+// rebuildRoomFromData with a message naming neither region nor local
+// cell), and an out-of-bounds row degrades to a bare "hex already
+// occupied" the moment it happens to collide with something.
+func TestInitDungeon_PlacedObstacleOutOfBoundsRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		at   encounter.LocalHex
+	}{
+		{"col at the door/boundary column (one past the right edge)", encounter.LocalHex{Col: opChamberWidth, Row: 2}},
+		{"col inside the next region's span", encounter.LocalHex{Col: opChamberWidth + 3, Row: 2}},
+		{"col before the left edge", encounter.LocalHex{Col: -1, Row: 2}},
+		{"row below the floor", encounter.LocalHex{Col: 2, Row: opChamberHeight}},
+		{"row above the floor", encounter.LocalHex{Col: 2, Row: -1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			enc := opNewEncounter(t)
+			placed := []encounter.PlacedObstacleSpec{{Ref: opSpecRefA, At: tc.at}}
+			err := enc.InitDungeon(opTwoRegionParamsWithPlaced(7, placed, nil))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "out of bounds")
+		})
+	}
+}
+
+// TestInitDungeon_PreferBorderExcludesPlacedBorderCell proves the
+// PreferBorder border/interior partition (dungeon.go's second draw-order
+// branch, distinct from the flat pool
+// TestInitDungeon_RolledObstaclesNeverUsePlacedCells already exercises)
+// ALSO excludes placed cells. A placed obstacle sits ON a border cell,
+// with a PreferBorder rolled spec sized to exactly saturate the
+// unreduced border pool: if the partition's placed-cell exclusion were
+// missing, the border-preferring spec's shuffle would eventually draw
+// the placed cell too, since border+placed together exceed the pool by
+// exactly one — a deterministic collision, not a rare one, so a single
+// seed sweep per cell is enough to catch a missing exclusion.
+func TestInitDungeon_PreferBorderExcludesPlacedBorderCell(t *testing.T) {
+	cases := []encounter.LocalHex{
+		{Col: 0, Row: 0}, // corner
+		{Col: opChamberWidth - 1, Row: opChamberHeight - 1}, // opposite corner
+		{Col: 5, Row: 0}, // top edge
+		{Col: 0, Row: 3}, // left edge, adjacent to doorRow
+		{Col: 4, Row: 2}, // interior (control)
+	}
+	for _, at := range cases {
+		for seed := int64(1); seed <= 30; seed++ {
+			placed := []encounter.PlacedObstacleSpec{{Ref: opSpecRefA, At: at, BlocksMovement: true}}
+			// Border pool for a 10x8 region: perimeter 2*10+2*8-4=32 cells,
+			// minus the two doorRow (y=4) border cells = 30. Count=30
+			// exactly saturates the unreduced pool, so a missing
+			// exclusion forces a deterministic collision with the placed
+			// cell whenever it sits on the border.
+			rolled := []encounter.ObstacleSpec{{Ref: opSpecRefB, Count: 30, PreferBorder: true}}
+
+			enc := opNewEncounter(t)
+			require.NoError(t, enc.InitDungeon(opTwoRegionParamsWithPlaced(seed, placed, rolled)),
+				"at=%v seed=%d", at, seed)
+
+			want := core.HexFromPosition(spatial.Position{X: float64(opChamberOffsetX + at.Col), Y: float64(at.Row)})
+			sawPlaced := false
+			for _, o := range enc.ToData().Space.Obstacles {
+				switch o.Ref {
+				case opSpecRefA:
+					sawPlaced = true
+					require.Equal(t, want, o.Position,
+						"at=%v seed=%d: placed obstacle must land at its declared cell", at, seed)
+				case opSpecRefB:
+					require.NotEqual(t, want, o.Position,
+						"at=%v seed=%d: rolled obstacle %q must never land on the placed cell", at, seed, o.ID)
+				}
+			}
+			require.True(t, sawPlaced, "at=%v seed=%d: placed obstacle missing", at, seed)
+		}
+	}
+}
+
+// TestInitDungeon_PreferBorderRemainderPathExcludesPlacedCells proves the
+// remainder-reshuffle path — normalSpecs drawing from whatever the
+// PreferBorder specs left over, via drawObstaclesFrom's idOffset+len(out)
+// ID continuation — still produces unique IDs, no cell collisions, and
+// never draws a placed cell, across a mix of PreferBorder and normal
+// specs and several placed entries at once (mirrors rpg-toolkit#840's own
+// PreferBorder-vs-normal-spec gate, extended to placed cells).
+func TestInitDungeon_PreferBorderRemainderPathExcludesPlacedCells(t *testing.T) {
+	placed := []encounter.PlacedObstacleSpec{
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 0, Row: 0}},
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: opChamberWidth - 1, Row: opChamberHeight - 1}},
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 3, Row: 5}},
+		{Ref: opSpecRefA, At: encounter.LocalHex{Col: 6, Row: 1}},
+	}
+	rolled := []encounter.ObstacleSpec{
+		{Ref: opSpecRefB, Count: 20, PreferBorder: true},
+		{Ref: opSpecRefB, Count: 25},
+		{Ref: opSpecRefB, Count: 15, PreferBorder: true},
+	}
+	placedCells := make(map[core.Hex]bool, len(placed))
+	for _, p := range placed {
+		placedCells[core.HexFromPosition(spatial.Position{
+			X: float64(opChamberOffsetX + p.At.Col), Y: float64(p.At.Row),
+		})] = true
+	}
+
+	for seed := int64(1); seed <= 40; seed++ {
+		enc := opNewEncounter(t)
+		require.NoError(t, enc.InitDungeon(opTwoRegionParamsWithPlaced(seed, placed, rolled)), "seed %d", seed)
+
+		ids := make(map[core.EntityID]bool)
+		cells := make(map[core.Hex]core.EntityID)
+		nPlaced := 0
+		for _, o := range enc.ToData().Space.Obstacles {
+			require.False(t, ids[o.ID], "seed %d: duplicate obstacle ID %q", seed, o.ID)
+			ids[o.ID] = true
+			if prev, dup := cells[o.Position]; dup {
+				t.Fatalf("seed %d: obstacles %q and %q collide at %v", seed, prev, o.ID, o.Position)
+			}
+			cells[o.Position] = o.ID
+			if o.Ref == opSpecRefA {
+				nPlaced++
+				continue
+			}
+			require.False(t, placedCells[o.Position],
+				"seed %d: rolled obstacle %q landed on a placed cell %v", seed, o.ID, o.Position)
+		}
+		require.Equal(t, len(placed), nPlaced, "seed %d", seed)
+	}
+}

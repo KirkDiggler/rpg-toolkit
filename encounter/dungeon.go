@@ -154,6 +154,13 @@ type ObstacleSpec struct {
 // frame regionObstacleCandidates already scans (see that function's doc).
 type LocalHex struct{ Col, Row int }
 
+// String implements fmt.Stringer so error messages print "col=6 row=4"
+// instead of Go's default struct format ("{6 4}"), which doesn't name
+// which number is which.
+func (h LocalHex) String() string {
+	return fmt.Sprintf("col=%d row=%d", h.Col, h.Row)
+}
+
 // PlacedObstacleSpec pins one obstacle instance to an exact room-local cell
 // — verbatim placement, not a candidate-pool roll (design.md §Design delta).
 // encounter never interprets Ref, mirroring ObstacleSpec's existing
@@ -163,10 +170,11 @@ type PlacedObstacleSpec struct {
 	// opaque-content-identifier contract as ObstacleSpec.Ref.
 	Ref string
 
-	// At is this instance's room-local cell. InitDungeon rejects At.Row
-	// == doorRow, a cell already claimed by another PlacedObstacleSpec in
-	// the same region, or a wall cell — placed entries are guarantees,
-	// not best-effort (design.md §Validation).
+	// At is this instance's room-local cell. InitDungeon rejects At out of
+	// [0,width)x[0,height) bounds, At.Row == doorRow, a cell already
+	// claimed by another PlacedObstacleSpec in the same region, or a wall
+	// cell — placed entries are guarantees, not best-effort (design.md
+	// §Validation).
 	At LocalHex
 
 	// BlocksMovement/BlocksLoS are copied verbatim into the placed
@@ -964,19 +972,28 @@ func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[s
 	placedCubes := make(map[spatial.CubeCoordinate]struct{}, len(p.placed))
 	out := make([]ObstacleData, 0, len(p.placed))
 	for i, spec := range p.placed {
+		// Bounds first: an out-of-bounds cell can still coincidentally
+		// pass the doorRow/collision/wall checks below (or land in an
+		// adjacent region's own span, or the boundary/door column), which
+		// would report the wrong problem — same defense-in-depth
+		// rationale as the doorRow check below (InitDungeon is a public
+		// entry point; a caller other than dungeonspec's own load-time
+		// Validate could reach an out-of-bounds At directly).
+		if spec.At.Col < 0 || spec.At.Col >= p.width || spec.At.Row < 0 || spec.At.Row >= p.height {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is out of bounds (width=%d, height=%d)",
+				spec.Ref, spec.At, p.width, p.height)
+		}
 		if spec.At.Row == p.doorRow {
-			return nil, nil, fmt.Errorf("region %q: placed obstacle %q at %v is on the reserved row (doorRow=%d)",
-				p.regionID, spec.Ref, spec.At, p.doorRow)
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on the reserved row (doorRow=%d)",
+				spec.Ref, spec.At, p.doorRow)
 		}
 		hex := core.HexFromPosition(spatial.Position{X: float64(p.offsetX + spec.At.Col), Y: float64(spec.At.Row)})
 		cube := hex.ToCube()
 		if _, dup := placedCubes[cube]; dup {
-			return nil, nil, fmt.Errorf("region %q: placed obstacle %q at %v is already placed",
-				p.regionID, spec.Ref, spec.At)
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is already placed", spec.Ref, spec.At)
 		}
 		if _, wall := p.wallCubes[cube]; wall {
-			return nil, nil, fmt.Errorf("region %q: placed obstacle %q at %v is a wall cell",
-				p.regionID, spec.Ref, spec.At)
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is a wall cell", spec.Ref, spec.At)
 		}
 		placedCubes[cube] = struct{}{}
 		out = append(out, ObstacleData{
