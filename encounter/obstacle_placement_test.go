@@ -30,6 +30,14 @@ import (
 const (
 	opSpecRefA = "test:obstacles:blocker-a"
 	opSpecRefB = "test:obstacles:blocker-b"
+
+	// dungeonRegionIDChamber and doorID0/doorID1 are this file's own
+	// repeated region-id/door-id literals (goconst) -- dungeonRegionIDEntrance
+	// and dungeonRegionIDBoss already exist package-wide (dungeon_test.go),
+	// so those are reused directly instead of duplicated here.
+	dungeonRegionIDChamber = "chamber"
+	doorID0                = "door-0"
+	doorID1                = "door-1"
 )
 
 // opTwoRegionParams builds a minimal, otherwise-valid 2-region DungeonParams
@@ -42,13 +50,13 @@ func opTwoRegionParams(seed int64, specs []encounter.ObstacleSpec) encounter.Dun
 		Height:     8,
 		RandomSeed: seed,
 		Regions: []encounter.DungeonRegionParams{
-			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
+			{ID: dungeonRegionIDEntrance, Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
 			{
-				ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: 10, Pattern: environments.PatternEmpty,
+				ID: dungeonRegionIDChamber, Archetype: encounter.ArchetypeChamber, Width: 10, Pattern: environments.PatternEmpty,
 				Obstacles: specs,
 			},
 		},
-		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: doorID0}},
 	}
 }
 
@@ -203,13 +211,13 @@ func TestInitDungeon_ObstaclePlacement_NeverOnReservedRow(t *testing.T) {
 		Height:     8,
 		RandomSeed: 7,
 		Regions: []encounter.DungeonRegionParams{
-			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 10, Pattern: environments.PatternEmpty},
+			{ID: dungeonRegionIDEntrance, Archetype: encounter.ArchetypeEntrance, Width: 10, Pattern: environments.PatternEmpty},
 			{
-				ID: "boss", Archetype: encounter.ArchetypeBoss, Width: 10, Pattern: environments.PatternRandom,
+				ID: dungeonRegionIDBoss, Archetype: encounter.ArchetypeBoss, Width: 10, Pattern: environments.PatternRandom,
 				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 40, BlocksMovement: true, BlocksLoS: true}},
 			},
 		},
-		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: doorID0}},
 	}
 	require.NoError(t, enc.InitDungeon(params))
 	data := enc.ToData()
@@ -236,7 +244,7 @@ func TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity(t *te
 		RandomSeed: 77,
 		Regions: []encounter.DungeonRegionParams{
 			{
-				ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 10, Pattern: environments.PatternEmpty,
+				ID: dungeonRegionIDEntrance, Archetype: encounter.ArchetypeEntrance, Width: 10, Pattern: environments.PatternEmpty,
 				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 20, BlocksMovement: true, BlocksLoS: true}},
 			},
 			{
@@ -244,11 +252,11 @@ func TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity(t *te
 				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 10, BlocksMovement: true, BlocksLoS: true}},
 			},
 			{
-				ID: "boss", Archetype: encounter.ArchetypeBoss, Width: 10, Pattern: environments.PatternEmpty,
+				ID: dungeonRegionIDBoss, Archetype: encounter.ArchetypeBoss, Width: 10, Pattern: environments.PatternEmpty,
 				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 20, BlocksMovement: true, BlocksLoS: true}},
 			},
 		},
-		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}, {DoorID: "door-1"}},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: doorID0}, {DoorID: doorID1}},
 	}
 	require.NoError(t, enc.InitDungeon(params))
 
@@ -257,11 +265,11 @@ func TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity(t *te
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: entrance, SightRange: 30,
 	}))
-	require.NoError(t, enc.OpenDoor(alicePlayerID, "door-0"))
-	require.NoError(t, enc.OpenDoor(alicePlayerID, "door-1"))
+	require.NoError(t, enc.OpenDoor(alicePlayerID, doorID0))
+	require.NoError(t, enc.OpenDoor(alicePlayerID, doorID1))
 
 	reachable := reachableFrom(enc.Room(), entrance)
-	boss := regionHexSet(enc.ToData().Space, "boss")
+	boss := regionHexSet(enc.ToData().Space, dungeonRegionIDBoss)
 	require.NotEmpty(t, boss)
 	reachedBoss := false
 	for h := range reachable {
@@ -287,13 +295,13 @@ func TestInitDungeon_ObstaclePlacement_SkipsWhenNoSafeHexRemains(t *testing.T) {
 		Height:     4,
 		RandomSeed: 3,
 		Regions: []encounter.DungeonRegionParams{
-			{ID: "entrance", Archetype: encounter.ArchetypeEntrance, Width: 4, Pattern: environments.PatternEmpty},
+			{ID: dungeonRegionIDEntrance, Archetype: encounter.ArchetypeEntrance, Width: 4, Pattern: environments.PatternEmpty},
 			{
-				ID: "chamber", Archetype: encounter.ArchetypeChamber, Width: 4, Pattern: environments.PatternEmpty,
+				ID: dungeonRegionIDChamber, Archetype: encounter.ArchetypeChamber, Width: 4, Pattern: environments.PatternEmpty,
 				Obstacles: []encounter.ObstacleSpec{{Ref: opSpecRefA, Count: 1000, BlocksMovement: true}},
 			},
 		},
-		Connectors: []encounter.DungeonConnectorParams{{DoorID: "door-0"}},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: doorID0}},
 	}
 	err := enc.InitDungeon(params)
 	require.NoError(t, err, "InitDungeon must never fail because an obstacle spec could not fully fit")
