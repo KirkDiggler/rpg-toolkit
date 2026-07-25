@@ -150,19 +150,19 @@ const floorPlanLegend = "floor plan (. floor, # wall, D door, o obstacle, @ entr
 // need a second, distinct marker to carry that distinction too), '@' the
 // designated entrance cell (SpaceData.Entrance).
 //
-// DEGENERATE WALLS ONLY -- a decision, not a shortcut: SpaceData.Walls
-// carries two shapes (see that field's doc). Degenerate (Start == End) is
-// an actual blocked interior hex; boundary-edge (Start != End) is a
-// render-only outer-perimeter marker added for rpg-dnd5e-web's client
-// (rpg-toolkit#834) whose Start is real WALKABLE floor -- never a
-// spatial.Room blocker. An earlier version of this renderer folded both
-// shapes into the same '#' marker for simplicity; that was wrong, not
-// merely imprecise, because most of a dungeon's outer edge is
-// boundary-edge-only, INCLUDING the entrance region's own spawn column
-// (SpaceData.Entrance sits at the room's far edge, design.md/dungeon.go's
-// "just inside the entrance, not center") -- folding rendered the party's
-// own spawn point as a wall. This renderer skips boundary-edge segments
-// outright instead.
+// SpaceData.Walls carries two shapes (see that field's doc): degenerate
+// (Start == End) is an actual blocked interior hex, marked at Start;
+// boundary-edge (Start != End) always has a real WALKABLE floor Start
+// (never marked '#' -- an earlier version of this renderer folded both
+// shapes into the same marker, which wrongly rendered the entrance
+// region's own spawn column, and SpaceData.Entrance itself, as a wall,
+// since most of a dungeon's outer edge is boundary-edge-only), but its End
+// is one of two cases: genuinely outside the room (the outer-perimeter
+// case, rpg-toolkit#834 -- nothing to mark, `set`'s own bounds check
+// silently no-ops) or a connector column's flanking cell, still inside
+// the room (rpg-toolkit#848) -- a real blocked interior cell, marked '#'
+// exactly like a degenerate entry, just discretized as an edge rather
+// than a hex.
 func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 	fmt.Fprintln(b, floorPlanLegend)
 	sd := data.Space
@@ -193,10 +193,16 @@ func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 	}
 
 	for _, w := range sd.Walls {
-		if w.Start != w.End {
-			continue // boundary-edge: render-only perimeter marker, not a real wall -- see doc above
+		if w.Start == w.End {
+			set(core.HexFromCube(w.Start), '#')
+			continue
 		}
-		set(core.HexFromCube(w.Start), '#')
+		// Boundary-edge: Start is real floor, never marked -- see doc
+		// above. End is marked when it's a real in-grid blocked cell
+		// (rpg-toolkit#848); `set`'s own bounds check silently no-ops for
+		// the outer-perimeter case, where End is genuinely outside the
+		// room.
+		set(core.HexFromCube(w.End), '#')
 	}
 	for _, door := range data.Doors {
 		set(door.Position, 'D')

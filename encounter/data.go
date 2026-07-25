@@ -82,20 +82,26 @@ type SpaceData struct {
 	// one of two shapes:
 	//
 	//   - Degenerate (Start == End): one blocked interior hex — interior
-	//     pattern walls (RandomPattern etc.) and InitDungeon's connector
-	//     boundary columns between regions. This is the ONLY shape wave 1
-	//     stored, and the only one rebuildRoomFromData turns into an
-	//     actual spatial.Room blocker (see its Start != End skip) —
-	//     geometry fidelity beyond per-hex blocking isn't needed for these.
+	//     pattern walls (RandomPattern etc.) only, as of rpg-toolkit#848
+	//     (InitDungeon's connector boundary columns used to be degenerate
+	//     entries too; they're boundary-edge segments now, below).
+	//     rebuildRoomFromData always turns these into an actual
+	//     spatial.Room blocker — geometry fidelity beyond per-hex blocking
+	//     isn't needed for these.
 	//
 	//   - Boundary-edge (Start != End, exactly one hex step apart): Start
-	//     is a real walkable floor hex, End is the adjacent hex just
-	//     outside the room's grid bounds — InitDungeon's outer-perimeter
-	//     segments (rpg-toolkit#834), one per room-facing edge. Purely a
-	//     render contract (rpg-dnd5e-web#566's client-side hexDistance==1
-	//     branch draws one clean full-width slab on that edge) — never a
-	//     spatial.Room blocker; walkability there already comes from the
-	//     grid's own bounds, not from this entry.
+	//     is always a real walkable floor hex; End is either (a) the
+	//     adjacent hex just outside the room's grid bounds — InitDungeon's
+	//     outer-perimeter segments (rpg-toolkit#834), one per room-facing
+	//     edge, purely a render contract with no gameplay effect of its
+	//     own (walkability there already comes from the grid's own
+	//     bounds) — or (b) a connector column's flanking cell, still
+	//     inside the grid (rpg-toolkit#848): a real, in-bounds cell that
+	//     must keep blocking movement/LOS even though it's no longer its
+	//     own degenerate entry. rebuildRoomFromData distinguishes the two
+	//     purely by grid validity: it places a blocker at End whenever End
+	//     is itself a valid in-grid position (case b), and no-ops when it
+	//     isn't (case a, unreachable by construction regardless).
 	Walls []environments.WallSegmentData `json:"walls"`
 
 	// Width and Height are the room's grid dimensions (offset-coordinate

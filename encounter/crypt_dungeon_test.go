@@ -584,11 +584,13 @@ func cryptRegionStarts() []int {
 
 // cryptBoundaryColumnHexes returns every hex the connector boundary column
 // between region connectorIdx and connectorIdx+1 must carry a blocked wall
-// segment at — every row except cryptDoorRow (that cell is the connector's
-// door), mirroring generateDungeonLayout's own boundary-column construction
-// (dungeon.go). Unaffected by rpg-toolkit#835's Pattern change: this column
-// is emitted unconditionally, independent of either neighboring region's
-// interior wall pattern.
+// reference at — every row except cryptDoorRow (that cell is the
+// connector's door), mirroring generateDungeonLayout's own boundary-column
+// construction (dungeon.go). Unaffected by rpg-toolkit#835's Pattern
+// change: this column is emitted unconditionally, independent of either
+// neighboring region's interior wall pattern. As of rpg-toolkit#848 these
+// hexes are referenced as the End of a boundary-edge segment rather than
+// the Start of a degenerate one — see this function's caller.
 func cryptBoundaryColumnHexes(connectorIdx int) []core.Hex {
 	starts := cryptRegionStarts()
 	x := starts[connectorIdx] + cryptRegionWidths[connectorIdx]
@@ -646,9 +648,16 @@ func TestCryptDungeon_EntranceAndBossPatternEmpty_NoInteriorWallsAcrossSeeds(t *
 				"seed %d: boss region must roll zero interior walls with PatternEmpty; found one at %v", seed, h)
 		}
 
-		wallSet := make(map[core.Hex]bool, len(data.Space.Walls))
+		// rpg-toolkit#848: a connector boundary column's flanking cells are
+		// no longer degenerate (Start == End) entries of their own — they
+		// are the End of a boundary-edge segment whose Start is a real
+		// region floor hex (see connectorBoundaryEdgeWalls). wallSet must
+		// therefore include End too, or every flanking hex would wrongly
+		// look unreferenced.
+		wallSet := make(map[core.Hex]bool, len(data.Space.Walls)*2)
 		for _, w := range data.Space.Walls {
 			wallSet[core.HexFromCube(w.Start)] = true
+			wallSet[core.HexFromCube(w.End)] = true
 		}
 		for connectorIdx := 0; connectorIdx < 2; connectorIdx++ {
 			for _, h := range cryptBoundaryColumnHexes(connectorIdx) {

@@ -480,6 +480,16 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	regions := make([]RegionData, n)
 	doors := make([]spatial.CubeCoordinate, n-1)
 	var obstacles []ObstacleData
+	// connectorColumnCubes is every connector's FULL boundary column (door
+	// cell included); connectorFlankingCubes is the same columns minus
+	// their door cells -- rpg-toolkit#848. Both are populated as the
+	// connector loop below runs and consumed once, after every region's
+	// walls are known, by the perimeterEdgeWalls/connectorBoundaryEdgeWalls
+	// calls at the bottom of this function. See connectorBoundaryEdgeWalls'
+	// doc for why these can no longer be plain degenerate (Start == End)
+	// entries in segs itself.
+	connectorColumnCubes := make(map[spatial.CubeCoordinate]struct{})
+	connectorFlankingCubes := make(map[spatial.CubeCoordinate]struct{})
 
 	for i, r := range params.Regions {
 		local := spatial.Position{X: 0, Y: float64(doorRow)}
@@ -587,18 +597,40 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 
 		if i < n-1 {
 			doorX := starts[i] + r.Width
+			// rpg-toolkit#848: no longer appends a degenerate (Start == End)
+			// entry per non-door cell here -- that made each flanking cell
+			// an independently-classified wall hex client-side, and a hex
+			// column's flanking cells expose 4 of their 6 sides to the two
+			// adjacent regions (not 2, the way a square-grid column would),
+			// rendering as an isolated "chunky rubble box" per cell instead
+			// of a clean wall. Every column cell (door included) is instead
+			// recorded here and converted into boundary-edge segments by
+			// connectorBoundaryEdgeWalls below, once every region's own
+			// walls are known.
 			for y := 0; y < params.Height; y++ {
+				cube := spatial.OffsetCoordinateToCubeWithOrientation(
+					spatial.Position{X: float64(doorX), Y: float64(y)}, spatial.HexOrientationPointyTop)
+				connectorColumnCubes[cube] = struct{}{}
 				if y == doorRow {
 					continue
 				}
-				cube := spatial.OffsetCoordinateToCubeWithOrientation(
-					spatial.Position{X: float64(doorX), Y: float64(y)}, spatial.HexOrientationPointyTop)
-				segs = append(segs,
-					environments.WallSegmentData{Start: cube, End: cube, BlocksMovement: true, BlocksLoS: true})
+				connectorFlankingCubes[cube] = struct{}{}
 			}
 			doors[i] = spatial.OffsetCoordinateToCubeWithOrientation(
 				spatial.Position{X: float64(doorX), Y: float64(doorRow)}, spatial.HexOrientationPointyTop)
 		}
+	}
+
+	// blocked is every cell that is NOT real floor for boundary-edge
+	// purposes: interior pattern-wall/obstacle cells (degenerate Start==End
+	// entries already in segs) UNION every connector column cell, door
+	// cells included (rpg-toolkit#848) -- a connector's own door cell must
+	// never be treated as floor eligible to grow an outward-facing
+	// perimeter edge of its own (TestPerimeterEdgeWalls_NeverAtConnectorDoorCells),
+	// even though it carries no wall entry in segs itself.
+	blocked := wallCubeSet(segs)
+	for cube := range connectorColumnCubes {
+		blocked[cube] = struct{}{}
 	}
 
 	// rpg-toolkit#834: one boundary-edge segment (Start != End) per
@@ -608,7 +640,13 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	// touches interior wall emission or the connector columns, and is a
 	// pure, seed-independent function of the floor/wall layout already
 	// built above.
-	segs = append(segs, perimeterEdgeWalls(segs, totalWidth, params.Height)...)
+	segs = append(segs, perimeterEdgeWalls(blocked, totalWidth, params.Height)...)
+
+	// rpg-toolkit#848: the same boundary-edge technique, extended to every
+	// connector's interior boundary column -- see connectorBoundaryEdgeWalls'
+	// doc for why the column's flanking (non-door) cells can no longer be
+	// left as degenerate Start==End entries.
+	segs = append(segs, connectorBoundaryEdgeWalls(blocked, connectorFlankingCubes, totalWidth, params.Height)...)
 
 	entrance := spatial.OffsetCoordinateToCubeWithOrientation(
 		spatial.Position{X: 0, Y: float64(doorRow)}, spatial.HexOrientationPointyTop)
@@ -628,26 +666,36 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 // dungeon space's outer perimeter (rpg-toolkit#834) -- rooms shipped ZERO
 // perimeter wall data before this; blocking came only from grid bounds,
 // and the client's wall renderer had nothing to draw a room's outer walls
-// with. For every FLOOR hex in [0,width) x [0,height) (i.e. not already a
-// blocked cell in walls -- interior pattern walls and connector boundary
-// columns alike, both always degenerate Start==End entries at this point)
-// and every one of its 6 hex-grid neighbor directions that lands OUTSIDE
-// those bounds, one segment {Start: the floor hex, End: the out-of-bounds
-// neighbor} is emitted.
+// with. For every FLOOR hex in [0,width) x [0,height) (i.e. not already in
+// blocked -- interior pattern/obstacle walls and every connector column
+// cell alike, rpg-toolkit#848) and every one of its 6 hex-grid neighbor
+// directions that lands OUTSIDE those bounds, one segment {Start: the
+// floor hex, End: the out-of-bounds neighbor} is emitted.
 //
-// Deliberately excludes cells already IN walls, not just those failing an
-// IsValidPosition check on the OUTER rectangle: a connector's boundary
-// column sits at an interior x (strictly between two regions, never the
-// space's x=0 or x=width-1 edge) but spans every y INCLUDING the true
-// edge rows y=0/y=height-1 -- by "floor hex" exclusion those cells never
-// get a NEW edge segment here, keeping them exactly the "interior
-// structure" they already were (this function only ever ADDS segments,
-// never touches walls' existing entries). Doors sit at a boundary
-// column's doorRow cell specifically, which is never on the space's own
-// x=0/x=width-1/y=0/y=height-1 edges either (validateDungeonParams' >=4
-// height/width floor keeps doorRow strictly interior) -- so this function
-// needs no separate door-passage exclusion; the geometry already keeps
-// every connector passage off the outer perimeter (see
+// blocked is caller-supplied (generateDungeonLayout unions wallCubeSet(segs)
+// with every connector column cube, doors included) rather than derived
+// here from a raw wall list, specifically so a connector column's flanking
+// cells -- no longer degenerate Start==End entries in segs themselves,
+// see connectorBoundaryEdgeWalls -- still count as "not floor" for THIS
+// function's purposes. Without that, a flanking cell sitting at the
+// space's own y=0/y=height-1 row (common: validateDungeonParams' >=4
+// height floor guarantees a connector column always has flanking rows at
+// both true edge rows, only doorRow is ever excluded) would be
+// misidentified as real floor and grow a bogus outward-facing perimeter
+// edge of its own.
+//
+// A connector's boundary column sits at an interior x (strictly between
+// two regions, never the space's x=0 or x=width-1 edge) but spans every y
+// INCLUDING the true edge rows y=0/y=height-1 -- by "floor hex" exclusion
+// those cells never get a NEW edge segment here, keeping them exactly the
+// "interior structure" they already were (this function only ever ADDS
+// segments, never touches walls' existing entries). Doors sit at a
+// boundary column's doorRow cell specifically, which is never on the
+// space's own x=0/x=width-1/y=0/y=height-1 edges either
+// (validateDungeonParams' >=4 height/width floor keeps doorRow strictly
+// interior) -- so this function needs no separate door-passage exclusion;
+// the geometry already keeps every connector passage off the outer
+// perimeter (see
 // perimeter_edge_walls_test.go's TestPerimeterEdgeWalls_NeverAtConnectorDoorCells
 // for the assertion).
 //
@@ -658,21 +706,22 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 // client-side hexDistance==1 renderer wants: each exposed edge draws its
 // own clean slab.
 //
-// Purely a function of walls/width/height, already fully determined by
+// Purely a function of blocked/width/height, already fully determined by
 // the (possibly seeded) region generation above -- no RNG here, so
 // perimeter emission is itself deterministic and seed-independent, unlike
 // the per-region interior pattern it follows.
 //
-// These segments never become a spatial.Room blocker (see
-// rebuildRoomFromData's Start != End skip): Start is real walkable floor
-// and End is entirely outside the grid, already unreachable by
-// construction (every LOS/movement check already runs through
-// spatial.HexGrid.IsValidPosition) -- this is the render contract
+// These segments never become a spatial.Room blocker in their own right
+// when End is genuinely outside the grid (see rebuildRoomFromData): Start
+// is real walkable floor and End is entirely outside the grid, already
+// unreachable by construction (every LOS/movement check already runs
+// through spatial.HexGrid.IsValidPosition) -- this is the render contract
 // (rpg-dnd5e-web#566) catching up to the room's actual shape, not a new
 // blocking mechanism, so walkability outcomes are unchanged by this
-// function's output.
-func perimeterEdgeWalls(walls []environments.WallSegmentData, width, height int) []environments.WallSegmentData {
-	blocked := wallCubeSet(walls)
+// function's output. (connectorBoundaryEdgeWalls' segments differ here --
+// their End IS a valid in-grid position, and rebuildRoomFromData places a
+// blocker there specifically because of that.)
+func perimeterEdgeWalls(blocked map[spatial.CubeCoordinate]struct{}, width, height int) []environments.WallSegmentData {
 	var out []environments.WallSegmentData
 	fw, fh := float64(width), float64(height)
 	for x := 0; x < width; x++ {
@@ -686,6 +735,74 @@ func perimeterEdgeWalls(walls []environments.WallSegmentData, width, height int)
 				npos := n.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 				if npos.X >= 0 && npos.X < fw && npos.Y >= 0 && npos.Y < fh {
 					continue // neighbor is inside the space -- not a perimeter edge
+				}
+				out = append(out, environments.WallSegmentData{
+					Start: cube, End: n, BlocksMovement: true, BlocksLoS: true,
+				})
+			}
+		}
+	}
+	return out
+}
+
+// connectorBoundaryEdgeWalls computes one boundary-edge WallSegmentData
+// (Start != End, exactly one hex step apart) per room-facing edge where a
+// REAL floor hex sits adjacent to a connector column's flanking (non-door)
+// cell -- extending #834's boundary-edge technique from the space's outer
+// perimeter (perimeterEdgeWalls, above) to these INTERIOR boundary columns
+// (rpg-toolkit#848).
+//
+// Root cause this replaces: a connector column's flanking cells used to be
+// individual degenerate (Start == End) WallSegmentData entries. Client-side
+// (rpg-dnd5e-web's buildDungeonWallSegments/collectWallHexes), any such
+// entry is classified as an independent wall hex and rendered by drawing
+// one edge piece per exposed side. Unlike a square grid, a straight
+// single-file line of hex cells does NOT collapse to "2 exposed sides": a
+// hex has 6 neighbors, and a north/south column only ever shares 2 of them
+// with its own same-column neighbors -- the other 4 face diagonally into
+// the two ADJACENT REGIONS (at rows skewed by the odd-q offset scheme,
+// tools/spatial's OffsetCoordinateToCubeWithOrientation). So even a
+// flanking cell in the middle of a long run exposes 4 sides, not 2,
+// rendering as an isolated "chunky rubble box" that visually drowns the
+// (correctly rendered) door immediately beside it.
+//
+// The fix mirrors perimeterEdgeWalls exactly, just facing inward instead
+// of outward: iterate every REAL floor hex in [0,width) x [0,height) (not
+// in blocked, which the caller has already unioned with every connector
+// column cell -- door cells included, so a door is never treated as a
+// Start here either, matching TestPerimeterEdgeWalls_NeverAtConnectorDoorCells'
+// invariant) and every one of its 6 neighbor directions; whenever that
+// neighbor is one of THIS dungeon's connector flanking cells, emit one
+// {Start: the floor hex, End: the flanking cell} segment. Two regions
+// share a single flanking cell as a neighbor (one on each side), so most
+// flanking cells end up boxed in by exactly two segments -- one contributed
+// by each region's own boundary column -- which is what "the corridor's
+// side walls" (the issue's phrasing) actually looks like once rendered:
+// two clean edges per row, not a floating block.
+//
+// Unlike perimeterEdgeWalls' segments, a flanking cell IS a valid in-grid
+// position (an interior column, not the space's true edge) -- these
+// segments DO need to keep blocking movement/LOS even though they're no
+// longer a degenerate entry in segs. See rebuildRoomFromData's companion
+// change: it places a blocker at the End of any Start != End segment that
+// is itself a valid in-grid position, leaving the true out-of-grid
+// perimeter case (#834) an unaffected no-op.
+func connectorBoundaryEdgeWalls(
+	blocked map[spatial.CubeCoordinate]struct{},
+	flanking map[spatial.CubeCoordinate]struct{},
+	width, height int,
+) []environments.WallSegmentData {
+	var out []environments.WallSegmentData
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			cube := spatial.OffsetCoordinateToCubeWithOrientation(
+				spatial.Position{X: float64(x), Y: float64(y)}, spatial.HexOrientationPointyTop)
+			if _, isBlocked := blocked[cube]; isBlocked {
+				continue
+			}
+			for _, n := range cube.GetNeighbors() {
+				if _, isFlanking := flanking[n]; !isFlanking {
+					continue
 				}
 				out = append(out, environments.WallSegmentData{
 					Start: cube, End: n, BlocksMovement: true, BlocksLoS: true,
