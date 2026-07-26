@@ -571,7 +571,7 @@ func (s *DraftTestSuite) TestFinalizeAndEquipDuplicateWeapons() {
 		err := draft.SetClass(&character.SetClassInput{
 			ClassID: classes.Rogue,
 			Choices: character.ClassChoices{
-				Skills: []skills.Skill{skills.Stealth, skills.Perception, skills.Investigation, skills.Acrobatics},
+				Skills:    []skills.Skill{skills.Stealth, skills.Perception, skills.Investigation, skills.Acrobatics},
 				Expertise: []skills.Skill{skills.Stealth, skills.Perception},
 				Equipment: []character.EquipmentChoiceSelection{
 					{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponRapier},
