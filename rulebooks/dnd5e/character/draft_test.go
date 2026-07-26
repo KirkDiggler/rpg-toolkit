@@ -564,6 +564,77 @@ func (s *DraftTestSuite) TestCompileInventory_PreservesBundleQuantities() {
 	s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter's two handaxes should stay a quantity-2 stack")
 }
 
+func (s *DraftTestSuite) TestFinalizeAndEquipDuplicateWeapons() {
+	s.Run("Rogue starting daggers occupy both hands", func() {
+		draft := s.createRogueDraft()
+
+		err := draft.SetClass(&character.SetClassInput{
+			ClassID: classes.Rogue,
+			Choices: character.ClassChoices{
+				Skills: []skills.Skill{skills.Stealth, skills.Perception, skills.Investigation, skills.Acrobatics},
+				Expertise: []skills.Skill{skills.Stealth, skills.Perception},
+				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponRapier},
+					{ChoiceID: choices.RogueWeaponsSecondary, OptionID: choices.RogueSecondaryShortbow},
+					{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
+				},
+			},
+		})
+		s.Require().NoError(err)
+
+		char, err := draft.ToCharacter(s.ctx, "rogue-dual-dagger", s.bus)
+		s.Require().NoError(err)
+
+		inventory := char.ToData().Inventory
+		s.assertInventoryStack(inventory, weapons.Dagger, 2, "Rogue should keep both granted daggers")
+
+		s.Require().NoError(char.EquipItem(character.SlotMainHand, weapons.Dagger))
+		s.Require().NoError(char.EquipItem(character.SlotOffHand, weapons.Dagger))
+
+		s.Require().NotNil(char.GetEquippedSlot(character.SlotMainHand))
+		s.Require().NotNil(char.GetEquippedSlot(character.SlotOffHand))
+		s.Equal(weapons.Dagger, char.GetEquippedSlot(character.SlotMainHand).AsWeapon().ID)
+		s.Equal(weapons.Dagger, char.GetEquippedSlot(character.SlotOffHand).AsWeapon().ID)
+	})
+
+	s.Run("Duplicate weapon choice fills both valid slots", func() {
+		draft := s.createFighterDraft()
+
+		err := draft.SetClass(&character.SetClassInput{
+			ClassID: classes.Fighter,
+			Choices: character.ClassChoices{
+				Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+					{
+						ChoiceID:           choices.FighterWeaponsPrimary,
+						OptionID:           choices.FighterWeaponMartialShield,
+						CategorySelections: []shared.EquipmentID{weapons.Longsword},
+					},
+					{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedHandaxes},
+					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+				},
+				FightingStyle: fightingstyles.Defense,
+			},
+		})
+		s.Require().NoError(err)
+
+		char, err := draft.ToCharacter(s.ctx, "fighter-dual-handaxe", s.bus)
+		s.Require().NoError(err)
+
+		inventory := char.ToData().Inventory
+		s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter should keep the full handaxe count")
+
+		s.Require().NoError(char.EquipItem(character.SlotMainHand, weapons.Handaxe))
+		s.Require().NoError(char.EquipItem(character.SlotOffHand, weapons.Handaxe))
+
+		s.Require().NotNil(char.GetEquippedSlot(character.SlotMainHand))
+		s.Require().NotNil(char.GetEquippedSlot(character.SlotOffHand))
+		s.Equal(weapons.Handaxe, char.GetEquippedSlot(character.SlotMainHand).AsWeapon().ID)
+		s.Equal(weapons.Handaxe, char.GetEquippedSlot(character.SlotOffHand).AsWeapon().ID)
+	})
+}
+
 // Test: Equipment choices
 func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 	s.Run("Simple weapon choice", func() {

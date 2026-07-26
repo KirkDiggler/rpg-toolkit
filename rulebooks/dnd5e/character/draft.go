@@ -1003,13 +1003,7 @@ func (d *Draft) equipmentRequirementFor(
 		return nil
 	}
 
-	for i := range reqs.Equipment {
-		if reqs.Equipment[i].ID == choiceID {
-			return reqs.Equipment[i]
-		}
-	}
-
-	return nil
+	return d.findEquipmentRequirement(choiceID, reqs)
 }
 
 func (d *Draft) materializeEquipmentOption(
