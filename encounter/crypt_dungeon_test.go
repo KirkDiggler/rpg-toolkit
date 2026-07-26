@@ -12,13 +12,16 @@ package encounter_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -254,6 +257,16 @@ func TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths(t *testing.
 		encounter.CryptObstacleRefBrazier, encounter.CryptObstacleRefBonePile,
 		encounter.CryptObstacleRefTorchOrnate, encounter.CryptObstacleRefCandles,
 		encounter.CryptObstacleRefChain, encounter.CryptObstacleRefSkeletonRemains,
+		// rpg-toolkit#854 wave-1 promotion refs.
+		encounter.CryptObstacleRefRug, encounter.CryptObstacleRefWallBanner,
+		encounter.CryptObstacleRefCandleStand, encounter.CryptObstacleRefLantern,
+		encounter.CryptObstacleRefStoneLantern, encounter.CryptObstacleRefTortureTable,
+		encounter.CryptObstacleRefRibcage, encounter.CryptObstacleRefBoneScatter,
+		encounter.CryptObstacleRefRubbleScatter,
+		// rpg-toolkit#854 wave-1 promotion refs, addendum.
+		encounter.CryptObstacleRefChains, encounter.CryptObstacleRefGlowingOrb,
+		encounter.CryptObstacleRefRuneMarker, encounter.CryptObstacleRefRunePillar,
+		encounter.CryptObstacleRefTombOpen, encounter.CryptObstacleRefPillarBroken,
 	} {
 		require.Regexp(t, `^dnd5e:props:[a-z-]+$`, ref)
 	}
@@ -281,6 +294,26 @@ var cryptCanonicalAssetManifestKeys = map[string]string{
 	"CryptObstacleRefCandles":         "dnd5e:props:candles",
 	"CryptObstacleRefChain":           "dnd5e:props:chain",
 	"CryptObstacleRefSkeletonRemains": "dnd5e:props:skeleton-remains",
+	// rpg-toolkit#854 wave-1 promotion refs -- asset-w is promoting
+	// matching meshes for these exact names in parallel.
+	"CryptObstacleRefRug":           "dnd5e:props:rug",
+	"CryptObstacleRefWallBanner":    "dnd5e:props:wall-banner",
+	"CryptObstacleRefCandleStand":   "dnd5e:props:candle-stand",
+	"CryptObstacleRefLantern":       "dnd5e:props:lantern",
+	"CryptObstacleRefStoneLantern":  "dnd5e:props:stone-lantern",
+	"CryptObstacleRefTortureTable":  "dnd5e:props:torture-table",
+	"CryptObstacleRefRibcage":       "dnd5e:props:ribcage",
+	"CryptObstacleRefBoneScatter":   "dnd5e:props:bone-scatter",
+	"CryptObstacleRefRubbleScatter": "dnd5e:props:rubble-scatter",
+	// rpg-toolkit#854 wave-1 promotion refs, addendum (skeleton-remains
+	// was also in the addendum's list but is byte-for-byte identical to
+	// CryptObstacleRefSkeletonRemains above -- not duplicated here).
+	"CryptObstacleRefChains":       "dnd5e:props:chains",
+	"CryptObstacleRefGlowingOrb":   "dnd5e:props:glowing-orb",
+	"CryptObstacleRefRuneMarker":   "dnd5e:props:rune-marker",
+	"CryptObstacleRefRunePillar":   "dnd5e:props:rune-pillar",
+	"CryptObstacleRefTombOpen":     "dnd5e:props:tomb-open",
+	"CryptObstacleRefPillarBroken": "dnd5e:props:pillar-broken",
 }
 
 // TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly: each
@@ -306,6 +339,21 @@ func TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly(t *testing.T) 
 		"CryptObstacleRefCandles":            encounter.CryptObstacleRefCandles,
 		"CryptObstacleRefChain":              encounter.CryptObstacleRefChain,
 		"CryptObstacleRefSkeletonRemains":    encounter.CryptObstacleRefSkeletonRemains,
+		"CryptObstacleRefRug":                encounter.CryptObstacleRefRug,
+		"CryptObstacleRefWallBanner":         encounter.CryptObstacleRefWallBanner,
+		"CryptObstacleRefCandleStand":        encounter.CryptObstacleRefCandleStand,
+		"CryptObstacleRefLantern":            encounter.CryptObstacleRefLantern,
+		"CryptObstacleRefStoneLantern":       encounter.CryptObstacleRefStoneLantern,
+		"CryptObstacleRefTortureTable":       encounter.CryptObstacleRefTortureTable,
+		"CryptObstacleRefRibcage":            encounter.CryptObstacleRefRibcage,
+		"CryptObstacleRefBoneScatter":        encounter.CryptObstacleRefBoneScatter,
+		"CryptObstacleRefRubbleScatter":      encounter.CryptObstacleRefRubbleScatter,
+		"CryptObstacleRefChains":             encounter.CryptObstacleRefChains,
+		"CryptObstacleRefGlowingOrb":         encounter.CryptObstacleRefGlowingOrb,
+		"CryptObstacleRefRuneMarker":         encounter.CryptObstacleRefRuneMarker,
+		"CryptObstacleRefRunePillar":         encounter.CryptObstacleRefRunePillar,
+		"CryptObstacleRefTombOpen":           encounter.CryptObstacleRefTombOpen,
+		"CryptObstacleRefPillarBroken":       encounter.CryptObstacleRefPillarBroken,
 	}
 	for name, want := range cryptCanonicalAssetManifestKeys {
 		require.Equal(t, want, actual[name], "%s must equal the exact canonical asset-manifest key", name)
@@ -360,6 +408,72 @@ func TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract(t *testing.T
 		require.True(t, ok, "ref %q must appear somewhere in CryptDungeonParams", tc.ref)
 		require.Equal(t, tc.blocksMovement, spec.BlocksMovement, "ref %q BlocksMovement mismatch", tc.ref)
 		require.Equal(t, tc.blocksLoS, spec.BlocksLoS, "ref %q BlocksLoS mismatch", tc.ref)
+	}
+}
+
+// cryptWaveOnePromotionRefs is rpg-toolkit#854's wave-1 promotion
+// vocabulary (15 refs: the original 9 plus 6 new from the addendum --
+// skeleton-remains was in the addendum's list too but is byte-for-byte
+// identical to the pre-existing CryptObstacleRefSkeletonRemains, so it's
+// not duplicated here) and its documented default blocking flags. Not
+// yet wired into cryptEntranceObstacles/cryptCorridorObstacles/
+// cryptBossObstacles' fixed room composition (a separate, later
+// authoring/composition decision), so these refs never "appear somewhere
+// in CryptDungeonParams" the way cryptBlockingContractTable's refs do --
+// see TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom
+// below for how this table is actually verified instead.
+var cryptWaveOnePromotionRefs = []struct {
+	ref            string
+	blocksMovement bool
+	blocksLoS      bool
+}{
+	{encounter.CryptObstacleRefRug, false, false},
+	{encounter.CryptObstacleRefWallBanner, false, false},
+	{encounter.CryptObstacleRefCandleStand, false, false},
+	{encounter.CryptObstacleRefLantern, false, false},
+	{encounter.CryptObstacleRefStoneLantern, true, false},
+	{encounter.CryptObstacleRefTortureTable, true, false},
+	{encounter.CryptObstacleRefRibcage, false, false},
+	{encounter.CryptObstacleRefBoneScatter, false, false},
+	{encounter.CryptObstacleRefRubbleScatter, false, false},
+	// Addendum.
+	{encounter.CryptObstacleRefChains, false, false},
+	{encounter.CryptObstacleRefGlowingOrb, false, false},
+	{encounter.CryptObstacleRefRuneMarker, false, false},
+	{encounter.CryptObstacleRefRunePillar, true, true},
+	{encounter.CryptObstacleRefTombOpen, true, false},
+	{encounter.CryptObstacleRefPillarBroken, true, false},
+}
+
+// TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom
+// proves each rpg-toolkit#854 wave-1 ref's documented default blocking
+// flags actually produce the correct movement/LoS behavior through a
+// real room -- one instance per ref, each at its own hex (avoiding any
+// placement collision across the table), verified via room.CanPlaceEntity
+// (movement) and room.IsLineOfSightBlocked across two opposite neighbors
+// (LoS) -- mirrors obstacle_test.go's TestObstacle_BlocksMovement_False/
+// TestObstacle_BlocksLoS_True/_False pattern, the same generic mechanism
+// every other obstacle ref already goes through (AddObstacle/
+// rebuildRoomFromData don't know or care what the ref string is).
+func TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom(t *testing.T) {
+	enc := cdNewEncounter(t)
+	// Width must clear 2 + len(cryptWaveOnePromotionRefs)*2 with margin to
+	// spare for each entry's neighbor-based LoS check.
+	require.NoError(t, enc.InitRoom(2*len(cryptWaveOnePromotionRefs)+10, 20, environments.PatternEmpty))
+
+	for i, tc := range cryptWaveOnePromotionRefs {
+		hex := core.HexFromPosition(spatial.Position{X: float64(2 + i*2), Y: 10})
+		id := core.EntityID(fmt.Sprintf("wave1-promotion-%d", i))
+		require.NoError(t, enc.AddObstacle(id, tc.ref, hex, tc.blocksMovement, tc.blocksLoS), "ref %q", tc.ref)
+
+		room := enc.Room()
+		require.Equal(t, !tc.blocksMovement, room.CanPlaceEntity(probeEntity{}, hex.ToPosition()),
+			"ref %q: CanPlaceEntity must match BlocksMovement=%v", tc.ref, tc.blocksMovement)
+
+		neighbors := perception.HexNeighbors(hex)
+		from, to := neighbors[0], neighbors[3]
+		require.Equal(t, tc.blocksLoS, room.IsLineOfSightBlocked(from.ToPosition(), to.ToPosition()),
+			"ref %q: IsLineOfSightBlocked must match BlocksLoS=%v", tc.ref, tc.blocksLoS)
 	}
 }
 
