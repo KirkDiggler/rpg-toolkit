@@ -124,6 +124,14 @@ const (
 // not yet wired into cryptEntranceObstacles/cryptCorridorObstacles/
 // cryptBossObstacles' fixed room composition, which room gets which of
 // these is a separate, later authoring/composition decision.
+//
+// Resolved, no renames: asset-w reconciled the shipped manifest TO this
+// exact 16-ref contract (rpg-game-assets#36) rather than the other way
+// around — every key here matches the promoted asset names verbatim.
+// #36 ships real meshes for 15 of the 16; CryptObstacleRefRibcage below
+// is the one exception (still blocked on an asset defect, see its own
+// doc). See the blocking-properties table below for each ref's promotion
+// status relative to the pre-#854 verified shipped-asset contract.
 const (
 	// CryptObstacleRefRug identifies a floor rug — walkable-past dressing.
 	CryptObstacleRefRug = "dnd5e:props:rug"
@@ -132,7 +140,9 @@ const (
 	CryptObstacleRefWallBanner = "dnd5e:props:wall-banner"
 	// CryptObstacleRefCandleStand identifies a small candle stand —
 	// walkable-past dressing (distinct from CryptObstacleRefStoneLantern's
-	// physical stone pedestal).
+	// physical stone pedestal). rpg-game-assets#36 ships the base mesh;
+	// its flame companion is blocked by rpg-game-assets#35 — candle
+	// clusters (CryptObstacleRefCandles) carry the flames this wave.
 	CryptObstacleRefCandleStand = "dnd5e:props:candle-stand"
 	// CryptObstacleRefLantern identifies a hanging/table lantern —
 	// walkable-past dressing.
@@ -146,7 +156,11 @@ const (
 	// (blocks movement, see over/around it).
 	CryptObstacleRefTortureTable = "dnd5e:props:torture-table"
 	// CryptObstacleRefRibcage identifies a ribcage floor dressing piece —
-	// walkable-past dressing.
+	// walkable-past dressing. No shipped mesh yet as of rpg-game-assets#36
+	// — every pack candidate is scale-broken, blocked by
+	// rpg-game-assets#21. The ref/vocabulary entry stays regardless; a
+	// caller placing it will get correct blocking behavior once a mesh
+	// ships, this is purely an asset-availability gap.
 	CryptObstacleRefRibcage = "dnd5e:props:ribcage"
 	// CryptObstacleRefBoneScatter identifies a scattered-bones floor
 	// dressing piece — walkable-past dressing.
@@ -159,7 +173,8 @@ const (
 // Wave-1 promotion refs, addendum (rpg-toolkit#854): the asset
 // inventory's crypt reprioritization added 7 more candidates to the same
 // batch, bringing the total to 16 -- same vocabulary-only scope and
-// pattern as the const block above. Only 6 are new here:
+// pattern as the const block above; resolved without renames the same
+// way (see that block's doc). Only 6 are new here:
 // "dnd5e:props:skeleton-remains" (false/false, "lying/shackled skeleton
 // dressing") was also in this addendum's list, but it's byte-for-byte the
 // same ref string and flags as CryptObstacleRefSkeletonRemains above
@@ -193,9 +208,12 @@ const (
 // Crypt set-piece blocking properties: the VERIFIED canonical shipped-
 // asset-contract table (independent finding, PR #826 review — supersedes
 // this file's earlier "low vs tall" design guess, which had altar wrong),
-// now spanning three flag classes across #819's structural vocabulary,
-// rpg-toolkit#839's depth-pass dressing/light-anchor additions, and
-// rpg-toolkit#854's wave-1 promotion refs:
+// spanning #819's structural vocabulary and rpg-toolkit#839's depth-pass
+// dressing/light-anchor additions. Every ref below already has a shipped,
+// measured mesh in the asset manifest — see the SEPARATE table below this
+// one for rpg-toolkit#854's wave-1 promotion refs, which started pending
+// and are tracked distinctly until rpg-game-assets#36 (now merged, see
+// #854's own doc above) fully collapses that distinction:
 //
 //	ref                    BlocksMovement  BlocksLoS
 //	altar                  true            true   (measured 2.057m, role "obstacle")
@@ -203,40 +221,50 @@ const (
 //	statue-knight-hooded   true            true
 //	obelisk                true            true
 //	pillar                 true            true
-//	rune-pillar            true            true   (#854 addendum, same shape as pillar)
 //	coffin/tomb            true            false  (walk around, see over)
-//	tomb-open              true            false  (same shape as coffin, #854 addendum)
-//	pillar-broken          true            false  (stump, same shape as coffin, #854 addendum)
 //	brazier                true            false  (physical, but see over the flame)
 //	torch-ornate           true            false  (same shape as brazier)
-//	stone-lantern          true            false  (same shape as brazier, #854)
-//	torture-table          true            false  (same shape as coffin, #854)
 //	candles                false           false  (walkable-past floor dressing)
 //	bone-pile              false           false  (walkable-past floor dressing)
 //	chain                  false           false  (walkable-past floor dressing)
-//	chains                 false           false  (walkable-past floor dressing, #854 addendum)
 //	skeleton-remains       false           false  (walkable-past floor dressing)
+//
+// rpg-toolkit#854's wave-1 promotion refs (pending promotion —
+// rpg-game-assets#36 has now shipped meshes reconciled to this exact
+// 16-ref contract, resolving 15 of the 16; ribcage remains the one
+// exception, blocked by a separate asset defect — see its own doc
+// comment above):
+//
+//	ref                    BlocksMovement  BlocksLoS
+//	rune-pillar            true            true   (#854 addendum, same shape as pillar)
+//	tomb-open              true            false  (same shape as coffin, #854 addendum)
+//	pillar-broken          true            false  (stump, same shape as coffin, #854 addendum)
+//	stone-lantern          true            false  (same shape as brazier, #854)
+//	torture-table          true            false  (same shape as coffin, #854)
+//	chains                 false           false  (walkable-past floor dressing, #854 addendum)
 //	rug                    false           false  (walkable-past floor dressing, #854)
 //	wall-banner            false           false  (walkable-past floor dressing, #854)
-//	candle-stand           false           false  (walkable-past floor dressing, #854)
+//	candle-stand           false           false  (walkable-past floor dressing, #854; flame
+//	                                               companion pending, see its own doc comment)
 //	lantern                false           false  (walkable-past floor dressing, #854)
-//	ribcage                false           false  (walkable-past floor dressing, #854)
+//	ribcage                false           false  (walkable-past floor dressing, #854; no
+//	                                               shipped mesh yet, see its own doc comment)
 //	bone-scatter           false           false  (walkable-past floor dressing, #854)
 //	rubble-scatter         false           false  (walkable-past floor dressing, #854)
 //	glowing-orb            false           false  (walkable-past floor dressing, #854 addendum)
 //	rune-marker            false           false  (walkable-past floor dressing, #854 addendum)
 //
-// Three flag shapes, not one: structural pieces (obelisk/pillar/altar/
-// statues, and #854 addendum's rune-pillar) block both movement and LoS;
-// a see-over class (coffin/tomb, brazier, torch-ornate, #854's
-// stone-lantern/torture-table, and #854 addendum's tomb-open/
-// pillar-broken) is a physical obstruction that never blocks sightline
-// over or around it (coffin/torture-table/tomb-open/pillar-broken: low
-// enough or broken enough to see over; brazier/torch-ornate/
-// stone-lantern: see over the flame); dressing (candles/bone-pile/chain/
-// skeleton-remains, #854's rug/wall-banner/candle-stand/lantern/
-// ribcage/bone-scatter/rubble-scatter, and #854 addendum's chains/
-// glowing-orb/rune-marker) blocks neither.
+// Three flag shapes, not one, across BOTH tables: structural pieces
+// (obelisk/pillar/altar/statues, and #854 addendum's rune-pillar) block
+// both movement and LoS; a see-over class (coffin/tomb, brazier,
+// torch-ornate, #854's stone-lantern/torture-table, and #854 addendum's
+// tomb-open/pillar-broken) is a physical obstruction that never blocks
+// sightline over or around it (coffin/torture-table/tomb-open/
+// pillar-broken: low enough or broken enough to see over; brazier/
+// torch-ornate/stone-lantern: see over the flame); dressing (candles/
+// bone-pile/chain/skeleton-remains, #854's rug/wall-banner/candle-stand/
+// lantern/ribcage/bone-scatter/rubble-scatter, and #854 addendum's
+// chains/glowing-orb/rune-marker) blocks neither.
 const (
 	cryptBlocksMovement = true
 	cryptBlocksLoS      = true
