@@ -117,11 +117,51 @@ const (
 	CryptObstacleRefSkeletonRemains = "dnd5e:props:skeleton-remains"
 )
 
+// Wave-1 promotion refs (rpg-toolkit#854, part of rpg-project#132's
+// look-and-feel wave): 9 of a 16-ref promotion batch — asset-w is
+// promoting matching meshes for these exact names in parallel (the name
+// IS the contract; do not rename without coordinating). Vocabulary only —
+// not yet wired into cryptEntranceObstacles/cryptCorridorObstacles/
+// cryptBossObstacles' fixed room composition, which room gets which of
+// these is a separate, later authoring/composition decision.
+const (
+	// CryptObstacleRefRug identifies a floor rug — walkable-past dressing.
+	CryptObstacleRefRug = "dnd5e:props:rug"
+	// CryptObstacleRefWallBanner identifies a hanging wall banner —
+	// walkable-past dressing.
+	CryptObstacleRefWallBanner = "dnd5e:props:wall-banner"
+	// CryptObstacleRefCandleStand identifies a small candle stand —
+	// walkable-past dressing (distinct from CryptObstacleRefStoneLantern's
+	// physical stone pedestal).
+	CryptObstacleRefCandleStand = "dnd5e:props:candle-stand"
+	// CryptObstacleRefLantern identifies a hanging/table lantern —
+	// walkable-past dressing.
+	CryptObstacleRefLantern = "dnd5e:props:lantern"
+	// CryptObstacleRefStoneLantern identifies a stone pedestal lantern — a
+	// physical light anchor, same flag shape as CryptObstacleRefBrazier/
+	// CryptObstacleRefTorchOrnate (blocks movement, see over/around it).
+	CryptObstacleRefStoneLantern = "dnd5e:props:stone-lantern"
+	// CryptObstacleRefTortureTable identifies a torture table set piece —
+	// a physical obstruction, same flag shape as CryptObstacleRefCoffin
+	// (blocks movement, see over/around it).
+	CryptObstacleRefTortureTable = "dnd5e:props:torture-table"
+	// CryptObstacleRefRibcage identifies a ribcage floor dressing piece —
+	// walkable-past dressing.
+	CryptObstacleRefRibcage = "dnd5e:props:ribcage"
+	// CryptObstacleRefBoneScatter identifies a scattered-bones floor
+	// dressing piece — walkable-past dressing.
+	CryptObstacleRefBoneScatter = "dnd5e:props:bone-scatter"
+	// CryptObstacleRefRubbleScatter identifies a scattered-rubble floor
+	// dressing piece — walkable-past dressing.
+	CryptObstacleRefRubbleScatter = "dnd5e:props:rubble-scatter"
+)
+
 // Crypt set-piece blocking properties: the VERIFIED canonical shipped-
 // asset-contract table (independent finding, PR #826 review — supersedes
 // this file's earlier "low vs tall" design guess, which had altar wrong),
-// now spanning three flag classes across #819's structural vocabulary and
-// rpg-toolkit#839's depth-pass dressing/light-anchor additions:
+// now spanning three flag classes across #819's structural vocabulary,
+// rpg-toolkit#839's depth-pass dressing/light-anchor additions, and
+// rpg-toolkit#854's wave-1 promotion refs:
 //
 //	ref                    BlocksMovement  BlocksLoS
 //	altar                  true            true   (measured 2.057m, role "obstacle")
@@ -132,30 +172,44 @@ const (
 //	coffin/tomb            true            false  (walk around, see over)
 //	brazier                true            false  (physical, but see over the flame)
 //	torch-ornate           true            false  (same shape as brazier)
+//	stone-lantern          true            false  (same shape as brazier, #854)
+//	torture-table          true            false  (same shape as coffin, #854)
 //	candles                false           false  (walkable-past floor dressing)
 //	bone-pile              false           false  (walkable-past floor dressing)
 //	chain                  false           false  (walkable-past floor dressing)
 //	skeleton-remains       false           false  (walkable-past floor dressing)
+//	rug                    false           false  (walkable-past floor dressing, #854)
+//	wall-banner            false           false  (walkable-past floor dressing, #854)
+//	candle-stand           false           false  (walkable-past floor dressing, #854)
+//	lantern                false           false  (walkable-past floor dressing, #854)
+//	ribcage                false           false  (walkable-past floor dressing, #854)
+//	bone-scatter           false           false  (walkable-past floor dressing, #854)
+//	rubble-scatter         false           false  (walkable-past floor dressing, #854)
 //
 // Three flag shapes, not one: structural pieces (obelisk/pillar/altar/
 // statues) block both movement and LoS; a see-over class (coffin/tomb,
-// brazier, torch-ornate) is a physical obstruction that never blocks
-// sightline over or around it (coffin: low enough to see over; brazier/
-// torch-ornate: see over the flame); dressing (candles/bone-pile/chain/
-// skeleton-remains) blocks neither.
+// brazier, torch-ornate, and #854's stone-lantern/torture-table) is a
+// physical obstruction that never blocks sightline over or around it
+// (coffin/torture-table: low enough to see over; brazier/torch-ornate/
+// stone-lantern: see over the flame); dressing (candles/bone-pile/chain/
+// skeleton-remains, and #854's rug/wall-banner/candle-stand/lantern/
+// ribcage/bone-scatter/rubble-scatter) blocks neither.
 const (
 	cryptBlocksMovement = true
 	cryptBlocksLoS      = true
 	// cryptSeeOverBlocksLoS is BlocksLoS for a piece that's a physical
 	// obstruction (BlocksMovement true) but never blocks sightline over
-	// or around it: the coffin/tomb (table above), and rpg-toolkit#839's
-	// light anchors (brazier, torch-ornate — "you can see over flame").
+	// or around it: the coffin/tomb (table above), rpg-toolkit#839's
+	// light anchors (brazier, torch-ornate — "you can see over flame"),
+	// and rpg-toolkit#854's stone-lantern/torture-table.
 	cryptSeeOverBlocksLoS = false
 )
 
 // Crypt floor-dressing blocking properties (rpg-toolkit#839): candles,
 // bone-pile, chain, and skeleton-remains are walkable-past floor
-// dressing, never a physical obstruction or sightline blocker — verified
+// dressing, never a physical obstruction or sightline blocker — same
+// shape rpg-toolkit#854's rug/wall-banner/candle-stand/lantern/ribcage/
+// bone-scatter/rubble-scatter reuse — verified
 // against this package's placement (placeRegionObstacles: each instance
 // still consumes its own unique candidate cell regardless of blocking
 // flags — no collision risk), room-rebuild (rebuildRoomFromData places a
