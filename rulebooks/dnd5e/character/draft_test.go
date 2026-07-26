@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
@@ -16,9 +17,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/packs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/tools"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -226,6 +229,72 @@ func (s *DraftTestSuite) createRogueDraft() *character.Draft {
 	return draft
 }
 
+func (s *DraftTestSuite) createBarbarianDraft() *character.Draft {
+	draft := s.createBaseDraft()
+
+	err := draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+		Choices:      character.BackgroundChoices{},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
+		},
+	})
+	s.Require().NoError(err)
+
+	return draft
+}
+
+func (s *DraftTestSuite) createMonkDraft() *character.Draft {
+	draft := s.createBaseDraft()
+
+	err := draft.SetRace(&character.SetRaceInput{
+		RaceID: races.Human,
+		Choices: character.RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetBackground(&character.SetBackgroundInput{
+		BackgroundID: backgrounds.Hermit,
+		Choices:      character.BackgroundChoices{},
+	})
+	s.Require().NoError(err)
+
+	err = draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Monk,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Acrobatics, skills.Stealth},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.MonkWeaponsPrimary, OptionID: choices.MonkWeaponShortsword},
+				{ChoiceID: choices.MonkPack, OptionID: choices.MonkPackDungeoneer},
+			},
+			Tools: []shared.SelectionID{shared.SelectionID(proficiencies.ToolBrewer)},
+		},
+	})
+	s.Require().NoError(err)
+
+	return draft
+}
+
 // Helper: Assert inventory contains an item
 func (s *DraftTestSuite) assertInventoryContains(
 	inventory []character.InventoryItemData,
@@ -247,6 +316,24 @@ func (s *DraftTestSuite) assertInventoryContains(
 	if expectedQuantity > 0 {
 		s.Equal(expectedQuantity, actualQuantity, "Expected quantity %d for %s: %s", expectedQuantity, equipmentID, message)
 	}
+}
+
+func (s *DraftTestSuite) assertInventoryStack(
+	inventory []character.InventoryItemData,
+	equipmentID string,
+	expectedQuantity int,
+	message string,
+) {
+	matching := make([]character.InventoryItemData, 0)
+	for _, item := range inventory {
+		if item.ID == equipmentID {
+			matching = append(matching, item)
+		}
+	}
+
+	s.Require().Len(matching, 1, "Expected one stack of %s: %s", equipmentID, message)
+	s.Equal(expectedQuantity, matching[0].Quantity,
+		"Expected quantity %d for %s: %s", expectedQuantity, equipmentID, message)
 }
 
 // Test: Minimal draft should have minimal inventory
@@ -400,6 +487,83 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 	}
 }
 
+func (s *DraftTestSuite) TestCompileInventory_FixedClassGrants() {
+	s.Run("Barbarian fixed grants", func() {
+		draft := s.createBarbarianDraft()
+
+		char, err := draft.ToCharacter(s.ctx, "barbarian-fixed", s.bus)
+		s.Require().NoError(err)
+
+		inventory := char.ToData().Inventory
+		s.assertInventoryStack(inventory, weapons.Javelin, 4, "Barbarian should start with four javelins")
+	})
+
+	s.Run("Monk fixed grants", func() {
+		draft := s.createMonkDraft()
+
+		char, err := draft.ToCharacter(s.ctx, "monk-fixed", s.bus)
+		s.Require().NoError(err)
+
+		inventory := char.ToData().Inventory
+		s.assertInventoryStack(inventory, weapons.Dart, 10, "Monk should start with ten darts")
+	})
+
+	s.Run("Rogue fixed grants", func() {
+		draft := s.createRogueDraft()
+
+		err := draft.SetClass(&character.SetClassInput{
+			ClassID: classes.Rogue,
+			Choices: character.ClassChoices{
+				Skills:    []skills.Skill{skills.Stealth, skills.Perception, skills.Investigation, skills.Acrobatics},
+				Expertise: []skills.Skill{skills.Stealth, skills.Perception},
+				Equipment: []character.EquipmentChoiceSelection{
+					{ChoiceID: choices.RogueWeaponsPrimary, OptionID: choices.RogueWeaponRapier},
+					{ChoiceID: choices.RogueWeaponsSecondary, OptionID: choices.RogueSecondaryShortbow},
+					{ChoiceID: choices.RoguePack, OptionID: choices.RoguePackBurglar},
+				},
+			},
+		})
+		s.Require().NoError(err)
+
+		char, err := draft.ToCharacter(s.ctx, "rogue-fixed", s.bus)
+		s.Require().NoError(err)
+
+		inventory := char.ToData().Inventory
+		s.assertInventoryStack(inventory, armor.Leather, 1, "Rogue should start with leather armor")
+		s.assertInventoryStack(inventory, weapons.Dagger, 2, "Rogue should start with two daggers")
+		s.assertInventoryStack(inventory, tools.ThievesTools, 1, "Rogue should start with thieves' tools")
+	})
+}
+
+func (s *DraftTestSuite) TestCompileInventory_PreservesBundleQuantities() {
+	draft := s.createFighterDraft()
+
+	err := draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedHandaxes},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
+		},
+	})
+	s.Require().NoError(err)
+
+	char, err := draft.ToCharacter(s.ctx, "fighter-handaxes", s.bus)
+	s.Require().NoError(err)
+
+	inventory := char.ToData().Inventory
+	s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter's two handaxes should stay a quantity-2 stack")
+}
+
 // Test: Equipment choices
 func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 	s.Run("Simple weapon choice", func() {
@@ -496,18 +660,7 @@ func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
 	s.Require().NoError(err)
 	inventory := char.ToData().Inventory
 
-	// Count handaxes - currently loses quantity info from option, so we get 1
-	// TODO: Fix SetClass to preserve quantity information from equipment options
-	handaxeFound := false
-	for _, item := range inventory {
-		if item.ID == weapons.Handaxe {
-			handaxeFound = true
-			// Currently broken - should be 2 but SetClass loses quantity info
-			s.Equal(1, item.Quantity, "Currently only gets 1 handaxe (should be 2)")
-		}
-	}
-
-	s.True(handaxeFound, "Should have handaxe entry")
+	s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter should keep the full two-handaxe stack")
 }
 
 // Test: Ammunition items are handled correctly

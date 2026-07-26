@@ -4,10 +4,13 @@ package classes
 import (
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/tools"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // Grant represents what a character receives at a given level.
@@ -140,6 +143,9 @@ func getBarbarianGrants() []Grant {
 					Config: json.RawMessage(`{"uses": 2, "damage_bonus": 2}`),
 				},
 			},
+			Equipment: []EquipmentItem{
+				{ID: weapons.Javelin, Quantity: 4},
+			},
 			// Unarmored Defense condition (always active)
 			Conditions: []ConditionRef{
 				{
@@ -165,6 +171,9 @@ func getMonkGrants() []Grant {
 				proficiencies.WeaponShortsword,
 			},
 			// Note: Tool proficiency (artisan's tool OR musical instrument) is a CHOICE, not a grant
+			Equipment: []EquipmentItem{
+				{ID: weapons.Dart, Quantity: 10},
+			},
 			// Unarmored Defense condition (monk variant - uses WIS instead of CON)
 			// Martial Arts condition (grants DEX for unarmed/monk weapons, scales damage)
 			Conditions: []ConditionRef{
@@ -200,6 +209,11 @@ func getRogueGrants() []Grant {
 			},
 			ToolProficiencies: []proficiencies.Tool{
 				proficiencies.ToolThieves,
+			},
+			Equipment: []EquipmentItem{
+				{ID: armor.Leather, Quantity: 1},
+				{ID: weapons.Dagger, Quantity: 2},
+				{ID: tools.ThievesTools, Quantity: 1},
 			},
 			// Sneak Attack condition (scales with rogue level)
 			Conditions: []ConditionRef{

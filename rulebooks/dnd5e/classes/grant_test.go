@@ -5,9 +5,12 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/tools"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 type GrantTestSuite struct {
@@ -87,6 +90,22 @@ func (s *GrantTestSuite) TestGetGrants_Rogue_Level1ThievesCant() {
 	s.Require().Len(level1.Languages, 1, "Rogue should have 1 language at level 1")
 	s.Equal(languages.ThievesCant, level1.Languages[0],
 		"Rogue should have Thieves' Cant language")
+}
+
+func (s *GrantTestSuite) TestGetGrants_Rogue_Level1Equipment() {
+	grants := GetGrants(Rogue)
+	s.Require().NotNil(grants)
+	s.Require().Len(grants, 1)
+
+	level1 := grants[0]
+	s.Require().Len(level1.Equipment, 3, "Rogue should have 3 fixed starting equipment grants")
+
+	s.Contains(level1.Equipment, EquipmentItem{ID: armor.Leather, Quantity: 1},
+		"Rogue should have leather armor")
+	s.Contains(level1.Equipment, EquipmentItem{ID: weapons.Dagger, Quantity: 2},
+		"Rogue should have two daggers")
+	s.Contains(level1.Equipment, EquipmentItem{ID: tools.ThievesTools, Quantity: 1},
+		"Rogue should have thieves' tools")
 }
 
 func (s *GrantTestSuite) TestGetGrants_Rogue_EndToEndConditionCreation() {
@@ -263,6 +282,17 @@ func (s *GrantTestSuite) TestGetGrants_Barbarian_Level1UnarmoredDefense() {
 		"Unarmored Defense should be configured for barbarian variant (CON-based)")
 }
 
+func (s *GrantTestSuite) TestGetGrants_Barbarian_Level1Equipment() {
+	grants := GetGrants(Barbarian)
+	s.Require().NotNil(grants)
+	s.Require().Len(grants, 1)
+
+	level1 := grants[0]
+	s.Require().Len(level1.Equipment, 1, "Barbarian should have one fixed starting equipment grant")
+	s.Contains(level1.Equipment, EquipmentItem{ID: weapons.Javelin, Quantity: 4},
+		"Barbarian should have four javelins")
+}
+
 // =============================================================================
 // Monk Tests
 // =============================================================================
@@ -359,4 +389,15 @@ func (s *GrantTestSuite) TestGetGrants_Monk_NoFeaturesAtLevel1() {
 	// Monk gets Ki and Flurry of Blows at level 2, not level 1
 	s.Empty(level1.Features,
 		"Monk should have no features at level 1 (Ki comes at level 2)")
+}
+
+func (s *GrantTestSuite) TestGetGrants_Monk_Level1Equipment() {
+	grants := GetGrants(Monk)
+	s.Require().NotNil(grants)
+	s.Require().Len(grants, 1)
+
+	level1 := grants[0]
+	s.Require().Len(level1.Equipment, 1, "Monk should have one fixed starting equipment grant")
+	s.Contains(level1.Equipment, EquipmentItem{ID: weapons.Dart, Quantity: 10},
+		"Monk should have ten darts")
 }
