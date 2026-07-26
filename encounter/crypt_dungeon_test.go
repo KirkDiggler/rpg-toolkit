@@ -263,6 +263,10 @@ func TestCryptDungeonParams_NoObstacleUsesModelFilenamesOrSyntyPaths(t *testing.
 		encounter.CryptObstacleRefStoneLantern, encounter.CryptObstacleRefTortureTable,
 		encounter.CryptObstacleRefRibcage, encounter.CryptObstacleRefBoneScatter,
 		encounter.CryptObstacleRefRubbleScatter,
+		// rpg-toolkit#854 wave-1 promotion refs, addendum.
+		encounter.CryptObstacleRefChains, encounter.CryptObstacleRefGlowingOrb,
+		encounter.CryptObstacleRefRuneMarker, encounter.CryptObstacleRefRunePillar,
+		encounter.CryptObstacleRefTombOpen, encounter.CryptObstacleRefPillarBroken,
 	} {
 		require.Regexp(t, `^dnd5e:props:[a-z-]+$`, ref)
 	}
@@ -301,6 +305,15 @@ var cryptCanonicalAssetManifestKeys = map[string]string{
 	"CryptObstacleRefRibcage":       "dnd5e:props:ribcage",
 	"CryptObstacleRefBoneScatter":   "dnd5e:props:bone-scatter",
 	"CryptObstacleRefRubbleScatter": "dnd5e:props:rubble-scatter",
+	// rpg-toolkit#854 wave-1 promotion refs, addendum (skeleton-remains
+	// was also in the addendum's list but is byte-for-byte identical to
+	// CryptObstacleRefSkeletonRemains above -- not duplicated here).
+	"CryptObstacleRefChains":       "dnd5e:props:chains",
+	"CryptObstacleRefGlowingOrb":   "dnd5e:props:glowing-orb",
+	"CryptObstacleRefRuneMarker":   "dnd5e:props:rune-marker",
+	"CryptObstacleRefRunePillar":   "dnd5e:props:rune-pillar",
+	"CryptObstacleRefTombOpen":     "dnd5e:props:tomb-open",
+	"CryptObstacleRefPillarBroken": "dnd5e:props:pillar-broken",
 }
 
 // TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly: each
@@ -335,6 +348,12 @@ func TestCryptObstacleRefs_MatchCanonicalAssetManifestKeysExactly(t *testing.T) 
 		"CryptObstacleRefRibcage":            encounter.CryptObstacleRefRibcage,
 		"CryptObstacleRefBoneScatter":        encounter.CryptObstacleRefBoneScatter,
 		"CryptObstacleRefRubbleScatter":      encounter.CryptObstacleRefRubbleScatter,
+		"CryptObstacleRefChains":             encounter.CryptObstacleRefChains,
+		"CryptObstacleRefGlowingOrb":         encounter.CryptObstacleRefGlowingOrb,
+		"CryptObstacleRefRuneMarker":         encounter.CryptObstacleRefRuneMarker,
+		"CryptObstacleRefRunePillar":         encounter.CryptObstacleRefRunePillar,
+		"CryptObstacleRefTombOpen":           encounter.CryptObstacleRefTombOpen,
+		"CryptObstacleRefPillarBroken":       encounter.CryptObstacleRefPillarBroken,
 	}
 	for name, want := range cryptCanonicalAssetManifestKeys {
 		require.Equal(t, want, actual[name], "%s must equal the exact canonical asset-manifest key", name)
@@ -393,12 +412,15 @@ func TestCryptDungeonParams_BlockingFlagsMatchVerifiedAssetContract(t *testing.T
 }
 
 // cryptWaveOnePromotionRefs is rpg-toolkit#854's wave-1 promotion
-// vocabulary and its documented default blocking flags. Not yet wired
-// into cryptEntranceObstacles/cryptCorridorObstacles/cryptBossObstacles'
-// fixed room composition (a separate, later authoring/composition
-// decision), so these refs never "appear somewhere in CryptDungeonParams"
-// the way cryptBlockingContractTable's refs do -- see
-// TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom
+// vocabulary (15 refs: the original 9 plus 6 new from the addendum --
+// skeleton-remains was in the addendum's list too but is byte-for-byte
+// identical to the pre-existing CryptObstacleRefSkeletonRemains, so it's
+// not duplicated here) and its documented default blocking flags. Not
+// yet wired into cryptEntranceObstacles/cryptCorridorObstacles/
+// cryptBossObstacles' fixed room composition (a separate, later
+// authoring/composition decision), so these refs never "appear somewhere
+// in CryptDungeonParams" the way cryptBlockingContractTable's refs do --
+// see TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom
 // below for how this table is actually verified instead.
 var cryptWaveOnePromotionRefs = []struct {
 	ref            string
@@ -414,6 +436,13 @@ var cryptWaveOnePromotionRefs = []struct {
 	{encounter.CryptObstacleRefRibcage, false, false},
 	{encounter.CryptObstacleRefBoneScatter, false, false},
 	{encounter.CryptObstacleRefRubbleScatter, false, false},
+	// Addendum.
+	{encounter.CryptObstacleRefChains, false, false},
+	{encounter.CryptObstacleRefGlowingOrb, false, false},
+	{encounter.CryptObstacleRefRuneMarker, false, false},
+	{encounter.CryptObstacleRefRunePillar, true, true},
+	{encounter.CryptObstacleRefTombOpen, true, false},
+	{encounter.CryptObstacleRefPillarBroken, true, false},
 }
 
 // TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom
@@ -428,7 +457,9 @@ var cryptWaveOnePromotionRefs = []struct {
 // rebuildRoomFromData don't know or care what the ref string is).
 func TestCryptWaveOnePromotionRefs_BlockingFlagsRoundTripThroughRealRoom(t *testing.T) {
 	enc := cdNewEncounter(t)
-	require.NoError(t, enc.InitRoom(20, 20, environments.PatternEmpty))
+	// Width must clear 2 + len(cryptWaveOnePromotionRefs)*2 with margin to
+	// spare for each entry's neighbor-based LoS check.
+	require.NoError(t, enc.InitRoom(2*len(cryptWaveOnePromotionRefs)+10, 20, environments.PatternEmpty))
 
 	for i, tc := range cryptWaveOnePromotionRefs {
 		hex := core.HexFromPosition(spatial.Position{X: float64(2 + i*2), Y: 10})

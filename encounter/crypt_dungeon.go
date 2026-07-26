@@ -156,6 +156,40 @@ const (
 	CryptObstacleRefRubbleScatter = "dnd5e:props:rubble-scatter"
 )
 
+// Wave-1 promotion refs, addendum (rpg-toolkit#854): the asset
+// inventory's crypt reprioritization added 7 more candidates to the same
+// batch, bringing the total to 16 -- same vocabulary-only scope and
+// pattern as the const block above. Only 6 are new here:
+// "dnd5e:props:skeleton-remains" (false/false, "lying/shackled skeleton
+// dressing") was also in this addendum's list, but it's byte-for-byte the
+// same ref string and flags as CryptObstacleRefSkeletonRemains above
+// (rpg-toolkit#839) -- not re-added, to avoid a duplicate constant for
+// an identical value.
+const (
+	// CryptObstacleRefChains identifies a hanging-chains dressing piece —
+	// walkable-past dressing (distinct from CryptObstacleRefChain,
+	// singular, rpg-toolkit#839).
+	CryptObstacleRefChains = "dnd5e:props:chains"
+	// CryptObstacleRefGlowingOrb identifies a glowing-orb light/dressing
+	// piece — walkable-past dressing.
+	CryptObstacleRefGlowingOrb = "dnd5e:props:glowing-orb"
+	// CryptObstacleRefRuneMarker identifies a floor/small rune-marker
+	// dressing piece — walkable-past dressing.
+	CryptObstacleRefRuneMarker = "dnd5e:props:rune-marker"
+	// CryptObstacleRefRunePillar identifies a rune-carved pillar — a
+	// structural piece, same flag shape as CryptObstacleRefPillar (blocks
+	// both movement and LoS).
+	CryptObstacleRefRunePillar = "dnd5e:props:rune-pillar"
+	// CryptObstacleRefTombOpen identifies an opened sarcophagus/tomb — a
+	// physical obstruction, same flag shape as CryptObstacleRefCoffin
+	// (blocks movement, see over/around it).
+	CryptObstacleRefTombOpen = "dnd5e:props:tomb-open"
+	// CryptObstacleRefPillarBroken identifies a broken-pillar stump — a
+	// physical obstruction, same flag shape as CryptObstacleRefCoffin/
+	// CryptObstacleRefTombOpen (blocks movement, LoS clears over it).
+	CryptObstacleRefPillarBroken = "dnd5e:props:pillar-broken"
+)
+
 // Crypt set-piece blocking properties: the VERIFIED canonical shipped-
 // asset-contract table (independent finding, PR #826 review — supersedes
 // this file's earlier "low vs tall" design guess, which had altar wrong),
@@ -169,7 +203,10 @@ const (
 //	statue-knight-hooded   true            true
 //	obelisk                true            true
 //	pillar                 true            true
+//	rune-pillar            true            true   (#854 addendum, same shape as pillar)
 //	coffin/tomb            true            false  (walk around, see over)
+//	tomb-open              true            false  (same shape as coffin, #854 addendum)
+//	pillar-broken          true            false  (stump, same shape as coffin, #854 addendum)
 //	brazier                true            false  (physical, but see over the flame)
 //	torch-ornate           true            false  (same shape as brazier)
 //	stone-lantern          true            false  (same shape as brazier, #854)
@@ -177,6 +214,7 @@ const (
 //	candles                false           false  (walkable-past floor dressing)
 //	bone-pile              false           false  (walkable-past floor dressing)
 //	chain                  false           false  (walkable-past floor dressing)
+//	chains                 false           false  (walkable-past floor dressing, #854 addendum)
 //	skeleton-remains       false           false  (walkable-past floor dressing)
 //	rug                    false           false  (walkable-past floor dressing, #854)
 //	wall-banner            false           false  (walkable-past floor dressing, #854)
@@ -185,15 +223,20 @@ const (
 //	ribcage                false           false  (walkable-past floor dressing, #854)
 //	bone-scatter           false           false  (walkable-past floor dressing, #854)
 //	rubble-scatter         false           false  (walkable-past floor dressing, #854)
+//	glowing-orb            false           false  (walkable-past floor dressing, #854 addendum)
+//	rune-marker            false           false  (walkable-past floor dressing, #854 addendum)
 //
 // Three flag shapes, not one: structural pieces (obelisk/pillar/altar/
-// statues) block both movement and LoS; a see-over class (coffin/tomb,
-// brazier, torch-ornate, and #854's stone-lantern/torture-table) is a
-// physical obstruction that never blocks sightline over or around it
-// (coffin/torture-table: low enough to see over; brazier/torch-ornate/
+// statues, and #854 addendum's rune-pillar) block both movement and LoS;
+// a see-over class (coffin/tomb, brazier, torch-ornate, #854's
+// stone-lantern/torture-table, and #854 addendum's tomb-open/
+// pillar-broken) is a physical obstruction that never blocks sightline
+// over or around it (coffin/torture-table/tomb-open/pillar-broken: low
+// enough or broken enough to see over; brazier/torch-ornate/
 // stone-lantern: see over the flame); dressing (candles/bone-pile/chain/
-// skeleton-remains, and #854's rug/wall-banner/candle-stand/lantern/
-// ribcage/bone-scatter/rubble-scatter) blocks neither.
+// skeleton-remains, #854's rug/wall-banner/candle-stand/lantern/
+// ribcage/bone-scatter/rubble-scatter, and #854 addendum's chains/
+// glowing-orb/rune-marker) blocks neither.
 const (
 	cryptBlocksMovement = true
 	cryptBlocksLoS      = true
@@ -201,7 +244,8 @@ const (
 	// obstruction (BlocksMovement true) but never blocks sightline over
 	// or around it: the coffin/tomb (table above), rpg-toolkit#839's
 	// light anchors (brazier, torch-ornate — "you can see over flame"),
-	// and rpg-toolkit#854's stone-lantern/torture-table.
+	// rpg-toolkit#854's stone-lantern/torture-table, and #854's addendum
+	// tomb-open/pillar-broken.
 	cryptSeeOverBlocksLoS = false
 )
 
@@ -209,7 +253,8 @@ const (
 // bone-pile, chain, and skeleton-remains are walkable-past floor
 // dressing, never a physical obstruction or sightline blocker — same
 // shape rpg-toolkit#854's rug/wall-banner/candle-stand/lantern/ribcage/
-// bone-scatter/rubble-scatter reuse — verified
+// bone-scatter/rubble-scatter and #854's addendum chains/glowing-orb/
+// rune-marker reuse — verified
 // against this package's placement (placeRegionObstacles: each instance
 // still consumes its own unique candidate cell regardless of blocking
 // flags — no collision risk), room-rebuild (rebuildRoomFromData places a
