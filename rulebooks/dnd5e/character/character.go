@@ -921,14 +921,17 @@ func (c *Character) GetEquippedSlot(slot InventorySlot) *EquippedItem {
 // previous occupant remains in inventory, simply no longer equipped.
 // Returns error if the item is not in inventory or cannot occupy the slot.
 func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
-	// Verify item exists in inventory
+	// Verify item exists in inventory and count how many copies are owned.
 	var item equipment.Equipment
+	copies := 0
 	found := false
 	for _, invItem := range c.inventory {
 		if invItem.Equipment.EquipmentID() == itemID {
-			item = invItem.Equipment
-			found = true
-			break
+			if !found {
+				item = invItem.Equipment
+				found = true
+			}
+			copies += invItem.Quantity
 		}
 	}
 
@@ -947,17 +950,15 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 		c.equipmentSlots = make(EquipmentSlots)
 	}
 
-	// Moving an equipped item into a new slot vacates its old slot(s).
-	// Runs before either occupancy branch below: EquipItem alone can
-	// never leave itemID mapped under more than one slot (a two-handed
-	// weapon's only compatible slot is main hand, so it can never already
-	// sit elsewhere when this runs), but corrupted/legacy persisted state
-	// could (LoadFromData copies EquipmentSlots verbatim, unvalidated) —
-	// running this first keeps that invariant regardless of how state
-	// arrived, instead of only guarding the non-two-handed path.
-	for s, id := range c.equipmentSlots {
-		if id == itemID {
-			c.equipmentSlots.Clear(s)
+	// Only vacate the old slot when the character owns a single copy.
+	// Duplicate equippable items (daggers, handaxes, etc.) need both
+	// copies to remain equip-able at the same time; a one-copy weapon still
+	// moves between slots as before.
+	if copies <= 1 {
+		for s, id := range c.equipmentSlots {
+			if id == itemID {
+				c.equipmentSlots.Clear(s)
+			}
 		}
 	}
 

@@ -171,7 +171,7 @@ d.recordChoice(choices.ChoiceData{
 1. **Validate draft completeness**
 2. **Compile base stats** - Race modifiers to base ability scores
 3. **Compile proficiencies** - From race, class, background
-4. **Compile inventory** - From equipment choices
+4. **Compile inventory** - From fixed class grants plus equipment choices
 5. **Compile cantrips/spells** - From class choices
 6. **Compile features** - From race, class, background
 7. **Build Character entity**
@@ -179,7 +179,7 @@ d.recordChoice(choices.ChoiceData{
 **Key compilation methods:**
 - `compileAbilityScores()` - Applies racial bonuses
 - `compileProficiencies()` - Merges from all sources
-- `compileInventory()` - Resolves equipment choices to items
+- `compileInventory()` - Resolves fixed grants and equipment choices to items while preserving declared quantities
 - `compileSpells()` - Extracts cantrips and spells
 - `compileFeatures()` - Merges race/class/background features
 
@@ -392,7 +392,7 @@ func (s *CharacterTestSuite) TestBarbarianCreation() {
 **Character compilation:**
 - ✅ Ability scores compiled with racial bonuses
 - ✅ Proficiencies merged from all sources
-- ✅ Inventory compiled from equipment choices
+- ✅ Inventory compiled from fixed grants and equipment choices (with quantities preserved)
 - ✅ Spells compiled from class choices
 
 **Validation:**

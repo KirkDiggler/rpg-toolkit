@@ -956,38 +956,84 @@ func (d *Draft) compileInventory() []InventoryItem {
 	if d.class != "" {
 		grants := classes.GetGrantsForLevel(d.class, 1)
 		for _, grant := range grants {
-			for _, item := range grant.Equipment {
-				equip, err := equipment.GetByID(item.ID)
-				if err != nil {
-					panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
-				}
-				inventory = append(inventory, InventoryItem{
-					Equipment: equip,
-					Quantity:  item.Quantity,
-				})
-			}
+			inventory = append(inventory, d.inventoryItemsFromGrant(grant)...)
 		}
 	}
 
 	// Add equipment from choices (user selections)
+	reqs := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
 	for _, choice := range d.choices {
-		if choice.Category == shared.ChoiceEquipment {
-			for _, equipID := range choice.EquipmentSelection {
-				// Each selection is a separate item (no merging)
-				equip, err := equipment.GetByID(equipID)
-				if err != nil {
-					// This should never happen if SetClass validation is working correctly
-					panic(fmt.Sprintf("BUG: Invalid equipment ID in draft choices: %s - %v", equipID, err))
-				}
-				inventory = append(inventory, InventoryItem{
-					Equipment: equip,
-					Quantity:  1, // Default quantity for choices
-				})
-			}
+		if choice.Category != shared.ChoiceEquipment {
+			continue
 		}
+
+		req := d.equipmentRequirementFor(choice.ChoiceID, reqs)
+		if req == nil {
+			continue
+		}
+
+		option := d.findEquipmentOption(choice.OptionID, req)
+		if option == nil {
+			panic(fmt.Sprintf("BUG: Invalid equipment option %s for choice %s", choice.OptionID, choice.ChoiceID))
+		}
+
+		inventory = append(inventory, d.materializeEquipmentOption(option, choice.EquipmentSelection)...)
 	}
 
 	return inventory
+}
+
+func (d *Draft) inventoryItemsFromGrant(grant classes.Grant) []InventoryItem {
+	items := make([]InventoryItem, 0, len(grant.Equipment))
+	for _, item := range grant.Equipment {
+		equip, err := equipment.GetByID(item.ID)
+		if err != nil {
+			panic(fmt.Sprintf("BUG: Invalid equipment ID in class grants for %s: %s - %v", d.class, item.ID, err))
+		}
+		items = append(items, InventoryItem{Equipment: equip, Quantity: item.Quantity})
+	}
+	return items
+}
+
+func (d *Draft) equipmentRequirementFor(
+	choiceID choices.ChoiceID,
+	reqs *choices.Requirements,
+) *choices.EquipmentRequirement {
+	if reqs == nil {
+		return nil
+	}
+
+	return d.findEquipmentRequirement(choiceID, reqs)
+}
+
+func (d *Draft) materializeEquipmentOption(
+	option *choices.EquipmentOption,
+	selected []shared.SelectionID,
+) []InventoryItem {
+	items := make([]InventoryItem, 0, len(option.Items)+len(selected))
+
+	fixedCount := len(option.Items)
+	if len(selected) < fixedCount {
+		panic(fmt.Sprintf("BUG: equipment selection for %s lost fixed items", option.ID))
+	}
+
+	for _, item := range option.Items {
+		equip, err := equipment.GetByID(item.ID)
+		if err != nil {
+			panic(fmt.Sprintf("BUG: Invalid equipment ID '%s' in class requirements", item.ID))
+		}
+		items = append(items, InventoryItem{Equipment: equip, Quantity: item.Quantity})
+	}
+
+	for _, equipID := range selected[fixedCount:] {
+		equip, err := equipment.GetByID(equipID)
+		if err != nil {
+			panic(fmt.Sprintf("BUG: Invalid equipment ID in draft choices: %s - %v", equipID, err))
+		}
+		items = append(items, InventoryItem{Equipment: equip, Quantity: 1})
+	}
+
+	return items
 }
 
 // compileSpellSlots determines starting spell slots
