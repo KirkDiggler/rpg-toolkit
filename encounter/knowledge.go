@@ -93,6 +93,15 @@ func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet
 	}
 	edges := e.edgesByHex()
 	for h := range hexes {
+		// rpg-toolkit#859: hexes is frequently a raw perception.VisibleHexesAt
+		// disc (sight-range radius around a position), which has no notion of
+		// whether a hex is part of the space at all — it happily includes the
+		// void beyond the room's walls. Confine what gets remembered to hexes
+		// that are actually part of the space; see isSpaceHex's doc for why
+		// this can't be approximated with RegionAt.
+		if !e.isSpaceHex(h) {
+			continue
+		}
 		obs := perception.HexObservation{
 			Position: h,
 			State:    perception.KnowledgeStateVisible,
@@ -109,6 +118,49 @@ func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet
 		}
 		view.Observe(obs)
 	}
+}
+
+// isSpaceHex reports whether h is actually part of this encounter's space —
+// not merely within sight-range distance of some viewer position.
+// rpg-toolkit#859: three live encounters measured ~80% of a viewer's stored
+// Memory as hexes with no floor beneath them at all — perception.
+// VisibleHexesAt returns every hex within sightRange that isn't
+// wall-blocked, with no notion of whether a hex belongs to the space, so
+// refreshObservations was faithfully recording the void beyond the room's
+// walls right alongside real floor.
+//
+// RegionAt alone is NOT this test: a door's own cell deliberately belongs to
+// no region (RegionAt(door.Position) is always ("", false) by construction —
+// see doorPassageNeighbor's doc), and corridors may be similarly unregioned
+// in future generators. Filtering on "has a region" would silently drop
+// doorways from memory — a worse bug than the one being fixed, since the
+// player would lose the doorway they are standing in.
+//
+// The real test is the room's own grid bounds. rebuildRoomFromData builds
+// e.room's HexGrid from exactly SpaceData.Width/Height (spatial.HexGridConfig
+// {Width: sd.Width, Height: sd.Height}), and every generator this package
+// ships lays hexes out with NO gaps inside that rectangle:
+//   - InitRoom: a single implicit region spanning the whole grid — the
+//     entire rectangle IS the floor.
+//   - InitDungeon (InitTwoChamberRoom included, generalized to N=2):
+//     generateDungeonLayout places each region's columns contiguously
+//     (starts[i] = x; x += r.Width + 1) with the boundary/door column
+//     immediately after — the shared rectangle is exactly regions plus
+//     their connecting door columns, tiled with zero slack.
+//
+// So "within the room's grid bounds" IS "part of the space" for every shape
+// this package generates, doors included, with no per-generator
+// special-casing and no dependency on region tagging at all — precisely the
+// real membership answer the space itself already has, not an approximation.
+//
+// A nil e.room (InitRoom/LoadFromData-with-Space never ran) means there is
+// no room to be outside of: every hex is accepted, preserving this
+// package's pre-wave-1 unbounded-radius behavior for non-spatial encounters.
+func (e *Encounter) isSpaceHex(h core.Hex) bool {
+	if e.room == nil {
+		return true
+	}
+	return e.room.GetGrid().IsValidPosition(h.ToPosition())
 }
 
 // unionPlacement returns placements with a Placement for entityID appended

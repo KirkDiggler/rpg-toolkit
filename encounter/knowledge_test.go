@@ -7,6 +7,15 @@ package encounter_test
 // reconciliation. See encounter/knowledge.go's file doc for the
 // implementation this exercises, and perception/knowledge.go for the
 // HexObservation contract these tests assert against.
+//
+// rpg-toolkit#859 added TestKnownHexes_MemoryHexes_AllBelongToTheSpace and
+// TestKnownHexes_DoorwayCell_IsStillRemembered: every test above this point
+// predates that fix and uses encounter.New with no InitRoom/InitDungeon call
+// at all (e.room stays nil), so they never previously exercised — and still
+// don't exercise — the space-membership filter; they keep passing precisely
+// because a nil room means "nothing to be outside of," preserving this
+// package's pre-wave-1 unbounded behavior for non-spatial encounters. The
+// two new tests are the ones that actually build a spatial room.
 
 import (
 	"context"
@@ -18,6 +27,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
 type KnowledgeSuite struct {
@@ -331,4 +341,69 @@ func (s *KnowledgeSuite) TestKnownHexes_DuplicateReconciliation_Idempotent() {
 	second := e.KnownHexes(alicePlayerID)
 
 	s.Equal(first, second, "reconciling unchanged visibility twice must leave KnownHexes identical")
+}
+
+// TestKnownHexes_MemoryHexes_AllBelongToTheSpace is rpg-toolkit#859's core
+// acceptance bar: perception.VisibleHexesAt returns every hex within
+// sightRange that isn't wall-blocked, with no notion of whether a hex is
+// part of the space at all — measured from live Redis, ~80% of a viewer's
+// stored Memory was hexes with no floor beneath them, well outside the
+// room. A tiny 6x6 room with sight range 10 (the measured scenario's own
+// sight range) reproduces the shape of the bug directly: an unfiltered
+// radius-10 disc is up to 331 hexes, vastly more than the room's own 36.
+func (s *KnowledgeSuite) TestKnownHexes_MemoryHexes_AllBelongToTheSpace() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.InitRoom(6, 6, environments.PatternEmpty))
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 10,
+	}))
+
+	known := e.KnownHexes(alicePlayerID)
+	s.Require().NotEmpty(known)
+
+	room := e.Room()
+	s.Require().NotNil(room)
+	for h := range known {
+		s.True(room.GetGrid().IsValidPosition(h.ToPosition()),
+			"every stored hex must belong to the room's grid bounds; %v does not", h)
+	}
+
+	// Memory size must equal the room's own footprint (6x6=36) exactly, not
+	// the sight-range disc (radius 10 reaches the whole tiny room from this
+	// corner, so pre-fix this would instead have been the full unfiltered
+	// disc size — up to 331 hexes for radius 10).
+	s.Equal(36, len(known),
+		"memory must be proportional to the room's footprint, not the sight-range area")
+}
+
+// TestKnownHexes_DoorwayCell_IsStillRemembered is rpg-toolkit#859's
+// trap-avoidance bar: RegionAt alone is NOT a valid space-membership test —
+// a door's own cell deliberately belongs to no region (doorPassageNeighbor's
+// documented trap) — so a fix that filtered purely on "has a region" would
+// silently drop doorways from memory, losing the exact cell the player is
+// standing in front of. Proves the real fix does not make that mistake.
+func (s *KnowledgeSuite) TestKnownHexes_DoorwayCell_IsStillRemembered() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.InitTwoChamberRoom(encounter.TwoChamberRoomParams{
+		ChamberWidth: 4, ChamberHeight: 4, Pattern: environments.PatternEmpty,
+		DoorID: twoChamberDoorID,
+	}))
+	entrance := e.ToData().Space.Entrance
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: entrance, SightRange: 10,
+	}))
+
+	doorHex := e.ToData().Doors[twoChamberDoorID].Position
+
+	// Precondition pinning the documented trap itself: the door's own cell
+	// belongs to no region.
+	_, hasRegion := e.ToData().Space.RegionAt(doorHex)
+	s.Require().False(hasRegion,
+		"precondition: the door's own cell belongs to no region (doorPassageNeighbor's documented trap)")
+
+	known := e.KnownHexes(alicePlayerID)
+	s.Require().Contains(known, doorHex,
+		"the doorway must still be remembered even though RegionAt reports it belongs to no region")
 }
