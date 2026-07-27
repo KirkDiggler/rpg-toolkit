@@ -93,7 +93,7 @@ func (s *TurnStateSuite) monkCharJSON() json.RawMessage {
 func (s *TurnStateSuite) loadedMonkEncounter() *encounter.Encounter {
 	s.T().Helper()
 	view := perception.NewView(monkPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
+	revealVisible(view, core.Hex{}, 10)
 	data := encounter.NewData("enc-ts")
 	data.Players[monkPlayerID] = &encounter.PlayerData{
 		ID:         monkPlayerID,
@@ -337,7 +337,7 @@ func (s *TurnStateSuite) TestSetMode_PushesTurnStateChangedAtTurnStart() {
 func (s *TurnStateSuite) combatMonkEncounter() *encounter.Encounter {
 	s.T().Helper()
 	view := perception.NewView(monkPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
+	revealVisible(view, core.Hex{}, 10)
 	data := encounter.NewData("enc-ts")
 	data.Players[monkPlayerID] = &encounter.PlayerData{
 		ID:          monkPlayerID,
@@ -439,7 +439,7 @@ func (r *recordingResolver) ResolveAttack(input encounter.AttackInput) (*encount
 func (s *TurnStateSuite) TestTakeAction_GrantedStrikeResolvesAttack() {
 	resolver := &recordingResolver{alwaysHitResolver: alwaysHitResolver{damage: 3, damageType: "bludgeoning"}}
 	view := perception.NewView(monkPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
+	revealVisible(view, core.Hex{}, 10)
 	data := encounter.NewData("enc-ts")
 	data.Players[monkPlayerID] = &encounter.PlayerData{
 		ID:         monkPlayerID,
@@ -771,19 +771,19 @@ func (s *TurnStateSuite) helpTargetingEncounter() (
 	s.T().Helper()
 
 	monkView := perception.NewView(monkPlayerID, core.Hex{}, 5)
-	monkView.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 5, nil))
+	revealVisible(monkView, core.Hex{}, 5)
 
 	fighterPos := core.Hex{Q: 20, R: 0, S: -20}
 	fighterEntityID := core.EntityID("char-fighter")
 	fighterPlayerID := core.PlayerID("finn")
 	fighterView := perception.NewView(fighterPlayerID, fighterPos, 5)
-	fighterView.ApplyReveal(perception.VisibleHexesAt(fighterPos, 5, nil))
+	revealVisible(fighterView, fighterPos, 5)
 
 	roguePos := core.Hex{Q: 21, R: 0, S: -21} // adjacent to the fighter, far from the monk
 	rogueEntityID := core.EntityID("char-rogue")
 	roguePlID := core.PlayerID("remy")
 	rogueView := perception.NewView(roguePlID, roguePos, 5)
-	rogueView.ApplyReveal(perception.VisibleHexesAt(roguePos, 5, nil))
+	revealVisible(rogueView, roguePos, 5)
 
 	data := encounter.NewData("enc-help")
 	data.Players[monkPlayerID] = &encounter.PlayerData{
@@ -896,7 +896,7 @@ func (s *TurnStateSuite) TestTakeAction_Help_ViewerWhoSeesNeitherPartyGetsNothin
 // applying HiddenCondition end-to-end through the unified TakeAction verb.
 func (s *TurnStateSuite) TestTakeAction_Hide_AppliesHiddenConditionAgainstLowObserverPerception() {
 	view := perception.NewView(monkPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
+	revealVisible(view, core.Hex{}, 10)
 
 	data := encounter.NewData("enc-hide")
 	data.Players[monkPlayerID] = &encounter.PlayerData{

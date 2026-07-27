@@ -29,6 +29,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
+// revealVisible seeds view's memory with a minimal VISIBLE observation for
+// every hex within sightRange of pos — a fixture convenience shared by this
+// file and turn_state_test.go for tests that need SOME reveal state to
+// exist (so LoS-gated checks pass) but aren't testing fog-of-war content
+// itself. Production code never does this: every real reveal path builds
+// full world-truth observations via Encounter.refreshObservations
+// (rpg-toolkit#851) — this only sets Position/State, deliberately leaving
+// Terrain/ZoneID/Edges/Contents at their zero values, since these fixtures
+// don't need or check them.
+func revealVisible(view *perception.View, pos core.Hex, sightRange int) {
+	for h := range perception.VisibleHexesAt(pos, sightRange, nil) {
+		view.Observe(perception.HexObservation{Position: h, State: perception.KnowledgeStateVisible})
+	}
+}
+
 const (
 	moveEconPlayerID = core.PlayerID("charli")
 	moveEconEntityID = core.EntityID("char-charli")
@@ -95,7 +110,7 @@ func (s *MoveEconomySuite) charliCharJSON() json.RawMessage {
 func (s *MoveEconomySuite) loadedEncounter() *encounter.Encounter {
 	s.T().Helper()
 	view := perception.NewView(moveEconPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
+	revealVisible(view, core.Hex{}, 10)
 	data := encounter.NewData("enc-move-econ")
 	data.Players[moveEconPlayerID] = &encounter.PlayerData{
 		ID:         moveEconPlayerID,
@@ -211,7 +226,7 @@ func (s *MoveEconomySuite) TestMove_PublishesTurnStateChangedAfterSuccessfulMove
 // the fix must not regress non-combat movement.
 func (s *MoveEconomySuite) TestMove_NotInCombat_SkipsEconomyEnforcement() {
 	view := perception.NewView(moveEconPlayerID, core.Hex{}, 10)
-	view.ApplyReveal(perception.VisibleHexesAt(core.Hex{}, 10, nil))
+	revealVisible(view, core.Hex{}, 10)
 	data := encounter.NewData("enc-move-econ-free")
 	data.Players[moveEconPlayerID] = &encounter.PlayerData{
 		ID:         moveEconPlayerID,

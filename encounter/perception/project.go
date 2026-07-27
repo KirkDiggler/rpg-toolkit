@@ -156,7 +156,7 @@ func ProjectDoorOpen(
 
 	newHexes := make(core.HexSet)
 	for hex := range visible {
-		if !viewer.RevealedHexes.Has(hex) {
+		if !viewer.Knows(hex) {
 			newHexes[hex] = struct{}{}
 		}
 	}

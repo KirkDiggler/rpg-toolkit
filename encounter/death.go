@@ -95,6 +95,11 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 	killerPos, killerHasPos := e.positionFor(killerID)
 
 	diedPerPlayer := make(map[core.PlayerID]events.EntityDiedSlice)
+	// witnesses is who actually SAW the monster die (as opposed to seeing
+	// only the killer) — the set whose geometry memory of dyingPos needs an
+	// immediate witnessed-removal refresh below. Seeing only the killer
+	// does not mean seeing the monster's hex.
+	var witnesses []core.PlayerID
 	for viewerID, viewer := range e.data.Players {
 		seesDying := perception.CanSeeAt(viewer.View, dyingPos, e.room)
 		seesKiller := killerHasPos && perception.CanSeeAt(viewer.View, killerPos, e.room)
@@ -102,6 +107,9 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 			continue
 		}
 		diedPerPlayer[viewerID] = events.EntityDiedSlice{Visible: true}
+		if seesDying {
+			witnesses = append(witnesses, viewerID)
+		}
 	}
 	if err := e.broker.Publish(events.NewEntityDiedEvent(
 		e.data.ID, e.nextSeq(), monsterID, killerID, diedPerPlayer,
@@ -112,6 +120,20 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 	// Mutate state: drop from monsters and splice out of initiative.
 	delete(e.data.Monsters, monsterID)
 	e.spliceFromInitiative(monsterID)
+
+	// rpg-toolkit#851: a witnessed removal must update memory IMMEDIATELY,
+	// not wait for the witness's own next unrelated move/reveal to notice.
+	// Refresh runs AFTER the delete above so placementsAt's scan of
+	// e.data.Monsters naturally no longer finds monsterID — the resulting
+	// observation is simply a VISIBLE record that no longer lists it
+	// (HexObservation's doc: "nothing is ever deleted" — a witnessed
+	// removal is exactly this, never a tombstone). Viewers who saw only the
+	// killer, not the dying monster's own hex, are NOT in witnesses and get
+	// no refresh here — they never had authorized knowledge of that hex's
+	// contents to correct.
+	for _, viewerID := range witnesses {
+		e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(dyingPos), "")
+	}
 
 	// Broadcast removal — every player must drop the entity from local
 	// state, even those out of LoS at death time. Build PerPlayer over

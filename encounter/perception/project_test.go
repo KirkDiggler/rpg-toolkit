@@ -188,13 +188,23 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_LeaveLoS_EmptySeenSegment
 		"last-known hex falls back to moverStart when no path hex was visible")
 }
 
-func (s *ProjectSuite) TestView_ApplyRevealIdempotent() {
+// TestView_ObserveIdempotent covers rpg-toolkit#851's acceptance bar
+// "duplicate reconciliation is idempotent": applying the identical
+// observation twice must leave Memory unchanged, both in size and content.
+func (s *ProjectSuite) TestView_ObserveIdempotent() {
 	viewer := perception.NewView("alice", core.Hex{}, 3)
 	h := core.Hex{Q: 1, R: 0, S: -1}
+	obs := perception.HexObservation{
+		Position: h,
+		State:    perception.KnowledgeStateVisible,
+		ZoneID:   "chamber-1",
+		Contents: []perception.Placement{{EntityID: "goblin-1"}},
+	}
 
-	viewer.ApplyReveal(core.NewHexSet(h))
-	viewer.ApplyReveal(core.NewHexSet(h))
+	viewer.Observe(obs)
+	viewer.Observe(obs)
 
-	s.Len(viewer.RevealedHexes, 1)
-	s.True(viewer.RevealedHexes.Has(h))
+	s.Len(viewer.Memory, 1)
+	s.True(viewer.Knows(h))
+	s.Equal(obs, viewer.Memory[h])
 }

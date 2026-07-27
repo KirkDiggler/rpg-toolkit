@@ -284,7 +284,7 @@ func (s *LockedBossDoorSuite) TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegi
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
 
 	boss := regionHexSet(data.Space, dungeonRegionIDBoss)
-	before := s.enc.ToData().Players[alicePlayerID].View.RevealedHexes
+	before := s.enc.ToData().Players[alicePlayerID].View.KnownHexSet()
 	s.False(before.Has(dungeonRegionNearEdgeHex(2)), "the boss chamber must not be revealed before unlocking door 1")
 
 	_, err := s.enc.AttemptUnlock(alicePlayerID, dungeonDoor1ID)
@@ -313,7 +313,7 @@ func (s *LockedBossDoorSuite) TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegi
 		"a successful check must clear LoS blocking into the boss region",
 	)
 
-	after := s.enc.ToData().Players[alicePlayerID].View.RevealedHexes
+	after := s.enc.ToData().Players[alicePlayerID].View.KnownHexSet()
 	s.True(after.Has(dungeonRegionNearEdgeHex(2)),
 		"opening the boss door via a successful check must reveal the boss chamber through the doorway")
 }
