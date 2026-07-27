@@ -69,25 +69,32 @@ func (e *Encounter) KnownHexes(playerID core.PlayerID) map[core.Hex]perception.H
 // must derive hexes from a real VisibleHexesAt/ProjectMove/ProjectDoorOpen
 // result, never invent one.
 //
-// entityID, if non-empty, is guaranteed present in every written hex's
-// Contents even when e.data's CURRENT stored position for that entity
-// differs from the hex being observed — the pass-through-move case: a
-// mover can be OBSERVED (per ProjectVisibilityTransition) at an
-// intermediate hex of their path that is not where they end up, so a plain
-// placementsAt(h) scan (which reads CURRENT position) would miss them
-// there. Leave entityID empty for refreshes that aren't about placing one
-// specific entity (e.g. the mover's own reveal, or a door-open re-sight) —
-// those should reflect purely current world truth, already keyed by
-// position via placementsAt.
-//
 // A hex's Edges/Contents are rebuilt from CURRENT e.data every call, never
 // patched — the same "Visible is TOTAL, replace wholesale" rule
 // HexObservation's doc states for the wire applies identically to memory:
+// Contents comes ENTIRELY from placementsAt's current-world scan, which
+// finds every player/monster/obstacle actually AT that hex right now — so
 // if something else is already standing on a hex being refreshed here (a
-// second monster the caller doesn't know about), placementsAt still finds
-// it, because it scans ALL of e.data, not just the caller's one entity of
+// second monster the caller doesn't know about), it's included, because
+// placementsAt scans ALL of e.data, not just the caller's one entity of
 // interest.
-func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet, entityID core.EntityID) {
+//
+// rpg-toolkit#858: this used to also take an entityID parameter, unioned
+// into every written hex's Contents regardless of whether placementsAt
+// already found that entity there — meant for the pass-through-move case,
+// but its one caller (applyAndPublishMove's per-viewer crossing refresh)
+// passed the SAME entity id for every hex in a multi-hex crossing, so a
+// mover watched crossing several hexes ended up recorded as present on ALL
+// of them, not just the one they actually stopped on — a stale, fabricated
+// placement on every hex they'd since left. The fix is that this function
+// needs no entity-forcing at all: applyAndPublishMove mutates the mover's
+// stored position to their final hex BEFORE calling this, so
+// placementsAt's own current-position scan already gets it exactly right —
+// present at the hex they actually ended on (if that hex is one this
+// viewer refreshes), absent from every other hex, and absent everywhere
+// for a pass-through mover whose final hex isn't a hex this viewer saw at
+// all. See applyAndPublishMove's call site for the full reasoning.
+func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet) {
 	if view == nil || len(hexes) == 0 {
 		return
 	}
@@ -104,23 +111,8 @@ func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet
 				obs.ZoneID = zoneID
 			}
 		}
-		if entityID != "" {
-			obs.Contents = unionPlacement(obs.Contents, entityID)
-		}
 		view.Observe(obs)
 	}
-}
-
-// unionPlacement returns placements with a Placement for entityID appended
-// unless one already names it. See refreshObservations' doc for why this
-// is needed (the pass-through-observed-at-an-intermediate-hex case).
-func unionPlacement(placements []perception.Placement, entityID core.EntityID) []perception.Placement {
-	for _, p := range placements {
-		if p.EntityID == entityID {
-			return placements
-		}
-	}
-	return append(placements, perception.Placement{EntityID: entityID})
 }
 
 // placementsAt returns a Placement for every player, monster, and static

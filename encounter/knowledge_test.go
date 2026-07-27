@@ -332,3 +332,75 @@ func (s *KnowledgeSuite) TestKnownHexes_DuplicateReconciliation_Idempotent() {
 
 	s.Equal(first, second, "reconciling unchanged visibility twice must leave KnownHexes identical")
 }
+
+// TestKnownHexes_StationaryViewer_MoverCrossingSeveralHexes_EndsInExactlyOne
+// is rpg-toolkit#858's core acceptance bar: bob is stationary with sight
+// range 5 (never moves, never refreshes his own position), and watches
+// alice cross FOUR of his visible hexes in one move, stopping on the last
+// one (still within his sight — not a pass-through). Bob's memory of
+// alice's crossing must show her in exactly the hex she stopped on, not
+// smeared across every hex he watched her traverse.
+func (s *KnowledgeSuite) TestKnownHexes_StationaryViewer_MoverCrossingSeveralHexes_EndsInExactlyOne() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: bobPlayerID, EntityID: bobEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 5,
+	}))
+	// alice starts well outside bob's sight (distance 6) and crosses four
+	// hexes all within it (distances 5,4,3,2), stopping on the last —
+	// crossedHex1/2/3 must end up empty of her; finalHex must hold her.
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 6, R: -6, S: 0}, SightRange: 1,
+	}))
+	crossedHex1 := core.Hex{Q: 5, R: -5, S: 0}
+	crossedHex2 := core.Hex{Q: 4, R: -4, S: 0}
+	crossedHex3 := core.Hex{Q: 3, R: -3, S: 0}
+	finalHex := core.Hex{Q: 2, R: -2, S: 0}
+
+	s.Require().NoError(e.Move(alicePlayerID, []core.Hex{crossedHex1, crossedHex2, crossedHex3, finalHex}))
+
+	bobKnown := e.KnownHexes(bobPlayerID)
+	s.Require().Contains(bobKnown, finalHex)
+	s.Equal([]core.EntityID{aliceEntityID}, contentIDs(bobKnown[finalHex]),
+		"alice must be recorded on the hex she actually stopped on")
+
+	for _, h := range []core.Hex{crossedHex1, crossedHex2, crossedHex3} {
+		s.Require().Contains(bobKnown, h, "bob watched alice cross this hex, so it must be known to him")
+		s.Empty(contentIDs(bobKnown[h]),
+			"alice must NOT be recorded on a hex she has since left, even though bob watched her cross it")
+	}
+}
+
+// TestKnownHexes_PassThrough_MoverCrossesAndExits_LeavesNoVisibleTrace is
+// rpg-toolkit#858's pass-through acceptance bar: bob is stationary with
+// sight range 2, and alice moves in one path from far outside his sight,
+// briefly through two hexes he CAN see, and out the far side back beyond
+// his sight — neither her start nor her true final position is ever within
+// bob's sight. Bob must end with alice in NO hex's contents at all: not
+// pinned at the last hex he saw her in (that would fabricate a visible
+// placement the contract reserves for REMEMBERED state, never VISIBLE).
+func (s *KnowledgeSuite) TestKnownHexes_PassThrough_MoverCrossesAndExits_LeavesNoVisibleTrace() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: bobPlayerID, EntityID: bobEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 2,
+	}))
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 20, R: -20, S: 0}, SightRange: 1,
+	}))
+	seenHex1 := core.Hex{Q: 1, R: -1, S: 0}
+	seenHex2 := core.Hex{Q: 2, R: -2, S: 0}
+	farExit := core.Hex{Q: 30, R: -30, S: 0}
+
+	s.Require().NoError(e.Move(alicePlayerID, []core.Hex{seenHex1, seenHex2, farExit}))
+
+	bobKnown := e.KnownHexes(bobPlayerID)
+	for _, h := range []core.Hex{seenHex1, seenHex2} {
+		s.Require().Contains(bobKnown, h, "bob watched alice cross this hex, so it must be known to him")
+		s.Empty(contentIDs(bobKnown[h]),
+			"alice has moved on past bob's sight entirely — she must not be pinned at the last hex he saw her in")
+	}
+	s.NotContains(bobKnown, farExit, "alice's true final hex was never within bob's sight at all")
+}
