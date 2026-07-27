@@ -1,0 +1,243 @@
+package encounter
+
+import (
+	"sort"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+)
+
+// knowledge.go is rpg-toolkit#851: the toolkit-owned persistence and
+// reconciliation of per-viewer geometry knowledge — the ViewerKnowledge
+// seam rpg-api specified before this existed (its
+// internal/handlers/dnd5e/v2/encounter/knowledge.go). See
+// perception/knowledge.go's file doc for the full contract this
+// implements; this file is the WORLD-TRUTH half — perception owns the
+// types and the pure Memory data structure, this file owns building a
+// HexObservation from e.data and deciding which hexes get refreshed when.
+
+// KnownHexes returns every hex playerID has ever observed, keyed by
+// position, each carrying the last AUTHORIZED observation with State set
+// to whether that hex is visible to playerID RIGHT NOW or merely
+// remembered. Hexes playerID has never observed are absent — never present
+// with a zero value (see perception.HexObservation's doc; there is no
+// Unseen value).
+//
+// This is the toolkit's implementation of rpg-api's ViewerKnowledge
+// interface (KnownHexes(viewer) map[core.Hex]HexObservation) — same method
+// name and shape, deliberately, so rpg-api's adapter becomes a direct
+// delegation once it consumes this instead of its own toolkitKnowledge
+// stand-in.
+//
+// State is derived HERE, at read time, from playerID's CURRENT
+// VisibleHexesAt — not stored per-observation and trusted. Every write
+// path in this file (refreshObservations) only ever writes an observation
+// for a hex it has just confirmed is currently visible, so the state
+// recorded in Memory at write time is always "this was visible when
+// observed" — accurate history, but not the live truth for hexes whose
+// visibility has since changed. Deriving state at read time is what makes
+// "the viewer walked away and came back" (no code ran, nothing was
+// written) still report REMEMBERED correctly.
+func (e *Encounter) KnownHexes(playerID core.PlayerID) map[core.Hex]perception.HexObservation {
+	p, ok := e.data.Players[playerID]
+	if !ok || p.View == nil {
+		return nil
+	}
+	visible := perception.VisibleHexesAt(p.View.Position, p.View.SightRange, e.room)
+	out := make(map[core.Hex]perception.HexObservation, len(p.View.Memory))
+	for h, obs := range p.View.Memory {
+		if visible.Has(h) {
+			obs.State = perception.KnowledgeStateVisible
+		} else {
+			obs.State = perception.KnowledgeStateRemembered
+		}
+		out[h] = obs
+	}
+	return out
+}
+
+// refreshObservations writes a fresh, current-world-truth HexObservation
+// into view.Memory for every hex in hexes — the one place this package
+// tells a viewer's memory "this is what you now, authoritatively, see".
+// Callers choose WHICH hexes belong in that set (the mover's own
+// newly-visible hexes, the specific hexes another mover was actually seen
+// crossing, a newly-visible monster's own hex, a door's full post-open
+// sightline, ...); this function makes no visibility decision of its own —
+// it trusts hexes is already the caller's correct current-visible answer
+// for view. Passing a hex the viewer cannot actually see would leak world
+// truth, exactly the leak this whole contract exists to close, so callers
+// must derive hexes from a real VisibleHexesAt/ProjectMove/ProjectDoorOpen
+// result, never invent one.
+//
+// entityID, if non-empty, is guaranteed present in every written hex's
+// Contents even when e.data's CURRENT stored position for that entity
+// differs from the hex being observed — the pass-through-move case: a
+// mover can be OBSERVED (per ProjectVisibilityTransition) at an
+// intermediate hex of their path that is not where they end up, so a plain
+// placementsAt(h) scan (which reads CURRENT position) would miss them
+// there. Leave entityID empty for refreshes that aren't about placing one
+// specific entity (e.g. the mover's own reveal, or a door-open re-sight) —
+// those should reflect purely current world truth, already keyed by
+// position via placementsAt.
+//
+// A hex's Edges/Contents are rebuilt from CURRENT e.data every call, never
+// patched — the same "Visible is TOTAL, replace wholesale" rule
+// HexObservation's doc states for the wire applies identically to memory:
+// if something else is already standing on a hex being refreshed here (a
+// second monster the caller doesn't know about), placementsAt still finds
+// it, because it scans ALL of e.data, not just the caller's one entity of
+// interest.
+func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet, entityID core.EntityID) {
+	if view == nil || len(hexes) == 0 {
+		return
+	}
+	edges := e.edgesByHex()
+	for h := range hexes {
+		obs := perception.HexObservation{
+			Position: h,
+			State:    perception.KnowledgeStateVisible,
+			Edges:    edges[h],
+			Contents: e.placementsAt(h),
+		}
+		if e.data.Space != nil {
+			if zoneID, ok := e.data.Space.RegionAt(h); ok {
+				obs.ZoneID = zoneID
+			}
+		}
+		if entityID != "" {
+			obs.Contents = unionPlacement(obs.Contents, entityID)
+		}
+		view.Observe(obs)
+	}
+}
+
+// unionPlacement returns placements with a Placement for entityID appended
+// unless one already names it. See refreshObservations' doc for why this
+// is needed (the pass-through-observed-at-an-intermediate-hex case).
+func unionPlacement(placements []perception.Placement, entityID core.EntityID) []perception.Placement {
+	for _, p := range placements {
+		if p.EntityID == entityID {
+			return placements
+		}
+	}
+	return append(placements, perception.Placement{EntityID: entityID})
+}
+
+// placementsAt returns a Placement for every player, monster, and static
+// obstacle CURRENTLY at position h — the complete, TOTAL current occupancy
+// (HexObservation's doc: an empty result is a positive claim the hex is
+// empty, not "not computed"). Sorted by entity id for deterministic output
+// — Go randomizes map iteration, and without this two calls against
+// unchanged data could disagree on order, breaking Memory.Observe's
+// idempotency guarantee (see its doc).
+//
+// Facing is always the Placement zero value: nothing in the toolkit tracks
+// entity facing today (perception.Placement's own doc says so plainly).
+func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
+	var out []perception.Placement
+	for _, p := range e.data.Players {
+		if p.View != nil && p.View.Position == h {
+			out = append(out, perception.Placement{EntityID: p.EntityID})
+		}
+	}
+	for _, m := range e.data.Monsters {
+		if m.Position == h {
+			out = append(out, perception.Placement{EntityID: m.ID})
+		}
+	}
+	if e.data.Space != nil {
+		for _, o := range e.data.Space.Obstacles {
+			if o.Position == h {
+				out = append(out, perception.Placement{EntityID: o.ID})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return string(out[i].EntityID) < string(out[j].EntityID) })
+	return out
+}
+
+// edgesByHex indexes every wall and door segment in the encounter's
+// persisted room by the hex it sits on, so refreshObservations can attach
+// a hex's own edges without re-scanning every wall/door per hex. Mirrors
+// rpg-api's OWN edgesByHex (knowledge_adapter.go) — that copy becomes dead
+// code once rpg-api consumes this method instead of re-deriving it from
+// world truth it has no business reading directly.
+//
+// Each hex's edge list is sorted by (To.Q, To.R, To.S) then DoorID for
+// deterministic output — the same idempotency reasoning as placementsAt.
+func (e *Encounter) edgesByHex() map[core.Hex][]perception.Edge {
+	out := make(map[core.Hex][]perception.Edge)
+	if e.data.Space != nil {
+		for _, w := range e.data.Space.Walls {
+			if !w.BlocksMovement && !w.BlocksLoS {
+				// Not a barrier worth remembering — matches the wire
+				// boundary's own "not a wall worth putting on the wire" gate.
+				continue
+			}
+			from := core.HexFromCube(w.Start)
+			out[from] = append(out[from], perception.Edge{
+				From:           from,
+				To:             core.HexFromCube(w.End),
+				BlocksMovement: w.BlocksMovement,
+				BlocksLoS:      w.BlocksLoS,
+			})
+		}
+	}
+	for id, door := range e.data.Doors {
+		if door == nil {
+			continue
+		}
+		out[door.Position] = append(out[door.Position], perception.Edge{
+			From: door.Position,
+			To:   e.doorPassageNeighbor(door),
+			// A closed door blocks both; an open one blocks neither — the
+			// observer reads DoorOpen/DoorLocked, so these flags describe
+			// the barrier rather than re-deriving the door's kind.
+			BlocksMovement: !door.Open,
+			BlocksLoS:      !door.Open,
+			DoorID:         string(id),
+			DoorOpen:       door.Open,
+			DoorLocked:     door.Locked,
+		})
+	}
+	for h, edges := range out {
+		sort.Slice(edges, func(i, j int) bool {
+			a, b := edges[i].To, edges[j].To
+			if a.Q != b.Q {
+				return a.Q < b.Q
+			}
+			if a.R != b.R {
+				return a.R < b.R
+			}
+			if a.S != b.S {
+				return a.S < b.S
+			}
+			return edges[i].DoorID < edges[j].DoorID
+		})
+		out[h] = edges
+	}
+	return out
+}
+
+// doorPassageNeighbor returns door's designated passage-edge neighbor: the
+// door's own cell belongs to NEITHER region (RegionAt(door.Position) is
+// always ("", false) by construction — doors sit between two regions'
+// tagged hex sets, never inside either), so this walks HexNeighbors and
+// returns the first neighbor RegionAt tags into ANY region — the one
+// designated passage edge, so a renderer draws a single door frame on that
+// edge instead of an ambiguous isolated-hex wall. Falls back to the door's
+// own position (a degenerate Start==To segment, matching a solid wall's
+// shape) when no tagged neighbor exists, including when e.data.Space is
+// nil — SpaceData.RegionAt is itself nil-receiver safe, so this guard is
+// belt-and-suspenders documentation as much as a runtime necessity.
+func (e *Encounter) doorPassageNeighbor(door *DoorData) core.Hex {
+	if e.data.Space == nil {
+		return door.Position
+	}
+	for _, n := range perception.HexNeighbors(door.Position) {
+		if _, ok := e.data.Space.RegionAt(n); ok {
+			return n
+		}
+	}
+	return door.Position
+}
