@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 )
 
@@ -53,6 +54,61 @@ func (e *Encounter) KnownHexes(playerID core.PlayerID) map[core.Hex]perception.H
 		}
 		out[h] = obs
 	}
+	return out
+}
+
+// knownHexesToEvents projects KnownHexes' result into events.KnownHex — the
+// events package's own wire-shape mirror of perception.HexObservation (see
+// events.KnownHex's doc for why events cannot import perception directly).
+// This is the ONE place a perception.HexObservation crosses into that
+// mirror, keeping the projection logic in one spot rather than duplicated
+// at every MoveEvent publish call site.
+//
+// Sorted by (Q, R, S) for deterministic output — Go randomizes map
+// iteration, so without this two calls against unchanged data could
+// disagree on order (matches KnownHexes' own callers' existing
+// determinism convention, e.g. rpg-api's sortObservations).
+func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.KnownHex {
+	out := make([]events.KnownHex, 0, len(known))
+	for _, o := range known {
+		edges := make([]events.KnownHexEdge, 0, len(o.Edges))
+		for _, e := range o.Edges {
+			edges = append(edges, events.KnownHexEdge{
+				From:           e.From,
+				To:             e.To,
+				BlocksMovement: e.BlocksMovement,
+				BlocksLoS:      e.BlocksLoS,
+				DoorID:         e.DoorID,
+				DoorOpen:       e.DoorOpen,
+				DoorLocked:     e.DoorLocked,
+			})
+		}
+		contents := make([]events.KnownHexPlacement, 0, len(o.Contents))
+		for _, c := range o.Contents {
+			contents = append(contents, events.KnownHexPlacement{
+				EntityID: c.EntityID,
+				Facing:   c.Facing,
+			})
+		}
+		out = append(out, events.KnownHex{
+			Position: o.Position,
+			State:    int(o.State),
+			Terrain:  int(o.Terrain),
+			ZoneID:   o.ZoneID,
+			Edges:    edges,
+			Contents: contents,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Position, out[j].Position
+		if a.Q != b.Q {
+			return a.Q < b.Q
+		}
+		if a.R != b.R {
+			return a.R < b.R
+		}
+		return a.S < b.S
+	})
 	return out
 }
 

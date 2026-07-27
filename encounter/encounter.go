@@ -1170,10 +1170,23 @@ func (e *Encounter) applyAndPublishMove(
 
 	// 4. Publish — cause event always; effect event only when someone's
 	//    vision changed. The two events get sequential sequence numbers.
+	//
+	// rpg-toolkit#862: moverKnownHexes is computed HERE, from THIS in-memory
+	// e.data, immediately after step 2's mutation (p.View.Position / the
+	// refreshObservations call above) and before anything else — including
+	// this same method's own caller persisting the result — can act. This
+	// is the only moment provably free of the stale-repository-read race a
+	// downstream consumer's own out-of-band KnownHexes(playerID) re-load
+	// was exposed to (it could run before the caller's persist landed,
+	// reading pre-move state — e.g. reporting the mover's just-vacated hex
+	// as still VISIBLE with them on it). See events.MoveEvent's
+	// MoverKnownHexes doc for the full contract.
+	moverKnownHexes := knownHexesToEvents(e.KnownHexes(playerID))
+
 	moveSeq := e.nextSeq()
 	corrID := e.correlationFor(moveSeq)
 	if err := e.broker.Publish(events.NewMoveEvent(
-		e.data.ID, moveSeq, p.EntityID, moverStart, traveledPath, movePerPlayer,
+		e.data.ID, moveSeq, p.EntityID, moverStart, traveledPath, movePerPlayer, playerID, moverKnownHexes,
 	)); err != nil {
 		return "", fmt.Errorf("publish move: %w", err)
 	}

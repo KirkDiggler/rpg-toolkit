@@ -44,6 +44,7 @@ func (s *BrokerSuite) TestPublish_RoutesByAudience() {
 			"alice": {SeenSegments: []core.Hex{{Q: 0, R: 0, S: 0}}},
 			// bob absent — out of audience
 		},
+		"", nil,
 	)
 	s.Require().NoError(s.broker.Publish(move))
 
@@ -57,7 +58,7 @@ func (s *BrokerSuite) TestPublish_IsolatesEncounters() {
 	sub2, _ := s.broker.Subscribe("enc:2", "alice")
 
 	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x", core.Hex{},
-		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
+		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}}, "", nil)))
 
 	s.assertReceivesType(sub1, "*events.MoveEvent")
 	s.assertNoReceive(sub2)
@@ -69,7 +70,7 @@ func (s *BrokerSuite) TestSubscribe_MultiSubsForSamePlayer() {
 	a2, _ := s.broker.Subscribe("enc:1", "alice")
 
 	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x", core.Hex{},
-		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
+		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}}, "", nil)))
 
 	s.assertReceivesType(a1, "*events.MoveEvent")
 	s.assertReceivesType(a2, "*events.MoveEvent")
@@ -82,7 +83,7 @@ func (s *BrokerSuite) TestClose_RemovesOnlyClosedSub() {
 	s.Require().NoError(a1.Close())
 
 	s.Require().NoError(s.broker.Publish(events.NewMoveEvent("enc:1", 1, "x", core.Hex{},
-		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}})))
+		nil, map[core.PlayerID]events.MovePlayerSlice{"alice": {}}, "", nil)))
 
 	// a2 still receives — the meaningful assertion.
 	s.assertReceivesType(a2, "*events.MoveEvent")

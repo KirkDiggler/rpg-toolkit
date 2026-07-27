@@ -348,8 +348,13 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 	if len(movePerPlayer) == 0 {
 		return nil
 	}
+	// Empty moverPlayerID / nil moverKnownHexes: an NPC/monster mover has no
+	// Players entry / View, so there is no KnownHexes(mover) to restate —
+	// MoverKnownHexes exists only to fix the PLAYER mover's own-knowledge
+	// restatement race (see its doc comment); NewMoveEvent normalizes nil
+	// to an empty slice.
 	if err := e.broker.Publish(events.NewMoveEvent(
-		e.data.ID, e.nextSeq(), mon.ID, moverStart, traveledPath, movePerPlayer,
+		e.data.ID, e.nextSeq(), mon.ID, moverStart, traveledPath, movePerPlayer, "", nil,
 	)); err != nil {
 		return fmt.Errorf("publish npc move: %w", err)
 	}
