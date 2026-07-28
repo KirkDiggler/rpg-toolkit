@@ -107,7 +107,7 @@ func (s *EventsSuite) TestSpineMeta_StampAndAccessors() {
 	corr := core.CorrelationID("corr-enc-1-7")
 
 	samples := []events.EncounterEvent{
-		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil),
+		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil, "", nil),
 		events.NewAttackResolvedEvent("enc-1", 2, "a", "b", true, false, 1, 1, 1, false, false, nil, nil, nil),
 		events.NewDamageDealtEvent("enc-1", 3, "a", "b", 1, "slashing", 1, 1, nil),
 		events.NewActionResolvedEvent("enc-1", 4, "a", "dnd5e:action:attack", "b",
@@ -192,6 +192,7 @@ func (s *EventsSuite) TestMoveEvent_AudienceFromPerPlayer() {
 			"alice": {SeenSegments: []core.Hex{{Q: 0, R: 0, S: 0}}},
 			"carol": {SeenSegments: []core.Hex{}},
 		},
+		"bob", nil,
 	)
 
 	s.Equal(core.EncounterID("enc-1"), e.EncounterID())
@@ -209,6 +210,25 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 		map[core.PlayerID]events.MovePlayerSlice{
 			"alice": {SeenSegments: []core.Hex{{Q: 1, R: -1, S: 0}}},
 		},
+		"bob-player",
+		// rpg-toolkit#862: a REMEMBERED entry (state 2) alongside a VISIBLE one
+		// (state 1) exercises exactly the shape the stale-read race
+		// corrupted — the round-trip must keep them distinguishable.
+		[]events.KnownHex{
+			{
+				Position: core.Hex{Q: 0, R: 0, S: 0},
+				State:    2,
+				Contents: []events.KnownHexPlacement{{EntityID: "bob", Facing: 3}},
+			},
+			{
+				Position: core.Hex{Q: 1, R: -1, S: 0},
+				State:    1,
+				ZoneID:   "entrance",
+				Edges: []events.KnownHexEdge{
+					{From: core.Hex{Q: 1, R: -1, S: 0}, To: core.Hex{Q: 2, R: -1, S: -1}, BlocksMovement: true, BlocksLoS: true},
+				},
+			},
+		},
 	)
 
 	payload, err := json.Marshal(original)
@@ -225,6 +245,19 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 	s.Equal(original.Path, decoded.Path)
 	s.Require().Contains(decoded.PerPlayer, core.PlayerID("alice"))
 	s.Equal(original.PerPlayer["alice"].SeenSegments, decoded.PerPlayer["alice"].SeenSegments)
+	s.Equal(core.PlayerID("bob-player"), decoded.MoverPlayerID)
+	s.Equal(original.MoverKnownHexes, decoded.MoverKnownHexes)
+}
+
+// A nil moverKnownHexes normalizes to an empty (never nil) slice — the NPC
+// mover path (encounter/npc.go) always passes nil, and a consumer ranging
+// over MoverKnownHexes unconditionally must never nil-panic or need its own
+// nil guard. moverPlayerID is likewise empty for that same NPC path.
+func (s *EventsSuite) TestMoveEvent_NilMoverKnownHexesNormalizesToEmpty() {
+	e := events.NewMoveEvent("enc-1", 1, "goblin-1", core.Hex{}, nil, nil, "", nil)
+	s.Empty(e.MoverPlayerID)
+	s.NotNil(e.MoverKnownHexes)
+	s.Empty(e.MoverKnownHexes)
 }
 
 // HexRevealedEvent JSON round-trip — load-bearing because PerceptionView
@@ -300,7 +333,7 @@ func (s *EventsSuite) TestEntityDisappearedEvent_JSONRoundTrip() {
 // Type switch returns the concrete type.
 func (s *EventsSuite) TestTypeSwitch_RecoversConcrete() {
 	evts := []events.EncounterEvent{
-		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil),
+		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil, "", nil),
 		events.NewHexRevealedEvent("enc-1", 2, nil),
 		events.NewDoorOpenedEvent("enc-1", 3, "door-1", "bob", nil),
 		events.NewEntityAppearedEvent("enc-1", 4, "bob", core.Hex{}, nil),

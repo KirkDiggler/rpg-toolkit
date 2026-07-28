@@ -9,6 +9,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -133,6 +135,77 @@ func (s *EncounterSuite) TestMove_PublishesHexRevealedEventForMover() {
 	seen := collectTypes(aliceSub, 500*time.Millisecond)
 	s.Contains(seen, "*events.MoveEvent")
 	s.Contains(seen, "*events.HexRevealedEvent")
+}
+
+// rpg-toolkit#862 (companion fix for KirkDiggler/rpg-api#737): the mover's
+// own MoveEvent.MoverKnownHexes must place them at the NEW hex, and must
+// NOT still report the just-vacated origin hex as VISIBLE with them on it.
+// This is the toolkit-side half of a real bug: a downstream consumer
+// (rpg-api's stream translator) that instead re-derives this via its own
+// out-of-band repository read raced against the SAME move's not-yet-executed
+// persist, and read pre-move truth — the origin
+// hex, still VISIBLE, still listing the mover. MoverKnownHexes exists so a
+// consumer never needs that separate, racy read: this asserts the event's
+// OWN payload is correct at the moment of publish.
+func (s *EncounterSuite) TestMove_MoverKnownHexesReflectsPostMoveTruth() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice",
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 2,
+	}))
+	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
+
+	// Straight-line move of hex-distance 3 — strictly farther than
+	// SightRange 2, so the origin hex (0,0,0) unambiguously drops out of
+	// sight this move, the same shape as "stepping behind a pillar" or
+	// backing out of a room far enough to lose the doorway.
+	path := []core.Hex{
+		{Q: 1, R: -1, S: 0},
+		{Q: 2, R: -2, S: 0},
+		{Q: 3, R: -3, S: 0},
+	}
+	s.Require().NoError(e.Move("alice", path))
+
+	var moveEvt *events.MoveEvent
+	select {
+	case evt, ok := <-aliceSub.Events():
+		s.Require().True(ok)
+		var isMove bool
+		moveEvt, isMove = evt.(*events.MoveEvent)
+		s.Require().True(isMove, "expected *events.MoveEvent, got %T", evt)
+	case <-time.After(time.Second):
+		s.FailNow("did not receive MoveEvent in 1s")
+	}
+
+	byPos := make(map[core.Hex]events.KnownHex, len(moveEvt.MoverKnownHexes))
+	for _, kh := range moveEvt.MoverKnownHexes {
+		byPos[kh.Position] = kh
+	}
+
+	// This is the actual bug: rpg-api's own out-of-band re-read reported the
+	// origin hex as STILL VISIBLE with alice on it, because it raced ahead
+	// of the persist for this exact move. State REMEMBERED (not VISIBLE) is
+	// the one assertion that pins the fix — a remembered record's Contents
+	// legitimately still names alice (she WAS there the last time this hex
+	// was actually observed as visible, which for the starting hex is true
+	// by construction); "nothing is ever deleted" from a memory without a
+	// fresh VISIBLE re-observation is the documented HexRecord contract,
+	// not a bug this test should assert against.
+	origin, ok := byPos[core.Hex{Q: 0, R: 0, S: 0}]
+	s.Require().True(ok, "origin hex must still be present (remembered), not dropped")
+	s.Equal(int(perception.KnowledgeStateRemembered), origin.State,
+		"origin hex must be REMEMBERED, not still VISIBLE, now that alice has moved out of range")
+
+	dest, ok := byPos[core.Hex{Q: 3, R: -3, S: 0}]
+	s.Require().True(ok, "destination hex must be present")
+	s.Equal(int(perception.KnowledgeStateVisible), dest.State, "destination hex must be VISIBLE")
+	foundMoverAtDest := false
+	for _, c := range dest.Contents {
+		if c.EntityID == "char-alice" {
+			foundMoverAtDest = true
+		}
+	}
+	s.True(foundMoverAtDest, "destination hex's contents must place alice there")
 }
 
 func (s *EncounterSuite) TestMove_Validations() {
