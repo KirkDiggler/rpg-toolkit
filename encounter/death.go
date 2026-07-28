@@ -132,7 +132,7 @@ func (e *Encounter) killEntity(monsterID, killerID core.EntityID) error {
 	// no refresh here — they never had authorized knowledge of that hex's
 	// contents to correct.
 	for _, viewerID := range witnesses {
-		e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(dyingPos), "")
+		e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(dyingPos))
 	}
 
 	// Broadcast removal — every player must drop the entity from local

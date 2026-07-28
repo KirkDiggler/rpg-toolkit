@@ -348,11 +348,8 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 	// e.data.Players so refreshObservations' placementsAt scan finds this
 	// seat's own entity on its own starting hex (and any other
 	// already-seated entity that happens to share it), the same way any
-	// other viewer's own-position observation works. No entityID union
-	// needed here (unlike the pass-through-move case elsewhere in this
-	// file): the new seat's stored position and its starting hex are the
-	// same value by construction.
-	e.refreshObservations(view, perception.VisibleHexesAt(input.Position, input.SightRange, e.room), "")
+	// other viewer's own-position observation works.
+	e.refreshObservations(view, perception.VisibleHexesAt(input.Position, input.SightRange, e.room))
 
 	// Seed default OA readiness for combatants. Free-cost reactions default
 	// on so players do not need to opt in every fight.
@@ -520,11 +517,11 @@ func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
 		// rpg-toolkit#851: refresh each such viewer's memory at the
 		// monster's own hex — first-sight if that hex was never known to
 		// them, or a content-only refresh if it was (a hex they already
-		// knew now has a new occupant). No entityID union needed:
-		// placementsAt's own scan already finds the monster, since it's
-		// stationary and just-stored at mon.Position.
+		// knew now has a new occupant). placementsAt's own scan already
+		// finds the monster, since it's stationary and just-stored at
+		// mon.Position.
 		for viewerID := range viewers {
-			e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(mon.Position), "")
+			e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(mon.Position))
 		}
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), mon.ID, mon.Position, viewers,
@@ -1096,7 +1093,7 @@ func (e *Encounter) applyAndPublishMove(
 	//    is what makes re-sight (a hex the mover once knew, lost, and is
 	//    now back in range of) atomically correct (rpg-toolkit#851).
 	p.View.Position = end
-	e.refreshObservations(p.View, newVisible, "")
+	e.refreshObservations(p.View, newVisible)
 
 	// 3. Per-player projection.
 	movePerPlayer := make(map[core.PlayerID]events.MovePlayerSlice)
@@ -1132,7 +1129,7 @@ func (e *Encounter) applyAndPublishMove(
 		}
 		if revealSlice != nil {
 			if revealSlice.Hexes != nil {
-				e.refreshObservations(other.View, revealSlice.Hexes, "")
+				e.refreshObservations(other.View, revealSlice.Hexes)
 			}
 			revealPerPlayer[otherID] = *revealSlice
 		}
@@ -1142,17 +1139,29 @@ func (e *Encounter) applyAndPublishMove(
 		if moveSlice != nil {
 			seenSegments = moveSlice.SeenSegments
 		}
-		// rpg-toolkit#851: refresh other's memory for exactly the hexes the
-		// mover was actually seen crossing — the mover's presence there is
-		// new content on an otherwise-unchanged hex (other's own vision
-		// didn't move), so this is a targeted content refresh, not a
-		// visibility change of other's own. p.EntityID is unioned in rather
-		// than left to placementsAt's own current-position scan because a
-		// pass-through mover can be observed at an INTERMEDIATE hex their
-		// final resting position (what placementsAt would find) no longer
-		// reflects — see ProjectVisibilityTransition's doc.
+		// rpg-toolkit#851/#858: refresh other's memory for exactly the hexes
+		// the mover was actually seen crossing — the mover's presence (or
+		// absence) there is new content on an otherwise-unchanged hex
+		// (other's own vision didn't move), so this is a targeted content
+		// refresh, not a visibility change of other's own.
+		//
+		// rpg-toolkit#858: this used to also force-union p.EntityID into
+		// EVERY segment hex's Contents, which recorded the mover as present
+		// on every hex this viewer watched them cross, not just the one
+		// they stopped on — a stale, fabricated placement on every earlier
+		// hex the mover had since left. No forcing is needed at all:
+		// p.View.Position was already mutated to end (the mover's true
+		// final hex) in step 2 above, BEFORE this loop runs, so
+		// refreshObservations' own placementsAt scan already gets every
+		// segment hex right on its own — present at end (if end is one of
+		// these segment hexes), absent from every other one, and absent
+		// from all of them for a pass-through mover whose true final hex
+		// isn't among the hexes this viewer actually saw (their sight
+		// simply lost them before they arrived — see
+		// ProjectVisibilityTransition's doc for that disappearance case,
+		// handled separately below).
 		if len(seenSegments) > 0 {
-			e.refreshObservations(other.View, core.NewHexSet(seenSegments...), p.EntityID)
+			e.refreshObservations(other.View, core.NewHexSet(seenSegments...))
 		}
 		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(
 			moverStart, traveledPath, seenSegments, other.View, visible,
@@ -1225,7 +1234,7 @@ func (e *Encounter) applyAndPublishMove(
 	// identical player-sees-player transition just above, so the monster
 	// case is wired in right alongside it, sharing the same machinery.
 	// rpg-toolkit#851: no separate memory refresh is needed here for
-	// monsterAppeared — step 2's e.refreshObservations(p.View, newVisible, "")
+	// monsterAppeared — step 2's e.refreshObservations(p.View, newVisible)
 	// already wrote a full observation (via placementsAt) for every hex in
 	// the mover's post-move visible set, and a monster only ever appears
 	// here because its position IS in that set (monsterVisibilityTransitions'
@@ -1312,7 +1321,7 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 			// new ones. Bounded by this viewer's own sight range, same cost
 			// class as their own move's reveal.
 			visible := perception.VisibleHexesAt(viewer.View.Position, viewer.View.SightRange, e.room)
-			e.refreshObservations(viewer.View, visible, "")
+			e.refreshObservations(viewer.View, visible)
 		}
 		if revealSlice != nil {
 			revealPerPlayer[viewerID] = *revealSlice
