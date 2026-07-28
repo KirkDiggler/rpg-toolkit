@@ -7,6 +7,15 @@ package encounter_test
 // reconciliation. See encounter/knowledge.go's file doc for the
 // implementation this exercises, and perception/knowledge.go for the
 // HexObservation contract these tests assert against.
+//
+// rpg-toolkit#859 added TestKnownHexes_MemoryHexes_AllBelongToTheSpace and
+// TestKnownHexes_DoorwayCell_IsStillRemembered: every test above this point
+// predates that fix and uses encounter.New with no InitRoom/InitDungeon call
+// at all (e.room stays nil), so they never previously exercised — and still
+// don't exercise — the space-membership filter; they keep passing precisely
+// because a nil room means "nothing to be outside of," preserving this
+// package's pre-wave-1 unbounded behavior for non-spatial encounters. The
+// two new tests are the ones that actually build a spatial room.
 
 import (
 	"context"
@@ -18,6 +27,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
 type KnowledgeSuite struct {
@@ -331,4 +341,141 @@ func (s *KnowledgeSuite) TestKnownHexes_DuplicateReconciliation_Idempotent() {
 	second := e.KnownHexes(alicePlayerID)
 
 	s.Equal(first, second, "reconciling unchanged visibility twice must leave KnownHexes identical")
+}
+
+// TestKnownHexes_StationaryViewer_MoverCrossingSeveralHexes_EndsInExactlyOne
+// is rpg-toolkit#858's core acceptance bar: bob is stationary with sight
+// range 5 (never moves, never refreshes his own position), and watches
+// alice cross FOUR of his visible hexes in one move, stopping on the last
+// one (still within his sight — not a pass-through). Bob's memory of
+// alice's crossing must show her in exactly the hex she stopped on, not
+// smeared across every hex he watched her traverse.
+func (s *KnowledgeSuite) TestKnownHexes_StationaryViewer_MoverCrossingSeveralHexes_EndsInExactlyOne() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: bobPlayerID, EntityID: bobEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 5,
+	}))
+	// alice starts well outside bob's sight (distance 6) and crosses four
+	// hexes all within it (distances 5,4,3,2), stopping on the last —
+	// crossedHex1/2/3 must end up empty of her; finalHex must hold her.
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 6, R: -6, S: 0}, SightRange: 1,
+	}))
+	crossedHex1 := core.Hex{Q: 5, R: -5, S: 0}
+	crossedHex2 := core.Hex{Q: 4, R: -4, S: 0}
+	crossedHex3 := core.Hex{Q: 3, R: -3, S: 0}
+	finalHex := core.Hex{Q: 2, R: -2, S: 0}
+
+	s.Require().NoError(e.Move(alicePlayerID, []core.Hex{crossedHex1, crossedHex2, crossedHex3, finalHex}))
+
+	bobKnown := e.KnownHexes(bobPlayerID)
+	s.Require().Contains(bobKnown, finalHex)
+	s.Equal([]core.EntityID{aliceEntityID}, contentIDs(bobKnown[finalHex]),
+		"alice must be recorded on the hex she actually stopped on")
+
+	for _, h := range []core.Hex{crossedHex1, crossedHex2, crossedHex3} {
+		s.Require().Contains(bobKnown, h, "bob watched alice cross this hex, so it must be known to him")
+		s.Empty(contentIDs(bobKnown[h]),
+			"alice must NOT be recorded on a hex she has since left, even though bob watched her cross it")
+	}
+}
+
+// TestKnownHexes_PassThrough_MoverCrossesAndExits_LeavesNoVisibleTrace is
+// rpg-toolkit#858's pass-through acceptance bar: bob is stationary with
+// sight range 2, and alice moves in one path from far outside his sight,
+// briefly through two hexes he CAN see, and out the far side back beyond
+// his sight — neither her start nor her true final position is ever within
+// bob's sight. Bob must end with alice in NO hex's contents at all: not
+// pinned at the last hex he saw her in (that would fabricate a visible
+// placement the contract reserves for REMEMBERED state, never VISIBLE).
+func (s *KnowledgeSuite) TestKnownHexes_PassThrough_MoverCrossesAndExits_LeavesNoVisibleTrace() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: bobPlayerID, EntityID: bobEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 2,
+	}))
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 20, R: -20, S: 0}, SightRange: 1,
+	}))
+	seenHex1 := core.Hex{Q: 1, R: -1, S: 0}
+	seenHex2 := core.Hex{Q: 2, R: -2, S: 0}
+	farExit := core.Hex{Q: 30, R: -30, S: 0}
+
+	s.Require().NoError(e.Move(alicePlayerID, []core.Hex{seenHex1, seenHex2, farExit}))
+
+	bobKnown := e.KnownHexes(bobPlayerID)
+	for _, h := range []core.Hex{seenHex1, seenHex2} {
+		s.Require().Contains(bobKnown, h, "bob watched alice cross this hex, so it must be known to him")
+		s.Empty(contentIDs(bobKnown[h]),
+			"alice has moved on past bob's sight entirely — she must not be pinned at the last hex he saw her in")
+	}
+	s.NotContains(bobKnown, farExit, "alice's true final hex was never within bob's sight at all")
+}
+
+// TestKnownHexes_MemoryHexes_AllBelongToTheSpace is rpg-toolkit#859's core
+// acceptance bar: perception.VisibleHexesAt returns every hex within
+// sightRange that isn't wall-blocked, with no notion of whether a hex is
+// part of the space at all — measured from live Redis, ~80% of a viewer's
+// stored Memory was hexes with no floor beneath them, well outside the
+// room. A tiny 6x6 room with sight range 10 (the measured scenario's own
+// sight range) reproduces the shape of the bug directly: an unfiltered
+// radius-10 disc is up to 331 hexes, vastly more than the room's own 36.
+func (s *KnowledgeSuite) TestKnownHexes_MemoryHexes_AllBelongToTheSpace() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.InitRoom(6, 6, environments.PatternEmpty))
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{Q: 0, R: 0, S: 0}, SightRange: 10,
+	}))
+
+	known := e.KnownHexes(alicePlayerID)
+	s.Require().NotEmpty(known)
+
+	room := e.Room()
+	s.Require().NotNil(room)
+	for h := range known {
+		s.True(room.GetGrid().IsValidPosition(h.ToPosition()),
+			"every stored hex must belong to the room's grid bounds; %v does not", h)
+	}
+
+	// Memory size must equal the room's own footprint (6x6=36) exactly, not
+	// the sight-range disc (radius 10 reaches the whole tiny room from this
+	// corner, so pre-fix this would instead have been the full unfiltered
+	// disc size — up to 331 hexes for radius 10).
+	s.Equal(36, len(known),
+		"memory must be proportional to the room's footprint, not the sight-range area")
+}
+
+// TestKnownHexes_DoorwayCell_IsStillRemembered is rpg-toolkit#859's
+// trap-avoidance bar: RegionAt alone is NOT a valid space-membership test —
+// a door's own cell deliberately belongs to no region (doorPassageNeighbor's
+// documented trap) — so a fix that filtered purely on "has a region" would
+// silently drop doorways from memory, losing the exact cell the player is
+// standing in front of. Proves the real fix does not make that mistake.
+func (s *KnowledgeSuite) TestKnownHexes_DoorwayCell_IsStillRemembered() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	s.Require().NoError(e.InitTwoChamberRoom(encounter.TwoChamberRoomParams{
+		ChamberWidth: 4, ChamberHeight: 4, Pattern: environments.PatternEmpty,
+		DoorID: twoChamberDoorID,
+	}))
+	entrance := e.ToData().Space.Entrance
+	s.Require().NoError(e.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: entrance, SightRange: 10,
+	}))
+
+	doorHex := e.ToData().Doors[twoChamberDoorID].Position
+
+	// Precondition pinning the documented trap itself: the door's own cell
+	// belongs to no region.
+	_, hasRegion := e.ToData().Space.RegionAt(doorHex)
+	s.Require().False(hasRegion,
+		"precondition: the door's own cell belongs to no region (doorPassageNeighbor's documented trap)")
+
+	known := e.KnownHexes(alicePlayerID)
+	s.Require().Contains(known, doorHex,
+		"the doorway must still be remembered even though RegionAt reports it belongs to no region")
 }

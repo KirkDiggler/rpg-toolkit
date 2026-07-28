@@ -125,30 +125,46 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 // must derive hexes from a real VisibleHexesAt/ProjectMove/ProjectDoorOpen
 // result, never invent one.
 //
-// entityID, if non-empty, is guaranteed present in every written hex's
-// Contents even when e.data's CURRENT stored position for that entity
-// differs from the hex being observed — the pass-through-move case: a
-// mover can be OBSERVED (per ProjectVisibilityTransition) at an
-// intermediate hex of their path that is not where they end up, so a plain
-// placementsAt(h) scan (which reads CURRENT position) would miss them
-// there. Leave entityID empty for refreshes that aren't about placing one
-// specific entity (e.g. the mover's own reveal, or a door-open re-sight) —
-// those should reflect purely current world truth, already keyed by
-// position via placementsAt.
-//
 // A hex's Edges/Contents are rebuilt from CURRENT e.data every call, never
 // patched — the same "Visible is TOTAL, replace wholesale" rule
 // HexObservation's doc states for the wire applies identically to memory:
+// Contents comes ENTIRELY from placementsAt's current-world scan, which
+// finds every player/monster/obstacle actually AT that hex right now — so
 // if something else is already standing on a hex being refreshed here (a
-// second monster the caller doesn't know about), placementsAt still finds
-// it, because it scans ALL of e.data, not just the caller's one entity of
+// second monster the caller doesn't know about), it's included, because
+// placementsAt scans ALL of e.data, not just the caller's one entity of
 // interest.
-func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet, entityID core.EntityID) {
+//
+// rpg-toolkit#858: this used to also take an entityID parameter, unioned
+// into every written hex's Contents regardless of whether placementsAt
+// already found that entity there — meant for the pass-through-move case,
+// but its one caller (applyAndPublishMove's per-viewer crossing refresh)
+// passed the SAME entity id for every hex in a multi-hex crossing, so a
+// mover watched crossing several hexes ended up recorded as present on ALL
+// of them, not just the one they actually stopped on — a stale, fabricated
+// placement on every hex they'd since left. The fix is that this function
+// needs no entity-forcing at all: applyAndPublishMove mutates the mover's
+// stored position to their final hex BEFORE calling this, so
+// placementsAt's own current-position scan already gets it exactly right —
+// present at the hex they actually ended on (if that hex is one this
+// viewer refreshes), absent from every other hex, and absent everywhere
+// for a pass-through mover whose final hex isn't a hex this viewer saw at
+// all. See applyAndPublishMove's call site for the full reasoning.
+func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet) {
 	if view == nil || len(hexes) == 0 {
 		return
 	}
 	edges := e.edgesByHex()
 	for h := range hexes {
+		// rpg-toolkit#859: hexes is frequently a raw perception.VisibleHexesAt
+		// disc (sight-range radius around a position), which has no notion of
+		// whether a hex is part of the space at all — it happily includes the
+		// void beyond the room's walls. Confine what gets remembered to hexes
+		// that are actually part of the space; see isSpaceHex's doc for why
+		// this can't be approximated with RegionAt.
+		if !e.isSpaceHex(h) {
+			continue
+		}
 		obs := perception.HexObservation{
 			Position: h,
 			State:    perception.KnowledgeStateVisible,
@@ -160,23 +176,51 @@ func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet
 				obs.ZoneID = zoneID
 			}
 		}
-		if entityID != "" {
-			obs.Contents = unionPlacement(obs.Contents, entityID)
-		}
 		view.Observe(obs)
 	}
 }
 
-// unionPlacement returns placements with a Placement for entityID appended
-// unless one already names it. See refreshObservations' doc for why this
-// is needed (the pass-through-observed-at-an-intermediate-hex case).
-func unionPlacement(placements []perception.Placement, entityID core.EntityID) []perception.Placement {
-	for _, p := range placements {
-		if p.EntityID == entityID {
-			return placements
-		}
+// isSpaceHex reports whether h is actually part of this encounter's space —
+// not merely within sight-range distance of some viewer position.
+// rpg-toolkit#859: three live encounters measured ~80% of a viewer's stored
+// Memory as hexes with no floor beneath them at all — perception.
+// VisibleHexesAt returns every hex within sightRange that isn't
+// wall-blocked, with no notion of whether a hex belongs to the space, so
+// refreshObservations was faithfully recording the void beyond the room's
+// walls right alongside real floor.
+//
+// RegionAt alone is NOT this test: a door's own cell deliberately belongs to
+// no region (RegionAt(door.Position) is always ("", false) by construction —
+// see doorPassageNeighbor's doc), and corridors may be similarly unregioned
+// in future generators. Filtering on "has a region" would silently drop
+// doorways from memory — a worse bug than the one being fixed, since the
+// player would lose the doorway they are standing in.
+//
+// The real test is the room's own grid bounds. rebuildRoomFromData builds
+// e.room's HexGrid from exactly SpaceData.Width/Height (spatial.HexGridConfig
+// {Width: sd.Width, Height: sd.Height}), and every generator this package
+// ships lays hexes out with NO gaps inside that rectangle:
+//   - InitRoom: a single implicit region spanning the whole grid — the
+//     entire rectangle IS the floor.
+//   - InitDungeon (InitTwoChamberRoom included, generalized to N=2):
+//     generateDungeonLayout places each region's columns contiguously
+//     (starts[i] = x; x += r.Width + 1) with the boundary/door column
+//     immediately after — the shared rectangle is exactly regions plus
+//     their connecting door columns, tiled with zero slack.
+//
+// So "within the room's grid bounds" IS "part of the space" for every shape
+// this package generates, doors included, with no per-generator
+// special-casing and no dependency on region tagging at all — precisely the
+// real membership answer the space itself already has, not an approximation.
+//
+// A nil e.room (InitRoom/LoadFromData-with-Space never ran) means there is
+// no room to be outside of: every hex is accepted, preserving this
+// package's pre-wave-1 unbounded-radius behavior for non-spatial encounters.
+func (e *Encounter) isSpaceHex(h core.Hex) bool {
+	if e.room == nil {
+		return true
 	}
-	return append(placements, perception.Placement{EntityID: entityID})
+	return e.room.GetGrid().IsValidPosition(h.ToPosition())
 }
 
 // placementsAt returns a Placement for every player, monster, and static
