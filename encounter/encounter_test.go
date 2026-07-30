@@ -228,7 +228,10 @@ func (s *EncounterSuite) TestOpenDoor_PublishesEvents() {
 		PlayerID: "bob", EntityID: "char-bob",
 		Position: core.Hex{Q: 50, R: -25, S: -25}, SightRange: 4,
 	}))
-	s.Require().NoError(e.AddDoor("door-1", core.Hex{Q: 2, R: 0, S: -2}, false))
+	// rpg-toolkit#864: OpenDoor requires adjacency — door is 1 hex from
+	// alice (was 2; unrelated to what this test actually proves: event
+	// publishing + bob's out-of-range non-delivery).
+	s.Require().NoError(e.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false))
 
 	aliceSub, _ := s.broker.Subscribe("enc-1", "alice")
 	bobSub, _ := s.broker.Subscribe("enc-1", "bob")

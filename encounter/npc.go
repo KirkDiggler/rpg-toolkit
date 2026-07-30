@@ -401,6 +401,26 @@ func (e *Encounter) applyCapturedAttacks(
 			continue
 		}
 
+		// rpg-toolkit#864: the same shared range gate the player attack path
+		// uses (TakeActionPhased), applied here so no actor is an exception.
+		// Melee-only: dnd5eEvents.AttackEvent carries IsMelee but no numeric
+		// range, and MonsterData has no range field to consult for ranged
+		// attacks without inventing new plumbing — a gap worth its own
+		// follow-up issue. This is defense-in-depth rather than the primary
+		// gate for monsters: monster.TakeTurn's own action selection
+		// (actions.MeleeAction/RangedAction.CanActivate) already rejects an
+		// out-of-reach/out-of-range choice before any AttackEvent publishes
+		// (the QA walk observed monster AI correctly closing to adjacency in
+		// both fights) — this catches a bug in that AI-side gate, or a
+		// future monster action that skips it, the same way the player path
+		// hard-gates rather than trusting the caller.
+		if atk.IsMelee {
+			reach := meleeReachForCombatant(e.combatantFor(mon.ID))
+			if err := checkReach(mon.Position, targetPlayer.View.Position, reach, "reach"); err != nil {
+				return err
+			}
+		}
+
 		input := AttackInput{
 			AttackerID:          mon.ID,
 			TargetID:            targetID,
@@ -1006,6 +1026,16 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	target := e.closestPlayer(mon.Position)
 	if target == nil {
 		return nil
+	}
+	// rpg-toolkit#864: this fallback has no ranged/melee action distinction
+	// at all (it's a single flat stat-snapshot "attack"), so it gates as
+	// melee — same shared gate as applyCapturedAttacks/TakeActionPhased.
+	// Before this, npcActScripted always attacked whichever player was
+	// closest regardless of distance — a real, separate entry point into
+	// the resolver the QA-reported bug's gate must also cover.
+	reach := meleeReachForCombatant(e.combatantFor(mon.ID))
+	if err := checkReach(mon.Position, target.View.Position, reach, "reach"); err != nil {
+		return err
 	}
 	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
 		AttackerID:          mon.ID,

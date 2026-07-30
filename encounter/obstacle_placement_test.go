@@ -265,7 +265,13 @@ func TestInitDungeon_ObstaclePlacement_PreservesEntranceToBossConnectivity(t *te
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to each
+	// door first. This fixture's region widths/height (10/5/10, height 8)
+	// are identical to dungeon_test.go's threeRegionDungeonParams shape, so
+	// its dungeonRegionFarEdgeHex helper applies directly here too.
+	require.NoError(t, enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 	require.NoError(t, enc.OpenDoor(alicePlayerID, doorID0))
+	require.NoError(t, enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 	require.NoError(t, enc.OpenDoor(alicePlayerID, doorID1))
 
 	reachable := reachableFrom(enc.Room(), entrance)

@@ -85,18 +85,27 @@ func (s *TPKSuite) TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsA
 	// alice is closer to the goblin than bob, so closestPlayer targets her
 	// first; once she's down (HP<=0, excluded), the goblin's next act must
 	// retarget to bob.
+	//
+	// rpg-toolkit#864: npcActScripted now gates melee attacks on reach (the
+	// goblin here has no DataJSON, so it defaults to 1 hex), and BOTH goblin
+	// acts must land — alice's first, then bob's once alice is excluded. So
+	// alice is co-located with the goblin (distance 0, strictly closer) and
+	// bob sits one hex away (distance 1, strictly farther but still in
+	// reach) rather than the old "far enough that map-iteration tie-break
+	// can't matter" distance-4 spot, which is now out of reach.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: tpkAliceEntityID,
-		Position: encountercore.Hex{}, SightRange: 10,
+		Position: encountercore.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
 		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
 		DamageDice: tpkDamageDice, DamageType: damageSlashing,
 	}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "bob", EntityID: tpkBobEntityID,
-		// Strictly farther from the goblin than alice's distance-1 spot, so
-		// closestPlayer's tie-break (map iteration order, non-deterministic)
-		// can never accidentally pick bob first.
-		Position: encountercore.Hex{Q: 4, R: 0, S: -4}, SightRange: 10,
+		// Strictly farther from the goblin than alice (distance 1 vs. 0),
+		// so closestPlayer's tie-break (map iteration order, non-
+		// deterministic) can never accidentally pick bob first — and still
+		// within the goblin's 1-hex melee reach for its second act.
+		Position: encountercore.Hex{Q: 0, R: 0, S: 0}, SightRange: 10,
 		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
 		DamageDice: tpkDamageDice, DamageType: damageSlashing,
 	}))

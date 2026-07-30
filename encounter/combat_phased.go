@@ -90,6 +90,17 @@ func (e *Encounter) TakeActionPhased(
 		return nil, ErrNoCombatResolver
 	}
 
+	// rpg-toolkit#864: one shared range gate applies to every actor. A
+	// 2026-07-30 QA walk found a 1-hex-reach melee weapon landing hits from
+	// 3 hexes away — nothing here ever consulted the attacker/target
+	// positions. Gated BEFORE the economy spend below (mirrors the
+	// door-verb ordering and the existing insufficient-movement
+	// precedent): an out-of-reach/out-of-range attack costs no action.
+	tRef := toolkitRef(ref)
+	if err := e.checkAttackRange(player, monster.Position, &tRef); err != nil {
+		return nil, err
+	}
+
 	// Validate + deduct the attack off the held character's two-level economy
 	// BEFORE resolving. This gates the attack on the economy: a character with no
 	// action left is rejected here (ErrActionUnaffordable) and the resolver never
@@ -115,7 +126,7 @@ func (e *Encounter) TakeActionPhased(
 	input := AttackInput{
 		AttackerID:          player.EntityID,
 		TargetID:            target.EntityID,
-		ActionRef:           toolkitRef(ref),
+		ActionRef:           tRef,
 		AttackerAttackBonus: player.AttackBonus,
 		AttackerDamageDice:  player.DamageDice,
 		AttackerDamageType:  player.DamageType,

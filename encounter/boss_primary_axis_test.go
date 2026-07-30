@@ -132,11 +132,16 @@ func TestInitDungeon_BossPrimaryAxis_FullRowWalkable(t *testing.T) {
 		enc := newTestEncounter(t)
 		require.NoError(t, enc.InitDungeon(bpaDungeonParams(seed)))
 
+		entrance := enc.ToData().Space.Entrance
 		require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 			PlayerID: alicePlayerID, EntityID: aliceEntityID,
-			Position: enc.ToData().Space.Entrance, SightRange: 30,
+			Position: entrance, SightRange: 30,
 		}))
+		// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to
+		// each door first (mirrors dungeon_test.go's identical fix).
+		require.NoError(t, enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 		require.NoError(t, enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
+		require.NoError(t, enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 		require.NoError(t, enc.OpenDoor(alicePlayerID, dungeonDoor1ID))
 
 		for localX := 0; localX < dungeonBossWidth; localX++ {
@@ -166,11 +171,16 @@ func TestInitDungeon_BossPrimaryAxis_ClearWithObstaclesToo(t *testing.T) {
 		enc := newTestEncounter(t)
 		require.NoError(t, enc.InitDungeon(params))
 
+		entrance := enc.ToData().Space.Entrance
 		require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 			PlayerID: alicePlayerID, EntityID: aliceEntityID,
-			Position: enc.ToData().Space.Entrance, SightRange: 30,
+			Position: entrance, SightRange: 30,
 		}))
+		// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to
+		// each door first (mirrors dungeon_test.go's identical fix).
+		require.NoError(t, enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 		require.NoError(t, enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
+		require.NoError(t, enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 		require.NoError(t, enc.OpenDoor(alicePlayerID, dungeonDoor1ID))
 
 		for localX := 0; localX < dungeonBossWidth; localX++ {

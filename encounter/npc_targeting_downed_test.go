@@ -58,25 +58,35 @@ func (s *NPCTargetingDownedSuite) TearDownTest() {
 // TestScriptedPath_ClosestPlayer_NeverTargetsDownedPlayer is the closestPlayer
 // regression proof, reproducing the exact reported soft-lock: a downed player
 // positioned CLOSER to the goblin than the alive player. npcActScripted has
-// no adjacency gate (unlike the DataJSON/Scimitar path), so pre-fix this
-// deterministically attacks the corpse every single turn. Across 3 goblin
-// turns, the fix must make the goblin attack ONLY the live player, never the
-// downed one.
+// no adjacency gate of its own (unlike the DataJSON/Scimitar path's
+// MeleeAction.CanActivate) — pre-#733-fix this deterministically attacks the
+// corpse every single turn. Across 3 goblin turns, the fix must make the
+// goblin attack ONLY the live player, never the downed one.
+//
+// rpg-toolkit#864: npcActScripted now also gates on reach (the shared
+// range/reach validation every actor's attack path goes through), so the
+// live player must be positioned within melee reach of the goblin, not just
+// "farther than the downed one" — the downed player sits on the goblin's own
+// hex (distance 0, the closest possible) and the live player one hex away
+// (distance 1, still in reach), preserving "downed is strictly closer" while
+// keeping the correct target attackable.
 func (s *NPCTargetingDownedSuite) TestScriptedPath_ClosestPlayer_NeverTargetsDownedPlayer() {
 	encID := core.EncounterID("enc-ntd-scripted")
 	enc := encounter.New(s.ctx, encID, s.broker,
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 1, damageType: damageSlashing}),
 	)
-	// Downed player is adjacent (distance 1) — strictly closer than alive.
+	// Downed player co-located with the goblin (distance 0) — strictly
+	// closer than the alive player.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "ntd-down", EntityID: ntdDownEntityID,
-		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
+		Position: core.Hex{}, SightRange: 10,
 		HP: 0, MaxHP: 12, AC: 10,
 	}))
-	// Alive player is farther away (distance 3).
+	// Alive player is one hex away (distance 1) — farther than the downed
+	// player, but still within the goblin's default melee reach.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: ntdAlivePlayerID, EntityID: ntdAliveEntityID,
-		Position: core.Hex{Q: 3, R: 0, S: -3}, SightRange: 10,
+		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
 		HP: 12, MaxHP: 12, AC: 10,
 	}))
 	// No DataJSON — triggers the scripted (closestPlayer) path.

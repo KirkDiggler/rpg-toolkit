@@ -114,11 +114,19 @@ func TestCryptDungeon_BossDoorLockPersistsAndUnlocks(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	cdEntrance := reloaded.ToData().Space.Entrance
 	require.NoError(t, reloaded.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
-		Position: reloaded.ToData().Space.Entrance, SightRange: 30,
+		Position: cdEntrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor/AttemptUnlock require adjacency — walk
+	// alice up to each door first. CryptDungeonParams shares
+	// dungeon_test.go's threeRegionDungeonParams geometry (10/5/10, height
+	// 8), so its dungeonRegionFarEdgeHex helper applies directly here too.
+	require.NoError(t, reloaded.Move(alicePlayerID, straightRowPath(cdEntrance, dungeonRegionFarEdgeHex(0))))
 	require.NoError(t, reloaded.OpenDoor(alicePlayerID, cdEntranceDoorID))
+	require.NoError(t, reloaded.Move(alicePlayerID,
+		straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 
 	issued, err := reloaded.AttemptUnlock(alicePlayerID, cdBossDoorID)
 	require.NoError(t, err)
@@ -553,7 +561,12 @@ func TestCryptDungeon_EntranceToBossConnectivity_SurvivesSetPieces(t *testing.T)
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to each
+	// door first (mirrors dungeon_test.go's identical fix; CryptDungeonParams
+	// shares its threeRegionDungeonParams geometry).
+	require.NoError(t, enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 	require.NoError(t, enc.OpenDoor(alicePlayerID, cdEntranceDoorID))
+	require.NoError(t, enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 	require.NoError(t, enc.OpenDoor(alicePlayerID, cdBossDoorID))
 
 	reachable := reachableFrom(enc.Room(), entrance)
@@ -634,7 +647,12 @@ func TestCryptDungeon_EntranceToBossConnectivity_SurvivesDressingAcrossSeeds(t *
 		require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 			PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: entrance, SightRange: 30,
 		}), "seed %d", seed)
+		// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to
+		// each door first (mirrors this file's other fixed tests).
+		require.NoError(t, enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))), "seed %d", seed)
 		require.NoError(t, enc.OpenDoor(alicePlayerID, cdEntranceDoorID), "seed %d", seed)
+		require.NoError(t,
+			enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))), "seed %d", seed)
 		require.NoError(t, enc.OpenDoor(alicePlayerID, cdBossDoorID), "seed %d", seed)
 
 		reachable := reachableFrom(enc.Room(), entrance)

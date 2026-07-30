@@ -179,12 +179,15 @@ func (s *CombatPocketsSuite) TestOpenDoorAndSightB_StartsFreshPocket() {
 	))
 	s.Require().Equal(core.ModeFreeRoam, s.enc.Mode(), "test premise: pocket A cleared")
 
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to the
+	// door first (mirrors doors_slice1_test.go's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(1), lineHex(2)}))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
 	// Move adjacent to group B (k=5, one hex from B at k=6) -- this is the
 	// Move call that gains LoS through the now-open door and re-triggers
 	// checkCombatEntry, exactly like doors_slice1_test.go's open-door-then-
 	// move pattern.
-	path := []core.Hex{lineHex(1), lineHex(2), lineHex(3), lineHex(4), lineHex(5)}
+	path := []core.Hex{lineHex(3), lineHex(4), lineHex(5)}
 	s.Require().NoError(s.enc.Move(alicePlayerID, path))
 
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode(), "sighting group B must start a fresh pocket")
@@ -202,9 +205,12 @@ func (s *CombatPocketsSuite) TestClearingB_LastMonster_FiresModeEnded() {
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
 		encounter.ActionTarget{EntityID: pocketGobA},
 	))
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to the
+	// door first (mirrors doors_slice1_test.go's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(1), lineHex(2)}))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
 	s.Require().NoError(s.enc.Move(alicePlayerID,
-		[]core.Hex{lineHex(1), lineHex(2), lineHex(3), lineHex(4), lineHex(5)}))
+		[]core.Hex{lineHex(3), lineHex(4), lineHex(5)}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode(), "test premise: pocket B engaged")
 
 	sub, err := s.broker.Subscribe("enc-combat-pockets", alicePlayerID)

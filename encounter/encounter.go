@@ -1288,8 +1288,10 @@ func (e *Encounter) applyAndPublishMove(
 	return corrID, nil
 }
 
-// OpenDoor applies an open-door action. Marks the door open, rebuilds
-// e.room so the door's cell stops blocking movement/LoS (rpg-toolkit#790 —
+// OpenDoor applies an open-door action. Requires playerID to be adjacent to
+// the door (rpg-toolkit#864 — wrapped ErrOutOfRange otherwise). Marks the
+// door open, rebuilds e.room so the door's cell stops blocking
+// movement/LoS (rpg-toolkit#790 —
 // see rebuildRoomFromData), and publishes the cause event (DoorOpenedEvent)
 // plus a HexRevealedEvent for any viewer whose vision grew — the room
 // rebuild happens BEFORE the per-viewer ProjectDoorOpen calls below so
@@ -1317,6 +1319,15 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 	}
 	if door.Open {
 		return fmt.Errorf("door %q already open", doorID)
+	}
+	// rpg-toolkit#864: Interact/door actions require adjacency. A 2026-07-30
+	// QA walk found this verb reachable from anywhere on the map (a door
+	// opened from 10 hexes away) — range is a parameter of the action, not
+	// an exception, so this gate lives here rather than in the orchestrator
+	// (rpg-api's Interact only classifies locked-vs-unlocked and dispatches;
+	// see encounter.DoorData's own docs on that split).
+	if err := checkInteractReach(p.View.Position, door.Position); err != nil {
+		return fmt.Errorf("door %q: %w", doorID, err)
 	}
 
 	door.Open = true

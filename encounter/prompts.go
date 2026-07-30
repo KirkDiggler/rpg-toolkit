@@ -129,6 +129,7 @@ type SubmitCheckResult struct {
 //   - door not in encounter: wrapped fmt.Errorf
 //   - player not in encounter: wrapped fmt.Errorf
 //   - door not locked: ErrDoorNotLocked
+//   - player not adjacent to the door (rpg-toolkit#864): wrapped ErrOutOfRange
 //   - player already has a pending prompt: ErrPromptAlreadyPending
 //
 // Does not publish any broker event — prompts are persisted state, not
@@ -136,7 +137,8 @@ type SubmitCheckResult struct {
 // Data.PendingPrompts (or via the PromptIssued return value on this
 // call) and translating to the wire shape.
 func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) (PromptIssued, error) {
-	if _, ok := e.data.Players[playerID]; !ok {
+	p, ok := e.data.Players[playerID]
+	if !ok {
 		return PromptIssued{}, fmt.Errorf("player %q not in encounter", playerID)
 	}
 	door, ok := e.data.Doors[doorID]
@@ -145,6 +147,14 @@ func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) 
 	}
 	if !door.Locked {
 		return PromptIssued{}, fmt.Errorf("%w: %q", ErrDoorNotLocked, doorID)
+	}
+	// rpg-toolkit#864: Interact/door actions require adjacency, including
+	// the locked-door branch — a 2026-07-30 QA walk found the DC-12 skill
+	// check itself issuable (and passable) from 16 hexes away. Gated before
+	// the pending-prompt check below so a distant attempt never issues the
+	// prompt at all, not even one the player could resolve from range.
+	if err := checkInteractReach(p.View.Position, door.Position); err != nil {
+		return PromptIssued{}, fmt.Errorf("door %q: %w", doorID, err)
 	}
 	if _, pending := e.data.PendingPrompts[playerID]; pending {
 		return PromptIssued{}, fmt.Errorf("%w: player %q", ErrPromptAlreadyPending, playerID)
