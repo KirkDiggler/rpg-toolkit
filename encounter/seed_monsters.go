@@ -194,7 +194,9 @@ func (e *Encounter) SeedMonsters(spawns []SpawnInstruction) error {
 			return fmt.Errorf("room %q: monster %q: %w", r.roomID, r.input.MonsterRef, err)
 		}
 	}
-	return e.checkCombatEntry()
+	// No trigger entity (rpg-toolkit#865): a batch spawn has no acting player
+	// to privilege into initiative slot 0, so this stays plain roll order.
+	return e.checkCombatEntry("", 0)
 }
 
 // validateSpawnBatch checks every instruction in spawns and resolves it

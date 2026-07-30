@@ -210,10 +210,24 @@ func (s *PocketClearMoveTeardownSuite) TestWithinPocket_MovementStillEnforced_Wh
 	s.ErrorIs(err, encounter.ErrInsufficientMovement)
 }
 
-// TestPocketClear_ThenReEntry_ReseedsFullMovementBudget proves re-engaging
-// a fresh pocket restores a full movement budget for the actor's turn —
-// SetMode(TurnBased)'s existing seedActorTurn->StartTurn call, unaffected
-// by this fix's teardown.
+// TestPocketClear_ThenReEntry_ReseedsFullMovementBudget proves re-engaging a
+// fresh pocket seeds the trigger's forced-first turn correctly and, on the
+// FOLLOWING turn boundary, still re-seeds a genuinely full movement budget —
+// SetMode(TurnBased)'s seedActorTurn->StartTurn call, unaffected by pocket
+// #808's teardown fix.
+//
+// Pre-rpg-toolkit#865 this test asserted a full 30ft on the very turn the
+// pocket re-entry seeded — that was itself an instance of #865's bug: erin
+// walks 70ft (14 hexes) to reach group B, more than her 30ft speed, and the
+// old seedActorTurn granted a FRESH 30ft on top of that unmetered approach
+// regardless. #865 forces the mover who triggered the transition into
+// initiative slot 0 (fixedMaxRoller would have put her there anyway via the
+// ascending-id tiebreak — "char-erin" < "goblin-pcm-b" — but the forcing is
+// what's actually under test now) and makes her forced-first turn reflect
+// the 70ft she already spent, clamped at zero. The SECOND assertion below —
+// a full 30ft on the turn AFTER that one — is what's left of this test's
+// original point: only the trigger's own forced-first turn carries the
+// pre-spent deduction; every ordinary turn boundary still seeds full speed.
 func (s *PocketClearMoveTeardownSuite) TestPocketClear_ThenReEntry_ReseedsFullMovementBudget() {
 	enc := s.loadErinVsTwoPockets()
 	s.endTurnUntilErin(enc)
@@ -228,6 +242,7 @@ func (s *PocketClearMoveTeardownSuite) TestPocketClear_ThenReEntry_ReseedsFullMo
 	// Move adjacent to group B (k=14, one hex from B at k=15) — gains LoS
 	// through the now-open door and re-triggers checkCombatEntry, exactly
 	// like combat_pockets_test.go's TestOpenDoorAndSightB_StartsFreshPocket.
+	// 14 hexes * 5ft = 70ft, deliberately more than erin's 30ft speed.
 	path := make([]core.Hex, 0, 14)
 	for k := 1; k <= 14; k++ {
 		path = append(path, lineHex(k))
@@ -235,11 +250,28 @@ func (s *PocketClearMoveTeardownSuite) TestPocketClear_ThenReEntry_ReseedsFullMo
 	s.Require().NoError(enc.Move(pcmPlayerID, path))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "sighting group B must start a fresh pocket")
 
+	// rpg-toolkit#865: erin's own move just triggered this fresh pocket, so
+	// she is forced into initiative slot 0 and her forced-first turn's
+	// budget must reflect the 70ft she already spent getting here, clamped
+	// at zero rather than granting a fresh 30ft on top of it.
+	s.Require().Equal(pcmEntityID, enc.ActiveActor(),
+		"erin triggered this pocket and must go first (rpg-toolkit#865)")
+	triggered := enc.ActorTurnState(pcmEntityID)
+	s.Require().NotNil(triggered.Economy)
+	s.Equal(0, triggered.Economy.MovementRemaining,
+		"erin's forced-first turn must reflect the 70ft already spent reaching group B, "+
+			"clamped at zero rather than a fresh 30ft on top of it (rpg-toolkit#865)")
+
+	// End erin's forced-first turn and lap all the way back around to her
+	// NEXT turn (through goblin-pcm-b) — an ordinary turn boundary, not the
+	// one-time trigger seed, so it must re-seed a genuinely full budget.
+	_, _, err := enc.EndTurn(s.ctx, pcmEntityID)
+	s.Require().NoError(err)
 	s.endTurnUntilErin(enc)
 	post := enc.ActorTurnState(pcmEntityID)
 	s.Require().NotNil(post.Economy)
 	s.Equal(30, post.Economy.MovementRemaining,
-		"re-entering a fresh pocket must re-seed a full movement budget")
+		"the next ordinary turn boundary must re-seed a full movement budget")
 }
 
 // TestPocketClear_CombatScopedConditionPersists_NoEndCombatSweep proves the
