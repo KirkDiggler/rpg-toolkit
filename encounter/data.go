@@ -69,6 +69,34 @@ type Data struct {
 	// wave 2+ wall destruction / door state would otherwise be unable to
 	// replay from a pattern.
 	Space *SpaceData `json:"space,omitempty"`
+
+	// PendingTriggerSeed carries a forced-first-turn movement deduction
+	// (rpg-toolkit#865 / PR #867 gate finding 2) for the entity in
+	// initiative slot 0 when the FreeRoam->TurnBased transition fired
+	// before that entity had a held character — production's
+	// New()+AddPlayer+AddMonster flow hydrates nothing until a LoadFromData
+	// round-trip, so setMode's own seedActorTurn call can't apply the
+	// deduction yet (heldCharacter returns nil) and would otherwise lose it
+	// as a Go-only local. Persisted here instead, and consumed (then
+	// cleared) by seedActiveActorIfUnseeded's LoadFromData catch-up the
+	// first time it successfully seeds that same actor's economy — see its
+	// doc comment. Nil whenever there's nothing pending: the common case is
+	// the trigger already had a held character, so setMode's own seed call
+	// applied the deduction immediately and never persisted it here at all.
+	PendingTriggerSeed *PendingTriggerSeedData `json:"pending_trigger_seed,omitempty"`
+}
+
+// PendingTriggerSeedData is PendingTriggerSeed's persisted shape: which
+// actor the deduction belongs to (so a later catch-up can refuse to apply a
+// stale entry to a different actor) and how many feet to dock off that
+// actor's first seeded movement budget.
+type PendingTriggerSeedData struct {
+	// ActorID is the entity the deduction belongs to — must match the actor
+	// being seeded, or the deduction is stale and must not be applied.
+	ActorID core.EntityID `json:"actor_id"`
+	// PreSpentMovementFeet is how many feet ActorID already traveled,
+	// unmetered, before the transition that forced it into slot 0.
+	PreSpentMovementFeet int `json:"pre_spent_movement_feet"`
 }
 
 // SpaceData is the persisted snapshot of an encounter's room: the wall

@@ -331,3 +331,157 @@ func (s *CombatTriggerOrderSuite) TestMove_PreCombatMovementBudget_ClampedAtZero
 	s.Equal(0, state.Economy.MovementRemaining,
 		"an over-speed free-roam approach must clamp the forced-first turn's budget at zero, not go negative")
 }
+
+// --- PR #867 review follow-up: trigger MISATTRIBUTION (gate finding 1) ---
+//
+// checkCombatEntry evaluates a GLOBAL predicate (any player x monster LoS
+// pair), but the caller only ever supplies ITS OWN candidate entity (Move's
+// mover). Before this fix, checkCombatEntry blindly forwarded that candidate
+// as the trigger the moment ANY pair matched -- even when the matching pair
+// had nothing to do with the caller. AddPlayer never itself calls
+// checkCombatEntry (only AddMonster/Move do), so a player seat added already
+// within an existing monster's LoS leaves the encounter sitting in FREE_ROAM,
+// unclaimed, until some OTHER player's action happens to re-evaluate the
+// check -- and that unrelated player would wrongly seize initiative slot 0
+// (and have its own unrelated movement wrongly docked) instead of the
+// player whose LoS actually fired the transition.
+
+const (
+	attribScoutPlayerID    = core.PlayerID("scout")
+	attribScoutEntityID    = core.EntityID("char-scout")
+	attribWandererPlayerID = core.PlayerID("wanderer")
+	attribWandererEntityID = core.EntityID("char-wanderer")
+	attribMonsterID        = core.EntityID("goblin-attrib")
+)
+
+// TestCheckCombatEntry_TriggerAttributedToActualLoSMatch_NotUnrelatedMover
+// reproduces the review's exact shape: the goblin is added first (zero
+// players -- no combat-entry check possible), then scout is added ALREADY
+// within its LoS (AddPlayer never checks combat entry, so mode stays
+// FREE_ROAM even though the pair is already formed), then wanderer -- who
+// can never see the goblin -- is added far away. wanderer's own unrelated
+// move (40ft, over its own 30ft speed) is what re-fires checkCombatEntry.
+// scout, not wanderer, must be forced into slot 0 with a genuinely full
+// budget; wanderer's own budget must not be docked for a walk that never
+// triggered anything on its behalf.
+func (s *CombatTriggerOrderSuite) TestCheckCombatEntry_TriggerAttributedToActualLoSMatch_NotUnrelatedMover() {
+	enc := encounter.New(s.ctx, "enc-attrib-1", s.broker,
+		encounter.WithRoller(fixedMaxRoller{}),
+	)
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: attribMonsterID, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+	}))
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: attribScoutPlayerID, EntityID: attribScoutEntityID,
+		// Already within the goblin's LoS the moment this seat is added.
+		Position: core.Hex{Q: 1, R: 0, S: -1}, SightRange: 5,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: dice1d6, DamageType: damageSlashing,
+		DataJSON: hydratedFighterJSON(s.T(), attribScoutEntityID, attribScoutPlayerID),
+	}))
+	s.Require().Equal(core.ModeFreeRoam, enc.Mode(),
+		"test premise: AddPlayer never re-checks combat entry, so an already-visible "+
+			"scout leaves the encounter in FREE_ROAM until something else re-evaluates it")
+
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: attribWandererPlayerID, EntityID: attribWandererEntityID,
+		// Far from the goblin -- never has LoS to it, in this move or any other.
+		Position: core.Hex{Q: -20, R: 20, S: 0}, SightRange: 5,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: dice1d6, DamageType: damageSlashing,
+		DataJSON: hydratedFighterJSON(s.T(), attribWandererEntityID, attribWandererPlayerID),
+	}))
+	s.Require().Equal(core.ModeFreeRoam, enc.Mode(), "test premise: still nobody has re-checked")
+
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	s.Require().NoError(err)
+
+	// wanderer's own unrelated move (8 contiguous hexes = 40ft, over its own
+	// 30ft speed) is what re-fires checkCombatEntry; wanderer itself never
+	// gains LoS to the goblin.
+	s.Require().NoError(loaded.Move(attribWandererPlayerID, []core.Hex{
+		{Q: -19, R: 19, S: 0}, {Q: -18, R: 18, S: 0}, {Q: -17, R: 17, S: 0}, {Q: -16, R: 16, S: 0},
+		{Q: -15, R: 15, S: 0}, {Q: -14, R: 14, S: 0}, {Q: -13, R: 13, S: 0}, {Q: -12, R: 12, S: 0},
+	}))
+	s.Require().Equal(core.ModeTurnBased, loaded.Mode(),
+		"wanderer's move re-evaluates the stale LoS pair and starts combat")
+
+	s.Require().Equal(attribScoutEntityID, loaded.ActiveActor(),
+		"scout, whose own LoS actually makes checkCombatEntry fire, must be the forced trigger -- "+
+			"not wanderer, who merely happened to be the caller")
+
+	scoutState := loaded.ActorTurnState(attribScoutEntityID)
+	s.Require().NotNil(scoutState.Economy)
+	s.Equal(30, scoutState.Economy.MovementRemaining,
+		"scout never moved this call -- its forced-first turn must seed a genuinely full budget, "+
+			"not a deduction that belongs to wanderer's own unrelated walk")
+
+	// Cycle forward to wanderer's own turn and confirm its budget was never
+	// docked for a walk that didn't actually trigger anything on its behalf.
+	_, _, err = loaded.EndTurn(s.ctx, attribScoutEntityID)
+	s.Require().NoError(err)
+	for i := 0; loaded.ActiveActor() != attribWandererEntityID && i < 8; i++ {
+		_, _, err = loaded.EndTurn(s.ctx, loaded.ActiveActor())
+		s.Require().NoError(err)
+	}
+	s.Require().Equal(attribWandererEntityID, loaded.ActiveActor(), "setup must reach wanderer's turn")
+	wandererState := loaded.ActorTurnState(attribWandererEntityID)
+	s.Require().NotNil(wandererState.Economy)
+	s.Equal(30, wandererState.Economy.MovementRemaining,
+		"wanderer's own unrelated 40ft walk must not be docked from its budget -- it was never the trigger")
+}
+
+// --- PR #867 review follow-up: pending pre-spent survives an unhydrated
+// transition (gate finding 2) ---
+
+// TestSeedActiveActorIfUnseeded_HonorsPendingTriggerPreSpent covers
+// rpg-toolkit#757's LoadFromData catch-up path (seedActiveActorIfUnseeded):
+// a Move-triggered transition can fire on an encounter where the trigger has
+// no held character yet (production's New()+AddPlayer+AddMonster flow --
+// nothing is hydrated until a LoadFromData round-trip). seedActorTurn's
+// immediate call inside setMode no-ops in that case (no character to seed),
+// so the pre-spent deduction must be PERSISTED on e.data (not just a Go-only
+// local) for the later LoadFromData catch-up to still apply it -- otherwise
+// the catch-up hands the trigger a full, un-deducted budget.
+func (s *CombatTriggerOrderSuite) TestSeedActiveActorIfUnseeded_HonorsPendingTriggerPreSpent() {
+	enc := encounter.New(s.ctx, "enc-attrib-2", s.broker,
+		encounter.WithRoller(fixedMaxRoller{}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: budgetPlayerID, EntityID: budgetEntityID,
+		Position: core.Hex{Q: -10, R: 10, S: 0}, SightRange: 8,
+		HP: 12, MaxHP: 12, AC: 16, AttackBonus: 4,
+		DamageDice: dice1d6, DamageType: damageSlashing,
+		DataJSON: hydratedFighterJSON(s.T(), budgetEntityID, budgetPlayerID),
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: budgetMonster, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+	}))
+	s.Require().Equal(core.ModeFreeRoam, enc.Mode())
+
+	// enc is New()-only -- NOT yet hydrated (only LoadFromData hydrates), so
+	// this Move-triggered transition fires with no held character for the
+	// trigger: seedActorTurn's immediate call no-ops, and the 20ft pre-spent
+	// deduction can only be honored later, by the LoadFromData catch-up.
+	s.Require().NoError(enc.Move(budgetPlayerID, []core.Hex{
+		{Q: -9, R: 9, S: 0}, {Q: -8, R: 8, S: 0}, {Q: -7, R: 7, S: 0}, {Q: -6, R: 6, S: 0},
+	}))
+	s.Require().Equal(core.ModeTurnBased, enc.Mode())
+	s.Require().Equal(budgetEntityID, enc.ActiveActor())
+
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	s.Require().NoError(err)
+
+	state := loaded.ActorTurnState(budgetEntityID)
+	s.Require().NotNil(state.Economy)
+	s.Equal(10, state.Economy.MovementRemaining,
+		"the LoadFromData catch-up must honor the trigger's pre-spent 20ft, not reseed a full 30ft")
+}

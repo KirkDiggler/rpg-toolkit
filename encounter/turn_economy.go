@@ -181,7 +181,20 @@ func (e *Encounter) seedActiveActorIfUnseeded(ctx context.Context) error {
 	if char == nil || char.InCombat() {
 		return nil // NPC / stat-snapshot seat, or already seeded — nothing missed.
 	}
-	if err := e.seedActorTurn(ctx, actorID, 0); err != nil {
+
+	// PR #867 gate finding 2: a Move-triggered transition can have persisted
+	// a forced-first-turn movement deduction (setMode, combat.go) for THIS
+	// actor when it fired before any character was hydrated — honor it here
+	// instead of hardcoding a full reseed, and clear it once consumed so a
+	// later, unrelated catch-up never re-applies it. Only consumed when it
+	// actually names the actor being seeded right now — a pending entry for
+	// a different (or no-longer-active) actor is stale and left alone.
+	preSpent := 0
+	if pending := e.data.PendingTriggerSeed; pending != nil && pending.ActorID == actorID {
+		preSpent = pending.PreSpentMovementFeet
+		e.data.PendingTriggerSeed = nil
+	}
+	if err := e.seedActorTurn(ctx, actorID, preSpent); err != nil {
 		return err
 	}
 	// #772/#782: see EndTurn's identical guard (combat.go) — seedActorTurn's

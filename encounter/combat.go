@@ -419,6 +419,20 @@ func (e *Encounter) setMode(mode core.EncounterMode, triggerID core.EntityID, tr
 		if triggerID != "" && firstActive == triggerID {
 			preSpent = triggerPreSpentFeet
 		}
+		// PR #867 gate finding 2: if firstActive has no held character yet
+		// (production's New()+AddPlayer+AddMonster flow — nothing is
+		// hydrated until a LoadFromData round-trip), the seedActorTurn call
+		// below no-ops (heldCharacter returns nil) and preSpent would
+		// otherwise be lost as a Go-only local by the time the encounter is
+		// eventually loaded. Persist it so seedActiveActorIfUnseeded's later
+		// catch-up can still apply it. Skipped when preSpent is zero — the
+		// common no-deduction case needs nothing pending.
+		if preSpent > 0 && e.heldCharacter(firstActive) == nil {
+			e.data.PendingTriggerSeed = &PendingTriggerSeedData{
+				ActorID:              firstActive,
+				PreSpentMovementFeet: preSpent,
+			}
+		}
 		if err := e.seedActorTurn(context.Background(), firstActive, preSpent); err != nil {
 			return err
 		}
@@ -458,11 +472,26 @@ func (e *Encounter) setMode(mode core.EncounterMode, triggerID core.EntityID, tr
 // kick call silently never starts combat, which is a worse failure mode than
 // a redundant inline check.
 //
-// triggerID/triggerPreSpentFeet (rpg-toolkit#865) name the acting entity that
-// caused THIS particular call — Move passes the mover and how many feet it
-// already traveled this call (unmetered free-roam movement); AddMonster and
-// SeedMonsters pass ("", 0) since a monster becoming visible has no acting
-// player to privilege. See setMode's doc comment for how these are used.
+// triggerID/triggerPreSpentFeet (rpg-toolkit#865) name the CALLER's candidate
+// acting entity — Move passes its own mover and how many feet it already
+// traveled this call (unmetered free-roam movement). But this check itself is
+// global (any player x monster pair, not just the caller's own view), so the
+// caller's candidate is not automatically the entity whose LoS actually made
+// this fire: a player-monster LoS pair can already exist, unclaimed, from an
+// earlier event that didn't itself call this check (OpenDoor doesn't —
+// see OpenDoor's own doc — so a player already lined up on a monster through
+// a freshly-opened door sits unflagged until SOMEONE's next Move call
+// re-evaluates this), and a completely unrelated player's own unrelated move
+// would otherwise be misattributed as the trigger (rpg-toolkit#865 follow-up
+// review on PR #867: a "wanderer" with zero LoS to anything, moving anywhere,
+// wrongly seized initiative slot 0 — and its own pre-spent budget — away from
+// the actually-exposed player). So: if the caller's own candidate has LoS to a
+// monster, it's unambiguously the trigger and keeps its own pre-spent budget;
+// otherwise fall back to whichever OTHER player is actually LoS-engaged (with
+// NO pre-spent budget attributed — the caller had nothing to do with
+// revealing that pair). triggerID == "" (AddMonster/SeedMonsters — no acting
+// player at all) skips trigger attribution entirely and keeps the plain
+// existence check this had before #865.
 //
 // "Hostile" == "is a monster" for wave 1 — no faction model exists yet, so
 // every monster is a valid combat-entry trigger for every player.
@@ -477,14 +506,67 @@ func (e *Encounter) checkCombatEntry(triggerID core.EntityID, triggerPreSpentFee
 	if len(e.data.Players) == 0 || len(e.data.Monsters) == 0 {
 		return nil
 	}
-	for _, p := range e.data.Players {
+
+	if triggerID == "" {
+		for _, p := range e.data.Players {
+			for _, m := range e.data.Monsters {
+				if perception.CanSeeAt(p.View, m.Position, e.room) {
+					return e.setMode(core.ModeTurnBased, "", 0)
+				}
+			}
+		}
+		return nil
+	}
+
+	if e.playerEntityHasMonsterLoS(triggerID) {
+		return e.setMode(core.ModeTurnBased, triggerID, triggerPreSpentFeet)
+	}
+	if actualTrigger, ok := e.firstEngagedPlayerEntityID(); ok {
+		return e.setMode(core.ModeTurnBased, actualTrigger, 0)
+	}
+	return nil
+}
+
+// playerEntityHasMonsterLoS reports whether the player entity identified by
+// entityID currently has LoS to any monster, via the same perception.CanSeeAt
+// predicate checkCombatEntry's own existence check uses. Returns false for an
+// unknown entity id (e.g. a monster's own EntityID, or one that has left the
+// encounter) — checkCombatEntry's caller-candidate check treats "not a
+// player, or not visible" identically: fall through to the actual-trigger
+// search.
+func (e *Encounter) playerEntityHasMonsterLoS(entityID core.EntityID) bool {
+	p := e.findPlayerByEntityID(entityID)
+	if p == nil {
+		return false
+	}
+	for _, m := range e.data.Monsters {
+		if perception.CanSeeAt(p.View, m.Position, e.room) {
+			return true
+		}
+	}
+	return false
+}
+
+// firstEngagedPlayerEntityID returns the entity id of the first player
+// (by ascending PlayerID, for determinism — e.data.Players is a map) who
+// currently has LoS to any monster, and whether one was found. Used by
+// checkCombatEntry to attribute the actual trigger when the caller's own
+// candidate isn't the one whose LoS fired the transition.
+func (e *Encounter) firstEngagedPlayerEntityID() (core.EntityID, bool) {
+	playerIDs := make([]core.PlayerID, 0, len(e.data.Players))
+	for id := range e.data.Players {
+		playerIDs = append(playerIDs, id)
+	}
+	sort.Slice(playerIDs, func(i, j int) bool { return playerIDs[i] < playerIDs[j] })
+	for _, id := range playerIDs {
+		p := e.data.Players[id]
 		for _, m := range e.data.Monsters {
 			if perception.CanSeeAt(p.View, m.Position, e.room) {
-				return e.setMode(core.ModeTurnBased, triggerID, triggerPreSpentFeet)
+				return p.EntityID, true
 			}
 		}
 	}
-	return nil
+	return "", false
 }
 
 // engagedMonsters returns the monsters at least one player currently has
