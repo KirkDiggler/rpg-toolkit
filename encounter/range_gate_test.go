@@ -27,6 +27,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+// aliceCharacterName is the display name on the hydrated-character fixtures
+// below (hydrateWeaponWielder) — extracted to a constant to satisfy goconst.
+const aliceCharacterName = "Alice"
+
 func newRangeGateBroker() (*encounter.InMemoryTransport, *encounter.Broker) {
 	transport := encounter.NewInMemoryTransport()
 	return transport, encounter.NewBroker(transport)
@@ -188,20 +192,24 @@ func TestTakeAction_MeleeAttackAtReach_Succeeds(t *testing.T) {
 // --- TakeAction melee attack with a Reach weapon (rpg-toolkit#864 spec:
 // "melee attacks use weapon reach") ------------------------------------------
 
-// hydrateGlaiveWielder builds+round-trips (via LoadFromData, mirroring
+// hydrateWeaponWielder builds+round-trips (via LoadFromData, mirroring
 // combat_test.go's hydration pattern) a player whose equipped main-hand
-// weapon is the Reach-property glaive, at pos, against a monster at
-// monsterPos. Returns the loaded encounter with alice active.
-func hydrateGlaiveWielder(t *testing.T, broker *encounter.Broker, id string, monsterPos core.Hex) *encounter.Encounter {
+// weapon is weaponID, at the origin, against a monster at monsterPos.
+// Returns the loaded encounter with alice active. Shared by the glaive
+// (melee Reach) and shortbow (ranged) fixtures below — only the weapon and
+// sight range vary between them.
+func hydrateWeaponWielder(
+	t *testing.T, broker *encounter.Broker, id string, weaponID string, sightRange int, monsterPos core.Hex,
+) *encounter.Encounter {
 	t.Helper()
 	charData := &dnd5eCharacter.Data{
-		ID: aliceEntityID, Name: "Alice", Level: 1, ProficiencyBonus: 2,
+		ID: aliceEntityID, Name: aliceCharacterName, Level: 1, ProficiencyBonus: 2,
 		HitPoints: 12, MaxHitPoints: 12,
 		Inventory: []dnd5eCharacter.InventoryItemData{
-			{Type: shared.EquipmentTypeWeapon, ID: weapons.Glaive, Quantity: 1},
+			{Type: shared.EquipmentTypeWeapon, ID: weaponID, Quantity: 1},
 		},
 		EquipmentSlots: dnd5eCharacter.EquipmentSlots{
-			dnd5eCharacter.SlotMainHand: weapons.Glaive,
+			dnd5eCharacter.SlotMainHand: weaponID,
 		},
 	}
 	charJSON, err := json.Marshal(charData)
@@ -212,7 +220,7 @@ func hydrateGlaiveWielder(t *testing.T, broker *encounter.Broker, id string, mon
 	)
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
-		Position: core.Hex{}, SightRange: 20,
+		Position: core.Hex{}, SightRange: sightRange,
 		HP: 12, MaxHP: 12,
 		DataJSON: charJSON,
 	}))
@@ -237,7 +245,7 @@ func TestTakeAction_GlaiveReach_TwoHexes_Succeeds(t *testing.T) {
 	transport, broker := newRangeGateBroker()
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 
-	loaded := hydrateGlaiveWielder(t, broker, "enc-rg-glaive-ok", core.Hex{Q: 2, R: 0, S: -2})
+	loaded := hydrateWeaponWielder(t, broker, "enc-rg-glaive-ok", weapons.Glaive, 20, core.Hex{Q: 2, R: 0, S: -2})
 
 	err := loaded.TakeAction(alicePlayerID,
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
@@ -250,7 +258,48 @@ func TestTakeAction_GlaiveReach_ThreeHexes_Rejected(t *testing.T) {
 	transport, broker := newRangeGateBroker()
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 
-	loaded := hydrateGlaiveWielder(t, broker, "enc-rg-glaive-reject", core.Hex{Q: 3, R: 0, S: -3})
+	loaded := hydrateWeaponWielder(t, broker, "enc-rg-glaive-reject", weapons.Glaive, 20, core.Hex{Q: 3, R: 0, S: -3})
+
+	err := loaded.TakeAction(alicePlayerID,
+		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, encounter.ErrOutOfRange), "got: %v", err)
+}
+
+// --- TakeAction ranged attack with a Shortbow (rpg-toolkit#864 spec:
+// "ranged attacks use the weapon's range") -----------------------------------
+
+// shortbowRangeLongHexes is weapons.Shortbow's long range (320ft) converted
+// to hexes (5ft/hex) — mirrors checkAttackRange's own conversion.
+const shortbowRangeLongHexes = 320 / 5
+
+// shortbowSightRange comfortably covers shortbowRangeLongHexes±4 so
+// AddMonster's mutual-LoS check auto-transitions to TURN_BASED in both the
+// success and rejection fixtures below.
+const shortbowSightRange = shortbowRangeLongHexes + 10
+
+func TestTakeAction_ShortbowRange_WithinLongRange_Succeeds(t *testing.T) {
+	transport, broker := newRangeGateBroker()
+	defer func() { _ = broker.Close(); _ = transport.Close() }()
+
+	loaded := hydrateWeaponWielder(t, broker, "enc-rg-shortbow-ok", weapons.Shortbow, shortbowSightRange,
+		core.Hex{Q: shortbowRangeLongHexes - 4, R: 0, S: -(shortbowRangeLongHexes - 4)})
+
+	err := loaded.TakeAction(alicePlayerID,
+		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	)
+	require.NoError(t, err, "a target well within the shortbow's long range must not be gated as melee")
+}
+
+func TestTakeAction_ShortbowRange_BeyondLongRange_Rejected(t *testing.T) {
+	transport, broker := newRangeGateBroker()
+	defer func() { _ = broker.Close(); _ = transport.Close() }()
+
+	loaded := hydrateWeaponWielder(t, broker, "enc-rg-shortbow-reject", weapons.Shortbow, shortbowSightRange,
+		core.Hex{Q: shortbowRangeLongHexes + 4, R: 0, S: -(shortbowRangeLongHexes + 4)})
 
 	err := loaded.TakeAction(alicePlayerID,
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
