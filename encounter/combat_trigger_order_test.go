@@ -485,3 +485,81 @@ func (s *CombatTriggerOrderSuite) TestSeedActiveActorIfUnseeded_HonorsPendingTri
 	s.Equal(10, state.Economy.MovementRemaining,
 		"the LoadFromData catch-up must honor the trigger's pre-spent 20ft, not reseed a full 30ft")
 }
+
+// --- PR #867 gate re-check: PendingTriggerSeed staleness ---
+
+// TestSeedActiveActorIfUnseeded_DoesNotApplyStalePendingFromEarlierTransition
+// covers the gate's re-check finding: Data.PendingTriggerSeed was written
+// only when preSpent > 0 (setMode, combat.go), and NOTHING cleared it --
+// not the ModeFreeRoam branch, not a later TurnBased transition that has
+// nothing pending for the same actor. Reproduced sequence: scout
+// (unhydrated) walks 20ft into the goblin's LoS, triggering combat and
+// stashing {scout, 20ft} (transition 1 -- scout has no held character yet).
+// The encounter exits back to FREE_ROAM (scout's position, and so its LoS,
+// is untouched). A wanderer who never gains LoS to anything then takes an
+// unrelated step; finding 1's fallback correctly attributes scout as the
+// trigger again (transition 2) -- but this time with a genuine pre-spent of
+// 0, since scout itself didn't move on this call. The stale {scout, 20ft}
+// stash from transition 1 must not survive to be misapplied to transition
+// 2's forced-first turn: scout must seed a full 30ft, not 30-20=10.
+func (s *CombatTriggerOrderSuite) TestSeedActiveActorIfUnseeded_DoesNotApplyStalePendingFromEarlierTransition() {
+	enc := encounter.New(s.ctx, "enc-attrib-3", s.broker,
+		encounter.WithRoller(fixedMaxRoller{}),
+	)
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: budgetPlayerID, EntityID: budgetEntityID,
+		Position: core.Hex{Q: -10, R: 10, S: 0}, SightRange: 8,
+		HP: 12, MaxHP: 12, AC: 16, AttackBonus: 4,
+		DamageDice: dice1d6, DamageType: damageSlashing,
+		DataJSON: hydratedFighterJSON(s.T(), budgetEntityID, budgetPlayerID),
+	}))
+	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
+		ID: budgetMonster, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+	}))
+	s.Require().Equal(core.ModeFreeRoam, enc.Mode())
+
+	// Transition 1: scout (still unhydrated) walks 20ft into the goblin's
+	// LoS. Stashes {budgetEntityID, 20ft} since heldCharacter is nil.
+	s.Require().NoError(enc.Move(budgetPlayerID, []core.Hex{
+		{Q: -9, R: 9, S: 0}, {Q: -8, R: 8, S: 0}, {Q: -7, R: 7, S: 0}, {Q: -6, R: 6, S: 0},
+	}))
+	s.Require().Equal(core.ModeTurnBased, enc.Mode())
+	s.Require().Equal(budgetEntityID, enc.ActiveActor())
+
+	// Exit back to FREE_ROAM (simulating a cleared pocket) -- scout's
+	// position, and therefore its LoS to the goblin, is untouched.
+	s.Require().NoError(enc.SetMode(core.ModeFreeRoam))
+	s.Require().Equal(core.ModeFreeRoam, enc.Mode())
+
+	// A wanderer with zero LoS to anything takes an unrelated step. Scout
+	// still has LoS to the goblin (never moved away), so this re-fires
+	// checkCombatEntry and (correctly, per finding 1) attributes SCOUT as
+	// the trigger again -- transition 2 -- but with a genuine pre-spent of
+	// 0, since scout didn't move on this call.
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: attribWandererPlayerID, EntityID: attribWandererEntityID,
+		Position: core.Hex{Q: -20, R: 20, S: 0}, SightRange: 5,
+		HP: 12, MaxHP: 12, AC: 14, AttackBonus: 4,
+		DamageDice: dice1d6, DamageType: damageSlashing,
+		DataJSON: hydratedFighterJSON(s.T(), attribWandererEntityID, attribWandererPlayerID),
+	}))
+	s.Require().NoError(enc.Move(attribWandererPlayerID, []core.Hex{
+		{Q: -19, R: 19, S: 0},
+	}))
+	s.Require().Equal(core.ModeTurnBased, enc.Mode())
+	s.Require().Equal(budgetEntityID, enc.ActiveActor(),
+		"scout, still the only entity with LoS to the goblin, must be the trigger again")
+
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.Data
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, encounter.WithRoller(fixedMaxRoller{}))
+	s.Require().NoError(err)
+
+	state := loaded.ActorTurnState(budgetEntityID)
+	s.Require().NotNil(state.Economy)
+	s.Equal(30, state.Economy.MovementRemaining,
+		"transition 2's genuine pre-spent is 0 (scout didn't move this call) -- the LoadFromData "+
+			"catch-up must not misapply the stale 20ft stash left over from transition 1")
+}

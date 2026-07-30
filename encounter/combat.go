@@ -365,6 +365,12 @@ func (e *Encounter) setMode(mode core.EncounterMode, triggerID core.EntityID, tr
 		e.data.Initiative = nil
 		e.data.ActiveIdx = 0
 		e.data.Round = 0
+		// PR #867 gate re-check: a pending trigger-seed stash from the pocket
+		// that just ended is stale the instant combat exits back to
+		// FREE_ROAM — clear it defensively (belt-and-suspenders alongside the
+		// unconditional resolve in the ModeTurnBased branch below) so it can
+		// never survive to be misapplied to a later, unrelated transition.
+		e.data.PendingTriggerSeed = nil
 	}
 
 	if err := e.broker.Publish(events.NewModeChangedEvent(
@@ -425,13 +431,28 @@ func (e *Encounter) setMode(mode core.EncounterMode, triggerID core.EntityID, tr
 		// below no-ops (heldCharacter returns nil) and preSpent would
 		// otherwise be lost as a Go-only local by the time the encounter is
 		// eventually loaded. Persist it so seedActiveActorIfUnseeded's later
-		// catch-up can still apply it. Skipped when preSpent is zero — the
-		// common no-deduction case needs nothing pending.
+		// catch-up can still apply it.
+		//
+		// Resolved UNCONDITIONALLY on every TurnBased transition (gate
+		// re-check finding, staleness): the same actor can legitimately be
+		// forced trigger across two SEPARATE FreeRoam->TurnBased flips —
+		// once with a real pre-spent deduction while still unhydrated, once
+		// later with none (e.g. it's still the only entity with LoS once
+		// combat re-enters) — and seedActiveActorIfUnseeded's ActorID-match
+		// guard can't tell those two events apart on its own, since it's the
+		// same actor both times. A prior version only WROTE this field when
+		// preSpent > 0 and never cleared it otherwise, so a stale stash from
+		// an earlier transition survived to be misapplied to a later one for
+		// the same actor with nothing pending. Always assigning here — nil
+		// when there's nothing to stash — guarantees the field only ever
+		// reflects the MOST RECENT transition.
 		if preSpent > 0 && e.heldCharacter(firstActive) == nil {
 			e.data.PendingTriggerSeed = &PendingTriggerSeedData{
 				ActorID:              firstActive,
 				PreSpentMovementFeet: preSpent,
 			}
+		} else {
+			e.data.PendingTriggerSeed = nil
 		}
 		if err := e.seedActorTurn(context.Background(), firstActive, preSpent); err != nil {
 			return err
@@ -547,19 +568,30 @@ func (e *Encounter) playerEntityHasMonsterLoS(entityID core.EntityID) bool {
 	return false
 }
 
-// firstEngagedPlayerEntityID returns the entity id of the first player
-// (by ascending PlayerID, for determinism — e.data.Players is a map) who
+// firstEngagedPlayerEntityID returns the entity id of the first player (by
+// ascending EntityID, for determinism — e.data.Players is a map) who
 // currently has LoS to any monster, and whether one was found. Used by
 // checkCombatEntry to attribute the actual trigger when the caller's own
 // candidate isn't the one whose LoS fired the transition.
+//
+// Sorts by EntityID, not PlayerID (PR #867 gate re-check nit): rollInitiative
+// itself sorts its player seeds by ascending EntityID, and "first" should
+// mean the same thing everywhere a tie-break like this runs in this file —
+// sorting by a different key here would let this fallback and rollInitiative
+// disagree on which of two simultaneously-engaged players counts as "first"
+// in the (today theoretical) case where more than one already has LoS.
 func (e *Encounter) firstEngagedPlayerEntityID() (core.EntityID, bool) {
-	playerIDs := make([]core.PlayerID, 0, len(e.data.Players))
-	for id := range e.data.Players {
-		playerIDs = append(playerIDs, id)
+	candidates := make([]*PlayerData, 0, len(e.data.Players))
+	for _, p := range e.data.Players {
+		candidates = append(candidates, p)
 	}
-	sort.Slice(playerIDs, func(i, j int) bool { return playerIDs[i] < playerIDs[j] })
-	for _, id := range playerIDs {
-		p := e.data.Players[id]
+	// Sorted by EntityID directly (not via a map keyed on it): two player
+	// seats sharing an EntityID isn't structurally enforced against
+	// elsewhere in this package (see CompleteTakeAction's doc comment on
+	// cross-map id collisions), so this avoids introducing a new place that
+	// would silently collapse such a collision.
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].EntityID < candidates[j].EntityID })
+	for _, p := range candidates {
 		for _, m := range e.data.Monsters {
 			if perception.CanSeeAt(p.View, m.Position, e.room) {
 				return p.EntityID, true
