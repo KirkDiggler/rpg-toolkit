@@ -273,6 +273,33 @@ func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.Ent
 		if !ok {
 			return fmt.Errorf("door %q not in encounter", target)
 		}
+		// Gate-review finding (blocker 2, rpg-toolkit#864): re-check reach
+		// HERE, after the skill check resolved but BEFORE committing
+		// door.Locked = false. AttemptUnlock only checks reach at the
+		// moment the prompt is ISSUED; between then and this SubmitCheck
+		// resolving it, the player is free to walk away. Without this
+		// re-check, Locked would be cleared unconditionally below and any
+		// LATER in-reach OpenDoor call (via a fresh Interact once the
+		// player walks back) would open the door for free — the DC check
+		// permanently bypassed. Checking before mutating Locked means a
+		// walk-away either fails cleanly here (Locked stays true, the door
+		// stays genuinely locked) or the player was still in reach and
+		// nothing changes.
+		//
+		// The skill check itself still resolved (SubmitCheck's caller sees
+		// Success=true — the roll was good), but the dispatch fails; the
+		// existing "downstream OpenDoor error" contract on SubmitCheck's
+		// doc comment already covers this exact shape (prompt CLEARED, not
+		// stranded, dispatch failure surfaced to the caller) — a walk-away
+		// consumes the attempt. The player must AttemptUnlock again from
+		// within reach; there is no partial/silent unlock.
+		player, ok := e.data.Players[playerID]
+		if !ok {
+			return fmt.Errorf("player %q not in encounter", playerID)
+		}
+		if err := checkInteractReach(player.View.Position, door.Position); err != nil {
+			return fmt.Errorf("door %q: %w", target, err)
+		}
 		// Clear the lock flag before OpenDoor so the door round-trips as
 		// unlocked-and-open (not locked-and-open) for any subsequent
 		// snapshot or verb.

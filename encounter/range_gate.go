@@ -136,6 +136,20 @@ func (e *Encounter) checkAttackRange(player *PlayerData, targetPos core.Hex, ref
 		}
 	}
 
+	// Gate-review note (rpg-toolkit#864 minor item): deliberately keyed on
+	// w.IsRanged() (the weapon's Category), NOT "w.Range != nil". A thrown
+	// weapon (dagger/handaxe/javelin: CategorySimpleMelee + PropertyThrown)
+	// carries real Range data in the catalog, but the only ActionRef this
+	// gate sees today is the standard melee "attack" (or a granted strike) —
+	// there is no distinct "thrown_attack" ref yet, so WeaponForActionRef's
+	// default case always resolves the ordinary melee swing for a dagger,
+	// not a throw. Keying on Range!=nil instead of category would silently
+	// gate a normal melee dagger swing on its 60ft THROWN range rather than
+	// 5ft melee reach — wrong for the common case (any rogue swinging a
+	// dagger) to fix a case that can't happen yet (no thrown ref exists to
+	// route here). When a thrown-attack ref is added, IT should consult
+	// w.Range explicitly for its own gating rather than this default case
+	// being widened to guess at intent from the weapon's stats alone.
 	if w != nil && w.IsRanged() && w.Range != nil {
 		rangeHexes := w.Range.Long / int(combat.FeetPerGridUnit)
 		return checkReach(attackerPos, targetPos, rangeHexes, "range")

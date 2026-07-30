@@ -23,6 +23,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	dnd5eCharacter "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	monsteractions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -120,6 +124,76 @@ func TestAttemptUnlock_AdjacentPlayer_IssuesPrompt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 12, issued.DC)
 	require.Contains(t, enc.ToData().PendingPrompts, core.PlayerID(alicePlayerID))
+}
+
+// TestSubmitCheck_PlayerWalksAwayBeforeSubmitting_LockSurvives is the
+// gate-review regression for blocker 2 (rpg-toolkit#864): dispatchPromptAction
+// (prompts.go) used to set door.Locked = false unconditionally before
+// calling the now-fallible OpenDoor, and nothing re-checked reach at
+// SubmitCheck time. Exploit sequence: AttemptUnlock while adjacent (issues
+// the prompt), walk away, SubmitCheck with a roll that clears the DC —
+// Locked got cleared, OpenDoor then failed on distance (door left
+// closed-but-unlocked), and walking back let a later OpenDoor open it for
+// free — the DC check permanently bypassed.
+//
+// The fix re-checks reach in dispatchPromptAction before committing
+// Locked = false. This test drives the exact walk-away sequence and proves
+// the lock survives: the dispatch fails (wrapping ErrOutOfRange) while the
+// check itself is still reported as having succeeded (Success: true — the
+// roll was genuinely good, only the "open it right now" dispatch failed),
+// the prompt is consumed (not left stranded, matching the existing
+// downstream-OpenDoor-error contract on SubmitCheck), and — the part that
+// actually matters — the door is STILL Locked afterward, so a fresh
+// AttemptUnlock from back in reach is required rather than a free unlock.
+func TestSubmitCheck_PlayerWalksAwayBeforeSubmitting_LockSurvives(t *testing.T) {
+	transport, broker := newRangeGateBroker()
+	defer func() { _ = broker.Close(); _ = transport.Close() }()
+
+	resolver := &fakeResolver{abilityMod: 3, abilityOK: true, toolBonus: 2, toolOK: true}
+	enc := encounter.New(context.Background(), "enc-rg-unlock-walkaway", broker,
+		encounter.WithCharacterResolver(resolver),
+	)
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 20,
+	}))
+	require.NoError(t, enc.AddDoor("door-1", core.Hex{Q: 1, R: 0, S: -1}, false))
+	door := enc.ToData().Doors["door-1"]
+	door.Locked = true
+	door.LockDC = 12
+	door.LockAbility = abilityDEX
+
+	// Adjacent: AttemptUnlock issues the prompt normally.
+	_, err := enc.AttemptUnlock(alicePlayerID, "door-1")
+	require.NoError(t, err)
+
+	// Walk away before resolving the check.
+	require.NoError(t, enc.Move(alicePlayerID, []core.Hex{
+		{Q: 2, R: 0, S: -2}, {Q: 3, R: 0, S: -3}, {Q: 4, R: 0, S: -4}, {Q: 5, R: 0, S: -5},
+	}))
+
+	// roll(15) + abilityMod(3) = 18 (no LockTool set, so toolBonus doesn't
+	// apply), comfortably clears DC 12.
+	res, err := enc.SubmitCheck(alicePlayerID, 15)
+	require.Error(t, err, "the dispatch must fail once the player has left reach")
+	require.True(t, errors.Is(err, encounter.ErrOutOfRange), "got: %v", err)
+	require.True(t, res.Success, "the roll itself still succeeded — only the dispatch (opening the door right now) failed")
+	require.Equal(t, 18, res.Total)
+
+	doorAfter := enc.ToData().Doors["door-1"]
+	require.True(t, doorAfter.Locked,
+		"the door must remain genuinely locked — this is the free-unlock-bypass gate finding")
+	require.False(t, doorAfter.Open)
+	require.NotContains(t, enc.ToData().PendingPrompts, core.PlayerID(alicePlayerID),
+		"the consumed attempt's prompt must not be left stranded")
+
+	// Walk back and confirm the lock genuinely still requires a fresh
+	// check — not a free, silent bypass.
+	require.NoError(t, enc.Move(alicePlayerID, []core.Hex{
+		{Q: 4, R: 0, S: -4}, {Q: 3, R: 0, S: -3}, {Q: 2, R: 0, S: -2}, {Q: 1, R: 0, S: -1},
+	}))
+	_, err = enc.AttemptUnlock(alicePlayerID, "door-1")
+	require.NoError(t, err, "back in reach, a fresh AttemptUnlock must work normally")
 }
 
 // --- TakeAction melee attack (player path) ----------------------------------
@@ -311,7 +385,17 @@ func TestTakeAction_ShortbowRange_BeyondLongRange_Rejected(t *testing.T) {
 
 // --- NPCAct scripted attack (monster path, no DataJSON) ---------------------
 
-func TestNPCAct_ScriptedAttackBeyondReach_Rejected(t *testing.T) {
+// TestNPCAct_ScriptedAttackBeyondReach_PassesTurnWithoutWedging is the
+// gate-review regression for blocker 1: npcActScripted originally returned
+// the ErrOutOfRange from the shared gate directly, and NPCAct propagated it
+// as a hard failure. rpg-api's driveNPCChain only calls EndTurn after a
+// SUCCESSFUL NPCAct, so an out-of-reach monster (the closest player simply
+// too far away) would error on every single retry and the encounter would
+// be wedged forever — turn never advances, nobody can act. The fix: an
+// out-of-reach target is "nothing to do this turn" (same as the existing
+// target==nil case), not an error — NPCAct succeeds, no attack resolves,
+// and the turn ends normally afterward.
+func TestNPCAct_ScriptedAttackBeyondReach_PassesTurnWithoutWedging(t *testing.T) {
 	transport, broker := newRangeGateBroker()
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 
@@ -333,8 +417,15 @@ func TestNPCAct_ScriptedAttackBeyondReach_Rejected(t *testing.T) {
 	endTurnUntilActive(t, enc, gobEntityID)
 
 	err := enc.NPCAct(context.Background(), gobEntityID)
-	require.Error(t, err)
-	require.True(t, errors.Is(err, encounter.ErrOutOfRange), "got: %v", err)
+	require.NoError(t, err, "an out-of-reach scripted attack must pass the turn, not error")
+	require.Equal(t, 12, enc.ToData().Players[alicePlayerID].HP, "no attack resolved, so no damage")
+
+	// The turn must be free to end normally — proving the encounter isn't
+	// wedged (the exact failure mode blocker 1 fixes).
+	_, _, endErr := enc.EndTurn(context.Background(), gobEntityID)
+	require.NoError(t, endErr)
+	require.Equal(t, core.EntityID(aliceEntityID), enc.ActiveActor(),
+		"turn must advance to alice, not stay stuck on the goblin")
 }
 
 func TestNPCAct_ScriptedAttackAtReach_Succeeds(t *testing.T) {
@@ -358,4 +449,72 @@ func TestNPCAct_ScriptedAttackAtReach_Succeeds(t *testing.T) {
 
 	err := enc.NPCAct(context.Background(), gobEntityID)
 	require.NoError(t, err)
+}
+
+// --- applyCapturedAttacks skip semantics (hydrated monster path) -----------
+
+// TestNPCAct_HydratedMonster_OutOfReachCapturedAttack_SkipsWithoutWedging is
+// the gate-review regression for blocker 1's other call site
+// (applyCapturedAttacks, the hydrated-monster path — the scripted-fallback
+// path above covers npcActScripted).
+//
+// Builds a monster whose own melee action reports an inflated reach (3, via
+// a weapon name — "unmatched-claw" — that doesn't match anything in the
+// weapons catalog, so the shared gate's meleeReachForCombatant can't
+// resolve a real weapon and falls back to the 1-hex default). This models
+// a real mismatch class: a monster whose configured reach doesn't line up
+// with what the shared catalog-driven gate can independently verify (e.g.
+// a bug in the monster's own action config, or any reach not backed by a
+// cataloged weapon).
+//
+// The monster's speed (2) is deliberately too small to close the initial
+// 4-hex gap to adjacency in one turn (moveTowardEnemy always tries to close
+// to adjacency first) — after moving 2 hexes it's 2 hexes from the player:
+// within its OWN inflated reach (3), so monster.TakeTurn selects and swings
+// the melee action, but beyond the shared gate's independently-resolved
+// reach (1) — applyCapturedAttacks must skip this captured attack rather
+// than error and wedge the encounter.
+func TestNPCAct_HydratedMonster_OutOfReachCapturedAttack_SkipsWithoutWedging(t *testing.T) {
+	transport, broker := newRangeGateBroker()
+	defer func() { _ = broker.Close(); _ = transport.Close() }()
+
+	meleeCfg := monsteractions.MeleeConfig{
+		Name: "unmatched-claw", AttackBonus: 4, DamageDice: "1d6",
+		Reach: 3, DamageType: damage.Slashing,
+	}
+	cfgJSON, err := json.Marshal(meleeCfg)
+	require.NoError(t, err)
+	monData := &monster.Data{
+		ID: gobEntityID, Name: "Test Monster", HitPoints: 7, MaxHitPoints: 7, ArmorClass: 15,
+		Senses: monster.SensesData{PassivePerception: 10},
+		Actions: []monster.ActionData{
+			{Ref: *refs.MonsterActions.Melee(), Config: cfgJSON},
+		},
+	}
+	monJSON, err := json.Marshal(monData)
+	require.NoError(t, err)
+
+	enc := encounter.New(context.Background(), "enc-rg-npc-hydrated-skip", broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+	)
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID,
+		Position: core.Hex{}, SightRange: 20,
+		HP: 12, MaxHP: 12, AC: 14,
+	}))
+	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: core.Hex{Q: 4, R: 0, S: -4},
+		HP: 7, MaxHP: 7, AC: 15, Speed: 2,
+		DataJSON: monJSON,
+	}))
+	endTurnUntilActive(t, enc, gobEntityID)
+
+	err = enc.NPCAct(context.Background(), gobEntityID)
+	require.NoError(t, err, "an out-of-reach captured attack must be skipped, not error/wedge the turn")
+	require.Equal(t, 12, enc.ToData().Players[alicePlayerID].HP, "the skipped attack must deal no damage")
+
+	_, _, endErr := enc.EndTurn(context.Background(), gobEntityID)
+	require.NoError(t, endErr)
+	require.Equal(t, core.EntityID(aliceEntityID), enc.ActiveActor(),
+		"turn must advance to alice, not stay stuck on the goblin")
 }
