@@ -401,6 +401,37 @@ func (e *Encounter) applyCapturedAttacks(
 			continue
 		}
 
+		// rpg-toolkit#864: the same shared range gate the player attack path
+		// uses (TakeActionPhased), applied here so no actor is an exception.
+		// Melee-only: dnd5eEvents.AttackEvent carries IsMelee but no numeric
+		// range, and MonsterData has no range field to consult for ranged
+		// attacks without inventing new plumbing — a gap worth its own
+		// follow-up issue. This is defense-in-depth rather than the primary
+		// gate for monsters: monster.TakeTurn's own action selection
+		// (actions.MeleeAction/RangedAction.CanActivate) already rejects an
+		// out-of-reach/out-of-range choice before any AttackEvent publishes
+		// (the QA walk observed monster AI correctly closing to adjacency in
+		// both fights) — this catches a bug in that AI-side gate, or a
+		// future monster action that skips it, the same way the player path
+		// hard-gates rather than trusting the caller.
+		//
+		// Gate-review finding (blocker 1): skip (continue), do NOT return an
+		// error. This loop can carry multiple captured attacks (a
+		// multiattack monster's several swings, possibly at different
+		// targets); erroring here would both wedge the encounter (NPCAct's
+		// caller only advances the turn on success — see npcActScripted's
+		// identical note) and discard whatever EARLIER attacks in this same
+		// loop already applied damage/events for, which cannot be undone.
+		// One out-of-reach swing (e.g. a target that Disengaged mid-turn, if
+		// that ever lands) simply doesn't connect; any other captured
+		// attacks in this turn still resolve normally.
+		if atk.IsMelee {
+			reach := meleeReachForCombatant(e.combatantFor(mon.ID))
+			if checkReach(mon.Position, targetPlayer.View.Position, reach, "reach") != nil {
+				continue
+			}
+		}
+
 		input := AttackInput{
 			AttackerID:          mon.ID,
 			TargetID:            targetID,
@@ -1005,6 +1036,25 @@ func (e *Encounter) applyCapturedConditions(mon *MonsterData, conds []dnd5eEvent
 func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	target := e.closestPlayer(mon.Position)
 	if target == nil {
+		return nil
+	}
+	// rpg-toolkit#864: this fallback has no ranged/melee action distinction
+	// at all (it's a single flat stat-snapshot "attack"), so it gates as
+	// melee — same shared gate as applyCapturedAttacks/TakeActionPhased.
+	// Before this, npcActScripted always attacked whichever player was
+	// closest regardless of distance — a real, separate entry point into
+	// the resolver the QA-reported bug's gate must also cover.
+	//
+	// Gate-review finding (blocker 1): the closest player being out of
+	// reach is "nothing to do this turn", the same as the target==nil case
+	// two lines up — NOT an error. This verb has no other action to fall
+	// back to (it's the whole scripted turn), and NPCAct's caller (rpg-api's
+	// driveNPCChain) only calls EndTurn after NPCAct returns successfully;
+	// returning an error here would make an out-of-reach monster wedge the
+	// encounter forever (every retry hits the identical rejection). A
+	// monster that can't reach anyone simply passes its turn.
+	reach := meleeReachForCombatant(e.combatantFor(mon.ID))
+	if checkReach(mon.Position, target.View.Position, reach, "reach") != nil {
 		return nil
 	}
 	outcome, err := e.combatResolver.ResolveAttack(AttackInput{

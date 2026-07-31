@@ -242,7 +242,11 @@ func (s *LockedBossDoorSuite) TestFailedCheck_LeavesDoorLockedRecoverableAndBloc
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor/AttemptUnlock require adjacency — walk
+	// alice up to each door first (mirrors dungeon_test.go's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 
 	_, err := s.enc.AttemptUnlock(alicePlayerID, dungeonDoor1ID)
 	s.Require().NoError(err)
@@ -281,7 +285,11 @@ func (s *LockedBossDoorSuite) TestSuccessfulCheck_UnlocksOpensAndRevealsBossRegi
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor/AttemptUnlock require adjacency — walk
+	// alice up to each door first (mirrors dungeon_test.go's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 
 	boss := regionHexSet(data.Space, dungeonRegionIDBoss)
 	before := s.enc.ToData().Players[alicePlayerID].View.KnownHexSet()

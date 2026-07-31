@@ -128,8 +128,11 @@ func (s *PhasedTakeActionSuite) SetupTest() {
 		HP: 18, MaxHP: 18, AC: 12, AttackBonus: 4,
 		DamageDice: "1d4", DamageType: damageSlashing,
 	}))
+	// rpg-toolkit#864: TakeActionPhased now gates melee attacks on reach (a
+	// flat stat-snapshot combatant defaults to 1 hex) — the goblin sits
+	// adjacent to alice (distinct from bob's hex) rather than 2 hexes out.
 	s.Require().NoError(s.enc.AddMonster(tkenc.MonsterInput{
-		ID: gobEntityID, Position: encountercore.Hex{Q: 2, R: 0, S: -2},
+		ID: gobEntityID, Position: encountercore.Hex{Q: 0, R: 1, S: -1},
 		HP: 10, MaxHP: 10, AC: 13, Speed: 30, AttackBonus: 4,
 		DamageDice: damage1d6plus1, DamageType: damageSlashing,
 	}))
@@ -266,8 +269,9 @@ func (s *PhasedTakeActionSuite) TestLegacyResolverFallback() {
 		HP: 30, MaxHP: 30, AC: 14, AttackBonus: 5,
 		DamageDice: damage1d8plus2, DamageType: damageSlashing,
 	}))
+	// rpg-toolkit#864: adjacent, not 2 hexes out — see SetupTest's identical note.
 	s.Require().NoError(enc.AddMonster(tkenc.MonsterInput{
-		ID: gobEntityID, Position: encountercore.Hex{Q: 2, R: 0, S: -2},
+		ID: gobEntityID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 10, MaxHP: 10, AC: 13, Speed: 30, AttackBonus: 4,
 		DamageDice: damage1d6plus1, DamageType: damageSlashing,
 	}))

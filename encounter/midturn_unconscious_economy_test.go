@@ -110,8 +110,15 @@ func (s *MidTurnUnconsciousEconomySuite) SetupTest() {
 		DamageDice: damage1d8plus2, DamageType: damageSlashing,
 		DataJSON: s.aliceLowHPSeededCharDataJSON(),
 	}))
+	// rpg-toolkit#864: both tests below have alice TakeAction against this
+	// goblin right after her one-step Move to {1,0,-1} — TakeAction now
+	// gates melee attacks on reach, so the goblin sits adjacent to that
+	// post-move position rather than 5 hexes from alice's start. The OA
+	// itself is synthetic (stubMovementResolver.publishOnStep fires
+	// unconditionally on step 0, independent of real geometry/threat-range),
+	// so the goblin's exact position was never load-bearing for that part.
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
-		ID: mueGoblinID, Position: core.Hex{Q: 5, R: 0, S: -5},
+		ID: mueGoblinID, Position: core.Hex{Q: 2, R: 0, S: -2},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
 	}))
@@ -130,9 +137,9 @@ func (s *MidTurnUnconsciousEconomySuite) SetupTest() {
 	s.enc = loaded
 
 	// alice's DataJSON carries a pre-seeded economy, so cycling to her turn
-	// doesn't depend on SetMode's seedActorTurn call to populate it. She and
-	// the goblin are far enough apart that AddMonster (above, before the
-	// round-trip) didn't auto-enter combat — flip explicitly.
+	// doesn't depend on SetMode's seedActorTurn call to populate it. Whether
+	// AddMonster (above, before the round-trip) already auto-entered combat
+	// via mutual LoS or not, this flips explicitly only if needed.
 	if s.enc.Mode() != core.ModeTurnBased {
 		s.Require().NoError(s.enc.SetMode(core.ModeTurnBased))
 	}

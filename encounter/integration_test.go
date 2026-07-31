@@ -70,9 +70,22 @@ func (s *IntegrationSuite) TestSlice_MoveTowardEachOther() {
 		"bob within distance 2 should see alice move")
 }
 
-// Door opens at distance 4 from alice (sight range 4) and distance 2 from
-// bob (sight range 4). Both should see the door event.
+// Door opens at distance 2 from bob (sight range 4) — bob's perception of
+// the DoorOpenedEvent from a distance is the audience-routing behavior this
+// test proves; both alice and bob should see the door event.
+//
+// rpg-toolkit#864: OpenDoor requires adjacency, so alice must first walk to
+// a door-adjacent hex (a diagonal detour around bob's cell at {2,0,-2},
+// rather than straight down the same row alice/bob/the door all share) —
+// she was previously calling OpenDoor from 4 hexes away, exploiting the
+// missing gate.
 func (s *IntegrationSuite) TestSlice_OpenDoor() {
+	s.Require().NoError(s.enc.Move("alice", []core.Hex{
+		{Q: 1, R: 0, S: -1}, {Q: 2, R: -1, S: -1}, {Q: 3, R: -1, S: -2}, {Q: 4, R: -1, S: -3},
+	}))
+	drainSub(s.aliceSub, 200*time.Millisecond)
+	drainSub(s.bobSub, 200*time.Millisecond)
+
 	s.Require().NoError(s.enc.OpenDoor("alice", "door-east"))
 
 	aliceEvents := collectTypes(s.aliceSub, 500*time.Millisecond)

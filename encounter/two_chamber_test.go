@@ -108,6 +108,30 @@ func doorAdjacentChamber1Hex() core.Hex {
 	return core.HexFromPosition(spatial.Position{X: float64(chamberW - 1), Y: float64(chamberH / 2)})
 }
 
+// straightRowPath returns the Move-ready hex sequence from just after from
+// up to and including to, stepping one X unit at a time along a shared row
+// (from.ToPosition().Y must equal to.ToPosition().Y) — the shape of the
+// generator's own guaranteed wall-free "required path" between an entrance
+// and a door-adjacent cell. rpg-toolkit#864: OpenDoor/AttemptUnlock now
+// require the actor to actually be adjacent, so fixtures across this
+// package's dungeon/chamber tests use this to walk there via Move first,
+// instead of teleporting a player next to a door they've never approached.
+func straightRowPath(from, to core.Hex) []core.Hex {
+	fp, tp := from.ToPosition(), to.ToPosition()
+	step := 1.0
+	if tp.X < fp.X {
+		step = -1.0
+	}
+	var path []core.Hex
+	for x := fp.X + step; ; x += step {
+		path = append(path, core.HexFromPosition(spatial.Position{X: x, Y: fp.Y}))
+		if x == tp.X {
+			break
+		}
+	}
+	return path
+}
+
 // TwoChamberSuite exercises InitTwoChamberRoom's fixed named-seed layout
 // (slice2TwoChambersSeed) — a fresh Encounter per test.
 type TwoChamberSuite struct {
@@ -178,6 +202,9 @@ func (s *TwoChamberSuite) TestOpenDoor_ConnectsEntranceThroughDoorToChamber2() {
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to the
+	// door along the generator's guaranteed wall-free required path first.
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(entrance, doorAdjacentChamber1Hex())))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, twoChamberDoorID))
 
 	reachable := reachableFrom(s.enc.Room(), entrance)

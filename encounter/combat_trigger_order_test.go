@@ -191,6 +191,12 @@ func (s *CombatTriggerOrderSuite) TestMove_OthersStillOrderedByRoll_TriggerRollD
 // trigger, exactly like the movement-into-detection vector. The monster id
 // ("aaa-ambush") again sorts before the player's id, so the old ascending-id
 // tiebreak would have put it first.
+//
+// rpg-toolkit#864 rebase: OpenDoor now requires adjacency, so the player
+// first walks to lineHex(2) (one hex from the door at lineHex(3)) before
+// opening it — the original single Move from lineHex(0) through the doorway
+// is split into that approach plus the same walk-through, unchanged in
+// substance (still ends at lineHex(5), still the call that triggers combat).
 func (s *CombatTriggerOrderSuite) TestOpenDoorThenMove_TriggerForcedFirstRegardlessOfRoll() {
 	enc := encounter.New(s.ctx, "enc-trigger-order-door", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
@@ -208,13 +214,17 @@ func (s *CombatTriggerOrderSuite) TestOpenDoorThenMove_TriggerForcedFirstRegardl
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(), "test premise: monster behind the closed door")
 
+	// rpg-toolkit#864: OpenDoor requires adjacency -- walk up to lineHex(2)
+	// (one hex from the door) first. The door is still closed, so this
+	// approach must not reveal or trigger anything.
+	s.Require().NoError(enc.Move(triggerHeroPlayerID, []core.Hex{lineHex(1), lineHex(2)}))
 	s.Require().NoError(enc.OpenDoor(triggerHeroPlayerID, "door-1"))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(),
 		"opening the door alone must not start combat -- encounter.OpenDoor never calls "+
 			"checkCombatEntry; only the player's subsequent move through the doorway does")
 
 	s.Require().NoError(enc.Move(triggerHeroPlayerID,
-		[]core.Hex{lineHex(1), lineHex(2), lineHex(3), lineHex(4), lineHex(5)}))
+		[]core.Hex{lineHex(3), lineHex(4), lineHex(5)}))
 
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "sighting the monster through the open door must start combat")
 	s.Equal([]core.EntityID{triggerHeroEntityID, "aaa-ambush"}, enc.ToData().Initiative,

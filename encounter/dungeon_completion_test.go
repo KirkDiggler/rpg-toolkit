@@ -212,6 +212,13 @@ func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHosti
 	s.Require().NoError(err)
 
 	dcEndTurnUntilActive(s.ctx, &s.Suite, enc, aliceEntityID)
+	// rpg-toolkit#864: TakeAction now gates melee attacks on reach — alice
+	// spawns at the entrance's near edge (X=0), 9 hexes from the goblin at
+	// the far edge (X=9), so she must walk up to X=8 (adjacent) first. A
+	// stat-snapshot player (no DataJSON) isn't gated on movement budget
+	// (Move's tracksMovement check requires a held character), so this is a
+	// free repositioning, not a turn-economy change.
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(0, 8)))
 	s.Require().NoError(enc.TakeAction(alicePlayerID,
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
 		encounter.ActionTarget{EntityID: dcEntranceGoblinID},
@@ -232,8 +239,13 @@ func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHosti
 	// LoS on the corridor goblin (boss goblin stays hidden behind the still-
 	// closed door 1), clear it. Boss goblin remains -- must exit to
 	// FREE_ROAM again, still not end the encounter. ---
+	// rpg-toolkit#864: OpenDoor requires adjacency too — alice is at X=8
+	// (from the entrance-goblin attack above), door0 sits at X=10, so she
+	// steps up to X=9 first. The subsequent move into the corridor now
+	// starts from X=9 (her real position), not X=0.
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(8, 9)))
 	s.Require().NoError(enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
-	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(0, dungeonRegionStarts()[1])))
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(9, dungeonRegionStarts()[1])))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "moving into LoS of the corridor goblin must start a fresh pocket")
 	s.True(func() bool {
 		for _, id := range enc.ToData().Initiative {
@@ -248,6 +260,10 @@ func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHosti
 	s.Require().NoError(err)
 
 	dcEndTurnUntilActive(s.ctx, &s.Suite, enc, aliceEntityID)
+	// rpg-toolkit#864: alice is at the corridor's near edge (X=11) after the
+	// move above; the corridor goblin sits at the far edge (X=15), so she
+	// steps up to X=14 (adjacent) before attacking.
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(dungeonRegionStarts()[1], 14)))
 	s.Require().NoError(enc.TakeAction(alicePlayerID,
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
 		encounter.ActionTarget{EntityID: dcCorridorGoblinID},
@@ -266,14 +282,21 @@ func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHosti
 	// --- Final pocket (boss): open door 1, move into the boss region to
 	// gain LoS on the boss goblin -- the LAST hostile anywhere -- and kill
 	// it. This must end the whole dungeon in victory. ---
+	// rpg-toolkit#864: alice is at X=14 (from the corridor-goblin attack
+	// above); door1 sits at X=16, so she steps up to X=15 (adjacent) first.
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(14, 15)))
 	s.Require().NoError(enc.OpenDoor(alicePlayerID, dungeonDoor1ID))
-	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(dungeonRegionStarts()[1], dungeonRegionStarts()[2])))
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(15, dungeonRegionStarts()[2])))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "moving into LoS of the boss goblin must start the final pocket")
 
 	sub3, err := s.broker.Subscribe("enc-dungeon-completion-victory", alicePlayerID)
 	s.Require().NoError(err)
 
 	dcEndTurnUntilActive(s.ctx, &s.Suite, enc, aliceEntityID)
+	// rpg-toolkit#864: alice is at the boss region's near edge (X=17); the
+	// boss goblin sits at the far edge (X=26), so she steps up to X=25
+	// (adjacent) before attacking.
+	s.Require().NoError(enc.Move(alicePlayerID, dcPathTo(dungeonRegionStarts()[2], 25)))
 	s.Require().NoError(enc.TakeAction(alicePlayerID,
 		encounter.ActionRef{Module: refModuleDnd5e, Type: refTypeAction, ID: actionIDAttackTest},
 		encounter.ActionTarget{EntityID: dcBossGoblinID},
@@ -331,8 +354,15 @@ func (s *DungeonCompletionSuite) TestTPKMidDungeon_EndsWithCanonicalReason_Hosti
 		ID: dcCorridorGoblinID, Position: dungeonRegionFarEdgeHex(1),
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
 	}))
+	// rpg-toolkit#864: NPCAct's scripted fallback (no DataJSON — this
+	// goblin's shape) now gates melee attacks on reach and has no movement
+	// logic of its own, so the goblin spawns adjacent to alice (X=1, vs.
+	// alice's entrance at X=0) rather than at the far edge (X=9) — nothing
+	// else in this test depends on the goblin's exact starting column, only
+	// that it's within LoS (dcSightRange comfortably covers the whole
+	// fixture regardless).
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
-		ID: dcEntranceGoblinID, Position: dungeonRegionFarEdgeHex(0),
+		ID: dcEntranceGoblinID, Position: dcRowHex(1),
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
 	}))

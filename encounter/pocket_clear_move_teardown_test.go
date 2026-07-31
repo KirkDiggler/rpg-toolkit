@@ -100,7 +100,7 @@ func (s *PocketClearMoveTeardownSuite) erinCharJSON() json.RawMessage {
 }
 
 // loadErinVsTwoPockets builds group A (visible immediately, k=1) and group
-// B (behind a closed door at k=10, monster at k=15) with erin's DataJSON
+// B (behind a closed door at k=10, monster at k=25) with erin's DataJSON
 // attached, then round-trips through ToData/LoadFromData
 // (loadRagingBarbVsGoblin's technique) so the cascade hydrates erin's
 // *character.Character onto the returned encounter's combatant map —
@@ -108,12 +108,24 @@ func (s *PocketClearMoveTeardownSuite) erinCharJSON() json.RawMessage {
 // BEFORE group A (combat_pockets_test.go's ordering note): group A's own
 // AddMonster call must be what triggers checkCombatEntry, scoping
 // initiative to the engaged pocket only.
+//
+// Group B sits at k=25, not #865's original k=15 (rpg-toolkit#864 rebase):
+// OpenDoor now requires adjacency, so erin must stand at k=9 (one hex from
+// the door at k=10) before opening it — and from k=9, k=15 is only 6 hexes
+// away, already inside SightRange 10 the instant the door opens, leaving no
+// room for TestPocketClear_ThenReEntry_ReseedsFullMovementBudget's
+// two-move "still safe / now triggers" split (#867 gate finding 4's fix).
+// k=25 restores that room: k=9 is 16 hexes from group B (well out of
+// range), so there's a genuine safe zone to walk through after opening the
+// door before crossing into SightRange. The room is sized to comfortably
+// fit k=25 (see InitRoom below), mirroring doors_slice1_test.go's
+// "generously-sized room" convention.
 func (s *PocketClearMoveTeardownSuite) loadErinVsTwoPockets() *encounter.Encounter {
 	s.T().Helper()
 	enc := encounter.New(s.ctx, "enc-pocket-clear-move-teardown", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
-	s.Require().NoError(enc.InitRoom(20, 20, environments.PatternEmpty))
+	s.Require().NoError(enc.InitRoom(40, 40, environments.PatternEmpty))
 	s.Require().NoError(enc.AddDoor(pcmDoorID, lineHex(10), false))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: pcmPlayerID, EntityID: pcmEntityID,
@@ -123,7 +135,7 @@ func (s *PocketClearMoveTeardownSuite) loadErinVsTwoPockets() *encounter.Encount
 		DataJSON: s.erinCharJSON(),
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
-		ID: pcmGobB, Position: lineHex(15),
+		ID: pcmGobB, Position: lineHex(25),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
 	}))
@@ -228,8 +240,10 @@ func (s *PocketClearMoveTeardownSuite) TestWithinPocket_MovementStillEnforced_Wh
 // full 70ft in one call, so the forced-first assertion read 0 remaining —
 // indistinguishable from an accidentally-unseeded economy (which also reads
 // as a zero value) rather than a genuinely computed deduction. Split into
-// two Move calls instead: the first (k=0->k=4, 20ft) stays out of group B's
-// LoS and must NOT trigger anything; the second (k=4->k=8, 20ft) is the one
+// two Move calls instead — see the walk below for the exact waypoints,
+// shifted by rpg-toolkit#864's adjacency rebase (loadErinVsTwoPockets' doc
+// comment explains why group B moved from k=15 to k=25): the first stays
+// out of group B's LoS and must NOT trigger anything; the second is the one
 // that actually crosses into LoS and triggers the transition, so ONLY its
 // own 20ft counts as pre-spent (pathCostFeet is per-call, not cumulative
 // across the whole free-roam approach — see Move's own doc comment). That
@@ -249,21 +263,24 @@ func (s *PocketClearMoveTeardownSuite) TestPocketClear_ThenReEntry_ReseedsFullMo
 	))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(), "test premise: pocket A cleared")
 
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk erin (still at
+	// k=0; the attack above doesn't move her) up to the door at k=10 first.
+	s.Require().NoError(enc.Move(pcmPlayerID, []core.Hex{lineHex(9)}))
 	s.Require().NoError(enc.OpenDoor(pcmPlayerID, pcmDoorID))
 
-	// First move: k=0 -> k=4 (4 hexes, 20ft). Distance to group B at k=15 is
-	// 11 hexes, still outside erin's SightRange 10 -- must NOT trigger.
+	// First move: k=9 -> k=13 (4 hexes, 20ft). Distance to group B at k=25
+	// is 12 hexes, still outside erin's SightRange 10 -- must NOT trigger.
 	s.Require().NoError(enc.Move(pcmPlayerID, []core.Hex{
-		lineHex(1), lineHex(2), lineHex(3), lineHex(4),
+		lineHex(10), lineHex(11), lineHex(12), lineHex(13),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(),
-		"test premise: k=4 is still 11 hexes from group B, outside SightRange 10")
+		"test premise: k=13 is still 12 hexes from group B, outside SightRange 10")
 
-	// Second move: k=4 -> k=8 (4 hexes, 20ft). Distance to group B is now 7
-	// hexes, inside SightRange 10 through the now-open door -- THIS call is
-	// the trigger, and only ITS OWN 20ft counts as pre-spent.
+	// Second move: k=13 -> k=17 (4 hexes, 20ft). Distance to group B is now
+	// 8 hexes, inside SightRange 10 through the now-open door -- THIS call
+	// is the trigger, and only ITS OWN 20ft counts as pre-spent.
 	s.Require().NoError(enc.Move(pcmPlayerID, []core.Hex{
-		lineHex(5), lineHex(6), lineHex(7), lineHex(8),
+		lineHex(14), lineHex(15), lineHex(16), lineHex(17),
 	}))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "sighting group B must start a fresh pocket")
 

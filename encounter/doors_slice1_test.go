@@ -123,8 +123,14 @@ func (s *DoorBlockingSuite) TestClosedDoor_MonsterCuesDoNotLeak() {
 
 // TestOpenDoor_UnblocksAndRevealsBeyond: opening the door must (1) let
 // movement pass through and (2) reveal the monster's hex in the same
-// action, without alice needing to walk up to it first.
+// action, without alice needing to walk all the way to it (only up to the
+// doorway).
+//
+// rpg-toolkit#864: OpenDoor requires adjacency, so alice walks to k=2 (one
+// hex short of the door, exactly where TestClosedDoor_BlocksMovement already
+// proves a closed door stops her) before opening it.
 func (s *DoorBlockingSuite) TestOpenDoor_UnblocksAndRevealsBeyond() {
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(1), lineHex(2)}))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
 
 	s.False(
@@ -133,9 +139,10 @@ func (s *DoorBlockingSuite) TestOpenDoor_UnblocksAndRevealsBeyond() {
 	)
 	snap := s.enc.SnapshotFor(alicePlayerID)
 	s.True(snap.RevealedHexes.Has(lineHex(6)),
-		"opening the door must reveal the monster's hex beyond it in the same action, not require walking up to it")
+		"opening the door must reveal the monster's hex beyond it in the same action, "+
+			"without alice needing to walk any further than the doorway itself")
 
-	path := []core.Hex{lineHex(1), lineHex(2), lineHex(3), lineHex(4)}
+	path := []core.Hex{lineHex(3), lineHex(4)}
 	s.Require().NoError(s.enc.Move(alicePlayerID, path))
 	after := s.enc.ToData().Players[alicePlayerID].View.Position
 	s.Equal(lineHex(4), after, "an open door must let movement pass straight through")
@@ -143,10 +150,12 @@ func (s *DoorBlockingSuite) TestOpenDoor_UnblocksAndRevealsBeyond() {
 
 // TestOpenDoor_MonsterCuesReachThroughOpenDoor: the mirror of
 // TestClosedDoor_MonsterCuesDoNotLeak — once the door is open, the exact
-// same monster move DOES reach alice.
+// same monster move DOES reach alice. rpg-toolkit#864: alice walks adjacent
+// first (OpenDoor requires it), same as TestOpenDoor_UnblocksAndRevealsBeyond.
 func (s *DoorBlockingSuite) TestOpenDoor_MonsterCuesReachThroughOpenDoor() {
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(1), lineHex(2)}))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
-	drainSub(s.aliceSub, 200*time.Millisecond) // drain the DoorOpened/HexRevealed pair
+	drainSub(s.aliceSub, 200*time.Millisecond) // drain alice's Move + the DoorOpened/HexRevealed pair
 
 	s.Require().NoError(s.enc.MoveNPCSteps(gobEntityID, []core.Hex{lineHex(7)}))
 

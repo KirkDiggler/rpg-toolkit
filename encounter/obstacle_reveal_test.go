@@ -164,6 +164,10 @@ func (s *ObstacleRevealSuite) TestOpenDoor_RevealsStaticObstacleToOnlyNewlyRevea
 	bobSub := s.subscribe(bobPlayerID)
 	carolSub := s.subscribe(obstacleRevealCarolPlayerID)
 
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to the
+	// door first (mirrors doors_slice1_test.go's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(2)}))
+	drainSub(aliceSub, 200*time.Millisecond)
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
 
 	aliceAppeared := obstacleAppearances(collectEventsTyped(aliceSub, 300*time.Millisecond))
@@ -214,9 +218,13 @@ func (s *ObstacleRevealSuite) TestOpenDoor_FollowUpMoveDoesNotReappear() {
 	}))
 	aliceSub := s.subscribe(alicePlayerID)
 
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to the
+	// door first (mirrors doors_slice1_test.go's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(2)}))
+	drainSub(aliceSub, 200*time.Millisecond)
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
 	s.Require().Len(obstacleAppearancesFor(collectEventsTyped(aliceSub, 300*time.Millisecond), "altar-1"), 1)
-	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(1)}))
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(3)}))
 	s.Empty(obstacleAppearancesFor(collectEventsTyped(aliceSub, 300*time.Millisecond), "altar-1"))
 }
 
@@ -253,6 +261,12 @@ func (s *ObstacleRevealSuite) TestOpenDoor_ObstacleAppearanceFollowsHexRevealed(
 	}))
 	aliceSub := s.subscribe(alicePlayerID)
 
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to the
+	// door first (mirrors doors_slice1_test.go's identical fix), draining
+	// her own Move/HexRevealed events so they don't precede DoorOpenedEvent
+	// in the ordering assertions below.
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{lineHex(2)}))
+	drainSub(aliceSub, 200*time.Millisecond)
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, "door-1"))
 	observedEvents := collectEventsTyped(aliceSub, 300*time.Millisecond)
 	doorIdx := eventIndex(observedEvents, func(evt events.EncounterEvent) bool {

@@ -447,7 +447,12 @@ func (s *DungeonSuite) TestOpeningBothDoors_ConnectsEntranceThroughToBoss() {
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
 		Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to each
+	// door along the generator's guaranteed wall-free required path before
+	// opening it (mirrors TwoChamberSuite's identical fix).
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
+	s.Require().NoError(s.enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 	s.Require().NoError(s.enc.OpenDoor(alicePlayerID, dungeonDoor1ID))
 
 	reachable := reachableFrom(s.enc.Room(), entrance)

@@ -233,11 +233,16 @@ func TestConnectorColumnWalls_DoorCellStaysWalkable(t *testing.T) {
 	require.NoError(t, enc.InitDungeon(threeRegionDungeonParams(dungeonSeed)))
 	data := enc.ToData()
 
+	entrance := data.Space.Entrance
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
-		Position: data.Space.Entrance, SightRange: 30,
+		Position: entrance, SightRange: 30,
 	}))
+	// rpg-toolkit#864: OpenDoor requires adjacency — walk alice up to each
+	// door first (mirrors dungeon_test.go's identical fix).
+	require.NoError(t, enc.Move(alicePlayerID, straightRowPath(entrance, dungeonRegionFarEdgeHex(0))))
 	require.NoError(t, enc.OpenDoor(alicePlayerID, dungeonDoor0ID))
+	require.NoError(t, enc.Move(alicePlayerID, straightRowPath(dungeonRegionFarEdgeHex(0), dungeonRegionFarEdgeHex(1))))
 	require.NoError(t, enc.OpenDoor(alicePlayerID, dungeonDoor1ID))
 
 	room := enc.Room()
