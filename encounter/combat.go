@@ -296,7 +296,41 @@ type ActionTarget struct {
 // the roster itself doesn't change turn to turn — pinned by
 // TestSetMode_InitiativeRolled_SequencedBetweenModeChangedAndTurnStarted and
 // TestEndTurn_DoesNotRepublishInitiativeRolled.
+//
+// This public verb carries no combat-entry trigger — an administrative or
+// host-driven mode flip (devseed --inject-combat, a test calling SetMode
+// directly) has no single acting entity to privilege, so initiative rolls
+// purely by d20 as it always has. checkCombatEntry (rpg-toolkit#865) is the
+// one caller that DOES have a trigger (the mover whose LoS check fired) and
+// calls setMode directly to supply it.
 func (e *Encounter) SetMode(mode core.EncounterMode) error {
+	return e.setMode(mode, "", 0)
+}
+
+// setMode is SetMode's implementation, extended with the rpg-toolkit#865
+// combat-entry trigger.
+//
+// triggerID is the entity whose action caused a FreeRoam->TurnBased
+// transition — the mover in Move's checkCombatEntry call. Empty when the
+// transition has no single acting entity (SetMode's public wrapper, or a
+// monster becoming visible via AddMonster/SeedMonsters — nobody "acted" to
+// cause that). When non-empty, rollInitiative forces that entity into
+// initiative slot 0 regardless of its own roll (Kirk's creative-director
+// ruling on #865: "the entity that triggers combat is ALWAYS initiative
+// slot 1 [0-indexed: slot 0] — their action was already underway").
+//
+// triggerPreSpentFeet is how much of the trigger's movement budget it
+// already spent THIS turn before the transition (e.g. the free-roam move
+// that walked it into a monster's LoS — free-roam movement is unmetered, so
+// nothing gated it, but it still happened). Only applied when triggerID
+// actually lands in slot 0 (rollInitiative's own scoping — engagedMonsters
+// vs all monsters — can in principle leave a caller-supplied triggerID out
+// of the roster entirely, though Move's call site never does this: the
+// mover is always a player, and rollInitiative always seeds every player).
+// seedActorTurn subtracts it from the fresh StartTurn speed rather than
+// letting a free-roam approach stack with a full fresh combat turn's
+// movement.
+func (e *Encounter) setMode(mode core.EncounterMode, triggerID core.EntityID, triggerPreSpentFeet int) error {
 	if mode == core.ModeUnspecified {
 		return errors.New("mode unspecified")
 	}
@@ -324,13 +358,19 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 	e.data.Mode = mode
 	switch mode {
 	case core.ModeTurnBased:
-		e.rollInitiative()
+		e.rollInitiative(triggerID)
 		e.data.ActiveIdx = 0
 		e.data.Round = 1
 	case core.ModeFreeRoam:
 		e.data.Initiative = nil
 		e.data.ActiveIdx = 0
 		e.data.Round = 0
+		// PR #867 gate re-check: a pending trigger-seed stash from the pocket
+		// that just ended is stale the instant combat exits back to
+		// FREE_ROAM — clear it defensively (belt-and-suspenders alongside the
+		// unconditional resolve in the ModeTurnBased branch below) so it can
+		// never survive to be misapplied to a later, unrelated transition.
+		e.data.PendingTriggerSeed = nil
 	}
 
 	if err := e.broker.Publish(events.NewModeChangedEvent(
@@ -377,7 +417,44 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 		// e.data.Initiative to nil on that transition. Re-indexing
 		// e.data.Initiative[0] after the seed call would panic in that case.
 		firstActive := e.data.Initiative[0]
-		if err := e.seedActorTurn(context.Background(), firstActive); err != nil {
+		// rpg-toolkit#865: the pre-spent budget only applies to the actual
+		// trigger, and only when it landed in slot 0 (rollInitiative always
+		// places a non-empty triggerID first when present in the roster —
+		// see setMode's doc comment for the one theoretical exception).
+		var preSpent int
+		if triggerID != "" && firstActive == triggerID {
+			preSpent = triggerPreSpentFeet
+		}
+		// PR #867 gate finding 2: if firstActive has no held character yet
+		// (production's New()+AddPlayer+AddMonster flow — nothing is
+		// hydrated until a LoadFromData round-trip), the seedActorTurn call
+		// below no-ops (heldCharacter returns nil) and preSpent would
+		// otherwise be lost as a Go-only local by the time the encounter is
+		// eventually loaded. Persist it so seedActiveActorIfUnseeded's later
+		// catch-up can still apply it.
+		//
+		// Resolved UNCONDITIONALLY on every TurnBased transition (gate
+		// re-check finding, staleness): the same actor can legitimately be
+		// forced trigger across two SEPARATE FreeRoam->TurnBased flips —
+		// once with a real pre-spent deduction while still unhydrated, once
+		// later with none (e.g. it's still the only entity with LoS once
+		// combat re-enters) — and seedActiveActorIfUnseeded's ActorID-match
+		// guard can't tell those two events apart on its own, since it's the
+		// same actor both times. A prior version only WROTE this field when
+		// preSpent > 0 and never cleared it otherwise, so a stale stash from
+		// an earlier transition survived to be misapplied to a later one for
+		// the same actor with nothing pending. Always assigning here — nil
+		// when there's nothing to stash — guarantees the field only ever
+		// reflects the MOST RECENT transition.
+		if preSpent > 0 && e.heldCharacter(firstActive) == nil {
+			e.data.PendingTriggerSeed = &PendingTriggerSeedData{
+				ActorID:              firstActive,
+				PreSpentMovementFeet: preSpent,
+			}
+		} else {
+			e.data.PendingTriggerSeed = nil
+		}
+		if err := e.seedActorTurn(context.Background(), firstActive, preSpent); err != nil {
 			return err
 		}
 		// See EndTurn's identical guard for the fuller rationale: once the
@@ -405,16 +482,37 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 
 // checkCombatEntry evaluates whether any player currently has line of sight
 // to any monster and, if so and the encounter is still FREE_ROAM,
-// self-transitions to TURN_BASED by calling SetMode — the exact same
+// self-transitions to TURN_BASED by calling setMode — the exact same
 // initiative-roll + ModeChanged/TurnStarted publish path SetMode already
 // runs for any other FreeRoam->TurnBased flip. This mirrors
 // checkEncounterEnd's self-transition at combat's other edge (death.go): the
 // toolkit owns both entry and exit of combat, not just exit.
 //
-// Called inline at the mutation sites (Move, AddMonster) — not a kicked
-// method — per Kirk's fork-1 call on the design doc: a forgotten kick call
-// silently never starts combat, which is a worse failure mode than a
-// redundant inline check.
+// Called inline at the mutation sites (Move, AddMonster, SeedMonsters) — not
+// a kicked method — per Kirk's fork-1 call on the design doc: a forgotten
+// kick call silently never starts combat, which is a worse failure mode than
+// a redundant inline check.
+//
+// triggerID/triggerPreSpentFeet (rpg-toolkit#865) name the CALLER's candidate
+// acting entity — Move passes its own mover and how many feet it already
+// traveled this call (unmetered free-roam movement). But this check itself is
+// global (any player x monster pair, not just the caller's own view), so the
+// caller's candidate is not automatically the entity whose LoS actually made
+// this fire: a player-monster LoS pair can already exist, unclaimed, from an
+// earlier event that didn't itself call this check (OpenDoor doesn't —
+// see OpenDoor's own doc — so a player already lined up on a monster through
+// a freshly-opened door sits unflagged until SOMEONE's next Move call
+// re-evaluates this), and a completely unrelated player's own unrelated move
+// would otherwise be misattributed as the trigger (rpg-toolkit#865 follow-up
+// review on PR #867: a "wanderer" with zero LoS to anything, moving anywhere,
+// wrongly seized initiative slot 0 — and its own pre-spent budget — away from
+// the actually-exposed player). So: if the caller's own candidate has LoS to a
+// monster, it's unambiguously the trigger and keeps its own pre-spent budget;
+// otherwise fall back to whichever OTHER player is actually LoS-engaged (with
+// NO pre-spent budget attributed — the caller had nothing to do with
+// revealing that pair). triggerID == "" (AddMonster/SeedMonsters — no acting
+// player at all) skips trigger attribution entirely and keeps the plain
+// existence check this had before #865.
 //
 // "Hostile" == "is a monster" for wave 1 — no faction model exists yet, so
 // every monster is a valid combat-entry trigger for every player.
@@ -422,21 +520,85 @@ func (e *Encounter) SetMode(mode core.EncounterMode) error {
 // The mode gate at the top makes this idempotent: once TURN_BASED, repeated
 // Move/AddMonster calls short-circuit here without re-checking visibility or
 // re-rolling initiative.
-func (e *Encounter) checkCombatEntry() error {
+func (e *Encounter) checkCombatEntry(triggerID core.EntityID, triggerPreSpentFeet int) error {
 	if e.data.Mode != core.ModeFreeRoam {
 		return nil
 	}
 	if len(e.data.Players) == 0 || len(e.data.Monsters) == 0 {
 		return nil
 	}
+
+	if triggerID == "" {
+		for _, p := range e.data.Players {
+			for _, m := range e.data.Monsters {
+				if perception.CanSeeAt(p.View, m.Position, e.room) {
+					return e.setMode(core.ModeTurnBased, "", 0)
+				}
+			}
+		}
+		return nil
+	}
+
+	if e.playerEntityHasMonsterLoS(triggerID) {
+		return e.setMode(core.ModeTurnBased, triggerID, triggerPreSpentFeet)
+	}
+	if actualTrigger, ok := e.firstEngagedPlayerEntityID(); ok {
+		return e.setMode(core.ModeTurnBased, actualTrigger, 0)
+	}
+	return nil
+}
+
+// playerEntityHasMonsterLoS reports whether the player entity identified by
+// entityID currently has LoS to any monster, via the same perception.CanSeeAt
+// predicate checkCombatEntry's own existence check uses. Returns false for an
+// unknown entity id (e.g. a monster's own EntityID, or one that has left the
+// encounter) — checkCombatEntry's caller-candidate check treats "not a
+// player, or not visible" identically: fall through to the actual-trigger
+// search.
+func (e *Encounter) playerEntityHasMonsterLoS(entityID core.EntityID) bool {
+	p := e.findPlayerByEntityID(entityID)
+	if p == nil {
+		return false
+	}
+	for _, m := range e.data.Monsters {
+		if perception.CanSeeAt(p.View, m.Position, e.room) {
+			return true
+		}
+	}
+	return false
+}
+
+// firstEngagedPlayerEntityID returns the entity id of the first player (by
+// ascending EntityID, for determinism — e.data.Players is a map) who
+// currently has LoS to any monster, and whether one was found. Used by
+// checkCombatEntry to attribute the actual trigger when the caller's own
+// candidate isn't the one whose LoS fired the transition.
+//
+// Sorts by EntityID, not PlayerID (PR #867 gate re-check nit): rollInitiative
+// itself sorts its player seeds by ascending EntityID, and "first" should
+// mean the same thing everywhere a tie-break like this runs in this file —
+// sorting by a different key here would let this fallback and rollInitiative
+// disagree on which of two simultaneously-engaged players counts as "first"
+// in the (today theoretical) case where more than one already has LoS.
+func (e *Encounter) firstEngagedPlayerEntityID() (core.EntityID, bool) {
+	candidates := make([]*PlayerData, 0, len(e.data.Players))
 	for _, p := range e.data.Players {
+		candidates = append(candidates, p)
+	}
+	// Sorted by EntityID directly (not via a map keyed on it): two player
+	// seats sharing an EntityID isn't structurally enforced against
+	// elsewhere in this package (see CompleteTakeAction's doc comment on
+	// cross-map id collisions), so this avoids introducing a new place that
+	// would silently collapse such a collision.
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].EntityID < candidates[j].EntityID })
+	for _, p := range candidates {
 		for _, m := range e.data.Monsters {
 			if perception.CanSeeAt(p.View, m.Position, e.room) {
-				return e.SetMode(core.ModeTurnBased)
+				return p.EntityID, true
 			}
 		}
 	}
-	return nil
+	return "", false
 }
 
 // engagedMonsters returns the monsters at least one player currently has
@@ -692,7 +854,7 @@ func (e *Encounter) EndTurn(
 
 	// Seed the new actor's economy before announcing their turn (Beat-1: the
 	// engine owns turn-start seeding). No-op for NPCs and stat-snapshot seats.
-	if seedErr := e.seedActorTurn(ctx, newActive); seedErr != nil {
+	if seedErr := e.seedActorTurn(ctx, newActive, 0); seedErr != nil {
 		return "", false, seedErr
 	}
 
@@ -763,8 +925,16 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 }
 
 // rollInitiative seeds Initiative with every player plus the ENGAGED
-// monster pocket (rpg-toolkit#794) in d20-roll-desc order. Ties broken by
-// entity id for determinism.
+// monster pocket (rpg-toolkit#794) in d20-roll-desc order, EXCEPT for
+// triggerID (rpg-toolkit#865): when non-empty, that entity is forced into
+// slot 0 regardless of its own roll, per Kirk's creative-director ruling
+// that the entity whose action triggered combat (walked into sight, opened
+// the door) was already mid-action and does not "wait its turn" behind a
+// lucky monster roll. triggerID still rolls a d20 like everyone else (kept
+// so roller consumption/ordering stays identical to the no-trigger path —
+// simpler to reason about and to test) — the roll is just discarded for
+// placement. Ties among the REMAINING seeds are broken by entity id for
+// determinism, same as before this issue.
 //
 // Combat pockets: before this, every seeded monster anywhere in the space
 // joined initiative on the first sighting, so a locked-away boss (behind a
@@ -777,7 +947,7 @@ func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target Act
 // player already has a seat regardless of which pocket engages — a player
 // elsewhere in the dungeon simply takes an uneventful turn, not something
 // this slice changes.
-func (e *Encounter) rollInitiative() {
+func (e *Encounter) rollInitiative(triggerID core.EntityID) {
 	type seed struct {
 		id   core.EntityID
 		roll int
@@ -813,9 +983,25 @@ func (e *Encounter) rollInitiative() {
 		}
 		return seeds[i].id < seeds[j].id
 	})
-	out := make([]core.EntityID, len(seeds))
-	for i, s := range seeds {
-		out[i] = s.id
+
+	out := make([]core.EntityID, 0, len(seeds))
+	// rpg-toolkit#865: pull the trigger out of the rolled order and place it
+	// first, ahead of everyone else regardless of roll. A triggerID that
+	// isn't present among seeds (e.g. empty, or a caller-supplied id this
+	// pocket never engaged) leaves seeds untouched and out empty here, so
+	// the loop below reproduces the plain roll order exactly as before this
+	// issue.
+	if triggerID != "" {
+		for i, s := range seeds {
+			if s.id == triggerID {
+				out = append(out, s.id)
+				seeds = append(seeds[:i], seeds[i+1:]...)
+				break
+			}
+		}
+	}
+	for _, s := range seeds {
+		out = append(out, s.id)
 	}
 	e.data.Initiative = out
 }

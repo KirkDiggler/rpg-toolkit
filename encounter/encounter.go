@@ -452,8 +452,10 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 	}
 	// Combat-entry check (rpg-toolkit#757): a newly-added monster may already
 	// be visible to an existing player (e.g. spawned inside an already-open
-	// LoS), so this mutation site needs the same check as Move.
-	return e.checkCombatEntry()
+	// LoS), so this mutation site needs the same check as Move. No trigger
+	// entity (rpg-toolkit#865): a monster appearing has no acting player to
+	// privilege into initiative slot 0, so this stays plain roll order.
+	return e.checkCombatEntry("", 0)
 }
 
 // addMonsterNoCombatCheck does everything AddMonster does except the
@@ -910,7 +912,16 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	// so this is a mutation site where a player-monster visibility pair can
 	// newly form. Runs after the MoveEvent/reveal/economy publishes above so
 	// a client sees "you moved" before "combat starts" (cause before effect).
-	if err := e.checkCombatEntry(); err != nil {
+	//
+	// rpg-toolkit#865: this move is the trigger candidate. If it flips
+	// FreeRoam->TurnBased, the mover — not whoever wins the initiative roll
+	// — goes first, and the distance it just traveled (unmetered: tracksMovement
+	// above was false, since the mover wasn't in combat yet) comes off its
+	// freshly-seeded first turn's movement budget rather than being forgotten.
+	// Recomputing pathCostFeet here (rather than threading a value from the
+	// tracksMovement branch above, which doesn't run pre-combat) is cheap and
+	// keeps this call self-contained.
+	if err := e.checkCombatEntry(p.EntityID, pathCostFeet(moverStart, traveledPath)); err != nil {
 		return err
 	}
 

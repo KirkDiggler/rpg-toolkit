@@ -53,7 +53,18 @@ import (
 // actor) and EndTurn (the next actor). Errors are returned so the caller fails
 // the turn-boundary rather than advancing with an unseeded economy or a
 // silently-dropped turn-start signal.
-func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) error {
+//
+// preSpentMovementFeet (rpg-toolkit#865) is subtracted from the seeded
+// Speed before StartTurn runs — the combat-entry trigger's own free-roam
+// move that caused this very transition is otherwise invisible to the
+// fresh economy StartTurn seeds, which would let a player who walked (say)
+// 70ft to spot a monster ALSO get a full fresh 30ft of movement on the very
+// turn they were forced into by that walk. Every other caller (EndTurn,
+// seedActiveActorIfUnseeded) passes 0 — a normal turn boundary has nothing
+// to preserve. Clamped at zero rather than passed through negative: a
+// player who over-walked their speed getting into LoS starts their forced
+// first turn with no movement left, not a negative budget.
+func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID, preSpentMovementFeet int) error {
 	// NOT best-effort: the same failure semantics as EndTurn's TurnEndTopic
 	// publish. If this fails, Dodging/RecklessAttack never self-remove and
 	// Unconscious never auto-rolls death saves for this turn — a real error,
@@ -114,8 +125,12 @@ func (e *Encounter) seedActorTurn(ctx context.Context, actorID core.EntityID) er
 		return nil
 	}
 
+	seedSpeed := char.GetSpeed() - preSpentMovementFeet
+	if seedSpeed < 0 {
+		seedSpeed = 0
+	}
 	if _, err := char.StartTurn(ctx, &character.StartTurnInput{
-		Speed:      char.GetSpeed(),
+		Speed:      seedSpeed,
 		TurnNumber: e.data.Round,
 	}); err != nil {
 		return fmt.Errorf("seed turn economy for %q: %w", actorID, err)
@@ -166,7 +181,20 @@ func (e *Encounter) seedActiveActorIfUnseeded(ctx context.Context) error {
 	if char == nil || char.InCombat() {
 		return nil // NPC / stat-snapshot seat, or already seeded — nothing missed.
 	}
-	if err := e.seedActorTurn(ctx, actorID); err != nil {
+
+	// PR #867 gate finding 2: a Move-triggered transition can have persisted
+	// a forced-first-turn movement deduction (setMode, combat.go) for THIS
+	// actor when it fired before any character was hydrated — honor it here
+	// instead of hardcoding a full reseed, and clear it once consumed so a
+	// later, unrelated catch-up never re-applies it. Only consumed when it
+	// actually names the actor being seeded right now — a pending entry for
+	// a different (or no-longer-active) actor is stale and left alone.
+	preSpent := 0
+	if pending := e.data.PendingTriggerSeed; pending != nil && pending.ActorID == actorID {
+		preSpent = pending.PreSpentMovementFeet
+		e.data.PendingTriggerSeed = nil
+	}
+	if err := e.seedActorTurn(ctx, actorID, preSpent); err != nil {
 		return err
 	}
 	// #772/#782: see EndTurn's identical guard (combat.go) — seedActorTurn's
