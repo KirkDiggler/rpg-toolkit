@@ -289,10 +289,17 @@ func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.Ent
 		// The skill check itself still resolved (SubmitCheck's caller sees
 		// Success=true — the roll was good), but the dispatch fails; the
 		// existing "downstream OpenDoor error" contract on SubmitCheck's
-		// doc comment already covers this exact shape (prompt CLEARED, not
-		// stranded, dispatch failure surfaced to the caller) — a walk-away
-		// consumes the attempt. The player must AttemptUnlock again from
-		// within reach; there is no partial/silent unlock.
+		// doc comment already covers this exact shape (prompt CLEARED from
+		// THIS in-memory Encounter, dispatch failure surfaced to the
+		// caller). What that means for the player is host-dependent, not a
+		// toolkit guarantee either way: rpg-api's SubmitCheck orchestrator
+		// does not persist the encounter when the verb returns an error, so
+		// the previously-saved (still-pending) prompt in its store survives
+		// untouched, and the player can walk back and resubmit against the
+		// original prompt. What the toolkit DOES guarantee is the property
+		// that actually matters — the door stays genuinely Locked either
+		// way, so there is no partial/silent unlock regardless of how a
+		// given host handles the stranded-or-not prompt.
 		player, ok := e.data.Players[playerID]
 		if !ok {
 			return fmt.Errorf("player %q not in encounter", playerID)
