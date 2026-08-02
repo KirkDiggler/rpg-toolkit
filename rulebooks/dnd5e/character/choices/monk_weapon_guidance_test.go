@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package choices
 
 import (
@@ -10,12 +13,20 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// MonkWeaponGuidanceTestSuite guards rpg-toolkit#873: the Monk starting
-// equipment weapon choice must offer "simple melee weapon" (not the bare
-// "simple weapon" superset) and must not resolve to
-// weapons.CategorySimpleRanged - simple ranged weapons (dart, sling, light
-// crossbow) are not part of a Monk's weapon set in this game. Shortsword
-// stays the explicit, separate alternative option.
+// MonkWeaponGuidanceTestSuite guards rpg-toolkit#873/#874: the Monk
+// *starting equipment* weapon choice is the 2014 PHB "a shortsword or any
+// simple weapon" option, and it must stay that broad - offering simple
+// MELEE and simple RANGED weapons alike, plus the explicit shortsword
+// alternative.
+//
+// This is deliberately broader than (and must not be confused with) the
+// Martial Arts "monk weapon" set described in classes.Description(Monk)
+// and enforced by conditions/actions.isMonkWeapon (shortsword + simple
+// melee weapons without Heavy/Two-Handed). Narrowing the starting-equipment
+// picker to melee-only would incorrectly block legitimate 2014 starting
+// gear picks (dart, sling, light crossbow) that a Monk is entitled to at
+// character creation even though they won't benefit from Martial Arts.
+// See monk_description_test.go in classes for the Martial Arts contract.
 type MonkWeaponGuidanceTestSuite struct {
 	suite.Suite
 }
@@ -48,36 +59,32 @@ func (s *MonkWeaponGuidanceTestSuite) findMonkWeaponOption() (req *EquipmentRequ
 	return req, opt
 }
 
-func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_LabelSaysSimpleMeleeWeapon() {
+func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_LabelSaysAnySimpleWeapon() {
 	_, opt := s.findMonkWeaponOption()
 
 	lower := strings.ToLower(opt.Label)
-	s.Contains(lower, "simple melee weapon",
-		"MonkWeaponSimple option label should say 'simple melee weapon', got %q", opt.Label)
+	s.Contains(lower, "any simple weapon",
+		"MonkWeaponSimple option label should say 'any simple weapon' (2014 PHB starting "+
+			"equipment text), got %q", opt.Label)
+	s.NotContains(lower, "melee",
+		"MonkWeaponSimple label must not be narrowed to melee-only - starting equipment is "+
+			"'any simple weapon', got %q", opt.Label)
 }
 
-func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_CategoryChoiceLabelSaysSimpleMelee() {
+func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_CategoryChoiceLabelSaysSimpleWeapon() {
 	_, opt := s.findMonkWeaponOption()
 
 	s.Require().Len(opt.CategoryChoices, 1, "MonkWeaponSimple should have exactly one category choice")
 	lower := strings.ToLower(opt.CategoryChoices[0].Label)
-	s.Contains(lower, "simple melee weapon",
-		"MonkWeaponSimple category choice label should say 'simple melee weapon', got %q",
+	s.Contains(lower, "simple weapon",
+		"MonkWeaponSimple category choice label should say 'simple weapon', got %q",
+		opt.CategoryChoices[0].Label)
+	s.NotContains(lower, "melee",
+		"MonkWeaponSimple category choice label must not be narrowed to melee-only, got %q",
 		opt.CategoryChoices[0].Label)
 }
 
-func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_ExcludesSimpleRangedCategory() {
-	_, opt := s.findMonkWeaponOption()
-
-	s.Require().Len(opt.CategoryChoices, 1)
-	categories := opt.CategoryChoices[0].Categories
-
-	s.NotContains(categories, weapons.CategorySimpleRanged,
-		"MonkWeaponSimple must NOT include CategorySimpleRanged - simple ranged weapons "+
-			"(dart, sling, light crossbow) are not part of a Monk's weapon set")
-}
-
-func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_IncludesSimpleMeleeCategory() {
+func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_IncludesBothSimpleCategories() {
 	_, opt := s.findMonkWeaponOption()
 
 	s.Require().Len(opt.CategoryChoices, 1)
@@ -85,8 +92,13 @@ func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponSimple_IncludesSimpleMeleeCa
 
 	s.Contains(categories, weapons.CategorySimpleMelee,
 		"MonkWeaponSimple must include CategorySimpleMelee")
-	s.Len(categories, 1,
-		"MonkWeaponSimple should resolve to exactly one category (simple melee), got %v", categories)
+	s.Contains(categories, weapons.CategorySimpleRanged,
+		"MonkWeaponSimple must include CategorySimpleRanged - the 2014 Monk starting equipment "+
+			"option is 'any simple weapon', which includes ranged simple weapons "+
+			"(dart, sling, light crossbow), unlike the narrower Martial Arts 'monk weapon' set")
+	s.Len(categories, 2,
+		"MonkWeaponSimple should resolve to exactly both simple categories (melee + ranged), got %v",
+		categories)
 }
 
 func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponShortsword_RemainsExplicitAlternative() {
@@ -108,5 +120,5 @@ func (s *MonkWeaponGuidanceTestSuite) TestMonkWeaponShortsword_RemainsExplicitAl
 
 	// Choose exactly 1 between the two options.
 	s.Equal(1, req.Choose, "Monk should choose exactly one weapon option")
-	s.Len(req.Options, 2, "Monk weapon choice should offer exactly shortsword + simple melee weapon")
+	s.Len(req.Options, 2, "Monk weapon choice should offer exactly shortsword + any simple weapon")
 }

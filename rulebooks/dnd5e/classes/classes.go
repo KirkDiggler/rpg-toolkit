@@ -409,7 +409,7 @@ func Description(c Class) string {
 	case Monk:
 		return "A master of martial arts, harnessing inner power through discipline. " +
 			"Monk weapons are shortswords and simple melee weapons without the " +
-			"Heavy or Special property"
+			"Heavy or Two-Handed property"
 	case Paladin:
 		return "A holy warrior bound to a sacred oath, smiting foes with divine might"
 	case Ranger:

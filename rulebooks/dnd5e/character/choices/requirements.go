@@ -1419,18 +1419,20 @@ func getMonkEquipmentRequirements() []*EquipmentRequirement {
 					Label: "Shortsword",
 				},
 				{
-					// Monk's weapon set is shortswords + simple MELEE weapons only
-					// (no Heavy/Special monk weapons, and simple ranged weapons like
-					// darts/slings/light crossbow are not "monk weapons" here) - see
-					// rpg-toolkit#873.
+					// 2014 Monk starting equipment offers "a shortsword or any simple
+					// weapon" - this is the general equipment-proficiency choice, not
+					// the narrower Martial Arts "monk weapon" set (shortsword + simple
+					// MELEE weapons without Heavy/Two-Handed) described in
+					// classes.Description(Monk). Do not narrow this to melee-only -
+					// see rpg-toolkit#873/#874.
 					ID:    MonkWeaponSimple,
-					Label: "Any simple melee weapon",
+					Label: "Any simple weapon",
 					CategoryChoices: []EquipmentCategoryChoice{
 						{
 							Choose:     1,
 							Type:       shared.EquipmentTypeWeapon,
-							Categories: []shared.EquipmentCategory{weapons.CategorySimpleMelee},
-							Label:      "Choose a simple melee weapon",
+							Categories: []shared.EquipmentCategory{weapons.CategorySimpleMelee, weapons.CategorySimpleRanged},
+							Label:      "Choose a simple weapon",
 						},
 					},
 				},
