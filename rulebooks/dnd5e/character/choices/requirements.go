@@ -1419,6 +1419,12 @@ func getMonkEquipmentRequirements() []*EquipmentRequirement {
 					Label: "Shortsword",
 				},
 				{
+					// 2014 Monk starting equipment offers "a shortsword or any simple
+					// weapon" - this is the general equipment-proficiency choice, not
+					// the narrower Martial Arts "monk weapon" set (shortsword + simple
+					// MELEE weapons without Heavy/Two-Handed) described in
+					// classes.Description(Monk). Do not narrow this to melee-only -
+					// see rpg-toolkit#873/#874.
 					ID:    MonkWeaponSimple,
 					Label: "Any simple weapon",
 					CategoryChoices: []EquipmentCategoryChoice{
