@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // SpawnInstruction is encounter's OWN type (defined in
@@ -17,6 +18,18 @@ import (
 // struct, so CompiledDungeon.Spawns can be passed directly to
 // enc.SeedMonsters(compiled.Spawns) with zero conversion.
 type SpawnInstruction = encounter.SpawnInstruction
+
+// normalProductPartyStartSeats is the effective API lobby PartyCap for this
+// authored-dungeon product configuration. It is compiled into DungeonParams,
+// not treated as a universal encounter limit.
+const normalProductPartyStartSeats = 4
+
+// LoadConfig supplies host-owned composition values to dungeonspec
+// compilation. PartyStartSeatCount must be positive; it is the host's party
+// capacity for this initialized dungeon, not a universal toolkit maximum.
+type LoadConfig struct {
+	PartyStartSeatCount int
+}
 
 // CompiledDungeon is a dungeon spec compiled down to what the engine and
 // SeedMonsters actually consume: engine params ready for InitDungeon, and
@@ -47,6 +60,17 @@ type CompiledDungeon struct {
 // entry for that seeding pass rather than erroring, so an author-placed
 // monster in a party's starting sightline needs the party added first.
 func Load(raw []byte) (CompiledDungeon, error) {
+	return LoadWithConfig(raw, LoadConfig{PartyStartSeatCount: normalProductPartyStartSeats})
+}
+
+// LoadWithConfig decodes, validates, and compiles a spec using the supplied
+// host party capacity. Preview and runtime should pass the same positive
+// PartyStartSeatCount so they build the same reservation.
+func LoadWithConfig(raw []byte, config LoadConfig) (CompiledDungeon, error) {
+	if config.PartyStartSeatCount < 1 {
+		return CompiledDungeon{}, fmt.Errorf(
+			"party start seat count must be at least 1 (got %d)", config.PartyStartSeatCount)
+	}
 	spec, err := Decode(raw)
 	if err != nil {
 		return CompiledDungeon{}, err
@@ -54,7 +78,7 @@ func Load(raw []byte) (CompiledDungeon, error) {
 	if err := Validate(spec); err != nil {
 		return CompiledDungeon{}, err
 	}
-	return compile(spec)
+	return compileWithConfig(spec, config)
 }
 
 // compile assumes spec has already passed Validate -- every ref shape,
@@ -63,6 +87,12 @@ func Load(raw []byte) (CompiledDungeon, error) {
 // this package's style elsewhere, in case that assumption is ever violated
 // by a future caller.
 func compile(spec *DungeonSpec) (CompiledDungeon, error) {
+	return compileWithConfig(spec, LoadConfig{PartyStartSeatCount: normalProductPartyStartSeats})
+}
+
+// compileWithConfig compiles a validated spec using the same host party-start
+// reservation supplied at LoadWithConfig's public boundary.
+func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
 	var bossRoom *RoomSpec
 	for i := range spec.Rooms {
 		if spec.Rooms[i].Boss != nil {
@@ -116,12 +146,22 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 		connectors[i] = compileConnector(spec.Key, &spec.Connectors[i])
 	}
 
+	partyStart := encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount}
+	if spec.Start != nil {
+		anchor := core.HexFromPosition(spatial.Position{
+			X: float64(spec.Start[0]),
+			Y: float64(spec.Start[1]),
+		})
+		partyStart.Anchor = &anchor
+	}
+
 	return CompiledDungeon{
 		Params: encounter.DungeonParams{
 			Regions:    regions,
 			Connectors: connectors,
 			Height:     spec.Height,
 			Theme:      spec.Theme,
+			PartyStart: partyStart,
 		},
 		Spawns: spawns,
 	}, nil

@@ -7,11 +7,14 @@ package dungeonspec
 
 // DungeonSpec is the top-level decoded shape of a dungeon spec file.
 type DungeonSpec struct {
-	Version    int             `yaml:"version"`
-	Key        string          `yaml:"key"`
-	Name       string          `yaml:"name"`
-	Theme      string          `yaml:"theme"`
-	Height     int             `yaml:"height"`
+	Version int    `yaml:"version"`
+	Key     string `yaml:"key"`
+	Name    string `yaml:"name"`
+	Theme   string `yaml:"theme"`
+	Height  int    `yaml:"height"`
+	// Start is an optional absolute [column,row] party-start anchor. Nil
+	// represents both an omitted YAML field and an explicit YAML null.
+	Start      *[2]int         `yaml:"start,omitempty"`
 	Rooms      []RoomSpec      `yaml:"rooms"`
 	Connectors []ConnectorSpec `yaml:"connectors"`
 }

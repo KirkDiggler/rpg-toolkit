@@ -128,6 +128,10 @@ func Validate(spec *DungeonSpec) error {
 		}
 	}
 
+	if err := validateStart(spec); err != nil {
+		return err
+	}
+
 	for i := range spec.Connectors {
 		c := &spec.Connectors[i]
 		if c.Locked != nil {
@@ -347,6 +351,71 @@ func checkCellBounds(room *RoomSpec, height int, at [2]int) error {
 	}
 	if at[1] < 0 || at[1] >= height {
 		return fmt.Errorf("out of bounds: row %d not in [0,%d)", at[1], height)
+	}
+	return nil
+}
+
+// validateStart checks the optional absolute party-start anchor against the
+// declared linear semantic-room layout and known authored blocking content.
+// It intentionally does not inspect generated walls or rolled obstacles: both
+// depend on a later seed and are protected by encounter's party reservation.
+func validateStart(spec *DungeonSpec) error {
+	if spec.Start == nil {
+		return nil
+	}
+	at := *spec.Start
+	if at[1] < 0 || at[1] >= spec.Height {
+		return fmt.Errorf("start %v out of bounds: row %d not in [0,%d)", at, at[1], spec.Height)
+	}
+
+	starts := make([]int, len(spec.Rooms))
+	totalWidth := 0
+	for i, room := range spec.Rooms {
+		starts[i] = totalWidth
+		totalWidth += room.Width
+		if i < len(spec.Rooms)-1 {
+			totalWidth++ // connector column
+		}
+	}
+	if at[0] < 0 || at[0] >= totalWidth {
+		return fmt.Errorf("start %v out of bounds: column %d not in [0,%d)", at, at[0], totalWidth)
+	}
+
+	roomIndex := -1
+	for i, room := range spec.Rooms {
+		if at[0] < starts[i] || at[0] >= starts[i]+room.Width {
+			continue
+		}
+		if roomIndex != -1 {
+			return fmt.Errorf("start %v belongs to more than one semantic room", at)
+		}
+		roomIndex = i
+	}
+	if roomIndex == -1 {
+		return fmt.Errorf("start %v is a connector gap/door cell, not a semantic room floor cell", at)
+	}
+
+	room := &spec.Rooms[roomIndex]
+	local := [2]int{at[0] - starts[roomIndex], at[1]}
+	if room.Boss != nil && room.Boss.At != nil && *room.Boss.At == local {
+		return fmt.Errorf("start %v conflicts with pinned boss in room %q", at, room.ID)
+	}
+	for _, entry := range room.Place {
+		if entry.At != local {
+			continue
+		}
+		refType, err := refParts(entry.Ref)
+		if err != nil {
+			return fmt.Errorf("start %v: place %q: %w", at, entry.Ref, err)
+		}
+		switch refType {
+		case refTypeMonsters:
+			return fmt.Errorf("start %v conflicts with placed monster %q in room %q", at, entry.Ref, room.ID)
+		case refTypeProps:
+			if boolOrTrue(entry.BlocksMovement) {
+				return fmt.Errorf("start %v conflicts with movement-blocking prop %q in room %q", at, entry.Ref, room.ID)
+			}
+		}
 	}
 	return nil
 }

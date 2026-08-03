@@ -48,6 +48,11 @@ type DungeonParams struct {
 	// InitTwoChamberRoom (rpg-toolkit#787).
 	RandomSeed int64
 
+	// PartyStart configures the resolved party-start anchor and ordered
+	// reservation. It is separate from per-region ReservedCells because a
+	// party start may validly occupy a room's door row.
+	PartyStart PartyStartParams
+
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
 	// that field's doc. Never interpreted here.
 	Theme string
@@ -273,13 +278,14 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 
 	previousSpace := e.data.Space
 	e.data.Space = &SpaceData{
-		Walls:     layout.walls,
-		Width:     layout.width,
-		Height:    params.Height,
-		Entrance:  core.HexFromCube(layout.entrance),
-		Regions:   layout.regions,
-		Theme:     params.Theme,
-		Obstacles: layout.obstacles,
+		Walls:               layout.walls,
+		Width:               layout.width,
+		Height:              params.Height,
+		Entrance:            core.HexFromCube(layout.entrance),
+		PartyStartPositions: layout.partyStartPositions,
+		Regions:             layout.regions,
+		Theme:               params.Theme,
+		Obstacles:           layout.obstacles,
 	}
 
 	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors))
@@ -323,6 +329,9 @@ func validateDungeonParams(params DungeonParams) error {
 	}
 	if params.Height < 4 {
 		return fmt.Errorf("dungeon height must be at least 4 (got %d)", params.Height)
+	}
+	if params.PartyStart.SeatCount < 0 {
+		return fmt.Errorf("party start seat count must not be negative (got %d)", params.PartyStart.SeatCount)
 	}
 	for i, r := range params.Regions {
 		if r.Width < 4 {
@@ -416,6 +425,9 @@ type dungeonLayout struct {
 	// region, in absolute coordinates — rpg-toolkit#819. See
 	// placeRegionObstacles.
 	obstacles []ObstacleData
+	// partyStartPositions is the stored deterministic reservation exposed by
+	// ResolvePartySpawnPositions. Index zero is always entrance.
+	partyStartPositions []core.Hex
 }
 
 // generateDungeonLayout builds each region's independently wall-generated
@@ -476,6 +488,14 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	}
 	totalWidth := x - 1 // no trailing boundary column after the last region
 
+	// Resolve every party seat before generating a single wall or obstacle.
+	// The reservation is then threaded through the wall safety paths, the
+	// discrete wall boundary, and the obstacle candidate pools below.
+	partyStart, err := resolvePartyStartReservation(params, starts, totalWidth, doorRow)
+	if err != nil {
+		return nil, err
+	}
+
 	var segs []environments.WallSegmentData
 	regions := make([]RegionData, n)
 	doors := make([]spatial.CubeCoordinate, n-1)
@@ -493,7 +513,7 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 
 	for i, r := range params.Regions {
 		local := spatial.Position{X: 0, Y: float64(doorRow)}
-		var requiredPaths []environments.Path
+		requiredPaths := make([]environments.Path, 0, 1+len(partyStart.seats))
 		switch {
 		case n == 1:
 			// unreachable: validateDungeonParams enforces n>=2
@@ -540,6 +560,8 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			}
 		}
 
+		requiredPaths = append(requiredPaths, partyStart.requiredPathsForRegion(i, starts[i])...)
+
 		pattern := r.Pattern
 		if pattern == "" {
 			pattern = environments.PatternRandom
@@ -549,6 +571,7 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			return nil, fmt.Errorf("generate region %d (%q) walls: %w", i, r.ID, err)
 		}
 		regionWalls := regionWallSegments(walls, starts[i], 0)
+		regionWalls = partyStart.stripPartyStartWalls(i, regionWalls)
 		if r.Archetype == ArchetypeBoss {
 			// Construction-time discrete safeguard (rpg-toolkit#819),
 			// applied BEFORE this call's result is committed to
@@ -579,16 +602,17 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			Hexes:     core.NewHexSet(hexesFromCubes(regionCubes(r.Width, params.Height, starts[i]))...),
 		}
 		regionObstacles, err := placeRegionObstacles(placeRegionObstaclesParams{
-			regionID:  r.ID,
-			specs:     r.Obstacles,
-			placed:    r.PlacedObstacles,
-			reserved:  r.ReservedCells,
-			width:     r.Width,
-			height:    params.Height,
-			offsetX:   starts[i],
-			doorRow:   doorRow,
-			wallCubes: wallCubeSet(regionWalls),
-			seed:      obstacleSeeds[i],
+			regionID:      r.ID,
+			specs:         r.Obstacles,
+			placed:        r.PlacedObstacles,
+			reserved:      r.ReservedCells,
+			partyReserved: partyStart.seatsByRegion[i],
+			width:         r.Width,
+			height:        params.Height,
+			offsetX:       starts[i],
+			doorRow:       doorRow,
+			wallCubes:     wallCubeSet(regionWalls),
+			seed:          obstacleSeeds[i],
 		})
 		if err != nil {
 			return nil, fmt.Errorf("place region %d (%q) obstacles: %w", i, r.ID, err)
@@ -648,16 +672,14 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	// left as degenerate Start==End entries.
 	segs = append(segs, connectorBoundaryEdgeWalls(blocked, connectorFlankingCubes, totalWidth, params.Height)...)
 
-	entrance := spatial.OffsetCoordinateToCubeWithOrientation(
-		spatial.Position{X: 0, Y: float64(doorRow)}, spatial.HexOrientationPointyTop)
-
 	return &dungeonLayout{
-		walls:     segs,
-		width:     totalWidth,
-		regions:   regions,
-		entrance:  entrance,
-		doors:     doors,
-		obstacles: obstacles,
+		walls:               segs,
+		width:               totalWidth,
+		regions:             regions,
+		entrance:            partyStart.anchor,
+		doors:               doors,
+		obstacles:           obstacles,
+		partyStartPositions: partyStart.positions(),
 	}, nil
 }
 
@@ -977,16 +999,17 @@ func stripReservedAxisWalls(
 // region's geometry plus its caller-supplied specs — so the function
 // signature doesn't grow an eighth positional argument as #819 evolves.
 type placeRegionObstaclesParams struct {
-	regionID  string
-	specs     []ObstacleSpec
-	placed    []PlacedObstacleSpec
-	reserved  []LocalHex
-	width     int
-	height    int
-	offsetX   int
-	doorRow   int
-	wallCubes map[spatial.CubeCoordinate]struct{}
-	seed      int64
+	regionID      string
+	specs         []ObstacleSpec
+	placed        []PlacedObstacleSpec
+	reserved      []LocalHex
+	partyReserved map[spatial.CubeCoordinate]struct{}
+	width         int
+	height        int
+	offsetX       int
+	doorRow       int
+	wallCubes     map[spatial.CubeCoordinate]struct{}
+	seed          int64
 }
 
 // placeRegionObstacles computes the ObstacleData instances for every
@@ -1053,6 +1076,11 @@ type placeRegionObstaclesParams struct {
 // candidate pool, but never emits any ObstacleData of its own — it exists
 // purely to keep the rolled draw off a cell something else (a compiled
 // place: monster, or a pinned boss.at) already occupies.
+//
+// p.partyReserved is deliberately separate from p.reserved: it is the
+// dungeon-wide party-start envelope selected before wall generation, and its
+// anchor may legally be on doorRow where ordinary ReservedCells are invalid.
+// Every rolled obstacle skips those cells in both draw-order paths.
 func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) {
 	placedData, placedCubes, err := placeVerbatimObstacles(p)
 	if err != nil {
@@ -1076,6 +1104,11 @@ func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) 
 	for cube := range reservedCubes {
 		if _, already := excluded[cube]; !already {
 			excluded[cube] = "" // reserved, not placed -- no obstacle name to report
+		}
+	}
+	for cube := range p.partyReserved {
+		if _, already := excluded[cube]; !already {
+			excluded[cube] = "" // party-start reservation, no obstacle data
 		}
 	}
 
