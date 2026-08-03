@@ -120,9 +120,17 @@ connectors:
 	require.NoError(t, err)
 	tomb := regionByID(t, compiled.Params.Regions, "tomb")
 	require.Len(t, tomb.PlacedObstacles, 6)
+	wantFacings := []uint32{
+		encounter.FacingEast,
+		encounter.FacingNortheast,
+		encounter.FacingNorthwest,
+		encounter.FacingWest,
+		encounter.FacingSouthwest,
+		encounter.FacingSoutheast,
+	}
 	for index, obstacle := range tomb.PlacedObstacles {
 		require.NotNil(t, obstacle.Facing, "placement %d must retain facing presence", index)
-		assert.Equal(t, uint32(index), *obstacle.Facing)
+		assert.Equal(t, wantFacings[index], *obstacle.Facing)
 	}
 }
 
