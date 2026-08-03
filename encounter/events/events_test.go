@@ -254,6 +254,27 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 		"event JSON must retain explicit E rather than collapsing it to absence")
 }
 
+// TestKnownHexPlacementFacingJSONDistinguishesLegacyZero verifies event replay
+// follows the same presence rule as persisted perception memory: legacy
+// mandatory Facing:0 is absent, while a current lowercase facing:0 is E.
+func (s *EventsSuite) TestKnownHexPlacementFacingJSONDistinguishesLegacyZero() {
+	facingEast := uint32(0)
+	current := events.KnownHexPlacement{EntityID: "authored-prop", Facing: &facingEast}
+	payload, err := json.Marshal(current)
+	s.Require().NoError(err)
+	s.Contains(string(payload), `"facing":0`)
+	s.NotContains(string(payload), `"Facing":0`)
+
+	var replay events.KnownHexPlacement
+	s.Require().NoError(json.Unmarshal(payload, &replay))
+	s.Require().NotNil(replay.Facing)
+	s.Equal(uint32(0), *replay.Facing)
+
+	var legacy events.KnownHexPlacement
+	s.Require().NoError(json.Unmarshal([]byte(`{"EntityID":"legacy-player","Facing":0}`), &legacy))
+	s.Nil(legacy.Facing)
+}
+
 // A nil moverKnownHexes normalizes to an empty (never nil) slice — the NPC
 // mover path (encounter/npc.go) always passes nil, and a consumer ranging
 // over MoverKnownHexes unconditionally must never nil-panic or need its own

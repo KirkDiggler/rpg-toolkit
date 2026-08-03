@@ -98,6 +98,46 @@ type Placement struct {
 	Facing *uint32
 }
 
+type placementWire struct {
+	EntityID core.EntityID `json:"EntityID"`
+	Facing   *uint32       `json:"facing,omitempty"`
+}
+
+// MarshalJSON writes optional facing under a lowercase key so presence is
+// representable without colliding with legacy Placement JSON. Before facing
+// became optional, every placement serialized an uppercase "Facing":0 even
+// though no authored override existed.
+func (p Placement) MarshalJSON() ([]byte, error) {
+	return json.Marshal(placementWire(p))
+}
+
+// UnmarshalJSON restores a current optional facing field and deliberately
+// ignores legacy uppercase "Facing":0. That historical zero was emitted for
+// every placement by the old non-optional field, so treating it as explicit E
+// would fabricate authored orientation for persisted viewer memory.
+func (p *Placement) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	var entityID core.EntityID
+	if rawEntityID, ok := fields["EntityID"]; ok {
+		if err := json.Unmarshal(rawEntityID, &entityID); err != nil {
+			return err
+		}
+	}
+	var facing *uint32
+	if rawFacing, ok := fields["facing"]; ok {
+		if err := json.Unmarshal(rawFacing, &facing); err != nil {
+			return err
+		}
+	}
+	p.EntityID = entityID
+	p.Facing = facing
+	return nil
+}
+
 // Edge is a wall or door on one hex's boundary, AS OBSERVED by this viewer.
 //
 // Edges hang off the hex rather than living in one global wall list because
