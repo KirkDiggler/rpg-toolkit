@@ -91,7 +91,7 @@ func ApplySubclassModifications(reqs *Requirements, mods *SubclassModifications)
 	for reqID, options := range mods.AdditionalEquipmentOptions {
 		for i, eq := range reqs.Equipment {
 			if eq.ID == reqID {
-				reqs.Equipment[i].Options = append(reqs.Equipment[i].Options, options...)
+				reqs.Equipment[i].Options = append(reqs.Equipment[i].Options, cloneEquipmentOptions(options)...)
 				break
 			}
 		}
@@ -101,6 +101,23 @@ func ApplySubclassModifications(reqs *Requirements, mods *SubclassModifications)
 	if mods.ModifyFunction != nil {
 		mods.ModifyFunction(reqs)
 	}
+}
+
+// cloneEquipmentOptions prevents a requirement-enrichment pass from mutating
+// the shared subclass definition used to construct later character choices.
+func cloneEquipmentOptions(options []EquipmentOption) []EquipmentOption {
+	cloned := make([]EquipmentOption, len(options))
+	for i, option := range options {
+		cloned[i] = option
+		cloned[i].Items = append([]EquipmentItem(nil), option.Items...)
+		cloned[i].CategoryChoices = make([]EquipmentCategoryChoice, len(option.CategoryChoices))
+		for j, choice := range option.CategoryChoices {
+			cloned[i].CategoryChoices[j] = choice
+			cloned[i].CategoryChoices[j].Categories = append([]shared.EquipmentCategory(nil), choice.Categories...)
+			cloned[i].CategoryChoices[j].Options = append([]EquipmentItem(nil), choice.Options...)
+		}
+	}
+	return cloned
 }
 
 // subclassModifications defines all subclass modifications
