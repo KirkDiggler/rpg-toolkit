@@ -256,49 +256,37 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	return out
 }
 
-// edgesByHex indexes every wall and door segment in the encounter's
-// persisted room by the hex it sits on, so refreshObservations can attach
-// a hex's own edges without re-scanning every wall/door per hex. Mirrors
-// rpg-api's OWN edgesByHex (knowledge_adapter.go) — that copy becomes dead
-// code once rpg-api consumes this method instead of re-deriving it from
-// world truth it has no business reading directly.
+// edgesByHex indexes the canonical generated edges by their From endpoint
+// for viewer observations. generatedEdges is also the public authoring seam,
+// so knowledge and authoring cannot drift into separate wall canonicalizers.
 //
 // Each hex's edge list is sorted by (To.Q, To.R, To.S) then DoorID for
 // deterministic output — the same idempotency reasoning as placementsAt.
 func (e *Encounter) edgesByHex() map[core.Hex][]perception.Edge {
 	out := make(map[core.Hex][]perception.Edge)
-	if e.data.Space != nil {
-		for _, w := range e.data.Space.Walls {
-			if !w.BlocksMovement && !w.BlocksLoS {
-				// Not a barrier worth remembering — matches the wire
-				// boundary's own "not a wall worth putting on the wire" gate.
-				continue
-			}
-			from := core.HexFromCube(w.Start)
-			out[from] = append(out[from], perception.Edge{
-				From:           from,
-				To:             core.HexFromCube(w.End),
-				BlocksMovement: w.BlocksMovement,
-				BlocksLoS:      w.BlocksLoS,
-			})
-		}
+	generated, err := e.canonicalGeneratedEdgeRecords()
+	if err != nil {
+		// Invalid, conflicting persisted geometry cannot be represented
+		// honestly as per-viewer knowledge. DescribeGeneratedEdges exposes
+		// the diagnostic to hosts; this internal observation helper cannot
+		// widen its callers' mutation signatures.
+		return out
 	}
-	for id, door := range e.data.Doors {
-		if door == nil {
-			continue
+	for _, record := range generated {
+		edge := record.edge
+		observed := perception.Edge{
+			From:           edge.From,
+			To:             edge.To,
+			BlocksMovement: record.blocksMovement,
+			BlocksLoS:      record.blocksLoS,
 		}
-		out[door.Position] = append(out[door.Position], perception.Edge{
-			From: door.Position,
-			To:   e.doorPassageNeighbor(door),
-			// A closed door blocks both; an open one blocks neither — the
-			// observer reads DoorOpen/DoorLocked, so these flags describe
-			// the barrier rather than re-deriving the door's kind.
-			BlocksMovement: !door.Open,
-			BlocksLoS:      !door.Open,
-			DoorID:         string(id),
-			DoorOpen:       door.Open,
-			DoorLocked:     door.Locked,
-		})
+		if edge.Kind == GeneratedEdgeKindDoor {
+			door := e.data.Doors[edge.DoorID]
+			observed.DoorID = string(edge.DoorID)
+			observed.DoorOpen = door.Open
+			observed.DoorLocked = door.Locked
+		}
+		out[edge.From] = append(out[edge.From], observed)
 	}
 	for h, edges := range out {
 		sort.Slice(edges, func(i, j int) bool {
