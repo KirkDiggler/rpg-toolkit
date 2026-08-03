@@ -17,6 +17,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
 // Test-package fixture identifiers (extracted to satisfy goconst — mirrors
@@ -97,6 +98,31 @@ func (s *KnowledgeInternalSuite) TestKnownHexes_WitnessedRemoval_OnlyRefreshesWi
 
 	known := e.KnownHexes("bystander")
 	s.NotContains(known, goblinHex, "a viewer with no LoS to the dying monster must gain no knowledge of its hex")
+}
+
+// TestRefreshObservations_CanonicalizationFailurePreservesMemory proves a
+// malformed physical-edge conflict aborts a refresh before Memory.Observe can
+// replace any established geometry with empty or partial edges.
+func (s *KnowledgeInternalSuite) TestRefreshObservations_CanonicalizationFailurePreservesMemory() {
+	e := New(context.Background(), "enc-1", s.broker)
+	origin := core.Hex{}
+	s.Require().NoError(e.AddPlayer(PlayerInput{
+		PlayerID: knowledgeAlicePlayerID, EntityID: knowledgeAliceEntityID,
+		Position: origin, SightRange: 1,
+	}))
+	before := e.KnownHexes(knowledgeAlicePlayerID)
+
+	neighbor := core.Hex{Q: 1, R: -1, S: 0}
+	e.data.Space = &SpaceData{Walls: []environments.WallSegmentData{
+		{Start: origin.ToCube(), End: neighbor.ToCube(), BlocksMovement: true, BlocksLoS: true},
+		{Start: neighbor.ToCube(), End: origin.ToCube(), BlocksMovement: true, BlocksLoS: false},
+	}}
+
+	err := e.refreshObservations(e.data.Players[knowledgeAlicePlayerID].View, core.NewHexSet(origin, neighbor))
+	s.Require().Error(err)
+	s.Contains(err.Error(), "conflicting generated edges")
+	s.Equal(before, e.KnownHexes(knowledgeAlicePlayerID),
+		"failed canonicalization must not replace remembered observations")
 }
 
 func contentEntityIDs(obs perception.HexObservation) []core.EntityID {

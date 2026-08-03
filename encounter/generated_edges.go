@@ -21,10 +21,10 @@ const (
 )
 
 // GeneratedEdge is one canonical physical edge in an initialized encounter's
-// current generated geometry. From and To retain the runtime canonical
-// orientation: solid edges use SpaceData.Walls' Start/End and doors use their
-// threshold cell plus the designated passage neighbor. DoorID is populated
-// only when Kind is GeneratedEdgeKindDoor.
+// current generated geometry. From and To are always distinct and retain the
+// runtime canonical orientation: solid edges use SpaceData.Walls' Start/End
+// and doors use their threshold cell plus the designated passage neighbor.
+// DoorID is populated only when Kind is GeneratedEdgeKindDoor.
 type GeneratedEdge struct {
 	From   core.Hex
 	To     core.Hex
@@ -56,9 +56,14 @@ func (e *Encounter) DescribeGeneratedEdges(_ DescribeGeneratedEdgesInput) (Descr
 	if err != nil {
 		return DescribeGeneratedEdgesOutput{}, err
 	}
-	output := DescribeGeneratedEdgesOutput{Edges: make([]GeneratedEdge, len(records))}
-	for i, record := range records {
-		output.Edges[i] = record.edge
+	output := DescribeGeneratedEdgesOutput{Edges: make([]GeneratedEdge, 0, len(records))}
+	for _, record := range records {
+		// Degenerate source records are cell blockers for viewer knowledge,
+		// not physical edges for authoring/proto projection.
+		if record.edge.From == record.edge.To {
+			continue
+		}
+		output.Edges = append(output.Edges, record.edge)
 	}
 	return output, nil
 }
@@ -74,15 +79,24 @@ type generatedEdgeKey struct {
 	second core.Hex
 }
 
-// canonicalGeneratedEdgeRecords is the single canonicalizer for both the
-// public authoring seam and per-viewer knowledge. Its key normalizes an edge
-// only for duplicate detection; GeneratedEdge retains the source's runtime
-// orientation, while the private record retains blocking semantics knowledge
-// must preserve.
+// canonicalGeneratedEdgeRecords is the single canonical barrier source for
+// both the public authoring seam and per-viewer knowledge. It retains every
+// degenerate cell-blocker record for viewer memory. Only distinct-endpoint
+// physical edges receive undirected deduplication and conflict checks.
+// GeneratedEdge retains the source's runtime orientation, while the private
+// record retains blocking semantics knowledge must preserve.
 func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, error) {
 	records := make([]generatedEdgeRecord, 0)
 	seen := make(map[generatedEdgeKey]int)
 	add := func(record generatedEdgeRecord) error {
+		// Start==End is a valid cell-blocker/self-loop representation. It is
+		// not a physical edge, so a co-located wall and door must both reach
+		// viewer memory rather than being deduplicated or treated as a conflict.
+		if record.edge.From == record.edge.To {
+			records = append(records, record)
+			return nil
+		}
+
 		key := newGeneratedEdgeKey(record.edge.From, record.edge.To)
 		if index, exists := seen[key]; exists {
 			existing := records[index]
@@ -149,8 +163,8 @@ func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, erro
 	return records, nil
 }
 
-// newGeneratedEdgeKey gives an undirected physical edge a comparable key
-// without changing the endpoint orientation exposed to callers.
+// newGeneratedEdgeKey gives a distinct-endpoint undirected physical edge a
+// comparable key without changing the endpoint orientation exposed to callers.
 func newGeneratedEdgeKey(from, to core.Hex) generatedEdgeKey {
 	if generatedHexLess(to, from) {
 		return generatedEdgeKey{first: to, second: from}

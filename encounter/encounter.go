@@ -349,7 +349,10 @@ func (e *Encounter) AddPlayer(input PlayerInput) error {
 	// seat's own entity on its own starting hex (and any other
 	// already-seated entity that happens to share it), the same way any
 	// other viewer's own-position observation works.
-	e.refreshObservations(view, perception.VisibleHexesAt(input.Position, input.SightRange, e.room))
+	visible := perception.VisibleHexesAt(input.Position, input.SightRange, e.room)
+	if err := e.refreshObservations(view, visible); err != nil {
+		return fmt.Errorf("refresh new player %q observations: %w", input.PlayerID, err)
+	}
 
 	// Seed default OA readiness for combatants. Free-cost reactions default
 	// on so players do not need to opt in every fight.
@@ -523,7 +526,9 @@ func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
 		// finds the monster, since it's stationary and just-stored at
 		// mon.Position.
 		for viewerID := range viewers {
-			e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(mon.Position))
+			if err := e.refreshObservations(e.data.Players[viewerID].View, core.NewHexSet(mon.Position)); err != nil {
+				return fmt.Errorf("refresh monster appearance for player %q: %w", viewerID, err)
+			}
 		}
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), mon.ID, mon.Position, viewers,
@@ -1104,7 +1109,9 @@ func (e *Encounter) applyAndPublishMove(
 	//    is what makes re-sight (a hex the mover once knew, lost, and is
 	//    now back in range of) atomically correct (rpg-toolkit#851).
 	p.View.Position = end
-	e.refreshObservations(p.View, newVisible)
+	if err := e.refreshObservations(p.View, newVisible); err != nil {
+		return "", fmt.Errorf("refresh mover observations: %w", err)
+	}
 
 	// 3. Per-player projection.
 	movePerPlayer := make(map[core.PlayerID]events.MovePlayerSlice)
@@ -1140,7 +1147,9 @@ func (e *Encounter) applyAndPublishMove(
 		}
 		if revealSlice != nil {
 			if revealSlice.Hexes != nil {
-				e.refreshObservations(other.View, revealSlice.Hexes)
+				if err := e.refreshObservations(other.View, revealSlice.Hexes); err != nil {
+					return "", fmt.Errorf("refresh reveal for player %q: %w", otherID, err)
+				}
 			}
 			revealPerPlayer[otherID] = *revealSlice
 		}
@@ -1172,7 +1181,9 @@ func (e *Encounter) applyAndPublishMove(
 		// ProjectVisibilityTransition's doc for that disappearance case,
 		// handled separately below).
 		if len(seenSegments) > 0 {
-			e.refreshObservations(other.View, core.NewHexSet(seenSegments...))
+			if err := e.refreshObservations(other.View, core.NewHexSet(seenSegments...)); err != nil {
+				return "", fmt.Errorf("refresh move observation for player %q: %w", otherID, err)
+			}
 		}
 		appearedAt, disappearedAt := perception.ProjectVisibilityTransition(
 			moverStart, traveledPath, seenSegments, other.View, visible,
@@ -1356,7 +1367,9 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 			// new ones. Bounded by this viewer's own sight range, same cost
 			// class as their own move's reveal.
 			visible := perception.VisibleHexesAt(viewer.View.Position, viewer.View.SightRange, e.room)
-			e.refreshObservations(viewer.View, visible)
+			if err := e.refreshObservations(viewer.View, visible); err != nil {
+				return fmt.Errorf("refresh door observation for player %q: %w", viewerID, err)
+			}
 		}
 		if revealSlice != nil {
 			revealPerPlayer[viewerID] = *revealSlice

@@ -150,11 +150,14 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 // viewer refreshes), absent from every other hex, and absent everywhere
 // for a pass-through mover whose final hex isn't a hex this viewer saw at
 // all. See applyAndPublishMove's call site for the full reasoning.
-func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet) {
+func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet) error {
 	if view == nil || len(hexes) == 0 {
-		return
+		return nil
 	}
-	edges := e.edgesByHex()
+	edges, err := e.edgesByHex()
+	if err != nil {
+		return err
+	}
 	for h := range hexes {
 		// rpg-toolkit#859: hexes is frequently a raw perception.VisibleHexesAt
 		// disc (sight-range radius around a position), which has no notion of
@@ -178,6 +181,7 @@ func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet
 		}
 		view.Observe(obs)
 	}
+	return nil
 }
 
 // isSpaceHex reports whether h is actually part of this encounter's space —
@@ -256,21 +260,17 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	return out
 }
 
-// edgesByHex indexes the canonical generated edges by their From endpoint
-// for viewer observations. generatedEdges is also the public authoring seam,
+// edgesByHex indexes the canonical generated barriers by their From endpoint
+// for viewer observations. DescribeGeneratedEdges projects the same source,
 // so knowledge and authoring cannot drift into separate wall canonicalizers.
 //
 // Each hex's edge list is sorted by (To.Q, To.R, To.S) then DoorID for
 // deterministic output — the same idempotency reasoning as placementsAt.
-func (e *Encounter) edgesByHex() map[core.Hex][]perception.Edge {
+func (e *Encounter) edgesByHex() (map[core.Hex][]perception.Edge, error) {
 	out := make(map[core.Hex][]perception.Edge)
 	generated, err := e.canonicalGeneratedEdgeRecords()
 	if err != nil {
-		// Invalid, conflicting persisted geometry cannot be represented
-		// honestly as per-viewer knowledge. DescribeGeneratedEdges exposes
-		// the diagnostic to hosts; this internal observation helper cannot
-		// widen its callers' mutation signatures.
-		return out
+		return nil, err
 	}
 	for _, record := range generated {
 		edge := record.edge
@@ -304,7 +304,7 @@ func (e *Encounter) edgesByHex() map[core.Hex][]perception.Edge {
 		})
 		out[h] = edges
 	}
-	return out
+	return out, nil
 }
 
 // doorPassageNeighbor returns door's designated passage-edge neighbor: the
