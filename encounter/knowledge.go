@@ -235,8 +235,9 @@ func (e *Encounter) isSpaceHex(h core.Hex) bool {
 // unchanged data could disagree on order, breaking Memory.Observe's
 // idempotency guarantee (see its doc).
 //
-// Facing is always the Placement zero value: nothing in the toolkit tracks
-// entity facing today (perception.Placement's own doc says so plainly).
+// Player and monster placements carry no facing override. Static obstacles
+// retain their persisted optional facing, so visible and remembered placement
+// observations keep explicit E = 0 distinct from absence.
 func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	var out []perception.Placement
 	for _, p := range e.data.Players {
@@ -252,7 +253,7 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	if e.data.Space != nil {
 		for _, o := range e.data.Space.Obstacles {
 			if o.Position == h {
-				out = append(out, perception.Placement{EntityID: o.ID})
+				out = append(out, perception.Placement{EntityID: o.ID, Facing: o.Facing})
 			}
 		}
 	}

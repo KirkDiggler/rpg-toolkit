@@ -5,6 +5,8 @@ package dungeonspec_test
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
@@ -14,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const facingCoffinRef = "dnd5e:props:coffin"
 
 func TestLoad_GeneratesDeterministicDoorIDs(t *testing.T) {
 	// placedTombYAML: key "reference-tomb", 2 rooms (entrance, tomb), 1 connector —
@@ -84,6 +88,114 @@ func regionByID(t *testing.T, regions []encounter.DungeonRegionParams, id string
 	}
 	t.Fatalf("no region %q in compiled regions", id)
 	return nil
+}
+
+// TestLoad_FloorPropFacingCompilesEveryCanonicalDirection covers Slice #178's
+// canonical YAML mapping. The six labels must compile in their fixed
+// E,NE,NW,W,SW,SE -> 0..5 order; no current compiler path may strip them.
+func TestLoad_FloorPropFacingCompilesEveryCanonicalDirection(t *testing.T) {
+	const facingYAML = `
+version: 1
+key: facing-check
+name: Facing Check
+height: 8
+rooms:
+  - {id: entrance, archetype: entrance, width: 6}
+  - id: tomb
+    archetype: boss
+    width: 8
+    boss: {ref: "dnd5e:monsters:skeleton-captain", at: [4, 5]}
+    place:
+      - {ref: "` + facingCoffinRef + `", at: [0, 0], facing: E}
+      - {ref: "dnd5e:props:altar", at: [1, 0], facing: NE}
+      - {ref: "dnd5e:props:statue-reaper", at: [2, 0], facing: NW}
+      - {ref: "dnd5e:props:brazier", at: [3, 0], facing: W}
+      - {ref: "dnd5e:props:candles", at: [4, 0], facing: SW}
+      - {ref: "dnd5e:props:wall-banner", at: [5, 0], facing: SE}
+connectors:
+  - {from: entrance, to: tomb}
+`
+
+	compiled, err := dungeonspec.Load([]byte(facingYAML))
+	require.NoError(t, err)
+	tomb := regionByID(t, compiled.Params.Regions, "tomb")
+	require.Len(t, tomb.PlacedObstacles, 6)
+	for index, obstacle := range tomb.PlacedObstacles {
+		require.NotNil(t, obstacle.Facing, "placement %d must retain facing presence", index)
+		assert.Equal(t, uint32(index), *obstacle.Facing)
+	}
+}
+
+// TestLoad_FloorPropFacingPreservesEastAndAbsence runs the actual compiler and
+// dungeon initializer so E=0 remains a present override while omitted/null
+// stay absent through the persisted obstacle state. Rolled obstacles must
+// never gain a facing from this metadata path.
+func TestLoad_FloorPropFacingPreservesEastAndAbsence(t *testing.T) {
+	withEast := strings.Replace(placedTombYAML,
+		"at: [6, 3], blocks_los: false }",
+		"at: [6, 3], blocks_los: false, facing: E }", 1)
+	withNull := strings.Replace(placedTombYAML,
+		"at: [6, 3], blocks_los: false }",
+		"at: [6, 3], blocks_los: false, facing: null }", 1)
+
+	omitted, err := dungeonspec.Load([]byte(placedTombYAML))
+	require.NoError(t, err)
+	nullFacing, err := dungeonspec.Load([]byte(withNull))
+	require.NoError(t, err)
+	east, err := dungeonspec.Load([]byte(withEast))
+	require.NoError(t, err)
+
+	omittedProp := regionByID(t, omitted.Params.Regions, "tomb").PlacedObstacles[0]
+	nullProp := regionByID(t, nullFacing.Params.Regions, "tomb").PlacedObstacles[0]
+	eastProp := regionByID(t, east.Params.Regions, "tomb").PlacedObstacles[0]
+	assert.Nil(t, omittedProp.Facing)
+	assert.Nil(t, nullProp.Facing)
+	require.NotNil(t, eastProp.Facing)
+	assert.Equal(t, encounter.FacingEast, *eastProp.Facing)
+
+	east.Params.Regions[0].Obstacles = []encounter.ObstacleSpec{{
+		Ref: "dnd5e:props:pillar", Count: 1, BlocksMovement: true, BlocksLoS: true,
+	}}
+	east.Params.RandomSeed = 19
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() { _ = broker.Close(); _ = transport.Close() })
+	enc := encounter.New(context.Background(), "facing-persistence", broker)
+	require.NoError(t, enc.InitDungeon(east.Params))
+
+	var authored, rolled *encounter.ObstacleData
+	for index := range enc.ToData().Space.Obstacles {
+		obstacle := &enc.ToData().Space.Obstacles[index]
+		switch obstacle.Ref {
+		case facingCoffinRef:
+			authored = obstacle
+		case "dnd5e:props:pillar":
+			rolled = obstacle
+		}
+	}
+	require.NotNil(t, authored)
+	require.NotNil(t, authored.Facing)
+	assert.Equal(t, encounter.FacingEast, *authored.Facing)
+	require.NotNil(t, rolled)
+	assert.Nil(t, rolled.Facing)
+
+	payload, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	var persisted encounter.Data
+	require.NoError(t, json.Unmarshal(payload, &persisted))
+	reloaded, err := encounter.LoadFromData(context.Background(), &persisted, broker)
+	require.NoError(t, err)
+	var reloadedAuthored *encounter.ObstacleData
+	for index := range reloaded.ToData().Space.Obstacles {
+		obstacle := &reloaded.ToData().Space.Obstacles[index]
+		if obstacle.Ref == facingCoffinRef {
+			reloadedAuthored = obstacle
+			break
+		}
+	}
+	require.NotNil(t, reloadedAuthored)
+	require.NotNil(t, reloadedAuthored.Facing)
+	assert.Equal(t, encounter.FacingEast, *reloadedAuthored.Facing)
 }
 
 func TestLoad_PlaceRoutesByRefType(t *testing.T) {

@@ -46,6 +46,7 @@ type KnownHexEdge struct {
 // KnownHexPlacement mirrors encounter/perception.Placement.
 type KnownHexPlacement struct {
 	EntityID core.EntityID
-	// Facing is a hex-direction index 0-5.
-	Facing int
+	// Facing is optional canonical hex-facing metadata. Pointer presence
+	// distinguishes absent from explicit E = 0 through event serialization.
+	Facing *uint32
 }

@@ -88,14 +88,14 @@ const (
 // viewer sees it face south. On the entity, one viewer's sighting would
 // rewrite every other viewer's memory.
 //
-// Facing is always the zero value today for the same reason TerrainKind
-// is always Unspecified: nothing in the toolkit tracks entity facing yet.
-// The field stays on the shape rather than being added later as a
-// migration.
+// Facing is absent for players, monsters, and rolled obstacles. A
+// room-scoped authored floor prop may carry a canonical E,NE,NW,W,SW,SE =
+// 0..5 override. Pointer presence distinguishes absent from explicit E = 0
+// and persists with this observation for remembered placement rendering.
 type Placement struct {
 	EntityID core.EntityID
-	// Facing is a hex-direction index 0-5.
-	Facing int
+	// Facing is an optional hex-direction index in canonical 0-5 order.
+	Facing *uint32
 }
 
 // Edge is a wall or door on one hex's boundary, AS OBSERVED by this viewer.

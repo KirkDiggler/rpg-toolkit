@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 )
@@ -24,6 +25,9 @@ const (
 const (
 	refTypeProps    = "props"
 	refTypeMonsters = "monsters"
+
+	unsupportedCapability = "unsupported capability"
+	facingFloorPropsOnly  = "facing only supported on room-scoped floor props"
 )
 
 // The spec's author-facing pattern vocabulary, shared between
@@ -123,9 +127,12 @@ func Validate(spec *DungeonSpec) error {
 	}
 
 	for i := range spec.Rooms {
-		if err := validatePlaceBlock(&spec.Rooms[i], spec.Height); err != nil {
+		if err := validatePlaceBlock(&spec.Rooms[i], spec.Height, i); err != nil {
 			return err
 		}
+	}
+	if err := validateTopLevelPlace(spec.Place); err != nil {
+		return err
 	}
 
 	if err := validateStart(spec); err != nil {
@@ -275,7 +282,7 @@ func validateBossRef(bossRoom *RoomSpec) error {
 
 // validatePlaceBlock validates one room's place block plus its (optional)
 // pinned boss.at, which share one collision domain.
-func validatePlaceBlock(room *RoomSpec, height int) error {
+func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 	hasPinned := len(room.Place) > 0 || (room.Boss != nil && room.Boss.At != nil)
 	if room.Pattern == patternScattered && hasPinned {
 		// Scattered interior walls are seed-rolled — no at cell can be
@@ -287,6 +294,9 @@ func validatePlaceBlock(room *RoomSpec, height int) error {
 	doorRow := height / 2
 	occupied := make(map[[2]int]string, len(room.Place)+1)
 
+	if room.Boss != nil && room.Boss.Facing != nil {
+		return fmt.Errorf("rooms[%d].boss.facing: %s: %s", roomIndex, unsupportedCapability, facingFloorPropsOnly)
+	}
 	if room.Boss != nil && room.Boss.At != nil {
 		at := *room.Boss.At
 		if err := checkCellBounds(room, height, at); err != nil {
@@ -298,7 +308,7 @@ func validatePlaceBlock(room *RoomSpec, height int) error {
 		occupied[at] = room.Boss.Ref
 	}
 
-	for _, entry := range room.Place {
+	for entryIndex, entry := range room.Place {
 		if err := checkCellBounds(room, height, entry.At); err != nil {
 			return fmt.Errorf("room %q: place %q %w", room.ID, entry.Ref, err)
 		}
@@ -324,6 +334,19 @@ func validatePlaceBlock(room *RoomSpec, height int) error {
 				room.ID, entry.Ref, refType)
 		}
 
+		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
+		if entry.Facing != nil {
+			if refType != refTypeProps || entry.Mount != nil {
+				return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
+			}
+			if err := validateFacing(*entry.Facing); err != nil {
+				return fmt.Errorf("%s.facing: %w", path, err)
+			}
+		}
+		if entry.Mount != nil {
+			return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
+		}
+
 		if room.Boss != nil && entry.Ref == room.Boss.Ref {
 			return fmt.Errorf("room %q: boss ref may not also appear in place (ref %q)", room.ID, entry.Ref)
 		}
@@ -343,6 +366,51 @@ func validatePlaceBlock(room *RoomSpec, height int) error {
 	}
 
 	return nil
+}
+
+// validateTopLevelPlace retains the canonical syntax long enough to reject
+// unsupported top-level placement capability at the author-supplied field.
+// It deliberately never compiles or maps entries into room-scoped placement.
+func validateTopLevelPlace(entries []PlacedEntry) error {
+	for index, entry := range entries {
+		if entry.Facing != nil {
+			return fmt.Errorf("place[%d].facing: %s: %s", index, unsupportedCapability, facingFloorPropsOnly)
+		}
+		if entry.Mount != nil {
+			return fmt.Errorf("place[%d].mount: %s: mounted placements are not supported", index, unsupportedCapability)
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	return fmt.Errorf("place[0]: %s: top-level placement is not supported", unsupportedCapability)
+}
+
+// validateFacing rejects labels outside the one canonical hex-facing vocabulary.
+func validateFacing(label string) error {
+	_, err := facingValue(label)
+	return err
+}
+
+// facingValue maps one canonical YAML label to the persisted runtime index.
+func facingValue(label string) (uint32, error) {
+	switch label {
+	case "E":
+		return encounter.FacingEast, nil
+	case "NE":
+		return encounter.FacingNortheast, nil
+	case "NW":
+		return encounter.FacingNorthwest, nil
+	case "W":
+		return encounter.FacingWest, nil
+	case "SW":
+		return encounter.FacingSouthwest, nil
+	case "SE":
+		return encounter.FacingSoutheast, nil
+	default:
+		return 0, fmt.Errorf("invalid facing %q (must be %q, %q, %q, %q, %q, or %q)",
+			label, "E", "NE", "NW", "W", "SW", "SE")
+	}
 }
 
 func checkCellBounds(room *RoomSpec, height int, at [2]int) error {

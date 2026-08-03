@@ -172,6 +172,24 @@ type ObstacleSpec struct {
 	PreferBorder bool
 }
 
+// FacingEast is the canonical east-facing hex-direction index. These six
+// values are intentionally aligned with the canonical YAML labels: E, NE, NW,
+// W, SW, SE. They are metadata only; encounter geometry and collision do not
+// interpret them.
+const (
+	FacingEast uint32 = iota
+	// FacingNortheast is the canonical northeast-facing hex-direction index.
+	FacingNortheast
+	// FacingNorthwest is the canonical northwest-facing hex-direction index.
+	FacingNorthwest
+	// FacingWest is the canonical west-facing hex-direction index.
+	FacingWest
+	// FacingSouthwest is the canonical southwest-facing hex-direction index.
+	FacingSouthwest
+	// FacingSoutheast is the canonical southeast-facing hex-direction index.
+	FacingSoutheast
+)
+
 // LocalHex is a region-local (pre-offsetX) grid cell: Col in [0,width),
 // Row in [0,height) (the dungeon-shared height) — exactly the local (x,y)
 // frame regionObstacleCandidates already scans (see that function's doc).
@@ -204,6 +222,11 @@ type PlacedObstacleSpec struct {
 	// ObstacleData, same as ObstacleSpec's fields of the same name.
 	BlocksMovement bool
 	BlocksLoS      bool
+
+	// Facing is optional authored hex-facing metadata. A nil value is absent;
+	// a non-nil pointer to FacingEast is the explicit E = 0 override. It is
+	// copied to ObstacleData without affecting position or collision behavior.
+	Facing *uint32
 }
 
 // DungeonConnectorParams configures the door joining two consecutive
@@ -1245,6 +1268,7 @@ func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[s
 			Position:       core.HexFromCube(cube),
 			BlocksMovement: spec.BlocksMovement,
 			BlocksLoS:      spec.BlocksLoS,
+			Facing:         spec.Facing,
 		})
 	}
 	return out, placedCubes, nil

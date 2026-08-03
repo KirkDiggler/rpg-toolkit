@@ -231,11 +231,16 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 		}
 		switch refType {
 		case refTypeProps:
+			facing, err := compileFacing(entry.Facing)
+			if err != nil {
+				return encounter.DungeonRegionParams{}, nil, fmt.Errorf("place %q facing: %w", entry.Ref, err)
+			}
 			region.PlacedObstacles = append(region.PlacedObstacles, encounter.PlacedObstacleSpec{
 				Ref:            entry.Ref,
 				At:             encounter.LocalHex{Col: entry.At[0], Row: entry.At[1]},
 				BlocksMovement: boolOrTrue(entry.BlocksMovement),
 				BlocksLoS:      boolOrTrue(entry.BlocksLoS),
+				Facing:         facing,
 			})
 		case refTypeMonsters:
 			at := encounter.LocalHex{Col: entry.At[0], Row: entry.At[1]}
@@ -304,4 +309,18 @@ func boolOrTrue(b *bool) bool {
 		return true
 	}
 	return *b
+}
+
+// compileFacing maps an optional canonical YAML facing label to its persisted
+// numeric index. Validate normally guarantees the label is known; this guard
+// keeps compileRoom from silently accepting a bad direct call.
+func compileFacing(label *string) (*uint32, error) {
+	if label == nil {
+		return nil, nil
+	}
+	value, err := facingValue(*label)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
 }

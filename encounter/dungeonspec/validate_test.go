@@ -19,10 +19,98 @@ func tomb(s *dungeonspec.DungeonSpec) *dungeonspec.RoomSpec {
 
 // Shared substrings used by more than one table row below (goconst).
 const (
-	errRefShape    = "must be shaped like module:type:id"
-	errM1Rolled    = "rolled monster placement lands in M2"
-	errOutOfBounds = "out of bounds"
+	errRefShape              = "must be shaped like module:type:id"
+	errM1Rolled              = "rolled monster placement lands in M2"
+	errOutOfBounds           = "out of bounds"
+	errUnsupportedCapability = "unsupported capability"
 )
+
+// TestValidate_FacingStrictlyScopesCanonicalFloorProps proves facing is neither
+// stripped nor broadly accepted: only existing room-scoped floor props may
+// carry it, while unsupported forms name the exact supplied field path.
+func TestValidate_FacingStrictlyScopesCanonicalFloorProps(t *testing.T) {
+	decode := func(t *testing.T) *dungeonspec.DungeonSpec {
+		t.Helper()
+		spec, err := dungeonspec.Decode([]byte(placedTombYAML))
+		require.NoError(t, err)
+		return spec
+	}
+
+	for _, label := range []string{"E", "NE", "NW", "W", "SW", "SE"} {
+		t.Run("floor prop accepts "+label, func(t *testing.T) {
+			spec := decode(t)
+			spec.Rooms[1].Place[0].Facing = &label
+			require.NoError(t, dungeonspec.Validate(spec))
+		})
+	}
+
+	cases := []struct {
+		name     string
+		mutate   func(*dungeonspec.DungeonSpec)
+		wantPath string
+		wantErr  string
+	}{
+		{
+			name: "floor prop rejects unknown label with vocabulary",
+			mutate: func(spec *dungeonspec.DungeonSpec) {
+				label := "N"
+				spec.Rooms[1].Place[0].Facing = &label
+			},
+			wantPath: "rooms[1].place[0].facing",
+			wantErr:  `must be "E", "NE", "NW", "W", "SW", or "SE"`,
+		},
+		{
+			name: "monster place facing is unsupported",
+			mutate: func(spec *dungeonspec.DungeonSpec) {
+				label := "E"
+				spec.Rooms[1].Place[5].Facing = &label
+			},
+			wantPath: "rooms[1].place[5].facing",
+			wantErr:  errUnsupportedCapability,
+		},
+		{
+			name: "boss facing is unsupported",
+			mutate: func(spec *dungeonspec.DungeonSpec) {
+				label := "SW"
+				spec.Rooms[1].Boss.Facing = &label
+			},
+			wantPath: "rooms[1].boss.facing",
+			wantErr:  errUnsupportedCapability,
+		},
+		{
+			name: "mounted prop facing is unsupported",
+			mutate: func(spec *dungeonspec.DungeonSpec) {
+				label, mount := "NE", "wall"
+				spec.Rooms[1].Place[0].Facing = &label
+				spec.Rooms[1].Place[0].Mount = &mount
+			},
+			wantPath: "rooms[1].place[0].facing",
+			wantErr:  errUnsupportedCapability,
+		},
+		{
+			name: "top level facing is unsupported at its own entry path",
+			mutate: func(spec *dungeonspec.DungeonSpec) {
+				label := "E"
+				spec.Place = []dungeonspec.PlacedEntry{
+					{Ref: "dnd5e:props:candles", At: [2]int{1, 1}},
+					{Ref: "dnd5e:props:candles", At: [2]int{2, 1}, Facing: &label},
+				}
+			},
+			wantPath: "place[1].facing",
+			wantErr:  errUnsupportedCapability,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := decode(t)
+			tc.mutate(spec)
+			err := dungeonspec.Validate(spec)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantPath)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
 
 func TestValidate_Table(t *testing.T) {
 	cases := []struct {

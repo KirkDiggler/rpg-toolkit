@@ -227,6 +227,11 @@ type ObstacleData struct {
 	// true for any line of sight passing through this obstacle's hex,
 	// exactly like a wall.
 	BlocksLoS bool `json:"blocks_los"`
+
+	// Facing is optional authored floor-prop metadata in canonical
+	// E,NE,NW,W,SW,SE = 0..5 order. Nil means no override; a non-nil pointer
+	// to zero is explicit E and must remain present across persistence.
+	Facing *uint32 `json:"facing,omitempty"`
 }
 
 // RegionData tags a named set of hexes as one chamber/region within a

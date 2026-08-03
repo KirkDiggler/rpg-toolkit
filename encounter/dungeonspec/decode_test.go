@@ -4,6 +4,7 @@
 package dungeonspec_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/dungeonspec"
@@ -52,6 +53,46 @@ func TestDecode_EmptyInputReturnsFriendlyError(t *testing.T) {
 	_, err := dungeonspec.Decode([]byte(""))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty dungeon spec")
+}
+
+// TestDecode_PlaceFacingPreservesPresence distinguishes omitted/null from an
+// explicit canonical label before compilation. The compiler relies on this
+// pointer presence so explicit E can survive as numeric zero.
+func TestDecode_PlaceFacingPreservesPresence(t *testing.T) {
+	withEast := strings.Replace(placedTombYAML,
+		"at: [6, 3], blocks_los: false }",
+		"at: [6, 3], blocks_los: false, facing: E }", 1)
+	withNull := strings.Replace(placedTombYAML,
+		"at: [6, 3], blocks_los: false }",
+		"at: [6, 3], blocks_los: false, facing: null }", 1)
+
+	cases := []struct {
+		name       string
+		raw        string
+		wantFacing *string
+	}{
+		{name: "omitted", raw: placedTombYAML},
+		{name: "explicit null", raw: withNull},
+		{name: "explicit east", raw: withEast, wantFacing: stringPtr("E")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec, err := dungeonspec.Decode([]byte(tc.raw))
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantFacing, spec.Rooms[1].Place[0].Facing)
+		})
+	}
+}
+
+func stringPtr(value string) *string { return &value }
+
+func TestDecode_PlaceFacingRejectsNonScalarShape(t *testing.T) {
+	raw := strings.Replace(placedTombYAML,
+		"at: [6, 3], blocks_los: false }",
+		"at: [6, 3], blocks_los: false, facing: [E] }", 1)
+	_, err := dungeonspec.Decode([]byte(raw))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode dungeon spec")
 }
 
 func TestDecode_PlaceBlockRoundTrips(t *testing.T) {
