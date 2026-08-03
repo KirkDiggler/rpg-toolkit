@@ -144,6 +144,37 @@ func (s *CategoryChoiceOptionsTestSuite) TestSubclassOptionsAreIndependentAcross
 	}
 }
 
+func (s *CategoryChoiceOptionsTestSuite) TestCategoryOptionsPreserveRegistryOrderAcrossRepeatedAndConcurrentCalls() {
+	expected := []shared.EquipmentID{
+		weapons.Club, weapons.Dagger, weapons.Handaxe, weapons.Javelin, weapons.Greatclub,
+		weapons.LightHammer, weapons.Mace, weapons.Quarterstaff, weapons.Sickle, weapons.Spear,
+		weapons.LightCrossbow, weapons.Shortbow, weapons.Dart, weapons.Sling,
+	}
+
+	for range 10 {
+		_, simple := monkWeaponSimpleOption(s)
+		s.Equal(expected, equipmentItemIDsInOrder(simple.CategoryChoices[0].Options))
+	}
+
+	const readers = 64
+	results := make(chan []shared.EquipmentID, readers)
+	var waitGroup sync.WaitGroup
+	for range readers {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			requirements := GetClassRequirements(classes.Monk)
+			_, simple := monkWeaponSimpleOptionFromRequirements(requirements)
+			results <- equipmentItemIDsInOrder(simple.CategoryChoices[0].Options)
+		}()
+	}
+	waitGroup.Wait()
+	close(results)
+	for actual := range results {
+		s.Equal(expected, actual)
+	}
+}
+
 func (s *CategoryChoiceOptionsTestSuite) TestOptionsAreDetailedDeterministicAndDuplicateFree() {
 	for _, classID := range implementedClasses {
 		first := classCategoryChoices(GetClassRequirements(classID))
@@ -206,7 +237,10 @@ var implementedClasses = []classes.Class{
 }
 
 func monkWeaponSimpleOption(s *CategoryChoiceOptionsTestSuite) (*EquipmentRequirement, *EquipmentOption) {
-	requirements := GetClassRequirements(classes.Monk)
+	return monkWeaponSimpleOptionFromRequirements(GetClassRequirements(classes.Monk))
+}
+
+func monkWeaponSimpleOptionFromRequirements(requirements *Requirements) (*EquipmentRequirement, *EquipmentOption) {
 	for _, requirement := range requirements.Equipment {
 		if requirement.ID != MonkWeaponsPrimary {
 			continue
@@ -217,8 +251,7 @@ func monkWeaponSimpleOption(s *CategoryChoiceOptionsTestSuite) (*EquipmentRequir
 			}
 		}
 	}
-	s.FailNow("MonkWeaponSimple should exist")
-	return nil, nil
+	panic("MonkWeaponSimple should exist")
 }
 
 func classCategoryChoices(requirements *Requirements) []EquipmentCategoryChoice {
@@ -244,6 +277,14 @@ func allCategoryCandidates() []shared.EquipmentID {
 	}
 	for id := range items.All {
 		result = append(result, id)
+	}
+	return result
+}
+
+func equipmentItemIDsInOrder(items []EquipmentItem) []shared.EquipmentID {
+	result := make([]shared.EquipmentID, len(items))
+	for i, item := range items {
+		result[i] = item.ID
 	}
 	return result
 }

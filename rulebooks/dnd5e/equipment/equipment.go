@@ -2,8 +2,6 @@
 package equipment
 
 import (
-	"sort"
-
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
@@ -140,8 +138,9 @@ func GetByCategory(equipType shared.EquipmentType, categories []shared.Equipment
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "category queries not supported for this equipment type")
 	}
 
-	// Registries are maps, so normalize their traversal to a stable order and
-	// collapse any repeated category membership before exposing choices.
+	// Each registry API supplies its explicit registry order. Retain the first
+	// occurrence while collapsing an ID that belongs to more than one requested
+	// category, so category choices preserve that order without duplicate options.
 	seen := make(map[string]struct{}, len(result))
 	unique := make([]Equipment, 0, len(result))
 	for _, item := range result {
@@ -151,9 +150,6 @@ func GetByCategory(equipType shared.EquipmentType, categories []shared.Equipment
 		seen[item.EquipmentID()] = struct{}{}
 		unique = append(unique, item)
 	}
-	sort.Slice(unique, func(i, j int) bool {
-		return unique[i].EquipmentID() < unique[j].EquipmentID()
-	})
 
 	return unique, nil
 }

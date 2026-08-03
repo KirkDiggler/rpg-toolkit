@@ -252,6 +252,15 @@ var All = map[ArmorID]Armor{
 	},
 }
 
+// armorOrder is the authoritative presentation order for the armor registry.
+// All remains the ID lookup index.
+var armorOrder = []ArmorID{
+	Padded, Leather, StuddedLeather,
+	Hide, ChainShirt, ScaleMail, Breastplate, HalfPlate,
+	RingMail, ChainMail, Splint, Plate,
+	Shield,
+}
+
 // GetByID returns armor by its ID
 func GetByID(id ArmorID) (Armor, error) {
 	armor, ok := All[id]
@@ -267,10 +276,11 @@ func GetByID(id ArmorID) (Armor, error) {
 	return armor, nil
 }
 
-// GetByCategory returns all armor in a category
+// GetByCategory returns all armor in a category in registry order.
 func GetByCategory(cat ArmorCategory) []Armor {
 	var result []Armor
-	for _, a := range All {
+	for _, id := range armorOrder {
+		a := All[id]
 		if a.Category == cat {
 			result = append(result, a)
 		}

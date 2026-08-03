@@ -467,11 +467,23 @@ func GetByID(id WeaponID) (Weapon, error) {
 	return w, nil
 }
 
-// GetByCategory returns all equippable weapons in a category.
+// weaponOrder is the authoritative presentation order for the weapon registry.
+// Keep it aligned with the source registry groups above; All remains the ID lookup index.
+var weaponOrder = []WeaponID{
+	Club, Dagger, Handaxe, Javelin, Greatclub, LightHammer, Mace, Quarterstaff, Sickle, Spear,
+	Greatsword, Longsword, Rapier, Shortsword, Battleaxe, Flail, Glaive, Greataxe, Halberd, Lance,
+	Maul, Morningstar, Pike, Scimitar, Trident, WarPick, Warhammer, Whip,
+	LightCrossbow, Shortbow, Dart, Sling,
+	HeavyCrossbow, Longbow, Blowgun, HandCrossbow, Net,
+	UnarmedStrike,
+}
+
+// GetByCategory returns all equippable weapons in their registry order.
 // Special weapons like UnarmedStrike are excluded since they are not equippable.
 func GetByCategory(cat WeaponCategory) []Weapon {
 	var result []Weapon
-	for _, w := range All {
+	for _, id := range weaponOrder {
+		w := All[id]
 		if w.Category == cat && !isSpecialWeapon(w.ID) {
 			result = append(result, w)
 		}
