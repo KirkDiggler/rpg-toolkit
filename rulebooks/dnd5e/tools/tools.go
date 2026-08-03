@@ -458,6 +458,17 @@ var All = map[ToolID]Tool{
 	},
 }
 
+// toolOrder is the authoritative presentation order for the tool registry.
+// All remains the ID lookup index.
+var toolOrder = []ToolID{
+	AlchemistSupplies, BrewerSupplies, CalligrapherSupplies, CarpenterTools, CartographerTools,
+	CobblerTools, CookUtensils, GlassblowerTools, JewelerTools, LeatherworkerTools, MasonTools,
+	PainterSupplies, PotterTools, SmithTools, TinkerTools, WeaverTools, WoodcarverTools,
+	DiceSet, DragonchessSet, PlayingCardSet, ThreeDragonAnte,
+	Bagpipes, Drum, Dulcimer, Flute, Lute, Lyre, Horn, PanFlute, Shawm, Viol,
+	DisguiseKit, ForgeryKit, HerbalismKit, NavigatorTools, PoisonerKit, ThievesTools, VehiclesLand, VehiclesWater,
+}
+
 // GetByID returns a tool by its ID
 func GetByID(id ToolID) (Tool, error) {
 	tool, ok := All[id]
@@ -473,10 +484,11 @@ func GetByID(id ToolID) (Tool, error) {
 	return tool, nil
 }
 
-// GetByCategory returns all tools in a category
+// GetByCategory returns all tools in a category in registry order.
 func GetByCategory(cat ToolCategory) []Tool {
 	var result []Tool
-	for _, t := range All {
+	for _, id := range toolOrder {
+		t := All[id]
 		if t.Category == cat {
 			result = append(result, t)
 		}

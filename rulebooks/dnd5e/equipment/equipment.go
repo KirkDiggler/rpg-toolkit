@@ -12,6 +12,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+const (
+	// CategoryMusicalInstruments selects all musical instruments.
+	CategoryMusicalInstruments shared.EquipmentCategory = "musical-instruments"
+	// CategoryDruidicFoci selects druidic focuses.
+	CategoryDruidicFoci shared.EquipmentCategory = "druidic-foci"
+	// CategoryHolySymbols selects holy symbols.
+	CategoryHolySymbols shared.EquipmentCategory = "holy-symbols"
+	// CategoryArcaneFoci selects arcane focuses.
+	CategoryArcaneFoci shared.EquipmentCategory = "arcane-foci"
+)
+
 // Equipment represents any item that can be owned, carried, or equipped
 type Equipment interface {
 	// EquipmentID returns the unique identifier for this equipment
@@ -103,9 +114,42 @@ func GetByCategory(equipType shared.EquipmentType, categories []shared.Equipment
 			}
 		}
 
+	case shared.EquipmentTypeTool:
+		for _, cat := range categories {
+			switch cat {
+			case CategoryMusicalInstruments:
+				for _, tool := range tools.GetByCategory(tools.CategoryMusical) {
+					toolCopy := tool
+					result = append(result, &toolCopy)
+				}
+			case CategoryDruidicFoci:
+				item := items.All[items.DruidicFocus]
+				result = append(result, &item)
+			case CategoryHolySymbols:
+				item := items.All[items.HolySymbol]
+				result = append(result, &item)
+			case CategoryArcaneFoci:
+				item := items.All[items.ArcaneFocus]
+				result = append(result, &item)
+			}
+		}
+
 	default:
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "category queries not supported for this equipment type")
 	}
 
-	return result, nil
+	// Each registry API supplies its explicit registry order. Retain the first
+	// occurrence while collapsing an ID that belongs to more than one requested
+	// category, so category choices preserve that order without duplicate options.
+	seen := make(map[string]struct{}, len(result))
+	unique := make([]Equipment, 0, len(result))
+	for _, item := range result {
+		if _, ok := seen[item.EquipmentID()]; ok {
+			continue
+		}
+		seen[item.EquipmentID()] = struct{}{}
+		unique = append(unique, item)
+	}
+
+	return unique, nil
 }

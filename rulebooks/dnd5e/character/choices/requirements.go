@@ -87,6 +87,22 @@ func enrichEquipmentRequirements(reqs []*EquipmentRequirement) []*EquipmentRequi
 			for j := range req.Options[i].Items {
 				req.Options[i].Items[j].Detail = equipment.ResolveEquipmentDetail(req.Options[i].Items[j].ID)
 			}
+			for j := range req.Options[i].CategoryChoices {
+				choice := &req.Options[i].CategoryChoices[j]
+				eligible, err := eligibleEquipment(choice.Type, choice.Categories)
+				if err != nil {
+					continue
+				}
+				choice.Options = make([]EquipmentItem, 0, len(eligible))
+				for _, item := range eligible {
+					id := shared.EquipmentID(item.EquipmentID())
+					choice.Options = append(choice.Options, EquipmentItem{
+						ID:       id,
+						Quantity: 1,
+						Detail:   equipment.ResolveEquipmentDetail(id),
+					})
+				}
+			}
 		}
 	}
 	return reqs
@@ -94,10 +110,11 @@ func enrichEquipmentRequirements(reqs []*EquipmentRequirement) []*EquipmentRequi
 
 // EquipmentCategoryChoice represents a category-based equipment selection within an option
 type EquipmentCategoryChoice struct {
-	Choose     int                        `json:"choose"`     // How many to choose (e.g., 1 or 2)
-	Type       shared.EquipmentType       `json:"type"`       // Equipment type (weapon, armor, etc.)
-	Categories []shared.EquipmentCategory `json:"categories"` // Categories to choose from
-	Label      string                     `json:"label"`      // e.g., "Choose a martial weapon"
+	Choose     int                        `json:"choose"`            // How many to choose (e.g., 1 or 2)
+	Type       shared.EquipmentType       `json:"type"`              // Equipment type (weapon, armor, etc.)
+	Categories []shared.EquipmentCategory `json:"categories"`        // Categories to choose from
+	Label      string                     `json:"label"`             // e.g., "Choose a martial weapon"
+	Options    []EquipmentItem            `json:"options,omitempty"` // Concrete, validator-eligible choices
 }
 
 // EquipmentCategoryRequirement defines equipment choices from categories (e.g., "choose 2 martial weapons")
@@ -870,7 +887,7 @@ func getBardEquipmentRequirements() []*EquipmentRequirement {
 						{
 							Choose:     1,
 							Type:       "tool",
-							Categories: []shared.EquipmentCategory{shared.EquipmentCategory("musical-instruments")},
+							Categories: []shared.EquipmentCategory{equipment.CategoryMusicalInstruments},
 							Label:      "Choose a musical instrument",
 						},
 					},
@@ -1396,7 +1413,7 @@ func getDruidEquipmentRequirements() []*EquipmentRequirement {
 						{
 							Choose:     1,
 							Type:       "tool",
-							Categories: []shared.EquipmentCategory{shared.EquipmentCategory("druidic-foci")},
+							Categories: []shared.EquipmentCategory{equipment.CategoryDruidicFoci},
 							Label:      "Choose a druidic focus",
 						},
 					},
@@ -1545,7 +1562,7 @@ func getPaladinEquipmentRequirements() []*EquipmentRequirement {
 						{
 							Choose:     1,
 							Type:       "tool",
-							Categories: []shared.EquipmentCategory{shared.EquipmentCategory("holy-symbols")},
+							Categories: []shared.EquipmentCategory{equipment.CategoryHolySymbols},
 							Label:      "Choose a holy symbol",
 						},
 					},
@@ -1664,7 +1681,7 @@ func getSorcererEquipmentRequirements() []*EquipmentRequirement {
 						{
 							Choose:     1,
 							Type:       "tool",
-							Categories: []shared.EquipmentCategory{shared.EquipmentCategory("arcane-foci")},
+							Categories: []shared.EquipmentCategory{equipment.CategoryArcaneFoci},
 							Label:      "Choose an arcane focus",
 						},
 					},
@@ -1737,7 +1754,7 @@ func getWarlockEquipmentRequirements() []*EquipmentRequirement {
 						{
 							Choose:     1,
 							Type:       "tool",
-							Categories: []shared.EquipmentCategory{shared.EquipmentCategory("arcane-foci")},
+							Categories: []shared.EquipmentCategory{equipment.CategoryArcaneFoci},
 							Label:      "Choose an arcane focus",
 						},
 					},
@@ -1797,6 +1814,7 @@ func GetClassRequirementsWithSubclass(class classes.Class, level int, subclass c
 
 	// Apply the modifications
 	ApplySubclassModifications(reqs, mods)
+	reqs.Equipment = enrichEquipmentRequirements(reqs.Equipment)
 
 	return reqs
 }
