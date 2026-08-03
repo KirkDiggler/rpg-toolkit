@@ -140,7 +140,7 @@ func writePlacedObstacles(b *strings.Builder, regions []encounter.DungeonRegionP
 
 // floorPlanLegend documents the ASCII floor plan's marker vocabulary,
 // printed once ahead of the grid so the symbols are self-describing.
-const floorPlanLegend = "floor plan (. floor, # wall, D door, o obstacle, @ entrance):"
+const floorPlanLegend = "floor plan (. floor, # wall, D door, o obstacle, @ party start):"
 
 // writeFloorPlan renders the encounter's committed Space (plus its Doors
 // and Entrance, which live on Data/SpaceData respectively) as an ASCII
@@ -148,7 +148,7 @@ const floorPlanLegend = "floor plan (. floor, # wall, D door, o obstacle, @ entr
 // (rolled or placed alike -- writePlacedObstacles already calls out
 // placed ones by name and exact coordinate separately, so the map doesn't
 // need a second, distinct marker to carry that distinction too), '@' the
-// designated entrance cell (SpaceData.Entrance).
+// toolkit-resolved party-start anchor (SpaceData.Entrance).
 //
 // SpaceData.Walls carries two shapes (see that field's doc): degenerate
 // (Start == End) is an actual blocked interior hex, marked at Start;
@@ -181,7 +181,7 @@ func writeFloorPlan(b *strings.Builder, data *encounter.Data) {
 	// set's bounds check is load-bearing, not merely defensive
 	// (rpg-toolkit#848/#849 gate review finding 7): every wall/door/
 	// obstacle coordinate is in-bounds by InitDungeon's own validation,
-	// Entrance by construction -- EXCEPT a boundary-edge segment's End
+	// PartyStart/Entrance by construction -- EXCEPT a boundary-edge segment's End
 	// when it lands outside the room (the outer-perimeter case,
 	// rpg-toolkit#834). The loop below calls set(End, '#') unconditionally
 	// for every non-degenerate wall entry and deliberately relies on this

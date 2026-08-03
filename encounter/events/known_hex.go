@@ -1,6 +1,10 @@
 package events
 
-import "github.com/KirkDiggler/rpg-toolkit/encounter/core"
+import (
+	"encoding/json"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+)
 
 // KnownHex is one hex's complete authorized knowledge for a viewer, as
 // carried by MoveEvent.MoverKnownHexes.
@@ -46,6 +50,44 @@ type KnownHexEdge struct {
 // KnownHexPlacement mirrors encounter/perception.Placement.
 type KnownHexPlacement struct {
 	EntityID core.EntityID
-	// Facing is a hex-direction index 0-5.
-	Facing int
+	// Facing is optional canonical hex-facing metadata. Pointer presence
+	// distinguishes absent from explicit E = 0 through event serialization.
+	Facing *uint32
+}
+
+type knownHexPlacementWire struct {
+	EntityID core.EntityID `json:"EntityID"`
+	Facing   *uint32       `json:"facing,omitempty"`
+}
+
+// MarshalJSON writes optional facing under a lowercase key so explicit E = 0
+// remains present without colliding with legacy known-hex event JSON.
+func (p KnownHexPlacement) MarshalJSON() ([]byte, error) {
+	return json.Marshal(knownHexPlacementWire(p))
+}
+
+// UnmarshalJSON restores current optional facing and ignores the legacy
+// uppercase "Facing":0 emitted by the old mandatory field. That zero meant
+// absent, not authored E, so accepting it would invent orientation on replay.
+func (p *KnownHexPlacement) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	var entityID core.EntityID
+	if rawEntityID, ok := fields["EntityID"]; ok {
+		if err := json.Unmarshal(rawEntityID, &entityID); err != nil {
+			return err
+		}
+	}
+	var facing *uint32
+	if rawFacing, ok := fields["facing"]; ok {
+		if err := json.Unmarshal(rawFacing, &facing); err != nil {
+			return err
+		}
+	}
+	p.EntityID = entityID
+	p.Facing = facing
+	return nil
 }

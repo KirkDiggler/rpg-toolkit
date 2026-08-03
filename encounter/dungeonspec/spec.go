@@ -7,13 +7,20 @@ package dungeonspec
 
 // DungeonSpec is the top-level decoded shape of a dungeon spec file.
 type DungeonSpec struct {
-	Version    int             `yaml:"version"`
-	Key        string          `yaml:"key"`
-	Name       string          `yaml:"name"`
-	Theme      string          `yaml:"theme"`
-	Height     int             `yaml:"height"`
+	Version int    `yaml:"version"`
+	Key     string `yaml:"key"`
+	Name    string `yaml:"name"`
+	Theme   string `yaml:"theme"`
+	Height  int    `yaml:"height"`
+	// Start is an optional absolute [column,row] party-start anchor. Nil
+	// represents both an omitted YAML field and an explicit YAML null.
+	Start      *[2]int         `yaml:"start,omitempty"`
 	Rooms      []RoomSpec      `yaml:"rooms"`
 	Connectors []ConnectorSpec `yaml:"connectors"`
+	// Place is decoded solely to reject unsupported top-level placement,
+	// including facing, at a field-specific validation path. Slice #178
+	// supports only existing room-scoped floor props.
+	Place []PlacedEntry `yaml:"place,omitempty"`
 }
 
 // RoomSpec is one room in a dungeon spec.
@@ -38,6 +45,9 @@ type MonsterEntry struct {
 type BossEntry struct {
 	Ref string  `yaml:"ref"`
 	At  *[2]int `yaml:"at,omitempty"` // design delta: nil = unpinned (v1 behavior)
+	// Facing is decoded solely so unsupported boss-facing input can fail at
+	// its supplied field path. Boss-facing behavior is outside Slice #178.
+	Facing *string `yaml:"facing,omitempty"`
 }
 
 // ObstacleEntry is a count-based rolled obstacle for a room.
@@ -58,6 +68,14 @@ type PlacedEntry struct {
 	At             [2]int `yaml:"at"` // [col, row], room-local — static-placement delta, rpg-toolkit#842
 	BlocksMovement *bool  `yaml:"blocks_movement,omitempty"`
 	BlocksLoS      *bool  `yaml:"blocks_los,omitempty"`
+	// Facing is the optional canonical YAML label. Nil represents both an
+	// omitted field and explicit YAML null; explicit E remains non-nil and
+	// compiles to the present numeric value zero.
+	Facing *string `yaml:"facing,omitempty"`
+	// Mount is decoded only to reject mounted-facing input at its supplied
+	// field path. Slice #178 supports floor placements only and never
+	// compiles mount behavior.
+	Mount *string `yaml:"mount,omitempty"`
 }
 
 // ConnectorSpec joins two rooms, optionally behind a locked check.

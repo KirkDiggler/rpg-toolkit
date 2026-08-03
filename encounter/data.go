@@ -139,13 +139,17 @@ type SpaceData struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`
 
-	// Entrance is the designated spawn-anchor cell for chamber 1, set by
-	// multi-chamber generators (Wave 2 Slice 2's InitTwoChamberRoom).
-	// Replaces the roomCenterHex() placeholder downstream (rpg-api#648).
-	// Zero value (the zero Hex) for single-room InitRoom spaces, which have
-	// no entrance concept — callers fall back to their own placement (e.g.
-	// room center) when Entrance is the zero Hex.
+	// Entrance is the toolkit-resolved party-start anchor for an InitDungeon
+	// space. It may be an authored absolute start in any semantic region, not
+	// only the entrance archetype. Zero value (the zero Hex) remains the value
+	// for single-room InitRoom spaces, which have no party-start concept.
 	Entrance core.Hex `json:"entrance"`
+
+	// PartyStartPositions is the deterministic ordered party-start envelope
+	// selected by InitDungeon before generated blockers. Position zero always
+	// equals Entrance. It is persisted so reloads and runtime startup resolve
+	// the same seats without re-running layout selection.
+	PartyStartPositions []core.Hex `json:"party_start_positions,omitempty"`
 
 	// Regions tags every hex by chamber for multi-chamber spaces (Wave 2
 	// Slice 2) — scopes spawn placement and, via LoS, combat pockets
@@ -223,6 +227,11 @@ type ObstacleData struct {
 	// true for any line of sight passing through this obstacle's hex,
 	// exactly like a wall.
 	BlocksLoS bool `json:"blocks_los"`
+
+	// Facing is optional authored floor-prop metadata in canonical
+	// E,NE,NW,W,SW,SE = 0..5 order. Nil means no override; a non-nil pointer
+	// to zero is explicit E and must remain present across persistence.
+	Facing *uint32 `json:"facing,omitempty"`
 }
 
 // RegionData tags a named set of hexes as one chamber/region within a
@@ -251,8 +260,8 @@ type RegionData struct {
 type RegionArchetype string
 
 const (
-	// ArchetypeEntrance tags the region containing SpaceData.Entrance —
-	// the dungeon's starting region.
+	// ArchetypeEntrance tags a start-side semantic region. An authored
+	// SpaceData.Entrance may instead be in any semantic region.
 	ArchetypeEntrance RegionArchetype = "entrance"
 	// ArchetypeChamber tags a generic interior region with no more
 	// specific role — remains in the vocabulary for future templates even

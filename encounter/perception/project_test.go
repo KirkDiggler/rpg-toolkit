@@ -1,6 +1,7 @@
 package perception_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
@@ -191,6 +192,39 @@ func (s *ProjectSuite) TestProjectVisibilityTransition_LeaveLoS_EmptySeenSegment
 // TestView_ObserveIdempotent covers rpg-toolkit#851's acceptance bar
 // "duplicate reconciliation is idempotent": applying the identical
 // observation twice must leave Memory unchanged, both in size and content.
+// TestPlacementFacingJSONDistinguishesCurrentPresenceFromLegacyZero protects
+// persisted viewer memory from the old mandatory Facing:0 encoding while
+// retaining a newly authored explicit E = 0 override.
+func (s *ProjectSuite) TestPlacementFacingJSONDistinguishesCurrentPresenceFromLegacyZero() {
+	hex := core.Hex{Q: 1, R: -1, S: 0}
+	facingEast := uint32(0)
+	current := perception.NewMemory()
+	current.Observe(perception.HexObservation{
+		Position: hex,
+		State:    perception.KnowledgeStateVisible,
+		Contents: []perception.Placement{{EntityID: "authored-prop", Facing: &facingEast}},
+	})
+
+	payload, err := json.Marshal(current)
+	s.Require().NoError(err)
+	s.Contains(string(payload), `"facing":0`)
+	s.NotContains(string(payload), `"Facing":0`)
+
+	var reloaded perception.Memory
+	s.Require().NoError(json.Unmarshal(payload, &reloaded))
+	s.Require().NotNil(reloaded[hex].Contents[0].Facing)
+	s.Equal(uint32(0), *reloaded[hex].Contents[0].Facing)
+
+	const legacyMemory = `[
+		{"position":{"Q":1,"R":-1,"S":0},"state":1,
+		 "contents":[{"EntityID":"legacy-player","Facing":0}]}
+	]`
+	var legacy perception.Memory
+	s.Require().NoError(json.Unmarshal([]byte(legacyMemory), &legacy))
+	s.Require().Len(legacy[hex].Contents, 1)
+	s.Nil(legacy[hex].Contents[0].Facing)
+}
+
 func (s *ProjectSuite) TestView_ObserveIdempotent() {
 	viewer := perception.NewView("alice", core.Hex{}, 3)
 	h := core.Hex{Q: 1, R: 0, S: -1}

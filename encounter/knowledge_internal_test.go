@@ -17,6 +17,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 )
 
 // Test-package fixture identifiers (extracted to satisfy goconst — mirrors
@@ -77,6 +78,48 @@ func (s *KnowledgeInternalSuite) TestKnownHexes_WitnessedRemoval_UpdatesImmediat
 		"a witnessed removal must clear Contents immediately, without waiting for alice's next move")
 }
 
+// TestKnownHexes_AuthoredObstacleFacingSurvivesVisibleRememberedAndEventPaths
+// proves the optional authored prop metadata is carried by the actual
+// placement/observation paths rather than only surviving in SpaceData.
+func (s *KnowledgeInternalSuite) TestKnownHexes_AuthoredObstacleFacingSurvivesVisibleRememberedAndEventPaths() {
+	e := New(context.Background(), "enc-facing-knowledge", s.broker)
+	target := core.Hex{Q: 1, R: -1, S: 0}
+	facing := FacingEast
+	e.data.Space = &SpaceData{Obstacles: []ObstacleData{{
+		ID: "facing-prop", Ref: "dnd5e:props:statue-reaper", Position: target, Facing: &facing,
+	}}}
+	s.Require().NoError(e.AddPlayer(PlayerInput{
+		PlayerID: knowledgeAlicePlayerID, EntityID: knowledgeAliceEntityID,
+		Position: core.Hex{}, SightRange: 2,
+	}))
+
+	assertFacing := func(known map[core.Hex]perception.HexObservation, state perception.KnowledgeState) {
+		s.T().Helper()
+		observation, ok := known[target]
+		s.Require().True(ok)
+		s.Equal(state, observation.State)
+		s.Require().Len(observation.Contents, 1)
+		s.Equal(core.EntityID("facing-prop"), observation.Contents[0].EntityID)
+		s.Require().NotNil(observation.Contents[0].Facing)
+		s.Equal(FacingEast, *observation.Contents[0].Facing)
+
+		for _, hex := range knownHexesToEvents(known) {
+			if hex.Position != target {
+				continue
+			}
+			s.Require().Len(hex.Contents, 1)
+			s.Require().NotNil(hex.Contents[0].Facing)
+			s.Equal(FacingEast, *hex.Contents[0].Facing)
+			return
+		}
+		s.T().Fatal("target hex missing from known-hex event projection")
+	}
+
+	assertFacing(e.KnownHexes(knowledgeAlicePlayerID), perception.KnowledgeStateVisible)
+	e.data.Players[knowledgeAlicePlayerID].View.Position = core.Hex{Q: 20, R: -20, S: 0}
+	assertFacing(e.KnownHexes(knowledgeAlicePlayerID), perception.KnowledgeStateRemembered)
+}
+
 // TestKnownHexes_WitnessedRemoval_OnlyRefreshesWitnesses proves the killer
 // (who may see only the killer's position, not the dying monster's hex) is
 // not force-refreshed for a hex they never had knowledge of, and a
@@ -97,6 +140,31 @@ func (s *KnowledgeInternalSuite) TestKnownHexes_WitnessedRemoval_OnlyRefreshesWi
 
 	known := e.KnownHexes("bystander")
 	s.NotContains(known, goblinHex, "a viewer with no LoS to the dying monster must gain no knowledge of its hex")
+}
+
+// TestRefreshObservations_CanonicalizationFailurePreservesMemory proves a
+// malformed physical-edge conflict aborts a refresh before Memory.Observe can
+// replace any established geometry with empty or partial edges.
+func (s *KnowledgeInternalSuite) TestRefreshObservations_CanonicalizationFailurePreservesMemory() {
+	e := New(context.Background(), "enc-1", s.broker)
+	origin := core.Hex{}
+	s.Require().NoError(e.AddPlayer(PlayerInput{
+		PlayerID: knowledgeAlicePlayerID, EntityID: knowledgeAliceEntityID,
+		Position: origin, SightRange: 1,
+	}))
+	before := e.KnownHexes(knowledgeAlicePlayerID)
+
+	neighbor := core.Hex{Q: 1, R: -1, S: 0}
+	e.data.Space = &SpaceData{Walls: []environments.WallSegmentData{
+		{Start: origin.ToCube(), End: neighbor.ToCube(), BlocksMovement: true, BlocksLoS: true},
+		{Start: neighbor.ToCube(), End: origin.ToCube(), BlocksMovement: true, BlocksLoS: false},
+	}}
+
+	err := e.refreshObservations(e.data.Players[knowledgeAlicePlayerID].View, core.NewHexSet(origin, neighbor))
+	s.Require().Error(err)
+	s.Contains(err.Error(), "conflicting generated edges")
+	s.Equal(before, e.KnownHexes(knowledgeAlicePlayerID),
+		"failed canonicalization must not replace remembered observations")
 }
 
 func contentEntityIDs(obs perception.HexObservation) []core.EntityID {

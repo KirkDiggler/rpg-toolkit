@@ -150,11 +150,14 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 // viewer refreshes), absent from every other hex, and absent everywhere
 // for a pass-through mover whose final hex isn't a hex this viewer saw at
 // all. See applyAndPublishMove's call site for the full reasoning.
-func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet) {
+func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet) error {
 	if view == nil || len(hexes) == 0 {
-		return
+		return nil
 	}
-	edges := e.edgesByHex()
+	edges, err := e.edgesByHex()
+	if err != nil {
+		return err
+	}
 	for h := range hexes {
 		// rpg-toolkit#859: hexes is frequently a raw perception.VisibleHexesAt
 		// disc (sight-range radius around a position), which has no notion of
@@ -178,6 +181,7 @@ func (e *Encounter) refreshObservations(view *perception.View, hexes core.HexSet
 		}
 		view.Observe(obs)
 	}
+	return nil
 }
 
 // isSpaceHex reports whether h is actually part of this encounter's space —
@@ -231,8 +235,9 @@ func (e *Encounter) isSpaceHex(h core.Hex) bool {
 // unchanged data could disagree on order, breaking Memory.Observe's
 // idempotency guarantee (see its doc).
 //
-// Facing is always the Placement zero value: nothing in the toolkit tracks
-// entity facing today (perception.Placement's own doc says so plainly).
+// Player and monster placements carry no facing override. Static obstacles
+// retain their persisted optional facing, so visible and remembered placement
+// observations keep explicit E = 0 distinct from absence.
 func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	var out []perception.Placement
 	for _, p := range e.data.Players {
@@ -248,7 +253,7 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	if e.data.Space != nil {
 		for _, o := range e.data.Space.Obstacles {
 			if o.Position == h {
-				out = append(out, perception.Placement{EntityID: o.ID})
+				out = append(out, perception.Placement{EntityID: o.ID, Facing: o.Facing})
 			}
 		}
 	}
@@ -256,49 +261,33 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	return out
 }
 
-// edgesByHex indexes every wall and door segment in the encounter's
-// persisted room by the hex it sits on, so refreshObservations can attach
-// a hex's own edges without re-scanning every wall/door per hex. Mirrors
-// rpg-api's OWN edgesByHex (knowledge_adapter.go) — that copy becomes dead
-// code once rpg-api consumes this method instead of re-deriving it from
-// world truth it has no business reading directly.
+// edgesByHex indexes the canonical generated barriers by their From endpoint
+// for viewer observations. DescribeGeneratedEdges projects the same source,
+// so knowledge and authoring cannot drift into separate wall canonicalizers.
 //
 // Each hex's edge list is sorted by (To.Q, To.R, To.S) then DoorID for
 // deterministic output — the same idempotency reasoning as placementsAt.
-func (e *Encounter) edgesByHex() map[core.Hex][]perception.Edge {
+func (e *Encounter) edgesByHex() (map[core.Hex][]perception.Edge, error) {
 	out := make(map[core.Hex][]perception.Edge)
-	if e.data.Space != nil {
-		for _, w := range e.data.Space.Walls {
-			if !w.BlocksMovement && !w.BlocksLoS {
-				// Not a barrier worth remembering — matches the wire
-				// boundary's own "not a wall worth putting on the wire" gate.
-				continue
-			}
-			from := core.HexFromCube(w.Start)
-			out[from] = append(out[from], perception.Edge{
-				From:           from,
-				To:             core.HexFromCube(w.End),
-				BlocksMovement: w.BlocksMovement,
-				BlocksLoS:      w.BlocksLoS,
-			})
-		}
+	generated, err := e.canonicalGeneratedEdgeRecords()
+	if err != nil {
+		return nil, err
 	}
-	for id, door := range e.data.Doors {
-		if door == nil {
-			continue
+	for _, record := range generated {
+		edge := record.edge
+		observed := perception.Edge{
+			From:           edge.From,
+			To:             edge.To,
+			BlocksMovement: record.blocksMovement,
+			BlocksLoS:      record.blocksLoS,
 		}
-		out[door.Position] = append(out[door.Position], perception.Edge{
-			From: door.Position,
-			To:   e.doorPassageNeighbor(door),
-			// A closed door blocks both; an open one blocks neither — the
-			// observer reads DoorOpen/DoorLocked, so these flags describe
-			// the barrier rather than re-deriving the door's kind.
-			BlocksMovement: !door.Open,
-			BlocksLoS:      !door.Open,
-			DoorID:         string(id),
-			DoorOpen:       door.Open,
-			DoorLocked:     door.Locked,
-		})
+		if edge.Kind == GeneratedEdgeKindDoor {
+			door := e.data.Doors[edge.DoorID]
+			observed.DoorID = string(edge.DoorID)
+			observed.DoorOpen = door.Open
+			observed.DoorLocked = door.Locked
+		}
+		out[edge.From] = append(out[edge.From], observed)
 	}
 	for h, edges := range out {
 		sort.Slice(edges, func(i, j int) bool {
@@ -316,7 +305,7 @@ func (e *Encounter) edgesByHex() map[core.Hex][]perception.Edge {
 		})
 		out[h] = edges
 	}
-	return out
+	return out, nil
 }
 
 // doorPassageNeighbor returns door's designated passage-edge neighbor: the

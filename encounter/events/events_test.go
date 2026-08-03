@@ -205,6 +205,7 @@ func (s *EventsSuite) TestMoveEvent_AudienceFromPerPlayer() {
 // Path[0] which is the first traveled STEP; a real, non-zero From here
 // guards against the two silently collapsing back to the same value).
 func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
+	facingEast := uint32(0)
 	original := events.NewMoveEvent("enc-1", 42, "bob", core.Hex{Q: 0, R: 0, S: 0},
 		[]core.Hex{{Q: 1, R: -1, S: 0}, {Q: 2, R: -1, S: -1}},
 		map[core.PlayerID]events.MovePlayerSlice{
@@ -218,7 +219,7 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 			{
 				Position: core.Hex{Q: 0, R: 0, S: 0},
 				State:    2,
-				Contents: []events.KnownHexPlacement{{EntityID: "bob", Facing: 3}},
+				Contents: []events.KnownHexPlacement{{EntityID: "bob", Facing: &facingEast}},
 			},
 			{
 				Position: core.Hex{Q: 1, R: -1, S: 0},
@@ -247,6 +248,31 @@ func (s *EventsSuite) TestMoveEvent_JSONRoundTrip() {
 	s.Equal(original.PerPlayer["alice"].SeenSegments, decoded.PerPlayer["alice"].SeenSegments)
 	s.Equal(core.PlayerID("bob-player"), decoded.MoverPlayerID)
 	s.Equal(original.MoverKnownHexes, decoded.MoverKnownHexes)
+	s.Require().Len(decoded.MoverKnownHexes[0].Contents, 1)
+	s.Require().NotNil(decoded.MoverKnownHexes[0].Contents[0].Facing)
+	s.Equal(uint32(0), *decoded.MoverKnownHexes[0].Contents[0].Facing,
+		"event JSON must retain explicit E rather than collapsing it to absence")
+}
+
+// TestKnownHexPlacementFacingJSONDistinguishesLegacyZero verifies event replay
+// follows the same presence rule as persisted perception memory: legacy
+// mandatory Facing:0 is absent, while a current lowercase facing:0 is E.
+func (s *EventsSuite) TestKnownHexPlacementFacingJSONDistinguishesLegacyZero() {
+	facingEast := uint32(0)
+	current := events.KnownHexPlacement{EntityID: "authored-prop", Facing: &facingEast}
+	payload, err := json.Marshal(current)
+	s.Require().NoError(err)
+	s.Contains(string(payload), `"facing":0`)
+	s.NotContains(string(payload), `"Facing":0`)
+
+	var replay events.KnownHexPlacement
+	s.Require().NoError(json.Unmarshal(payload, &replay))
+	s.Require().NotNil(replay.Facing)
+	s.Equal(uint32(0), *replay.Facing)
+
+	var legacy events.KnownHexPlacement
+	s.Require().NoError(json.Unmarshal([]byte(`{"EntityID":"legacy-player","Facing":0}`), &legacy))
+	s.Nil(legacy.Facing)
 }
 
 // A nil moverKnownHexes normalizes to an empty (never nil) slice — the NPC

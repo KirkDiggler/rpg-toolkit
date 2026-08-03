@@ -88,14 +88,54 @@ const (
 // viewer sees it face south. On the entity, one viewer's sighting would
 // rewrite every other viewer's memory.
 //
-// Facing is always the zero value today for the same reason TerrainKind
-// is always Unspecified: nothing in the toolkit tracks entity facing yet.
-// The field stays on the shape rather than being added later as a
-// migration.
+// Facing is absent for players, monsters, and rolled obstacles. A
+// room-scoped authored floor prop may carry a canonical E,NE,NW,W,SW,SE =
+// 0..5 override. Pointer presence distinguishes absent from explicit E = 0
+// and persists with this observation for remembered placement rendering.
 type Placement struct {
 	EntityID core.EntityID
-	// Facing is a hex-direction index 0-5.
-	Facing int
+	// Facing is an optional hex-direction index in canonical 0-5 order.
+	Facing *uint32
+}
+
+type placementWire struct {
+	EntityID core.EntityID `json:"EntityID"`
+	Facing   *uint32       `json:"facing,omitempty"`
+}
+
+// MarshalJSON writes optional facing under a lowercase key so presence is
+// representable without colliding with legacy Placement JSON. Before facing
+// became optional, every placement serialized an uppercase "Facing":0 even
+// though no authored override existed.
+func (p Placement) MarshalJSON() ([]byte, error) {
+	return json.Marshal(placementWire(p))
+}
+
+// UnmarshalJSON restores a current optional facing field and deliberately
+// ignores legacy uppercase "Facing":0. That historical zero was emitted for
+// every placement by the old non-optional field, so treating it as explicit E
+// would fabricate authored orientation for persisted viewer memory.
+func (p *Placement) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	var entityID core.EntityID
+	if rawEntityID, ok := fields["EntityID"]; ok {
+		if err := json.Unmarshal(rawEntityID, &entityID); err != nil {
+			return err
+		}
+	}
+	var facing *uint32
+	if rawFacing, ok := fields["facing"]; ok {
+		if err := json.Unmarshal(rawFacing, &facing); err != nil {
+			return err
+		}
+	}
+	p.EntityID = entityID
+	p.Facing = facing
+	return nil
 }
 
 // Edge is a wall or door on one hex's boundary, AS OBSERVED by this viewer.
