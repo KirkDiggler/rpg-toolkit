@@ -2,6 +2,7 @@ package character_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -199,6 +200,92 @@ func (s *CategoryBasedEquipmentTestSuite) TestMonkCategoryChoiceAppliesAdvertise
 	for err := range errors {
 		s.Fail(err)
 	}
+}
+
+func (s *CategoryBasedEquipmentTestSuite) TestPersistedMonkCategoryChoiceRevalidatesNestedSelection() {
+	invalidDraft := s.loadPersistedMonkCategoryDraft(weapons.UnarmedStrike)
+
+	err := invalidDraft.ValidateChoices()
+	s.Error(err, "persisted unarmed strike must fail final choice validation")
+	s.ErrorContains(err, "monk-weapons-primary")
+	s.ErrorContains(err, "monk-weapon-b")
+	s.ErrorContains(err, "unarmed-strike")
+
+	char, err := invalidDraft.ToCharacter(s.ctx, "persisted-monk-invalid", s.bus)
+	s.Error(err, "persisted unarmed strike must not finalize into a character")
+	s.Nil(char)
+
+	for _, test := range []struct {
+		name     string
+		weaponID shared.EquipmentID
+	}{
+		{name: "valid simple melee club", weaponID: weapons.Club},
+		{name: "valid simple ranged shortbow", weaponID: weapons.Shortbow},
+	} {
+		s.Run(test.name, func() {
+			draft := s.loadPersistedMonkCategoryDraft(test.weaponID)
+
+			s.Require().NoError(draft.ValidateChoices())
+			char, err := draft.ToCharacter(s.ctx, "persisted-monk-"+string(test.weaponID), s.bus)
+			s.Require().NoError(err)
+			s.Require().NotNil(char)
+
+			found := false
+			for _, item := range char.ToData().Inventory {
+				if item.ID == test.weaponID {
+					found = true
+					break
+				}
+			}
+			s.True(found, "finalized inventory must retain the valid persisted choice %q", test.weaponID)
+		})
+	}
+}
+
+// loadPersistedMonkCategoryDraft round-trips the exact serialized shape that
+// origin/main accepted for a Monk's nested category selection before this PR.
+func (s *CategoryBasedEquipmentTestSuite) loadPersistedMonkCategoryDraft(weaponID shared.EquipmentID) *character.Draft {
+	const baseCreatedMonkDraftJSON = `{
+		"id": "base-persisted-monk",
+		"player_id": "player",
+		"name": "Persisted Monk",
+		"race": "human",
+		"class": "monk",
+		"background": "hermit",
+		"base_ability_scores": {
+			"cha": 12,
+			"con": 13,
+			"dex": 14,
+			"int": 8,
+			"str": 10,
+			"wis": 15
+		},
+		"choices": [
+			{"category": "name", "source": "player", "name": "Persisted Monk"},
+			{"category": "ability_scores", "source": "player", "ability_scores": {"cha": 12, "con": 13, "dex": 14, "int": 8, "str": 10, "wis": 15}},
+			{"category": "languages", "source": "race", "choice_id": "human-language", "languages": ["elvish"]},
+			{"category": "skills", "source": "class", "choice_id": "monk-skills", "skills": ["acrobatics", "stealth"]},
+			{"category": "tool_proficiency", "source": "class", "choice_id": "monk-tools", "tools": ["brewer-supplies"]},
+			{"category": "equipment", "source": "class", "choice_id": "monk-weapons-primary", "option_id": "monk-weapon-b", "equipment": ["unarmed-strike"]},
+			{"category": "equipment", "source": "class", "choice_id": "monk-pack", "option_id": "monk-pack-b", "equipment": ["explorer-pack"]}
+		],
+		"progress": 31
+	}`
+
+	var data character.DraftData
+	s.Require().NoError(json.Unmarshal([]byte(baseCreatedMonkDraftJSON), &data))
+	for i := range data.Choices {
+		choice := &data.Choices[i]
+		if choice.ChoiceID == choices.MonkWeaponsPrimary {
+			choice.EquipmentSelection = []shared.SelectionID{weaponID}
+			break
+		}
+	}
+
+	serialized, err := json.Marshal(data)
+	s.Require().NoError(err)
+	s.Require().NoError(json.Unmarshal(serialized, &data))
+	return character.LoadDraftFromData(&data)
 }
 
 func monkClassInput(weaponID shared.EquipmentID) *character.SetClassInput {

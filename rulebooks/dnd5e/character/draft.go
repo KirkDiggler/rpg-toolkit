@@ -687,6 +687,7 @@ func (d *Draft) ValidateChoices() error {
 
 	// Convert draft choices to submissions
 	submissions := choices.NewSubmissions()
+	requirements := choices.GetClassRequirementsWithSubclass(d.class, 1, d.subclass)
 
 	// Process stored choices into submissions
 	for _, choice := range d.choices {
@@ -704,6 +705,10 @@ func (d *Draft) ValidateChoices() error {
 			}
 		case shared.ChoiceEquipment:
 			if len(choice.EquipmentSelection) > 0 {
+				if err := d.validatePersistedCategoryEquipmentChoice(choice, requirements); err != nil {
+					return err
+				}
+
 				// Validate all equipment IDs exist before adding to submissions
 				for _, equipID := range choice.EquipmentSelection {
 					_, err := equipment.GetByID(equipID)
@@ -812,6 +817,74 @@ func (d *Draft) ValidateChoices() error {
 			d.baseAbilityScores[abilities.CHA] > 0 {
 			d.progress.Set(ProgressAbilityScores)
 		}
+	}
+
+	return nil
+}
+
+// validatePersistedCategoryEquipmentChoice verifies the nested selections in a
+// serialized bundle choice before that choice is reduced to its option ID for
+// the general requirements validator.
+func (d *Draft) validatePersistedCategoryEquipmentChoice(
+	choice choices.ChoiceData,
+	requirements *choices.Requirements,
+) error {
+	if choice.OptionID == "" {
+		return nil
+	}
+
+	requirement := d.findEquipmentRequirement(choice.ChoiceID, requirements)
+	if requirement == nil {
+		return nil
+	}
+
+	option := d.findEquipmentOption(choice.OptionID, requirement)
+	if option == nil || len(option.CategoryChoices) == 0 {
+		return nil
+	}
+
+	categorySelectionCount := 0
+	for _, categoryChoice := range option.CategoryChoices {
+		categorySelectionCount += categoryChoice.Choose
+	}
+
+	expectedSelectionCount := len(option.Items) + categorySelectionCount
+	if len(choice.EquipmentSelection) != expectedSelectionCount {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"invalid persisted equipment selection for choice '%s' option '%s': expected %d items, got %d",
+			choice.ChoiceID, choice.OptionID, expectedSelectionCount, len(choice.EquipmentSelection))
+	}
+
+	selectionOffset := len(option.Items)
+	for _, categoryChoice := range option.CategoryChoices {
+		eligibleEquipment, err := choices.EligibleEquipment(categoryChoice.Type, categoryChoice.Categories)
+		if err != nil {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"failed to resolve persisted equipment categories for choice '%s' option '%s': %v",
+				choice.ChoiceID, choice.OptionID, err)
+		}
+
+		eligibleIDs := make(map[shared.SelectionID]struct{}, len(eligibleEquipment))
+		for _, eligible := range eligibleEquipment {
+			eligibleIDs[eligible.EquipmentID()] = struct{}{}
+		}
+
+		selected := choice.EquipmentSelection[selectionOffset : selectionOffset+categoryChoice.Choose]
+		seen := make(map[shared.SelectionID]struct{}, len(selected))
+		for _, equipmentID := range selected {
+			if _, eligible := eligibleIDs[equipmentID]; !eligible {
+				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"invalid persisted category equipment selection for choice '%s' option '%s': '%s' is not eligible",
+					choice.ChoiceID, choice.OptionID, equipmentID)
+			}
+			if _, duplicate := seen[equipmentID]; duplicate {
+				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"invalid persisted category equipment selection for choice '%s' option '%s': duplicate '%s'",
+					choice.ChoiceID, choice.OptionID, equipmentID)
+			}
+			seen[equipmentID] = struct{}{}
+		}
+		selectionOffset += categoryChoice.Choose
 	}
 
 	return nil
