@@ -89,7 +89,7 @@ func enrichEquipmentRequirements(reqs []*EquipmentRequirement) []*EquipmentRequi
 			}
 			for j := range req.Options[i].CategoryChoices {
 				choice := &req.Options[i].CategoryChoices[j]
-				eligible, err := eligibleEquipment(choice.Type, choice.Categories)
+				eligible, err := EligibleEquipment(choice.Type, choice.Categories)
 				if err != nil {
 					continue
 				}
