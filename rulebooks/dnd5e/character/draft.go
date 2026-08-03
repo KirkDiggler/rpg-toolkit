@@ -1524,11 +1524,36 @@ func (d *Draft) validateCategorySelections(
 			selection.OptionID, totalRequired, len(selection.CategorySelections))
 	}
 
-	// Validate each equipment ID exists
-	for _, equipID := range selection.CategorySelections {
-		if _, err := equipment.GetByID(equipID); err != nil {
-			return nil, rpgerr.Newf(rpgerr.CodeNotFound, "invalid equipment ID '%s'", equipID)
+	selectionOffset := 0
+	for _, categoryChoice := range option.CategoryChoices {
+		validEquipment, err := choices.EligibleEquipment(categoryChoice.Type, categoryChoice.Categories)
+		if err != nil {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"failed to resolve equipment categories for option '%s': %v", selection.OptionID, err)
 		}
+
+		validIDs := make(map[shared.EquipmentID]struct{}, len(validEquipment))
+		for _, eligible := range validEquipment {
+			validIDs[eligible.EquipmentID()] = struct{}{}
+		}
+
+		selected := selection.CategorySelections[selectionOffset : selectionOffset+categoryChoice.Choose]
+		seen := make(map[shared.EquipmentID]struct{}, len(selected))
+		for _, equipID := range selected {
+			if _, err := equipment.GetByID(equipID); err != nil {
+				return nil, rpgerr.Newf(rpgerr.CodeNotFound, "invalid equipment ID '%s'", equipID)
+			}
+			if _, valid := validIDs[equipID]; !valid {
+				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"Invalid equipment choice '%s' - must be from specified categories", equipID)
+			}
+			if _, duplicate := seen[equipID]; duplicate {
+				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+					"Cannot choose the same item '%s' multiple times", equipID)
+			}
+			seen[equipID] = struct{}{}
+		}
+		selectionOffset += categoryChoice.Choose
 	}
 
 	return selection.CategorySelections, nil

@@ -259,9 +259,10 @@ func (v *Validator) validateEquipment(req *EquipmentRequirement, submissions *Su
 	return nil
 }
 
-// eligibleEquipment is the single category-membership path for both validation
-// and concrete category-choice expansion.
-func eligibleEquipment(
+// EligibleEquipment returns the complete ordered set of equipment allowed by a
+// category choice. Requirement expansion and every category-selection validator
+// must use this function so clients are never offered a value the rules reject.
+func EligibleEquipment(
 	equipType shared.EquipmentType,
 	categories []shared.EquipmentCategory,
 ) ([]equipment.Equipment, error) {
@@ -291,7 +292,7 @@ func (v *Validator) validateEquipmentCategory(
 
 			// Get all valid equipment IDs through the same membership path used
 			// to expand category choices for clients.
-			validEquipment, err := eligibleEquipment(req.Type, req.Categories)
+			validEquipment, err := EligibleEquipment(req.Type, req.Categories)
 			if err != nil {
 				return &ValidationError{
 					Category: shared.ChoiceEquipment,
