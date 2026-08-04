@@ -23,13 +23,18 @@ type BasicRoom struct {
 	roomCreated      events.TypedTopic[RoomCreatedEvent]
 
 	// Triple entity tracking for efficient lookups
-	entities  map[string]core.Entity // ID -> Entity
-	positions map[string]Position    // ID -> Position
-	occupancy map[Position][]string  // Position -> []EntityID
+	entities   map[string]core.Entity // ID -> Entity
+	positions  map[string]Position    // ID -> Position
+	occupancy  map[Position][]string  // Position -> []EntityID
+	boundaries map[boundaryKey]Boundary
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
+
+// BasicRoom provides optional boundary-aware behavior without changing the
+// legacy Room interface.
+var _ BoundaryAwareRoom = (*BasicRoom)(nil)
 
 // BasicRoomConfig holds configuration for creating a basic room
 type BasicRoomConfig struct {
@@ -46,9 +51,10 @@ func NewBasicRoom(config BasicRoomConfig) *BasicRoom {
 		roomType: config.Type,
 		grid:     config.Grid,
 		// Event topics will be connected via ConnectToEventBus()
-		entities:  make(map[string]core.Entity),
-		positions: make(map[string]Position),
-		occupancy: make(map[Position][]string),
+		entities:   make(map[string]core.Entity),
+		positions:  make(map[string]Position),
+		occupancy:  make(map[Position][]string),
+		boundaries: make(map[boundaryKey]Boundary),
 	}
 
 	return room
@@ -162,6 +168,10 @@ func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 		return fmt.Errorf("entity %s cannot be moved to position %v", entityID, newPos)
 	}
 
+	if r.isDirectMovementBoundaryBlockedUnsafe(oldPos, newPos) {
+		return fmt.Errorf("entity %s cannot cross movement-blocking boundary from %v to %v", entityID, oldPos, newPos)
+	}
+
 	// Update positions
 	r.removeFromOccupancyUnsafe(entityID, oldPos)
 	r.positions[entityID] = newPos
@@ -216,6 +226,139 @@ func (r *BasicRoom) RemoveEntity(entityID string) error {
 	}
 
 	return nil
+}
+
+// RegisterBoundary validates and registers an undirected boundary between two
+// adjacent in-grid positions. Endpoint order is normalized and registering the
+// same pair replaces its blocking flags.
+func (r *BasicRoom) RegisterBoundary(boundary Boundary) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	normalized, err := r.validateAndNormalizeBoundaryUnsafe(boundary)
+	if err != nil {
+		return err
+	}
+	r.boundaries[newBoundaryKey(normalized.From, normalized.To)] = normalized
+	return nil
+}
+
+// RemoveBoundary validates an undirected boundary pair and removes it.
+// Removing an otherwise-valid pair with no registered boundary is a no-op.
+func (r *BasicRoom) RemoveBoundary(from, to Position) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	normalized, err := r.validateAndNormalizeBoundaryUnsafe(Boundary{From: from, To: to})
+	if err != nil {
+		return err
+	}
+	delete(r.boundaries, newBoundaryKey(normalized.From, normalized.To))
+	return nil
+}
+
+// GetBoundary returns the normalized boundary for an endpoint pair regardless
+// of the direction passed by the caller.
+func (r *BasicRoom) GetBoundary(from, to Position) (Boundary, bool) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	boundary, exists := r.boundaries[newBoundaryKey(from, to)]
+	return boundary, exists
+}
+
+// hasRegisteredBoundaries reports whether this room currently has boundary
+// records. It is intentionally internal because BoundaryAwareRoom remains
+// source-compatible with existing external implementations.
+func (r *BasicRoom) hasRegisteredBoundaries() bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return len(r.boundaries) > 0
+}
+
+// IsBoundaryMovementBlocked reports whether a registered boundary blocks the
+// crossing between two positions.
+func (r *BasicRoom) IsBoundaryMovementBlocked(from, to Position) bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.isBoundaryMovementBlockedUnsafe(from, to)
+}
+
+// IsBoundaryLineOfSightBlocked reports whether a registered boundary blocks
+// line of sight across the crossing between two positions.
+func (r *BasicRoom) IsBoundaryLineOfSightBlocked(from, to Position) bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.isBoundaryLineOfSightBlockedUnsafe(from, to)
+}
+
+func (r *BasicRoom) validateAndNormalizeBoundaryUnsafe(boundary Boundary) (Boundary, error) {
+	if r.grid.GetShape() == GridShapeGridless {
+		return Boundary{}, fmt.Errorf("boundaries require a discrete grid")
+	}
+	if !isDiscretePosition(boundary.From) || !isDiscretePosition(boundary.To) {
+		return Boundary{}, fmt.Errorf("boundary endpoints must be finite discrete cell positions")
+	}
+	if !r.grid.IsValidPosition(boundary.From) || !r.grid.IsValidPosition(boundary.To) {
+		return Boundary{}, fmt.Errorf(
+			"boundary endpoints %v and %v must be valid positions in this room", boundary.From, boundary.To,
+		)
+	}
+	if boundary.From.Equals(boundary.To) {
+		return Boundary{}, fmt.Errorf("boundary endpoints must be distinct")
+	}
+	if !r.grid.IsAdjacent(boundary.From, boundary.To) {
+		return Boundary{}, fmt.Errorf("boundary endpoints %v and %v must be adjacent", boundary.From, boundary.To)
+	}
+	return normalizedBoundary(boundary), nil
+}
+
+func (r *BasicRoom) isBoundaryMovementBlockedUnsafe(from, to Position) bool {
+	boundary, exists := r.boundaries[newBoundaryKey(from, to)]
+	return exists && boundary.BlocksMovement
+}
+
+// isDirectMovementBoundaryBlockedUnsafe checks every crossing in the direct
+// ray supplied by the grid. It deliberately does not find an alternate route:
+// MoveEntity's established multi-cell behavior is a direct move.
+func (r *BasicRoom) isDirectMovementBoundaryBlockedUnsafe(from, to Position) bool {
+	if len(r.boundaries) == 0 {
+		return false
+	}
+
+	path := CanonicalBoundaryRay(r.grid, from, to)
+	for i := 1; i < len(path); i++ {
+		if r.isBoundaryMovementBlockedUnsafe(path[i-1], path[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *BasicRoom) isBoundaryLineOfSightBlockedUnsafe(from, to Position) bool {
+	boundary, exists := r.boundaries[newBoundaryKey(from, to)]
+	return exists && boundary.BlocksLineOfSight
+}
+
+// isDirectLineOfSightBoundaryBlockedUnsafe checks boundary crossings on a
+// canonical grid ray. Square Bresenham can choose different cells by direction,
+// so canonical endpoint ordering makes boundary LoS reciprocal. Entity blockers
+// intentionally continue to use the caller's requested ray.
+func (r *BasicRoom) isDirectLineOfSightBoundaryBlockedUnsafe(from, to Position) bool {
+	if len(r.boundaries) == 0 {
+		return false
+	}
+
+	path := CanonicalBoundaryRay(r.grid, from, to)
+	for i := 1; i < len(path); i++ {
+		if r.isBoundaryLineOfSightBlockedUnsafe(path[i-1], path[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetEntitiesAt returns all entities at a specific position
@@ -379,7 +522,13 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 
 	losPositions := r.grid.GetLineOfSight(from, to)
 
-	// Check each position along the line of sight (except start and end)
+	if r.isDirectLineOfSightBoundaryBlockedUnsafe(from, to) {
+		return true
+	}
+
+	// Check each position along the caller's requested line of sight (except
+	// start and end). Keeping this ray preserves established entity-blocker
+	// semantics even when the canonical boundary ray differs on square grids.
 	for i := 1; i < len(losPositions)-1; i++ {
 		pos := losPositions[i]
 		if entityIDs, exists := r.occupancy[pos]; exists {

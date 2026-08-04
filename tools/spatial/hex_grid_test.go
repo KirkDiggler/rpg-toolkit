@@ -158,6 +158,18 @@ func (s *HexGridTestSuite) TestGetLineOfSight() {
 		s.Assert().Contains(los, spatial.Position{X: 2, Y: 2})
 		s.Assert().Contains(los, spatial.Position{X: 5, Y: 5})
 	})
+
+	s.Run("halfway cube tie prefers the same pointy top row", func() {
+		// These endpoints have two equally close halfway cube cells. The
+		// deterministic Y-axis tie break keeps the direct pointy-top row
+		// stable, which lets a cell-based legacy doorway remain on its own
+		// visual/traversal line after the symmetric cube-rounding fix.
+		grid := spatial.NewHexGrid(spatial.HexGridConfig{Width: 20, Height: 10, PointyTop: true})
+		from := spatial.Position{X: 15, Y: 4}
+		middle := spatial.Position{X: 16, Y: 4}
+		to := spatial.Position{X: 17, Y: 4}
+		s.Equal([]spatial.Position{from, middle, to}, grid.GetLineOfSight(from, to))
+	})
 }
 
 // TestGetPositionsInRange tests hex range queries

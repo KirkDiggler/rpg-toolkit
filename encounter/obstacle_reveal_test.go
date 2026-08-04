@@ -189,7 +189,7 @@ func (s *ObstacleRevealSuite) TestMove_CrossTransitionAudience() {
 		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: lineHex(0), SightRange: 2,
 	}))
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: bobPlayerID, EntityID: bobEntityID, Position: lineHex(-2), SightRange: 2,
+		PlayerID: bobPlayerID, EntityID: bobEntityID, Position: lineHex(6), SightRange: 2,
 	}))
 	aliceSub := s.subscribe(alicePlayerID)
 	bobSub := s.subscribe(bobPlayerID)

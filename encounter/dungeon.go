@@ -26,6 +26,11 @@ const dungeonPathWidth = 2.0
 // Generalizes TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to
 // any N>=2 (rpg-toolkit#814).
 type DungeonParams struct {
+	// Key is the stable authored dungeon key. It is required only when
+	// AuthoredEdges is non-empty because a door edge derives its stable DoorID
+	// from this key plus its normalized absolute endpoint pair.
+	Key string
+
 	// Regions is the ordered linear chain, entrance-side first. At least 2
 	// required — a single region has nowhere to connect to.
 	Regions []DungeonRegionParams
@@ -52,6 +57,13 @@ type DungeonParams struct {
 	// reservation. It is separate from per-region ReservedCells because a
 	// party start may validly occupy a room's door row.
 	PartyStart PartyStartParams
+
+	// AuthoredEdges is the caller-compiled, normalized dungeon-owned edge
+	// collection. Both endpoints must be adjacent semantic floor cells; a door
+	// carries the exact AuthoredDoorID derived from Key. InitDungeon persists
+	// their closed/unlocked DoorData; every rebuild registers solids and closed
+	// authored doors as spatial boundaries without occupying either endpoint.
+	AuthoredEdges []AuthoredEdge
 
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
 	// that field's doc. Never interpreted here.
@@ -98,6 +110,7 @@ type DungeonRegionParams struct {
 	// a PlacedObstacleSpec is a hard guarantee: InitDungeon fails outright
 	// if any entry lands on the reserved doorRow, collides with another
 	// placed entry, or lands on a wall cell — see placeRegionObstacles.
+	// Authored-edge endpoints remain valid ordinary-prop cells.
 	// Placed cells are excluded from Obstacles' rolled candidate pool, so
 	// the two mechanisms coexist in the same region without collision.
 	PlacedObstacles []PlacedObstacleSpec
@@ -293,37 +306,90 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 	if err := validateDungeonParams(params); err != nil {
 		return err
 	}
+	authoredEdges, err := validateAndNormalizeAuthoredEdges(params)
+	if err != nil {
+		return err
+	}
+	if err := validateAuthoredDoorIDsAgainstConnectors(params.Connectors, authoredEdges); err != nil {
+		return err
+	}
+	// All doors already held by this encounter predate the replacement Space,
+	// so none may be treated as one of this call's newly staged authored doors.
+	if err := validateClosedLegacyDoorsAtAuthoredEndpoints(
+		e.data.Doors, authoredEndpointCubes(authoredEdges), nil,
+	); err != nil {
+		return fmt.Errorf("init dungeon: %w", err)
+	}
+	if err := validateDungeonDoorIDsAvailable(e.data.Doors, params.Connectors, authoredEdges); err != nil {
+		return err
+	}
+	// Generation consumes the normalized records to remove only legacy wall
+	// cell geometry from their endpoints. Props, actors, and party starts are
+	// intentionally not reserved by authored-edge geometry.
+	params.AuthoredEdges = authoredEdges
 
 	layout, err := generateDungeonLayout(params)
 	if err != nil {
 		return fmt.Errorf("generate dungeon layout: %w", err)
 	}
 
-	previousSpace := e.data.Space
-	e.data.Space = &SpaceData{
+	dungeonKey := ""
+	if len(authoredEdges) > 0 {
+		dungeonKey = params.Key
+	}
+	space := &SpaceData{
 		Walls:               layout.walls,
 		Width:               layout.width,
 		Height:              params.Height,
 		Entrance:            core.HexFromCube(layout.entrance),
 		PartyStartPositions: layout.partyStartPositions,
+		DungeonKey:          dungeonKey,
+		AuthoredEdges:       authoredEdges,
 		Regions:             layout.regions,
 		Theme:               params.Theme,
 		Obstacles:           layout.obstacles,
 	}
 
-	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors))
+	// Validate overlay against the generated connector records before mutating
+	// the real encounter. Physical non-connector records are intentionally not
+	// removed here: SpaceData keeps generator truth intact and DescribeEdges
+	// applies the deterministic authored replacement projection.
+	generatedDoors := make(map[core.EntityID]*DoorData, len(layout.doors))
 	for i, door := range layout.doors {
 		connector := params.Connectors[i]
-		doorID := connector.DoorID
-		dd := &DoorData{ID: doorID, Position: core.HexFromCube(door), Open: false}
-		if connector.Locked {
-			dd.Locked = true
-			dd.LockDC = connector.LockDC
-			dd.LockAbility = connector.LockAbility
-			dd.LockTool = connector.LockTool
+		generatedDoors[connector.DoorID] = &DoorData{
+			ID:          connector.DoorID,
+			Position:    core.HexFromCube(door),
+			Open:        false,
+			Locked:      connector.Locked,
+			LockDC:      connector.LockDC,
+			LockAbility: connector.LockAbility,
+			LockTool:    connector.LockTool,
 		}
-		e.data.Doors[doorID] = dd
-		stagedDoorIDs = append(stagedDoorIDs, doorID)
+	}
+	provisional := &Encounter{data: &Data{Space: space, Doors: generatedDoors}}
+	if _, err := provisional.canonicalGeneratedEdgeRecordsWithOverlay(authoredEdgesByKey(space)); err != nil {
+		return fmt.Errorf("init dungeon: generated edge overlay: %w", err)
+	}
+
+	previousSpace := e.data.Space
+	e.data.Space = space
+	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors)+len(authoredEdges))
+	for i := range layout.doors {
+		connector := params.Connectors[i]
+		dd := generatedDoors[connector.DoorID]
+		e.data.Doors[connector.DoorID] = dd
+		stagedDoorIDs = append(stagedDoorIDs, connector.DoorID)
+	}
+	for _, edge := range authoredEdges {
+		if edge.Kind != GeneratedEdgeKindDoor {
+			continue
+		}
+		// Position remains the normalized first endpoint for DoorData wire
+		// compatibility. AuthoredEdge remains the edge-native authority for
+		// boundary registration and interaction from either endpoint.
+		e.data.Doors[edge.DoorID] = &DoorData{ID: edge.DoorID, Position: edge.From, Open: false}
+		stagedDoorIDs = append(stagedDoorIDs, edge.DoorID)
 	}
 
 	if err := e.rebuildRoomFromData(); err != nil {
@@ -332,6 +398,47 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		}
 		e.data.Space = previousSpace
 		return fmt.Errorf("init dungeon: rebuild room: %w", err)
+	}
+	return nil
+}
+
+func validateAuthoredDoorIDsAgainstConnectors(connectors []DungeonConnectorParams, authored []AuthoredEdge) error {
+	connectorIDs := make(map[core.EntityID]struct{}, len(connectors))
+	for _, connector := range connectors {
+		connectorIDs[connector.DoorID] = struct{}{}
+	}
+	for index, edge := range authored {
+		if edge.Kind != GeneratedEdgeKindDoor {
+			continue
+		}
+		if _, collides := connectorIDs[edge.DoorID]; collides {
+			return fmt.Errorf("authored edge %d: stable door id %q collides with connector door", index, edge.DoorID)
+		}
+	}
+	return nil
+}
+
+// validateDungeonDoorIDsAvailable rejects staged connector/authored-door IDs
+// that would overwrite a pre-existing door. InitDungeon can then roll back a
+// later rebuild failure by deleting only its own newly-created entries, never
+// guessing whether a map key used to belong to an earlier dungeon.
+func validateDungeonDoorIDsAvailable(
+	existing map[core.EntityID]*DoorData,
+	connectors []DungeonConnectorParams,
+	authored []AuthoredEdge,
+) error {
+	for index, connector := range connectors {
+		if _, exists := existing[connector.DoorID]; exists {
+			return fmt.Errorf("connector %d door id %q already exists", index, connector.DoorID)
+		}
+	}
+	for index, edge := range authored {
+		if edge.Kind != GeneratedEdgeKindDoor {
+			continue
+		}
+		if _, exists := existing[edge.DoorID]; exists {
+			return fmt.Errorf("authored edge %d door id %q already exists", index, edge.DoorID)
+		}
 	}
 	return nil
 }
@@ -511,9 +618,14 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	}
 	totalWidth := x - 1 // no trailing boundary column after the last region
 
+	// Resolve authored endpoints before seed-generated walls are emitted. Only
+	// legacy wall-cell geometry is stripped; ordinary props and party/start
+	// content may share an endpoint and independently block that cell.
+	authoredEndpoints := authoredEndpointCubes(params.AuthoredEdges)
+
 	// Resolve every party seat before generating a single wall or obstacle.
-	// The reservation is then threaded through the wall safety paths, the
-	// discrete wall boundary, and the obstacle candidate pools below.
+	// Its reservation is threaded through the wall safety paths and obstacle
+	// candidate pools below.
 	partyStart, err := resolvePartyStartReservation(params, starts, totalWidth, doorRow)
 	if err != nil {
 		return nil, err
@@ -595,6 +707,7 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		}
 		regionWalls := regionWallSegments(walls, starts[i], 0)
 		regionWalls = partyStart.stripPartyStartWalls(i, regionWalls)
+		regionWalls = stripAuthoredEndpointWalls(regionWalls, authoredEndpoints)
 		if r.Archetype == ArchetypeBoss {
 			// Construction-time discrete safeguard (rpg-toolkit#819),
 			// applied BEFORE this call's result is committed to
@@ -967,6 +1080,41 @@ func regionWallSegments(walls []environments.WallSegment, offsetX, offsetY int) 
 	return out
 }
 
+// authoredEndpointCubes returns every semantic endpoint of the already
+// validated authored-edge collection. The set only protects edge-native
+// geometry from legacy wall-cell emission; it does not reserve endpoints from
+// ordinary props, actors, starts, or spawns.
+func authoredEndpointCubes(edges []AuthoredEdge) map[spatial.CubeCoordinate]struct{} {
+	if len(edges) == 0 {
+		return nil
+	}
+	endpoints := make(map[spatial.CubeCoordinate]struct{}, len(edges)*2)
+	for _, edge := range edges {
+		endpoints[edge.From.ToCube()] = struct{}{}
+		endpoints[edge.To.ToCube()] = struct{}{}
+	}
+	return endpoints
+}
+
+// stripAuthoredEndpointWalls removes seed-generated legacy wall cells at
+// authored endpoints. It changes neither selected party seats nor ordinary
+// prop-placement coordinates.
+func stripAuthoredEndpointWalls(
+	walls []environments.WallSegmentData, endpoints map[spatial.CubeCoordinate]struct{},
+) []environments.WallSegmentData {
+	if len(endpoints) == 0 {
+		return walls
+	}
+	out := make([]environments.WallSegmentData, 0, len(walls))
+	for _, wall := range walls {
+		if _, reserved := endpoints[wall.Start]; reserved {
+			continue
+		}
+		out = append(out, wall)
+	}
+	return out
+}
+
 // wallCubeSet builds a lookup set of every absolute cube coordinate a
 // region's wall segments occupy — used by placeRegionObstacles to reject
 // wall cells as obstacle candidates. walls is already in absolute
@@ -1086,7 +1234,7 @@ type placeRegionObstaclesParams struct {
 //
 // p.placed (PlacedObstacleSpec, design.md §Design delta) is handled FIRST,
 // verbatim — see placeVerbatimObstacles — and is NOT best-effort: any
-// violation (reserved row, collision with another placed entry, a wall
+// violation (reserved row, collision with another placed entry, or a wall
 // cell) fails this call outright. Placed cells are then excluded from the
 // rolled candidate pool (both draw-order branches below), so the two
 // mechanisms never collide with each other; placed obstacle IDs are
@@ -1104,6 +1252,9 @@ type placeRegionObstaclesParams struct {
 // dungeon-wide party-start envelope selected before wall generation, and its
 // anchor may legally be on doorRow where ordinary ReservedCells are invalid.
 // Every rolled obstacle skips those cells in both draw-order paths.
+//
+// Authored-edge endpoints are deliberately absent from this placement policy:
+// an ordinary prop may share one and independently block its cell.
 func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) {
 	placedData, placedCubes, err := placeVerbatimObstacles(p)
 	if err != nil {
@@ -1120,7 +1271,7 @@ func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) 
 	// p.specs is empty (the early-return just below), since reserveCubes'
 	// validation above must run regardless of whether there's anything to
 	// roll -- a caller can set ReservedCells with no Obstacles at all.
-	excluded := make(map[spatial.CubeCoordinate]string, len(placedCubes)+len(reservedCubes))
+	excluded := make(map[spatial.CubeCoordinate]string, len(placedCubes)+len(reservedCubes)+len(p.partyReserved))
 	for cube, ref := range placedCubes {
 		excluded[cube] = ref
 	}

@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-19
+updated: 2026-08-04
 confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18; #785 arcade recovery (dead/0-HP characters restored entering a new encounter) added 2026-07-19; #787/#788 wave-2 slice 0 — QuickRoom/InitRoom entropy-seeded by default (with optional explicit seed), HexGrid.GetLineOfSight cube-rounded instead of truncated — added 2026-07-19; #790 wave-2 slice 1 — closed doors block movement+LoS via the existing wall machinery, OpenDoor unblocks and reveals through the doorway, viewerCanSee made wall-aware (rpg-api#648 finding) — added 2026-07-19; #794 wave-2 slice 1b — combat pockets: rollInitiative scoped to LoS-engaged monsters, non-terminal TURN_BASED->FREE_ROAM exit on pocket clear, ModeEnded reserved for whole-dungeon clear — added 2026-07-19; #795 arcade recovery restores resource pools (rage/ki/hit dice) at every new-encounter seating regardless of HP, extending #785's dead-only scope — added 2026-07-19; #804 wave-2 slice 2 (toolkit leg) — Encounter.InitTwoChamberRoom: two chambers in one continuous Space, region tags, entrance cell, plain door, connectivity guaranteed by construction — added 2026-07-19
 ---
 
@@ -10,6 +10,37 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**#880 / draft PR #881 — Dungeon Builder authored-edge Phase 2B (2026-08-04).**
+`dungeonspec` compiles strict dungeon-scoped `walls: [{from, to, kind}]` into
+normalized absolute pointy-top odd-q offset `[column,row]` `AuthoredEdge`
+records (never even-q or axial); the [rpg-project specimen authority](https://github.com/KirkDiggler/rpg-project/issues/175#issuecomment-5162198168)
+and its [coordinate erratum](https://github.com/KirkDiggler/rpg-project/issues/175#issuecomment-5175642013)
+remain the source for examples. `InitDungeon` persists stable closed/unlocked
+authored `DoorData`; every rebuild registers authored solids and closed doors as
+undirected `tools/spatial` boundaries that block movement+LoS without occupying
+either endpoint, while an open authored door registers no blocker. The edge
+invariant rejects legacy wall-cell geometry and non-authored closed DoorData at
+an endpoint (including AddDoor / persisted snapshots), but leaves ordinary
+props, monsters, starts, and spawns legal to share and independently block an
+endpoint. `OpenDoor` uses the existing event/reveal/memory path from either endpoint; reload
+preserves its open state, and `AttemptUnlock` remains `ErrDoorNotLocked` because
+#179 authored doors are never locked. `DescribeEdges` and viewer knowledge now
+share one sorted effective source with live door state: generated records retain
+their source endpoint orientation, while authored records keep one normalized
+identity indexed at both endpoints; `DescribeGeneratedEdges` remains a strict,
+generated-only diagnostic. Sparse player/NPC requests inspect every
+requested-direction in-grid ray cell and a canonical unordered-pair ray for
+boundary crossings; malformed/out-of-grid rays fail closed. The runtime-only
+D&D 5e monster perception seam carries an optional traversal predicate plus a
+finite search limit, allowing encounter to bound A* to its room and reject both
+cell blockers and authored boundaries while nil preserves old rulebook behavior.
+
+Nested requirements use branch pseudo-versions only — no `replace` or
+`go.work`. Eventual release order is `tools/spatial` tag → `rulebooks/dnd5e`
+tag pinned to that spatial tag → `encounter` tag pinned to both published tags
+→ API consumer pin. Draft stays open: no merge or tag until the provider loop
+is complete.
 
 **#757 — the walled room: SpaceData, wall-aware LoS, wall-blocked movement,
 inline combat entry, spawn engine unblocked (2026-07-13).** Toolkit half of

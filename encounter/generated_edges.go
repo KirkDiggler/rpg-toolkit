@@ -68,10 +68,43 @@ func (e *Encounter) DescribeGeneratedEdges(_ DescribeGeneratedEdgesInput) (Descr
 	return output, nil
 }
 
+// DescribeEdgesInput reserves an explicit input boundary for the combined
+// generated-plus-authored edge projection. Geometry is already initialized on
+// the encounter; callers cannot provide a competing edge collection here.
+type DescribeEdgesInput struct{}
+
+// DescribeEdgesOutput contains the sorted effective physical edge projection.
+// It intentionally reuses GeneratedEdge's established wire-neutral endpoint,
+// kind, and DoorID fields so existing API consumers need no parallel model.
+type DescribeEdgesOutput struct {
+	Edges []GeneratedEdge
+}
+
+// DescribeEdges exposes the effective generated-plus-authored canonical edge
+// projection. An authored edge replaces a colliding generated non-connector
+// physical edge; connector-derived collisions are rejected during InitDungeon
+// and defensively here. DescribeGeneratedEdges remains generated-only for
+// source compatibility.
+func (e *Encounter) DescribeEdges(_ DescribeEdgesInput) (DescribeEdgesOutput, error) {
+	records, err := e.canonicalEffectiveEdgeRecords()
+	if err != nil {
+		return DescribeEdgesOutput{}, err
+	}
+	output := DescribeEdgesOutput{Edges: make([]GeneratedEdge, 0, len(records))}
+	for _, record := range records {
+		if record.edge.From == record.edge.To {
+			continue
+		}
+		output.Edges = append(output.Edges, record.edge)
+	}
+	return output, nil
+}
+
 type generatedEdgeRecord struct {
-	edge           GeneratedEdge
-	blocksMovement bool
-	blocksLoS      bool
+	edge                 GeneratedEdge
+	blocksMovement       bool
+	blocksLoS            bool
+	observeBothEndpoints bool
 }
 
 type generatedEdgeKey struct {
@@ -79,13 +112,67 @@ type generatedEdgeKey struct {
 	second core.Hex
 }
 
-// canonicalGeneratedEdgeRecords is the single canonical barrier source for
-// both the public authoring seam and per-viewer knowledge. It retains every
-// degenerate cell-blocker record for viewer memory. Only distinct-endpoint
-// physical edges receive undirected deduplication and conflict checks.
-// GeneratedEdge retains the source's runtime orientation, while the private
-// record retains blocking semantics knowledge must preserve.
+// canonicalEffectiveEdgeRecords is the one effective dungeon-edge source for
+// runtime DescribeEdges and viewer observations. It applies the authored
+// overlay before generated conflict validation, preserving every surviving
+// generated record's source orientation for knowledge while giving authored
+// edges one canonical normalized identity and live door-state blocking flags.
+func (e *Encounter) canonicalEffectiveEdgeRecords() ([]generatedEdgeRecord, error) {
+	if err := validatePersistedAuthoredEdges(e.data.Space, e.data.Doors); err != nil {
+		return nil, fmt.Errorf("validate authored edges: %w", err)
+	}
+
+	var authored []AuthoredEdge
+	if e.data.Space != nil {
+		authored = e.data.Space.AuthoredEdges
+	}
+	authoredByKey := authoredEdgesByKey(e.data.Space)
+	generated, err := e.canonicalGeneratedEdgeRecordsWithOverlay(authoredByKey)
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]generatedEdgeRecord, 0, len(generated)+len(authored))
+	records = append(records, generated...)
+	for _, edge := range authored {
+		record := generatedEdgeRecord{
+			edge:                 GeneratedEdge(edge),
+			observeBothEndpoints: true,
+		}
+		if edge.Kind == GeneratedEdgeKindDoor {
+			door := e.data.Doors[edge.DoorID]
+			record.blocksMovement = !door.Open
+			record.blocksLoS = !door.Open
+		} else {
+			record.blocksMovement = true
+			record.blocksLoS = true
+		}
+		records = append(records, record)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return generatedEdgeLess(records[i].edge, records[j].edge)
+	})
+	return records, nil
+}
+
+// canonicalGeneratedEdgeRecords is the strict generated-only source for
+// DescribeGeneratedEdges. It retains every degenerate cell-blocker record for
+// later effective knowledge projection. Only distinct-endpoint physical edges
+// receive undirected deduplication and conflict checks. GeneratedEdge retains
+// the source's runtime orientation, while the private record retains blocking
+// semantics the effective source must preserve.
 func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, error) {
+	return e.canonicalGeneratedEdgeRecordsWithOverlay(nil)
+}
+
+// canonicalGeneratedEdgeRecordsWithOverlay builds the generated portion of an
+// effective seam. An authored physical edge suppresses every generated
+// nonconnector solid record for that key before deduplication/conflict checks;
+// connector-derived doors remain an explicit rejection. A nil overlay retains
+// DescribeGeneratedEdges' strict generated diagnostics.
+func (e *Encounter) canonicalGeneratedEdgeRecordsWithOverlay(
+	authoredByKey map[generatedEdgeKey]AuthoredEdge,
+) ([]generatedEdgeRecord, error) {
 	records := make([]generatedEdgeRecord, 0)
 	seen := make(map[generatedEdgeKey]int)
 	add := func(record generatedEdgeRecord) error {
@@ -98,6 +185,13 @@ func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, erro
 		}
 
 		key := newGeneratedEdgeKey(record.edge.From, record.edge.To)
+		if _, replaced := authoredByKey[key]; replaced {
+			if record.edge.Kind == GeneratedEdgeKindDoor {
+				return fmt.Errorf("authored edge collides with connector-derived edge %v to %v",
+					record.edge.From, record.edge.To)
+			}
+			return nil
+		}
 		if index, exists := seen[key]; exists {
 			existing := records[index]
 			if existing.edge.Kind == record.edge.Kind &&
@@ -134,9 +228,15 @@ func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, erro
 		}
 	}
 
+	authoredDoors := authoredDoorIDs(e.data.Space)
 	doorIDs := make([]core.EntityID, 0, len(e.data.Doors))
 	for id, door := range e.data.Doors {
 		if door != nil {
+			if _, authored := authoredDoors[id]; authored {
+				// Authored doors are edge-native effective records below, never
+				// generated connector cell geometry.
+				continue
+			}
 			doorIDs = append(doorIDs, id)
 		}
 	}

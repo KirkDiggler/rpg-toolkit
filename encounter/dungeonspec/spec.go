@@ -3,6 +3,9 @@
 
 // Package dungeonspec decodes, validates, and compiles versioned YAML
 // dungeon specs into the engine's DungeonParams + spawn plan (rpg-toolkit#842).
+// Its authored wall endpoints are pointy-top odd-q offset [column,row] pairs,
+// never even-q or axial coordinates; the rpg-project specimen authority owns
+// the examples and coordinate errata.
 package dungeonspec
 
 // DungeonSpec is the top-level decoded shape of a dungeon spec file.
@@ -17,6 +20,11 @@ type DungeonSpec struct {
 	Start      *[2]int         `yaml:"start,omitempty"`
 	Rooms      []RoomSpec      `yaml:"rooms"`
 	Connectors []ConnectorSpec `yaml:"connectors"`
+	// Walls is the optional dungeon-scoped authored physical-edge collection.
+	// Nil represents both omitted and explicit YAML null; every present entry
+	// must name two absolute pointy-top odd-q [column,row] floor cells (not
+	// even-q or axial) and a solid or door kind.
+	Walls []WallSpec `yaml:"walls,omitempty"`
 	// Place is decoded solely to reject unsupported top-level placement,
 	// including facing, at a field-specific validation path. Slice #178
 	// supports only existing room-scoped floor props.
@@ -76,6 +84,18 @@ type PlacedEntry struct {
 	// field path. Slice #178 supports floor placements only and never
 	// compiles mount behavior.
 	Mount *string `yaml:"mount,omitempty"`
+}
+
+// WallSpec is one strict authored edge from the top-level walls grammar.
+// Endpoints use absolute pointy-top odd-q offset [column,row] coordinates,
+// not even-q or axial coordinates. Endpoint pointers preserve the difference
+// between a supplied pair and a prohibited null/missing endpoint; explicit
+// YAML null is valid only for the optional collection, not for either endpoint
+// of an entry.
+type WallSpec struct {
+	From *[2]int `yaml:"from"`
+	To   *[2]int `yaml:"to"`
+	Kind string  `yaml:"kind"`
 }
 
 // ConnectorSpec joins two rooms, optionally behind a locked check.

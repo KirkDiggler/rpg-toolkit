@@ -269,6 +269,12 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
 	}
+	if err := validatePersistedDoors(data.Doors); err != nil {
+		return nil, fmt.Errorf("validate doors: %w", err)
+	}
+	if err := validatePersistedAuthoredEdges(data.Space, data.Doors); err != nil {
+		return nil, fmt.Errorf("validate authored edges: %w", err)
+	}
 	e := &Encounter{
 		data:       data,
 		broker:     b,
@@ -420,23 +426,30 @@ func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.
 // (see rebuildRoomFromData). A no-op, not an error, when there's no room
 // yet — InitRoom's own rebuild will pick up any door added before it.
 //
-// On rebuild failure, the door registration is rolled back (removed from
-// Data.Doors) rather than left half-applied — a Copilot catch on this PR:
-// without the rollback, a failed rebuild would leave the door persisted
-// but not reflected in e.room, so a subsequent OpenDoor/rebuild could
-// behave inconsistently with what ToData() reports.
+// On rebuild failure, the door registration is rolled back to its prior map
+// value (or removed when newly added) rather than left half-applied. This also
+// prevents a failed caller attempt to overwrite a stable authored DoorData
+// record from making the persisted AuthoredEdge invalid.
 //
 // rebuildRoomFromData replaces e.room/e.roomOrchestrator with fresh
 // objects rather than mutating the existing ones — see OpenDoor's doc for
 // why a caller holding an old Room()/RoomOrchestrator() reference across
 // this call would observe stale geometry.
 func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) error {
+	if authoredEndpointContains(e.data.Space, position) {
+		return fmt.Errorf("add door %q: position %v is an authored edge endpoint", id, position)
+	}
+	previous, existed := e.data.Doors[id]
 	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
 	if e.data.Space == nil {
 		return nil
 	}
 	if err := e.rebuildRoomFromData(); err != nil {
-		delete(e.data.Doors, id)
+		if existed {
+			e.data.Doors[id] = previous
+		} else {
+			delete(e.data.Doors, id)
+		}
 		return fmt.Errorf("rebuild room after adding door %q: %w", id, err)
 	}
 	return nil
@@ -785,11 +798,11 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 
 	moverStart := p.View.Position
 
-	// Wall-blocked movement (rpg-toolkit#757): truncate the requested path at
-	// the first wall-occupied hex before ANY downstream cost/resolver logic
-	// sees it, so a blocked path is never partially budgeted or chain-run.
-	// Nil room (no SpaceData) is a no-op — pre-wave-1 unblocked movement.
-	path = e.truncateAtWall(path)
+	// Geometry-blocked movement: truncate the requested path before ANY
+	// downstream cost/resolver logic sees it, so cell blockers and authored
+	// boundary crossings cannot be bypassed by sparse requests or partially
+	// budgeted/chain-run. Nil room remains the pre-wave-1 unblocked behavior.
+	path = e.truncateAtWall(moverStart, path)
 	if len(path) == 0 {
 		// Blocked at the very first requested hex. Nothing to publish —
 		// position unchanged, no events fire, nothing spent. Mirrors the
@@ -1299,11 +1312,11 @@ func (e *Encounter) applyAndPublishMove(
 	return corrID, nil
 }
 
-// OpenDoor applies an open-door action. Requires playerID to be adjacent to
-// the door (rpg-toolkit#864 — wrapped ErrOutOfRange otherwise). Marks the
-// door open, rebuilds e.room so the door's cell stops blocking
-// movement/LoS (rpg-toolkit#790 —
-// see rebuildRoomFromData), and publishes the cause event (DoorOpenedEvent)
+// OpenDoor applies an open-door action. A generated connector retains its
+// adjacent-cell reach gate; an authored door requires the actor to stand on
+// either incident endpoint (both wrap ErrOutOfRange when refused). It marks
+// the door open, rebuilds e.room so generated door cells or authored boundary
+// blockers are removed (see rebuildRoomFromData), and publishes the cause event (DoorOpenedEvent)
 // plus a HexRevealedEvent for any viewer whose vision grew — the room
 // rebuild happens BEFORE the per-viewer ProjectDoorOpen calls below so
 // their VisibleHexesAt sees through the now-open doorway. On rebuild
@@ -1325,19 +1338,19 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 		return fmt.Errorf("player %q not in encounter", playerID)
 	}
 	door, ok := e.data.Doors[doorID]
-	if !ok {
+	if !ok || door == nil {
 		return fmt.Errorf("door %q not in encounter", doorID)
 	}
 	if door.Open {
 		return fmt.Errorf("door %q already open", doorID)
 	}
-	// rpg-toolkit#864: Interact/door actions require adjacency. A 2026-07-30
+	// rpg-toolkit#864: Interact/door actions require reach. A 2026-07-30
 	// QA walk found this verb reachable from anywhere on the map (a door
 	// opened from 10 hexes away) — range is a parameter of the action, not
 	// an exception, so this gate lives here rather than in the orchestrator
 	// (rpg-api's Interact only classifies locked-vs-unlocked and dispatches;
 	// see encounter.DoorData's own docs on that split).
-	if err := checkInteractReach(p.View.Position, door.Position); err != nil {
+	if err := e.checkDoorInteractReach(p.View.Position, door); err != nil {
 		return fmt.Errorf("door %q: %w", doorID, err)
 	}
 
@@ -1352,9 +1365,13 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 	doorPerPlayer := make(map[core.PlayerID]events.DoorOpenedPlayerSlice)
 	revealPerPlayer := make(map[core.PlayerID]events.HexRevealedSlice)
 
+	doorPositions := []core.Hex{door.Position}
+	if edge, authored := e.authoredDoorEdge(doorID); authored {
+		doorPositions = []core.Hex{edge.From, edge.To}
+	}
 	for viewerID, viewer := range e.data.Players {
-		doorSlice, revealSlice := perception.ProjectDoorOpen(
-			doorID, door.Position, p.EntityID, viewer.View, e.room,
+		doorSlice, revealSlice := perception.ProjectDoorOpenAtPositions(
+			doorID, doorPositions, p.EntityID, viewer.View, e.room,
 		)
 		if doorSlice != nil {
 			doorPerPlayer[viewerID] = *doorSlice

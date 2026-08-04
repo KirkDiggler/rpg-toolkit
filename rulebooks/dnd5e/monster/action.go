@@ -72,9 +72,20 @@ type PerceptionData struct {
 	// Perceived allies
 	Allies []PerceivedEntity
 
-	// BlockedHexes contains hexes that cannot be moved through (walls, obstacles)
-	// Used by the A* pathfinder in moveTowardEnemy.
+	// BlockedHexes contains hexes that cannot be moved through (walls, obstacles).
+	// It is supplied to both legacy and traversal-aware A* searches.
 	BlockedHexes []spatial.CubeCoordinate
+
+	// TraversalPredicate optionally decides whether A* may cross each directed
+	// adjacent pair. It is runtime-only encounter geometry such as blocked
+	// boundaries; nil preserves the legacy blocked-cell-only search behavior.
+	TraversalPredicate spatial.TraversalPredicate
+
+	// TraversalLimit bounds a traversal-aware A* search. Callers must provide a
+	// finite limit whenever TraversalPredicate is non-nil because a predicate can
+	// seal a goal on the otherwise-unbounded hex plane. It is ignored when
+	// TraversalPredicate is nil.
+	TraversalLimit spatial.TraversalSearchLimit
 }
 
 // PerceivedEntity represents an entity the monster can perceive

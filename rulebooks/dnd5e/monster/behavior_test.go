@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type BehaviorTestSuite struct {
@@ -423,6 +424,59 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 	s.Equal("fighter-1", result.Actions[0].TargetID)
 	s.T().Logf("Attack: action=%s, target=%s, success=%v",
 		result.Actions[0].ActionID, result.Actions[0].TargetID, result.Actions[0].Success)
+}
+
+func (s *BehaviorTestSuite) TestTakeTurnTraversalPredicateControlsAStar() {
+	s.Run("detours around blocked crossing", func() {
+		start := hexAt(0)
+		directFirstStep := hexAt(1)
+		goal := hexAt(3)
+		canTraverse := func(from, to spatial.CubeCoordinate) bool {
+			return (from != start || to != directFirstStep) &&
+				(from != directFirstStep || to != start)
+		}
+		perception := &PerceptionData{
+			MyPosition: start,
+			Enemies: []PerceivedEntity{{
+				Entity: &mockTarget{id: "target-1", name: "Fighter"}, Position: goal,
+				Distance: 3,
+			}},
+			TraversalPredicate: canTraverse,
+			TraversalLimit:     spatial.TraversalSearchLimit{MaxSteps: 4},
+		}
+
+		result, err := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7}).TakeTurn(s.ctx, &TurnInput{
+			Bus: s.bus, ActionEconomy: combat.NewActionEconomy(), Perception: perception,
+			Roller: dice.NewRoller(), Speed: 3,
+		})
+		s.Require().NoError(err)
+		s.Require().Len(result.Movement, 4, "detour path includes start plus three moves to adjacent range")
+		s.Equal(1, result.Movement[len(result.Movement)-1].Distance(goal))
+		for i := 1; i < len(result.Movement); i++ {
+			s.True(canTraverse(result.Movement[i-1], result.Movement[i]), "movement must honor traversal predicate")
+		}
+	})
+
+	s.Run("sealed goal returns no route within finite limit", func() {
+		start := hexAt(0)
+		goal := hexAt(3)
+		perception := &PerceptionData{
+			MyPosition: start,
+			Enemies: []PerceivedEntity{{
+				Entity: &mockTarget{id: "target-1", name: "Fighter"}, Position: goal,
+				Distance: 3,
+			}},
+			TraversalPredicate: func(_ spatial.CubeCoordinate, to spatial.CubeCoordinate) bool { return to != goal },
+			TraversalLimit:     spatial.TraversalSearchLimit{MaxSteps: 16},
+		}
+
+		result, err := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7}).TakeTurn(s.ctx, &TurnInput{
+			Bus: s.bus, ActionEconomy: combat.NewActionEconomy(), Perception: perception,
+			Roller: dice.NewRoller(), Speed: 3,
+		})
+		s.Require().NoError(err)
+		s.Empty(result.Movement)
+	})
 }
 
 func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {

@@ -66,6 +66,21 @@ func (s *ProjectSuite) TestProjectDoorOpen_ViewerOutOfRange() {
 	s.Nil(revealSlice)
 }
 
+func (s *ProjectSuite) TestProjectDoorOpenAtPositions_ViewerSeesEitherIncidentEndpoint() {
+	to := core.Hex{Q: 2, R: 0, S: -2}
+	viewer := perception.NewView("alice", to, 0)
+
+	doorSlice, revealSlice := perception.ProjectDoorOpenAtPositions("door-1", []core.Hex{
+		{Q: 10, R: 0, S: -10}, // the legacy From endpoint is out of range
+		to,
+	}, "bob", viewer, nil)
+
+	s.Require().NotNil(doorSlice)
+	s.True(doorSlice.Visible)
+	s.Require().NotNil(revealSlice)
+	s.True(revealSlice.Hexes.Has(to))
+}
+
 // ─── ProjectVisibilityTransition unit tests ────────────────────────────────
 
 // Mover starts outside viewer's LoS and ends inside → appearedAt = path end.

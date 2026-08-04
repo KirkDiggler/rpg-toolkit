@@ -261,19 +261,22 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	return out
 }
 
-// edgesByHex indexes the canonical generated barriers by their From endpoint
-// for viewer observations. DescribeGeneratedEdges projects the same source,
-// so knowledge and authoring cannot drift into separate wall canonicalizers.
+// edgesByHex indexes the effective runtime barriers for viewer observations.
+// DescribeEdges consumes the same source, so authored/generator overlay,
+// live door state, and knowledge cannot drift into separate canonicalizers.
+// Generated records retain their established single-source-endpoint indexing;
+// every authored edge is additionally indexed from its other incident endpoint
+// while still carrying the one canonical normalized identity.
 //
 // Each hex's edge list is sorted by (To.Q, To.R, To.S) then DoorID for
 // deterministic output — the same idempotency reasoning as placementsAt.
 func (e *Encounter) edgesByHex() (map[core.Hex][]perception.Edge, error) {
 	out := make(map[core.Hex][]perception.Edge)
-	generated, err := e.canonicalGeneratedEdgeRecords()
+	records, err := e.canonicalEffectiveEdgeRecords()
 	if err != nil {
 		return nil, err
 	}
-	for _, record := range generated {
+	for _, record := range records {
 		edge := record.edge
 		observed := perception.Edge{
 			From:           edge.From,
@@ -288,6 +291,9 @@ func (e *Encounter) edgesByHex() (map[core.Hex][]perception.Edge, error) {
 			observed.DoorLocked = door.Locked
 		}
 		out[edge.From] = append(out[edge.From], observed)
+		if record.observeBothEndpoints && edge.From != edge.To {
+			out[edge.To] = append(out[edge.To], observed)
+		}
 	}
 	for h, edges := range out {
 		sort.Slice(edges, func(i, j int) bool {

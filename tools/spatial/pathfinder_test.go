@@ -95,6 +95,84 @@ func (s *PathFinderTestSuite) TestSamePosition() {
 	s.Empty(path, "should return empty path when already at goal")
 }
 
+func (s *PathFinderTestSuite) TestFindPathWithTraversalDetoursAroundBlockedCrossing() {
+	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
+	goal := CubeCoordinate{X: 2, Y: -2, Z: 0}
+	blockedCrossingFrom := CubeCoordinate{X: 1, Y: -1, Z: 0}
+
+	canTraverse := func(from, to CubeCoordinate) bool {
+		return (from != start || to != blockedCrossingFrom) &&
+			(from != blockedCrossingFrom || to != start)
+	}
+
+	path := s.pathFinder.FindPathWithTraversal(start, goal, nil, canTraverse, TraversalSearchLimit{MaxSteps: 3})
+
+	// The direct two-step route crosses the blocked boundary, so A* must use
+	// a longer route while still preserving legacy cell-blocker handling.
+	s.Require().Len(path, 3)
+	s.Equal(goal, path[len(path)-1])
+
+	current := start
+	for _, next := range path {
+		s.Truef(canTraverse(current, next), "path crossed blocked boundary %v -> %v", current, next)
+		s.Equal(1, current.Distance(next))
+		current = next
+	}
+}
+
+func (s *PathFinderTestSuite) TestFindPathWithTraversalTerminatesWhenGoalIsSealed() {
+	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
+	goal := CubeCoordinate{X: 3, Y: -3, Z: 0}
+	canTraverse := func(_ CubeCoordinate, to CubeCoordinate) bool {
+		return to != goal
+	}
+
+	// No blocked cells surround the goal, but the traversal predicate prevents
+	// every entrance. The explicit bound makes this finite on an unbounded map.
+	path := s.pathFinder.FindPathWithTraversal(
+		start,
+		goal,
+		nil,
+		canTraverse,
+		TraversalSearchLimit{MaxSteps: 32},
+	)
+
+	s.Empty(path)
+}
+
+func (s *PathFinderTestSuite) TestFindPathWithTraversalAllowsLongDetourWithinLimit() {
+	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
+	goal := CubeCoordinate{X: 2, Y: 0, Z: -2}
+	const maxSteps = 64
+
+	// A finite fence at X=1 prevents the two-step direct route. Crossing at
+	// either end of the fence requires a 43-step detour, which must remain
+	// discoverable inside the explicit realistic-detour budget.
+	canTraverse := func(_ CubeCoordinate, to CubeCoordinate) bool {
+		return to.X != 1 || to.Y < -20 || to.Y > 20
+	}
+
+	path := s.pathFinder.FindPathWithTraversal(
+		start,
+		goal,
+		nil,
+		canTraverse,
+		TraversalSearchLimit{MaxSteps: maxSteps},
+	)
+
+	s.Require().NotEmpty(path)
+	s.GreaterOrEqual(len(path), 43)
+	s.LessOrEqual(len(path), maxSteps)
+	s.Equal(goal, path[len(path)-1])
+
+	current := start
+	for _, next := range path {
+		s.Truef(canTraverse(current, next), "path crossed traversal fence %v -> %v", current, next)
+		s.Equal(1, current.Distance(next))
+		current = next
+	}
+}
+
 func (s *PathFinderTestSuite) TestNoPath_GoalBlocked() {
 	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
 	goal := CubeCoordinate{X: 3, Y: 0, Z: -3}

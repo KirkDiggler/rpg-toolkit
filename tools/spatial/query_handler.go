@@ -7,6 +7,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
+// boundaryRegistrationState exposes the registered-boundary presence check to
+// package-owned room implementations. External BoundaryAwareRoom
+// implementations preserve the conservative per-crossing checks.
+type boundaryRegistrationState interface {
+	hasRegisteredBoundaries() bool
+}
+
 // SpatialQueryHandler handles spatial query events
 //
 //nolint:revive // type name follows package naming conventions used throughout codebase
@@ -122,16 +129,41 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 		return data, nil
 	}
 
-	// Check if the entity can move to the target position
+	// Movement queries retain direct-move semantics: they report a ray rather
+	// than finding an alternate path. Registered boundaries select one
+	// unordered-pair canonical ray and orient it back toward the caller's
+	// requested destination, so both traversal directions inspect identical
+	// physical crossings. Legacy and boundary-empty rooms retain their original
+	// requested-direction ray without an extra scan.
+	data.Path = room.GetLineOfSight(data.From, data.To)
+	boundaryRoom, boundaryAware := room.(BoundaryAwareRoom)
+	hasBoundaries := boundaryAware && roomHasRegisteredBoundaries(boundaryRoom)
+	if hasBoundaries {
+		data.Path = CanonicalBoundaryRay(room.GetGrid(), data.From, data.To)
+	}
+
+	// Check if the entity can move to the target position. Boundary-aware rooms
+	// with registered boundaries additionally reject any blocked consecutive
+	// crossing in the direct ray.
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
+	if data.Valid && hasBoundaries {
+		for i := 1; i < len(data.Path); i++ {
+			if boundaryRoom.IsBoundaryMovementBlocked(data.Path[i-1], data.Path[i]) {
+				data.Valid = false
+				break
+			}
+		}
+	}
 
 	// Calculate distance using the room's grid
 	data.Distance = room.GetGrid().Distance(data.From, data.To)
 
-	// Get the path (line of sight for now, could be enhanced with pathfinding)
-	data.Path = room.GetLineOfSight(data.From, data.To)
-
 	return data, nil
+}
+
+func roomHasRegisteredBoundaries(room BoundaryAwareRoom) bool {
+	state, known := room.(boundaryRegistrationState)
+	return !known || state.hasRegisteredBoundaries()
 }
 
 // handlePlacement handles placement queries

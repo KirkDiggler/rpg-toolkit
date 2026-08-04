@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type SpaceSuite struct {
@@ -178,6 +179,49 @@ func (s *SpaceSuite) TestLoadFromData_DuplicateWallEntries_Tolerated() {
 	s.Require().NoError(reloaded.Move("alice", []core.Hex{wallHex}))
 	s.Equal(start, reloaded.ToData().Players["alice"].View.Position,
 		"the deduplicated wall must still block movement")
+}
+
+// TestMove_SparsePathChecksInteriorCellsAndFailsClosedOutOfGrid ensures a
+// caller cannot skip a legacy generated cell blocker by supplying only a far
+// endpoint, and that a malformed cube/out-of-grid segment stops at the prior
+// safe requested waypoint.
+func (s *SpaceSuite) TestMove_SparsePathChecksInteriorCellsAndFailsClosedOutOfGrid() {
+	enc := encounter.New(context.Background(), "enc-space-sparse", s.broker)
+	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternEmpty))
+	blocker := core.HexFromPosition(spatial.Position{X: 2, Y: 1})
+	var start, far core.Hex
+	grid := enc.Room().GetGrid()
+	for _, fromPos := range grid.GetNeighbors(blocker.ToPosition()) {
+		for _, toPos := range grid.GetNeighbors(blocker.ToPosition()) {
+			ray := grid.GetLineOfSight(fromPos, toPos)
+			if len(ray) == 3 && ray[1].Equals(blocker.ToPosition()) {
+				start, far = core.HexFromPosition(fromPos), core.HexFromPosition(toPos)
+				break
+			}
+		}
+		if far != (core.Hex{}) {
+			break
+		}
+	}
+	s.Require().NotEqual(core.Hex{}, far, "fixture requires a direct ray through the blocker")
+	s.Require().NoError(enc.AddObstacle("sparse-cell-blocker", "test", blocker, true, true))
+	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "alice", EntityID: "char-alice", Position: start, SightRange: 1,
+	}))
+	s.Require().NoError(enc.Move("alice", []core.Hex{far}))
+	s.Equal(start, enc.ToData().Players["alice"].View.Position,
+		"an endpoints-only request must not jump over an interior cell blocker")
+
+	clean := encounter.New(context.Background(), "enc-space-invalid", s.broker)
+	s.Require().NoError(clean.InitRoom(10, 10, environments.PatternEmpty))
+	s.Require().NoError(clean.AddPlayer(encounter.PlayerInput{
+		PlayerID: bobPlayerID, EntityID: bobEntityID, Position: start, SightRange: 1,
+	}))
+	safe := core.HexFromPosition(clean.Room().GetGrid().GetNeighbors(start.ToPosition())[0])
+	invalidCube := core.Hex{Q: 1, R: 1, S: 1}
+	s.Require().NoError(clean.Move(bobPlayerID, []core.Hex{safe, invalidCube}))
+	s.Equal(safe, clean.ToData().Players[bobPlayerID].View.Position,
+		"an invalid later segment must fail closed without discarding the safe prefix")
 }
 
 func (s *SpaceSuite) TestMove_NilRoom_Unblocked() {

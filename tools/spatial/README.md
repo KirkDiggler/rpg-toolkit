@@ -9,6 +9,7 @@ The spatial module provides 2D spatial positioning and movement capabilities for
 - [Quick Start](#quick-start)
 - [Grid Systems](#grid-systems)
 - [Room Management](#room-management)
+- [Boundary Crossings](#boundary-crossings)
 - [Multi-Room Orchestration](#multi-room-orchestration)
 - [Entity Placement](#entity-placement)
 - [Event System Integration](#event-system-integration)
@@ -27,6 +28,7 @@ The spatial module is designed to handle 2D spatial positioning for tabletop RPG
 - **Event Integration**: Automatic event publishing for spatial changes
 - **Query System**: Efficient spatial queries for game mechanics
 - **Line of Sight**: Calculate visibility and obstacles
+- **Boundary Crossings**: Optional undirected barriers between adjacent cells
 - **Distance Calculation**: Grid-appropriate distance calculations
 - **Layout Patterns**: Common spatial arrangements (towers, dungeons, towns)
 
@@ -63,6 +65,77 @@ type Placeable interface {
     BlocksMovement() bool
     BlocksLineOfSight() bool
 }
+```
+
+## Boundary Crossings
+
+`Room` remains occupancy-focused. `BasicRoom` additionally implements the
+optional `BoundaryAwareRoom` capability for a barrier between two adjacent,
+in-grid positions. A boundary is normalized as an undirected pair when it is
+registered, so both directions share one record. It never occupies either
+endpoint. It applies to discrete square and hex grids; gridless rooms have no
+cell-pair crossing model and reject boundary registration. With no registered
+boundaries, `BasicRoom` retains its legacy movement, movement-query, and entity
+line-of-sight behavior without constructing or scanning a boundary-specific
+ray.
+
+```go
+boundaryRoom := room // *spatial.BasicRoom
+err := boundaryRoom.RegisterBoundary(spatial.Boundary{
+    From:              spatial.Position{X: 4, Y: 5},
+    To:                spatial.Position{X: 5, Y: 5},
+    BlocksMovement:    true,
+    BlocksLineOfSight: true,
+})
+
+// Movement and LoS both reject the crossing. Placement at either cell stays valid.
+err = boundaryRoom.MoveEntity("hero-1", spatial.Position{X: 5, Y: 5})
+blocked := boundaryRoom.IsLineOfSightBlocked(
+    spatial.Position{X: 4, Y: 5},
+    spatial.Position{X: 5, Y: 5},
+)
+
+// Re-register to change flags (for example, an opened door), or remove it.
+err = boundaryRoom.RegisterBoundary(spatial.Boundary{
+    From: spatial.Position{X: 4, Y: 5},
+    To:   spatial.Position{X: 5, Y: 5},
+})
+err = boundaryRoom.RemoveBoundary(
+    spatial.Position{X: 4, Y: 5},
+    spatial.Position{X: 5, Y: 5},
+)
+```
+
+Boundaries are transient spatial infrastructure, not persistence or content
+ownership. A higher-level dungeon/encounter owns authored records and
+registers its current crossings when rebuilding a room. Boundary endpoints must
+be finite integer cell coordinates; fractional and non-finite values are
+rejected before a pair is normalized.
+
+Multi-cell `MoveEntity` calls and movement queries retain direct-move semantics:
+they follow the grid-provided `GetLineOfSight` ray, reject any blocked
+consecutive crossing, and do not find a detour. Boundary LoS checks use one
+lexicographically ordered endpoint ray so a boundary has the same result in
+either direction even when square Bresenham chooses different directional rays.
+Entity blockers continue to use the caller's requested ray.
+
+For hex A*, `SimplePathFinder.FindPathWithTraversal` accepts a
+`TraversalPredicate` so callers can reject a crossing without treating either
+endpoint as a blocked cell. It also requires an explicit
+`TraversalSearchLimit`; `MaxSteps` bounds both returned path length and search
+cost, making a sealed-but-unblocked goal terminate on the unbounded hex plane.
+Choose a limit above the direct distance by the detour budget appropriate for
+the map. An empty result means either no route exists or no route fits that
+budget.
+
+```go
+path := finder.FindPathWithTraversal(
+    start,
+    goal,
+    blockedCells,
+    canTraverse,
+    spatial.TraversalSearchLimit{MaxSteps: 64},
+)
 ```
 
 ## Quick Start

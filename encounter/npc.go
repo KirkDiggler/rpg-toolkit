@@ -305,9 +305,10 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 		return nil // No real movement — moving to where you already are.
 	}
 
-	// Wall-blocked movement (rpg-toolkit#757): same truncation as the player
-	// path — an NPC cannot walk through a wall either. Nil room is a no-op.
-	path = e.truncateAtWall(path)
+	// Geometry-blocked movement: same crossing-aware truncation as the player
+	// path, so an NPC cannot bypass cell blockers or authored boundaries. Nil
+	// room remains a no-op.
+	path = e.truncateAtWall(moverStart, path)
 	if len(path) == 0 {
 		return nil // Blocked at the very first hex.
 	}
@@ -1082,8 +1083,10 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 }
 
 // buildPerception assembles the PerceptionData a monster needs to choose
-// and target an action. Wave 2.8 treats every player as an enemy and
-// computes distances directly from hex coordinates — no walls or cover.
+// and target an action. Every living player is an enemy; when a room exists,
+// its runtime-only cell blockers and boundary crossings become a finite,
+// grid-bounded A* traversal contract. A nil room preserves the historical
+// rulebook behavior that supplies no traversal predicate.
 //
 // #733: a player at HP<=0 (dead or unconscious) is never perceived as an
 // enemy — this is the fix for the observed soft-lock where a goblin kept
@@ -1095,16 +1098,30 @@ func (e *Encounter) buildPerception(mon *MonsterData) *monster.PerceptionData {
 	pd := &monster.PerceptionData{
 		MyPosition: pos,
 	}
+	if e.room != nil {
+		pd.BlockedHexes = e.roomBlockedHexes()
+		pd.TraversalPredicate = e.roomTraversalPredicate()
+		pd.TraversalLimit = e.roomTraversalLimit()
+	}
 	for _, p := range e.data.Players {
 		if p.HP <= 0 {
 			continue
 		}
+		enemyPosition := p.View.Position.ToCube()
 		dist := hexDistance(mon.Position, p.View.Position)
+		adjacent := dist == 1
+		if adjacent && pd.TraversalPredicate != nil {
+			// A closed authored boundary may leave two combatants geometrically
+			// adjacent while still forbidding the crossing. Treat that target as
+			// non-adjacent so monster.TakeTurn routes through A* rather than
+			// selecting a melee attack through the barrier.
+			adjacent = pd.TraversalPredicate(pos, enemyPosition)
+		}
 		pd.Enemies = append(pd.Enemies, monster.PerceivedEntity{
 			Entity:   &playerEntity{id: string(p.EntityID), name: string(p.ID)},
-			Position: p.View.Position.ToCube(),
+			Position: enemyPosition,
 			Distance: dist,
-			Adjacent: dist == 1,
+			Adjacent: adjacent,
 			HP:       p.HP,
 			AC:       p.AC,
 		})
@@ -1113,6 +1130,76 @@ func (e *Encounter) buildPerception(mon *MonsterData) *monster.PerceptionData {
 	// strategies in monster.PerceptionData.
 	sortEnemiesByDistance(pd.Enemies)
 	return pd
+}
+
+// roomBlockedHexes snapshots the reconstructed room's current blocking cells
+// for the rulebook's established blocked-cell A* input. Boundary barriers are
+// intentionally absent here: they belong in roomTraversalPredicate so neither
+// endpoint is reinterpreted as blocked terrain.
+func (e *Encounter) roomBlockedHexes() []spatial.CubeCoordinate {
+	if e.room == nil {
+		return nil
+	}
+	grid := e.room.GetGrid()
+	entities := e.room.GetAllEntities()
+	seen := make(map[spatial.Position]struct{}, len(entities))
+	out := make([]spatial.CubeCoordinate, 0, len(entities))
+	for id := range entities {
+		position, found := e.room.GetEntityPosition(id)
+		if !found {
+			continue
+		}
+		if _, duplicate := seen[position]; duplicate {
+			continue
+		}
+		seen[position] = struct{}{}
+		if !grid.IsValidPosition(position) || e.room.CanPlaceEntity(wallCheckEntity{}, position) {
+			continue
+		}
+		out = append(out, encountercore.HexFromPosition(position).ToCube())
+	}
+	return out
+}
+
+// roomTraversalPredicate returns the encounter's bounded-room traversal rule
+// for monster A*. It rejects invalid cells, legacy generated cell blockers,
+// and authored boundary crossings without leaking the encounter's persistence
+// types into the dnd5e rulebook.
+func (e *Encounter) roomTraversalPredicate() spatial.TraversalPredicate {
+	return func(from, to spatial.CubeCoordinate) bool {
+		if !from.IsValid() || !to.IsValid() {
+			return false
+		}
+		grid := e.room.GetGrid()
+		fromPos := encountercore.HexFromCube(from).ToPosition()
+		toPos := encountercore.HexFromCube(to).ToPosition()
+		if !grid.IsValidPosition(fromPos) || !grid.IsValidPosition(toPos) ||
+			!grid.IsAdjacent(fromPos, toPos) ||
+			!e.room.CanPlaceEntity(wallCheckEntity{}, toPos) {
+			return false
+		}
+		if boundaryRoom, ok := e.room.(spatial.BoundaryAwareRoom); ok &&
+			boundaryRoom.IsBoundaryMovementBlocked(fromPos, toPos) {
+			return false
+		}
+		return true
+	}
+}
+
+// roomTraversalLimit returns a finite simple-path bound for a rectangular
+// encounter HexGrid. Any route through N in-grid cells has a simple path no
+// longer than N-1 crossings, so N is sufficient while preventing A* from
+// escaping the room onto the unbounded hex plane.
+func (e *Encounter) roomTraversalLimit() spatial.TraversalSearchLimit {
+	if e.room == nil {
+		return spatial.TraversalSearchLimit{}
+	}
+	dimensions := e.room.GetGrid().GetDimensions()
+	maxSteps := int(dimensions.Width * dimensions.Height)
+	if maxSteps < 0 {
+		maxSteps = 0
+	}
+	return spatial.TraversalSearchLimit{MaxSteps: maxSteps}
 }
 
 // playerEntity adapts a player into a core.Entity for the dnd5e

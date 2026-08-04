@@ -78,10 +78,24 @@ func checkReach(from, to core.Hex, limit int, label string) error {
 	return nil
 }
 
-// checkInteractReach gates a door verb (OpenDoor, AttemptUnlock) on the
-// actor being adjacent to the door.
+// checkInteractReach gates legacy generated-door verbs on the actor being
+// adjacent to the door's single blocked cell.
 func checkInteractReach(actorPos, doorPos core.Hex) error {
 	return checkReach(actorPos, doorPos, interactReachHexes, "reach")
+}
+
+// checkDoorInteractReach applies the correct reach semantics for either door
+// representation. Generated connectors retain their legacy adjacency gate;
+// an authored door is a boundary rather than a cell, so the actor must occupy
+// one of its two incident endpoints to interact from that side.
+func (e *Encounter) checkDoorInteractReach(actorPos core.Hex, door *DoorData) error {
+	if edge, authored := e.authoredDoorEdge(door.ID); authored {
+		if actorPos == edge.From || actorPos == edge.To {
+			return nil
+		}
+		return fmt.Errorf("%w: authored door requires an incident endpoint", ErrOutOfRange)
+	}
+	return checkInteractReach(actorPos, door.Position)
 }
 
 // meleeReachForWeapon resolves the reach (in hexes) w grants: 2 for a Reach

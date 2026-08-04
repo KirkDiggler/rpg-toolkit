@@ -113,9 +113,32 @@ func (c CubeCoordinate) Equals(other CubeCoordinate) bool {
 	return c.X == other.X && c.Y == other.Y && c.Z == other.Z
 }
 
-// IsValid checks if the cube coordinate is valid (x + y + z == 0)
+// IsValid checks whether the cube coordinate is valid (x + y + z == 0).
+// It compares exact unsigned magnitudes by sign instead of adding native ints,
+// so valid and invalid coordinates remain distinguishable at int extremes.
 func (c CubeCoordinate) IsValid() bool {
-	return c.X+c.Y+c.Z == 0
+	var positive, negative uint
+	for _, value := range [...]int{c.X, c.Y, c.Z} {
+		if value > 0 {
+			magnitude := uint(value)
+			if positive > ^uint(0)-magnitude {
+				return false
+			}
+			positive += magnitude
+			continue
+		}
+		if value < 0 {
+			// -(MinInt) cannot be represented as an int. Subtract one before
+			// negating, then restore that unsigned unit exactly.
+			//nolint:gosec // G115: value < 0, so -(value+1) is representable and non-negative.
+			magnitude := uint(-(value + 1)) + 1
+			if negative > ^uint(0)-magnitude {
+				return false
+			}
+			negative += magnitude
+		}
+	}
+	return positive == negative
 }
 
 // Distance calculates the hex distance between two cube coordinates

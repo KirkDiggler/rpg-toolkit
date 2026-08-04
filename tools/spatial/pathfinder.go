@@ -9,9 +9,47 @@ type PathFinder interface {
 	FindPath(start, goal CubeCoordinate, blocked map[CubeCoordinate]bool) []CubeCoordinate
 }
 
+// TraversalPredicate decides whether A* may traverse one directed adjacent
+// pair. It must return true to permit the step from to. A predicate can model
+// blocked crossings such as closed boundaries without converting them into
+// blocked cells.
+type TraversalPredicate func(from, to CubeCoordinate) bool
+
+// TraversalSearchLimit bounds predicate-aware searches on the otherwise
+// unbounded hex plane. MaxSteps is the inclusive maximum number of crossings
+// in a returned path. A non-positive limit permits no path unless start equals
+// goal, and a limit shorter than the direct distance cannot reach the goal.
+//
+// The limit is also a deterministic safety contract: A* never adds a position
+// whose path cost exceeds MaxSteps, so a predicate that seals an unblocked goal
+// terminates after examining a finite search area. Callers should set MaxSteps
+// above the direct distance by enough steps for the detours their map allows.
+type TraversalSearchLimit struct {
+	// MaxSteps is the inclusive path-length and search-cost bound.
+	MaxSteps int
+}
+
+// TraversalPathFinder is an optional extension for path finders that can
+// consult a traversal predicate in addition to legacy blocked cells.
+type TraversalPathFinder interface {
+	// FindPathWithTraversal returns a path while honoring blocked cells and a
+	// traversal predicate. A nil predicate permits every adjacent crossing.
+	// Search is bounded by limit; it returns an empty slice when no route fits
+	// within the bound or when no route exists.
+	FindPathWithTraversal(
+		start, goal CubeCoordinate,
+		blocked map[CubeCoordinate]bool,
+		canTraverse TraversalPredicate,
+		limit TraversalSearchLimit,
+	) []CubeCoordinate
+}
+
 // SimplePathFinder uses A* algorithm with uniform movement cost.
 // It finds the shortest path around obstacles using hex distance as heuristic.
 type SimplePathFinder struct{}
+
+var _ PathFinder = (*SimplePathFinder)(nil)
+var _ TraversalPathFinder = (*SimplePathFinder)(nil)
 
 // NewSimplePathFinder creates a new A* pathfinder
 func NewSimplePathFinder() *SimplePathFinder {
@@ -21,12 +59,40 @@ func NewSimplePathFinder() *SimplePathFinder {
 // FindPath implements PathFinder using A* algorithm.
 // Uses hex distance as heuristic (admissible - never overestimates).
 func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[CubeCoordinate]bool) []CubeCoordinate {
+	return p.findPath(start, goal, blocked, nil, -1)
+}
+
+// FindPathWithTraversal uses A* while also requiring each adjacent step to be
+// permitted by canTraverse. Traversal-aware searches require an explicit limit
+// because a predicate can seal an otherwise-unblocked goal on the unbounded hex
+// plane. It preserves legacy FindPath behavior by leaving that API unbounded.
+func (p *SimplePathFinder) FindPathWithTraversal(
+	start, goal CubeCoordinate,
+	blocked map[CubeCoordinate]bool,
+	canTraverse TraversalPredicate,
+	limit TraversalSearchLimit,
+) []CubeCoordinate {
+	if limit.MaxSteps < 0 {
+		return []CubeCoordinate{}
+	}
+	return p.findPath(start, goal, blocked, canTraverse, limit.MaxSteps)
+}
+
+func (p *SimplePathFinder) findPath(
+	start, goal CubeCoordinate,
+	blocked map[CubeCoordinate]bool,
+	canTraverse TraversalPredicate,
+	maxSteps int,
+) []CubeCoordinate {
 	if start == goal {
 		return []CubeCoordinate{}
 	}
 
-	// If goal is blocked, no path exists
+	// If goal is blocked, no path exists.
 	if blocked[goal] {
+		return []CubeCoordinate{}
+	}
+	if maxSteps >= 0 && start.Distance(goal) > maxSteps {
 		return []CubeCoordinate{}
 	}
 
@@ -69,10 +135,19 @@ func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[Cube
 			return p.reconstructPath(cameFrom, current.pos)
 		}
 
+		// A bounded traversal search may reach a position at the limit, but
+		// cannot expand it. This keeps the otherwise-unbounded search finite.
+		if maxSteps >= 0 && gScore[current.pos] >= maxSteps {
+			continue
+		}
+
 		// Check all neighbors
 		for _, neighbor := range current.pos.GetNeighbors() {
 			// Skip blocked hexes
 			if blocked[neighbor] {
+				continue
+			}
+			if canTraverse != nil && !canTraverse(current.pos, neighbor) {
 				continue
 			}
 

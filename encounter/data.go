@@ -151,6 +151,19 @@ type SpaceData struct {
 	// the same seats without re-running layout selection.
 	PartyStartPositions []core.Hex `json:"party_start_positions,omitempty"`
 
+	// DungeonKey is the authored dungeon's stable key when AuthoredEdges is
+	// present. It persists with the edge collection so LoadFromData can verify
+	// every authored door ID still derives from the original key and normalized
+	// endpoint pair instead of trusting a mutable persisted map key.
+	DungeonKey string `json:"dungeon_key,omitempty"`
+
+	// AuthoredEdges is the normalized dungeon-owned wall/door edge collection
+	// compiled from dungeonspec's top-level walls entries. It remains encounter
+	// persistence rather than a generic spatial.Room field: rebuildRoomFromData
+	// registers each solid and closed door as an edge-native Boundary, while an
+	// open door registers no blocker. Neither endpoint becomes a cell blocker.
+	AuthoredEdges []AuthoredEdge `json:"authored_edges,omitempty"`
+
 	// Regions tags every hex by chamber for multi-chamber spaces (Wave 2
 	// Slice 2) — scopes spawn placement and, via LoS, combat pockets
 	// (rpg-toolkit#796). Empty for single-room InitRoom spaces, which have
@@ -437,8 +450,9 @@ type PlayerData struct {
 // (and the verb router on the wire side) route player intent to
 // AttemptUnlock when a door is Locked. SubmitCheck on success clears
 // Locked before calling OpenDoor internally so the door round-trips as
-// unlocked-and-open. All lock fields are omitempty so legacy DoorData
-// (Wave 2.7) round-trips as an unlocked door.
+// unlocked-and-open. Authored #179 doors deliberately remain unlocked, but
+// use the same Open state and persistence lifecycle. All lock fields are
+// omitempty so legacy DoorData (Wave 2.7) round-trips as an unlocked door.
 type DoorData struct {
 	ID       core.EntityID `json:"id"`
 	Position core.Hex      `json:"position"`
