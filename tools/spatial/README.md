@@ -105,10 +105,35 @@ err = boundaryRoom.RemoveBoundary(
 
 Boundaries are transient spatial infrastructure, not persistence or content
 ownership. A higher-level dungeon/encounter owns authored records and
-registers its current crossings when rebuilding a room. For hex A*,
-`SimplePathFinder.FindPathWithTraversal` accepts an optional
+registers its current crossings when rebuilding a room. Boundary endpoints must
+be finite integer cell coordinates; fractional and non-finite values are
+rejected before a pair is normalized.
+
+Multi-cell `MoveEntity` calls and movement queries retain direct-move semantics:
+they follow the grid-provided `GetLineOfSight` ray, reject any blocked
+consecutive crossing, and do not find a detour. Boundary LoS checks use one
+lexicographically ordered endpoint ray so a boundary has the same result in
+either direction even when square Bresenham chooses different directional rays.
+Entity blockers continue to use the caller's requested ray.
+
+For hex A*, `SimplePathFinder.FindPathWithTraversal` accepts a
 `TraversalPredicate` so callers can reject a crossing without treating either
-endpoint as a blocked cell.
+endpoint as a blocked cell. It also requires an explicit
+`TraversalSearchLimit`; `MaxSteps` bounds both returned path length and search
+cost, making a sealed-but-unblocked goal terminate on the unbounded hex plane.
+Choose a limit above the direct distance by the detour budget appropriate for
+the map. An empty result means either no route exists or no route fits that
+budget.
+
+```go
+path := finder.FindPathWithTraversal(
+    start,
+    goal,
+    blockedCells,
+    canTraverse,
+    spatial.TraversalSearchLimit{MaxSteps: 64},
+)
+```
 
 ## Quick Start
 

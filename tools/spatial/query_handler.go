@@ -122,21 +122,27 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 		return data, nil
 	}
 
+	// Movement queries retain direct-move semantics: the grid's direct ray is
+	// reported rather than an alternate pathfinding route.
+	data.Path = room.GetLineOfSight(data.From, data.To)
+
 	// Check if the entity can move to the target position. Boundary-aware rooms
-	// additionally reject a direct crossing that their optional capability
-	// marks as blocked; legacy Room implementations keep the original behavior.
+	// additionally reject any blocked consecutive crossing in the direct ray;
+	// legacy Room implementations keep the original behavior.
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
 	if data.Valid {
 		if boundaryRoom, ok := room.(BoundaryAwareRoom); ok {
-			data.Valid = !boundaryRoom.IsBoundaryMovementBlocked(data.From, data.To)
+			for i := 1; i < len(data.Path); i++ {
+				if boundaryRoom.IsBoundaryMovementBlocked(data.Path[i-1], data.Path[i]) {
+					data.Valid = false
+					break
+				}
+			}
 		}
 	}
 
 	// Calculate distance using the room's grid
 	data.Distance = room.GetGrid().Distance(data.From, data.To)
-
-	// Get the path (line of sight for now, could be enhanced with pathfinding)
-	data.Path = room.GetLineOfSight(data.From, data.To)
 
 	return data, nil
 }

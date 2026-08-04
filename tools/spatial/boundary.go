@@ -1,5 +1,7 @@
 package spatial
 
+import "math"
+
 // Boundary represents an undirected crossing between two adjacent grid
 // positions. BasicRoom normalizes From and To when the boundary is registered,
 // so the same boundary is found regardless of the caller's direction.
@@ -38,6 +40,12 @@ func normalizedBoundary(boundary Boundary) Boundary {
 func newBoundaryKey(from, to Position) boundaryKey {
 	boundary := normalizedBoundary(Boundary{From: from, To: to})
 	return boundaryKey{first: boundary.From, second: boundary.To}
+}
+
+func isDiscretePosition(position Position) bool {
+	return !math.IsNaN(position.X) && !math.IsNaN(position.Y) &&
+		!math.IsInf(position.X, 0) && !math.IsInf(position.Y, 0) &&
+		math.Trunc(position.X) == position.X && math.Trunc(position.Y) == position.Y
 }
 
 func positionLess(left, right Position) bool {

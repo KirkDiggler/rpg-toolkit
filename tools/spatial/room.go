@@ -168,7 +168,7 @@ func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 		return fmt.Errorf("entity %s cannot be moved to position %v", entityID, newPos)
 	}
 
-	if r.isBoundaryMovementBlockedUnsafe(oldPos, newPos) {
+	if r.isDirectMovementBoundaryBlockedUnsafe(oldPos, newPos) {
 		return fmt.Errorf("entity %s cannot cross movement-blocking boundary from %v to %v", entityID, oldPos, newPos)
 	}
 
@@ -289,6 +289,9 @@ func (r *BasicRoom) validateAndNormalizeBoundaryUnsafe(boundary Boundary) (Bound
 	if r.grid.GetShape() == GridShapeGridless {
 		return Boundary{}, fmt.Errorf("boundaries require a discrete grid")
 	}
+	if !isDiscretePosition(boundary.From) || !isDiscretePosition(boundary.To) {
+		return Boundary{}, fmt.Errorf("boundary endpoints must be finite discrete cell positions")
+	}
 	if !r.grid.IsValidPosition(boundary.From) || !r.grid.IsValidPosition(boundary.To) {
 		return Boundary{}, fmt.Errorf(
 			"boundary endpoints %v and %v must be valid positions in this room", boundary.From, boundary.To,
@@ -308,9 +311,39 @@ func (r *BasicRoom) isBoundaryMovementBlockedUnsafe(from, to Position) bool {
 	return exists && boundary.BlocksMovement
 }
 
+// isDirectMovementBoundaryBlockedUnsafe checks every crossing in the direct
+// ray supplied by the grid. It deliberately does not find an alternate route:
+// MoveEntity's established multi-cell behavior is a direct move.
+func (r *BasicRoom) isDirectMovementBoundaryBlockedUnsafe(from, to Position) bool {
+	path := r.grid.GetLineOfSight(from, to)
+	for i := 1; i < len(path); i++ {
+		if r.isBoundaryMovementBlockedUnsafe(path[i-1], path[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *BasicRoom) isBoundaryLineOfSightBlockedUnsafe(from, to Position) bool {
 	boundary, exists := r.boundaries[newBoundaryKey(from, to)]
 	return exists && boundary.BlocksLineOfSight
+}
+
+// isDirectLineOfSightBoundaryBlockedUnsafe checks boundary crossings on a
+// canonical grid ray. Square Bresenham can choose different cells by direction,
+// so canonical endpoint ordering makes boundary LoS reciprocal. Entity blockers
+// intentionally continue to use the caller's requested ray.
+func (r *BasicRoom) isDirectLineOfSightBoundaryBlockedUnsafe(from, to Position) bool {
+	if positionLess(to, from) {
+		from, to = to, from
+	}
+	path := r.grid.GetLineOfSight(from, to)
+	for i := 1; i < len(path); i++ {
+		if r.isBoundaryLineOfSightBlockedUnsafe(path[i-1], path[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetEntitiesAt returns all entities at a specific position
@@ -474,16 +507,13 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 
 	losPositions := r.grid.GetLineOfSight(from, to)
 
-	// Every consecutive pair in the grid-provided ray is one boundary
-	// crossing. This includes the adjacent start/end case, for which there are
-	// no intermediate cells to inspect.
-	for i := 1; i < len(losPositions); i++ {
-		if r.isBoundaryLineOfSightBlockedUnsafe(losPositions[i-1], losPositions[i]) {
-			return true
-		}
+	if r.isDirectLineOfSightBoundaryBlockedUnsafe(from, to) {
+		return true
 	}
 
-	// Check each position along the line of sight (except start and end)
+	// Check each position along the caller's requested line of sight (except
+	// start and end). Keeping this ray preserves established entity-blocker
+	// semantics even when the canonical boundary ray differs on square grids.
 	for i := 1; i < len(losPositions)-1; i++ {
 		pos := losPositions[i]
 		if entityIDs, exists := r.occupancy[pos]; exists {

@@ -2,6 +2,7 @@ package spatial_test
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -109,6 +110,91 @@ func (s *BoundaryTestSuite) TestRegisterBoundaryRejectsInvalidEndpoints() {
 	}
 }
 
+func (s *BoundaryTestSuite) TestBoundaryRejectsNonDiscreteEndpointsOnDiscreteGrids() {
+	tests := []struct {
+		name string
+		grid spatial.Grid
+	}{
+		{
+			name: "square grid",
+			grid: spatial.NewSquareGrid(spatial.SquareGridConfig{
+				Width:  6,
+				Height: 6,
+			}),
+		},
+		{
+			name: "offset hex",
+			grid: spatial.NewHexGrid(spatial.HexGridConfig{
+				Width:       6,
+				Height:      6,
+				Orientation: spatial.HexOrientationPointyTop,
+			}),
+		},
+		{
+			name: "axial hex",
+			grid: spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
+				SpanWidth:  12,
+				SpanHeight: 12,
+			}),
+		},
+	}
+	invalidEndpoints := []struct {
+		name     string
+		boundary spatial.Boundary
+	}{
+		{
+			name: "fractional from",
+			boundary: spatial.Boundary{
+				From: spatial.Position{X: 1.5, Y: 1},
+				To:   spatial.Position{X: 2, Y: 1},
+			},
+		},
+		{
+			name: "fractional to",
+			boundary: spatial.Boundary{
+				From: spatial.Position{X: 1, Y: 1},
+				To:   spatial.Position{X: 2.5, Y: 1},
+			},
+		},
+		{
+			name: "nan",
+			boundary: spatial.Boundary{
+				From: spatial.Position{X: math.NaN(), Y: 1},
+				To:   spatial.Position{X: 2, Y: 1},
+			},
+		},
+		{
+			name: "positive infinity",
+			boundary: spatial.Boundary{
+				From: spatial.Position{X: math.Inf(1), Y: 1},
+				To:   spatial.Position{X: 2, Y: 1},
+			},
+		},
+		{
+			name: "negative infinity",
+			boundary: spatial.Boundary{
+				From: spatial.Position{X: 1, Y: 1},
+				To:   spatial.Position{X: math.Inf(-1), Y: 1},
+			},
+		},
+	}
+
+	for _, gridTest := range tests {
+		s.Run(gridTest.name, func() {
+			room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+				ID:   "discrete-boundary-room",
+				Type: testBoundaryRoomType,
+				Grid: gridTest.grid,
+			})
+			for _, endpointTest := range invalidEndpoints {
+				s.Run(endpointTest.name, func() {
+					s.Error(room.RegisterBoundary(endpointTest.boundary))
+				})
+			}
+		})
+	}
+}
+
 func (s *BoundaryTestSuite) TestBoundaryBlocksAdjacentMovementWithoutBlockingEndpoints() {
 	left := spatial.Position{X: 1, Y: 2}
 	right := spatial.Position{X: 2, Y: 2}
@@ -160,6 +246,56 @@ func (s *BoundaryTestSuite) TestBoundaryFlagsIndependentlyControlMovementAndLine
 	})
 }
 
+func (s *BoundaryTestSuite) TestMultiCellDirectMovementChecksEveryCrossing() {
+	from := spatial.Position{X: 1, Y: 2}
+	to := spatial.Position{X: 4, Y: 2}
+	mover := NewMockEntity("multi-cell-mover", "character")
+
+	s.Require().NoError(s.room.RegisterBoundary(spatial.Boundary{
+		From:           spatial.Position{X: 2, Y: 2},
+		To:             spatial.Position{X: 3, Y: 2},
+		BlocksMovement: true,
+	}))
+	s.Require().NoError(s.room.PlaceEntity(mover, from))
+
+	// MoveEntity retains its direct-move semantics: it uses the grid's direct
+	// ray rather than finding a detour, and must reject the intermediate edge.
+	s.Error(s.room.MoveEntity(mover.GetID(), to))
+	position, found := s.room.GetEntityPosition(mover.GetID())
+	s.True(found)
+	s.Equal(from, position)
+}
+
+func (s *BoundaryTestSuite) TestMovementQueryChecksEveryDirectCrossing() {
+	from := spatial.Position{X: 1, Y: 2}
+	to := spatial.Position{X: 4, Y: 2}
+	mover := NewMockEntity("multi-cell-query-mover", "character")
+	queryHandler := spatial.NewSpatialQueryHandler()
+	queryHandler.RegisterRoom(s.room)
+
+	s.Require().NoError(s.room.RegisterBoundary(spatial.Boundary{
+		From:           spatial.Position{X: 2, Y: 2},
+		To:             spatial.Position{X: 3, Y: 2},
+		BlocksMovement: true,
+	}))
+
+	result, err := queryHandler.HandleQuery(context.Background(), &spatial.QueryMovementData{
+		Entity: mover,
+		From:   from,
+		To:     to,
+		RoomID: s.room.GetID(),
+	})
+	s.Require().NoError(err)
+	query := result.(*spatial.QueryMovementData)
+	s.False(query.Valid)
+	s.Equal([]spatial.Position{
+		{X: 1, Y: 2},
+		{X: 2, Y: 2},
+		{X: 3, Y: 2},
+		{X: 4, Y: 2},
+	}, query.Path)
+}
+
 func (s *BoundaryTestSuite) TestBoundaryLineOfSightChecksEveryRayCrossing() {
 	from := spatial.Position{X: 1, Y: 2}
 	to := spatial.Position{X: 4, Y: 2}
@@ -172,6 +308,46 @@ func (s *BoundaryTestSuite) TestBoundaryLineOfSightChecksEveryRayCrossing() {
 
 	s.True(s.room.IsLineOfSightBlocked(from, to))
 	s.True(s.room.IsLineOfSightBlocked(to, from), "a normalized boundary blocks the reverse ray too")
+}
+
+func (s *BoundaryTestSuite) TestBoundaryLineOfSightUsesCanonicalSquareRay() {
+	from := spatial.Position{X: 0, Y: 0}
+	to := spatial.Position{X: 2, Y: 1}
+
+	// Square Bresenham selects different intermediate cells when this ray is
+	// reversed. The boundary check must still use one canonical ordering.
+	s.Equal([]spatial.Position{
+		{X: 0, Y: 0},
+		{X: 1, Y: 0},
+		{X: 2, Y: 1},
+	}, s.room.GetLineOfSight(from, to))
+	s.Equal([]spatial.Position{
+		{X: 2, Y: 1},
+		{X: 1, Y: 1},
+		{X: 0, Y: 0},
+	}, s.room.GetLineOfSight(to, from))
+
+	s.Require().NoError(s.room.RegisterBoundary(spatial.Boundary{
+		From:              spatial.Position{X: 0, Y: 0},
+		To:                spatial.Position{X: 1, Y: 0},
+		BlocksLineOfSight: true,
+	}))
+
+	forwardBlocked := s.room.IsLineOfSightBlocked(from, to)
+	reverseBlocked := s.room.IsLineOfSightBlocked(to, from)
+	s.True(forwardBlocked)
+	s.Equal(forwardBlocked, reverseBlocked, "boundary LoS must be reciprocal")
+}
+
+func (s *BoundaryTestSuite) TestCanonicalBoundaryRayDoesNotWeakenEntityBlockers() {
+	from := spatial.Position{X: 0, Y: 0}
+	to := spatial.Position{X: 2, Y: 1}
+	blocker := NewMockEntity("directional-ray-blocker", "wall").WithBlocking(false, true)
+
+	// The reverse Bresenham ray visits (1,1), while the canonical boundary
+	// ray does not. Entity blocker checks retain the requested-direction ray.
+	s.Require().NoError(s.room.PlaceEntity(blocker, spatial.Position{X: 1, Y: 1}))
+	s.True(s.room.IsLineOfSightBlocked(to, from))
 }
 
 func (s *BoundaryTestSuite) TestBoundaryClearAndRemovalRestoreOnlyThatCrossing() {
