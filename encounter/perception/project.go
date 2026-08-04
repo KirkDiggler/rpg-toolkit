@@ -122,25 +122,32 @@ func ProjectMove(
 	return moveSlice, nil, visible
 }
 
-// ProjectDoorOpen computes per-viewer slices when a door opens.
-//
-// rpg-toolkit#790: room is expected to already reflect the door as OPEN
-// (the caller rebuilds e.room before calling this — see
-// Encounter.OpenDoor), so VisibleHexesAt's wall-aware scan now sees through
-// the doorway into whatever lies beyond, SightRange-capped and blocked by
-// that space's own walls, same as any other line of sight. The reveal
-// slice is every currently-visible hex the viewer's cumulative
-// RevealedHexes doesn't have yet — not just the door's immediate
-// neighbors — so a corridor or chamber beyond the doorway reveals in one
-// step, not hex-by-hex as the viewer physically walks up to it.
-//
-// The door and openedBy parameters are reserved for future slices (entity-
-// visibility accumulation for openedBy; door itself is unused here since
-// wall logic now lives in the caller's room rebuild, not this function).
+// ProjectDoorOpen computes per-viewer slices when a single-position legacy
+// door opens. It remains a compatibility wrapper around
+// ProjectDoorOpenAtPositions; generated connector doors retain this shape.
 func ProjectDoorOpen(
-	_ core.EntityID, // door — wall logic lives in the caller's room rebuild
+	door core.EntityID,
 	doorPos core.Hex,
-	_ core.EntityID, // openedBy — reserved for future-slice entity-visibility
+	openedBy core.EntityID,
+	viewer *View,
+	room spatial.Room,
+) (doorSlice *events.DoorOpenedPlayerSlice, revealSlice *events.HexRevealedSlice) {
+	return ProjectDoorOpenAtPositions(door, []core.Hex{doorPos}, openedBy, viewer, room)
+}
+
+// ProjectDoorOpenAtPositions computes per-viewer slices when a door opens at
+// one or more incident positions. Room is expected to already reflect the
+// open state, so visibility/reveal observes through the doorway. A viewer
+// perceives the cause when any supplied incident position is visible; this
+// lets an edge-native authored door project identically from either endpoint
+// while preserving ProjectDoorOpen's legacy single-position API.
+//
+// The door and openedBy parameters are reserved for future entity-visibility
+// accumulation; wall logic lives in the caller's room rebuild.
+func ProjectDoorOpenAtPositions(
+	_ core.EntityID,
+	doorPositions []core.Hex,
+	_ core.EntityID,
 	viewer *View,
 	room spatial.Room,
 ) (doorSlice *events.DoorOpenedPlayerSlice, revealSlice *events.HexRevealedSlice) {
@@ -148,7 +155,14 @@ func ProjectDoorOpen(
 		return nil, nil
 	}
 	visible := VisibleHexesAt(viewer.Position, viewer.SightRange, room)
-	if !visible.Has(doorPos) {
+	perceivesDoor := false
+	for _, doorPos := range doorPositions {
+		if visible.Has(doorPos) {
+			perceivesDoor = true
+			break
+		}
+	}
+	if !perceivesDoor {
 		return nil, nil
 	}
 

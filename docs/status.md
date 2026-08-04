@@ -23,9 +23,12 @@ either endpoint, while an open authored door registers no blocker. `OpenDoor`
 uses the existing event/reveal/memory path from either endpoint; reload
 preserves its open state, and `AttemptUnlock` remains `ErrDoorNotLocked` because
 #179 authored doors are never locked. `DescribeEdges` and viewer knowledge now
-share one sorted effective source with live door state; `DescribeGeneratedEdges`
-remains generated-only. Sparse player/NPC requests inspect every in-grid direct
-ray cell and crossing; malformed/out-of-grid rays fail closed. The runtime-only
+share one sorted effective source with live door state: generated records retain
+their source endpoint orientation, while authored records keep one normalized
+identity indexed at both endpoints; `DescribeGeneratedEdges` remains a strict,
+generated-only diagnostic. Sparse player/NPC requests inspect every
+requested-direction in-grid ray cell and a canonical unordered-pair ray for
+boundary crossings; malformed/out-of-grid rays fail closed. The runtime-only
 D&D 5e monster perception seam carries an optional traversal predicate plus a
 finite search limit, allowing encounter to bound A* to its room and reject both
 cell blockers and authored boundaries while nil preserves old rulebook behavior.

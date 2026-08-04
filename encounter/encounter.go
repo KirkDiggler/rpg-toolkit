@@ -269,6 +269,9 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
 	}
+	if err := validatePersistedDoors(data.Doors); err != nil {
+		return nil, fmt.Errorf("validate doors: %w", err)
+	}
 	if err := validatePersistedAuthoredEdges(data.Space, data.Doors); err != nil {
 		return nil, fmt.Errorf("validate authored edges: %w", err)
 	}
@@ -1332,7 +1335,7 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 		return fmt.Errorf("player %q not in encounter", playerID)
 	}
 	door, ok := e.data.Doors[doorID]
-	if !ok {
+	if !ok || door == nil {
 		return fmt.Errorf("door %q not in encounter", doorID)
 	}
 	if door.Open {
@@ -1359,9 +1362,13 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 	doorPerPlayer := make(map[core.PlayerID]events.DoorOpenedPlayerSlice)
 	revealPerPlayer := make(map[core.PlayerID]events.HexRevealedSlice)
 
+	doorPositions := []core.Hex{door.Position}
+	if edge, authored := e.authoredDoorEdge(doorID); authored {
+		doorPositions = []core.Hex{edge.From, edge.To}
+	}
 	for viewerID, viewer := range e.data.Players {
-		doorSlice, revealSlice := perception.ProjectDoorOpen(
-			doorID, door.Position, p.EntityID, viewer.View, e.room,
+		doorSlice, revealSlice := perception.ProjectDoorOpenAtPositions(
+			doorID, doorPositions, p.EntityID, viewer.View, e.room,
 		)
 		if doorSlice != nil {
 			doorPerPlayer[viewerID] = *doorSlice

@@ -157,6 +157,9 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 	seen := make(map[generatedEdgeKey]int, len(space.AuthoredEdges))
 	var previous AuthoredEdge
 	for index, source := range space.AuthoredEdges {
+		if source.From.Q+source.From.R+source.From.S != 0 || source.To.Q+source.To.R+source.To.S != 0 {
+			return fmt.Errorf("authored edge %d: persisted endpoints contain an invalid cube coordinate", index)
+		}
 		edge := normalizeAuthoredEdge(source)
 		if index > 0 && authoredEdgeLess(edge, previous) {
 			return fmt.Errorf("authored edge %d: persisted collection is not canonical-sorted", index)
@@ -205,6 +208,18 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 	return nil
 }
 
+// validatePersistedDoors rejects null door entries before room reconstruction
+// or door verbs can dereference them. JSON permits a map value of null, but a
+// persisted door record is otherwise always a concrete DoorData value.
+func validatePersistedDoors(doors map[core.EntityID]*DoorData) error {
+	for id, door := range doors {
+		if door == nil {
+			return fmt.Errorf("persisted door %q has null door data", id)
+		}
+	}
+	return nil
+}
+
 func authoredDoorIDs(space *SpaceData) map[core.EntityID]struct{} {
 	if space == nil || len(space.AuthoredEdges) == 0 {
 		return nil
@@ -248,33 +263,4 @@ func authoredEdgesByKey(space *SpaceData) map[generatedEdgeKey]AuthoredEdge {
 		out[newGeneratedEdgeKey(edge.From, edge.To)] = edge
 	}
 	return out
-}
-
-// validateAuthoredEdgeOverlay rejects connector collisions and leaves the
-// non-connector replacement rule to DescribeEdges. The public invariant that
-// authored endpoints are both semantic floor cells already rejects every
-// connector-column/flanking edge before this point; connector door records are
-// checked here as a second defense for future generator shapes.
-func validateAuthoredEdgeOverlay(generated []generatedEdgeRecord, authored []AuthoredEdge) error {
-	if len(authored) == 0 {
-		return nil
-	}
-	byKey := make(map[generatedEdgeKey]generatedEdgeRecord, len(generated))
-	for _, record := range generated {
-		if record.edge.From == record.edge.To {
-			continue
-		}
-		byKey[newGeneratedEdgeKey(record.edge.From, record.edge.To)] = record
-	}
-	for index, edge := range authored {
-		record, collides := byKey[newGeneratedEdgeKey(edge.From, edge.To)]
-		if !collides {
-			continue
-		}
-		if record.edge.Kind == GeneratedEdgeKindDoor {
-			return fmt.Errorf("authored edge %d collides with connector-derived edge %v to %v",
-				index, record.edge.From, record.edge.To)
-		}
-	}
-	return nil
 }

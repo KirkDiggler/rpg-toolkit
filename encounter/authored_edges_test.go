@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -135,9 +137,11 @@ func TestInitDungeon_AuthoredEdgesPersistDescribeAndBlock(t *testing.T) {
 	assert.True(t, containsEdge(combined.Edges, door))
 	assert.True(t, containsDoorID(combined.Edges, "legacy-connector"))
 	assertCombinedEdgesSorted(t, combined.Edges)
-	for _, edge := range combined.Edges {
-		assert.False(t, hexLess(edge.To, edge.From), "combined seam must normalize every undirected endpoint pair")
-	}
+	// Authored records are normalized durable identities. Generated records
+	// intentionally retain their source orientation so knowledge indexes a
+	// perimeter edge under its interior floor endpoint rather than exterior.
+	assertAuthoredEdgeNormalized(t, solid)
+	assertAuthoredEdgeNormalized(t, door)
 
 	for _, edge := range []encounter.AuthoredEdge{solid, door} {
 		assert.True(t, enc.Room().CanPlaceEntity(probeEntity{}, edge.From.ToPosition()),
@@ -444,6 +448,362 @@ func TestInitDungeon_AuthoredEdgesRejectsDirectNonFloorAndUnstableDoorInputs(t *
 	err = enc.InitDungeon(params)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stable authored door id")
+}
+
+// TestAuthoredEdges_CanonicalSparseTraversalUsesTheSameCrossings proves that
+// encounter's sparse player/NPC segment validation uses spatial's canonical
+// unordered-pair ray. This pointy-top pair has deliberately different forward
+// and reverse grid rays; the authored edge exists only on the canonical ray.
+func TestAuthoredEdges_CanonicalSparseTraversalUsesTheSameCrossings(t *testing.T) {
+	start := authoredEdgeHex(0, 0)
+	end := authoredEdgeHex(7, 24)
+	edgeFrom := authoredEdgeHex(4, 16)
+	edgeTo := authoredEdgeHex(5, 16)
+	params := encounter.DungeonParams{
+		Key:    "canonical-sparse-traversal",
+		Height: 25,
+		Regions: []encounter.DungeonRegionParams{
+			{ID: "entry", Archetype: encounter.ArchetypeEntrance, Width: 8, Pattern: environments.PatternEmpty},
+			{ID: "boss", Archetype: encounter.ArchetypeBoss, Width: 8, Pattern: environments.PatternEmpty},
+		},
+		Connectors: []encounter.DungeonConnectorParams{{DoorID: "canonical-connector"}},
+		AuthoredEdges: []encounter.AuthoredEdge{{
+			From: edgeFrom, To: edgeTo, Kind: encounter.GeneratedEdgeKindSolid,
+		}},
+	}
+
+	forward := newTestEncounter(t)
+	require.NoError(t, forward.InitDungeon(params))
+	require.NoError(t, forward.AddPlayer(encounter.PlayerInput{
+		PlayerID: "forward", EntityID: "forward-character", Position: start, SightRange: 0,
+	}))
+	require.NoError(t, forward.Move("forward", []core.Hex{end}))
+	assert.Equal(t, start, forward.ToData().Players["forward"].View.Position)
+
+	reverse := newTestEncounter(t)
+	require.NoError(t, reverse.InitDungeon(params))
+	require.NoError(t, reverse.AddPlayer(encounter.PlayerInput{
+		PlayerID: "reverse", EntityID: "reverse-character", Position: end, SightRange: 0,
+	}))
+	require.NoError(t, reverse.Move("reverse", []core.Hex{start}))
+	assert.Equal(t, end, reverse.ToData().Players["reverse"].View.Position,
+		"the reverse sparse request must cross the same canonical physical edge")
+
+	// Canonicalization belongs only to crossings. This cell exists on the
+	// caller-requested reverse tie ray but not the canonical boundary ray, so
+	// static blockers must still stop the reverse movement.
+	cellBlocked := newTestEncounter(t)
+	require.NoError(t, cellBlocked.InitDungeon(params))
+	require.NoError(t, cellBlocked.AddObstacle(
+		"reverse-tie-cell", "test:props:wall", authoredEdgeHex(5, 15), true, true,
+	))
+	require.NoError(t, cellBlocked.AddPlayer(encounter.PlayerInput{
+		PlayerID: "cell-blocked", EntityID: "cell-blocked-character", Position: end, SightRange: 0,
+	}))
+	require.NoError(t, cellBlocked.Move("cell-blocked", []core.Hex{start}))
+	assert.Equal(t, end, cellBlocked.ToData().Players["cell-blocked"].View.Position,
+		"canonical boundary checks must not bypass a blocker on the requested cell ray")
+}
+
+// TestInitDungeon_AuthoredEndpointReservationsProtectGeneratedBlockersAndRolls
+// sweeps random wall/obstacle layouts to prove authored crossings never become
+// occupied cells. A count larger than the pool would otherwise fill every
+// non-wall endpoint that random wall generation happened to leave open.
+func TestInitDungeon_AuthoredEndpointReservationsProtectGeneratedBlockersAndRolls(t *testing.T) {
+	for _, seed := range []int64{1, 2, 3, 4, 5, 17, 19, 42, 100, 909091} {
+		params := authoredEdgeParams()
+		params.RandomSeed = seed
+		params.PartyStart.Anchor = func() *core.Hex {
+			anchor := params.AuthoredEdges[0].From
+			return &anchor
+		}()
+		params.PartyStart.SeatCount = 2
+		params.Regions[0].Pattern = environments.PatternRandom
+		params.Regions[0].Obstacles = []encounter.ObstacleSpec{{
+			Ref: "test:props:rolled", Count: 100, BlocksMovement: true, BlocksLoS: true,
+		}}
+
+		enc := newTestEncounter(t)
+		require.NoError(t, enc.InitDungeon(params), "seed %d", seed)
+		data := enc.ToData()
+		require.Equal(t, params.AuthoredEdges[0].From, data.Space.Entrance, "seed %d", seed)
+		require.Len(t, data.Space.PartyStartPositions, 2, "seed %d", seed)
+		require.Equal(t, data.Space.Entrance, data.Space.PartyStartPositions[0], "seed %d", seed)
+
+		for _, edge := range data.Space.AuthoredEdges {
+			assert.True(t, enc.Room().CanPlaceEntity(probeEntity{}, edge.From.ToPosition()), "seed %d from", seed)
+			assert.True(t, enc.Room().CanPlaceEntity(probeEntity{}, edge.To.ToPosition()), "seed %d to", seed)
+			assert.False(t, enc.Room().IsPositionOccupied(edge.From.ToPosition()), "seed %d from", seed)
+			assert.False(t, enc.Room().IsPositionOccupied(edge.To.ToPosition()), "seed %d to", seed)
+			assert.True(t, enc.Room().IsLineOfSightBlocked(edge.From.ToPosition(), edge.To.ToPosition()),
+				"seed %d: the edge must still block only its crossing", seed)
+			addErr := enc.AddObstacle("endpoint-probe", "test:props:blocked", edge.From, true, true)
+			require.Error(t, addErr, "seed %d: runtime obstacles cannot consume an endpoint", seed)
+			assert.Contains(t, addErr.Error(), "authored edge endpoint")
+			assert.False(t, enc.Room().IsPositionOccupied(edge.From.ToPosition()), "seed %d from after rejection", seed)
+		}
+	}
+}
+
+// TestInitDungeon_AuthoredEndpointReservationsDoNotRelocateAuthoredContent
+// distinguishes endpoint reservation from party/placement selection: an
+// authored anchor and a separate fixed placement retain their exact positions.
+func TestInitDungeon_AuthoredEndpointReservationsDoNotRelocateAuthoredContent(t *testing.T) {
+	params := authoredEdgeParams()
+	anchor := params.AuthoredEdges[0].From
+	params.PartyStart = encounter.PartyStartParams{Anchor: &anchor, SeatCount: 2}
+	params.Regions[0].PlacedObstacles = []encounter.PlacedObstacleSpec{{
+		Ref: "test:props:fixed", At: encounter.LocalHex{Col: 6, Row: 1}, BlocksMovement: true, BlocksLoS: true,
+	}}
+
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(params))
+	data := enc.ToData()
+	assert.Equal(t, anchor, data.Space.Entrance)
+	assert.Equal(t, anchor, data.Space.PartyStartPositions[0])
+	require.Len(t, data.Space.Obstacles, 1)
+	assert.Equal(t, authoredEdgeHex(6, 1), data.Space.Obstacles[0].Position)
+
+	conflict := authoredEdgeParams()
+	conflict.Regions[0].PlacedObstacles = []encounter.PlacedObstacleSpec{{
+		Ref: "test:props:conflict", At: encounter.LocalHex{Col: 1, Row: 1}, BlocksMovement: true, BlocksLoS: true,
+	}}
+	failed := newTestEncounter(t)
+	err := failed.InitDungeon(conflict)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authored edge endpoint")
+	assert.Nil(t, failed.ToData().Space, "a conflicting authored placement is rejected, never relocated")
+}
+
+// TestAuthoredDoorOpen_ProjectsEitherIncidentPosition keeps the legacy
+// single-position projector compatible while proving the additive two-endpoint
+// path publishes/reveals/refreshes observers who see only the To endpoint.
+func TestAuthoredDoorOpen_ProjectsEitherIncidentPosition(t *testing.T) {
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() {
+		_ = broker.Close()
+		_ = transport.Close()
+	})
+	enc := encounter.New(context.Background(), "enc-authored-door-projection", broker)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	door := authoredEdgeOfKind(t, enc.ToData().Space.AuthoredEdges, encounter.GeneratedEdgeKindDoor)
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "opener", EntityID: "opener-character", Position: door.From, SightRange: 0,
+	}))
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "to-zero", EntityID: "to-zero-character", Position: door.To, SightRange: 0,
+	}))
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "to-reveal", EntityID: "to-reveal-character", Position: door.To, SightRange: 1,
+	}))
+	zeroSub, err := broker.Subscribe(enc.ID(), "to-zero")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = zeroSub.Close() })
+	revealSub, err := broker.Subscribe(enc.ID(), "to-reveal")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = revealSub.Close() })
+
+	require.NoError(t, enc.OpenDoor("opener", door.DoorID))
+	zeroEvents := collectEventsTyped(zeroSub, 300*time.Millisecond)
+	var zeroDoorEvent *events.DoorOpenedEvent
+	for _, event := range zeroEvents {
+		if opened, ok := event.(*events.DoorOpenedEvent); ok {
+			zeroDoorEvent = opened
+			break
+		}
+	}
+	require.NotNil(t, zeroDoorEvent, "a zero-range viewer standing on To receives DoorOpened")
+	assert.True(t, zeroDoorEvent.PerPlayer["to-zero"].Visible)
+	zeroDoor := observedDoorEdge(t, enc.KnownHexes("to-zero")[door.To].Edges, door.DoorID)
+	assert.True(t, zeroDoor.DoorOpen, "the To-side viewer memory is refreshed to the live open state")
+
+	revealEvents := collectEventsTyped(revealSub, 300*time.Millisecond)
+	var sawDoorOpen, sawReveal bool
+	for _, event := range revealEvents {
+		switch event.(type) {
+		case *events.DoorOpenedEvent:
+			sawDoorOpen = true
+		case *events.HexRevealedEvent:
+			sawReveal = true
+		}
+	}
+	assert.True(t, sawDoorOpen, "a To-side viewer with range sees DoorOpened")
+	assert.True(t, sawReveal, "opening through To refreshes the normal reveal path")
+}
+
+// TestLoadFromData_AuthoredEdgesRejectInvalidCubeBeforeTraversal confirms
+// malformed persisted coordinates fail at the authored-edge validation gate,
+// before normalization, distance, or offset conversion can reinterpret them.
+func TestLoadFromData_AuthoredEdgesRejectInvalidCubeBeforeTraversal(t *testing.T) {
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	payload, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	var data encounter.Data
+	require.NoError(t, json.Unmarshal(payload, &data))
+	data.Space.AuthoredEdges[0].From = core.Hex{Q: 1, R: 1, S: 1}
+
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() {
+		_ = broker.Close()
+		_ = transport.Close()
+	})
+	_, err = encounter.LoadFromData(context.Background(), &data, broker)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid cube")
+}
+
+// TestLoadFromData_RejectsNullDoorData protects room reconstruction from a
+// JSON-null DoorData map entry instead of dereferencing it while rebuilding.
+func TestLoadFromData_RejectsNullDoorData(t *testing.T) {
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	payload, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	var data encounter.Data
+	require.NoError(t, json.Unmarshal(payload, &data))
+	data.Doors["null-door"] = nil
+
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() {
+		_ = broker.Close()
+		_ = transport.Close()
+	})
+	var loadErr error
+	require.NotPanics(t, func() {
+		_, loadErr = encounter.LoadFromData(context.Background(), &data, broker)
+	})
+	require.Error(t, loadErr)
+	assert.Contains(t, loadErr.Error(), "null door data")
+}
+
+// TestEffectiveAuthoredOverlaySuppressesGeneratedSolidConflicts confirms the
+// effective seam ignores every generated nonconnector record replaced by an
+// authored edge before conflict checks, while the generated-only diagnostic
+// remains strict and runtime reconstruction keeps the endpoints placeable.
+func TestEffectiveAuthoredOverlaySuppressesGeneratedSolidConflicts(t *testing.T) {
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	data := enc.ToData()
+	authored := authoredEdgeOfKind(t, data.Space.AuthoredEdges, encounter.GeneratedEdgeKindSolid)
+	data.Space.Walls = append(data.Space.Walls,
+		environments.WallSegmentData{
+			Start: authored.From.ToCube(), End: authored.To.ToCube(), BlocksMovement: true, BlocksLoS: true,
+		},
+		environments.WallSegmentData{
+			Start: authored.To.ToCube(), End: authored.From.ToCube(), BlocksMovement: true, BlocksLoS: false,
+		},
+	)
+
+	effective, err := enc.DescribeEdges(encounter.DescribeEdgesInput{})
+	require.NoError(t, err)
+	assert.True(t, containsEdge(effective.Edges, authored))
+	_, err = enc.DescribeGeneratedEdges(encounter.DescribeGeneratedEdgesInput{})
+	require.Error(t, err, "the generated-only diagnostic still reports genuine conflicting solids")
+
+	payload, err := json.Marshal(data)
+	require.NoError(t, err)
+	var restored encounter.Data
+	require.NoError(t, json.Unmarshal(payload, &restored))
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() {
+		_ = broker.Close()
+		_ = transport.Close()
+	})
+	reloaded, err := encounter.LoadFromData(context.Background(), &restored, broker)
+	require.NoError(t, err)
+	assert.True(t, reloaded.Room().CanPlaceEntity(probeEntity{}, authored.From.ToPosition()))
+	assert.True(t, reloaded.Room().CanPlaceEntity(probeEntity{}, authored.To.ToPosition()))
+	reloadedEffective, err := reloaded.DescribeEdges(encounter.DescribeEdgesInput{})
+	require.NoError(t, err)
+	assert.True(t, containsEdge(reloadedEffective.Edges, authored))
+}
+
+// TestGeneratedPerimeterKnowledgeRetainsTheFloorFacingSource proves generated
+// records keep their source orientation. Reversing a west perimeter edge
+// would index it under the exterior hex and silently hide it from the player
+// standing on the entrance floor cell.
+func TestGeneratedPerimeterKnowledgeRetainsTheFloorFacingSource(t *testing.T) {
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	data := enc.ToData()
+	entrance := data.Space.Entrance
+	var perimeter environments.WallSegmentData
+	found := false
+	for _, wall := range data.Space.Walls {
+		if wall.Start != entrance.ToCube() || wall.Start == wall.End {
+			continue
+		}
+		endPosition := wall.End.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		if !enc.Room().GetGrid().IsValidPosition(endPosition) {
+			perimeter = wall
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "fixture entrance has a generated exterior edge")
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: "perimeter-viewer", EntityID: "perimeter-character", Position: entrance, SightRange: 0,
+	}))
+
+	known := enc.KnownHexes("perimeter-viewer")[entrance]
+	assert.Contains(t, known.Edges, perception.Edge{
+		From: entrance, To: core.HexFromCube(perimeter.End), BlocksMovement: true, BlocksLoS: true,
+	})
+	combined, err := enc.DescribeEdges(encounter.DescribeEdgesInput{})
+	require.NoError(t, err)
+	assert.True(t, containsSolidEdge(combined.Edges, entrance, core.HexFromCube(perimeter.End)))
+	for _, edge := range combined.Edges {
+		if edge.From == entrance && edge.To == core.HexFromCube(perimeter.End) {
+			return
+		}
+	}
+	t.Fatal("combined generated perimeter edge lost its floor-facing source orientation")
+}
+
+// TestInitDungeon_AuthoredDoorIDsAreAtomicAcrossCollisionsAndRebuildFailure
+// verifies both failure classes leave pre-existing doors and room data intact.
+func TestInitDungeon_AuthoredDoorIDsAreAtomicAcrossCollisionsAndRebuildFailure(t *testing.T) {
+	t.Run("collision", func(t *testing.T) {
+		enc := newTestEncounter(t)
+		previous := &encounter.DoorData{ID: "legacy-connector", Position: authoredEdgeHex(0, 0), Open: true}
+		enc.ToData().Doors[previous.ID] = previous
+
+		err := enc.InitDungeon(authoredEdgeParams())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already exists")
+		assert.Nil(t, enc.ToData().Space)
+		assert.Same(t, previous, enc.ToData().Doors[previous.ID])
+		assert.True(t, enc.ToData().Doors[previous.ID].Open)
+	})
+
+	t.Run("later rebuild failure", func(t *testing.T) {
+		enc := newTestEncounter(t)
+		require.NoError(t, enc.InitRoom(20, 20, environments.PatternEmpty))
+		previousPosition := authoredEdgeHex(0, 12)
+		require.NoError(t, enc.AddDoor("preexisting", previousPosition, false))
+		previousSpace := enc.ToData().Space
+		previousRoom := enc.Room()
+		previous := *enc.ToData().Doors["preexisting"]
+
+		err := enc.InitDungeon(authoredEdgeParams())
+		require.Error(t, err)
+		assert.Same(t, previousSpace, enc.ToData().Space)
+		assert.Same(t, previousRoom, enc.Room())
+		assert.Equal(t, previous, *enc.ToData().Doors["preexisting"])
+		_, stagedConnector := enc.ToData().Doors["legacy-connector"]
+		assert.False(t, stagedConnector)
+		for _, edge := range authoredEdgeParams().AuthoredEdges {
+			if edge.Kind == encounter.GeneratedEdgeKindDoor {
+				_, stagedDoor := enc.ToData().Doors[edge.DoorID]
+				assert.False(t, stagedDoor)
+			}
+		}
+	})
 }
 
 func assertAuthoredEdgeNormalized(t *testing.T, edge encounter.AuthoredEdge) {

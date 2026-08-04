@@ -139,10 +139,16 @@ func (e *Encounter) rebuildRoomFromData() error {
 	if sd == nil {
 		return nil
 	}
+	if err := validatePersistedDoors(e.data.Doors); err != nil {
+		return fmt.Errorf("validate doors: %w", err)
+	}
 	if err := validatePersistedAuthoredEdges(sd, e.data.Doors); err != nil {
 		return fmt.Errorf("validate authored edges: %w", err)
 	}
 	authoredByKey := authoredEdgesByKey(sd)
+	if _, err := e.canonicalGeneratedEdgeRecordsWithOverlay(authoredByKey); err != nil {
+		return fmt.Errorf("validate effective generated edges: %w", err)
+	}
 	grid := spatial.NewHexGrid(spatial.HexGridConfig{
 		Width:       float64(sd.Width),
 		Height:      float64(sd.Height),
@@ -272,7 +278,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 			}
 		}
 	}
-	if err := validateObstacles(sd.Obstacles); err != nil {
+	if err := validateObstacles(sd.Obstacles, sd.AuthoredEdges); err != nil {
 		return fmt.Errorf("validate obstacles: %w", err)
 	}
 	for _, o := range sd.Obstacles {
@@ -315,20 +321,25 @@ func (e *Encounter) rebuildRoomFromData() error {
 	return e.registerRoom(room)
 }
 
-// validateObstacles checks the structural invariant AddObstacle-authored
-// obstacle data depends on: every obstacle must have a non-empty, unique
-// ID. Obstacles is an order-preserving SLICE (unlike the map-keyed
-// Doors), so a duplicate ID is not rejected implicitly by key-overwrite.
-// Uniqueness matters even though environments.WallEntity's derived
-// entity ID embeds position (making a same-ID-different-position pair
-// placement-safe on its own) — a stable ID is this package's contract for
-// referencing the SAME obstacle across ticks/reloads (a host or client
-// keying a future interaction verb off it), and a same-ID-SAME-position
-// pair would collide to one entity via PlaceEntity's move-in-place
-// semantics, silently swallowing what should be a rejected duplicate.
-// Run from rebuildRoomFromData so both AddObstacle and a direct
+// validateObstacles checks the structural invariants AddObstacle-authored
+// obstacle data depends on: every obstacle has a non-empty, unique ID and no
+// obstacle occupies an authored edge endpoint. Obstacles is an order-preserving
+// SLICE (unlike the map-keyed Doors), so a duplicate ID is not rejected
+// implicitly by key-overwrite. Uniqueness matters even though
+// environments.WallEntity's derived entity ID embeds position (making a
+// same-ID-different-position pair placement-safe on its own) — a stable ID is
+// this package's contract for referencing the SAME obstacle across
+// ticks/reloads (a host or client keying a future interaction verb off it), and
+// a same-ID-SAME-position pair would collide to one entity via PlaceEntity's
+// move-in-place semantics, silently swallowing what should be a rejected
+// duplicate. Run from rebuildRoomFromData so both AddObstacle and a direct
 // LoadFromData of hand-built/legacy Data get the same guarantee.
-func validateObstacles(obstacles []ObstacleData) error {
+func validateObstacles(obstacles []ObstacleData, authoredEdges []AuthoredEdge) error {
+	endpoints := make(map[core.Hex]struct{}, len(authoredEdges)*2)
+	for _, edge := range authoredEdges {
+		endpoints[edge.From] = struct{}{}
+		endpoints[edge.To] = struct{}{}
+	}
 	seen := make(map[core.EntityID]int, len(obstacles))
 	for i, o := range obstacles {
 		if o.ID == "" {
@@ -336,6 +347,9 @@ func validateObstacles(obstacles []ObstacleData) error {
 		}
 		if first, dup := seen[o.ID]; dup {
 			return fmt.Errorf("obstacle %d (%q): duplicate obstacle id (already used by obstacle %d)", i, o.ID, first)
+		}
+		if _, endpoint := endpoints[o.Position]; endpoint {
+			return fmt.Errorf("obstacle %d (%q): occupies an authored edge endpoint", i, o.ID)
 		}
 		seen[o.ID] = i
 	}
@@ -358,8 +372,10 @@ func validateObstacles(obstacles []ObstacleData) error {
 //
 // id must be non-empty and not already used by another obstacle in this
 // Space (see validateObstacles for why a duplicate ID is unsafe, not just
-// unwanted). position, blocksMovement, and blocksLoS are stored verbatim
-// and drive the entity rebuildRoomFromData places into the room.
+// unwanted). position must not be an authored edge endpoint; endpoints remain
+// placeable floor cells and only their crossings may block. blocksMovement and
+// blocksLoS are stored verbatim and drive the entity rebuildRoomFromData places
+// into the room.
 func (e *Encounter) AddObstacle(
 	id core.EntityID, ref string, position core.Hex, blocksMovement, blocksLoS bool,
 ) error {
@@ -421,6 +437,9 @@ func (e *Encounter) isRoomSegmentTraversable(from, to core.Hex) bool {
 	if !grid.IsValidPosition(fromPos) || !grid.IsValidPosition(toPos) {
 		return false
 	}
+	// Cell blockers retain the caller-requested direct ray. A canonical ray is
+	// only for undirected boundary crossings; applying it to cells would let a
+	// reverse-only wall/obstacle disappear from sparse movement validation.
 	ray := grid.GetLineOfSight(fromPos, toPos)
 	if len(ray) == 0 || !ray[0].Equals(fromPos) || !ray[len(ray)-1].Equals(toPos) {
 		return false
@@ -428,7 +447,6 @@ func (e *Encounter) isRoomSegmentTraversable(from, to core.Hex) bool {
 	if len(ray)-1 != int(grid.Distance(fromPos, toPos)) {
 		return false
 	}
-	boundaryRoom, boundaryAware := e.room.(spatial.BoundaryAwareRoom)
 	for i, position := range ray {
 		if !grid.IsValidPosition(position) {
 			return false
@@ -443,7 +461,24 @@ func (e *Encounter) isRoomSegmentTraversable(from, to core.Hex) bool {
 		if !e.room.CanPlaceEntity(wallCheckEntity{}, position) {
 			return false
 		}
-		if boundaryAware && boundaryRoom.IsBoundaryMovementBlocked(previous, position) {
+	}
+
+	boundaryRoom, boundaryAware := e.room.(spatial.BoundaryAwareRoom)
+	if !boundaryAware {
+		return true
+	}
+	boundaryRay := spatial.CanonicalBoundaryRay(grid, fromPos, toPos)
+	if len(boundaryRay) == 0 || !boundaryRay[0].Equals(fromPos) ||
+		!boundaryRay[len(boundaryRay)-1].Equals(toPos) ||
+		len(boundaryRay)-1 != int(grid.Distance(fromPos, toPos)) {
+		return false
+	}
+	for i := 1; i < len(boundaryRay); i++ {
+		previous, position := boundaryRay[i-1], boundaryRay[i]
+		if !grid.IsValidPosition(position) || previous.Equals(position) || !grid.IsAdjacent(previous, position) {
+			return false
+		}
+		if boundaryRoom.IsBoundaryMovementBlocked(previous, position) {
 			return false
 		}
 	}

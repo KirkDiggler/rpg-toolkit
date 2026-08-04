@@ -109,7 +109,8 @@ type DungeonRegionParams struct {
 	// floor can't fit every requested instance places as many as fit),
 	// a PlacedObstacleSpec is a hard guarantee: InitDungeon fails outright
 	// if any entry lands on the reserved doorRow, collides with another
-	// placed entry, or lands on a wall cell — see placeRegionObstacles.
+	// placed entry, lands on a wall cell, or occupies an authored edge endpoint
+	// — see placeRegionObstacles.
 	// Placed cells are excluded from Obstacles' rolled candidate pool, so
 	// the two mechanisms coexist in the same region without collision.
 	PlacedObstacles []PlacedObstacleSpec
@@ -312,6 +313,12 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 	if err := validateAuthoredDoorIDsAgainstConnectors(params.Connectors, authoredEdges); err != nil {
 		return err
 	}
+	if err := validateDungeonDoorIDsAvailable(e.data.Doors, params.Connectors, authoredEdges); err != nil {
+		return err
+	}
+	// Generation consumes the normalized records to reserve every authored
+	// endpoint before it emits seed-dependent cell blockers or obstacles.
+	params.AuthoredEdges = authoredEdges
 
 	layout, err := generateDungeonLayout(params)
 	if err != nil {
@@ -353,12 +360,8 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		}
 	}
 	provisional := &Encounter{data: &Data{Space: space, Doors: generatedDoors}}
-	generated, err := provisional.canonicalGeneratedEdgeRecords()
-	if err != nil {
+	if _, err := provisional.canonicalGeneratedEdgeRecordsWithOverlay(authoredEdgesByKey(space)); err != nil {
 		return fmt.Errorf("init dungeon: generated edge overlay: %w", err)
-	}
-	if err := validateAuthoredEdgeOverlay(generated, authoredEdges); err != nil {
-		return fmt.Errorf("init dungeon: %w", err)
 	}
 
 	previousSpace := e.data.Space
@@ -402,6 +405,31 @@ func validateAuthoredDoorIDsAgainstConnectors(connectors []DungeonConnectorParam
 		}
 		if _, collides := connectorIDs[edge.DoorID]; collides {
 			return fmt.Errorf("authored edge %d: stable door id %q collides with connector door", index, edge.DoorID)
+		}
+	}
+	return nil
+}
+
+// validateDungeonDoorIDsAvailable rejects staged connector/authored-door IDs
+// that would overwrite a pre-existing door. InitDungeon can then roll back a
+// later rebuild failure by deleting only its own newly-created entries, never
+// guessing whether a map key used to belong to an earlier dungeon.
+func validateDungeonDoorIDsAvailable(
+	existing map[core.EntityID]*DoorData,
+	connectors []DungeonConnectorParams,
+	authored []AuthoredEdge,
+) error {
+	for index, connector := range connectors {
+		if _, exists := existing[connector.DoorID]; exists {
+			return fmt.Errorf("connector %d door id %q already exists", index, connector.DoorID)
+		}
+	}
+	for index, edge := range authored {
+		if edge.Kind != GeneratedEdgeKindDoor {
+			continue
+		}
+		if _, exists := existing[edge.DoorID]; exists {
+			return fmt.Errorf("authored edge %d door id %q already exists", index, edge.DoorID)
 		}
 	}
 	return nil
@@ -582,6 +610,12 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	}
 	totalWidth := x - 1 // no trailing boundary column after the last region
 
+	// Resolve authored endpoint reservations before any seed-dependent cell
+	// blocker or obstacle can claim them. This reservation deliberately does
+	// not participate in party-seat selection: authored anchors/seats retain
+	// their established deterministic positions and remain valid edge cells.
+	authoredEndpoints := authoredEndpointCubes(params.AuthoredEdges)
+
 	// Resolve every party seat before generating a single wall or obstacle.
 	// The reservation is then threaded through the wall safety paths, the
 	// discrete wall boundary, and the obstacle candidate pools below.
@@ -666,6 +700,7 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 		}
 		regionWalls := regionWallSegments(walls, starts[i], 0)
 		regionWalls = partyStart.stripPartyStartWalls(i, regionWalls)
+		regionWalls = stripAuthoredEndpointWalls(regionWalls, authoredEndpoints)
 		if r.Archetype == ArchetypeBoss {
 			// Construction-time discrete safeguard (rpg-toolkit#819),
 			// applied BEFORE this call's result is committed to
@@ -696,17 +731,18 @@ func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			Hexes:     core.NewHexSet(hexesFromCubes(regionCubes(r.Width, params.Height, starts[i]))...),
 		}
 		regionObstacles, err := placeRegionObstacles(placeRegionObstaclesParams{
-			regionID:      r.ID,
-			specs:         r.Obstacles,
-			placed:        r.PlacedObstacles,
-			reserved:      r.ReservedCells,
-			partyReserved: partyStart.seatsByRegion[i],
-			width:         r.Width,
-			height:        params.Height,
-			offsetX:       starts[i],
-			doorRow:       doorRow,
-			wallCubes:     wallCubeSet(regionWalls),
-			seed:          obstacleSeeds[i],
+			regionID:         r.ID,
+			specs:            r.Obstacles,
+			placed:           r.PlacedObstacles,
+			reserved:         r.ReservedCells,
+			partyReserved:    partyStart.seatsByRegion[i],
+			authoredReserved: authoredEndpoints,
+			width:            r.Width,
+			height:           params.Height,
+			offsetX:          starts[i],
+			doorRow:          doorRow,
+			wallCubes:        wallCubeSet(regionWalls),
+			seed:             obstacleSeeds[i],
 		})
 		if err != nil {
 			return nil, fmt.Errorf("place region %d (%q) obstacles: %w", i, r.ID, err)
@@ -1038,6 +1074,43 @@ func regionWallSegments(walls []environments.WallSegment, offsetX, offsetY int) 
 	return out
 }
 
+// authoredEndpointCubes returns every semantic endpoint of the already
+// validated authored-edge collection. It is an occupancy reservation only:
+// edge endpoints remain traversable floor cells and may still be selected as
+// authored party seats, but seeded walls and rolled/placed obstacles cannot
+// turn them into cell blockers.
+func authoredEndpointCubes(edges []AuthoredEdge) map[spatial.CubeCoordinate]struct{} {
+	if len(edges) == 0 {
+		return nil
+	}
+	endpoints := make(map[spatial.CubeCoordinate]struct{}, len(edges)*2)
+	for _, edge := range edges {
+		endpoints[edge.From.ToCube()] = struct{}{}
+		endpoints[edge.To.ToCube()] = struct{}{}
+	}
+	return endpoints
+}
+
+// stripAuthoredEndpointWalls removes seed-generated wall cells at authored
+// endpoints before the remaining generated layout is handed to obstacle
+// placement. It changes neither the selected party seats nor authored
+// placement coordinates.
+func stripAuthoredEndpointWalls(
+	walls []environments.WallSegmentData, endpoints map[spatial.CubeCoordinate]struct{},
+) []environments.WallSegmentData {
+	if len(endpoints) == 0 {
+		return walls
+	}
+	out := make([]environments.WallSegmentData, 0, len(walls))
+	for _, wall := range walls {
+		if _, reserved := endpoints[wall.Start]; reserved {
+			continue
+		}
+		out = append(out, wall)
+	}
+	return out
+}
+
 // wallCubeSet builds a lookup set of every absolute cube coordinate a
 // region's wall segments occupy — used by placeRegionObstacles to reject
 // wall cells as obstacle candidates. walls is already in absolute
@@ -1093,17 +1166,18 @@ func stripReservedAxisWalls(
 // region's geometry plus its caller-supplied specs — so the function
 // signature doesn't grow an eighth positional argument as #819 evolves.
 type placeRegionObstaclesParams struct {
-	regionID      string
-	specs         []ObstacleSpec
-	placed        []PlacedObstacleSpec
-	reserved      []LocalHex
-	partyReserved map[spatial.CubeCoordinate]struct{}
-	width         int
-	height        int
-	offsetX       int
-	doorRow       int
-	wallCubes     map[spatial.CubeCoordinate]struct{}
-	seed          int64
+	regionID         string
+	specs            []ObstacleSpec
+	placed           []PlacedObstacleSpec
+	reserved         []LocalHex
+	partyReserved    map[spatial.CubeCoordinate]struct{}
+	authoredReserved map[spatial.CubeCoordinate]struct{}
+	width            int
+	height           int
+	offsetX          int
+	doorRow          int
+	wallCubes        map[spatial.CubeCoordinate]struct{}
+	seed             int64
 }
 
 // placeRegionObstacles computes the ObstacleData instances for every
@@ -1158,8 +1232,8 @@ type placeRegionObstaclesParams struct {
 // p.placed (PlacedObstacleSpec, design.md §Design delta) is handled FIRST,
 // verbatim — see placeVerbatimObstacles — and is NOT best-effort: any
 // violation (reserved row, collision with another placed entry, a wall
-// cell) fails this call outright. Placed cells are then excluded from the
-// rolled candidate pool (both draw-order branches below), so the two
+// cell, or an authored edge endpoint) fails this call outright. Placed cells
+// are then excluded from the rolled candidate pool (both draw-order branches below), so the two
 // mechanisms never collide with each other; placed obstacle IDs are
 // numbered first, and rolled instances continue that same region's ID
 // sequence via idOffset, so a region with zero PlacedObstacles produces
@@ -1175,6 +1249,10 @@ type placeRegionObstaclesParams struct {
 // dungeon-wide party-start envelope selected before wall generation, and its
 // anchor may legally be on doorRow where ordinary ReservedCells are invalid.
 // Every rolled obstacle skips those cells in both draw-order paths.
+//
+// p.authoredReserved contains every authored-edge endpoint. It excludes the
+// cells from rolled placement and makes a conflicting fixed obstacle a hard
+// error rather than silently relocating authored content.
 func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) {
 	placedData, placedCubes, err := placeVerbatimObstacles(p)
 	if err != nil {
@@ -1191,7 +1269,7 @@ func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) 
 	// p.specs is empty (the early-return just below), since reserveCubes'
 	// validation above must run regardless of whether there's anything to
 	// roll -- a caller can set ReservedCells with no Obstacles at all.
-	excluded := make(map[spatial.CubeCoordinate]string, len(placedCubes)+len(reservedCubes))
+	excluded := make(map[spatial.CubeCoordinate]string, len(placedCubes)+len(reservedCubes)+len(p.authoredReserved))
 	for cube, ref := range placedCubes {
 		excluded[cube] = ref
 	}
@@ -1203,6 +1281,11 @@ func placeRegionObstacles(p placeRegionObstaclesParams) ([]ObstacleData, error) 
 	for cube := range p.partyReserved {
 		if _, already := excluded[cube]; !already {
 			excluded[cube] = "" // party-start reservation, no obstacle data
+		}
+	}
+	for cube := range p.authoredReserved {
+		if _, already := excluded[cube]; !already {
+			excluded[cube] = "" // authored edge endpoint, no obstacle data
 		}
 	}
 
@@ -1331,6 +1414,9 @@ func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[s
 		}
 		if _, wall := p.wallCubes[cube]; wall {
 			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on a wall cell", spec.Ref, spec.At)
+		}
+		if _, endpoint := p.authoredReserved[cube]; endpoint {
+			return nil, nil, fmt.Errorf("placed obstacle %q at %v is on an authored edge endpoint", spec.Ref, spec.At)
 		}
 		placedCubes[cube] = spec.Ref
 		out = append(out, ObstacleData{

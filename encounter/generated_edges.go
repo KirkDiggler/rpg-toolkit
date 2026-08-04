@@ -113,17 +113,13 @@ type generatedEdgeKey struct {
 }
 
 // canonicalEffectiveEdgeRecords is the one effective dungeon-edge source for
-// runtime DescribeEdges and viewer observations. It overlays authored edges
-// onto generated physical edges, preserving generated cell-blocker records for
-// knowledge while giving authored edges one canonical normalized identity and
-// live door-state blocking flags.
+// runtime DescribeEdges and viewer observations. It applies the authored
+// overlay before generated conflict validation, preserving every surviving
+// generated record's source orientation for knowledge while giving authored
+// edges one canonical normalized identity and live door-state blocking flags.
 func (e *Encounter) canonicalEffectiveEdgeRecords() ([]generatedEdgeRecord, error) {
 	if err := validatePersistedAuthoredEdges(e.data.Space, e.data.Doors); err != nil {
 		return nil, fmt.Errorf("validate authored edges: %w", err)
-	}
-	generated, err := e.canonicalGeneratedEdgeRecords()
-	if err != nil {
-		return nil, err
 	}
 
 	var authored []AuthoredEdge
@@ -131,20 +127,13 @@ func (e *Encounter) canonicalEffectiveEdgeRecords() ([]generatedEdgeRecord, erro
 		authored = e.data.Space.AuthoredEdges
 	}
 	authoredByKey := authoredEdgesByKey(e.data.Space)
-	records := make([]generatedEdgeRecord, 0, len(generated)+len(authored))
-	for _, record := range generated {
-		if record.edge.From != record.edge.To {
-			if _, replaces := authoredByKey[newGeneratedEdgeKey(record.edge.From, record.edge.To)]; replaces {
-				if record.edge.Kind == GeneratedEdgeKindDoor {
-					return nil, fmt.Errorf("authored edge collides with connector-derived edge %v to %v",
-						record.edge.From, record.edge.To)
-				}
-				continue
-			}
-			record.edge.From, record.edge.To = normalizeAuthoredEndpoints(record.edge.From, record.edge.To)
-		}
-		records = append(records, record)
+	generated, err := e.canonicalGeneratedEdgeRecordsWithOverlay(authoredByKey)
+	if err != nil {
+		return nil, err
 	}
+
+	records := make([]generatedEdgeRecord, 0, len(generated)+len(authored))
+	records = append(records, generated...)
 	for _, edge := range authored {
 		record := generatedEdgeRecord{
 			edge:                 GeneratedEdge(edge),
@@ -166,13 +155,24 @@ func (e *Encounter) canonicalEffectiveEdgeRecords() ([]generatedEdgeRecord, erro
 	return records, nil
 }
 
-// canonicalGeneratedEdgeRecords is the generated-only source for
+// canonicalGeneratedEdgeRecords is the strict generated-only source for
 // DescribeGeneratedEdges. It retains every degenerate cell-blocker record for
 // later effective knowledge projection. Only distinct-endpoint physical edges
 // receive undirected deduplication and conflict checks. GeneratedEdge retains
 // the source's runtime orientation, while the private record retains blocking
 // semantics the effective source must preserve.
 func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, error) {
+	return e.canonicalGeneratedEdgeRecordsWithOverlay(nil)
+}
+
+// canonicalGeneratedEdgeRecordsWithOverlay builds the generated portion of an
+// effective seam. An authored physical edge suppresses every generated
+// nonconnector solid record for that key before deduplication/conflict checks;
+// connector-derived doors remain an explicit rejection. A nil overlay retains
+// DescribeGeneratedEdges' strict generated diagnostics.
+func (e *Encounter) canonicalGeneratedEdgeRecordsWithOverlay(
+	authoredByKey map[generatedEdgeKey]AuthoredEdge,
+) ([]generatedEdgeRecord, error) {
 	records := make([]generatedEdgeRecord, 0)
 	seen := make(map[generatedEdgeKey]int)
 	add := func(record generatedEdgeRecord) error {
@@ -185,6 +185,13 @@ func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, erro
 		}
 
 		key := newGeneratedEdgeKey(record.edge.From, record.edge.To)
+		if _, replaced := authoredByKey[key]; replaced {
+			if record.edge.Kind == GeneratedEdgeKindDoor {
+				return fmt.Errorf("authored edge collides with connector-derived edge %v to %v",
+					record.edge.From, record.edge.To)
+			}
+			return nil
+		}
 		if index, exists := seen[key]; exists {
 			existing := records[index]
 			if existing.edge.Kind == record.edge.Kind &&

@@ -142,7 +142,7 @@ func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) 
 		return PromptIssued{}, fmt.Errorf("player %q not in encounter", playerID)
 	}
 	door, ok := e.data.Doors[doorID]
-	if !ok {
+	if !ok || door == nil {
 		return PromptIssued{}, fmt.Errorf("door %q not in encounter", doorID)
 	}
 	if e.isAuthoredDoor(doorID) || !door.Locked {
@@ -273,7 +273,7 @@ func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.Ent
 	switch action {
 	case promptActionOpen:
 		door, ok := e.data.Doors[target]
-		if !ok {
+		if !ok || door == nil {
 			return fmt.Errorf("door %q not in encounter", target)
 		}
 		// Gate-review finding (blocker 2, rpg-toolkit#864): re-check reach
