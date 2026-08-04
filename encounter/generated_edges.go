@@ -68,6 +68,66 @@ func (e *Encounter) DescribeGeneratedEdges(_ DescribeGeneratedEdgesInput) (Descr
 	return output, nil
 }
 
+// DescribeEdgesInput reserves an explicit input boundary for the combined
+// generated-plus-authored edge projection. Geometry is already initialized on
+// the encounter; callers cannot provide a competing edge collection here.
+type DescribeEdgesInput struct{}
+
+// DescribeEdgesOutput contains the sorted effective physical edge projection.
+// It intentionally reuses GeneratedEdge's established wire-neutral endpoint,
+// kind, and DoorID fields so existing API consumers need no parallel model.
+type DescribeEdgesOutput struct {
+	Edges []GeneratedEdge
+}
+
+// DescribeEdges exposes the effective generated-plus-authored canonical edge
+// projection. An authored edge replaces a colliding generated non-connector
+// physical edge; connector-derived collisions are rejected during InitDungeon
+// and defensively here. DescribeGeneratedEdges remains generated-only for
+// source compatibility.
+func (e *Encounter) DescribeEdges(_ DescribeEdgesInput) (DescribeEdgesOutput, error) {
+	if err := validatePersistedAuthoredEdges(e.data.Space, e.data.Doors); err != nil {
+		return DescribeEdgesOutput{}, fmt.Errorf("validate authored edges: %w", err)
+	}
+	records, err := e.canonicalGeneratedEdgeRecords()
+	if err != nil {
+		return DescribeEdgesOutput{}, err
+	}
+
+	var authored []AuthoredEdge
+	if e.data.Space != nil {
+		authored = e.data.Space.AuthoredEdges
+	}
+	authoredByKey := make(map[generatedEdgeKey]AuthoredEdge, len(authored))
+	for _, edge := range authored {
+		authoredByKey[newGeneratedEdgeKey(edge.From, edge.To)] = edge
+	}
+
+	output := DescribeEdgesOutput{Edges: make([]GeneratedEdge, 0, len(records)+len(authored))}
+	for _, record := range records {
+		if record.edge.From == record.edge.To {
+			continue
+		}
+		if _, replaces := authoredByKey[newGeneratedEdgeKey(record.edge.From, record.edge.To)]; replaces {
+			if record.edge.Kind == GeneratedEdgeKindDoor {
+				return DescribeEdgesOutput{}, fmt.Errorf("authored edge collides with connector-derived edge %v to %v",
+					record.edge.From, record.edge.To)
+			}
+			continue
+		}
+		edge := record.edge
+		edge.From, edge.To = normalizeAuthoredEndpoints(edge.From, edge.To)
+		output.Edges = append(output.Edges, edge)
+	}
+	for _, edge := range authored {
+		output.Edges = append(output.Edges, GeneratedEdge(edge))
+	}
+	sort.Slice(output.Edges, func(i, j int) bool {
+		return generatedEdgeLess(output.Edges[i], output.Edges[j])
+	})
+	return output, nil
+}
+
 type generatedEdgeRecord struct {
 	edge           GeneratedEdge
 	blocksMovement bool
@@ -134,9 +194,16 @@ func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, erro
 		}
 	}
 
+	authoredDoors := authoredDoorIDs(e.data.Space)
 	doorIDs := make([]core.EntityID, 0, len(e.data.Doors))
 	for id, door := range e.data.Doors {
 		if door != nil {
+			if _, authored := authoredDoors[id]; authored {
+				// Phase 2A authored doors live in DoorData for durable identity
+				// but are not generated connector doors and have no legacy
+				// door-cell geometry to project or register yet.
+				continue
+			}
 			doorIDs = append(doorIDs, id)
 		}
 	}

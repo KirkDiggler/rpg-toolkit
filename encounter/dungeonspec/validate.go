@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 const (
@@ -136,6 +138,9 @@ func Validate(spec *DungeonSpec) error {
 	}
 
 	if err := validateStart(spec); err != nil {
+		return err
+	}
+	if err := validateWalls(spec); err != nil {
 		return err
 	}
 
@@ -486,6 +491,122 @@ func validateStart(spec *DungeonSpec) error {
 		}
 	}
 	return nil
+}
+
+// validateWalls enforces the dungeon-scoped authored-edge grammar against
+// the declared absolute room footprint. It deliberately treats a connector
+// column as non-floor even though it lives inside the rectangle: authored
+// edges are between semantic cells, never a re-expression of a connector door
+// or its flanking collision geometry.
+func validateWalls(spec *DungeonSpec) error {
+	if len(spec.Walls) == 0 {
+		return nil
+	}
+	floor, totalWidth := semanticFloorCells(spec)
+	seen := make(map[wallEdgeKey]int, len(spec.Walls))
+	seenKinds := make([]string, 0, len(spec.Walls))
+	for index, wall := range spec.Walls {
+		from, err := validateWallEndpoint(index, "from", wall.From, floor, totalWidth, spec.Height)
+		if err != nil {
+			return err
+		}
+		to, err := validateWallEndpoint(index, "to", wall.To, floor, totalWidth, spec.Height)
+		if err != nil {
+			return err
+		}
+		switch wall.Kind {
+		case string(encounter.GeneratedEdgeKindSolid), string(encounter.GeneratedEdgeKindDoor):
+		default:
+			return fmt.Errorf("walls[%d].kind: invalid kind %q (must be %q or %q)", index, wall.Kind,
+				encounter.GeneratedEdgeKindSolid, encounter.GeneratedEdgeKindDoor)
+		}
+		if from == to {
+			return fmt.Errorf("walls[%d]: endpoints must be distinct", index)
+		}
+		if from.ToCube().Distance(to.ToCube()) != 1 {
+			return fmt.Errorf("walls[%d]: endpoints must be adjacent pointy-top floor hexes", index)
+		}
+
+		key := newWallEdgeKey(from, to)
+		if first, exists := seen[key]; exists {
+			if seenKinds[first] == wall.Kind {
+				return fmt.Errorf("walls[%d]: duplicate of walls[%d] (including reversed endpoints)", index, first)
+			}
+			return fmt.Errorf("walls[%d]: conflicting kind with walls[%d] on the same undirected edge", index, first)
+		}
+		seen[key] = index
+		seenKinds = append(seenKinds, wall.Kind)
+	}
+	return nil
+}
+
+// semanticFloorCells lays out the v1 linear chain in the same absolute column
+// frame compileWithConfig uses. It returns only cells owned by a semantic room;
+// connector columns are intentionally absent.
+func semanticFloorCells(spec *DungeonSpec) (map[[2]int]struct{}, int) {
+	totalWidth := 0
+	for index, room := range spec.Rooms {
+		totalWidth += room.Width
+		if index < len(spec.Rooms)-1 {
+			totalWidth++
+		}
+	}
+	floor := make(map[[2]int]struct{})
+	offsetX := 0
+	for index, room := range spec.Rooms {
+		for col := 0; col < room.Width; col++ {
+			for row := 0; row < spec.Height; row++ {
+				floor[[2]int{offsetX + col, row}] = struct{}{}
+			}
+		}
+		offsetX += room.Width
+		if index < len(spec.Rooms)-1 {
+			offsetX++
+		}
+	}
+	return floor, totalWidth
+}
+
+func validateWallEndpoint(
+	wallIndex int,
+	field string,
+	at *[2]int,
+	floor map[[2]int]struct{},
+	totalWidth, height int,
+) (core.Hex, error) {
+	path := fmt.Sprintf("walls[%d].%s", wallIndex, field)
+	if at == nil {
+		return core.Hex{}, fmt.Errorf("%s: required absolute [column, row] floor cell", path)
+	}
+	if at[0] < 0 || at[0] >= totalWidth || at[1] < 0 || at[1] >= height {
+		return core.Hex{}, fmt.Errorf("%s %v is out of dungeon floor footprint", path, *at)
+	}
+	if _, ok := floor[*at]; !ok {
+		return core.Hex{}, fmt.Errorf("%s %v is a connector gap/door cell, not a semantic floor cell", path, *at)
+	}
+	return core.HexFromPosition(spatial.Position{X: float64(at[0]), Y: float64(at[1])}), nil
+}
+
+type wallEdgeKey struct {
+	first  core.Hex
+	second core.Hex
+}
+
+func newWallEdgeKey(from, to core.Hex) wallEdgeKey {
+	if wallHexLess(to, from) {
+		return wallEdgeKey{first: to, second: from}
+	}
+	return wallEdgeKey{first: from, second: to}
+}
+
+func wallHexLess(left, right core.Hex) bool {
+	if left.Q != right.Q {
+		return left.Q < right.Q
+	}
+	if left.R != right.R {
+		return left.R < right.R
+	}
+	return left.S < right.S
 }
 
 // validateLocked checks a connector's lock, prefixing errors with the

@@ -269,6 +269,9 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
 	}
+	if err := validatePersistedAuthoredEdges(data.Space, data.Doors); err != nil {
+		return nil, fmt.Errorf("validate authored edges: %w", err)
+	}
 	e := &Encounter{
 		data:       data,
 		broker:     b,
@@ -1330,6 +1333,9 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 	}
 	if door.Open {
 		return fmt.Errorf("door %q already open", doorID)
+	}
+	if e.isAuthoredDoor(doorID) {
+		return fmt.Errorf("authored door %q interaction is not registered in Phase 2A", doorID)
 	}
 	// rpg-toolkit#864: Interact/door actions require adjacency. A 2026-07-30
 	// QA walk found this verb reachable from anywhere on the map (a door

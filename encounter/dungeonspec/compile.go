@@ -5,6 +5,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
@@ -145,6 +146,10 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 	for i := range spec.Connectors {
 		connectors[i] = compileConnector(spec.Key, &spec.Connectors[i])
 	}
+	authoredEdges, err := compileWalls(spec)
+	if err != nil {
+		return CompiledDungeon{}, err
+	}
 
 	partyStart := encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount}
 	if spec.Start != nil {
@@ -157,11 +162,13 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 
 	return CompiledDungeon{
 		Params: encounter.DungeonParams{
-			Regions:    regions,
-			Connectors: connectors,
-			Height:     spec.Height,
-			Theme:      spec.Theme,
-			PartyStart: partyStart,
+			Key:           spec.Key,
+			Regions:       regions,
+			Connectors:    connectors,
+			Height:        spec.Height,
+			Theme:         spec.Theme,
+			PartyStart:    partyStart,
+			AuthoredEdges: authoredEdges,
 		},
 		Spawns: spawns,
 	}, nil
@@ -299,6 +306,55 @@ func compileConnector(key string, c *ConnectorSpec) encounter.DungeonConnectorPa
 		params.LockAbility = c.Locked.Ability
 	}
 	return params
+}
+
+// compileWalls converts validated absolute YAML pairs into normalized
+// pointy-top encounter records. It independently checks pointer presence so a
+// future direct compile() caller cannot turn malformed source into a panic or
+// silently lose an authored edge.
+func compileWalls(spec *DungeonSpec) ([]encounter.AuthoredEdge, error) {
+	if len(spec.Walls) == 0 {
+		return nil, nil
+	}
+	edges := make([]encounter.AuthoredEdge, 0, len(spec.Walls))
+	for index, wall := range spec.Walls {
+		if wall.From == nil || wall.To == nil {
+			return nil, fmt.Errorf("walls[%d]: missing endpoint (Validate should have rejected this spec)", index)
+		}
+		from := core.HexFromPosition(spatial.Position{X: float64(wall.From[0]), Y: float64(wall.From[1])})
+		to := core.HexFromPosition(spatial.Position{X: float64(wall.To[0]), Y: float64(wall.To[1])})
+		if wallHexLess(to, from) {
+			from, to = to, from
+		}
+		edge := encounter.AuthoredEdge{From: from, To: to, Kind: encounter.GeneratedEdgeKind(wall.Kind)}
+		switch edge.Kind {
+		case encounter.GeneratedEdgeKindSolid:
+		case encounter.GeneratedEdgeKindDoor:
+			edge.DoorID = encounter.AuthoredDoorID(spec.Key, from, to)
+		default:
+			return nil, fmt.Errorf("walls[%d].kind %q not compiled (Validate should have rejected this spec)", index, wall.Kind)
+		}
+		edges = append(edges, edge)
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		if wallHexLess(edges[i].From, edges[j].From) {
+			return true
+		}
+		if wallHexLess(edges[j].From, edges[i].From) {
+			return false
+		}
+		if wallHexLess(edges[i].To, edges[j].To) {
+			return true
+		}
+		if wallHexLess(edges[j].To, edges[i].To) {
+			return false
+		}
+		if edges[i].Kind != edges[j].Kind {
+			return edges[i].Kind < edges[j].Kind
+		}
+		return edges[i].DoorID < edges[j].DoorID
+	})
+	return edges, nil
 }
 
 // boolOrTrue returns *b, or true when b is nil -- the nil=>true blocking

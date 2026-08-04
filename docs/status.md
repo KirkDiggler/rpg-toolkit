@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-19
+updated: 2026-08-04
 confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18; #785 arcade recovery (dead/0-HP characters restored entering a new encounter) added 2026-07-19; #787/#788 wave-2 slice 0 — QuickRoom/InitRoom entropy-seeded by default (with optional explicit seed), HexGrid.GetLineOfSight cube-rounded instead of truncated — added 2026-07-19; #790 wave-2 slice 1 — closed doors block movement+LoS via the existing wall machinery, OpenDoor unblocks and reveals through the doorway, viewerCanSee made wall-aware (rpg-api#648 finding) — added 2026-07-19; #794 wave-2 slice 1b — combat pockets: rollInitiative scoped to LoS-engaged monsters, non-terminal TURN_BASED->FREE_ROAM exit on pocket clear, ModeEnded reserved for whole-dungeon clear — added 2026-07-19; #795 arcade recovery restores resource pools (rage/ki/hit dice) at every new-encounter seating regardless of HP, extending #785's dead-only scope — added 2026-07-19; #804 wave-2 slice 2 (toolkit leg) — Encounter.InitTwoChamberRoom: two chambers in one continuous Space, region tags, entrance cell, plain door, connectivity guaranteed by construction — added 2026-07-19
 ---
 
@@ -10,6 +10,19 @@ confidence: medium — seeded from full repo read, test run, go.mod inspection, 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
 ## Active work
+
+**#880 / draft PR #881 — Dungeon Builder authored-edge Phase 2A (2026-08-04).**
+`dungeonspec` compiles strict dungeon-scoped `walls: [{from, to, kind}]` into
+normalized absolute pointy-top `AuthoredEdge` records; `InitDungeon` persists
+them in `SpaceData.AuthoredEdges`, initializes stable closed/unlocked authored
+`DoorData`, and exposes sorted effective geometry through `DescribeEdges`
+without changing `DescribeGeneratedEdges`. This is deliberately **data and read
+projection only**: no spatial-boundary registration, movement/LoS behavior, or
+authored-door interaction is enabled until the next phase. No nested module
+requirement changes: Phase 2A uses the already-pinned spatial API. When the
+behavior phase needs the boundary primitive, release in this order:
+`tools/spatial` tag from this provider → `encounter` bump/tag against that
+published tag → API consumer pin. Never commit a `replace` or `go.work` bridge.
 
 **#757 — the walled room: SpaceData, wall-aware LoS, wall-blocked movement,
 inline combat entry, spawn engine unblocked (2026-07-13).** Toolkit half of

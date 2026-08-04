@@ -26,6 +26,11 @@ const dungeonPathWidth = 2.0
 // Generalizes TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to
 // any N>=2 (rpg-toolkit#814).
 type DungeonParams struct {
+	// Key is the stable authored dungeon key. It is required only when
+	// AuthoredEdges is non-empty because a door edge derives its stable DoorID
+	// from this key plus its normalized absolute endpoint pair.
+	Key string
+
 	// Regions is the ordered linear chain, entrance-side first. At least 2
 	// required — a single region has nowhere to connect to.
 	Regions []DungeonRegionParams
@@ -52,6 +57,13 @@ type DungeonParams struct {
 	// reservation. It is separate from per-region ReservedCells because a
 	// party start may validly occupy a room's door row.
 	PartyStart PartyStartParams
+
+	// AuthoredEdges is the caller-compiled, normalized dungeon-owned edge
+	// collection. Both endpoints must be adjacent semantic floor cells; a door
+	// carries the exact AuthoredDoorID derived from Key. InitDungeon persists
+	// these records and their closed/unlocked DoorData but does not yet register
+	// them as spatial boundaries or interaction targets.
+	AuthoredEdges []AuthoredEdge
 
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
 	// that field's doc. Never interpreted here.
@@ -293,37 +305,80 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 	if err := validateDungeonParams(params); err != nil {
 		return err
 	}
+	authoredEdges, err := validateAndNormalizeAuthoredEdges(params)
+	if err != nil {
+		return err
+	}
+	if err := validateAuthoredDoorIDsAgainstConnectors(params.Connectors, authoredEdges); err != nil {
+		return err
+	}
 
 	layout, err := generateDungeonLayout(params)
 	if err != nil {
 		return fmt.Errorf("generate dungeon layout: %w", err)
 	}
 
-	previousSpace := e.data.Space
-	e.data.Space = &SpaceData{
+	dungeonKey := ""
+	if len(authoredEdges) > 0 {
+		dungeonKey = params.Key
+	}
+	space := &SpaceData{
 		Walls:               layout.walls,
 		Width:               layout.width,
 		Height:              params.Height,
 		Entrance:            core.HexFromCube(layout.entrance),
 		PartyStartPositions: layout.partyStartPositions,
+		DungeonKey:          dungeonKey,
+		AuthoredEdges:       authoredEdges,
 		Regions:             layout.regions,
 		Theme:               params.Theme,
 		Obstacles:           layout.obstacles,
 	}
 
-	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors))
+	// Validate overlay against the generated connector records before mutating
+	// the real encounter. Physical non-connector records are intentionally not
+	// removed here: SpaceData keeps generator truth intact and DescribeEdges
+	// applies the deterministic authored replacement projection.
+	generatedDoors := make(map[core.EntityID]*DoorData, len(layout.doors))
 	for i, door := range layout.doors {
 		connector := params.Connectors[i]
-		doorID := connector.DoorID
-		dd := &DoorData{ID: doorID, Position: core.HexFromCube(door), Open: false}
-		if connector.Locked {
-			dd.Locked = true
-			dd.LockDC = connector.LockDC
-			dd.LockAbility = connector.LockAbility
-			dd.LockTool = connector.LockTool
+		generatedDoors[connector.DoorID] = &DoorData{
+			ID:          connector.DoorID,
+			Position:    core.HexFromCube(door),
+			Open:        false,
+			Locked:      connector.Locked,
+			LockDC:      connector.LockDC,
+			LockAbility: connector.LockAbility,
+			LockTool:    connector.LockTool,
 		}
-		e.data.Doors[doorID] = dd
-		stagedDoorIDs = append(stagedDoorIDs, doorID)
+	}
+	provisional := &Encounter{data: &Data{Space: space, Doors: generatedDoors}}
+	generated, err := provisional.canonicalGeneratedEdgeRecords()
+	if err != nil {
+		return fmt.Errorf("init dungeon: generated edge overlay: %w", err)
+	}
+	if err := validateAuthoredEdgeOverlay(generated, authoredEdges); err != nil {
+		return fmt.Errorf("init dungeon: %w", err)
+	}
+
+	previousSpace := e.data.Space
+	e.data.Space = space
+	stagedDoorIDs := make([]core.EntityID, 0, len(layout.doors)+len(authoredEdges))
+	for i := range layout.doors {
+		connector := params.Connectors[i]
+		dd := generatedDoors[connector.DoorID]
+		e.data.Doors[connector.DoorID] = dd
+		stagedDoorIDs = append(stagedDoorIDs, connector.DoorID)
+	}
+	for _, edge := range authoredEdges {
+		if edge.Kind != GeneratedEdgeKindDoor {
+			continue
+		}
+		// Phase 2A records durable door lifecycle data only. Position is the
+		// normalized first endpoint for legacy DoorData shape compatibility;
+		// Phase 2B will add edge-native registration and either-endpoint verbs.
+		e.data.Doors[edge.DoorID] = &DoorData{ID: edge.DoorID, Position: edge.From, Open: false}
+		stagedDoorIDs = append(stagedDoorIDs, edge.DoorID)
 	}
 
 	if err := e.rebuildRoomFromData(); err != nil {
@@ -332,6 +387,22 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		}
 		e.data.Space = previousSpace
 		return fmt.Errorf("init dungeon: rebuild room: %w", err)
+	}
+	return nil
+}
+
+func validateAuthoredDoorIDsAgainstConnectors(connectors []DungeonConnectorParams, authored []AuthoredEdge) error {
+	connectorIDs := make(map[core.EntityID]struct{}, len(connectors))
+	for _, connector := range connectors {
+		connectorIDs[connector.DoorID] = struct{}{}
+	}
+	for index, edge := range authored {
+		if edge.Kind != GeneratedEdgeKindDoor {
+			continue
+		}
+		if _, collides := connectorIDs[edge.DoorID]; collides {
+			return fmt.Errorf("authored edge %d: stable door id %q collides with connector door", index, edge.DoorID)
+		}
 	}
 	return nil
 }

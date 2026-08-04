@@ -145,6 +145,9 @@ func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) 
 	if !ok {
 		return PromptIssued{}, fmt.Errorf("door %q not in encounter", doorID)
 	}
+	if e.isAuthoredDoor(doorID) {
+		return PromptIssued{}, fmt.Errorf("authored door %q interaction is not registered in Phase 2A", doorID)
+	}
 	if !door.Locked {
 		return PromptIssued{}, fmt.Errorf("%w: %q", ErrDoorNotLocked, doorID)
 	}
@@ -272,6 +275,9 @@ func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.Ent
 		door, ok := e.data.Doors[target]
 		if !ok {
 			return fmt.Errorf("door %q not in encounter", target)
+		}
+		if e.isAuthoredDoor(target) {
+			return fmt.Errorf("authored door %q interaction is not registered in Phase 2A", target)
 		}
 		// Gate-review finding (blocker 2, rpg-toolkit#864): re-check reach
 		// HERE, after the skill check resolved but BEFORE committing

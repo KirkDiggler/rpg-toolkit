@@ -151,6 +151,19 @@ type SpaceData struct {
 	// the same seats without re-running layout selection.
 	PartyStartPositions []core.Hex `json:"party_start_positions,omitempty"`
 
+	// DungeonKey is the authored dungeon's stable key when AuthoredEdges is
+	// present. It persists with the edge collection so LoadFromData can verify
+	// every authored door ID still derives from the original key and normalized
+	// endpoint pair instead of trusting a mutable persisted map key.
+	DungeonKey string `json:"dungeon_key,omitempty"`
+
+	// AuthoredEdges is the normalized dungeon-owned wall/door edge collection
+	// compiled from dungeonspec's top-level walls entries. It is deliberately
+	// encounter persistence, not a generic spatial.Room field: Phase 2A exposes
+	// it through DescribeEdges and initializes authored DoorData, while later
+	// work owns boundary registration, movement/LoS, and interaction behavior.
+	AuthoredEdges []AuthoredEdge `json:"authored_edges,omitempty"`
+
 	// Regions tags every hex by chamber for multi-chamber spaces (Wave 2
 	// Slice 2) — scopes spawn placement and, via LoS, combat pockets
 	// (rpg-toolkit#796). Empty for single-room InitRoom spaces, which have

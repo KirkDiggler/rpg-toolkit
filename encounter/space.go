@@ -214,7 +214,12 @@ func (e *Encounter) rebuildRoomFromData() error {
 		}
 	}
 	for id, door := range e.data.Doors {
-		if door.Open {
+		// Authored edges are persisted/read-projected in Phase 2A but are not
+		// registered into spatial.Room until the dedicated boundary behavior
+		// phase. Keeping their DoorData out of the legacy cell-blocker loop
+		// prevents a one-endpoint approximation from silently changing movement
+		// or LoS before edge-native semantics exist.
+		if door.Open || e.isAuthoredDoor(id) {
 			continue
 		}
 		cube := door.Position.ToCube()
