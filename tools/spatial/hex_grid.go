@@ -514,7 +514,7 @@ func roundCube(c cubeFloat) CubeCoordinate {
 	switch {
 	case xDiff > yDiff && xDiff > zDiff:
 		rx = -ry - rz
-	case yDiff > zDiff:
+	case yDiff >= zDiff:
 		ry = -rx - rz
 	default:
 		rz = -rx - ry
