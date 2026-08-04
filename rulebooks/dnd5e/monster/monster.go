@@ -661,9 +661,23 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 		blocked[hex] = true
 	}
 
-	// Find path using A*
+	// Find path using A*. A traversal predicate represents barriers between
+	// cells (for example, a closed door boundary) without turning either
+	// endpoint into a blocked cell. Nil preserves the established rulebook
+	// behavior for hosts that only provide BlockedHexes.
 	pathFinder := spatial.NewSimplePathFinder()
-	path := pathFinder.FindPath(input.Perception.MyPosition, closest.Position, blocked)
+	var path []spatial.CubeCoordinate
+	if input.Perception.TraversalPredicate != nil {
+		path = pathFinder.FindPathWithTraversal(
+			input.Perception.MyPosition,
+			closest.Position,
+			blocked,
+			input.Perception.TraversalPredicate,
+			input.Perception.TraversalLimit,
+		)
+	} else {
+		path = pathFinder.FindPath(input.Perception.MyPosition, closest.Position, blocked)
+	}
 
 	if len(path) == 0 {
 		return // No valid path - stay put
