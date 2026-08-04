@@ -15,7 +15,7 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 `dungeonspec` compiles strict dungeon-scoped `walls: [{from, to, kind}]` into
 normalized absolute pointy-top odd-q offset `[column,row]` `AuthoredEdge`
 records (never even-q or axial); the [rpg-project specimen authority](https://github.com/KirkDiggler/rpg-project/issues/175#issuecomment-5162198168)
-and its [coordinate erratum](https://github.com/KirkDiggler/rpg-project/blob/8750660107f0d8438b611d71fc4daaca5beb6f75/ideas/dungeon-builder/plan.md#L66-L75)
+and its [coordinate erratum](https://github.com/KirkDiggler/rpg-project/issues/175#issuecomment-5175642013)
 remain the source for examples. `InitDungeon` persists them
 in `SpaceData.AuthoredEdges`, initializes stable closed/unlocked authored
 `DoorData`, and exposes sorted effective geometry through `DescribeEdges`
