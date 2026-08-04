@@ -74,7 +74,10 @@ optional `BoundaryAwareRoom` capability for a barrier between two adjacent,
 in-grid positions. A boundary is normalized as an undirected pair when it is
 registered, so both directions share one record. It never occupies either
 endpoint. It applies to discrete square and hex grids; gridless rooms have no
-cell-pair crossing model and reject boundary registration.
+cell-pair crossing model and reject boundary registration. With no registered
+boundaries, `BasicRoom` retains its legacy movement, movement-query, and entity
+line-of-sight behavior without constructing or scanning a boundary-specific
+ray.
 
 ```go
 boundaryRoom := room // *spatial.BasicRoom

@@ -7,6 +7,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
+// boundaryRegistrationState exposes the registered-boundary presence check to
+// package-owned room implementations. External BoundaryAwareRoom
+// implementations preserve the conservative per-crossing checks.
+type boundaryRegistrationState interface {
+	hasRegisteredBoundaries() bool
+}
+
 // SpatialQueryHandler handles spatial query events
 //
 //nolint:revive // type name follows package naming conventions used throughout codebase
@@ -127,11 +134,12 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 	data.Path = room.GetLineOfSight(data.From, data.To)
 
 	// Check if the entity can move to the target position. Boundary-aware rooms
-	// additionally reject any blocked consecutive crossing in the direct ray;
-	// legacy Room implementations keep the original behavior.
+	// with registered boundaries additionally reject any blocked consecutive
+	// crossing in the direct ray; legacy and boundary-empty rooms keep the
+	// original behavior without an extra path scan.
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
 	if data.Valid {
-		if boundaryRoom, ok := room.(BoundaryAwareRoom); ok {
+		if boundaryRoom, ok := room.(BoundaryAwareRoom); ok && roomHasRegisteredBoundaries(boundaryRoom) {
 			for i := 1; i < len(data.Path); i++ {
 				if boundaryRoom.IsBoundaryMovementBlocked(data.Path[i-1], data.Path[i]) {
 					data.Valid = false
@@ -145,6 +153,11 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 	data.Distance = room.GetGrid().Distance(data.From, data.To)
 
 	return data, nil
+}
+
+func roomHasRegisteredBoundaries(room BoundaryAwareRoom) bool {
+	state, known := room.(boundaryRegistrationState)
+	return !known || state.hasRegisteredBoundaries()
 }
 
 // handlePlacement handles placement queries

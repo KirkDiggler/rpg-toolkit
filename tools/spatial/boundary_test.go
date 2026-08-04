@@ -13,6 +13,29 @@ import (
 
 const testBoundaryRoomType = "boundary"
 
+// countingGridlessGrid makes unintended boundary-ray work observable without
+// allocating GridlessRoom's normal half-unit samples across a huge distance.
+type countingGridlessGrid struct {
+	*spatial.GridlessRoom
+	intermediate     spatial.Position
+	lineOfSightCalls int
+}
+
+func newCountingGridlessGrid(size float64) *countingGridlessGrid {
+	return &countingGridlessGrid{
+		GridlessRoom: spatial.NewGridlessRoom(spatial.GridlessConfig{
+			Width:  size,
+			Height: size,
+		}),
+		intermediate: spatial.Position{X: size / 2, Y: 0},
+	}
+}
+
+func (g *countingGridlessGrid) GetLineOfSight(from, to spatial.Position) []spatial.Position {
+	g.lineOfSightCalls++
+	return []spatial.Position{from, g.intermediate, to}
+}
+
 type BoundaryTestSuite struct {
 	suite.Suite
 	room *spatial.BasicRoom
@@ -488,6 +511,54 @@ func (s *BoundaryTestSuite) TestBoundaryRejectsGridlessRooms() {
 		From: spatial.Position{X: 1, Y: 1},
 		To:   spatial.Position{X: 2, Y: 1},
 	}))
+}
+
+func (s *BoundaryTestSuite) TestGridlessRoomsWithoutBoundariesKeepLegacyRayUseAndEntityLineOfSight() {
+	// GridlessRoom normally allocates one point per half-unit. This distance
+	// makes an accidental boundary ray prohibitively expensive; the spy keeps
+	// the regression deterministic while proving whether a ray was requested.
+	const size = 1_000_000_000.0
+	from := spatial.Position{X: 0, Y: 0}
+	to := spatial.Position{X: size, Y: 0}
+	grid := newCountingGridlessGrid(size)
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "counting-gridless-room",
+		Type: testBoundaryRoomType,
+		Grid: grid,
+	})
+	mover := NewMockEntity("counting-gridless-mover", "character")
+
+	// Gridless rooms reject every boundary registration, so no boundary ray
+	// can affect this room.
+	s.Error(room.RegisterBoundary(spatial.Boundary{From: from, To: to}))
+	s.Require().NoError(room.PlaceEntity(mover, from))
+
+	// Legacy MoveEntity never asked its grid for a direct ray.
+	s.Require().NoError(room.MoveEntity(mover.GetID(), to))
+	s.Zero(grid.lineOfSightCalls, "empty boundary registry must not add a movement ray")
+
+	// A movement query still needs exactly its legacy returned path, but must
+	// not construct or inspect another boundary-specific ray.
+	queryHandler := spatial.NewSpatialQueryHandler()
+	queryHandler.RegisterRoom(room)
+	result, err := queryHandler.HandleQuery(context.Background(), &spatial.QueryMovementData{
+		Entity: mover,
+		From:   from,
+		To:     to,
+		RoomID: room.GetID(),
+	})
+	s.Require().NoError(err)
+	query := result.(*spatial.QueryMovementData)
+	s.True(query.Valid)
+	s.Equal([]spatial.Position{from, grid.intermediate, to}, query.Path)
+	s.Equal(1, grid.lineOfSightCalls, "query must retain only its legacy result ray")
+
+	// Skipping boundary work must not skip the legacy entity blocker pass.
+	blocker := NewMockEntity("counting-gridless-blocker", "wall").WithBlocking(false, true)
+	s.Require().NoError(room.PlaceEntity(blocker, grid.intermediate))
+	grid.lineOfSightCalls = 0
+	s.True(room.IsLineOfSightBlocked(from, to))
+	s.Equal(1, grid.lineOfSightCalls, "entity LoS must use its requested ray without a canonical boundary ray")
 }
 
 func (s *BoundaryTestSuite) TestLegacyMovementAndLineOfSightRemainOpenWithoutBoundaries() {

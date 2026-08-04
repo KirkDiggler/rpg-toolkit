@@ -267,6 +267,16 @@ func (r *BasicRoom) GetBoundary(from, to Position) (Boundary, bool) {
 	return boundary, exists
 }
 
+// hasRegisteredBoundaries reports whether this room currently has boundary
+// records. It is intentionally internal because BoundaryAwareRoom remains
+// source-compatible with existing external implementations.
+func (r *BasicRoom) hasRegisteredBoundaries() bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return len(r.boundaries) > 0
+}
+
 // IsBoundaryMovementBlocked reports whether a registered boundary blocks the
 // crossing between two positions.
 func (r *BasicRoom) IsBoundaryMovementBlocked(from, to Position) bool {
@@ -315,6 +325,10 @@ func (r *BasicRoom) isBoundaryMovementBlockedUnsafe(from, to Position) bool {
 // ray supplied by the grid. It deliberately does not find an alternate route:
 // MoveEntity's established multi-cell behavior is a direct move.
 func (r *BasicRoom) isDirectMovementBoundaryBlockedUnsafe(from, to Position) bool {
+	if len(r.boundaries) == 0 {
+		return false
+	}
+
 	path := r.grid.GetLineOfSight(from, to)
 	for i := 1; i < len(path); i++ {
 		if r.isBoundaryMovementBlockedUnsafe(path[i-1], path[i]) {
@@ -334,6 +348,10 @@ func (r *BasicRoom) isBoundaryLineOfSightBlockedUnsafe(from, to Position) bool {
 // so canonical endpoint ordering makes boundary LoS reciprocal. Entity blockers
 // intentionally continue to use the caller's requested ray.
 func (r *BasicRoom) isDirectLineOfSightBoundaryBlockedUnsafe(from, to Position) bool {
+	if len(r.boundaries) == 0 {
+		return false
+	}
+
 	if positionLess(to, from) {
 		from, to = to, from
 	}
