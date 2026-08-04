@@ -5,6 +5,7 @@ package dungeonspec_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,7 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const wallFromPath = "walls[0].from"
+const (
+	wallFromPath       = "walls[0].from"
+	wallAdjacencyError = "walls[0]: endpoints must be adjacent pointy-top odd-q floor hexes"
+)
 
 // TestDecode_WallsOptionalNullAndStrictShape keeps the authored-wall grammar
 // strict where an entry is present while preserving the ordinary omitted/null
@@ -134,31 +138,90 @@ func TestValidate_WallsRejectsNonCanonicalOrNonFloorEdges(t *testing.T) {
 	}
 }
 
-// TestLoad_WallsCompilesNormalizedAbsoluteEdgesAndStableDoorID proves authored
-// endpoint cells are converted through the one pointy-top coordinate path and
-// that the compiler owns deterministic door identity.
-func TestLoad_WallsCompilesNormalizedAbsoluteEdgesAndStableDoorID(t *testing.T) {
+// TestLoad_WallsCompilesCanonicalPointyTopOddQSpecimenEdges proves corrected
+// specimen pairs are converted through the one pointy-top odd-q [column,row]
+// path and that the compiler owns deterministic door identity.
+func TestLoad_WallsCompilesCanonicalPointyTopOddQSpecimenEdges(t *testing.T) {
 	const walls = `
 walls:
-  - {from: [2, 1], to: [1, 1], kind: solid}
-  - {from: [4, 2], to: [3, 2], kind: door}
+  - {from: [7, 1], to: [8, 1], kind: solid}
+  - {from: [7, 3], to: [8, 3], kind: door}
+  - {from: [10, 3], to: [11, 3], kind: door}
 `
 	compiled, err := dungeonspec.Load([]byte(placedTombYAML + walls))
 	require.NoError(t, err)
-	require.Len(t, compiled.Params.AuthoredEdges, 2)
 	assert.Equal(t, "reference-tomb", compiled.Params.Key)
 
-	solid := compiled.Params.AuthoredEdges[0]
-	assert.Equal(t, encounter.GeneratedEdgeKindSolid, solid.Kind)
-	assert.Equal(t, core.HexFromPosition(spatial.Position{X: 1, Y: 1}), solid.From)
-	assert.Equal(t, core.HexFromPosition(spatial.Position{X: 2, Y: 1}), solid.To)
-	assert.Empty(t, solid.DoorID)
+	hex := func(column, row int) core.Hex {
+		return core.HexFromPosition(spatial.Position{X: float64(column), Y: float64(row)})
+	}
+	sevenThree, eightThree := hex(7, 3), hex(8, 3)
+	sevenOne, eightOne := hex(7, 1), hex(8, 1)
+	tenThree, elevenThree := hex(10, 3), hex(11, 3)
+	assert.Equal(t, []encounter.AuthoredEdge{
+		{
+			From: sevenThree, To: eightThree, Kind: encounter.GeneratedEdgeKindDoor,
+			DoorID: encounter.AuthoredDoorID(compiled.Params.Key, sevenThree, eightThree),
+		},
+		{From: sevenOne, To: eightOne, Kind: encounter.GeneratedEdgeKindSolid},
+		{
+			From: tenThree, To: elevenThree, Kind: encounter.GeneratedEdgeKindDoor,
+			DoorID: encounter.AuthoredDoorID(compiled.Params.Key, tenThree, elevenThree),
+		},
+	}, compiled.Params.AuthoredEdges)
+}
 
-	door := compiled.Params.AuthoredEdges[1]
-	assert.Equal(t, encounter.GeneratedEdgeKindDoor, door.Kind)
-	assert.Equal(t, core.HexFromPosition(spatial.Position{X: 3, Y: 2}), door.From)
-	assert.Equal(t, core.HexFromPosition(spatial.Position{X: 4, Y: 2}), door.To)
-	assert.Equal(t, encounter.AuthoredDoorID(compiled.Params.Key, door.From, door.To), door.DoorID)
+// TestValidate_WallsUsesPointyTopOddQAdjacency fixes the serializer's former
+// even-q diagonal pairs in place. Both column parities must preserve odd-q's
+// actual neighboring rows; axial and even-q interpretations are not accepted.
+func TestValidate_WallsUsesPointyTopOddQAdjacency(t *testing.T) {
+	cases := []struct {
+		name    string
+		from    [2]int
+		to      [2]int
+		wantErr string
+	}{
+		{name: "odd column horizontal adjacent", from: [2]int{7, 1}, to: [2]int{8, 1}},
+		{name: "odd column diagonal adjacent", from: [2]int{7, 1}, to: [2]int{8, 2}},
+		{name: "even column horizontal adjacent", from: [2]int{10, 3}, to: [2]int{11, 3}},
+		{name: "even column diagonal adjacent", from: [2]int{10, 3}, to: [2]int{11, 2}},
+		{
+			name:    "original serializer pair [7,1]-[8,0] is not adjacent",
+			from:    [2]int{7, 1},
+			to:      [2]int{8, 0},
+			wantErr: wallAdjacencyError,
+		},
+		{
+			name:    "original serializer pair [7,3]-[8,2] is not adjacent",
+			from:    [2]int{7, 3},
+			to:      [2]int{8, 2},
+			wantErr: wallAdjacencyError,
+		},
+		{
+			name:    "even column even-q diagonal is not adjacent",
+			from:    [2]int{10, 3},
+			to:      [2]int{11, 4},
+			wantErr: wallAdjacencyError,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := placedTombYAML + fmt.Sprintf(`
+walls:
+  - {from: [%d, %d], to: [%d, %d], kind: solid}
+`, tc.from[0], tc.from[1], tc.to[0], tc.to[1])
+			spec, err := dungeonspec.Decode([]byte(raw))
+			require.NoError(t, err)
+
+			err = dungeonspec.Validate(spec)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 // TestLoad_WallsOmittedNullAndYAMLOrderAreInvariant keeps legacy specs byte- and

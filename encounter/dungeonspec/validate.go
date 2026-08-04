@@ -524,7 +524,7 @@ func validateWalls(spec *DungeonSpec) error {
 			return fmt.Errorf("walls[%d]: endpoints must be distinct", index)
 		}
 		if from.ToCube().Distance(to.ToCube()) != 1 {
-			return fmt.Errorf("walls[%d]: endpoints must be adjacent pointy-top floor hexes", index)
+			return fmt.Errorf("walls[%d]: endpoints must be adjacent pointy-top odd-q floor hexes", index)
 		}
 
 		key := newWallEdgeKey(from, to)
