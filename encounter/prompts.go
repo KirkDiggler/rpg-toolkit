@@ -129,7 +129,7 @@ type SubmitCheckResult struct {
 //   - door not in encounter: wrapped fmt.Errorf
 //   - player not in encounter: wrapped fmt.Errorf
 //   - door not locked: ErrDoorNotLocked
-//   - player not adjacent to the door (rpg-toolkit#864): wrapped ErrOutOfRange
+//   - player out of the door's interaction reach: wrapped ErrOutOfRange
 //   - player already has a pending prompt: ErrPromptAlreadyPending
 //
 // Does not publish any broker event — prompts are persisted state, not
@@ -145,18 +145,18 @@ func (e *Encounter) AttemptUnlock(playerID core.PlayerID, doorID core.EntityID) 
 	if !ok {
 		return PromptIssued{}, fmt.Errorf("door %q not in encounter", doorID)
 	}
-	if e.isAuthoredDoor(doorID) {
-		return PromptIssued{}, fmt.Errorf("authored door %q interaction is not registered in Phase 2A", doorID)
-	}
-	if !door.Locked {
+	if e.isAuthoredDoor(doorID) || !door.Locked {
+		// #179 authored doors are never lockable. The authored branch remains
+		// defensive against a caller mutating a live ToData pointer before the
+		// persistence validator gets a chance to reject it.
 		return PromptIssued{}, fmt.Errorf("%w: %q", ErrDoorNotLocked, doorID)
 	}
-	// rpg-toolkit#864: Interact/door actions require adjacency, including
-	// the locked-door branch — a 2026-07-30 QA walk found the DC-12 skill
+	// rpg-toolkit#864: Interact/door actions require reach, including the
+	// locked-door branch — a 2026-07-30 QA walk found the DC-12 skill
 	// check itself issuable (and passable) from 16 hexes away. Gated before
 	// the pending-prompt check below so a distant attempt never issues the
 	// prompt at all, not even one the player could resolve from range.
-	if err := checkInteractReach(p.View.Position, door.Position); err != nil {
+	if err := e.checkDoorInteractReach(p.View.Position, door); err != nil {
 		return PromptIssued{}, fmt.Errorf("door %q: %w", doorID, err)
 	}
 	if _, pending := e.data.PendingPrompts[playerID]; pending {
@@ -276,9 +276,6 @@ func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.Ent
 		if !ok {
 			return fmt.Errorf("door %q not in encounter", target)
 		}
-		if e.isAuthoredDoor(target) {
-			return fmt.Errorf("authored door %q interaction is not registered in Phase 2A", target)
-		}
 		// Gate-review finding (blocker 2, rpg-toolkit#864): re-check reach
 		// HERE, after the skill check resolved but BEFORE committing
 		// door.Locked = false. AttemptUnlock only checks reach at the
@@ -310,7 +307,7 @@ func (e *Encounter) dispatchPromptAction(playerID core.PlayerID, target core.Ent
 		if !ok {
 			return fmt.Errorf("player %q not in encounter", playerID)
 		}
-		if err := checkInteractReach(player.View.Position, door.Position); err != nil {
+		if err := e.checkDoorInteractReach(player.View.Position, door); err != nil {
 			return fmt.Errorf("door %q: %w", target, err)
 		}
 		// Clear the lock flag before OpenDoor so the door round-trips as

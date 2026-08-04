@@ -14,9 +14,10 @@ import (
 // pointy-top absolute dungeon grid. DoorID is empty for a solid edge and is
 // the stable authored-door identity for a door edge.
 //
-// Phase 2A persists and projects this record only. It deliberately does not
-// register a spatial boundary, alter movement or line of sight, or enable
-// authored-door interaction; those are the follow-on behavior phase.
+// Phase 2B registers this dungeon-owned record as an edge-native spatial
+// boundary whenever its effective state blocks passage. It never becomes a
+// cell blocker, so either incident floor cell remains placeable and retains
+// its semantic region identity.
 type AuthoredEdge struct {
 	From   core.Hex          `json:"from"`
 	To     core.Hex          `json:"to"`
@@ -188,8 +189,8 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 			if edge.DoorID != AuthoredDoorID(space.DungeonKey, edge.From, edge.To) {
 				return fmt.Errorf("authored edge %d: persisted door id %q is not stable for dungeon key", index, edge.DoorID)
 			}
-			if door.Open || door.Locked {
-				return fmt.Errorf("authored edge %d: Phase 2A door %q must remain closed and unlocked", index, edge.DoorID)
+			if door.Locked {
+				return fmt.Errorf("authored edge %d: door %q must remain unlocked in #179", index, edge.DoorID)
 			}
 		default:
 			return fmt.Errorf("authored edge %d: persisted unknown kind %q", index, edge.Kind)
@@ -218,8 +219,35 @@ func authoredDoorIDs(space *SpaceData) map[core.EntityID]struct{} {
 }
 
 func (e *Encounter) isAuthoredDoor(id core.EntityID) bool {
-	_, ok := authoredDoorIDs(e.data.Space)[id]
+	_, ok := e.authoredDoorEdge(id)
 	return ok
+}
+
+// authoredDoorEdge returns the stable, normalized authored edge that owns id.
+// An authored DoorData retains From in its legacy Position field, but callers
+// that need the true interaction or boundary geometry must use both endpoints
+// from this record.
+func (e *Encounter) authoredDoorEdge(id core.EntityID) (AuthoredEdge, bool) {
+	if e == nil || e.data == nil || e.data.Space == nil {
+		return AuthoredEdge{}, false
+	}
+	for _, edge := range e.data.Space.AuthoredEdges {
+		if edge.Kind == GeneratedEdgeKindDoor && edge.DoorID == id {
+			return edge, true
+		}
+	}
+	return AuthoredEdge{}, false
+}
+
+func authoredEdgesByKey(space *SpaceData) map[generatedEdgeKey]AuthoredEdge {
+	if space == nil || len(space.AuthoredEdges) == 0 {
+		return nil
+	}
+	out := make(map[generatedEdgeKey]AuthoredEdge, len(space.AuthoredEdges))
+	for _, edge := range space.AuthoredEdges {
+		out[newGeneratedEdgeKey(edge.From, edge.To)] = edge
+	}
+	return out
 }
 
 // validateAuthoredEdgeOverlay rejects connector collisions and leaves the

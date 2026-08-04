@@ -86,52 +86,25 @@ type DescribeEdgesOutput struct {
 // and defensively here. DescribeGeneratedEdges remains generated-only for
 // source compatibility.
 func (e *Encounter) DescribeEdges(_ DescribeEdgesInput) (DescribeEdgesOutput, error) {
-	if err := validatePersistedAuthoredEdges(e.data.Space, e.data.Doors); err != nil {
-		return DescribeEdgesOutput{}, fmt.Errorf("validate authored edges: %w", err)
-	}
-	records, err := e.canonicalGeneratedEdgeRecords()
+	records, err := e.canonicalEffectiveEdgeRecords()
 	if err != nil {
 		return DescribeEdgesOutput{}, err
 	}
-
-	var authored []AuthoredEdge
-	if e.data.Space != nil {
-		authored = e.data.Space.AuthoredEdges
-	}
-	authoredByKey := make(map[generatedEdgeKey]AuthoredEdge, len(authored))
-	for _, edge := range authored {
-		authoredByKey[newGeneratedEdgeKey(edge.From, edge.To)] = edge
-	}
-
-	output := DescribeEdgesOutput{Edges: make([]GeneratedEdge, 0, len(records)+len(authored))}
+	output := DescribeEdgesOutput{Edges: make([]GeneratedEdge, 0, len(records))}
 	for _, record := range records {
 		if record.edge.From == record.edge.To {
 			continue
 		}
-		if _, replaces := authoredByKey[newGeneratedEdgeKey(record.edge.From, record.edge.To)]; replaces {
-			if record.edge.Kind == GeneratedEdgeKindDoor {
-				return DescribeEdgesOutput{}, fmt.Errorf("authored edge collides with connector-derived edge %v to %v",
-					record.edge.From, record.edge.To)
-			}
-			continue
-		}
-		edge := record.edge
-		edge.From, edge.To = normalizeAuthoredEndpoints(edge.From, edge.To)
-		output.Edges = append(output.Edges, edge)
+		output.Edges = append(output.Edges, record.edge)
 	}
-	for _, edge := range authored {
-		output.Edges = append(output.Edges, GeneratedEdge(edge))
-	}
-	sort.Slice(output.Edges, func(i, j int) bool {
-		return generatedEdgeLess(output.Edges[i], output.Edges[j])
-	})
 	return output, nil
 }
 
 type generatedEdgeRecord struct {
-	edge           GeneratedEdge
-	blocksMovement bool
-	blocksLoS      bool
+	edge                 GeneratedEdge
+	blocksMovement       bool
+	blocksLoS            bool
+	observeBothEndpoints bool
 }
 
 type generatedEdgeKey struct {
@@ -139,12 +112,66 @@ type generatedEdgeKey struct {
 	second core.Hex
 }
 
-// canonicalGeneratedEdgeRecords is the single canonical barrier source for
-// both the public authoring seam and per-viewer knowledge. It retains every
-// degenerate cell-blocker record for viewer memory. Only distinct-endpoint
-// physical edges receive undirected deduplication and conflict checks.
-// GeneratedEdge retains the source's runtime orientation, while the private
-// record retains blocking semantics knowledge must preserve.
+// canonicalEffectiveEdgeRecords is the one effective dungeon-edge source for
+// runtime DescribeEdges and viewer observations. It overlays authored edges
+// onto generated physical edges, preserving generated cell-blocker records for
+// knowledge while giving authored edges one canonical normalized identity and
+// live door-state blocking flags.
+func (e *Encounter) canonicalEffectiveEdgeRecords() ([]generatedEdgeRecord, error) {
+	if err := validatePersistedAuthoredEdges(e.data.Space, e.data.Doors); err != nil {
+		return nil, fmt.Errorf("validate authored edges: %w", err)
+	}
+	generated, err := e.canonicalGeneratedEdgeRecords()
+	if err != nil {
+		return nil, err
+	}
+
+	var authored []AuthoredEdge
+	if e.data.Space != nil {
+		authored = e.data.Space.AuthoredEdges
+	}
+	authoredByKey := authoredEdgesByKey(e.data.Space)
+	records := make([]generatedEdgeRecord, 0, len(generated)+len(authored))
+	for _, record := range generated {
+		if record.edge.From != record.edge.To {
+			if _, replaces := authoredByKey[newGeneratedEdgeKey(record.edge.From, record.edge.To)]; replaces {
+				if record.edge.Kind == GeneratedEdgeKindDoor {
+					return nil, fmt.Errorf("authored edge collides with connector-derived edge %v to %v",
+						record.edge.From, record.edge.To)
+				}
+				continue
+			}
+			record.edge.From, record.edge.To = normalizeAuthoredEndpoints(record.edge.From, record.edge.To)
+		}
+		records = append(records, record)
+	}
+	for _, edge := range authored {
+		record := generatedEdgeRecord{
+			edge:                 GeneratedEdge(edge),
+			observeBothEndpoints: true,
+		}
+		if edge.Kind == GeneratedEdgeKindDoor {
+			door := e.data.Doors[edge.DoorID]
+			record.blocksMovement = !door.Open
+			record.blocksLoS = !door.Open
+		} else {
+			record.blocksMovement = true
+			record.blocksLoS = true
+		}
+		records = append(records, record)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return generatedEdgeLess(records[i].edge, records[j].edge)
+	})
+	return records, nil
+}
+
+// canonicalGeneratedEdgeRecords is the generated-only source for
+// DescribeGeneratedEdges. It retains every degenerate cell-blocker record for
+// later effective knowledge projection. Only distinct-endpoint physical edges
+// receive undirected deduplication and conflict checks. GeneratedEdge retains
+// the source's runtime orientation, while the private record retains blocking
+// semantics the effective source must preserve.
 func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, error) {
 	records := make([]generatedEdgeRecord, 0)
 	seen := make(map[generatedEdgeKey]int)
@@ -199,9 +226,8 @@ func (e *Encounter) canonicalGeneratedEdgeRecords() ([]generatedEdgeRecord, erro
 	for id, door := range e.data.Doors {
 		if door != nil {
 			if _, authored := authoredDoors[id]; authored {
-				// Phase 2A authored doors live in DoorData for durable identity
-				// but are not generated connector doors and have no legacy
-				// door-cell geometry to project or register yet.
+				// Authored doors are edge-native effective records below, never
+				// generated connector cell geometry.
 				continue
 			}
 			doorIDs = append(doorIDs, id)

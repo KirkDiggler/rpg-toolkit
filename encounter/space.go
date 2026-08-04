@@ -129,18 +129,20 @@ func (e *Encounter) registerRoom(room spatial.Room) error {
 // re-roll. No-op when data.Space is nil (no room to rebuild).
 //
 // rpg-toolkit#790: also places a blocking wall entity at every CLOSED
-// door's Position, derived fresh from Data.Doors each call rather than
-// persisted into Space.Walls — DoorData stays the single source of door
-// truth, and reuses the exact same wall machinery (PlaceEntity,
-// BlocksMovement/BlocksLoS, room.IsLineOfSightBlocked/CanPlaceEntity) that
-// already gates movement and LoS for solid walls, instead of a parallel
-// door-blocking system. An OPEN door places nothing, so re-running this
-// after OpenDoor flips door.Open naturally drops that door's block.
+// generated connector door's Position, derived fresh from Data.Doors each
+// call rather than persisted into Space.Walls. Authored doors are edge-native:
+// their normalized two-endpoint AuthoredEdge registers a spatial Boundary when
+// closed and no boundary when open, never a cell blocker. DoorData remains the
+// single source of each door's live open state in both representations.
 func (e *Encounter) rebuildRoomFromData() error {
 	sd := e.data.Space
 	if sd == nil {
 		return nil
 	}
+	if err := validatePersistedAuthoredEdges(sd, e.data.Doors); err != nil {
+		return fmt.Errorf("validate authored edges: %w", err)
+	}
+	authoredByKey := authoredEdgesByKey(sd)
 	grid := spatial.NewHexGrid(spatial.HexGridConfig{
 		Width:       float64(sd.Width),
 		Height:      float64(sd.Height),
@@ -189,6 +191,14 @@ func (e *Encounter) rebuildRoomFromData() error {
 			}
 			continue
 		}
+		if _, replaced := authoredByKey[newGeneratedEdgeKey(
+			core.HexFromCube(w.Start), core.HexFromCube(w.End),
+		)]; replaced {
+			// An authored edge is the effective runtime barrier for this
+			// physical crossing. In particular, do not retain the legacy
+			// boundary segment's End-cell blocker underneath an authored door.
+			continue
+		}
 		// A boundary-edge segment (Start != End) is primarily the render
 		// contract (rpg-dnd5e-web#566's hexDistance==1 client branch)
 		// catching up to the room's actual shape — Start is always real
@@ -214,11 +224,9 @@ func (e *Encounter) rebuildRoomFromData() error {
 		}
 	}
 	for id, door := range e.data.Doors {
-		// Authored edges are persisted/read-projected in Phase 2A but are not
-		// registered into spatial.Room until the dedicated boundary behavior
-		// phase. Keeping their DoorData out of the legacy cell-blocker loop
-		// prevents a one-endpoint approximation from silently changing movement
-		// or LoS before edge-native semantics exist.
+		// Authored doors register their two-cell boundary below. Keeping them
+		// out of this legacy connector cell-blocker loop preserves placeability
+		// at both authored endpoints.
 		if door.Open || e.isAuthoredDoor(id) {
 			continue
 		}
@@ -243,6 +251,25 @@ func (e *Encounter) rebuildRoomFromData() error {
 		})
 		if err := room.PlaceEntity(entity, pos); err != nil {
 			return fmt.Errorf("place door wall %s: %w", id, err)
+		}
+	}
+	if len(sd.AuthoredEdges) > 0 {
+		for _, edge := range sd.AuthoredEdges {
+			blocks := edge.Kind == GeneratedEdgeKindSolid
+			if edge.Kind == GeneratedEdgeKindDoor {
+				blocks = !e.data.Doors[edge.DoorID].Open
+			}
+			if !blocks {
+				continue // Open authored doors deliberately register no blocker.
+			}
+			if err := room.RegisterBoundary(spatial.Boundary{
+				From:              edge.From.ToPosition(),
+				To:                edge.To.ToPosition(),
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			}); err != nil {
+				return fmt.Errorf("register authored boundary %v to %v: %w", edge.From, edge.To, err)
+			}
 		}
 	}
 	if err := validateObstacles(sd.Obstacles); err != nil {
@@ -361,22 +388,66 @@ func (e *Encounter) AddObstacle(
 	return nil
 }
 
-// truncateAtWall returns the prefix of path up to (not including) the first
-// wall-blocked hex, checked via room.CanPlaceEntity (which also rejects
-// out-of-bounds hexes via the grid's IsValidPosition). Nil room (no
-// SpaceData) returns path unchanged — the pre-wave-1 unblocked-movement
-// behavior. Used by both the player (Move) and NPC (applyNPCMovementSteps)
-// movement paths so neither can walk through a wall.
-func (e *Encounter) truncateAtWall(path []core.Hex) []core.Hex {
+// truncateAtWall returns the requested prefix whose ordered direct segments
+// are fully traversable. It expands each sparse or multi-cell request through
+// the room grid's ray, checking every interior cell blocker and every
+// boundary crossing in order. A malformed, discontinuous, or out-of-grid ray
+// fails closed at that requested segment. Nil room preserves the pre-wave-1
+// unblocked-movement behavior. Used by both player and NPC movement paths.
+func (e *Encounter) truncateAtWall(moverStart core.Hex, path []core.Hex) []core.Hex {
 	if e.room == nil {
 		return path
 	}
-	for i, hex := range path {
-		if !e.room.CanPlaceEntity(wallCheckEntity{}, hex.ToPosition()) {
+	from := moverStart
+	for i, to := range path {
+		if !e.isRoomSegmentTraversable(from, to) {
 			return path[:i]
 		}
+		from = to
 	}
 	return path
+}
+
+// isRoomSegmentTraversable rejects any direct requested segment that cannot
+// be verified as a complete, contiguous in-grid ray. Encounter movement does
+// not place players or monsters in spatial.Room, so it must perform this
+// crossing-aware validation before mutating its own position data.
+func (e *Encounter) isRoomSegmentTraversable(from, to core.Hex) bool {
+	if !from.ToCube().IsValid() || !to.ToCube().IsValid() {
+		return false
+	}
+	grid := e.room.GetGrid()
+	fromPos, toPos := from.ToPosition(), to.ToPosition()
+	if !grid.IsValidPosition(fromPos) || !grid.IsValidPosition(toPos) {
+		return false
+	}
+	ray := grid.GetLineOfSight(fromPos, toPos)
+	if len(ray) == 0 || !ray[0].Equals(fromPos) || !ray[len(ray)-1].Equals(toPos) {
+		return false
+	}
+	if len(ray)-1 != int(grid.Distance(fromPos, toPos)) {
+		return false
+	}
+	boundaryRoom, boundaryAware := e.room.(spatial.BoundaryAwareRoom)
+	for i, position := range ray {
+		if !grid.IsValidPosition(position) {
+			return false
+		}
+		if i == 0 {
+			continue
+		}
+		previous := ray[i-1]
+		if previous.Equals(position) || !grid.IsAdjacent(previous, position) {
+			return false
+		}
+		if !e.room.CanPlaceEntity(wallCheckEntity{}, position) {
+			return false
+		}
+		if boundaryAware && boundaryRoom.IsBoundaryMovementBlocked(previous, position) {
+			return false
+		}
+	}
+	return true
 }
 
 // wallCheckEntity is a throwaway core.Entity used to query room.CanPlaceEntity

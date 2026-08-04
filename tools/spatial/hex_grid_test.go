@@ -166,8 +166,9 @@ func (s *HexGridTestSuite) TestGetLineOfSight() {
 		// visual/traversal line after the symmetric cube-rounding fix.
 		grid := spatial.NewHexGrid(spatial.HexGridConfig{Width: 20, Height: 10, PointyTop: true})
 		from := spatial.Position{X: 15, Y: 4}
+		middle := spatial.Position{X: 16, Y: 4}
 		to := spatial.Position{X: 17, Y: 4}
-		s.Equal([]spatial.Position{from, spatial.Position{X: 16, Y: 4}, to}, grid.GetLineOfSight(from, to))
+		s.Equal([]spatial.Position{from, middle, to}, grid.GetLineOfSight(from, to))
 	})
 }
 

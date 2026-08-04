@@ -432,8 +432,8 @@ func (s *BehaviorTestSuite) TestTakeTurnTraversalPredicateControlsAStar() {
 		directFirstStep := hexAt(1)
 		goal := hexAt(3)
 		canTraverse := func(from, to spatial.CubeCoordinate) bool {
-			return !((from == start && to == directFirstStep) ||
-				(from == directFirstStep && to == start))
+			return (from != start || to != directFirstStep) &&
+				(from != directFirstStep || to != start)
 		}
 		perception := &PerceptionData{
 			MyPosition: start,

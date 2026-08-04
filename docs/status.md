@@ -11,21 +11,30 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Active work
 
-**#880 / draft PR #881 — Dungeon Builder authored-edge Phase 2A (2026-08-04).**
+**#880 / draft PR #881 — Dungeon Builder authored-edge Phase 2B (2026-08-04).**
 `dungeonspec` compiles strict dungeon-scoped `walls: [{from, to, kind}]` into
 normalized absolute pointy-top odd-q offset `[column,row]` `AuthoredEdge`
 records (never even-q or axial); the [rpg-project specimen authority](https://github.com/KirkDiggler/rpg-project/issues/175#issuecomment-5162198168)
 and its [coordinate erratum](https://github.com/KirkDiggler/rpg-project/issues/175#issuecomment-5175642013)
-remain the source for examples. `InitDungeon` persists them
-in `SpaceData.AuthoredEdges`, initializes stable closed/unlocked authored
-`DoorData`, and exposes sorted effective geometry through `DescribeEdges`
-without changing `DescribeGeneratedEdges`. This is deliberately **data and read
-projection only**: no spatial-boundary registration, movement/LoS behavior, or
-authored-door interaction is enabled until the next phase. No nested module
-requirement changes: Phase 2A uses the already-pinned spatial API. When the
-behavior phase needs the boundary primitive, release in this order:
-`tools/spatial` tag from this provider → `encounter` bump/tag against that
-published tag → API consumer pin. Never commit a `replace` or `go.work` bridge.
+remain the source for examples. `InitDungeon` persists stable closed/unlocked
+authored `DoorData`; every rebuild registers authored solids and closed doors as
+undirected `tools/spatial` boundaries that block movement+LoS without occupying
+either endpoint, while an open authored door registers no blocker. `OpenDoor`
+uses the existing event/reveal/memory path from either endpoint; reload
+preserves its open state, and `AttemptUnlock` remains `ErrDoorNotLocked` because
+#179 authored doors are never locked. `DescribeEdges` and viewer knowledge now
+share one sorted effective source with live door state; `DescribeGeneratedEdges`
+remains generated-only. Sparse player/NPC requests inspect every in-grid direct
+ray cell and crossing; malformed/out-of-grid rays fail closed. The runtime-only
+D&D 5e monster perception seam carries an optional traversal predicate plus a
+finite search limit, allowing encounter to bound A* to its room and reject both
+cell blockers and authored boundaries while nil preserves old rulebook behavior.
+
+Nested requirements use branch pseudo-versions only — no `replace` or
+`go.work`. Eventual release order is `tools/spatial` tag → `rulebooks/dnd5e`
+tag pinned to that spatial tag → `encounter` tag pinned to both published tags
+→ API consumer pin. Draft stays open: no merge or tag until the provider loop
+is complete.
 
 **#757 — the walled room: SpaceData, wall-aware LoS, wall-blocked movement,
 inline combat entry, spawn engine unblocked (2026-07-13).** Toolkit half of

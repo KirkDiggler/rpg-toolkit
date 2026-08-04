@@ -61,8 +61,8 @@ type DungeonParams struct {
 	// AuthoredEdges is the caller-compiled, normalized dungeon-owned edge
 	// collection. Both endpoints must be adjacent semantic floor cells; a door
 	// carries the exact AuthoredDoorID derived from Key. InitDungeon persists
-	// these records and their closed/unlocked DoorData but does not yet register
-	// them as spatial boundaries or interaction targets.
+	// their closed/unlocked DoorData; every rebuild registers solids and closed
+	// authored doors as spatial boundaries without occupying either endpoint.
 	AuthoredEdges []AuthoredEdge
 
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
@@ -374,9 +374,9 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		if edge.Kind != GeneratedEdgeKindDoor {
 			continue
 		}
-		// Phase 2A records durable door lifecycle data only. Position is the
-		// normalized first endpoint for legacy DoorData shape compatibility;
-		// Phase 2B will add edge-native registration and either-endpoint verbs.
+		// Position remains the normalized first endpoint for DoorData wire
+		// compatibility. AuthoredEdge remains the edge-native authority for
+		// boundary registration and interaction from either endpoint.
 		e.data.Doors[edge.DoorID] = &DoorData{ID: edge.DoorID, Position: edge.From, Open: false}
 		stagedDoorIDs = append(stagedDoorIDs, edge.DoorID)
 	}
