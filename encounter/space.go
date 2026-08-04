@@ -278,7 +278,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 			}
 		}
 	}
-	if err := validateObstacles(sd.Obstacles, sd.AuthoredEdges); err != nil {
+	if err := validateObstacles(sd.Obstacles); err != nil {
 		return fmt.Errorf("validate obstacles: %w", err)
 	}
 	for _, o := range sd.Obstacles {
@@ -322,24 +322,20 @@ func (e *Encounter) rebuildRoomFromData() error {
 }
 
 // validateObstacles checks the structural invariants AddObstacle-authored
-// obstacle data depends on: every obstacle has a non-empty, unique ID and no
-// obstacle occupies an authored edge endpoint. Obstacles is an order-preserving
-// SLICE (unlike the map-keyed Doors), so a duplicate ID is not rejected
-// implicitly by key-overwrite. Uniqueness matters even though
-// environments.WallEntity's derived entity ID embeds position (making a
-// same-ID-different-position pair placement-safe on its own) — a stable ID is
-// this package's contract for referencing the SAME obstacle across
+// obstacle data depends on: every obstacle has a non-empty, unique ID.
+// Obstacles are ordinary content, not legacy wall/door cell geometry, so they
+// may share an authored-edge endpoint and independently block that cell.
+// Obstacles is an order-preserving SLICE (unlike the map-keyed Doors), so a
+// duplicate ID is not rejected implicitly by key-overwrite. Uniqueness matters
+// even though environments.WallEntity's derived entity ID embeds position
+// (making a same-ID-different-position pair placement-safe on its own) — a
+// stable ID is this package's contract for referencing the SAME obstacle across
 // ticks/reloads (a host or client keying a future interaction verb off it), and
 // a same-ID-SAME-position pair would collide to one entity via PlaceEntity's
 // move-in-place semantics, silently swallowing what should be a rejected
 // duplicate. Run from rebuildRoomFromData so both AddObstacle and a direct
 // LoadFromData of hand-built/legacy Data get the same guarantee.
-func validateObstacles(obstacles []ObstacleData, authoredEdges []AuthoredEdge) error {
-	endpoints := make(map[core.Hex]struct{}, len(authoredEdges)*2)
-	for _, edge := range authoredEdges {
-		endpoints[edge.From] = struct{}{}
-		endpoints[edge.To] = struct{}{}
-	}
+func validateObstacles(obstacles []ObstacleData) error {
 	seen := make(map[core.EntityID]int, len(obstacles))
 	for i, o := range obstacles {
 		if o.ID == "" {
@@ -347,9 +343,6 @@ func validateObstacles(obstacles []ObstacleData, authoredEdges []AuthoredEdge) e
 		}
 		if first, dup := seen[o.ID]; dup {
 			return fmt.Errorf("obstacle %d (%q): duplicate obstacle id (already used by obstacle %d)", i, o.ID, first)
-		}
-		if _, endpoint := endpoints[o.Position]; endpoint {
-			return fmt.Errorf("obstacle %d (%q): occupies an authored edge endpoint", i, o.ID)
 		}
 		seen[o.ID] = i
 	}
@@ -372,10 +365,10 @@ func validateObstacles(obstacles []ObstacleData, authoredEdges []AuthoredEdge) e
 //
 // id must be non-empty and not already used by another obstacle in this
 // Space (see validateObstacles for why a duplicate ID is unsafe, not just
-// unwanted). position must not be an authored edge endpoint; endpoints remain
-// placeable floor cells and only their crossings may block. blocksMovement and
-// blocksLoS are stored verbatim and drive the entity rebuildRoomFromData places
-// into the room.
+// unwanted). Obstacles may share an authored edge endpoint and independently
+// block that cell; the authored boundary remains a separate crossing. blocksMovement
+// and blocksLoS are stored verbatim and drive the entity rebuildRoomFromData
+// places into the room.
 func (e *Encounter) AddObstacle(
 	id core.EntityID, ref string, position core.Hex, blocksMovement, blocksLoS bool,
 ) error {

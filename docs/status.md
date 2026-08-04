@@ -19,8 +19,11 @@ and its [coordinate erratum](https://github.com/KirkDiggler/rpg-project/issues/1
 remain the source for examples. `InitDungeon` persists stable closed/unlocked
 authored `DoorData`; every rebuild registers authored solids and closed doors as
 undirected `tools/spatial` boundaries that block movement+LoS without occupying
-either endpoint, while an open authored door registers no blocker. `OpenDoor`
-uses the existing event/reveal/memory path from either endpoint; reload
+either endpoint, while an open authored door registers no blocker. The edge
+invariant rejects legacy wall-cell geometry and non-authored closed DoorData at
+an endpoint (including AddDoor / persisted snapshots), but leaves ordinary
+props, monsters, starts, and spawns legal to share and independently block an
+endpoint. `OpenDoor` uses the existing event/reveal/memory path from either endpoint; reload
 preserves its open state, and `AttemptUnlock` remains `ErrDoorNotLocked` because
 #179 authored doors are never locked. `DescribeEdges` and viewer knowledge now
 share one sorted effective source with live door state: generated records retain

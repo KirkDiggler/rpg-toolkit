@@ -157,7 +157,10 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 	seen := make(map[generatedEdgeKey]int, len(space.AuthoredEdges))
 	var previous AuthoredEdge
 	for index, source := range space.AuthoredEdges {
-		if source.From.Q+source.From.R+source.From.S != 0 || source.To.Q+source.To.R+source.To.S != 0 {
+		// Check this before normalization, distance, or offset conversion.
+		// CubeCoordinate.IsValid performs exact overflow-safe arithmetic, so a
+		// malformed native-int extreme cannot wrap into a seemingly valid cell.
+		if !source.From.ToCube().IsValid() || !source.To.ToCube().IsValid() {
 			return fmt.Errorf("authored edge %d: persisted endpoints contain an invalid cube coordinate", index)
 		}
 		edge := normalizeAuthoredEdge(source)
@@ -205,7 +208,87 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 		seen[key] = index
 		previous = edge
 	}
+	return validatePersistedAuthoredEndpointCellGeometry(space, doors)
+}
+
+// validatePersistedAuthoredEndpointCellGeometry rejects legacy persisted
+// wall/door cell geometry that would make either endpoint of an edge-native
+// authored boundary occupied. Ordinary obstacle/actor/start content is not
+// legacy geometry and remains outside this invariant.
+func validatePersistedAuthoredEndpointCellGeometry(space *SpaceData, doors map[core.EntityID]*DoorData) error {
+	endpoints := authoredEndpointCubes(space.AuthoredEdges)
+	if len(endpoints) == 0 {
+		return nil
+	}
+	grid := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width:       float64(space.Width),
+		Height:      float64(space.Height),
+		Orientation: spatial.HexOrientationPointyTop,
+	})
+	for index, wall := range space.Walls {
+		if wall.Start == wall.End {
+			if _, endpoint := endpoints[wall.Start]; endpoint {
+				return fmt.Errorf("persisted legacy wall %d creates a cell blocker at authored edge endpoint %v", index, wall.Start)
+			}
+			continue
+		}
+		if _, endpoint := endpoints[wall.End]; !endpoint {
+			continue
+		}
+		endPosition := wall.End.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+		if grid.IsValidPosition(endPosition) {
+			return fmt.Errorf("persisted legacy wall %d creates a cell blocker at authored edge endpoint %v", index, wall.End)
+		}
+	}
+	return validateClosedLegacyDoorsAtAuthoredEndpoints(doors, endpoints, authoredDoorIDs(space))
+}
+
+// validateClosedLegacyDoorsAtAuthoredEndpoints keeps edge-native authored
+// geometry separate from legacy closed-door cell geometry. Door IDs declared
+// by the authored edge collection are deliberately skipped: their DoorData
+// stores lifecycle state only and rebuilds as a boundary, never a cell blocker.
+func validateClosedLegacyDoorsAtAuthoredEndpoints(
+	doors map[core.EntityID]*DoorData,
+	endpoints map[spatial.CubeCoordinate]struct{},
+	authoredDoors map[core.EntityID]struct{},
+) error {
+	if len(endpoints) == 0 {
+		return nil
+	}
+	ids := make([]core.EntityID, 0, len(doors))
+	for id, door := range doors {
+		if door != nil {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		if _, authored := authoredDoors[id]; authored {
+			continue
+		}
+		door := doors[id]
+		if door.Open {
+			continue
+		}
+		if _, endpoint := endpoints[door.Position.ToCube()]; endpoint {
+			return fmt.Errorf("closed legacy door %q occupies authored edge endpoint %v", id, door.Position)
+		}
+	}
 	return nil
+}
+
+// authoredEndpointContains reports whether position is incident to an authored
+// edge in space. It is used by AddDoor before any legacy DoorData mutation.
+func authoredEndpointContains(space *SpaceData, position core.Hex) bool {
+	if space == nil {
+		return false
+	}
+	for _, edge := range space.AuthoredEdges {
+		if edge.From == position || edge.To == position {
+			return true
+		}
+	}
+	return false
 }
 
 // validatePersistedDoors rejects null door entries before room reconstruction

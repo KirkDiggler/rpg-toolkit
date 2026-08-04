@@ -436,6 +436,9 @@ func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.
 // why a caller holding an old Room()/RoomOrchestrator() reference across
 // this call would observe stale geometry.
 func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) error {
+	if authoredEndpointContains(e.data.Space, position) {
+		return fmt.Errorf("add door %q: position %v is an authored edge endpoint", id, position)
+	}
 	previous, existed := e.data.Doors[id]
 	e.data.Doors[id] = &DoorData{ID: id, Position: position, Open: open}
 	if e.data.Space == nil {

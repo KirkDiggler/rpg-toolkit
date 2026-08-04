@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"sort"
 	"testing"
 	"time"
@@ -178,15 +179,13 @@ func TestInitDungeon_AuthoredEdgesPersistDescribeAndBlock(t *testing.T) {
 	assert.Equal(t, combined.Edges, reloadedCombined.Edges)
 }
 
-// TestDescribeEdges_AuthoredEdgeReplacesCollidingGeneratedSolid pins the
-// overlay rule without changing DescribeGeneratedEdges. Current patterned
-// rooms serialize interior blockers as self-loops, so the physical generated
-// solid below deliberately models the persisted future/non-connector shape
-// this compatibility rule protects.
-func TestDescribeEdges_AuthoredEdgeReplacesCollidingGeneratedSolid(t *testing.T) {
-	params := authoredEdgeParams()
+// TestDescribeEdges_AuthoredEdgeRejectsCollidingLegacySolid keeps the strict
+// combined read seam aligned with persisted validation: a legacy segment whose
+// End would become an authored endpoint cell blocker is never an effective
+// authored-edge overlay.
+func TestDescribeEdges_AuthoredEdgeRejectsCollidingLegacySolid(t *testing.T) {
 	enc := newTestEncounter(t)
-	require.NoError(t, enc.InitDungeon(params))
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
 
 	data := enc.ToData()
 	authoredDoor := data.Space.AuthoredEdges[1]
@@ -198,27 +197,10 @@ func TestDescribeEdges_AuthoredEdgeReplacesCollidingGeneratedSolid(t *testing.T)
 	require.NoError(t, err)
 	assert.True(t, containsSolidEdge(generated.Edges, authoredDoor.From, authoredDoor.To))
 
-	combined, err := enc.DescribeEdges(encounter.DescribeEdgesInput{})
-	require.NoError(t, err)
-	assert.True(t, containsEdge(combined.Edges, authoredDoor))
-	assert.False(t, containsSolidEdge(combined.Edges, authoredDoor.From, authoredDoor.To),
-		"an authored edge replaces its colliding generated non-connector edge")
-
-	// The overlay is runtime authority too: the colliding legacy boundary
-	// segment must not leave its End as a cell blocker beneath the authored
-	// door after reconstruction.
-	payload, err := json.Marshal(data)
-	require.NoError(t, err)
-	var restored encounter.Data
-	require.NoError(t, json.Unmarshal(payload, &restored))
-	transport := encounter.NewInMemoryTransport()
-	broker := encounter.NewBroker(transport)
-	t.Cleanup(func() { _ = broker.Close(); _ = transport.Close() })
-	reloaded, err := encounter.LoadFromData(context.Background(), &restored, broker)
-	require.NoError(t, err)
-	assert.True(t, reloaded.Room().CanPlaceEntity(probeEntity{}, authoredDoor.From.ToPosition()))
-	assert.True(t, reloaded.Room().CanPlaceEntity(probeEntity{}, authoredDoor.To.ToPosition()))
-	assert.True(t, reloaded.Room().IsLineOfSightBlocked(authoredDoor.From.ToPosition(), authoredDoor.To.ToPosition()))
+	_, err = enc.DescribeEdges(encounter.DescribeEdgesInput{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "legacy wall")
+	assert.Contains(t, err.Error(), "authored edge endpoint")
 }
 
 // TestAuthoredDoorLifecycle_OpensFromEitherEndpoint keeps authored doors on
@@ -313,6 +295,54 @@ func TestAddDoor_FailedOverwritePreservesAuthoredDoorData(t *testing.T) {
 	assert.Equal(t, original, *enc.ToData().Doors[door.DoorID])
 	_, err = enc.DescribeEdges(encounter.DescribeEdgesInput{})
 	require.NoError(t, err, "failed overwrite must leave authored persistence valid")
+}
+
+// TestAddDoor_AuthoredEndpointRejectedAtomically proves AddDoor cannot add
+// legacy door-cell geometry at an authored edge endpoint, and returns before
+// changing either the persisted door map or the registered room.
+func TestAddDoor_AuthoredEndpointRejectedAtomically(t *testing.T) {
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	edge := authoredEdgeOfKind(t, enc.ToData().Space.AuthoredEdges, encounter.GeneratedEdgeKindSolid)
+	previousSpace := enc.ToData().Space
+	previousRoom := enc.Room()
+
+	err := enc.AddDoor("legacy-at-authored-endpoint", edge.From, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authored edge endpoint")
+	assert.Same(t, previousSpace, enc.ToData().Space)
+	assert.Same(t, previousRoom, enc.Room())
+	_, exists := enc.ToData().Doors["legacy-at-authored-endpoint"]
+	assert.False(t, exists)
+	assert.True(t, enc.Room().CanPlaceEntity(probeEntity{}, edge.From.ToPosition()))
+}
+
+// TestInitDungeon_RejectsClosedLegacyDoorAtAuthoredEndpointAtomically proves
+// a pre-existing legacy closed door cannot be carried into new authored edge
+// geometry, while an open legacy door remains harmless cell-wise.
+func TestInitDungeon_RejectsClosedLegacyDoorAtAuthoredEndpointAtomically(t *testing.T) {
+	params := authoredEdgeParams()
+	edge := authoredEdgeOfKind(t, params.AuthoredEdges, encounter.GeneratedEdgeKindSolid)
+
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitRoom(20, 20, environments.PatternEmpty))
+	require.NoError(t, enc.AddDoor("legacy-closed", edge.From, false))
+	previousSpace := enc.ToData().Space
+	previousRoom := enc.Room()
+	previousDoor := *enc.ToData().Doors["legacy-closed"]
+
+	err := enc.InitDungeon(params)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "closed legacy door")
+	assert.Same(t, previousSpace, enc.ToData().Space)
+	assert.Same(t, previousRoom, enc.Room())
+	assert.Equal(t, previousDoor, *enc.ToData().Doors["legacy-closed"])
+
+	open := newTestEncounter(t)
+	require.NoError(t, open.InitRoom(20, 20, environments.PatternEmpty))
+	require.NoError(t, open.AddDoor("legacy-open", edge.From, true))
+	require.NoError(t, open.InitDungeon(params), "an open legacy door has no cell blocker to conflict")
+	assert.True(t, open.ToData().Doors["legacy-open"].Open)
 }
 
 // TestAuthoredEdges_BlockSparsePlayerAndNPCMovement proves encounter-owned
@@ -505,74 +535,51 @@ func TestAuthoredEdges_CanonicalSparseTraversalUsesTheSameCrossings(t *testing.T
 		"canonical boundary checks must not bypass a blocker on the requested cell ray")
 }
 
-// TestInitDungeon_AuthoredEndpointReservationsProtectGeneratedBlockersAndRolls
-// sweeps random wall/obstacle layouts to prove authored crossings never become
-// occupied cells. A count larger than the pool would otherwise fill every
-// non-wall endpoint that random wall generation happened to leave open.
-func TestInitDungeon_AuthoredEndpointReservationsProtectGeneratedBlockersAndRolls(t *testing.T) {
+// TestInitDungeon_AuthoredEndpointsStripLegacyWalls keeps the authored edge
+// crossing distinct from generated wall-cell geometry without reserving the
+// endpoint from ordinary content placement.
+func TestInitDungeon_AuthoredEndpointsStripLegacyWalls(t *testing.T) {
 	for _, seed := range []int64{1, 2, 3, 4, 5, 17, 19, 42, 100, 909091} {
 		params := authoredEdgeParams()
 		params.RandomSeed = seed
-		params.PartyStart.Anchor = func() *core.Hex {
-			anchor := params.AuthoredEdges[0].From
-			return &anchor
-		}()
-		params.PartyStart.SeatCount = 2
 		params.Regions[0].Pattern = environments.PatternRandom
-		params.Regions[0].Obstacles = []encounter.ObstacleSpec{{
-			Ref: "test:props:rolled", Count: 100, BlocksMovement: true, BlocksLoS: true,
-		}}
 
 		enc := newTestEncounter(t)
 		require.NoError(t, enc.InitDungeon(params), "seed %d", seed)
-		data := enc.ToData()
-		require.Equal(t, params.AuthoredEdges[0].From, data.Space.Entrance, "seed %d", seed)
-		require.Len(t, data.Space.PartyStartPositions, 2, "seed %d", seed)
-		require.Equal(t, data.Space.Entrance, data.Space.PartyStartPositions[0], "seed %d", seed)
-
-		for _, edge := range data.Space.AuthoredEdges {
-			assert.True(t, enc.Room().CanPlaceEntity(probeEntity{}, edge.From.ToPosition()), "seed %d from", seed)
-			assert.True(t, enc.Room().CanPlaceEntity(probeEntity{}, edge.To.ToPosition()), "seed %d to", seed)
-			assert.False(t, enc.Room().IsPositionOccupied(edge.From.ToPosition()), "seed %d from", seed)
-			assert.False(t, enc.Room().IsPositionOccupied(edge.To.ToPosition()), "seed %d to", seed)
-			assert.True(t, enc.Room().IsLineOfSightBlocked(edge.From.ToPosition(), edge.To.ToPosition()),
-				"seed %d: the edge must still block only its crossing", seed)
-			addErr := enc.AddObstacle("endpoint-probe", "test:props:blocked", edge.From, true, true)
-			require.Error(t, addErr, "seed %d: runtime obstacles cannot consume an endpoint", seed)
-			assert.Contains(t, addErr.Error(), "authored edge endpoint")
-			assert.False(t, enc.Room().IsPositionOccupied(edge.From.ToPosition()), "seed %d from after rejection", seed)
+		for _, edge := range enc.ToData().Space.AuthoredEdges {
+			for _, wall := range enc.ToData().Space.Walls {
+				assert.False(t, wall.Start == edge.From.ToCube() && wall.End == wall.Start, "seed %d from", seed)
+				assert.False(t, wall.Start == edge.To.ToCube() && wall.End == wall.Start, "seed %d to", seed)
+			}
 		}
 	}
 }
 
-// TestInitDungeon_AuthoredEndpointReservationsDoNotRelocateAuthoredContent
-// distinguishes endpoint reservation from party/placement selection: an
-// authored anchor and a separate fixed placement retain their exact positions.
-func TestInitDungeon_AuthoredEndpointReservationsDoNotRelocateAuthoredContent(t *testing.T) {
+// TestAuthoredEndpointsAllowPropsAndPartyStarts proves endpoint sharing is
+// reserved only against legacy wall/door geometry. A normal prop and party
+// start remain legal and the prop independently blocks its endpoint cell.
+func TestAuthoredEndpointsAllowPropsAndPartyStarts(t *testing.T) {
 	params := authoredEdgeParams()
 	anchor := params.AuthoredEdges[0].From
-	params.PartyStart = encounter.PartyStartParams{Anchor: &anchor, SeatCount: 2}
+	params.PartyStart = encounter.PartyStartParams{Anchor: &anchor, SeatCount: 1}
+	propEndpoint := params.AuthoredEdges[0].To
 	params.Regions[0].PlacedObstacles = []encounter.PlacedObstacleSpec{{
-		Ref: "test:props:fixed", At: encounter.LocalHex{Col: 6, Row: 1}, BlocksMovement: true, BlocksLoS: true,
+		Ref: "test:props:fixed", At: encounter.LocalHex{Col: 2, Row: 1}, BlocksMovement: true, BlocksLoS: true,
 	}}
 
 	enc := newTestEncounter(t)
 	require.NoError(t, enc.InitDungeon(params))
 	data := enc.ToData()
 	assert.Equal(t, anchor, data.Space.Entrance)
-	assert.Equal(t, anchor, data.Space.PartyStartPositions[0])
+	assert.Equal(t, []core.Hex{anchor}, data.Space.PartyStartPositions)
 	require.Len(t, data.Space.Obstacles, 1)
-	assert.Equal(t, authoredEdgeHex(6, 1), data.Space.Obstacles[0].Position)
+	assert.Equal(t, propEndpoint, data.Space.Obstacles[0].Position)
+	assert.False(t, enc.Room().CanPlaceEntity(probeEntity{}, propEndpoint.ToPosition()),
+		"the prop independently blocks the endpoint cell; the authored edge still owns only its crossing")
 
-	conflict := authoredEdgeParams()
-	conflict.Regions[0].PlacedObstacles = []encounter.PlacedObstacleSpec{{
-		Ref: "test:props:conflict", At: encounter.LocalHex{Col: 1, Row: 1}, BlocksMovement: true, BlocksLoS: true,
-	}}
-	failed := newTestEncounter(t)
-	err := failed.InitDungeon(conflict)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "authored edge endpoint")
-	assert.Nil(t, failed.ToData().Space, "a conflicting authored placement is rejected, never relocated")
+	door := authoredEdgeOfKind(t, data.Space.AuthoredEdges, encounter.GeneratedEdgeKindDoor)
+	require.NoError(t, enc.AddObstacle("runtime-endpoint-prop", "test:props:runtime", door.From, true, true))
+	assert.False(t, enc.Room().CanPlaceEntity(probeEntity{}, door.From.ToPosition()))
 }
 
 // TestAuthoredDoorOpen_ProjectsEitherIncidentPosition keeps the legacy
@@ -642,7 +649,9 @@ func TestLoadFromData_AuthoredEdgesRejectInvalidCubeBeforeTraversal(t *testing.T
 	require.NoError(t, err)
 	var data encounter.Data
 	require.NoError(t, json.Unmarshal(payload, &data))
-	data.Space.AuthoredEdges[0].From = core.Hex{Q: 1, R: 1, S: 1}
+	// This tuple wrapped to zero under the old native-int sum, allowing
+	// normalization/distance work to run on corrupted persistence.
+	data.Space.AuthoredEdges[0].From = core.Hex{Q: math.MaxInt, R: math.MaxInt, S: 2}
 
 	transport := encounter.NewInMemoryTransport()
 	broker := encounter.NewBroker(transport)
@@ -653,6 +662,76 @@ func TestLoadFromData_AuthoredEdgesRejectInvalidCubeBeforeTraversal(t *testing.T
 	_, err = encounter.LoadFromData(context.Background(), &data, broker)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid cube")
+	assert.NotContains(t, err.Error(), "not normalized")
+	assert.NotContains(t, err.Error(), "rebuild room")
+}
+
+// TestLoadFromData_AuthoredEndpointsRejectLegacyCellGeometry covers every
+// persisted legacy cell blocker that would otherwise coexist with an authored
+// edge endpoint. Authored door records and harmless open legacy doors stay
+// valid because neither produces legacy door-cell geometry during rebuild.
+func TestLoadFromData_AuthoredEndpointsRejectLegacyCellGeometry(t *testing.T) {
+	enc := newTestEncounter(t)
+	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
+	payload, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+
+	load := func(t *testing.T, mutate func(*encounter.Data)) (*encounter.Encounter, error) {
+		t.Helper()
+		var data encounter.Data
+		require.NoError(t, json.Unmarshal(payload, &data))
+		mutate(&data)
+		transport := encounter.NewInMemoryTransport()
+		broker := encounter.NewBroker(transport)
+		t.Cleanup(func() {
+			_ = broker.Close()
+			_ = transport.Close()
+		})
+		return encounter.LoadFromData(context.Background(), &data, broker)
+	}
+
+	t.Run("degenerate wall at endpoint", func(t *testing.T) {
+		_, err := load(t, func(data *encounter.Data) {
+			endpoint := data.Space.AuthoredEdges[0].From.ToCube()
+			data.Space.Walls = append(data.Space.Walls, environments.WallSegmentData{
+				Start: endpoint, End: endpoint, BlocksMovement: true, BlocksLoS: true,
+			})
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "legacy wall")
+		assert.Contains(t, err.Error(), "authored edge endpoint")
+	})
+
+	t.Run("in-grid boundary wall ends at endpoint", func(t *testing.T) {
+		_, err := load(t, func(data *encounter.Data) {
+			edge := data.Space.AuthoredEdges[0]
+			data.Space.Walls = append(data.Space.Walls, environments.WallSegmentData{
+				Start: edge.To.ToCube(), End: edge.From.ToCube(), BlocksMovement: true, BlocksLoS: true,
+			})
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "legacy wall")
+		assert.Contains(t, err.Error(), "authored edge endpoint")
+	})
+
+	t.Run("closed legacy door at endpoint", func(t *testing.T) {
+		_, err := load(t, func(data *encounter.Data) {
+			endpoint := data.Space.AuthoredEdges[0].From
+			data.Doors["legacy-closed"] = &encounter.DoorData{ID: "legacy-closed", Position: endpoint}
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "closed legacy door")
+		assert.Contains(t, err.Error(), "authored edge endpoint")
+	})
+
+	t.Run("authored and open legacy doors remain valid", func(t *testing.T) {
+		reloaded, err := load(t, func(data *encounter.Data) {
+			endpoint := data.Space.AuthoredEdges[0].From
+			data.Doors["legacy-open"] = &encounter.DoorData{ID: "legacy-open", Position: endpoint, Open: true}
+		})
+		require.NoError(t, err)
+		require.NotNil(t, reloaded)
+	})
 }
 
 // TestLoadFromData_RejectsNullDoorData protects room reconstruction from a
@@ -678,49 +757,6 @@ func TestLoadFromData_RejectsNullDoorData(t *testing.T) {
 	})
 	require.Error(t, loadErr)
 	assert.Contains(t, loadErr.Error(), "null door data")
-}
-
-// TestEffectiveAuthoredOverlaySuppressesGeneratedSolidConflicts confirms the
-// effective seam ignores every generated nonconnector record replaced by an
-// authored edge before conflict checks, while the generated-only diagnostic
-// remains strict and runtime reconstruction keeps the endpoints placeable.
-func TestEffectiveAuthoredOverlaySuppressesGeneratedSolidConflicts(t *testing.T) {
-	enc := newTestEncounter(t)
-	require.NoError(t, enc.InitDungeon(authoredEdgeParams()))
-	data := enc.ToData()
-	authored := authoredEdgeOfKind(t, data.Space.AuthoredEdges, encounter.GeneratedEdgeKindSolid)
-	data.Space.Walls = append(data.Space.Walls,
-		environments.WallSegmentData{
-			Start: authored.From.ToCube(), End: authored.To.ToCube(), BlocksMovement: true, BlocksLoS: true,
-		},
-		environments.WallSegmentData{
-			Start: authored.To.ToCube(), End: authored.From.ToCube(), BlocksMovement: true, BlocksLoS: false,
-		},
-	)
-
-	effective, err := enc.DescribeEdges(encounter.DescribeEdgesInput{})
-	require.NoError(t, err)
-	assert.True(t, containsEdge(effective.Edges, authored))
-	_, err = enc.DescribeGeneratedEdges(encounter.DescribeGeneratedEdgesInput{})
-	require.Error(t, err, "the generated-only diagnostic still reports genuine conflicting solids")
-
-	payload, err := json.Marshal(data)
-	require.NoError(t, err)
-	var restored encounter.Data
-	require.NoError(t, json.Unmarshal(payload, &restored))
-	transport := encounter.NewInMemoryTransport()
-	broker := encounter.NewBroker(transport)
-	t.Cleanup(func() {
-		_ = broker.Close()
-		_ = transport.Close()
-	})
-	reloaded, err := encounter.LoadFromData(context.Background(), &restored, broker)
-	require.NoError(t, err)
-	assert.True(t, reloaded.Room().CanPlaceEntity(probeEntity{}, authored.From.ToPosition()))
-	assert.True(t, reloaded.Room().CanPlaceEntity(probeEntity{}, authored.To.ToPosition()))
-	reloadedEffective, err := reloaded.DescribeEdges(encounter.DescribeEdgesInput{})
-	require.NoError(t, err)
-	assert.True(t, containsEdge(reloadedEffective.Edges, authored))
 }
 
 // TestGeneratedPerimeterKnowledgeRetainsTheFloorFacingSource proves generated
