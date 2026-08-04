@@ -329,7 +329,7 @@ func (r *BasicRoom) isDirectMovementBoundaryBlockedUnsafe(from, to Position) boo
 		return false
 	}
 
-	path := r.grid.GetLineOfSight(from, to)
+	path := CanonicalBoundaryRay(r.grid, from, to)
 	for i := 1; i < len(path); i++ {
 		if r.isBoundaryMovementBlockedUnsafe(path[i-1], path[i]) {
 			return true
@@ -352,10 +352,7 @@ func (r *BasicRoom) isDirectLineOfSightBoundaryBlockedUnsafe(from, to Position) 
 		return false
 	}
 
-	if positionLess(to, from) {
-		from, to = to, from
-	}
-	path := r.grid.GetLineOfSight(from, to)
+	path := CanonicalBoundaryRay(r.grid, from, to)
 	for i := 1; i < len(path); i++ {
 		if r.isBoundaryLineOfSightBlockedUnsafe(path[i-1], path[i]) {
 			return true

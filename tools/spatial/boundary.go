@@ -54,3 +54,21 @@ func positionLess(left, right Position) bool {
 	}
 	return left.Y < right.Y
 }
+
+// CanonicalBoundaryRay returns the one deterministic grid ray for an
+// unordered endpoint pair, oriented from from toward to. It derives the ray
+// once from lexicographically ordered endpoints, then reverses it when the
+// caller requested the opposite direction. Boundary traversal therefore
+// crosses identical physical edges in both directions while callers retain
+// their requested path direction.
+func CanonicalBoundaryRay(grid Grid, from, to Position) []Position {
+	if !positionLess(to, from) {
+		return grid.GetLineOfSight(from, to)
+	}
+
+	path := grid.GetLineOfSight(to, from)
+	for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
+		path[left], path[right] = path[right], path[left]
+	}
+	return path
+}

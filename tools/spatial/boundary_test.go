@@ -319,6 +319,46 @@ func (s *BoundaryTestSuite) TestMovementQueryChecksEveryDirectCrossing() {
 	}, query.Path)
 }
 
+func (s *BoundaryTestSuite) TestBoundaryTraversalUsesOneCanonicalRayInBothDirections() {
+	from := spatial.Position{X: 0, Y: 0}
+	to := spatial.Position{X: 2, Y: 1}
+	mover := NewMockEntity("canonical-ray-mover", "character")
+
+	// Square Bresenham chooses a different middle cell in each requested
+	// direction. Boundaries must instead share the one unordered-pair ray:
+	// canonical (0,0)->(2,1), reversed for the reverse request.
+	s.Require().NoError(s.room.RegisterBoundary(spatial.Boundary{
+		From:           from,
+		To:             spatial.Position{X: 1, Y: 0},
+		BlocksMovement: true,
+	}))
+	s.Require().NoError(s.room.PlaceEntity(mover, from))
+
+	s.Error(s.room.MoveEntity(mover.GetID(), to), "forward must cross the canonical blocked edge")
+	s.Require().NoError(s.room.PlaceEntity(mover, to))
+	s.Error(s.room.MoveEntity(mover.GetID(), from), "reverse must cross that identical physical edge")
+
+	queryHandler := spatial.NewSpatialQueryHandler()
+	queryHandler.RegisterRoom(s.room)
+	forwardResult, err := queryHandler.HandleQuery(context.Background(), &spatial.QueryMovementData{
+		Entity: mover, From: from, To: to, RoomID: s.room.GetID(),
+	})
+	s.Require().NoError(err)
+	forward := forwardResult.(*spatial.QueryMovementData)
+	s.False(forward.Valid)
+	s.Equal([]spatial.Position{from, {X: 1, Y: 0}, to}, forward.Path,
+		"the reported canonical path retains the caller's forward direction")
+
+	reverseResult, err := queryHandler.HandleQuery(context.Background(), &spatial.QueryMovementData{
+		Entity: mover, From: to, To: from, RoomID: s.room.GetID(),
+	})
+	s.Require().NoError(err)
+	reverse := reverseResult.(*spatial.QueryMovementData)
+	s.False(reverse.Valid)
+	s.Equal([]spatial.Position{to, {X: 1, Y: 0}, from}, reverse.Path,
+		"the same canonical physical ray is reversed for the caller's direction")
+}
+
 func (s *BoundaryTestSuite) TestBoundaryLineOfSightChecksEveryRayCrossing() {
 	from := spatial.Position{X: 1, Y: 2}
 	to := spatial.Position{X: 4, Y: 2}

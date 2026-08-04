@@ -129,22 +129,28 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 		return data, nil
 	}
 
-	// Movement queries retain direct-move semantics: the grid's direct ray is
-	// reported rather than an alternate pathfinding route.
+	// Movement queries retain direct-move semantics: they report a ray rather
+	// than finding an alternate path. Registered boundaries select one
+	// unordered-pair canonical ray and orient it back toward the caller's
+	// requested destination, so both traversal directions inspect identical
+	// physical crossings. Legacy and boundary-empty rooms retain their original
+	// requested-direction ray without an extra scan.
 	data.Path = room.GetLineOfSight(data.From, data.To)
+	boundaryRoom, boundaryAware := room.(BoundaryAwareRoom)
+	hasBoundaries := boundaryAware && roomHasRegisteredBoundaries(boundaryRoom)
+	if hasBoundaries {
+		data.Path = CanonicalBoundaryRay(room.GetGrid(), data.From, data.To)
+	}
 
 	// Check if the entity can move to the target position. Boundary-aware rooms
 	// with registered boundaries additionally reject any blocked consecutive
-	// crossing in the direct ray; legacy and boundary-empty rooms keep the
-	// original behavior without an extra path scan.
+	// crossing in the direct ray.
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
-	if data.Valid {
-		if boundaryRoom, ok := room.(BoundaryAwareRoom); ok && roomHasRegisteredBoundaries(boundaryRoom) {
-			for i := 1; i < len(data.Path); i++ {
-				if boundaryRoom.IsBoundaryMovementBlocked(data.Path[i-1], data.Path[i]) {
-					data.Valid = false
-					break
-				}
+	if data.Valid && hasBoundaries {
+		for i := 1; i < len(data.Path); i++ {
+			if boundaryRoom.IsBoundaryMovementBlocked(data.Path[i-1], data.Path[i]) {
+				data.Valid = false
+				break
 			}
 		}
 	}
