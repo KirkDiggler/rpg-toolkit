@@ -122,8 +122,15 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 		return data, nil
 	}
 
-	// Check if the entity can move to the target position
+	// Check if the entity can move to the target position. Boundary-aware rooms
+	// additionally reject a direct crossing that their optional capability
+	// marks as blocked; legacy Room implementations keep the original behavior.
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
+	if data.Valid {
+		if boundaryRoom, ok := room.(BoundaryAwareRoom); ok {
+			data.Valid = !boundaryRoom.IsBoundaryMovementBlocked(data.From, data.To)
+		}
+	}
 
 	// Calculate distance using the room's grid
 	data.Distance = room.GetGrid().Distance(data.From, data.To)

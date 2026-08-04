@@ -95,6 +95,31 @@ func (s *PathFinderTestSuite) TestSamePosition() {
 	s.Empty(path, "should return empty path when already at goal")
 }
 
+func (s *PathFinderTestSuite) TestFindPathWithTraversalDetoursAroundBlockedCrossing() {
+	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
+	goal := CubeCoordinate{X: 2, Y: -2, Z: 0}
+	blockedCrossingFrom := CubeCoordinate{X: 1, Y: -1, Z: 0}
+
+	canTraverse := func(from, to CubeCoordinate) bool {
+		return (from != start || to != blockedCrossingFrom) &&
+			(from != blockedCrossingFrom || to != start)
+	}
+
+	path := s.pathFinder.FindPathWithTraversal(start, goal, nil, canTraverse)
+
+	// The direct two-step route crosses the blocked boundary, so A* must use
+	// a longer route while still preserving legacy cell-blocker handling.
+	s.Require().Len(path, 3)
+	s.Equal(goal, path[len(path)-1])
+
+	current := start
+	for _, next := range path {
+		s.Truef(canTraverse(current, next), "path crossed blocked boundary %v -> %v", current, next)
+		s.Equal(1, current.Distance(next))
+		current = next
+	}
+}
+
 func (s *PathFinderTestSuite) TestNoPath_GoalBlocked() {
 	start := CubeCoordinate{X: 0, Y: 0, Z: 0}
 	goal := CubeCoordinate{X: 3, Y: 0, Z: -3}

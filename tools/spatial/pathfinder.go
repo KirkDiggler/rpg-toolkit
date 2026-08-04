@@ -9,9 +9,30 @@ type PathFinder interface {
 	FindPath(start, goal CubeCoordinate, blocked map[CubeCoordinate]bool) []CubeCoordinate
 }
 
+// TraversalPredicate decides whether A* may traverse one directed adjacent
+// pair. It must return true to permit the step from to. A predicate can model
+// blocked crossings such as closed boundaries without converting them into
+// blocked cells.
+type TraversalPredicate func(from, to CubeCoordinate) bool
+
+// TraversalPathFinder is an optional extension for path finders that can
+// consult a traversal predicate in addition to legacy blocked cells.
+type TraversalPathFinder interface {
+	// FindPathWithTraversal returns a path while honoring blocked cells and a
+	// traversal predicate. A nil predicate permits every adjacent crossing.
+	FindPathWithTraversal(
+		start, goal CubeCoordinate,
+		blocked map[CubeCoordinate]bool,
+		canTraverse TraversalPredicate,
+	) []CubeCoordinate
+}
+
 // SimplePathFinder uses A* algorithm with uniform movement cost.
 // It finds the shortest path around obstacles using hex distance as heuristic.
 type SimplePathFinder struct{}
+
+var _ PathFinder = (*SimplePathFinder)(nil)
+var _ TraversalPathFinder = (*SimplePathFinder)(nil)
 
 // NewSimplePathFinder creates a new A* pathfinder
 func NewSimplePathFinder() *SimplePathFinder {
@@ -21,6 +42,17 @@ func NewSimplePathFinder() *SimplePathFinder {
 // FindPath implements PathFinder using A* algorithm.
 // Uses hex distance as heuristic (admissible - never overestimates).
 func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[CubeCoordinate]bool) []CubeCoordinate {
+	return p.FindPathWithTraversal(start, goal, blocked, nil)
+}
+
+// FindPathWithTraversal uses A* while also requiring each adjacent step to be
+// permitted by canTraverse. It preserves FindPath behavior when canTraverse is
+// nil, allowing callers to opt into boundary-aware traversal incrementally.
+func (p *SimplePathFinder) FindPathWithTraversal(
+	start, goal CubeCoordinate,
+	blocked map[CubeCoordinate]bool,
+	canTraverse TraversalPredicate,
+) []CubeCoordinate {
 	if start == goal {
 		return []CubeCoordinate{}
 	}
@@ -73,6 +105,9 @@ func (p *SimplePathFinder) FindPath(start, goal CubeCoordinate, blocked map[Cube
 		for _, neighbor := range current.pos.GetNeighbors() {
 			// Skip blocked hexes
 			if blocked[neighbor] {
+				continue
+			}
+			if canTraverse != nil && !canTraverse(current.pos, neighbor) {
 				continue
 			}
 

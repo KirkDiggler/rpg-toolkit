@@ -88,6 +88,33 @@ type Room interface {
 	IsLineOfSightBlocked(from, to Position) bool
 }
 
+// BoundaryAwareRoom is an optional Room capability for registering and querying
+// barriers between adjacent grid positions. It is separate from Room so legacy
+// Room implementations and callers remain compatible.
+type BoundaryAwareRoom interface {
+	Room
+
+	// RegisterBoundary validates and normalizes an undirected adjacent in-grid
+	// boundary. Registering an existing pair updates its blocking flags.
+	RegisterBoundary(boundary Boundary) error
+
+	// RemoveBoundary validates an undirected adjacent in-grid pair and removes
+	// its boundary. Removing an unregistered valid pair is a no-op.
+	RemoveBoundary(from, to Position) error
+
+	// GetBoundary returns the normalized boundary registered for either order
+	// of the endpoint pair.
+	GetBoundary(from, to Position) (Boundary, bool)
+
+	// IsBoundaryMovementBlocked reports whether the endpoint crossing blocks
+	// movement. It returns false when no boundary is registered.
+	IsBoundaryMovementBlocked(from, to Position) bool
+
+	// IsBoundaryLineOfSightBlocked reports whether the endpoint crossing blocks
+	// line of sight. It returns false when no boundary is registered.
+	IsBoundaryLineOfSightBlocked(from, to Position) bool
+}
+
 // Placeable defines the interface for entities that can be placed spatially
 type Placeable interface {
 	core.Entity
