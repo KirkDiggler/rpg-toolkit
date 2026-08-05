@@ -77,6 +77,25 @@ func canvasFloorHexes(source *CanvasFloorSource) map[core.Hex]struct{} {
 	return floor
 }
 
+// canvasFloorContainsHex checks whether hex is a canonical pointy-top odd-q
+// cell within source's rectangular bounds. Source identity is validated at the
+// InitDungeon/LoadFromData boundary; this allocation-free check is for hot
+// membership paths after that validation.
+func canvasFloorContainsHex(source *CanvasFloorSource, hex core.Hex) bool {
+	if source == nil || hex.Q < 0 || hex.Q >= source.Width {
+		return false
+	}
+
+	// Pointy-top odd-q conversion: col=q and row=s+(q-(q&1))/2. Bound
+	// s before adding the offset so arbitrary external coordinates cannot
+	// overflow the conversion.
+	offset := (hex.Q - (hex.Q & 1)) / 2
+	if hex.S < -offset || hex.S >= source.Height-offset {
+		return false
+	}
+	return hex.R == -hex.Q-hex.S
+}
+
 func validateCanvasDungeonParams(params DungeonParams) error {
 	if err := validateCanvasFloorSource(params.Canvas); err != nil {
 		return err

@@ -329,7 +329,7 @@ func (e *Encounter) validateAbsoluteCanvasSpawn(
 	if e.data.Space == nil || e.data.Space.Canvas == nil {
 		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: no canvas dungeon initialized", spawn.MonsterRef)
 	}
-	if _, ok := canvasFloorHexes(e.data.Space.Canvas)[*spawn.AbsoluteAt]; !ok {
+	if !canvasFloorContainsHex(e.data.Space.Canvas, *spawn.AbsoluteAt) {
 		return resolvedSpawn{}, fmt.Errorf(
 			"canvas monster %q: absolute position %v is outside canvas floor", spawn.MonsterRef, *spawn.AbsoluteAt)
 	}
