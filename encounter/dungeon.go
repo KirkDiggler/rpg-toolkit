@@ -26,6 +26,18 @@ const dungeonPathWidth = 2.0
 // Generalizes TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to
 // any N>=2 (rpg-toolkit#814).
 type DungeonParams struct {
+	// Canvas selects the explicit canvas floor source. A dungeon has exactly
+	// one source: Canvas with no Regions/Connectors, or the legacy room chain.
+	// Canvas.Cells are canonical structural facts, not a hint inferred from an
+	// empty RegionData collection.
+	Canvas *CanvasFloorSource
+
+	// CanvasPlacedObstacles and CanvasReservedCells are absolute authored
+	// content used only in canvas mode. The latter reserves absolute monster
+	// spawns from party seating before any geometry is generated.
+	CanvasPlacedObstacles []CanvasPlacedObstacleSpec
+	CanvasReservedCells   []CanvasReservedCell
+
 	// Key is the stable authored dungeon key. It is required only when
 	// AuthoredEdges is non-empty because a door edge derives its stable DoorID
 	// from this key plus its normalized absolute endpoint pair.
@@ -68,6 +80,50 @@ type DungeonParams struct {
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
 	// that field's doc. Never interpreted here.
 	Theme string
+}
+
+// CanvasFloorSource is the explicit structural floor source for canvas-mode
+// dungeons. Cells must be the canonical complete [0,width) x [0,height)
+// pointy-top cell list in column/row order; retaining it in persistence makes
+// canvas identity independent of RegionData.
+type CanvasFloorSource struct {
+	Width  int        `json:"width"`
+	Height int        `json:"height"`
+	Cells  []core.Hex `json:"cells"`
+}
+
+// NewCanvasFloorSource constructs the canonical full rectangle used by canvas
+// callers. Invalid dimensions intentionally return a source which validation
+// rejects, keeping all errors at InitDungeon/LoadFromData's normal boundary.
+func NewCanvasFloorSource(width, height int) *CanvasFloorSource {
+	source := &CanvasFloorSource{Width: width, Height: height}
+	if width < 1 || height < 1 {
+		return source
+	}
+	source.Cells = make([]core.Hex, 0, width*height)
+	for col := 0; col < width; col++ {
+		for row := 0; row < height; row++ {
+			source.Cells = append(source.Cells, core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)}))
+		}
+	}
+	return source
+}
+
+// CanvasPlacedObstacleSpec pins an authored prop at an absolute canvas cell.
+type CanvasPlacedObstacleSpec struct {
+	ID             core.EntityID
+	Ref            string
+	At             core.Hex
+	BlocksMovement bool
+	BlocksLoS      bool
+	Facing         *uint32
+}
+
+// CanvasReservedCell names authored content (currently an absolute monster
+// spawn) that must not be used by the party-start envelope.
+type CanvasReservedCell struct {
+	At   core.Hex
+	Name string
 }
 
 // DungeonRegionParams configures one region in an InitDungeon chain.
@@ -341,6 +397,7 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		Walls:               layout.walls,
 		Width:               layout.width,
 		Height:              params.Height,
+		Canvas:              cloneCanvasFloorSource(params.Canvas),
 		Entrance:            core.HexFromCube(layout.entrance),
 		PartyStartPositions: layout.partyStartPositions,
 		DungeonKey:          dungeonKey,
@@ -450,6 +507,9 @@ func validateDungeonDoorIDsAvailable(
 // least 4, and the boss-room scale invariant (rpg-toolkit#814 Approved
 // Slice 3 corrections) — a generation-time assertion, not eyeballing.
 func validateDungeonParams(params DungeonParams) error {
+	if params.Canvas != nil {
+		return validateCanvasDungeonParams(params)
+	}
 	if len(params.Regions) < 2 {
 		return fmt.Errorf("dungeon needs at least 2 regions (got %d)", len(params.Regions))
 	}
@@ -582,6 +642,9 @@ type dungeonLayout struct {
 // beyond it) — generalizing InitTwoChamberRoom's two-chamber required
 // paths to N regions.
 func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
+	if params.Canvas != nil {
+		return generateCanvasDungeonLayout(params)
+	}
 	n := len(params.Regions)
 	doorRow := params.Height / 2
 

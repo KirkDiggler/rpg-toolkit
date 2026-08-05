@@ -40,6 +40,11 @@ type SpawnInstruction struct {
 	// non-nil means placed (M1) at this exact cell, translated by the
 	// target region's offsetX exactly like Task N1's PlacedObstacleSpec.
 	At *LocalHex
+
+	// AbsoluteAt is a canvas-mode placed spawn. It deliberately has no RoomID:
+	// canvas has an explicit floor source rather than synthetic regions.
+	// Exactly one of At and AbsoluteAt must be present for a placed spawn.
+	AbsoluteAt *core.Hex
 }
 
 // resolvedSpawn is one SpawnInstruction after it has passed every
@@ -209,8 +214,18 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 	batch := newSpawnBatch(e, len(spawns))
 
 	roomCounts := make(map[string]int, len(spawns))
+	canvasCount := 0
 	resolved := make([]resolvedSpawn, 0, len(spawns))
 	for _, spawn := range spawns {
+		if spawn.AbsoluteAt != nil {
+			resolvedSpawn, err := e.validateAbsoluteCanvasSpawn(batch, spawn, canvasCount)
+			if err != nil {
+				return nil, err
+			}
+			canvasCount++
+			resolved = append(resolved, resolvedSpawn)
+			continue
+		}
 		if spawn.At == nil {
 			return nil, fmt.Errorf("room %q: monster %q: rolled (count-based) monster placement lands in M2",
 				spawn.RoomID, spawn.MonsterRef)
@@ -298,6 +313,58 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 // e.data.Space != nil before this can ever be reached, so there's no
 // nil-Space branch here; callers wrap the returned error with their own
 // room/monster context.
+// validateAbsoluteCanvasSpawn resolves one absolute canvas instruction without
+// inventing a region name or applying room-chain door-row rules.
+func (e *Encounter) validateAbsoluteCanvasSpawn(
+	batch *spawnBatch, spawn SpawnInstruction, index int,
+) (resolvedSpawn, error) {
+	if spawn.At != nil || spawn.RoomID != "" {
+		return resolvedSpawn{}, fmt.Errorf(
+			"canvas monster %q: absolute spawn must not carry room-local coordinates or room id", spawn.MonsterRef)
+	}
+	if spawn.Count != 1 {
+		return resolvedSpawn{}, fmt.Errorf(
+			"canvas monster %q: placed instructions must have Count 1, got %d", spawn.MonsterRef, spawn.Count)
+	}
+	if e.data.Space == nil || e.data.Space.Canvas == nil {
+		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: no canvas dungeon initialized", spawn.MonsterRef)
+	}
+	if _, ok := canvasFloorHexes(e.data.Space.Canvas)[*spawn.AbsoluteAt]; !ok {
+		return resolvedSpawn{}, fmt.Errorf(
+			"canvas monster %q: absolute position %v is outside canvas floor", spawn.MonsterRef, *spawn.AbsoluteAt)
+	}
+	if batch.isWall(*spawn.AbsoluteAt) {
+		return resolvedSpawn{}, fmt.Errorf(
+			"canvas monster %q: absolute position %v is on a wall cell", spawn.MonsterRef, *spawn.AbsoluteAt)
+	}
+	ctor, ok := monsters.ByRef(spawn.MonsterRef)
+	if !ok {
+		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: unknown monster ref", spawn.MonsterRef)
+	}
+	id := core.EntityID(fmt.Sprintf("monster-canvas-%d", index))
+	if _, exists := e.data.Monsters[id]; exists {
+		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: minted id %q already in encounter", spawn.MonsterRef, id)
+	}
+	if occupant, taken := batch.claim(*spawn.AbsoluteAt, fmt.Sprintf("monster %q", id)); taken {
+		return resolvedSpawn{}, fmt.Errorf(
+			"canvas monster %q: absolute position %v collides with %s", spawn.MonsterRef, *spawn.AbsoluteAt, occupant)
+	}
+	mon := ctor(string(id))
+	dataJSON, err := json.Marshal(mon.ToData())
+	if err != nil {
+		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: marshal monster data: %w", spawn.MonsterRef, err)
+	}
+	attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+	return resolvedSpawn{
+		roomID: "canvas",
+		input: MonsterInput{
+			ID: id, Position: *spawn.AbsoluteAt, HP: mon.HP(), MaxHP: mon.MaxHP(), AC: mon.AC(),
+			Speed: mon.Speed().Walk / 5, MonsterRef: spawn.MonsterRef, DataJSON: dataJSON,
+			AttackBonus: attackBonus, DamageDice: damageDice, DamageType: damageType,
+		},
+	}, nil
+}
+
 func (e *Encounter) regionByID(id string) (*RegionData, error) {
 	for i := range e.data.Space.Regions {
 		if e.data.Space.Regions[i].ID == id {

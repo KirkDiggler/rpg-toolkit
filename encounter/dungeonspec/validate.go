@@ -148,7 +148,10 @@ func Validate(spec *DungeonSpec) error {
 
 func validateCanvas(spec *DungeonSpec) error {
 	if spec.Canvas.Width < 1 || spec.Canvas.Height < 1 {
-		return fmt.Errorf("canvas dimensions must be positive (got width %d, height %d)", spec.Canvas.Width, spec.Canvas.Height)
+		return fmt.Errorf(
+			"canvas dimensions must be positive (got width %d, height %d)",
+			spec.Canvas.Width, spec.Canvas.Height,
+		)
 	}
 	if !spec.roomsPresent || len(spec.Rooms) != 0 {
 		return fmt.Errorf("canvas mode requires rooms: []")
@@ -195,15 +198,20 @@ func validateCanvasPlacement(path string, e PlacedEntry) error {
 		return fmt.Errorf("%s.ref %q must be props or monsters", path, e.Ref)
 	}
 	if e.Facing != nil {
-		if typ != refTypeProps || e.Mount != nil {
+		if typ != refTypeProps || !isFloorMount(e.Mount) {
 			return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
 		}
 		if err := validateFacing(*e.Facing); err != nil {
 			return fmt.Errorf("%s.facing: %w", path, err)
 		}
 	}
-	if e.Mount != nil {
+	if !isFloorMount(e.Mount) {
 		return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
+	}
+	if typ == refTypeMonsters {
+		if _, ok := monsters.ByRef(e.Ref); !ok {
+			return fmt.Errorf("%s.ref %q: unknown monster ref (known: %s)", path, e.Ref, strings.Join(monsters.Refs(), ", "))
+		}
 	}
 	return nil
 }
@@ -393,14 +401,14 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 
 		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
 		if entry.Facing != nil {
-			if refType != refTypeProps || entry.Mount != nil {
+			if refType != refTypeProps || !isFloorMount(entry.Mount) {
 				return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
 			}
 			if err := validateFacing(*entry.Facing); err != nil {
 				return fmt.Errorf("%s.facing: %w", path, err)
 			}
 		}
-		if entry.Mount != nil {
+		if !isFloorMount(entry.Mount) {
 			return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
 		}
 
@@ -441,6 +449,10 @@ func validateTopLevelPlace(entries []PlacedEntry) error {
 		return nil
 	}
 	return fmt.Errorf("place[0]: %s: top-level placement is not supported", unsupportedCapability)
+}
+
+func isFloorMount(mount *string) bool {
+	return mount == nil || *mount == "floor"
 }
 
 // validateFacing rejects labels outside the one canonical hex-facing vocabulary.

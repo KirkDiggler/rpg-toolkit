@@ -31,13 +31,19 @@ func Test883CanvasModeAndProviderContract(t *testing.T) {
 	require.Equal(t, 2, plan.Height)
 	require.Equal(t, []FloorPlanCell{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}}, plan.FloorCells)
 	require.Equal(t, FloorPlanCell{1, 1}, plan.Entrance)
-	require.Equal(t, []FloorPlanEdge{{From: FloorPlanCell{1, 1}, To: FloorPlanCell{1, 0}, Kind: FloorPlanEdgeKindDoor, DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0"}}, plan.Edges)
+	require.Equal(t, []FloorPlanEdge{{
+		From: FloorPlanCell{1, 1}, To: FloorPlanCell{1, 0},
+		Kind:   FloorPlanEdgeKindDoor,
+		DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0",
+	}}, plan.Edges)
 }
 
 func Test883CanvasModeMatrixAndShrink(t *testing.T) {
 	_, err := Load([]byte(strings.Replace(canvasFixture, "rooms: []", "", 1)))
 	require.ErrorContains(t, err, "rooms: []")
-	_, err = Load([]byte(strings.Replace(canvasFixture, "rooms: []", "rooms:\n  - { id: x, archetype: entrance, width: 4 }", 1)))
+	_, err = Load([]byte(strings.Replace(
+		canvasFixture, "rooms: []", "rooms:\n  - { id: x, archetype: entrance, width: 4 }", 1,
+	)))
 	require.ErrorContains(t, err, "rooms: []")
 	previous, err := Load([]byte(canvasFixture))
 	require.NoError(t, err)
@@ -51,7 +57,9 @@ func Test883CanvasFacingAndLockGrammar(t *testing.T) {
 		_, err := Load([]byte(strings.Replace(canvasFixture, "facing: W", "facing: "+facing, 1)))
 		require.NoError(t, err, facing)
 	}
-	locked := strings.Replace(canvasFixture, "kind: door", "kind: door, lock: { options: [ { ability: dex, dc: 15 } ] }", 1)
+	locked := strings.Replace(
+		canvasFixture, "kind: door", "kind: door, lock: { options: [ { ability: dex, dc: 15 } ] }", 1,
+	)
 	_, err := Load([]byte(locked))
 	require.NoError(t, err)
 }
