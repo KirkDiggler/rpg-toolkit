@@ -45,11 +45,38 @@ func Test883CanvasModeMatrixAndShrink(t *testing.T) {
 		canvasFixture, "rooms: []", "rooms:\n  - { id: x, archetype: entrance, width: 4 }", 1,
 	)))
 	require.ErrorContains(t, err, "rooms: []")
+	invalidWall := strings.Replace(canvasFixture, "to: [1, 1]", "to: [8, 1]", 1)
+	_, err = Load([]byte(invalidWall))
+	require.ErrorContains(t, err, "out of dungeon floor footprint")
 	previous, err := Load([]byte(canvasFixture))
 	require.NoError(t, err)
 	shrunk := strings.Replace(canvasFixture, "width: 4", "width: 1", 1)
 	_, err = LoadWithPrevious([]byte(shrunk), LoadConfig{PartyStartSeatCount: 4}, previous)
 	require.ErrorContains(t, err, "place[0]")
+}
+
+func Test883RoomChainProviderRetainsRuntimeProjection(t *testing.T) {
+	const roomChain = `version: 1
+key: room-provider
+name: Room Provider
+height: 8
+rooms:
+  - { id: entrance, archetype: entrance, width: 6 }
+  - { id: boss, archetype: boss, width: 8, boss: { ref: "dnd5e:monsters:skeleton-captain", at: [4, 2] } }
+connectors:
+  - { from: entrance, to: boss }
+`
+	compiled, err := Load([]byte(roomChain))
+	require.NoError(t, err)
+	plan, err := BuildFloorPlan(context.Background(), BuildFloorPlanInput{Compiled: compiled, Seed: 3})
+	require.NoError(t, err)
+	require.Equal(t, 15, plan.Width)
+	require.Equal(t, 8, plan.Height)
+	require.Len(t, plan.FloorCells, 112)
+	require.Equal(t, []FloorPlanRoom{{ID: "entrance", StartColumn: 0, Width: 6}, {ID: "boss", StartColumn: 7, Width: 8}}, plan.Rooms)
+	require.Equal(t, []FloorPlanConnector{{DoorID: "room-provider-door-entrance-boss"}}, plan.Connectors)
+	require.Equal(t, FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
+	require.NotEmpty(t, plan.Edges, "runtime generated and connector edges must be projected")
 }
 
 func Test883CanvasFacingAndLockGrammar(t *testing.T) {
