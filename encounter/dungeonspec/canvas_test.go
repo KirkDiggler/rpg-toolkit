@@ -32,7 +32,7 @@ func Test883CanvasModeAndProviderContract(t *testing.T) {
 	require.Equal(t, []FloorPlanCell{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}}, plan.FloorCells)
 	require.Equal(t, FloorPlanCell{1, 1}, plan.Entrance)
 	require.Equal(t, []FloorPlanEdge{{
-		From: FloorPlanCell{1, 1}, To: FloorPlanCell{1, 0},
+		From: FloorPlanCell{1, 0}, To: FloorPlanCell{1, 1},
 		Kind:   FloorPlanEdgeKindDoor,
 		DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0",
 	}}, plan.Edges)

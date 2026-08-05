@@ -99,12 +99,31 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	}
 	plan.Edges = make([]FloorPlanEdge, len(described.Edges))
 	for index, edge := range described.Edges {
+		from, to := cellFromHex(edge.From), cellFromHex(edge.To)
+		if floorPlanCellLess(to, from) {
+			from, to = to, from
+		}
 		plan.Edges[index] = FloorPlanEdge{
-			From: cellFromHex(edge.From), To: cellFromHex(edge.To),
-			Kind: FloorPlanEdgeKind(edge.Kind), DoorID: string(edge.DoorID),
+			From: from, To: to, Kind: FloorPlanEdgeKind(edge.Kind), DoorID: string(edge.DoorID),
 		}
 	}
+	sort.Slice(plan.Edges, func(i, j int) bool {
+		if plan.Edges[i].From != plan.Edges[j].From {
+			return floorPlanCellLess(plan.Edges[i].From, plan.Edges[j].From)
+		}
+		if plan.Edges[i].To != plan.Edges[j].To {
+			return floorPlanCellLess(plan.Edges[i].To, plan.Edges[j].To)
+		}
+		if plan.Edges[i].Kind != plan.Edges[j].Kind {
+			return plan.Edges[i].Kind < plan.Edges[j].Kind
+		}
+		return plan.Edges[i].DoorID < plan.Edges[j].DoorID
+	})
 	return plan, nil
+}
+
+func floorPlanCellLess(left, right FloorPlanCell) bool {
+	return left.Column < right.Column || left.Column == right.Column && left.Row < right.Row
 }
 
 func runtimeFloorCells(space *encounter.SpaceData) []FloorPlanCell {
