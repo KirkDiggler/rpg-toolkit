@@ -46,6 +46,7 @@ type CompiledDungeon struct {
 	// bytes won't roll the same layout.
 	Params encounter.DungeonParams
 	Spawns []SpawnInstruction // boss first, then entrance->boss chain order
+	canvas *canvasCompiled    // private opaque prior-validation/source state
 }
 
 // Load decodes, validates, and compiles a spec in one call -- the only
@@ -82,6 +83,18 @@ func LoadWithConfig(raw []byte, config LoadConfig) (CompiledDungeon, error) {
 	return compileWithConfig(spec, config)
 }
 
+// LoadWithPrevious validates candidate source against opaque prior compiled state before compiling it.
+func LoadWithPrevious(raw []byte, config LoadConfig, previous CompiledDungeon) (CompiledDungeon, error) {
+	candidate, err := LoadWithConfig(raw, config)
+	if err != nil {
+		return CompiledDungeon{}, err
+	}
+	if err := validatePreviousCanvas(candidate, previous); err != nil {
+		return CompiledDungeon{}, err
+	}
+	return candidate, nil
+}
+
 // compile assumes spec has already passed Validate -- every ref shape,
 // cell bound, and boss-cardinality invariant it relies on is guaranteed by
 // that pass. It still returns an error rather than panicking, matching
@@ -94,6 +107,9 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 // compileWithConfig compiles a validated spec using the same host party-start
 // reservation supplied at LoadWithConfig's public boundary.
 func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
+	if spec.Canvas != nil {
+		return compileCanvas(spec, config)
+	}
 	var bossRoom *RoomSpec
 	for i := range spec.Rooms {
 		if spec.Rooms[i].Boss != nil {
@@ -379,4 +395,66 @@ func compileFacing(label *string) (*uint32, error) {
 		return nil, err
 	}
 	return &value, nil
+}
+
+type canvasCompiled struct {
+	width, height int
+	entrance      FloorPlanCell
+	placements    [][2]int
+	walls         [][2]int
+	start         *[2]int
+	edges         []canvasEdge
+}
+type canvasEdge struct {
+	from, to [2]int
+	kind     string
+}
+
+func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
+	edges, err := compileWalls(spec)
+	if err != nil {
+		return CompiledDungeon{}, err
+	}
+	cc := &canvasCompiled{width: spec.Canvas.Width, height: spec.Canvas.Height}
+	if spec.Start != nil {
+		cc.entrance = FloorPlanCell{spec.Start[0], spec.Start[1]}
+		v := *spec.Start
+		cc.start = &v
+	} else {
+		cc.entrance = FloorPlanCell{0, 0}
+	}
+	for _, p := range spec.Place {
+		cc.placements = append(cc.placements, p.At)
+	}
+	for _, w := range spec.Walls {
+		cc.walls = append(cc.walls, *w.From, *w.To)
+		cc.edges = append(cc.edges, canvasEdge{*w.From, *w.To, w.Kind})
+	}
+	party := encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount}
+	anchor := canvasHex(cc.entrance)
+	party.Anchor = &anchor
+	return CompiledDungeon{Params: encounter.DungeonParams{Key: spec.Key, Height: spec.Canvas.Height, Theme: spec.Theme, PartyStart: party, AuthoredEdges: edges}, canvas: cc}, nil
+}
+func validatePreviousCanvas(candidate, previous CompiledDungeon) error {
+	if candidate.canvas == nil || previous.canvas == nil {
+		return nil
+	}
+	in := func(c [2]int) bool {
+		return c[0] >= 0 && c[0] < candidate.canvas.width && c[1] >= 0 && c[1] < candidate.canvas.height
+	}
+	for i, c := range previous.canvas.placements {
+		if !in(c) {
+			return fmt.Errorf("place[%d]: previous compiled placement at [%d,%d] is outside candidate canvas", i, c[0], c[1])
+		}
+	}
+	for _, c := range previous.canvas.walls {
+		if !in(c) {
+			return fmt.Errorf("walls: previous compiled endpoint at [%d,%d] is outside candidate canvas", c[0], c[1])
+		}
+	}
+	if previous.canvas.start != nil && !in(*previous.canvas.start) {
+		c := *previous.canvas.start
+		return fmt.Errorf("start: previous compiled start at [%d,%d] is outside candidate canvas", c[0], c[1])
+	}
+	return nil
 }

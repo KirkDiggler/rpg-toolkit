@@ -29,7 +29,7 @@ const (
 	refTypeMonsters = "monsters"
 
 	unsupportedCapability = "unsupported capability"
-	facingFloorPropsOnly  = "facing only supported on room-scoped floor props"
+	facingFloorPropsOnly  = "facing only supported on floor props"
 )
 
 // The spec's author-facing pattern vocabulary, shared between
@@ -71,20 +71,21 @@ func Validate(spec *DungeonSpec) error {
 	if strings.TrimSpace(spec.Name) == "" {
 		return fmt.Errorf("name must not be empty")
 	}
+	if spec.Canvas != nil {
+		return validateCanvas(spec)
+	}
 	if spec.Height < minHeight {
 		return fmt.Errorf("height must be at least %d, got %d", minHeight, spec.Height)
 	}
 	if len(spec.Rooms) < minRooms {
 		return fmt.Errorf("must have at least %d rooms, got %d", minRooms, len(spec.Rooms))
 	}
-
 	if err := validateUniqueRoomIDs(spec.Rooms); err != nil {
 		return err
 	}
 	if err := validateChain(spec); err != nil {
 		return err
 	}
-
 	for i := range spec.Rooms {
 		room := &spec.Rooms[i]
 		if room.Width < minWidth {
@@ -97,20 +98,16 @@ func Validate(spec *DungeonSpec) error {
 			return fmt.Errorf("room %q: %w", room.ID, err)
 		}
 	}
-
 	bossRoom, err := validateBossCardinality(spec.Rooms)
 	if err != nil {
 		return err
 	}
-
-	if err := validateBossAxis(bossRoom, spec.Height); err != nil {
+	if err = validateBossAxis(bossRoom, spec.Height); err != nil {
 		return err
 	}
-
-	if err := validateM1Restrictions(spec, bossRoom); err != nil {
+	if err = validateM1Restrictions(spec, bossRoom); err != nil {
 		return err
 	}
-
 	for i := range spec.Rooms {
 		room := &spec.Rooms[i]
 		for _, o := range room.Obstacles {
@@ -118,41 +115,96 @@ func Validate(spec *DungeonSpec) error {
 				return fmt.Errorf("room %q: obstacle %w", room.ID, err)
 			}
 			if o.Count < minCount {
-				return fmt.Errorf("room %q: obstacle %q count must be at least %d, got %d",
-					room.ID, o.Ref, minCount, o.Count)
+				return fmt.Errorf("room %q: obstacle %q count must be at least %d, got %d", room.ID, o.Ref, minCount, o.Count)
 			}
 		}
 	}
-
-	if err := validateBossRef(bossRoom); err != nil {
+	if err = validateBossRef(bossRoom); err != nil {
 		return err
 	}
-
 	for i := range spec.Rooms {
-		if err := validatePlaceBlock(&spec.Rooms[i], spec.Height, i); err != nil {
+		if err = validatePlaceBlock(&spec.Rooms[i], spec.Height, i); err != nil {
 			return err
 		}
 	}
-	if err := validateTopLevelPlace(spec.Place); err != nil {
+	if err = validateTopLevelPlace(spec.Place); err != nil {
 		return err
 	}
-
-	if err := validateStart(spec); err != nil {
+	if err = validateStart(spec); err != nil {
 		return err
 	}
-	if err := validateWalls(spec); err != nil {
+	if err = validateWalls(spec); err != nil {
 		return err
 	}
-
 	for i := range spec.Connectors {
-		c := &spec.Connectors[i]
-		if c.Locked != nil {
-			if err := validateLocked(c); err != nil {
+		if spec.Connectors[i].Locked != nil {
+			if err = validateLocked(&spec.Connectors[i]); err != nil {
 				return err
 			}
 		}
 	}
+	return nil
+}
 
+func validateCanvas(spec *DungeonSpec) error {
+	if spec.Canvas.Width < 1 || spec.Canvas.Height < 1 {
+		return fmt.Errorf("canvas dimensions must be positive (got width %d, height %d)", spec.Canvas.Width, spec.Canvas.Height)
+	}
+	if !spec.roomsPresent || len(spec.Rooms) != 0 {
+		return fmt.Errorf("canvas mode requires rooms: []")
+	}
+	if len(spec.Connectors) != 0 {
+		return fmt.Errorf("canvas mode does not support connectors")
+	}
+	floor := make(map[[2]int]struct{}, spec.Canvas.Width*spec.Canvas.Height)
+	for c := 0; c < spec.Canvas.Width; c++ {
+		for r := 0; r < spec.Canvas.Height; r++ {
+			floor[[2]int{c, r}] = struct{}{}
+		}
+	}
+	occupied := map[[2]int]string{}
+	for i, e := range spec.Place {
+		path := fmt.Sprintf("place[%d]", i)
+		if _, ok := floor[e.At]; !ok {
+			return fmt.Errorf("%s.at %v is out of canvas floor footprint", path, e.At)
+		}
+		if prior, ok := occupied[e.At]; ok {
+			return fmt.Errorf("%s.at %v is already occupied by %q", path, e.At, prior)
+		}
+		occupied[e.At] = e.Ref
+		if err := validateCanvasPlacement(path, e); err != nil {
+			return err
+		}
+	}
+	if spec.Start != nil {
+		if _, ok := floor[*spec.Start]; !ok {
+			return fmt.Errorf("start %v is out of canvas floor footprint", *spec.Start)
+		}
+		if prior, ok := occupied[*spec.Start]; ok {
+			return fmt.Errorf("start %v conflicts with %q", *spec.Start, prior)
+		}
+	}
+	return validateWallsOnFloor(spec, floor, spec.Canvas.Width, spec.Canvas.Height)
+}
+func validateCanvasPlacement(path string, e PlacedEntry) error {
+	typ, err := refParts(e.Ref)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if typ != refTypeProps && typ != refTypeMonsters {
+		return fmt.Errorf("%s.ref %q must be props or monsters", path, e.Ref)
+	}
+	if e.Facing != nil {
+		if typ != refTypeProps || e.Mount != nil {
+			return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
+		}
+		if err := validateFacing(*e.Facing); err != nil {
+			return fmt.Errorf("%s.facing: %w", path, err)
+		}
+	}
+	if e.Mount != nil {
+		return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
+	}
 	return nil
 }
 
@@ -503,14 +555,18 @@ func validateWalls(spec *DungeonSpec) error {
 		return nil
 	}
 	floor, totalWidth := semanticFloorCells(spec)
+	return validateWallsOnFloor(spec, floor, totalWidth, spec.Height)
+}
+
+func validateWallsOnFloor(spec *DungeonSpec, floor map[[2]int]struct{}, totalWidth, height int) error {
 	seen := make(map[wallEdgeKey]int, len(spec.Walls))
 	seenKinds := make([]string, 0, len(spec.Walls))
 	for index, wall := range spec.Walls {
-		from, err := validateWallEndpoint(index, "from", wall.From, floor, totalWidth, spec.Height)
+		from, err := validateWallEndpoint(index, "from", wall.From, floor, totalWidth, height)
 		if err != nil {
 			return err
 		}
-		to, err := validateWallEndpoint(index, "to", wall.To, floor, totalWidth, spec.Height)
+		to, err := validateWallEndpoint(index, "to", wall.To, floor, totalWidth, height)
 		if err != nil {
 			return err
 		}
@@ -519,6 +575,22 @@ func validateWalls(spec *DungeonSpec) error {
 		default:
 			return fmt.Errorf("walls[%d].kind: invalid kind %q (must be %q or %q)", index, wall.Kind,
 				encounter.GeneratedEdgeKindSolid, encounter.GeneratedEdgeKindDoor)
+		}
+		if wall.Lock != nil {
+			if wall.Kind == string(encounter.GeneratedEdgeKindSolid) {
+				return fmt.Errorf("walls[%d].lock: lock only valid on door", index)
+			}
+			if len(wall.Lock.Options) == 0 {
+				return fmt.Errorf("walls[%d].lock.options: must contain at least one option", index)
+			}
+			for oi, option := range wall.Lock.Options {
+				if option.DC < minLockDC || option.DC > maxLockDC {
+					return fmt.Errorf("walls[%d].lock.options[%d].dc: must be between %d and %d", index, oi, minLockDC, maxLockDC)
+				}
+				if _, err := abilities.GetByID(option.Ability); err != nil {
+					return fmt.Errorf("walls[%d].lock.options[%d].ability: invalid ability %q", index, oi, option.Ability)
+				}
+			}
 		}
 		if from == to {
 			return fmt.Errorf("walls[%d]: endpoints must be distinct", index)

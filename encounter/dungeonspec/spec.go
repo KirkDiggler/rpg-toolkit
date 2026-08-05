@@ -10,11 +10,12 @@ package dungeonspec
 
 // DungeonSpec is the top-level decoded shape of a dungeon spec file.
 type DungeonSpec struct {
-	Version int    `yaml:"version"`
-	Key     string `yaml:"key"`
-	Name    string `yaml:"name"`
-	Theme   string `yaml:"theme"`
-	Height  int    `yaml:"height"`
+	Version int         `yaml:"version"`
+	Key     string      `yaml:"key"`
+	Name    string      `yaml:"name"`
+	Theme   string      `yaml:"theme"`
+	Height  int         `yaml:"height"`
+	Canvas  *CanvasSpec `yaml:"canvas,omitempty"`
 	// Start is an optional absolute [column,row] party-start anchor. Nil
 	// represents both an omitted YAML field and an explicit YAML null.
 	Start      *[2]int         `yaml:"start,omitempty"`
@@ -28,7 +29,14 @@ type DungeonSpec struct {
 	// Place is decoded solely to reject unsupported top-level placement,
 	// including facing, at a field-specific validation path. Slice #178
 	// supports only existing room-scoped floor props.
-	Place []PlacedEntry `yaml:"place,omitempty"`
+	Place        []PlacedEntry `yaml:"place,omitempty"`
+	roomsPresent bool
+}
+
+// CanvasSpec is the explicit structural floor source for canvas mode.
+type CanvasSpec struct {
+	Width  int `yaml:"width"`
+	Height int `yaml:"height"`
 }
 
 // RoomSpec is one room in a dungeon spec.
@@ -93,9 +101,10 @@ type PlacedEntry struct {
 // YAML null is valid only for the optional collection, not for either endpoint
 // of an entry.
 type WallSpec struct {
-	From *[2]int `yaml:"from"`
-	To   *[2]int `yaml:"to"`
-	Kind string  `yaml:"kind"`
+	From *[2]int       `yaml:"from"`
+	To   *[2]int       `yaml:"to"`
+	Kind string        `yaml:"kind"`
+	Lock *WallLockSpec `yaml:"lock,omitempty"`
 }
 
 // ConnectorSpec joins two rooms, optionally behind a locked check.
@@ -109,4 +118,15 @@ type ConnectorSpec struct {
 type LockedSpec struct {
 	DC      int    `yaml:"dc"`
 	Ability string `yaml:"ability"`
+}
+
+// WallLockSpec preserves v0.3 lock grammar without binding executable behavior.
+type WallLockSpec struct {
+	Options []LockOptionSpec `yaml:"options"`
+}
+
+// LockOptionSpec is one authored, alternative ability check.
+type LockOptionSpec struct {
+	Ability string `yaml:"ability"`
+	DC      int    `yaml:"dc"`
 }

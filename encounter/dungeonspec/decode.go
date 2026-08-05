@@ -41,5 +41,17 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 		return nil, errors.New("multi-document YAML not supported: a dungeon spec is one document")
 	}
 
+	var node yaml.Node
+	if err := yaml.Unmarshal(raw, &node); err != nil {
+		return nil, fmt.Errorf("decode dungeon spec: %w", err)
+	}
+	if len(node.Content) > 0 && node.Content[0].Kind == yaml.MappingNode {
+		for i := 0; i < len(node.Content[0].Content); i += 2 {
+			if node.Content[0].Content[i].Value == "rooms" {
+				spec.roomsPresent = true
+				break
+			}
+		}
+	}
 	return &spec, nil
 }
