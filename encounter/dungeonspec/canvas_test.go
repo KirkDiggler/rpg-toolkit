@@ -72,7 +72,8 @@ connectors:
 	require.NoError(t, err)
 	require.Equal(t, 15, plan.Width)
 	require.Equal(t, 8, plan.Height)
-	require.Len(t, plan.FloorCells, 112)
+	require.Empty(t, plan.FloorCells,
+		"room-chain floor_cells must remain absent; region-only membership omits connector cells")
 	require.Equal(t, []FloorPlanRoom{
 		{ID: "entrance", StartColumn: 0, Width: 6},
 		{ID: "boss", StartColumn: 7, Width: 8},
@@ -80,6 +81,19 @@ connectors:
 	require.Equal(t, []FloorPlanConnector{{DoorID: "room-provider-door-entrance-boss"}}, plan.Connectors)
 	require.Equal(t, FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
 	require.NotEmpty(t, plan.Edges, "runtime generated and connector edges must be projected")
+}
+
+func TestCanvasMonsterPlacementRejectsPropOnlyFlagsAtFieldPath(t *testing.T) {
+	for _, field := range []string{"blocks_movement", "blocks_los"} {
+		t.Run(field, func(t *testing.T) {
+			yaml := strings.Replace(canvasFixture,
+				"  - { ref: \"dnd5e:props:altar\", at: [1, 0], facing: W }",
+				"  - { ref: \"dnd5e:monsters:skeleton\", at: [1, 0], "+field+": false }", 1)
+			_, err := Load([]byte(yaml))
+			require.ErrorContains(t, err, "place[0]."+field)
+			require.ErrorContains(t, err, "only valid on props")
+		})
+	}
 }
 
 func Test883CanvasFacingAndLockGrammar(t *testing.T) {

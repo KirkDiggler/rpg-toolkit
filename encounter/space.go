@@ -145,6 +145,19 @@ func (e *Encounter) rebuildRoomFromData() error {
 	if err := validatePersistedAuthoredEdges(sd, e.data.Doors); err != nil {
 		return fmt.Errorf("validate authored edges: %w", err)
 	}
+	// Validate persisted canvas dimensions before constructing a grid or walking
+	// its canonical cells; snapshots are untrusted at this reload boundary.
+	if sd.Canvas != nil {
+		if err := validateCanvasFloorSource(sd.Canvas); err != nil {
+			return fmt.Errorf("validate canvas floor source: %w", err)
+		}
+		if sd.Width != sd.Canvas.Width || sd.Height != sd.Canvas.Height {
+			return fmt.Errorf(
+				"canvas space dimensions must equal canvas dimensions %d x %d (got %d x %d)",
+				sd.Canvas.Width, sd.Canvas.Height, sd.Width, sd.Height,
+			)
+		}
+	}
 	authoredByKey := authoredEdgesByKey(sd)
 	if _, err := e.canonicalGeneratedEdgeRecordsWithOverlay(authoredByKey); err != nil {
 		return fmt.Errorf("validate effective generated edges: %w", err)

@@ -424,6 +424,11 @@ type namedCanvasCell struct {
 }
 
 func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
+	// Load validates before compilation, but keep this compilation boundary safe
+	// for direct/internal callers before NewCanvasFloorSource allocates cells.
+	if _, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height); err != nil {
+		return CompiledDungeon{}, err
+	}
 	edges, err := compileWalls(spec)
 	if err != nil {
 		return CompiledDungeon{}, err

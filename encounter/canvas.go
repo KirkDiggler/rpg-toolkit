@@ -8,6 +8,28 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+// CanvasMaxStructuralCells is the largest canvas structural-floor projection
+// the encounter runtime accepts. It bounds every canvas allocation and walk.
+const CanvasMaxStructuralCells = 1 << 20
+
+// ValidateCanvasDimensions validates canvas dimensions and returns their safe
+// structural-cell count. It uses division before multiplication so malformed
+// MaxInt-sized input is rejected without overflow or allocation. dungeonspec
+// calls this exported boundary helper to keep the canvas scale contract owned
+// by encounter, which owns the runtime representation.
+func ValidateCanvasDimensions(width, height int) (int, error) {
+	if width < 1 || height < 1 {
+		return 0, fmt.Errorf("canvas dimensions must be positive (got width %d, height %d)", width, height)
+	}
+	if width > CanvasMaxStructuralCells/height {
+		return 0, fmt.Errorf(
+			"canvas dimensions %d x %d exceed the maximum of %d structural cells",
+			width, height, CanvasMaxStructuralCells,
+		)
+	}
+	return width * height, nil
+}
+
 // validateCanvasFloorSource makes persisted canvas identity explicit and
 // canonical. In particular, Cells cannot be omitted and inferred from empty
 // Regions: they are the source-of-truth structural floor record.
@@ -15,13 +37,14 @@ func validateCanvasFloorSource(source *CanvasFloorSource) error {
 	if source == nil {
 		return fmt.Errorf("canvas floor source is required")
 	}
-	if source.Width < 1 || source.Height < 1 {
-		return fmt.Errorf("canvas dimensions must be positive (got width %d, height %d)", source.Width, source.Height)
+	cellCount, err := ValidateCanvasDimensions(source.Width, source.Height)
+	if err != nil {
+		return err
 	}
-	if len(source.Cells) != source.Width*source.Height {
+	if len(source.Cells) != cellCount {
 		return fmt.Errorf(
 			"canvas cells must contain exactly %d canonical cells, got %d",
-			source.Width*source.Height, len(source.Cells),
+			cellCount, len(source.Cells),
 		)
 	}
 	for col := 0; col < source.Width; col++ {

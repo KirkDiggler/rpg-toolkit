@@ -97,10 +97,11 @@ type CanvasFloorSource struct {
 // rejects, keeping all errors at InitDungeon/LoadFromData's normal boundary.
 func NewCanvasFloorSource(width, height int) *CanvasFloorSource {
 	source := &CanvasFloorSource{Width: width, Height: height}
-	if width < 1 || height < 1 {
+	cellCount, err := ValidateCanvasDimensions(width, height)
+	if err != nil {
 		return source
 	}
-	source.Cells = make([]core.Hex, 0, width*height)
+	source.Cells = make([]core.Hex, 0, cellCount)
 	for col := 0; col < width; col++ {
 		for row := 0; row < height; row++ {
 			source.Cells = append(source.Cells, core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)}))

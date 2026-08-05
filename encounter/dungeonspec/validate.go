@@ -68,6 +68,9 @@ func Validate(spec *DungeonSpec) error {
 	if strings.TrimSpace(spec.Key) == "" {
 		return fmt.Errorf("key must not be empty")
 	}
+	if !validKey(spec.Key) {
+		return fmt.Errorf("key %q must use only lowercase letters, digits, and hyphens", spec.Key)
+	}
 	if strings.TrimSpace(spec.Name) == "" {
 		return fmt.Errorf("name must not be empty")
 	}
@@ -147,11 +150,9 @@ func Validate(spec *DungeonSpec) error {
 }
 
 func validateCanvas(spec *DungeonSpec) error {
-	if spec.Canvas.Width < 1 || spec.Canvas.Height < 1 {
-		return fmt.Errorf(
-			"canvas dimensions must be positive (got width %d, height %d)",
-			spec.Canvas.Width, spec.Canvas.Height,
-		)
+	cellCount, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height)
+	if err != nil {
+		return err
 	}
 	if !spec.roomsPresent || len(spec.Rooms) != 0 {
 		return fmt.Errorf("canvas mode requires rooms: []")
@@ -159,7 +160,7 @@ func validateCanvas(spec *DungeonSpec) error {
 	if len(spec.Connectors) != 0 {
 		return fmt.Errorf("canvas mode does not support connectors")
 	}
-	floor := make(map[[2]int]struct{}, spec.Canvas.Width*spec.Canvas.Height)
+	floor := make(map[[2]int]struct{}, cellCount)
 	for c := 0; c < spec.Canvas.Width; c++ {
 		for r := 0; r < spec.Canvas.Height; r++ {
 			floor[[2]int{c, r}] = struct{}{}
@@ -212,8 +213,27 @@ func validateCanvasPlacement(path string, e PlacedEntry) error {
 		if _, ok := monsters.ByRef(e.Ref); !ok {
 			return fmt.Errorf("%s.ref %q: unknown monster ref (known: %s)", path, e.Ref, strings.Join(monsters.Refs(), ", "))
 		}
+		if e.BlocksMovement != nil {
+			return fmt.Errorf("%s.blocks_movement: only valid on props", path)
+		}
+		if e.BlocksLoS != nil {
+			return fmt.Errorf("%s.blocks_los: only valid on props", path)
+		}
 	}
 	return nil
+}
+
+func validKey(key string) bool {
+	for _, character := range key {
+		if character < 'a' || character > 'z' {
+			if character < '0' || character > '9' {
+				if character != '-' {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // validateM1Restrictions enforces the M1-only monster/boss.at pinning

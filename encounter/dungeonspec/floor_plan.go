@@ -49,6 +49,8 @@ type FloorPlan struct {
 	Connectors []FloorPlanConnector
 	Width      int
 	Height     int
+	// FloorCells is the v0.3 canvas structural-floor projection only. It is
+	// nil for room chains because their region-only data omits connector cells.
 	FloorCells []FloorPlanCell
 	Entrance   FloorPlanCell
 	Edges      []FloorPlanEdge
@@ -91,7 +93,13 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	for _, connector := range params.Connectors {
 		plan.Connectors = append(plan.Connectors, FloorPlanConnector{DoorID: string(connector.DoorID)})
 	}
-	plan.FloorCells = runtimeFloorCells(data.Space)
+	if data.Space.Canvas != nil {
+		cells, err := runtimeCanvasFloorCells(data.Space.Canvas)
+		if err != nil {
+			return FloorPlan{}, fmt.Errorf("validate canvas floor cells: %w", err)
+		}
+		plan.FloorCells = cells
+	}
 
 	described, err := preview.DescribeEdges(encounter.DescribeEdgesInput{})
 	if err != nil {
@@ -126,19 +134,17 @@ func floorPlanCellLess(left, right FloorPlanCell) bool {
 	return left.Column < right.Column || left.Column == right.Column && left.Row < right.Row
 }
 
-func runtimeFloorCells(space *encounter.SpaceData) []FloorPlanCell {
-	var cells []FloorPlanCell
-	if space.Canvas != nil {
-		cells = make([]FloorPlanCell, 0, len(space.Canvas.Cells))
-		for _, cell := range space.Canvas.Cells {
-			cells = append(cells, cellFromHex(cell))
-		}
-	} else {
-		for _, region := range space.Regions {
-			for cell := range region.Hexes {
-				cells = append(cells, cellFromHex(cell))
-			}
-		}
+func runtimeCanvasFloorCells(canvas *encounter.CanvasFloorSource) ([]FloorPlanCell, error) {
+	cellCount, err := encounter.ValidateCanvasDimensions(canvas.Width, canvas.Height)
+	if err != nil {
+		return nil, err
+	}
+	if len(canvas.Cells) != cellCount {
+		return nil, fmt.Errorf("canvas cells must contain exactly %d canonical cells, got %d", cellCount, len(canvas.Cells))
+	}
+	cells := make([]FloorPlanCell, 0, cellCount)
+	for _, cell := range canvas.Cells {
+		cells = append(cells, cellFromHex(cell))
 	}
 	sort.Slice(cells, func(i, j int) bool {
 		if cells[i].Column != cells[j].Column {
@@ -146,7 +152,7 @@ func runtimeFloorCells(space *encounter.SpaceData) []FloorPlanCell {
 		}
 		return cells[i].Row < cells[j].Row
 	})
-	return cells
+	return cells, nil
 }
 
 func cellFromHex(h core.Hex) FloorPlanCell {

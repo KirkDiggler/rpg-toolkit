@@ -61,6 +61,33 @@ func TestCanvasAuthoredEdgeRuntimeAndPersistenceDefenses(t *testing.T) {
 	require.ErrorContains(t, err, "persisted canvas floor")
 }
 
+func TestCanvasDimensionsBoundedWithoutOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	for _, dimensions := range [][2]int{{maxInt, 2}, {maxInt, 1}, {encounter.CanvasMaxStructuralCells + 1, 1}} {
+		_, err := encounter.ValidateCanvasDimensions(dimensions[0], dimensions[1])
+		require.ErrorContains(t, err, "maximum of")
+	}
+	cellCount, err := encounter.ValidateCanvasDimensions(1024, 1024)
+	require.NoError(t, err)
+	require.Equal(t, encounter.CanvasMaxStructuralCells, cellCount)
+}
+
+func TestCanvasMalformedParamsAndPersistedDataRejectOversizeDimensions(t *testing.T) {
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() { _ = broker.Close(); _ = transport.Close() })
+
+	oversize := encounter.NewCanvasFloorSource(encounter.CanvasMaxStructuralCells+1, 1)
+	enc := encounter.New(context.Background(), "oversize-canvas", broker)
+	err := enc.InitDungeon(encounter.DungeonParams{Height: 1, Canvas: oversize})
+	require.ErrorContains(t, err, "maximum of")
+
+	_, err = encounter.LoadFromData(context.Background(), &encounter.Data{
+		Space: &encounter.SpaceData{Width: encounter.CanvasMaxStructuralCells + 1, Height: 1, Canvas: oversize},
+	}, broker)
+	require.ErrorContains(t, err, "maximum of")
+}
+
 func TestCanvasPartyStartEnvelopeAvoidsNamedContentAcrossSeeds(t *testing.T) {
 	anchor := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
 	params := encounter.DungeonParams{
