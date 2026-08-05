@@ -63,13 +63,21 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 	require.Contains(t, data.Monsters, core.EntityID("monster-canvas-0"))
 	require.Equal(t, core.HexFromPosition(spatial.Position{X: 4, Y: 2}), data.Monsters["monster-canvas-0"].Position)
 
+	wantFacings := []uint32{
+		encounter.FacingEast,
+		encounter.FacingNortheast,
+		encounter.FacingNorthwest,
+		encounter.FacingWest,
+		encounter.FacingSouthwest,
+		encounter.FacingSoutheast,
+	}
 	for index, obstacle := range data.Space.Obstacles {
-		if index == 6 {
+		if index == len(wantFacings) {
 			require.Nil(t, obstacle.Facing, "omitted facing remains absent")
 			continue
 		}
 		require.NotNil(t, obstacle.Facing)
-		require.Equal(t, uint32(index), *obstacle.Facing)
+		require.Equal(t, wantFacings[index], *obstacle.Facing)
 	}
 	door := data.Doors["canvas-runtime-authored-door-1--3-2--1--2-1"]
 	require.NotNil(t, door)

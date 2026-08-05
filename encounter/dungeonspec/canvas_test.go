@@ -73,7 +73,10 @@ connectors:
 	require.Equal(t, 15, plan.Width)
 	require.Equal(t, 8, plan.Height)
 	require.Len(t, plan.FloorCells, 112)
-	require.Equal(t, []FloorPlanRoom{{ID: "entrance", StartColumn: 0, Width: 6}, {ID: "boss", StartColumn: 7, Width: 8}}, plan.Rooms)
+	require.Equal(t, []FloorPlanRoom{
+		{ID: "entrance", StartColumn: 0, Width: 6},
+		{ID: "boss", StartColumn: 7, Width: 8},
+	}, plan.Rooms)
 	require.Equal(t, []FloorPlanConnector{{DoorID: "room-provider-door-entrance-boss"}}, plan.Connectors)
 	require.Equal(t, FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
 	require.NotEmpty(t, plan.Edges, "runtime generated and connector edges must be projected")
