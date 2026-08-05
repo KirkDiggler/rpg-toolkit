@@ -29,6 +29,55 @@ rooms: []
 `, width))
 }
 
+func TestDecodeValidateAndLoadCanvasRoomsForms(t *testing.T) {
+	forms := []struct {
+		name      string
+		rooms     string
+		shape     roomsShape
+		decodeErr bool
+		valid     bool
+	}{
+		{name: "explicit empty sequence", rooms: "rooms: []", shape: roomsSequence, valid: true},
+		{name: "omitted", rooms: "", shape: roomsOmitted},
+		{name: "literal null", rooms: "rooms: null", shape: roomsNull},
+		{name: "bare null", rooms: "rooms:", shape: roomsNull},
+		{name: "nonempty sequence", rooms: "rooms:\n  - { id: room, archetype: entrance, width: 4 }", shape: roomsSequence},
+		{name: "scalar", rooms: "rooms: invalid", shape: roomsInvalid, decodeErr: true},
+		{name: "mapping", rooms: "rooms: {}", shape: roomsInvalid, decodeErr: true},
+	}
+	for _, form := range forms {
+		t.Run(form.name, func(t *testing.T) {
+			raw := []byte(fmt.Sprintf(`version: 1
+key: canvas-rooms-form
+name: Canvas Rooms Form
+canvas: { width: 4, height: 2 }
+%s
+`, form.rooms))
+			spec, err := Decode(raw)
+			if form.decodeErr {
+				require.ErrorContains(t, err, "rooms")
+				require.ErrorContains(t, err, "explicit empty sequence")
+				require.Nil(t, spec)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, form.shape, spec.roomsShape)
+				if form.valid {
+					require.NoError(t, Validate(spec))
+				} else {
+					require.ErrorContains(t, Validate(spec), "rooms")
+				}
+			}
+
+			_, err = Load(raw)
+			if form.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "rooms")
+			}
+		})
+	}
+}
+
 func TestLoadWithPreviousCanvasChecksOrderedSourceOccupancy(t *testing.T) {
 	config := LoadConfig{PartyStartSeatCount: 1}
 	previous, err := LoadWithConfig([]byte(priorCanvasYAML), config)

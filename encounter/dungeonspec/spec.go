@@ -29,9 +29,20 @@ type DungeonSpec struct {
 	// Place is decoded solely to reject unsupported top-level placement,
 	// including facing, at a field-specific validation path. Slice #178
 	// supports only existing room-scoped floor props.
-	Place        []PlacedEntry `yaml:"place,omitempty"`
-	roomsPresent bool
+	Place []PlacedEntry `yaml:"place,omitempty"`
+	// roomsShape preserves the authored YAML form for canvas validation.
+	// A nil Rooms slice alone cannot distinguish omitted, null, and [] input.
+	roomsShape roomsShape
 }
+
+type roomsShape uint8
+
+const (
+	roomsOmitted roomsShape = iota
+	roomsSequence
+	roomsNull
+	roomsInvalid
+)
 
 // CanvasSpec is the explicit structural floor source for canvas mode.
 type CanvasSpec struct {

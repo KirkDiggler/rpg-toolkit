@@ -154,8 +154,8 @@ func validateCanvas(spec *DungeonSpec) error {
 	if err != nil {
 		return err
 	}
-	if !spec.roomsPresent || len(spec.Rooms) != 0 {
-		return fmt.Errorf("canvas mode requires rooms: []")
+	if spec.roomsShape != roomsSequence || len(spec.Rooms) != 0 {
+		return fmt.Errorf("canvas mode rooms must be an explicit empty sequence (rooms: [])")
 	}
 	if len(spec.Connectors) != 0 {
 		return fmt.Errorf("canvas mode does not support connectors")
