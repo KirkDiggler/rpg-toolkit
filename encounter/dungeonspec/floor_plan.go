@@ -36,19 +36,29 @@ type FloorPlanEdge struct {
 // FloorPlanRoom is room-chain projection metadata.
 type FloorPlanRoom struct {
 	ID          string
+	Archetype   string
 	StartColumn int
 	Width       int
 }
 
 // FloorPlanConnector is a projected room-chain connector.
-type FloorPlanConnector struct{ DoorID string }
+type FloorPlanConnector struct {
+	DoorID     string
+	Locked     bool
+	FromRoomID string
+	ToRoomID   string
+	Column     int
+}
 
 // FloorPlan is the provider-owned authoring projection.
 type FloorPlan struct {
 	Rooms      []FloorPlanRoom
 	Connectors []FloorPlanConnector
-	Width      int
-	Height     int
+	// Width is the canvas width only; room chains leave it zero to preserve
+	// the wire contract's canvas-only field semantics.
+	Width   int
+	Height  int
+	DoorRow int
 	// FloorCells is the v0.3 canvas structural-floor projection only. It is
 	// nil for room chains because their region-only data omits connector cells.
 	FloorCells []FloorPlanCell
@@ -83,17 +93,28 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	if data.Space == nil {
 		return FloorPlan{}, fmt.Errorf("init dungeon: no persisted space")
 	}
-	plan := FloorPlan{Width: data.Space.Width, Height: data.Space.Height, Entrance: cellFromHex(data.Space.Entrance)}
+	plan := FloorPlan{Height: data.Space.Height, Entrance: cellFromHex(data.Space.Entrance)}
 
-	startColumn := 0
-	for _, region := range params.Regions {
-		plan.Rooms = append(plan.Rooms, FloorPlanRoom{ID: region.ID, StartColumn: startColumn, Width: region.Width})
-		startColumn += region.Width + 1
-	}
-	for _, connector := range params.Connectors {
-		plan.Connectors = append(plan.Connectors, FloorPlanConnector{DoorID: string(connector.DoorID)})
+	if data.Space.FloorSource == encounter.FloorSourceRoomChain {
+		plan.DoorRow = data.Space.Height / 2
+		startColumn := 0
+		for index, region := range params.Regions {
+			plan.Rooms = append(plan.Rooms, FloorPlanRoom{
+				ID: region.ID, Archetype: string(region.Archetype), StartColumn: startColumn, Width: region.Width,
+			})
+			if index < len(params.Connectors) {
+				connector := params.Connectors[index]
+				plan.Connectors = append(plan.Connectors, FloorPlanConnector{
+					DoorID: string(connector.DoorID), Locked: connector.Locked,
+					FromRoomID: region.ID, ToRoomID: params.Regions[index+1].ID,
+					Column: startColumn + region.Width,
+				})
+			}
+			startColumn += region.Width + 1
+		}
 	}
 	if data.Space.FloorSource == encounter.FloorSourceCanvas {
+		plan.Width = data.Space.Width
 		cells, err := runtimeCanvasFloorCells(data.Space.Width, data.Space.Height)
 		if err != nil {
 			return FloorPlan{}, fmt.Errorf("validate canvas floor cells: %w", err)

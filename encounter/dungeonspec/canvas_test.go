@@ -28,6 +28,8 @@ func Test883CanvasModeAndProviderContract(t *testing.T) {
 	plan, err := BuildFloorPlan(context.Background(), BuildFloorPlanInput{Compiled: compiled, Seed: 1})
 	require.NoError(t, err)
 	require.Empty(t, plan.Rooms)
+	require.Empty(t, plan.Connectors)
+	require.Zero(t, plan.DoorRow)
 	require.Equal(t, 4, plan.Width)
 	require.Equal(t, 2, plan.Height)
 	require.Equal(t, []FloorPlanCell{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}}, plan.FloorCells)
@@ -56,32 +58,63 @@ func Test883CanvasModeMatrixAndShrink(t *testing.T) {
 	require.ErrorContains(t, err, "place[0]")
 }
 
-func Test883RoomChainProviderRetainsRuntimeProjection(t *testing.T) {
+func Test886RoomChainProviderProjectsCanonicalMetadata(t *testing.T) {
+	const (
+		galleryRoomID  = "gallery"
+		crossingRoomID = "crossing"
+	)
 	const roomChain = `version: 1
 key: room-provider
 name: Room Provider
 height: 8
 rooms:
   - { id: entrance, archetype: entrance, width: 6 }
-  - { id: boss, archetype: boss, width: 8, boss: { ref: "dnd5e:monsters:skeleton-captain", at: [4, 2] } }
+  - { id: gallery, archetype: chamber, width: 8 }
+  - { id: crossing, archetype: corridor, width: 10 }
+  - { id: boss, archetype: boss, width: 12, boss: { ref: "dnd5e:monsters:skeleton-captain", at: [4, 2] } }
 connectors:
-  - { from: entrance, to: boss }
+  - { from: entrance, to: gallery }
+  - { from: gallery, to: crossing, locked: { dc: 12, ability: dex } }
+  - { from: crossing, to: boss }
+walls:
+  - { from: [0, 0], to: [1, 0], kind: door }
 `
 	compiled, err := Load([]byte(roomChain))
 	require.NoError(t, err)
 	plan, err := BuildFloorPlan(context.Background(), BuildFloorPlanInput{Compiled: compiled, Seed: 3})
 	require.NoError(t, err)
-	require.Equal(t, 15, plan.Width)
+
+	require.Zero(t, plan.Width, "width is a canvas-only wire field")
 	require.Equal(t, 8, plan.Height)
-	require.Empty(t, plan.FloorCells,
+	require.Equal(t, 4, plan.DoorRow)
+	require.Nil(t, plan.FloorCells,
 		"room-chain floor_cells must remain absent; region-only membership omits connector cells")
 	require.Equal(t, []FloorPlanRoom{
-		{ID: "entrance", StartColumn: 0, Width: 6},
-		{ID: "boss", StartColumn: 7, Width: 8},
+		{ID: archetypeEntrance, Archetype: archetypeEntrance, StartColumn: 0, Width: 6},
+		{ID: galleryRoomID, Archetype: archetypeChamber, StartColumn: 7, Width: 8},
+		{ID: crossingRoomID, Archetype: archetypeCorridor, StartColumn: 16, Width: 10},
+		{ID: archetypeBoss, Archetype: archetypeBoss, StartColumn: 27, Width: 12},
 	}, plan.Rooms)
-	require.Equal(t, []FloorPlanConnector{{DoorID: "room-provider-door-entrance-boss"}}, plan.Connectors)
+	require.Equal(t, []FloorPlanConnector{
+		{
+			DoorID: "room-provider-door-entrance-gallery", FromRoomID: archetypeEntrance, ToRoomID: galleryRoomID, Column: 6,
+		},
+		{
+			DoorID: "room-provider-door-gallery-crossing", Locked: true,
+			FromRoomID: galleryRoomID, ToRoomID: crossingRoomID, Column: 15,
+		},
+		{
+			DoorID: "room-provider-door-crossing-boss", FromRoomID: crossingRoomID, ToRoomID: archetypeBoss, Column: 26,
+		},
+	}, plan.Connectors)
 	require.Equal(t, FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
-	require.NotEmpty(t, plan.Edges, "runtime generated and connector edges must be projected")
+
+	doorIDs := make(map[string]bool, len(plan.Edges))
+	for _, edge := range plan.Edges {
+		doorIDs[edge.DoorID] = edge.Kind == FloorPlanEdgeKindDoor
+	}
+	require.True(t, doorIDs["room-provider-door-entrance-gallery"], "generated connector edge remains projected")
+	require.True(t, doorIDs["room-provider-authored-door-0-0-0--1--1-0"], "authored edge remains projected")
 }
 
 func TestCanvasMonsterPlacementRejectsPropOnlyFlagsAtFieldPath(t *testing.T) {
