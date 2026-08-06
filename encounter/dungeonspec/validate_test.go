@@ -26,8 +26,8 @@ const (
 )
 
 // TestValidate_FacingStrictlyScopesCanonicalFloorProps proves facing is neither
-// stripped nor broadly accepted: only existing room-scoped floor props may
-// carry it, while unsupported forms name the exact supplied field path.
+// stripped nor broadly accepted: only floor props may carry it in room-chain
+// or canvas mode, while unsupported forms name the exact supplied field path.
 func TestValidate_FacingStrictlyScopesCanonicalFloorProps(t *testing.T) {
 	decode := func(t *testing.T) *dungeonspec.DungeonSpec {
 		t.Helper()
@@ -110,6 +110,21 @@ func TestValidate_FacingStrictlyScopesCanonicalFloorProps(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
+}
+
+func TestValidate_KeyVocabulary(t *testing.T) {
+	for _, key := range []string{"Uppercase", "under_score", "has space"} {
+		t.Run(key, func(t *testing.T) {
+			spec, err := dungeonspec.Decode([]byte(validM1YAML))
+			require.NoError(t, err)
+			spec.Key = key
+			require.ErrorContains(t, dungeonspec.Validate(spec), "lowercase letters, digits, and hyphens")
+		})
+	}
+	spec, err := dungeonspec.Decode([]byte(validM1YAML))
+	require.NoError(t, err)
+	spec.Key = "valid-key-123"
+	require.NoError(t, dungeonspec.Validate(spec))
 }
 
 func TestValidate_Table(t *testing.T) {

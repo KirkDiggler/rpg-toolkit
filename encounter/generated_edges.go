@@ -136,7 +136,7 @@ func (e *Encounter) canonicalEffectiveEdgeRecords() ([]generatedEdgeRecord, erro
 	records = append(records, generated...)
 	for _, edge := range authored {
 		record := generatedEdgeRecord{
-			edge:                 GeneratedEdge(edge),
+			edge:                 authoredAsGenerated(edge),
 			observeBothEndpoints: true,
 		}
 		if edge.Kind == GeneratedEdgeKindDoor {

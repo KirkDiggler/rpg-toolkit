@@ -34,10 +34,9 @@ type LoadConfig struct {
 
 // CompiledDungeon is a dungeon spec compiled down to what the engine and
 // SeedMonsters actually consume: engine params ready for InitDungeon, and
-// a spawn plan ready for SeedMonsters. It is a plain value (no internal
-// state, no mutable shared pointers into the source spec) -- safe to
-// cache and share across concurrent requests, since the engine only ever
-// reads Params/Spawns off of it.
+// a spawn plan ready for SeedMonsters. Its private canvas source occupancy is
+// immutable compiler state used only by LoadWithPrevious; it contains no
+// pointers into decoded YAML and is safe to cache/share as a value.
 type CompiledDungeon struct {
 	// Params feeds Encounter.InitDungeon directly. Params.RandomSeed is
 	// deliberately left at its zero value -- Load has no opinion on
@@ -46,6 +45,7 @@ type CompiledDungeon struct {
 	// bytes won't roll the same layout.
 	Params encounter.DungeonParams
 	Spawns []SpawnInstruction // boss first, then entrance->boss chain order
+	canvas *canvasCompiled    // private opaque prior-validation/source state
 }
 
 // Load decodes, validates, and compiles a spec in one call -- the only
@@ -82,6 +82,18 @@ func LoadWithConfig(raw []byte, config LoadConfig) (CompiledDungeon, error) {
 	return compileWithConfig(spec, config)
 }
 
+// LoadWithPrevious validates candidate source against opaque prior compiled state before compiling it.
+func LoadWithPrevious(raw []byte, config LoadConfig, previous CompiledDungeon) (CompiledDungeon, error) {
+	candidate, err := LoadWithConfig(raw, config)
+	if err != nil {
+		return CompiledDungeon{}, err
+	}
+	if err := validatePreviousCanvas(candidate, previous); err != nil {
+		return CompiledDungeon{}, err
+	}
+	return candidate, nil
+}
+
 // compile assumes spec has already passed Validate -- every ref shape,
 // cell bound, and boss-cardinality invariant it relies on is guaranteed by
 // that pass. It still returns an error rather than panicking, matching
@@ -94,6 +106,9 @@ func compile(spec *DungeonSpec) (CompiledDungeon, error) {
 // compileWithConfig compiles a validated spec using the same host party-start
 // reservation supplied at LoadWithConfig's public boundary.
 func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
+	if spec.Canvas != nil {
+		return compileCanvas(spec, config)
+	}
 	var bossRoom *RoomSpec
 	for i := range spec.Rooms {
 		if spec.Rooms[i].Boss != nil {
@@ -370,6 +385,10 @@ func boolOrTrue(b *bool) bool {
 // compileFacing maps an optional canonical YAML facing label to its persisted
 // numeric index. Validate normally guarantees the label is known; this guard
 // keeps compileRoom from silently accepting a bad direct call.
+func canvasHex(cell FloorPlanCell) core.Hex {
+	return core.HexFromPosition(spatial.Position{X: float64(cell.Column), Y: float64(cell.Row)})
+}
+
 func compileFacing(label *string) (*uint32, error) {
 	if label == nil {
 		return nil, nil
@@ -379,4 +398,107 @@ func compileFacing(label *string) (*uint32, error) {
 		return nil, err
 	}
 	return &value, nil
+}
+
+type canvasCompiled struct {
+	width, height int
+	entrance      FloorPlanCell
+	occupancy     []canvasSourceOccupancy // source order for LoadWithPrevious
+	regionCells   []namedCanvasCell       // internal-only synthetic test seam
+}
+
+type canvasSourceOccupancy struct {
+	source string
+	cell   [2]int
+}
+
+type namedCanvasCell struct {
+	name string
+	cell [2]int
+}
+
+func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
+	if _, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height); err != nil {
+		return CompiledDungeon{}, err
+	}
+	edges, err := compileWalls(spec)
+	if err != nil {
+		return CompiledDungeon{}, err
+	}
+	cc := &canvasCompiled{width: spec.Canvas.Width, height: spec.Canvas.Height}
+	if spec.Start != nil {
+		cc.entrance = FloorPlanCell{spec.Start[0], spec.Start[1]}
+	} else {
+		cc.entrance = FloorPlanCell{0, 0}
+	}
+
+	params := encounter.DungeonParams{
+		Key: spec.Key, Width: spec.Canvas.Width, Height: spec.Canvas.Height, Theme: spec.Theme,
+		FloorSource:   encounter.FloorSourceCanvas,
+		PartyStart:    encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount},
+		AuthoredEdges: edges,
+	}
+	anchor := canvasHex(cc.entrance)
+	params.PartyStart.Anchor = &anchor
+	spawns := make([]SpawnInstruction, 0, len(spec.Place))
+	for index, entry := range spec.Place {
+		refType, err := refParts(entry.Ref)
+		if err != nil {
+			return CompiledDungeon{}, fmt.Errorf("place[%d]: %w", index, err)
+		}
+		at := canvasHex(FloorPlanCell{Column: entry.At[0], Row: entry.At[1]})
+		cc.occupancy = append(cc.occupancy, canvasSourceOccupancy{source: fmt.Sprintf("place[%d]", index), cell: entry.At})
+		switch refType {
+		case refTypeProps:
+			facing, err := compileFacing(entry.Facing)
+			if err != nil {
+				return CompiledDungeon{}, fmt.Errorf("place[%d].facing: %w", index, err)
+			}
+			params.AbsolutePlacedObstacles = append(params.AbsolutePlacedObstacles, encounter.AbsolutePlacedObstacleSpec{
+				ID: core.EntityID(fmt.Sprintf("canvas-prop-%d", index)), Ref: entry.Ref, At: at,
+				BlocksMovement: boolOrTrue(entry.BlocksMovement), BlocksLoS: boolOrTrue(entry.BlocksLoS), Facing: facing,
+			})
+		case refTypeMonsters:
+			absoluteAt := at
+			spawns = append(spawns, SpawnInstruction{MonsterRef: entry.Ref, Count: 1, AbsoluteAt: &absoluteAt})
+			params.AbsoluteReservedCells = append(params.AbsoluteReservedCells, encounter.AbsoluteReservedCell{
+				At: at, Name: fmt.Sprintf("placed monster %q (place[%d])", entry.Ref, index),
+			})
+		default:
+			return CompiledDungeon{}, fmt.Errorf("place[%d].ref %q must be props or monsters", index, entry.Ref)
+		}
+	}
+	for index, wall := range spec.Walls {
+		cc.occupancy = append(cc.occupancy,
+			canvasSourceOccupancy{source: fmt.Sprintf("walls[%d].from", index), cell: *wall.From},
+			canvasSourceOccupancy{source: fmt.Sprintf("walls[%d].to", index), cell: *wall.To},
+		)
+	}
+	if spec.Start != nil {
+		cc.occupancy = append(cc.occupancy, canvasSourceOccupancy{source: "start", cell: *spec.Start})
+	}
+	return CompiledDungeon{Params: params, Spawns: spawns, canvas: cc}, nil
+}
+
+func validatePreviousCanvas(candidate, previous CompiledDungeon) error {
+	if candidate.canvas == nil || previous.canvas == nil {
+		return nil
+	}
+	in := func(c [2]int) bool {
+		return c[0] >= 0 && c[0] < candidate.canvas.width && c[1] >= 0 && c[1] < candidate.canvas.height
+	}
+	for _, item := range previous.canvas.occupancy {
+		if !in(item.cell) {
+			return fmt.Errorf(
+				"%s: previous compiled occupancy at [%d,%d] is outside candidate canvas",
+				item.source, item.cell[0], item.cell[1],
+			)
+		}
+	}
+	for _, item := range previous.canvas.regionCells {
+		if !in(item.cell) {
+			return fmt.Errorf("region cell %q at [%d,%d] is outside candidate canvas", item.name, item.cell[0], item.cell[1])
+		}
+	}
+	return nil
 }

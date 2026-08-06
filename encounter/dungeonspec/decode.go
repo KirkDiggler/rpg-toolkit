@@ -20,6 +20,8 @@ import (
 // both fail loudly here rather than silently decoding to a zero-value spec
 // or silently dropping everything after the first document.
 func Decode(raw []byte) (*DungeonSpec, error) {
+	shape, hasCanvas := dungeonRoomsShape(raw)
+
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
 
@@ -27,6 +29,9 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 	if err := dec.Decode(&spec); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, errors.New("empty dungeon spec")
+		}
+		if hasCanvas && shape == roomsInvalid {
+			return nil, errors.New("canvas mode rooms must be an explicit empty sequence (rooms: [])")
 		}
 		return nil, fmt.Errorf("decode dungeon spec: %w", err)
 	}
@@ -41,5 +46,45 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 		return nil, errors.New("multi-document YAML not supported: a dungeon spec is one document")
 	}
 
+	spec.roomsShape = shape
 	return &spec, nil
+}
+
+// dungeonRoomsShape records the authored top-level rooms node form without
+// weakening the strict typed decode that follows. yaml.v3 decodes omitted and
+// null collections alike as nil slices, but canvas mode gives those forms
+// different meaning from an explicit empty sequence.
+func dungeonRoomsShape(raw []byte) (roomsShape, bool) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(raw, &document); err != nil {
+		return roomsOmitted, false
+	}
+	if len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return roomsOmitted, false
+	}
+
+	shape := roomsOmitted
+	hasCanvas := false
+	mapping := document.Content[0]
+	for i := 0; i < len(mapping.Content); i += 2 {
+		key, value := mapping.Content[i], mapping.Content[i+1]
+		switch key.Value {
+		case "canvas":
+			hasCanvas = true
+		case "rooms":
+			switch value.Kind {
+			case yaml.SequenceNode:
+				shape = roomsSequence
+			case yaml.ScalarNode:
+				if value.Tag == "!!null" {
+					shape = roomsNull
+				} else {
+					shape = roomsInvalid
+				}
+			default:
+				shape = roomsInvalid
+			}
+		}
+	}
+	return shape, hasCanvas
 }

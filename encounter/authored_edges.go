@@ -48,7 +48,11 @@ func normalizeAuthoredEdge(edge AuthoredEdge) AuthoredEdge {
 }
 
 func authoredEdgeLess(left, right AuthoredEdge) bool {
-	return generatedEdgeLess(GeneratedEdge(left), GeneratedEdge(right))
+	return generatedEdgeLess(authoredAsGenerated(left), authoredAsGenerated(right))
+}
+
+func authoredAsGenerated(edge AuthoredEdge) GeneratedEdge {
+	return GeneratedEdge(edge)
 }
 
 // validateAndNormalizeAuthoredEdges is InitDungeon's defense for callers that
@@ -99,7 +103,7 @@ func validateAndNormalizeAuthoredEdges(params DungeonParams) ([]AuthoredEdge, er
 
 		key := newGeneratedEdgeKey(edge.From, edge.To)
 		if first, exists := seen[key]; exists {
-			if out[first].Kind == edge.Kind && out[first].DoorID == edge.DoorID {
+			if authoredEdgesEqual(out[first], edge) {
 				return nil, fmt.Errorf("authored edge %d: duplicate of authored edge %d", index, first)
 			}
 			return nil, fmt.Errorf("authored edge %d: conflicts with authored edge %d", index, first)
@@ -116,6 +120,9 @@ func validateAndNormalizeAuthoredEdges(params DungeonParams) ([]AuthoredEdge, er
 // and obstacles: authored edge endpoints identify durable semantic floor cells,
 // not a seed-dependent open-cell sample.
 func semanticDungeonFloorHexes(params DungeonParams) map[core.Hex]struct{} {
+	if params.FloorSource == FloorSourceCanvas {
+		return canvasFloorHexes(params.Width, params.Height)
+	}
 	capacity := 0
 	for _, region := range params.Regions {
 		capacity += region.Width * params.Height
@@ -142,17 +149,18 @@ func semanticDungeonFloorHexes(params DungeonParams) map[core.Hex]struct{} {
 // spatial persistence, so stale or hand-built snapshots fail before a room is
 // reconstructed with potentially contradictory data.
 func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*DoorData) error {
-	if space == nil || len(space.AuthoredEdges) == 0 {
+	if space == nil {
+		return nil
+	}
+	floor, err := persistedAuthoredFloor(space)
+	if err != nil {
+		return err
+	}
+	if len(space.AuthoredEdges) == 0 {
 		return nil
 	}
 	if strings.TrimSpace(space.DungeonKey) == "" {
 		return fmt.Errorf("persisted authored edges require a dungeon key")
-	}
-	floor := make(map[core.Hex]struct{})
-	for _, region := range space.Regions {
-		for hex := range region.Hexes {
-			floor[hex] = struct{}{}
-		}
 	}
 	seen := make(map[generatedEdgeKey]int, len(space.AuthoredEdges))
 	var previous AuthoredEdge
@@ -167,7 +175,7 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 		if index > 0 && authoredEdgeLess(edge, previous) {
 			return fmt.Errorf("authored edge %d: persisted collection is not canonical-sorted", index)
 		}
-		if edge != source {
+		if !authoredEdgesEqual(edge, source) {
 			return fmt.Errorf("authored edge %d: persisted endpoints are not normalized", index)
 		}
 		if edge.From == edge.To || edge.From.ToCube().Distance(edge.To.ToCube()) != 1 {
@@ -335,6 +343,37 @@ func (e *Encounter) authoredDoorEdge(id core.EntityID) (AuthoredEdge, bool) {
 		}
 	}
 	return AuthoredEdge{}, false
+}
+
+func persistedAuthoredFloor(space *SpaceData) (map[core.Hex]struct{}, error) {
+	source, err := floorSourceKind(space.FloorSource)
+	if err != nil {
+		return nil, fmt.Errorf("persisted floor source: %w", err)
+	}
+	if source == FloorSourceCanvas {
+		if _, err := ValidateCanvasDimensions(space.Width, space.Height); err != nil {
+			return nil, fmt.Errorf("persisted canvas dimensions: %w", err)
+		}
+		if len(space.Regions) != 0 {
+			return nil, fmt.Errorf("persisted canvas floor must not infer membership from regions")
+		}
+		return canvasFloorHexes(space.Width, space.Height), nil
+	}
+	floor := make(map[core.Hex]struct{})
+	for _, region := range space.Regions {
+		for hex := range region.Hexes {
+			floor[hex] = struct{}{}
+		}
+	}
+	return floor, nil
+}
+
+func authoredEdgesEqual(left, right AuthoredEdge) bool {
+	if left.From != right.From || left.To != right.To ||
+		left.Kind != right.Kind || left.DoorID != right.DoorID {
+		return false
+	}
+	return true
 }
 
 func authoredEdgesByKey(space *SpaceData) map[generatedEdgeKey]AuthoredEdge {

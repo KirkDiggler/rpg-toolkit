@@ -106,6 +106,10 @@ type PendingTriggerSeedData struct {
 // rather than a toolkit-local type — same shape environments.EnvironmentData
 // already persists, no reason to duplicate it.
 type SpaceData struct {
+	// FloorSource records how the structural floor is derived. An omitted marker
+	// is legacy room-chain data; only the explicit canvas marker selects dimensions.
+	FloorSource FloorSourceKind `json:"floor_source,omitempty"`
+
 	// Walls are the room's wall segments in absolute cube coordinates, in
 	// one of two shapes:
 	//

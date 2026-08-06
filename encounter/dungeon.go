@@ -20,12 +20,26 @@ import (
 // constant now that InitTwoChamberRoom delegates to InitDungeon.
 const dungeonPathWidth = 2.0
 
-// DungeonParams configures Encounter.InitDungeon: an ordered linear chain
-// of Regions joined by Connectors, emitted as ONE continuous Space (design
-// doc Fork 1 — regions are tags on a Space, not separate spatial.Rooms).
-// Generalizes TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to
-// any N>=2 (rpg-toolkit#814).
+// DungeonParams configures Encounter.InitDungeon with either an explicit canvas
+// floor source or a legacy ordered linear chain of Regions joined by Connectors.
+// Both modes emit ONE continuous Space (design doc Fork 1 — regions are tags on
+// a Space, not separate spatial.Rooms). The room-chain mode generalizes
+// TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to any N>=2
+// (rpg-toolkit#814).
 type DungeonParams struct {
+	// FloorSource selects canvas dimensions or legacy room-chain geometry.
+	// The zero value retains legacy room-chain semantics.
+	FloorSource FloorSourceKind
+
+	// Width is required only for canvas floors; room-chain width derives from Regions.
+	Width int
+
+	// AbsolutePlacedObstacles and AbsoluteReservedCells are absolute authored
+	// content accepted only with FloorSourceCanvas. The latter reserves absolute
+	// monster spawns from party seating before any geometry is generated.
+	AbsolutePlacedObstacles []AbsolutePlacedObstacleSpec
+	AbsoluteReservedCells   []AbsoluteReservedCell
+
 	// Key is the stable authored dungeon key. It is required only when
 	// AuthoredEdges is non-empty because a door edge derives its stable DoorID
 	// from this key plus its normalized absolute endpoint pair.
@@ -68,6 +82,23 @@ type DungeonParams struct {
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
 	// that field's doc. Never interpreted here.
 	Theme string
+}
+
+// AbsolutePlacedObstacleSpec pins an authored prop at an absolute floor cell.
+type AbsolutePlacedObstacleSpec struct {
+	ID             core.EntityID
+	Ref            string
+	At             core.Hex
+	BlocksMovement bool
+	BlocksLoS      bool
+	Facing         *uint32
+}
+
+// AbsoluteReservedCell names authored content (currently an absolute monster
+// spawn) that must not be used by the party-start envelope.
+type AbsoluteReservedCell struct {
+	At   core.Hex
+	Name string
 }
 
 // DungeonRegionParams configures one region in an InitDungeon chain.
@@ -337,10 +368,12 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 	if len(authoredEdges) > 0 {
 		dungeonKey = params.Key
 	}
+	source, _ := floorSourceKind(params.FloorSource)
 	space := &SpaceData{
 		Walls:               layout.walls,
 		Width:               layout.width,
 		Height:              params.Height,
+		FloorSource:         source,
 		Entrance:            core.HexFromCube(layout.entrance),
 		PartyStartPositions: layout.partyStartPositions,
 		DungeonKey:          dungeonKey,
@@ -450,6 +483,13 @@ func validateDungeonDoorIDsAvailable(
 // least 4, and the boss-room scale invariant (rpg-toolkit#814 Approved
 // Slice 3 corrections) — a generation-time assertion, not eyeballing.
 func validateDungeonParams(params DungeonParams) error {
+	source, err := floorSourceKind(params.FloorSource)
+	if err != nil {
+		return err
+	}
+	if source == FloorSourceCanvas {
+		return validateCanvasDungeonParams(params)
+	}
 	if len(params.Regions) < 2 {
 		return fmt.Errorf("dungeon needs at least 2 regions (got %d)", len(params.Regions))
 	}
@@ -582,6 +622,9 @@ type dungeonLayout struct {
 // beyond it) — generalizing InitTwoChamberRoom's two-chamber required
 // paths to N regions.
 func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
+	if params.FloorSource == FloorSourceCanvas {
+		return generateCanvasDungeonLayout(params)
+	}
 	n := len(params.Regions)
 	doorRow := params.Height / 2
 

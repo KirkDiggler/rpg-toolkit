@@ -10,11 +10,12 @@ package dungeonspec
 
 // DungeonSpec is the top-level decoded shape of a dungeon spec file.
 type DungeonSpec struct {
-	Version int    `yaml:"version"`
-	Key     string `yaml:"key"`
-	Name    string `yaml:"name"`
-	Theme   string `yaml:"theme"`
-	Height  int    `yaml:"height"`
+	Version int         `yaml:"version"`
+	Key     string      `yaml:"key"`
+	Name    string      `yaml:"name"`
+	Theme   string      `yaml:"theme"`
+	Height  int         `yaml:"height"`
+	Canvas  *CanvasSpec `yaml:"canvas,omitempty"`
 	// Start is an optional absolute [column,row] party-start anchor. Nil
 	// represents both an omitted YAML field and an explicit YAML null.
 	Start      *[2]int         `yaml:"start,omitempty"`
@@ -25,10 +26,28 @@ type DungeonSpec struct {
 	// must name two absolute pointy-top odd-q [column,row] floor cells (not
 	// even-q or axial) and a solid or door kind.
 	Walls []WallSpec `yaml:"walls,omitempty"`
-	// Place is decoded solely to reject unsupported top-level placement,
-	// including facing, at a field-specific validation path. Slice #178
-	// supports only existing room-scoped floor props.
+	// Place accepts absolute placement only with an explicit canvas floor source.
+	// Room-chain mode rejects every top-level entry at a field-specific
+	// validation path.
 	Place []PlacedEntry `yaml:"place,omitempty"`
+	// roomsShape preserves the authored YAML form for canvas validation.
+	// A nil Rooms slice alone cannot distinguish omitted, null, and [] input.
+	roomsShape roomsShape
+}
+
+type roomsShape uint8
+
+const (
+	roomsOmitted roomsShape = iota
+	roomsSequence
+	roomsNull
+	roomsInvalid
+)
+
+// CanvasSpec is the explicit structural floor source for canvas mode.
+type CanvasSpec struct {
+	Width  int `yaml:"width"`
+	Height int `yaml:"height"`
 }
 
 // RoomSpec is one room in a dungeon spec.
@@ -73,7 +92,7 @@ type ObstacleEntry struct {
 // ref type fails validation with a clear message instead of a decode error.
 type PlacedEntry struct {
 	Ref            string `yaml:"ref"`
-	At             [2]int `yaml:"at"` // [col, row], room-local — static-placement delta, rpg-toolkit#842
+	At             [2]int `yaml:"at"` // [col, row], room-local in a room or absolute with a canvas floor source
 	BlocksMovement *bool  `yaml:"blocks_movement,omitempty"`
 	BlocksLoS      *bool  `yaml:"blocks_los,omitempty"`
 	// Facing is the optional canonical YAML label. Nil represents both an
@@ -93,9 +112,10 @@ type PlacedEntry struct {
 // YAML null is valid only for the optional collection, not for either endpoint
 // of an entry.
 type WallSpec struct {
-	From *[2]int `yaml:"from"`
-	To   *[2]int `yaml:"to"`
-	Kind string  `yaml:"kind"`
+	From *[2]int       `yaml:"from"`
+	To   *[2]int       `yaml:"to"`
+	Kind string        `yaml:"kind"`
+	Lock *WallLockSpec `yaml:"lock,omitempty"`
 }
 
 // ConnectorSpec joins two rooms, optionally behind a locked check.
@@ -109,4 +129,15 @@ type ConnectorSpec struct {
 type LockedSpec struct {
 	DC      int    `yaml:"dc"`
 	Ability string `yaml:"ability"`
+}
+
+// WallLockSpec preserves v0.3 lock grammar without binding executable behavior.
+type WallLockSpec struct {
+	Options []LockOptionSpec `yaml:"options"`
+}
+
+// LockOptionSpec is one authored, alternative ability check.
+type LockOptionSpec struct {
+	Ability string `yaml:"ability"`
+	DC      int    `yaml:"dc"`
 }
