@@ -1,6 +1,8 @@
 package encounter
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
@@ -13,6 +15,39 @@ const (
 	semanticViewerID = "viewer"
 	semanticInnerID  = "inner"
 )
+
+func TestInitDungeonClonesSemanticArchetypeParam(t *testing.T) {
+	cell := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
+	archetype := ArchetypeChamber
+	enc := New(context.Background(), "clone-archetype", NewBroker(NewInMemoryTransport()))
+	require.NoError(t, enc.InitDungeon(DungeonParams{
+		FloorSource: FloorSourceCanvas, Width: 2, Height: 2,
+		PartyStart: PartyStartParams{SeatCount: 1},
+		SemanticRegions: []SemanticRegionParams{{
+			ID: "scope", Archetype: &archetype, Cells: []core.Hex{cell},
+		}},
+	}))
+	archetype = ArchetypeBoss
+
+	zone := enc.ToData().Space.ZoneAt(cell)
+	require.Equal(t, ArchetypeChamber, *zone.Archetype)
+	require.Equal(t, ArchetypeChamber, *enc.ToData().Space.SemanticRegions[0].Archetype)
+	payload, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	require.Contains(t, string(payload), `"archetype":"chamber"`)
+}
+
+func TestRegionAtLegacySpaceIgnoresSemanticRegions(t *testing.T) {
+	cell := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
+	space := &SpaceData{
+		FloorSource:     FloorSourceRoomChain,
+		Regions:         []RegionData{{ID: "legacy", Hexes: core.NewHexSet(cell)}},
+		SemanticRegions: []SemanticRegionData{{ID: "semantic", Cells: core.NewHexSet(cell)}},
+	}
+	id, ok := space.RegionAt(cell)
+	require.True(t, ok)
+	require.Equal(t, "legacy", id)
+}
 
 func TestAuthorizedZonesDisclosesOnlyKnownScopeAncestors(t *testing.T) {
 	a := core.HexFromPosition(spatial.Position{X: 0, Y: 0})

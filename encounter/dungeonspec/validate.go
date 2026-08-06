@@ -92,17 +92,8 @@ func Validate(spec *DungeonSpec) error {
 	if err := validateChain(spec); err != nil {
 		return err
 	}
-	for i := range spec.Rooms {
-		room := &spec.Rooms[i]
-		if room.Width < minWidth {
-			return fmt.Errorf("room %q: width must be at least %d, got %d", room.ID, minWidth, room.Width)
-		}
-		if err := validateArchetype(room.Archetype); err != nil {
-			return fmt.Errorf("room %q: %w", room.ID, err)
-		}
-		if err := validatePattern(room.Pattern); err != nil {
-			return fmt.Errorf("room %q: %w", room.ID, err)
-		}
+	if err := validateRoomDefinitions(spec.Rooms); err != nil {
+		return err
 	}
 	bossRoom, err := validateBossCardinality(spec.Rooms)
 	if err != nil {
@@ -147,6 +138,22 @@ func Validate(spec *DungeonSpec) error {
 			if err = validateLocked(&spec.Connectors[i]); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func validateRoomDefinitions(rooms []RoomSpec) error {
+	for i := range rooms {
+		room := &rooms[i]
+		if room.Width < minWidth {
+			return fmt.Errorf("room %q: width must be at least %d, got %d", room.ID, minWidth, room.Width)
+		}
+		if err := validateArchetype(room.Archetype); err != nil {
+			return fmt.Errorf("room %q: %w", room.ID, err)
+		}
+		if err := validatePattern(room.Pattern); err != nil {
+			return fmt.Errorf("room %q: %w", room.ID, err)
 		}
 	}
 	return nil

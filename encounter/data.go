@@ -314,8 +314,10 @@ func (sd *SpaceData) RegionAt(h core.Hex) (string, bool) {
 	if sd == nil {
 		return "", false
 	}
-	if id, ok := sd.SemanticRegionAt(h); ok {
-		return id, true
+	if sd.FloorSource == FloorSourceCanvas {
+		if id, ok := sd.SemanticRegionAt(h); ok {
+			return id, true
+		}
 	}
 	for _, r := range sd.Regions {
 		if r.Hexes.Has(h) {

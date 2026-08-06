@@ -196,6 +196,14 @@ func cloneString(value *string) *string {
 	return &clone
 }
 
+func cloneRegionArchetype(value *RegionArchetype) *RegionArchetype {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 func validateSemanticRegionParams(
 	regions []SemanticRegionParams, floor map[core.Hex]struct{},
 ) ([]SemanticRegionData, error) {
@@ -223,7 +231,9 @@ func validateSemanticRegionParams(
 			}
 			cells[h] = struct{}{}
 		}
-		out[i] = SemanticRegionData{ID: region.ID, Name: cloneString(region.Name), Archetype: region.Archetype, Cells: cells}
+		out[i] = SemanticRegionData{
+			ID: region.ID, Name: cloneString(region.Name), Archetype: cloneRegionArchetype(region.Archetype), Cells: cells,
+		}
 	}
 	for i := range out {
 		for j := i + 1; j < len(out); j++ {

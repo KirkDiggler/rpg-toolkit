@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	liveKnowledgeAliceID = "alice"
-	liveKnowledgeBobID   = "bob"
+	liveKnowledgeAliceID       = "alice"
+	liveKnowledgeBobID         = "bob"
+	liveKnowledgeAliceEntityID = "alice-entity"
 )
 
 func TestHexRevealedEventSnapshotsViewerObservations(t *testing.T) {
@@ -83,7 +84,7 @@ func TestMovePassThroughAppearanceSnapshotsTransitionPlacement(t *testing.T) {
 	appearedAt := core.Hex{Q: 2, R: 0, S: -2}
 	end := core.Hex{Q: 4, R: 0, S: -4}
 	require.NoError(t, e.AddPlayer(PlayerInput{
-		PlayerID: liveKnowledgeAliceID, EntityID: "alice-entity", Position: start, SightRange: 0,
+		PlayerID: liveKnowledgeAliceID, EntityID: liveKnowledgeAliceEntityID, Position: start, SightRange: 0,
 	}))
 	require.NoError(t, e.AddPlayer(PlayerInput{
 		PlayerID: liveKnowledgeBobID, EntityID: "bob-entity", Position: appearedAt, SightRange: 0,
@@ -103,11 +104,11 @@ func TestMovePassThroughAppearanceSnapshotsTransitionPlacement(t *testing.T) {
 		case event := <-subscription.Events():
 			switch typed := event.(type) {
 			case *events.EntityAppearedEvent:
-				if typed.Entity == "alice-entity" {
+				if typed.Entity == liveKnowledgeAliceEntityID {
 					appeared = typed
 				}
 			case *events.EntityDisappearedEvent:
-				if typed.Entity == "alice-entity" {
+				if typed.Entity == liveKnowledgeAliceEntityID {
 					disappeared = typed
 				}
 			}
@@ -118,10 +119,10 @@ func TestMovePassThroughAppearanceSnapshotsTransitionPlacement(t *testing.T) {
 	appearance := appeared.Observations[liveKnowledgeBobID]
 	require.Equal(t, appearedAt, appearance.Position)
 	require.Empty(t, appearance.ZoneID)
-	require.Contains(t, knownHexEntityIDs(appearance), core.EntityID("alice-entity"))
+	require.Contains(t, knownHexEntityIDs(appearance), core.EntityID(liveKnowledgeAliceEntityID))
 	disappearance := disappeared.Observations[liveKnowledgeBobID]
 	require.Equal(t, appearedAt, disappearance.Position)
-	require.NotContains(t, knownHexEntityIDs(disappearance), core.EntityID("alice-entity"),
+	require.NotContains(t, knownHexEntityIDs(disappearance), core.EntityID(liveKnowledgeAliceEntityID),
 		"disappearance observations represent post-disappearance memory")
 }
 
