@@ -545,6 +545,7 @@ func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
 		}
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), mon.ID, mon.Position, viewers,
+			e.eventObservationsForAudience(mon.Position, viewers),
 		)); err != nil {
 			return fmt.Errorf("publish monster appeared on add: %w", err)
 		}
@@ -1235,6 +1236,7 @@ func (e *Encounter) applyAndPublishMove(
 		return "", fmt.Errorf("publish move: %w", err)
 	}
 	if len(revealPerPlayer) > 0 {
+		e.attachRevealObservations(revealPerPlayer)
 		if err := e.broker.Publish(events.NewHexRevealedEvent(
 			e.data.ID, e.nextSeq(), revealPerPlayer,
 		)); err != nil {
@@ -1253,6 +1255,7 @@ func (e *Encounter) applyAndPublishMove(
 	for hex, viewers := range appearedByHex {
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), p.EntityID, hex, viewers,
+			e.eventObservationsForAppearance(hex, viewers, p.EntityID),
 		)); err != nil {
 			return "", fmt.Errorf("publish entity appeared: %w", err)
 		}
@@ -1264,6 +1267,7 @@ func (e *Encounter) applyAndPublishMove(
 	if len(disappearedPerPlayer) > 0 {
 		if err := e.broker.Publish(events.NewEntityDisappearedEvent(
 			e.data.ID, e.nextSeq(), p.EntityID, disappearedPerPlayer,
+			e.eventObservationsForPositions(disappearedPerPlayer),
 		)); err != nil {
 			return "", fmt.Errorf("publish entity disappeared: %w", err)
 		}
@@ -1294,17 +1298,19 @@ func (e *Encounter) applyAndPublishMove(
 		p.EntityID, p.View.SightRange, moverStart, traveledPath,
 	)
 	for _, m := range monsterAppeared {
+		audience := map[core.PlayerID]struct{}{playerID: {}}
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
-			e.data.ID, e.nextSeq(), m.ID, m.Position,
-			map[core.PlayerID]struct{}{playerID: {}},
+			e.data.ID, e.nextSeq(), m.ID, m.Position, audience,
+			e.eventObservationsForAudience(m.Position, audience),
 		)); err != nil {
 			return "", fmt.Errorf("publish monster appeared: %w", err)
 		}
 	}
 	for _, m := range monsterDisappeared {
+		disappeared := map[core.PlayerID]core.Hex{playerID: m.Position}
 		if err := e.broker.Publish(events.NewEntityDisappearedEvent(
-			e.data.ID, e.nextSeq(), m.ID,
-			map[core.PlayerID]core.Hex{playerID: m.Position},
+			e.data.ID, e.nextSeq(), m.ID, disappeared,
+			e.eventObservationsForPositions(disappeared),
 		)); err != nil {
 			return "", fmt.Errorf("publish monster disappeared: %w", err)
 		}
@@ -1399,6 +1405,7 @@ func (e *Encounter) OpenDoor(playerID core.PlayerID, doorID core.EntityID) error
 		return fmt.Errorf("publish door: %w", err)
 	}
 	if len(revealPerPlayer) > 0 {
+		e.attachRevealObservations(revealPerPlayer)
 		if err := e.broker.Publish(events.NewHexRevealedEvent(
 			e.data.ID, e.nextSeq(), revealPerPlayer,
 		)); err != nil {
@@ -1446,6 +1453,7 @@ func (e *Encounter) publishRevealedObstacles(reveals map[core.PlayerID]events.He
 		}
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), obstacle.ID, obstacle.Position, audience,
+			e.eventObservationsForAudience(obstacle.Position, audience),
 		)); err != nil {
 			return fmt.Errorf("publish revealed obstacle %q: %w", obstacle.ID, err)
 		}

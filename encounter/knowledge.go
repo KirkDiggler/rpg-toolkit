@@ -87,7 +87,7 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 		for _, c := range o.Contents {
 			contents = append(contents, events.KnownHexPlacement{
 				EntityID: c.EntityID,
-				Facing:   c.Facing,
+				Facing:   cloneFacing(c.Facing),
 			})
 		}
 		out = append(out, events.KnownHex{
@@ -109,6 +109,92 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 		}
 		return a.S < b.S
 	})
+	return out
+}
+
+// observedHexesFor returns immutable-at-publish event facts for exactly hexes.
+// It reads the viewer's already-refreshed memory rather than global SpaceData,
+// preserving the same fog authorization and remembered ZoneID that KnownHexes
+// exposes. The result is position-sorted by knownHexesToEvents.
+func (e *Encounter) observedHexesFor(playerID core.PlayerID, hexes core.HexSet) []events.KnownHex {
+	known := e.KnownHexes(playerID)
+	selected := make(map[core.Hex]perception.HexObservation, len(hexes))
+	for hex := range hexes {
+		if observation, ok := known[hex]; ok {
+			selected[hex] = observation
+		}
+	}
+	return knownHexesToEvents(selected)
+}
+
+// observedHexFor returns one viewer's event-time fact for hex.
+func (e *Encounter) observedHexFor(playerID core.PlayerID, hex core.Hex) (events.KnownHex, bool) {
+	observations := e.observedHexesFor(playerID, core.NewHexSet(hex))
+	if len(observations) == 0 {
+		return events.KnownHex{}, false
+	}
+	return observations[0], true
+}
+
+// attachRevealObservations snapshots each reveal's authorized facts after every
+// caller refresh is complete and before broker publication.
+func (e *Encounter) attachRevealObservations(reveals map[core.PlayerID]events.HexRevealedSlice) {
+	for playerID, reveal := range reveals {
+		reveal.Observations = e.observedHexesFor(playerID, reveal.Hexes)
+		reveals[playerID] = reveal
+	}
+}
+
+// eventObservationsForPositions snapshots one fact per viewer at a shared
+// entity-event position. Missing observations are omitted rather than inferred.
+func (e *Encounter) eventObservationsForPositions(
+	positions map[core.PlayerID]core.Hex,
+) map[core.PlayerID]events.KnownHex {
+	out := make(map[core.PlayerID]events.KnownHex, len(positions))
+	for playerID, position := range positions {
+		if observation, ok := e.observedHexFor(playerID, position); ok {
+			out[playerID] = observation
+		}
+	}
+	return out
+}
+
+// eventObservationsForAudience snapshots one shared position for every entity
+// event recipient.
+func (e *Encounter) eventObservationsForAudience(
+	position core.Hex, audience map[core.PlayerID]struct{},
+) map[core.PlayerID]events.KnownHex {
+	positions := make(map[core.PlayerID]core.Hex, len(audience))
+	for playerID := range audience {
+		positions[playerID] = position
+	}
+	return e.eventObservationsForPositions(positions)
+}
+
+// eventObservationsForAppearance snapshots a transition-time appearance. The
+// mover's persisted position may already be its final destination when a
+// pass-through appearance is published for an intermediate hex, so canonical
+// current-memory facts need a single event-time placement overlay here.
+func (e *Encounter) eventObservationsForAppearance(
+	position core.Hex, audience map[core.PlayerID]struct{}, entityID core.EntityID,
+) map[core.PlayerID]events.KnownHex {
+	out := e.eventObservationsForAudience(position, audience)
+	for playerID, observation := range out {
+		found := false
+		for _, content := range observation.Contents {
+			if content.EntityID == entityID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			observation.Contents = append(observation.Contents, events.KnownHexPlacement{EntityID: entityID})
+			sort.Slice(observation.Contents, func(i, j int) bool {
+				return observation.Contents[i].EntityID < observation.Contents[j].EntityID
+			})
+			out[playerID] = observation
+		}
+	}
 	return out
 }
 
@@ -238,6 +324,14 @@ func (e *Encounter) isSpaceHex(h core.Hex) bool {
 // Player and monster placements carry no facing override. Static obstacles
 // retain their persisted optional facing, so visible and remembered placement
 // observations keep explicit E = 0 distinct from absence.
+func cloneFacing(value *uint32) *uint32 {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	var out []perception.Placement
 	for _, p := range e.data.Players {
@@ -253,7 +347,7 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	if e.data.Space != nil {
 		for _, o := range e.data.Space.Obstacles {
 			if o.Position == h {
-				out = append(out, perception.Placement{EntityID: o.ID, Facing: o.Facing})
+				out = append(out, perception.Placement{EntityID: o.ID, Facing: cloneFacing(o.Facing)})
 			}
 		}
 	}

@@ -21,6 +21,8 @@ type EntityDisappearedEvent struct {
 	seq       uint64
 	Entity    core.EntityID
 	PerPlayer map[core.PlayerID]core.Hex
+	// Observations snapshots each viewer's last authorized hex fact at publish.
+	Observations map[core.PlayerID]KnownHex `json:"observations,omitempty"`
 }
 
 // NewEntityDisappearedEvent constructs an EntityDisappearedEvent. The encounter
@@ -30,12 +32,18 @@ func NewEntityDisappearedEvent(
 	seq uint64,
 	entity core.EntityID,
 	perPlayer map[core.PlayerID]core.Hex,
+	observations ...map[core.PlayerID]KnownHex,
 ) *EntityDisappearedEvent {
+	var observed map[core.PlayerID]KnownHex
+	if len(observations) > 0 {
+		observed = observations[0]
+	}
 	return &EntityDisappearedEvent{
-		encID:     encID,
-		seq:       seq,
-		Entity:    entity,
-		PerPlayer: perPlayer,
+		encID:        encID,
+		seq:          seq,
+		Entity:       entity,
+		PerPlayer:    perPlayer,
+		Observations: observed,
 	}
 }
 
@@ -54,21 +62,23 @@ func (e *EntityDisappearedEvent) Audience() AudienceSet { return audienceFromMap
 // entityDisappearedWire is the on-wire shape — used only by MarshalJSON / UnmarshalJSON.
 type entityDisappearedWire struct {
 	metaWire
-	EncID     core.EncounterID           `json:"encounter_id"`
-	Seq       uint64                     `json:"sequence"`
-	Entity    core.EntityID              `json:"entity"`
-	PerPlayer map[core.PlayerID]core.Hex `json:"per_player"`
+	EncID        core.EncounterID           `json:"encounter_id"`
+	Seq          uint64                     `json:"sequence"`
+	Entity       core.EntityID              `json:"entity"`
+	PerPlayer    map[core.PlayerID]core.Hex `json:"per_player"`
+	Observations map[core.PlayerID]KnownHex `json:"observations,omitempty"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names without
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *EntityDisappearedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(entityDisappearedWire{
-		metaWire:  e.toWire(),
-		EncID:     e.encID,
-		Seq:       e.seq,
-		Entity:    e.Entity,
-		PerPlayer: e.PerPlayer,
+		metaWire:     e.toWire(),
+		EncID:        e.encID,
+		Seq:          e.seq,
+		Entity:       e.Entity,
+		PerPlayer:    e.PerPlayer,
+		Observations: e.Observations,
 	})
 }
 
@@ -84,5 +94,6 @@ func (e *EntityDisappearedEvent) UnmarshalJSON(b []byte) error {
 	e.seq = w.Seq
 	e.Entity = w.Entity
 	e.PerPlayer = w.PerPlayer
+	e.Observations = w.Observations
 	return nil
 }

@@ -27,6 +27,8 @@ type EntityAppearedEvent struct {
 	Entity    core.EntityID
 	Position  core.Hex
 	PerPlayer map[core.PlayerID]struct{}
+	// Observations is each recipient's immutable-at-publish observation of Position.
+	Observations map[core.PlayerID]KnownHex `json:"observations,omitempty"`
 }
 
 // NewEntityAppearedEvent constructs an EntityAppearedEvent. The encounter is
@@ -37,13 +39,19 @@ func NewEntityAppearedEvent(
 	entity core.EntityID,
 	position core.Hex,
 	perPlayer map[core.PlayerID]struct{},
+	observations ...map[core.PlayerID]KnownHex,
 ) *EntityAppearedEvent {
+	var observed map[core.PlayerID]KnownHex
+	if len(observations) > 0 {
+		observed = observations[0]
+	}
 	return &EntityAppearedEvent{
-		encID:     encID,
-		seq:       seq,
-		Entity:    entity,
-		Position:  position,
-		PerPlayer: perPlayer,
+		encID:        encID,
+		seq:          seq,
+		Entity:       entity,
+		Position:     position,
+		PerPlayer:    perPlayer,
+		Observations: observed,
 	}
 }
 
@@ -62,23 +70,25 @@ func (e *EntityAppearedEvent) Audience() AudienceSet { return audienceFromMap(e.
 // entityAppearedWire is the on-wire shape — used only by MarshalJSON / UnmarshalJSON.
 type entityAppearedWire struct {
 	metaWire
-	EncID     core.EncounterID           `json:"encounter_id"`
-	Seq       uint64                     `json:"sequence"`
-	Entity    core.EntityID              `json:"entity"`
-	Position  core.Hex                   `json:"position"`
-	PerPlayer map[core.PlayerID]struct{} `json:"per_player"`
+	EncID        core.EncounterID           `json:"encounter_id"`
+	Seq          uint64                     `json:"sequence"`
+	Entity       core.EntityID              `json:"entity"`
+	Position     core.Hex                   `json:"position"`
+	PerPlayer    map[core.PlayerID]struct{} `json:"per_player"`
+	Observations map[core.PlayerID]KnownHex `json:"observations,omitempty"`
 }
 
 // MarshalJSON exposes encID and seq under stable JSON field names without
 // making the Go fields exported. Implements encoding/json.Marshaler.
 func (e *EntityAppearedEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(entityAppearedWire{
-		metaWire:  e.toWire(),
-		EncID:     e.encID,
-		Seq:       e.seq,
-		Entity:    e.Entity,
-		Position:  e.Position,
-		PerPlayer: e.PerPlayer,
+		metaWire:     e.toWire(),
+		EncID:        e.encID,
+		Seq:          e.seq,
+		Entity:       e.Entity,
+		Position:     e.Position,
+		PerPlayer:    e.PerPlayer,
+		Observations: e.Observations,
 	})
 }
 
@@ -95,5 +105,6 @@ func (e *EntityAppearedEvent) UnmarshalJSON(b []byte) error {
 	e.Entity = w.Entity
 	e.Position = w.Position
 	e.PerPlayer = w.PerPlayer
+	e.Observations = w.Observations
 	return nil
 }

@@ -30,6 +30,10 @@ type DungeonSpec struct {
 	// Room-chain mode rejects every top-level entry at a field-specific
 	// validation path.
 	Place []PlacedEntry `yaml:"place,omitempty"`
+	// Regions are authored semantic scopes over the structural floor. They are
+	// deliberately separate from legacy Rooms: their cells are absolute and
+	// never feed room-chain generation.
+	Regions []RegionSpec `yaml:"regions,omitempty"`
 	// roomsShape preserves the authored YAML form for canvas validation.
 	// A nil Rooms slice alone cannot distinguish omitted, null, and [] input.
 	roomsShape roomsShape
@@ -48,6 +52,15 @@ const (
 type CanvasSpec struct {
 	Width  int `yaml:"width"`
 	Height int `yaml:"height"`
+}
+
+// RegionSpec is one authored semantic scope. Cells are absolute odd-q
+// [column,row] coordinates; nil/empty is a runnable empty scope.
+type RegionSpec struct {
+	ID        string   `yaml:"id"`
+	Name      *string  `yaml:"name,omitempty"`
+	Archetype *string  `yaml:"archetype,omitempty"`
+	Cells     [][2]int `yaml:"cells"`
 }
 
 // RoomSpec is one room in a dungeon spec.

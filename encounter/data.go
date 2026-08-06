@@ -174,6 +174,11 @@ type SpaceData struct {
 	// exactly one implicit region.
 	Regions []RegionData `json:"regions,omitempty"`
 
+	// SemanticRegions are authored canvas scopes. Unlike legacy Regions, they
+	// have no geometry authority: cells are semantic facts only and containment
+	// is recomputed on every use/load.
+	SemanticRegions []SemanticRegionData `json:"semantic_regions,omitempty"`
+
 	// Theme is opaque cosmetic metadata (e.g. "crypt") that InitDungeon
 	// carries through from DungeonParams.Theme without interpreting —
 	// rpg-toolkit#814's Approved Slice 3 corrections are explicit that the
@@ -308,6 +313,11 @@ const (
 func (sd *SpaceData) RegionAt(h core.Hex) (string, bool) {
 	if sd == nil {
 		return "", false
+	}
+	if sd.FloorSource == FloorSourceCanvas {
+		if id, ok := sd.SemanticRegionAt(h); ok {
+			return id, true
+		}
 	}
 	for _, r := range sd.Regions {
 		if r.Hexes.Has(h) {

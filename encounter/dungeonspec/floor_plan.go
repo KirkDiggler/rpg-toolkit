@@ -50,9 +50,20 @@ type FloorPlanConnector struct {
 	Column     int
 }
 
+// FloorPlanRegion is one authoring semantic scope. ParentID is derived and
+// nil for root-parented/empty scopes; Cells are canonical absolute extents.
+type FloorPlanRegion struct {
+	ID        string
+	Name      *string
+	Archetype *string
+	Cells     []FloorPlanCell
+	ParentID  *string
+}
+
 // FloorPlan is the provider-owned authoring projection.
 type FloorPlan struct {
 	Rooms      []FloorPlanRoom
+	Regions    []FloorPlanRegion
 	Connectors []FloorPlanConnector
 	// Width is the canvas width only; room chains leave it zero to preserve
 	// the wire contract's canvas-only field semantics.
@@ -115,6 +126,21 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	}
 	if data.Space.FloorSource == encounter.FloorSourceCanvas {
 		plan.Width = data.Space.Width
+		for _, region := range data.Space.SemanticRegions {
+			projected := FloorPlanRegion{ID: region.ID, Name: cloneString(region.Name)}
+			if region.Archetype != nil {
+				value := string(*region.Archetype)
+				projected.Archetype = &value
+			}
+			if parent, ok := data.Space.SemanticRegionParent(region.ID); ok {
+				projected.ParentID = &parent
+			}
+			for cell := range region.Cells {
+				projected.Cells = append(projected.Cells, cellFromHex(cell))
+			}
+			sort.Slice(projected.Cells, func(i, j int) bool { return floorPlanCellLess(projected.Cells[i], projected.Cells[j]) })
+			plan.Regions = append(plan.Regions, projected)
+		}
 		cells, err := runtimeCanvasFloorCells(data.Space.Width, data.Space.Height)
 		if err != nil {
 			return FloorPlan{}, fmt.Errorf("validate canvas floor cells: %w", err)
@@ -173,6 +199,14 @@ func runtimeCanvasFloorCells(width, height int) ([]FloorPlanCell, error) {
 		return cells[i].Row < cells[j].Row
 	})
 	return cells, nil
+}
+
+func cloneString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 func cellFromHex(h core.Hex) FloorPlanCell {

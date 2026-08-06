@@ -432,11 +432,36 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 		cc.entrance = FloorPlanCell{0, 0}
 	}
 
+	semanticRegions := make([]encounter.SemanticRegionParams, len(spec.Regions))
+	for index, region := range spec.Regions {
+		cells := make([]core.Hex, 0, len(region.Cells))
+		seen := make(map[[2]int]struct{}, len(region.Cells))
+		for _, cell := range region.Cells {
+			if _, duplicate := seen[cell]; duplicate {
+				continue
+			}
+			seen[cell] = struct{}{}
+			cells = append(cells, canvasHex(FloorPlanCell{Column: cell[0], Row: cell[1]}))
+		}
+		sort.Slice(cells, func(i, j int) bool { return floorPlanCellLess(cellFromHex(cells[i]), cellFromHex(cells[j])) })
+		var archetype *encounter.RegionArchetype
+		if region.Archetype != nil {
+			value := encounter.RegionArchetype(*region.Archetype)
+			archetype = &value
+		}
+		semanticRegions[index] = encounter.SemanticRegionParams{
+			ID: region.ID, Name: region.Name, Archetype: archetype, Cells: cells,
+		}
+		for _, cell := range region.Cells {
+			cc.regionCells = append(cc.regionCells, namedCanvasCell{name: region.ID, cell: cell})
+		}
+	}
 	params := encounter.DungeonParams{
 		Key: spec.Key, Width: spec.Canvas.Width, Height: spec.Canvas.Height, Theme: spec.Theme,
-		FloorSource:   encounter.FloorSourceCanvas,
-		PartyStart:    encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount},
-		AuthoredEdges: edges,
+		SemanticRegions: semanticRegions,
+		FloorSource:     encounter.FloorSourceCanvas,
+		PartyStart:      encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount},
+		AuthoredEdges:   edges,
 	}
 	anchor := canvasHex(cc.entrance)
 	params.PartyStart.Anchor = &anchor

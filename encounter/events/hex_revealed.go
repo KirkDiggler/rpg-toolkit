@@ -20,15 +20,17 @@ type HexRevealedEvent struct {
 	PerPlayer map[core.PlayerID]HexRevealedSlice
 }
 
-// HexRevealedSlice is each viewer's projection — newly visible hexes
-// and (in future slices) entities for that player.
+// HexRevealedSlice is each viewer's projection — newly visible hexes and
+// their complete, provider-observed facts. Observations is computed from the
+// viewer's memory immediately after the reveal is refreshed and before this
+// event publishes; consumers map it directly and never re-read world state.
 //
-// Slice 1 emits Hexes only; Entities is reserved for shape stability so
-// future slices can add entity-visibility accumulation without a JSON
-// migration.
+// Hexes remains for compatibility. Observations is sorted by position and has
+// one entry for each reveal coordinate that belongs to the encounter space.
 type HexRevealedSlice struct {
-	Hexes    core.HexSet        `json:"hexes"`
-	Entities []EntityVisibility `json:"entities,omitempty"`
+	Hexes        core.HexSet        `json:"hexes"`
+	Observations []KnownHex         `json:"observations,omitempty"`
+	Entities     []EntityVisibility `json:"entities,omitempty"`
 }
 
 // EntityVisibility names an entity that has become visible to a player.

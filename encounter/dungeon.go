@@ -49,6 +49,10 @@ type DungeonParams struct {
 	// required — a single region has nowhere to connect to.
 	Regions []DungeonRegionParams
 
+	// SemanticRegions are canvas-authored scopes. They never route through the
+	// room-chain generator and cannot create walls, doors, or content.
+	SemanticRegions []SemanticRegionParams
+
 	// Connectors is the ordered list of doors joining consecutive regions:
 	// Connectors[i] joins Regions[i] to Regions[i+1]. Must have exactly
 	// len(Regions)-1 entries.
@@ -379,6 +383,7 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		DungeonKey:          dungeonKey,
 		AuthoredEdges:       authoredEdges,
 		Regions:             layout.regions,
+		SemanticRegions:     layout.semanticRegions,
 		Theme:               params.Theme,
 		Obstacles:           layout.obstacles,
 	}
@@ -584,10 +589,11 @@ func validateDungeonParams(params DungeonParams) error {
 // after the call, not off this. Mirrors two_chamber.go's (now retired)
 // twoChamberLayout, generalized to N regions.
 type dungeonLayout struct {
-	walls    []environments.WallSegmentData
-	width    int
-	regions  []RegionData
-	entrance spatial.CubeCoordinate
+	walls           []environments.WallSegmentData
+	width           int
+	regions         []RegionData
+	semanticRegions []SemanticRegionData
+	entrance        spatial.CubeCoordinate
 	// doors[i] is the door cube coordinate joining Regions[i] to
 	// Regions[i+1] — parallel to params.Connectors.
 	doors []spatial.CubeCoordinate
