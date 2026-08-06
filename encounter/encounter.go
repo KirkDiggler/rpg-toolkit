@@ -77,9 +77,6 @@ type Encounter struct {
 	// site in this package nil-checks before using them.
 	room             spatial.Room
 	roomOrchestrator spatial.RoomOrchestrator
-	// canvas is reconstructed from SpaceData.Canvas at InitDungeon/LoadFromData.
-	// It is transient; CanvasData remains the sole persisted representation.
-	canvas *CanvasParams
 }
 
 // Option configures an Encounter at construction.
