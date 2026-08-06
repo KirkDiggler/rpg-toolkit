@@ -30,59 +30,80 @@ func ValidateCanvasDimensions(width, height int) (int, error) {
 	return width * height, nil
 }
 
-// validateCanvasFloorSource makes persisted canvas identity explicit and
-// canonical. In particular, Cells cannot be omitted and inferred from empty
-// Regions: they are the source-of-truth structural floor record.
-func validateCanvasFloorSource(source *CanvasFloorSource) error {
-	if source == nil {
-		return fmt.Errorf("canvas floor source is required")
-	}
-	cellCount, err := ValidateCanvasDimensions(source.Width, source.Height)
-	if err != nil {
-		return err
-	}
-	if len(source.Cells) != cellCount {
-		return fmt.Errorf(
-			"canvas cells must contain exactly %d canonical cells, got %d",
-			cellCount, len(source.Cells),
-		)
-	}
-	for col := 0; col < source.Width; col++ {
-		for row := 0; row < source.Height; row++ {
-			index := col*source.Height + row
-			expected := core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)})
-			if source.Cells[index] != expected {
-				return fmt.Errorf("canvas cells[%d] must be canonical cell at [%d,%d]", index, col, row)
-			}
-		}
-	}
-	return nil
+// CanvasParams configures a canvas-mode dungeon. It is constructor input only;
+// persistence uses the distinct CanvasData shape.
+type CanvasParams struct {
+	Width  int
+	Height int
 }
 
-func cloneCanvasFloorSource(source *CanvasFloorSource) *CanvasFloorSource {
-	if source == nil {
+// CanvasData is the persisted canvas-mode marker and dimensions. Structural
+// floor cells are derived from these validated dimensions and are never stored.
+type CanvasData struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// NewCanvasParams validates and constructs canvas input. It never returns an
+// invalid Params value for a caller to discover later at InitDungeon.
+func NewCanvasParams(width, height int) (*CanvasParams, error) {
+	if _, err := ValidateCanvasDimensions(width, height); err != nil {
+		return nil, err
+	}
+	return &CanvasParams{Width: width, Height: height}, nil
+}
+
+func (p *CanvasParams) toData() *CanvasData {
+	if p == nil {
 		return nil
 	}
-	return &CanvasFloorSource{
-		Width: source.Width, Height: source.Height,
-		Cells: append([]core.Hex(nil), source.Cells...),
-	}
+	return &CanvasData{Width: p.Width, Height: p.Height}
 }
 
-func canvasFloorHexes(source *CanvasFloorSource) map[core.Hex]struct{} {
-	floor := make(map[core.Hex]struct{}, len(source.Cells))
-	for _, cell := range source.Cells {
-		floor[cell] = struct{}{}
+// canvasParamsFromData is the Data-to-runtime conversion owned by the
+// encounter aggregate reload boundary.
+func canvasParamsFromData(data *CanvasData) (*CanvasParams, error) {
+	if data == nil {
+		return nil, fmt.Errorf("canvas data is required")
+	}
+	return NewCanvasParams(data.Width, data.Height)
+}
+
+func validateCanvasParams(params *CanvasParams) error {
+	if params == nil {
+		return fmt.Errorf("canvas params are required")
+	}
+	_, err := ValidateCanvasDimensions(params.Width, params.Height)
+	return err
+}
+
+func canvasFloorHexes(params *CanvasParams) map[core.Hex]struct{} {
+	count, _ := ValidateCanvasDimensions(params.Width, params.Height)
+	floor := make(map[core.Hex]struct{}, count)
+	for col := 0; col < params.Width; col++ {
+		for row := 0; row < params.Height; row++ {
+			floor[core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)})] = struct{}{}
+		}
 	}
 	return floor
 }
 
-// canvasFloorContainsHex checks whether hex is a canonical pointy-top odd-q
-// cell within source's rectangular bounds. Source identity is validated at the
-// InitDungeon/LoadFromData boundary; this allocation-free check is for hot
-// membership paths after that validation.
-func canvasFloorContainsHex(source *CanvasFloorSource, hex core.Hex) bool {
-	if source == nil || hex.Q < 0 || hex.Q >= source.Width {
+func canvasDataContainsHex(source *CanvasData, hex core.Hex) bool {
+	if source == nil {
+		return false
+	}
+	return canvasFloorContainsDimensions(source.Width, source.Height, hex)
+}
+
+func canvasFloorContainsHex(source *CanvasParams, hex core.Hex) bool {
+	if source == nil {
+		return false
+	}
+	return canvasFloorContainsDimensions(source.Width, source.Height, hex)
+}
+
+func canvasFloorContainsDimensions(width, height int, hex core.Hex) bool {
+	if hex.Q < 0 || hex.Q >= width {
 		return false
 	}
 
@@ -90,14 +111,14 @@ func canvasFloorContainsHex(source *CanvasFloorSource, hex core.Hex) bool {
 	// s before adding the offset so arbitrary external coordinates cannot
 	// overflow the conversion.
 	offset := (hex.Q - (hex.Q & 1)) / 2
-	if hex.S < -offset || hex.S >= source.Height-offset {
+	if hex.S < -offset || hex.S >= height-offset {
 		return false
 	}
 	return hex.R == -hex.Q-hex.S
 }
 
 func validateCanvasDungeonParams(params DungeonParams) error {
-	if err := validateCanvasFloorSource(params.Canvas); err != nil {
+	if err := validateCanvasParams(params.Canvas); err != nil {
 		return err
 	}
 	if len(params.Regions) != 0 || len(params.Connectors) != 0 {
@@ -197,18 +218,21 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 		col, row int
 		distance int
 	}
-	candidates := make([]candidate, 0, len(params.Canvas.Cells)-1)
-	for _, cell := range params.Canvas.Cells {
-		if cell == anchorHex {
-			continue
+	candidates := make([]candidate, 0, params.Canvas.Width*params.Canvas.Height-1)
+	for col := 0; col < params.Canvas.Width; col++ {
+		for row := 0; row < params.Canvas.Height; row++ {
+			cell := core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)})
+			if cell == anchorHex {
+				continue
+			}
+			if _, blocked := blockers[cell]; blocked {
+				continue
+			}
+			pos := cell.ToPosition()
+			candidates = append(candidates, candidate{
+				hex: cell, col: int(pos.X), row: int(pos.Y), distance: anchor.Distance(cell.ToCube()),
+			})
 		}
-		if _, blocked := blockers[cell]; blocked {
-			continue
-		}
-		pos := cell.ToPosition()
-		candidates = append(candidates, candidate{
-			hex: cell, col: int(pos.X), row: int(pos.Y), distance: anchor.Distance(cell.ToCube()),
-		})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].distance != candidates[j].distance {

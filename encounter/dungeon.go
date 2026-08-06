@@ -28,9 +28,8 @@ const dungeonPathWidth = 2.0
 type DungeonParams struct {
 	// Canvas selects the explicit canvas floor source. A dungeon has exactly
 	// one source: Canvas with no Regions/Connectors, or the legacy room chain.
-	// Canvas.Cells are canonical structural facts, not a hint inferred from an
-	// empty RegionData collection.
-	Canvas *CanvasFloorSource
+	// Canvas dimensions define the complete derived structural floor; no cells are caller- or persistence-owned.
+	Canvas *CanvasParams
 
 	// CanvasPlacedObstacles and CanvasReservedCells are absolute authored
 	// content used only in canvas mode. The latter reserves absolute monster
@@ -80,34 +79,6 @@ type DungeonParams struct {
 	// Theme is opaque metadata copied verbatim to SpaceData.Theme — see
 	// that field's doc. Never interpreted here.
 	Theme string
-}
-
-// CanvasFloorSource is the explicit structural floor source for canvas-mode
-// dungeons. Cells must be the canonical complete [0,width) x [0,height)
-// pointy-top cell list in column/row order; retaining it in persistence makes
-// canvas identity independent of RegionData.
-type CanvasFloorSource struct {
-	Width  int        `json:"width"`
-	Height int        `json:"height"`
-	Cells  []core.Hex `json:"cells"`
-}
-
-// NewCanvasFloorSource constructs the canonical full rectangle used by canvas
-// callers. Invalid dimensions intentionally return a source which validation
-// rejects, keeping all errors at InitDungeon/LoadFromData's normal boundary.
-func NewCanvasFloorSource(width, height int) *CanvasFloorSource {
-	source := &CanvasFloorSource{Width: width, Height: height}
-	cellCount, err := ValidateCanvasDimensions(width, height)
-	if err != nil {
-		return source
-	}
-	source.Cells = make([]core.Hex, 0, cellCount)
-	for col := 0; col < width; col++ {
-		for row := 0; row < height; row++ {
-			source.Cells = append(source.Cells, core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)}))
-		}
-	}
-	return source
 }
 
 // CanvasPlacedObstacleSpec pins an authored prop at an absolute canvas cell.
@@ -398,7 +369,7 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 		Walls:               layout.walls,
 		Width:               layout.width,
 		Height:              params.Height,
-		Canvas:              cloneCanvasFloorSource(params.Canvas),
+		Canvas:              params.Canvas.toData(),
 		Entrance:            core.HexFromCube(layout.entrance),
 		PartyStartPositions: layout.partyStartPositions,
 		DungeonKey:          dungeonKey,

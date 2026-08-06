@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 const canvasFixture = `version: 1
@@ -106,4 +107,29 @@ func Test883CanvasFacingAndLockGrammar(t *testing.T) {
 	)
 	_, err := Load([]byte(locked))
 	require.NoError(t, err)
+}
+
+func TestWallLockSourceRoundTripRetainsOptionsWithoutRuntimeBinding(t *testing.T) {
+	raw := []byte(strings.Replace(
+		canvasFixture,
+		"kind: door",
+		"kind: door, lock: { options: [ { ability: dex, dc: 15 }, { ability: str, dc: 10 } ] }",
+		1,
+	))
+	decoded, err := Decode(raw)
+	require.NoError(t, err)
+	require.NotNil(t, decoded.Walls[0].Lock)
+	require.Equal(t, []LockOptionSpec{{Ability: "dex", DC: 15}, {Ability: "str", DC: 10}}, decoded.Walls[0].Lock.Options)
+
+	marshaled, err := yaml.Marshal(decoded)
+	require.NoError(t, err)
+	roundTripped, err := Decode(marshaled)
+	require.NoError(t, err)
+	require.NotNil(t, roundTripped.Walls[0].Lock)
+	require.Equal(t, decoded.Walls[0].Lock.Options, roundTripped.Walls[0].Lock.Options)
+
+	compiled, err := Load(raw)
+	require.NoError(t, err)
+	require.Len(t, compiled.Params.AuthoredEdges, 1)
+	// AuthoredEdge intentionally has no lock metadata: authored doors start unlocked.
 }

@@ -342,12 +342,6 @@ func compileWalls(spec *DungeonSpec) ([]encounter.AuthoredEdge, error) {
 			from, to = to, from
 		}
 		edge := encounter.AuthoredEdge{From: from, To: to, Kind: encounter.GeneratedEdgeKind(wall.Kind)}
-		if wall.Lock != nil {
-			edge.LockOptions = make([]encounter.AuthoredLockOption, len(wall.Lock.Options))
-			for optionIndex, option := range wall.Lock.Options {
-				edge.LockOptions[optionIndex] = encounter.AuthoredLockOption{Ability: option.Ability, DC: option.DC}
-			}
-		}
 		switch edge.Kind {
 		case encounter.GeneratedEdgeKindSolid:
 		case encounter.GeneratedEdgeKindDoor:
@@ -424,9 +418,8 @@ type namedCanvasCell struct {
 }
 
 func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
-	// Load validates before compilation, but keep this compilation boundary safe
-	// for direct/internal callers before NewCanvasFloorSource allocates cells.
-	if _, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height); err != nil {
+	canvas, err := encounter.NewCanvasParams(spec.Canvas.Width, spec.Canvas.Height)
+	if err != nil {
 		return CompiledDungeon{}, err
 	}
 	edges, err := compileWalls(spec)
@@ -442,7 +435,7 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 
 	params := encounter.DungeonParams{
 		Key: spec.Key, Height: spec.Canvas.Height, Theme: spec.Theme,
-		Canvas:        encounter.NewCanvasFloorSource(spec.Canvas.Width, spec.Canvas.Height),
+		Canvas:        canvas,
 		PartyStart:    encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount},
 		AuthoredEdges: edges,
 	}

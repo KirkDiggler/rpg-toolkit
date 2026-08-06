@@ -9,7 +9,8 @@ import (
 )
 
 func TestCanvasFloorContainsHex(t *testing.T) {
-	source := NewCanvasFloorSource(4, 3)
+	source, err := NewCanvasParams(4, 3)
+	require.NoError(t, err)
 	maxInt := int(^uint(0) >> 1)
 	minInt := -maxInt - 1
 

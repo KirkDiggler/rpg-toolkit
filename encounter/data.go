@@ -108,10 +108,8 @@ type PendingTriggerSeedData struct {
 type SpaceData struct {
 	// Canvas records an explicit canvas floor source when this space was
 	// initialized in canvas mode. It remains independent of Regions: an empty
-	// region list never means canvas. Width/Height and canonical Cells are
-	// persisted together so LoadFromData can validate authored endpoints without
-	// reconstructing mode from incidental geometry.
-	Canvas *CanvasFloorSource `json:"canvas,omitempty"`
+	// region list never means canvas. Only dimensions persist; LoadFromData derives canonical cells after validating them.
+	Canvas *CanvasData `json:"canvas,omitempty"`
 
 	// Walls are the room's wall segments in absolute cube coordinates, in
 	// one of two shapes:

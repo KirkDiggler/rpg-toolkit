@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -20,19 +19,10 @@ import (
 // cell blocker, so either incident floor cell remains placeable and retains
 // its semantic region identity.
 type AuthoredEdge struct {
-	From        core.Hex             `json:"from"`
-	To          core.Hex             `json:"to"`
-	Kind        GeneratedEdgeKind    `json:"kind"`
-	DoorID      core.EntityID        `json:"door_id,omitempty"`
-	LockOptions []AuthoredLockOption `json:"lock_options,omitempty"`
-}
-
-// AuthoredLockOption preserves the authored lock grammar on a door edge. It
-// deliberately carries metadata only: authored doors remain runtime-unlocked
-// in v0.3 and do not create checks or lock fixtures.
-type AuthoredLockOption struct {
-	Ability string `json:"ability"`
-	DC      int    `json:"dc"`
+	From   core.Hex          `json:"from"`
+	To     core.Hex          `json:"to"`
+	Kind   GeneratedEdgeKind `json:"kind"`
+	DoorID core.EntityID     `json:"door_id,omitempty"`
 }
 
 // AuthoredDoorID returns the stable identity for a door on an authored
@@ -62,7 +52,7 @@ func authoredEdgeLess(left, right AuthoredEdge) bool {
 }
 
 func authoredAsGenerated(edge AuthoredEdge) GeneratedEdge {
-	return GeneratedEdge{From: edge.From, To: edge.To, Kind: edge.Kind, DoorID: edge.DoorID}
+	return GeneratedEdge(edge)
 }
 
 // validateAndNormalizeAuthoredEdges is InitDungeon's defense for callers that
@@ -102,16 +92,10 @@ func validateAndNormalizeAuthoredEdges(params DungeonParams) ([]AuthoredEdge, er
 			if edge.DoorID != "" {
 				return nil, fmt.Errorf("authored edge %d: solid edges must not carry a door id", index)
 			}
-			if len(edge.LockOptions) != 0 {
-				return nil, fmt.Errorf("authored edge %d: solid edges must not carry lock options", index)
-			}
 		case GeneratedEdgeKindDoor:
 			expected := AuthoredDoorID(params.Key, edge.From, edge.To)
 			if edge.DoorID != expected {
 				return nil, fmt.Errorf("authored edge %d: stable authored door id must be %q, got %q", index, expected, edge.DoorID)
-			}
-			if err := validateAuthoredLockOptions(edge.LockOptions); err != nil {
-				return nil, fmt.Errorf("authored edge %d: %w", index, err)
 			}
 		default:
 			return nil, fmt.Errorf("authored edge %d: unknown kind %q", index, edge.Kind)
@@ -208,13 +192,7 @@ func validatePersistedAuthoredEdges(space *SpaceData, doors map[core.EntityID]*D
 			if edge.DoorID != "" {
 				return fmt.Errorf("authored edge %d: persisted solid edge carries door id", index)
 			}
-			if len(edge.LockOptions) != 0 {
-				return fmt.Errorf("authored edge %d: persisted solid edge carries lock options", index)
-			}
 		case GeneratedEdgeKindDoor:
-			if err := validateAuthoredLockOptions(edge.LockOptions); err != nil {
-				return fmt.Errorf("authored edge %d: persisted %w", index, err)
-			}
 			door := doors[edge.DoorID]
 			if edge.DoorID == "" || door == nil || door.ID != edge.DoorID {
 				return fmt.Errorf("authored edge %d: persisted door data missing for %q", index, edge.DoorID)
@@ -369,16 +347,17 @@ func (e *Encounter) authoredDoorEdge(id core.EntityID) (AuthoredEdge, bool) {
 
 func persistedAuthoredFloor(space *SpaceData) (map[core.Hex]struct{}, error) {
 	if space.Canvas != nil {
-		if err := validateCanvasFloorSource(space.Canvas); err != nil {
-			return nil, fmt.Errorf("persisted canvas floor: %w", err)
+		canvas, err := canvasParamsFromData(space.Canvas)
+		if err != nil {
+			return nil, fmt.Errorf("persisted canvas data: %w", err)
 		}
-		if space.Width != space.Canvas.Width || space.Height != space.Canvas.Height {
+		if space.Width != canvas.Width || space.Height != canvas.Height {
 			return nil, fmt.Errorf("persisted canvas dimensions must match space dimensions")
 		}
 		if len(space.Regions) != 0 {
 			return nil, fmt.Errorf("persisted canvas floor must not infer membership from regions")
 		}
-		return canvasFloorHexes(space.Canvas), nil
+		return canvasFloorHexes(canvas), nil
 	}
 	floor := make(map[core.Hex]struct{})
 	for _, region := range space.Regions {
@@ -389,31 +368,10 @@ func persistedAuthoredFloor(space *SpaceData) (map[core.Hex]struct{}, error) {
 	return floor, nil
 }
 
-func validateAuthoredLockOptions(options []AuthoredLockOption) error {
-	for index, option := range options {
-		if strings.TrimSpace(option.Ability) == "" {
-			return fmt.Errorf("lock option %d: ability required", index)
-		}
-		if option.DC < 1 || option.DC > 30 {
-			return fmt.Errorf("lock option %d: dc must be between 1 and 30", index)
-		}
-		if _, err := abilities.GetByID(option.Ability); err != nil {
-			return fmt.Errorf("lock option %d: invalid ability %q", index, option.Ability)
-		}
-	}
-	return nil
-}
-
 func authoredEdgesEqual(left, right AuthoredEdge) bool {
 	if left.From != right.From || left.To != right.To ||
-		left.Kind != right.Kind || left.DoorID != right.DoorID ||
-		len(left.LockOptions) != len(right.LockOptions) {
+		left.Kind != right.Kind || left.DoorID != right.DoorID {
 		return false
-	}
-	for index := range left.LockOptions {
-		if left.LockOptions[index] != right.LockOptions[index] {
-			return false
-		}
 	}
 	return true
 }

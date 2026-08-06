@@ -147,11 +147,14 @@ func (e *Encounter) rebuildRoomFromData() error {
 	}
 	// Validate persisted canvas dimensions before constructing a grid or walking
 	// its canonical cells; snapshots are untrusted at this reload boundary.
+	var canvasParams *CanvasParams
 	if sd.Canvas != nil {
-		if err := validateCanvasFloorSource(sd.Canvas); err != nil {
-			return fmt.Errorf("validate canvas floor source: %w", err)
+		var err error
+		canvasParams, err = canvasParamsFromData(sd.Canvas)
+		if err != nil {
+			return fmt.Errorf("validate canvas data: %w", err)
 		}
-		if sd.Width != sd.Canvas.Width || sd.Height != sd.Canvas.Height {
+		if sd.Width != canvasParams.Width || sd.Height != canvasParams.Height {
 			return fmt.Errorf(
 				"canvas space dimensions must equal canvas dimensions %d x %d (got %d x %d)",
 				sd.Canvas.Width, sd.Canvas.Height, sd.Width, sd.Height,
@@ -331,7 +334,11 @@ func (e *Encounter) rebuildRoomFromData() error {
 			return fmt.Errorf("place obstacle %q: %w", o.ID, err)
 		}
 	}
-	return e.registerRoom(room)
+	if err := e.registerRoom(room); err != nil {
+		return err
+	}
+	e.canvas = canvasParams
+	return nil
 }
 
 // validateObstacles checks the structural invariants AddObstacle-authored

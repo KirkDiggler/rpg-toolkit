@@ -38,7 +38,8 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, compiled.Params.Canvas)
 	require.Empty(t, compiled.Params.Regions)
-	require.Len(t, compiled.Params.Canvas.Cells, 15)
+	require.Equal(t, 5, compiled.Params.Canvas.Width)
+	require.Equal(t, 3, compiled.Params.Canvas.Height)
 	require.Len(t, compiled.Params.CanvasPlacedObstacles, 7)
 	require.Len(t, compiled.Spawns, 1)
 	require.Empty(t, compiled.Spawns[0].RoomID)
@@ -55,7 +56,8 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 
 	data := enc.ToData()
 	require.NotNil(t, data.Space.Canvas)
-	require.Equal(t, compiled.Params.Canvas, data.Space.Canvas)
+	require.Equal(t, compiled.Params.Canvas.Width, data.Space.Canvas.Width)
+	require.Equal(t, compiled.Params.Canvas.Height, data.Space.Canvas.Height)
 	require.Empty(t, data.Space.Regions, "canvas mode must not infer regions")
 	require.Equal(t, core.HexFromPosition(spatial.Position{X: 0, Y: 0}), data.Space.Entrance)
 	require.Len(t, data.Space.Obstacles, 7)
@@ -82,10 +84,6 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 	door := data.Doors["canvas-runtime-authored-door-1--3-2--1--2-1"]
 	require.NotNil(t, door)
 	require.False(t, door.Locked, "lock grammar is metadata, never executable lock state")
-	require.Equal(t,
-		[]encounter.AuthoredLockOption{{Ability: "dex", DC: 15}, {Ability: "str", DC: 10}},
-		data.Space.AuthoredEdges[0].LockOptions,
-	)
 
 	positions, err := enc.ResolvePartySpawnPositions(encounter.ResolvePartySpawnPositionsInput{Count: 4})
 	require.NoError(t, err)

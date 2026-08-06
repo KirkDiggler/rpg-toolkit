@@ -134,17 +134,16 @@ func floorPlanCellLess(left, right FloorPlanCell) bool {
 	return left.Column < right.Column || left.Column == right.Column && left.Row < right.Row
 }
 
-func runtimeCanvasFloorCells(canvas *encounter.CanvasFloorSource) ([]FloorPlanCell, error) {
+func runtimeCanvasFloorCells(canvas *encounter.CanvasData) ([]FloorPlanCell, error) {
 	cellCount, err := encounter.ValidateCanvasDimensions(canvas.Width, canvas.Height)
 	if err != nil {
 		return nil, err
 	}
-	if len(canvas.Cells) != cellCount {
-		return nil, fmt.Errorf("canvas cells must contain exactly %d canonical cells, got %d", cellCount, len(canvas.Cells))
-	}
 	cells := make([]FloorPlanCell, 0, cellCount)
-	for _, cell := range canvas.Cells {
-		cells = append(cells, cellFromHex(cell))
+	for column := 0; column < canvas.Width; column++ {
+		for row := 0; row < canvas.Height; row++ {
+			cells = append(cells, FloorPlanCell{Column: column, Row: row})
+		}
 	}
 	sort.Slice(cells, func(i, j int) bool {
 		if cells[i].Column != cells[j].Column {
