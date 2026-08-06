@@ -454,14 +454,14 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 			if err != nil {
 				return CompiledDungeon{}, fmt.Errorf("place[%d].facing: %w", index, err)
 			}
-			params.CanvasPlacedObstacles = append(params.CanvasPlacedObstacles, encounter.CanvasPlacedObstacleSpec{
+			params.AbsolutePlacedObstacles = append(params.AbsolutePlacedObstacles, encounter.AbsolutePlacedObstacleSpec{
 				ID: core.EntityID(fmt.Sprintf("canvas-prop-%d", index)), Ref: entry.Ref, At: at,
 				BlocksMovement: boolOrTrue(entry.BlocksMovement), BlocksLoS: boolOrTrue(entry.BlocksLoS), Facing: facing,
 			})
 		case refTypeMonsters:
 			absoluteAt := at
 			spawns = append(spawns, SpawnInstruction{MonsterRef: entry.Ref, Count: 1, AbsoluteAt: &absoluteAt})
-			params.CanvasReservedCells = append(params.CanvasReservedCells, encounter.CanvasReservedCell{
+			params.AbsoluteReservedCells = append(params.AbsoluteReservedCells, encounter.AbsoluteReservedCell{
 				At: at, Name: fmt.Sprintf("placed monster %q (place[%d])", entry.Ref, index),
 			})
 		default:

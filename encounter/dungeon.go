@@ -20,11 +20,12 @@ import (
 // constant now that InitTwoChamberRoom delegates to InitDungeon.
 const dungeonPathWidth = 2.0
 
-// DungeonParams configures Encounter.InitDungeon: an ordered linear chain
-// of Regions joined by Connectors, emitted as ONE continuous Space (design
-// doc Fork 1 — regions are tags on a Space, not separate spatial.Rooms).
-// Generalizes TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to
-// any N>=2 (rpg-toolkit#814).
+// DungeonParams configures Encounter.InitDungeon with either an explicit canvas
+// floor source or a legacy ordered linear chain of Regions joined by Connectors.
+// Both modes emit ONE continuous Space (design doc Fork 1 — regions are tags on
+// a Space, not separate spatial.Rooms). The room-chain mode generalizes
+// TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to any N>=2
+// (rpg-toolkit#814).
 type DungeonParams struct {
 	// FloorSource selects canvas dimensions or legacy room-chain geometry.
 	// The zero value retains legacy room-chain semantics.
@@ -33,11 +34,11 @@ type DungeonParams struct {
 	// Width is required only for canvas floors; room-chain width derives from Regions.
 	Width int
 
-	// CanvasPlacedObstacles and CanvasReservedCells are absolute authored
-	// content used only in canvas mode. The latter reserves absolute monster
-	// spawns from party seating before any geometry is generated.
-	CanvasPlacedObstacles []CanvasPlacedObstacleSpec
-	CanvasReservedCells   []CanvasReservedCell
+	// AbsolutePlacedObstacles and AbsoluteReservedCells are absolute authored
+	// content accepted only with FloorSourceCanvas. The latter reserves absolute
+	// monster spawns from party seating before any geometry is generated.
+	AbsolutePlacedObstacles []AbsolutePlacedObstacleSpec
+	AbsoluteReservedCells   []AbsoluteReservedCell
 
 	// Key is the stable authored dungeon key. It is required only when
 	// AuthoredEdges is non-empty because a door edge derives its stable DoorID
@@ -83,8 +84,8 @@ type DungeonParams struct {
 	Theme string
 }
 
-// CanvasPlacedObstacleSpec pins an authored prop at an absolute canvas cell.
-type CanvasPlacedObstacleSpec struct {
+// AbsolutePlacedObstacleSpec pins an authored prop at an absolute floor cell.
+type AbsolutePlacedObstacleSpec struct {
 	ID             core.EntityID
 	Ref            string
 	At             core.Hex
@@ -93,9 +94,9 @@ type CanvasPlacedObstacleSpec struct {
 	Facing         *uint32
 }
 
-// CanvasReservedCell names authored content (currently an absolute monster
+// AbsoluteReservedCell names authored content (currently an absolute monster
 // spawn) that must not be used by the party-start envelope.
-type CanvasReservedCell struct {
+type AbsoluteReservedCell struct {
 	At   core.Hex
 	Name string
 }

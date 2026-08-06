@@ -82,11 +82,11 @@ func TestCanvasPartyStartEnvelopeAvoidsNamedContentAcrossSeeds(t *testing.T) {
 	params := encounter.DungeonParams{
 		FloorSource: encounter.FloorSourceCanvas, Width: 4, Height: 3,
 		PartyStart: encounter.PartyStartParams{Anchor: &anchor, SeatCount: 4},
-		CanvasPlacedObstacles: []encounter.CanvasPlacedObstacleSpec{{
+		AbsolutePlacedObstacles: []encounter.AbsolutePlacedObstacleSpec{{
 			ID: "prop", Ref: "dnd5e:props:altar", At: core.HexFromPosition(spatial.Position{X: 1, Y: 0}),
 			BlocksMovement: true, BlocksLoS: true,
 		}},
-		CanvasReservedCells: []encounter.CanvasReservedCell{{
+		AbsoluteReservedCells: []encounter.AbsoluteReservedCell{{
 			At: core.HexFromPosition(spatial.Position{X: 0, Y: 1}), Name: "placed monster \"skeleton\"",
 		}},
 	}
@@ -105,8 +105,8 @@ func TestCanvasPartyStartEnvelopeAvoidsNamedContentAcrossSeeds(t *testing.T) {
 			require.Equal(t, want, resolved.Positions)
 		}
 		for _, position := range resolved.Positions {
-			require.NotEqual(t, params.CanvasPlacedObstacles[0].At, position)
-			require.NotEqual(t, params.CanvasReservedCells[0].At, position)
+			require.NotEqual(t, params.AbsolutePlacedObstacles[0].At, position)
+			require.NotEqual(t, params.AbsoluteReservedCells[0].At, position)
 		}
 		_ = broker.Close()
 		_ = transport.Close()

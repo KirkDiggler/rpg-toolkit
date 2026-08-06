@@ -26,9 +26,9 @@ type DungeonSpec struct {
 	// must name two absolute pointy-top odd-q [column,row] floor cells (not
 	// even-q or axial) and a solid or door kind.
 	Walls []WallSpec `yaml:"walls,omitempty"`
-	// Place is decoded solely to reject unsupported top-level placement,
-	// including facing, at a field-specific validation path. Slice #178
-	// supports only existing room-scoped floor props.
+	// Place accepts absolute placement only with an explicit canvas floor source.
+	// Room-chain mode rejects every top-level entry at a field-specific
+	// validation path.
 	Place []PlacedEntry `yaml:"place,omitempty"`
 	// roomsShape preserves the authored YAML form for canvas validation.
 	// A nil Rooms slice alone cannot distinguish omitted, null, and [] input.
@@ -92,7 +92,7 @@ type ObstacleEntry struct {
 // ref type fails validation with a clear message instead of a decode error.
 type PlacedEntry struct {
 	Ref            string `yaml:"ref"`
-	At             [2]int `yaml:"at"` // [col, row], room-local — static-placement delta, rpg-toolkit#842
+	At             [2]int `yaml:"at"` // [col, row], room-local in a room or absolute with a canvas floor source
 	BlocksMovement *bool  `yaml:"blocks_movement,omitempty"`
 	BlocksLoS      *bool  `yaml:"blocks_los,omitempty"`
 	// Facing is the optional canonical YAML label. Nil represents both an

@@ -8,8 +8,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// CanvasMaxStructuralCells is the largest canvas structural-floor projection
-// the encounter runtime accepts. It bounds every canvas allocation and walk.
+// CanvasMaxStructuralCells is a defensive runtime implementation capacity for
+// canvas structural-floor allocations and walks, not a ratified v0.3 grammar
+// maximum.
 const CanvasMaxStructuralCells = 1 << 20
 
 // FloorSourceKind identifies how InitDungeon derives its structural floor.
@@ -84,9 +85,9 @@ func validateCanvasDungeonParams(params DungeonParams) error {
 		return fmt.Errorf("party start seat count must not be negative (got %d)", params.PartyStart.SeatCount)
 	}
 	floor := canvasFloorHexes(params.Width, params.Height)
-	occupied := make(map[core.Hex]string, len(params.CanvasPlacedObstacles)+len(params.CanvasReservedCells))
-	seenIDs := make(map[core.EntityID]int, len(params.CanvasPlacedObstacles))
-	for index, obstacle := range params.CanvasPlacedObstacles {
+	occupied := make(map[core.Hex]string, len(params.AbsolutePlacedObstacles)+len(params.AbsoluteReservedCells))
+	seenIDs := make(map[core.EntityID]int, len(params.AbsolutePlacedObstacles))
+	for index, obstacle := range params.AbsolutePlacedObstacles {
 		if obstacle.ID == "" {
 			return fmt.Errorf("canvas placed obstacle %d: id required", index)
 		}
@@ -102,7 +103,7 @@ func validateCanvasDungeonParams(params DungeonParams) error {
 		}
 		occupied[obstacle.At] = fmt.Sprintf("canvas prop %q", obstacle.ID)
 	}
-	for index, reserved := range params.CanvasReservedCells {
+	for index, reserved := range params.AbsoluteReservedCells {
 		if reserved.Name == "" {
 			return fmt.Errorf("canvas reserved cell %d: name required", index)
 		}
@@ -122,8 +123,8 @@ func generateCanvasDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	if err != nil {
 		return nil, err
 	}
-	obstacles := make([]ObstacleData, len(params.CanvasPlacedObstacles))
-	for index, obstacle := range params.CanvasPlacedObstacles {
+	obstacles := make([]ObstacleData, len(params.AbsolutePlacedObstacles))
+	for index, obstacle := range params.AbsolutePlacedObstacles {
 		obstacles[index] = ObstacleData{
 			ID: obstacle.ID, Ref: obstacle.Ref, Position: obstacle.At,
 			BlocksMovement: obstacle.BlocksMovement, BlocksLoS: obstacle.BlocksLoS, Facing: obstacle.Facing,
@@ -149,11 +150,11 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 	if _, ok := floor[anchorHex]; !ok {
 		return partyStartReservation{}, fmt.Errorf("party start anchor %v is outside canvas floor", anchorHex)
 	}
-	blockers := make(map[core.Hex]string, len(params.CanvasPlacedObstacles)+len(params.CanvasReservedCells))
-	for _, obstacle := range params.CanvasPlacedObstacles {
+	blockers := make(map[core.Hex]string, len(params.AbsolutePlacedObstacles)+len(params.AbsoluteReservedCells))
+	for _, obstacle := range params.AbsolutePlacedObstacles {
 		blockers[obstacle.At] = fmt.Sprintf("canvas prop %q", obstacle.ID)
 	}
-	for _, reserved := range params.CanvasReservedCells {
+	for _, reserved := range params.AbsoluteReservedCells {
 		blockers[reserved.At] = reserved.Name
 	}
 	if blocker, blocked := blockers[anchorHex]; blocked {

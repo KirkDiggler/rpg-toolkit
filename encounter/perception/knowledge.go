@@ -88,10 +88,11 @@ const (
 // viewer sees it face south. On the entity, one viewer's sighting would
 // rewrite every other viewer's memory.
 //
-// Facing is absent for players, monsters, and rolled obstacles. A
-// room-scoped authored floor prop may carry a canonical E,NE,NW,W,SW,SE =
-// 0..5 override. Pointer presence distinguishes absent from explicit E = 0
-// and persists with this observation for remembered placement rendering.
+// Facing is absent for players, monsters, and rolled obstacles. An authored
+// floor prop may carry a canonical E,NE,NW,W,SW,SE = 0..5 override, whether
+// placed room-locally or at an absolute canvas coordinate. Pointer presence
+// distinguishes absent from explicit E = 0 and persists with this observation
+// for remembered placement rendering.
 type Placement struct {
 	EntityID core.EntityID
 	// Facing is an optional hex-direction index in canonical 0-5 order.

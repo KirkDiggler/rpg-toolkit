@@ -26,8 +26,8 @@ const (
 )
 
 // TestValidate_FacingStrictlyScopesCanonicalFloorProps proves facing is neither
-// stripped nor broadly accepted: only existing room-scoped floor props may
-// carry it, while unsupported forms name the exact supplied field path.
+// stripped nor broadly accepted: only floor props may carry it in room-chain
+// or canvas mode, while unsupported forms name the exact supplied field path.
 func TestValidate_FacingStrictlyScopesCanonicalFloorProps(t *testing.T) {
 	decode := func(t *testing.T) *dungeonspec.DungeonSpec {
 		t.Helper()

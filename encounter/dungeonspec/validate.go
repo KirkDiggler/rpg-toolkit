@@ -453,9 +453,9 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 	return nil
 }
 
-// validateTopLevelPlace retains the canonical syntax long enough to reject
-// unsupported top-level placement capability at the author-supplied field.
-// It deliberately never compiles or maps entries into room-scoped placement.
+// validateTopLevelPlace rejects top-level placement in room-chain mode at the
+// author-supplied field. Canvas mode validates and compiles the same entries as
+// absolute placement instead.
 func validateTopLevelPlace(entries []PlacedEntry) error {
 	for index, entry := range entries {
 		if entry.Facing != nil {
