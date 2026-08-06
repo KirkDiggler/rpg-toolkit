@@ -5,6 +5,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Dispatch from main to check its selected commit without push-event fields.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,7 +25,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        # Keep every job on the commit selected by the triggering event.
+        ref: ${{ github.sha }}
         fetch-depth: 0
+
+    - name: Verify manual target
+      if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+      run: |
+        echo "Manual CI recovery must be dispatched from main; refusing ${GITHUB_REF}."
+        exit 1
     
     - name: Detect changed modules
       id: detect
@@ -42,9 +52,15 @@ jobs:
           exit 0
         fi
         
-        # Get list of changed files
+        # Get list of changed files. A manual dispatch has no push before/after
+        # fields, so compare the selected main commit to its parent; use full CI
+        # if that parent is unavailable.
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.go$' || true)
+        elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && ! git rev-parse --verify HEAD^ >/dev/null; then
+          echo "Selected main commit has no parent; running all checks"
+          echo "should_run_all=true" >> $GITHUB_OUTPUT
+          exit 0
         else
           CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '\.go$' || true)
         fi
@@ -95,6 +111,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
     
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -153,6 +171,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
     
     - name: Set up Go
       uses: actions/setup-go@v5
