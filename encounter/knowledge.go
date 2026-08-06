@@ -112,6 +112,65 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 	return out
 }
 
+// observedHexesFor returns immutable-at-publish event facts for exactly hexes.
+// It reads the viewer's already-refreshed memory rather than global SpaceData,
+// preserving the same fog authorization and remembered ZoneID that KnownHexes
+// exposes. The result is position-sorted by knownHexesToEvents.
+func (e *Encounter) observedHexesFor(playerID core.PlayerID, hexes core.HexSet) []events.KnownHex {
+	known := e.KnownHexes(playerID)
+	selected := make(map[core.Hex]perception.HexObservation, len(hexes))
+	for hex := range hexes {
+		if observation, ok := known[hex]; ok {
+			selected[hex] = observation
+		}
+	}
+	return knownHexesToEvents(selected)
+}
+
+// observedHexFor returns one viewer's event-time fact for hex.
+func (e *Encounter) observedHexFor(playerID core.PlayerID, hex core.Hex) (events.KnownHex, bool) {
+	observations := e.observedHexesFor(playerID, core.NewHexSet(hex))
+	if len(observations) == 0 {
+		return events.KnownHex{}, false
+	}
+	return observations[0], true
+}
+
+// attachRevealObservations snapshots each reveal's authorized facts after every
+// caller refresh is complete and before broker publication.
+func (e *Encounter) attachRevealObservations(reveals map[core.PlayerID]events.HexRevealedSlice) {
+	for playerID, reveal := range reveals {
+		reveal.Observations = e.observedHexesFor(playerID, reveal.Hexes)
+		reveals[playerID] = reveal
+	}
+}
+
+// eventObservationsForPositions snapshots one fact per viewer at a shared
+// entity-event position. Missing observations are omitted rather than inferred.
+func (e *Encounter) eventObservationsForPositions(
+	positions map[core.PlayerID]core.Hex,
+) map[core.PlayerID]events.KnownHex {
+	out := make(map[core.PlayerID]events.KnownHex, len(positions))
+	for playerID, position := range positions {
+		if observation, ok := e.observedHexFor(playerID, position); ok {
+			out[playerID] = observation
+		}
+	}
+	return out
+}
+
+// eventObservationsForAudience snapshots one shared position for every entity
+// event recipient.
+func (e *Encounter) eventObservationsForAudience(
+	position core.Hex, audience map[core.PlayerID]struct{},
+) map[core.PlayerID]events.KnownHex {
+	positions := make(map[core.PlayerID]core.Hex, len(audience))
+	for playerID := range audience {
+		positions[playerID] = position
+	}
+	return e.eventObservationsForPositions(positions)
+}
+
 // refreshObservations writes a fresh, current-world-truth HexObservation
 // into view.Memory for every hex in hexes — the one place this package
 // tells a viewer's memory "this is what you now, authoritatively, see".
