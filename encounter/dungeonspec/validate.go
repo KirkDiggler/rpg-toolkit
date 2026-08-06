@@ -77,6 +77,9 @@ func Validate(spec *DungeonSpec) error {
 	if spec.Canvas != nil {
 		return validateCanvas(spec)
 	}
+	if err := validateNoRegionsInRoomChain(spec); err != nil {
+		return err
+	}
 	if spec.Height < minHeight {
 		return fmt.Errorf("height must be at least %d, got %d", minHeight, spec.Height)
 	}
@@ -149,6 +152,13 @@ func Validate(spec *DungeonSpec) error {
 	return nil
 }
 
+func validateNoRegionsInRoomChain(spec *DungeonSpec) error {
+	if len(spec.Regions) != 0 {
+		return fmt.Errorf("regions require canvas mode (non-empty rooms and regions are incompatible)")
+	}
+	return nil
+}
+
 func validateCanvas(spec *DungeonSpec) error {
 	cellCount, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height)
 	if err != nil {
@@ -188,7 +198,67 @@ func validateCanvas(spec *DungeonSpec) error {
 			return fmt.Errorf("start %v conflicts with %q", *spec.Start, prior)
 		}
 	}
+	if err := validateRegions(spec.Regions, floor); err != nil {
+		return err
+	}
 	return validateWallsOnFloor(spec, floor, spec.Canvas.Width, spec.Canvas.Height)
+}
+
+// validateRegions enforces only the runnable semantic-scope structural rules.
+// Content, role cardinality, connectedness, and empty scopes are intentionally
+// not semantic validation concerns in this wave.
+func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
+	seenIDs := make(map[string]int, len(regions))
+	sets := make([]map[[2]int]struct{}, len(regions))
+	for i, region := range regions {
+		if region.ID == "" {
+			return fmt.Errorf("regions[%d].id must not be empty", i)
+		}
+		if first, duplicate := seenIDs[region.ID]; duplicate {
+			return fmt.Errorf("regions[%d].id %q duplicates regions[%d]", i, region.ID, first)
+		}
+		seenIDs[region.ID] = i
+		if region.Archetype != nil {
+			if *region.Archetype == "" {
+				return fmt.Errorf("regions[%d].archetype: explicit empty archetype is unsupported", i)
+			}
+			if err := validateArchetype(*region.Archetype); err != nil {
+				return fmt.Errorf("regions[%d].archetype: %w", i, err)
+			}
+		}
+		if region.Cells == nil {
+			return fmt.Errorf("regions[%d].cells is required (use [] for an empty scope)", i)
+		}
+		sets[i] = make(map[[2]int]struct{}, len(region.Cells))
+		for j, cell := range region.Cells {
+			if _, ok := floor[cell]; !ok {
+				return fmt.Errorf("regions[%d].cells[%d] %v is out of canvas floor footprint", i, j, cell)
+			}
+			sets[i][cell] = struct{}{} // same-region duplicates canonicalize
+		}
+	}
+	for left := range sets {
+		for right := left + 1; right < len(sets); right++ {
+			if len(sets[left]) == 0 || len(sets[right]) == 0 {
+				continue
+			}
+			intersection := 0
+			for cell := range sets[left] {
+				if _, ok := sets[right][cell]; ok {
+					intersection++
+				}
+			}
+			if intersection == 0 {
+				continue
+			}
+			leftInsideRight := intersection == len(sets[left]) && len(sets[left]) < len(sets[right])
+			rightInsideLeft := intersection == len(sets[right]) && len(sets[right]) < len(sets[left])
+			if !leftInsideRight && !rightInsideLeft {
+				return fmt.Errorf("regions %q and %q have equal or partial overlap", regions[left].ID, regions[right].ID)
+			}
+		}
+	}
+	return nil
 }
 func validateCanvasPlacement(path string, e PlacedEntry) error {
 	typ, err := refParts(e.Ref)

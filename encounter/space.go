@@ -156,7 +156,10 @@ func (e *Encounter) rebuildRoomFromData() error {
 			return fmt.Errorf("validate canvas dimensions: %w", err)
 		}
 		if len(sd.Regions) != 0 {
-			return fmt.Errorf("canvas space must not contain regions")
+			return fmt.Errorf("canvas space must not contain room-chain regions")
+		}
+		if err := validateSemanticRegionData(sd.SemanticRegions, canvasFloorHexes(sd.Width, sd.Height)); err != nil {
+			return fmt.Errorf("validate semantic regions: %w", err)
 		}
 	}
 	authoredByKey := authoredEdgesByKey(sd)

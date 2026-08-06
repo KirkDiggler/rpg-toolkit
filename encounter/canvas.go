@@ -79,7 +79,7 @@ func validateCanvasDungeonParams(params DungeonParams) error {
 		return err
 	}
 	if len(params.Regions) != 0 || len(params.Connectors) != 0 {
-		return fmt.Errorf("canvas dungeon must not contain regions or connectors")
+		return fmt.Errorf("canvas dungeon must not contain room-chain regions or connectors")
 	}
 	if params.PartyStart.SeatCount < 0 {
 		return fmt.Errorf("party start seat count must not be negative (got %d)", params.PartyStart.SeatCount)
@@ -102,6 +102,9 @@ func validateCanvasDungeonParams(params DungeonParams) error {
 			return fmt.Errorf("canvas placed obstacle %q at %v collides with %s", obstacle.ID, obstacle.At, prior)
 		}
 		occupied[obstacle.At] = fmt.Sprintf("canvas prop %q", obstacle.ID)
+	}
+	if _, err := validateSemanticRegionParams(params.SemanticRegions, floor); err != nil {
+		return err
 	}
 	for index, reserved := range params.AbsoluteReservedCells {
 		if reserved.Name == "" {
@@ -130,9 +133,14 @@ func generateCanvasDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			BlocksMovement: obstacle.BlocksMovement, BlocksLoS: obstacle.BlocksLoS, Facing: obstacle.Facing,
 		}
 	}
+	floor := canvasFloorHexes(params.Width, params.Height)
+	semanticRegions, err := validateSemanticRegionParams(params.SemanticRegions, floor)
+	if err != nil {
+		return nil, err
+	}
 	return &dungeonLayout{
 		width: params.Width, entrance: reservation.anchor, obstacles: obstacles,
-		partyStartPositions: reservation.positions(),
+		semanticRegions: semanticRegions, partyStartPositions: reservation.positions(),
 	}, nil
 }
 
