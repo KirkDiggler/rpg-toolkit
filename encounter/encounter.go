@@ -1255,7 +1255,7 @@ func (e *Encounter) applyAndPublishMove(
 	for hex, viewers := range appearedByHex {
 		if err := e.broker.Publish(events.NewEntityAppearedEvent(
 			e.data.ID, e.nextSeq(), p.EntityID, hex, viewers,
-			e.eventObservationsForAudience(hex, viewers),
+			e.eventObservationsForAppearance(hex, viewers, p.EntityID),
 		)); err != nil {
 			return "", fmt.Errorf("publish entity appeared: %w", err)
 		}

@@ -87,7 +87,7 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 		for _, c := range o.Contents {
 			contents = append(contents, events.KnownHexPlacement{
 				EntityID: c.EntityID,
-				Facing:   c.Facing,
+				Facing:   cloneFacing(c.Facing),
 			})
 		}
 		out = append(out, events.KnownHex{
@@ -169,6 +169,33 @@ func (e *Encounter) eventObservationsForAudience(
 		positions[playerID] = position
 	}
 	return e.eventObservationsForPositions(positions)
+}
+
+// eventObservationsForAppearance snapshots a transition-time appearance. The
+// mover's persisted position may already be its final destination when a
+// pass-through appearance is published for an intermediate hex, so canonical
+// current-memory facts need a single event-time placement overlay here.
+func (e *Encounter) eventObservationsForAppearance(
+	position core.Hex, audience map[core.PlayerID]struct{}, entityID core.EntityID,
+) map[core.PlayerID]events.KnownHex {
+	out := e.eventObservationsForAudience(position, audience)
+	for playerID, observation := range out {
+		found := false
+		for _, content := range observation.Contents {
+			if content.EntityID == entityID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			observation.Contents = append(observation.Contents, events.KnownHexPlacement{EntityID: entityID})
+			sort.Slice(observation.Contents, func(i, j int) bool {
+				return observation.Contents[i].EntityID < observation.Contents[j].EntityID
+			})
+			out[playerID] = observation
+		}
+	}
+	return out
 }
 
 // refreshObservations writes a fresh, current-world-truth HexObservation
@@ -297,6 +324,14 @@ func (e *Encounter) isSpaceHex(h core.Hex) bool {
 // Player and monster placements carry no facing override. Static obstacles
 // retain their persisted optional facing, so visible and remembered placement
 // observations keep explicit E = 0 distinct from absence.
+func cloneFacing(value *uint32) *uint32 {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	var out []perception.Placement
 	for _, p := range e.data.Players {
@@ -312,7 +347,7 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	if e.data.Space != nil {
 		for _, o := range e.data.Space.Obstacles {
 			if o.Position == h {
-				out = append(out, perception.Placement{EntityID: o.ID, Facing: o.Facing})
+				out = append(out, perception.Placement{EntityID: o.ID, Facing: cloneFacing(o.Facing)})
 			}
 		}
 	}
