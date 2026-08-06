@@ -45,6 +45,14 @@ jobs:
           exit 0
         fi
         
+        # Manual recovery validates the selected main commit in full. Its
+        # parent diff may contain only workflow files, not the missed module.
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "should_run_all=true" >> $GITHUB_OUTPUT
+          echo "Running all checks for manual recovery"
+          exit 0
+        fi
+
         # Check if PR has "full-check" label
         if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-check') }}" == "true" ]]; then
           echo "should_run_all=true" >> $GITHUB_OUTPUT
@@ -52,15 +60,9 @@ jobs:
           exit 0
         fi
         
-        # Get list of changed files. A manual dispatch has no push before/after
-        # fields, so compare the selected main commit to its parent; use full CI
-        # if that parent is unavailable.
+        # Get list of changed files
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.go$' || true)
-        elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && ! git rev-parse --verify HEAD^ >/dev/null; then
-          echo "Selected main commit has no parent; running all checks"
-          echo "should_run_all=true" >> $GITHUB_OUTPUT
-          exit 0
         else
           CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '\.go$' || true)
         fi
