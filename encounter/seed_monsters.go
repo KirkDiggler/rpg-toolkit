@@ -326,10 +326,10 @@ func (e *Encounter) validateAbsoluteCanvasSpawn(
 		return resolvedSpawn{}, fmt.Errorf(
 			"canvas monster %q: placed instructions must have Count 1, got %d", spawn.MonsterRef, spawn.Count)
 	}
-	if e.data.Space == nil || e.data.Space.Canvas == nil {
+	if e.data.Space == nil || e.data.Space.FloorSource != FloorSourceCanvas {
 		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: no canvas dungeon initialized", spawn.MonsterRef)
 	}
-	if !canvasDataContainsHex(e.data.Space.Canvas, *spawn.AbsoluteAt) {
+	if !canvasFloorContainsDimensions(e.data.Space.Width, e.data.Space.Height, *spawn.AbsoluteAt) {
 		return resolvedSpawn{}, fmt.Errorf(
 			"canvas monster %q: absolute position %v is outside canvas floor", spawn.MonsterRef, *spawn.AbsoluteAt)
 	}

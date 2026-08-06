@@ -145,18 +145,18 @@ func (e *Encounter) rebuildRoomFromData() error {
 	if err := validatePersistedAuthoredEdges(sd, e.data.Doors); err != nil {
 		return fmt.Errorf("validate authored edges: %w", err)
 	}
-	// Validate persisted canvas dimensions before constructing a grid or walking
-	// its canonical cells; snapshots are untrusted at this reload boundary.
-	if sd.Canvas != nil {
-		canvasParams, err := canvasParamsFromData(sd.Canvas)
-		if err != nil {
-			return fmt.Errorf("validate canvas data: %w", err)
+	// An omitted marker is legacy room-chain data. Canvas is explicit and its
+	// complete structural floor is derived from the already-persisted dimensions.
+	source, err := floorSourceKind(sd.FloorSource)
+	if err != nil {
+		return fmt.Errorf("validate floor source: %w", err)
+	}
+	if source == FloorSourceCanvas {
+		if _, err := ValidateCanvasDimensions(sd.Width, sd.Height); err != nil {
+			return fmt.Errorf("validate canvas dimensions: %w", err)
 		}
-		if sd.Width != canvasParams.Width || sd.Height != canvasParams.Height {
-			return fmt.Errorf(
-				"canvas space dimensions must equal canvas dimensions %d x %d (got %d x %d)",
-				sd.Canvas.Width, sd.Canvas.Height, sd.Width, sd.Height,
-			)
+		if len(sd.Regions) != 0 {
+			return fmt.Errorf("canvas space must not contain regions")
 		}
 	}
 	authoredByKey := authoredEdgesByKey(sd)

@@ -106,10 +106,9 @@ type PendingTriggerSeedData struct {
 // rather than a toolkit-local type — same shape environments.EnvironmentData
 // already persists, no reason to duplicate it.
 type SpaceData struct {
-	// Canvas records an explicit canvas floor source when this space was
-	// initialized in canvas mode. It remains independent of Regions: an empty
-	// region list never means canvas. Only dimensions persist; LoadFromData derives canonical cells after validating them.
-	Canvas *CanvasData `json:"canvas,omitempty"`
+	// FloorSource records how the structural floor is derived. An omitted marker
+	// is legacy room-chain data; only the explicit canvas marker selects dimensions.
+	FloorSource FloorSourceKind `json:"floor_source,omitempty"`
 
 	// Walls are the room's wall segments in absolute cube coordinates, in
 	// one of two shapes:

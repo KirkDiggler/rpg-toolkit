@@ -120,8 +120,8 @@ func validateAndNormalizeAuthoredEdges(params DungeonParams) ([]AuthoredEdge, er
 // and obstacles: authored edge endpoints identify durable semantic floor cells,
 // not a seed-dependent open-cell sample.
 func semanticDungeonFloorHexes(params DungeonParams) map[core.Hex]struct{} {
-	if params.Canvas != nil {
-		return canvasFloorHexes(params.Canvas)
+	if params.FloorSource == FloorSourceCanvas {
+		return canvasFloorHexes(params.Width, params.Height)
 	}
 	capacity := 0
 	for _, region := range params.Regions {
@@ -346,18 +346,18 @@ func (e *Encounter) authoredDoorEdge(id core.EntityID) (AuthoredEdge, bool) {
 }
 
 func persistedAuthoredFloor(space *SpaceData) (map[core.Hex]struct{}, error) {
-	if space.Canvas != nil {
-		canvas, err := canvasParamsFromData(space.Canvas)
-		if err != nil {
-			return nil, fmt.Errorf("persisted canvas data: %w", err)
-		}
-		if space.Width != canvas.Width || space.Height != canvas.Height {
-			return nil, fmt.Errorf("persisted canvas dimensions must match space dimensions")
+	source, err := floorSourceKind(space.FloorSource)
+	if err != nil {
+		return nil, fmt.Errorf("persisted floor source: %w", err)
+	}
+	if source == FloorSourceCanvas {
+		if _, err := ValidateCanvasDimensions(space.Width, space.Height); err != nil {
+			return nil, fmt.Errorf("persisted canvas dimensions: %w", err)
 		}
 		if len(space.Regions) != 0 {
 			return nil, fmt.Errorf("persisted canvas floor must not infer membership from regions")
 		}
-		return canvasFloorHexes(canvas), nil
+		return canvasFloorHexes(space.Width, space.Height), nil
 	}
 	floor := make(map[core.Hex]struct{})
 	for _, region := range space.Regions {

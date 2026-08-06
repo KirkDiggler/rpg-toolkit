@@ -418,8 +418,7 @@ type namedCanvasCell struct {
 }
 
 func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error) {
-	canvas, err := encounter.NewCanvasParams(spec.Canvas.Width, spec.Canvas.Height)
-	if err != nil {
+	if _, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height); err != nil {
 		return CompiledDungeon{}, err
 	}
 	edges, err := compileWalls(spec)
@@ -434,8 +433,8 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 	}
 
 	params := encounter.DungeonParams{
-		Key: spec.Key, Height: spec.Canvas.Height, Theme: spec.Theme,
-		Canvas:        canvas,
+		Key: spec.Key, Width: spec.Canvas.Width, Height: spec.Canvas.Height, Theme: spec.Theme,
+		FloorSource:   encounter.FloorSourceCanvas,
 		PartyStart:    encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount},
 		AuthoredEdges: edges,
 	}

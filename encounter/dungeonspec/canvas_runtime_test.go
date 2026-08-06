@@ -36,10 +36,10 @@ walls:
 func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) {
 	compiled, err := dungeonspec.LoadWithConfig([]byte(canvasRuntimeYAML), dungeonspec.LoadConfig{PartyStartSeatCount: 4})
 	require.NoError(t, err)
-	require.NotNil(t, compiled.Params.Canvas)
+	require.Equal(t, encounter.FloorSourceCanvas, compiled.Params.FloorSource)
 	require.Empty(t, compiled.Params.Regions)
-	require.Equal(t, 5, compiled.Params.Canvas.Width)
-	require.Equal(t, 3, compiled.Params.Canvas.Height)
+	require.Equal(t, 5, compiled.Params.Width)
+	require.Equal(t, 3, compiled.Params.Height)
 	require.Len(t, compiled.Params.CanvasPlacedObstacles, 7)
 	require.Len(t, compiled.Spawns, 1)
 	require.Empty(t, compiled.Spawns[0].RoomID)
@@ -55,9 +55,9 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 	require.NoError(t, enc.SeedMonsters(compiled.Spawns))
 
 	data := enc.ToData()
-	require.NotNil(t, data.Space.Canvas)
-	require.Equal(t, compiled.Params.Canvas.Width, data.Space.Canvas.Width)
-	require.Equal(t, compiled.Params.Canvas.Height, data.Space.Canvas.Height)
+	require.Equal(t, encounter.FloorSourceCanvas, data.Space.FloorSource)
+	require.Equal(t, compiled.Params.Width, data.Space.Width)
+	require.Equal(t, compiled.Params.Height, data.Space.Height)
 	require.Empty(t, data.Space.Regions, "canvas mode must not infer regions")
 	require.Equal(t, core.HexFromPosition(spatial.Position{X: 0, Y: 0}), data.Space.Entrance)
 	require.Len(t, data.Space.Obstacles, 7)
@@ -97,6 +97,11 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, dungeonspec.FloorPlanCell{Column: 0, Row: 0}, plan.Entrance)
 	require.Len(t, plan.FloorCells, 15)
+	for column := 0; column < 5; column++ {
+		for row := 0; row < 3; row++ {
+			require.Contains(t, plan.FloorCells, dungeonspec.FloorPlanCell{Column: column, Row: row})
+		}
+	}
 	require.Equal(t, "canvas-runtime-authored-door-1--3-2--1--2-1", plan.Edges[0].DoorID)
 
 	payload, err := json.Marshal(data)
@@ -105,7 +110,7 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 	require.NoError(t, json.Unmarshal(payload, &persisted))
 	reloaded, err := encounter.LoadFromData(context.Background(), &persisted, broker)
 	require.NoError(t, err)
-	require.Equal(t, data.Space.Canvas, reloaded.ToData().Space.Canvas)
+	require.Equal(t, data.Space.FloorSource, reloaded.ToData().Space.FloorSource)
 	require.Equal(t, positions.Positions, reloaded.ToData().Space.PartyStartPositions)
 	require.Equal(t, data.Space.AuthoredEdges, reloaded.ToData().Space.AuthoredEdges)
 }

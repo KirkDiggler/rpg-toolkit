@@ -26,10 +26,12 @@ const dungeonPathWidth = 2.0
 // Generalizes TwoChamberRoomParams (rpg-toolkit#806) from a fixed N=2 to
 // any N>=2 (rpg-toolkit#814).
 type DungeonParams struct {
-	// Canvas selects the explicit canvas floor source. A dungeon has exactly
-	// one source: Canvas with no Regions/Connectors, or the legacy room chain.
-	// Canvas dimensions define the complete derived structural floor; no cells are caller- or persistence-owned.
-	Canvas *CanvasParams
+	// FloorSource selects canvas dimensions or legacy room-chain geometry.
+	// The zero value retains legacy room-chain semantics.
+	FloorSource FloorSourceKind
+
+	// Width is required only for canvas floors; room-chain width derives from Regions.
+	Width int
 
 	// CanvasPlacedObstacles and CanvasReservedCells are absolute authored
 	// content used only in canvas mode. The latter reserves absolute monster
@@ -365,11 +367,12 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 	if len(authoredEdges) > 0 {
 		dungeonKey = params.Key
 	}
+	source, _ := floorSourceKind(params.FloorSource)
 	space := &SpaceData{
 		Walls:               layout.walls,
 		Width:               layout.width,
 		Height:              params.Height,
-		Canvas:              params.Canvas.toData(),
+		FloorSource:         source,
 		Entrance:            core.HexFromCube(layout.entrance),
 		PartyStartPositions: layout.partyStartPositions,
 		DungeonKey:          dungeonKey,
@@ -479,7 +482,11 @@ func validateDungeonDoorIDsAvailable(
 // least 4, and the boss-room scale invariant (rpg-toolkit#814 Approved
 // Slice 3 corrections) — a generation-time assertion, not eyeballing.
 func validateDungeonParams(params DungeonParams) error {
-	if params.Canvas != nil {
+	source, err := floorSourceKind(params.FloorSource)
+	if err != nil {
+		return err
+	}
+	if source == FloorSourceCanvas {
 		return validateCanvasDungeonParams(params)
 	}
 	if len(params.Regions) < 2 {
@@ -614,7 +621,7 @@ type dungeonLayout struct {
 // beyond it) — generalizing InitTwoChamberRoom's two-chamber required
 // paths to N regions.
 func generateDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
-	if params.Canvas != nil {
+	if params.FloorSource == FloorSourceCanvas {
 		return generateCanvasDungeonLayout(params)
 	}
 	n := len(params.Regions)

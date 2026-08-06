@@ -93,8 +93,8 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	for _, connector := range params.Connectors {
 		plan.Connectors = append(plan.Connectors, FloorPlanConnector{DoorID: string(connector.DoorID)})
 	}
-	if data.Space.Canvas != nil {
-		cells, err := runtimeCanvasFloorCells(data.Space.Canvas)
+	if data.Space.FloorSource == encounter.FloorSourceCanvas {
+		cells, err := runtimeCanvasFloorCells(data.Space.Width, data.Space.Height)
 		if err != nil {
 			return FloorPlan{}, fmt.Errorf("validate canvas floor cells: %w", err)
 		}
@@ -134,14 +134,14 @@ func floorPlanCellLess(left, right FloorPlanCell) bool {
 	return left.Column < right.Column || left.Column == right.Column && left.Row < right.Row
 }
 
-func runtimeCanvasFloorCells(canvas *encounter.CanvasData) ([]FloorPlanCell, error) {
-	cellCount, err := encounter.ValidateCanvasDimensions(canvas.Width, canvas.Height)
+func runtimeCanvasFloorCells(width, height int) ([]FloorPlanCell, error) {
+	cellCount, err := encounter.ValidateCanvasDimensions(width, height)
 	if err != nil {
 		return nil, err
 	}
 	cells := make([]FloorPlanCell, 0, cellCount)
-	for column := 0; column < canvas.Width; column++ {
-		for row := 0; row < canvas.Height; row++ {
+	for column := 0; column < width; column++ {
+		for row := 0; row < height; row++ {
 			cells = append(cells, FloorPlanCell{Column: column, Row: row})
 		}
 	}

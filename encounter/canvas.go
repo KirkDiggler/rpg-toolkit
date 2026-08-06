@@ -12,6 +12,16 @@ import (
 // the encounter runtime accepts. It bounds every canvas allocation and walk.
 const CanvasMaxStructuralCells = 1 << 20
 
+// FloorSourceKind identifies how InitDungeon derives its structural floor.
+type FloorSourceKind string
+
+const (
+	// FloorSourceRoomChain derives floor geometry from Regions and Connectors.
+	FloorSourceRoomChain FloorSourceKind = "room-chain"
+	// FloorSourceCanvas derives the complete structural floor from Width and Height.
+	FloorSourceCanvas FloorSourceKind = "canvas"
+)
+
 // ValidateCanvasDimensions validates canvas dimensions and returns their safe
 // structural-cell count. It uses division before multiplication so malformed
 // MaxInt-sized input is rejected without overflow or allocation. dungeonspec
@@ -30,86 +40,32 @@ func ValidateCanvasDimensions(width, height int) (int, error) {
 	return width * height, nil
 }
 
-// CanvasParams configures a canvas-mode dungeon. It is constructor input only;
-// persistence uses the distinct CanvasData shape.
-type CanvasParams struct {
-	Width  int
-	Height int
-}
-
-// CanvasData is the persisted canvas-mode marker and dimensions. Structural
-// floor cells are derived from these validated dimensions and are never stored.
-type CanvasData struct {
-	Width  int `json:"width"`
-	Height int `json:"height"`
-}
-
-// NewCanvasParams validates and constructs canvas input. It never returns an
-// invalid Params value for a caller to discover later at InitDungeon.
-func NewCanvasParams(width, height int) (*CanvasParams, error) {
-	if _, err := ValidateCanvasDimensions(width, height); err != nil {
-		return nil, err
+func floorSourceKind(kind FloorSourceKind) (FloorSourceKind, error) {
+	switch kind {
+	case "", FloorSourceRoomChain:
+		return FloorSourceRoomChain, nil
+	case FloorSourceCanvas:
+		return FloorSourceCanvas, nil
+	default:
+		return "", fmt.Errorf("unknown floor source %q", kind)
 	}
-	return &CanvasParams{Width: width, Height: height}, nil
 }
 
-func (p *CanvasParams) toData() *CanvasData {
-	if p == nil {
-		return nil
-	}
-	return &CanvasData{Width: p.Width, Height: p.Height}
-}
-
-// canvasParamsFromData is the Data-to-runtime conversion owned by the
-// encounter aggregate reload boundary.
-func canvasParamsFromData(data *CanvasData) (*CanvasParams, error) {
-	if data == nil {
-		return nil, fmt.Errorf("canvas data is required")
-	}
-	return NewCanvasParams(data.Width, data.Height)
-}
-
-func validateCanvasParams(params *CanvasParams) error {
-	if params == nil {
-		return fmt.Errorf("canvas params are required")
-	}
-	_, err := ValidateCanvasDimensions(params.Width, params.Height)
-	return err
-}
-
-func canvasFloorHexes(params *CanvasParams) map[core.Hex]struct{} {
-	count, _ := ValidateCanvasDimensions(params.Width, params.Height)
+func canvasFloorHexes(width, height int) map[core.Hex]struct{} {
+	count, _ := ValidateCanvasDimensions(width, height)
 	floor := make(map[core.Hex]struct{}, count)
-	for col := 0; col < params.Width; col++ {
-		for row := 0; row < params.Height; row++ {
+	for col := 0; col < width; col++ {
+		for row := 0; row < height; row++ {
 			floor[core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)})] = struct{}{}
 		}
 	}
 	return floor
 }
 
-func canvasDataContainsHex(source *CanvasData, hex core.Hex) bool {
-	if source == nil {
-		return false
-	}
-	return canvasFloorContainsDimensions(source.Width, source.Height, hex)
-}
-
-func canvasFloorContainsHex(source *CanvasParams, hex core.Hex) bool {
-	if source == nil {
-		return false
-	}
-	return canvasFloorContainsDimensions(source.Width, source.Height, hex)
-}
-
 func canvasFloorContainsDimensions(width, height int, hex core.Hex) bool {
 	if hex.Q < 0 || hex.Q >= width {
 		return false
 	}
-
-	// Pointy-top odd-q conversion: col=q and row=s+(q-(q&1))/2. Bound
-	// s before adding the offset so arbitrary external coordinates cannot
-	// overflow the conversion.
 	offset := (hex.Q - (hex.Q & 1)) / 2
 	if hex.S < -offset || hex.S >= height-offset {
 		return false
@@ -118,19 +74,16 @@ func canvasFloorContainsDimensions(width, height int, hex core.Hex) bool {
 }
 
 func validateCanvasDungeonParams(params DungeonParams) error {
-	if err := validateCanvasParams(params.Canvas); err != nil {
+	if _, err := ValidateCanvasDimensions(params.Width, params.Height); err != nil {
 		return err
 	}
 	if len(params.Regions) != 0 || len(params.Connectors) != 0 {
 		return fmt.Errorf("canvas dungeon must not contain regions or connectors")
 	}
-	if params.Height != params.Canvas.Height {
-		return fmt.Errorf("canvas dungeon height must equal canvas height %d (got %d)", params.Canvas.Height, params.Height)
-	}
 	if params.PartyStart.SeatCount < 0 {
 		return fmt.Errorf("party start seat count must not be negative (got %d)", params.PartyStart.SeatCount)
 	}
-	floor := canvasFloorHexes(params.Canvas)
+	floor := canvasFloorHexes(params.Width, params.Height)
 	occupied := make(map[core.Hex]string, len(params.CanvasPlacedObstacles)+len(params.CanvasReservedCells))
 	seenIDs := make(map[core.EntityID]int, len(params.CanvasPlacedObstacles))
 	for index, obstacle := range params.CanvasPlacedObstacles {
@@ -173,22 +126,15 @@ func generateCanvasDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	for index, obstacle := range params.CanvasPlacedObstacles {
 		obstacles[index] = ObstacleData{
 			ID: obstacle.ID, Ref: obstacle.Ref, Position: obstacle.At,
-			BlocksMovement: obstacle.BlocksMovement, BlocksLoS: obstacle.BlocksLoS,
-			Facing: obstacle.Facing,
+			BlocksMovement: obstacle.BlocksMovement, BlocksLoS: obstacle.BlocksLoS, Facing: obstacle.Facing,
 		}
 	}
 	return &dungeonLayout{
-		width:               params.Canvas.Width,
-		entrance:            reservation.anchor,
-		obstacles:           obstacles,
+		width: params.Width, entrance: reservation.anchor, obstacles: obstacles,
 		partyStartPositions: reservation.positions(),
 	}, nil
 }
 
-// resolveCanvasPartyStartReservation selects an ordered absolute party
-// envelope before any runtime blockers are installed. Author-provided props
-// and monster spawn reservations are excluded by name, so there is never a
-// later seed-dependent relocation or collision.
 func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReservation, error) {
 	seatCount := params.PartyStart.SeatCount
 	if seatCount == 0 {
@@ -198,7 +144,7 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 	if params.PartyStart.Anchor != nil {
 		anchor = params.PartyStart.Anchor.ToCube()
 	}
-	floor := canvasFloorHexes(params.Canvas)
+	floor := canvasFloorHexes(params.Width, params.Height)
 	anchorHex := core.HexFromCube(anchor)
 	if _, ok := floor[anchorHex]; !ok {
 		return partyStartReservation{}, fmt.Errorf("party start anchor %v is outside canvas floor", anchorHex)
@@ -214,13 +160,12 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 		return partyStartReservation{}, fmt.Errorf("party start anchor %v collides with %s", anchorHex, blocker)
 	}
 	type candidate struct {
-		hex      core.Hex
-		col, row int
-		distance int
+		hex                core.Hex
+		col, row, distance int
 	}
-	candidates := make([]candidate, 0, params.Canvas.Width*params.Canvas.Height-1)
-	for col := 0; col < params.Canvas.Width; col++ {
-		for row := 0; row < params.Canvas.Height; row++ {
+	candidates := make([]candidate, 0, params.Width*params.Height-1)
+	for col := 0; col < params.Width; col++ {
+		for row := 0; row < params.Height; row++ {
 			cell := core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)})
 			if cell == anchorHex {
 				continue
@@ -246,7 +191,8 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 	if len(candidates)+1 < seatCount {
 		return partyStartReservation{}, fmt.Errorf(
 			"party start anchor at [%d,%d] requires %d seats but canvas has only %d available authored floor cells",
-			int(anchorHex.ToPosition().X), int(anchorHex.ToPosition().Y), seatCount, len(candidates)+1)
+			int(anchorHex.ToPosition().X), int(anchorHex.ToPosition().Y), seatCount, len(candidates)+1,
+		)
 	}
 	seats := make([]spatial.CubeCoordinate, 0, seatCount)
 	seats = append(seats, anchor)
