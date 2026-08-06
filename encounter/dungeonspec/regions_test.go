@@ -68,6 +68,40 @@ func TestRunnableSemanticRegionsCompileProjectAndReload(t *testing.T) {
 	require.Equal(t, "inner", reloaded.ToData().Space.ZoneAt(inner).ID)
 }
 
+func TestRunnableSemanticRegionRoleLightweightCases(t *testing.T) {
+	const header = `version: 1
+key: lightweight-regions
+name: Lightweight Regions
+canvas: { width: 4, height: 4 }
+rooms: []
+`
+	cases := map[string]string{
+		"zero regions": header,
+		"no explicit role": header + `regions:
+  - { id: unlabeled, cells: [[0,0]] }
+`,
+		"empty only": header + `regions:
+  - { id: empty, cells: [] }
+`,
+		"one explicit role": header + `regions:
+  - { id: entry, archetype: entrance, cells: [[0,0]] }
+`,
+		"many explicit roles": header + `regions:
+  - { id: entry, archetype: entrance, cells: [[0,0]] }
+  - { id: hall, archetype: chamber, cells: [[1,0]] }
+  - { id: corridor, archetype: corridor, cells: [[2,0]] }
+  - { id: boss-a, archetype: boss, cells: [[3,0]] }
+  - { id: boss-b, archetype: boss, cells: [[3,1]] }
+`,
+	}
+	for name, source := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := LoadWithConfig([]byte(source), LoadConfig{PartyStartSeatCount: 1})
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestSemanticRegionStructuralRejectsOnlyScopeFailures(t *testing.T) {
 	cases := map[string]string{
 		"duplicate id":          strings.Replace(runnableRegionsFixture, "- id: inner", "- id: outer", 1),

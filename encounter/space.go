@@ -107,6 +107,25 @@ func snapshotWalls(room spatial.Room) []environments.WallSegmentData {
 	return walls
 }
 
+// validateCanvasSpace validates the durable canvas floor and semantic facts as
+// one snapshot. Viewer ZoneIDs are validated against the same immutable scope
+// set, never against a coordinate-derived replacement.
+func validateCanvasSpace(space *SpaceData, players map[core.PlayerID]*PlayerData) error {
+	if _, err := ValidateCanvasDimensions(space.Width, space.Height); err != nil {
+		return fmt.Errorf("validate canvas dimensions: %w", err)
+	}
+	if len(space.Regions) != 0 {
+		return fmt.Errorf("canvas space must not contain room-chain regions")
+	}
+	if err := validateSemanticRegionData(space.SemanticRegions, canvasFloorHexes(space.Width, space.Height)); err != nil {
+		return fmt.Errorf("validate semantic regions: %w", err)
+	}
+	if err := validateObservedZoneIDs(players, space); err != nil {
+		return fmt.Errorf("validate viewer zone observations: %w", err)
+	}
+	return nil
+}
+
 // registerRoom wires room into a fresh orchestrator for this Encounter
 // instance. Both are transient — reconstructed at New/LoadFromData exactly
 // like e.bus and e.combatants, never serialized.
@@ -152,14 +171,8 @@ func (e *Encounter) rebuildRoomFromData() error {
 		return fmt.Errorf("validate floor source: %w", err)
 	}
 	if source == FloorSourceCanvas {
-		if _, err := ValidateCanvasDimensions(sd.Width, sd.Height); err != nil {
-			return fmt.Errorf("validate canvas dimensions: %w", err)
-		}
-		if len(sd.Regions) != 0 {
-			return fmt.Errorf("canvas space must not contain room-chain regions")
-		}
-		if err := validateSemanticRegionData(sd.SemanticRegions, canvasFloorHexes(sd.Width, sd.Height)); err != nil {
-			return fmt.Errorf("validate semantic regions: %w", err)
+		if err := validateCanvasSpace(sd, e.data.Players); err != nil {
+			return err
 		}
 	}
 	authoredByKey := authoredEdgesByKey(sd)

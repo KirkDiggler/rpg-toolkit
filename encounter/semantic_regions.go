@@ -89,42 +89,56 @@ func (sd *SpaceData) ZoneAt(h core.Hex) Zone {
 	if !ok {
 		return Zone{}
 	}
-	return sd.zoneByID(id)
+	zone, _ := sd.zoneByID(id)
+	return zone
 }
 
-// AuthorizedZones returns only scopes referenced by disclosed observations and
-// their ancestors, in deterministic ID order.
+// AuthorizedZones returns only scopes named by this viewer's persisted known
+// observations and their ancestors, in deterministic ID order. It never
+// re-resolves observation coordinates against current membership: an empty
+// observed ZoneID remains root, even if that coordinate is painted later.
+//
+// LoadFromData validates that every non-empty observed ID resolves in this
+// immutable SpaceData snapshot. The current API returns no error, so a
+// hand-built invalid in-memory aggregate still omits an unresolvable ID safely
+// rather than guessing from coordinates.
 func (e *Encounter) AuthorizedZones(playerID core.PlayerID) []Zone {
 	if e == nil || e.data == nil || e.data.Space == nil {
 		return nil
 	}
+	regions := e.data.Space.semanticRegions()
 	known := e.KnownHexes(playerID)
 	needed := make(map[string]struct{})
-	for h := range known {
-		if id, ok := e.data.Space.SemanticRegionAt(h); ok {
-			for id != "" {
-				needed[id] = struct{}{}
-				parent, hasParent := e.data.Space.SemanticRegionParent(id)
-				if !hasParent {
-					break
-				}
-				id = parent
+	for _, observation := range known {
+		id := observation.ZoneID
+		if id == "" || semanticRegionIndex(regions, id) < 0 {
+			continue
+		}
+		for id != "" {
+			needed[id] = struct{}{}
+			parent, hasParent := e.data.Space.SemanticRegionParent(id)
+			if !hasParent {
+				break
 			}
+			id = parent
 		}
 	}
 	out := make([]Zone, 0, len(needed))
 	for id := range needed {
-		out = append(out, e.data.Space.zoneByID(id))
+		zone, ok := e.data.Space.zoneByID(id)
+		if ok {
+			out = append(out, zone)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-func (sd *SpaceData) zoneByID(id string) Zone {
+func (sd *SpaceData) zoneByID(id string) (Zone, bool) {
 	regions := sd.semanticRegions()
 	index := semanticRegionIndex(regions, id)
 	if index < 0 {
-		return Zone{}
+		return Zone{}, false
 	}
 	region := regions[index]
 	zone := Zone{ID: region.ID, Name: cloneString(region.Name)}
@@ -146,7 +160,7 @@ func (sd *SpaceData) zoneByID(id string) Zone {
 			zone.Archetype = &value
 		}
 	}
-	return zone
+	return zone, true
 }
 
 func (sd *SpaceData) semanticRegions() []SemanticRegionData {
@@ -234,6 +248,30 @@ func validateSemanticRegionParams(
 		}
 	}
 	return out, nil
+}
+
+// validateObservedZoneIDs keeps persisted viewer memory and immutable canvas
+// scope facts in one snapshot-consistency domain. It intentionally applies only
+// to canvas semantic regions: legacy room-chain observations use RegionData IDs.
+func validateObservedZoneIDs(players map[core.PlayerID]*PlayerData, space *SpaceData) error {
+	regions := space.semanticRegions()
+	for playerID, player := range players {
+		if player == nil || player.View == nil {
+			continue
+		}
+		for hex, observation := range player.View.Memory {
+			if observation.ZoneID == "" {
+				continue
+			}
+			if semanticRegionIndex(regions, observation.ZoneID) < 0 {
+				return fmt.Errorf(
+					"player %q known hex %v references missing semantic zone %q",
+					playerID, hex, observation.ZoneID,
+				)
+			}
+		}
+	}
+	return nil
 }
 
 func validateSemanticRegionData(regions []SemanticRegionData, floor map[core.Hex]struct{}) error {
