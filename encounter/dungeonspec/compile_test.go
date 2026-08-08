@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -259,6 +260,73 @@ func TestLoad_BossAtCompilesToSpawnPosition(t *testing.T) {
 	assert.Equal(t, "dnd5e:monsters:skeleton-captain", boss.MonsterRef)
 	require.NotNil(t, boss.At)
 	assert.Equal(t, encounter.LocalHex{Col: 7, Row: 5}, *boss.At)
+}
+
+// TestLoad_TargetingCompilesAtBothWiringSites (rpg-toolkit#895): a
+// SpawnInstruction.Targeting override reaches the compiled dungeon from
+// BOTH sites that build one — the boss spawn (compileWithConfig) and a
+// room-chain place entry's refTypeMonsters case (compileRoom) — and a
+// spawn whose author left targeting unset compiles with a nil Targeting
+// (never a zero-value TargetClosest standing in for "unset", which would
+// silently stomp a ctor's own non-closest default at seed time).
+// placedTombWithTargetingYAML is placedTombYAML plus `targeting:` on the
+// boss and the skeleton place entry — kept as its own fixture rather than
+// mutating placedTombYAML itself, which several other tests in this file
+// assert exact PlacedObstacles/Spawns shapes against.
+func TestLoad_TargetingCompilesAtBothWiringSites(t *testing.T) {
+	const placedTombWithTargetingYAML = `
+version: 1
+key: reference-tomb
+name: The Reference Tomb
+theme: crypt
+height: 8
+rooms:
+  - id: entrance
+    archetype: entrance
+    width: 6
+  - id: tomb
+    archetype: boss
+    width: 12
+    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5], targeting: lowest-health }
+    place:
+      - { ref: "dnd5e:props:coffin",        at: [6, 3], blocks_los: false }
+      - { ref: "dnd5e:props:altar",         at: [9, 3] }
+      - { ref: "dnd5e:props:statue-reaper", at: [1, 1] }
+      - { ref: "dnd5e:props:brazier",       at: [3, 1] }
+      - { ref: "dnd5e:props:brazier",       at: [3, 6] }
+      - { ref: "dnd5e:monsters:skeleton",   at: [4, 2], targeting: closest }
+connectors:
+  - { from: entrance, to: tomb }
+`
+	compiled, err := dungeonspec.Load([]byte(placedTombWithTargetingYAML))
+	require.NoError(t, err)
+	require.Len(t, compiled.Spawns, 2)
+
+	boss := compiled.Spawns[0] // boss-first ordering unchanged
+	assert.Equal(t, "dnd5e:monsters:skeleton-captain", boss.MonsterRef)
+	require.NotNil(t, boss.Targeting, "boss spawn (compileWithConfig) must thread its targeting override")
+	assert.Equal(t, monster.TargetLowestHP, *boss.Targeting)
+
+	var skeletonSpawn *dungeonspec.SpawnInstruction
+	for i := range compiled.Spawns {
+		if compiled.Spawns[i].MonsterRef == "dnd5e:monsters:skeleton" {
+			skeletonSpawn = &compiled.Spawns[i]
+		}
+	}
+	require.NotNil(t, skeletonSpawn)
+	require.NotNil(t, skeletonSpawn.Targeting,
+		"place-block refTypeMonsters spawn (compileRoom) must thread its targeting override")
+	assert.Equal(t, monster.TargetClosest, *skeletonSpawn.Targeting)
+
+	// The unmodified placedTombYAML fixture (no targeting: anywhere) must
+	// still compile both spawns with a nil Targeting -- omitted, not a
+	// zero-value TargetClosest standing in for "unset."
+	unset, err := dungeonspec.Load([]byte(placedTombYAML))
+	require.NoError(t, err)
+	for i := range unset.Spawns {
+		assert.Nil(t, unset.Spawns[i].Targeting, "spawn %q: omitted targeting must compile to nil, not TargetClosest",
+			unset.Spawns[i].MonsterRef)
+	}
 }
 
 // TestLoad_SameBytesProduceIdenticalCompiledDungeon: Load has no source of

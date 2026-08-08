@@ -62,6 +62,7 @@ func (s *KnowledgeInternalSuite) TestKnownHexes_WitnessedRemoval_UpdatesImmediat
 	goblinHex := core.Hex{Q: 2, R: -2, S: 0}
 	s.Require().NoError(e.AddMonster(MonsterInput{
 		ID: knowledgeGobEntityID, Position: goblinHex, HP: 1, MaxHP: 1, AC: 10,
+		DataJSON: smGoblinDataJSON(s.T(), knowledgeGobEntityID),
 	}))
 
 	before := e.KnownHexes(knowledgeAlicePlayerID)
@@ -129,6 +130,7 @@ func (s *KnowledgeInternalSuite) TestKnownHexes_WitnessedRemoval_OnlyRefreshesWi
 	goblinHex := core.Hex{Q: 0, R: 0, S: 0}
 	s.Require().NoError(e.AddMonster(MonsterInput{
 		ID: knowledgeGobEntityID, Position: goblinHex, HP: 1, MaxHP: 1, AC: 10,
+		DataJSON: smGoblinDataJSON(s.T(), knowledgeGobEntityID),
 	}))
 	// bystander is far from the goblin and never sees it at all.
 	s.Require().NoError(e.AddPlayer(PlayerInput{

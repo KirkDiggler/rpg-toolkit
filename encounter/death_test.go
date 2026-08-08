@@ -95,6 +95,7 @@ func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Enco
 		HP:       1, MaxHP: 7, AC: 15, Speed: 6,
 		MonsterRef:  "dnd5e:monsters:goblin",
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	var err error
@@ -204,6 +205,7 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 1, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(),
 		"goblin-1 shares bob's hex — AddMonster must auto-enter combat")
@@ -211,6 +213,7 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 		ID: gob2EntityID, Position: core.Hex{Q: 2, R: 0, S: -2},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gob2EntityID),
 	}))
 	s.Require().Contains(enc.ToData().Initiative, core.EntityID(gob2EntityID),
 		"goblin-2 was added after the auto-transition and must still join initiative")
@@ -273,6 +276,7 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 1, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(),
 		"goblin-1 is in alice's LoS — AddMonster must auto-enter combat")
@@ -280,6 +284,7 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 		ID: gob2EntityID, Position: core.Hex{Q: 2, R: 0, S: -2},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gob2EntityID),
 	}))
 	s.Require().Contains(enc.ToData().Initiative, core.EntityID(gob2EntityID),
 		"goblin-2 was added after the auto-transition and must still join initiative")
@@ -336,6 +341,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 1, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	var err error
@@ -400,6 +406,7 @@ func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	var err error
@@ -532,6 +539,7 @@ func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	var err error

@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -134,6 +135,10 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 		at := encounter.LocalHex{Col: bossRoom.Boss.At[0], Row: bossRoom.Boss.At[1]}
 		bossAt = &at
 	}
+	bossTargeting, err := compileTargeting(bossRoom.Boss.Targeting)
+	if err != nil {
+		return CompiledDungeon{}, fmt.Errorf("room %q: boss targeting: %w", bossRoom.ID, err)
+	}
 	// Capacity is a hint, not a bound: sized for the boss spawn plus one
 	// per room, but a room's place list can name several monster entries
 	// (growing past the hint) or none at all (falling short of it) --
@@ -144,6 +149,7 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 		MonsterRef: bossRoom.Boss.Ref,
 		Count:      1,
 		At:         bossAt,
+		Targeting:  bossTargeting,
 	})
 
 	regions := make([]encounter.DungeonRegionParams, len(spec.Rooms))
@@ -266,6 +272,10 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 			})
 		case refTypeMonsters:
 			at := encounter.LocalHex{Col: entry.At[0], Row: entry.At[1]}
+			targeting, err := compileTargeting(entry.Targeting)
+			if err != nil {
+				return encounter.DungeonRegionParams{}, nil, fmt.Errorf("place %q targeting: %w", entry.Ref, err)
+			}
 			// Reserve this cell the same way as the boss's own pinned
 			// boss.at above -- a placed monster never becomes a
 			// PlacedObstacleSpec, so without this InitDungeon's
@@ -277,6 +287,7 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 				MonsterRef: entry.Ref,
 				Count:      1,
 				At:         &at,
+				Targeting:  targeting,
 			})
 		default:
 			// Phrasing matches validatePlaceBlock's "must be props or
@@ -400,6 +411,22 @@ func compileFacing(label *string) (*uint32, error) {
 	return &value, nil
 }
 
+// compileTargeting parses an author-facing targeting label (Validate
+// already checked it parses; this trusts that and re-checks defensively,
+// mirroring compileFacing) into the pointer shape SpawnInstruction.Targeting
+// requires — nil in, nil out, so an omitted targeting field never overrides
+// a monster's own ctor default (rpg-toolkit#895).
+func compileTargeting(label *string) (*monster.TargetingStrategy, error) {
+	if label == nil {
+		return nil, nil
+	}
+	value, err := monster.ParseTargetingStrategy(*label)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 type canvasCompiled struct {
 	width, height int
 	entrance      FloorPlanCell
@@ -485,7 +512,13 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 			})
 		case refTypeMonsters:
 			absoluteAt := at
-			spawns = append(spawns, SpawnInstruction{MonsterRef: entry.Ref, Count: 1, AbsoluteAt: &absoluteAt})
+			targeting, err := compileTargeting(entry.Targeting)
+			if err != nil {
+				return CompiledDungeon{}, fmt.Errorf("place[%d].targeting: %w", index, err)
+			}
+			spawns = append(spawns, SpawnInstruction{
+				MonsterRef: entry.Ref, Count: 1, AbsoluteAt: &absoluteAt, Targeting: targeting,
+			})
 			params.AbsoluteReservedCells = append(params.AbsoluteReservedCells, encounter.AbsoluteReservedCell{
 				At: at, Name: fmt.Sprintf("placed monster %q (place[%d])", entry.Ref, index),
 			})

@@ -367,6 +367,7 @@ func TestAuthoredEdges_BlockSparsePlayerAndNPCMovement(t *testing.T) {
 	far = nextDirectHexAcross(t, npcEncounter, solid.From, solid.To)
 	require.NoError(t, npcEncounter.AddMonster(encounter.MonsterInput{
 		ID: "npc", Position: solid.From, HP: 7, MaxHP: 7, AC: 12, Speed: 6,
+		DataJSON: testGoblinDataJSON(t, "npc"),
 	}))
 	require.NoError(t, npcEncounter.MoveNPCSteps("npc", []core.Hex{far}))
 	assert.Equal(t, solid.From, npcEncounter.ToData().Monsters["npc"].Position,

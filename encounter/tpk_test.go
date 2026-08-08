@@ -73,38 +73,33 @@ func (s *TPKSuite) TearDownTest() {
 // TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsAsTPK is the
 // two-player goal-behavior proof: alice and bob are both flat-snapshot
 // seats (instant death on 0 HP, #733's non-hydrated fallback) facing one
-// goblin. The goblin kills alice first — encounter continues (bob alive) —
-// then, on its NEXT turn, closestPlayer retargets to bob (alice is now
-// permanently excluded) and kills him too — only THEN must the encounter
-// end, with Reason "tpk".
+// hydrated goblin. The goblin kills alice first — encounter continues (bob
+// alive) — then, on its NEXT turn, targets bob (alice's HP<=0 excludes her
+// from buildPerception's enemy list — #733) and kills him too — only THEN
+// must the encounter end, with Reason "tpk".
 func (s *TPKSuite) TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsAsTPK() {
 	encID := encountercore.EncounterID("enc-tpk-multi")
 	enc := encounter.New(s.ctx, encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
 		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 
-	// alice is closer to the goblin than bob, so closestPlayer targets her
-	// first; once she's down (HP<=0, excluded), the goblin's next act must
-	// retarget to bob.
-	//
-	// rpg-toolkit#864: npcActScripted now gates melee attacks on reach (the
-	// goblin here has no DataJSON, so it defaults to 1 hex), and BOTH goblin
-	// acts must land — alice's first, then bob's once alice is excluded. So
-	// alice is co-located with the goblin (distance 0, strictly closer) and
-	// bob sits one hex away (distance 1, strictly farther but still in
-	// reach) rather than the old "far enough that map-iteration tie-break
-	// can't matter" distance-4 spot, which is now out of reach.
+	// alice and bob are both exactly 1 hex from the goblin (its default
+	// melee reach, and the only distance PerceivedEntity.Adjacent treats as
+	// in range — a co-located distance-0 hex, this fixture's shape before
+	// rpg-toolkit#895 gave the goblin real DataJSON and put it through the
+	// full monster.TakeTurn AI instead of the deleted npcActScripted
+	// fallback, never reads as Adjacent). Tied at distance 1, the goblin's
+	// default TargetClosest strategy breaks the tie by entity id
+	// (sortEnemiesByDistance, npc.go) — "char-tpk-alice" < "char-tpk-bob"
+	// deterministically picks alice first, matching this test's intent
+	// without relying on distance to force the order.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: tpkAliceEntityID,
-		Position: encountercore.Hex{Q: 1, R: 0, S: -1}, SightRange: 10,
+		Position: encountercore.Hex{Q: 2, R: -1, S: -1}, SightRange: 10,
 		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
 		DamageDice: tpkDamageDice, DamageType: damageSlashing,
 	}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "bob", EntityID: tpkBobEntityID,
-		// Strictly farther from the goblin than alice (distance 1 vs. 0),
-		// so closestPlayer's tie-break (map iteration order, non-
-		// deterministic) can never accidentally pick bob first — and still
-		// within the goblin's 1-hex melee reach for its second act.
 		Position: encountercore.Hex{Q: 0, R: 0, S: 0}, SightRange: 10,
 		HP: 1, MaxHP: 12, AC: 10, AttackBonus: 4,
 		DamageDice: tpkDamageDice, DamageType: damageSlashing,
@@ -113,6 +108,7 @@ func (s *TPKSuite) TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsA
 		ID: tpkGoblinID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), tpkGoblinID),
 	}))
 
 	sub, err := s.broker.Subscribe(encID, "bob")
@@ -138,7 +134,7 @@ func (s *TPKSuite) TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsA
 	}
 	drainSub(sub, 100*time.Millisecond)
 
-	// Second goblin act: closestPlayer excludes downed alice, so this must
+	// Second goblin act: buildPerception excludes downed alice, so this must
 	// hit bob — the last living player. The encounter must now end as tpk.
 	s.Require().NoError(enc.NPCAct(s.ctx, tpkGoblinID))
 	s.Equal(encountercore.ModeEnded, enc.Mode())
@@ -199,6 +195,7 @@ func (s *TPKSuite) TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy() {
 		ID: tpkGoblinID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), tpkGoblinID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())
@@ -313,6 +310,7 @@ func (s *TPKSuite) TestTPK_DeadFlagDoesNotLeakAcrossEncounters() {
 		ID: tpkGoblinID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), tpkGoblinID),
 	}))
 	raw, err := json.Marshal(encA.ToData())
 	s.Require().NoError(err)

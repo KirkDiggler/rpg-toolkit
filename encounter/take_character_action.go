@@ -292,7 +292,9 @@ func (e *Encounter) publishActionResolved(
 	seq := e.nextSeq()
 	corrID := e.correlationFor(seq)
 	evt := events.NewActionResolvedEvent(
-		e.data.ID, seq, actorID, actionRef, targetID, consumed, perPlayer,
+		// Non-attack actions have no targeting-strategy decision to explain
+		// (rpg-toolkit#895) — rationale is always empty here.
+		e.data.ID, seq, actorID, actionRef, targetID, "", consumed, perPlayer,
 	)
 	return corrID, e.publishCorrelated(evt, corrID)
 }

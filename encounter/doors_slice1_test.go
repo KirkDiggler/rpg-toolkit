@@ -70,6 +70,7 @@ func (s *DoorBlockingSuite) SetupTest() {
 		ID: gobEntityID, Position: lineHex(6),
 		HP: 7, MaxHP: 7, AC: 12, Speed: 30,
 		DamageDice: dice1d6, DamageType: damagePiercing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	var err error

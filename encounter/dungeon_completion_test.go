@@ -193,14 +193,17 @@ func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHosti
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: dcBossGoblinID, Position: dungeonRegionFarEdgeHex(2),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
+		DataJSON: testGoblinDataJSON(s.T(), dcBossGoblinID),
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: dcCorridorGoblinID, Position: dungeonRegionFarEdgeHex(1),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
+		DataJSON: testGoblinDataJSON(s.T(), dcCorridorGoblinID),
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: dcEntranceGoblinID, Position: dungeonRegionFarEdgeHex(0),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
+		DataJSON: testGoblinDataJSON(s.T(), dcEntranceGoblinID),
 	}))
 
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "sighting the entrance goblin must auto-start the first pocket")
@@ -349,10 +352,12 @@ func (s *DungeonCompletionSuite) TestTPKMidDungeon_EndsWithCanonicalReason_Hosti
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: dcBossGoblinID, Position: dungeonRegionFarEdgeHex(2),
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
+		DataJSON: testGoblinDataJSON(s.T(), dcBossGoblinID),
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: dcCorridorGoblinID, Position: dungeonRegionFarEdgeHex(1),
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
+		DataJSON: testGoblinDataJSON(s.T(), dcCorridorGoblinID),
 	}))
 	// rpg-toolkit#864: NPCAct's scripted fallback (no DataJSON — this
 	// goblin's shape) now gates melee attacks on reach and has no movement
@@ -365,6 +370,7 @@ func (s *DungeonCompletionSuite) TestTPKMidDungeon_EndsWithCanonicalReason_Hosti
 		ID: dcEntranceGoblinID, Position: dcRowHex(1),
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), dcEntranceGoblinID),
 	}))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "sighting the entrance goblin must start the first pocket")
 

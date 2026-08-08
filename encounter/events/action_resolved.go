@@ -32,6 +32,13 @@ type ActionResolvedEvent struct {
 	// TargetID is the primary target, when the action has one. Empty for
 	// self / no-target actions (Dodge, Dash).
 	TargetID core.EntityID
+	// TargetRationale names WHY this target was chosen, as a canonical ref
+	// (e.g. "dnd5e:targeting:lowest-hp" — see
+	// rulebooks/dnd5e/monster.TargetingStrategy.Ref). Populated only on the
+	// NPC/monster attack path, where a targeting strategy made the
+	// decision (rpg-toolkit#895); empty for player-taken actions, which
+	// have no AI decision to explain.
+	TargetRationale string
 	// EconomyConsumed reports what this action spent off the turn economy.
 	EconomyConsumed EconomyConsumed
 	// PerPlayer is the per-viewer visibility projection.
@@ -75,6 +82,7 @@ func NewActionResolvedEvent(
 	actorID core.EntityID,
 	actionRef string,
 	targetID core.EntityID,
+	targetRationale string,
 	consumed EconomyConsumed,
 	perPlayer map[core.PlayerID]ActionResolvedSlice,
 ) *ActionResolvedEvent {
@@ -84,6 +92,7 @@ func NewActionResolvedEvent(
 		ActorID:         actorID,
 		ActionRef:       actionRef,
 		TargetID:        targetID,
+		TargetRationale: targetRationale,
 		EconomyConsumed: consumed,
 		PerPlayer:       perPlayer,
 	}
@@ -108,6 +117,7 @@ type actionResolvedWire struct {
 	ActorID         core.EntityID                         `json:"actor_id"`
 	ActionRef       string                                `json:"action_ref"`
 	TargetID        core.EntityID                         `json:"target_id,omitempty"`
+	TargetRationale string                                `json:"target_rationale,omitempty"`
 	EconomyConsumed EconomyConsumed                       `json:"economy_consumed"`
 	PerPlayer       map[core.PlayerID]ActionResolvedSlice `json:"per_player"`
 }
@@ -122,6 +132,7 @@ func (e *ActionResolvedEvent) MarshalJSON() ([]byte, error) {
 		ActorID:         e.ActorID,
 		ActionRef:       e.ActionRef,
 		TargetID:        e.TargetID,
+		TargetRationale: e.TargetRationale,
 		EconomyConsumed: e.EconomyConsumed,
 		PerPlayer:       e.PerPlayer,
 	})
@@ -140,6 +151,7 @@ func (e *ActionResolvedEvent) UnmarshalJSON(b []byte) error {
 	e.ActorID = w.ActorID
 	e.ActionRef = w.ActionRef
 	e.TargetID = w.TargetID
+	e.TargetRationale = w.TargetRationale
 	e.EconomyConsumed = w.EconomyConsumed
 	e.PerPlayer = w.PerPlayer
 	return nil

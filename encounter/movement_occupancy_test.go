@@ -49,6 +49,7 @@ func (s *MovementOccupancySuite) addPlayer(sightRange int) {
 func (s *MovementOccupancySuite) addMonster(id string, position core.Hex) {
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: core.EntityID(id), Position: position, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), core.EntityID(id)),
 	}))
 }
 
