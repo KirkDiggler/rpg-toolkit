@@ -6,6 +6,7 @@ package monster
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -218,4 +219,46 @@ func (s *TargetingTestSuite) TestTargetingSerialization() {
 // Run the suite
 func TestTargetingSuite(t *testing.T) {
 	suite.Run(t, new(TargetingTestSuite))
+}
+
+// TestParseTargetingStrategy_Table covers the parse/String round trip for
+// every accepted label, plus the rejection paths (rpg-toolkit#895).
+func TestParseTargetingStrategy_Table(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    TargetingStrategy
+		wantErr bool
+	}{
+		{name: "closest", input: "closest", want: TargetClosest},
+		{name: "lowest-health", input: "lowest-health", want: TargetLowestHP},
+		{name: "lowest-ac", input: "lowest-ac", want: TargetLowestAC},
+		{name: "empty string rejected", input: "", wantErr: true},
+		{name: "unknown value rejected", input: "random", wantErr: true},
+		{name: "lowest-hp is not the author-facing label", input: "lowest-hp", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseTargetingStrategy(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.input)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+			// String() is the inverse of ParseTargetingStrategy for every
+			// accepted label.
+			require.Equal(t, tc.input, got.String())
+		})
+	}
+}
+
+// TestTargetingStrategy_Ref verifies the decision-rationale ref mapping used
+// by ActionResolvedEvent.TargetRationale (rpg-toolkit#895). The "lowest-hp"
+// ref segment deliberately differs from String()'s "lowest-health" label.
+func TestTargetingStrategy_Ref(t *testing.T) {
+	require.Equal(t, "dnd5e:targeting:closest", TargetClosest.Ref())
+	require.Equal(t, "dnd5e:targeting:lowest-hp", TargetLowestHP.Ref())
+	require.Equal(t, "dnd5e:targeting:lowest-ac", TargetLowestAC.Ref())
 }

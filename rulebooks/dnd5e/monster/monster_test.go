@@ -227,7 +227,7 @@ func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
 		Movement: make([]spatial.CubeCoordinate, 0),
 	}
 
-	monster.moveTowardEnemy(input, result)
+	monster.moveTowardEnemy(input, result, &perception.Enemies[0])
 
 	s.Require().NotEmpty(result.Movement, "monster should move")
 
@@ -284,7 +284,7 @@ func (s *MonsterTestSuite) TestMoveTowardEnemy_TrappedStaysPut() {
 		Movement: make([]spatial.CubeCoordinate, 0),
 	}
 
-	monster.moveTowardEnemy(input, result)
+	monster.moveTowardEnemy(input, result, &perception.Enemies[0])
 
 	// Should not move at all
 	s.Empty(result.Movement, "trapped monster should not move")
