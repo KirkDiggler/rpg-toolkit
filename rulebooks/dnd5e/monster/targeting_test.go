@@ -255,7 +255,14 @@ func TestParseTargetingStrategy_Table(t *testing.T) {
 			got, err := ParseTargetingStrategy(tc.input)
 			if tc.wantErr {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.input)
+				require.Contains(t, err.Error(), "invalid targeting strategy")
+				// require.Contains(err.Error(), tc.input) would be a no-op
+				// for the empty-string case (every string contains ""),
+				// silently skipping the one check that matters most there
+				// — only assert the specific bad value when it's non-empty.
+				if tc.input != "" {
+					require.Contains(t, err.Error(), tc.input)
+				}
 				return
 			}
 			require.NoError(t, err)
