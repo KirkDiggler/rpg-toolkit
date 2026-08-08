@@ -309,6 +309,7 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 	// path, so an NPC cannot bypass cell blockers or authored boundaries. Nil
 	// room remains a no-op.
 	path = e.truncateAtWall(moverStart, path)
+	path = e.truncateAtOccupiedDestination(mon.ID, path)
 	if len(path) == 0 {
 		return nil // Blocked at the very first hex.
 	}

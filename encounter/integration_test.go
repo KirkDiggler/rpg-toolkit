@@ -120,7 +120,9 @@ func (s *IntegrationSuite) TestSlice_RoundTripPersistence() {
 	s.Require().NoError(err)
 	defer func() { _ = aliceSub2.Close() }()
 
-	s.Require().NoError(enc2.Move("alice", []core.Hex{{Q: 2, R: 0, S: -2}}))
+	// Bob occupies {2,0,-2}; use the adjacent free hex so this remains a
+	// persistence/event-flow test rather than an illegal endpoint request.
+	s.Require().NoError(enc2.Move("alice", []core.Hex{{Q: 2, R: -1, S: -1}}))
 
 	aliceEvents := collectTypes(aliceSub2, 500*time.Millisecond)
 	s.Contains(aliceEvents, "*events.MoveEvent",

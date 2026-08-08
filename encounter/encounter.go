@@ -804,6 +804,7 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 	// boundary crossings cannot be bypassed by sparse requests or partially
 	// budgeted/chain-run. Nil room remains the pre-wave-1 unblocked behavior.
 	path = e.truncateAtWall(moverStart, path)
+	path = e.truncateAtOccupiedDestination(p.EntityID, path)
 	if len(path) == 0 {
 		// Blocked at the very first requested hex. Nothing to publish —
 		// position unchanged, no events fire, nothing spent. Mirrors the
