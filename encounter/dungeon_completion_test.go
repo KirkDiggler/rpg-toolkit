@@ -359,13 +359,16 @@ func (s *DungeonCompletionSuite) TestTPKMidDungeon_EndsWithCanonicalReason_Hosti
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6, MonsterRef: monsterRefGoblin,
 		DataJSON: testGoblinDataJSON(s.T(), dcCorridorGoblinID),
 	}))
-	// rpg-toolkit#864: NPCAct's scripted fallback (no DataJSON — this
-	// goblin's shape) now gates melee attacks on reach and has no movement
-	// logic of its own, so the goblin spawns adjacent to alice (X=1, vs.
-	// alice's entrance at X=0) rather than at the far edge (X=9) — nothing
-	// else in this test depends on the goblin's exact starting column, only
-	// that it's within LoS (dcSightRange comfortably covers the whole
-	// fixture regardless).
+	// This goblin has real DataJSON (rpg-toolkit#895 no-fallback rider —
+	// NPCAct always runs the hydrated monster.TakeTurn AI now, never the
+	// deleted scripted fallback), so it spawns adjacent to alice (X=1, vs.
+	// alice's entrance at X=0) rather than at the far edge (X=9) to
+	// guarantee the single NPCAct call below lands its kill immediately —
+	// the test wants alice dead in one hit, not dependent on however many
+	// turns the AI's own pathing takes to close distance. Nothing else in
+	// this test depends on the goblin's exact starting column, only that
+	// it's within LoS (dcSightRange comfortably covers the whole fixture
+	// regardless).
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: dcEntranceGoblinID, Position: dcRowHex(1),
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
