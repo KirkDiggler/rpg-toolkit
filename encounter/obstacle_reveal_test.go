@@ -200,7 +200,9 @@ func (s *ObstacleRevealSuite) TestMove_CrossTransitionAudience() {
 	s.Equal(map[core.PlayerID]struct{}{alicePlayerID: {}}, aliceFirst[0].PerPlayer)
 	s.Empty(obstacleAppearancesFor(collectEventsTyped(bobSub, 300*time.Millisecond), "pillar-1"))
 
-	s.Require().NoError(s.enc.Move(bobPlayerID, []core.Hex{lineHex(1)}))
+	// Alice now occupies lineHex(1). Bob stops at the free lineHex(4),
+	// which newly brings the pillar at lineHex(3) into his sight range.
+	s.Require().NoError(s.enc.Move(bobPlayerID, []core.Hex{lineHex(4)}))
 	s.Empty(obstacleAppearancesFor(collectEventsTyped(aliceSub, 300*time.Millisecond), "pillar-1"))
 	bobLater := obstacleAppearancesFor(collectEventsTyped(bobSub, 300*time.Millisecond), "pillar-1")
 	s.Require().Len(bobLater, 1)

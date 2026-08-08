@@ -217,7 +217,9 @@ func (s *PocketClearMoveTeardownSuite) TestWithinPocket_MovementStillEnforced_Wh
 		[]core.Hex{spendHex, lineHex(0), spendHex, lineHex(0), spendHex, lineHex(0)}))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(), "test premise: pocket A still active, group A alive")
 
-	err := enc.Move(pcmPlayerID, []core.Hex{spendHex})
+	// spendHex is occupied by pocket A's goblin, so request another free
+	// destination: this test isolates budget exhaustion from endpoint occupancy.
+	err := enc.Move(pcmPlayerID, []core.Hex{lineHex(2)})
 	s.Require().Error(err, "a genuinely exhausted budget must still reject movement while in combat")
 	s.ErrorIs(err, encounter.ErrInsufficientMovement)
 }

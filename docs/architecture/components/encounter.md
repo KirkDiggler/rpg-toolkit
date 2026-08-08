@@ -469,6 +469,28 @@ resolver's chain-prevented truncation already works. A fully-blocked first
 hex is a no-op (nil error, no state change, no events), matching the
 resolver's own "prevented at first step" semantics.
 
+### Creature endpoint occupancy (#893)
+
+The room cannot enforce creature occupancy because player and monster positions
+remain authoritative on `Encounter.Data`, not inside `spatial.Room`.
+`truncateAtOccupiedDestination` therefore runs immediately after geometry
+truncation in both player and NPC movement. It removes occupied trailing
+waypoints until the path has a legal final hex; if no legal prefix exists, the
+move is a viewer-safe no-op. This happens before movement resolution, economy
+spending, mutation, or publication, so the committed position and `MoveEvent`
+path describe the same actual outcome.
+
+The check reads the complete player/monster maps, never a viewer's perception,
+and returns no occupant identity. Hidden creatures consequently block the same
+way visible creatures do without being disclosed. Intermediate occupied hexes
+remain in the path: #893 establishes final-space legality and deliberately does
+not invent a movement-through rule. Under ADR-0034's pending split, this belongs
+in the dnd5e-coupled encounter loop because that loop owns creature positions,
+endpoints, audiences, and event delivery; generic `tools/spatial` already owns
+occupancy for entities actually placed in a `Room` and cannot enforce facts it
+does not hold. No creature-sharing exception exists in the current encounter
+contract; any future exception must be explicit and tested at this seam.
+
 ### Inline combat-entry self-transition
 
 `checkCombatEntry` (combat.go) mirrors `checkEncounterEnd`'s self-transition

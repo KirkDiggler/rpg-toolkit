@@ -447,6 +447,42 @@ func (e *Encounter) truncateAtWall(moverStart core.Hex, path []core.Hex) []core.
 	return path
 }
 
+// truncateAtOccupiedDestination removes trailing destinations occupied by a
+// different creature. Encounter Data is authoritative for creature positions:
+// players and monsters deliberately are not placed in the reconstructed
+// spatial.Room, which owns only walls, doors, and obstacles. Keeping this check
+// in the encounter loop therefore reconciles the actual endpoint before rule
+// resolution, economy spending, state mutation, or audience-projected events.
+//
+// Only the endpoint is constrained. Occupied intermediate cells remain in the
+// path so this invariant does not silently introduce a movement-through rule.
+// No creature-sharing exception exists in the current encounter contract; a
+// future explicit rule must be tested and applied at this seam.
+func (e *Encounter) truncateAtOccupiedDestination(moverID core.EntityID, path []core.Hex) []core.Hex {
+	occupied := make(map[core.Hex]struct{}, len(e.data.Players)+len(e.data.Monsters))
+	for _, player := range e.data.Players {
+		if player.EntityID != moverID && player.View != nil {
+			occupied[player.View.Position] = struct{}{}
+		}
+	}
+	for _, monster := range e.data.Monsters {
+		if monster.ID != moverID {
+			occupied[monster.Position] = struct{}{}
+		}
+	}
+
+	// Consult the full authoritative encounter state, never a viewer's
+	// filtered perception. The set contains no occupant identities, so this
+	// refusal path cannot leak a hidden creature.
+	for len(path) > 0 {
+		if _, blocked := occupied[path[len(path)-1]]; !blocked {
+			break
+		}
+		path = path[:len(path)-1]
+	}
+	return path
+}
+
 // isRoomSegmentTraversable rejects any direct requested segment that cannot
 // be verified as a complete, contiguous in-grid ray. Encounter movement does
 // not place players or monsters in spatial.Room, so it must perform this
