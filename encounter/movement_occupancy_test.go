@@ -30,7 +30,7 @@ func (s *MovementOccupancySuite) SetupTest() {
 	s.enc = encounter.New(context.Background(), "enc-movement-occupancy", s.broker)
 
 	var err error
-	s.aliceSub, err = s.broker.Subscribe("enc-movement-occupancy", "alice")
+	s.aliceSub, err = s.broker.Subscribe("enc-movement-occupancy", alicePlayerID)
 	s.Require().NoError(err)
 }
 
@@ -42,7 +42,7 @@ func (s *MovementOccupancySuite) TearDownTest() {
 
 func (s *MovementOccupancySuite) addPlayer(sightRange int) {
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: "alice", EntityID: "char-alice", Position: core.Hex{}, SightRange: sightRange,
+		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: core.Hex{}, SightRange: sightRange,
 	}))
 }
 
@@ -95,10 +95,10 @@ func (s *MovementOccupancySuite) TestPlayerMove_HiddenOccupiedDestinationStopsWi
 	s.addMonster("hidden-goblin", hidden)
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond)
 
-	s.Require().NoError(s.enc.Move("alice", []core.Hex{safe, hidden}))
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{safe, hidden}))
 
 	data := s.enc.ToData()
-	s.Equal(safe, data.Players["alice"].View.Position)
+	s.Equal(safe, data.Players[alicePlayerID].View.Position)
 	s.Equal(hidden, data.Monsters["hidden-goblin"].Position)
 
 	emitted := collectEventsTyped(s.aliceSub, 500*time.Millisecond)
@@ -106,7 +106,7 @@ func (s *MovementOccupancySuite) TestPlayerMove_HiddenOccupiedDestinationStopsWi
 	for _, event := range emitted {
 		switch event := event.(type) {
 		case *events.MoveEvent:
-			if event.Mover == "char-alice" {
+			if event.Mover == aliceEntityID {
 				move = event
 			}
 		case *events.EntityAppearedEvent:
@@ -119,7 +119,7 @@ func (s *MovementOccupancySuite) TestPlayerMove_HiddenOccupiedDestinationStopsWi
 	s.NotContains(move.PerPlayer, core.PlayerID("hidden-goblin"))
 	s.T().Logf("occupancy trace: mover=char-alice proposed=%v actual=%v final=%v "+
 		"occupant_visible_to_alice=false emitted_events=%d",
-		[]core.Hex{safe, hidden}, move.Path, data.Players["alice"].View.Position, len(emitted))
+		[]core.Hex{safe, hidden}, move.Path, data.Players[alicePlayerID].View.Position, len(emitted))
 }
 
 // TestPlayerMove_CanPassThroughOccupiedHex pins the requested scope: creature
@@ -131,10 +131,10 @@ func (s *MovementOccupancySuite) TestPlayerMove_CanPassThroughOccupiedHex() {
 	s.addMonster("goblin", occupied)
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond)
 
-	s.Require().NoError(s.enc.Move("alice", []core.Hex{occupied, destination}))
-	s.Equal(destination, s.enc.ToData().Players["alice"].View.Position)
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{occupied, destination}))
+	s.Equal(destination, s.enc.ToData().Players[alicePlayerID].View.Position)
 
-	move := s.moveEventFor("char-alice")
+	move := s.moveEventFor(aliceEntityID)
 	s.Require().NotNil(move)
 	s.Equal([]core.Hex{occupied, destination}, move.Path)
 }
@@ -147,7 +147,7 @@ func (s *MovementOccupancySuite) TestPlayerMove_OccupiedFirstDestinationIsViewer
 	s.addMonster("goblin", occupied)
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond)
 
-	s.Require().NoError(s.enc.Move("alice", []core.Hex{occupied}))
-	s.Equal(core.Hex{}, s.enc.ToData().Players["alice"].View.Position)
-	s.Nil(s.moveEventFor("char-alice"), "a refused move must not emit a MoveEvent")
+	s.Require().NoError(s.enc.Move(alicePlayerID, []core.Hex{occupied}))
+	s.Equal(core.Hex{}, s.enc.ToData().Players[alicePlayerID].View.Position)
+	s.Nil(s.moveEventFor(aliceEntityID), "a refused move must not emit a MoveEvent")
 }
