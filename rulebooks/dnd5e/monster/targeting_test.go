@@ -131,9 +131,21 @@ func (s *TargetingTestSuite) TestTargetLowestAC() {
 	s.Equal("enemy-3", target.GetID(), "should select enemy with lowest AC (12)")
 }
 
-// TestTargetingDefault verifies default targeting strategy is TargetClosest
+// TestTargetingDefault verifies a freshly-constructed monster's stored
+// targeting strategy is TargetingUnspecified (the zero value) — NOT
+// TargetClosest. rpg-toolkit#895 gate-review hardening deliberately moved
+// TargetClosest off the zero value so "unset" and "explicit closest" are
+// distinguishable in storage; this proves the zero value really is
+// Unspecified now, and that it still SELECTS exactly like TargetClosest
+// would (the decision-time equivalence, not a fourth strategy).
 func (s *TargetingTestSuite) TestTargetingDefault() {
-	s.Equal(TargetClosest, s.monster.Targeting(), "default targeting should be TargetClosest")
+	s.Equal(TargetingUnspecified, s.monster.Targeting(),
+		"a fresh monster's targeting must be the zero value, TargetingUnspecified, not TargetClosest")
+
+	action := NewScimitarAction(ScimitarConfig{AttackBonus: 4, DamageDice: "1d6+2"})
+	target := s.monster.selectTarget(action, s.perception)
+	s.Require().NotNil(target)
+	s.Equal("enemy-1", target.GetID(), "TargetingUnspecified must select exactly like TargetClosest")
 }
 
 // TestTargetingNoEnemies verifies selectTarget returns nil when no enemies available
@@ -236,6 +248,7 @@ func TestParseTargetingStrategy_Table(t *testing.T) {
 		{name: "empty string rejected", input: "", wantErr: true},
 		{name: "unknown value rejected", input: "random", wantErr: true},
 		{name: "lowest-hp is not the author-facing label", input: "lowest-hp", wantErr: true},
+		{name: "unspecified is not an authorable choice", input: "unspecified", wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -261,4 +274,20 @@ func TestTargetingStrategy_Ref(t *testing.T) {
 	require.Equal(t, "dnd5e:targeting:closest", TargetClosest.Ref())
 	require.Equal(t, "dnd5e:targeting:lowest-hp", TargetLowestHP.Ref())
 	require.Equal(t, "dnd5e:targeting:lowest-ac", TargetLowestAC.Ref())
+	require.Equal(t, "dnd5e:targeting:closest", TargetingUnspecified.Ref(),
+		"unspecified must report the same rationale as closest — that IS the decision being made")
+}
+
+// TestTargetingStrategy_ZeroValueIsUnspecified locks in the gate-review
+// hardening (rpg-toolkit#895): TargetingUnspecified, not TargetClosest, is
+// the zero value. This is what lets a SpawnInstruction/persisted Data tell
+// "author explicitly wrote closest" apart from "author wrote nothing" by
+// construction — the entire point of the enum renumbering.
+func TestTargetingStrategy_ZeroValueIsUnspecified(t *testing.T) {
+	var zero TargetingStrategy
+	require.Equal(t, TargetingUnspecified, zero)
+	require.NotEqual(t, TargetClosest, zero, "TargetClosest must not be the zero value")
+	require.Equal(t, "unspecified", zero.String())
+	require.Equal(t, "closest", TargetClosest.String(),
+		"TargetClosest keeps its own distinct label even though it now behaves like the zero value would")
 }

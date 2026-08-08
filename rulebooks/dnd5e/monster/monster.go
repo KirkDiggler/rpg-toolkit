@@ -646,10 +646,15 @@ func (m *Monster) selectStrategyTargetIndex(enemies []PerceivedEntity) int {
 		}
 		return lowestIdx
 
-	case TargetClosest:
+	case TargetingUnspecified, TargetClosest:
 		fallthrough
 	default:
-		// Default behavior: pick closest (first in list, as Enemies is sorted by distance)
+		// Unspecified (a freshly-constructed Monster's zero value) behaves
+		// identically to TargetClosest: pick closest (first in list, as
+		// Enemies is sorted by distance). Named explicitly alongside
+		// TargetClosest rather than left to fall through default only, so
+		// this reads as an intentional decision-time equivalence, not an
+		// accident of the zero value landing in default (rpg-toolkit#895).
 		return 0
 	}
 }
