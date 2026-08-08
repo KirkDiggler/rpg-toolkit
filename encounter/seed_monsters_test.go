@@ -352,10 +352,11 @@ func TestSeedMonsters_OpportunityAttackReadySeeded(t *testing.T) {
 }
 
 // smSpawnedTargeting spawns a single instance of ref via SeedMonsters with
-// the given Targeting override (nil is a legal "unset" value), then
-// unmarshals the resulting monster's DataJSON to read back its persisted
-// TargetingStrategy — the survival proof every targeting test below needs.
-func smSpawnedTargeting(t *testing.T, ref string, targeting *monster.TargetingStrategy) monster.TargetingStrategy {
+// the given Targeting override (monster.TargetingUnspecified, the zero
+// value, is a legal "unset" value), then unmarshals the resulting monster's
+// DataJSON to read back its persisted TargetingStrategy — the survival
+// proof every targeting test below needs.
+func smSpawnedTargeting(t *testing.T, ref string, targeting monster.TargetingStrategy) monster.TargetingStrategy {
 	t.Helper()
 	enc := smNewEncounter(t)
 	require.NoError(t, enc.InitDungeon(smDungeonParams()))
@@ -380,30 +381,37 @@ func smSpawnedTargeting(t *testing.T, ref string, targeting *monster.TargetingSt
 // DataJSON (rpg-toolkit#895) — SetTargeting is applied before ToData()
 // marshals it, not after.
 func TestSeedMonsters_TargetingSurvivesIntoDataJSON(t *testing.T) {
-	want := monster.TargetLowestAC
-	got := smSpawnedTargeting(t, smRefSkeleton, &want)
+	got := smSpawnedTargeting(t, smRefSkeleton, monster.TargetLowestAC)
 	require.Equal(t, monster.TargetLowestAC, got)
 }
 
-// TestSeedMonsters_NilTargetingPreservesCtorDefault: a nil
-// SpawnInstruction.Targeting (the "author omitted targeting" shape) must
-// leave the constructor's own default alone — wolf.go's NewWolf calls
-// SetTargeting(TargetLowestHP), and TargetClosest's iota-zero value would
-// silently stomp that default if Targeting were anything but a pointer.
-func TestSeedMonsters_NilTargetingPreservesCtorDefault(t *testing.T) {
-	got := smSpawnedTargeting(t, smRefWolf, nil)
-	require.Equal(t, monster.TargetLowestHP, got, "nil Targeting must not override the wolf ctor's own default")
+// TestSeedMonsters_UnspecifiedTargetingPreservesCtorDefault: a
+// TargetingUnspecified SpawnInstruction.Targeting (the "author omitted
+// targeting" shape, and now the zero value) must leave the constructor's
+// own default alone — wolf.go's NewWolf calls SetTargeting(TargetLowestHP),
+// and stomping that default is exactly what a naive unconditional
+// SetTargeting call would do.
+func TestSeedMonsters_UnspecifiedTargetingPreservesCtorDefault(t *testing.T) {
+	got := smSpawnedTargeting(t, smRefWolf, monster.TargetingUnspecified)
+	require.Equal(t, monster.TargetLowestHP, got,
+		"TargetingUnspecified must not override the wolf ctor's own default")
 }
 
 // TestSeedMonsters_ExplicitClosestBeatsCtorDefault: an explicit
-// targeting: closest MUST override wolf's non-closest ctor default —
-// the exact case a non-pointer Targeting field (TargetClosest == 0)
-// could never express, since it would be indistinguishable from "unset."
+// targeting: closest MUST override wolf's non-closest ctor default — the
+// exact case that was indistinguishable from "unset" back when TargetClosest
+// was the zero value. Asserts the raw persisted value is literally 1, not
+// just symbolically equal to the TargetClosest constant: rpg-toolkit#895
+// gate-review hardening's whole point is that persisted "closest" (1) is
+// now distinguishable from persisted "unset" (TargetingUnspecified, 0)
+// forever, by construction — not just by construction-time discipline that
+// a future accidental renumbering could quietly undo while keeping this
+// assertion's symbolic comparison passing.
 func TestSeedMonsters_ExplicitClosestBeatsCtorDefault(t *testing.T) {
-	want := monster.TargetClosest
-	got := smSpawnedTargeting(t, smRefWolf, &want)
+	got := smSpawnedTargeting(t, smRefWolf, monster.TargetClosest)
 	require.Equal(t, monster.TargetClosest, got,
 		"explicit targeting: closest must beat the wolf ctor's TargetLowestHP default")
+	require.EqualValues(t, 1, got, "persisted targeting must be the literal value 1, not 0 (unset)")
 }
 
 // TestSeedMonsters_MidBatchInvalidInstructionLeavesEncounterUnchanged:

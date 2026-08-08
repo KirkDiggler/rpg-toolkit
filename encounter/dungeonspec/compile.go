@@ -413,18 +413,16 @@ func compileFacing(label *string) (*uint32, error) {
 
 // compileTargeting parses an author-facing targeting label (Validate
 // already checked it parses; this trusts that and re-checks defensively,
-// mirroring compileFacing) into the pointer shape SpawnInstruction.Targeting
-// requires — nil in, nil out, so an omitted targeting field never overrides
-// a monster's own ctor default (rpg-toolkit#895).
-func compileTargeting(label *string) (*monster.TargetingStrategy, error) {
+// mirroring compileFacing) into the value shape SpawnInstruction.Targeting
+// requires — nil in, TargetingUnspecified out, so an omitted targeting
+// field never overrides a monster's own ctor default (rpg-toolkit#895
+// gate-review hardening: TargetingUnspecified is the zero value precisely
+// so this no longer needs a pointer to express "unset").
+func compileTargeting(label *string) (monster.TargetingStrategy, error) {
 	if label == nil {
-		return nil, nil
+		return monster.TargetingUnspecified, nil
 	}
-	value, err := monster.ParseTargetingStrategy(*label)
-	if err != nil {
-		return nil, err
-	}
-	return &value, nil
+	return monster.ParseTargetingStrategy(*label)
 }
 
 type canvasCompiled struct {

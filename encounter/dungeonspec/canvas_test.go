@@ -163,8 +163,7 @@ func TestCanvasMonsterPlacementTargeting(t *testing.T) {
 		compiled, err := Load([]byte(yaml))
 		require.NoError(t, err)
 		require.Len(t, compiled.Spawns, 1)
-		require.NotNil(t, compiled.Spawns[0].Targeting)
-		require.Equal(t, monster.TargetLowestAC, *compiled.Spawns[0].Targeting)
+		require.Equal(t, monster.TargetLowestAC, compiled.Spawns[0].Targeting)
 	})
 }
 

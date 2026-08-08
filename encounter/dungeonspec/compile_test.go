@@ -304,8 +304,8 @@ connectors:
 
 	boss := compiled.Spawns[0] // boss-first ordering unchanged
 	assert.Equal(t, "dnd5e:monsters:skeleton-captain", boss.MonsterRef)
-	require.NotNil(t, boss.Targeting, "boss spawn (compileWithConfig) must thread its targeting override")
-	assert.Equal(t, monster.TargetLowestHP, *boss.Targeting)
+	assert.Equal(t, monster.TargetLowestHP, boss.Targeting,
+		"boss spawn (compileWithConfig) must thread its targeting override")
 
 	var skeletonSpawn *dungeonspec.SpawnInstruction
 	for i := range compiled.Spawns {
@@ -314,17 +314,19 @@ connectors:
 		}
 	}
 	require.NotNil(t, skeletonSpawn)
-	require.NotNil(t, skeletonSpawn.Targeting,
+	assert.Equal(t, monster.TargetClosest, skeletonSpawn.Targeting,
 		"place-block refTypeMonsters spawn (compileRoom) must thread its targeting override")
-	assert.Equal(t, monster.TargetClosest, *skeletonSpawn.Targeting)
 
 	// The unmodified placedTombYAML fixture (no targeting: anywhere) must
-	// still compile both spawns with a nil Targeting -- omitted, not a
-	// zero-value TargetClosest standing in for "unset."
+	// still compile both spawns with TargetingUnspecified -- omitted, not a
+	// zero-value TargetClosest standing in for "unset" (rpg-toolkit#895
+	// gate-review hardening moved TargetClosest off the zero value
+	// specifically so this distinction holds by construction).
 	unset, err := dungeonspec.Load([]byte(placedTombYAML))
 	require.NoError(t, err)
 	for i := range unset.Spawns {
-		assert.Nil(t, unset.Spawns[i].Targeting, "spawn %q: omitted targeting must compile to nil, not TargetClosest",
+		assert.Equal(t, monster.TargetingUnspecified, unset.Spawns[i].Targeting,
+			"spawn %q: omitted targeting must compile to TargetingUnspecified, not TargetClosest",
 			unset.Spawns[i].MonsterRef)
 	}
 }
