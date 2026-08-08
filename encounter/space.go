@@ -459,27 +459,28 @@ func (e *Encounter) truncateAtWall(moverStart core.Hex, path []core.Hex) []core.
 // No creature-sharing exception exists in the current encounter contract; a
 // future explicit rule must be tested and applied at this seam.
 func (e *Encounter) truncateAtOccupiedDestination(moverID core.EntityID, path []core.Hex) []core.Hex {
-	for len(path) > 0 && e.occupiedByOtherCreature(moverID, path[len(path)-1]) {
-		path = path[:len(path)-1]
-	}
-	return path
-}
-
-// occupiedByOtherCreature consults the full authoritative encounter state,
-// never a viewer's filtered perception, and intentionally returns no occupant
-// identity so movement refusal cannot leak a hidden creature.
-func (e *Encounter) occupiedByOtherCreature(moverID core.EntityID, hex core.Hex) bool {
+	occupied := make(map[core.Hex]struct{}, len(e.data.Players)+len(e.data.Monsters))
 	for _, player := range e.data.Players {
-		if player.EntityID != moverID && player.View != nil && player.View.Position == hex {
-			return true
+		if player.EntityID != moverID && player.View != nil {
+			occupied[player.View.Position] = struct{}{}
 		}
 	}
 	for _, monster := range e.data.Monsters {
-		if monster.ID != moverID && monster.Position == hex {
-			return true
+		if monster.ID != moverID {
+			occupied[monster.Position] = struct{}{}
 		}
 	}
-	return false
+
+	// Consult the full authoritative encounter state, never a viewer's
+	// filtered perception. The set contains no occupant identities, so this
+	// refusal path cannot leak a hidden creature.
+	for len(path) > 0 {
+		if _, blocked := occupied[path[len(path)-1]]; !blocked {
+			break
+		}
+		path = path[:len(path)-1]
+	}
+	return path
 }
 
 // isRoomSegmentTraversable rejects any direct requested segment that cannot

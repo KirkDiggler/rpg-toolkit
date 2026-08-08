@@ -116,7 +116,9 @@ func (s *MovementOccupancySuite) TestPlayerMove_HiddenOccupiedDestinationStopsWi
 	}
 	s.Require().NotNil(move)
 	s.Equal([]core.Hex{safe}, move.Path)
-	s.NotContains(move.PerPlayer, core.PlayerID("hidden-goblin"))
+	s.Require().Len(move.PerPlayer, 1, "the move is addressed only to its moving player")
+	_, addressedToMover := move.PerPlayer[core.PlayerID(alicePlayerID)]
+	s.True(addressedToMover)
 	s.T().Logf("occupancy trace: mover=char-alice proposed=%v actual=%v final=%v "+
 		"occupant_visible_to_alice=false emitted_events=%d",
 		[]core.Hex{safe, hidden}, move.Path, data.Players[alicePlayerID].View.Position, len(emitted))
