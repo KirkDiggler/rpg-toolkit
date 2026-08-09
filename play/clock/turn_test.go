@@ -361,7 +361,6 @@ func (s *TurnSuite) TestMergeCombinesBubbles() {
 	s.Empty(otherOrder)
 }
 
-//nolint:goconst // repeated test fixture ID; _test.go exclusions inert until toolkit#904
 func (s *TurnSuite) TestMergeErrors() {
 	other := &clock.Turn{}
 	_, err := other.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"x"}})
