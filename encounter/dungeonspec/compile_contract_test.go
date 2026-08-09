@@ -91,6 +91,53 @@ connectors: [{ from: entrance, to: boss }]
 	}
 }
 
+func TestCompileDungeonAliasCyclesReturnTypedErrors(t *testing.T) {
+	cycles := []string{
+		`version: 1
+key: self-cycle
+name: Self Cycle
+height: 7
+rooms: &rooms
+  - *rooms
+`,
+		`version: 1
+key: multi-cycle
+name: Multi Cycle
+height: 7
+rooms:
+  - &first
+    <<: &second
+      <<: *first
+`,
+	}
+	for _, source := range cycles {
+		out := compileCandidate(t, source, dungeonspec.CompileModeDraft, 1)
+		require.Equal(t, "rooms[0]", out.FieldErrors[0].Field)
+		require.Equal(t, "invalid_yaml", out.FieldErrors[0].Code)
+		require.Contains(t, out.FieldErrors[0].Message, "alias cycle")
+	}
+}
+
+func TestCompileDungeonSupportsOrdinaryAliases(t *testing.T) {
+	source := `version: 1
+key: ordinary-alias
+name: Ordinary Alias
+height: 7
+start: &anchor [0,0]
+rooms:
+  - { id: entrance, archetype: entrance, width: 7, pattern: empty }
+  - id: boss
+    archetype: boss
+    width: 7
+    pattern: empty
+    boss: { ref: "dnd5e:monsters:skeleton", at: *anchor }
+connectors: [{ from: entrance, to: boss }]
+`
+	out := compileCandidate(t, source, dungeonspec.CompileModeStrict, 1)
+	require.Empty(t, out.FieldErrors)
+	require.NotNil(t, out.FloorPlan)
+}
+
 func TestCompileDungeonRoomChainErrorsAreTypedAtSource(t *testing.T) {
 	cases := []struct{ name, source, field, code string }{
 		{

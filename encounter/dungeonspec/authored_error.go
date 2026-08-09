@@ -28,11 +28,22 @@ func authoredWrap(field, code string, err error) error {
 // It supplies exact structural paths before yaml.v3's prose-only KnownFields
 // errors can erase nesting/index information.
 func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
+	return validateYAMLShapeActive(node, typ, path, make(map[*yaml.Node]struct{}))
+}
+
+func validateYAMLShapeActive(
+	node *yaml.Node, typ reflect.Type, path string, active map[*yaml.Node]struct{},
+) error {
 	if node == nil {
 		return authoredError(path, "invalid_yaml", "decode dungeon spec: %s is missing", path)
 	}
+	if _, recursive := active[node]; recursive {
+		return authoredError(path, "invalid_yaml", "decode dungeon spec: YAML alias cycle at %s", path)
+	}
+	active[node] = struct{}{}
+	defer delete(active, node)
 	if node.Kind == yaml.AliasNode {
-		return validateYAMLShape(node.Alias, typ, path)
+		return validateYAMLShapeActive(node.Alias, typ, path, active)
 	}
 	if node.Tag == "!!null" {
 		return nil
@@ -49,7 +60,7 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 		for index := 0; index < len(node.Content); index += 2 {
 			key, value := node.Content[index], node.Content[index+1]
 			if key.Value == "<<" {
-				if err := validateYAMLMerge(value, typ, path); err != nil {
+				if err := validateYAMLMerge(value, typ, path, active); err != nil {
 					return err
 				}
 				continue
@@ -64,7 +75,7 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 					child, "unknown_field", "decode dungeon spec: line %d: %s is not a supported field", key.Line, child,
 				)
 			}
-			if err := validateYAMLShape(value, fieldType, child); err != nil {
+			if err := validateYAMLShapeActive(value, fieldType, child, active); err != nil {
 				return err
 			}
 		}
@@ -74,7 +85,7 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 			return authoredError(path, "invalid_yaml", "decode dungeon spec: %s must be a sequence", path)
 		}
 		for index, child := range node.Content {
-			if err := validateYAMLShape(child, typ.Elem(), fmt.Sprintf("%s[%d]", path, index)); err != nil {
+			if err := validateYAMLShapeActive(child, typ.Elem(), fmt.Sprintf("%s[%d]", path, index), active); err != nil {
 				return err
 			}
 		}
@@ -84,7 +95,7 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 			return authoredError(path, "invalid_yaml", "decode dungeon spec: %s must be a %d-item sequence", path, typ.Len())
 		}
 		for index, child := range node.Content {
-			if err := validateYAMLShape(child, typ.Elem(), fmt.Sprintf("%s[%d]", path, index)); err != nil {
+			if err := validateYAMLShapeActive(child, typ.Elem(), fmt.Sprintf("%s[%d]", path, index), active); err != nil {
 				return err
 			}
 		}
@@ -101,23 +112,30 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 	}
 }
 
-func validateYAMLMerge(node *yaml.Node, typ reflect.Type, path string) error {
-	if node.Kind == yaml.AliasNode {
-		return validateYAMLShape(node.Alias, typ, path)
+func validateYAMLMerge(
+	node *yaml.Node, typ reflect.Type, path string, active map[*yaml.Node]struct{},
+) error {
+	if node == nil {
+		return authoredError(path, "invalid_yaml", "decode dungeon spec: %s merge is missing", path)
+	}
+	if node.Kind == yaml.AliasNode || node.Kind == yaml.MappingNode {
+		return validateYAMLShapeActive(node, typ, path, active)
 	}
 	if node.Kind == yaml.SequenceNode {
+		if _, recursive := active[node]; recursive {
+			return authoredError(path, "invalid_yaml", "decode dungeon spec: YAML alias cycle at %s", path)
+		}
+		active[node] = struct{}{}
+		defer delete(active, node)
 		for _, merged := range node.Content {
 			if merged.Kind != yaml.AliasNode && merged.Kind != yaml.MappingNode {
 				return authoredError(path, "invalid_yaml", "decode dungeon spec: %s merge must contain mappings", path)
 			}
-			if err := validateYAMLShape(merged, typ, path); err != nil {
+			if err := validateYAMLShapeActive(merged, typ, path, active); err != nil {
 				return err
 			}
 		}
 		return nil
-	}
-	if node.Kind == yaml.MappingNode {
-		return validateYAMLShape(node, typ, path)
 	}
 	return authoredError(path, "invalid_yaml", "decode dungeon spec: %s merge must be a mapping or alias sequence", path)
 }
