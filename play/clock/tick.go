@@ -110,7 +110,9 @@ type AdvanceInput struct {
 // AdvanceOutput reports the tick and which members now have budget.
 type AdvanceOutput struct {
 	Milestones []Milestone
-	Ready      []core.EntityID
+	// Ready is a snapshot — members with budget > 0 at this instant — not a
+	// became-ready event; a member with unspent budget reappears on every Advance.
+	Ready []core.EntityID
 }
 
 // Advance records the driver's cumulative displacement; when it raises the
@@ -168,4 +170,66 @@ func (k *Tick) Spend(in *SpendInput) (*SpendOutput, error) {
 	}
 	k.budgets[in.ID] = b - in.Amount
 	return &SpendOutput{Milestones: nil}, nil
+}
+
+// TickData is Tick's persisted shape (design R8). Plain data, no behavior.
+type TickData struct {
+	Budgets        map[core.EntityID]int `json:"budgets,omitempty"`
+	DriverProgress map[core.EntityID]int `json:"driver_progress,omitempty"`
+	HighWater      int                   `json:"high_water,omitempty"`
+}
+
+// ToData snapshots the clock. Family-convention exemption from R3 (design).
+func (k *Tick) ToData() TickData {
+	return TickData{
+		Budgets:        copyIntMap(k.budgets),
+		DriverProgress: copyIntMap(k.driverProgress),
+		HighWater:      k.highWater,
+	}
+}
+
+// LoadTick reconstructs a Tick from persisted state. A constructor, not a
+// verb — no milestones. Errors: ErrInvalidData for every R9 rejection.
+func LoadTick(data TickData) (*Tick, error) {
+	maxProgress := 0
+	for id, p := range data.DriverProgress {
+		if p < 0 {
+			return nil, fmt.Errorf("load tick: driver %q progress %d: %w", id, p, ErrInvalidData)
+		}
+		if p > maxProgress {
+			maxProgress = p
+		}
+	}
+	if data.HighWater < maxProgress {
+		return nil, fmt.Errorf("load tick: high water %d below max driver progress %d: %w",
+			data.HighWater, maxProgress, ErrInvalidData)
+	}
+	for id, b := range data.Budgets {
+		if b < 0 {
+			return nil, fmt.Errorf("load tick: member %q budget %d: %w", id, b, ErrInvalidData)
+		}
+	}
+	k := &Tick{
+		budgets:        copyIntMap(data.Budgets),
+		driverProgress: copyIntMap(data.DriverProgress),
+		highWater:      data.HighWater,
+	}
+	if k.budgets == nil {
+		k.budgets = make(map[core.EntityID]int)
+	}
+	if k.driverProgress == nil {
+		k.driverProgress = make(map[core.EntityID]int)
+	}
+	return k, nil
+}
+
+func copyIntMap(m map[core.EntityID]int) map[core.EntityID]int {
+	if m == nil {
+		return nil
+	}
+	out := make(map[core.EntityID]int, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }

@@ -142,3 +142,91 @@ func (s *TickSuite) TestSpend() {
 	_, err = s.tick.Spend(&clock.SpendInput{ID: "zz", Amount: 1})
 	s.Require().ErrorIs(err, clock.ErrNotMember)
 }
+
+// TestAdvanceCrossDriverOvertake pins that the high-water mark is
+// per-clock: a second driver overtaking grants only the overtake delta.
+func (s *TickSuite) TestAdvanceCrossDriverOvertake() {
+	_, err := s.tick.Join(&clock.JoinInput{ID: "goblin"})
+	s.Require().NoError(err)
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 5})
+	s.Require().NoError(err)
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p2", Displacement: 3})
+	s.Require().NoError(err) // p2 at 3, below the mark: no grant
+	b, err := s.tick.Budget(&clock.BudgetInput{ID: "goblin"})
+	s.Require().NoError(err)
+	s.Equal(5, b)
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p2", Displacement: 4})
+	s.Require().NoError(err) // p2 cumulative 7 overtakes 5: grant 2, not 4
+	b, err = s.tick.Budget(&clock.BudgetInput{ID: "goblin"})
+	s.Require().NoError(err)
+	s.Equal(7, b)
+}
+
+// TestReadyOmitsSpentToZero pins the snapshot semantics' flip side.
+func (s *TickSuite) TestReadyOmitsSpentToZero() {
+	_, err := s.tick.Join(&clock.JoinInput{ID: "goblin"})
+	s.Require().NoError(err)
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 2})
+	s.Require().NoError(err)
+	_, err = s.tick.Spend(&clock.SpendInput{ID: "goblin", Amount: 2})
+	s.Require().NoError(err)
+	out, err := s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 0})
+	s.Require().NoError(err)
+	s.Empty(out.Ready, "a member spent to zero is not ready")
+}
+
+// TestSpendErrorPrecedence pins absent-member beating bad-amount.
+func (s *TickSuite) TestSpendErrorPrecedence() {
+	_, err := s.tick.Spend(&clock.SpendInput{ID: "absent", Amount: 0})
+	s.Require().ErrorIs(err, clock.ErrNotMember)
+}
+
+// TestDriverAlsoMemberAccruesOwnDisplacement pins the property AC1's
+// DOS2 spine relies on: a lone member-driver accrues exactly their own
+// displacement and appears in their own Ready.
+func (s *TickSuite) TestDriverAlsoMemberAccruesOwnDisplacement() {
+	const carl core.EntityID = "carl"
+	_, err := s.tick.Join(&clock.JoinInput{ID: carl})
+	s.Require().NoError(err)
+	out, err := s.tick.Advance(&clock.AdvanceInput{Driver: carl, Displacement: 3})
+	s.Require().NoError(err)
+	s.Equal([]core.EntityID{carl}, out.Ready)
+	b, err := s.tick.Budget(&clock.BudgetInput{ID: carl})
+	s.Require().NoError(err)
+	s.Equal(3, b)
+}
+
+func (s *TickSuite) TestTickRoundTrip() {
+	_, err := s.tick.Join(&clock.JoinInput{ID: "goblin"})
+	s.Require().NoError(err)
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 3})
+	s.Require().NoError(err)
+	_, err = s.tick.Spend(&clock.SpendInput{ID: "goblin", Amount: 1})
+	s.Require().NoError(err)
+	loaded, err := clock.LoadTick(s.tick.ToData())
+	s.Require().NoError(err)
+	s.Equal(s.tick.ToData(), loaded.ToData())
+	// behavior-identical: same high-water means no spurious grant
+	_, err = loaded.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 0})
+	s.Require().NoError(err)
+	b, err := loaded.Budget(&clock.BudgetInput{ID: "goblin"})
+	s.Require().NoError(err)
+	s.Equal(2, b)
+}
+
+func (s *TickSuite) TestLoadTickRejectsInvalid() {
+	cases := []struct {
+		name string
+		data clock.TickData
+	}{
+		{"negative budget", clock.TickData{Budgets: map[core.EntityID]int{"a": -1}}},
+		{"negative driver progress", clock.TickData{DriverProgress: map[core.EntityID]int{"p": -2}}},
+		{"high water below max progress", clock.TickData{DriverProgress: map[core.EntityID]int{"p": 5}, HighWater: 3}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			_, err := clock.LoadTick(tc.data)
+			s.Require().ErrorIs(err, clock.ErrInvalidData)
+		})
+	}
+}
