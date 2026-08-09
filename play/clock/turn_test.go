@@ -399,3 +399,75 @@ func (s *TurnSuite) TestDissolve() {
 	_, err = s.turn.Active()
 	s.Require().ErrorIs(err, clock.ErrIdle)
 }
+
+func (s *TurnSuite) TestToDataSnapshotIsImmuneToLaterVerbs() {
+	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b", "c"}})
+	s.Require().NoError(err)
+	snap := s.turn.ToData()
+	_, err = s.turn.Remove(&clock.RemoveInput{ID: "b"})
+	s.Require().NoError(err)
+	s.Equal([]core.EntityID{"a", "b", "c"}, snap.Order, "snapshot must not observe later mutations")
+}
+
+func (s *TurnSuite) TestTurnRoundTrip() {
+	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b", "c"}})
+	s.Require().NoError(err)
+	_, err = s.turn.End(&clock.EndInput{Actor: "a"})
+	s.Require().NoError(err)
+	data := s.turn.ToData()
+	loaded, err := clock.LoadTurn(data)
+	s.Require().NoError(err)
+	s.Equal(s.turn.ToData(), loaded.ToData())
+	// behavior-identical: same next actor on End
+	out, err := loaded.End(&clock.EndInput{Actor: "b"})
+	s.Require().NoError(err)
+	s.Equal(core.EntityID("c"), out.Next)
+}
+
+func (s *TurnSuite) TestRoundTripAfterMergeAndDissolve() {
+	// design AC3: post-merge and post-dissolve are named round-trip states
+	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b"}})
+	s.Require().NoError(err)
+	other := &clock.Turn{}
+	_, err = other.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"x"}})
+	s.Require().NoError(err)
+	_, err = s.turn.Merge(&clock.MergeInput{Other: other, Order: []core.EntityID{"a", "x", "b"}})
+	s.Require().NoError(err)
+	merged, err := clock.LoadTurn(s.turn.ToData())
+	s.Require().NoError(err)
+	s.Equal(s.turn.ToData(), merged.ToData())
+	drained, err := clock.LoadTurn(other.ToData()) // drained Other is canonical idle
+	s.Require().NoError(err)
+	s.Equal(other.ToData(), drained.ToData())
+
+	_, err = s.turn.Dissolve(&clock.DissolveInput{})
+	s.Require().NoError(err)
+	idle, err := clock.LoadTurn(s.turn.ToData()) // post-dissolve is canonical idle
+	s.Require().NoError(err)
+	s.Equal(s.turn.ToData(), idle.ToData())
+}
+
+func (s *TurnSuite) TestLoadTurnRejectsInvalid() {
+	cases := []struct {
+		name string
+		data clock.TurnData
+	}{
+		{"duplicate members", clock.TurnData{Order: []core.EntityID{"a", "a"}, Round: 1}},
+		{"active idx out of range", clock.TurnData{Order: []core.EntityID{"a"}, ActiveIdx: 1, Round: 1}},
+		{"negative active idx", clock.TurnData{Order: []core.EntityID{"a"}, ActiveIdx: -1, Round: 1}},
+		{"idle with nonzero active idx", clock.TurnData{ActiveIdx: 2}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			_, err := clock.LoadTurn(tc.data)
+			s.Require().ErrorIs(err, clock.ErrInvalidData)
+		})
+	}
+}
+
+func (s *TurnSuite) TestLoadTurnAcceptsCanonicalIdle() {
+	loaded, err := clock.LoadTurn(clock.TurnData{})
+	s.Require().NoError(err)
+	_, err = loaded.Active()
+	s.Require().ErrorIs(err, clock.ErrIdle)
+}

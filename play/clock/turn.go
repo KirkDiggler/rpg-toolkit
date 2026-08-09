@@ -278,3 +278,48 @@ func (t *Turn) Dissolve(_ *DissolveInput) (*DissolveOutput, error) {
 		Milestones: []Milestone{{Kind: Dissolved, Round: round}},
 	}, nil
 }
+
+// TurnData is Turn's persisted shape (design R8). Plain data, no behavior.
+type TurnData struct {
+	Order     []core.EntityID `json:"order,omitempty"`
+	ActiveIdx int             `json:"active_idx,omitempty"`
+	Round     int             `json:"round,omitempty"`
+}
+
+// ToData snapshots the clock. Family-convention exemption from R3 (design).
+func (t *Turn) ToData() TurnData {
+	return TurnData{
+		Order:     append([]core.EntityID(nil), t.order...),
+		ActiveIdx: t.activeIdx,
+		Round:     t.round,
+	}
+}
+
+// LoadTurn reconstructs a Turn from persisted state. A constructor, not a
+// verb — no milestones. Errors: ErrInvalidData for every R9 rejection.
+func LoadTurn(data TurnData) (*Turn, error) {
+	if len(data.Order) == 0 {
+		if data.ActiveIdx != 0 {
+			return nil, fmt.Errorf("load turn: idle clock with active idx %d: %w", data.ActiveIdx, ErrInvalidData)
+		}
+		return &Turn{round: data.Round}, nil
+	}
+	seen := make(map[core.EntityID]struct{}, len(data.Order))
+	for _, id := range data.Order {
+		if _, dup := seen[id]; dup {
+			return nil, fmt.Errorf("load turn: duplicate member %q: %w", id, ErrInvalidData)
+		}
+		seen[id] = struct{}{}
+	}
+	if data.ActiveIdx < 0 || data.ActiveIdx >= len(data.Order) {
+		return nil, fmt.Errorf(
+			"load turn: active idx %d out of range [0,%d): %w",
+			data.ActiveIdx, len(data.Order), ErrInvalidData,
+		)
+	}
+	return &Turn{
+		order:     append([]core.EntityID(nil), data.Order...),
+		activeIdx: data.ActiveIdx,
+		round:     data.Round,
+	}, nil
+}
