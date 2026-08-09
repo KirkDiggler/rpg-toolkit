@@ -31,7 +31,7 @@ type SetOrderOutput struct {
 // active. Errors: ErrBadOrder (empty), ErrDuplicateMember.
 func (t *Turn) SetOrder(in *SetOrderInput) (*SetOrderOutput, error) {
 	if len(in.Order) == 0 {
-		return nil, fmt.Errorf("set order: empty: %w", ErrBadOrder)
+		return nil, fmt.Errorf("set order: order is empty: %w", ErrBadOrder)
 	}
 	seen := make(map[core.EntityID]struct{}, len(in.Order))
 	for _, id := range in.Order {
@@ -88,4 +88,40 @@ func (t *Turn) indexOf(id core.EntityID) int {
 		}
 	}
 	return -1
+}
+
+// EndInput names the actor ending their turn.
+type EndInput struct {
+	Actor core.EntityID
+}
+
+// EndOutput reports what End caused and who acts next.
+type EndOutput struct {
+	Milestones   []Milestone
+	Next         core.EntityID
+	RoundWrapped bool
+}
+
+// End advances past Actor's turn. Errors: ErrIdle, ErrNotActive (with no
+// state change — R5).
+func (t *Turn) End(in *EndInput) (*EndOutput, error) {
+	if len(t.order) == 0 {
+		return nil, fmt.Errorf("end turn: %w", ErrIdle)
+	}
+	active := t.order[t.activeIdx]
+	if in.Actor != active {
+		return nil, fmt.Errorf("end turn: %q is not the active entity (%q is): %w", in.Actor, active, ErrNotActive)
+	}
+	ms := []Milestone{{Kind: TurnEnded, Subject: active, Round: t.round}}
+	t.activeIdx++
+	wrapped := false
+	if t.activeIdx >= len(t.order) {
+		t.activeIdx = 0
+		t.round++
+		wrapped = true
+		ms = append(ms, Milestone{Kind: RoundStarted, Round: t.round})
+	}
+	next := t.order[t.activeIdx]
+	ms = append(ms, Milestone{Kind: TurnStarted, Subject: next, Round: t.round})
+	return &EndOutput{Milestones: ms, Next: next, RoundWrapped: wrapped}, nil
 }
