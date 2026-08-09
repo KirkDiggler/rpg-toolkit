@@ -112,7 +112,7 @@ git push -u origin feat/core-entity-id
 gh pr create --title "feat(core): add EntityID shared identity newtype" --body "Additive string newtype; shared identity vocabulary for the play/ leaf family per docs/ideas/play/clock/design.md (Prerequisite section). No behavior change."
 ```
 
-**Gate:** this PR must be MERGED before Task 2's `go get` can resolve. Do not proceed past Task 2 Step 2 until it is.
+**Gate:** this PR must be MERGED before Task 2 Step 1's `go get github.com/KirkDiggler/rpg-toolkit/core@main` can resolve the EntityID type. Do not run that command until it is.
 
 ---
 
@@ -881,6 +881,27 @@ func (s *TurnSuite) TestLoadTurnRejectsInvalid() {
 	}
 }
 
+func (s *TurnSuite) TestRoundTripAfterMergeAndDissolve() {
+	// design AC3: post-merge and post-dissolve are named round-trip states
+	_, _ = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b"}})
+	other := &clock.Turn{}
+	_, _ = other.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"x"}})
+	_, err := s.turn.Merge(&clock.MergeInput{Other: other, Order: []core.EntityID{"a", "x", "b"}})
+	s.Require().NoError(err)
+	merged, err := clock.LoadTurn(s.turn.ToData())
+	s.Require().NoError(err)
+	s.Equal(s.turn.ToData(), merged.ToData())
+	drained, err := clock.LoadTurn(other.ToData()) // drained Other is canonical idle
+	s.Require().NoError(err)
+	s.Equal(other.ToData(), drained.ToData())
+
+	_, err = s.turn.Dissolve(&clock.DissolveInput{})
+	s.Require().NoError(err)
+	idle, err := clock.LoadTurn(s.turn.ToData()) // post-dissolve is canonical idle
+	s.Require().NoError(err)
+	s.Equal(s.turn.ToData(), idle.ToData())
+}
+
 func (s *TurnSuite) TestLoadTurnAcceptsCanonicalIdle() {
 	loaded, err := clock.LoadTurn(clock.TurnData{})
 	s.Require().NoError(err)
@@ -954,10 +975,13 @@ package clock_test
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/stretchr/testify/suite"
 )
+
+// NOTE: the core import is NOT used by this task's tests — it is added in
+// Task 9, whose tests first reference core.EntityID. Go hard-errors on
+// unused imports.
 
 type TickSuite struct {
 	suite.Suite
@@ -1112,7 +1136,7 @@ func (k *Tick) Contains(in *ContainsInput) (bool, error) {
 
 **Files:** Modify `play/clock/tick.go`; Test `play/clock/tick_test.go`
 
-- [ ] **Step 1: Write failing tests.** The 4×3→3 example from the design is the named headline test:
+- [ ] **Step 1: Write failing tests.** First add `"github.com/KirkDiggler/rpg-toolkit/core"` to `tick_test.go`'s imports (these tests are its first use). The 4×3→3 example from the design is the named headline test:
 
 ```go
 func (s *TickSuite) TestAdvanceHighWaterMaxNotSum() {
@@ -1619,7 +1643,8 @@ func TestDOS2SplitParty(t *testing.T) {
 	adv, err := world.Advance(&clock.AdvanceInput{Driver: "carl", Displacement: 3})
 	require.NoError(t, err)
 	record(adv.Milestones)
-	require.Equal(t, []core.EntityID{"dana"}, adv.Ready, "dana accrues while the fight runs")
+	// carl is both driver and member; the grant reaches every member (design: Tick)
+	require.Equal(t, []core.EntityID{"carl", "dana"}, adv.Ready, "the distant pair accrues while the fight runs")
 
 	// A round of combat in the bubble.
 	for _, actor := range []core.EntityID{"alice", "goblin"} {
@@ -1634,6 +1659,13 @@ func TestDOS2SplitParty(t *testing.T) {
 	record(tr.Milestones)
 	inBubble, _ := bubble.Contains(&clock.ContainsInput{ID: "carl"})
 	require.True(t, inBubble)
+
+	// Bob closes the round: the bubble wraps into round 2 with carl in the
+	// order — AC1's "rounds advance with End" exercised across a wrap.
+	end, err := bubble.End(&clock.EndInput{Actor: "bob"})
+	require.NoError(t, err)
+	require.True(t, end.RoundWrapped)
+	record(end.Milestones)
 
 	// Fight ends: dissolve and re-home everyone to the world clock.
 	dis, err := bubble.Dissolve(&clock.DissolveInput{})
@@ -1672,11 +1704,16 @@ func TestDOS2SplitParty(t *testing.T) {
 		{Kind: clock.TurnStarted, Subject: "bob", Round: 1},
 		{Kind: clock.MemberLeft, Subject: "carl"},
 		{Kind: clock.MemberJoined, Subject: "carl", Round: 1},
-		{Kind: clock.Dissolved, Round: 1},
+		{Kind: clock.TurnEnded, Subject: "bob", Round: 1},
+		{Kind: clock.RoundStarted, Round: 2},
+		{Kind: clock.TurnStarted, Subject: "alice", Round: 2},
+		{Kind: clock.Dissolved, Round: 2},
+		// Dissolve returns members in bubble order [alice, goblin, carl, bob]
+		// (carl inserted at Pos 2), and the rejoin loop follows it.
 		{Kind: clock.MemberJoined, Subject: "alice"},
 		{Kind: clock.MemberJoined, Subject: "goblin"},
-		{Kind: clock.MemberJoined, Subject: "bob"},
 		{Kind: clock.MemberJoined, Subject: "carl"},
+		{Kind: clock.MemberJoined, Subject: "bob"},
 	}, transcript)
 }
 ```
@@ -1696,7 +1733,38 @@ go mod tidy && go test ./... -count=1 && golangci-lint run ./... && go vet ./...
 ```
 Expected: all green. Fix anything that isn't before proceeding.
 
-- [ ] **Step 2: AC4 groundwork.** `gorelease` needs a first tag to diff against, so at this stage record the intent where release automation will find it — append to the module `doc.go` comment: `// Release gate: gorelease -base <last-tag> must pass before tagging (design AC4).` The repo's `auto-tag-modules` workflow picks up new modules; the first tag (`play/clock/v0.1.0`) happens at merge per repo convention, and the gorelease check becomes enforceable from the second tag onward. Verify locally that the tool runs:
+- [ ] **Step 2: AC4 — wire the compat gate into CI.** Create `.github/workflows/compat.yml` (repo-level file, not part of any module — allowed from this branch):
+
+```yaml
+name: API Compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'play/clock/**'
+
+jobs:
+  gorelease-play-clock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: gorelease play/clock
+        run: |
+          base=$(git tag -l 'play/clock/v*' --sort=-v:refname | head -1)
+          if [ -z "$base" ]; then
+            echo "no play/clock tag yet — first release, gate activates from the first tag"
+            exit 0
+          fi
+          cd play/clock
+          go run golang.org/x/exp/cmd/gorelease@latest -base "${base#play/clock/}"
+```
+
+This satisfies AC4 literally: the job exists from day one and enforces from the first tag onward (it skips only while no tag exists, and `auto-tag-modules` tags the module at merge). Verify the tool runs locally:
 
 ```bash
 cd /home/kirk/game-dev/.worktrees/toolkit-play-clock/play/clock
@@ -1729,6 +1797,12 @@ Prerequisite: merges after feat/core-entity-id (core.EntityID)."
 
 ## Execution notes
 
+- Test style: the per-type suites (Tasks 3–10) use the testify suite pattern
+  per design AC5; the cross-type integration tests (Tasks 11–12) are plain
+  functions with `require` — deliberate, since they exercise multiple
+  independently-constructed clocks per test and gain nothing from suite
+  fixtures. Reviewers pointing at AC5 for those files: this note is the
+  answer.
 - Tasks 3–11 are strictly ordered (each builds on prior types). Task 1 is independent and must merge first. Task 0 is docs-only on the other branch.
 - Every commit message uses the repo's conventional style; pre-commit hooks run the module's fmt/lint/tests — do not `--no-verify` on code commits.
 - If any implementation forces a deviation from `design.md`, STOP and update the design (with Kirk's sign-off) before coding around it.
