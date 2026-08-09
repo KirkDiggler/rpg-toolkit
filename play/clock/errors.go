@@ -5,7 +5,7 @@ package clock
 
 import "errors"
 
-// Sentinel errors — the module's state vocabulary (design: Errors).
+// Sentinel errors — the module's error vocabulary (design: Errors).
 // All returned errors wrap exactly one of these; callers dispatch with
 // errors.Is. Messages are user-facing.
 var (
@@ -31,4 +31,8 @@ var (
 	// ErrSameClock reports an operation that requires two distinct clocks
 	// (merging a clock into itself; transferring within one clock).
 	ErrSameClock = errors.New("operation requires two distinct clocks")
+	// ErrNilInput reports a nil *XxxInput, or a nil required field inside
+	// an otherwise-valid Input (Merge.Other, Transfer.From/To). Caller
+	// defects get their own sentinel; state sentinels stay pure.
+	ErrNilInput = errors.New("nil input")
 )

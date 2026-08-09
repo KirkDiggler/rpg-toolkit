@@ -40,8 +40,11 @@ type JoinOutput struct {
 	Milestones []Milestone
 }
 
-// Join adds a member at budget 0. Errors: ErrDuplicateMember.
+// Join adds a member at budget 0. Errors: ErrNilInput, ErrDuplicateMember.
 func (k *Tick) Join(in *JoinInput) (*JoinOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("join: %w", ErrNilInput)
+	}
 	if _, ok := k.budgets[in.ID]; ok {
 		return nil, fmt.Errorf("join %q: %w", in.ID, ErrDuplicateMember)
 	}
@@ -59,8 +62,11 @@ type LeaveOutput struct {
 	Milestones []Milestone
 }
 
-// Leave removes a member and its budget. Errors: ErrNotMember.
+// Leave removes a member and its budget. Errors: ErrNilInput, ErrNotMember.
 func (k *Tick) Leave(in *LeaveInput) (*LeaveOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("leave: %w", ErrNilInput)
+	}
 	if _, ok := k.budgets[in.ID]; !ok {
 		return nil, fmt.Errorf("leave %q: %w", in.ID, ErrNotMember)
 	}
@@ -73,9 +79,12 @@ type BudgetInput struct {
 	ID core.EntityID
 }
 
-// Budget returns the member's current budget. Errors: ErrNotMember —
+// Budget returns the member's current budget. Errors: ErrNilInput, ErrNotMember —
 // never an ambiguous zero.
 func (k *Tick) Budget(in *BudgetInput) (int, error) {
+	if in == nil {
+		return 0, fmt.Errorf("budget: %w", ErrNilInput)
+	}
 	b, ok := k.budgets[in.ID]
 	if !ok {
 		return 0, fmt.Errorf("budget %q: %w", in.ID, ErrNotMember)
@@ -98,7 +107,11 @@ func (k *Tick) Members() ([]core.EntityID, error) {
 }
 
 // Contains reports membership; false is an answer.
+// Errors: ErrNilInput.
 func (k *Tick) Contains(in *ContainsInput) (bool, error) {
+	if in == nil {
+		return false, fmt.Errorf("contains: %w", ErrNilInput)
+	}
 	_, ok := k.budgets[in.ID]
 	return ok, nil
 }
@@ -121,8 +134,11 @@ type AdvanceOutput struct {
 // Advance records the driver's cumulative displacement; when it raises the
 // high-water mark, the delta is granted to every member's budget
 // (max-not-sum fairness — design: Tick). Drivers need not be members.
-// Errors: ErrBadAmount (negative displacement).
+// Errors: ErrNilInput, ErrBadAmount (negative displacement).
 func (k *Tick) Advance(in *AdvanceInput) (*AdvanceOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("advance: %w", ErrNilInput)
+	}
 	if in.Displacement < 0 {
 		return nil, fmt.Errorf("advance %q by %d: %w", in.Driver, in.Displacement, ErrBadAmount)
 	}
@@ -158,9 +174,12 @@ type SpendOutput struct {
 	Milestones []Milestone
 }
 
-// Spend deducts Amount from the member's budget. Errors: ErrNotMember,
+// Spend deducts Amount from the member's budget. Errors: ErrNilInput, ErrNotMember,
 // ErrBadAmount (non-positive), ErrInsufficientBudget.
 func (k *Tick) Spend(in *SpendInput) (*SpendOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("spend: %w", ErrNilInput)
+	}
 	b, ok := k.budgets[in.ID]
 	if !ok {
 		return nil, fmt.Errorf("spend %q: %w", in.ID, ErrNotMember)
@@ -232,8 +251,11 @@ func LoadTick(data TickData) (*Tick, error) {
 }
 
 // JoinMember adapts Join to the Joiner seam (Pos is ignored; a world
-// clock is unordered).
+// clock is unordered). Errors: ErrNilInput, and all errors from Join.
 func (k *Tick) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("join member: %w", ErrNilInput)
+	}
 	out, err := k.Join(&JoinInput{ID: in.ID})
 	if err != nil {
 		return nil, err
@@ -242,7 +264,11 @@ func (k *Tick) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
 }
 
 // LeaveMember adapts Leave to the Leaver seam.
+// Errors: ErrNilInput, and all errors from Leave.
 func (k *Tick) LeaveMember(in *LeaveMemberInput) (*LeaveMemberOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("leave member: %w", ErrNilInput)
+	}
 	out, err := k.Leave(&LeaveInput{ID: in.ID})
 	if err != nil {
 		return nil, err

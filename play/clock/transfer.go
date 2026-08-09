@@ -45,8 +45,14 @@ type TransferOutput struct {
 // propagates. Execution is join-first with compensating leave — the
 // transient dual membership is invisible under R10's single-threaded
 // contract; milestones are reported in leave-then-join order per the
-// design regardless.
+// design regardless. Errors: ErrNilInput, ErrSameClock, and errors from Join/Leave.
 func Transfer(in *TransferInput) (*TransferOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("transfer: %w", ErrNilInput)
+	}
+	if in.From == nil || in.To == nil {
+		return nil, fmt.Errorf("transfer %q: %w", in.ID, ErrNilInput)
+	}
 	if in.From == in.To {
 		return nil, fmt.Errorf("transfer %q: from and to are the same clock: %w", in.ID, ErrSameClock)
 	}

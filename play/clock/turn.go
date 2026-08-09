@@ -28,8 +28,11 @@ type SetOrderOutput struct {
 }
 
 // SetOrder replaces the order, starting round 1 with the first member
-// active. Errors: ErrBadOrder (empty), ErrDuplicateMember.
+// active. Errors: ErrNilInput, ErrBadOrder (empty), ErrDuplicateMember.
 func (t *Turn) SetOrder(in *SetOrderInput) (*SetOrderOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("set order: %w", ErrNilInput)
+	}
 	if len(in.Order) == 0 {
 		return nil, fmt.Errorf("set order: order is empty: %w", ErrBadOrder)
 	}
@@ -77,7 +80,11 @@ type ContainsInput struct {
 }
 
 // Contains reports membership; false is an answer, never an error today.
+// Errors: ErrNilInput.
 func (t *Turn) Contains(in *ContainsInput) (bool, error) {
+	if in == nil {
+		return false, fmt.Errorf("contains: %w", ErrNilInput)
+	}
 	return t.indexOf(in.ID) >= 0, nil
 }
 
@@ -102,9 +109,12 @@ type EndOutput struct {
 	RoundWrapped bool
 }
 
-// End advances past Actor's turn. Errors: ErrIdle, ErrNotActive (with no
+// End advances past Actor's turn. Errors: ErrNilInput, ErrIdle, ErrNotActive (with no
 // state change — R5).
 func (t *Turn) End(in *EndInput) (*EndOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("end turn: %w", ErrNilInput)
+	}
 	if len(t.order) == 0 {
 		return nil, fmt.Errorf("end turn: %w", ErrIdle)
 	}
@@ -137,10 +147,13 @@ type InsertOutput struct {
 	Milestones []Milestone
 }
 
-// Insert adds a member at Pos. Errors: ErrIdle (bubbles start via
+// Insert adds a member at Pos. Errors: ErrNilInput, ErrIdle (bubbles start via
 // SetOrder), ErrDuplicateMember, ErrBadPosition. Inserting at or before
 // the active position keeps the currently active entity active.
 func (t *Turn) Insert(in *InsertInput) (*InsertOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("insert: %w", ErrNilInput)
+	}
 	if len(t.order) == 0 {
 		return nil, fmt.Errorf("insert %q: %w", in.ID, ErrIdle)
 	}
@@ -172,8 +185,11 @@ type RemoveOutput struct {
 }
 
 // Remove drops a member, keeping the active entity correct (design: Turn
-// verbs). Errors: ErrNotMember.
+// verbs). Errors: ErrNilInput, ErrNotMember.
 func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("remove: %w", ErrNilInput)
+	}
 	idx := t.indexOf(in.ID)
 	if idx < 0 {
 		return nil, fmt.Errorf("remove %q: %w", in.ID, ErrNotMember)
@@ -213,8 +229,14 @@ type MergeOutput struct {
 // of the union of both member sets. The receiver's active entity remains
 // active and its round is retained; Other is reset to the zero/idle state.
 // Other must be non-nil and distinct from the receiver.
-// Errors: ErrIdle (idle receiver), ErrSameClock, ErrBadOrder.
+// Errors: ErrNilInput, ErrIdle (idle receiver), ErrSameClock, ErrBadOrder.
 func (t *Turn) Merge(in *MergeInput) (*MergeOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("merge: %w", ErrNilInput)
+	}
+	if in.Other == nil {
+		return nil, fmt.Errorf("merge: %w", ErrNilInput)
+	}
 	if len(t.order) == 0 {
 		return nil, fmt.Errorf("merge: receiver: %w", ErrIdle)
 	}
@@ -264,8 +286,11 @@ type DissolveOutput struct {
 
 // Dissolve empties the clock at fight end. Members transfers the internal slice; the clock
 // drops its reference in the same call — the sanctioned exception to the module's copy-on-read
-// convention (design: Dissolve row). Errors: ErrIdle (already empty).
-func (t *Turn) Dissolve(_ *DissolveInput) (*DissolveOutput, error) {
+// convention (design: Dissolve row). Errors: ErrNilInput, ErrIdle (already empty).
+func (t *Turn) Dissolve(in *DissolveInput) (*DissolveOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("dissolve: %w", ErrNilInput)
+	}
 	if len(t.order) == 0 {
 		return nil, fmt.Errorf("dissolve: %w", ErrIdle)
 	}
@@ -354,7 +379,11 @@ type LeaveMemberOutput struct {
 }
 
 // JoinMember adapts Insert to the Joiner seam.
+// Errors: ErrNilInput, and all errors from Insert.
 func (t *Turn) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("join member: %w", ErrNilInput)
+	}
 	out, err := t.Insert(&InsertInput{ID: in.ID, Pos: in.Pos})
 	if err != nil {
 		return nil, err
@@ -363,7 +392,11 @@ func (t *Turn) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
 }
 
 // LeaveMember adapts Remove to the Leaver seam.
+// Errors: ErrNilInput, and all errors from Remove.
 func (t *Turn) LeaveMember(in *LeaveMemberInput) (*LeaveMemberOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("leave member: %w", ErrNilInput)
+	}
 	out, err := t.Remove(&RemoveInput{ID: in.ID})
 	if err != nil {
 		return nil, err
