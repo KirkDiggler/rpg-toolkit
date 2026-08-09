@@ -111,7 +111,7 @@ convention.
 | `Insert` | `{ID EntityID, Pos int}` | `{Milestones}` | Fall-in / reinforcement at caller-chosen position. MUST error if the clock is idle (no order set — bubbles start via `SetOrder`), if ID is present, or if `Pos` is outside `[0, len]`. Inserting at or before the active position MUST keep the currently active entity active. Milestone: `MemberJoined`. |
 | `Remove` | `{ID EntityID}` | `{Milestones}` | Death/flee. MUST error if ID is absent (`ErrNotMember`). MUST keep the active entity correct: removing a non-active member adjusts the index; removing the active member makes the next member active (milestones `MemberLeft, TurnStarted{next}`); removing the last member leaves the clock empty (`MemberLeft` only). |
 | `Merge` | `{Other *Turn, Order []EntityID}` | `{Milestones}` | Two bubbles collide. MUST error if the receiving clock is idle. `Order` MUST be a permutation of the union of both member sets (error otherwise). The receiving clock's active entity MUST remain active; its Round is retained. `Other` is reset to the zero/idle state (empty order, `ActiveIdx 0`, `Round 0`). Milestone: `Merged`. |
-| `Dissolve` | `{}` | `{Members []EntityID, Milestones}` | Fight over. MUST error if the clock is already empty. Empties the clock, returns the members for the composition to re-home. Milestone: `Dissolved`. |
+| `Dissolve` | `{}` | `{Members []EntityID, Milestones}` | Fight over. MUST error if the clock is already empty. Empties the clock, returns the members for the composition to re-home. `Members` transfers ownership of the internal slice (the clock nils its own reference in the same call) — the one sanctioned exception to the module's copy-on-read convention. Milestone: `Dissolved`. |
 
 ## Tick — the world clock
 
