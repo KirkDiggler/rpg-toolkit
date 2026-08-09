@@ -270,16 +270,14 @@ clean path at cutover, a trivial rename while the new module has no
 consumers. Both work; neither needs deciding until the composition module
 actually exists — the axes come first either way.
 
+## Decided since first draft
+
+- **`play/` is blessed** as the category for the four new runtime axes.
+- **The clock goes first.** The spine of the system, and the axis the
+  architect most wants to design. Design work starts from this doc.
+
 ## Open questions
 
-- **Category name** — `play/` is the proposal for the four new axes
-  (parallels `mechanics/` and `tools/` grammatically: the mechanics of
-  rules, the tools of worlds, the play of running them). Kirk blesses or
-  renames.
-- **First axis** — the decider seam is the smallest and unblocks the
-  monster-behavior work; the clock is the spine and the most fun to
-  design. An architect gets to pick joy: nothing downstream forces the
-  order.
 - **Parallel path vs takeover** — `encounter/v2` side-by-side or scaffold
   name until cutover (see above). Decide when the composition module
   exists.
