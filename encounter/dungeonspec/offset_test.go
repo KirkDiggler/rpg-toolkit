@@ -118,6 +118,9 @@ func TestLoad_PlacementOffsetCompilesEveryPlacementKindWithoutInterpretation(t *
 	assert.False(t, placements["rooms[1].boss"].BlocksMovement, "boss blockers are not applicable")
 	assert.False(t, placements["rooms[1].boss"].BlocksLoS, "boss blockers are not applicable")
 	assert.Nil(t, placements["rooms[1].place[1]"].Offset)
+	require.Equal(t, &dungeonspec.PlacementOffset{0, 0, 0}, compiled.Params.Regions[1].PlacedObstacles[0].Offset)
+	require.Equal(t, &dungeonspec.PlacementOffset{-1.25, 0, 2.5}, compiled.Spawns[0].Offset, "boss runtime carrier")
+	require.Equal(t, &dungeonspec.PlacementOffset{0.75, -0.5, 0.25}, compiled.Spawns[1].Offset, "room monster runtime carrier")
 	assert.True(t, placements["rooms[1].place[1]"].BlocksMovement, "omitted prop blocker defaults true")
 	assert.True(t, placements["rooms[1].place[1]"].BlocksLoS, "omitted prop blocker defaults true")
 
@@ -135,6 +138,8 @@ func TestLoad_PlacementOffsetCompilesEveryPlacementKindWithoutInterpretation(t *
 	assertCompiledOffset(t, canvasPlacements["place[1]"], dungeonspec.FloorPlanCell{Column: 2, Row: 0}, &dungeonspec.PlacementOffset{0, 0, 0})
 	assert.False(t, canvasPlacements["place[1]"].BlocksMovement)
 	assert.False(t, canvasPlacements["place[1]"].BlocksLoS)
+	require.Equal(t, &dungeonspec.PlacementOffset{-0.25, 0, 1.5}, canvasCompiled.Params.AbsolutePlacedObstacles[0].Offset)
+	require.Equal(t, &dungeonspec.PlacementOffset{0, 0, 0}, canvasCompiled.Spawns[0].Offset)
 }
 
 func TestLoad_PlacementOffsetDoesNotChangeMechanicsInputs(t *testing.T) {
