@@ -181,6 +181,7 @@ func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
 	wasActive := idx == t.activeIdx
 	t.order = append(t.order[:idx], t.order[idx+1:]...)
 	ms := []Milestone{{Kind: MemberLeft, Subject: in.ID, Round: t.round}}
+	// order matters: sole-member removal is also wasActive; wasActive arm indexes into possibly-empty order
 	switch {
 	case len(t.order) == 0:
 		t.activeIdx = 0
@@ -193,4 +194,79 @@ func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
 		t.activeIdx--
 	}
 	return &RemoveOutput{Milestones: ms}, nil
+}
+
+// MergeInput combines Other into the receiver under a caller-supplied
+// interleaved order (the rulebook decides how initiatives mesh).
+type MergeInput struct {
+	Other *Turn
+	Order []core.EntityID
+}
+
+// MergeOutput reports the milestones Merge caused.
+type MergeOutput struct {
+	Milestones []Milestone
+}
+
+// Merge absorbs Other's members under Order, which must be a permutation
+// of the union of both member sets. The receiver's active entity remains
+// active and its round is retained; Other is reset to the zero/idle state.
+// Errors: ErrIdle (idle receiver), ErrBadOrder.
+func (t *Turn) Merge(in *MergeInput) (*MergeOutput, error) {
+	if len(t.order) == 0 {
+		return nil, fmt.Errorf("merge: receiver: %w", ErrIdle)
+	}
+	union := make(map[core.EntityID]struct{}, len(t.order)+len(in.Other.order))
+	for _, id := range t.order {
+		union[id] = struct{}{}
+	}
+	for _, id := range in.Other.order {
+		union[id] = struct{}{}
+	}
+	if len(in.Order) != len(union) {
+		return nil, fmt.Errorf("merge: order has %d entries, union has %d: %w", len(in.Order), len(union), ErrBadOrder)
+	}
+	seen := make(map[core.EntityID]struct{}, len(in.Order))
+	for _, id := range in.Order {
+		if _, ok := union[id]; !ok {
+			return nil, fmt.Errorf("merge: %q is in neither clock: %w", id, ErrBadOrder)
+		}
+		if _, dup := seen[id]; dup {
+			return nil, fmt.Errorf("merge: %q appears twice: %w", id, ErrBadOrder)
+		}
+		seen[id] = struct{}{}
+	}
+	active := t.order[t.activeIdx]
+	t.order = append([]core.EntityID(nil), in.Order...)
+	t.activeIdx = t.indexOf(active)
+	in.Other.order = nil
+	in.Other.activeIdx = 0
+	in.Other.round = 0
+	return &MergeOutput{Milestones: []Milestone{{Kind: Merged, Round: t.round}}}, nil
+}
+
+// DissolveInput is empty today; verbs keep their Input struct for
+// additive evolution (design R3(b)).
+type DissolveInput struct{}
+
+// DissolveOutput returns the members for the composition to re-home.
+type DissolveOutput struct {
+	Members    []core.EntityID
+	Milestones []Milestone
+}
+
+// Dissolve empties the clock at fight end. Errors: ErrIdle (already empty).
+func (t *Turn) Dissolve(_ *DissolveInput) (*DissolveOutput, error) {
+	if len(t.order) == 0 {
+		return nil, fmt.Errorf("dissolve: %w", ErrIdle)
+	}
+	members := t.order
+	round := t.round
+	t.order = nil
+	t.activeIdx = 0
+	t.round = 0
+	return &DissolveOutput{
+		Members:    members,
+		Milestones: []Milestone{{Kind: Dissolved, Round: round}},
+	}, nil
 }
