@@ -155,6 +155,10 @@ func strictRegionValidation(compiled CompiledDungeon) *FieldError {
 }
 
 func fieldErrorFor(err error) (FieldError, bool) {
+	var placement *ValidationError
+	if errors.As(err, &placement) {
+		return FieldError{Field: placement.Field, Message: placement.Message, Code: "invalid_offset"}, true
+	}
 	var authored *authoredValidationError
 	if !errors.As(err, &authored) {
 		return FieldError{}, false

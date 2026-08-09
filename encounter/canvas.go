@@ -255,7 +255,8 @@ func generateCanvasDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 	for index, obstacle := range params.AbsolutePlacedObstacles {
 		obstacles[index] = ObstacleData{
 			ID: obstacle.ID, Ref: obstacle.Ref, Position: obstacle.At,
-			BlocksMovement: obstacle.BlocksMovement, BlocksLoS: obstacle.BlocksLoS, Facing: obstacle.Facing,
+			BlocksMovement: obstacle.BlocksMovement, BlocksLoS: obstacle.BlocksLoS,
+			Facing: cloneFacing(obstacle.Facing), Offset: clonePlacementOffset(obstacle.Offset),
 		}
 	}
 	floor := canvasFloorForParams(params)

@@ -90,18 +90,23 @@ const (
 //
 // Facing is absent for players, monsters, and rolled obstacles. An authored
 // floor prop may carry a canonical E,NE,NW,W,SW,SE = 0..5 override, whether
-// placed room-locally or at an absolute canvas coordinate. Pointer presence
-// distinguishes absent from explicit E = 0 and persists with this observation
-// for remembered placement rendering.
+// placed room-locally or at an absolute canvas coordinate. Offset may be
+// present on authored props or monsters/bosses and remains a mechanically inert
+// world-axis triple. Pointer presence distinguishes absent from explicit zero
+// for both fields and persists with remembered placement rendering.
 type Placement struct {
 	EntityID core.EntityID
 	// Facing is an optional hex-direction index in canonical 0-5 order.
 	Facing *uint32
+	// Offset is optional presentation-only [x,y,z] metadata in canonical
+	// game-world axes, frozen with this viewer's observation.
+	Offset *core.PlacementOffset
 }
 
 type placementWire struct {
-	EntityID core.EntityID `json:"EntityID"`
-	Facing   *uint32       `json:"facing,omitempty"`
+	EntityID core.EntityID         `json:"EntityID"`
+	Facing   *uint32               `json:"facing,omitempty"`
+	Offset   *core.PlacementOffset `json:"offset,omitempty"`
 }
 
 // MarshalJSON writes optional facing under a lowercase key so presence is
@@ -134,8 +139,15 @@ func (p *Placement) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	}
+	var offset *core.PlacementOffset
+	if rawOffset, ok := fields["offset"]; ok {
+		if err := json.Unmarshal(rawOffset, &offset); err != nil {
+			return err
+		}
+	}
 	p.EntityID = entityID
 	p.Facing = facing
+	p.Offset = offset
 	return nil
 }
 

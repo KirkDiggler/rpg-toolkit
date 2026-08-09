@@ -55,6 +55,10 @@ type SpawnInstruction struct {
 	// and "author omitted targeting entirely" (which must NOT) are
 	// structurally distinguishable without pointer nil-checks.
 	Targeting monster.TargetingStrategy
+
+	// Offset is optional presentation-only metadata copied to the minted
+	// monster identity without affecting either spawn coordinate path.
+	Offset *core.PlacementOffset
 }
 
 // resolvedSpawn is one SpawnInstruction after it has passed every
@@ -310,6 +314,7 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 				Speed:       mon.Speed().Walk / 5, // feet -> hexes (npc.go/action.go consume Speed in hexes)
 				MonsterRef:  spawn.MonsterRef,
 				DataJSON:    dataJSON,
+				Offset:      clonePlacementOffset(spawn.Offset),
 				AttackBonus: attackBonus,
 				DamageDice:  damageDice,
 				DamageType:  damageType,
@@ -377,6 +382,7 @@ func (e *Encounter) validateAbsoluteCanvasSpawn(
 		input: MonsterInput{
 			ID: id, Position: *spawn.AbsoluteAt, HP: mon.HP(), MaxHP: mon.MaxHP(), AC: mon.AC(),
 			Speed: mon.Speed().Walk / 5, MonsterRef: spawn.MonsterRef, DataJSON: dataJSON,
+			Offset:      clonePlacementOffset(spawn.Offset),
 			AttackBonus: attackBonus, DamageDice: damageDice, DamageType: damageType,
 		},
 	}, nil

@@ -88,6 +88,7 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 			contents = append(contents, events.KnownHexPlacement{
 				EntityID: c.EntityID,
 				Facing:   cloneFacing(c.Facing),
+				Offset:   clonePlacementOffset(c.Offset),
 			})
 		}
 		out = append(out, events.KnownHex{
@@ -188,7 +189,7 @@ func (e *Encounter) eventObservationsForAppearance(
 			}
 		}
 		if !found {
-			observation.Contents = append(observation.Contents, events.KnownHexPlacement{EntityID: entityID})
+			observation.Contents = append(observation.Contents, e.knownHexPlacementForEntity(entityID))
 			sort.Slice(observation.Contents, func(i, j int) bool {
 				return observation.Contents[i].EntityID < observation.Contents[j].EntityID
 			})
@@ -196,6 +197,29 @@ func (e *Encounter) eventObservationsForAppearance(
 		}
 	}
 	return out
+}
+
+// knownHexPlacementForEntity builds the event mirror from the runtime identity
+// that owns optional placement metadata. The current appearance-overlay caller
+// supplies player movers (which have neither field), but keeping the lookup
+// complete prevents a future monster/prop appearance path from fabricating a
+// bare placement and losing its persisted offset.
+func (e *Encounter) knownHexPlacementForEntity(entityID core.EntityID) events.KnownHexPlacement {
+	if monster, ok := e.data.Monsters[entityID]; ok {
+		return events.KnownHexPlacement{EntityID: entityID, Offset: clonePlacementOffset(monster.Offset)}
+	}
+	if e.data.Space != nil {
+		for index := range e.data.Space.Obstacles {
+			obstacle := &e.data.Space.Obstacles[index]
+			if obstacle.ID == entityID {
+				return events.KnownHexPlacement{
+					EntityID: entityID, Facing: cloneFacing(obstacle.Facing),
+					Offset: clonePlacementOffset(obstacle.Offset),
+				}
+			}
+		}
+	}
+	return events.KnownHexPlacement{EntityID: entityID}
 }
 
 // refreshObservations writes a fresh, current-world-truth HexObservation
@@ -322,9 +346,18 @@ func (e *Encounter) isSpaceHex(h core.Hex) bool {
 // idempotency guarantee (see its doc).
 //
 // Player and monster placements carry no facing override. Static obstacles
-// retain their persisted optional facing, so visible and remembered placement
-// observations keep explicit E = 0 distinct from absence.
+// retain their persisted optional facing. Authored obstacles and monsters keep
+// their persisted optional offset, so visible and remembered observations
+// preserve explicit zero independently from absence.
 func cloneFacing(value *uint32) *uint32 {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func clonePlacementOffset(value *core.PlacementOffset) *core.PlacementOffset {
 	if value == nil {
 		return nil
 	}
@@ -341,13 +374,15 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	}
 	for _, m := range e.data.Monsters {
 		if m.Position == h {
-			out = append(out, perception.Placement{EntityID: m.ID})
+			out = append(out, perception.Placement{EntityID: m.ID, Offset: clonePlacementOffset(m.Offset)})
 		}
 	}
 	if e.data.Space != nil {
 		for _, o := range e.data.Space.Obstacles {
 			if o.Position == h {
-				out = append(out, perception.Placement{EntityID: o.ID, Facing: cloneFacing(o.Facing)})
+				out = append(out, perception.Placement{
+					EntityID: o.ID, Facing: cloneFacing(o.Facing), Offset: clonePlacementOffset(o.Offset),
+				})
 			}
 		}
 	}

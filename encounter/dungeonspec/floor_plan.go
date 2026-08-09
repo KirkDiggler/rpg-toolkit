@@ -86,6 +86,8 @@ type FloorPlan struct {
 	FloorCells []FloorPlanCell
 	Entrance   *FloorPlanCell
 	Edges      []FloorPlanEdge
+	// Placements is the authoring-only projection; it carries no runtime identity.
+	Placements []CompiledPlacement
 }
 
 // BuildFloorPlanInput supplies a compiled specification and preview seed.
@@ -130,7 +132,10 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 		return FloorPlan{}, fmt.Errorf("init dungeon: no persisted space")
 	}
 	entrance := cellFromHex(data.Space.Entrance)
-	plan := FloorPlan{FloorSource: FloorSourceBounds, Height: data.Space.Height, Entrance: &entrance}
+	plan := FloorPlan{
+		FloorSource: FloorSourceBounds, Height: data.Space.Height, Entrance: &entrance,
+		Placements: cloneCompiledPlacements(in.Compiled.Placements),
+	}
 
 	if data.Space.FloorSource == encounter.FloorSourceRoomChain {
 		plan.DoorRow = data.Space.Height / 2
@@ -208,7 +213,8 @@ func buildCanvasFloorPlan(compiled CompiledDungeon) FloorPlan {
 	plan := FloorPlan{
 		FloorSource: canvas.floorSource, Width: canvas.width, Height: canvas.height,
 		FloorCells: append([]FloorPlanCell(nil), canvas.floorCells...), Entrance: cloneFloorPlanCell(canvas.entrance),
-		Regions: append([]FloorPlanRegion(nil), canvas.regions...),
+		Regions:    append([]FloorPlanRegion(nil), canvas.regions...),
+		Placements: cloneCompiledPlacements(compiled.Placements),
 	}
 	for _, edge := range canvas.envelope {
 		from, to := cellFromHex(edge.From), cellFromHex(edge.To)
@@ -271,6 +277,22 @@ func runtimeCanvasFloorCells(width, height int) ([]FloorPlanCell, error) {
 		return cells[i].Row < cells[j].Row
 	})
 	return cells, nil
+}
+
+func cloneCompiledPlacements(placements []CompiledPlacement) []CompiledPlacement {
+	if placements == nil {
+		return nil
+	}
+	clones := make([]CompiledPlacement, len(placements))
+	for index, placement := range placements {
+		clones[index] = placement
+		clones[index].Offset = clonePlacementOffset(placement.Offset)
+		if placement.Facing != nil {
+			facing := *placement.Facing
+			clones[index].Facing = &facing
+		}
+	}
+	return clones
 }
 
 func cloneString(value *string) *string {
