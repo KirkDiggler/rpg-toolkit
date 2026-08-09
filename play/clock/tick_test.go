@@ -4,6 +4,7 @@
 package clock_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -150,8 +151,9 @@ func (s *TickSuite) TestAdvanceCrossDriverOvertake() {
 	s.Require().NoError(err)
 	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 5})
 	s.Require().NoError(err)
-	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p2", Displacement: 3})
+	out, err := s.tick.Advance(&clock.AdvanceInput{Driver: "p2", Displacement: 3})
 	s.Require().NoError(err) // p2 at 3, below the mark: no grant
+	s.Equal([]core.EntityID{"goblin"}, out.Ready, "unspent member reappears on a no-grant Advance")
 	b, err := s.tick.Budget(&clock.BudgetInput{ID: "goblin"})
 	s.Require().NoError(err)
 	s.Equal(5, b)
@@ -222,6 +224,8 @@ func (s *TickSuite) TestLoadTickRejectsInvalid() {
 		{"negative budget", clock.TickData{Budgets: map[core.EntityID]int{"a": -1}}},
 		{"negative driver progress", clock.TickData{DriverProgress: map[core.EntityID]int{"p": -2}}},
 		{"high water below max progress", clock.TickData{DriverProgress: map[core.EntityID]int{"p": 5}, HighWater: 3}},
+		{"negative high water", clock.TickData{HighWater: -1}},
+		{"budget above high water", clock.TickData{Budgets: map[core.EntityID]int{"a": 3}, HighWater: 2}},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -229,4 +233,63 @@ func (s *TickSuite) TestLoadTickRejectsInvalid() {
 			s.Require().ErrorIs(err, clock.ErrInvalidData)
 		})
 	}
+}
+
+// TestTickIdleSnapshotConvention pins the uniform idle convention and the
+// snapshot's immunity to later verbs (Turn's analog pins already exist).
+func (s *TickSuite) TestTickIdleSnapshotConvention() {
+	s.Equal(clock.TickData{}, s.tick.ToData(), "idle ToData deep-equals the zero value")
+	idleRaw, err := json.Marshal(s.tick.ToData())
+	s.Require().NoError(err)
+	s.JSONEq(`{}`, string(idleRaw))
+	loaded, err := clock.LoadTick(clock.TickData{})
+	s.Require().NoError(err)
+	_, err = loaded.Join(&clock.JoinInput{ID: "a"}) // usable, like NewTick
+	s.Require().NoError(err)
+}
+
+// TestTickDataWireShape pins the JSON persistence contract (Turn's analog
+// exists; tag renames are invisible to gorelease).
+func (s *TickSuite) TestTickDataWireShape() {
+	_, err := s.tick.Join(&clock.JoinInput{ID: "goblin"})
+	s.Require().NoError(err)
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 3})
+	s.Require().NoError(err)
+	raw, err := json.Marshal(s.tick.ToData())
+	s.Require().NoError(err)
+	s.JSONEq(`{"budgets":{"goblin":3},"driver_progress":{"p1":3},"high_water":3}`, string(raw))
+	var back clock.TickData
+	s.Require().NoError(json.Unmarshal(raw, &back))
+	loaded, err := clock.LoadTick(back)
+	s.Require().NoError(err)
+	s.Equal(s.tick.ToData(), loaded.ToData())
+}
+
+// TestTickSnapshotImmuneToLaterVerbs mirrors Turn's snapshot pin.
+func (s *TickSuite) TestTickSnapshotImmuneToLaterVerbs() {
+	_, err := s.tick.Join(&clock.JoinInput{ID: "goblin"})
+	s.Require().NoError(err)
+	snap := s.tick.ToData()
+	_, err = s.tick.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 3})
+	s.Require().NoError(err)
+	s.Equal(0, snap.Budgets["goblin"], "snapshot must not observe later grants")
+}
+
+// TestLoadTickBankedMark pins the pruning note's behavioral half: a mark
+// above all surviving progress loads fine and grants nothing until overtaken.
+func (s *TickSuite) TestLoadTickBankedMark() {
+	loaded, err := clock.LoadTick(clock.TickData{HighWater: 5})
+	s.Require().NoError(err)
+	_, err = loaded.Join(&clock.JoinInput{ID: "goblin"})
+	s.Require().NoError(err)
+	_, err = loaded.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 5})
+	s.Require().NoError(err) // reaches the mark exactly: no grant
+	b, err := loaded.Budget(&clock.BudgetInput{ID: "goblin"})
+	s.Require().NoError(err)
+	s.Zero(b)
+	_, err = loaded.Advance(&clock.AdvanceInput{Driver: "p1", Displacement: 1})
+	s.Require().NoError(err) // overtakes: grant 1
+	b, err = loaded.Budget(&clock.BudgetInput{ID: "goblin"})
+	s.Require().NoError(err)
+	s.Equal(1, b)
 }

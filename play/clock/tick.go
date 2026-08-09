@@ -208,6 +208,11 @@ func LoadTick(data TickData) (*Tick, error) {
 		if b < 0 {
 			return nil, fmt.Errorf("load tick: member %q budget %d: %w", id, b, ErrInvalidData)
 		}
+		if b > data.HighWater {
+			return nil, fmt.Errorf(
+				"load tick: member %q budget %d exceeds high water %d: %w",
+				id, b, data.HighWater, ErrInvalidData)
+		}
 	}
 	k := &Tick{
 		budgets:        copyIntMap(data.Budgets),
@@ -223,8 +228,31 @@ func LoadTick(data TickData) (*Tick, error) {
 	return k, nil
 }
 
+// JoinMember adapts Join to the Joiner seam (Pos is ignored; a world
+// clock is unordered).
+func (k *Tick) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
+	out, err := k.Join(&JoinInput{ID: in.ID})
+	if err != nil {
+		return nil, err
+	}
+	return &JoinMemberOutput{Milestones: out.Milestones}, nil
+}
+
+// LeaveMember adapts Leave to the Leaver seam.
+func (k *Tick) LeaveMember(in *LeaveMemberInput) (*LeaveMemberOutput, error) {
+	out, err := k.Leave(&LeaveInput{ID: in.ID})
+	if err != nil {
+		return nil, err
+	}
+	return &LeaveMemberOutput{Milestones: out.Milestones}, nil
+}
+
+// copyIntMap deep-copies an entity→int map, normalizing empty (and nil)
+// to nil — the uniform idle-snapshot convention: an idle clock's ToData
+// deep-equals the zero Data value and marshals to {}. LoadTick
+// re-materializes nil to empty for its internal maps.
 func copyIntMap(m map[core.EntityID]int) map[core.EntityID]int {
-	if m == nil {
+	if len(m) == 0 {
 		return nil
 	}
 	out := make(map[core.EntityID]int, len(m))

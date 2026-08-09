@@ -331,3 +331,42 @@ func LoadTurn(data TurnData) (*Turn, error) {
 		round:     data.Round,
 	}, nil
 }
+
+// JoinMemberInput is the Joiner seam's input shape.
+type JoinMemberInput struct {
+	ID  core.EntityID
+	Pos int
+}
+
+// JoinMemberOutput is the Joiner seam's output shape.
+type JoinMemberOutput struct {
+	Milestones []Milestone
+}
+
+// LeaveMemberInput is the Leaver seam's input shape.
+type LeaveMemberInput struct {
+	ID core.EntityID
+}
+
+// LeaveMemberOutput is the Leaver seam's output shape.
+type LeaveMemberOutput struct {
+	Milestones []Milestone
+}
+
+// JoinMember adapts Insert to the Joiner seam.
+func (t *Turn) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
+	out, err := t.Insert(&InsertInput{ID: in.ID, Pos: in.Pos})
+	if err != nil {
+		return nil, err
+	}
+	return &JoinMemberOutput{Milestones: out.Milestones}, nil
+}
+
+// LeaveMember adapts Remove to the Leaver seam.
+func (t *Turn) LeaveMember(in *LeaveMemberInput) (*LeaveMemberOutput, error) {
+	out, err := t.Remove(&RemoveInput{ID: in.ID})
+	if err != nil {
+		return nil, err
+	}
+	return &LeaveMemberOutput{Milestones: out.Milestones}, nil
+}
