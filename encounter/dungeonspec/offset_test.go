@@ -10,10 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/encounter/dungeonspec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/encounter/dungeonspec"
 )
 
 const offsetCanvasYAML = `version: 1
