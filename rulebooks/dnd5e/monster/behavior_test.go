@@ -426,6 +426,79 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 		result.Actions[0].ActionID, result.Actions[0].TargetID, result.Actions[0].Success)
 }
 
+// TestTakeTurnMovesTowardStrategyTargetNotClosest is the missing test named
+// by rpg-toolkit#895: a monster with TargetLowestHP must move toward the
+// wounded DISTANT enemy, not the closer healthy one. Before the #895
+// refactor, moveTowardEnemy always pathed toward PerceptionData.ClosestEnemy()
+// regardless of the monster's targeting strategy, so movement and the
+// eventual attack target could disagree about who the monster was engaging.
+//
+// The two enemies are placed along DIFFERENT hex directions from the
+// monster (not colinear) so "moved toward the wounded enemy" and "moved
+// toward the closer enemy" are distinguishable outcomes, not just different
+// distances along the same line.
+func (s *BehaviorTestSuite) TestTakeTurnMovesTowardStrategyTargetNotClosest() {
+	goblin := NewGoblin("goblin-1")
+	goblin.bus = s.bus
+	goblin.SetTargeting(TargetLowestHP)
+
+	closerHealthy := spatial.CubeCoordinate{X: 3, Y: 0, Z: -3}  // 3 hexes away, different direction
+	distantWounded := spatial.CubeCoordinate{X: 6, Y: -6, Z: 0} // 6 hexes away
+
+	perception := &PerceptionData{
+		MyPosition: hexAt(0),
+		Enemies: []PerceivedEntity{
+			{
+				Entity:   &mockTarget{id: "closer-healthy", name: "Healthy Fighter"},
+				Position: closerHealthy,
+				Distance: 3,
+				Adjacent: false,
+				HP:       30, // healthy
+			},
+			{
+				Entity:   &mockTarget{id: "distant-wounded", name: "Wounded Wizard"},
+				Position: distantWounded,
+				Distance: 6,
+				Adjacent: false,
+				HP:       2, // wounded — TargetLowestHP must prefer this one
+			},
+		},
+	}
+
+	input := &TurnInput{
+		Bus:           s.bus,
+		ActionEconomy: combat.NewActionEconomy(),
+		Perception:    perception,
+		Roller:        dice.NewRoller(),
+		Speed:         6, // Goblin speed in hexes
+	}
+
+	result, err := goblin.TakeTurn(s.ctx, input)
+	s.Require().NoError(err)
+
+	// Moved toward the wounded distant enemy: ends up adjacent to it.
+	s.Require().NotEmpty(result.Movement, "monster should have moved")
+	finalPos := result.Movement[len(result.Movement)-1]
+	s.Equal(1, finalPos.Distance(distantWounded),
+		"should end up adjacent to the wounded distant enemy, not the closer healthy one")
+
+	// Did NOT end up adjacent to the closer healthy enemy — confirms this is
+	// a different outcome than closest-enemy movement would have produced.
+	s.NotEqual(1, finalPos.Distance(closerHealthy),
+		"should not end up adjacent to the closer healthy enemy")
+
+	// Perception reflects the real outcome: wounded target now adjacent,
+	// healthy one still is not.
+	s.True(perception.Enemies[1].Adjacent, "wounded distant enemy should now be adjacent")
+	s.False(perception.Enemies[0].Adjacent, "closer healthy enemy should still not be adjacent")
+
+	// The eventual attack (once in range) targets the same wounded enemy —
+	// movement and attack targeting agree.
+	s.Require().Len(result.Actions, 1, "Expected one attack action")
+	s.Equal("distant-wounded", result.Actions[0].TargetID,
+		"attack should target the same strategy-chosen enemy movement engaged")
+}
+
 func (s *BehaviorTestSuite) TestTakeTurnTraversalPredicateControlsAStar() {
 	s.Run("detours around blocked crossing", func() {
 		start := hexAt(0)

@@ -45,6 +45,16 @@ type SpawnInstruction struct {
 	// canvas has an explicit floor source rather than synthetic regions.
 	// Exactly one of At and AbsoluteAt must be present for a placed spawn.
 	AbsoluteAt *core.Hex
+
+	// Targeting overrides the spawned monster's targeting strategy
+	// (rpg-toolkit#895). monster.TargetingUnspecified (the zero value) means
+	// unset — the ctor's own default (e.g. wolf.go's TargetLowestHP) is left
+	// alone. A plain value is safe here, not a pointer: gate-review hardening
+	// moved TargetClosest off the zero value specifically so "author wrote
+	// targeting: closest" (which must override a non-closest ctor default)
+	// and "author omitted targeting entirely" (which must NOT) are
+	// structurally distinguishable without pointer nil-checks.
+	Targeting monster.TargetingStrategy
 }
 
 // resolvedSpawn is one SpawnInstruction after it has passed every
@@ -280,6 +290,9 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 		}
 
 		mon := ctor(string(id))
+		if spawn.Targeting != monster.TargetingUnspecified {
+			mon.SetTargeting(spawn.Targeting)
+		}
 		dataJSON, err := json.Marshal(mon.ToData())
 		if err != nil {
 			return nil, fmt.Errorf("room %q: monster %q: marshal monster data: %w", spawn.RoomID, spawn.MonsterRef, err)
@@ -350,6 +363,9 @@ func (e *Encounter) validateAbsoluteCanvasSpawn(
 			"canvas monster %q: absolute position %v collides with %s", spawn.MonsterRef, *spawn.AbsoluteAt, occupant)
 	}
 	mon := ctor(string(id))
+	if spawn.Targeting != monster.TargetingUnspecified {
+		mon.SetTargeting(spawn.Targeting)
+	}
 	dataJSON, err := json.Marshal(mon.ToData())
 	if err != nil {
 		return resolvedSpawn{}, fmt.Errorf("canvas monster %q: marshal monster data: %w", spawn.MonsterRef, err)

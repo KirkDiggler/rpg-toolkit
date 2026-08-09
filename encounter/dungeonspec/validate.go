@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -286,6 +287,9 @@ func validateCanvasPlacement(path string, e PlacedEntry) error {
 	if !isFloorMount(e.Mount) {
 		return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
 	}
+	if typ == refTypeProps && e.Targeting != nil {
+		return fmt.Errorf("%s.targeting: only valid on monsters", path)
+	}
 	if typ == refTypeMonsters {
 		if _, ok := monsters.ByRef(e.Ref); !ok {
 			return fmt.Errorf("%s.ref %q: unknown monster ref (known: %s)", path, e.Ref, strings.Join(monsters.Refs(), ", "))
@@ -295,6 +299,11 @@ func validateCanvasPlacement(path string, e PlacedEntry) error {
 		}
 		if e.BlocksLoS != nil {
 			return fmt.Errorf("%s.blocks_los: only valid on props", path)
+		}
+		if e.Targeting != nil {
+			if _, err := monster.ParseTargetingStrategy(*e.Targeting); err != nil {
+				return fmt.Errorf("%s.targeting: %w", path, err)
+			}
 		}
 	}
 	return nil
@@ -439,6 +448,11 @@ func validateBossRef(bossRoom *RoomSpec) error {
 		return fmt.Errorf("room %q: boss ref %q: unknown monster ref (known: %s)",
 			bossRoom.ID, bossRoom.Boss.Ref, strings.Join(monsters.Refs(), ", "))
 	}
+	if bossRoom.Boss.Targeting != nil {
+		if _, err := monster.ParseTargetingStrategy(*bossRoom.Boss.Targeting); err != nil {
+			return fmt.Errorf("room %q: boss targeting: %w", bossRoom.ID, err)
+		}
+	}
 	return nil
 }
 
@@ -484,49 +498,72 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 		}
 		occupied[entry.At] = entry.Ref
 
-		refType, err := refParts(entry.Ref)
-		if err != nil {
-			return fmt.Errorf("room %q: place %w", room.ID, err)
-		}
-		// Ref-type routing must be checked before the flags-only-on-props
-		// check below: an entry with an unrecognized ref type should always
-		// report that error, not whichever check happens to run first.
-		if refType != refTypeProps && refType != refTypeMonsters {
-			return fmt.Errorf("room %q: place ref %q must be props or monsters, got type %q",
-				room.ID, entry.Ref, refType)
-		}
-
 		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
-		if entry.Facing != nil {
-			if refType != refTypeProps || !isFloorMount(entry.Mount) {
-				return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
-			}
-			if err := validateFacing(*entry.Facing); err != nil {
-				return fmt.Errorf("%s.facing: %w", path, err)
-			}
-		}
-		if !isFloorMount(entry.Mount) {
-			return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
-		}
-
-		if room.Boss != nil && entry.Ref == room.Boss.Ref {
-			return fmt.Errorf("room %q: boss ref may not also appear in place (ref %q)", room.ID, entry.Ref)
-		}
-
-		if refType == refTypeMonsters {
-			if _, ok := monsters.ByRef(entry.Ref); !ok {
-				return fmt.Errorf("room %q: place %q: unknown monster ref (known: %s)",
-					room.ID, entry.Ref, strings.Join(monsters.Refs(), ", "))
-			}
-			if entry.BlocksMovement != nil {
-				return fmt.Errorf("room %q: place %q: blocks_movement only valid on props", room.ID, entry.Ref)
-			}
-			if entry.BlocksLoS != nil {
-				return fmt.Errorf("room %q: place %q: blocks_los only valid on props", room.ID, entry.Ref)
-			}
+		if err := validatePlaceEntry(room, entry, path); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+// validatePlaceEntry validates everything about one room-chain place entry
+// that doesn't depend on cell occupancy (validatePlaceBlock's own loop body
+// handles bounds/reserved-row/collision before calling this) — ref shape
+// and type, facing/mount capability gating, the boss-ref-not-duplicated
+// rule, and the props/monsters-only fields (blocks_movement/blocks_los,
+// targeting). Split out of validatePlaceBlock to keep that function's own
+// cyclomatic complexity under the linter's threshold.
+func validatePlaceEntry(room *RoomSpec, entry PlacedEntry, path string) error {
+	refType, err := refParts(entry.Ref)
+	if err != nil {
+		return fmt.Errorf("room %q: place %w", room.ID, err)
+	}
+	// Ref-type routing must be checked before the flags-only-on-props
+	// check below: an entry with an unrecognized ref type should always
+	// report that error, not whichever check happens to run first.
+	if refType != refTypeProps && refType != refTypeMonsters {
+		return fmt.Errorf("room %q: place ref %q must be props or monsters, got type %q",
+			room.ID, entry.Ref, refType)
+	}
+
+	if entry.Facing != nil {
+		if refType != refTypeProps || !isFloorMount(entry.Mount) {
+			return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
+		}
+		if err := validateFacing(*entry.Facing); err != nil {
+			return fmt.Errorf("%s.facing: %w", path, err)
+		}
+	}
+	if !isFloorMount(entry.Mount) {
+		return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
+	}
+
+	if room.Boss != nil && entry.Ref == room.Boss.Ref {
+		return fmt.Errorf("room %q: boss ref may not also appear in place (ref %q)", room.ID, entry.Ref)
+	}
+
+	if refType == refTypeProps && entry.Targeting != nil {
+		return fmt.Errorf("room %q: place %q: targeting only valid on monsters", room.ID, entry.Ref)
+	}
+
+	if refType == refTypeMonsters {
+		if _, ok := monsters.ByRef(entry.Ref); !ok {
+			return fmt.Errorf("room %q: place %q: unknown monster ref (known: %s)",
+				room.ID, entry.Ref, strings.Join(monsters.Refs(), ", "))
+		}
+		if entry.BlocksMovement != nil {
+			return fmt.Errorf("room %q: place %q: blocks_movement only valid on props", room.ID, entry.Ref)
+		}
+		if entry.BlocksLoS != nil {
+			return fmt.Errorf("room %q: place %q: blocks_los only valid on props", room.ID, entry.Ref)
+		}
+		if entry.Targeting != nil {
+			if _, err := monster.ParseTargetingStrategy(*entry.Targeting); err != nil {
+				return fmt.Errorf("room %q: place %q: targeting: %w", room.ID, entry.Ref, err)
+			}
+		}
+	}
 	return nil
 }
 

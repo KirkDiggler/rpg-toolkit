@@ -65,10 +65,21 @@ func (s *CombatSuite) SetupTest() {
 		DamageDice: "1d6+1", DamageType: damagePiercing,
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
-		ID:       gobEntityID,
-		Position: core.Hex{Q: 1, R: 0, S: -1},
+		ID: gobEntityID,
+		// Adjacent (distance 1) to BOTH alice {0,0,0} and bob {1,0,-1} —
+		// their shared hex-grid common neighbor — rather than co-located
+		// with bob (the original position, distance 0 from him). NPCAct now
+		// runs the real monster.TakeTurn AI (rpg-toolkit#895 no-fallback
+		// rider deleted the scripted fallback this fixture used to exercise
+		// instead), and PerceivedEntity.Adjacent is strictly distance==1, so
+		// a co-located target never reads as adjacent and CanActivate
+		// rejects it as out of melee range. Distance 1 from alice also
+		// keeps the player-attacks-goblin tests in this suite (e.g.
+		// TestTakeAction_PublishesAttackOutcome) in melee reach.
+		Position: core.Hex{Q: 1, R: -1, S: 0},
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
 		MonsterRef:  "dnd5e:monsters:goblin",
+		DataJSON:    testGoblinDataJSON(s.T(), gobEntityID),
 		AttackBonus: 4, DamageDice: "1d6+2", DamageType: damageSlashing,
 	}))
 
@@ -209,8 +220,23 @@ func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 	)
 	s.Require().NoError(err)
 
-	seenAlice := collectTypes(s.aliceSub, 500*time.Millisecond)
-	s.Contains(seenAlice, "*events.AttackResolvedEvent")
+	seen := collectEventsTyped(s.aliceSub, 500*time.Millisecond)
+	var sawAttack, sawAction bool
+	for _, e := range seen {
+		switch ev := e.(type) {
+		case *events.AttackResolvedEvent:
+			sawAttack = true
+		case *events.ActionResolvedEvent:
+			sawAction = true
+			// Player-taken attacks are a human choice, not an AI targeting
+			// decision — TargetRationale must be empty (rpg-toolkit#895;
+			// the NPC-attack path is covered by
+			// npc_test.go's TestNPCAct_AttackPublishesTargetRationale).
+			s.Empty(ev.TargetRationale, "player-path attacks must emit an empty decision rationale")
+		}
+	}
+	s.True(sawAttack, "expected *events.AttackResolvedEvent")
+	s.True(sawAction, "expected *events.ActionResolvedEvent")
 }
 
 // TakeAction copies HasAdvantage/HasDisadvantage/AdvantageSources/
@@ -237,6 +263,7 @@ func (s *CombatSuite) TestTakeAction_PublishesAdvantageDisadvantageOnAttackResol
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice and the goblin are in mutual LoS, so AddMonster already
 	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
@@ -294,6 +321,7 @@ func (s *CombatSuite) TestTakeAction_RejectsNonCombatant() {
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice and the goblin are in mutual LoS, so AddMonster already
 	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
@@ -341,6 +369,7 @@ func (s *CombatSuite) TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate() {
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	// Round-trip through Data so the hydration cascade runs — New/AddPlayer
@@ -398,6 +427,7 @@ func (s *CombatSuite) TestTakeAction_DataJSONWithoutLoadFromData_StillRejected()
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice and the goblin are in mutual LoS, so AddMonster already
 	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
@@ -470,10 +500,13 @@ func (s *CombatSuite) TestEndTurn_GuardsEmptyInitiative() {
 	s.ErrorIs(err, encounter.ErrNoCombatants)
 }
 
-// NPCAct (scripted path — no DataJSON) emits an attack event when a
-// player is reachable.
+// NPCAct emits an attack event when a player is reachable. Formerly named
+// TestNPCAct_ScriptedAttackPublishes and exercised via a no-DataJSON
+// monster (npcActScripted); that fallback is deleted (rpg-toolkit#895
+// no-fallback rider), so s.enc's goblin now carries real DataJSON and this
+// runs the normal hydrated NPCAct path instead.
 // s.enc is already TURN_BASED by SetupTest.
-func (s *CombatSuite) TestNPCAct_ScriptedAttackPublishes() {
+func (s *CombatSuite) TestNPCAct_AttackPublishes() {
 	for s.enc.ActiveActor() != gobEntityID {
 		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
@@ -510,6 +543,7 @@ func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
 		ID:       gob2EntityID,
 		Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP:       7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gob2EntityID),
 	}))
 	farAliceSub, err := s.broker.Subscribe("enc-combat-2", "alice")
 	s.Require().NoError(err)

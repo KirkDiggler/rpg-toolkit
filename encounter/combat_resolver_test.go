@@ -83,6 +83,7 @@ func (s *CombatResolverWiringSuite) TestTakeAction_ErrNoCombatResolver() {
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice and the goblin are in mutual LoS, so AddMonster already
 	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
@@ -114,6 +115,7 @@ func (s *CombatResolverWiringSuite) TestTakeAction_UsesResolverOutcome() {
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice and the goblin are in mutual LoS, so AddMonster already
 	// auto-transitioned to TURN_BASED; an explicit SetMode here would be

@@ -20,8 +20,10 @@ import (
 // monsterRefGoblin is the canonical monster ref used across NPC fixtures.
 const monsterRefGoblin = "dnd5e:monsters:goblin"
 
-// NPCSuite covers the full NPCAct path through monster.TakeTurn —
-// distinct from CombatSuite which uses the scripted DataJSON-less path.
+// NPCSuite covers the full NPCAct path through monster.TakeTurn. CombatSuite
+// used to cover a second, scripted DataJSON-less path (npcActScripted);
+// rpg-toolkit#895's no-fallback rider deleted it, so every monster fixture
+// in this package now goes through this same hydrated path.
 type NPCSuite struct {
 	suite.Suite
 	ctx       context.Context
@@ -96,6 +98,35 @@ func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
 	s.Contains(seen, "*events.AttackResolvedEvent")
 }
 
+// TestNPCAct_AttackPublishesTargetRationale is the NPC-path half of the
+// decision-rationale proof (rpg-toolkit#895; the player-path "must be
+// empty" half is TestTakeAction_PublishesAttackOutcome in combat_test.go).
+// SetupTest's goblin never calls SetTargeting, so it carries TargetClosest
+// (the iota-zero default) — its ActionResolvedEvent must still carry the
+// explicit "dnd5e:targeting:closest" ref, not an empty string, proving
+// TargetRationale is populated from the monster's real strategy rather
+// than left as its own zero value.
+func (s *NPCSuite) TestNPCAct_AttackPublishesTargetRationale() {
+	for s.enc.ActiveActor() != gobEntityID {
+		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
+		s.Require().NoError(err)
+	}
+	drainSub(s.aliceSub, 100*time.Millisecond)
+
+	err := s.enc.NPCAct(s.ctx, gobEntityID)
+	s.Require().NoError(err)
+
+	seen := collectEventsTyped(s.aliceSub, time.Second)
+	var action *encevents.ActionResolvedEvent
+	for _, e := range seen {
+		if a, ok := e.(*encevents.ActionResolvedEvent); ok {
+			action = a
+		}
+	}
+	s.Require().NotNil(action, "expected an ActionResolvedEvent")
+	s.Equal("dnd5e:targeting:closest", action.TargetRationale)
+}
+
 // NPCAct outside TURN_BASED returns ErrNotTurnBased. Own monster-less
 // encounter so the fixture stays FreeRoam (the shared s.enc is already
 // TURN_BASED by setup time — alice and the goblin start in mutual LoS).
@@ -156,34 +187,6 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 	}
 
 	err = enc.NPCAct(s.ctx, gobEntityID)
-	s.ErrorIs(err, encounter.ErrNoCombatResolver)
-}
-
-// NPCAct (scripted path — no DataJSON) returns ErrNoCombatResolver when
-// no resolver is wired.
-func (s *NPCSuite) TestNPCAct_Scripted_ErrNoCombatResolver() {
-	enc := encounter.New(context.Background(), "enc-npc-scripted-no-resolver", s.broker)
-	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: alicePlayerID, EntityID: aliceEntityID,
-		Position: core.Hex{}, SightRange: 10,
-		HP: 12, MaxHP: 12, AC: 14,
-	}))
-	// No DataJSON — triggers the scripted path.
-	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
-		ID:       gobEntityID,
-		Position: core.Hex{Q: 1, R: 0, S: -1},
-		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
-		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
-	}))
-	// alice and the goblin are in mutual LoS, so AddMonster already
-	// auto-transitioned to TURN_BASED; an explicit SetMode here would be
-	// redundant and error.
-	for enc.ActiveActor() != gobEntityID {
-		_, _, endErr := enc.EndTurn(context.Background(), enc.ActiveActor())
-		s.Require().NoError(endErr)
-	}
-
-	err := enc.NPCAct(s.ctx, gobEntityID)
 	s.ErrorIs(err, encounter.ErrNoCombatResolver)
 }
 

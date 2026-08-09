@@ -56,6 +56,44 @@ func (s *EncounterSuite) TestAddPlayer_RejectsDuplicate() {
 	s.Error(e.AddPlayer(input))
 }
 
+// TestAddMonster_RejectsEmptyDataJSON is the no-fallback rider
+// (rpg-toolkit#895): AddMonster used to accept an empty-DataJSON monster
+// and NPCAct would silently degrade to npcActScripted's minimal
+// closest-player attack. That fallback is deleted; AddMonster now rejects
+// the gap at the door with a typed sentinel error.
+func (s *EncounterSuite) TestAddMonster_RejectsEmptyDataJSON() {
+	e := encounter.New(context.Background(), "enc-1", s.broker)
+	err := e.AddMonster(encounter.MonsterInput{
+		ID: "goblin-1", Position: core.Hex{}, HP: 7, MaxHP: 7,
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, encounter.ErrMonsterDataRequired)
+}
+
+// TestNPCAct_LoudErrorOnEmptyDataJSON: NPCAct itself must also reject an
+// empty-DataJSON monster with a typed sentinel error (rpg-toolkit#895).
+// AddMonster's own rejection (above) makes this unreachable through the
+// public API — the guard is instead reached here via LoadFromData, which
+// round-trips whatever Data it is handed without re-validating it, the
+// same way a caller that mutated MonsterData directly could reach it.
+func (s *EncounterSuite) TestNPCAct_LoudErrorOnEmptyDataJSON() {
+	data := &encounter.Data{
+		ID:         "enc-1",
+		Mode:       core.ModeTurnBased,
+		Initiative: []core.EntityID{"goblin-1"},
+		Monsters: map[core.EntityID]*encounter.MonsterData{
+			"goblin-1": {ID: "goblin-1", Position: core.Hex{}, HP: 7, MaxHP: 7, AC: 15},
+		},
+	}
+	e, err := encounter.LoadFromData(context.Background(), data, s.broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: "slashing"}))
+	s.Require().NoError(err)
+
+	err = e.NPCAct(context.Background(), "goblin-1")
+	s.Require().Error(err)
+	s.ErrorIs(err, encounter.ErrMonsterNotRehydratable)
+}
+
 // ToData / LoadFromData round-trips through JSON cleanly. This test is
 // load-bearing because earlier iterations of this design failed JSON
 // round-trip for HexSet (struct map keys) — the types subpackage's

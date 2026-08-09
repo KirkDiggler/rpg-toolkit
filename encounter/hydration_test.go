@@ -117,6 +117,7 @@ func (s *HydrationCascadeSuite) loadEncounterWithRogue() *tkenc.Encounter {
 		ID: hydrGoblinID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), hydrGoblinID),
 	}))
 
 	// Round-trip through Data so we exercise the production load path.
@@ -311,6 +312,7 @@ func (s *HydrationCascadeSuite) TestResolver_ReceivesHeldEntity() {
 		ID: hydrGoblinID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), hydrGoblinID),
 	}))
 
 	enc2 := s.reloadViaWithResolver(enc, spy)
@@ -343,6 +345,7 @@ func (s *HydrationCascadeSuite) TestResolver_NoDataJSON_FallsBack() {
 		ID: hydrGoblinID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), hydrGoblinID),
 	}))
 
 	enc2 := s.reloadViaWithResolver(enc, spy)

@@ -184,3 +184,39 @@ func (s *BrokerSuite) TestBrokerCodec_ResourceChangedEvent_RoundTrip() {
 	s.Equal(2, received.Max)
 	s.True(received.PerPlayer["p-alice"].Visible)
 }
+
+// TestBrokerCodec_ActionResolvedEvent_RoundTrip_PreservesTargetRationale
+// proves TargetRationale (rpg-toolkit#895's decision-rationale field)
+// survives the broker's own encode/decode codec, not just
+// json.Marshal/Unmarshal in isolation (events_test.go's
+// TestActionResolvedEvent_JSONRoundTrip covers that layer) — the actual
+// wire path an NPC attack's rationale travels end to end.
+func (s *BrokerSuite) TestBrokerCodec_ActionResolvedEvent_RoundTrip_PreservesTargetRationale() {
+	sub, err := s.broker.Subscribe("enc:1", "p-alice")
+	s.Require().NoError(err)
+
+	original := events.NewActionResolvedEvent(
+		"enc:1", 9,
+		"goblin-1", "dnd5e:actions:strike", "char-alice",
+		"dnd5e:targeting:lowest-hp",
+		events.EconomyConsumed{Actions: 1},
+		map[core.PlayerID]events.ActionResolvedSlice{
+			"p-alice": {Visible: true},
+		},
+	)
+	s.Require().NoError(s.broker.Publish(original))
+
+	var received *events.ActionResolvedEvent
+	select {
+	case evt, ok := <-sub.Events():
+		s.Require().True(ok, "channel closed unexpectedly")
+		casted, ok := evt.(*events.ActionResolvedEvent)
+		s.Require().True(ok, "expected *events.ActionResolvedEvent, got %T", evt)
+		received = casted
+	case <-time.After(time.Second):
+		s.FailNow("did not receive ActionResolvedEvent in 1s")
+	}
+
+	s.Equal("dnd5e:targeting:lowest-hp", received.TargetRationale,
+		"decision rationale must survive the broker's encode/decode round trip")
+}

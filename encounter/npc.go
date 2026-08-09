@@ -52,11 +52,15 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 		return ErrNoCombatResolver
 	}
 	if len(mon.DataJSON) == 0 {
-		// No rehydratable monster — fall back to a minimal scripted attack
-		// against the closest reachable player, using the monster's stored
-		// AttackBonus / DamageDice / DamageType. This keeps the verb
-		// non-blocking when the orchestrator only seeded the snapshot fields.
-		return e.npcActScripted(ctx, mon)
+		// No-fallback rider (rpg-toolkit#895): an empty-DataJSON monster used
+		// to fall back to npcActScripted's minimal closest-player attack,
+		// which had no targeting strategy, no decision rationale, and its
+		// own separate (and looser) combat gating. AddMonster now rejects
+		// empty DataJSON outright (encounter.go), so this branch should be
+		// unreachable via the public API; it stays as a loud typed error
+		// rather than a silent scripted fallback in case a caller mutates
+		// MonsterData directly.
+		return fmt.Errorf("%w: %q", ErrMonsterNotRehydratable, npcID)
 	}
 
 	// Wave 2.11d: use the encounter-scoped bus instead of a fresh per-call
@@ -1024,63 +1028,32 @@ func (e *Encounter) applyCapturedConditions(mon *MonsterData, conds []dnd5eEvent
 	return nil
 }
 
-// npcActScripted runs a minimal attack against the closest player when
-// the monster has no DataJSON to rehydrate. Used for tests and
-// orchestrator-seeded fixtures that don't carry a serialized monster.
-//
-// Delegates to the wired CombatResolver (same as applyCapturedAttacks and
-// TakeAction). The resolver guard at NPCAct entry ensures combatResolver
-// is non-nil before this path is reached.
-//
-// Wave 2.10: same partial player-death semantics as applyCapturedAttacks
-// — fires EntityDiedEvent on a player kill (only on HP transition, not
-// whenever HP is 0) but does not remove the player or end the encounter.
-func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
-	target := e.closestPlayer(mon.Position)
-	if target == nil {
-		return nil
+// ErrMonsterNotRehydratable is returned by NPCAct when a monster has empty
+// DataJSON (rpg-toolkit#895 no-fallback rider). Before this rider, NPCAct
+// silently fell back to npcActScripted's minimal closest-player attack
+// (no targeting strategy, no decision rationale, looser combat gating);
+// that fallback is deleted, so an empty-DataJSON monster is now a loud
+// error instead of quietly degraded behavior. AddMonster (encounter.go)
+// rejects empty DataJSON outright, so this should be unreachable via the
+// public API — it exists for callers that mutate MonsterData directly.
+var ErrMonsterNotRehydratable = errors.New("monster has no DataJSON to rehydrate: empty-DataJSON fallback removed")
+
+// monsterTargetingRationale derives the decision-rationale ref
+// (rpg-toolkit#895, e.g. "dnd5e:targeting:lowest-hp") for a monster's NPC
+// attack from its persisted targeting strategy. Used on both the inline
+// NPC-attack path (applyCapturedAttacks, via applyAndPublishNPCOutcome) and
+// the Shield-resume path (CompleteTakeAction), which have no live
+// *monster.Monster instance in common but always have MonsterData.DataJSON
+// — the no-fallback rider (AddMonster, encounter.go) guarantees it is never
+// empty for any monster reachable here. Best-effort: a DataJSON that fails
+// to unmarshal returns "" rather than failing attack resolution over a
+// descriptive field.
+func monsterTargetingRationale(mon *MonsterData) string {
+	var data monster.Data
+	if err := json.Unmarshal(mon.DataJSON, &data); err != nil {
+		return ""
 	}
-	// rpg-toolkit#864: this fallback has no ranged/melee action distinction
-	// at all (it's a single flat stat-snapshot "attack"), so it gates as
-	// melee — same shared gate as applyCapturedAttacks/TakeActionPhased.
-	// Before this, npcActScripted always attacked whichever player was
-	// closest regardless of distance — a real, separate entry point into
-	// the resolver the QA-reported bug's gate must also cover.
-	//
-	// Gate-review finding (blocker 1): the closest player being out of
-	// reach is "nothing to do this turn", the same as the target==nil case
-	// two lines up — NOT an error. This verb has no other action to fall
-	// back to (it's the whole scripted turn), and NPCAct's caller (rpg-api's
-	// driveNPCChain) only calls EndTurn after NPCAct returns successfully;
-	// returning an error here would make an out-of-reach monster wedge the
-	// encounter forever (every retry hits the identical rejection). A
-	// monster that can't reach anyone simply passes its turn.
-	reach := meleeReachForCombatant(e.combatantFor(mon.ID))
-	if checkReach(mon.Position, target.View.Position, reach, "reach") != nil {
-		return nil
-	}
-	outcome, err := e.combatResolver.ResolveAttack(AttackInput{
-		AttackerID:          mon.ID,
-		TargetID:            target.EntityID,
-		ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: actionIDAttack},
-		AttackerAttackBonus: mon.AttackBonus,
-		AttackerDamageDice:  mon.DamageDice,
-		AttackerDamageType:  mon.DamageType,
-		TargetAC:            target.AC,
-		EventBus:            e.bus,
-		Attacker:            e.combatantFor(mon.ID),
-		Defender:            e.combatantFor(target.EntityID),
-	})
-	if err != nil {
-		return fmt.Errorf("combat resolver: %w", err)
-	}
-	if outcome == nil {
-		return fmt.Errorf("combat resolver: nil outcome with nil error")
-	}
-	// Wave 2.11e: share the NPC-attacker outcome publish path. Same
-	// rationale as applyCapturedAttacks above — inline scripted attacks
-	// and the phased Shield-resume direction must emit identical shapes.
-	return e.applyAndPublishNPCOutcome(mon, target, outcome)
+	return data.Targeting.Ref()
 }
 
 // buildPerception assembles the PerceptionData a monster needs to choose
@@ -1214,28 +1187,6 @@ type playerEntity struct {
 func (p *playerEntity) GetID() string            { return p.id }
 func (p *playerEntity) GetType() core.EntityType { return "character" }
 func (p *playerEntity) GetName() string          { return p.name }
-
-// closestPlayer returns the LIVE player (HP>0) nearest the given hex, or nil
-// if the encounter has no live players. #733: a downed player (HP<=0) is
-// never returned — before this fix, npcActScripted (the caller) would keep
-// targeting/attacking a downed player round after round, since nothing
-// filtered by HP. The existing "no players" nil-return path already covers
-// the all-downed case correctly (the caller treats nil as "nothing to do").
-func (e *Encounter) closestPlayer(from encountercore.Hex) *PlayerData {
-	var best *PlayerData
-	bestDist := -1
-	for _, p := range e.data.Players {
-		if p.HP <= 0 {
-			continue
-		}
-		d := hexDistance(from, p.View.Position)
-		if best == nil || d < bestDist {
-			best = p
-			bestDist = d
-		}
-	}
-	return best
-}
 
 // findPlayerByEntityID returns the player whose EntityID matches id.
 func (e *Encounter) findPlayerByEntityID(id encountercore.EntityID) *PlayerData {
