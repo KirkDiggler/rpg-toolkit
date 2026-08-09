@@ -1598,8 +1598,9 @@ package clock_test
 // The DOS2 split-party scenario (design AC1): four players on the world
 // tick; two trigger a turn-based bubble; the distant pair keeps accruing
 // from their own moves; one wanders close and falls in at a
-// rulebook-chosen position; the fight ends; everyone returns to the world
-// clock. Asserts the full milestone transcript and final state.
+// rulebook-chosen position; the round wraps; the fight ends; everyone
+// returns to the world clock. Asserts the full milestone transcript and
+// final state.
 
 import (
 	"testing"
@@ -1653,7 +1654,8 @@ func TestDOS2SplitParty(t *testing.T) {
 	tr, err := clock.Transfer(&clock.TransferInput{From: world, To: bubble, ID: "carl", Pos: 2})
 	require.NoError(t, err)
 	record(tr.Milestones)
-	inBubble, _ := bubble.Contains(&clock.ContainsInput{ID: "carl"})
+	inBubble, err := bubble.Contains(&clock.ContainsInput{ID: "carl"})
+	require.NoError(t, err)
 	require.True(t, inBubble)
 
 	// Bob closes the round: the bubble wraps into round 2 with carl in the
@@ -1818,6 +1820,11 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **With Task 12**: goconst resolved via five function-local consts (file
+  precedent, no nolint); plan's Task 12 text reconciled to its own test
+  body (doc comment now mentions the round wrap that the plan's own code
+  asserts; Contains error-checked per the repo's always-check convention).
+  Disclosed here because the shipped test predated this reconciliation.
 - **Task 11 fix cycle (design defect, same genus as self-merge)**:
   self-transfer (`From == To`) with an absent entity succeeded with
   phantom milestones, leaving the entity on no clock — execution order
