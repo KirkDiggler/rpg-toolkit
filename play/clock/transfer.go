@@ -47,6 +47,9 @@ type TransferOutput struct {
 // contract; milestones are reported in leave-then-join order per the
 // design regardless.
 func Transfer(in *TransferInput) (*TransferOutput, error) {
+	if in.From == in.To {
+		return nil, fmt.Errorf("transfer %q: from and to are the same clock: %w", in.ID, ErrSameClock)
+	}
 	join, err := in.To.JoinMember(&JoinMemberInput{ID: in.ID, Pos: in.Pos})
 	if err != nil {
 		return nil, fmt.Errorf("transfer %q: join: %w", in.ID, err)
@@ -54,7 +57,9 @@ func Transfer(in *TransferInput) (*TransferOutput, error) {
 	leave, err := in.From.LeaveMember(&LeaveMemberInput{ID: in.ID})
 	if err != nil {
 		if _, undoErr := in.To.LeaveMember(&LeaveMemberInput{ID: in.ID}); undoErr != nil {
-			return nil, fmt.Errorf("transfer %q: leave failed (%v) and compensation failed: %w", in.ID, err, undoErr)
+			return nil, fmt.Errorf(
+				"transfer %q: leave failed (%v) and compensation failed — %q may remain on both clocks: %w",
+				in.ID, err, in.ID, undoErr)
 		}
 		return nil, fmt.Errorf("transfer %q: leave: %w", in.ID, err)
 	}

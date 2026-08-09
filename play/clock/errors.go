@@ -28,4 +28,7 @@ var (
 	ErrInsufficientBudget = errors.New("insufficient budget")
 	// ErrInvalidData reports persisted state rejected by LoadTurn/LoadTick (design R9).
 	ErrInvalidData = errors.New("invalid clock data")
+	// ErrSameClock reports an operation that requires two distinct clocks
+	// (merging a clock into itself; transferring within one clock).
+	ErrSameClock = errors.New("operation requires two distinct clocks")
 )

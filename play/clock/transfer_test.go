@@ -47,7 +47,8 @@ func TestTransferFailureLeavesBothUnchanged(t *testing.T) {
 	idleTurn := &clock.Turn{} // join will refuse: ErrIdle
 
 	tickBefore, turnBefore := tick.ToData(), idleTurn.ToData()
-	_, err = clock.Transfer(&clock.TransferInput{From: tick, To: idleTurn, ID: carl, Pos: 0})
+	out, err := clock.Transfer(&clock.TransferInput{From: tick, To: idleTurn, ID: carl, Pos: 0})
+	require.Nil(t, out, "failed transfer emits nothing")
 	require.ErrorIs(t, err, clock.ErrIdle, "underlying sentinel propagates")
 	require.Equal(t, tickBefore, tick.ToData(), "From unchanged (R6)")
 	require.Equal(t, turnBefore, idleTurn.ToData(), "To unchanged (R6)")
@@ -61,8 +62,27 @@ func TestTransferAbsentMemberCompensates(t *testing.T) {
 	_, err = turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
 	require.NoError(t, err)
 
+	tickBefore := tick.ToData()
 	turnBefore := turn.ToData()
-	_, err = clock.Transfer(&clock.TransferInput{From: tick, To: turn, ID: ghost, Pos: 0})
+	out, err := clock.Transfer(&clock.TransferInput{From: tick, To: turn, ID: ghost, Pos: 0})
+	require.Nil(t, out, "failed transfer emits nothing")
 	require.ErrorIs(t, err, clock.ErrNotMember)
+	require.Equal(t, tickBefore, tick.ToData(), "From unchanged (R6)")
 	require.Equal(t, turnBefore, turn.ToData(), "join was compensated (R6)")
+}
+
+func TestTransferSameClockRefused(t *testing.T) {
+	const ghost core.EntityID = "ghost"
+	turn := &clock.Turn{}
+	_, err := turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+	require.NoError(t, err)
+	before := turn.ToData()
+	// present entity
+	_, err = clock.Transfer(&clock.TransferInput{From: turn, To: turn, ID: "a", Pos: 0})
+	require.ErrorIs(t, err, clock.ErrSameClock)
+	require.Equal(t, before, turn.ToData())
+	// absent entity — the case that silently "succeeded" pre-guard
+	_, err = clock.Transfer(&clock.TransferInput{From: turn, To: turn, ID: ghost, Pos: 0})
+	require.ErrorIs(t, err, clock.ErrSameClock)
+	require.Equal(t, before, turn.ToData())
 }

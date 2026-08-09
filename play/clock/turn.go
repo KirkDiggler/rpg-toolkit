@@ -213,13 +213,13 @@ type MergeOutput struct {
 // of the union of both member sets. The receiver's active entity remains
 // active and its round is retained; Other is reset to the zero/idle state.
 // Other must be non-nil and distinct from the receiver.
-// Errors: ErrIdle (idle receiver), ErrBadOrder.
+// Errors: ErrIdle (idle receiver), ErrSameClock, ErrBadOrder.
 func (t *Turn) Merge(in *MergeInput) (*MergeOutput, error) {
 	if len(t.order) == 0 {
 		return nil, fmt.Errorf("merge: receiver: %w", ErrIdle)
 	}
 	if in.Other == t {
-		return nil, fmt.Errorf("merge: cannot merge a clock into itself: %w", ErrBadOrder)
+		return nil, fmt.Errorf("merge: cannot merge a clock into itself: %w", ErrSameClock)
 	}
 	union := make(map[core.EntityID]struct{}, len(t.order)+len(in.Other.order))
 	for _, id := range t.order {

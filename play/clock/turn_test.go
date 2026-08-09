@@ -387,7 +387,7 @@ func (s *TurnSuite) TestMergeErrors() {
 
 	// self-merge must refuse, not silently destroy the receiver
 	_, err = s.turn.Merge(&clock.MergeInput{Other: s.turn, Order: []core.EntityID{"a"}})
-	s.Require().ErrorIs(err, clock.ErrBadOrder)
+	s.Require().ErrorIs(err, clock.ErrSameClock)
 	activeSelf, err := s.turn.Active()
 	s.Require().NoError(err)
 	s.Equal(core.EntityID("a"), activeSelf)
