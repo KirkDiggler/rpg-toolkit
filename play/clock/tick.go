@@ -17,7 +17,7 @@ import (
 type Tick struct {
 	budgets        map[core.EntityID]int
 	driverProgress map[core.EntityID]int
-	highWater      int //nolint:unused // design: reserved for Task 10
+	highWater      int //nolint:unused // design: reserved for Task 9 (Advance)
 }
 
 // NewTick constructs a valid, idle world clock. The error return conforms

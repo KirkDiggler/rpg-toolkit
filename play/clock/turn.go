@@ -185,6 +185,7 @@ func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
 	switch {
 	case len(t.order) == 0:
 		t.activeIdx = 0
+		t.round = 0
 	case wasActive:
 		if t.activeIdx >= len(t.order) {
 			t.activeIdx = 0 // active was last; next is first, round unchanged

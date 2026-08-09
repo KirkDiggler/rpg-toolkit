@@ -318,6 +318,20 @@ func (s *TurnSuite) TestRemoveSemantics() {
 	})
 }
 
+// TestRemoveLastMemberRoundTrips pins that attrition-ended fights persist
+// as canonical idle — without Remove's round reset, the R9 guard would
+// reject the snapshot and the save would be unloadable.
+func (s *TurnSuite) TestRemoveLastMemberRoundTrips() {
+	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+	s.Require().NoError(err)
+	_, err = s.turn.Remove(&clock.RemoveInput{ID: "a"})
+	s.Require().NoError(err)
+	s.Equal(clock.TurnData{}, s.turn.ToData(), "post-attrition state is canonical idle")
+	loaded, err := clock.LoadTurn(s.turn.ToData())
+	s.Require().NoError(err)
+	s.Equal(clock.TurnData{}, loaded.ToData())
+}
+
 func (s *TurnSuite) TestMergeCombinesBubbles() {
 	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b"}})
 	s.Require().NoError(err)
@@ -461,6 +475,7 @@ func (s *TurnSuite) TestLoadTurnRejectsInvalid() {
 		{"zero round with order", clock.TurnData{Order: []core.EntityID{"a"}}},
 		{"idle with nonzero round", clock.TurnData{Round: 5}},
 		{"idle with negative active idx", clock.TurnData{ActiveIdx: -1}},
+		{"idle with negative round", clock.TurnData{Round: -3}},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -474,6 +489,8 @@ func (s *TurnSuite) TestLoadTurnAcceptsCanonicalIdle() {
 	loaded, err := clock.LoadTurn(clock.TurnData{})
 	s.Require().NoError(err)
 	_, err = loaded.Active()
+	s.Require().ErrorIs(err, clock.ErrIdle)
+	_, err = loaded.Round()
 	s.Require().ErrorIs(err, clock.ErrIdle)
 }
 
