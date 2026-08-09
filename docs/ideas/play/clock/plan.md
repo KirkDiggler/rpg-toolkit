@@ -1818,6 +1818,14 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **With Task 11 (from Task 10's reviews)**: copyIntMap normalizes empty
+  → nil (uniform idle-snapshot convention: idle ToData deep-equals the
+  zero Data value; design amended) + contract comment; Tick golden-JSON
+  wire test; Tick snapshot-immunity and canonical-idle-load pins;
+  banked-mark positive load test (HighWater above all progress loads,
+  grants nothing until overtaken); negative-HighWater and
+  budget-above-HighWater rejection rows (R9 amended — reachable-states
+  symmetry with Turn); Ready-reappearance assertion on the no-grant step.
 - **With Task 10 (from Task 9's reviews)**: unit pins for cross-driver
   high-water overtake, spent-to-zero member omitted from Ready, Spend
   error precedence (absent member beats bad amount), and

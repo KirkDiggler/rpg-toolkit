@@ -66,8 +66,11 @@ wall-clock time; merging tick clocks; concurrency safety.
   and `Round` MUST be 0 when `Order` is empty, and `Round` MUST be >= 1
   when `Order` is non-empty — no verb can produce any other state, so any
   other state is corruption), negative budgets, negative `DriverProgress`
-  values, and `HighWater` less than the maximum `DriverProgress` (which
-  would cause a spurious grant on the next `Advance`).
+  values, `HighWater` less than the maximum `DriverProgress` (which
+  would cause a spurious grant on the next `Advance`), and any individual
+  budget greater than `HighWater` (total budget ever granted equals
+  `HighWater`, so no verb can produce one — the same
+  reachable-states-only rationale as the Turn-side checks).
 - **R10** — Instances are not safe for concurrent use (family convention;
   hosts serialize access).
 
