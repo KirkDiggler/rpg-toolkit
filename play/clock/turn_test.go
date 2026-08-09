@@ -363,6 +363,27 @@ func (s *TurnSuite) TestMergeErrors() {
 	otherOrder, err := other.Order()
 	s.Require().NoError(err)
 	s.Equal([]core.EntityID{"x"}, otherOrder, "failed merge leaves Other intact (R5)")
+	orderAfter, err := s.turn.Order()
+	s.Require().NoError(err)
+	s.Equal([]core.EntityID{"a"}, orderAfter)
+	roundAfter, err := s.turn.Round()
+	s.Require().NoError(err)
+	s.Equal(1, roundAfter)
+
+	// self-merge must refuse, not silently destroy the receiver
+	_, err = s.turn.Merge(&clock.MergeInput{Other: s.turn, Order: []core.EntityID{"a"}})
+	s.Require().ErrorIs(err, clock.ErrBadOrder)
+	activeSelf, err := s.turn.Active()
+	s.Require().NoError(err)
+	s.Equal(core.EntityID("a"), activeSelf)
+
+	// same length, wrong member: exercises the "in neither clock" branch
+	_, err = s.turn.Merge(&clock.MergeInput{Other: other, Order: []core.EntityID{"ghost", "x"}})
+	s.Require().ErrorIs(err, clock.ErrBadOrder)
+
+	// same length, duplicate: exercises the "appears twice" branch
+	_, err = s.turn.Merge(&clock.MergeInput{Other: other, Order: []core.EntityID{"x", "x"}})
+	s.Require().ErrorIs(err, clock.ErrBadOrder)
 }
 
 func (s *TurnSuite) TestDissolve() {
