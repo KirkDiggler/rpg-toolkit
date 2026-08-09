@@ -967,7 +967,7 @@ func LoadTurn(data TurnData) (*Turn, error) {
 **Files:**
 - Create: `play/clock/tick.go`, `play/clock/tick_test.go`
 
-- [ ] **Step 1: Write failing tests** (new `TickSuite`, same conventions):
+- [ ] **Step 1: Write failing tests** (new `TickSuite`, same conventions). Deliberately no `core` import yet — these tests never reference it (untyped string constants convert), Go hard-errors on unused imports, and Task 9 adds it with its first real use:
 
 ```go
 package clock_test
@@ -978,10 +978,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/stretchr/testify/suite"
 )
-
-// NOTE: the core import is NOT used by this task's tests — it is added in
-// Task 9, whose tests first reference core.EntityID. Go hard-errors on
-// unused imports.
 
 type TickSuite struct {
 	suite.Suite
@@ -1771,7 +1767,13 @@ cd /home/kirk/game-dev/.worktrees/toolkit-play-clock/play/clock
 go run golang.org/x/exp/cmd/gorelease@latest || true   # informational pre-first-tag
 ```
 
-- [ ] **Step 3: Commit** — `git commit -am "chore(play/clock): release-gate note + module gate green"`
+- [ ] **Step 3: Commit.** The workflow file is NEW and untracked — `-a` alone would silently omit it:
+
+```bash
+cd /home/kirk/game-dev/.worktrees/toolkit-play-clock
+git add .github/workflows/compat.yml play/clock/
+git commit -m "ci: gorelease compat gate for play/clock (AC4); module gate green"
+```
 
 ---
 
