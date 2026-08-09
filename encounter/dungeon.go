@@ -96,6 +96,9 @@ type AbsolutePlacedObstacleSpec struct {
 	BlocksMovement bool
 	BlocksLoS      bool
 	Facing         *uint32
+	// Offset is optional presentation-only placement metadata. It never
+	// changes At, blockers, collision, pathing, or line of sight.
+	Offset *core.PlacementOffset
 }
 
 // AbsoluteReservedCell names authored content (currently an absolute monster
@@ -275,6 +278,10 @@ type PlacedObstacleSpec struct {
 	// a non-nil pointer to FacingEast is the explicit E = 0 override. It is
 	// copied to ObstacleData without affecting position or collision behavior.
 	Facing *uint32
+
+	// Offset is optional presentation-only [x,y,z] metadata in canonical
+	// game-world axes. It is copied without affecting At or mechanics.
+	Offset *core.PlacementOffset
 }
 
 // DungeonConnectorParams configures the door joining two consecutive
@@ -1468,7 +1475,8 @@ func placeVerbatimObstacles(p placeRegionObstaclesParams) ([]ObstacleData, map[s
 			Position:       core.HexFromCube(cube),
 			BlocksMovement: spec.BlocksMovement,
 			BlocksLoS:      spec.BlocksLoS,
-			Facing:         spec.Facing,
+			Facing:         cloneFacing(spec.Facing),
+			Offset:         clonePlacementOffset(spec.Offset),
 		})
 	}
 	return out, placedCubes, nil

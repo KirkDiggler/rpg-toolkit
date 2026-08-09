@@ -53,11 +53,15 @@ type KnownHexPlacement struct {
 	// Facing is optional canonical hex-facing metadata. Pointer presence
 	// distinguishes absent from explicit E = 0 through event serialization.
 	Facing *uint32
+	// Offset is optional presentation-only [x,y,z] metadata in canonical
+	// game-world axes. Pointer presence distinguishes absent from zero.
+	Offset *core.PlacementOffset
 }
 
 type knownHexPlacementWire struct {
-	EntityID core.EntityID `json:"EntityID"`
-	Facing   *uint32       `json:"facing,omitempty"`
+	EntityID core.EntityID         `json:"EntityID"`
+	Facing   *uint32               `json:"facing,omitempty"`
+	Offset   *core.PlacementOffset `json:"offset,omitempty"`
 }
 
 // MarshalJSON writes optional facing under a lowercase key so explicit E = 0
@@ -87,7 +91,14 @@ func (p *KnownHexPlacement) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	}
+	var offset *core.PlacementOffset
+	if rawOffset, ok := fields["offset"]; ok {
+		if err := json.Unmarshal(rawOffset, &offset); err != nil {
+			return err
+		}
+	}
 	p.EntityID = entityID
 	p.Facing = facing
+	p.Offset = offset
 	return nil
 }

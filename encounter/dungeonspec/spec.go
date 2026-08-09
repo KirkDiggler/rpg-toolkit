@@ -8,6 +8,8 @@
 // the examples and coordinate errata.
 package dungeonspec
 
+import "github.com/KirkDiggler/rpg-toolkit/encounter/core"
+
 // DungeonSpec is the top-level decoded shape of a dungeon spec file.
 type DungeonSpec struct {
 	Version int         `yaml:"version"`
@@ -81,6 +83,11 @@ type MonsterEntry struct {
 	Count int    `yaml:"count"`
 }
 
+// PlacementOffset is an optional authored [x,y,z] translation in canonical
+// game-world axes relative to a placement's canonical origin. It is transport
+// data only: facing never rotates it and toolkit mechanics never interpret it.
+type PlacementOffset = core.PlacementOffset
+
 // BossEntry designates a room's boss monster.
 type BossEntry struct {
 	Ref string  `yaml:"ref"`
@@ -88,6 +95,9 @@ type BossEntry struct {
 	// Facing is decoded solely so unsupported boss-facing input can fail at
 	// its supplied field path. Boss-facing behavior is outside Slice #178.
 	Facing *string `yaml:"facing,omitempty"`
+	// Offset preserves authored presence independently from an explicit zero
+	// triple. It has no effect on boss placement or mechanics.
+	Offset *PlacementOffset `yaml:"offset,omitempty"`
 }
 
 // ObstacleEntry is a count-based rolled obstacle for a room.
@@ -116,6 +126,9 @@ type PlacedEntry struct {
 	// field path. Slice #178 supports floor placements only and never
 	// compiles mount behavior.
 	Mount *string `yaml:"mount,omitempty"`
+	// Offset preserves authored presence independently from an explicit zero
+	// triple. It is copied verbatim and never affects placement mechanics.
+	Offset *PlacementOffset `yaml:"offset,omitempty"`
 }
 
 // WallSpec is one strict authored edge from the top-level walls grammar.

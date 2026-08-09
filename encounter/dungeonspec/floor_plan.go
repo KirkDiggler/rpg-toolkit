@@ -75,6 +75,9 @@ type FloorPlan struct {
 	FloorCells []FloorPlanCell
 	Entrance   FloorPlanCell
 	Edges      []FloorPlanEdge
+	// Placements preserves every authored room/canvas placement and boss in
+	// canonical absolute coordinates with its exact optional offset.
+	Placements []CompiledPlacement
 }
 
 // BuildFloorPlanInput supplies a compiled specification and preview seed.
@@ -104,7 +107,10 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	if data.Space == nil {
 		return FloorPlan{}, fmt.Errorf("init dungeon: no persisted space")
 	}
-	plan := FloorPlan{Height: data.Space.Height, Entrance: cellFromHex(data.Space.Entrance)}
+	plan := FloorPlan{
+		Height: data.Space.Height, Entrance: cellFromHex(data.Space.Entrance),
+		Placements: cloneCompiledPlacements(in.Compiled.Placements),
+	}
 
 	if data.Space.FloorSource == encounter.FloorSourceRoomChain {
 		plan.DoorRow = data.Space.Height / 2
@@ -199,6 +205,22 @@ func runtimeCanvasFloorCells(width, height int) ([]FloorPlanCell, error) {
 		return cells[i].Row < cells[j].Row
 	})
 	return cells, nil
+}
+
+func cloneCompiledPlacements(placements []CompiledPlacement) []CompiledPlacement {
+	if placements == nil {
+		return nil
+	}
+	clones := make([]CompiledPlacement, len(placements))
+	for index, placement := range placements {
+		clones[index] = placement
+		clones[index].Offset = clonePlacementOffset(placement.Offset)
+		if placement.Facing != nil {
+			facing := *placement.Facing
+			clones[index].Facing = &facing
+		}
+	}
+	return clones
 }
 
 func cloneString(value *string) *string {

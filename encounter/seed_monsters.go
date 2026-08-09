@@ -45,6 +45,10 @@ type SpawnInstruction struct {
 	// canvas has an explicit floor source rather than synthetic regions.
 	// Exactly one of At and AbsoluteAt must be present for a placed spawn.
 	AbsoluteAt *core.Hex
+
+	// Offset is optional presentation-only [x,y,z] metadata copied to the
+	// minted monster identity. It never changes At/AbsoluteAt or mechanics.
+	Offset *core.PlacementOffset
 }
 
 // resolvedSpawn is one SpawnInstruction after it has passed every
@@ -297,6 +301,7 @@ func (e *Encounter) validateSpawnBatch(spawns []SpawnInstruction) ([]resolvedSpa
 				Speed:       mon.Speed().Walk / 5, // feet -> hexes (npc.go/action.go consume Speed in hexes)
 				MonsterRef:  spawn.MonsterRef,
 				DataJSON:    dataJSON,
+				Offset:      clonePlacementOffset(spawn.Offset),
 				AttackBonus: attackBonus,
 				DamageDice:  damageDice,
 				DamageType:  damageType,
@@ -360,6 +365,7 @@ func (e *Encounter) validateAbsoluteCanvasSpawn(
 		input: MonsterInput{
 			ID: id, Position: *spawn.AbsoluteAt, HP: mon.HP(), MaxHP: mon.MaxHP(), AC: mon.AC(),
 			Speed: mon.Speed().Walk / 5, MonsterRef: spawn.MonsterRef, DataJSON: dataJSON,
+			Offset:      clonePlacementOffset(spawn.Offset),
 			AttackBonus: attackBonus, DamageDice: damageDice, DamageType: damageType,
 		},
 	}, nil

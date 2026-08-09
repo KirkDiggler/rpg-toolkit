@@ -32,20 +32,35 @@ type LoadConfig struct {
 	PartyStartSeatCount int
 }
 
+// CompiledPlacement is one authoring placement copied from source into the
+// compiler's absolute coordinate frame. Offset and Facing preserve optional
+// presence; neither value changes the owning cell or any toolkit mechanics.
+type CompiledPlacement struct {
+	SourcePath     string
+	Ref            string
+	At             FloorPlanCell
+	Facing         *uint32
+	Offset         *PlacementOffset
+	BlocksMovement bool
+	BlocksLoS      bool
+}
+
 // CompiledDungeon is a dungeon spec compiled down to what the engine and
 // SeedMonsters actually consume: engine params ready for InitDungeon, and
-// a spawn plan ready for SeedMonsters. Its private canvas source occupancy is
-// immutable compiler state used only by LoadWithPrevious; it contains no
-// pointers into decoded YAML and is safe to cache/share as a value.
+// a spawn plan ready for SeedMonsters. Placements is the provider-owned
+// authoring projection input. Its private canvas source occupancy is immutable
+// compiler state used only by LoadWithPrevious; no pointer aliases decoded
+// YAML, so the compiled value is safe to cache/share.
 type CompiledDungeon struct {
 	// Params feeds Encounter.InitDungeon directly. Params.RandomSeed is
 	// deliberately left at its zero value -- Load has no opinion on
 	// reproducibility, so the caller MUST set it before calling
 	// InitDungeon, or repeated encounters compiled from the same spec
 	// bytes won't roll the same layout.
-	Params encounter.DungeonParams
-	Spawns []SpawnInstruction // boss first, then entrance->boss chain order
-	canvas *canvasCompiled    // private opaque prior-validation/source state
+	Params     encounter.DungeonParams
+	Spawns     []SpawnInstruction  // boss first, then entrance->boss chain order
+	Placements []CompiledPlacement // stable source-path order in absolute coordinates
+	canvas     *canvasCompiled     // private opaque prior-validation/source state
 }
 
 // Load decodes, validates, and compiles a spec in one call -- the only
@@ -144,6 +159,7 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 		MonsterRef: bossRoom.Boss.Ref,
 		Count:      1,
 		At:         bossAt,
+		Offset:     clonePlacementOffset(bossRoom.Boss.Offset),
 	})
 
 	regions := make([]encounter.DungeonRegionParams, len(spec.Rooms))
@@ -162,6 +178,11 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 		connectors[i] = compileConnector(spec.Key, &spec.Connectors[i])
 	}
 	authoredEdges, err := compileWalls(spec)
+	if err != nil {
+		return CompiledDungeon{}, err
+	}
+
+	placements, err := compileRoomChainPlacements(spec)
 	if err != nil {
 		return CompiledDungeon{}, err
 	}
@@ -185,8 +206,57 @@ func compileWithConfig(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, e
 			PartyStart:    partyStart,
 			AuthoredEdges: authoredEdges,
 		},
-		Spawns: spawns,
+		Spawns:     spawns,
+		Placements: placements,
 	}, nil
+}
+
+// compileRoomChainPlacements copies every authored room placement into the
+// absolute compiled coordinate frame without altering its optional offset.
+func compileRoomChainPlacements(spec *DungeonSpec) ([]CompiledPlacement, error) {
+	var placements []CompiledPlacement
+	startColumn := 0
+	for roomIndex := range spec.Rooms {
+		room := &spec.Rooms[roomIndex]
+		for entryIndex := range room.Place {
+			entry := &room.Place[entryIndex]
+			refType, err := refParts(entry.Ref)
+			if err != nil {
+				return nil, fmt.Errorf("rooms[%d].place[%d].ref: %w", roomIndex, entryIndex, err)
+			}
+			facing, err := compileFacing(entry.Facing)
+			if err != nil {
+				return nil, fmt.Errorf("rooms[%d].place[%d].facing: %w", roomIndex, entryIndex, err)
+			}
+			placements = append(placements, CompiledPlacement{
+				SourcePath: fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex),
+				Ref:        entry.Ref, At: FloorPlanCell{Column: startColumn + entry.At[0], Row: entry.At[1]},
+				Facing: facing, Offset: clonePlacementOffset(entry.Offset),
+				BlocksMovement: refType == refTypeProps && boolOrTrue(entry.BlocksMovement),
+				BlocksLoS:      refType == refTypeProps && boolOrTrue(entry.BlocksLoS),
+			})
+		}
+		if room.Boss != nil && room.Boss.At != nil {
+			placements = append(placements, CompiledPlacement{
+				SourcePath: fmt.Sprintf("rooms[%d].boss", roomIndex), Ref: room.Boss.Ref,
+				At:     FloorPlanCell{Column: startColumn + room.Boss.At[0], Row: room.Boss.At[1]},
+				Offset: clonePlacementOffset(room.Boss.Offset),
+			})
+		}
+		startColumn += room.Width
+		if roomIndex < len(spec.Rooms)-1 {
+			startColumn++
+		}
+	}
+	return placements, nil
+}
+
+func clonePlacementOffset(offset *PlacementOffset) *PlacementOffset {
+	if offset == nil {
+		return nil
+	}
+	clone := *offset
+	return &clone
 }
 
 // compileRoom compiles one room's geometry/obstacles/place block. It
@@ -263,6 +333,7 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 				BlocksMovement: boolOrTrue(entry.BlocksMovement),
 				BlocksLoS:      boolOrTrue(entry.BlocksLoS),
 				Facing:         facing,
+				Offset:         clonePlacementOffset(entry.Offset),
 			})
 		case refTypeMonsters:
 			at := encounter.LocalHex{Col: entry.At[0], Row: entry.At[1]}
@@ -277,6 +348,7 @@ func compileRoom(room *RoomSpec) (encounter.DungeonRegionParams, []SpawnInstruct
 				MonsterRef: entry.Ref,
 				Count:      1,
 				At:         &at,
+				Offset:     clonePlacementOffset(entry.Offset),
 			})
 		default:
 			// Phrasing matches validatePlaceBlock's "must be props or
@@ -466,26 +538,38 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 	anchor := canvasHex(cc.entrance)
 	params.PartyStart.Anchor = &anchor
 	spawns := make([]SpawnInstruction, 0, len(spec.Place))
+	placements := make([]CompiledPlacement, 0, len(spec.Place))
 	for index, entry := range spec.Place {
 		refType, err := refParts(entry.Ref)
 		if err != nil {
 			return CompiledDungeon{}, fmt.Errorf("place[%d]: %w", index, err)
 		}
-		at := canvasHex(FloorPlanCell{Column: entry.At[0], Row: entry.At[1]})
+		atCell := FloorPlanCell{Column: entry.At[0], Row: entry.At[1]}
+		at := canvasHex(atCell)
 		cc.occupancy = append(cc.occupancy, canvasSourceOccupancy{source: fmt.Sprintf("place[%d]", index), cell: entry.At})
+		facing, err := compileFacing(entry.Facing)
+		if err != nil {
+			return CompiledDungeon{}, fmt.Errorf("place[%d].facing: %w", index, err)
+		}
+		placements = append(placements, CompiledPlacement{
+			SourcePath: fmt.Sprintf("place[%d]", index), Ref: entry.Ref, At: atCell,
+			Facing: facing, Offset: clonePlacementOffset(entry.Offset),
+			BlocksMovement: refType == refTypeProps && boolOrTrue(entry.BlocksMovement),
+			BlocksLoS:      refType == refTypeProps && boolOrTrue(entry.BlocksLoS),
+		})
 		switch refType {
 		case refTypeProps:
-			facing, err := compileFacing(entry.Facing)
-			if err != nil {
-				return CompiledDungeon{}, fmt.Errorf("place[%d].facing: %w", index, err)
-			}
 			params.AbsolutePlacedObstacles = append(params.AbsolutePlacedObstacles, encounter.AbsolutePlacedObstacleSpec{
 				ID: core.EntityID(fmt.Sprintf("canvas-prop-%d", index)), Ref: entry.Ref, At: at,
-				BlocksMovement: boolOrTrue(entry.BlocksMovement), BlocksLoS: boolOrTrue(entry.BlocksLoS), Facing: facing,
+				BlocksMovement: boolOrTrue(entry.BlocksMovement), BlocksLoS: boolOrTrue(entry.BlocksLoS),
+				Facing: facing, Offset: clonePlacementOffset(entry.Offset),
 			})
 		case refTypeMonsters:
 			absoluteAt := at
-			spawns = append(spawns, SpawnInstruction{MonsterRef: entry.Ref, Count: 1, AbsoluteAt: &absoluteAt})
+			spawns = append(spawns, SpawnInstruction{
+				MonsterRef: entry.Ref, Count: 1, AbsoluteAt: &absoluteAt,
+				Offset: clonePlacementOffset(entry.Offset),
+			})
 			params.AbsoluteReservedCells = append(params.AbsoluteReservedCells, encounter.AbsoluteReservedCell{
 				At: at, Name: fmt.Sprintf("placed monster %q (place[%d])", entry.Ref, index),
 			})
@@ -502,7 +586,7 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 	if spec.Start != nil {
 		cc.occupancy = append(cc.occupancy, canvasSourceOccupancy{source: "start", cell: *spec.Start})
 	}
-	return CompiledDungeon{Params: params, Spawns: spawns, canvas: cc}, nil
+	return CompiledDungeon{Params: params, Spawns: spawns, Placements: placements, canvas: cc}, nil
 }
 
 func validatePreviousCanvas(candidate, previous CompiledDungeon) error {

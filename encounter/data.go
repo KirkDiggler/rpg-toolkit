@@ -254,6 +254,10 @@ type ObstacleData struct {
 	// E,NE,NW,W,SW,SE = 0..5 order. Nil means no override; a non-nil pointer
 	// to zero is explicit E and must remain present across persistence.
 	Facing *uint32 `json:"facing,omitempty"`
+
+	// Offset is optional presentation-only placement metadata in canonical
+	// game-world axes. Nil and explicit [0,0,0] remain distinct.
+	Offset *core.PlacementOffset `json:"offset,omitempty"`
 }
 
 // RegionData tags a named set of hexes as one chamber/region within a
@@ -505,6 +509,9 @@ type MonsterData struct {
 	Speed      int           `json:"speed"`
 	MonsterRef string        `json:"monster_ref"`
 	DataJSON   []byte        `json:"data_json,omitempty"`
+	// Offset is optional presentation-only placement metadata that follows
+	// this monster when Position changes. It never affects movement rules.
+	Offset *core.PlacementOffset `json:"offset,omitempty"`
 
 	AttackBonus int    `json:"attack_bonus,omitempty"`
 	DamageDice  string `json:"damage_dice,omitempty"`

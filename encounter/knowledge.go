@@ -88,6 +88,7 @@ func knownHexesToEvents(known map[core.Hex]perception.HexObservation) []events.K
 			contents = append(contents, events.KnownHexPlacement{
 				EntityID: c.EntityID,
 				Facing:   cloneFacing(c.Facing),
+				Offset:   clonePlacementOffset(c.Offset),
 			})
 		}
 		out = append(out, events.KnownHex{
@@ -332,6 +333,14 @@ func cloneFacing(value *uint32) *uint32 {
 	return &clone
 }
 
+func clonePlacementOffset(value *core.PlacementOffset) *core.PlacementOffset {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	var out []perception.Placement
 	for _, p := range e.data.Players {
@@ -341,13 +350,15 @@ func (e *Encounter) placementsAt(h core.Hex) []perception.Placement {
 	}
 	for _, m := range e.data.Monsters {
 		if m.Position == h {
-			out = append(out, perception.Placement{EntityID: m.ID})
+			out = append(out, perception.Placement{EntityID: m.ID, Offset: clonePlacementOffset(m.Offset)})
 		}
 	}
 	if e.data.Space != nil {
 		for _, o := range e.data.Space.Obstacles {
 			if o.Position == h {
-				out = append(out, perception.Placement{EntityID: o.ID, Facing: cloneFacing(o.Facing)})
+				out = append(out, perception.Placement{
+					EntityID: o.ID, Facing: cloneFacing(o.Facing), Offset: clonePlacementOffset(o.Offset),
+				})
 			}
 		}
 	}

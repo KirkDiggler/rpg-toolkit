@@ -97,11 +97,15 @@ type Placement struct {
 	EntityID core.EntityID
 	// Facing is an optional hex-direction index in canonical 0-5 order.
 	Facing *uint32
+	// Offset is optional presentation-only [x,y,z] metadata in canonical
+	// game-world axes, frozen with this viewer's observation.
+	Offset *core.PlacementOffset
 }
 
 type placementWire struct {
-	EntityID core.EntityID `json:"EntityID"`
-	Facing   *uint32       `json:"facing,omitempty"`
+	EntityID core.EntityID         `json:"EntityID"`
+	Facing   *uint32               `json:"facing,omitempty"`
+	Offset   *core.PlacementOffset `json:"offset,omitempty"`
 }
 
 // MarshalJSON writes optional facing under a lowercase key so presence is
@@ -134,8 +138,15 @@ func (p *Placement) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	}
+	var offset *core.PlacementOffset
+	if rawOffset, ok := fields["offset"]; ok {
+		if err := json.Unmarshal(rawOffset, &offset); err != nil {
+			return err
+		}
+	}
 	p.EntityID = entityID
 	p.Facing = facing
+	p.Offset = offset
 	return nil
 }
 

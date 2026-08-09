@@ -180,6 +180,9 @@ type MonsterInput struct {
 	Speed      int
 	MonsterRef string
 	DataJSON   []byte
+	// Offset is optional presentation-only placement metadata. AddMonster
+	// copies it without interpreting it.
+	Offset *core.PlacementOffset
 
 	AttackBonus int
 	DamageDice  string
@@ -502,6 +505,7 @@ func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
 		Speed:       input.Speed,
 		MonsterRef:  input.MonsterRef,
 		DataJSON:    input.DataJSON,
+		Offset:      clonePlacementOffset(input.Offset),
 		AttackBonus: input.AttackBonus,
 		DamageDice:  input.DamageDice,
 		DamageType:  input.DamageType,

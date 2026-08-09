@@ -5,6 +5,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
@@ -186,6 +187,9 @@ func validateCanvas(spec *DungeonSpec) error {
 	occupied := map[[2]int]string{}
 	for i, e := range spec.Place {
 		path := fmt.Sprintf("place[%d]", i)
+		if err := validatePlacementOffset(path+".offset", e.Offset); err != nil {
+			return err
+		}
 		if _, ok := floor[e.At]; !ok {
 			return fmt.Errorf("%s.at %v is out of canvas floor footprint", path, e.At)
 		}
@@ -456,6 +460,11 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 	doorRow := height / 2
 	occupied := make(map[[2]int]string, len(room.Place)+1)
 
+	if room.Boss != nil {
+		if err := validatePlacementOffset(fmt.Sprintf("rooms[%d].boss.offset", roomIndex), room.Boss.Offset); err != nil {
+			return err
+		}
+	}
 	if room.Boss != nil && room.Boss.Facing != nil {
 		return fmt.Errorf("rooms[%d].boss.facing: %s: %s", roomIndex, unsupportedCapability, facingFloorPropsOnly)
 	}
@@ -471,6 +480,10 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 	}
 
 	for entryIndex, entry := range room.Place {
+		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
+		if err := validatePlacementOffset(path+".offset", entry.Offset); err != nil {
+			return err
+		}
 		if err := checkCellBounds(room, height, entry.At); err != nil {
 			return fmt.Errorf("room %q: place %q %w", room.ID, entry.Ref, err)
 		}
@@ -496,7 +509,6 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 				room.ID, entry.Ref, refType)
 		}
 
-		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
 		if entry.Facing != nil {
 			if refType != refTypeProps || !isFloorMount(entry.Mount) {
 				return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
@@ -535,6 +547,9 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 // absolute placement instead.
 func validateTopLevelPlace(entries []PlacedEntry) error {
 	for index, entry := range entries {
+		if err := validatePlacementOffset(fmt.Sprintf("place[%d].offset", index), entry.Offset); err != nil {
+			return err
+		}
 		if entry.Facing != nil {
 			return fmt.Errorf("place[%d].facing: %s: %s", index, unsupportedCapability, facingFloorPropsOnly)
 		}
@@ -546,6 +561,18 @@ func validateTopLevelPlace(entries []PlacedEntry) error {
 		return nil
 	}
 	return fmt.Errorf("place[0]: %s: top-level placement is not supported", unsupportedCapability)
+}
+
+func validatePlacementOffset(path string, offset *PlacementOffset) error {
+	if offset == nil {
+		return nil
+	}
+	for index, value := range offset {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return newValidationError(fmt.Sprintf("%s[%d]", path, index), "must be a finite number")
+		}
+	}
+	return nil
 }
 
 func isFloorMount(mount *string) bool {
