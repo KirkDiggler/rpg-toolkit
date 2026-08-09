@@ -54,6 +54,7 @@ func TestDecode_PlacementOffsetPreservesOptionalPresenceAndRoundTrip(t *testing.
 	assert.Nil(t, roundTripped.Rooms[1].Place[1].Offset)
 }
 
+//nolint:lll,goconst // malformed YAML specimens stay inline with their exact expected paths.
 func TestDecode_PlacementOffsetRejectsMalformedShapeAtExactSourcePath(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -94,6 +95,7 @@ func TestValidate_PlacementOffsetRejectsProgrammaticNonFiniteValueAtExactPath(t 
 	assert.Equal(t, "rooms[1].boss.offset[1]", validationErr.Field)
 }
 
+//nolint:lll // complete contract assertions are clearest beside their placement paths.
 func TestLoad_PlacementOffsetCompilesEveryPlacementKindWithoutInterpretation(t *testing.T) {
 	roomSource := strings.Replace(placedTombYAML,
 		`boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5] }`,
@@ -142,6 +144,34 @@ func TestLoad_PlacementOffsetCompilesEveryPlacementKindWithoutInterpretation(t *
 	require.Equal(t, &dungeonspec.PlacementOffset{0, 0, 0}, canvasCompiled.Spawns[0].Offset)
 }
 
+const offsetCaseOmitted = "omitted"
+
+//nolint:lll // complete table rows keep the optional triple next to its expected pointer.
+func TestLoad_CanvasMonsterOffsetPresenceMatrix(t *testing.T) {
+	const zeroField = ", offset: [0, 0, 0]"
+	cases := []struct {
+		name        string
+		replacement string
+		want        *dungeonspec.PlacementOffset
+	}{
+		{name: offsetCaseOmitted},
+		{name: "explicit zero", replacement: zeroField, want: &dungeonspec.PlacementOffset{0, 0, 0}},
+		{name: "signed", replacement: ", offset: [1.5, -0.25, -3]", want: &dungeonspec.PlacementOffset{1.5, -0.25, -3}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := strings.Replace(offsetCanvasYAML, zeroField, tc.replacement, 1)
+			compiled, err := dungeonspec.Load([]byte(raw))
+			require.NoError(t, err)
+			require.Len(t, compiled.Spawns, 1)
+			assert.Equal(t, tc.want, compiled.Spawns[0].Offset, "AbsoluteAt runtime carrier")
+			placements := placementsByPath(compiled.Placements)
+			assert.Equal(t, tc.want, placements["place[1]"].Offset, "authoring projection")
+		})
+	}
+}
+
+//nolint:lll // messages name the full mechanics boundary under comparison.
 func TestLoad_PlacementOffsetDoesNotChangeMechanicsInputs(t *testing.T) {
 	withOffset := strings.Replace(placedTombYAML,
 		`at: [6, 3], blocks_los: false }`,
@@ -185,6 +215,7 @@ func placementsByPath(placements []dungeonspec.CompiledPlacement) map[string]dun
 	return out
 }
 
+//nolint:lll // one-line helper signature keeps every contract component visible.
 func assertCompiledOffset(t *testing.T, placement dungeonspec.CompiledPlacement, at dungeonspec.FloorPlanCell, offset *dungeonspec.PlacementOffset) {
 	t.Helper()
 	assert.Equal(t, at, placement.At)

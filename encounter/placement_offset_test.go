@@ -164,6 +164,55 @@ func TestPlacementOffsetRealInitSeedReloadKnowledgeAndMovementPath(t *testing.T)
 	require.Nil(t, eventRoundTrip[1].Offset)
 }
 
+func TestCanvasMonsterPlacementOffsetRealRuntimeMatrix(t *testing.T) {
+	zero := core.PlacementOffset{0, 0, 0}
+	signed := core.PlacementOffset{1.5, -0.25, -3}
+	cases := []struct {
+		name   string
+		offset *core.PlacementOffset
+	}{
+		{name: "omitted"},
+		{name: "explicit zero", offset: &zero},
+		{name: "signed", offset: &signed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			enc := smNewEncounter(t)
+			params := DungeonParams{
+				FloorSource: FloorSourceCanvas, Key: "canvas-offset-runtime", Width: 4, Height: 2,
+				RandomSeed: 1, PartyStart: PartyStartParams{SeatCount: 1},
+			}
+			require.NoError(t, enc.InitDungeon(params))
+			at := core.HexFromPosition(structuralPosition(2, 0))
+			require.NoError(t, enc.SeedMonsters([]SpawnInstruction{{
+				MonsterRef: smRefSkeleton, Count: 1, AbsoluteAt: &at, Offset: tc.offset,
+			}}))
+
+			payload, err := json.Marshal(enc.ToData())
+			require.NoError(t, err)
+			var persisted Data
+			require.NoError(t, json.Unmarshal(payload, &persisted))
+			reloaded, err := LoadFromData(context.Background(), &persisted, enc.broker)
+			require.NoError(t, err)
+			require.Equal(t, tc.offset, reloaded.data.Monsters["monster-canvas-0"].Offset)
+
+			require.NoError(t, reloaded.AddPlayer(PlayerInput{
+				PlayerID: "canvas-viewer", EntityID: "canvas-viewer-entity",
+				Position: core.HexFromPosition(structuralPosition(0, 0)), SightRange: 10,
+			}))
+			known := reloaded.KnownHexes("canvas-viewer")
+			require.Equal(t, tc.offset, allKnownPlacements(known)["monster-canvas-0"].Offset)
+			eventOffsets := make(map[core.EntityID]*core.PlacementOffset)
+			for _, hex := range knownHexesToEvents(known) {
+				for _, placement := range hex.Contents {
+					eventOffsets[placement.EntityID] = placement.Offset
+				}
+			}
+			require.Equal(t, tc.offset, eventOffsets["monster-canvas-0"])
+		})
+	}
+}
+
 func eventPlacementsByEntityID(placements []events.KnownHexPlacement) map[core.EntityID]events.KnownHexPlacement {
 	out := make(map[core.EntityID]events.KnownHexPlacement, len(placements))
 	for _, placement := range placements {

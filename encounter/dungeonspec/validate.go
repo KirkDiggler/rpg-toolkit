@@ -446,6 +446,21 @@ func validateBossRef(bossRoom *RoomSpec) error {
 	return nil
 }
 
+func validateRoomPlacementOffsets(room *RoomSpec, roomIndex int) error {
+	if room.Boss != nil {
+		if err := validatePlacementOffset(fmt.Sprintf("rooms[%d].boss.offset", roomIndex), room.Boss.Offset); err != nil {
+			return err
+		}
+	}
+	for entryIndex := range room.Place {
+		path := fmt.Sprintf("rooms[%d].place[%d].offset", roomIndex, entryIndex)
+		if err := validatePlacementOffset(path, room.Place[entryIndex].Offset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // validatePlaceBlock validates one room's place block plus its (optional)
 // pinned boss.at, which share one collision domain.
 func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
@@ -460,10 +475,8 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 	doorRow := height / 2
 	occupied := make(map[[2]int]string, len(room.Place)+1)
 
-	if room.Boss != nil {
-		if err := validatePlacementOffset(fmt.Sprintf("rooms[%d].boss.offset", roomIndex), room.Boss.Offset); err != nil {
-			return err
-		}
+	if err := validateRoomPlacementOffsets(room, roomIndex); err != nil {
+		return err
 	}
 	if room.Boss != nil && room.Boss.Facing != nil {
 		return fmt.Errorf("rooms[%d].boss.facing: %s: %s", roomIndex, unsupportedCapability, facingFloorPropsOnly)
@@ -481,9 +494,6 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 
 	for entryIndex, entry := range room.Place {
 		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
-		if err := validatePlacementOffset(path+".offset", entry.Offset); err != nil {
-			return err
-		}
 		if err := checkCellBounds(room, height, entry.At); err != nil {
 			return fmt.Errorf("room %q: place %q %w", room.ID, entry.Ref, err)
 		}
