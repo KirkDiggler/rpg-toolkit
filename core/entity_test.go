@@ -150,3 +150,14 @@ func TestEntity_NilHandling(t *testing.T) {
 	// This should panic
 	_ = entity.GetID()
 }
+
+func TestEntityIDIsStringNewtype(t *testing.T) {
+	id := core.EntityID("goblin-1")
+	if string(id) != "goblin-1" {
+		t.Fatalf("EntityID round-trip: got %q", string(id))
+	}
+	var zero core.EntityID
+	if zero != "" {
+		t.Fatalf("zero EntityID should be empty string")
+	}
+}
