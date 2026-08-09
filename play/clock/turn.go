@@ -280,6 +280,7 @@ func (t *Turn) Dissolve(_ *DissolveInput) (*DissolveOutput, error) {
 }
 
 // TurnData is Turn's persisted shape (design R8). Plain data, no behavior.
+// An idle snapshot has nil Order and marshals to {}.
 type TurnData struct {
 	Order     []core.EntityID `json:"order,omitempty"`
 	ActiveIdx int             `json:"active_idx,omitempty"`
@@ -302,7 +303,10 @@ func LoadTurn(data TurnData) (*Turn, error) {
 		if data.ActiveIdx != 0 {
 			return nil, fmt.Errorf("load turn: idle clock with active idx %d: %w", data.ActiveIdx, ErrInvalidData)
 		}
-		return &Turn{round: data.Round}, nil
+		if data.Round != 0 {
+			return nil, fmt.Errorf("load turn: idle clock with round %d: %w", data.Round, ErrInvalidData)
+		}
+		return &Turn{}, nil
 	}
 	seen := make(map[core.EntityID]struct{}, len(data.Order))
 	for _, id := range data.Order {
@@ -316,6 +320,9 @@ func LoadTurn(data TurnData) (*Turn, error) {
 			"load turn: active idx %d out of range [0,%d): %w",
 			data.ActiveIdx, len(data.Order), ErrInvalidData,
 		)
+	}
+	if data.Round < 1 {
+		return nil, fmt.Errorf("load turn: round %d with non-empty order: %w", data.Round, ErrInvalidData)
 	}
 	return &Turn{
 		order:     append([]core.EntityID(nil), data.Order...),

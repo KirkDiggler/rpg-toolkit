@@ -4,6 +4,7 @@
 package clock_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -456,6 +457,10 @@ func (s *TurnSuite) TestLoadTurnRejectsInvalid() {
 		{"active idx out of range", clock.TurnData{Order: []core.EntityID{"a"}, ActiveIdx: 1, Round: 1}},
 		{"negative active idx", clock.TurnData{Order: []core.EntityID{"a"}, ActiveIdx: -1, Round: 1}},
 		{"idle with nonzero active idx", clock.TurnData{ActiveIdx: 2}},
+		{"negative round with order", clock.TurnData{Order: []core.EntityID{"a"}, Round: -3}},
+		{"zero round with order", clock.TurnData{Order: []core.EntityID{"a"}}},
+		{"idle with nonzero round", clock.TurnData{Round: 5}},
+		{"idle with negative active idx", clock.TurnData{ActiveIdx: -1}},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -470,4 +475,25 @@ func (s *TurnSuite) TestLoadTurnAcceptsCanonicalIdle() {
 	s.Require().NoError(err)
 	_, err = loaded.Active()
 	s.Require().ErrorIs(err, clock.ErrIdle)
+}
+
+// TestTurnDataWireShape pins the JSON persistence contract — tag renames
+// are invisible to gorelease and would orphan every stored snapshot.
+func (s *TurnSuite) TestTurnDataWireShape() {
+	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b"}})
+	s.Require().NoError(err)
+	_, err = s.turn.End(&clock.EndInput{Actor: "a"})
+	s.Require().NoError(err)
+	raw, err := json.Marshal(s.turn.ToData())
+	s.Require().NoError(err)
+	s.JSONEq(`{"order":["a","b"],"active_idx":1,"round":1}`, string(raw))
+	var back clock.TurnData
+	s.Require().NoError(json.Unmarshal(raw, &back))
+	loaded, err := clock.LoadTurn(back)
+	s.Require().NoError(err)
+	s.Equal(s.turn.ToData(), loaded.ToData())
+	// idle snapshot marshals to {}
+	idleRaw, err := json.Marshal(clock.TurnData{})
+	s.Require().NoError(err)
+	s.JSONEq(`{}`, string(idleRaw))
 }
