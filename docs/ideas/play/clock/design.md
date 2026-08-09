@@ -130,6 +130,10 @@ map[EntityID]int, HighWater int}`. Construct via `NewTick()`; a freshly
 constructed `Tick` is valid and idle, but the zero value is not usable
 (nil maps).
 
+Idle-snapshot convention (both clock types): an idle clock's `ToData()`
+is deep-equal to the zero Data value (nil, not empty-non-nil, containers)
+and marshals to `{}`.
+
 Two properties compositions must know: **`Ready` is a snapshot** (members
 with budget > 0 at this instant), not a became-ready event — a member with
 unspent budget reappears on every `Advance`, so schedulers must not treat
