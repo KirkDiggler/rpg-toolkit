@@ -63,15 +63,29 @@ slice, the fact never happened. The failure mode changes from "delivered
 twice, in mystery order" (runtime archaeology) to "forgot to forward"
 (visible in review and tests). We prefer the second class.
 
-### 3. Input/Output structs for verbs; plain methods for queries
+### 3. Signatures: the three-clause law
 
-Kirk's call, and it is mechanically load-bearing, not style: the version
-story leans on `gorelease`, and adding a field to an Input struct is additive
-while adding a positional parameter is breaking. The rulebook side
-(`ExecuteActionInput`) evolved cleanly under this pattern; the old
-encounter's positional verbs accreted parameters and inline guards. Queries
-stay plain (`Budget(id) int`) — wrapping one-liners is ceremony with no
-evolution payoff.
+Started as "Input/Output for verbs, plain methods for queries," and Kirk's
+probing collapsed the exception in two steps. First, the evolvability
+argument applies to queries too (a plain `Budget(id) int` that needs a
+second answer breaks; an Output struct absorbs it) — and plain parameterized
+queries force zero-value ambiguity, a bug class the old module actually
+shipped (`IsReactionReady` false-for-unknown). Second, Kirk's reframe:
+**the error channel is communication, not just failure** — `Active()` on an
+idle clock shouldn't return a guessable zero `EntityID`, it should say
+`ErrIdle`. His readability test settled the input side:
+`LeaveMember(&LeaveMemberInput{ID: …})` reads; `LeaveMember(42)` means
+nothing.
+
+Final law (design R3), all clauses mechanical: (a) every exported function
+returns `error` last — sentinels are API vocabulary, dispatched with
+`errors.Is`; (b) parameters always travel in a single `*XxxInput` struct;
+(c) mutations return `*XxxOutput` (carrying Milestones), zero-arg reads
+return bare value + error. Why it's load-bearing and not style: the version
+story leans on `gorelease`, and struct fields are additive while positional
+parameters are breaking. The rulebook side (`ExecuteActionInput`) evolved
+cleanly under this pattern; the old encounter's positional verbs accreted
+parameters and inline guards.
 
 ### 4. No context.Context in the leaf — the law decides
 

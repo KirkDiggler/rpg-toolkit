@@ -20,9 +20,16 @@ wall-clock time; merging tick clocks; concurrency safety.
   MUST NOT import `events`, `spatial`, any rulebook, or any `play/` sibling.
 - **R2** — No function in this module takes `context.Context`. Cancellation
   is the composition's concern, between calls.
-- **R3** — Mutating verbs MUST have the shape
-  `func (x *T) Verb(in *VerbInput) (*VerbOutput, error)`. Read-only queries
-  MUST be plain methods.
+- **R3** — Signatures follow three mechanical clauses:
+  **(a)** every exported function returns `error` as its final result — the
+  error channel communicates state, not only failure (see the sentinel
+  vocabulary in **Errors**);
+  **(b)** every function that takes parameters takes exactly one
+  `*XxxInput` struct;
+  **(c)** mutating verbs return `(*XxxOutput, error)` (the Output carries
+  the Milestones); read-only functions return their value directly
+  (`(int, error)`), gaining an Output struct only when they answer with
+  more than one value.
 - **R4** — Every verb MUST return all `Milestone`s it caused, in causal
   order, in its Output. The module MUST NOT publish, call back, or otherwise
   deliver milestones.
@@ -70,8 +77,11 @@ State: an ordered member list, an active index, a round counter.
 Data shape: `TurnData{Order []core.EntityID, ActiveIdx int, Round int}`.
 A zero/empty `Turn` is valid and idle.
 
-Queries: `Active() core.EntityID` (zero when empty), `Round() int`,
-`Order() []core.EntityID`, `Contains(id) bool`.
+Queries: `Active() (core.EntityID, error)` and `Round() (int, error)`
+(both `ErrIdle` when no order is set — never a guessable zero value),
+`Order() ([]core.EntityID, error)`,
+`Contains(in *ContainsInput) (bool, error)` (false is an answer; no
+sentinel today).
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
@@ -97,7 +107,9 @@ map[EntityID]int, HighWater int}`. Construct via `NewTick()`; a freshly
 constructed `Tick` is valid and idle, but the zero value is not usable
 (nil maps).
 
-Queries: `Budget(id) int`, `Members() []core.EntityID`, `Contains(id) bool`.
+Queries: `Budget(in *BudgetInput) (int, error)` (`ErrNotMember` for an
+absent member — never an ambiguous zero), `Members() ([]core.EntityID,
+error)`, `Contains(in *ContainsInput) (bool, error)`.
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
@@ -134,6 +146,25 @@ ignores `Pos`).
 |------|-------|--------|-----------|
 | `Transfer` | `{From Leaver, To Joiner, ID EntityID, Pos int}` | `{Milestones}` | Leave-then-join, R6 atomicity: on any failure both clocks are unchanged and an error returns. Milestones: the concatenation of the leave's and the join's, in that order. |
 
+## Errors
+
+All errors wrap one of the package sentinels below, so callers dispatch
+with `errors.Is`. Messages are user-facing (toolkit convention). For
+mutating verbs a non-nil error means no state changed (R5); for read-only
+functions it explains why no meaningful value exists.
+
+| Sentinel | Meaning | Returned by |
+|----------|---------|-------------|
+| `ErrIdle` | clock has no order set / nothing to act on | `Active`, `Round`, `End`, `Insert`, `Merge`, `Dissolve` |
+| `ErrNotActive` | the named actor is not the active entity | `End` |
+| `ErrNotMember` | entity is not in this clock | `Budget`, `Spend`, `Remove`, `Leave`, `LeaveMember` |
+| `ErrDuplicateMember` | entity already present | `SetOrder`, `Insert`, `Join`, `JoinMember` |
+| `ErrBadPosition` | `Pos` outside `[0, len]` | `Insert`, `JoinMember` |
+| `ErrBadOrder` | empty order, or `Merge.Order` not a permutation of the union | `SetOrder`, `Merge` |
+| `ErrBadAmount` | non-positive `Spend.Amount`, negative `Advance.Displacement` | `Spend`, `Advance` |
+| `ErrInsufficientBudget` | `Spend.Amount` exceeds the member's budget | `Spend` |
+| `ErrInvalidData` | any R9 rejection | `LoadFromData` |
+
 ## Acceptance criteria
 
 - **AC1 (the DOS2 spine)** — one integration test: four members on a `Tick`;
@@ -152,3 +183,5 @@ ignores `Pos`).
   tag.
 - **AC5 (suite conventions)** — black-box `package clock_test`, testify
   suite, no mocks (the module has nothing to mock).
+- **AC6 (error vocabulary)** — every sentinel has at least one test
+  asserting `errors.Is` dispatch from the verb that returns it.
