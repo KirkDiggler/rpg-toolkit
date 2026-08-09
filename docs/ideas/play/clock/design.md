@@ -43,6 +43,10 @@ wall-clock time; merging tick clocks; concurrency safety.
   milestones. `NewTick() (*Tick, error)` conforms to (a) with no carve-out
   (construction cannot fail today; the signature leaves room for a future
   `TickConfig` that can).
+  **Nil Inputs:** passing a nil `*XxxInput` is a programmer error, not a
+  communicable state — verbs do not guard it and may panic. The sentinel
+  vocabulary is reserved for states of the clock, never defects in the
+  caller.
 - **R4** — Every verb MUST return all `Milestone`s it caused, in causal
   order, in its Output. The module MUST NOT publish, call back, or otherwise
   deliver milestones.
