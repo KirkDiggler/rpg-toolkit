@@ -99,15 +99,27 @@ Queries: `Budget(id) int`, `Members() []core.EntityID`, `Contains(id) bool`.
 
 ## Transfer
 
-The only interfaces in the module, extracted where sharing is proven:
+The only interfaces in the module, extracted where sharing is proven. Their
+methods are mutating verbs and follow R3 like every other verb:
 
 ```go
-type Leaver interface { LeaveMember(id core.EntityID) ([]Milestone, error) }
-type Joiner interface { JoinMember(id core.EntityID, pos int) ([]Milestone, error) }
+type Leaver interface {
+    LeaveMember(in *LeaveMemberInput) (*LeaveMemberOutput, error)
+}
+type Joiner interface {
+    JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error)
+}
 ```
 
+| Shape | Fields |
+|-------|--------|
+| `LeaveMemberInput`  | `{ID core.EntityID}` |
+| `LeaveMemberOutput` | `{Milestones []Milestone}` |
+| `JoinMemberInput`   | `{ID core.EntityID, Pos int}` |
+| `JoinMemberOutput`  | `{Milestones []Milestone}` |
+
 `Turn` and `Tick` implement both (thin adapters over their own verbs; `Tick`
-ignores `pos`).
+ignores `Pos`).
 
 | Func | Input | Output | Semantics |
 |------|-------|--------|-----------|
