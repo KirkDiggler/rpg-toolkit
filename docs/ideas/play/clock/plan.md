@@ -1818,6 +1818,12 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **With Task 10 (from Task 9's reviews)**: unit pins for cross-driver
+  high-water overtake, spent-to-zero member omitted from Ready, Spend
+  error precedence (absent member beats bad amount), and
+  driver-also-member accrual (AC1 relies on it); AdvanceOutput.Ready doc
+  gains "a snapshot, not a became-ready event"; design's Tick section
+  documents the Ready-snapshot and DriverProgress-lifecycle properties.
 - **With Task 9 (from Task 8's quality review)**: CRITICAL fix — the R9
   Round-bounds amendment outlawed a reachable state: Remove-of-last-member
   left Round intact, so attrition-ended fights produced unloadable saves.

@@ -130,6 +130,15 @@ map[EntityID]int, HighWater int}`. Construct via `NewTick()`; a freshly
 constructed `Tick` is valid and idle, but the zero value is not usable
 (nil maps).
 
+Two properties compositions must know: **`Ready` is a snapshot** (members
+with budget > 0 at this instant), not a became-ready event — a member with
+unspent budget reappears on every `Advance`, so schedulers must not treat
+presence as "newly ready". **`DriverProgress` has no removal path** — it
+grows monotonically with distinct driver IDs; entries with progress <=
+`HighWater` are safely prunable by a future policy (over-grant is
+structurally impossible either way: total budget ever granted equals
+`HighWater`).
+
 Queries: `Budget(in *BudgetInput) (int, error)` (`ErrNotMember` for an
 absent member — never an ambiguous zero), `Members() ([]core.EntityID,
 error)`, `Contains(in *ContainsInput) (bool, error)`.
