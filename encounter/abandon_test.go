@@ -77,6 +77,7 @@ func (s *AbandonSuite) TestEnd_MidCombat_Abandoned_EndsEncounter_PersistsThrough
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	s.Require().Equal(core.ModeTurnBased, enc.Mode(),
 		"alice is in LoS of the goblin — AddMonster must auto-enter combat")
@@ -207,6 +208,7 @@ func (s *AbandonSuite) TestEnd_AlreadyEnded_ReturnsErrEncounterEnded_NegativeCon
 			ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 			HP: 1, MaxHP: 7, AC: 15, Speed: 6,
 			AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+			DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 		}))
 
 		sub, err := s.broker.Subscribe(encID, "alice")

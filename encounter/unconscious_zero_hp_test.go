@@ -141,12 +141,14 @@ func (s *UnconsciousZeroHPSuite) charDataJSON(id, playerID string) json.RawMessa
 }
 
 // buildEncounter constructs a 1-hydrated-player (alice, HP=1 — always
-// guaranteed lethal via alwaysHitResolver's 999 damage) + 1-scripted-monster
-// (goblin, no DataJSON) encounter wired with roller, then round-trips
-// through ToData/LoadFromData so the cascade hydrates alice's character
-// (mirrors turn_start_revival_test.go's loadEncounter). alice's starting HP
-// is not a caller-varying concern across this file's tests — every one of
-// them needs the same guaranteed-knockdown setup.
+// guaranteed lethal via alwaysHitResolver's 999 damage) + 1 rehydratable
+// goblin encounter wired with roller, then round-trips through
+// ToData/LoadFromData so the cascade hydrates alice's character (mirrors
+// turn_start_revival_test.go's loadEncounter). alice's starting HP is not a
+// caller-varying concern across this file's tests — every one of them needs
+// the same guaranteed-knockdown setup. The goblin used to rely on
+// npcActScripted's empty-DataJSON fallback; that fallback is deleted
+// (rpg-toolkit#895 no-fallback rider), so it is now a real registry goblin.
 func (s *UnconsciousZeroHPSuite) buildEncounter(
 	encID core.EncounterID, roller encounter.Option,
 ) *encounter.Encounter {
@@ -165,6 +167,7 @@ func (s *UnconsciousZeroHPSuite) buildEncounter(
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())

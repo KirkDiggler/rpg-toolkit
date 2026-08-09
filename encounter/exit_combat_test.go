@@ -91,6 +91,7 @@ func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ExitCombat_IdempotentO
 		HP:       1, MaxHP: 7, AC: 5,
 		MonsterRef:  monsterRefGoblin,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// The killing blow triggers checkEncounterEnd -> endCombatForPlayers,
 	// which now calls ExitCombat alongside EndCombat for every held player.

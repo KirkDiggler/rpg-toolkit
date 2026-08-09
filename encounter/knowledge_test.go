@@ -169,6 +169,7 @@ func (s *KnowledgeSuite) TestKnownHexes_ReSight_AtomicallyRefreshesContent() {
 	// mutation — proven directly by re-reading, not just asserted).
 	s.Require().NoError(e.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: targetHex, HP: 7, MaxHP: 7, AC: 12,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	stillStale := e.KnownHexes(alicePlayerID)
 	s.Empty(contentIDs(stillStale[targetHex]),
@@ -203,6 +204,7 @@ func (s *KnowledgeSuite) TestKnownHexes_HiddenMutation_LeavesUnrelatedMemoryUnto
 	// A monster spawns far outside alice's sight.
 	s.Require().NoError(e.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: hidden, HP: 7, MaxHP: 7, AC: 12,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	after := e.KnownHexes(alicePlayerID)
@@ -237,6 +239,7 @@ func (s *KnowledgeSuite) TestKnownHexes_MultiViewer_Isolation() {
 	aliceOnlyHex := core.Hex{Q: 2, R: -2, S: 0}
 	s.Require().NoError(e.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: aliceOnlyHex, HP: 7, MaxHP: 7, AC: 12,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice's own move refreshes her memory of aliceOnlyHex (per the
 	// AddPlayer/AddMonster ordering note elsewhere in this file).
@@ -285,6 +288,7 @@ func (s *KnowledgeSuite) TestKnownHexes_PersistReload_SurvivesWithoutConsultingW
 	goblinHex := core.Hex{Q: 2, R: -2, S: 0}
 	s.Require().NoError(e1.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: goblinHex, HP: 7, MaxHP: 7, AC: 12,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	s.Require().NoError(e1.Move(alicePlayerID, []core.Hex{{Q: 1, R: -1, S: 0}}))
 	s.Require().NoError(e1.Move(alicePlayerID, []core.Hex{{Q: 30, R: -30, S: 0}}))
@@ -329,6 +333,7 @@ func (s *KnowledgeSuite) TestKnownHexes_DuplicateReconciliation_Idempotent() {
 	}))
 	s.Require().NoError(e.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: -1, S: 0}, HP: 7, MaxHP: 7, AC: 12,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	first := e.KnownHexes(alicePlayerID)

@@ -46,6 +46,7 @@ func (s *CombatEntrySuite) TestAddMonster_VisibleToExistingPlayer_EntersCombat()
 
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 2, R: -2, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 
 	s.Equal(core.ModeTurnBased, s.enc.Mode())
@@ -61,6 +62,7 @@ func (s *CombatEntrySuite) TestMove_IntoMonsterLOS_EntersCombat() {
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Equal(core.ModeFreeRoam, s.enc.Mode(), "goblin out of LoS at add time — must not have entered combat yet")
 
@@ -99,6 +101,7 @@ func (s *CombatEntrySuite) TestIdempotent_AddMonsterAndMoveAfterCombatStarted() 
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 1, R: -1, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode())
 
@@ -109,6 +112,7 @@ func (s *CombatEntrySuite) TestIdempotent_AddMonsterAndMoveAfterCombatStarted() 
 	// seeded second goblin would never get a turn (Copilot review, PR #759).
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-2", Position: core.Hex{Q: 2, R: -2, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-2"),
 	}))
 	s.Equal(core.ModeTurnBased, s.enc.Mode())
 	s.Contains(s.enc.ToData().Initiative, core.EntityID("goblin-2"),

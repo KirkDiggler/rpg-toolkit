@@ -93,11 +93,13 @@ func (s *CombatPocketsSuite) SetupTest() {
 		ID: pocketGobB, Position: lineHex(6),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
+		DataJSON:   testGoblinDataJSON(s.T(), pocketGobB),
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: pocketGobA, Position: lineHex(1),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
+		DataJSON:   testGoblinDataJSON(s.T(), pocketGobA),
 	}))
 }
 

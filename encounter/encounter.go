@@ -484,6 +484,15 @@ func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) erro
 	return nil
 }
 
+// ErrMonsterDataRequired is returned by AddMonster when input.DataJSON is
+// empty (rpg-toolkit#895 no-fallback rider). A monster with no serialized
+// monster.Data cannot be rehydrated by NPCAct — before this rider, NPCAct
+// silently degraded to npcActScripted's minimal closest-player attack
+// instead. Every production seeder (encounter/seed_monsters.go) already
+// marshals DataJSON via monster.ToData(); this rejects the gap at the
+// door instead of letting it surface later as a confusing NPCAct failure.
+var ErrMonsterDataRequired = errors.New("monster DataJSON is required")
+
 // AddMonster registers a monster seat. Mirrors AddPlayer / AddDoor and is
 // the primary fixture verb for tests and orchestrator-driven seeding.
 //
@@ -521,6 +530,9 @@ func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
 	}
 	if input.ID == "" {
 		return errors.New("monster ID required")
+	}
+	if len(input.DataJSON) == 0 {
+		return fmt.Errorf("%w: %q", ErrMonsterDataRequired, input.ID)
 	}
 	if _, exists := e.data.Monsters[input.ID]; exists {
 		return fmt.Errorf("monster %q already in encounter", input.ID)

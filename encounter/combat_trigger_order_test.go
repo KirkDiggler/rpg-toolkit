@@ -127,6 +127,7 @@ func (s *CombatTriggerOrderSuite) TestMove_TriggerForcedFirst_RegardlessOfRoll()
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: "boss-boss", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 30, MaxHP: 30,
+		DataJSON: testGoblinDataJSON(s.T(), "boss-boss"),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(),
 		"test premise: the boss must be out of LoS until the move below")
@@ -172,6 +173,7 @@ func (s *CombatTriggerOrderSuite) TestMove_OthersStillOrderedByRoll_TriggerRollD
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-m", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-m"),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(), "test premise: nobody has LoS to the goblin yet")
 
@@ -211,6 +213,7 @@ func (s *CombatTriggerOrderSuite) TestOpenDoorThenMove_TriggerForcedFirstRegardl
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: "aaa-ambush", Position: lineHex(6), HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "aaa-ambush"),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(), "test premise: monster behind the closed door")
 
@@ -281,6 +284,7 @@ func (s *CombatTriggerOrderSuite) loadHydratedTriggerFixture() *encounter.Encoun
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: budgetMonster, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), budgetMonster),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode(), "test premise: monster out of LoS")
 
@@ -380,6 +384,7 @@ func (s *CombatTriggerOrderSuite) TestCheckCombatEntry_TriggerAttributedToActual
 	)
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: attribMonsterID, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), attribMonsterID),
 	}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: attribScoutPlayerID, EntityID: attribScoutEntityID,
@@ -470,6 +475,7 @@ func (s *CombatTriggerOrderSuite) TestSeedActiveActorIfUnseeded_HonorsPendingTri
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: budgetMonster, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), budgetMonster),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode())
 
@@ -525,6 +531,7 @@ func (s *CombatTriggerOrderSuite) TestSeedActiveActorIfUnseeded_DoesNotApplyStal
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: budgetMonster, Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), budgetMonster),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, enc.Mode())
 

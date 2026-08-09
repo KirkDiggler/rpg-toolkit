@@ -65,6 +65,7 @@ func (s *ReactionReadinessSuite) addCombatMonster(id string) {
 		AC:         12,
 		DamageDice: dice1d6,
 		DamageType: damagePiercing,
+		DataJSON:   testGoblinDataJSON(s.T(), core.EntityID(id)),
 	}))
 }
 
@@ -100,7 +101,10 @@ func (s *ReactionReadinessSuite) TestAddMonster_WithoutCombatStats_DoesNotSeedOA
 		HP:    5,
 		MaxHP: 5,
 		AC:    10,
-		// No DamageDice — this is a passive prop, not a combatant
+		// No DamageDice — this is a passive prop, not a combatant. DataJSON
+		// is still required (rpg-toolkit#895 no-fallback rider) even though
+		// OA readiness itself keys off DamageDice, not DataJSON content.
+		DataJSON: testGoblinDataJSON(s.T(), "prop-1"),
 	}))
 	s.False(s.enc.IsReactionReady("prop-1", encounter.OAReactionRef),
 		"non-combatant monster should not have OA seeded")

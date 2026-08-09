@@ -58,6 +58,7 @@ func (s *MonsterVisibilitySuite) TestMoveIntoMonsterLOS_AppearsOnTheSameMoveThat
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, s.enc.Mode(), "goblin out of LoS at add time")
 
@@ -110,6 +111,7 @@ func (s *MonsterVisibilitySuite) TestMoveOutOfMonsterLOS_Disappears() {
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeFreeRoam, s.enc.Mode(), "goblin out of LoS at add time")
 
@@ -158,6 +160,7 @@ func (s *MonsterVisibilitySuite) TestStaysVisible_NoAppearDisappearEvents() {
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	// AddMonster flips the mode AND publishes EntityAppearedEvent (the goblin
 	// is visible at add time — rpg-toolkit#764) — drain both so the

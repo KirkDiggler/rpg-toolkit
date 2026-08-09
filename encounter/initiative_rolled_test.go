@@ -66,6 +66,7 @@ func (s *InitiativeRolledSuite) TestSetMode_InitiativeRolled_SequencedBetweenMod
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 1, R: 0, S: -1}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode())
 
@@ -118,6 +119,7 @@ func (s *InitiativeRolledSuite) TestEndTurn_DoesNotRepublishInitiativeRolled() {
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 1, R: 0, S: -1}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode())
 	s.Require().Equal(core.EntityID("char-alice"), s.enc.ActiveActor(),
@@ -145,6 +147,7 @@ func (s *InitiativeRolledSuite) TestSetMode_FreeRoamTransition_NoInitiativeRolle
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 1, R: 0, S: -1}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode())
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond) // drain the entry transition's events
