@@ -346,8 +346,9 @@ func (e *Encounter) isSpaceHex(h core.Hex) bool {
 // idempotency guarantee (see its doc).
 //
 // Player and monster placements carry no facing override. Static obstacles
-// retain their persisted optional facing, so visible and remembered placement
-// observations keep explicit E = 0 distinct from absence.
+// retain their persisted optional facing. Authored obstacles and monsters keep
+// their persisted optional offset, so visible and remembered observations
+// preserve explicit zero independently from absence.
 func cloneFacing(value *uint32) *uint32 {
 	if value == nil {
 		return nil

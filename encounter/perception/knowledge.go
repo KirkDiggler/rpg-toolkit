@@ -90,9 +90,10 @@ const (
 //
 // Facing is absent for players, monsters, and rolled obstacles. An authored
 // floor prop may carry a canonical E,NE,NW,W,SW,SE = 0..5 override, whether
-// placed room-locally or at an absolute canvas coordinate. Pointer presence
-// distinguishes absent from explicit E = 0 and persists with this observation
-// for remembered placement rendering.
+// placed room-locally or at an absolute canvas coordinate. Offset may be
+// present on authored props or monsters/bosses and remains a mechanically inert
+// world-axis triple. Pointer presence distinguishes absent from explicit zero
+// for both fields and persists with remembered placement rendering.
 type Placement struct {
 	EntityID core.EntityID
 	// Facing is an optional hex-direction index in canonical 0-5 order.

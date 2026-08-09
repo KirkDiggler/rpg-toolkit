@@ -59,7 +59,7 @@ type CompiledDungeon struct {
 	// bytes won't roll the same layout.
 	Params     encounter.DungeonParams
 	Spawns     []SpawnInstruction  // boss first, then entrance->boss chain order
-	Placements []CompiledPlacement // stable source-path order in absolute coordinates
+	Placements []CompiledPlacement // stable compiler order in absolute coordinates
 	canvas     *canvasCompiled     // private opaque prior-validation/source state
 }
 

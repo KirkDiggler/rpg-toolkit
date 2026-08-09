@@ -130,7 +130,8 @@ func TestPlacementOffsetRealInitSeedReloadKnowledgeAndMovementPath(t *testing.T)
 	destination := core.HexFromPosition(structuralPosition(4, 1))
 	view := reloaded.data.Players["offset-viewer"].View
 	view.SightRange = 0
-	monster.Position = destination // the real movement mutation changes Position only
+	require.NoError(t, reloaded.MoveNPCSteps("monster-entrance-0", []core.Hex{destination}))
+	require.Equal(t, &zero, monster.Offset, "the public movement lifecycle mutates Position only")
 	remembered := reloaded.KnownHexes("offset-viewer")[origin]
 	require.Equal(t, perception.KnowledgeStateRemembered, remembered.State)
 	require.Equal(t, &zero, placementsByEntityID(remembered.Contents)["monster-entrance-0"].Offset,
@@ -162,6 +163,165 @@ func TestPlacementOffsetRealInitSeedReloadKnowledgeAndMovementPath(t *testing.T)
 	require.NoError(t, json.Unmarshal(eventPayload, &eventRoundTrip))
 	require.Equal(t, &zero, eventRoundTrip[0].Offset)
 	require.Nil(t, eventRoundTrip[1].Offset)
+}
+
+func TestPlacementOffsetRealLifecycleMatrix(t *testing.T) {
+	zero := core.PlacementOffset{0, 0, 0}
+	signed := core.PlacementOffset{-1.75, 0.25, 3.5}
+	cases := []struct {
+		name   string
+		offset *core.PlacementOffset
+	}{
+		{name: "omitted"},
+		{name: "explicit zero", offset: &zero},
+		{name: "signed", offset: &signed},
+	}
+
+	for _, tc := range cases {
+		t.Run("room chain "+tc.name, func(t *testing.T) {
+			params := smDungeonParams()
+			params.Regions[0].PlacedObstacles = []PlacedObstacleSpec{{
+				Ref: "dnd5e:props:altar", At: LocalHex{Col: 1, Row: 1}, Offset: tc.offset,
+			}}
+			enc := smNewEncounter(t)
+			require.NoError(t, enc.InitDungeon(params))
+			bossAt := LocalHex{Col: 7, Row: 5}
+			monsterAt := LocalHex{Col: 3, Row: 1}
+			require.NoError(t, enc.SeedMonsters([]SpawnInstruction{
+				{RoomID: smRoomIDBoss, MonsterRef: smRefSkeletonCaptain, Count: 1, At: &bossAt, Offset: tc.offset},
+				{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &monsterAt, Offset: tc.offset},
+			}))
+
+			reloaded := reloadPlacementOffsetEncounter(t, enc)
+			require.Equal(t, tc.offset, reloaded.data.Space.Obstacles[0].Offset, "room prop snapshot")
+			require.Equal(t, tc.offset, reloaded.data.Monsters["monster-entrance-0"].Offset, "room monster snapshot")
+			require.Equal(t, tc.offset, reloaded.data.Monsters["monster-boss-0"].Offset, "boss snapshot")
+
+			require.NoError(t, reloaded.AddPlayer(PlayerInput{
+				PlayerID: "entrance-viewer", EntityID: "entrance-viewer-entity",
+				Position: core.HexFromPosition(structuralPosition(0, 1)), SightRange: 10,
+			}))
+			require.NoError(t, reloaded.AddPlayer(PlayerInput{
+				PlayerID: "boss-viewer", EntityID: "boss-viewer-entity",
+				Position: core.HexFromPosition(structuralPosition(smEntranceWidth+2, 1)), SightRange: 10,
+			}))
+			known := mergeKnownPlacements(
+				reloaded.KnownHexes("entrance-viewer"), reloaded.KnownHexes("boss-viewer"),
+			)
+			require.Equal(t, tc.offset, known["obstacle-entrance-0"].Offset, "room prop perception")
+			require.Equal(t, tc.offset, known["monster-entrance-0"].Offset, "room monster perception")
+			require.Equal(t, tc.offset, known["monster-boss-0"].Offset, "boss perception")
+
+			roomEvents := append(
+				knownHexesToEvents(reloaded.KnownHexes("entrance-viewer")),
+				knownHexesToEvents(reloaded.KnownHexes("boss-viewer"))...,
+			)
+			eventOffsets := mergeKnownEventOffsets(roundTripKnownHexEvents(t, roomEvents))
+			require.Equal(t, tc.offset, eventOffsets["obstacle-entrance-0"], "room prop event")
+			require.Equal(t, tc.offset, eventOffsets["monster-entrance-0"], "room monster event")
+			require.Equal(t, tc.offset, eventOffsets["monster-boss-0"], "boss event")
+
+			memoryData := roundTripPlacementOffsetData(t, reloaded.ToData())
+			memoryPlacements := mergeKnownPlacements(
+				memoryData.Players["entrance-viewer"].View.Memory,
+				memoryData.Players["boss-viewer"].View.Memory,
+			)
+			require.Equal(t, tc.offset, memoryPlacements["obstacle-entrance-0"].Offset, "room prop memory JSON")
+			require.Equal(t, tc.offset, memoryPlacements["monster-entrance-0"].Offset, "room monster memory JSON")
+			require.Equal(t, tc.offset, memoryPlacements["monster-boss-0"].Offset, "boss memory JSON")
+		})
+
+		t.Run("canvas "+tc.name, func(t *testing.T) {
+			propAt := core.HexFromPosition(structuralPosition(1, 1))
+			monsterAt := core.HexFromPosition(structuralPosition(3, 1))
+			params := DungeonParams{
+				FloorSource: FloorSourceCanvas, Key: "canvas-offset-lifecycle", Width: 6, Height: 4,
+				RandomSeed: 1, PartyStart: PartyStartParams{SeatCount: 1},
+				AbsolutePlacedObstacles: []AbsolutePlacedObstacleSpec{{
+					ID: "canvas-prop", Ref: "dnd5e:props:altar", At: propAt, Offset: tc.offset,
+				}},
+				AbsoluteReservedCells: []AbsoluteReservedCell{{At: monsterAt, Name: "canvas monster"}},
+			}
+			enc := smNewEncounter(t)
+			require.NoError(t, enc.InitDungeon(params))
+			require.NoError(t, enc.SeedMonsters([]SpawnInstruction{{
+				MonsterRef: smRefSkeleton, Count: 1, AbsoluteAt: &monsterAt, Offset: tc.offset,
+			}}))
+
+			reloaded := reloadPlacementOffsetEncounter(t, enc)
+			require.Equal(t, tc.offset, reloaded.data.Space.Obstacles[0].Offset, "canvas prop snapshot")
+			require.Equal(t, tc.offset, reloaded.data.Monsters["monster-canvas-0"].Offset, "canvas monster snapshot")
+
+			require.NoError(t, reloaded.AddPlayer(PlayerInput{
+				PlayerID: "canvas-viewer", EntityID: "canvas-viewer-entity",
+				Position: core.HexFromPosition(structuralPosition(0, 1)), SightRange: 10,
+			}))
+			known := allKnownPlacements(reloaded.KnownHexes("canvas-viewer"))
+			require.Equal(t, tc.offset, known["canvas-prop"].Offset, "canvas prop perception")
+			require.Equal(t, tc.offset, known["monster-canvas-0"].Offset, "canvas monster perception")
+
+			canvasEvents := roundTripKnownHexEvents(t, knownHexesToEvents(reloaded.KnownHexes("canvas-viewer")))
+			eventOffsets := mergeKnownEventOffsets(canvasEvents)
+			require.Equal(t, tc.offset, eventOffsets["canvas-prop"], "canvas prop event")
+			require.Equal(t, tc.offset, eventOffsets["monster-canvas-0"], "canvas monster event")
+
+			memoryData := roundTripPlacementOffsetData(t, reloaded.ToData())
+			memoryPlacements := allKnownPlacements(memoryData.Players["canvas-viewer"].View.Memory)
+			require.Equal(t, tc.offset, memoryPlacements["canvas-prop"].Offset, "canvas prop memory JSON")
+			require.Equal(t, tc.offset, memoryPlacements["monster-canvas-0"].Offset, "canvas monster memory JSON")
+		})
+	}
+}
+
+func roundTripPlacementOffsetData(t *testing.T, data *Data) *Data {
+	t.Helper()
+	payload, err := json.Marshal(data)
+	require.NoError(t, err)
+	var persisted Data
+	require.NoError(t, json.Unmarshal(payload, &persisted))
+	return &persisted
+}
+
+func reloadPlacementOffsetEncounter(t *testing.T, enc *Encounter) *Encounter {
+	t.Helper()
+	payload, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	var persisted Data
+	require.NoError(t, json.Unmarshal(payload, &persisted))
+	reloaded, err := LoadFromData(context.Background(), &persisted, enc.broker)
+	require.NoError(t, err)
+	return reloaded
+}
+
+func mergeKnownPlacements(knownSets ...map[core.Hex]perception.HexObservation) map[core.EntityID]perception.Placement {
+	out := make(map[core.EntityID]perception.Placement)
+	for _, known := range knownSets {
+		for entityID, placement := range allKnownPlacements(known) {
+			out[entityID] = placement
+		}
+	}
+	return out
+}
+
+func roundTripKnownHexEvents(t *testing.T, known []events.KnownHex) []events.KnownHex {
+	t.Helper()
+	payload, err := json.Marshal(known)
+	require.NoError(t, err)
+	var replay []events.KnownHex
+	require.NoError(t, json.Unmarshal(payload, &replay))
+	return replay
+}
+
+func mergeKnownEventOffsets(knownSets ...[]events.KnownHex) map[core.EntityID]*core.PlacementOffset {
+	out := make(map[core.EntityID]*core.PlacementOffset)
+	for _, known := range knownSets {
+		for _, hex := range known {
+			for _, placement := range hex.Contents {
+				out[placement.EntityID] = placement.Offset
+			}
+		}
+	}
+	return out
 }
 
 func TestCanvasMonsterPlacementOffsetRealRuntimeMatrix(t *testing.T) {
@@ -209,6 +369,27 @@ func TestCanvasMonsterPlacementOffsetRealRuntimeMatrix(t *testing.T) {
 				}
 			}
 			require.Equal(t, tc.offset, eventOffsets["monster-canvas-0"])
+
+			origin := reloaded.data.Monsters["monster-canvas-0"].Position
+			destination := core.HexFromPosition(structuralPosition(3, 0))
+			view := reloaded.data.Players["canvas-viewer"].View
+			view.SightRange = 0
+			require.NoError(t, reloaded.MoveNPCSteps("monster-canvas-0", []core.Hex{destination}))
+			require.Equal(t, tc.offset, reloaded.data.Monsters["monster-canvas-0"].Offset)
+			remembered := reloaded.KnownHexes("canvas-viewer")[origin]
+			require.Equal(t, perception.KnowledgeStateRemembered, remembered.State)
+			require.Equal(t, tc.offset, placementsByEntityID(remembered.Contents)["monster-canvas-0"].Offset)
+
+			view.SightRange = 10
+			require.NoError(t, reloaded.refreshObservations(view, core.NewHexSet(origin, destination)))
+			resighted := reloaded.KnownHexes("canvas-viewer")
+			require.NotContains(t, placementsByEntityID(resighted[origin].Contents), core.EntityID("monster-canvas-0"))
+			require.Equal(t, tc.offset, placementsByEntityID(resighted[destination].Contents)["monster-canvas-0"].Offset)
+
+			overlay := reloaded.eventObservationsForAppearance(
+				origin, map[core.PlayerID]struct{}{core.PlayerID("canvas-viewer"): {}}, "monster-canvas-0",
+			)
+			require.Equal(t, tc.offset, eventPlacementsByEntityID(overlay["canvas-viewer"].Contents)["monster-canvas-0"].Offset)
 		})
 	}
 }

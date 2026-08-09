@@ -144,6 +144,108 @@ func TestLoad_PlacementOffsetCompilesEveryPlacementKindWithoutInterpretation(t *
 	require.Equal(t, &dungeonspec.PlacementOffset{0, 0, 0}, canvasCompiled.Spawns[0].Offset)
 }
 
+//nolint:lll // the table keeps each source/runtime seam adjacent to its exact authored target.
+func TestLoad_EveryPlacementKindPreservesOffsetPresenceInBothCompileOutputs(t *testing.T) {
+	roomBase := placedTombYAML
+	canvasBase := strings.ReplaceAll(offsetCanvasYAML, ", offset: [-0.25, 0, 1.5]", "")
+	canvasBase = strings.ReplaceAll(canvasBase, ", offset: [0, 0, 0]", "")
+	kinds := []struct {
+		name       string
+		base       string
+		target     string
+		sourcePath string
+		runtime    func(*dungeonspec.CompiledDungeon) *dungeonspec.PlacementOffset
+	}{
+		{
+			name: "room prop", base: roomBase,
+			target: `at: [6, 3], blocks_los: false`, sourcePath: "rooms[1].place[0]",
+			runtime: func(compiled *dungeonspec.CompiledDungeon) *dungeonspec.PlacementOffset {
+				return compiled.Params.Regions[1].PlacedObstacles[0].Offset
+			},
+		},
+		{
+			name: "room monster", base: roomBase,
+			target: `at: [4, 2]`, sourcePath: "rooms[1].place[5]",
+			runtime: func(compiled *dungeonspec.CompiledDungeon) *dungeonspec.PlacementOffset {
+				return compiled.Spawns[1].Offset
+			},
+		},
+		{
+			name: "boss", base: roomBase,
+			target: `boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5]`, sourcePath: "rooms[1].boss",
+			runtime: func(compiled *dungeonspec.CompiledDungeon) *dungeonspec.PlacementOffset {
+				return compiled.Spawns[0].Offset
+			},
+		},
+		{
+			name: "canvas prop", base: canvasBase,
+			target: `at: [1, 0], facing: E`, sourcePath: "place[0]",
+			runtime: func(compiled *dungeonspec.CompiledDungeon) *dungeonspec.PlacementOffset {
+				return compiled.Params.AbsolutePlacedObstacles[0].Offset
+			},
+		},
+		{
+			name: "canvas monster AbsoluteAt", base: canvasBase,
+			target: `at: [2, 0]`, sourcePath: "place[1]",
+			runtime: func(compiled *dungeonspec.CompiledDungeon) *dungeonspec.PlacementOffset {
+				return compiled.Spawns[0].Offset
+			},
+		},
+	}
+	offsets := []struct {
+		name   string
+		suffix string
+		want   *dungeonspec.PlacementOffset
+	}{
+		{name: "omitted"},
+		{name: "explicit zero", suffix: ", offset: [0, 0, 0]", want: &dungeonspec.PlacementOffset{0, 0, 0}},
+		{name: "signed", suffix: ", offset: [-1.5, 0.25, 3]", want: &dungeonspec.PlacementOffset{-1.5, 0.25, 3}},
+	}
+
+	for _, kind := range kinds {
+		for _, offset := range offsets {
+			t.Run(kind.name+" "+offset.name, func(t *testing.T) {
+				raw := strings.Replace(kind.base, kind.target, kind.target+offset.suffix, 1)
+				if offset.suffix != "" {
+					require.NotEqual(t, kind.base, raw, "fixture target must discriminate its compile seam")
+				}
+				compiled, err := dungeonspec.Load([]byte(raw))
+				require.NoError(t, err)
+				assert.Equal(t, offset.want, placementsByPath(compiled.Placements)[kind.sourcePath].Offset,
+					"authoring sidecar")
+				assert.Equal(t, offset.want, kind.runtime(&compiled), "runtime Params/Spawns carrier")
+			})
+		}
+	}
+}
+
+func TestLoadWithPrevious_OffsetReplacementUsesOnlyCompleteCandidateDocument(t *testing.T) {
+	base := strings.ReplaceAll(offsetCanvasYAML, ", offset: [-0.25, 0, 1.5]", "")
+	base = strings.ReplaceAll(base, ", offset: [0, 0, 0]", "")
+	zeroSource := strings.Replace(base, `at: [1, 0], facing: E`, `at: [1, 0], facing: E, offset: [0, 0, 0]`, 1)
+	zeroSource = strings.Replace(zeroSource, `at: [2, 0]`, `at: [2, 0], offset: [0, 0, 0]`, 1)
+	config := dungeonspec.LoadConfig{PartyStartSeatCount: 1}
+	previous, err := dungeonspec.LoadWithConfig([]byte(zeroSource), config)
+	require.NoError(t, err)
+
+	signedSource := strings.Replace(base, `at: [1, 0], facing: E`, `at: [1, 0], facing: E, offset: [-2, 0.5, 4]`, 1)
+	signedSource = strings.Replace(signedSource, `at: [2, 0]`, `at: [2, 0], offset: [3, -1, 0.25]`, 1)
+	changed, err := dungeonspec.LoadWithPrevious([]byte(signedSource), config, previous)
+	require.NoError(t, err)
+	require.Equal(t, &dungeonspec.PlacementOffset{-2, 0.5, 4}, changed.Params.AbsolutePlacedObstacles[0].Offset)
+	require.Equal(t, &dungeonspec.PlacementOffset{3, -1, 0.25}, changed.Spawns[0].Offset)
+	require.Equal(t, &dungeonspec.PlacementOffset{0, 0, 0}, previous.Params.AbsolutePlacedObstacles[0].Offset,
+		"candidate compilation must not mutate prior provider truth")
+	require.Equal(t, &dungeonspec.PlacementOffset{0, 0, 0}, previous.Spawns[0].Offset)
+
+	removed, err := dungeonspec.LoadWithPrevious([]byte(base), config, changed)
+	require.NoError(t, err)
+	require.Nil(t, removed.Params.AbsolutePlacedObstacles[0].Offset)
+	require.Nil(t, removed.Spawns[0].Offset)
+	require.Nil(t, placementsByPath(removed.Placements)["place[0]"].Offset)
+	require.Nil(t, placementsByPath(removed.Placements)["place[1]"].Offset)
+}
+
 const offsetCaseOmitted = "omitted"
 
 //nolint:lll // complete table rows keep the optional triple next to its expected pointer.
