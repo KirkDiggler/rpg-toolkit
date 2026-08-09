@@ -1797,7 +1797,27 @@ Prerequisite: merges after feat/core-entity-id (core.EntityID)."
 
 ---
 
-## Execution notes
+## Execution addenda (logged during subagent-driven execution)
+
+Carry-along additions prescribed by per-task quality reviews, landing in
+the NEXT task's commit; recorded here so the executed tree and this plan
+stay in agreement:
+
+- **With Task 3**: go directive `1.25.3`→`1.25`; license headers on all Go
+  files; milestone vocabulary test pins raw string values.
+- **With Task 4**: R5-from-populated + SetOrder-replacement test; aliasing
+  regression test; Contains-on-idle assertion; empty-order message polish.
+- **With Task 5**: single-member End wrap pin (`Next == Actor`); SetOrder
+  round-reset-from-advanced pin.
+- **With Task 6**: Remove "non-active after active" subtest (kills the
+  always-decrement mutant — the index-drift class this module exists to
+  prevent); `Order()` placement assertions in every Insert/Remove subtest
+  (a splice-vs-append mutant survives milestone-only assertions);
+  switch-ordering comment in Remove; test setup calls upgraded from
+  `_, _ =` to `s.Require().NoError` (applies to Task 6's own blocks too).
+- **Design clarification during execution**: nil `*Input` is a programmer
+  error — verbs may panic; sentinel vocabulary is for clock states only
+  (recorded in design R3).
 
 - Test style: the per-type suites (Tasks 3–10) use the testify suite pattern
   per design AC5; the cross-type integration tests (Tasks 11–12) are plain
