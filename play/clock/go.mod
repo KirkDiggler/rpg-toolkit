@@ -1,6 +1,6 @@
 module github.com/KirkDiggler/rpg-toolkit/play/clock
 
-go 1.25
+go 1.24
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
