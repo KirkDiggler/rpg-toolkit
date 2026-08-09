@@ -4,6 +4,13 @@
 // Package core provides the fundamental interfaces and types for the RPG toolkit.
 package core
 
+// EntityID is the shared identity value for game entities across toolkit
+// modules. Leaf modules (play/*) key members, subjects, and audiences by
+// EntityID so composition layers never pay a conversion tax between
+// module-local ID newtypes. Entity.GetID() remains string for
+// compatibility; EntityID(entity.GetID()) bridges.
+type EntityID string
+
 // EntityType identifies the category of an entity.
 // Rulebooks and modules define constants of this type for their entities.
 type EntityType string

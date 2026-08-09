@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -149,4 +150,22 @@ func TestEntity_NilHandling(t *testing.T) {
 
 	// This should panic
 	_ = entity.GetID()
+}
+
+// TestEntityID_StringNewtype verifies EntityID is a distinct named string type, not an alias.
+func TestEntityID_StringNewtype(t *testing.T) {
+	id := core.EntityID("goblin-1")
+	if string(id) != "goblin-1" {
+		t.Fatalf("EntityID round-trip: got %q", string(id))
+	}
+	var zero core.EntityID
+	if zero != "" {
+		t.Fatalf("zero EntityID should be empty string")
+	}
+	// Critical: verify it's a distinct named type, not an alias.
+	// If EntityID were defined as `type EntityID = string`, this assertion would fail
+	// because reflect would report "string", defeating the type's purpose.
+	if got := reflect.TypeOf(id).Name(); got != "EntityID" {
+		t.Fatalf("EntityID should be a distinct named type, not an alias; reflect reports %q", got)
+	}
 }
