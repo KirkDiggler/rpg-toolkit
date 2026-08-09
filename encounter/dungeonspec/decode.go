@@ -135,14 +135,11 @@ func validatePlacementOffsetNodes(root *yaml.Node) error {
 			return err
 		}
 	}
-	rooms := mappingNodeValue(root, "rooms")
+	rooms := resolveYAMLAlias(mappingNodeValue(root, "rooms"))
 	if rooms == nil || rooms.Kind != yaml.SequenceNode {
 		return nil
 	}
 	for roomIndex, room := range rooms.Content {
-		if room.Kind != yaml.MappingNode {
-			continue
-		}
 		prefix := fmt.Sprintf("rooms[%d]", roomIndex)
 		if place := mappingNodeValue(room, "place"); place != nil {
 			if err := validatePlaceOffsetSequence(place, prefix+".place"); err != nil {
@@ -150,7 +147,7 @@ func validatePlacementOffsetNodes(root *yaml.Node) error {
 			}
 		}
 		boss := mappingNodeValue(room, "boss")
-		if boss == nil || boss.Kind != yaml.MappingNode {
+		if boss == nil {
 			continue
 		}
 		if offset := mappingNodeValue(boss, "offset"); offset != nil {
@@ -163,13 +160,11 @@ func validatePlacementOffsetNodes(root *yaml.Node) error {
 }
 
 func validatePlaceOffsetSequence(sequence *yaml.Node, prefix string) error {
-	if sequence.Kind != yaml.SequenceNode {
+	sequence = resolveYAMLAlias(sequence)
+	if sequence == nil || sequence.Kind != yaml.SequenceNode {
 		return nil
 	}
 	for index, entry := range sequence.Content {
-		if entry.Kind != yaml.MappingNode {
-			continue
-		}
 		if offset := mappingNodeValue(entry, "offset"); offset != nil {
 			if err := validatePlacementOffsetNode(fmt.Sprintf("%s[%d].offset", prefix, index), offset); err != nil {
 				return err
@@ -180,15 +175,17 @@ func validatePlaceOffsetSequence(sequence *yaml.Node, prefix string) error {
 }
 
 func validatePlacementOffsetNode(path string, node *yaml.Node) error {
-	if node.Kind != yaml.SequenceNode {
+	node = resolveYAMLAlias(node)
+	if node == nil || node.Kind != yaml.SequenceNode {
 		return newValidationError(path, "must be exactly three finite numeric [x,y,z] components")
 	}
 	if len(node.Content) != 3 {
 		return newValidationError(path, fmt.Sprintf("must contain exactly three components (got %d)", len(node.Content)))
 	}
 	for index, component := range node.Content {
+		component = resolveYAMLAlias(component)
 		componentPath := fmt.Sprintf("%s[%d]", path, index)
-		if component.Kind != yaml.ScalarNode || component.Tag != "!!int" && component.Tag != "!!float" {
+		if component == nil || component.Kind != yaml.ScalarNode || component.Tag != "!!int" && component.Tag != "!!float" {
 			return newValidationError(componentPath, "must be a finite number")
 		}
 		var value float64
@@ -200,13 +197,52 @@ func validatePlacementOffsetNode(path string, node *yaml.Node) error {
 }
 
 func mappingNodeValue(mapping *yaml.Node, name string) *yaml.Node {
-	if mapping.Kind != yaml.MappingNode {
+	return mappingNodeValueActive(mapping, name, make(map[*yaml.Node]struct{}))
+}
+
+func mappingNodeValueActive(mapping *yaml.Node, name string, active map[*yaml.Node]struct{}) *yaml.Node {
+	mapping = resolveYAMLAlias(mapping)
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
 		return nil
 	}
+	if _, recursive := active[mapping]; recursive {
+		return nil // generic shape validation reports the alias cycle
+	}
+	active[mapping] = struct{}{}
+	defer delete(active, mapping)
 	for index := 0; index+1 < len(mapping.Content); index += 2 {
 		if mapping.Content[index].Value == name {
 			return mapping.Content[index+1]
 		}
 	}
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value != "<<" {
+			continue
+		}
+		merged := resolveYAMLAlias(mapping.Content[index+1])
+		if merged != nil && merged.Kind == yaml.SequenceNode {
+			for _, candidate := range merged.Content {
+				if value := mappingNodeValueActive(candidate, name, active); value != nil {
+					return value
+				}
+			}
+			continue
+		}
+		if value := mappingNodeValueActive(merged, name, active); value != nil {
+			return value
+		}
+	}
 	return nil
+}
+
+func resolveYAMLAlias(node *yaml.Node) *yaml.Node {
+	seen := make(map[*yaml.Node]struct{})
+	for node != nil && node.Kind == yaml.AliasNode {
+		if _, recursive := seen[node]; recursive {
+			return nil
+		}
+		seen[node] = struct{}{}
+		node = node.Alias
+	}
+	return node
 }
