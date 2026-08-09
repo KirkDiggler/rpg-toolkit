@@ -23,4 +23,4 @@ jobs:
             exit 0
           fi
           cd play/clock
-          go run golang.org/x/exp/cmd/gorelease@latest -base "${base#play/clock/}"
+          go run golang.org/x/exp/cmd/gorelease@v0.0.0-20260727155853-b88d891fe743 -base "${base#play/clock/}"

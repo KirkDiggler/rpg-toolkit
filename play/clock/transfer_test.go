@@ -86,3 +86,54 @@ func TestTransferSameClockRefused(t *testing.T) {
 	require.ErrorIs(t, err, clock.ErrSameClock)
 	require.Equal(t, before, turn.ToData())
 }
+
+// TestTransferTurnToTick pins the consumer-facing direction (fleeing a
+// bubble back to the world clock — rpg-api's monster free-roam path):
+// Pos is ignored by the unordered world clock, the new member starts at
+// budget zero, and milestones report leave-then-join.
+func TestTransferTurnToTick(t *testing.T) {
+	const dana core.EntityID = "dana"
+	turn := &clock.Turn{}
+	_, err := turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", dana}})
+	require.NoError(t, err)
+	world, err := clock.NewTick()
+	require.NoError(t, err)
+
+	out, err := clock.Transfer(&clock.TransferInput{From: turn, To: world, ID: dana, Pos: 99})
+	require.NoError(t, err)
+	require.Equal(t, []clock.Milestone{
+		{Kind: clock.MemberLeft, Subject: dana, Round: 1},
+		{Kind: clock.MemberJoined, Subject: dana},
+	}, out.Milestones)
+	inWorld, err := world.Contains(&clock.ContainsInput{ID: dana})
+	require.NoError(t, err)
+	require.True(t, inWorld)
+	inTurn, err := turn.Contains(&clock.ContainsInput{ID: dana})
+	require.NoError(t, err)
+	require.False(t, inTurn, "one clock per entity")
+	b, err := world.Budget(&clock.BudgetInput{ID: dana})
+	require.NoError(t, err)
+	require.Zero(t, b, "fresh world member starts at zero budget")
+
+	// error branch of the Tick-side Joiner adapter: duplicate propagates
+	_, err = world.JoinMember(&clock.JoinMemberInput{ID: dana, Pos: 0})
+	require.ErrorIs(t, err, clock.ErrDuplicateMember)
+}
+
+// TestTransferTurnToTickAbsentCompensates covers Turn.LeaveMember's error
+// branch and the Tick-side compensation (R6 both directions).
+func TestTransferTurnToTickAbsentCompensates(t *testing.T) {
+	const ghost core.EntityID = "ghost"
+	turn := &clock.Turn{}
+	_, err := turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+	require.NoError(t, err)
+	world, err := clock.NewTick()
+	require.NoError(t, err)
+	turnBefore, worldBefore := turn.ToData(), world.ToData()
+
+	out, err := clock.Transfer(&clock.TransferInput{From: turn, To: world, ID: ghost, Pos: 0})
+	require.ErrorIs(t, err, clock.ErrNotMember)
+	require.Nil(t, out, "failed transfer emits nothing")
+	require.Equal(t, turnBefore, turn.ToData(), "From unchanged (R6)")
+	require.Equal(t, worldBefore, world.ToData(), "To unchanged — Tick-side compensation (R6)")
+}

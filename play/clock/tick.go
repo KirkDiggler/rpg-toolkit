@@ -86,6 +86,9 @@ func (k *Tick) Budget(in *BudgetInput) (int, error) {
 // Members returns the member set in stable (sorted) order. An empty clock
 // answers with an empty slice and nil error.
 func (k *Tick) Members() ([]core.EntityID, error) {
+	if len(k.budgets) == 0 {
+		return nil, nil
+	}
 	out := make([]core.EntityID, 0, len(k.budgets))
 	for id := range k.budgets {
 		out = append(out, id)
