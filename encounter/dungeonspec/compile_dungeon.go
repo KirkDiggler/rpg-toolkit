@@ -64,9 +64,11 @@ func CompileDungeon(ctx context.Context, in CompileDungeonInput) (*CompileDungeo
 	if err != nil {
 		return nil, fmt.Errorf("dungeonspec: compile candidate: %w", err)
 	}
-	if in.Mode == CompileModeStrict && compiled.canvas != nil && compiled.canvas.floorSource == FloorSourceRegions {
-		if validation := strictRegionValidation(compiled); validation != nil {
-			return validationOutput(*validation), nil
+	if in.Mode == CompileModeStrict && compiled.canvas != nil {
+		if compiled.canvas.floorSource == FloorSourceRegions {
+			if validation := strictRegionValidation(compiled); validation != nil {
+				return validationOutput(*validation), nil
+			}
 		}
 		if err := validateCompiledRuntime(ctx, compiled, in.PreviewSeed); err != nil {
 			return validationOutput(fieldErrorFor(err)), nil

@@ -358,6 +358,10 @@ func (e *Encounter) rebuildRoomFromData() error {
 		}
 	}
 	if len(sd.AuthoredEdges) > 0 {
+		boundaryRoom, ok := room.(spatial.BoundaryAwareRoom)
+		if !ok {
+			return fmt.Errorf("spatial room does not support authored boundaries")
+		}
 		for _, edge := range sd.AuthoredEdges {
 			blocks := edge.Kind == GeneratedEdgeKindSolid
 			if edge.Kind == GeneratedEdgeKindDoor {
@@ -366,7 +370,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 			if !blocks {
 				continue // Open authored doors deliberately register no blocker.
 			}
-			if err := room.(spatial.BoundaryAwareRoom).RegisterBoundary(spatial.Boundary{
+			if err := boundaryRoom.RegisterBoundary(spatial.Boundary{
 				From:              edge.From.ToPosition(),
 				To:                edge.To.ToPosition(),
 				BlocksMovement:    true,

@@ -175,6 +175,23 @@ regions: [{ id: floor, cells: [[0,0], [0,1], [1,0], [1,1]] }]
 	}
 }
 
+func TestWaveAStrictBoundsRunsRunnableCandidateGate(t *testing.T) {
+	source := `version: 1
+key: blocked-bounds
+name: Blocked Bounds
+canvas: { width: 1, height: 1 }
+rooms: []
+regions: []
+place: [{ ref: "dnd5e:props:pillar", at: [0,0] }]
+`
+	draft := compileCandidate(t, source, dungeonspec.CompileModeDraft, 1)
+	require.Empty(t, draft.FieldErrors)
+	require.Nil(t, draft.FloorPlan.Entrance)
+	strict := compileCandidate(t, source, dungeonspec.CompileModeStrict, 1)
+	require.NotEmpty(t, strict.FieldErrors)
+	require.Equal(t, "start", strict.FieldErrors[0].Field)
+}
+
 func TestWaveADuplicateEmptyRegionsHasExactPath(t *testing.T) {
 	source := `version: 1
 key: empty-duplicates
