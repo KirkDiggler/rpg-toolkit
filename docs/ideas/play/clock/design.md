@@ -25,11 +25,24 @@ wall-clock time; merging tick clocks; concurrency safety.
   error channel communicates state, not only failure (see the sentinel
   vocabulary in **Errors**);
   **(b)** every function that takes parameters takes exactly one
-  `*XxxInput` struct;
+  `*XxxInput` struct — and mutating verbs take their Input struct even
+  when it has no fields yet (signatures are permanent under AC4; struct
+  fields are additive);
   **(c)** mutating verbs return `(*XxxOutput, error)` (the Output carries
   the Milestones); read-only functions return their value directly
   (`(int, error)`), gaining an Output struct only when they answer with
   more than one value.
+  **Narrow exemption:** the persistence pair follows the toolkit-wide
+  family convention verbatim — `ToData() TurnData` / `ToData() TickData`
+  (infallible snapshot, no error) and the package-level constructors
+  `LoadTurn(data TurnData) (*Turn, error)` /
+  `LoadTick(data TickData) (*Tick, error)` (bare parameter). Cross-module
+  uniformity outranks module-local law at this one seam: a host hydrating
+  a dozen toolkit types gets one shape everywhere. `LoadTurn`/`LoadTick`
+  are constructors, not verbs — R4 and R5 do not apply and they emit no
+  milestones. `NewTick() (*Tick, error)` conforms to (a) with no carve-out
+  (construction cannot fail today; the signature leaves room for a future
+  `TickConfig` that can).
 - **R4** — Every verb MUST return all `Milestone`s it caused, in causal
   order, in its Output. The module MUST NOT publish, call back, or otherwise
   deliver milestones.
@@ -42,11 +55,12 @@ wall-clock time; merging tick clocks; concurrency safety.
 - **R8** — Dynamic state MUST round-trip via `ToData`/`LoadFromData`
   (plain JSON-serializable structs, no behavior). Configuration MUST be
   re-supplied at construction and MUST NOT serialize.
-- **R9** — `LoadFromData` MUST reject invalid state with an error: duplicate
-  members, `ActiveIdx` out of range, negative budgets, negative
-  `DriverProgress` values, and `HighWater` less than the maximum
-  `DriverProgress` (which would cause a spurious grant on the next
-  `Advance`).
+- **R9** — `LoadTurn`/`LoadTick` MUST reject invalid state with an error:
+  duplicate members, `ActiveIdx` out of range (the canonical idle encoding
+  is `Order` empty with `ActiveIdx 0` and `Round 0`; `ActiveIdx` MUST be 0
+  when `Order` is empty), negative budgets, negative `DriverProgress`
+  values, and `HighWater` less than the maximum `DriverProgress` (which
+  would cause a spurious grant on the next `Advance`).
 - **R10** — Instances are not safe for concurrent use (family convention;
   hosts serialize access).
 
@@ -88,7 +102,7 @@ sentinel today).
 | `SetOrder` | `{Order []EntityID}` | `{Milestones}` | Replaces the order (rulebook rolled initiative). Round becomes 1, first member active. Milestones: `RoundStarted{1}`, `TurnStarted{first}`. MUST error on duplicate IDs or empty order. |
 | `End` | `{Actor EntityID}` | `{Milestones, Next EntityID, RoundWrapped bool}` | MUST error unless `Actor == Active()`. Advances. On wrap: increments Round; milestones `TurnEnded{actor}, RoundStarted{n}, TurnStarted{next}`; otherwise `TurnEnded, TurnStarted`. |
 | `Insert` | `{ID EntityID, Pos int}` | `{Milestones}` | Fall-in / reinforcement at caller-chosen position. MUST error if the clock is idle (no order set — bubbles start via `SetOrder`), if ID is present, or if `Pos` is outside `[0, len]`. Inserting at or before the active position MUST keep the currently active entity active. Milestone: `MemberJoined`. |
-| `Remove` | `{ID EntityID}` | `{Milestones}` | Death/flee. MUST keep the active entity correct: removing a non-active member adjusts the index; removing the active member makes the next member active (milestones `MemberLeft, TurnStarted{next}`); removing the last member leaves the clock empty (`MemberLeft` only). |
+| `Remove` | `{ID EntityID}` | `{Milestones}` | Death/flee. MUST error if ID is absent (`ErrNotMember`). MUST keep the active entity correct: removing a non-active member adjusts the index; removing the active member makes the next member active (milestones `MemberLeft, TurnStarted{next}`); removing the last member leaves the clock empty (`MemberLeft` only). |
 | `Merge` | `{Other *Turn, Order []EntityID}` | `{Milestones}` | Two bubbles collide. MUST error if the receiving clock is idle. `Order` MUST be a permutation of the union of both member sets (error otherwise). The receiving clock's active entity MUST remain active; its Round is retained. `Other` is reset to the zero/idle state (empty order, `ActiveIdx 0`, `Round 0`). Milestone: `Merged`. |
 | `Dissolve` | `{}` | `{Members []EntityID, Milestones}` | Fight over. MUST error if the clock is already empty. Empties the clock, returns the members for the composition to re-home. Milestone: `Dissolved`. |
 
@@ -144,7 +158,7 @@ ignores `Pos`).
 
 | Func | Input | Output | Semantics |
 |------|-------|--------|-----------|
-| `Transfer` | `{From Leaver, To Joiner, ID EntityID, Pos int}` | `{Milestones}` | Leave-then-join, R6 atomicity: on any failure both clocks are unchanged and an error returns. Milestones: the concatenation of the leave's and the join's, in that order. |
+| `Transfer` | `{From Leaver, To Joiner, ID EntityID, Pos int}` | `{Milestones}` | Leave-then-join, R6 atomicity: on any failure both clocks are unchanged and an error returns. The error propagates the underlying leave/join sentinel, dispatchable via `errors.Is`. Milestones: the concatenation of the leave's and the join's, in that order. |
 
 ## Errors
 
@@ -155,7 +169,7 @@ functions it explains why no meaningful value exists.
 
 | Sentinel | Meaning | Returned by |
 |----------|---------|-------------|
-| `ErrIdle` | clock has no order set / nothing to act on | `Active`, `Round`, `End`, `Insert`, `Merge`, `Dissolve` |
+| `ErrIdle` | clock has no order set / nothing to act on | `Active`, `Round`, `End`, `Insert`, `Merge`, `Dissolve`, `JoinMember` (Turn adapter) |
 | `ErrNotActive` | the named actor is not the active entity | `End` |
 | `ErrNotMember` | entity is not in this clock | `Budget`, `Spend`, `Remove`, `Leave`, `LeaveMember` |
 | `ErrDuplicateMember` | entity already present | `SetOrder`, `Insert`, `Join`, `JoinMember` |
