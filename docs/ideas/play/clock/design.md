@@ -43,10 +43,18 @@ wall-clock time; merging tick clocks; concurrency safety.
   milestones. `NewTick() (*Tick, error)` conforms to (a) with no carve-out
   (construction cannot fail today; the signature leaves room for a future
   `TickConfig` that can).
-  **Nil Inputs:** passing a nil `*XxxInput` is a programmer error, not a
-  communicable state — verbs do not guard it and may panic. The sentinel
-  vocabulary is reserved for states of the clock, never defects in the
-  caller.
+  **Nil Inputs (revised 2026-08-09, reversing the earlier may-panic
+  stance):** every exported function that takes a `*XxxInput` MUST guard
+  nil as its first check and return `ErrNilInput`; likewise nil required
+  fields inside an otherwise-valid Input (`Merge.Other`,
+  `Transfer.From`/`To`). Rationale for the reversal (Kirk's call, prompted
+  by external review): the un-guarded behavior was incidental — whatever
+  the first dereference happened to be — and "deliberate over incidental"
+  wins; the error channel already exists on every function per clause (a),
+  and a panic inside a per-RPC host is strictly worse than a dispatchable
+  error. The original stance's concern (sentinels describe clock states,
+  not caller defects) is answered by giving caller defects their own
+  dedicated sentinel rather than borrowing a state sentinel.
 - **R4** — Every verb MUST return all `Milestone`s it caused, in causal
   order, in its Output. The module MUST NOT publish, call back, or otherwise
   deliver milestones.
@@ -220,6 +228,7 @@ functions it explains why no meaningful value exists.
 | `ErrBadAmount` | non-positive `Spend.Amount`, negative `Advance.Displacement` | `Spend`, `Advance` |
 | `ErrInsufficientBudget` | `Spend.Amount` exceeds the member's budget | `Spend` |
 | `ErrInvalidData` | any R9 rejection | `LoadTurn`, `LoadTick` |
+| `ErrNilInput` | nil `*XxxInput`, or a nil required field (`Merge.Other`, `Transfer.From`/`To`) | every Input-taking function |
 
 ## Acceptance criteria
 

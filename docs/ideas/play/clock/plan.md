@@ -1820,6 +1820,12 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **Post-PR revision (Kirk + Copilot review)**: the nil-Input may-panic
+  stance REVERSED — deliberate over incidental. New `ErrNilInput`
+  sentinel; every Input-taking function guards nil first; Merge.Other and
+  Transfer.From/To nil fields guarded with the same sentinel;
+  nil_input_test.go sweeps every function. go directive lowered to 1.24
+  (CI's golangci-lint is built with go1.24; sibling convention).
 - **Final integrative review (pre-PR)**: the Turn→Tick transfer direction
   (bubble → world — the rpg-api monster-free-roam path) had zero
   coverage; two tests added covering both adapters' error branches and
