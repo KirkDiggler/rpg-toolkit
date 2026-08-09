@@ -109,6 +109,44 @@ budget, invoke behavior. This gives the monster-behavior work its free-roam
 clock without waiting for the rebuild, and gives the first `play/` module a
 real consumer proving the contract before the new composition exists.
 
+### 6. Transfer: join-first with compensating leave (2026-08-09)
+
+Planning the R6 atomicity forced the one post-approval design amendment:
+both `TransferInput` sides are `Membership` (`Leaver` + `Joiner`). The
+derivation, walked with Kirk:
+
+**Leave-first can't roll back.** Restoring a departed member needs more
+than their position: removal shifts every index behind them; if they were
+active, the turn advanced as a side effect (re-inserting at the old `Pos`
+puts them in the order but leaves the *next* entity active — position
+restored ≠ state restored); if they were the last member, the clock went
+idle and restoration collides with the `ErrIdle`-on-insert rule. A
+truthful restore token is `{Pos, WasActive, Round, …}` — a snapshot
+creeping into the seam. Kirk spotted the other exit — a two-phase
+(prepare/commit) leave — which works but doubles the seam surface for a
+problem the ordering dissolves.
+
+**Join-first compensates with zero remembered data.** Every common
+failure (idle bubble, duplicate, bad position) happens before anything
+changed. After a successful join, the only possible leave failure is
+`ErrNotMember` (caller bug), and the undo — remove what was just added —
+is self-describing: `Insert` never makes the newcomer active, so the undo
+never touches the active-advancement branch and restores byte-identically
+(reviewer-verified).
+
+Consequences that fall out: the compensation path calls *leave on the
+destination*, so `To` must be a `Leaver` — and both sides are typed
+`Membership` so the execution strategy never leaks into the signature.
+The transient dual membership mid-call is unobservable because milestones
+are **return values** — nothing escapes until the function returns, and a
+compensated join's milestones are discarded (the return-values law
+closing a race a bus would have had). Reported order stays semantic
+(leave-then-join, the domain story) regardless of execution order.
+`LeaveMemberOutput` deliberately does NOT carry the vacated position —
+the one consumer that seemed to want it (rollback) needed more than it,
+and the field stays additive for a future real consumer (e.g. revival at
+the old initiative slot).
+
 ## Elaborations made while writing the design
 
 These follow from the approved sections but weren't individually discussed;

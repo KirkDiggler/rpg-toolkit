@@ -159,9 +159,25 @@ type Joiner interface {
 `Turn` and `Tick` implement both (thin adapters over their own verbs; `Tick`
 ignores `Pos`).
 
+`Transfer` requires both sides to speak both seams:
+
+```go
+type Membership interface {
+    Leaver
+    Joiner
+}
+```
+
+Both sides, not just the destination: typing either side asymmetrically
+would encode the execution strategy into the API (see brainstorm.md,
+"join-first with compensating leave"). Execution order is an
+implementation detail; the observable contract — R6: both clocks
+unchanged on failure; milestones reported leave-then-join — is what tests
+assert.
+
 | Func | Input | Output | Semantics |
 |------|-------|--------|-----------|
-| `Transfer` | `{From Leaver, To Joiner, ID EntityID, Pos int}` | `{Milestones}` | Leave-then-join, R6 atomicity: on any failure both clocks are unchanged and an error returns. The error propagates the underlying leave/join sentinel, dispatchable via `errors.Is`. Milestones: the concatenation of the leave's and the join's, in that order. |
+| `Transfer` | `{From, To Membership, ID EntityID, Pos int}` | `{Milestones}` | Leave-then-join, R6 atomicity: on any failure both clocks are unchanged and an error returns. The error propagates the underlying leave/join sentinel, dispatchable via `errors.Is`. Milestones: the concatenation of the leave's and the join's, in that order. |
 
 ## Errors
 
