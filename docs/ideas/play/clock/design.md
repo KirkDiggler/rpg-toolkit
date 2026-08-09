@@ -63,7 +63,9 @@ wall-clock time; merging tick clocks; concurrency safety.
 - **R9** — `LoadTurn`/`LoadTick` MUST reject invalid state with an error:
   duplicate members, `ActiveIdx` out of range (the canonical idle encoding
   is `Order` empty with `ActiveIdx 0` and `Round 0`; `ActiveIdx` MUST be 0
-  when `Order` is empty), negative budgets, negative `DriverProgress`
+  and `Round` MUST be 0 when `Order` is empty, and `Round` MUST be >= 1
+  when `Order` is non-empty — no verb can produce any other state, so any
+  other state is corruption), negative budgets, negative `DriverProgress`
   values, and `HighWater` less than the maximum `DriverProgress` (which
   would cause a spurious grant on the next `Advance`).
 - **R10** — Instances are not safe for concurrent use (family convention;

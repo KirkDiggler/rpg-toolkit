@@ -1818,6 +1818,11 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **With Task 8 (from Task 7's quality review)**: golden-JSON wire-shape
+  test (the tags are the persistence contract and gorelease cannot see tag
+  renames); R9 Round bounds enforced in LoadTurn (design amended: Round
+  >= 1 with order, 0 when idle) + four new rejection rows; TurnData doc
+  notes idle snapshots marshal to `{}`.
 - **Task 6 fix cycle (plan defects found by quality review)**: the plan's
   own Merge code allowed SELF-MERGE — validation passes against the
   clock's own member set, then zeroing Other destroys the receiver while
