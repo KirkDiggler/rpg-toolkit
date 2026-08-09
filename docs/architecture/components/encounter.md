@@ -834,8 +834,9 @@ input.ID)`, #757) can grow the roster after this event already published.
 accepts complete standalone source bytes, Draft/Strict mode, PartyStartSeatCount
 and PreviewSeed; it never accepts a previous compiled value or display/source
 name. Draft returns canonical projections for structurally valid empty, tiny or
-disconnected region unions. Strict additionally requires a nonempty connected
-mask and a same-component complete party-start reservation. Authored failures are
+disconnected region unions only; omitted/explicit `bounds` keeps the v0.3
+runtime-backed projection gate. Strict region compilation additionally requires
+a nonempty connected mask and a same-component complete party-start reservation. Authored failures are
 ordered `FieldError{Field,Message,Code}` values; infrastructure failures remain
 Go errors.
 

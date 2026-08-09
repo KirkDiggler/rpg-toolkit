@@ -71,15 +71,15 @@ type floorMaskRoom struct {
 
 func (r *floorMaskRoom) GetGrid() spatial.Grid { return r.grid }
 func (r *floorMaskRoom) GetLineOfSight(from, to spatial.Position) []spatial.Position {
-	ray := r.grid.GetLineOfSight(from, to)
-	out := make([]spatial.Position, 0, len(ray))
-	for _, pos := range ray {
-		if r.grid.IsValidPosition(pos) {
-			out = append(out, pos)
-		}
-	}
-	return out
+	return r.grid.GetLineOfSight(from, to)
 }
+func (r *floorMaskRoom) IsBoundaryMovementBlocked(from, to spatial.Position) bool {
+	if !r.grid.IsValidPosition(from) || !r.grid.IsValidPosition(to) {
+		return true
+	}
+	return r.BasicRoom.IsBoundaryMovementBlocked(from, to)
+}
+
 func (r *floorMaskRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	if !r.grid.IsValidPosition(from) || !r.grid.IsValidPosition(to) {
 		return true

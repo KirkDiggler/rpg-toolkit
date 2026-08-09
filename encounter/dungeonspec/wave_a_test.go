@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/dungeonspec"
@@ -24,6 +25,22 @@ regions:
     cells: [[1,1], [1,2], [1,3], [2,1], [2,3], [3,1], [3,2], [3,3]]
 `
 
+const ringSnapshotSource = `version: 1
+key: ring-snapshot
+name: Ring Snapshot
+canvas: { width: 5, height: 5, floor_source: regions }
+rooms: []
+start: [1, 1]
+regions:
+  - id: ring
+    cells: [[1,1], [1,2], [1,3], [2,1], [2,3], [3,1], [3,2], [3,3]]
+place:
+  - { ref: "dnd5e:props:pillar", at: [1,3] }
+  - { ref: "dnd5e:monsters:skeleton", at: [3,3] }
+walls:
+  - { from: [3,1], to: [3,2], kind: door }
+`
+
 func compileCandidate(
 	t *testing.T,
 	source string,
@@ -31,7 +48,7 @@ func compileCandidate(
 	seats int,
 ) *dungeonspec.CompileDungeonOutput {
 	t.Helper()
-	out, err := dungeonspec.CompileDungeon(context.Background(), dungeonspec.CompileDungeonInput{
+	out, err := dungeonspec.CompileDungeon(context.Background(), &dungeonspec.CompileDungeonInput{
 		Source: []byte(source), Mode: mode, PartyStartSeatCount: seats, PreviewSeed: 17,
 	})
 	require.NoError(t, err)
@@ -51,6 +68,24 @@ func TestWaveARegionRingProjectsCanonicalMaskAndCompleteEnvelope(t *testing.T) {
 			require.True(t, cellLess(out.FloorPlan.FloorCells[index-1], cell))
 		}
 	}
+	expectedEnvelope := make(map[[2]dungeonspec.FloorPlanCell]struct{})
+	for cell := range floor {
+		hex := core.HexFromPosition(structuralPosition(cell.Column, cell.Row))
+		for _, neighbor := range hex.ToCube().GetNeighbors() {
+			position := core.HexFromCube(neighbor).ToPosition()
+			other := dungeonspec.FloorPlanCell{Column: int(position.X), Row: int(position.Y)}
+			if _, inside := floor[other]; inside {
+				continue
+			}
+			from, to := cell, other
+			if cellLess(to, from) {
+				from, to = to, from
+			}
+			expectedEnvelope[[2]dungeonspec.FloorPlanCell{from, to}] = struct{}{}
+		}
+	}
+	require.Len(t, out.FloorPlan.Edges, 28, "8-cell ring must expose 22 exterior plus 6 hole edges")
+	require.Len(t, out.FloorPlan.Edges, len(expectedEnvelope), "envelope must include complete exterior plus hole")
 	center := dungeonspec.FloorPlanCell{Column: 2, Row: 2}
 	centerEdges := 0
 	for index, edge := range out.FloorPlan.Edges {
@@ -58,11 +93,16 @@ func TestWaveARegionRingProjectsCanonicalMaskAndCompleteEnvelope(t *testing.T) {
 		_, toFloor := floor[edge.To]
 		require.NotEqual(t, fromFloor, toFloor, "edge %d must have exactly one floor owner: %+v", index, edge)
 		require.Equal(t, dungeonspec.FloorPlanEdgeKindSolid, edge.Kind)
+		pair := [2]dungeonspec.FloorPlanCell{edge.From, edge.To}
+		_, expected := expectedEnvelope[pair]
+		require.True(t, expected, "unexpected envelope pair %+v", edge)
+		delete(expectedEnvelope, pair)
 		if edge.From == center || edge.To == center {
 			centerEdges++
 		}
 	}
 	require.Equal(t, 6, centerEdges, "the one-cell interior void must have its complete six-side envelope")
+	require.Empty(t, expectedEnvelope, "every exterior and hole pair must be projected")
 
 	rim := `version: 1
 key: rim
@@ -119,6 +159,16 @@ regions:
 	rejected := compileCandidate(t, islands, dungeonspec.CompileModeStrict, 4)
 	require.Equal(t, "canvas.floor_source", rejected.FieldErrors[0].Field)
 	require.Equal(t, "floor_disconnected", rejected.FieldErrors[0].Code)
+	withoutIslandB := `version: 1
+key: islands
+name: Islands
+canvas: { width: 6, height: 3, floor_source: regions }
+rooms: []
+regions: [{ id: large, cells: [[0,0], [0,1], [1,0], [1,1]] }]
+`
+	runnable := compileCandidate(t, withoutIslandB, dungeonspec.CompileModeStrict, 4)
+	require.Empty(t, runnable.FieldErrors)
+	require.Equal(t, dungeonspec.FloorPlanCell{Column: 0, Row: 0}, *runnable.FloorPlan.Entrance)
 }
 
 func TestWaveABoundsOmissionAndCompleteCandidateReplacement(t *testing.T) {
@@ -128,9 +178,11 @@ name: Bounds
 canvas: { width: 3, height: 2 }
 rooms: []
 `
-	plan := compileCandidate(t, omitted, dungeonspec.CompileModeDraft, 1).FloorPlan
+	plan := compileCandidate(t, omitted, dungeonspec.CompileModeDraft, 4).FloorPlan
 	require.Equal(t, dungeonspec.FloorSourceBounds, plan.FloorSource)
 	require.Len(t, plan.FloorCells, 6)
+	require.Equal(t, dungeonspec.FloorPlanCell{Column: 0, Row: 0}, *plan.Entrance,
+		"omitted start must resolve to the first canonical PartyCap-capable anchor")
 
 	previous := `version: 1
 key: replace
@@ -175,21 +227,51 @@ regions: [{ id: floor, cells: [[0,0], [0,1], [1,0], [1,1]] }]
 	}
 }
 
-func TestWaveAStrictBoundsRunsRunnableCandidateGate(t *testing.T) {
-	source := `version: 1
+func TestWaveABoundsDraftRetainsV03RuntimeGate(t *testing.T) {
+	for _, floorSource := range []string{"", ", floor_source: bounds"} {
+		source := fmt.Sprintf(`version: 1
 key: blocked-bounds
 name: Blocked Bounds
-canvas: { width: 1, height: 1 }
+canvas: { width: 1, height: 1%s }
 rooms: []
 regions: []
 place: [{ ref: "dnd5e:props:pillar", at: [0,0] }]
-`
-	draft := compileCandidate(t, source, dungeonspec.CompileModeDraft, 1)
-	require.Empty(t, draft.FieldErrors)
-	require.Nil(t, draft.FloorPlan.Entrance)
-	strict := compileCandidate(t, source, dungeonspec.CompileModeStrict, 1)
-	require.NotEmpty(t, strict.FieldErrors)
-	require.Equal(t, "start", strict.FieldErrors[0].Field)
+`, floorSource)
+		for _, mode := range []dungeonspec.CompileMode{dungeonspec.CompileModeDraft, dungeonspec.CompileModeStrict} {
+			out := compileCandidate(t, source, mode, 1)
+			require.NotEmpty(t, out.FieldErrors, "%s bounds must retain v0.3 runtime projection gate", mode)
+			require.Nil(t, out.FloorPlan)
+		}
+	}
+}
+
+func TestWaveAFieldErrorsAreStructurallyPathAware(t *testing.T) {
+	cases := []struct{ name, source, field, code string }{
+		{name: "root shape", source: "- not-a-spec\n", field: "spec", code: "invalid_yaml"},
+		{name: "unknown root", source: ringSource + "unknown_root: true\n", field: "unknown_root", code: "unknown_field"},
+		{name: "unknown nested indexed", source: `version: 1
+key: bad
+name: Bad
+canvas: { width: 2, height: 2, floor_source: regions }
+rooms: []
+regions: [{ id: r, cells: [], unknown_cell_rule: true }]
+`, field: "regions[0].unknown_cell_rule", code: "unknown_field"},
+		{name: "invalid indexed value", source: `version: 1
+key: bad
+name: Bad
+canvas: { width: 2, height: 2, floor_source: regions }
+rooms: []
+regions: [{ id: r, cells: [oops] }]
+`, field: "regions[0].cells[0]", code: "invalid_yaml"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := compileCandidate(t, tc.source, dungeonspec.CompileModeDraft, 1)
+			require.Equal(t, []dungeonspec.FieldError{{
+				Field: tc.field, Message: out.FieldErrors[0].Message, Code: tc.code,
+			}}, out.FieldErrors)
+		})
+	}
 }
 
 func TestWaveADuplicateEmptyRegionsHasExactPath(t *testing.T) {
@@ -207,8 +289,60 @@ regions:
 	require.Equal(t, "duplicate_region", out.FieldErrors[0].Code)
 }
 
-func TestWaveASnapshotReloadAndVoidMechanicsUsePersistedMask(t *testing.T) {
+func TestWaveASnapshotRejectsDuplicateEmptySemanticSets(t *testing.T) {
+	compiled := compileCandidate(t, ringSource, dungeonspec.CompileModeStrict, 1)
+	require.Empty(t, compiled.FieldErrors)
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() { _ = broker.Close(); _ = transport.Close() })
+	enc := encounter.New(context.Background(), "duplicate-empty-snapshot", broker)
+	require.NoError(t, enc.InitDungeon(compiled.Compiled.Params))
+	snapshot := enc.ToData()
+	snapshot.Space.SemanticRegions = append(snapshot.Space.SemanticRegions,
+		encounter.SemanticRegionData{ID: "empty-a", Cells: core.HexSet{}},
+		encounter.SemanticRegionData{ID: "empty-b", Cells: core.HexSet{}},
+	)
+	_, err := encounter.LoadFromData(context.Background(), snapshot, broker)
+	require.ErrorContains(t, err, "equal cell sets")
+}
+
+type movementQueryEntity struct{}
+
+func (movementQueryEntity) GetID() string                   { return "movement-query" }
+func (movementQueryEntity) GetType() toolkitcore.EntityType { return "test" }
+
+func TestWaveAPublicRoomAndQueryMovementRetainContiguousVoidRay(t *testing.T) {
 	compiled := compileCandidate(t, ringSource, dungeonspec.CompileModeStrict, 4)
+	require.Empty(t, compiled.FieldErrors)
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	t.Cleanup(func() { _ = broker.Close(); _ = transport.Close() })
+	enc := encounter.New(context.Background(), "public-ring-query", broker)
+	require.NoError(t, enc.InitDungeon(compiled.Compiled.Params))
+	from := structuralPosition(1, 1)
+	to := structuralPosition(3, 3)
+	void := structuralPosition(2, 2)
+	ray := enc.Room().GetLineOfSight(from, to)
+	require.Contains(t, ray, void, "public Room ray must retain the intermediate void instead of deleting it")
+	for index := 1; index < len(ray); index++ {
+		require.True(t, enc.Room().GetGrid().IsAdjacent(ray[index-1], ray[index]))
+	}
+	handler := spatial.NewSpatialQueryHandler()
+	handler.RegisterRoom(enc.Room())
+	valid, path, _, err := spatial.NewQueryUtils(handler).QueryMovement(
+		context.Background(), movementQueryEntity{}, from, to, enc.Room().GetID(),
+	)
+	require.NoError(t, err)
+	require.False(t, valid, "public movement query must reject a direct ray with any void intermediate")
+	require.Equal(t, ray, path)
+	for index := 1; index < len(path); index++ {
+		require.True(t, enc.Room().GetGrid().IsAdjacent(path[index-1], path[index]),
+			"returned query path must never be discontinuous")
+	}
+}
+
+func TestWaveASnapshotReloadAndVoidMechanicsUsePersistedMask(t *testing.T) {
+	compiled := compileCandidate(t, ringSnapshotSource, dungeonspec.CompileModeStrict, 4)
 	require.Empty(t, compiled.FieldErrors)
 	ctx := context.Background()
 	transport := encounter.NewInMemoryTransport()
@@ -216,6 +350,7 @@ func TestWaveASnapshotReloadAndVoidMechanicsUsePersistedMask(t *testing.T) {
 	t.Cleanup(func() { _ = broker.Close(); _ = transport.Close() })
 	enc := encounter.New(ctx, "wave-a-mask", broker)
 	require.NoError(t, enc.InitDungeon(compiled.Compiled.Params))
+	require.NoError(t, enc.SeedMonsters(compiled.Compiled.Spawns))
 	floorBefore := append([]core.Hex(nil), enc.ToData().Space.FloorCells...)
 	edgesBefore := append([]encounter.GeneratedEdge(nil), enc.ToData().Space.EnvelopeEdges...)
 	void := core.HexFromPosition(structuralPosition(2, 2))
@@ -228,7 +363,11 @@ func TestWaveASnapshotReloadAndVoidMechanicsUsePersistedMask(t *testing.T) {
 	}))
 	require.NotContains(t, enc.KnownHexes("alice"), void)
 	acrossVoid := core.HexFromPosition(structuralPosition(3, 3))
-	require.NoError(t, enc.AddMonster(encounter.MonsterInput{ID: "hidden", Position: acrossVoid, HP: 1, MaxHP: 1}))
+	require.Len(t, enc.ToData().Monsters, 1)
+	for _, monster := range enc.ToData().Monsters {
+		require.NotEmpty(t, monster.DataJSON, "compiled monster snapshot must carry real hydratable data")
+		require.Equal(t, acrossVoid, monster.Position)
+	}
 	require.Equal(t, core.ModeFreeRoam, enc.Mode(), "target across void must not be reachable/visible")
 	require.NoError(t, enc.Move("alice", []core.Hex{void}))
 	require.Equal(t, start, enc.SnapshotFor("alice").Position)
@@ -240,6 +379,11 @@ func TestWaveASnapshotReloadAndVoidMechanicsUsePersistedMask(t *testing.T) {
 	require.True(t, enc.Room().IsLineOfSightBlocked(start.ToPosition(), acrossVoid.ToPosition()))
 
 	snapshot := enc.ToData()
+	require.Equal(t, start, snapshot.Space.Entrance)
+	require.Len(t, snapshot.Space.PartyStartPositions, 4)
+	require.Len(t, snapshot.Space.Obstacles, 1)
+	require.Len(t, snapshot.Monsters, 1)
+	require.Len(t, snapshot.Doors, 1)
 	edited := `version: 1
 key: ring-room
 name: Ring Room
@@ -252,6 +396,11 @@ regions: [{ id: new, cells: [[0,0], [0,1], [1,0], [1,1]] }]
 	require.NoError(t, err)
 	require.Equal(t, floorBefore, reloaded.ToData().Space.FloorCells)
 	require.Equal(t, edgesBefore, reloaded.ToData().Space.EnvelopeEdges)
+	require.Equal(t, snapshot.Space.Entrance, reloaded.ToData().Space.Entrance)
+	require.Equal(t, snapshot.Space.PartyStartPositions, reloaded.ToData().Space.PartyStartPositions)
+	require.Len(t, reloaded.ToData().Space.Obstacles, 1)
+	require.Len(t, reloaded.ToData().Monsters, 1)
+	require.Len(t, reloaded.ToData().Doors, 1)
 	require.False(t, reloaded.Room().GetGrid().IsValidPosition(void.ToPosition()))
 }
 

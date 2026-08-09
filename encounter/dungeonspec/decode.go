@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +22,19 @@ import (
 // or silently dropping everything after the first document.
 func Decode(raw []byte) (*DungeonSpec, error) {
 	shape, hasCanvas := dungeonRoomsShape(raw)
+	var document yaml.Node
+	if err := yaml.Unmarshal(raw, &document); err != nil {
+		return nil, authoredWrap("spec", "invalid_yaml", fmt.Errorf("decode dungeon spec: %w", err))
+	}
+	if len(document.Content) == 0 {
+		return nil, authoredError("spec", "invalid_yaml", "empty dungeon spec")
+	}
+	if hasCanvas && shape == roomsInvalid {
+		return nil, authoredError("rooms", "invalid_yaml", "canvas mode rooms must be an explicit empty sequence (rooms: [])")
+	}
+	if err := validateYAMLShape(document.Content[0], reflect.TypeOf(DungeonSpec{}), "spec"); err != nil {
+		return nil, err
+	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
@@ -28,12 +42,12 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 	var spec DungeonSpec
 	if err := dec.Decode(&spec); err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, errors.New("empty dungeon spec")
+			return nil, authoredError("spec", "invalid_yaml", "empty dungeon spec")
 		}
 		if hasCanvas && shape == roomsInvalid {
-			return nil, errors.New("canvas mode rooms must be an explicit empty sequence (rooms: [])")
+			return nil, authoredError("rooms", "invalid_yaml", "canvas mode rooms must be an explicit empty sequence (rooms: [])")
 		}
-		return nil, fmt.Errorf("decode dungeon spec: %w", err)
+		return nil, authoredWrap("spec", "invalid_yaml", fmt.Errorf("decode dungeon spec: %w", err))
 	}
 
 	// A second call to Decode reads the next YAML document in the stream,
@@ -43,7 +57,7 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 	// stray `---` documents.
 	var extra DungeonSpec
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errors.New("multi-document YAML not supported: a dungeon spec is one document")
+		return nil, authoredError("spec", "invalid_yaml", "multi-document YAML not supported: a dungeon spec is one document")
 	}
 
 	spec.roomsShape = shape

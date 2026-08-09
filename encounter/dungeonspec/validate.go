@@ -63,16 +63,16 @@ const (
 // per-cell place-block check.
 func Validate(spec *DungeonSpec) error {
 	if spec.Version != 1 {
-		return fmt.Errorf("unsupported spec version %d (must be 1)", spec.Version)
+		return authoredError("version", "unsupported_version", "unsupported spec version %d (must be 1)", spec.Version)
 	}
 	if strings.TrimSpace(spec.Key) == "" {
-		return fmt.Errorf("key must not be empty")
+		return authoredError("key", "invalid_key", "key must not be empty")
 	}
 	if !validKey(spec.Key) {
-		return fmt.Errorf("key %q must use only lowercase letters, digits, and hyphens", spec.Key)
+		return authoredError("key", "invalid_key", "key %q must use only lowercase letters, digits, and hyphens", spec.Key)
 	}
 	if strings.TrimSpace(spec.Name) == "" {
-		return fmt.Errorf("name must not be empty")
+		return authoredError("name", "invalid_name", "name must not be empty")
 	}
 	if spec.Canvas != nil {
 		return validateCanvas(spec)
@@ -167,15 +167,21 @@ func validateNoRegionsInRoomChain(spec *DungeonSpec) error {
 }
 
 func validateCanvas(spec *DungeonSpec) error {
+	if spec.Canvas.Width < 1 {
+		return authoredError("canvas.width", "invalid_dimension", "canvas width must be positive, got %d", spec.Canvas.Width)
+	}
+	if spec.Canvas.Height < 1 {
+		return authoredError("canvas.height", "invalid_dimension", "canvas height must be positive, got %d", spec.Canvas.Height)
+	}
 	cellCount, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height)
 	if err != nil {
-		return err
+		return authoredError("canvas", "invalid_dimension", "%v", err)
 	}
 	if spec.roomsShape != roomsSequence || len(spec.Rooms) != 0 {
-		return fmt.Errorf("canvas mode rooms must be an explicit empty sequence (rooms: [])")
+		return authoredError("rooms", "invalid_canvas_rooms", "canvas mode rooms must be an explicit empty sequence (rooms: [])")
 	}
 	if len(spec.Connectors) != 0 {
-		return fmt.Errorf("canvas mode does not support connectors")
+		return authoredError("connectors", "unsupported_capability", "canvas mode does not support connectors")
 	}
 	bounds := make(map[[2]int]struct{}, cellCount)
 	for c := 0; c < spec.Canvas.Width; c++ {
@@ -197,8 +203,8 @@ func validateCanvas(spec *DungeonSpec) error {
 			}
 		}
 	default:
-		return fmt.Errorf(
-			"canvas.floor_source: invalid value %q (must be %q or %q)",
+		return authoredError(
+			"canvas.floor_source", "invalid_floor_source", "invalid floor source %q (must be %q or %q)",
 			spec.Canvas.FloorSource, FloorSourceBounds, FloorSourceRegions,
 		)
 	}
@@ -206,10 +212,10 @@ func validateCanvas(spec *DungeonSpec) error {
 	for i, e := range spec.Place {
 		path := fmt.Sprintf("place[%d]", i)
 		if _, ok := floor[e.At]; !ok {
-			return fmt.Errorf("%s.at %v is outside structural floor", path, e.At)
+			return authoredError(path+".at", "outside_floor", "%s.at %v is outside structural floor", path, e.At)
 		}
 		if prior, ok := occupied[e.At]; ok {
-			return fmt.Errorf("%s.at %v is already occupied by %q", path, e.At, prior)
+			return authoredError(path+".at", "occupied", "%s.at %v is already occupied by %q", path, e.At, prior)
 		}
 		occupied[e.At] = e.Ref
 		if err := validateCanvasPlacement(path, e); err != nil {
@@ -218,10 +224,10 @@ func validateCanvas(spec *DungeonSpec) error {
 	}
 	if spec.Start != nil {
 		if _, ok := floor[*spec.Start]; !ok {
-			return fmt.Errorf("start %v is outside structural floor", *spec.Start)
+			return authoredError("start", "outside_floor", "start %v is outside structural floor", *spec.Start)
 		}
 		if prior, ok := occupied[*spec.Start]; ok {
-			return fmt.Errorf("start %v conflicts with %q", *spec.Start, prior)
+			return authoredError("start", "occupied", "start %v conflicts with %q", *spec.Start, prior)
 		}
 	}
 	return validateWallsOnFloor(spec, floor, spec.Canvas.Width, spec.Canvas.Height)
@@ -235,27 +241,27 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 	sets := make([]map[[2]int]struct{}, len(regions))
 	for i, region := range regions {
 		if region.ID == "" {
-			return fmt.Errorf("regions[%d].id must not be empty", i)
+			return authoredError(fmt.Sprintf("regions[%d].id", i), "invalid_region", "regions[%d].id must not be empty", i)
 		}
 		if first, duplicate := seenIDs[region.ID]; duplicate {
-			return fmt.Errorf("regions[%d].id %q duplicates regions[%d]", i, region.ID, first)
+			return authoredError(fmt.Sprintf("regions[%d].id", i), "duplicate_region", "regions[%d].id %q duplicates regions[%d]", i, region.ID, first)
 		}
 		seenIDs[region.ID] = i
 		if region.Archetype != nil {
 			if *region.Archetype == "" {
-				return fmt.Errorf("regions[%d].archetype: explicit empty archetype is unsupported", i)
+				return authoredError(fmt.Sprintf("regions[%d].archetype", i), "invalid_region", "regions[%d].archetype: explicit empty archetype is unsupported", i)
 			}
 			if err := validateArchetype(*region.Archetype); err != nil {
-				return fmt.Errorf("regions[%d].archetype: %w", i, err)
+				return authoredError(fmt.Sprintf("regions[%d].archetype", i), "invalid_region", "regions[%d].archetype: %v", i, err)
 			}
 		}
 		if region.Cells == nil {
-			return fmt.Errorf("regions[%d].cells is required (use [] for an empty scope)", i)
+			return authoredError(fmt.Sprintf("regions[%d].cells", i), "invalid_region", "regions[%d].cells is required (use [] for an empty scope)", i)
 		}
 		sets[i] = make(map[[2]int]struct{}, len(region.Cells))
 		for j, cell := range region.Cells {
 			if _, ok := floor[cell]; !ok {
-				return fmt.Errorf("regions[%d].cells[%d] %v is out of canvas floor footprint", i, j, cell)
+				return authoredError(fmt.Sprintf("regions[%d].cells[%d]", i, j), "outside_floor", "regions[%d].cells[%d] %v is out of canvas floor footprint", i, j, cell)
 			}
 			sets[i][cell] = struct{}{} // same-region duplicates canonicalize
 		}
@@ -270,7 +276,7 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 			}
 			equal := len(sets[left]) == len(sets[right]) && intersection == len(sets[left])
 			if equal {
-				return fmt.Errorf("regions[%d].cells: equal cell set duplicates regions[%d].cells", right, left)
+				return authoredError(fmt.Sprintf("regions[%d].cells", right), "duplicate_region", "regions[%d].cells: equal cell set duplicates regions[%d].cells", right, left)
 			}
 			if intersection == 0 {
 				continue
@@ -278,7 +284,7 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 			leftInsideRight := intersection == len(sets[left]) && len(sets[left]) < len(sets[right])
 			rightInsideLeft := intersection == len(sets[right]) && len(sets[right]) < len(sets[left])
 			if !leftInsideRight && !rightInsideLeft {
-				return fmt.Errorf("regions[%d].cells: partial overlap with regions[%d].cells", right, left)
+				return authoredError(fmt.Sprintf("regions[%d].cells", right), "region_overlap", "regions[%d].cells: partial overlap with regions[%d].cells", right, left)
 			}
 		}
 	}
@@ -287,31 +293,31 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 func validateCanvasPlacement(path string, e PlacedEntry) error {
 	typ, err := refParts(e.Ref)
 	if err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return authoredError(path+".ref", "invalid_ref", "%s.ref: %v", path, err)
 	}
 	if typ != refTypeProps && typ != refTypeMonsters {
-		return fmt.Errorf("%s.ref %q must be props or monsters", path, e.Ref)
+		return authoredError(path+".ref", "invalid_ref", "%s.ref %q must be props or monsters", path, e.Ref)
 	}
 	if e.Facing != nil {
 		if typ != refTypeProps || !isFloorMount(e.Mount) {
-			return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
+			return authoredError(path+".facing", "unsupported_capability", "%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
 		}
 		if err := validateFacing(*e.Facing); err != nil {
-			return fmt.Errorf("%s.facing: %w", path, err)
+			return authoredError(path+".facing", "invalid_facing", "%s.facing: %v", path, err)
 		}
 	}
 	if !isFloorMount(e.Mount) {
-		return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
+		return authoredError(path+".mount", "unsupported_capability", "%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
 	}
 	if typ == refTypeMonsters {
 		if _, ok := monsters.ByRef(e.Ref); !ok {
-			return fmt.Errorf("%s.ref %q: unknown monster ref (known: %s)", path, e.Ref, strings.Join(monsters.Refs(), ", "))
+			return authoredError(path+".ref", "invalid_ref", "%s.ref %q: unknown monster ref (known: %s)", path, e.Ref, strings.Join(monsters.Refs(), ", "))
 		}
 		if e.BlocksMovement != nil {
-			return fmt.Errorf("%s.blocks_movement: only valid on props", path)
+			return authoredError(path+".blocks_movement", "invalid_placement", "%s.blocks_movement: only valid on props", path)
 		}
 		if e.BlocksLoS != nil {
-			return fmt.Errorf("%s.blocks_los: only valid on props", path)
+			return authoredError(path+".blocks_los", "invalid_placement", "%s.blocks_los: only valid on props", path)
 		}
 	}
 	return nil
@@ -699,38 +705,38 @@ func validateWallsOnFloor(spec *DungeonSpec, floor map[[2]int]struct{}, totalWid
 		switch wall.Kind {
 		case string(encounter.GeneratedEdgeKindSolid), string(encounter.GeneratedEdgeKindDoor):
 		default:
-			return fmt.Errorf("walls[%d].kind: invalid kind %q (must be %q or %q)", index, wall.Kind,
+			return authoredError(fmt.Sprintf("walls[%d].kind", index), "invalid_wall", "walls[%d].kind: invalid kind %q (must be %q or %q)", index, wall.Kind,
 				encounter.GeneratedEdgeKindSolid, encounter.GeneratedEdgeKindDoor)
 		}
 		if wall.Lock != nil {
 			if wall.Kind == string(encounter.GeneratedEdgeKindSolid) {
-				return fmt.Errorf("walls[%d].lock: lock only valid on door", index)
+				return authoredError(fmt.Sprintf("walls[%d].lock", index), "invalid_wall", "walls[%d].lock: lock only valid on door", index)
 			}
 			if len(wall.Lock.Options) == 0 {
-				return fmt.Errorf("walls[%d].lock.options: must contain at least one option", index)
+				return authoredError(fmt.Sprintf("walls[%d].lock.options", index), "invalid_wall", "walls[%d].lock.options: must contain at least one option", index)
 			}
 			for oi, option := range wall.Lock.Options {
 				if option.DC < minLockDC || option.DC > maxLockDC {
-					return fmt.Errorf("walls[%d].lock.options[%d].dc: must be between %d and %d", index, oi, minLockDC, maxLockDC)
+					return authoredError(fmt.Sprintf("walls[%d].lock.options[%d].dc", index, oi), "invalid_wall", "walls[%d].lock.options[%d].dc: must be between %d and %d", index, oi, minLockDC, maxLockDC)
 				}
 				if _, err := abilities.GetByID(option.Ability); err != nil {
-					return fmt.Errorf("walls[%d].lock.options[%d].ability: invalid ability %q", index, oi, option.Ability)
+					return authoredError(fmt.Sprintf("walls[%d].lock.options[%d].ability", index, oi), "invalid_wall", "walls[%d].lock.options[%d].ability: invalid ability %q", index, oi, option.Ability)
 				}
 			}
 		}
 		if from == to {
-			return fmt.Errorf("walls[%d]: endpoints must be distinct", index)
+			return authoredError(fmt.Sprintf("walls[%d]", index), "invalid_wall", "walls[%d]: endpoints must be distinct", index)
 		}
 		if from.ToCube().Distance(to.ToCube()) != 1 {
-			return fmt.Errorf("walls[%d]: endpoints must be adjacent pointy-top odd-q floor hexes", index)
+			return authoredError(fmt.Sprintf("walls[%d]", index), "invalid_wall", "walls[%d]: endpoints must be adjacent pointy-top odd-q floor hexes", index)
 		}
 
 		key := newWallEdgeKey(from, to)
 		if first, exists := seen[key]; exists {
 			if seenKinds[first] == wall.Kind {
-				return fmt.Errorf("walls[%d]: duplicate of walls[%d] (including reversed endpoints)", index, first)
+				return authoredError(fmt.Sprintf("walls[%d]", index), "duplicate_wall", "walls[%d]: duplicate of walls[%d] (including reversed endpoints)", index, first)
 			}
-			return fmt.Errorf("walls[%d]: conflicting kind with walls[%d] on the same undirected edge", index, first)
+			return authoredError(fmt.Sprintf("walls[%d]", index), "conflicting_wall", "walls[%d]: conflicting kind with walls[%d] on the same undirected edge", index, first)
 		}
 		seen[key] = index
 		seenKinds = append(seenKinds, wall.Kind)
@@ -774,13 +780,13 @@ func validateWallEndpoint(
 ) (core.Hex, error) {
 	path := fmt.Sprintf("walls[%d].%s", wallIndex, field)
 	if at == nil {
-		return core.Hex{}, fmt.Errorf("%s: required absolute [column, row] floor cell", path)
+		return core.Hex{}, authoredError(path, "invalid_wall", "%s: required absolute [column, row] floor cell", path)
 	}
 	if at[0] < 0 || at[0] >= totalWidth || at[1] < 0 || at[1] >= height {
-		return core.Hex{}, fmt.Errorf("%s %v is out of dungeon floor footprint", path, *at)
+		return core.Hex{}, authoredError(path, "outside_floor", "%s %v is out of dungeon floor footprint", path, *at)
 	}
 	if _, ok := floor[*at]; !ok {
-		return core.Hex{}, fmt.Errorf("%s %v is a connector gap/door cell, not a semantic floor cell", path, *at)
+		return core.Hex{}, authoredError(path, "outside_floor", "%s %v is a connector gap/door cell, not a semantic floor cell", path, *at)
 	}
 	return core.HexFromPosition(spatial.Position{X: float64(at[0]), Y: float64(at[1])}), nil
 }

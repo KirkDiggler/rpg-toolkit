@@ -110,7 +110,7 @@ func validateCompiledRuntime(ctx context.Context, compiled CompiledDungeon, seed
 // BuildFloorPlan projects canonical compiler facts for canvas candidates and
 // initialized runtime facts for legacy room-chain candidates.
 func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, error) {
-	if in.Compiled.canvas != nil {
+	if in.Compiled.canvas != nil && in.Compiled.canvas.floorSource == FloorSourceRegions {
 		return buildCanvasFloorPlan(in.Compiled), nil
 	}
 	params := in.Compiled.Params

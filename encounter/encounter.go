@@ -230,6 +230,26 @@ func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *E
 	return e
 }
 
+func validatePersistedActorEntries(
+	players map[core.PlayerID]*PlayerData,
+	monsters map[core.EntityID]*MonsterData,
+) error {
+	for id, player := range players {
+		if player == nil {
+			return fmt.Errorf("validate player %q: null player state", id)
+		}
+		if player.View == nil {
+			return fmt.Errorf("validate player %q: view is required", id)
+		}
+	}
+	for id, monster := range monsters {
+		if monster == nil {
+			return fmt.Errorf("validate monster %q: null monster state", id)
+		}
+	}
+	return nil
+}
+
 // LoadFromData rehydrates an encounter from persisted state.
 //
 // #689: LoadFromData OWNS combatant hydration. A fresh encounter-scoped dnd5e
@@ -268,6 +288,9 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	}
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
+	}
+	if err := validatePersistedActorEntries(data.Players, data.Monsters); err != nil {
+		return nil, err
 	}
 	if err := validatePersistedDoors(data.Doors); err != nil {
 		return nil, fmt.Errorf("validate doors: %w", err)

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
-	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 )
@@ -43,9 +41,12 @@ type CompileDungeonOutput struct {
 
 // CompileDungeon is the protobuf-free complete-candidate provider seam used by
 // API adapters. It never accepts previous compiled state or source metadata.
-func CompileDungeon(ctx context.Context, in CompileDungeonInput) (*CompileDungeonOutput, error) {
+func CompileDungeon(ctx context.Context, in *CompileDungeonInput) (*CompileDungeonOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if in == nil {
+		return nil, fmt.Errorf("dungeonspec: nil CompileDungeonInput")
 	}
 	if in.Mode != CompileModeDraft && in.Mode != CompileModeStrict {
 		return nil, fmt.Errorf("dungeonspec: unknown compile mode %q", in.Mode)
@@ -142,28 +143,10 @@ func strictRegionValidation(compiled CompiledDungeon) *FieldError {
 	return nil
 }
 
-var sourcePathPattern = regexp.MustCompile(
-	`(?:^|: |\b)((?:canvas\.floor_source|start|` +
-		`place\[\d+\](?:\.[a-z_]+)?|walls\[\d+\](?:\.[a-z_]+)?|` +
-		`regions\[\d+\](?:\.[a-z_]+)?|rooms\[\d+\](?:\.[a-z_]+)?))`,
-)
-
 func fieldErrorFor(err error) FieldError {
-	message := err.Error()
-	field := ""
-	if match := sourcePathPattern.FindStringSubmatch(message); len(match) > 1 {
-		field = match[1]
+	var authored *authoredValidationError
+	if errors.As(err, &authored) {
+		return FieldError{Field: authored.field, Message: authored.message, Code: authored.code}
 	}
-	code := "invalid_candidate"
-	switch {
-	case strings.Contains(message, "decode dungeon spec"),
-		strings.Contains(message, "empty dungeon spec"),
-		strings.Contains(message, "multi-document"):
-		code = "invalid_yaml"
-	case strings.Contains(message, "duplicates regions"), strings.Contains(message, "equal cell set"):
-		code = "duplicate_region"
-	case strings.Contains(message, "outside structural floor"), strings.Contains(message, "not a semantic floor cell"):
-		code = "outside_floor"
-	}
-	return FieldError{Field: field, Message: message, Code: code}
+	return FieldError{Field: "spec", Message: err.Error(), Code: "invalid_candidate"}
 }

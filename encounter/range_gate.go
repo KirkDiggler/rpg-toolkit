@@ -79,7 +79,7 @@ func checkReach(from, to core.Hex, limit int, label string) error {
 }
 
 func (e *Encounter) hasClearStructuralReach(from, to core.Hex) bool {
-	if e.room == nil {
+	if e.room == nil || e.data == nil || e.data.Space == nil || !e.data.Space.RequireConnectedFloor {
 		return true
 	}
 	grid := e.room.GetGrid()

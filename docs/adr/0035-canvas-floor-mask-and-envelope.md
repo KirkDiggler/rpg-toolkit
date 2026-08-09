@@ -32,9 +32,11 @@ adding them to visible/remembered knowledge. Envelope records project from the
 single floor owner only; void cells never gain runtime records.
 
 `dungeonspec.CompileDungeon` is the complete-candidate provider seam. Draft mode
-projects structurally valid empty/tiny/disconnected masks with an optional
-entrance. Strict mode additionally requires a nonempty connected floor and a
-complete same-component party-start reservation. Authored validation is returned
+relaxes runnability only for `floor_source: regions`, projecting structurally
+valid empty/tiny/disconnected masks with an optional entrance. Omitted/explicit
+`bounds` retains the v0.3 runtime-backed projection gate in both modes. Strict
+region mode additionally requires a nonempty connected floor and a complete
+same-component party-start reservation. Authored validation is returned
 as ordered `FieldError` records; cancellation/provider failures remain Go errors.
 No previous compiled candidate is accepted.
 
