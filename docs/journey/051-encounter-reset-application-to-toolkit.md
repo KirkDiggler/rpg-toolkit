@@ -1,4 +1,4 @@
-# Journey 051: The Stage Reset — From Application Back to Toolkit
+# Journey 051: The Encounter Reset — From Application Back to Toolkit
 
 *2026-08-08. Kirk audited the encounter module end-to-end after a season of
 giving agents more autonomy, and made a call: we're going back to our roots.*
@@ -145,42 +145,98 @@ Two rules keep a composable toolkit honest, learned the hard way:
 And one rule for how we write it: comments state the surviving invariant;
 the story of how we got there goes in journey docs like this one.
 
-## Naming
+## Naming: a false start, then the answer was already there
 
-The name matters because the name is the frame. Candidates considered:
+The name matters because the name is the frame. The first pass shortlisted
+`session` (bland, collides with every web concept), `runtime` (honest but
+smells like systems plumbing), `arena` (combat-only), `scene` (collides
+with the Three.js scene graph our own client lives in), `theater`
+(spelling-schismed), `table` (names the furniture) — and recommended
+**`stage`**: where actors play scenes under a director, a metaphor the
+team's own role vocabulary already used.
 
-- `encounter/v2` — carries the corpse. No.
-- `session` — accurate, bland, collides with every web concept.
-- `runtime` — honest ("rulebooks are data, this is what runs them") but
-  smells like systems plumbing, not a game.
-- `arena` — combat-only; the whole point is scenes beyond combat.
-- `scene` — right idea, collides with the Three.js scene graph our own
-  client lives in.
-- `theater` — evocative (theater of the mind) but spelling-schismed.
-- `table` — charming (what happens at the table) but names the furniture,
-  not the machinery.
-- **`stage`** — where actors play scenes under a director. Short, unclaimed
-  in the module tree, reads beautifully at call sites (`stage.Clock`,
-  `stage.Field`, `stage.Decider`), covers combat and free-roam and social
-  alike, and — not incidentally — this project's team vocabulary already
-  has a **director**. Actors, a stage, a director: the metaphor was already
-  ours.
+Kirk rejected it in one sentence:
 
-Recommendation: **`stage`** as the umbrella, with the seven axes beneath
-it. "Staging an encounter" is exactly what the assembly does.
+> "A stage is a location, and an encounter has an outcome."
+
+That's the whole review. `stage` names the **venue** — it quietly promotes
+one axis (the field) to umbrella status, and it was seductive precisely
+because the old module's best part was spatial. But the thing we're
+building is not a place. It is a bounded situation that **resolves**:
+entities in a field, on a clock, with stakes, ending in a result the rest
+of the game consumes. The domain has had the right word for fifty years.
+It's **`encounter`**. The old module didn't fail because of its name; it
+failed because it was an application. We keep the word and rebuild what
+wears it.
+
+Mechanically this is clean: the module line is v0 (rpg-api pins
+`encounter v0.50.1`), and v0 makes no compatibility promise. When the old
+module is replaced it is simply **deleted** — the new one takes the same
+import path on later v0 tags, and every old pin stays resolvable from the
+module proxy until its consumers migrate. No `/v2` suffix, no corpse
+carried forward.
+
+## What kind of thing is an encounter?
+
+The toolkit organizes by category: `mechanics/` is rules infrastructure
+(conditions, resources, spells), `tools/` is world infrastructure
+(spatial, environments, spawn), `rulebooks/` is game content, with
+`core`/`events`/`dice` beneath and `behavior` alongside. The layer rule
+reads Core → Events → Mechanics → Tools → Rulebooks. So where does an
+encounter live? What *kind* of thing is it?
+
+**An encounter is a composition with an outcome.** It is not a mechanic
+(it *uses* mechanics), not a tool (it *assembles* tools), not content (it
+*hosts* content). It is the layer that wires infrastructure into live play
+and runs it to a result.
+
+Two of the seven axes already have homes we consume rather than rebuild:
+the **field** is `tools/spatial` (+ environments), and **deciders** are
+`behavior/`. The four genuinely new runtime axes get a new category,
+parallel to `mechanics/` and `tools/`:
+
+```
+play/
+  clock/       scheduling policies — free-run, initiative turns, phases
+  knowledge/   per-observer channels, memory, projection
+  record/      the ordered, correlated, audience-scoped log
+  interrupt/   suspend/resume as first-class control flow
+```
+
+And `encounter` — the reclaimed top-level module — is the thin composition
+layer: it defines the **resolution seam** rulebooks implement, wires the
+axes together, owns end conditions, and returns an **Outcome**. The layer
+rule gains one entry: … → Tools / Play → **Encounter** → Rulebooks (which
+implement the seam and ship the assembled dnd5e default).
+
+The outcome being first-class is itself new. The old module modeled "it
+ended" as a mode enum plus a reason string (`"tpk"`). The new one treats
+an encounter as a function run interactively:
+
+```
+Setup → (play: intents, interrupts, records) → Outcome
+```
+
+— deaths, discoveries, spoils, map knowledge, whatever the rulebook says
+carries out. That is what makes encounters composable at the next level
+up: a campaign is a thing that chains encounters by consuming their
+outcomes. The word always implied this. Now the type does.
 
 ## Open questions
 
-- **Name signoff** — `stage` is a recommendation, not a decree. Kirk calls
-  it.
-- **Module layout** — one module with subpackages (`stage/field`,
-  `stage/knowledge`, ...) vs sibling modules per axis. Subpackages keep the
-  early iteration cheap; split later when an axis proves independently
-  versionable.
+- **Category name** — `play/` is the proposal for the four new axes
+  (parallels `mechanics/` and `tools/` grammatically: the mechanics of
+  rules, the tools of worlds, the play of running them). Kirk blesses or
+  renames.
+- **Granularity** — one module per axis (the `mechanics/spells` pattern,
+  independently versionable) vs one `play` module with subpackages. The
+  tag history says nested modules are cheap here; lean per-axis, but it's
+  not load-bearing on day one.
 - **First axis** — the decider seam is the smallest and unblocks the
-  monster-behavior work; the clock is the spine and the most fun to design.
-  An architect gets to pick joy: nothing downstream forces the order.
-- **Long-term fate of `encounter`** — freeze policy (bugfix-only?) and
-  whether the live game ever migrates, or the new stage simply hosts the
-  *next* thing. Deliberately not decided here; usefulness is allowed to
-  arrive later. That's the point.
+  monster-behavior work; the clock is the spine and the most fun to
+  design. An architect gets to pick joy: nothing downstream forces the
+  order.
+- **Cutover** — old `encounter` is bugfix-only from here (proposed);
+  deletion happens whenever the new assembly actually hosts a game.
+  Nothing forces a date; usefulness is allowed to arrive later. That's
+  the point.
