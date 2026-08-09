@@ -16,6 +16,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+const (
+	floorMaskDamageDice = "1d6"
+	floorMaskActionType = "action"
+)
+
 func scopedBoundsWithWall(t *testing.T, id core.EncounterID, broker *encounter.Broker) *encounter.Encounter {
 	t.Helper()
 	left := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
@@ -41,7 +46,7 @@ func realGoblinJSON(t *testing.T, id core.EntityID) []byte {
 func realRangedMonsterJSON(t *testing.T, id core.EntityID) []byte {
 	t.Helper()
 	config, err := json.Marshal(monsteractions.RangedConfig{
-		Name: "test-bow", AttackBonus: 4, DamageDice: "1d6", RangeNormal: 30,
+		Name: "test-bow", AttackBonus: 4, DamageDice: floorMaskDamageDice, RangeNormal: 30,
 		RangeLong: 120, DamageType: damage.Piercing,
 	})
 	require.NoError(t, err)
@@ -71,7 +76,7 @@ func TestBoundsCanvasPlayerAttackPreservesV03BoundaryBehavior(t *testing.T) {
 	require.NoError(t, enc.SetMode(core.ModeTurnBased))
 	endTurnUntilActive(t, enc, aliceEntityID)
 	require.NoError(t, enc.TakeAction(alicePlayerID,
-		encounter.ActionRef{Module: "dnd5e", Type: "action", ID: "attack"},
+		encounter.ActionRef{Module: "dnd5e", Type: floorMaskActionType, ID: "attack"},
 		encounter.ActionTarget{EntityID: gobEntityID},
 	))
 	require.Equal(t, 3, enc.ToData().Monsters[gobEntityID].HP,
