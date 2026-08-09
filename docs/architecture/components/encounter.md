@@ -837,15 +837,18 @@ name. Draft returns canonical projections for structurally valid empty, tiny or
 disconnected region unions only; omitted/explicit `bounds` keeps the v0.3
 runtime-backed projection gate. Strict region compilation additionally requires
 a nonempty connected mask and a same-component complete party-start reservation. Authored failures are
-ordered `FieldError{Field,Message,Code}` values; infrastructure failures remain
-Go errors.
+ordered `FieldError{Field,Message,Code}` values produced at decode/validation
+sources (including YAML merge-key expansion and exact nested/indexed paths),
+never by parsing prose; infrastructure failures remain Go errors.
 
 Canvas compilation resolves omission/`bounds` to the v0.3 rectangle and
 `regions` to the canonical deduplicated union. `DungeonParams.FloorCells` and
 `EnvelopeEdges` carry that one truth into runtime; `SpaceData` persists both as
 the exact encounter snapshot. Reload validates, rather than regenerates, them.
 The masked runtime grid is shared by placement, movement/pathing and targeting;
-LoS rays fail closed across void, and perception never records invalid cells.
+target reach validates both endpoints and every direct-ray position against that
+grid (never the mutable strict-start flag or wall state). LoS rays fail closed
+across void, and perception never records invalid cells.
 Envelope pairs retain actual void/off-canvas endpoints but attach to knowledge
 only at their single floor owner. See ADR-0035.
 

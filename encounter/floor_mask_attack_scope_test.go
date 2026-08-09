@@ -85,6 +85,31 @@ func TestBoundsCanvasPlayerAttackPreservesV03BoundaryBehavior(t *testing.T) {
 		"Wave A must not add a bounds/wall LoS gate to the established player attack path")
 }
 
+func TestRoomChainPlayerAttackPreservesV03Behavior(t *testing.T) {
+	transport, broker := newRangeGateBroker()
+	defer func() { _ = broker.Close(); _ = transport.Close() }()
+	enc := encounter.New(context.Background(), "room-chain-player", broker,
+		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+	)
+	require.NoError(t, enc.InitRoom(2, 1, "empty"))
+	left := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
+	right := core.HexFromPosition(spatial.Position{X: 1, Y: 0})
+	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
+		PlayerID: alicePlayerID, EntityID: aliceEntityID, Position: left, SightRange: 10,
+		HP: 12, MaxHP: 12, AC: 14, DamageDice: damage1d8plus2, DamageType: damageSlashing,
+	}))
+	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
+		ID: gobEntityID, Position: right, HP: 7, MaxHP: 7, AC: 12, Speed: 30,
+		MonsterRef: monsterRefGoblin, DataJSON: realGoblinJSON(t, gobEntityID),
+	}))
+	endTurnUntilActive(t, enc, aliceEntityID)
+	require.NoError(t, enc.TakeAction(alicePlayerID,
+		encounter.ActionRef{Module: floorMaskRefModule, Type: floorMaskActionType, ID: floorMaskAttackID},
+		encounter.ActionTarget{EntityID: gobEntityID},
+	))
+	require.Equal(t, 3, enc.ToData().Monsters[gobEntityID].HP)
+}
+
 func TestBoundsCanvasNPCActionPreservesV03BoundaryBehavior(t *testing.T) {
 	transport, broker := newRangeGateBroker()
 	defer func() { _ = broker.Close(); _ = transport.Close() }()

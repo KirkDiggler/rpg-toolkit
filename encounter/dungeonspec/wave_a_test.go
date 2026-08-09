@@ -19,7 +19,6 @@ key: ring-room
 name: Ring Room
 canvas: { width: 5, height: 5, floor_source: regions }
 rooms: []
-start: [1, 1]
 regions:
   - id: ring
     cells: [[1,1], [1,2], [1,3], [2,1], [2,3], [3,1], [3,2], [3,3]]
@@ -60,6 +59,8 @@ func TestWaveARegionRingProjectsCanonicalMaskAndCompleteEnvelope(t *testing.T) {
 	require.Empty(t, out.FieldErrors)
 	require.NotNil(t, out.FloorPlan)
 	require.Equal(t, dungeonspec.FloorSourceRegions, out.FloorPlan.FloorSource)
+	require.Equal(t, dungeonspec.FloorPlanCell{Column: 1, Row: 1}, *out.FloorPlan.Entrance,
+		"omitted region start must use the first canonical PartyCap-capable anchor")
 	require.Len(t, out.FloorPlan.FloorCells, 8)
 	floor := make(map[dungeonspec.FloorPlanCell]struct{}, 8)
 	for index, cell := range out.FloorPlan.FloorCells {
@@ -213,7 +214,7 @@ regions: [{ id: floor, cells: [[0,0], [0,1], [1,0], [1,1]] }]
 %s
 `
 	cases := []struct{ name, content, field string }{
-		{name: "start", content: "start: [2,2]", field: "start"},
+		{name: contractStartPath, content: "start: [2,2]", field: contractStartPath},
 		{name: "prop", content: `place: [{ ref: "dnd5e:props:pillar", at: [2,2] }]`, field: "place[0].at"},
 		{name: "monster", content: `place: [{ ref: "dnd5e:monsters:skeleton", at: [2,2] }]`, field: "place[0].at"},
 		{name: "wall", content: `walls: [{ from: [0,0], to: [2,2], kind: solid }]`, field: "walls[0].to"},

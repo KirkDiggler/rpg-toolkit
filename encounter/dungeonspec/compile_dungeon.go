@@ -18,7 +18,10 @@ const (
 	CompileModeStrict CompileMode = "strict"
 )
 
-const fieldCanvasFloorSource = "canvas.floor_source"
+const (
+	fieldCanvasFloorSource = "canvas.floor_source"
+	fieldStart             = "start"
+)
 
 // FieldError is ordered provider-authored validation feedback.
 type FieldError struct{ Field, Message, Code string }
@@ -56,10 +59,18 @@ func CompileDungeon(ctx context.Context, in *CompileDungeonInput) (*CompileDunge
 	}
 	spec, err := Decode(in.Source)
 	if err != nil {
-		return validationOutput(fieldErrorFor(err)), nil
+		field, authored := fieldErrorFor(err)
+		if !authored {
+			return nil, fmt.Errorf("dungeonspec: decode candidate: %w", err)
+		}
+		return validationOutput(field), nil
 	}
 	if err := Validate(spec); err != nil {
-		return validationOutput(fieldErrorFor(err)), nil
+		field, authored := fieldErrorFor(err)
+		if !authored {
+			return nil, fmt.Errorf("dungeonspec: validate candidate: %w", err)
+		}
+		return validationOutput(field), nil
 	}
 	compiled, err := compileWithConfig(spec, LoadConfig{PartyStartSeatCount: in.PartyStartSeatCount})
 	if err != nil {
@@ -72,7 +83,7 @@ func CompileDungeon(ctx context.Context, in *CompileDungeonInput) (*CompileDunge
 			}
 		}
 		if err := validateCompiledRuntime(ctx, compiled, in.PreviewSeed); err != nil {
-			return validationOutput(fieldErrorFor(err)), nil
+			return validationOutput(runnableFieldError(compiled, err)), nil
 		}
 	}
 	plan, err := BuildFloorPlan(ctx, BuildFloorPlanInput{Compiled: compiled, Seed: in.PreviewSeed})
@@ -82,7 +93,7 @@ func CompileDungeon(ctx context.Context, in *CompileDungeonInput) (*CompileDunge
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
-		return validationOutput(fieldErrorFor(err)), nil
+		return validationOutput(runnableFieldError(compiled, err)), nil
 	}
 	return &CompileDungeonOutput{Compiled: compiled, FloorPlan: &plan}, nil
 }
@@ -103,7 +114,7 @@ func strictRegionValidation(compiled CompiledDungeon) *FieldError {
 	if canvas.entrance == nil {
 		field := fieldCanvasFloorSource
 		if compiled.Params.PartyStart.Anchor != nil {
-			field = "start"
+			field = fieldStart
 		}
 		return &FieldError{
 			Field: field, Message: "no floor anchor has a complete same-component party start envelope",
@@ -143,10 +154,18 @@ func strictRegionValidation(compiled CompiledDungeon) *FieldError {
 	return nil
 }
 
-func fieldErrorFor(err error) FieldError {
+func fieldErrorFor(err error) (FieldError, bool) {
 	var authored *authoredValidationError
-	if errors.As(err, &authored) {
-		return FieldError{Field: authored.field, Message: authored.message, Code: authored.code}
+	if !errors.As(err, &authored) {
+		return FieldError{}, false
 	}
-	return FieldError{Field: "spec", Message: err.Error(), Code: "invalid_candidate"}
+	return FieldError{Field: authored.field, Message: authored.message, Code: authored.code}, true
+}
+
+func runnableFieldError(compiled CompiledDungeon, err error) FieldError {
+	field := "rooms"
+	if compiled.canvas != nil {
+		field = fieldStart
+	}
+	return FieldError{Field: field, Message: err.Error(), Code: "not_runnable"}
 }

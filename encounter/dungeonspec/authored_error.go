@@ -48,6 +48,12 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 		fields := yamlStructFields(typ)
 		for index := 0; index < len(node.Content); index += 2 {
 			key, value := node.Content[index], node.Content[index+1]
+			if key.Value == "<<" {
+				if err := validateYAMLMerge(value, typ, path); err != nil {
+					return err
+				}
+				continue
+			}
 			fieldType, ok := fields[key.Value]
 			child := key.Value
 			if path != "spec" {
@@ -93,6 +99,27 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 		}
 		return nil
 	}
+}
+
+func validateYAMLMerge(node *yaml.Node, typ reflect.Type, path string) error {
+	if node.Kind == yaml.AliasNode {
+		return validateYAMLShape(node.Alias, typ, path)
+	}
+	if node.Kind == yaml.SequenceNode {
+		for _, merged := range node.Content {
+			if merged.Kind != yaml.AliasNode && merged.Kind != yaml.MappingNode {
+				return authoredError(path, "invalid_yaml", "decode dungeon spec: %s merge must contain mappings", path)
+			}
+			if err := validateYAMLShape(merged, typ, path); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if node.Kind == yaml.MappingNode {
+		return validateYAMLShape(node, typ, path)
+	}
+	return authoredError(path, "invalid_yaml", "decode dungeon spec: %s merge must be a mapping or alias sequence", path)
 }
 
 func yamlStructFields(typ reflect.Type) map[string]reflect.Type {

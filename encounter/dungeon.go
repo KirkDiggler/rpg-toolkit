@@ -44,8 +44,8 @@ type DungeonParams struct {
 	EnvelopeEdges []GeneratedEdge
 
 	// RequireConnectedFloor marks region-union candidates that must pass the
-	// runnable floor gate whenever InitDungeon is attempted. Bounds canvases
-	// leave it false for v0.3 compatibility.
+	// runnable floor gate whenever InitDungeon is attempted. It is not a runtime
+	// mechanics authority: persisted FloorCells and the masked grid are.
 	RequireConnectedFloor bool
 
 	// AbsolutePlacedObstacles and AbsoluteReservedCells are absolute authored

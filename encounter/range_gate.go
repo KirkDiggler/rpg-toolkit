@@ -79,13 +79,20 @@ func checkReach(from, to core.Hex, limit int, label string) error {
 }
 
 func (e *Encounter) hasClearStructuralReach(from, to core.Hex) bool {
-	if e.room == nil || e.data == nil || e.data.Space == nil || !e.data.Space.RequireConnectedFloor {
+	if e.room == nil {
 		return true
 	}
 	grid := e.room.GetGrid()
 	fromPosition, toPosition := from.ToPosition(), to.ToPosition()
-	return grid.IsValidPosition(fromPosition) && grid.IsValidPosition(toPosition) &&
-		!e.room.IsLineOfSightBlocked(fromPosition, toPosition)
+	if !grid.IsValidPosition(fromPosition) || !grid.IsValidPosition(toPosition) {
+		return false
+	}
+	for _, position := range grid.GetLineOfSight(fromPosition, toPosition) {
+		if !grid.IsValidPosition(position) {
+			return false
+		}
+	}
+	return true
 }
 
 // checkInteractReach gates legacy generated-door verbs on the actor being

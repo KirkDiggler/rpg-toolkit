@@ -28,9 +28,15 @@ func (s *FloorMaskReachSuite) TestTargetReachRejectsLineAcrossVoid() {
 	anchor := floor[0]
 	s.Require().NoError(enc.InitDungeon(DungeonParams{
 		FloorSource: FloorSourceCanvas, Width: 5, Height: 5, FloorCells: floor,
-		RequireConnectedFloor: true, PartyStart: PartyStartParams{Anchor: &anchor, SeatCount: 1},
+		RequireConnectedFloor: false, PartyStart: PartyStartParams{Anchor: &anchor, SeatCount: 1},
 	}))
 	acrossVoid := core.HexFromPosition(spatial.Position{X: 3, Y: 3})
+	s.False(enc.ToData().Space.RequireConnectedFloor)
 	s.False(enc.hasClearStructuralReach(anchor, acrossVoid))
 	s.True(enc.hasClearStructuralReach(anchor, core.HexFromPosition(spatial.Position{X: 1, Y: 2})))
+	reloaded, err := LoadFromData(ctx, enc.ToData(), broker)
+	s.Require().NoError(err)
+	s.False(reloaded.ToData().Space.RequireConnectedFloor)
+	s.False(reloaded.hasClearStructuralReach(anchor, acrossVoid),
+		"persisted mask must reject target reach even when the mutable runnable flag is false")
 }
