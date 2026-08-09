@@ -1818,6 +1818,15 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **Task 6 fix cycle (plan defects found by quality review)**: the plan's
+  own Merge code allowed SELF-MERGE — validation passes against the
+  clock's own member set, then zeroing Other destroys the receiver while
+  reporting success. Fixed with an `in.Other == t` guard (`ErrBadOrder`)
+  + pin test; design Merge/error rows amended. Also: the plan's bad-order
+  test only exercised the length check — added subtests for the
+  "in neither clock" and "appears twice" branches; failed-merge R5
+  assertions extended to Order()+Round(); Dissolve's ownership-transfer
+  exception now stated in its godoc, not only the design.
 
 - Test style: the per-type suites (Tasks 3–10) use the testify suite pattern
   per design AC5; the cross-type integration tests (Tasks 11–12) are plain

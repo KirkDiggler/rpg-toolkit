@@ -110,7 +110,7 @@ convention.
 | `End` | `{Actor EntityID}` | `{Milestones, Next EntityID, RoundWrapped bool}` | MUST error unless `Actor == Active()`. Advances. On wrap: increments Round; milestones `TurnEnded{actor}, RoundStarted{n}, TurnStarted{next}`; otherwise `TurnEnded, TurnStarted`. |
 | `Insert` | `{ID EntityID, Pos int}` | `{Milestones}` | Fall-in / reinforcement at caller-chosen position. MUST error if the clock is idle (no order set — bubbles start via `SetOrder`), if ID is present, or if `Pos` is outside `[0, len]`. Inserting at or before the active position MUST keep the currently active entity active. Milestone: `MemberJoined`. |
 | `Remove` | `{ID EntityID}` | `{Milestones}` | Death/flee. MUST error if ID is absent (`ErrNotMember`). MUST keep the active entity correct: removing a non-active member adjusts the index; removing the active member makes the next member active (milestones `MemberLeft, TurnStarted{next}`); removing the last member leaves the clock empty (`MemberLeft` only). |
-| `Merge` | `{Other *Turn, Order []EntityID}` | `{Milestones}` | Two bubbles collide. MUST error if the receiving clock is idle. `Order` MUST be a permutation of the union of both member sets (error otherwise). The receiving clock's active entity MUST remain active; its Round is retained. `Other` is reset to the zero/idle state (empty order, `ActiveIdx 0`, `Round 0`). Milestone: `Merged`. |
+| `Merge` | `{Other *Turn, Order []EntityID}` | `{Milestones}` | Two bubbles collide. MUST error if the receiving clock is idle. `Other` MUST be a distinct clock — merging a clock into itself is refused (`ErrBadOrder`); without the guard, self-merge validates against its own member set and then zeroes the receiver while reporting success. `Order` MUST be a permutation of the union of both member sets (error otherwise). The receiving clock's active entity MUST remain active; its Round is retained. `Other` is reset to the zero/idle state (empty order, `ActiveIdx 0`, `Round 0`). Milestone: `Merged`. |
 | `Dissolve` | `{}` | `{Members []EntityID, Milestones}` | Fight over. MUST error if the clock is already empty. Empties the clock, returns the members for the composition to re-home. `Members` transfers ownership of the internal slice (the clock nils its own reference in the same call) — the one sanctioned exception to the module's copy-on-read convention. Milestone: `Dissolved`. |
 
 ## Tick — the world clock
@@ -197,7 +197,7 @@ functions it explains why no meaningful value exists.
 | `ErrNotMember` | entity is not in this clock | `Budget`, `Spend`, `Remove`, `Leave`, `LeaveMember` |
 | `ErrDuplicateMember` | entity already present | `SetOrder`, `Insert`, `Join`, `JoinMember` |
 | `ErrBadPosition` | `Pos` outside `[0, len]` | `Insert`, `JoinMember` |
-| `ErrBadOrder` | empty order, or `Merge.Order` not a permutation of the union | `SetOrder`, `Merge` |
+| `ErrBadOrder` | empty order, `Merge.Order` not a permutation of the union, or `Merge.Other` is the receiver itself | `SetOrder`, `Merge` |
 | `ErrBadAmount` | non-positive `Spend.Amount`, negative `Advance.Displacement` | `Spend`, `Advance` |
 | `ErrInsufficientBudget` | `Spend.Amount` exceeds the member's budget | `Spend` |
 | `ErrInvalidData` | any R9 rejection | `LoadTurn`, `LoadTick` |
