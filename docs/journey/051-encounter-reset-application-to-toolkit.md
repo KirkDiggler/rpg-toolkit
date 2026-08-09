@@ -222,20 +222,67 @@ carries out. That is what makes encounters composable at the next level
 up: a campaign is a thing that chains encounters by consuming their
 outcomes. The word always implied this. Now the type does.
 
+## Leaf modules and the version story
+
+Every axis is its own Go module — the pattern the repo already runs
+(`tools/spatial/v0.5.x`, `mechanics/spells/v0.2.1`): own `go.mod`, own
+directory-prefixed tag line, own release cadence. Kirk's call, and the
+reasoning is more than taste: **isolation is what makes versioning safe.**
+
+In Go, different major versions are different packages. If `encounter`
+speaks `clock/v2` types while `record` still expects `clock/v1` types,
+they cannot interoperate — that's the diamond hazard every multi-module
+family carries. The defense is structural, not procedural:
+
+> **The dependency-direction law.** `play/*` leaves depend on `core` (at
+> most `core` + `events`/`dice`), never on each other, and never on
+> rulebooks. Shared vocabulary lives in `core`'s small types. A flat
+> graph has no diamonds.
+
+The old module's `go.mod` is the named violation not to repeat:
+`encounter → rulebooks/dnd5e` is the exact leaf-to-content edge that made
+it un-generic *and* would have made it unversionable. Kept light, an axis
+like `knowledge` is nearly a pure library — observers, channels, memory,
+projection — testable with no game attached. Simple and powerful is the
+same property seen from two sides.
+
+Go enforces the import path, not the promise: the toolchain guarantees a
+`/v2` can't be imported as v1, but never checks that v0.5 actually works
+with what v0.4 worked with. So compatibility is checked in two layers we
+own:
+
+1. **Per-module API gate** — `gorelease`/`apidiff` in CI diffs each
+   module's exported surface against its last tag, fails accidental
+   breaks, and names the next allowed version.
+2. **The assembled default is the compatibility manifest.** Build-law #1
+   does double duty: the dnd5e assembly's `go.mod` pins the exact family
+   set its behavioral suite proves works together. If the assembly
+   resolves and its tests pass, the family is compatible. The matrix test
+   *is* the shipped product.
+
+One bridge deliberately left for later: a **parallel** encounter module
+while the old one still runs. Semantic import versioning allows
+`encounter/v2` (a `v2/` subdirectory, tagged `encounter/v2.0.0`) to
+coexist with the old path — even in the same binary, which would let
+rpg-api migrate incrementally. The cost: the import path wears `/v2`
+forever. The alternative: build under a scaffold name and take over the
+clean path at cutover, a trivial rename while the new module has no
+consumers. Both work; neither needs deciding until the composition module
+actually exists — the axes come first either way.
+
 ## Open questions
 
 - **Category name** — `play/` is the proposal for the four new axes
   (parallels `mechanics/` and `tools/` grammatically: the mechanics of
   rules, the tools of worlds, the play of running them). Kirk blesses or
   renames.
-- **Granularity** — one module per axis (the `mechanics/spells` pattern,
-  independently versionable) vs one `play` module with subpackages. The
-  tag history says nested modules are cheap here; lean per-axis, but it's
-  not load-bearing on day one.
 - **First axis** — the decider seam is the smallest and unblocks the
   monster-behavior work; the clock is the spine and the most fun to
   design. An architect gets to pick joy: nothing downstream forces the
   order.
+- **Parallel path vs takeover** — `encounter/v2` side-by-side or scaffold
+  name until cutover (see above). Decide when the composition module
+  exists.
 - **Cutover** — old `encounter` is bugfix-only from here (proposed);
   deletion happens whenever the new assembly actually hosts a game.
   Nothing forces a date; usefulness is allowed to arrive later. That's
