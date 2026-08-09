@@ -1820,6 +1820,15 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **Final integrative review (pre-PR)**: the Turn→Tick transfer direction
+  (bubble → world — the rpg-api monster-free-roam path) had zero
+  coverage; two tests added covering both adapters' error branches and
+  Tick-side compensation. Members() normalized to the nil-when-empty
+  convention (guard clause, no prealloc suppression); compat.yml's
+  gorelease pinned to a fixed x/exp version. Final coverage 99.5% — the
+  sole uncovered branch is Transfer's defensive double-failure,
+  unreachable with in-module clocks. AC5 exception note: milestone_test's
+  vocabulary pin is a plain function alongside the Tasks 11-12 exception.
 - **With Task 12**: goconst resolved via five function-local consts (file
   precedent, no nolint); plan's Task 12 text reconciled to its own test
   body (doc comment now mentions the round wrap that the plan's own code
