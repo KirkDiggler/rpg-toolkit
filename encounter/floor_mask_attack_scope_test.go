@@ -20,6 +20,7 @@ const (
 	floorMaskDamageDice = "1d6"
 	floorMaskActionType = "action"
 	floorMaskAttackID   = "attack"
+	floorMaskRefModule  = "dnd5e"
 )
 
 func scopedBoundsWithWall(t *testing.T, id core.EncounterID, broker *encounter.Broker) *encounter.Encounter {
@@ -77,7 +78,7 @@ func TestBoundsCanvasPlayerAttackPreservesV03BoundaryBehavior(t *testing.T) {
 	require.NoError(t, enc.SetMode(core.ModeTurnBased))
 	endTurnUntilActive(t, enc, aliceEntityID)
 	require.NoError(t, enc.TakeAction(alicePlayerID,
-		encounter.ActionRef{Module: "dnd5e", Type: floorMaskActionType, ID: floorMaskAttackID},
+		encounter.ActionRef{Module: floorMaskRefModule, Type: floorMaskActionType, ID: floorMaskAttackID},
 		encounter.ActionTarget{EntityID: gobEntityID},
 	))
 	require.Equal(t, 3, enc.ToData().Monsters[gobEntityID].HP,
