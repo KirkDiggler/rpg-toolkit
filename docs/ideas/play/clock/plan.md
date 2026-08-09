@@ -1818,6 +1818,15 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **With Task 9 (from Task 8's quality review)**: CRITICAL fix — the R9
+  Round-bounds amendment outlawed a reachable state: Remove-of-last-member
+  left Round intact, so attrition-ended fights produced unloadable saves.
+  Remove's empty arm now resets Round 0 (design Remove row amended);
+  pin test remove-last → round-trip → canonical idle. Also: Contains and
+  Members-sorted-order pins (zero-budget member is still a member);
+  idle-negative-round rejection row; canonical-idle Round() assertion;
+  highWater nolint removed (Advance consumes it) and goconst nolint reason
+  cites toolkit#904.
 - **With Task 8 (from Task 7's quality review)**: golden-JSON wire-shape
   test (the tags are the persistence contract and gorelease cannot see tag
   renames); R9 Round bounds enforced in LoadTurn (design amended: Round
