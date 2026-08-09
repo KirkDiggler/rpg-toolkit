@@ -52,7 +52,8 @@ wall-clock time; merging tick clocks; concurrency safety.
   leave both clocks unchanged when it fails.
 - **R7** — The module MUST NOT contain randomness. All orderings arrive from
   the caller (`SetOrderInput.Order`, `InsertInput.Pos`, `MergeInput.Order`).
-- **R8** — Dynamic state MUST round-trip via `ToData`/`LoadFromData`
+- **R8** — Dynamic state MUST round-trip via `ToData` and the
+  `LoadTurn`/`LoadTick` constructors
   (plain JSON-serializable structs, no behavior). Configuration MUST be
   re-supplied at construction and MUST NOT serialize.
 - **R9** — `LoadTurn`/`LoadTick` MUST reject invalid state with an error:
@@ -93,9 +94,11 @@ A zero/empty `Turn` is valid and idle.
 
 Queries: `Active() (core.EntityID, error)` and `Round() (int, error)`
 (both `ErrIdle` when no order is set — never a guessable zero value),
-`Order() ([]core.EntityID, error)`,
-`Contains(in *ContainsInput) (bool, error)` (false is an answer; no
-sentinel today).
+`Order() ([]core.EntityID, error)` (an idle clock answers with an empty
+slice and nil error — an empty list is an answer, like `Contains`'s
+false), `Contains(in *ContainsInput) (bool, error)` (false is an answer;
+no sentinel today). `Members()` on `Tick` follows the same empty-slice
+convention.
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
@@ -177,7 +180,7 @@ functions it explains why no meaningful value exists.
 | `ErrBadOrder` | empty order, or `Merge.Order` not a permutation of the union | `SetOrder`, `Merge` |
 | `ErrBadAmount` | non-positive `Spend.Amount`, negative `Advance.Displacement` | `Spend`, `Advance` |
 | `ErrInsufficientBudget` | `Spend.Amount` exceeds the member's budget | `Spend` |
-| `ErrInvalidData` | any R9 rejection | `LoadFromData` |
+| `ErrInvalidData` | any R9 rejection | `LoadTurn`, `LoadTick` |
 
 ## Acceptance criteria
 
@@ -190,7 +193,7 @@ functions it explains why no meaningful value exists.
 - **AC2 (invariants)** — active index valid or clock empty after every verb
   sequence; milestone causal order; `Transfer` failure leaves both clocks
   byte-identical (`ToData` compare).
-- **AC3 (round-trip)** — `ToData`/`LoadFromData` at every distinct state
+- **AC3 (round-trip)** — `ToData` → `LoadTurn`/`LoadTick` at every distinct state
   (idle, mid-round, post-merge, post-dissolve; tick with partial budgets)
   reproduces behavior-identical clocks; R9 rejections each have a test.
 - **AC4 (compat gate)** — `gorelease`/`apidiff` wired into CI from the first
