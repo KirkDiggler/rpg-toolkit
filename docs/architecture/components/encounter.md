@@ -1,7 +1,7 @@
 ---
 name: encounter module
 description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, combatant hydration cascade, discrete-phase combat orchestration, MovementResolver seam (both movement directions), walled-room space + wall-aware LoS + inline combat entry
-updated: 2026-07-13
+updated: 2026-08-09
 confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions; #697 (TakeAction wave, ADR-0032) deleted the attack-only gate — non-attack refs delegate to the held character's economy/menu, turn-start seeding moved into the engine, ActorTurnState exposes the menu as data; #757 (the walled room) added SpaceData, wall-aware VisibleHexesAt/CanSeeAt, wall-blocked movement, and inline combat-entry self-transition
 ---
 
@@ -827,6 +827,26 @@ same backing slice — mirrors `applyAndPublishMove`'s
 `append([]core.Hex(nil), traveledPath...)` pattern, since `AddMonster`'s
 mid-combat reinforcement path (`e.data.Initiative = append(e.data.Initiative,
 input.ID)`, #757) can grow the roster after this event already published.
+
+## Canonical canvas floor masks (Dungeon YAML v0.4 Wave A)
+
+`dungeonspec.CompileDungeon` is the native protobuf-free authoring seam. It
+accepts complete standalone source bytes, Draft/Strict mode, PartyStartSeatCount
+and PreviewSeed; it never accepts a previous compiled value or display/source
+name. Draft returns canonical projections for structurally valid empty, tiny or
+disconnected region unions. Strict additionally requires a nonempty connected
+mask and a same-component complete party-start reservation. Authored failures are
+ordered `FieldError{Field,Message,Code}` values; infrastructure failures remain
+Go errors.
+
+Canvas compilation resolves omission/`bounds` to the v0.3 rectangle and
+`regions` to the canonical deduplicated union. `DungeonParams.FloorCells` and
+`EnvelopeEdges` carry that one truth into runtime; `SpaceData` persists both as
+the exact encounter snapshot. Reload validates, rather than regenerates, them.
+The masked runtime grid is shared by placement, movement/pathing and targeting;
+LoS rays fail closed across void, and perception never records invalid cells.
+Envelope pairs retain actual void/off-canvas endpoints but attach to knowledge
+only at their single floor owner. See ADR-0035.
 
 ## Implementation notes worth keeping
 

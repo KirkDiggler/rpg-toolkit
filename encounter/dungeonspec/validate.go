@@ -177,17 +177,36 @@ func validateCanvas(spec *DungeonSpec) error {
 	if len(spec.Connectors) != 0 {
 		return fmt.Errorf("canvas mode does not support connectors")
 	}
-	floor := make(map[[2]int]struct{}, cellCount)
+	bounds := make(map[[2]int]struct{}, cellCount)
 	for c := 0; c < spec.Canvas.Width; c++ {
 		for r := 0; r < spec.Canvas.Height; r++ {
-			floor[[2]int{c, r}] = struct{}{}
+			bounds[[2]int{c, r}] = struct{}{}
 		}
+	}
+	if err := validateRegions(spec.Regions, bounds); err != nil {
+		return err
+	}
+	floor := bounds
+	switch spec.Canvas.FloorSource {
+	case "", string(FloorSourceBounds):
+	case string(FloorSourceRegions):
+		floor = make(map[[2]int]struct{})
+		for _, region := range spec.Regions {
+			for _, cell := range region.Cells {
+				floor[cell] = struct{}{}
+			}
+		}
+	default:
+		return fmt.Errorf(
+			"canvas.floor_source: invalid value %q (must be %q or %q)",
+			spec.Canvas.FloorSource, FloorSourceBounds, FloorSourceRegions,
+		)
 	}
 	occupied := map[[2]int]string{}
 	for i, e := range spec.Place {
 		path := fmt.Sprintf("place[%d]", i)
 		if _, ok := floor[e.At]; !ok {
-			return fmt.Errorf("%s.at %v is out of canvas floor footprint", path, e.At)
+			return fmt.Errorf("%s.at %v is outside structural floor", path, e.At)
 		}
 		if prior, ok := occupied[e.At]; ok {
 			return fmt.Errorf("%s.at %v is already occupied by %q", path, e.At, prior)
@@ -199,14 +218,11 @@ func validateCanvas(spec *DungeonSpec) error {
 	}
 	if spec.Start != nil {
 		if _, ok := floor[*spec.Start]; !ok {
-			return fmt.Errorf("start %v is out of canvas floor footprint", *spec.Start)
+			return fmt.Errorf("start %v is outside structural floor", *spec.Start)
 		}
 		if prior, ok := occupied[*spec.Start]; ok {
 			return fmt.Errorf("start %v conflicts with %q", *spec.Start, prior)
 		}
-	}
-	if err := validateRegions(spec.Regions, floor); err != nil {
-		return err
 	}
 	return validateWallsOnFloor(spec, floor, spec.Canvas.Width, spec.Canvas.Height)
 }
@@ -246,14 +262,15 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 	}
 	for left := range sets {
 		for right := left + 1; right < len(sets); right++ {
-			if len(sets[left]) == 0 || len(sets[right]) == 0 {
-				continue
-			}
 			intersection := 0
 			for cell := range sets[left] {
 				if _, ok := sets[right][cell]; ok {
 					intersection++
 				}
+			}
+			equal := len(sets[left]) == len(sets[right]) && intersection == len(sets[left])
+			if equal {
+				return fmt.Errorf("regions[%d].cells: equal cell set duplicates regions[%d].cells", right, left)
 			}
 			if intersection == 0 {
 				continue
@@ -261,7 +278,7 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 			leftInsideRight := intersection == len(sets[left]) && len(sets[left]) < len(sets[right])
 			rightInsideLeft := intersection == len(sets[right]) && len(sets[right]) < len(sets[left])
 			if !leftInsideRight && !rightInsideLeft {
-				return fmt.Errorf("regions %q and %q have equal or partial overlap", regions[left].ID, regions[right].ID)
+				return fmt.Errorf("regions[%d].cells: partial overlap with regions[%d].cells", right, left)
 			}
 		}
 	}

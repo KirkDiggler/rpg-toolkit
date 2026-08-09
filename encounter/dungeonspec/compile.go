@@ -402,9 +402,13 @@ func compileFacing(label *string) (*uint32, error) {
 
 type canvasCompiled struct {
 	width, height int
-	entrance      FloorPlanCell
-	occupancy     []canvasSourceOccupancy // source order for LoadWithPrevious
-	regionCells   []namedCanvasCell       // internal-only synthetic test seam
+	floorSource   FloorSource
+	floorCells    []FloorPlanCell
+	entrance      *FloorPlanCell
+	envelope      []encounter.GeneratedEdge
+	regions       []FloorPlanRegion
+	occupancy     []canvasSourceOccupancy // retained for legacy LoadWithPrevious callers
+	regionCells   []namedCanvasCell
 }
 
 type canvasSourceOccupancy struct {
@@ -425,12 +429,36 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 	if err != nil {
 		return CompiledDungeon{}, err
 	}
-	cc := &canvasCompiled{width: spec.Canvas.Width, height: spec.Canvas.Height}
-	if spec.Start != nil {
-		cc.entrance = FloorPlanCell{spec.Start[0], spec.Start[1]}
-	} else {
-		cc.entrance = FloorPlanCell{0, 0}
+	cc := &canvasCompiled{
+		width: spec.Canvas.Width, height: spec.Canvas.Height,
+		floorSource: FloorSource(spec.Canvas.FloorSource),
 	}
+	if cc.floorSource == "" {
+		cc.floorSource = FloorSourceBounds
+	}
+	floorSet := make(map[[2]int]struct{})
+	if cc.floorSource == FloorSourceRegions {
+		for _, region := range spec.Regions {
+			for _, cell := range region.Cells {
+				floorSet[cell] = struct{}{}
+			}
+		}
+	} else {
+		for col := 0; col < spec.Canvas.Width; col++ {
+			for row := 0; row < spec.Canvas.Height; row++ {
+				floorSet[[2]int{col, row}] = struct{}{}
+			}
+		}
+	}
+	for cell := range floorSet {
+		cc.floorCells = append(cc.floorCells, FloorPlanCell{Column: cell[0], Row: cell[1]})
+	}
+	sort.Slice(cc.floorCells, func(i, j int) bool { return floorPlanCellLess(cc.floorCells[i], cc.floorCells[j]) })
+	floorHexes := make([]core.Hex, len(cc.floorCells))
+	for index, cell := range cc.floorCells {
+		floorHexes[index] = canvasHex(cell)
+	}
+	cc.envelope = compileEnvelope(floorHexes)
 
 	semanticRegions := make([]encounter.SemanticRegionParams, len(spec.Regions))
 	for index, region := range spec.Regions {
@@ -458,13 +486,14 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 	}
 	params := encounter.DungeonParams{
 		Key: spec.Key, Width: spec.Canvas.Width, Height: spec.Canvas.Height, Theme: spec.Theme,
-		SemanticRegions: semanticRegions,
-		FloorSource:     encounter.FloorSourceCanvas,
-		PartyStart:      encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount},
-		AuthoredEdges:   edges,
+		SemanticRegions: semanticRegions, FloorCells: floorHexes, EnvelopeEdges: cc.envelope,
+		FloorSource: encounter.FloorSourceCanvas, RequireConnectedFloor: cc.floorSource == FloorSourceRegions,
+		PartyStart: encounter.PartyStartParams{SeatCount: config.PartyStartSeatCount}, AuthoredEdges: edges,
 	}
-	anchor := canvasHex(cc.entrance)
-	params.PartyStart.Anchor = &anchor
+	if spec.Start != nil {
+		anchor := canvasHex(FloorPlanCell{Column: spec.Start[0], Row: spec.Start[1]})
+		params.PartyStart.Anchor = &anchor
+	}
 	spawns := make([]SpawnInstruction, 0, len(spec.Place))
 	for index, entry := range spec.Place {
 		refType, err := refParts(entry.Ref)
@@ -502,7 +531,150 @@ func compileCanvas(spec *DungeonSpec, config LoadConfig) (CompiledDungeon, error
 	if spec.Start != nil {
 		cc.occupancy = append(cc.occupancy, canvasSourceOccupancy{source: "start", cell: *spec.Start})
 	}
+	cc.regions = compileFloorPlanRegions(spec.Regions)
+	cc.entrance = resolveDraftEntrance(cc.floorCells, spec.Start, spec.Place, config.PartyStartSeatCount)
 	return CompiledDungeon{Params: params, Spawns: spawns, canvas: cc}, nil
+}
+
+func compileEnvelope(floorCells []core.Hex) []encounter.GeneratedEdge {
+	floor := make(map[core.Hex]struct{}, len(floorCells))
+	for _, cell := range floorCells {
+		floor[cell] = struct{}{}
+	}
+	seen := make(map[wallEdgeKey]struct{})
+	var edges []encounter.GeneratedEdge
+	for owner := range floor {
+		for _, cube := range owner.ToCube().GetNeighbors() {
+			neighbor := core.HexFromCube(cube)
+			if _, ok := floor[neighbor]; ok {
+				continue
+			}
+			from, to := owner, neighbor
+			if wallHexLess(to, from) {
+				from, to = to, from
+			}
+			key := newWallEdgeKey(from, to)
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			edges = append(edges, encounter.GeneratedEdge{From: from, To: to, Kind: encounter.GeneratedEdgeKindSolid})
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		if wallHexLess(edges[i].From, edges[j].From) {
+			return true
+		}
+		if wallHexLess(edges[j].From, edges[i].From) {
+			return false
+		}
+		return wallHexLess(edges[i].To, edges[j].To)
+	})
+	return edges
+}
+
+func compileFloorPlanRegions(regions []RegionSpec) []FloorPlanRegion {
+	out := make([]FloorPlanRegion, len(regions))
+	sets := make([]map[[2]int]struct{}, len(regions))
+	for i, region := range regions {
+		sets[i] = make(map[[2]int]struct{}, len(region.Cells))
+		out[i] = FloorPlanRegion{ID: region.ID, Name: cloneString(region.Name), Archetype: cloneString(region.Archetype)}
+		for _, cell := range region.Cells {
+			sets[i][cell] = struct{}{}
+		}
+		for cell := range sets[i] {
+			out[i].Cells = append(out[i].Cells, FloorPlanCell{Column: cell[0], Row: cell[1]})
+		}
+		sort.Slice(out[i].Cells, func(a, b int) bool { return floorPlanCellLess(out[i].Cells[a], out[i].Cells[b]) })
+	}
+	for child := range sets {
+		if len(sets[child]) == 0 {
+			continue
+		}
+		parent := -1
+		for candidate := range sets {
+			if child == candidate || len(sets[candidate]) <= len(sets[child]) {
+				continue
+			}
+			contains := true
+			for cell := range sets[child] {
+				if _, ok := sets[candidate][cell]; !ok {
+					contains = false
+					break
+				}
+			}
+			if contains && (parent == -1 || len(sets[candidate]) < len(sets[parent])) {
+				parent = candidate
+			}
+		}
+		if parent >= 0 {
+			id := regions[parent].ID
+			out[child].ParentID = &id
+		}
+	}
+	return out
+}
+
+func resolveDraftEntrance(
+	floorCells []FloorPlanCell,
+	authored *[2]int,
+	placements []PlacedEntry,
+	seatCount int,
+) *FloorPlanCell {
+	if seatCount < 1 {
+		return nil
+	}
+	floor := make(map[[2]int]struct{}, len(floorCells))
+	for _, cell := range floorCells {
+		floor[[2]int{cell.Column, cell.Row}] = struct{}{}
+	}
+	blocked := make(map[[2]int]struct{}, len(placements))
+	for _, placement := range placements {
+		blocked[placement.At] = struct{}{}
+	}
+	anchors := append([]FloorPlanCell(nil), floorCells...)
+	if authored != nil {
+		anchors = []FloorPlanCell{{Column: authored[0], Row: authored[1]}}
+	}
+	for _, anchor := range anchors {
+		key := [2]int{anchor.Column, anchor.Row}
+		if _, ok := floor[key]; !ok {
+			continue
+		}
+		if _, no := blocked[key]; no {
+			continue
+		}
+		component := map[[2]int]struct{}{key: {}}
+		queue := [][2]int{key}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			h := canvasHex(FloorPlanCell{Column: current[0], Row: current[1]})
+			for _, cube := range h.ToCube().GetNeighbors() {
+				pos := core.HexFromCube(cube).ToPosition()
+				next := [2]int{int(pos.X), int(pos.Y)}
+				if _, ok := floor[next]; !ok {
+					continue
+				}
+				if _, seen := component[next]; seen {
+					continue
+				}
+				component[next] = struct{}{}
+				queue = append(queue, next)
+			}
+		}
+		available := 0
+		for cell := range component {
+			if _, no := blocked[cell]; !no {
+				available++
+			}
+		}
+		if available >= seatCount {
+			value := anchor
+			return &value
+		}
+	}
+	return nil
 }
 
 func validatePreviousCanvas(candidate, previous CompiledDungeon) error {

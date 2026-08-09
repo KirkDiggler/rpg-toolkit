@@ -42,8 +42,11 @@ func VisibleHexesAt(from core.Hex, sightRange int, room spatial.Room) core.HexSe
 				continue
 			}
 			h := core.Hex{Q: from.Q + dq, R: from.R + dr, S: from.S + ds}
-			if room != nil && room.IsLineOfSightBlocked(fromPos, h.ToPosition()) {
-				continue
+			if room != nil {
+				targetPos := h.ToPosition()
+				if !room.GetGrid().IsValidPosition(targetPos) || room.IsLineOfSightBlocked(fromPos, targetPos) {
+					continue
+				}
 			}
 			out[h] = struct{}{}
 		}
@@ -62,8 +65,11 @@ func CanSeeAt(viewer *View, target core.Hex, room spatial.Room) bool {
 	if HexDistance(viewer.Position, target) > viewer.SightRange {
 		return false
 	}
-	if room != nil && room.IsLineOfSightBlocked(viewer.Position.ToPosition(), target.ToPosition()) {
-		return false
+	if room != nil {
+		targetPos := target.ToPosition()
+		if !room.GetGrid().IsValidPosition(targetPos) || room.IsLineOfSightBlocked(viewer.Position.ToPosition(), targetPos) {
+			return false
+		}
 	}
 	return true
 }

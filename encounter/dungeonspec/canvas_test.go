@@ -33,12 +33,11 @@ func Test883CanvasModeAndProviderContract(t *testing.T) {
 	require.Equal(t, 4, plan.Width)
 	require.Equal(t, 2, plan.Height)
 	require.Equal(t, []FloorPlanCell{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}}, plan.FloorCells)
-	require.Equal(t, FloorPlanCell{1, 1}, plan.Entrance)
-	require.Equal(t, []FloorPlanEdge{{
+	require.Equal(t, &FloorPlanCell{1, 1}, plan.Entrance)
+	require.Contains(t, plan.Edges, FloorPlanEdge{
 		From: FloorPlanCell{1, 0}, To: FloorPlanCell{1, 1},
-		Kind:   FloorPlanEdgeKindDoor,
-		DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0",
-	}}, plan.Edges)
+		Kind: FloorPlanEdgeKindDoor, DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0",
+	})
 }
 
 func Test883CanvasModeMatrixAndShrink(t *testing.T) {
@@ -107,7 +106,7 @@ walls:
 			DoorID: "room-provider-door-crossing-boss", FromRoomID: crossingRoomID, ToRoomID: archetypeBoss, Column: 26,
 		},
 	}, plan.Connectors)
-	require.Equal(t, FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
+	require.Equal(t, &FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
 
 	doorIDs := make(map[string]bool, len(plan.Edges))
 	for _, edge := range plan.Edges {

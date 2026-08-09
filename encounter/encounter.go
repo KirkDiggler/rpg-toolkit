@@ -329,6 +329,9 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 // Spell-cost reactions (Shield, Counterspell) are seeded false and require
 // the player to opt in via SetReactionReady.
 func (e *Encounter) AddPlayer(input PlayerInput) error {
+	if e.room != nil && !e.room.GetGrid().IsValidPosition(input.Position.ToPosition()) {
+		return fmt.Errorf("player %q position %v is outside structural floor", input.PlayerID, input.Position)
+	}
 	if _, exists := e.data.Players[input.PlayerID]; exists {
 		return fmt.Errorf("player %q already in encounter", input.PlayerID)
 	}
@@ -436,6 +439,9 @@ func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.
 // why a caller holding an old Room()/RoomOrchestrator() reference across
 // this call would observe stale geometry.
 func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) error {
+	if e.room != nil && !e.room.GetGrid().IsValidPosition(position.ToPosition()) {
+		return fmt.Errorf("add door %q: position %v is outside structural floor", id, position)
+	}
 	if authoredEndpointContains(e.data.Space, position) {
 		return fmt.Errorf("add door %q: position %v is an authored edge endpoint", id, position)
 	}
@@ -487,6 +493,9 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 // unchanged for every other caller — this is a pure extraction, not a
 // behavior change.
 func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
+	if e.room != nil && !e.room.GetGrid().IsValidPosition(input.Position.ToPosition()) {
+		return fmt.Errorf("monster %q position %v is outside structural floor", input.ID, input.Position)
+	}
 	if input.ID == "" {
 		return errors.New("monster ID required")
 	}

@@ -427,6 +427,9 @@ func (e *Encounter) applyCapturedAttacks(
 		// One out-of-reach swing (e.g. a target that Disengaged mid-turn, if
 		// that ever lands) simply doesn't connect; any other captured
 		// attacks in this turn still resolve normally.
+		if !e.hasClearStructuralReach(mon.Position, targetPlayer.View.Position) {
+			continue
+		}
 		if atk.IsMelee {
 			reach := meleeReachForCombatant(e.combatantFor(mon.ID))
 			if checkReach(mon.Position, targetPlayer.View.Position, reach, "reach") != nil {
@@ -1055,6 +1058,9 @@ func (e *Encounter) npcActScripted(_ context.Context, mon *MonsterData) error {
 	// returning an error here would make an out-of-reach monster wedge the
 	// encounter forever (every retry hits the identical rejection). A
 	// monster that can't reach anyone simply passes its turn.
+	if !e.hasClearStructuralReach(mon.Position, target.View.Position) {
+		return nil
+	}
 	reach := meleeReachForCombatant(e.combatantFor(mon.ID))
 	if checkReach(mon.Position, target.View.Position, reach, "reach") != nil {
 		return nil

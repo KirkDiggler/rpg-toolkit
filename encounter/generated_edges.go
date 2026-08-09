@@ -26,10 +26,10 @@ const (
 // and doors use their threshold cell plus the designated passage neighbor.
 // DoorID is populated only when Kind is GeneratedEdgeKindDoor.
 type GeneratedEdge struct {
-	From   core.Hex
-	To     core.Hex
-	Kind   GeneratedEdgeKind
-	DoorID core.EntityID
+	From   core.Hex          `json:"from"`
+	To     core.Hex          `json:"to"`
+	Kind   GeneratedEdgeKind `json:"kind"`
+	DoorID core.EntityID     `json:"door_id,omitempty"`
 }
 
 // DescribeGeneratedEdgesInput reserves an explicit input boundary for the
@@ -105,6 +105,7 @@ type generatedEdgeRecord struct {
 	blocksMovement       bool
 	blocksLoS            bool
 	observeBothEndpoints bool
+	observationOwner     *core.Hex
 }
 
 type generatedEdgeKey struct {
@@ -210,6 +211,19 @@ func (e *Encounter) canonicalGeneratedEdgeRecordsWithOverlay(
 	}
 
 	if e.data.Space != nil {
+		floor := canvasFloorForSpace(e.data.Space)
+		for _, edge := range e.data.Space.EnvelopeEdges {
+			owner := edge.From
+			if _, ok := floor[owner]; !ok {
+				owner = edge.To
+			}
+			record := generatedEdgeRecord{
+				edge: edge, blocksMovement: true, blocksLoS: true, observationOwner: &owner,
+			}
+			if err := add(record); err != nil {
+				return nil, err
+			}
+		}
 		for _, wall := range e.data.Space.Walls {
 			if !wall.BlocksMovement && !wall.BlocksLoS {
 				continue

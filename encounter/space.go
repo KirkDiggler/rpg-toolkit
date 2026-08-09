@@ -110,20 +110,97 @@ func snapshotWalls(room spatial.Room) []environments.WallSegmentData {
 // validateCanvasSpace validates the durable canvas floor and semantic facts as
 // one snapshot. Viewer ZoneIDs are validated against the same immutable scope
 // set, never against a coordinate-derived replacement.
-func validateCanvasSpace(space *SpaceData, players map[core.PlayerID]*PlayerData) error {
+func validateCanvasSpace(
+	space *SpaceData,
+	players map[core.PlayerID]*PlayerData,
+	monsters map[core.EntityID]*MonsterData,
+) error {
 	if _, err := ValidateCanvasDimensions(space.Width, space.Height); err != nil {
 		return fmt.Errorf("validate canvas dimensions: %w", err)
 	}
 	if len(space.Regions) != 0 {
 		return fmt.Errorf("canvas space must not contain room-chain regions")
 	}
-	if err := validateSemanticRegionData(space.SemanticRegions, canvasFloorHexes(space.Width, space.Height)); err != nil {
+	if space.FloorCells != nil {
+		if err := validateCanonicalFloorCells(space.Width, space.Height, space.FloorCells); err != nil {
+			return fmt.Errorf("validate floor cells: %w", err)
+		}
+	}
+	floor := canvasFloorForSpace(space)
+	if space.RequireConnectedFloor {
+		if len(floor) == 0 {
+			return fmt.Errorf("structural floor must not be empty")
+		}
+		for anchor := range floor {
+			if len(connectedFloorComponent(anchor, floor)) != len(floor) {
+				return fmt.Errorf("structural floor must be connected")
+			}
+			break
+		}
+	}
+	if space.FloorCells != nil || space.EnvelopeEdges != nil {
+		if err := validateEnvelopeEdges(floor, space.EnvelopeEdges); err != nil {
+			return fmt.Errorf("validate envelope: %w", err)
+		}
+	}
+	if err := validateSemanticRegionData(space.SemanticRegions, floor); err != nil {
 		return fmt.Errorf("validate semantic regions: %w", err)
+	}
+	if _, ok := floor[space.Entrance]; !ok {
+		return fmt.Errorf("entrance %v is outside structural floor", space.Entrance)
+	}
+	for index, seat := range space.PartyStartPositions {
+		if _, ok := floor[seat]; !ok {
+			return fmt.Errorf("party start position %d %v is outside structural floor", index, seat)
+		}
+	}
+	for _, obstacle := range space.Obstacles {
+		if _, ok := floor[obstacle.Position]; !ok {
+			return fmt.Errorf("obstacle %q at %v is outside structural floor", obstacle.ID, obstacle.Position)
+		}
+	}
+	for id, player := range players {
+		if player == nil || player.View == nil {
+			continue
+		}
+		if _, ok := floor[player.View.Position]; !ok {
+			return fmt.Errorf("player %q at %v is outside structural floor", id, player.View.Position)
+		}
+		for known := range player.View.Memory {
+			if _, ok := floor[known]; !ok {
+				return fmt.Errorf("player %q known hex %v is outside structural floor", id, known)
+			}
+		}
+	}
+	for id, monster := range monsters {
+		if monster == nil {
+			continue
+		}
+		if _, ok := floor[monster.Position]; !ok {
+			return fmt.Errorf("monster %q at %v is outside structural floor", id, monster.Position)
+		}
 	}
 	if err := validateObservedZoneIDs(players, space); err != nil {
 		return fmt.Errorf("validate viewer zone observations: %w", err)
 	}
 	return nil
+}
+
+func newEncounterSpatialRoom(
+	id core.EncounterID,
+	space *SpaceData,
+	source FloorSourceKind,
+) (spatial.Room, spatial.Grid) {
+	if source == FloorSourceCanvas {
+		grid := newFloorMaskGrid(space.Width, space.Height, canvasFloorForSpace(space))
+		base := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: string(id), Type: "encounter_room", Grid: grid})
+		return &floorMaskRoom{BasicRoom: base, grid: grid}, grid
+	}
+	grid := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width: float64(space.Width), Height: float64(space.Height), Orientation: spatial.HexOrientationPointyTop,
+	})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: string(id), Type: "encounter_room", Grid: grid})
+	return room, grid
 }
 
 // registerRoom wires room into a fresh orchestrator for this Encounter
@@ -171,7 +248,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 		return fmt.Errorf("validate floor source: %w", err)
 	}
 	if source == FloorSourceCanvas {
-		if err := validateCanvasSpace(sd, e.data.Players); err != nil {
+		if err := validateCanvasSpace(sd, e.data.Players, e.data.Monsters); err != nil {
 			return err
 		}
 	}
@@ -179,16 +256,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 	if _, err := e.canonicalGeneratedEdgeRecordsWithOverlay(authoredByKey); err != nil {
 		return fmt.Errorf("validate effective generated edges: %w", err)
 	}
-	grid := spatial.NewHexGrid(spatial.HexGridConfig{
-		Width:       float64(sd.Width),
-		Height:      float64(sd.Height),
-		Orientation: spatial.HexOrientationPointyTop,
-	})
-	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:   string(e.data.ID),
-		Type: "encounter_room",
-		Grid: grid,
-	})
+	room, grid := newEncounterSpatialRoom(e.data.ID, sd, source)
 	placed := make(map[spatial.CubeCoordinate]struct{}, len(sd.Walls)+len(e.data.Doors))
 	// placeWallBlocker places (or, if cube is already occupied, no-ops) an
 	// indestructible blocking WallEntity at cube — shared by both the
@@ -298,7 +366,7 @@ func (e *Encounter) rebuildRoomFromData() error {
 			if !blocks {
 				continue // Open authored doors deliberately register no blocker.
 			}
-			if err := room.RegisterBoundary(spatial.Boundary{
+			if err := room.(spatial.BoundaryAwareRoom).RegisterBoundary(spatial.Boundary{
 				From:              edge.From.ToPosition(),
 				To:                edge.To.ToPosition(),
 				BlocksMovement:    true,
