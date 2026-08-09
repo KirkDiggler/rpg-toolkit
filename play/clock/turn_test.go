@@ -90,6 +90,21 @@ func (s *TurnSuite) TestSetOrderReplacesAndFailedSetOrderChangesNothing() {
 	active, err = s.turn.Active()
 	s.Require().NoError(err)
 	s.Equal(core.EntityID("x"), active)
+
+	// wrap into round 2, then a further replacement must reset to round 1
+	_, err = s.turn.End(&clock.EndInput{Actor: "x"})
+	s.Require().NoError(err)
+	_, err = s.turn.End(&clock.EndInput{Actor: "y"})
+	s.Require().NoError(err)
+	round, err := s.turn.Round()
+	s.Require().NoError(err)
+	s.Equal(2, round)
+	out, err = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"z"}})
+	s.Require().NoError(err)
+	s.Equal([]clock.Milestone{
+		{Kind: clock.RoundStarted, Round: 1},
+		{Kind: clock.TurnStarted, Subject: "z", Round: 1},
+	}, out.Milestones)
 }
 
 // TestNoAliasingThroughSetOrderOrOrder pins the defensive-copy invariants.
@@ -142,4 +157,118 @@ func (s *TurnSuite) TestEndErrors() {
 	active, err := s.turn.Active() // unchanged (R5)
 	s.Require().NoError(err)
 	s.Equal(core.EntityID("a"), active)
+}
+
+// TestEndSingleMemberWraps pins Next == Actor on a one-member clock —
+// every End wraps, and a composition loop waiting for Active to change
+// would hang; this pin documents the contract.
+func (s *TurnSuite) TestEndSingleMemberWraps() {
+	_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+	s.Require().NoError(err)
+	out, err := s.turn.End(&clock.EndInput{Actor: "a"})
+	s.Require().NoError(err)
+	s.Equal(core.EntityID("a"), out.Next)
+	s.True(out.RoundWrapped)
+	s.Equal([]clock.Milestone{
+		{Kind: clock.TurnEnded, Subject: "a", Round: 1},
+		{Kind: clock.RoundStarted, Round: 2},
+		{Kind: clock.TurnStarted, Subject: "a", Round: 2},
+	}, out.Milestones)
+}
+
+func (s *TurnSuite) TestInsertKeepsActiveEntityActive() {
+	cases := []struct {
+		name string
+		pos  int
+	}{
+		{"before active", 0},
+		{"at active", 1},
+		{"after active", 2},
+		{"at end", 3},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			// fresh clock per subtest; advance so "b" (idx 1) is active
+			s.turn = &clock.Turn{}
+			_, err := s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b", "c"}})
+			s.Require().NoError(err)
+			_, err = s.turn.End(&clock.EndInput{Actor: "a"})
+			s.Require().NoError(err)
+
+			out, err := s.turn.Insert(&clock.InsertInput{ID: "x", Pos: tc.pos})
+			s.Require().NoError(err)
+			s.Equal([]clock.Milestone{{Kind: clock.MemberJoined, Subject: "x", Round: 1}}, out.Milestones)
+			active, err := s.turn.Active()
+			s.Require().NoError(err)
+			s.Equal(core.EntityID("b"), active, "active entity must survive insert at pos %d", tc.pos)
+		})
+	}
+}
+
+func (s *TurnSuite) TestInsertErrors() {
+	_, err := s.turn.Insert(&clock.InsertInput{ID: "x", Pos: 0})
+	s.Require().ErrorIs(err, clock.ErrIdle)
+	_, err = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+	s.Require().NoError(err)
+	_, err = s.turn.Insert(&clock.InsertInput{ID: "a", Pos: 0})
+	s.Require().ErrorIs(err, clock.ErrDuplicateMember)
+	_, err = s.turn.Insert(&clock.InsertInput{ID: "x", Pos: 2})
+	s.Require().ErrorIs(err, clock.ErrBadPosition)
+	_, err = s.turn.Insert(&clock.InsertInput{ID: "x", Pos: -1})
+	s.Require().ErrorIs(err, clock.ErrBadPosition)
+}
+
+func (s *TurnSuite) TestRemoveSemantics() {
+	// design Remove row: non-active adjusts index; active advances
+	// (MemberLeft, TurnStarted{next}, round unchanged even from last slot);
+	// last member empties the clock (MemberLeft only).
+	s.Run("non-active before active", func() {
+		s.turn = &clock.Turn{}
+		_, _ = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b", "c"}})
+		_, _ = s.turn.End(&clock.EndInput{Actor: "a"}) // b active
+		out, err := s.turn.Remove(&clock.RemoveInput{ID: "a"})
+		s.Require().NoError(err)
+		s.Equal([]clock.Milestone{{Kind: clock.MemberLeft, Subject: "a", Round: 1}}, out.Milestones)
+		active, _ := s.turn.Active()
+		s.Equal(core.EntityID("b"), active)
+	})
+	s.Run("active mid-order", func() {
+		s.turn = &clock.Turn{}
+		_, _ = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b", "c"}})
+		_, _ = s.turn.End(&clock.EndInput{Actor: "a"}) // b active
+		out, err := s.turn.Remove(&clock.RemoveInput{ID: "b"})
+		s.Require().NoError(err)
+		s.Equal([]clock.Milestone{
+			{Kind: clock.MemberLeft, Subject: "b", Round: 1},
+			{Kind: clock.TurnStarted, Subject: "c", Round: 1},
+		}, out.Milestones)
+	})
+	s.Run("active in last slot: next is first, round unchanged", func() {
+		s.turn = &clock.Turn{}
+		_, _ = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a", "b"}})
+		_, _ = s.turn.End(&clock.EndInput{Actor: "a"}) // b active, last slot
+		out, err := s.turn.Remove(&clock.RemoveInput{ID: "b"})
+		s.Require().NoError(err)
+		s.Equal([]clock.Milestone{
+			{Kind: clock.MemberLeft, Subject: "b", Round: 1},
+			{Kind: clock.TurnStarted, Subject: "a", Round: 1},
+		}, out.Milestones)
+		round, _ := s.turn.Round()
+		s.Equal(1, round)
+	})
+	s.Run("last member empties", func() {
+		s.turn = &clock.Turn{}
+		_, _ = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+		out, err := s.turn.Remove(&clock.RemoveInput{ID: "a"})
+		s.Require().NoError(err)
+		s.Equal([]clock.Milestone{{Kind: clock.MemberLeft, Subject: "a", Round: 1}}, out.Milestones)
+		_, err = s.turn.Active()
+		s.Require().ErrorIs(err, clock.ErrIdle)
+	})
+	s.Run("absent errors", func() {
+		s.turn = &clock.Turn{}
+		_, _ = s.turn.SetOrder(&clock.SetOrderInput{Order: []core.EntityID{"a"}})
+		_, err := s.turn.Remove(&clock.RemoveInput{ID: "zz"})
+		s.Require().ErrorIs(err, clock.ErrNotMember)
+	})
 }
