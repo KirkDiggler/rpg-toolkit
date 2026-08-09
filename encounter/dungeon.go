@@ -34,6 +34,20 @@ type DungeonParams struct {
 	// Width is required only for canvas floors; room-chain width derives from Regions.
 	Width int
 
+	// FloorCells is the complete canonical canvas floor. Nil retains the v0.3
+	// bounds rectangle for direct/legacy callers; dungeonspec always supplies
+	// an explicit sorted snapshot for newly compiled canvas documents.
+	FloorCells []core.Hex
+
+	// EnvelopeEdges is the canonical generated boundary between FloorCells and
+	// void/off-canvas neighbors. It is persisted verbatim into SpaceData.
+	EnvelopeEdges []GeneratedEdge
+
+	// RequireConnectedFloor marks region-union candidates that must pass the
+	// runnable floor gate whenever InitDungeon is attempted. It is not a runtime
+	// mechanics authority: persisted FloorCells and the masked grid are.
+	RequireConnectedFloor bool
+
 	// AbsolutePlacedObstacles and AbsoluteReservedCells are absolute authored
 	// content accepted only with FloorSourceCanvas. The latter reserves absolute
 	// monster spawns from party seating before any geometry is generated.
@@ -374,18 +388,28 @@ func (e *Encounter) InitDungeon(params DungeonParams) error {
 	}
 	source, _ := floorSourceKind(params.FloorSource)
 	space := &SpaceData{
-		Walls:               layout.walls,
-		Width:               layout.width,
-		Height:              params.Height,
-		FloorSource:         source,
-		Entrance:            core.HexFromCube(layout.entrance),
-		PartyStartPositions: layout.partyStartPositions,
-		DungeonKey:          dungeonKey,
-		AuthoredEdges:       authoredEdges,
-		Regions:             layout.regions,
-		SemanticRegions:     layout.semanticRegions,
-		Theme:               params.Theme,
-		Obstacles:           layout.obstacles,
+		Walls:                 layout.walls,
+		Width:                 layout.width,
+		Height:                params.Height,
+		FloorSource:           source,
+		FloorCells:            nil,
+		EnvelopeEdges:         nil,
+		RequireConnectedFloor: params.RequireConnectedFloor,
+		Entrance:              core.HexFromCube(layout.entrance),
+		PartyStartPositions:   layout.partyStartPositions,
+		DungeonKey:            dungeonKey,
+		AuthoredEdges:         authoredEdges,
+		Regions:               layout.regions,
+		SemanticRegions:       layout.semanticRegions,
+		Theme:                 params.Theme,
+		Obstacles:             layout.obstacles,
+	}
+	if source == FloorSourceCanvas {
+		space.FloorCells = canonicalCanvasFloorCells(params)
+		space.EnvelopeEdges = append([]GeneratedEdge(nil), params.EnvelopeEdges...)
+		if params.EnvelopeEdges == nil {
+			space.EnvelopeEdges = canvasEnvelopeEdges(canvasFloorForParams(params))
+		}
 	}
 
 	// Validate overlay against the generated connector records before mutating

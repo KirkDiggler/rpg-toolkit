@@ -431,6 +431,9 @@ func (e *Encounter) applyCapturedAttacks(
 		// One out-of-reach swing (e.g. a target that Disengaged mid-turn, if
 		// that ever lands) simply doesn't connect; any other captured
 		// attacks in this turn still resolve normally.
+		if !e.hasClearStructuralReach(mon.Position, targetPlayer.View.Position) {
+			continue
+		}
 		if atk.IsMelee {
 			reach := meleeReachForCombatant(e.combatantFor(mon.ID))
 			if checkReach(mon.Position, targetPlayer.View.Position, reach, "reach") != nil {

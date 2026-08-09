@@ -100,6 +100,9 @@ func (e *Encounter) TakeActionPhased(
 	if err := e.checkAttackRange(player, monster.Position, &tRef); err != nil {
 		return nil, err
 	}
+	if !e.hasClearStructuralReach(player.View.Position, monster.Position) {
+		return nil, fmt.Errorf("%w: %q is not reachable across the structural floor", ErrUnknownTarget, target.EntityID)
+	}
 
 	// Validate + deduct the attack off the held character's two-level economy
 	// BEFORE resolving. This gates the attack on the economy: a character with no

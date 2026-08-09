@@ -95,14 +95,19 @@ func TestCanvasRuntime_InitializesPersistsAndSeedsAbsoluteContent(t *testing.T) 
 		Compiled: compiled, Seed: 27,
 	})
 	require.NoError(t, err)
-	require.Equal(t, dungeonspec.FloorPlanCell{Column: 0, Row: 0}, plan.Entrance)
+	require.Equal(t, &dungeonspec.FloorPlanCell{Column: 0, Row: 0}, plan.Entrance)
 	require.Len(t, plan.FloorCells, 15)
 	for column := 0; column < 5; column++ {
 		for row := 0; row < 3; row++ {
 			require.Contains(t, plan.FloorCells, dungeonspec.FloorPlanCell{Column: column, Row: row})
 		}
 	}
-	require.Equal(t, "canvas-runtime-authored-door-1--3-2--1--2-1", plan.Edges[0].DoorID)
+	require.Contains(t, plan.Edges, dungeonspec.FloorPlanEdge{
+		From:   dungeonspec.FloorPlanCell{Column: 1, Row: 1},
+		To:     dungeonspec.FloorPlanCell{Column: 1, Row: 2},
+		Kind:   dungeonspec.FloorPlanEdgeKindDoor,
+		DoorID: "canvas-runtime-authored-door-1--3-2--1--2-1",
+	})
 
 	payload, err := json.Marshal(data)
 	require.NoError(t, err)

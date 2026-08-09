@@ -11,6 +11,16 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Active work
 
+**#897 — Dungeon YAML v0.4 Wave A canonical region floor (2026-08-09).**
+`dungeonspec.CompileDungeon` now compiles complete standalone Draft/Strict
+candidates and returns exact field records separately from Go infrastructure
+errors. Canvas omission/`bounds` preserves the rectangle; `regions` compiles one
+canonical union mask, complete floor/void envelope, optional derived entrance,
+and semantic-region containment projection. The exact mask/envelope persist in
+`SpaceData` and rebuild a masked room used by placement, pathing/movement, LoS
+and fog. Running encounter reload validates its started snapshot and never
+consults later authored source. See ADR-0035 and the encounter component doc.
+
 **#880 / draft PR #881 — Dungeon Builder authored-edge Phase 2B (2026-08-04).**
 `dungeonspec` compiles strict dungeon-scoped `walls: [{from, to, kind}]` into
 normalized absolute pointy-top odd-q offset `[column,row]` `AuthoredEdge`

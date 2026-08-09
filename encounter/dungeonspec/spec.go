@@ -50,8 +50,9 @@ const (
 
 // CanvasSpec is the explicit structural floor source for canvas mode.
 type CanvasSpec struct {
-	Width  int `yaml:"width"`
-	Height int `yaml:"height"`
+	Width       int    `yaml:"width"`
+	Height      int    `yaml:"height"`
+	FloorSource string `yaml:"floor_source,omitempty"`
 }
 
 // RegionSpec is one authored semantic scope. Cells are absolute odd-q
