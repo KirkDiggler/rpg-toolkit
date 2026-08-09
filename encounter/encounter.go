@@ -233,6 +233,26 @@ func New(ctx context.Context, id core.EncounterID, b *Broker, opts ...Option) *E
 	return e
 }
 
+func validatePersistedActorEntries(
+	players map[core.PlayerID]*PlayerData,
+	monsters map[core.EntityID]*MonsterData,
+) error {
+	for id, player := range players {
+		if player == nil {
+			return fmt.Errorf("validate player %q: null player state", id)
+		}
+		if player.View == nil {
+			return fmt.Errorf("validate player %q: view is required", id)
+		}
+	}
+	for id, monster := range monsters {
+		if monster == nil {
+			return fmt.Errorf("validate monster %q: null monster state", id)
+		}
+	}
+	return nil
+}
+
 // LoadFromData rehydrates an encounter from persisted state.
 //
 // #689: LoadFromData OWNS combatant hydration. A fresh encounter-scoped dnd5e
@@ -271,6 +291,9 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 	}
 	if data.Mode == core.ModeUnspecified {
 		data.Mode = core.ModeFreeRoam
+	}
+	if err := validatePersistedActorEntries(data.Players, data.Monsters); err != nil {
+		return nil, err
 	}
 	if err := validatePersistedDoors(data.Doors); err != nil {
 		return nil, fmt.Errorf("validate doors: %w", err)
@@ -332,6 +355,9 @@ func LoadFromData(ctx context.Context, data *Data, b *Broker, opts ...Option) (*
 // Spell-cost reactions (Shield, Counterspell) are seeded false and require
 // the player to opt in via SetReactionReady.
 func (e *Encounter) AddPlayer(input PlayerInput) error {
+	if e.room != nil && !e.room.GetGrid().IsValidPosition(input.Position.ToPosition()) {
+		return fmt.Errorf("player %q position %v is outside structural floor", input.PlayerID, input.Position)
+	}
 	if _, exists := e.data.Players[input.PlayerID]; exists {
 		return fmt.Errorf("player %q already in encounter", input.PlayerID)
 	}
@@ -439,6 +465,9 @@ func restoreForNewSeat(hp, maxHP int, dataJSON json.RawMessage) (int, int, json.
 // why a caller holding an old Room()/RoomOrchestrator() reference across
 // this call would observe stale geometry.
 func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) error {
+	if e.room != nil && !e.room.GetGrid().IsValidPosition(position.ToPosition()) {
+		return fmt.Errorf("add door %q: position %v is outside structural floor", id, position)
+	}
 	if authoredEndpointContains(e.data.Space, position) {
 		return fmt.Errorf("add door %q: position %v is an authored edge endpoint", id, position)
 	}
@@ -457,6 +486,15 @@ func (e *Encounter) AddDoor(id core.EntityID, position core.Hex, open bool) erro
 	}
 	return nil
 }
+
+// ErrMonsterDataRequired is returned by AddMonster when input.DataJSON is
+// empty (rpg-toolkit#895 no-fallback rider). A monster with no serialized
+// monster.Data cannot be rehydrated by NPCAct — before this rider, NPCAct
+// silently degraded to npcActScripted's minimal closest-player attack
+// instead. Every production seeder (encounter/seed_monsters.go) already
+// marshals DataJSON via monster.ToData(); this rejects the gap at the
+// door instead of letting it surface later as a confusing NPCAct failure.
+var ErrMonsterDataRequired = errors.New("monster DataJSON is required")
 
 // AddMonster registers a monster seat. Mirrors AddPlayer / AddDoor and is
 // the primary fixture verb for tests and orchestrator-driven seeding.
@@ -490,8 +528,14 @@ func (e *Encounter) AddMonster(input MonsterInput) error {
 // unchanged for every other caller — this is a pure extraction, not a
 // behavior change.
 func (e *Encounter) addMonsterNoCombatCheck(input MonsterInput) error {
+	if e.room != nil && !e.room.GetGrid().IsValidPosition(input.Position.ToPosition()) {
+		return fmt.Errorf("monster %q position %v is outside structural floor", input.ID, input.Position)
+	}
 	if input.ID == "" {
 		return errors.New("monster ID required")
+	}
+	if len(input.DataJSON) == 0 {
+		return fmt.Errorf("%w: %q", ErrMonsterDataRequired, input.ID)
 	}
 	if _, exists := e.data.Monsters[input.ID]; exists {
 		return fmt.Errorf("monster %q already in encounter", input.ID)

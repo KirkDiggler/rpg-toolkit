@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -64,16 +65,16 @@ const (
 // per-cell place-block check.
 func Validate(spec *DungeonSpec) error {
 	if spec.Version != 1 {
-		return fmt.Errorf("unsupported spec version %d (must be 1)", spec.Version)
+		return authoredError("version", "unsupported_version", "unsupported spec version %d (must be 1)", spec.Version)
 	}
 	if strings.TrimSpace(spec.Key) == "" {
-		return fmt.Errorf("key must not be empty")
+		return authoredError("key", "invalid_key", "key must not be empty")
 	}
 	if !validKey(spec.Key) {
-		return fmt.Errorf("key %q must use only lowercase letters, digits, and hyphens", spec.Key)
+		return authoredError("key", "invalid_key", "key %q must use only lowercase letters, digits, and hyphens", spec.Key)
 	}
 	if strings.TrimSpace(spec.Name) == "" {
-		return fmt.Errorf("name must not be empty")
+		return authoredError("name", "invalid_name", "name must not be empty")
 	}
 	if spec.Canvas != nil {
 		return validateCanvas(spec)
@@ -82,10 +83,10 @@ func Validate(spec *DungeonSpec) error {
 		return err
 	}
 	if spec.Height < minHeight {
-		return fmt.Errorf("height must be at least %d, got %d", minHeight, spec.Height)
+		return authoredError("height", "invalid_dimension", "height must be at least %d, got %d", minHeight, spec.Height)
 	}
 	if len(spec.Rooms) < minRooms {
-		return fmt.Errorf("must have at least %d rooms, got %d", minRooms, len(spec.Rooms))
+		return authoredError("rooms", "invalid_rooms", "must have at least %d rooms, got %d", minRooms, len(spec.Rooms))
 	}
 	if err := validateUniqueRoomIDs(spec.Rooms); err != nil {
 		return err
@@ -100,7 +101,7 @@ func Validate(spec *DungeonSpec) error {
 	if err != nil {
 		return err
 	}
-	if err = validateBossAxis(bossRoom, spec.Height); err != nil {
+	if err = validateBossAxis(bossRoom, spec.Height, roomPointerIndex(spec.Rooms, bossRoom)); err != nil {
 		return err
 	}
 	if err = validateM1Restrictions(spec, bossRoom); err != nil {
@@ -108,16 +109,20 @@ func Validate(spec *DungeonSpec) error {
 	}
 	for i := range spec.Rooms {
 		room := &spec.Rooms[i]
-		for _, o := range room.Obstacles {
-			if _, err := refParts(o.Ref); err != nil {
-				return fmt.Errorf("room %q: obstacle %w", room.ID, err)
+		for obstacleIndex, obstacle := range room.Obstacles {
+			path := fmt.Sprintf("rooms[%d].obstacles[%d]", i, obstacleIndex)
+			if _, err := refParts(obstacle.Ref); err != nil {
+				return authoredError(path+".ref", "invalid_ref", "%s.ref: %v", path, err)
 			}
-			if o.Count < minCount {
-				return fmt.Errorf("room %q: obstacle %q count must be at least %d, got %d", room.ID, o.Ref, minCount, o.Count)
+			if obstacle.Count < minCount {
+				return authoredError(
+					path+".count", "invalid_count", "%s.count must be at least %d, got %d",
+					path, minCount, obstacle.Count,
+				)
 			}
 		}
 	}
-	if err = validateBossRef(bossRoom); err != nil {
+	if err = validateBossRef(bossRoom, roomPointerIndex(spec.Rooms, bossRoom)); err != nil {
 		return err
 	}
 	for i := range spec.Rooms {
@@ -136,7 +141,7 @@ func Validate(spec *DungeonSpec) error {
 	}
 	for i := range spec.Connectors {
 		if spec.Connectors[i].Locked != nil {
-			if err = validateLocked(&spec.Connectors[i]); err != nil {
+			if err = validateLocked(&spec.Connectors[i], i); err != nil {
 				return err
 			}
 		}
@@ -147,14 +152,18 @@ func Validate(spec *DungeonSpec) error {
 func validateRoomDefinitions(rooms []RoomSpec) error {
 	for i := range rooms {
 		room := &rooms[i]
+		path := fmt.Sprintf("rooms[%d]", i)
 		if room.Width < minWidth {
-			return fmt.Errorf("room %q: width must be at least %d, got %d", room.ID, minWidth, room.Width)
+			return authoredError(
+				path+".width", "invalid_dimension", "%s.width must be at least %d, got %d",
+				path, minWidth, room.Width,
+			)
 		}
 		if err := validateArchetype(room.Archetype); err != nil {
-			return fmt.Errorf("room %q: %w", room.ID, err)
+			return authoredError(path+".archetype", "invalid_archetype", "%s.archetype: %v", path, err)
 		}
 		if err := validatePattern(room.Pattern); err != nil {
-			return fmt.Errorf("room %q: %w", room.ID, err)
+			return authoredError(path+".pattern", "invalid_pattern", "%s.pattern: %v", path, err)
 		}
 	}
 	return nil
@@ -162,27 +171,59 @@ func validateRoomDefinitions(rooms []RoomSpec) error {
 
 func validateNoRegionsInRoomChain(spec *DungeonSpec) error {
 	if len(spec.Regions) != 0 {
-		return fmt.Errorf("regions require canvas mode (non-empty rooms and regions are incompatible)")
+		return authoredError(
+			"regions", "unsupported_capability",
+			"regions require canvas mode (non-empty rooms and regions are incompatible)",
+		)
 	}
 	return nil
 }
 
 func validateCanvas(spec *DungeonSpec) error {
+	if spec.Canvas.Width < 1 {
+		return authoredError("canvas.width", "invalid_dimension", "canvas width must be positive, got %d", spec.Canvas.Width)
+	}
+	if spec.Canvas.Height < 1 {
+		return authoredError(
+			"canvas.height", "invalid_dimension", "canvas height must be positive, got %d", spec.Canvas.Height,
+		)
+	}
 	cellCount, err := encounter.ValidateCanvasDimensions(spec.Canvas.Width, spec.Canvas.Height)
 	if err != nil {
-		return err
+		return authoredError("canvas", "invalid_dimension", "%v", err)
 	}
 	if spec.roomsShape != roomsSequence || len(spec.Rooms) != 0 {
-		return fmt.Errorf("canvas mode rooms must be an explicit empty sequence (rooms: [])")
+		return authoredError(
+			"rooms", "invalid_canvas_rooms", "canvas mode rooms must be an explicit empty sequence (rooms: [])",
+		)
 	}
 	if len(spec.Connectors) != 0 {
-		return fmt.Errorf("canvas mode does not support connectors")
+		return authoredError("connectors", "unsupported_capability", "canvas mode does not support connectors")
 	}
-	floor := make(map[[2]int]struct{}, cellCount)
+	bounds := make(map[[2]int]struct{}, cellCount)
 	for c := 0; c < spec.Canvas.Width; c++ {
 		for r := 0; r < spec.Canvas.Height; r++ {
-			floor[[2]int{c, r}] = struct{}{}
+			bounds[[2]int{c, r}] = struct{}{}
 		}
+	}
+	if err := validateRegions(spec.Regions, bounds); err != nil {
+		return err
+	}
+	floor := bounds
+	switch spec.Canvas.FloorSource {
+	case "", string(FloorSourceBounds):
+	case string(FloorSourceRegions):
+		floor = make(map[[2]int]struct{})
+		for _, region := range spec.Regions {
+			for _, cell := range region.Cells {
+				floor[cell] = struct{}{}
+			}
+		}
+	default:
+		return authoredError(
+			"canvas.floor_source", "invalid_floor_source", "invalid floor source %q (must be %q or %q)",
+			spec.Canvas.FloorSource, FloorSourceBounds, FloorSourceRegions,
+		)
 	}
 	occupied := map[[2]int]string{}
 	for i, e := range spec.Place {
@@ -191,10 +232,10 @@ func validateCanvas(spec *DungeonSpec) error {
 			return err
 		}
 		if _, ok := floor[e.At]; !ok {
-			return fmt.Errorf("%s.at %v is out of canvas floor footprint", path, e.At)
+			return authoredError(path+".at", "outside_floor", "%s.at %v is outside structural floor", path, e.At)
 		}
 		if prior, ok := occupied[e.At]; ok {
-			return fmt.Errorf("%s.at %v is already occupied by %q", path, e.At, prior)
+			return authoredError(path+".at", "occupied", "%s.at %v is already occupied by %q", path, e.At, prior)
 		}
 		occupied[e.At] = e.Ref
 		if err := validateCanvasPlacement(path, e); err != nil {
@@ -203,14 +244,11 @@ func validateCanvas(spec *DungeonSpec) error {
 	}
 	if spec.Start != nil {
 		if _, ok := floor[*spec.Start]; !ok {
-			return fmt.Errorf("start %v is out of canvas floor footprint", *spec.Start)
+			return authoredError("start", "outside_floor", "start %v is outside structural floor", *spec.Start)
 		}
 		if prior, ok := occupied[*spec.Start]; ok {
-			return fmt.Errorf("start %v conflicts with %q", *spec.Start, prior)
+			return authoredError("start", "occupied", "start %v conflicts with %q", *spec.Start, prior)
 		}
-	}
-	if err := validateRegions(spec.Regions, floor); err != nil {
-		return err
 	}
 	return validateWallsOnFloor(spec, floor, spec.Canvas.Width, spec.Canvas.Height)
 }
@@ -223,41 +261,57 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 	sets := make([]map[[2]int]struct{}, len(regions))
 	for i, region := range regions {
 		if region.ID == "" {
-			return fmt.Errorf("regions[%d].id must not be empty", i)
+			return authoredError(fmt.Sprintf("regions[%d].id", i), "invalid_region", "regions[%d].id must not be empty", i)
 		}
 		if first, duplicate := seenIDs[region.ID]; duplicate {
-			return fmt.Errorf("regions[%d].id %q duplicates regions[%d]", i, region.ID, first)
+			return authoredError(
+				fmt.Sprintf("regions[%d].id", i), "duplicate_region",
+				"regions[%d].id %q duplicates regions[%d]", i, region.ID, first,
+			)
 		}
 		seenIDs[region.ID] = i
 		if region.Archetype != nil {
 			if *region.Archetype == "" {
-				return fmt.Errorf("regions[%d].archetype: explicit empty archetype is unsupported", i)
+				return authoredError(
+					fmt.Sprintf("regions[%d].archetype", i), "invalid_region",
+					"regions[%d].archetype: explicit empty archetype is unsupported", i,
+				)
 			}
 			if err := validateArchetype(*region.Archetype); err != nil {
-				return fmt.Errorf("regions[%d].archetype: %w", i, err)
+				return authoredError(fmt.Sprintf("regions[%d].archetype", i), "invalid_region", "regions[%d].archetype: %v", i, err)
 			}
 		}
 		if region.Cells == nil {
-			return fmt.Errorf("regions[%d].cells is required (use [] for an empty scope)", i)
+			return authoredError(
+				fmt.Sprintf("regions[%d].cells", i), "invalid_region",
+				"regions[%d].cells is required (use [] for an empty scope)", i,
+			)
 		}
 		sets[i] = make(map[[2]int]struct{}, len(region.Cells))
 		for j, cell := range region.Cells {
 			if _, ok := floor[cell]; !ok {
-				return fmt.Errorf("regions[%d].cells[%d] %v is out of canvas floor footprint", i, j, cell)
+				return authoredError(
+					fmt.Sprintf("regions[%d].cells[%d]", i, j), "outside_floor",
+					"regions[%d].cells[%d] %v is out of canvas floor footprint", i, j, cell,
+				)
 			}
 			sets[i][cell] = struct{}{} // same-region duplicates canonicalize
 		}
 	}
 	for left := range sets {
 		for right := left + 1; right < len(sets); right++ {
-			if len(sets[left]) == 0 || len(sets[right]) == 0 {
-				continue
-			}
 			intersection := 0
 			for cell := range sets[left] {
 				if _, ok := sets[right][cell]; ok {
 					intersection++
 				}
+			}
+			equal := len(sets[left]) == len(sets[right]) && intersection == len(sets[left])
+			if equal {
+				return authoredError(
+					fmt.Sprintf("regions[%d].cells", right), "duplicate_region",
+					"regions[%d].cells: equal cell set duplicates regions[%d].cells", right, left,
+				)
 			}
 			if intersection == 0 {
 				continue
@@ -265,7 +319,10 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 			leftInsideRight := intersection == len(sets[left]) && len(sets[left]) < len(sets[right])
 			rightInsideLeft := intersection == len(sets[right]) && len(sets[right]) < len(sets[left])
 			if !leftInsideRight && !rightInsideLeft {
-				return fmt.Errorf("regions %q and %q have equal or partial overlap", regions[left].ID, regions[right].ID)
+				return authoredError(
+					fmt.Sprintf("regions[%d].cells", right), "region_overlap",
+					"regions[%d].cells: partial overlap with regions[%d].cells", right, left,
+				)
 			}
 		}
 	}
@@ -274,31 +331,48 @@ func validateRegions(regions []RegionSpec, floor map[[2]int]struct{}) error {
 func validateCanvasPlacement(path string, e PlacedEntry) error {
 	typ, err := refParts(e.Ref)
 	if err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return authoredError(path+".ref", "invalid_ref", "%s.ref: %v", path, err)
 	}
 	if typ != refTypeProps && typ != refTypeMonsters {
-		return fmt.Errorf("%s.ref %q must be props or monsters", path, e.Ref)
+		return authoredError(path+".ref", "invalid_ref", "%s.ref %q must be props or monsters", path, e.Ref)
 	}
 	if e.Facing != nil {
 		if typ != refTypeProps || !isFloorMount(e.Mount) {
-			return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
+			return authoredError(
+				path+".facing", "unsupported_capability", "%s.facing: %s: %s",
+				path, unsupportedCapability, facingFloorPropsOnly,
+			)
 		}
 		if err := validateFacing(*e.Facing); err != nil {
-			return fmt.Errorf("%s.facing: %w", path, err)
+			return authoredError(path+".facing", "invalid_facing", "%s.facing: %v", path, err)
 		}
 	}
 	if !isFloorMount(e.Mount) {
-		return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
+		return authoredError(
+			path+".mount", "unsupported_capability", "%s.mount: %s: mounted placements are not supported",
+			path, unsupportedCapability,
+		)
+	}
+	if typ == refTypeProps && e.Targeting != nil {
+		return authoredError(path+".targeting", "invalid_targeting", "%s.targeting: only valid on monsters", path)
 	}
 	if typ == refTypeMonsters {
 		if _, ok := monsters.ByRef(e.Ref); !ok {
-			return fmt.Errorf("%s.ref %q: unknown monster ref (known: %s)", path, e.Ref, strings.Join(monsters.Refs(), ", "))
+			return authoredError(
+				path+".ref", "invalid_ref", "%s.ref %q: unknown monster ref (known: %s)",
+				path, e.Ref, strings.Join(monsters.Refs(), ", "),
+			)
 		}
 		if e.BlocksMovement != nil {
-			return fmt.Errorf("%s.blocks_movement: only valid on props", path)
+			return authoredError(path+".blocks_movement", "invalid_placement", "%s.blocks_movement: only valid on props", path)
 		}
 		if e.BlocksLoS != nil {
-			return fmt.Errorf("%s.blocks_los: only valid on props", path)
+			return authoredError(path+".blocks_los", "invalid_placement", "%s.blocks_los: only valid on props", path)
+		}
+		if e.Targeting != nil {
+			if _, err := monster.ParseTargetingStrategy(*e.Targeting); err != nil {
+				return authoredError(path+".targeting", "invalid_targeting", "%s.targeting: %v", path, err)
+			}
 		}
 	}
 	return nil
@@ -328,24 +402,33 @@ func validKey(key string) bool {
 // validateBossCardinality is a separate, permanent check C0 never touches).
 func validateM1Restrictions(spec *DungeonSpec, bossRoom *RoomSpec) error {
 	for i := range spec.Rooms {
-		room := &spec.Rooms[i]
-		if len(room.Monsters) > 0 {
-			return fmt.Errorf("room %q: monsters: rolled monster placement lands in M2", room.ID)
+		if len(spec.Rooms[i].Monsters) > 0 {
+			return authoredError(
+				fmt.Sprintf("rooms[%d].monsters", i), "unsupported_capability",
+				"rolled monster placement lands in M2",
+			)
 		}
 	}
 	if bossRoom.Boss.At == nil {
-		return fmt.Errorf("room %q: boss.at: rolled monster placement lands in M2", bossRoom.ID)
+		index := roomPointerIndex(spec.Rooms, bossRoom)
+		return authoredError(
+			fmt.Sprintf("rooms[%d].boss.at", index), "unsupported_capability",
+			"rolled monster placement lands in M2",
+		)
 	}
 	return nil
 }
 
 func validateUniqueRoomIDs(rooms []RoomSpec) error {
-	seen := make(map[string]bool, len(rooms))
-	for _, room := range rooms {
-		if seen[room.ID] {
-			return fmt.Errorf("duplicate room id %q", room.ID)
+	seen := make(map[string]int, len(rooms))
+	for index, room := range rooms {
+		if first, duplicate := seen[room.ID]; duplicate {
+			return authoredError(
+				fmt.Sprintf("rooms[%d].id", index), "duplicate_room",
+				"duplicate room id %q at rooms[%d].id (already used by rooms[%d].id)", room.ID, index, first,
+			)
 		}
-		seen[room.ID] = true
+		seen[room.ID] = index
 	}
 	return nil
 }
@@ -354,13 +437,18 @@ func validateUniqueRoomIDs(rooms []RoomSpec) error {
 // in a single linear chain, in room order (rooms[i] -> rooms[i+1]).
 func validateChain(spec *DungeonSpec) error {
 	if len(spec.Connectors) != len(spec.Rooms)-1 {
-		return fmt.Errorf("connectors must form a linear chain: expected %d connectors for %d rooms, got %d",
-			len(spec.Rooms)-1, len(spec.Rooms), len(spec.Connectors))
+		return authoredError(
+			"connectors", "invalid_chain", "connectors must form a linear chain: expected %d connectors for %d rooms, got %d",
+			len(spec.Rooms)-1, len(spec.Rooms), len(spec.Connectors),
+		)
 	}
-	for i, c := range spec.Connectors {
-		if c.From != spec.Rooms[i].ID || c.To != spec.Rooms[i+1].ID {
-			return fmt.Errorf("connectors must form a linear chain: connector %d (%s -> %s) must join room %q to room %q",
-				i, c.From, c.To, spec.Rooms[i].ID, spec.Rooms[i+1].ID)
+	for i, connector := range spec.Connectors {
+		if connector.From != spec.Rooms[i].ID || connector.To != spec.Rooms[i+1].ID {
+			return authoredError(
+				fmt.Sprintf("connectors[%d]", i), "invalid_chain",
+				"connectors must form a linear chain: connector %d (%s -> %s) must join room %q to room %q",
+				i, connector.From, connector.To, spec.Rooms[i].ID, spec.Rooms[i+1].ID,
+			)
 		}
 	}
 	return nil
@@ -399,6 +487,15 @@ func validatePattern(pattern string) error {
 // archetype with a non-nil Boss entry) and that no other room declares one.
 // The boss-required half is permanent (never lifted by M2's Task C0); it is
 // distinct from the at-pinning check in Validate, which is M1-only.
+func roomPointerIndex(rooms []RoomSpec, target *RoomSpec) int {
+	for index := range rooms {
+		if &rooms[index] == target {
+			return index
+		}
+	}
+	return 0
+}
+
 func validateBossCardinality(rooms []RoomSpec) (*RoomSpec, error) {
 	var bossRoom *RoomSpec
 	bossCount := 0
@@ -407,55 +504,61 @@ func validateBossCardinality(rooms []RoomSpec) (*RoomSpec, error) {
 		if room.Archetype == archetypeBoss {
 			bossCount++
 			if room.Boss == nil {
-				return nil, fmt.Errorf("room %q: boss room must declare boss", room.ID)
+				return nil, authoredError(
+					fmt.Sprintf("rooms[%d].boss", i), "missing_boss", "boss room must declare boss",
+				)
 			}
 			bossRoom = room
 		} else if room.Boss != nil {
-			return nil, fmt.Errorf("room %q: boss entry only on the boss room", room.ID)
+			return nil, authoredError(
+				fmt.Sprintf("rooms[%d].boss", i), "invalid_boss", "boss entry only on the boss room",
+			)
 		}
 	}
 	if bossCount != 1 {
-		return nil, fmt.Errorf("dungeon must have exactly one boss room, found %d", bossCount)
+		return nil, authoredError(
+			"rooms", "invalid_boss_count", "dungeon must have exactly one boss room, found %d", bossCount,
+		)
 	}
 	return bossRoom, nil
 }
 
-func validateBossAxis(bossRoom *RoomSpec, height int) error {
+func validateBossAxis(bossRoom *RoomSpec, height, roomIndex int) error {
 	axis := min(bossRoom.Width, height)
 	if axis <= bossAxisMin {
-		return fmt.Errorf("room %q: boss room primary axis (min(width, height)=%d) must exceed %d",
-			bossRoom.ID, axis, bossAxisMin)
+		return authoredError(
+			fmt.Sprintf("rooms[%d].width", roomIndex), "invalid_boss_axis",
+			"boss room primary axis (min(width, height)=%d) must exceed %d", axis, bossAxisMin,
+		)
 	}
 	return nil
 }
 
 // validateBossRef checks the boss room's monster ref: shape, that it names
 // a monster (not a prop), and that it resolves via the registry.
-func validateBossRef(bossRoom *RoomSpec) error {
+func validateBossRef(bossRoom *RoomSpec, roomIndex int) error {
+	path := fmt.Sprintf("rooms[%d].boss.ref", roomIndex)
 	refType, err := refParts(bossRoom.Boss.Ref)
 	if err != nil {
-		return fmt.Errorf("room %q: boss %w", bossRoom.ID, err)
+		return authoredError(path, "invalid_ref", "%s: %v", path, err)
 	}
 	if refType != refTypeMonsters {
-		return fmt.Errorf("room %q: boss ref %q must be a monster ref, got type %q", bossRoom.ID, bossRoom.Boss.Ref, refType)
+		return authoredError(
+			path, "invalid_ref", "%s %q must be a monster ref, got type %q", path, bossRoom.Boss.Ref, refType,
+		)
 	}
 	if _, ok := monsters.ByRef(bossRoom.Boss.Ref); !ok {
-		return fmt.Errorf("room %q: boss ref %q: unknown monster ref (known: %s)",
-			bossRoom.ID, bossRoom.Boss.Ref, strings.Join(monsters.Refs(), ", "))
+		return authoredError(
+			path, "invalid_ref", "%s %q: unknown monster ref (known: %s)",
+			path, bossRoom.Boss.Ref, strings.Join(monsters.Refs(), ", "),
+		)
 	}
-	return nil
-}
-
-func validateRoomPlacementOffsets(room *RoomSpec, roomIndex int) error {
-	if room.Boss != nil {
-		if err := validatePlacementOffset(fmt.Sprintf("rooms[%d].boss.offset", roomIndex), room.Boss.Offset); err != nil {
-			return err
-		}
-	}
-	for entryIndex := range room.Place {
-		path := fmt.Sprintf("rooms[%d].place[%d].offset", roomIndex, entryIndex)
-		if err := validatePlacementOffset(path, room.Place[entryIndex].Offset); err != nil {
-			return err
+	if bossRoom.Boss.Targeting != nil {
+		if _, err := monster.ParseTargetingStrategy(*bossRoom.Boss.Targeting); err != nil {
+			return authoredError(
+				fmt.Sprintf("rooms[%d].boss.targeting", roomIndex), "invalid_targeting",
+				"room %q: boss targeting: %v", bossRoom.ID, err,
+			)
 		}
 	}
 	return nil
@@ -469,86 +572,138 @@ func validatePlaceBlock(room *RoomSpec, height, roomIndex int) error {
 		// Scattered interior walls are seed-rolled — no at cell can be
 		// guaranteed clear or non-wall at author time (design.md §Design
 		// delta), so the load-time contract can't hold for this combination.
-		return fmt.Errorf("room %q: place/boss.at not allowed with pattern: scattered", room.ID)
+		return authoredError(
+			fmt.Sprintf("rooms[%d].pattern", roomIndex), "invalid_pattern",
+			"place/boss.at not allowed with pattern: scattered",
+		)
 	}
 
 	doorRow := height / 2
 	occupied := make(map[[2]int]string, len(room.Place)+1)
 
-	if err := validateRoomPlacementOffsets(room, roomIndex); err != nil {
-		return err
+	if room.Boss != nil {
+		if err := validatePlacementOffset(fmt.Sprintf("rooms[%d].boss.offset", roomIndex), room.Boss.Offset); err != nil {
+			return err
+		}
 	}
 	if room.Boss != nil && room.Boss.Facing != nil {
-		return fmt.Errorf("rooms[%d].boss.facing: %s: %s", roomIndex, unsupportedCapability, facingFloorPropsOnly)
+		return authoredError(
+			fmt.Sprintf("rooms[%d].boss.facing", roomIndex), "unsupported_capability",
+			"rooms[%d].boss.facing: %s: %s", roomIndex, unsupportedCapability, facingFloorPropsOnly,
+		)
 	}
 	if room.Boss != nil && room.Boss.At != nil {
 		at := *room.Boss.At
 		if err := checkCellBounds(room, height, at); err != nil {
-			return fmt.Errorf("room %q: boss.at %w", room.ID, err)
+			return authoredError(
+				fmt.Sprintf("rooms[%d].boss.at", roomIndex), "outside_floor", "boss.at: %v", err,
+			)
 		}
 		if at[1] == doorRow {
-			return fmt.Errorf("room %q: boss.at %v is on the reserved row (height/2=%d)", room.ID, at, doorRow)
+			return authoredError(
+				fmt.Sprintf("rooms[%d].boss.at", roomIndex), "reserved_cell",
+				"boss.at %v is on the reserved row (height/2=%d)", at, doorRow,
+			)
 		}
 		occupied[at] = room.Boss.Ref
 	}
 
 	for entryIndex, entry := range room.Place {
 		path := fmt.Sprintf("rooms[%d].place[%d]", roomIndex, entryIndex)
+		if err := validatePlacementOffset(path+".offset", entry.Offset); err != nil {
+			return err
+		}
 		if err := checkCellBounds(room, height, entry.At); err != nil {
-			return fmt.Errorf("room %q: place %q %w", room.ID, entry.Ref, err)
+			return authoredError(
+				fmt.Sprintf("rooms[%d].place[%d].at", roomIndex, entryIndex), "outside_floor",
+				"place %q at %v: %v", entry.Ref, entry.At, err,
+			)
 		}
 		if entry.At[1] == doorRow {
-			return fmt.Errorf("room %q: place %q at %v is on the reserved row (height/2=%d)",
-				room.ID, entry.Ref, entry.At, doorRow)
+			return authoredError(
+				fmt.Sprintf("rooms[%d].place[%d].at", roomIndex, entryIndex), "reserved_cell",
+				"place %q at %v is on the reserved row (height/2=%d)", entry.Ref, entry.At, doorRow,
+			)
 		}
 		if occupant, ok := occupied[entry.At]; ok {
-			return fmt.Errorf("room %q: place %q at %v is already placed (occupied by %q)",
-				room.ID, entry.Ref, entry.At, occupant)
+			return authoredError(
+				fmt.Sprintf("rooms[%d].place[%d].at", roomIndex, entryIndex), "occupied",
+				"place %q at %v is already placed (occupied by %q)", entry.Ref, entry.At, occupant,
+			)
 		}
 		occupied[entry.At] = entry.Ref
 
-		refType, err := refParts(entry.Ref)
-		if err != nil {
-			return fmt.Errorf("room %q: place %w", room.ID, err)
-		}
-		// Ref-type routing must be checked before the flags-only-on-props
-		// check below: an entry with an unrecognized ref type should always
-		// report that error, not whichever check happens to run first.
-		if refType != refTypeProps && refType != refTypeMonsters {
-			return fmt.Errorf("room %q: place ref %q must be props or monsters, got type %q",
-				room.ID, entry.Ref, refType)
-		}
-
-		if entry.Facing != nil {
-			if refType != refTypeProps || !isFloorMount(entry.Mount) {
-				return fmt.Errorf("%s.facing: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
-			}
-			if err := validateFacing(*entry.Facing); err != nil {
-				return fmt.Errorf("%s.facing: %w", path, err)
-			}
-		}
-		if !isFloorMount(entry.Mount) {
-			return fmt.Errorf("%s.mount: %s: mounted placements are not supported", path, unsupportedCapability)
-		}
-
-		if room.Boss != nil && entry.Ref == room.Boss.Ref {
-			return fmt.Errorf("room %q: boss ref may not also appear in place (ref %q)", room.ID, entry.Ref)
-		}
-
-		if refType == refTypeMonsters {
-			if _, ok := monsters.ByRef(entry.Ref); !ok {
-				return fmt.Errorf("room %q: place %q: unknown monster ref (known: %s)",
-					room.ID, entry.Ref, strings.Join(monsters.Refs(), ", "))
-			}
-			if entry.BlocksMovement != nil {
-				return fmt.Errorf("room %q: place %q: blocks_movement only valid on props", room.ID, entry.Ref)
-			}
-			if entry.BlocksLoS != nil {
-				return fmt.Errorf("room %q: place %q: blocks_los only valid on props", room.ID, entry.Ref)
-			}
+		if err := validatePlaceEntry(room, entry, path); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+// validatePlaceEntry validates everything about one room-chain place entry
+// that doesn't depend on cell occupancy (validatePlaceBlock's own loop body
+// handles bounds/reserved-row/collision before calling this) — ref shape
+// and type, facing/mount capability gating, the boss-ref-not-duplicated
+// rule, and the props/monsters-only fields (blocks_movement/blocks_los,
+// targeting). Split out of validatePlaceBlock to keep that function's own
+// cyclomatic complexity under the linter's threshold.
+func validatePlaceEntry(room *RoomSpec, entry PlacedEntry, path string) error {
+	refType, err := refParts(entry.Ref)
+	if err != nil {
+		return authoredError(path+".ref", "invalid_ref", "%s.ref: %v", path, err)
+	}
+	if refType != refTypeProps && refType != refTypeMonsters {
+		return authoredError(
+			path+".ref", "invalid_ref", "%s.ref %q must be props or monsters, got type %q",
+			path, entry.Ref, refType,
+		)
+	}
+	if entry.Facing != nil {
+		if refType != refTypeProps || !isFloorMount(entry.Mount) {
+			return authoredError(
+				path+".facing", "unsupported_capability", "%s.facing: %s: %s",
+				path, unsupportedCapability, facingFloorPropsOnly,
+			)
+		}
+		if err := validateFacing(*entry.Facing); err != nil {
+			return authoredError(path+".facing", "invalid_facing", "%s.facing: %v", path, err)
+		}
+	}
+	if !isFloorMount(entry.Mount) {
+		return authoredError(
+			path+".mount", "unsupported_capability", "%s.mount: %s: mounted placements are not supported",
+			path, unsupportedCapability,
+		)
+	}
+	if room.Boss != nil && entry.Ref == room.Boss.Ref {
+		return authoredError(
+			path+".ref", "duplicate_boss", "%s.ref: boss ref may not also appear in place (ref %q)",
+			path, entry.Ref,
+		)
+	}
+	if refType == refTypeProps && entry.Targeting != nil {
+		return authoredError(path+".targeting", "invalid_targeting", "%s.targeting only valid on monsters", path)
+	}
+	if refType == refTypeMonsters {
+		if _, ok := monsters.ByRef(entry.Ref); !ok {
+			return authoredError(
+				path+".ref", "invalid_ref", "%s.ref %q: unknown monster ref (known: %s)",
+				path, entry.Ref, strings.Join(monsters.Refs(), ", "),
+			)
+		}
+		if entry.BlocksMovement != nil {
+			return authoredError(path+".blocks_movement", "invalid_placement", "%s.blocks_movement only valid on props", path)
+		}
+		if entry.BlocksLoS != nil {
+			return authoredError(path+".blocks_los", "invalid_placement", "%s.blocks_los only valid on props", path)
+		}
+		if entry.Targeting != nil {
+			if _, err := monster.ParseTargetingStrategy(*entry.Targeting); err != nil {
+				return authoredError(path+".targeting", "invalid_targeting", "%s.targeting: %v", path, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -561,16 +716,21 @@ func validateTopLevelPlace(entries []PlacedEntry) error {
 			return err
 		}
 		if entry.Facing != nil {
-			return fmt.Errorf("place[%d].facing: %s: %s", index, unsupportedCapability, facingFloorPropsOnly)
+			path := fmt.Sprintf("place[%d].facing", index)
+			return authoredError(path, "unsupported_capability", "%s: %s: %s", path, unsupportedCapability, facingFloorPropsOnly)
 		}
 		if entry.Mount != nil {
-			return fmt.Errorf("place[%d].mount: %s: mounted placements are not supported", index, unsupportedCapability)
+			path := fmt.Sprintf("place[%d].mount", index)
+			return authoredError(
+				path, "unsupported_capability", "%s: %s: mounted placements are not supported",
+				path, unsupportedCapability,
+			)
 		}
 	}
 	if len(entries) == 0 {
 		return nil
 	}
-	return fmt.Errorf("place[0]: %s: top-level placement is not supported", unsupportedCapability)
+	return authoredError("place[0]", "unsupported_capability", "top-level placement is not supported")
 }
 
 func validatePlacementOffset(path string, offset *PlacementOffset) error {
@@ -636,7 +796,7 @@ func validateStart(spec *DungeonSpec) error {
 	}
 	at := *spec.Start
 	if at[1] < 0 || at[1] >= spec.Height {
-		return fmt.Errorf("start %v out of bounds: row %d not in [0,%d)", at, at[1], spec.Height)
+		return authoredError("start", "outside_floor", "start %v out of bounds: row %d not in [0,%d)", at, at[1], spec.Height)
 	}
 
 	starts := make([]int, len(spec.Rooms))
@@ -649,7 +809,9 @@ func validateStart(spec *DungeonSpec) error {
 		}
 	}
 	if at[0] < 0 || at[0] >= totalWidth {
-		return fmt.Errorf("start %v out of bounds: column %d not in [0,%d)", at, at[0], totalWidth)
+		return authoredError(
+			"start", "outside_floor", "start %v out of bounds: column %d not in [0,%d)", at, at[0], totalWidth,
+		)
 	}
 
 	roomIndex := -1
@@ -658,18 +820,20 @@ func validateStart(spec *DungeonSpec) error {
 			continue
 		}
 		if roomIndex != -1 {
-			return fmt.Errorf("start %v belongs to more than one semantic room", at)
+			return authoredError("start", "invalid_start", "start %v belongs to more than one semantic room", at)
 		}
 		roomIndex = i
 	}
 	if roomIndex == -1 {
-		return fmt.Errorf("start %v is a connector gap/door cell, not a semantic room floor cell", at)
+		return authoredError(
+			"start", "outside_floor", "start %v is a connector gap/door cell, not a semantic room floor cell", at,
+		)
 	}
 
 	room := &spec.Rooms[roomIndex]
 	local := [2]int{at[0] - starts[roomIndex], at[1]}
 	if room.Boss != nil && room.Boss.At != nil && *room.Boss.At == local {
-		return fmt.Errorf("start %v conflicts with pinned boss in room %q", at, room.ID)
+		return authoredError("start", "occupied", "start %v conflicts with pinned boss in room %q", at, room.ID)
 	}
 	for _, entry := range room.Place {
 		if entry.At != local {
@@ -677,14 +841,19 @@ func validateStart(spec *DungeonSpec) error {
 		}
 		refType, err := refParts(entry.Ref)
 		if err != nil {
-			return fmt.Errorf("start %v: place %q: %w", at, entry.Ref, err)
+			return authoredError("start", "invalid_ref", "start %v: place %q: %v", at, entry.Ref, err)
 		}
 		switch refType {
 		case refTypeMonsters:
-			return fmt.Errorf("start %v conflicts with placed monster %q in room %q", at, entry.Ref, room.ID)
+			return authoredError(
+				"start", "occupied", "start %v conflicts with placed monster %q in room %q", at, entry.Ref, room.ID,
+			)
 		case refTypeProps:
 			if boolOrTrue(entry.BlocksMovement) {
-				return fmt.Errorf("start %v conflicts with movement-blocking prop %q in room %q", at, entry.Ref, room.ID)
+				return authoredError(
+					"start", "occupied", "start %v conflicts with movement-blocking prop %q in room %q",
+					at, entry.Ref, room.ID,
+				)
 			}
 		}
 	}
@@ -719,38 +888,63 @@ func validateWallsOnFloor(spec *DungeonSpec, floor map[[2]int]struct{}, totalWid
 		switch wall.Kind {
 		case string(encounter.GeneratedEdgeKindSolid), string(encounter.GeneratedEdgeKindDoor):
 		default:
-			return fmt.Errorf("walls[%d].kind: invalid kind %q (must be %q or %q)", index, wall.Kind,
-				encounter.GeneratedEdgeKindSolid, encounter.GeneratedEdgeKindDoor)
+			return authoredError(
+				fmt.Sprintf("walls[%d].kind", index), "invalid_wall",
+				"walls[%d].kind: invalid kind %q (must be %q or %q)", index, wall.Kind,
+				encounter.GeneratedEdgeKindSolid, encounter.GeneratedEdgeKindDoor,
+			)
 		}
 		if wall.Lock != nil {
 			if wall.Kind == string(encounter.GeneratedEdgeKindSolid) {
-				return fmt.Errorf("walls[%d].lock: lock only valid on door", index)
+				return authoredError(
+					fmt.Sprintf("walls[%d].lock", index), "invalid_wall",
+					"walls[%d].lock: lock only valid on door", index,
+				)
 			}
 			if len(wall.Lock.Options) == 0 {
-				return fmt.Errorf("walls[%d].lock.options: must contain at least one option", index)
+				return authoredError(
+					fmt.Sprintf("walls[%d].lock.options", index), "invalid_wall",
+					"walls[%d].lock.options: must contain at least one option", index,
+				)
 			}
 			for oi, option := range wall.Lock.Options {
 				if option.DC < minLockDC || option.DC > maxLockDC {
-					return fmt.Errorf("walls[%d].lock.options[%d].dc: must be between %d and %d", index, oi, minLockDC, maxLockDC)
+					return authoredError(
+						fmt.Sprintf("walls[%d].lock.options[%d].dc", index, oi), "invalid_wall",
+						"walls[%d].lock.options[%d].dc: must be between %d and %d",
+						index, oi, minLockDC, maxLockDC,
+					)
 				}
 				if _, err := abilities.GetByID(option.Ability); err != nil {
-					return fmt.Errorf("walls[%d].lock.options[%d].ability: invalid ability %q", index, oi, option.Ability)
+					return authoredError(
+						fmt.Sprintf("walls[%d].lock.options[%d].ability", index, oi), "invalid_wall",
+						"walls[%d].lock.options[%d].ability: invalid ability %q", index, oi, option.Ability,
+					)
 				}
 			}
 		}
 		if from == to {
-			return fmt.Errorf("walls[%d]: endpoints must be distinct", index)
+			return authoredError(fmt.Sprintf("walls[%d]", index), "invalid_wall", "walls[%d]: endpoints must be distinct", index)
 		}
 		if from.ToCube().Distance(to.ToCube()) != 1 {
-			return fmt.Errorf("walls[%d]: endpoints must be adjacent pointy-top odd-q floor hexes", index)
+			return authoredError(
+				fmt.Sprintf("walls[%d]", index), "invalid_wall",
+				"walls[%d]: endpoints must be adjacent pointy-top odd-q floor hexes", index,
+			)
 		}
 
 		key := newWallEdgeKey(from, to)
 		if first, exists := seen[key]; exists {
 			if seenKinds[first] == wall.Kind {
-				return fmt.Errorf("walls[%d]: duplicate of walls[%d] (including reversed endpoints)", index, first)
+				return authoredError(
+					fmt.Sprintf("walls[%d]", index), "duplicate_wall",
+					"walls[%d]: duplicate of walls[%d] (including reversed endpoints)", index, first,
+				)
 			}
-			return fmt.Errorf("walls[%d]: conflicting kind with walls[%d] on the same undirected edge", index, first)
+			return authoredError(
+				fmt.Sprintf("walls[%d]", index), "conflicting_wall",
+				"walls[%d]: conflicting kind with walls[%d] on the same undirected edge", index, first,
+			)
 		}
 		seen[key] = index
 		seenKinds = append(seenKinds, wall.Kind)
@@ -794,13 +988,15 @@ func validateWallEndpoint(
 ) (core.Hex, error) {
 	path := fmt.Sprintf("walls[%d].%s", wallIndex, field)
 	if at == nil {
-		return core.Hex{}, fmt.Errorf("%s: required absolute [column, row] floor cell", path)
+		return core.Hex{}, authoredError(path, "invalid_wall", "%s: required absolute [column, row] floor cell", path)
 	}
 	if at[0] < 0 || at[0] >= totalWidth || at[1] < 0 || at[1] >= height {
-		return core.Hex{}, fmt.Errorf("%s %v is out of dungeon floor footprint", path, *at)
+		return core.Hex{}, authoredError(path, "outside_floor", "%s %v is out of dungeon floor footprint", path, *at)
 	}
 	if _, ok := floor[*at]; !ok {
-		return core.Hex{}, fmt.Errorf("%s %v is a connector gap/door cell, not a semantic floor cell", path, *at)
+		return core.Hex{}, authoredError(
+			path, "outside_floor", "%s %v is a connector gap/door cell, not a semantic floor cell", path, *at,
+		)
 	}
 	return core.HexFromPosition(spatial.Position{X: float64(at[0]), Y: float64(at[1])}), nil
 }
@@ -829,23 +1025,24 @@ func wallHexLess(left, right core.Hex) bool {
 
 // validateLocked checks a connector's lock, prefixing errors with the
 // connector's location (from -> to) since a spec can have several.
-func validateLocked(c *ConnectorSpec) error {
+func validateLocked(c *ConnectorSpec, connectorIndex int) error {
 	locked := c.Locked
+	path := fmt.Sprintf("connectors[%d].locked", connectorIndex)
 	if locked.DC < minLockDC || locked.DC > maxLockDC {
-		return fmt.Errorf("connector %q -> %q: lock dc must be between %d and %d, got %d",
-			c.From, c.To, minLockDC, maxLockDC, locked.DC)
+		return authoredError(
+			path+".dc", "invalid_lock", "lock dc must be between %d and %d, got %d",
+			minLockDC, maxLockDC, locked.DC,
+		)
 	}
 	if _, err := abilities.GetByID(locked.Ability); err != nil {
-		// abilities.GetByID's error (verified empirically) renders as just
-		// "invalid ability" — its valid_options live only in structured
-		// metadata callers don't see via Error(). Build the known-abilities
-		// list ourselves, parallel to the monster known-refs treatment.
 		known := make([]string, 0, len(abilities.List()))
-		for _, a := range abilities.List() {
-			known = append(known, string(a))
+		for _, ability := range abilities.List() {
+			known = append(known, string(ability))
 		}
-		return fmt.Errorf("connector %q -> %q: lock ability %q: %w (known: %s)",
-			c.From, c.To, locked.Ability, err, strings.Join(known, ", "))
+		return authoredError(
+			path+".ability", "invalid_lock", "lock ability %q: %v (known: %s)",
+			locked.Ability, err, strings.Join(known, ", "),
+		)
 	}
 	return nil
 }

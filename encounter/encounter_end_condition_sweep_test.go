@@ -153,6 +153,7 @@ func (s *EncounterEndConditionSweepSuite) loadRagingBarbVsGoblin(charJSON json.R
 		HP:       1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef:  monsterRefGoblin,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())

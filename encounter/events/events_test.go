@@ -110,7 +110,7 @@ func (s *EventsSuite) TestSpineMeta_StampAndAccessors() {
 		events.NewMoveEvent("enc-1", 1, "bob", core.Hex{}, nil, nil, "", nil),
 		events.NewAttackResolvedEvent("enc-1", 2, "a", "b", true, false, 1, 1, 1, false, false, nil, nil, nil),
 		events.NewDamageDealtEvent("enc-1", 3, "a", "b", 1, "slashing", 1, 1, nil),
-		events.NewActionResolvedEvent("enc-1", 4, "a", "dnd5e:action:attack", "b",
+		events.NewActionResolvedEvent("enc-1", 4, "a", "dnd5e:action:attack", "b", "",
 			events.EconomyConsumed{Actions: 1}, nil),
 	}
 	for _, e := range samples {
@@ -155,6 +155,7 @@ func (s *EventsSuite) TestActionResolvedEvent_JSONRoundTrip() {
 
 	original := events.NewActionResolvedEvent(
 		"enc-1", 21, "char-alice", "dnd5e:actions:strike", "goblin-1",
+		"dnd5e:targeting:lowest-hp",
 		events.EconomyConsumed{
 			Actions:         1,
 			GrantedConsumed: map[string]int{"attacks": 1},
@@ -177,6 +178,8 @@ func (s *EventsSuite) TestActionResolvedEvent_JSONRoundTrip() {
 	s.Equal(core.EntityID("char-alice"), decoded.ActorID)
 	s.Equal("dnd5e:actions:strike", decoded.ActionRef)
 	s.Equal(core.EntityID("goblin-1"), decoded.TargetID)
+	s.Equal("dnd5e:targeting:lowest-hp", decoded.TargetRationale,
+		"decision rationale must survive the JSON round trip (rpg-toolkit#895)")
 	s.Equal(1, decoded.EconomyConsumed.Actions)
 	s.Equal(1, decoded.EconomyConsumed.GrantedConsumed["attacks"])
 	s.Equal(at, decoded.OccurredAt())

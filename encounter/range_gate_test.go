@@ -226,6 +226,7 @@ func TestTakeAction_MeleeAttackBeyondReach_Rejected(t *testing.T) {
 	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 3, R: 0, S: -3},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(t, gobEntityID),
 	}))
 	endTurnUntilActive(t, enc, aliceEntityID)
 
@@ -253,6 +254,7 @@ func TestTakeAction_MeleeAttackAtReach_Succeeds(t *testing.T) {
 	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(t, gobEntityID),
 	}))
 	endTurnUntilActive(t, enc, aliceEntityID)
 
@@ -301,6 +303,7 @@ func hydrateWeaponWielder(
 	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
 		ID: gobEntityID, Position: monsterPos,
 		HP: 7, MaxHP: 7, AC: 15,
+		DataJSON: testGoblinDataJSON(t, gobEntityID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())
@@ -383,80 +386,21 @@ func TestTakeAction_ShortbowRange_BeyondLongRange_Rejected(t *testing.T) {
 	require.True(t, errors.Is(err, encounter.ErrOutOfRange), "got: %v", err)
 }
 
-// --- NPCAct scripted attack (monster path, no DataJSON) ---------------------
-
-// TestNPCAct_ScriptedAttackBeyondReach_PassesTurnWithoutWedging is the
-// gate-review regression for blocker 1: npcActScripted originally returned
-// the ErrOutOfRange from the shared gate directly, and NPCAct propagated it
-// as a hard failure. rpg-api's driveNPCChain only calls EndTurn after a
-// SUCCESSFUL NPCAct, so an out-of-reach monster (the closest player simply
-// too far away) would error on every single retry and the encounter would
-// be wedged forever — turn never advances, nobody can act. The fix: an
-// out-of-reach target is "nothing to do this turn" (same as the existing
-// target==nil case), not an error — NPCAct succeeds, no attack resolves,
-// and the turn ends normally afterward.
-func TestNPCAct_ScriptedAttackBeyondReach_PassesTurnWithoutWedging(t *testing.T) {
-	transport, broker := newRangeGateBroker()
-	defer func() { _ = broker.Close(); _ = transport.Close() }()
-
-	enc := encounter.New(context.Background(), "enc-rg-npc-distant", broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
-	)
-	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: alicePlayerID, EntityID: aliceEntityID,
-		Position: core.Hex{}, SightRange: 20,
-		HP: 12, MaxHP: 12, AC: 14,
-	}))
-	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
-		ID: gobEntityID, Position: core.Hex{Q: 3, R: 0, S: -3},
-		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
-		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
-		// No DataJSON: NPCAct falls back to npcActScripted, the "different
-		// entry point" the issue's spec calls out — it must be gated too.
-	}))
-	endTurnUntilActive(t, enc, gobEntityID)
-
-	err := enc.NPCAct(context.Background(), gobEntityID)
-	require.NoError(t, err, "an out-of-reach scripted attack must pass the turn, not error")
-	require.Equal(t, 12, enc.ToData().Players[alicePlayerID].HP, "no attack resolved, so no damage")
-
-	// The turn must be free to end normally — proving the encounter isn't
-	// wedged (the exact failure mode blocker 1 fixes).
-	_, _, endErr := enc.EndTurn(context.Background(), gobEntityID)
-	require.NoError(t, endErr)
-	require.Equal(t, core.EntityID(aliceEntityID), enc.ActiveActor(),
-		"turn must advance to alice, not stay stuck on the goblin")
-}
-
-func TestNPCAct_ScriptedAttackAtReach_Succeeds(t *testing.T) {
-	transport, broker := newRangeGateBroker()
-	defer func() { _ = broker.Close(); _ = transport.Close() }()
-
-	enc := encounter.New(context.Background(), "enc-rg-npc-adjacent", broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
-	)
-	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
-		PlayerID: alicePlayerID, EntityID: aliceEntityID,
-		Position: core.Hex{}, SightRange: 20,
-		HP: 12, MaxHP: 12, AC: 14,
-	}))
-	require.NoError(t, enc.AddMonster(encounter.MonsterInput{
-		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
-		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
-		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
-	}))
-	endTurnUntilActive(t, enc, gobEntityID)
-
-	err := enc.NPCAct(context.Background(), gobEntityID)
-	require.NoError(t, err)
-}
-
 // --- applyCapturedAttacks skip semantics (hydrated monster path) -----------
+//
+// This section used to be paired with an "NPCAct scripted attack (monster
+// path, no DataJSON)" section proving the same out-of-reach-doesn't-wedge
+// behavior for npcActScripted, the empty-DataJSON fallback. rpg-toolkit#895's
+// no-fallback rider deleted npcActScripted (AddMonster now rejects empty
+// DataJSON outright), so that section — and its own reach gate — no longer
+// exists; this hydrated-monster path is the only one left.
 
 // TestNPCAct_HydratedMonster_OutOfReachCapturedAttack_SkipsWithoutWedging is
-// the gate-review regression for blocker 1's other call site
-// (applyCapturedAttacks, the hydrated-monster path — the scripted-fallback
-// path above covers npcActScripted).
+// the gate-review regression for blocker 1: applyCapturedAttacks must skip
+// (not error) a captured attack the shared gate rejects as out of reach,
+// the same "nothing to do this turn" treatment target==nil already gets —
+// erroring here would wedge the encounter (rpg-api's driveNPCChain only
+// calls EndTurn after a SUCCESSFUL NPCAct).
 //
 // Builds a monster whose own melee action reports an inflated reach (3, via
 // a weapon name — "unmatched-claw" — that doesn't match anything in the

@@ -143,6 +143,19 @@ type SpaceData struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`
 
+	// FloorCells is the canonical structural-floor snapshot for canvas
+	// encounters. Legacy snapshots may omit it and reload as the v0.3 bounds
+	// rectangle; new snapshots always persist the complete sorted set.
+	FloorCells []core.Hex `json:"floor_cells,omitempty"`
+
+	// EnvelopeEdges is the complete canonical floor/void boundary snapshot.
+	// Each pair has exactly one FloorCells owner; the other endpoint may be an
+	// in-canvas void or an actual off-canvas neighbor.
+	EnvelopeEdges []GeneratedEdge `json:"envelope_edges,omitempty"`
+
+	// RequireConnectedFloor persists the strict region-union start/reload gate.
+	RequireConnectedFloor bool `json:"require_connected_floor,omitempty"`
+
 	// Entrance is the toolkit-resolved party-start anchor for an InitDungeon
 	// space. It may be an authored absolute start in any semantic region, not
 	// only the entrance archetype. Zero value (the zero Hex) remains the value

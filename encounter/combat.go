@@ -1034,6 +1034,11 @@ func rollD20(r dice.Roller) int {
 // supplies the known cost; the menu/economy unification PR will source richer
 // consumption.
 //
+// targetRationale carries the NPC targeting-strategy ref (e.g.
+// "dnd5e:targeting:lowest-hp") on the monster→player attack path
+// (rpg-toolkit#895); the player→monster path always passes "" since a
+// player's target is a human choice, not an AI decision to explain.
+//
 // Audience routing matches Move / OpenDoor: viewers who cannot perceive
 // the attacker or the target are omitted from PerPlayer entirely (and so
 // are excluded from Audience()). The broker delivers only to listed
@@ -1045,6 +1050,7 @@ func (e *Encounter) publishAttackOutcome(
 	damageType string,
 	attackerPos, targetPos core.Hex,
 	actionRef string,
+	targetRationale string,
 	consumed events.EconomyConsumed,
 ) (core.CorrelationID, error) {
 	actionPerPlayer := make(map[core.PlayerID]events.ActionResolvedSlice)
@@ -1068,7 +1074,7 @@ func (e *Encounter) publishAttackOutcome(
 	corrID := e.correlationFor(actionSeq)
 	actionEvt := events.NewActionResolvedEvent(
 		e.data.ID, actionSeq,
-		attackerID, actionRef, targetID,
+		attackerID, actionRef, targetID, targetRationale,
 		consumed, actionPerPlayer,
 	)
 	if err := e.publishCorrelated(actionEvt, corrID); err != nil {

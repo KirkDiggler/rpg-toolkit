@@ -121,7 +121,7 @@ func validateAndNormalizeAuthoredEdges(params DungeonParams) ([]AuthoredEdge, er
 // not a seed-dependent open-cell sample.
 func semanticDungeonFloorHexes(params DungeonParams) map[core.Hex]struct{} {
 	if params.FloorSource == FloorSourceCanvas {
-		return canvasFloorHexes(params.Width, params.Height)
+		return canvasFloorForParams(params)
 	}
 	capacity := 0
 	for _, region := range params.Regions {
@@ -357,7 +357,7 @@ func persistedAuthoredFloor(space *SpaceData) (map[core.Hex]struct{}, error) {
 		if len(space.Regions) != 0 {
 			return nil, fmt.Errorf("persisted canvas floor must not infer membership from regions")
 		}
-		return canvasFloorHexes(space.Width, space.Height), nil
+		return canvasFloorForSpace(space), nil
 	}
 	floor := make(map[core.Hex]struct{})
 	for _, region := range space.Regions {

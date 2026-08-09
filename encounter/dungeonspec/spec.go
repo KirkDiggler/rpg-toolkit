@@ -52,8 +52,9 @@ const (
 
 // CanvasSpec is the explicit structural floor source for canvas mode.
 type CanvasSpec struct {
-	Width  int `yaml:"width"`
-	Height int `yaml:"height"`
+	Width       int    `yaml:"width"`
+	Height      int    `yaml:"height"`
+	FloorSource string `yaml:"floor_source,omitempty"`
 }
 
 // RegionSpec is one authored semantic scope. Cells are absolute odd-q
@@ -95,8 +96,10 @@ type BossEntry struct {
 	// Facing is decoded solely so unsupported boss-facing input can fail at
 	// its supplied field path. Boss-facing behavior is outside Slice #178.
 	Facing *string `yaml:"facing,omitempty"`
-	// Offset preserves authored presence independently from an explicit zero
-	// triple. It has no effect on boss placement or mechanics.
+	// Targeting overrides the boss's targeting strategy — same vocabulary
+	// and nil-means-omitted shape as PlacedEntry.Targeting (rpg-toolkit#895).
+	Targeting *string `yaml:"targeting,omitempty"`
+	// Offset preserves omission independently from an explicit zero triple.
 	Offset *PlacementOffset `yaml:"offset,omitempty"`
 }
 
@@ -126,8 +129,13 @@ type PlacedEntry struct {
 	// field path. Slice #178 supports floor placements only and never
 	// compiles mount behavior.
 	Mount *string `yaml:"mount,omitempty"`
-	// Offset preserves authored presence independently from an explicit zero
-	// triple. It is copied verbatim and never affects placement mechanics.
+	// Targeting overrides the placed monster's targeting strategy (one of
+	// "closest" | "lowest-health" | "lowest-ac" — monster.ParseTargetingStrategy,
+	// rpg-toolkit#895). Nil represents both an omitted field and explicit
+	// YAML null; only valid on a monsters ref, never a props ref (validate.go
+	// mirrors blocks_movement's own props-only restriction, inverted).
+	Targeting *string `yaml:"targeting,omitempty"`
+	// Offset preserves omission independently from an explicit zero triple.
 	Offset *PlacementOffset `yaml:"offset,omitempty"`
 }
 

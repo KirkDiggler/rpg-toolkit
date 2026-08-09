@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,7 +23,20 @@ import (
 // or silently dropping everything after the first document.
 func Decode(raw []byte) (*DungeonSpec, error) {
 	shape, hasCanvas := dungeonRoomsShape(raw)
-	if err := validatePlacementOffsetNodes(raw); err != nil {
+	var document yaml.Node
+	if err := yaml.Unmarshal(raw, &document); err != nil {
+		return nil, authoredWrap("spec", "invalid_yaml", fmt.Errorf("decode dungeon spec: %w", err))
+	}
+	if len(document.Content) == 0 {
+		return nil, authoredError("spec", "invalid_yaml", "empty dungeon spec")
+	}
+	if hasCanvas && shape == roomsInvalid {
+		return nil, authoredError("rooms", "invalid_yaml", "canvas mode rooms must be an explicit empty sequence (rooms: [])")
+	}
+	if err := validatePlacementOffsetNodes(document.Content[0]); err != nil {
+		return nil, err
+	}
+	if err := validateYAMLShape(document.Content[0], reflect.TypeOf(DungeonSpec{}), "spec"); err != nil {
 		return nil, err
 	}
 
@@ -32,12 +46,14 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 	var spec DungeonSpec
 	if err := dec.Decode(&spec); err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, errors.New("empty dungeon spec")
+			return nil, authoredError("spec", "invalid_yaml", "empty dungeon spec")
 		}
 		if hasCanvas && shape == roomsInvalid {
-			return nil, errors.New("canvas mode rooms must be an explicit empty sequence (rooms: [])")
+			return nil, authoredError(
+				"rooms", "invalid_yaml", "canvas mode rooms must be an explicit empty sequence (rooms: [])",
+			)
 		}
-		return nil, fmt.Errorf("decode dungeon spec: %w", err)
+		return nil, authoredWrap("spec", "invalid_yaml", fmt.Errorf("decode dungeon spec: %w", err))
 	}
 
 	// A second call to Decode reads the next YAML document in the stream,
@@ -47,7 +63,7 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 	// stray `---` documents.
 	var extra DungeonSpec
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errors.New("multi-document YAML not supported: a dungeon spec is one document")
+		return nil, authoredError("spec", "invalid_yaml", "multi-document YAML not supported: a dungeon spec is one document")
 	}
 
 	spec.roomsShape = shape
@@ -94,34 +110,24 @@ func dungeonRoomsShape(raw []byte) (roomsShape, bool) {
 }
 
 // ValidationError identifies one invalid authored field by its canonical
-// dungeonspec source path. API adapters use Field directly for inline errors
-// instead of parsing the human-readable Error string.
+// dungeonspec source path.
 type ValidationError struct {
 	Field   string
 	Message string
 }
 
 // Error returns the source path followed by the validation failure.
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Field, e.Message)
-}
+func (e *ValidationError) Error() string { return fmt.Sprintf("%s: %s", e.Field, e.Message) }
 
 func newValidationError(field, message string) *ValidationError {
 	return &ValidationError{Field: field, Message: message}
 }
 
-// validatePlacementOffsetNodes validates the authored YAML node before typed
-// decoding. A pointer to [3]float64 preserves omission versus explicit zero,
-// but yaml.v3 would otherwise coerce a null component to zero and a null field
-// to nil; inspecting the node closes those silent-loss cases and supplies the
-// exact source path for every malformed placement location.
-func validatePlacementOffsetNodes(raw []byte) error {
-	var document yaml.Node
-	if err := yaml.Unmarshal(raw, &document); err != nil || len(document.Content) == 0 {
-		return nil // the strict typed decoder returns the canonical syntax error
-	}
-	root := document.Content[0]
-	if root.Kind != yaml.MappingNode {
+// validatePlacementOffsetNodes inspects placement offsets before generic shape
+// decoding so explicit nulls and null components cannot collapse into omission
+// or numeric zero.
+func validatePlacementOffsetNodes(root *yaml.Node) error {
+	if root == nil || root.Kind != yaml.MappingNode {
 		return nil
 	}
 	if place := mappingNodeValue(root, "place"); place != nil {
@@ -158,7 +164,7 @@ func validatePlacementOffsetNodes(raw []byte) error {
 
 func validatePlaceOffsetSequence(sequence *yaml.Node, prefix string) error {
 	if sequence.Kind != yaml.SequenceNode {
-		return nil // strict typed decode owns the invalid place collection shape
+		return nil
 	}
 	for index, entry := range sequence.Content {
 		if entry.Kind != yaml.MappingNode {

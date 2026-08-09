@@ -156,6 +156,7 @@ func (s *TurnEconomyDownedSuite) TestDownedPlayerTurnStart_ZeroesEconomy_NotRese
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())
@@ -271,6 +272,7 @@ func (s *TurnEconomyDownedSuite) TestDownedPlayerRevivedByNat20MidTurnStart_Rese
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())
@@ -408,6 +410,7 @@ func (s *TurnEconomyDownedSuite) TestDownedPlayerViaRealCombat_StaysZeroedAcross
 		ID: gobEntityID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())

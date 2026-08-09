@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
 const canvasFixture = `version: 1
@@ -33,12 +35,11 @@ func Test883CanvasModeAndProviderContract(t *testing.T) {
 	require.Equal(t, 4, plan.Width)
 	require.Equal(t, 2, plan.Height)
 	require.Equal(t, []FloorPlanCell{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}}, plan.FloorCells)
-	require.Equal(t, FloorPlanCell{1, 1}, plan.Entrance)
-	require.Equal(t, []FloorPlanEdge{{
+	require.Equal(t, &FloorPlanCell{1, 1}, plan.Entrance)
+	require.Contains(t, plan.Edges, FloorPlanEdge{
 		From: FloorPlanCell{1, 0}, To: FloorPlanCell{1, 1},
-		Kind:   FloorPlanEdgeKindDoor,
-		DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0",
-	}}, plan.Edges)
+		Kind: FloorPlanEdgeKindDoor, DoorID: "canvas-provider-contract-authored-door-1--2-1--1--1-0",
+	})
 }
 
 func Test883CanvasModeMatrixAndShrink(t *testing.T) {
@@ -107,7 +108,7 @@ walls:
 			DoorID: "room-provider-door-crossing-boss", FromRoomID: crossingRoomID, ToRoomID: archetypeBoss, Column: 26,
 		},
 	}, plan.Connectors)
-	require.Equal(t, FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
+	require.Equal(t, &FloorPlanCell{Column: 0, Row: 4}, plan.Entrance)
 
 	doorIDs := make(map[string]bool, len(plan.Edges))
 	for _, edge := range plan.Edges {
@@ -128,6 +129,41 @@ func TestCanvasMonsterPlacementRejectsPropOnlyFlagsAtFieldPath(t *testing.T) {
 			require.ErrorContains(t, err, "only valid on props")
 		})
 	}
+}
+
+// TestCanvasMonsterPlacementTargeting covers rpg-toolkit#895's targeting
+// field on canvas-mode monster placements: rejected on a props ref (mirrors
+// TestCanvasMonsterPlacementRejectsPropOnlyFlagsAtFieldPath's own props/
+// monsters-only pattern, inverted), rejected when unparseable, and — when
+// valid — threaded all the way into the compiled SpawnInstruction.
+func TestCanvasMonsterPlacementTargeting(t *testing.T) {
+	t.Run("rejected on a props ref", func(t *testing.T) {
+		yaml := strings.Replace(canvasFixture,
+			"  - { ref: \"dnd5e:props:altar\", at: [1, 0], facing: W }",
+			"  - { ref: \"dnd5e:props:altar\", at: [1, 0], targeting: closest }", 1)
+		_, err := Load([]byte(yaml))
+		require.ErrorContains(t, err, "place[0].targeting")
+		require.ErrorContains(t, err, "only valid on monsters")
+	})
+
+	t.Run("unparseable value rejected", func(t *testing.T) {
+		yaml := strings.Replace(canvasFixture,
+			"  - { ref: \"dnd5e:props:altar\", at: [1, 0], facing: W }",
+			"  - { ref: \"dnd5e:monsters:skeleton\", at: [1, 0], targeting: nearest }", 1)
+		_, err := Load([]byte(yaml))
+		require.ErrorContains(t, err, "place[0].targeting")
+		require.ErrorContains(t, err, `invalid targeting strategy "nearest"`)
+	})
+
+	t.Run("valid value threads into the compiled SpawnInstruction", func(t *testing.T) {
+		yaml := strings.Replace(canvasFixture,
+			"  - { ref: \"dnd5e:props:altar\", at: [1, 0], facing: W }",
+			"  - { ref: \"dnd5e:monsters:skeleton\", at: [1, 0], targeting: lowest-ac }", 1)
+		compiled, err := Load([]byte(yaml))
+		require.NoError(t, err)
+		require.Len(t, compiled.Spawns, 1)
+		require.Equal(t, monster.TargetLowestAC, compiled.Spawns[0].Targeting)
+	})
 }
 
 func Test883CanvasFacingAndLockGrammar(t *testing.T) {

@@ -88,10 +88,23 @@ func (s *ScimitarAction) CanActivate(_ context.Context, _ core.Entity, input Mon
 	if input.Target == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "no target for scimitar attack")
 	}
+	if input.Perception == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "no perception data")
+	}
 
-	// Target must be adjacent (5ft reach)
-	closest := input.Perception.ClosestEnemy()
-	if closest == nil || !closest.Adjacent {
+	// The SELECTED target must be adjacent (5ft reach) — not merely the
+	// closest enemy (rpg-toolkit#895: a targeting strategy can pick a
+	// non-closest enemy, and movement/attack targeting must agree on who
+	// the monster is engaging). Matches the pattern already used by
+	// actions.MeleeAction/BiteAction in the sibling actions/ package.
+	targetInReach := false
+	for _, enemy := range input.Perception.Enemies {
+		if enemy.Entity.GetID() == input.Target.GetID() {
+			targetInReach = enemy.Adjacent
+			break
+		}
+	}
+	if !targetInReach {
 		return rpgerr.New(rpgerr.CodeOutOfRange, "target not in melee range")
 	}
 

@@ -51,6 +51,7 @@ func (s *ActionResolvedSuite) SetupTest() {
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
 		MonsterRef:  monsterRefGoblin,
 		AttackBonus: 4, DamageDice: "1d6+2", DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 
 	var err error

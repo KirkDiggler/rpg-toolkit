@@ -39,6 +39,11 @@ const (
 	smRefSkeletonCaptain = "dnd5e:monsters:skeleton-captain"
 	smRefSkeleton        = "dnd5e:monsters:skeleton"
 	smRefZombie          = "dnd5e:monsters:zombie"
+	// smRefWolf's ctor (monsters.NewWolf) calls SetTargeting(TargetLowestHP)
+	// by default — used by the SpawnInstruction.Targeting tests below to
+	// prove a nil Targeting preserves that ctor default and an explicit
+	// override beats it.
+	smRefWolf = "dnd5e:monsters:wolf"
 
 	smObstacleRefCrate  = "test:obstacles:crate"
 	smObstacleRefCandle = "test:obstacles:candle"
@@ -89,6 +94,18 @@ func smNewEncounter(t *testing.T) *Encounter {
 func marshalData(t *testing.T, enc *Encounter) []byte {
 	t.Helper()
 	b, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	return b
+}
+
+// smGoblinDataJSON returns valid, rehydratable monster.Data JSON for a real
+// registry goblin. rpg-toolkit#895's no-fallback rider makes AddMonster
+// reject empty DataJSON, so every hand-built MonsterInput fixture in this
+// package needs a real serialized monster now, not just SeedMonsters-driven
+// ones (which already marshal DataJSON via the real ctor path).
+func smGoblinDataJSON(t *testing.T, id string) []byte {
+	t.Helper()
+	b, err := json.Marshal(monster.NewGoblin(id).ToData())
 	require.NoError(t, err)
 	return b
 }
@@ -332,6 +349,69 @@ func TestSeedMonsters_OpportunityAttackReadySeeded(t *testing.T) {
 		"the flat combat-snapshot AttackBonus must be populated from the monster's own attack action")
 	require.NotEmpty(t, m.DamageDice, "the flat combat-snapshot DamageDice must be populated")
 	require.NotEmpty(t, m.DamageType, "the flat combat-snapshot DamageType must be populated")
+}
+
+// smSpawnedTargeting spawns a single instance of ref via SeedMonsters with
+// the given Targeting override (monster.TargetingUnspecified, the zero
+// value, is a legal "unset" value), then unmarshals the resulting monster's
+// DataJSON to read back its persisted TargetingStrategy — the survival
+// proof every targeting test below needs.
+func smSpawnedTargeting(t *testing.T, ref string, targeting monster.TargetingStrategy) monster.TargetingStrategy {
+	t.Helper()
+	enc := smNewEncounter(t)
+	require.NoError(t, enc.InitDungeon(smDungeonParams()))
+	at := LocalHex{Col: 1, Row: 2}
+	require.NoError(t, enc.SeedMonsters([]SpawnInstruction{
+		{RoomID: smRoomIDEntrance, MonsterRef: ref, Count: 1, At: &at, Targeting: targeting},
+	}))
+	data := enc.ToData()
+	require.Len(t, data.Monsters, 1)
+	var mon *MonsterData
+	for _, m := range data.Monsters {
+		mon = m
+	}
+	require.NotNil(t, mon)
+	var monData monster.Data
+	require.NoError(t, json.Unmarshal(mon.DataJSON, &monData))
+	return monData.Targeting
+}
+
+// TestSeedMonsters_TargetingSurvivesIntoDataJSON: an explicit
+// SpawnInstruction.Targeting override reaches the spawned monster's
+// DataJSON (rpg-toolkit#895) — SetTargeting is applied before ToData()
+// marshals it, not after.
+func TestSeedMonsters_TargetingSurvivesIntoDataJSON(t *testing.T) {
+	got := smSpawnedTargeting(t, smRefSkeleton, monster.TargetLowestAC)
+	require.Equal(t, monster.TargetLowestAC, got)
+}
+
+// TestSeedMonsters_UnspecifiedTargetingPreservesCtorDefault: a
+// TargetingUnspecified SpawnInstruction.Targeting (the "author omitted
+// targeting" shape, and now the zero value) must leave the constructor's
+// own default alone — wolf.go's NewWolf calls SetTargeting(TargetLowestHP),
+// and stomping that default is exactly what a naive unconditional
+// SetTargeting call would do.
+func TestSeedMonsters_UnspecifiedTargetingPreservesCtorDefault(t *testing.T) {
+	got := smSpawnedTargeting(t, smRefWolf, monster.TargetingUnspecified)
+	require.Equal(t, monster.TargetLowestHP, got,
+		"TargetingUnspecified must not override the wolf ctor's own default")
+}
+
+// TestSeedMonsters_ExplicitClosestBeatsCtorDefault: an explicit
+// targeting: closest MUST override wolf's non-closest ctor default — the
+// exact case that was indistinguishable from "unset" back when TargetClosest
+// was the zero value. Asserts the raw persisted value is literally 1, not
+// just symbolically equal to the TargetClosest constant: rpg-toolkit#895
+// gate-review hardening's whole point is that persisted "closest" (1) is
+// now distinguishable from persisted "unset" (TargetingUnspecified, 0)
+// forever, by construction — not just by construction-time discipline that
+// a future accidental renumbering could quietly undo while keeping this
+// assertion's symbolic comparison passing.
+func TestSeedMonsters_ExplicitClosestBeatsCtorDefault(t *testing.T) {
+	got := smSpawnedTargeting(t, smRefWolf, monster.TargetClosest)
+	require.Equal(t, monster.TargetClosest, got,
+		"explicit targeting: closest must beat the wolf ctor's TargetLowestHP default")
+	require.EqualValues(t, 1, got, "persisted targeting must be the literal value 1, not 0 (unset)")
 }
 
 // TestSeedMonsters_MidBatchInvalidInstructionLeavesEncounterUnchanged:
@@ -606,7 +686,10 @@ func TestSeedMonsters_ExistingMonsterCollisionRejected(t *testing.T) {
 
 	at := LocalHex{Col: 1, Row: 2}
 	pos := core.HexFromPosition(spatial.Position{X: float64(at.Col), Y: float64(at.Row)})
-	require.NoError(t, enc.AddMonster(MonsterInput{ID: "hand-placed-goblin", Position: pos, HP: 7, MaxHP: 7}))
+	require.NoError(t, enc.AddMonster(MonsterInput{
+		ID: "hand-placed-goblin", Position: pos, HP: 7, MaxHP: 7,
+		DataJSON: smGoblinDataJSON(t, "hand-placed-goblin"),
+	}))
 
 	err := enc.SeedMonsters([]SpawnInstruction{
 		{RoomID: smRoomIDEntrance, MonsterRef: smRefSkeleton, Count: 1, At: &at},

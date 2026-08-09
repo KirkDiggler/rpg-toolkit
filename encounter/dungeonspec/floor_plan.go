@@ -60,23 +60,33 @@ type FloorPlanRegion struct {
 	ParentID  *string
 }
 
+// FloorSource is the resolved authored canvas floor source.
+type FloorSource string
+
+const (
+	// FloorSourceBounds resolves omission and explicit bounds to the v0.3 rectangle.
+	FloorSourceBounds FloorSource = "bounds"
+	// FloorSourceRegions resolves floor from the canonical region-cell union.
+	FloorSourceRegions FloorSource = "regions"
+)
+
 // FloorPlan is the provider-owned authoring projection.
 type FloorPlan struct {
-	Rooms      []FloorPlanRoom
-	Regions    []FloorPlanRegion
-	Connectors []FloorPlanConnector
+	FloorSource FloorSource
+	Rooms       []FloorPlanRoom
+	Regions     []FloorPlanRegion
+	Connectors  []FloorPlanConnector
 	// Width is the canvas width only; room chains leave it zero to preserve
 	// the wire contract's canvas-only field semantics.
 	Width   int
 	Height  int
 	DoorRow int
-	// FloorCells is the v0.3 canvas structural-floor projection only. It is
+	// FloorCells is the complete canonical canvas structural-floor projection. It is
 	// nil for room chains because their region-only data omits connector cells.
 	FloorCells []FloorPlanCell
-	Entrance   FloorPlanCell
+	Entrance   *FloorPlanCell
 	Edges      []FloorPlanEdge
-	// Placements preserves every authored room/canvas placement and boss in
-	// canonical absolute coordinates with its exact optional offset.
+	// Placements is the authoring-only projection; it carries no runtime identity.
 	Placements []CompiledPlacement
 }
 
@@ -86,11 +96,25 @@ type BuildFloorPlanInput struct {
 	Seed     int64
 }
 
-// BuildFloorPlan initializes a throwaway toolkit encounter and projects its
-// persisted spatial facts. It intentionally does not derive identity, floor
-// membership, generated edges, or authored overlays from CompiledDungeon: the
-// initialized encounter is the same runtime truth used by real startup.
+func validateCompiledRuntime(ctx context.Context, compiled CompiledDungeon, seed int64) error {
+	params := compiled.Params
+	params.RandomSeed = seed
+	transport := encounter.NewInMemoryTransport()
+	broker := encounter.NewBroker(transport)
+	defer func() { _ = broker.Close(); _ = transport.Close() }()
+	preview := encounter.New(ctx, "dungeon-runtime-validation", broker)
+	if err := preview.InitDungeon(params); err != nil {
+		return fmt.Errorf("init dungeon: %w", err)
+	}
+	return nil
+}
+
+// BuildFloorPlan projects canonical compiler facts for canvas candidates and
+// initialized runtime facts for legacy room-chain candidates.
 func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, error) {
+	if in.Compiled.canvas != nil && in.Compiled.canvas.floorSource == FloorSourceRegions {
+		return buildCanvasFloorPlan(in.Compiled), nil
+	}
 	params := in.Compiled.Params
 	params.RandomSeed = in.Seed
 	transport := encounter.NewInMemoryTransport()
@@ -107,8 +131,9 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 	if data.Space == nil {
 		return FloorPlan{}, fmt.Errorf("init dungeon: no persisted space")
 	}
+	entrance := cellFromHex(data.Space.Entrance)
 	plan := FloorPlan{
-		Height: data.Space.Height, Entrance: cellFromHex(data.Space.Entrance),
+		FloorSource: FloorSourceBounds, Height: data.Space.Height, Entrance: &entrance,
 		Placements: cloneCompiledPlacements(in.Compiled.Placements),
 	}
 
@@ -181,6 +206,53 @@ func BuildFloorPlan(ctx context.Context, in BuildFloorPlanInput) (FloorPlan, err
 		return plan.Edges[i].DoorID < plan.Edges[j].DoorID
 	})
 	return plan, nil
+}
+
+func buildCanvasFloorPlan(compiled CompiledDungeon) FloorPlan {
+	canvas := compiled.canvas
+	plan := FloorPlan{
+		FloorSource: canvas.floorSource, Width: canvas.width, Height: canvas.height,
+		FloorCells: append([]FloorPlanCell(nil), canvas.floorCells...), Entrance: cloneFloorPlanCell(canvas.entrance),
+		Regions:    append([]FloorPlanRegion(nil), canvas.regions...),
+		Placements: cloneCompiledPlacements(compiled.Placements),
+	}
+	for _, edge := range canvas.envelope {
+		from, to := cellFromHex(edge.From), cellFromHex(edge.To)
+		if floorPlanCellLess(to, from) {
+			from, to = to, from
+		}
+		plan.Edges = append(plan.Edges, FloorPlanEdge{From: from, To: to, Kind: FloorPlanEdgeKindSolid})
+	}
+	for _, edge := range compiled.Params.AuthoredEdges {
+		from, to := cellFromHex(edge.From), cellFromHex(edge.To)
+		if floorPlanCellLess(to, from) {
+			from, to = to, from
+		}
+		plan.Edges = append(plan.Edges, FloorPlanEdge{
+			From: from, To: to, Kind: FloorPlanEdgeKind(edge.Kind), DoorID: string(edge.DoorID),
+		})
+	}
+	sort.Slice(plan.Edges, func(i, j int) bool {
+		if plan.Edges[i].From != plan.Edges[j].From {
+			return floorPlanCellLess(plan.Edges[i].From, plan.Edges[j].From)
+		}
+		if plan.Edges[i].To != plan.Edges[j].To {
+			return floorPlanCellLess(plan.Edges[i].To, plan.Edges[j].To)
+		}
+		if plan.Edges[i].Kind != plan.Edges[j].Kind {
+			return plan.Edges[i].Kind < plan.Edges[j].Kind
+		}
+		return plan.Edges[i].DoorID < plan.Edges[j].DoorID
+	})
+	return plan
+}
+
+func cloneFloorPlanCell(value *FloorPlanCell) *FloorPlanCell {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 func floorPlanCellLess(left, right FloorPlanCell) bool {

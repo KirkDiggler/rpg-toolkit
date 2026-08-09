@@ -74,9 +74,118 @@ func canvasFloorContainsDimensions(width, height int, hex core.Hex) bool {
 	return hex.R == -hex.Q-hex.S
 }
 
+func canvasFloorForParams(params DungeonParams) map[core.Hex]struct{} {
+	if params.FloorCells == nil {
+		return canvasFloorHexes(params.Width, params.Height)
+	}
+	floor := make(map[core.Hex]struct{}, len(params.FloorCells))
+	for _, hex := range params.FloorCells {
+		floor[hex] = struct{}{}
+	}
+	return floor
+}
+
+func canvasFloorForSpace(space *SpaceData) map[core.Hex]struct{} {
+	if space.FloorCells == nil {
+		return canvasFloorHexes(space.Width, space.Height)
+	}
+	floor := make(map[core.Hex]struct{}, len(space.FloorCells))
+	for _, hex := range space.FloorCells {
+		floor[hex] = struct{}{}
+	}
+	return floor
+}
+
+func validateCanonicalFloorCells(width, height int, cells []core.Hex) error {
+	var previous floorOrderHex
+	seen := make(map[core.Hex]struct{}, len(cells))
+	for index, hex := range cells {
+		if !hex.ToCube().IsValid() || !canvasFloorContainsDimensions(width, height, hex) {
+			return fmt.Errorf("floor cell %d %v is outside canvas bounds", index, hex)
+		}
+		ordered := floorPlanOrderHex(hex)
+		if index > 0 && !previous.less(ordered) {
+			return fmt.Errorf("floor cells are not canonical sorted or contain a duplicate at index %d", index)
+		}
+		if _, duplicate := seen[hex]; duplicate {
+			return fmt.Errorf("floor cells contain duplicate %v", hex)
+		}
+		seen[hex] = struct{}{}
+		previous = ordered
+	}
+	return nil
+}
+
+// floorOrderHex gives stable offset-coordinate ordering without making
+// dungeonspec's projection types a dependency of encounter.
+type floorOrderHex struct{ column, row int }
+
+func floorPlanOrderHex(hex core.Hex) floorOrderHex {
+	position := hex.ToPosition()
+	return floorOrderHex{column: int(position.X), row: int(position.Y)}
+}
+func (h floorOrderHex) less(other floorOrderHex) bool {
+	return h.column < other.column || h.column == other.column && h.row < other.row
+}
+
+func canonicalCanvasFloorCells(params DungeonParams) []core.Hex {
+	cells := append([]core.Hex(nil), params.FloorCells...)
+	if params.FloorCells == nil {
+		for hex := range canvasFloorHexes(params.Width, params.Height) {
+			cells = append(cells, hex)
+		}
+		sort.Slice(cells, func(i, j int) bool { return floorPlanOrderHex(cells[i]).less(floorPlanOrderHex(cells[j])) })
+	}
+	return cells
+}
+
+func canvasEnvelopeEdges(floor map[core.Hex]struct{}) []GeneratedEdge {
+	edges := make([]GeneratedEdge, 0)
+	seen := make(map[generatedEdgeKey]struct{})
+	for owner := range floor {
+		for _, neighborCube := range owner.ToCube().GetNeighbors() {
+			neighbor := core.HexFromCube(neighborCube)
+			if _, isFloor := floor[neighbor]; isFloor {
+				continue
+			}
+			from, to := normalizeAuthoredEndpoints(owner, neighbor)
+			key := newGeneratedEdgeKey(from, to)
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			edges = append(edges, GeneratedEdge{From: from, To: to, Kind: GeneratedEdgeKindSolid})
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool { return generatedEdgeLess(edges[i], edges[j]) })
+	return edges
+}
+
+func generatedEdgesEqual(left, right GeneratedEdge) bool {
+	return left.From == right.From && left.To == right.To && left.Kind == right.Kind && left.DoorID == right.DoorID
+}
+
+func validateEnvelopeEdges(floor map[core.Hex]struct{}, edges []GeneratedEdge) error {
+	expected := canvasEnvelopeEdges(floor)
+	if len(edges) != len(expected) {
+		return fmt.Errorf("envelope edges: got %d records, want %d", len(edges), len(expected))
+	}
+	for index := range expected {
+		if !generatedEdgesEqual(edges[index], expected[index]) {
+			return fmt.Errorf("envelope edge %d is not the canonical floor/void pair", index)
+		}
+	}
+	return nil
+}
+
 func validateCanvasDungeonParams(params DungeonParams) error {
 	if _, err := ValidateCanvasDimensions(params.Width, params.Height); err != nil {
 		return err
+	}
+	if params.FloorCells != nil {
+		if err := validateCanonicalFloorCells(params.Width, params.Height, params.FloorCells); err != nil {
+			return fmt.Errorf("canvas floor: %w", err)
+		}
 	}
 	if len(params.Regions) != 0 || len(params.Connectors) != 0 {
 		return fmt.Errorf("canvas dungeon must not contain room-chain regions or connectors")
@@ -84,7 +193,23 @@ func validateCanvasDungeonParams(params DungeonParams) error {
 	if params.PartyStart.SeatCount < 0 {
 		return fmt.Errorf("party start seat count must not be negative (got %d)", params.PartyStart.SeatCount)
 	}
-	floor := canvasFloorHexes(params.Width, params.Height)
+	floor := canvasFloorForParams(params)
+	if params.RequireConnectedFloor {
+		if len(floor) == 0 {
+			return fmt.Errorf("canvas structural floor must not be empty")
+		}
+		for anchor := range floor {
+			if len(connectedFloorComponent(anchor, floor)) != len(floor) {
+				return fmt.Errorf("canvas structural floor must be connected")
+			}
+			break
+		}
+	}
+	if params.EnvelopeEdges != nil {
+		if err := validateEnvelopeEdges(floor, params.EnvelopeEdges); err != nil {
+			return err
+		}
+	}
 	occupied := make(map[core.Hex]string, len(params.AbsolutePlacedObstacles)+len(params.AbsoluteReservedCells))
 	seenIDs := make(map[core.EntityID]int, len(params.AbsolutePlacedObstacles))
 	for index, obstacle := range params.AbsolutePlacedObstacles {
@@ -134,7 +259,7 @@ func generateCanvasDungeonLayout(params DungeonParams) (*dungeonLayout, error) {
 			Facing: cloneFacing(obstacle.Facing), Offset: clonePlacementOffset(obstacle.Offset),
 		}
 	}
-	floor := canvasFloorHexes(params.Width, params.Height)
+	floor := canvasFloorForParams(params)
 	semanticRegions, err := validateSemanticRegionParams(params.SemanticRegions, floor)
 	if err != nil {
 		return nil, err
@@ -150,15 +275,7 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 	if seatCount == 0 {
 		seatCount = 1
 	}
-	anchor := core.HexFromPosition(spatial.Position{}).ToCube()
-	if params.PartyStart.Anchor != nil {
-		anchor = params.PartyStart.Anchor.ToCube()
-	}
-	floor := canvasFloorHexes(params.Width, params.Height)
-	anchorHex := core.HexFromCube(anchor)
-	if _, ok := floor[anchorHex]; !ok {
-		return partyStartReservation{}, fmt.Errorf("party start anchor %v is outside canvas floor", anchorHex)
-	}
+	floor := canvasFloorForParams(params)
 	blockers := make(map[core.Hex]string, len(params.AbsolutePlacedObstacles)+len(params.AbsoluteReservedCells))
 	for _, obstacle := range params.AbsolutePlacedObstacles {
 		blockers[obstacle.At] = fmt.Sprintf("canvas prop %q", obstacle.ID)
@@ -166,17 +283,32 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 	for _, reserved := range params.AbsoluteReservedCells {
 		blockers[reserved.At] = reserved.Name
 	}
-	if blocker, blocked := blockers[anchorHex]; blocked {
-		return partyStartReservation{}, fmt.Errorf("party start anchor %v collides with %s", anchorHex, blocker)
+
+	anchors := append([]core.Hex(nil), params.FloorCells...)
+	if params.FloorCells == nil {
+		for hex := range floor {
+			anchors = append(anchors, hex)
+		}
 	}
-	type candidate struct {
-		hex                core.Hex
-		col, row, distance int
+	sort.Slice(anchors, func(i, j int) bool { return floorPlanOrderHex(anchors[i]).less(floorPlanOrderHex(anchors[j])) })
+	if params.PartyStart.Anchor != nil {
+		anchors = []core.Hex{*params.PartyStart.Anchor}
 	}
-	candidates := make([]candidate, 0, params.Width*params.Height-1)
-	for col := 0; col < params.Width; col++ {
-		for row := 0; row < params.Height; row++ {
-			cell := core.HexFromPosition(spatial.Position{X: float64(col), Y: float64(row)})
+
+	for _, anchorHex := range anchors {
+		if _, ok := floor[anchorHex]; !ok {
+			continue
+		}
+		if _, blocked := blockers[anchorHex]; blocked {
+			continue
+		}
+		component := connectedFloorComponent(anchorHex, floor)
+		type candidate struct {
+			hex                core.Hex
+			col, row, distance int
+		}
+		candidates := make([]candidate, 0, len(component)-1)
+		for cell := range component {
 			if cell == anchorHex {
 				continue
 			}
@@ -185,29 +317,60 @@ func resolveCanvasPartyStartReservation(params DungeonParams) (partyStartReserva
 			}
 			pos := cell.ToPosition()
 			candidates = append(candidates, candidate{
-				hex: cell, col: int(pos.X), row: int(pos.Y), distance: anchor.Distance(cell.ToCube()),
+				hex: cell, col: int(pos.X), row: int(pos.Y),
+				distance: anchorHex.ToCube().Distance(cell.ToCube()),
 			})
 		}
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].distance != candidates[j].distance {
-			return candidates[i].distance < candidates[j].distance
+		sort.Slice(candidates, func(i, j int) bool {
+			if candidates[i].distance != candidates[j].distance {
+				return candidates[i].distance < candidates[j].distance
+			}
+			if candidates[i].row != candidates[j].row {
+				return candidates[i].row < candidates[j].row
+			}
+			return candidates[i].col < candidates[j].col
+		})
+		if len(candidates)+1 < seatCount {
+			continue
 		}
-		if candidates[i].row != candidates[j].row {
-			return candidates[i].row < candidates[j].row
+		seats := make([]spatial.CubeCoordinate, 0, seatCount)
+		seats = append(seats, anchorHex.ToCube())
+		for index := 0; index < seatCount-1; index++ {
+			seats = append(seats, candidates[index].hex.ToCube())
 		}
-		return candidates[i].col < candidates[j].col
-	})
-	if len(candidates)+1 < seatCount {
-		return partyStartReservation{}, fmt.Errorf(
-			"party start anchor at [%d,%d] requires %d seats but canvas has only %d available authored floor cells",
-			int(anchorHex.ToPosition().X), int(anchorHex.ToPosition().Y), seatCount, len(candidates)+1,
-		)
+		return partyStartReservation{anchor: anchorHex.ToCube(), seats: seats}, nil
 	}
-	seats := make([]spatial.CubeCoordinate, 0, seatCount)
-	seats = append(seats, anchor)
-	for index := 0; index < seatCount-1; index++ {
-		seats = append(seats, candidates[index].hex.ToCube())
+	if params.PartyStart.Anchor != nil {
+		anchor := *params.PartyStart.Anchor
+		if _, ok := floor[anchor]; !ok {
+			return partyStartReservation{}, fmt.Errorf("party start anchor %v is outside canvas floor", anchor)
+		}
+		if blocker, blocked := blockers[anchor]; blocked {
+			return partyStartReservation{}, fmt.Errorf("party start anchor %v collides with %s", anchor, blocker)
+		}
 	}
-	return partyStartReservation{anchor: anchor, seats: seats}, nil
+	return partyStartReservation{}, fmt.Errorf(
+		"canvas floor has no same-component party start envelope with %d seats", seatCount,
+	)
+}
+
+func connectedFloorComponent(anchor core.Hex, floor map[core.Hex]struct{}) map[core.Hex]struct{} {
+	component := map[core.Hex]struct{}{anchor: {}}
+	queue := []core.Hex{anchor}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, neighbor := range current.ToCube().GetNeighbors() {
+			hex := core.HexFromCube(neighbor)
+			if _, ok := floor[hex]; !ok {
+				continue
+			}
+			if _, seen := component[hex]; seen {
+				continue
+			}
+			component[hex] = struct{}{}
+			queue = append(queue, hex)
+		}
+	}
+	return component
 }

@@ -246,6 +246,7 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 		Position: core.Hex{Q: 1},
 		HP:       20, MaxHP: 20, AC: 12,
 		DamageDice: dice1d6, DamageType: damagePiercing,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 
 	// alice and the goblin are in mutual LoS, so AddMonster already
@@ -306,6 +307,7 @@ func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRo
 		Position: core.Hex{Q: 1},
 		HP:       10, MaxHP: 10, AC: 11,
 		DamageDice: "1d4", DamageType: damagePiercing,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 
 	// Mutate readiness before serialising.

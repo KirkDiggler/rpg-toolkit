@@ -457,8 +457,17 @@ func (m *Monster) TakeTurn(ctx context.Context, input *TurnInput) (*TurnResult, 
 		Movement:  make([]spatial.CubeCoordinate, 0),
 	}
 
-	// Move toward closest enemy if not adjacent
-	m.moveTowardEnemy(input, result)
+	// Move toward the monster's strategy-chosen target (not necessarily the
+	// closest enemy) if not already adjacent to it. Computed pre-move, from
+	// the full enemy list, so movement and attack target selection agree on
+	// who the monster is engaging this turn (rpg-toolkit#895).
+	var moveTarget *PerceivedEntity
+	if input.Perception != nil {
+		if idx := m.selectStrategyTargetIndex(input.Perception.Enemies); idx >= 0 {
+			moveTarget = &input.Perception.Enemies[idx]
+		}
+	}
+	m.moveTowardEnemy(input, result, moveTarget)
 
 	// Keep selecting actions until resources exhausted
 	for m.hasResources(input.ActionEconomy) {
@@ -594,8 +603,22 @@ func (m *Monster) selectTarget(action MonsterAction, perception *PerceptionData)
 
 // selectTargetByStrategy applies the monster's targeting strategy to select from available enemies
 func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity {
-	if len(enemies) == 0 {
+	idx := m.selectStrategyTargetIndex(enemies)
+	if idx < 0 {
 		return nil
+	}
+	return enemies[idx].Entity
+}
+
+// selectStrategyTargetIndex applies the monster's targeting strategy to pick
+// an index into enemies, or -1 if enemies is empty. It is the shared
+// selection logic behind selectTargetByStrategy (attack targeting, returns
+// core.Entity) and TakeTurn's pre-move target selection (movement, needs the
+// chosen enemy's Position too — rpg-toolkit#895) so the two never disagree
+// about who the monster is engaging.
+func (m *Monster) selectStrategyTargetIndex(enemies []PerceivedEntity) int {
+	if len(enemies) == 0 {
+		return -1
 	}
 
 	switch m.targeting {
@@ -609,7 +632,7 @@ func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity 
 				lowestIdx = i
 			}
 		}
-		return enemies[lowestIdx].Entity
+		return lowestIdx
 
 	case TargetLowestAC:
 		// Find enemy with lowest AC
@@ -621,27 +644,40 @@ func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity 
 				lowestIdx = i
 			}
 		}
-		return enemies[lowestIdx].Entity
+		return lowestIdx
 
-	case TargetClosest:
+	case TargetingUnspecified, TargetClosest:
 		fallthrough
 	default:
-		// Default behavior: pick closest (first in list, as Enemies is sorted by distance)
-		return enemies[0].Entity
+		// Unspecified (a freshly-constructed Monster's zero value) behaves
+		// identically to TargetClosest: pick closest (first in list, as
+		// Enemies is sorted by distance). Named explicitly alongside
+		// TargetClosest rather than left to fall through default only, so
+		// this reads as an intentional decision-time equivalence, not an
+		// accident of the zero value landing in default (rpg-toolkit#895).
+		return 0
 	}
 }
 
-// moveTowardEnemy moves the monster toward the closest enemy if not already adjacent.
-// Uses A* pathfinding to navigate around obstacles.
+// moveTowardEnemy moves the monster toward target (the strategy-chosen
+// enemy for this turn, computed by TakeTurn — rpg-toolkit#895) if not
+// already adjacent to it. Uses A* pathfinding to navigate around obstacles.
 // Updates perception data to reflect new position after movement.
-func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
-	if input.Perception == nil || len(input.Perception.Enemies) == 0 {
+//
+// Locked edge policies (rpg-toolkit#895 design): if target is unpathable,
+// the monster stalls in place rather than falling back to the closest
+// enemy — this falls out of the existing "no valid path" bail below with no
+// special-case code. If the monster is currently adjacent to a DIFFERENT
+// enemy than target, it still moves toward target, walking out of that
+// melee and accepting the opportunity attack — this falls out of checking
+// target.Adjacent instead of "is any enemy adjacent."
+func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult, target *PerceivedEntity) {
+	if input.Perception == nil || target == nil {
 		return
 	}
 
-	closest := input.Perception.ClosestEnemy()
-	if closest == nil || closest.Adjacent {
-		// Already adjacent or no enemy - no movement needed
+	if target.Adjacent {
+		// Already adjacent to our target - no movement needed
 		return
 	}
 
@@ -670,13 +706,13 @@ func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult) {
 	if input.Perception.TraversalPredicate != nil {
 		path = pathFinder.FindPathWithTraversal(
 			input.Perception.MyPosition,
-			closest.Position,
+			target.Position,
 			blocked,
 			input.Perception.TraversalPredicate,
 			input.Perception.TraversalLimit,
 		)
 	} else {
-		path = pathFinder.FindPath(input.Perception.MyPosition, closest.Position, blocked)
+		path = pathFinder.FindPath(input.Perception.MyPosition, target.Position, blocked)
 	}
 
 	if len(path) == 0 {

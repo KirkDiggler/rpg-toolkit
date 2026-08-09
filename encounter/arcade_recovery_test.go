@@ -159,6 +159,7 @@ func (s *ArcadeRecoverySuite) TestPostTPKCharacter_EntersNewEncounter_FullyResto
 		ID: arcGoblinID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), arcGoblinID),
 	}))
 
 	// PlayerData.HP must already read the restored value straight off
@@ -223,6 +224,7 @@ func (s *ArcadeRecoverySuite) TestExistingSeat_MidEncounterReload_DoesNotHeal() 
 		ID: arcGoblinID, Position: core.Hex{Q: 1, R: 0, S: -1},
 		HP: 7, MaxHP: 7, AC: 5, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), arcGoblinID),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())

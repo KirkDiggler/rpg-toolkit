@@ -6,9 +6,9 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.10.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.70.2-0.20260804104832-df6a2f5171ef
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.71.1-0.20260808232907-1eb7569a9e1f
 	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.3-0.20260719192245-bb98112c5ba3
-	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.2-0.20260804121443-8f30f27a61ae
+	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.6.1-0.20260809025703-5acea6e99857
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )

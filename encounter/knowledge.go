@@ -419,7 +419,11 @@ func (e *Encounter) edgesByHex() (map[core.Hex][]perception.Edge, error) {
 			observed.DoorOpen = door.Open
 			observed.DoorLocked = door.Locked
 		}
-		out[edge.From] = append(out[edge.From], observed)
+		owner := edge.From
+		if record.observationOwner != nil {
+			owner = *record.observationOwner
+		}
+		out[owner] = append(out[owner], observed)
 		if record.observeBothEndpoints && edge.From != edge.To {
 			out[edge.To] = append(out[edge.To], observed)
 		}

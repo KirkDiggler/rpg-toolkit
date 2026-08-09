@@ -138,11 +138,13 @@ func (s *PocketClearMoveTeardownSuite) loadErinVsTwoPockets() *encounter.Encount
 		ID: pcmGobB, Position: lineHex(25),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
+		DataJSON:   testGoblinDataJSON(s.T(), pcmGobB),
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: pcmGobA, Position: lineHex(1),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
+		DataJSON:   testGoblinDataJSON(s.T(), pcmGobA),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())
@@ -335,11 +337,13 @@ func (s *PocketClearMoveTeardownSuite) TestPocketClear_CombatScopedConditionPers
 		ID: pcmGobB, Position: lineHex(15),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
+		DataJSON:   testGoblinDataJSON(s.T(), pcmGobB),
 	}))
 	s.Require().NoError(enc.AddMonster(encounter.MonsterInput{
 		ID: pcmGobA, Position: lineHex(1),
 		HP: 1, MaxHP: 7, AC: 5, Speed: 6,
 		MonsterRef: monsterRefGoblin,
+		DataJSON:   testGoblinDataJSON(s.T(), pcmGobA),
 	}))
 
 	raw, err := json.Marshal(enc.ToData())

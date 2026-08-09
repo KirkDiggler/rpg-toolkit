@@ -146,6 +146,19 @@ func (h *SpatialQueryHandler) handleMovement(_ context.Context, data *QueryMovem
 	// with registered boundaries additionally reject any blocked consecutive
 	// crossing in the direct ray.
 	data.Valid = room.CanPlaceEntity(data.Entity, data.To)
+	if data.Valid {
+		previous := data.From
+		for index, step := range data.Path {
+			startsAtOrigin := index == 0 && step.Equals(data.From)
+			requiresAdjacentSteps := room.GetGrid().GetShape() != GridShapeGridless
+			if !room.GetGrid().IsValidPosition(step) ||
+				(requiresAdjacentSteps && !startsAtOrigin && !room.GetGrid().IsAdjacent(previous, step)) {
+				data.Valid = false
+				break
+			}
+			previous = step
+		}
+	}
 	if data.Valid && hasBoundaries {
 		for i := 1; i < len(data.Path); i++ {
 			if boundaryRoom.IsBoundaryMovementBlocked(data.Path[i-1], data.Path[i]) {

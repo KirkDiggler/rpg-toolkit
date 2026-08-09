@@ -121,6 +121,7 @@ func (s *MidTurnUnconsciousEconomySuite) SetupTest() {
 		ID: mueGoblinID, Position: core.Hex{Q: 2, R: 0, S: -2},
 		HP: 7, MaxHP: 7, AC: 15, Speed: 6,
 		AttackBonus: 4, DamageDice: damage1d6plus2, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), mueGoblinID),
 	}))
 
 	// Round-trip through Data so the hydration cascade holds alice's

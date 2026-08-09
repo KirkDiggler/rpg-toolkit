@@ -63,6 +63,7 @@ func (s *AddMonsterVisibilitySuite) TestAddMonster_IntoVisibleRange_AppearsBefor
 
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 2, R: 0, S: -2}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Equal(core.ModeTurnBased, s.enc.Mode(), "goblin visible at add time — combat must start")
 
@@ -100,6 +101,7 @@ func (s *AddMonsterVisibilitySuite) TestAddMonster_OutOfRange_NoAppearedEvent() 
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 20, R: 0, S: -20}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Equal(core.ModeFreeRoam, s.enc.Mode(), "goblin out of range — must not start combat")
 
@@ -124,6 +126,7 @@ func (s *AddMonsterVisibilitySuite) TestAddMonster_MidCombatReinforcement_Appear
 	}))
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 1, R: 0, S: -1}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 	s.Require().Equal(core.ModeTurnBased, s.enc.Mode(), "first goblin starts combat")
 	_ = collectEventsTyped(s.aliceSub, 300*time.Millisecond) // drain the first goblin's appear + mode change
@@ -131,6 +134,7 @@ func (s *AddMonsterVisibilitySuite) TestAddMonster_MidCombatReinforcement_Appear
 	// A second goblin, also within alice's sight range, added mid-combat.
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-2", Position: core.Hex{Q: 2, R: 0, S: -2}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-2"),
 	}))
 	s.Equal(core.ModeTurnBased, s.enc.Mode(), "still turn-based — no re-flip")
 
@@ -171,6 +175,7 @@ func (s *AddMonsterVisibilitySuite) TestAddMonster_VisibleToMultiplePlayers_Grou
 
 	s.Require().NoError(s.enc.AddMonster(encounter.MonsterInput{
 		ID: "goblin-1", Position: core.Hex{Q: 0, R: 0, S: 0}, HP: 7, MaxHP: 7,
+		DataJSON: testGoblinDataJSON(s.T(), "goblin-1"),
 	}))
 
 	aliceEvts := collectEventsTyped(s.aliceSub, 500*time.Millisecond)

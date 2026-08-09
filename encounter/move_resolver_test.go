@@ -318,6 +318,7 @@ func (s *MovementResolverSuite) addGoblinForNPCMovementTests() {
 		AttackBonus: 4,
 		DamageDice:  damage1d6plus1,
 		DamageType:  damageSlashing,
+		DataJSON:    testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 }
 

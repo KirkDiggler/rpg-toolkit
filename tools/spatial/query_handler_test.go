@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -347,4 +348,33 @@ func (s *QueryHandlerTestSuite) TestFilterFactories() {
 // Run the test suite
 func TestQueryHandlerSuite(t *testing.T) {
 	suite.Run(t, new(QueryHandlerTestSuite))
+}
+
+type movementMaskGrid struct {
+	*spatial.HexGrid
+	void spatial.Position
+}
+
+func (g *movementMaskGrid) IsValidPosition(position spatial.Position) bool {
+	return !position.Equals(g.void) && g.HexGrid.IsValidPosition(position)
+}
+
+func TestQueryMovementRejectsInvalidIntermediateWithoutBreakingRay(t *testing.T) {
+	base := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width: 5, Height: 5, Orientation: spatial.HexOrientationPointyTop,
+	})
+	grid := &movementMaskGrid{HexGrid: base, void: spatial.Position{X: 2, Y: 2}}
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: "masked-query", Type: "room", Grid: grid})
+	handler := spatial.NewSpatialQueryHandler()
+	handler.RegisterRoom(room)
+	from, to := spatial.Position{X: 1, Y: 1}, spatial.Position{X: 3, Y: 3}
+	valid, path, _, err := spatial.NewQueryUtils(handler).QueryMovement(
+		context.Background(), NewMockEntity("walker", "character"), from, to, room.GetID(),
+	)
+	require.NoError(t, err)
+	require.False(t, valid)
+	require.Contains(t, path, grid.void)
+	for index := 1; index < len(path); index++ {
+		require.True(t, base.IsAdjacent(path[index-1], path[index]))
+	}
 }

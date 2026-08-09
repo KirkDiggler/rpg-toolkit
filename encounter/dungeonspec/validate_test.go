@@ -251,6 +251,26 @@ func TestValidate_Table(t *testing.T) {
 			b := true
 			tomb(s).Place[5].BlocksMovement = &b // Place[5] is the skeleton (monster) entry
 		}, "blocks_movement only valid on props"},
+		{"targeting set on a prop place entry is rejected", "", func(s *dungeonspec.DungeonSpec) {
+			v := "closest"
+			tomb(s).Place[0].Targeting = &v // Place[0] is a prop entry (coffin)
+		}, "targeting only valid on monsters"},
+		{"targeting with an unparseable value on a monster place entry is rejected", "", func(s *dungeonspec.DungeonSpec) {
+			v := "nearest"
+			tomb(s).Place[5].Targeting = &v // Place[5] is the skeleton (monster) entry
+		}, `invalid targeting strategy "nearest"`},
+		{"targeting valid on a monster place entry is accepted", "", func(s *dungeonspec.DungeonSpec) {
+			v := "lowest-health"
+			tomb(s).Place[5].Targeting = &v // Place[5] is the skeleton (monster) entry
+		}, ""},
+		{"targeting with an unparseable value on the boss is rejected", "", func(s *dungeonspec.DungeonSpec) {
+			v := "nearest"
+			tomb(s).Boss.Targeting = &v
+		}, `invalid targeting strategy "nearest"`},
+		{"targeting valid on the boss is accepted", "", func(s *dungeonspec.DungeonSpec) {
+			v := "lowest-ac"
+			tomb(s).Boss.Targeting = &v
+		}, ""},
 		{"boss ref duplicated in place is rejected", "", func(s *dungeonspec.DungeonSpec) {
 			tomb(s).Place = append(tomb(s).Place, dungeonspec.PlacedEntry{Ref: tomb(s).Boss.Ref, At: [2]int{0, 0}})
 		}, "boss ref may not also appear in place"},

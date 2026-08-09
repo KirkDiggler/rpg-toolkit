@@ -237,6 +237,9 @@ func validateSemanticRegionParams(
 	}
 	for i := range out {
 		for j := i + 1; j < len(out); j++ {
+			if len(out[i].Cells) == len(out[j].Cells) && hexSetContains(out[i].Cells, out[j].Cells) {
+				return nil, fmt.Errorf("semantic regions %q and %q have equal cell sets", out[i].ID, out[j].ID)
+			}
 			if len(out[i].Cells) == 0 || len(out[j].Cells) == 0 {
 				continue
 			}

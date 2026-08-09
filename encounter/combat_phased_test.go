@@ -135,6 +135,7 @@ func (s *PhasedTakeActionSuite) SetupTest() {
 		ID: gobEntityID, Position: encountercore.Hex{Q: 0, R: 1, S: -1},
 		HP: 10, MaxHP: 10, AC: 13, Speed: 30, AttackBonus: 4,
 		DamageDice: damage1d6plus1, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice/bob are in mutual LoS of the goblin, so AddMonster (above)
 	// already auto-transitioned to TURN_BASED; an explicit SetMode here
@@ -274,6 +275,7 @@ func (s *PhasedTakeActionSuite) TestLegacyResolverFallback() {
 		ID: gobEntityID, Position: encountercore.Hex{Q: 1, R: 0, S: -1},
 		HP: 10, MaxHP: 10, AC: 13, Speed: 30, AttackBonus: 4,
 		DamageDice: damage1d6plus1, DamageType: damageSlashing,
+		DataJSON: testGoblinDataJSON(s.T(), gobEntityID),
 	}))
 	// alice is in LoS of the goblin, so AddMonster already auto-transitioned
 	// to TURN_BASED; an explicit SetMode here would be redundant and error.
