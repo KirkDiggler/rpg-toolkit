@@ -45,7 +45,9 @@ func Decode(raw []byte) (*DungeonSpec, error) {
 			return nil, authoredError("spec", "invalid_yaml", "empty dungeon spec")
 		}
 		if hasCanvas && shape == roomsInvalid {
-			return nil, authoredError("rooms", "invalid_yaml", "canvas mode rooms must be an explicit empty sequence (rooms: [])")
+			return nil, authoredError(
+				"rooms", "invalid_yaml", "canvas mode rooms must be an explicit empty sequence (rooms: [])",
+			)
 		}
 		return nil, authoredWrap("spec", "invalid_yaml", fmt.Errorf("decode dungeon spec: %w", err))
 	}

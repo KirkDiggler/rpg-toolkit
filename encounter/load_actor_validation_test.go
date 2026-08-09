@@ -12,9 +12,19 @@ import (
 
 func TestLoadFromDataRejectsNullActorMapEntriesBeforeHydration(t *testing.T) {
 	cases := []struct{ name, raw, want string }{
-		{name: "null player", raw: `{"id":"nil-player","players":{"alice":null}}`, want: `validate player "alice": null player state`},
-		{name: "missing player view", raw: `{"id":"nil-view","players":{"alice":{"id":"alice","entity_id":"alice"}}}`, want: `validate player "alice": view is required`},
-		{name: "null monster", raw: `{"id":"nil-monster","monsters":{"goblin":null}}`, want: `validate monster "goblin": null monster state`},
+		{
+			name: "null player", raw: `{"id":"nil-player","players":{"alice":null}}`,
+			want: `validate player "alice": null player state`,
+		},
+		{
+			name: "missing player view",
+			raw:  `{"id":"nil-view","players":{"alice":{"id":"alice","entity_id":"alice"}}}`,
+			want: `validate player "alice": view is required`,
+		},
+		{
+			name: "null monster", raw: `{"id":"nil-monster","monsters":{"goblin":null}}`,
+			want: `validate monster "goblin": null monster state`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

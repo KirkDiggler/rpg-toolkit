@@ -54,7 +54,9 @@ func validateYAMLShape(node *yaml.Node, typ reflect.Type, path string) error {
 				child = path + "." + key.Value
 			}
 			if !ok {
-				return authoredError(child, "unknown_field", "decode dungeon spec: line %d: %s is not a supported field", key.Line, child)
+				return authoredError(
+					child, "unknown_field", "decode dungeon spec: line %d: %s is not a supported field", key.Line, child,
+				)
 			}
 			if err := validateYAMLShape(value, fieldType, child); err != nil {
 				return err
