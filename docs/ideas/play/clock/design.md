@@ -36,7 +36,10 @@ wall-clock time; merging tick clocks; concurrency safety.
   (plain JSON-serializable structs, no behavior). Configuration MUST be
   re-supplied at construction and MUST NOT serialize.
 - **R9** — `LoadFromData` MUST reject invalid state with an error: duplicate
-  members, `ActiveIdx` out of range, negative budgets.
+  members, `ActiveIdx` out of range, negative budgets, negative
+  `DriverProgress` values, and `HighWater` less than the maximum
+  `DriverProgress` (which would cause a spurious grant on the next
+  `Advance`).
 - **R10** — Instances are not safe for concurrent use (family convention;
   hosts serialize access).
 
@@ -57,6 +60,10 @@ dependency-direction law (journey 051).
 Kinds (v1, closed set): `TurnStarted`, `TurnEnded`, `RoundStarted`,
 `Ticked`, `MemberJoined`, `MemberLeft`, `Merged`, `Dissolved`.
 
+Every milestone a `Turn` emits carries the clock's Round **at the moment of
+emission**, in causal order — on a wrap, `TurnEnded` carries the old round;
+`RoundStarted` and `TurnStarted` carry the new.
+
 ## Turn — the initiative bubble
 
 State: an ordered member list, an active index, a round counter.
@@ -70,10 +77,10 @@ Queries: `Active() core.EntityID` (zero when empty), `Round() int`,
 |------|-------|--------|-----------|
 | `SetOrder` | `{Order []EntityID}` | `{Milestones}` | Replaces the order (rulebook rolled initiative). Round becomes 1, first member active. Milestones: `RoundStarted{1}`, `TurnStarted{first}`. MUST error on duplicate IDs or empty order. |
 | `End` | `{Actor EntityID}` | `{Milestones, Next EntityID, RoundWrapped bool}` | MUST error unless `Actor == Active()`. Advances. On wrap: increments Round; milestones `TurnEnded{actor}, RoundStarted{n}, TurnStarted{next}`; otherwise `TurnEnded, TurnStarted`. |
-| `Insert` | `{ID EntityID, Pos int}` | `{Milestones}` | Fall-in / reinforcement at caller-chosen position. MUST error if ID present or `Pos` outside `[0, len]`. Inserting at or before the active position MUST keep the currently active entity active. Milestone: `MemberJoined`. |
+| `Insert` | `{ID EntityID, Pos int}` | `{Milestones}` | Fall-in / reinforcement at caller-chosen position. MUST error if the clock is idle (no order set — bubbles start via `SetOrder`), if ID is present, or if `Pos` is outside `[0, len]`. Inserting at or before the active position MUST keep the currently active entity active. Milestone: `MemberJoined`. |
 | `Remove` | `{ID EntityID}` | `{Milestones}` | Death/flee. MUST keep the active entity correct: removing a non-active member adjusts the index; removing the active member makes the next member active (milestones `MemberLeft, TurnStarted{next}`); removing the last member leaves the clock empty (`MemberLeft` only). |
-| `Merge` | `{Other *Turn, Order []EntityID}` | `{Milestones}` | Two bubbles collide. `Order` MUST be a permutation of the union of both member sets (error otherwise). The receiving clock's active entity MUST remain active; its Round is retained. `Other` is drained to empty. Milestone: `Merged`. |
-| `Dissolve` | `{}` | `{Members []EntityID, Milestones}` | Fight over. Empties the clock, returns the members for the composition to re-home. Milestone: `Dissolved`. |
+| `Merge` | `{Other *Turn, Order []EntityID}` | `{Milestones}` | Two bubbles collide. MUST error if the receiving clock is idle. `Order` MUST be a permutation of the union of both member sets (error otherwise). The receiving clock's active entity MUST remain active; its Round is retained. `Other` is reset to the zero/idle state (empty order, `ActiveIdx 0`, `Round 0`). Milestone: `Merged`. |
+| `Dissolve` | `{}` | `{Members []EntityID, Milestones}` | Fight over. MUST error if the clock is already empty. Empties the clock, returns the members for the composition to re-home. Milestone: `Dissolved`. |
 
 ## Tick — the world clock
 
@@ -86,7 +93,9 @@ each moving 3 grants 3, not 12. Units are the caller's; the clock never
 interprets them.
 
 State/Data shape: `TickData{Budgets map[EntityID]int, DriverProgress
-map[EntityID]int, HighWater int}`.
+map[EntityID]int, HighWater int}`. Construct via `NewTick()`; a freshly
+constructed `Tick` is valid and idle, but the zero value is not usable
+(nil maps).
 
 Queries: `Budget(id) int`, `Members() []core.EntityID`, `Contains(id) bool`.
 
