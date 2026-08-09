@@ -1818,6 +1818,16 @@ stay in agreement:
 - **Design clarification during execution**: nil `*Input` is a programmer
   error — verbs may panic; sentinel vocabulary is for clock states only
   (recorded in design R3).
+- **Task 11 fix cycle (design defect, same genus as self-merge)**:
+  self-transfer (`From == To`) with an absent entity succeeded with
+  phantom milestones, leaving the entity on no clock — execution order
+  observable, contradicting the design's own promise. New sentinel
+  `ErrSameClock` ("operation requires two distinct clocks"); Transfer
+  gains a distinctness guard; Merge's self-guard migrates from
+  ErrBadOrder to ErrSameClock for vocabulary coherence (module
+  unreleased). Plus polish: combined-failure message names the
+  may-remain-on-both-clocks hazard; failure tests pin nil output
+  (no-emission contract) and both-sides ToData compare.
 - **With Task 11 (from Task 10's reviews)**: copyIntMap normalizes empty
   → nil (uniform idle-snapshot convention: idle ToData deep-equals the
   zero Data value; design amended) + contract comment; Tick golden-JSON
