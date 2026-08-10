@@ -300,3 +300,14 @@ stay in agreement (clock precedent):
   `ToData` and `LoadLog` sides. Minors folded: nil-`*Log` method
   assertions, empty-non-nil `Entries` pins, empty-payload wire
   round-trip.
+- **With Task 7**: Task 6's review approved the AC1 spine and the CI
+  job clone outright, flagging one real gap — the post-trim round-trip
+  compared only `Seq` numbers, leaving payload/audience/tag fidelity
+  unverified on the one data shape no other test produces
+  (heterogeneous, post-trim, first retained Seq > 1) — plus a missing
+  AND-vs-OR proof for multi-key tag filters. Landed with Task 7: full
+  entry-slice equality (loaded-log ≡ live-log for every query), a
+  discriminating two-key pin (`{kind, actor}` answers [1] where OR
+  semantics would answer [1,5]), and failure messages on the
+  seq-assignment assertions. PR #907 opened ready-for-review; the
+  compat gate's first live run (`gorelease-play-record`) green.
