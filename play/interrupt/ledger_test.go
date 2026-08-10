@@ -4,6 +4,8 @@
 package interrupt_test
 
 import (
+	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -24,6 +26,7 @@ const (
 	optShield    = "shield"
 	optDecline   = "decline"
 	optCorrupted = "corrupted"
+	optAttack    = "attack"
 	testMonster  = "monster"
 	testGrunk    = "grunk"
 )
@@ -160,7 +163,7 @@ func (s *LedgerSuite) TestSeveralWindowsOneAudience() {
 func (s *LedgerSuite) TestAudienceIsolation() {
 	_, err := s.ledger.Pose(&interrupt.PoseInput{
 		Audience: testAudience,
-		Options:  []interrupt.Option{optShield},
+		Options:  []interrupt.Option{testShield},
 		Payload:  []byte("frozen"),
 		At:       1,
 	})
@@ -267,7 +270,10 @@ func (s *LedgerSuite) TestPoseAtomicityFromPopulatedState() {
 	s.Require().Len(open, 1, "failed Pose must not add a window (R5)")
 	s.Equal(first.Window, open[0], "failed Pose must not disturb existing windows (R5)")
 
-	second, err := s.ledger.Pose(&interrupt.PoseInput{Audience: "grunk", Options: []interrupt.Option{"attack"}})
+	second, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testGrunk),
+		Options:  []interrupt.Option{optAttack},
+	})
 	s.Require().NoError(err)
 	s.Equal(interrupt.WindowID(2), second.Window.ID, "failed Pose must not consume an ID (R5)")
 }
@@ -444,7 +450,7 @@ func (s *LedgerSuite) TestQueryValidation() {
 // returns the table's windows in the order they were posed, not
 // grouped by audience.
 func (s *LedgerSuite) TestOpenPoseOrderInterleaved() {
-	for _, aud := range []core.EntityID{testAudience, "grunk", testAudience} {
+	for _, aud := range []core.EntityID{testAudience, testGrunk, testAudience} {
 		_, err := s.ledger.Pose(&interrupt.PoseInput{Audience: aud, Options: []interrupt.Option{optShield}})
 		s.Require().NoError(err)
 	}
@@ -482,6 +488,552 @@ func (s *LedgerSuite) TestDeciderContract() {
 	open, err := s.ledger.Open()
 	s.Require().NoError(err)
 	s.Empty(open, "posed and answered in one host call — the world never observed a wait")
+}
+
+// PersistenceSuite tests persistence via ToData/LoadLedger (Task 5, R8/R9).
+type PersistenceSuite struct {
+	suite.Suite
+}
+
+// TestIdleToDataDeepEqualsZero pins R8 idle convention: NewLedger().ToData()
+// deep-equals the zero LedgerData (not a struct with empty slices).
+func (s *PersistenceSuite) TestIdleToDataDeepEqualsZero() {
+	idle, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+	data := idle.ToData()
+	zero := interrupt.LedgerData{}
+	s.Equal(zero, data, "idle ledger ToData must deep-equal zero LedgerData")
+}
+
+// TestIdleToDataMarshalToEmptyJSON pins R8: idle marshals to exactly {}.
+func (s *PersistenceSuite) TestIdleToDataMarshalToEmptyJSON() {
+	idle, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+	data := idle.ToData()
+	bs, err := json.Marshal(data)
+	s.Require().NoError(err)
+	s.Equal([]byte("{}"), bs, "idle ledger must marshal to exactly {}")
+}
+
+// TestIdleLoadLedgerUsable pins idle load must be usable (can Pose, gets ID 1).
+func (s *PersistenceSuite) TestIdleLoadLedgerUsable() {
+	ledger, err := interrupt.LoadLedger(interrupt.LedgerData{})
+	s.Require().NoError(err)
+	s.NotNil(ledger)
+
+	// Can Pose and gets ID 1
+	out, err := ledger.Pose(&interrupt.PoseInput{
+		Audience: "test",
+		Options:  []interrupt.Option{"opt"},
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(1), out.Window.ID)
+}
+
+// TestRoundTripFresh pins fresh state round-trip.
+func (s *PersistenceSuite) TestRoundTripFresh() {
+	ledger1, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	data := ledger1.ToData()
+	ledger2, err := interrupt.LoadLedger(data)
+	s.Require().NoError(err)
+
+	// Both should be idle
+	open1, err := ledger1.Open()
+	s.Require().NoError(err)
+	s.Empty(open1)
+
+	open2, err := ledger2.Open()
+	s.Require().NoError(err)
+	s.Empty(open2)
+}
+
+// TestRoundTripOpenWindows pins round-trip with open windows including nil payload.
+func (s *PersistenceSuite) TestRoundTripOpenWindows() {
+	ledger1, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	// Pose window 1: with payload
+	out1, err := ledger1.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options:  []interrupt.Option{testShield, testDecline},
+		Payload:  []byte("frozen"),
+		At:       7,
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(1), out1.Window.ID)
+
+	// Pose window 2: nil payload
+	out2, err := ledger1.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testGrunk),
+		Options:  []interrupt.Option{optAttack, testDecline},
+		Payload:  nil,
+		At:       0,
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(2), out2.Window.ID)
+
+	// Snapshot and reload
+	data := ledger1.ToData()
+	ledger2, err := interrupt.LoadLedger(data)
+	s.Require().NoError(err)
+
+	// Verify both windows are present and intact
+	open, err := ledger2.Open()
+	s.Require().NoError(err)
+	s.Len(open, 2)
+	s.Equal(interrupt.WindowID(1), open[0].ID)
+	s.Equal(core.EntityID("aldric"), open[0].Audience)
+	s.Equal([]byte("frozen"), open[0].Payload)
+	s.Equal(uint64(7), open[0].At)
+
+	s.Equal(interrupt.WindowID(2), open[1].ID)
+	s.Equal(core.EntityID("grunk"), open[1].Audience)
+	s.Nil(open[1].Payload)
+	s.Equal(uint64(0), open[1].At)
+}
+
+// TestRoundTripAllAnswered pins all-answered state (NextID > 0, zero windows).
+func (s *PersistenceSuite) TestRoundTripAllAnswered() {
+	ledger1, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	// Pose and answer
+	out, err := ledger1.Pose(&interrupt.PoseInput{
+		Audience: testAudience,
+		Options:  []interrupt.Option{testShield, testDecline},
+		Payload:  []byte("frozen"),
+	})
+	s.Require().NoError(err)
+
+	_, err = ledger1.Answer(&interrupt.AnswerInput{
+		Window: out.Window.ID,
+		By:     testAudience,
+		Choice: testShield,
+	})
+	s.Require().NoError(err)
+
+	// Snapshot and reload
+	data := ledger1.ToData()
+	ledger2, err := interrupt.LoadLedger(data)
+	s.Require().NoError(err)
+
+	// No open windows
+	open, err := ledger2.Open()
+	s.Require().NoError(err)
+	s.Empty(open)
+
+	// But next Pose continues the ID sequence
+	out2, err := ledger2.Pose(&interrupt.PoseInput{
+		Audience: testGrunk,
+		Options:  []interrupt.Option{optAttack},
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(2), out2.Window.ID)
+}
+
+// TestRoundTripAnswerIntact pins Answer after reload returns same envelope.
+func (s *PersistenceSuite) TestRoundTripAnswerIntact() {
+	ledger1, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	posed, err := ledger1.Pose(&interrupt.PoseInput{
+		Audience: testAudience,
+		Options:  []interrupt.Option{testShield},
+		Payload:  []byte("frozen"),
+	})
+	s.Require().NoError(err)
+
+	// Snapshot before answer
+	data := ledger1.ToData()
+	ledger2, err := interrupt.LoadLedger(data)
+	s.Require().NoError(err)
+
+	// Answer on reloaded ledger
+	answer, err := ledger2.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     testAudience,
+		Choice: testShield,
+	})
+	s.Require().NoError(err)
+	s.Equal(posed.Window.ID, answer.Window.ID)
+	s.Equal([]byte("frozen"), answer.Window.Payload)
+}
+
+// TestGoldenJSONFresh pins fresh state golden JSON.
+func (s *PersistenceSuite) TestGoldenJSONFresh() {
+	idle, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+	data := idle.ToData()
+	bs, err := json.Marshal(data)
+	s.Require().NoError(err)
+	s.Equal(string(bs), "{}")
+}
+
+// TestGoldenJSONOpen pins open windows golden JSON with exact-string pin.
+func (s *PersistenceSuite) TestGoldenJSONOpen() {
+	ledger, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	// Pose two windows as per design spec
+	_, err = ledger.Pose(&interrupt.PoseInput{
+		Audience: testAudience,
+		Options:  []interrupt.Option{testShield, testDecline},
+		Payload:  []byte("frozen"),
+		At:       7,
+	})
+	s.Require().NoError(err)
+
+	_, err = ledger.Pose(&interrupt.PoseInput{
+		Audience: testGrunk,
+		Options:  []interrupt.Option{optAttack, testDecline},
+		Payload:  nil,
+		At:       0,
+	})
+	s.Require().NoError(err)
+
+	data := ledger.ToData()
+	bs, err := json.Marshal(data)
+	s.Require().NoError(err)
+
+	expected := `{"next_id":3,"windows":[{"id":1,"audience":"aldric",` +
+		`"options":["shield","decline"],"payload":"ZnJvemVu","at":7},` +
+		`{"id":2,"audience":"grunk","options":["attack","decline"]}]}`
+	s.Equal(expected, string(bs))
+}
+
+// TestGoldenJSONAllAnswered pins all-answered state golden JSON.
+func (s *PersistenceSuite) TestGoldenJSONAllAnswered() {
+	ledger, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	out, err := ledger.Pose(&interrupt.PoseInput{
+		Audience: testAudience,
+		Options:  []interrupt.Option{testShield, testDecline},
+		Payload:  []byte("frozen"),
+	})
+	s.Require().NoError(err)
+
+	_, err = ledger.Answer(&interrupt.AnswerInput{
+		Window: out.Window.ID,
+		By:     testAudience,
+		Choice: testShield,
+	})
+	s.Require().NoError(err)
+
+	data := ledger.ToData()
+	bs, err := json.Marshal(data)
+	s.Require().NoError(err)
+
+	expected := `{"next_id":2}`
+	s.Equal(expected, string(bs))
+}
+
+// TestToDataSnapshotImmunity pins ToData immunity: mutating returned Data
+// must not affect ledger.
+func (s *PersistenceSuite) TestToDataSnapshotImmunity() {
+	ledger, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	_, err = ledger.Pose(&interrupt.PoseInput{
+		Audience: testAudience,
+		Options:  []interrupt.Option{testShield, testDecline},
+		Payload:  []byte("frozen"),
+	})
+	s.Require().NoError(err)
+
+	data := ledger.ToData()
+
+	// Mutate returned data's slices
+	if len(data.Windows) > 0 {
+		data.Windows[0].Payload[0] = 'X'
+		if len(data.Windows[0].Options) > 0 {
+			data.Windows[0].Options[0] = "corrupted"
+		}
+	}
+
+	// Re-query: internal state unchanged
+	open, err := ledger.Open()
+	s.Require().NoError(err)
+	s.Len(open, 1)
+	s.Equal([]byte("frozen"), open[0].Payload)
+	s.Equal([]interrupt.Option{testShield, testDecline}, open[0].Options)
+}
+
+// TestLoadLedgerAliasing pins LoadLedger immunity: mutating caller's Data
+// after Load must not affect ledger.
+func (s *PersistenceSuite) TestLoadLedgerAliasing() {
+	ledger1, err := interrupt.NewLedger()
+	s.Require().NoError(err)
+
+	_, err = ledger1.Pose(&interrupt.PoseInput{
+		Audience: testAudience,
+		Options:  []interrupt.Option{testShield, testDecline},
+		Payload:  []byte("frozen"),
+	})
+	s.Require().NoError(err)
+
+	data := ledger1.ToData()
+
+	// Load the ledger
+	ledger2, err := interrupt.LoadLedger(data)
+	s.Require().NoError(err)
+
+	// Mutate the caller's data
+	if len(data.Windows) > 0 {
+		data.Windows[0].Payload[0] = 'X'
+		if len(data.Windows[0].Options) > 0 {
+			data.Windows[0].Options[0] = "corrupted"
+		}
+	}
+
+	// Loaded ledger is unaffected
+	open, err := ledger2.Open()
+	s.Require().NoError(err)
+	s.Len(open, 1)
+	s.Equal([]byte("frozen"), open[0].Payload)
+	s.Equal([]interrupt.Option{testShield, testDecline}, open[0].Options)
+}
+
+// TestR9RejectionNextIDZeroWithWindows rejects R9: NextID == 0 with windows present.
+func (s *PersistenceSuite) TestR9RejectionNextIDZeroWithWindows() {
+	data := interrupt.LedgerData{
+		NextID: 0,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+				Payload:  []byte("frozen"),
+				At:       0,
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionWindowIDZero rejects R9: window ID of 0.
+func (s *PersistenceSuite) TestR9RejectionWindowIDZero() {
+	data := interrupt.LedgerData{
+		NextID: 1,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       0,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionDescendingIDs rejects R9: window IDs not strictly ascending.
+func (s *PersistenceSuite) TestR9RejectionDescendingIDs() {
+	data := interrupt.LedgerData{
+		NextID: 3,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       2,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+			},
+			{
+				ID:       1,
+				Audience: testGrunk,
+				Options:  []interrupt.Option{optAttack},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionDuplicateIDs rejects R9: duplicate window IDs.
+func (s *PersistenceSuite) TestR9RejectionDuplicateIDs() {
+	data := interrupt.LedgerData{
+		NextID: 2,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+			},
+			{
+				ID:       1,
+				Audience: testGrunk,
+				Options:  []interrupt.Option{optAttack},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionIDEqualNextID rejects R9: window ID == NextID.
+func (s *PersistenceSuite) TestR9RejectionIDEqualNextID() {
+	data := interrupt.LedgerData{
+		NextID: 1,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionIDGreaterNextID rejects R9: window ID > NextID.
+func (s *PersistenceSuite) TestR9RejectionIDGreaterNextID() {
+	data := interrupt.LedgerData{
+		NextID: 1,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       2,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionEmptyAudience rejects R9: empty audience.
+func (s *PersistenceSuite) TestR9RejectionEmptyAudience() {
+	data := interrupt.LedgerData{
+		NextID: 2,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: "",
+				Options:  []interrupt.Option{testShield},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionNilOptions rejects R9: nil options.
+func (s *PersistenceSuite) TestR9RejectionNilOptions() {
+	data := interrupt.LedgerData{
+		NextID: 2,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  nil,
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionEmptyOptionsSlice rejects R9: empty options slice.
+func (s *PersistenceSuite) TestR9RejectionEmptyOptionsSlice() {
+	data := interrupt.LedgerData{
+		NextID: 2,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  []interrupt.Option{},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionEmptyOptionToken rejects R9: empty option token.
+func (s *PersistenceSuite) TestR9RejectionEmptyOptionToken() {
+	data := interrupt.LedgerData{
+		NextID: 2,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield, "", "decline"},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionDuplicateOption rejects R9: duplicate option within a window.
+func (s *PersistenceSuite) TestR9RejectionDuplicateOption() {
+	data := interrupt.LedgerData{
+		NextID: 2,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       1,
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield, "decline", "shield"},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9AcceptanceNextIDWithZeroWindows pins R9 acceptance: NextID > 0
+// with zero windows MUST load (all-answered state).
+func (s *PersistenceSuite) TestR9AcceptanceNextIDWithZeroWindows() {
+	data := interrupt.LedgerData{
+		NextID:  3,
+		Windows: []interrupt.WindowData{},
+	}
+	ledger, err := interrupt.LoadLedger(data)
+	s.Require().NoError(err)
+	s.NotNil(ledger)
+
+	// Verify next Pose continues ID sequence
+	out, err := ledger.Pose(&interrupt.PoseInput{
+		Audience: "grunk",
+		Options:  []interrupt.Option{"attack"},
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(3), out.Window.ID)
+}
+
+// TestR9WraparoundForgerMaxUint64 rejects R9: window with ID MaxUint64 and NextID 0.
+func (s *PersistenceSuite) TestR9WraparoundForgerMaxUint64() {
+	data := interrupt.LedgerData{
+		NextID: 0,
+		Windows: []interrupt.WindowData{
+			{
+				ID:       interrupt.WindowID(math.MaxUint64),
+				Audience: testAudience,
+				Options:  []interrupt.Option{testShield},
+			},
+		},
+	}
+	_, err := interrupt.LoadLedger(data)
+	s.Require().Error(err)
+	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+func TestPersistenceSuite(t *testing.T) {
+	suite.Run(t, new(PersistenceSuite))
 }
 
 func TestLedgerSuite(t *testing.T) {
