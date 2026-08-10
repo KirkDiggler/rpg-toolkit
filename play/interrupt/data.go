@@ -42,6 +42,12 @@ func (l *Ledger) ToData() LedgerData {
 		return LedgerData{}
 	}
 
+	// All-answered: NextID persists, Windows stays nil — symmetric with
+	// the zero-value shape a caller writes as LedgerData{NextID: n}.
+	if len(l.windows) == 0 {
+		return LedgerData{NextID: l.nextID}
+	}
+
 	// Deep-copy each window's options and payload
 	windowsCopy := make([]WindowData, len(l.windows))
 	for i, w := range l.windows {
@@ -91,9 +97,10 @@ func (l *Ledger) ToData() LedgerData {
 func LoadLedger(data LedgerData) (*Ledger, error) {
 	// R5: validate everything first, then construct
 
-	// R9: NextID == 0 with windows present
-	if data.NextID == 0 && len(data.Windows) > 0 {
-		return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+	// R9: a stored NextID of 1 is unreachable (the record precedent:
+	// 0 = fresh, first Pose advances to 2; ToData never emits 1).
+	if data.NextID == 1 {
+		return nil, fmt.Errorf("load ledger: next_id 1 is unreachable: %w", ErrInvalidData)
 	}
 
 	// R9: per-window validations
@@ -101,27 +108,29 @@ func LoadLedger(data LedgerData) (*Ledger, error) {
 	for i, wd := range data.Windows {
 		// R9: window ID of 0
 		if wd.ID == 0 {
-			return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load ledger: window[%d]: id 0: %w", i, ErrInvalidData)
 		}
 
 		// R9: strictly ascending IDs (covers duplicates and descending)
 		if i > 0 && wd.ID <= prevID {
-			return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load ledger: window[%d]: id not ascending: %w", i, ErrInvalidData)
 		}
 
-		// R9: ID >= NextID
+		// R9: ID >= NextID. With NextID 0 every window ID trips this, so
+		// it also subsumes NextID-0-with-windows — including the
+		// math.MaxUint64 wraparound forgery — with no dedicated branch.
 		if uint64(wd.ID) >= data.NextID {
-			return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load ledger: window[%d]: id >= next_id: %w", i, ErrInvalidData)
 		}
 
 		// R9: empty audience
 		if wd.Audience == "" {
-			return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load ledger: window[%d]: empty audience: %w", i, ErrInvalidData)
 		}
 
 		// R9: nil or empty options
 		if len(wd.Options) == 0 {
-			return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load ledger: window[%d]: no options: %w", i, ErrInvalidData)
 		}
 
 		// R9: per-option validations
@@ -129,12 +138,12 @@ func LoadLedger(data LedgerData) (*Ledger, error) {
 		for _, opt := range wd.Options {
 			// R9: empty option token
 			if opt == "" {
-				return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+				return nil, fmt.Errorf("load ledger: window[%d]: empty option: %w", i, ErrInvalidData)
 			}
 
 			// R9: duplicate option
 			if _, exists := seen[opt]; exists {
-				return nil, fmt.Errorf("load ledger: %w", ErrInvalidData)
+				return nil, fmt.Errorf("load ledger: window[%d]: duplicate option: %w", i, ErrInvalidData)
 			}
 			seen[opt] = struct{}{}
 		}

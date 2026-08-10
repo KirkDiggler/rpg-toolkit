@@ -614,8 +614,11 @@ func (s *PersistenceSuite) TestRoundTripAllAnswered() {
 	})
 	s.Require().NoError(err)
 
-	// Snapshot and reload
+	// Snapshot and reload. All-answered emits nil Windows: the snapshot
+	// deep-equals the literal a caller would write (T5 review Q2).
 	data := ledger1.ToData()
+	s.Equal(interrupt.LedgerData{NextID: 2}, data,
+		"all-answered snapshot must deep-equal the zero-Windows literal")
 	ledger2, err := interrupt.LoadLedger(data)
 	s.Require().NoError(err)
 
@@ -668,7 +671,7 @@ func (s *PersistenceSuite) TestGoldenJSONFresh() {
 	data := idle.ToData()
 	bs, err := json.Marshal(data)
 	s.Require().NoError(err)
-	s.Equal(string(bs), "{}")
+	s.Equal("{}", string(bs))
 }
 
 // TestGoldenJSONOpen pins open windows golden JSON with exact-string pin.
@@ -742,23 +745,31 @@ func (s *PersistenceSuite) TestToDataSnapshotImmunity() {
 		Payload:  []byte("frozen"),
 	})
 	s.Require().NoError(err)
+	_, err = ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testGrunk),
+		Options:  []interrupt.Option{optAttack, testDecline},
+		Payload:  []byte("frozen-2"),
+	})
+	s.Require().NoError(err)
 
 	data := ledger.ToData()
+	s.Require().Len(data.Windows, 2)
 
-	// Mutate returned data's slices
-	if len(data.Windows) > 0 {
-		data.Windows[0].Payload[0] = 'X'
-		if len(data.Windows[0].Options) > 0 {
-			data.Windows[0].Options[0] = "corrupted"
-		}
+	// Mutate EVERY window's slices — a partial copy that only protects
+	// window[0] must fail this pin (T5 review F1).
+	for i := range data.Windows {
+		data.Windows[i].Payload[0] = 'X'
+		data.Windows[i].Options[0] = optCorrupted
 	}
 
-	// Re-query: internal state unchanged
+	// Re-query: internal state unchanged for every window
 	open, err := ledger.Open()
 	s.Require().NoError(err)
-	s.Len(open, 1)
-	s.Equal([]byte("frozen"), open[0].Payload)
+	s.Require().Len(open, 2)
+	s.Equal([]byte("frozen"), open[0].Payload, "window[0] options/payload must be copied out")
 	s.Equal([]interrupt.Option{testShield, testDecline}, open[0].Options)
+	s.Equal([]byte("frozen-2"), open[1].Payload, "every window must be copied out, not only the first")
+	s.Equal([]interrupt.Option{optAttack, testDecline}, open[1].Options)
 }
 
 // TestLoadLedgerAliasing pins LoadLedger immunity: mutating caller's Data
@@ -774,25 +785,35 @@ func (s *PersistenceSuite) TestLoadLedgerAliasing() {
 	})
 	s.Require().NoError(err)
 
+	_, err = ledger1.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testGrunk),
+		Options:  []interrupt.Option{optAttack, testDecline},
+		Payload:  []byte("frozen-2"),
+	})
+	s.Require().NoError(err)
+
 	data := ledger1.ToData()
+	s.Require().Len(data.Windows, 2)
 
 	// Load the ledger
 	ledger2, err := interrupt.LoadLedger(data)
 	s.Require().NoError(err)
 
-	// Mutate the caller's data
-	if len(data.Windows) > 0 {
-		data.Windows[0].Payload[0] = 'X'
-		if len(data.Windows[0].Options) > 0 {
-			data.Windows[0].Options[0] = "corrupted"
-		}
+	// Mutate EVERY window of the caller's data — a partial copy-in that
+	// only protects window[0] must fail this pin (T5 review F2).
+	for i := range data.Windows {
+		data.Windows[i].Payload[0] = 'X'
+		data.Windows[i].Options[0] = optCorrupted
 	}
 
 	// Loaded ledger is unaffected
 	open, err := ledger2.Open()
 	s.Require().NoError(err)
-	s.Len(open, 1)
+	s.Require().Len(open, 2)
 	s.Equal([]byte("frozen"), open[0].Payload)
+	s.Equal([]byte("frozen-2"), open[1].Payload, "every window's payload must be copied in, not only the first")
+	s.Equal([]interrupt.Option{optAttack, testDecline}, open[1].Options,
+		"every window's options must be copied in, not only the first")
 	s.Equal([]interrupt.Option{testShield, testDecline}, open[0].Options)
 }
 
@@ -1030,6 +1051,13 @@ func (s *PersistenceSuite) TestR9WraparoundForgerMaxUint64() {
 	_, err := interrupt.LoadLedger(data)
 	s.Require().Error(err)
 	s.ErrorIs(err, interrupt.ErrInvalidData)
+}
+
+// TestR9RejectionNextIDOne pins the record precedent: a stored next_id
+// of 1 is unreachable (0 = fresh; the first Pose advances it to 2).
+func (s *PersistenceSuite) TestR9RejectionNextIDOne() {
+	_, err := interrupt.LoadLedger(interrupt.LedgerData{NextID: 1})
+	s.Require().ErrorIs(err, interrupt.ErrInvalidData)
 }
 
 func TestPersistenceSuite(t *testing.T) {
