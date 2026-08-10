@@ -311,3 +311,19 @@ stay in agreement (family precedent):
   symmetric with caller literals, pinned), stored `NextID` 1 rejected as
   unreachable per the record precedent (design R9 amended), golden-fresh
   assertion arg order fixed.
+- **With Tasks 4 and 6 (calibration notes)**: Task 4's remainder was
+  landed directly by the director (the Task 2 fix cycle had already
+  built and mutation-proven the copy-out pins, leaving only query
+  guards, the interleaved-order pin, and the decider-contract test) —
+  the twice-reviewed query surface did not warrant a third dispatch.
+  Task 6's scene was verified directly against AC1 beat-by-beat instead
+  of a dispatched review (a prescribed narrative needs a diff against
+  its script, not fresh judgment). Two disclosed scene deviations
+  accepted: the "fighter" role is played by an existing test const, and
+  the persistence beat runs at scene-end rather than mid-scene, proving
+  the same reload invariant.
+- **With Task 7**: 47 tests; final gate clean with lint verified by
+  exit code (a Task 4 goconst finding had briefly slipped through a
+  piped `tail` that swallowed the linter's exit status — caught and the
+  gate-check pattern corrected for the remaining tasks). PR #914 opened
+  ready-for-review.
