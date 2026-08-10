@@ -47,7 +47,9 @@ restated here as binding:
   zero `IntelData` and marshals to `{}`.
 - **R9** — `LoadIntel` MUST reject unreachable states with
   `ErrInvalidData`: empty observer keys, empty subject keys, duplicate
-  entries in a holding's `CurrentVia`, nil holdings. Channels are an open
+  entries in a holding's `CurrentVia`, nil or empty inner subject maps
+  (holdings are never removed in v1, so an observer entry with zero
+  holdings is unreachable — the reachable-states-only rationale). Channels are an open
   vocabulary and are NOT validated.
 - **R10** — Not safe for concurrent use (family convention).
 
@@ -82,8 +84,8 @@ restated here as binding:
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
-| `Surveil` | `{Observer core.EntityID, Channel Channel, Percept []Report, At uint64}` | `{FirstContact []Report, Refreshed []Subject, Faded []Subject}` | Sustained collection. `Percept` is the COMPLETE current percept for this observer+channel — the contract that makes fading derivable. For each report: subject unknown to observer → holding created, in `FirstContact`; known → payload/provenance overwritten (R6), in `Refreshed`; every subject previously current *via this channel* but absent from `Percept` → this channel removed from its `CurrentVia`, and if that empties it, the subject is in `Faded` (still held — the ghost goblin). Channels other than the surveilling one are untouched. An empty `Percept` is legal (seeing nothing: fades everything this channel sustained). MUST error: `ErrNilInput`, `ErrNoSubject` (any report with an empty subject), `ErrNoObserver` (empty observer). Duplicate subjects within one `Percept`: last entry wins, earlier ones ignored (a percept is a set; the slice is transport). |
-| `Report` | `{Observer core.EntityID, Channel Channel, Reports []Report, At uint64}` | `{FirstContact []Report, Updated []Subject}` | Discrete testimony (the crash of pots, the informant's tip, the charm's plant). Lands directly as HELD — `CurrentVia` is not touched for existing holdings and is empty for new ones; there is nothing to fade. Unknown subjects → `FirstContact`; known → overwritten (R6), in `Updated`. Same errors as `Surveil`. |
+| `Surveil` | `{Observer core.EntityID, Channel Channel, Percept []Report, At uint64}` | `{FirstContact []Report, Refreshed []Subject, Faded []Subject}` | Sustained collection. `Percept` is the COMPLETE current percept for this observer+channel — the contract that makes fading derivable. For each report: subject unknown to observer → holding created with `CurrentVia = [Channel]`, in `FirstContact`; known → payload/provenance overwritten (R6) and `Channel` added to its `CurrentVia` (set semantics), in `Refreshed`; every subject previously current *via this channel* but absent from `Percept` → this channel removed from its `CurrentVia`, and if that empties it, the subject is in `Faded` (still held — the ghost goblin). Channels other than the surveilling one are untouched. Losing one of several sustaining channels shrinks `CurrentVia` silently — deliberately unreported; `Faded` fires only when the set empties. An empty `Percept` is legal (seeing nothing: fades everything this channel sustained). MUST error: `ErrNilInput`, `ErrNoObserver` (empty observer), `ErrNoChannel` (empty channel — the vocabulary is open but the identifier is required), `ErrNoSubject` (any report with an empty subject). Duplicate subjects within one `Percept`: dedupe first, last entry wins — each subject classified once (the slice is transport for a set). Delta ordering: `FirstContact`/`Refreshed` in post-dedupe percept order; `Faded` sorted by Subject (deterministic transcripts — the AC1/record contract). |
+| `Report` | `{Observer core.EntityID, Channel Channel, Reports []Report, At uint64}` | `{FirstContact []Report, Updated []Subject}` | Discrete testimony (the crash of pots, the informant's tip, the charm's plant). Lands directly as HELD — `CurrentVia` is not touched for existing holdings and is empty for new ones; there is nothing to fade. Same dedupe-first rule as `Surveil` (each subject classified once): unknown → `FirstContact`; known → overwritten (R6), in `Updated` — a `Report` overwriting a currently-surveilled holding changes payload and provenance only; `CurrentVia` and thus `Status` are unchanged. Delta ordering: post-dedupe input order. Same errors as `Surveil`. |
 
 Falsehood is orthogonal to the verb (design invariant): `Surveil`
 carries sustained falsehoods (illusions, disguises), `Report` carries
@@ -108,16 +110,19 @@ All errors wrap one sentinel; `errors.Is` dispatch; messages user-facing.
 |----------|---------|-------------|
 | `ErrNilInput` | nil `*XxxInput` | every Input-taking function |
 | `ErrNoObserver` | empty observer ID | `Surveil`, `Report`, `HeldBy`, `On` |
+| `ErrNoChannel` | empty channel identifier (names are open vocabulary, but required) | `Surveil`, `Report` |
 | `ErrNoSubject` | a report with an empty subject, or an empty query subject | `Surveil`, `Report`, `On` |
 | `ErrNotHeld` | the observer holds nothing on that subject | `On` |
 | `ErrInvalidData` | any R9 rejection | `LoadIntel` |
 
 ## Persistence
 
-`IntelData` = `map[core.EntityID]map[Subject]HoldingData` with
+`IntelData` = `struct{ Holdings map[core.EntityID]map[Subject]HoldingData }`
+(field tag `holdings,omitempty` — a struct wrapper, not a bare map, so the
+zero value marshals to `{}` per R8, matching TurnData/TickData) with
 `HoldingData{Payload []byte, Channel Channel, At uint64, CurrentVia
 []Channel}` (JSON tags: `payload`, `channel`, `at`, `current_via`, all
-`omitempty`; outer field `holdings`). Family conventions: `ToData`
+`omitempty`). Family conventions: `ToData`
 deep-copies (snapshot immune to later verbs; `LoadIntel` copies in —
 caller's maps never aliased); idle deep-equals zero and marshals `{}`;
 wire shape pinned by a golden-JSON test. Size note (lifecycle, like
@@ -140,13 +145,16 @@ discipline and, later, the `Forget` verb.
 - **AC2 (invariants)** — R5 atomicity from populated states; copy-out
   immunity both directions (mutate returned holdings/payloads and
   caller's input slices; internal state unchanged); per-channel currency
-  (two channels sustain one subject; one fades, status stays Current);
+  (two channels sustain one subject; one channel's sustain lapses, the
+  subject is NOT in `Faded` and status stays Current);
   R6 last-wins regardless of channel/verb.
 - **AC3 (round-trips)** — `ToData`/`LoadIntel` at every distinct state
   (idle; current-and-held mix; multi-channel `CurrentVia`; post-fade);
   behavior-identical after reload; every R9 rejection has a test.
 - **AC4 (compat gate)** — the module added to the existing
   `compat.yml` gorelease job (path filter + job, pinned version).
+  Workflow-level path triggering means intel PRs also run the clock job
+  (a no-op pass) — accepted; per-job filtering is optional plan polish.
 - **AC5 (suite conventions)** — black-box `package intel_test`, testify
   suites for per-type tests, plain functions for the AC1 integration
   spine (the documented family exception).
