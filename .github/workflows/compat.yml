@@ -6,6 +6,7 @@ on:
       - 'play/clock/**'
       - 'play/intel/**'
       - 'play/record/**'
+      - 'play/interrupt/**'
 
 jobs:
   gorelease-play-clock:
@@ -64,3 +65,22 @@ jobs:
           fi
           cd play/record
           go run golang.org/x/exp/cmd/gorelease@v0.0.0-20260727155853-b88d891fe743 -base "${base#play/record/}"
+
+  gorelease-play-interrupt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: gorelease play/interrupt
+        run: |
+          base=$(git tag -l 'play/interrupt/v*' --sort=-v:refname | head -1)
+          if [ -z "$base" ]; then
+            echo "no play/interrupt tag yet — first release, gate activates from the first tag"
+            exit 0
+          fi
+          cd play/interrupt
+          go run golang.org/x/exp/cmd/gorelease@v0.0.0-20260727155853-b88d891fe743 -base "${base#play/interrupt/}"
