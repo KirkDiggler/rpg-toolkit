@@ -416,53 +416,19 @@ func (s *LedgerSuite) TestAnswerRemovesExactlyOne() {
 	s.Equal(interrupt.WindowID(4), out4.Window.ID, "next Pose continues monotonic sequence")
 }
 
-func (s *LedgerSuite) TestAnswerEnvelopeCopyOut() {
-	posed, err := s.ledger.Pose(&interrupt.PoseInput{
-		Audience: core.EntityID(testAudience),
-		Options: []interrupt.Option{
-			interrupt.Option(optShield),
-			interrupt.Option(optDecline),
-		},
-		Payload: []byte("frozen"),
-		At:      7,
-	})
+// TestAnswerValidationComboAuthorizationBeforeMembership pins the
+// order the design calls out by name: wrong audience AND unoffered
+// choice in one call — authorization is checked before membership.
+func (s *LedgerSuite) TestAnswerValidationComboAuthorizationBeforeMembership() {
+	posed, err := s.ledger.Pose(&interrupt.PoseInput{Audience: testAudience,
+		Options: []interrupt.Option{optShield, optDecline}, Payload: []byte("frozen")})
 	s.Require().NoError(err)
-
-	// Also pose a sibling window for the same audience
-	sibling, err := s.ledger.Pose(&interrupt.PoseInput{
-		Audience: core.EntityID(testAudience),
-		Options:  []interrupt.Option{"sibling-opt"},
-		Payload:  []byte("sibling-payload"),
-		At:       8,
-	})
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{Window: posed.Window.ID, By: "fighter", Choice: "fireball"})
+	s.Require().ErrorIs(err, interrupt.ErrNotAudience,
+		"wrong audience + unoffered choice: authorization must win (design: shape, existence, authorization, membership)")
+	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{Audience: testAudience})
 	s.Require().NoError(err)
-
-	// Answer the first window
-	out, err := s.ledger.Answer(&interrupt.AnswerInput{
-		Window: posed.Window.ID,
-		By:     core.EntityID(testAudience),
-		Choice: interrupt.Option(optShield),
-	})
-	s.Require().NoError(err)
-
-	// Mutate the returned envelope
-	out.Window.Options[0] = "mutated"
-	out.Window.Payload[0] = 'X'
-
-	// Verify sibling is untouched via PendingFor
-	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{
-		Audience: core.EntityID(testAudience),
-	})
-	s.Require().NoError(err)
-	s.Len(pending, 1)
-	s.Equal(sibling.Window, pending[0],
-		"sibling window unaffected by mutation of returned envelope")
-
-	// Verify Open also reflects uncorrupted state
-	open, err := s.ledger.Open()
-	s.Require().NoError(err)
-	s.Len(open, 1)
-	s.Equal(sibling.Window, open[0], "Open reflects uncorrupted state")
+	s.Require().Len(pending, 1, "failed Answer left the window open (R5)")
 }
 
 func TestLedgerSuite(t *testing.T) {

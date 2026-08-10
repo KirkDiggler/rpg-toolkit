@@ -180,11 +180,16 @@ func (l *Ledger) Answer(in *AnswerInput) (*AnswerOutput, error) {
 		return nil, fmt.Errorf("answer: %w", ErrNotOffered)
 	}
 
-	// All validation passed; splice out the window and return a deep copy
+	// All validation passed; splice out the window. The envelope is
+	// returned WITHOUT a defensive copy — ownership transfer (design,
+	// Answer row): after removal nothing internal retains the window,
+	// so a copy here would guard nothing and its pin could never fail.
+	// Queries copy out because internal state stays; Answer transfers
+	// because it removes.
 	l.windows = append(l.windows[:windowIndex], l.windows[windowIndex+1:]...)
 
 	return &AnswerOutput{
-		Window: l.copyWindow(window),
+		Window: window,
 		Choice: in.Choice,
 	}, nil
 }
