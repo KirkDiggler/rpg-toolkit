@@ -314,7 +314,7 @@ func (i *Intel) HeldBy(in *HeldByInput) ([]Holding, error) {
 	}
 
 	// Collect and convert holdings to exported type
-	var results []Holding
+	results := make([]Holding, 0, len(observerHoldings))
 	for subject, h := range observerHoldings {
 		results = append(results, h.toHolding(subject))
 	}
