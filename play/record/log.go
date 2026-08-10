@@ -86,6 +86,21 @@ type AllInput struct {
 	FromSeq uint64
 }
 
+// TrimBeforeInput is the input to the TrimBefore verb.
+type TrimBeforeInput struct {
+	// Seq is the exclusive upper bound of sequences to remove.
+	// Entries with Seq < in.Seq are dropped. Trimming at or below the oldest
+	// retained Seq is a no-op; in.Seq == NextSeq is legal and empties the log;
+	// in.Seq > NextSeq errors ErrBadSeq.
+	Seq uint64
+}
+
+// TrimBeforeOutput is the output of the TrimBefore verb.
+type TrimBeforeOutput struct {
+	// Removed is the count of entries dropped by this call.
+	Removed int
+}
+
 // NewLog returns a fresh Log ready for use.
 // Returns (*Log, error) per family law (cannot fail today; error slot reserved).
 func NewLog() (*Log, error) {
@@ -160,6 +175,47 @@ func (l *Log) Append(in *AppendInput) (*AppendOutput, error) {
 // Zero-arg read, never errs today; the error slot is the law's.
 func (l *Log) NextSeq() (uint64, error) {
 	return l.nextSeq, nil
+}
+
+// TrimBefore drops all entries with Seq < in.Seq. Retention is the
+// composition's policy made visible (design brainstorm §4). Trimming at or
+// below the oldest retained Seq is a no-op (Removed: 0), not an error;
+// in.Seq == NextSeq is legal and empties the log; in.Seq > NextSeq errors
+// ErrBadSeq (you cannot forget the future). Never renumbers entries.
+// Nil guard → ErrNilInput; bad Seq → ErrBadSeq (R5 atomicity: on error, no
+// state changed).
+func (l *Log) TrimBefore(in *TrimBeforeInput) (*TrimBeforeOutput, error) {
+	// Step 1: nil guard
+	if in == nil {
+		return nil, fmt.Errorf("trim before: %w", ErrNilInput)
+	}
+
+	// Step 2: validate Seq (cannot trim beyond NextSeq)
+	if in.Seq > l.nextSeq {
+		return nil, fmt.Errorf("trim before: seq %d beyond next %d: %w", in.Seq, l.nextSeq, ErrBadSeq)
+	}
+
+	// All validation passed; find the cut point (first entry with seq >= in.Seq)
+	cut := len(l.entries) // default: all entries are removed (if log is empty, cut stays 0)
+	for i, e := range l.entries {
+		if e.seq >= in.Seq {
+			cut = i
+			break
+		}
+	}
+
+	// Count how many entries will be removed
+	removed := cut
+
+	// Trim entries by re-slicing; defensively copy the tail to avoid holding
+	// the old backing array in memory
+	if cut < len(l.entries) {
+		l.entries = append([]entry(nil), l.entries[cut:]...)
+	} else {
+		l.entries = nil
+	}
+
+	return &TrimBeforeOutput{Removed: removed}, nil
 }
 
 // All returns every retained entry with Seq >= in.FromSeq, in Seq order.
