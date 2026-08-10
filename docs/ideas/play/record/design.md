@@ -36,14 +36,24 @@ Family laws, restated as binding:
   reuses or renumbers. Entries are immutable once appended.
 - **R7** — No randomness.
 - **R8** — `ToData`/`LoadLog`; plain JSON structs; idle snapshot
-  deep-equals the zero `LogData` and marshals to `{}`.
+  deep-equals the zero `LogData` and marshals to `{}`. The fresh-log
+  encoding convention that makes this hold (record's fresh runtime state
+  is NOT all-zero — `NextSeq` is 1): stored `NextSeq: 0` encodes a fresh
+  log (`ToData` on a never-appended log writes the zero `LogData`;
+  `LoadLog(LogData{})` yields a fresh log whose `NextSeq()` answers 1).
+  A trimmed-empty log stores its real `NextSeq` (always >= 2). Stored
+  `NextSeq: 1` is therefore never written and MUST be rejected (R9).
 - **R9** — `LoadLog` MUST reject unreachable states with
-  `ErrInvalidData`: entries out of order, duplicate or zero `Seq`,
-  `NextSeq` not exceeding the last entry's `Seq`, empty entries slice
-  with `NextSeq > 1` mismatched against a never-trimmed log ONLY when
-  inconsistent (a trimmed-empty log with `NextSeq > 1` is reachable and
-  MUST load), an audience containing empty IDs or duplicates, nil
-  payloads (empty non-nil is legal).
+  `ErrInvalidData`: non-contiguous or zero `Seq` values (Append assigns
+  gaplessly and `TrimBefore` removes only a strict prefix, so every
+  reachable non-empty log has consecutive retained Seqs); for non-empty
+  logs, `NextSeq` != last `Seq` + 1 (exactly — no verb can produce
+  slack); for empty logs, stored `NextSeq: 1` (fresh encodes as 0 per
+  R8; trimmed-empty is always >= 2); an audience containing empty IDs
+  or duplicates; nil payloads (empty non-nil is legal). Affirmative
+  notes, not rejections: an empty entries slice is legal with stored
+  `NextSeq` 0 (fresh) or >= 2 (trimmed-empty — reachable and MUST
+  load); a trimmed log's first retained `Seq` may be any value.
 - **R10** — Not safe for concurrent use.
 
 ## Types
@@ -53,7 +63,7 @@ Family laws, restated as binding:
 - `Entry` — the read-side value: `{Seq uint64, At uint64, Correlation
   string, Audience []core.EntityID, Payload []byte}`. `Correlation` is
   an opaque caller token grouping cause and effects; empty is legal
-  (uncorrelated beat). `Audience` is materialized and deduplicated;
+  (uncorrelated beat). `Audience` is materialized and duplicate-free (enforced at `Append` via `ErrBadAudience`, never silently deduped);
   EMPTY MEANS NO VIEWER (GM/debug beat) — "everyone" is an explicit
   roster. `Payload` is opaque; composition-encoded story beats (leaf
   deltas, outcomes); record never interprets.
@@ -63,7 +73,7 @@ Family laws, restated as binding:
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
 | `Append` | `{At uint64, Correlation string, Audience []core.EntityID, Payload []byte}` | `{Seq uint64}` | Appends one immutable entry, assigning the next `Seq`. Audience is defensively copied and MUST be duplicate-free with no empty IDs (`ErrBadAudience`); payload MUST be non-nil (`ErrNoPayload`; empty non-nil is legal — presence with no content). Errors: `ErrNilInput`, `ErrBadAudience`, `ErrNoPayload`. |
-| `TrimBefore` | `{Seq uint64}` | `{Removed int}` | Drops all entries with `Seq < in.Seq`. Retention is the composition's policy made visible (brainstorm §4). Trimming at or below the current head is a no-op (`Removed: 0`), not an error; trimming beyond `NextSeq` errors `ErrBadSeq` (a policy bug — you cannot forget the future). Never renumbers. |
+| `TrimBefore` | `{Seq uint64}` | `{Removed int}` | Drops all entries with `Seq < in.Seq`. Retention is the composition's policy made visible (brainstorm §4). Trimming at or below the oldest retained `Seq` is a no-op (`Removed: 0`), not an error; `in.Seq == NextSeq` is legal and empties the log; `in.Seq > NextSeq` errors `ErrBadSeq` (a policy bug — you cannot forget the future). Never renumbers. |
 
 ## Queries
 
