@@ -5,7 +5,7 @@ go 1.24
 toolchain go1.24.5
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.9.6
+	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0
 	github.com/google/uuid v1.6.0

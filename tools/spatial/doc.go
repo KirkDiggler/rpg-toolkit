@@ -31,7 +31,14 @@
 //   - behavior: Provides position queries for AI decisions
 //   - spawn: Validates entity placement
 //   - environments: Provides room infrastructure
-//   - events: Publishes movement and room transition events
+//   - events: Optionally publishes movement and room transition observations
+//
+// Standalone rooms are directly mutable. Entity membership in rooms added to a
+// BasicRoomOrchestrator is mutated through ManagedRoomMutator, whose verbs return
+// spatial deltas as values. Events are observer-only and are never consumed by
+// the orchestrator as a hidden result channel. Cross-room TransitionEntity
+// returns the removed entity and leaves it unplaced until managed PlaceEntity
+// chooses a destination position.
 //
 // The spatial package is the foundation for any position-based mechanics
 // but deliberately avoids encoding any game rules about how space is used.

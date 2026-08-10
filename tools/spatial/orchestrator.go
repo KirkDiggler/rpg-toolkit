@@ -54,7 +54,9 @@ type Connection interface {
 	GetRequirements() []string
 }
 
-// RoomOrchestrator manages multiple rooms and their connections
+// RoomOrchestrator is the legacy topology and query contract for multiple
+// rooms. BasicRoomOrchestrator also implements the additive ManagedRoomMutator
+// entity-membership seam; this interface stays unchanged for source compatibility.
 type RoomOrchestrator interface {
 	core.Entity
 	EventBusIntegration
@@ -86,7 +88,9 @@ type RoomOrchestrator interface {
 	// GetAllConnections returns all connections
 	GetAllConnections() map[string]Connection
 
-	// MoveEntityBetweenRooms moves an entity from one room to another
+	// MoveEntityBetweenRooms performs a logical departure through a connection.
+	// The entity is unplaced until ManagedRoomMutator.PlaceEntity selects a
+	// destination position. Prefer TransitionEntity for its explicit output.
 	MoveEntityBetweenRooms(entityID, fromRoom, toRoom, connectionID string) error
 
 	// CanMoveEntityBetweenRooms checks if entity movement is possible
