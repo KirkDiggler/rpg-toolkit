@@ -420,6 +420,29 @@ func (s *HexGridTestSuite) TestCoordinateConversionMethods() {
 	})
 }
 
+// TestOffsetAndAxialCoordinateContracts pins the intentionally distinct
+// interpretations of Position used by the two public hex grids.
+func (s *HexGridTestSuite) TestOffsetAndAxialCoordinateContracts() {
+	offset := spatial.NewHexGrid(spatial.HexGridConfig{
+		Width:       20,
+		Height:      20,
+		Orientation: spatial.HexOrientationPointyTop,
+	})
+	axial := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
+		SpanWidth:  20,
+		SpanHeight: 20,
+	})
+
+	from := spatial.Position{X: 5, Y: 5}
+	to := spatial.Position{X: 6, Y: 6}
+	s.Equal(1.0, offset.Distance(from, to), "HexGrid treats Position as offset coordinates")
+	s.Equal(2.0, axial.Distance(from, to), "AxialHexGrid treats Position.X/Y as axial Q/R")
+
+	negative := spatial.Position{X: -1, Y: 0}
+	s.False(offset.IsValidPosition(negative), "offset coordinates use non-negative bounds")
+	s.True(axial.IsValidPosition(negative), "axial coordinates use origin-centered bounds")
+}
+
 // Run the test suite
 func TestHexGridSuite(t *testing.T) {
 	suite.Run(t, new(HexGridTestSuite))
