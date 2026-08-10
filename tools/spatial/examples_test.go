@@ -81,7 +81,7 @@ func TestSpatialSystem(t *testing.T) {
 		spatial.Position{X: 5, Y: 5},
 		10.0,
 		"dungeon-room-1",
-		spatial.CreateMonsterFilter(),
+		spatial.NewSimpleEntityFilter().WithEntityTypes("monster"),
 	)
 	require.NoError(t, err)
 
@@ -148,7 +148,7 @@ func TestSpatialSystem(t *testing.T) {
 		spatial.Position{X: 10, Y: 10},
 		15.0,
 		"dungeon-room-1",
-		spatial.CreateCombatantFilter(),
+		spatial.NewSimpleEntityFilter().WithEntityTypes("character", "monster"),
 	)
 	require.NoError(t, err)
 

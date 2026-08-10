@@ -18,18 +18,16 @@ type BasicRoomOrchestrator struct {
 	eventBus   events.EventBus // Store the event bus for EventBusIntegration interface
 
 	// Type-safe event publishers (replaces eventBus events.EventBus)
-	roomAdded             events.TypedTopic[RoomAddedEvent]
-	roomRemoved           events.TypedTopic[RoomRemovedEvent]
-	connectionAdded       events.TypedTopic[ConnectionAddedEvent]
-	connectionRemoved     events.TypedTopic[ConnectionRemovedEvent]
-	entityTransitionBegan events.TypedTopic[EntityTransitionBeganEvent]
-	entityTransitionEnded events.TypedTopic[EntityTransitionEndedEvent]
-	entityRoomTransition  events.TypedTopic[EntityRoomTransitionEvent]
-	layoutChanged         events.TypedTopic[LayoutChangedEvent]
+	roomAdded            events.TypedTopic[RoomAddedEvent]
+	roomRemoved          events.TypedTopic[RoomRemovedEvent]
+	connectionAdded      events.TypedTopic[ConnectionAddedEvent]
+	connectionRemoved    events.TypedTopic[ConnectionRemovedEvent]
+	entityRoomTransition events.TypedTopic[EntityRoomTransitionEvent]
+	layoutChanged        events.TypedTopic[LayoutChangedEvent]
 
 	rooms       map[RoomID]Room
 	connections map[ConnectionID]Connection
-	entityRooms map[EntityID]RoomID // entityID -> roomID mapping
+	entityRooms map[core.EntityID]RoomID // entityID -> roomID mapping
 	layout      LayoutType
 }
 
@@ -57,7 +55,7 @@ func NewBasicRoomOrchestrator(config BasicRoomOrchestratorConfig) *BasicRoomOrch
 		entityType:  config.Type,
 		rooms:       make(map[RoomID]Room),
 		connections: make(map[ConnectionID]Connection),
-		entityRooms: make(map[EntityID]RoomID),
+		entityRooms: make(map[core.EntityID]RoomID),
 		layout:      layout,
 	}
 }
@@ -79,8 +77,6 @@ func (bro *BasicRoomOrchestrator) SetEventBus(bus events.EventBus) {
 	bro.roomRemoved = RoomRemovedTopic.On(bus)
 	bro.connectionAdded = ConnectionAddedTopic.On(bus)
 	bro.connectionRemoved = ConnectionRemovedTopic.On(bus)
-	bro.entityTransitionBegan = EntityTransitionBeganTopic.On(bus)
-	bro.entityTransitionEnded = EntityTransitionEndedTopic.On(bus)
 	bro.entityRoomTransition = EntityRoomTransitionTopic.On(bus)
 	bro.layoutChanged = LayoutChangedTopic.On(bus)
 }
@@ -124,7 +120,7 @@ func (bro *BasicRoomOrchestrator) AddRoom(room Room) error {
 		return fmt.Errorf("room %s already exists", roomID)
 	}
 	for entityIDStr := range entities {
-		entityID := EntityID(entityIDStr)
+		entityID := core.EntityID(entityIDStr)
 		if indexedRoom, exists := bro.entityRooms[entityID]; exists {
 			bro.mu.Unlock()
 			return fmt.Errorf("entity %s is already indexed in room %s", entityID, indexedRoom)
@@ -132,7 +128,7 @@ func (bro *BasicRoomOrchestrator) AddRoom(room Room) error {
 	}
 	bro.rooms[roomID] = room
 	for entityIDStr := range entities {
-		bro.entityRooms[EntityID(entityIDStr)] = roomID
+		bro.entityRooms[core.EntityID(entityIDStr)] = roomID
 	}
 	topic := bro.roomAdded
 	orchestratorID := bro.id.String()
@@ -339,7 +335,7 @@ func (bro *BasicRoomOrchestrator) CanMoveEntityBetweenRooms(
 func (bro *BasicRoomOrchestrator) GetEntityRoom(entityIDStr string) (string, bool) {
 	bro.mu.RLock()
 	defer bro.mu.RUnlock()
-	entityID := EntityID(entityIDStr)
+	entityID := core.EntityID(entityIDStr)
 	roomID, exists := bro.entityRooms[entityID]
 	return roomID.String(), exists
 }

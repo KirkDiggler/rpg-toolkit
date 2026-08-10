@@ -129,28 +129,6 @@ func (q *QueryUtils) QueryPlacement(
 	return result.Valid, nil
 }
 
-// Convenience methods for common entity filters
-
-// CreateCharacterFilter creates a filter for character entities
-func CreateCharacterFilter() EntityFilter {
-	return NewSimpleEntityFilter().WithEntityTypes("character")
-}
-
-// CreateMonsterFilter creates a filter for monster entities
-func CreateMonsterFilter() EntityFilter {
-	return NewSimpleEntityFilter().WithEntityTypes("monster")
-}
-
-// CreateItemFilter creates a filter for item entities
-func CreateItemFilter() EntityFilter {
-	return NewSimpleEntityFilter().WithEntityTypes("item")
-}
-
-// CreateCombatantFilter creates a filter for combatant entities (characters + monsters)
-func CreateCombatantFilter() EntityFilter {
-	return NewSimpleEntityFilter().WithEntityTypes("character", "monster")
-}
-
 // CreateExcludeFilter creates a filter that excludes specific entity IDs
 func CreateExcludeFilter(excludeIDs ...string) EntityFilter {
 	return NewSimpleEntityFilter().WithExcludeIDs(excludeIDs...)
