@@ -124,4 +124,21 @@ Commit `test(dnd5e/encounter): AC1 tomb watch; ci: compat gate`.
 
 ## Execution addenda (logged during subagent-driven execution)
 
-*(empty — build not started)*
+- **With Task 2**: review found two CI-breakers the implementer's gate
+  missed (stale go.mod marking direct deps indirect; gofmt drift), a
+  dead sentinel (`ErrBadPlacement` declared and distinctness-tested but
+  never wrapped — fixed with multi-`%w` at all three placement sites,
+  `errors.Is` pinned), and two unpinned behaviors: the complete-percept
+  contract (no observer ever saw 2+ members — a break-after-first
+  mutant survived; pinned with a three-member mutual-visibility test,
+  mutation-proven) and the opening beat (deleting the Append survived —
+  resolved by a **plan deviation, director-approved: `Story` pulled
+  forward from Task 5** as the beat's observation surface, since a pin
+  needs designed surface and leaving a known-unpinned behavior standing
+  violates the family standard). Also landed: exported `SightPayload`
+  vocabulary type (replacing an anonymous struct Tasks 3/4 would have
+  had to reverse-engineer), `Status` copy-out, boundary-blocks-LoS
+  test, test-const hygiene. The managed-seam regression pin was
+  deliberately deferred to Task 3, where movement gives it a behavioral
+  surface instead of new API. Reviewer confirmed placements correctly
+  ride the managed orchestrator seam (no #909-style bypass).
