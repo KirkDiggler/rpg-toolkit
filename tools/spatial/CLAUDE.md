@@ -19,11 +19,11 @@ This module provides the mathematical foundation for position-based game systems
 ✅ **Events v0.6.1 compliant** (import ordering follows standard)
 ✅ **Comprehensive documentation** (43KB README.md)
 ✅ **Thread-safe operations** (proper mutex usage)
-✅ **Event-driven architecture** (typed topics)
+✅ **Observer event publication** (typed topics; never an internal result channel)
 
 ### Dependencies
-- `events v0.6.0` (v0.6.1 compatible, upgrade when available)
-- `core v0.9.0` (Entity interface)
+- `events v0.6.2`
+- `core v0.11.0` (`Entity` + shared `EntityID`)
 - `game` (Context pattern for data persistence)
 
 ## Key Architectural Decisions
@@ -38,7 +38,7 @@ Connections are **abstract links** between rooms, NOT physical objects:
 
 **Example**: A door connection links room A position (9,5) to room B position (0,5), but the door entity itself is placed in the room at that position by the game layer.
 
-### Event-Driven Architecture
+### Observer-Only Event Architecture
 
 Uses typed topics from events v0.6.0+:
 ```go
@@ -61,13 +61,20 @@ EntityRoomTransitionTopic
 LayoutChangedTopic
 ```
 
-**Important**: Always call `ConnectToEventBus()` after creating rooms/orchestrators.
+**Important**: `ConnectToEventBus()` is optional and enables observer
+publication only. Standalone rooms may be mutated directly. Once a room is
+added to a `BasicRoomOrchestrator`, use its `ManagedRoomMutator` verbs for
+placement, movement, removal, and transition; the orchestrator never consumes
+room events to maintain membership. Retained-room mutation and sharing one room
+across orchestrators are unsupported alias bypasses that can stale indexes.
 
 ### Thread Safety Pattern
 
 Both `BasicRoom` and `BasicRoomOrchestrator` use `sync.RWMutex`:
 - Read operations use `RLock()/RUnlock()`
 - Write operations use `Lock()/Unlock()`
+- Orchestrator locks are released before room calls and event publication
+- Hosts serialize managed mutations; concurrent reads remain safe
 - Triple-tracking system for efficient lookups (entities map, positions map, occupancy map)
 
 ## Grid Systems
@@ -224,11 +231,11 @@ door := spatial.CreateDoorConnection("door-1", "room-1", "room-2",
     spatial.Position{X: 9, Y: 5}, spatial.Position{X: 0, Y: 5})
 orchestrator.AddConnection(door)
 
-// 4. Track entities via event subscriptions
-spatial.EntityMovedTopic.On(eventBus).Subscribe(func(ctx context.Context, event spatial.EntityMovedEvent) error {
-    // Handle entity movement
-    return nil
+// 4. Mutate managed membership and consume returned values
+placed, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+    RoomID: "room-1", Entity: hero, Position: spatial.Position{X: 2, Y: 2},
 })
+// Optional subscriptions observe the same room event; they do not update the index.
 
 // 5. Use pathfinding for AI movement
 path, err := orchestrator.FindPath("room-1", "room-2")
@@ -421,7 +428,7 @@ s.Eventually(func() bool { return eventReceived }, time.Second, 10*time.Millisec
 ## Remember
 
 - **Spatial is infrastructure, not game rules**
-- **Event bus connection is always separate from creation**
+- **Event bus connection is optional, observer-only, and separate from creation**
 - **Import ordering matters for v0.6.1 compatibility**
 - **Thread safety is built-in - don't add extra locks**
 - **README.md is the source of truth for usage patterns**

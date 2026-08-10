@@ -1,7 +1,7 @@
 ---
 name: tools/spatial module
 description: Hex/Square/Gridless rooms, multi-room orchestration, spatial queries, pathfinding — second-largest rpg-api dependency
-updated: 2026-05-04
+updated: 2026-08-10
 confidence: high — verified by reading pathfinder.go, orchestrator.go, connection.go, hex_grid.go, square_grid.go, and rpg-api's hot-path imports per audit 049
 ---
 
@@ -54,7 +54,8 @@ orchestrator — its dungeon graph lives in `tools/environments` (see
 | `orchestrator.go` | `Orchestrator` interface + `BasicRoomOrchestrator`, `LayoutOrchestrator` (unimplemented), `TransitionSystem` (unimplemented) |
 | `connection.go` | `Connection`, `BasicConnection` |
 | `connection_helpers.go` | `CreateDoorConnection`, `CreateStairsConnection`, etc. |
-| `basic_orchestrator.go` | `BasicRoomOrchestrator` implementation |
+| `basic_orchestrator.go` | `BasicRoomOrchestrator` room/connection/index implementation |
+| `managed_membership.go` | Additive `ManagedRoomMutator` verbs and returned spatial deltas |
 | `query_handler.go` | `SpatialQueryHandler` — multi-room entity queries |
 | `query_utils.go` | Filter helpers (`CreateCharacterFilter`, `CreateMonsterFilter`, etc.) |
 | `events.go` | Event types: `EntityPlacedEvent`, `EntityMovedEvent`, `RoomAddedEvent`, etc. |
@@ -95,6 +96,30 @@ entities live where in the encounter grid.
 `BasicRoomOrchestrator` tracks multiple rooms and their connections.
 `FindPath` is room-to-room (which sequence of rooms to traverse), not
 intra-room.
+
+Entity membership in managed rooms has one supported mutation seam:
+`ManagedRoomMutator` (`PlaceEntity`, `MoveEntity`, `RemoveEntity`, and
+`TransitionEntity`). Each verb returns a typed delta as a value and updates the
+room plus entity-to-room index synchronously. Rooms used alone remain directly
+mutable. After a room is added, direct mutation through a retained `Room` alias
+(or sharing one room across orchestrators) is unsupported because Go interfaces
+cannot enforce ownership and such bypasses can stale indexes.
+
+The event bus is observer-only. `BasicRoomOrchestrator` does not subscribe to
+`EntityPlacedTopic`, `EntityMovedTopic`, or `EntityRemovedTopic`; membership
+correctness therefore does not depend on a bus, topic wiring order, or rooms and
+orchestrator sharing a bus. Synchronous observers may re-enter read getters, but
+hosts serialize managed mutations and re-entrant managed mutation from an
+observer is outside the contract.
+
+Connections remain abstract and do not choose destination positions.
+`TransitionEntity` consequently removes and unindexes the entity, then returns
+the removed `core.Entity`, departure delta, and a transition with
+`PlacementRequired=true`. The composition completes physical membership with a
+later managed `PlaceEntity`. Until then, `GetEntityRoom` and
+`CanMoveEntityBetweenRooms` both answer false. The legacy
+`MoveEntityBetweenRooms` signature remains but discards this output and follows
+the same corrected departure-only semantics.
 
 Connection types (helper constructors in `connection_helpers.go`):
 - `CreateDoorConnection` — standard bidirectional door
@@ -150,7 +175,7 @@ environments.
 ## go.mod status
 
 Clean. Uses published versions for all dependencies:
-- `core v0.9.6`
+- `core v0.11.0`
 - `events v0.6.2`
 - `game v0.1.0`
 - `google/uuid v1.6.0`

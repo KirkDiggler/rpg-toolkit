@@ -343,6 +343,70 @@ spatial.LayoutTypeGrid       // 2D grid arrangement
 spatial.LayoutTypeOrganic    // Irregular connections
 ```
 
+### Standalone rooms and managed rooms
+
+A `BasicRoom` remains a valid standalone spatial container: call its
+`PlaceEntity`, `MoveEntity`, and `RemoveEntity` methods directly. Once rooms
+participate in a multi-room field, entity membership mutation uses the
+orchestrator's additive `ManagedRoomMutator` seam instead:
+
+```go
+placed, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+    RoomID: "entrance-hall",
+    Entity: hero,
+    Position: spatial.Position{X: 10, Y: 10},
+})
+
+moved, err := orchestrator.MoveEntity(&spatial.MoveEntityInput{
+    RoomID: "entrance-hall",
+    EntityID: core.EntityID(hero.GetID()),
+    To: spatial.Position{X: 12, Y: 10},
+})
+```
+
+These verbs synchronously update both the room and the orchestrator's
+entity-to-room index and return typed spatial deltas as values. The event bus is
+an optional **observer tail only**: connecting no bus, connecting after rooms
+are added, or using different buses for rooms and the orchestrator does not
+change membership correctness or outputs. Spatial events retain their existing
+topics and payloads for observers, but the orchestrator never subscribes to
+room notifications to learn its own results.
+
+Go room interfaces are aliases, not ownership tokens. After `AddRoom`, retained
+room references can still bypass the managed seam, and the same room can be
+passed to more than one orchestrator. Both uses are unsupported because they
+can stale an index; #909 deliberately adds no callback or ownership-token
+machinery. Hosts serialize managed mutations. Concurrent read queries remain
+safe, but re-entrant managed mutation from a synchronous event observer is not
+a supported contract.
+
+A cross-room transition has two explicit steps because a connection does not
+choose a physical destination position:
+
+```go
+transitioned, err := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+    EntityID: core.EntityID(hero.GetID()),
+    FromRoom: "entrance-hall",
+    ToRoom: "treasure-room",
+    ConnectionID: "main-door",
+})
+// transitioned.Entity is physically removed and unindexed;
+// transitioned.Transition.PlacementRequired is true.
+
+placed, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+    RoomID: "treasure-room",
+    Entity: transitioned.Entity,
+    Position: spatial.Position{X: 1, Y: 7},
+})
+```
+
+During the interval between those calls, `GetEntityRoom` returns false and
+`CanMoveEntityBetweenRooms` returns false. The legacy
+`MoveEntityBetweenRooms(string, string, string, string) error` signature is
+retained for source compatibility, but now has the same honest departure-only
+behavior and discards the explicit output. New compositions should use
+`TransitionEntity`.
+
 ### Basic Orchestrator Usage
 
 #### 1. Creating an Orchestrator
@@ -352,7 +416,6 @@ spatial.LayoutTypeOrganic    // Irregular connections
 orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
     ID:       "dungeon-orchestrator",
     Type:     "orchestrator",
-    EventBus: eventBus,
     Layout:   spatial.LayoutTypeOrganic,
 })
 ```
@@ -365,14 +428,12 @@ room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
     ID:       "entrance-hall",
     Type:     "chamber",
     Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 20, Height: 20}),
-    EventBus: eventBus,
 })
 
 room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
     ID:       "treasure-room",
     Type:     "chamber", 
     Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 15, Height: 15}),
-    EventBus: eventBus,
 })
 
 // Add to orchestrator
@@ -386,35 +447,21 @@ err = orchestrator.AddRoom(room2)
 // Create a door connection
 door := spatial.CreateDoorConnection(
     "main-door",
-    "entrance-hall",        // From room
-    "treasure-room",        // To room
-    spatial.Position{X: 19, Y: 10}, // Exit position in entrance-hall
-    spatial.Position{X: 0, Y: 7},   // Entry position in treasure-room
+    "entrance-hall", // From room
+    "treasure-room", // To room
+    1.0,             // Traversal cost
 )
 
 // Add connection to orchestrator
 err := orchestrator.AddConnection(door)
 ```
 
-#### 4. Moving Entities Between Rooms
+#### 4. Transitioning Entities Between Rooms
 
-```go
-// Place entity in first room
-hero := &Character{id: "hero", entityType: "character"}
-err := room1.PlaceEntity(hero, spatial.Position{X: 10, Y: 10})
-
-// Move entity to second room through connection
-err = orchestrator.MoveEntityBetweenRooms(
-    "hero",           // Entity ID
-    "entrance-hall",  // From room
-    "treasure-room",  // To room
-    "main-door",      // Connection ID
-)
-
-// Check which room contains the entity
-roomID, exists := orchestrator.GetEntityRoom("hero")
-// roomID will be "treasure-room"
-```
+Use the managed placement and transition verbs shown above. `TransitionEntity`
+returns the removed `core.Entity`, the departure delta, and the logical
+transition; the composition then chooses the destination position and calls
+managed `PlaceEntity`. No subscriber is required to recover either result.
 
 ### Connection Helper Functions
 
@@ -424,9 +471,7 @@ The module provides helper functions for creating different connection types:
 ```go
 // Bidirectional door (most common)
 door := spatial.CreateDoorConnection(
-    "door-1", "room-a", "room-b",
-    spatial.Position{X: 10, Y: 0},  // Exit position
-    spatial.Position{X: 5, Y: 19},  // Entry position
+    "door-1", "room-a", "room-b", 1.0,
 )
 // Cost: 1.0, Reversible: true, Requirements: none
 ```
@@ -435,9 +480,7 @@ door := spatial.CreateDoorConnection(
 ```go
 // Stairs between floors
 stairs := spatial.CreateStairsConnection(
-    "stairs-up", "floor-1", "floor-2",
-    spatial.Position{X: 10, Y: 10},
-    spatial.Position{X: 10, Y: 10},
+    "stairs-up", "floor-1", "floor-2", 2.0,
     true, // goingUp - adds "can_climb" requirement
 )
 // Cost: 2.0, Reversible: true, Requirements: ["can_climb"] if going up
@@ -447,9 +490,7 @@ stairs := spatial.CreateStairsConnection(
 ```go
 // Magical portal
 portal := spatial.CreatePortalConnection(
-    "magic-portal", "material-plane", "feywild",
-    spatial.Position{X: 5, Y: 5},
-    spatial.Position{X: 12, Y: 8},
+    "magic-portal", "material-plane", "feywild", 0.5,
     true, // bidirectional
 )
 // Cost: 0.5, Requirements: ["can_use_portals"]
@@ -459,9 +500,7 @@ portal := spatial.CreatePortalConnection(
 ```go
 // Hidden passage
 secret := spatial.CreateSecretPassageConnection(
-    "secret-passage", "library", "hidden-chamber",
-    spatial.Position{X: 0, Y: 10},
-    spatial.Position{X: 15, Y: 10},
+    "secret-passage", "library", "hidden-chamber", 1.0,
     []string{"found_secret", "has_key"}, // Custom requirements
 )
 // Cost: 1.0, Reversible: true, Requirements: custom
