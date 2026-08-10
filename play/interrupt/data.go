@@ -81,15 +81,16 @@ func (l *Ledger) ToData() LedgerData {
 // Deep-copies all data: mutating the caller's LedgerData after LoadLedger will not
 // affect the loaded Ledger (R4).
 //
-// R9 validations (deterministic order):
-// - NextID == 0 with any windows present (IDs are assigned from 1; violation covers wraparound forgery)
-// - Any window ID of 0 (IDs start from 1)
-// - Window IDs not strictly ascending in slice order (covers duplicates and descending)
-// - Any window ID >= NextID (ID must be less than the next ID to assign)
-// - Empty audience (required for every window)
-// - Nil or empty options slice (required for every window — liveness guard)
-// - Any empty option token (required for every option)
-// - Any duplicate option token within a window (options are distinct choices)
+// R9 validations, in the implementation's deterministic order:
+// - A stored NextID of exactly 1 (fresh is 0; the first Pose advances to 2)
+// - Then per window, in slice order:
+//   - Window ID of 0 (IDs start from 1)
+//   - IDs not strictly ascending (covers duplicates and descending)
+//   - ID >= NextID — with NextID 0 every window trips this, so it also
+//     subsumes NextID-0-with-windows, wraparound forgery included
+//   - Empty audience
+//   - Nil or empty options slice (liveness guard)
+//   - Any empty option token, then any duplicate option token
 //
 // Nil payload is LEGAL — Pose accepts nil payloads (reachable by design),
 // and payload is omitempty, so rejecting would make LoadLedger refuse the module's own snapshots.

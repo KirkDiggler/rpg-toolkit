@@ -133,7 +133,8 @@ type AnswerOutput struct {
 // choice (empty), lookup by ID, authorization (By must match window's audience),
 // membership (Choice must be in options). On any validation error, the window remains
 // open and unchanged (R5 atomicity). On success, removes the window from the ledger
-// and returns a deep copy of the window plus the accepted choice. One answer per
+// and returns the window itself plus the accepted choice — ownership transfer, not a
+// copy (design, Answer row): after removal nothing internal retains it. One answer per
 // window: a second Answer to the same ID is ErrNotOpen.
 func (l *Ledger) Answer(in *AnswerInput) (*AnswerOutput, error) {
 	if in == nil {
@@ -186,7 +187,12 @@ func (l *Ledger) Answer(in *AnswerInput) (*AnswerOutput, error) {
 	// so a copy here would guard nothing and its pin could never fail.
 	// Queries copy out because internal state stays; Answer transfers
 	// because it removes.
-	l.windows = append(l.windows[:windowIndex], l.windows[windowIndex+1:]...)
+	copy(l.windows[windowIndex:], l.windows[windowIndex+1:])
+	// Zero the vacated tail slot: without this the backing array would
+	// retain the transferred window's option/payload slices (visible to
+	// nothing, but "nothing internal retains it" should be literally true).
+	l.windows[len(l.windows)-1] = Window{}
+	l.windows = l.windows[:len(l.windows)-1]
 
 	return &AnswerOutput{
 		Window: window,

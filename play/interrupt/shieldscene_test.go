@@ -67,11 +67,11 @@ func TestShieldScene(t *testing.T) {
 	// is untouched (R5)
 	_, err = ledger.Answer(&interrupt.AnswerInput{
 		Window: interrupt.WindowID(1),
-		By:     core.EntityID(testMonster),
+		By:     core.EntityID(testFighter),
 		Choice: testShield,
 	})
 	require.ErrorIs(t, err, interrupt.ErrNotAudience,
-		"beat 4: fighter cannot answer aldric's window")
+		"beat 4: the fighter cannot answer aldric's window")
 
 	// Verify window untouched via PendingFor
 	pendingAfterWrongHands, err := ledger.PendingFor(&interrupt.PendingForInput{

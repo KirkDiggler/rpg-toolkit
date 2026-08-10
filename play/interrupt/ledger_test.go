@@ -28,6 +28,7 @@ const (
 	optCorrupted = "corrupted"
 	optAttack    = "attack"
 	testMonster  = "monster"
+	testFighter  = "fighter"
 	testGrunk    = "grunk"
 )
 
@@ -344,7 +345,7 @@ func (s *LedgerSuite) TestAnswerValidationOrderAndAtomicity() {
 	s.Require().ErrorIs(err, interrupt.ErrNotOpen)
 	_, err = s.ledger.Answer(&interrupt.AnswerInput{
 		Window: posed.Window.ID,
-		By:     "fighter",
+		By:     testFighter,
 		Choice: interrupt.Option(optShield),
 	})
 	s.Require().ErrorIs(err, interrupt.ErrNotAudience)
@@ -430,7 +431,7 @@ func (s *LedgerSuite) TestAnswerValidationComboAuthorizationBeforeMembership() {
 	posed, err := s.ledger.Pose(&interrupt.PoseInput{Audience: testAudience,
 		Options: []interrupt.Option{optShield, optDecline}, Payload: []byte("frozen")})
 	s.Require().NoError(err)
-	_, err = s.ledger.Answer(&interrupt.AnswerInput{Window: posed.Window.ID, By: "fighter", Choice: "fireball"})
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{Window: posed.Window.ID, By: testFighter, Choice: "fireball"})
 	s.Require().ErrorIs(err, interrupt.ErrNotAudience,
 		"wrong audience + unoffered choice: authorization must win (design: shape, existence, authorization, membership)")
 	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{Audience: testAudience})
