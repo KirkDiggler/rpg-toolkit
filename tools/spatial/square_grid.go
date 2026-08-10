@@ -4,7 +4,7 @@ import (
 	"math"
 )
 
-// SquareGrid implements a square grid system with D&D 5e distance rules
+// SquareGrid implements a square grid system using Chebyshev distance
 type SquareGrid struct {
 	dimensions Dimensions
 }
@@ -38,8 +38,7 @@ func (sg *SquareGrid) GetDimensions() Dimensions {
 	return sg.dimensions
 }
 
-// Distance calculates the distance between two positions using D&D 5e rules
-// D&D 5e uses Chebyshev distance: max(|x2-x1|, |y2-y1|)
+// Distance calculates Chebyshev distance: max(|x2-x1|, |y2-y1|)
 // This means diagonals cost the same as orthogonal movement
 func (sg *SquareGrid) Distance(from, to Position) float64 {
 	dx := math.Abs(to.X - from.X)
@@ -128,7 +127,7 @@ func (sg *SquareGrid) GetLineOfSight(from, to Position) []Position {
 	return positions
 }
 
-// GetPositionsInRange returns all positions within a given range using D&D 5e distance
+// GetPositionsInRange returns all positions within a given Chebyshev distance
 func (sg *SquareGrid) GetPositionsInRange(center Position, radius float64) []Position {
 	positions := make([]Position, 0)
 
@@ -171,7 +170,7 @@ func (sg *SquareGrid) GetPositionsInRectangle(rect Rectangle) []Position {
 	return positions
 }
 
-// GetPositionsInCircle returns all positions within a circular area using D&D 5e distance
+// GetPositionsInCircle returns all positions within a Chebyshev-radius area
 func (sg *SquareGrid) GetPositionsInCircle(circle Circle) []Position {
 	return sg.GetPositionsInRange(circle.Center, circle.Radius)
 }

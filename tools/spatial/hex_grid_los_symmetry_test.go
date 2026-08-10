@@ -20,8 +20,8 @@ import (
 // is rare and needs a specific floating-point alignment between the line's
 // slope and its length (empirically ~1 in 10,000 random pairs even at
 // distances up to 100, and not reliably reproducible at all in the 20-40
-// band alone) -- rare enough that a monster/player pair could go many
-// encounters without hitting it, then silently see-without-being-seen once
+// band alone) -- rare enough that an entity pair could go through many
+// checks without hitting it, then silently see-without-being-seen once
 // they did. TestGetLineOfSight_KnownAsymmetricPair pins one verified
 // pre-fix failure directly; TestGetLineOfSight_SymmetricAtLongRange is the
 // broader property check the issue asked for.

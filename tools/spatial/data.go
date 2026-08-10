@@ -58,7 +58,7 @@ type EntityPlacement struct {
 	// EntityID is the unique identifier of the entity
 	EntityID string `json:"entity_id"`
 
-	// EntityType is the type of the entity (e.g., "character", "monster", "object")
+	// EntityType is the caller-defined type of the entity (e.g., "actor", "obstacle", "marker")
 	EntityType string `json:"entity_type"`
 
 	// Position is where the entity is placed in the room (offset coordinates)
@@ -80,7 +80,7 @@ type EntityCubePlacement struct {
 	// EntityID is the unique identifier of the entity
 	EntityID string `json:"entity_id"`
 
-	// EntityType is the type of the entity (e.g., "character", "monster", "object")
+	// EntityType is the caller-defined type of the entity (e.g., "actor", "obstacle", "marker")
 	EntityType string `json:"entity_type"`
 
 	// CubePosition is where the entity is placed in the room (cube coordinates)

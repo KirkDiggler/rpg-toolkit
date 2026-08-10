@@ -4,7 +4,7 @@ import (
 	"math"
 )
 
-// GridlessRoom implements a gridless spatial system for theater-of-mind play
+// GridlessRoom implements a continuous gridless spatial system
 // Uses Euclidean distance and allows approximate positioning
 type GridlessRoom struct {
 	dimensions Dimensions
@@ -254,7 +254,7 @@ func (gr *GridlessRoom) GetPositionsInCone(
 }
 
 // GetPositionsInArc returns positions within an arc (portion of a circle)
-// This is useful for gridless rooms where you want spell effects in arcs
+// This is useful for gridless rooms with arc-shaped areas
 func (gr *GridlessRoom) GetPositionsInArc(center Position, radius float64, startAngle, endAngle float64) []Position {
 	positions := make([]Position, 0)
 

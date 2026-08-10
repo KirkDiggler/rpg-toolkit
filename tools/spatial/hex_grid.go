@@ -4,7 +4,9 @@ import (
 	"math"
 )
 
-// HexGrid implements a hexagonal grid system using cube coordinates
+// HexGrid implements a bounded hex grid whose Position values are non-negative
+// offset column/row coordinates. Orientation selects pointy-top or flat-top
+// offset conversion; cube coordinates are used internally for hex mathematics.
 type HexGrid struct {
 	dimensions  Dimensions
 	orientation HexOrientation
@@ -18,8 +20,8 @@ type HexGridConfig struct {
 	Orientation HexOrientation // The hex orientation (pointy-top or flat-top)
 }
 
-// NewHexGrid creates a new hex grid with the given dimensions
-// Defaults to pointy-top orientation for D&D 5e compatibility
+// NewHexGrid creates a bounded offset-coordinate hex grid with the given dimensions.
+// The zero-value orientation is pointy-top.
 func NewHexGrid(config HexGridConfig) *HexGrid {
 	// Use the Orientation field directly - it defaults to pointy-top (zero value)
 	// The legacy PointyTop field is ignored in favor of the clearer Orientation field
@@ -227,7 +229,7 @@ func (hg *HexGrid) GetPositionsInCone(origin Position, direction Position, lengt
 }
 
 // GetHexRing returns positions forming a ring at a specific distance from center
-// This is a hex-specific function that's useful for spell effects
+// This is a hex-specific function for ring-shaped areas
 func (hg *HexGrid) GetHexRing(center Position, radius int) []Position {
 	if radius == 0 {
 		return []Position{center}
@@ -281,17 +283,13 @@ func (hg *HexGrid) GetCubeNeighbors(pos Position) []CubeCoordinate {
 	return cube.GetNeighbors()
 }
 
-// AxialHexGrid implements Grid for hexagonal maps that store positions in axial
-// coordinates: Position.X = Q (column), Position.Y = R (row), S = -(Q+R).
+// AxialHexGrid implements an origin-centered hex grid whose Position values
+// are axial coordinates: Position.X = Q, Position.Y = R, S = -(Q+R).
+// It is intentionally distinct from HexGrid, which interprets the same fields
+// as bounded offset column/row coordinates and supports orientation selection.
 //
-// This is the correct grid for encounter SDKs and tactical maps that use axial
-// hex coordinates natively (e.g. rpg-api's encountercore.Hex). The existing
-// HexGrid expects offset coordinates and would produce wrong distances when fed
-// axial positions — AxialHexGrid eliminates that mismatch.
-//
-// Distance uses the cube formula: (|ΔQ| + |ΔR| + |ΔS|) / 2, which correctly
-// counts adjacent hexes as distance 1 regardless of their direction relative to
-// the X/Y axes. This matches D&D 5e adjacency rules for hex maps.
+// Distance uses the cube formula: (|ΔQ| + |ΔR| + |ΔS|) / 2, so adjacent
+// hexes are distance 1 in every axial direction.
 type AxialHexGrid struct {
 	dimensions Dimensions
 }

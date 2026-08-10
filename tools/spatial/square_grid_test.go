@@ -36,8 +36,8 @@ func (s *SquareGridTestSuite) TestIsValidPosition() {
 	spatial.RunPositionValidationTests(s.T(), s.grid)
 }
 
-// TestDND5eDistance tests D&D 5e distance calculations (Chebyshev distance)
-func (s *SquareGridTestSuite) TestDND5eDistance() {
+// TestChebyshevDistance tests square-grid Chebyshev distance calculations
+func (s *SquareGridTestSuite) TestChebyshevDistance() {
 	testCases := []struct {
 		name     string
 		from     spatial.Position
@@ -231,7 +231,7 @@ func (s *SquareGridTestSuite) TestGetPositionsInCircle() {
 	}
 
 	positions := s.grid.GetPositionsInCircle(circle)
-	s.Assert().Len(positions, 25) // 5x5 area with D&D 5e distance
+	s.Assert().Len(positions, 25) // 5x5 area with Chebyshev distance
 
 	// Check center
 	s.Assert().Contains(positions, spatial.Position{X: 5, Y: 5})
