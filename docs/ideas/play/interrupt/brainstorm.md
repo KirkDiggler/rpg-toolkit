@@ -156,7 +156,9 @@ rulebook-side work and wires the two together.
 ### 7. Anchors: Shield in the tests, OA-with-option in production
 
 Product reality (Kirk): playable classes are **monk, fighter, rogue,
-barbarian at level 2, goal level 3 — no wizard in production.** So:
+barbarian — level 1 only today** (level-up/experience is not implemented
+yet, though most of the plumbing exists; the stated goal is reaching
+level 3). No wizard in production. So:
 
 - **Shield is the fixture scene** — it lives in unit tests, where it
   proves the two hard invariants: suspension surviving a process
@@ -168,15 +170,16 @@ barbarian at level 2, goal level 3 — no wizard in production.** So:
   control to the user." It is universal (all four classes), it already
   exists in-game as auto-fire, and promoting auto → ask is exactly the
   decider swap from decision 3: zero new machinery.
-- **The production ladder** — each rung adds exactly one property, with
-  the roster's own features: OA-with-option (suspension + control
-  handoff) → **Protection fighting style** (fighter; already in the
+- **The production ladder** — each rung adds exactly one property, and
+  the first two rungs need zero leveling work: OA-with-option
+  (suspension + control handoff) → **Protection fighting style**
+  (fighter — chosen at level 1, so available *today*; already in the
   codebase as a chain condition; adds ally-scoped triggers and true
-  production retroactivity — Shield's hard property in martial clothes)
-  → **Deflect Missiles** (monk 3, exactly at the level-3 goal; adds a
-  nested follow-up choice — catch and throw back) → Battle Master's
-  **Riposte/Parry** if that subclass enters scope. Rogue and barbarian
-  are OA customers at this band, which is fine.
+  production retroactivity — Shield's hard property in martial
+  clothes). Then, once leveling ships: **Deflect Missiles** (monk 3;
+  adds a nested follow-up choice — catch and throw back) and Battle
+  Master's **Riposte/Parry** (fighter 3) if that subclass enters
+  scope. Rogue and barbarian are OA customers for now, which is fine.
 
 ### 8. Naming
 
