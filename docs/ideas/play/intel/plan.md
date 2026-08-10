@@ -333,3 +333,15 @@ stay in agreement (clock precedent):
   doc no longer overclaims iteration determinism; behavior-identical
   round-trip strengthened to full-HeldBy equality plus set-semantics
   re-Surveil.
+- **With Task 7**: Task 6's review approved the door scene outright
+  (every beat exact, the `Refreshed`-not-`FirstContact` call verified
+  against the design text, ghost payload retention checked); its minors
+  landed with Task 7 — narrative-beat failure messages throughout the
+  scene, the mid-scene "unchanged" check widened to the full holding,
+  `At` asserted in the final ledger. PR #908 opened ready-for-review.
+  One post-open catch: CI's `test-changed` runs golangci-lint v2.3.1
+  while local gates run v2.12.2, and the older version fires prealloc
+  on HeldBy's result loop — fixed by preallocating with capacity
+  (`make([]Holding, 0, len(...))`; empty-non-nil semantics unchanged).
+  The version skew is recorded on toolkit#904: local-clean is not
+  CI-clean until the versions agree.
