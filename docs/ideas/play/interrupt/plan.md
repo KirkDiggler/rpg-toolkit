@@ -293,3 +293,21 @@ stay in agreement (family precedent):
   can't-fail test were removed, and the review's second finding landed
   as a combo validation-order pin (wrong audience + unoffered choice →
   `ErrNotAudience` wins, authorization before membership).
+- **With Task 5 (high-rigor persistence review, Opus tier)**: the
+  implementation survived the full adversarial audit — an independent
+  reachability derivation (15 reachable states load, 15 forgeries
+  reject, plus a 6,000-state randomized walk with zero
+  refuses-own-snapshot failures) and 40 of 43 mutations caught. The
+  three survivors were all pin defects, the family's recurring disease:
+  both aliasing pins were falsifiable only at window[0] (a
+  copy-only-the-first-window mutant survived) — strengthened to
+  mutate-every-window form and proven; and the dedicated
+  NextID-0-with-windows branch was dead code (`ID >= NextID` subsumes
+  it, wraparound included) with two pins no mutation of that line could
+  break — branch deleted, state pins retained. Review minors landed in
+  the same fix commit: `window[i]` context on every rejection (slice
+  iteration is deterministic; intel's opacity justification does not
+  transfer), all-answered snapshots emit nil `Windows` (deep-equal
+  symmetric with caller literals, pinned), stored `NextID` 1 rejected as
+  unreachable per the record precedent (design R9 amended), golden-fresh
+  assertion arg order fixed.

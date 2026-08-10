@@ -64,8 +64,13 @@ restated here as binding:
 - **R9** — `LoadLedger` MUST reject unreachable states with
   `ErrInvalidData`: `NextID == 0` with any windows present (IDs are
   assigned from 1 and `NextID` advances past every assignment — also the
-  uint64-wraparound forgery guard, the record precedent); any window ID
-  of 0; window IDs not strictly ascending in slice order (covers
+  uint64-wraparound forgery guard, the record precedent; *implementation
+  note, amended during execution:* the per-window `ID >= NextID` check
+  subsumes this state with no dedicated branch — with `NextID` 0 every
+  window trips it, wraparound forgery included); a stored `NextID` of
+  exactly 1 (fresh is 0; the first `Pose` advances it to 2, so 1 is
+  never emitted — record's `NextSeq` precedent, amended during
+  execution); any window ID of 0; window IDs not strictly ascending in slice order (covers
   duplicates; slice order IS pose order); any window ID `>= NextID`;
   empty audience; nil or empty options; an empty option token; a
   duplicate option within a window. Nil payload is LEGAL — reachable by
