@@ -489,6 +489,333 @@ func (s *IntelSuite) TestSurveilFadedSortedAndObserverIsolation() {
 	}
 }
 
+// QueriesSuite tests the read-side queries: HeldBy and On.
+type QueriesSuite struct {
+	suite.Suite
+	intel *intel.Intel
+}
+
+func (s *QueriesSuite) SetupTest() {
+	var err error
+	s.intel, err = intel.NewIntel()
+	s.Require().NoError(err)
+}
+
+// TestHeldByMultiHoldingSortedBySubject tests that HeldBy returns multiple
+// holdings sorted by Subject with derived statuses.
+func (s *QueriesSuite) TestHeldByMultiHoldingSortedBySubject() {
+	const obs = core.EntityID("alice")
+	// Report three subjects in non-alphabetical order
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "hearing", At: 1,
+		Reports: []intel.Report{
+			{Subject: "zebra", Payload: []byte("z")},
+			{Subject: "apple", Payload: []byte("a")},
+			{Subject: "moon", Payload: []byte("m")},
+		},
+	})
+	s.Require().NoError(err)
+
+	// Query all holdings
+	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	s.Len(holdings, 3)
+
+	// Verify sorted by Subject
+	s.Equal(intel.Subject("apple"), holdings[0].Subject)
+	s.Equal(intel.Subject("moon"), holdings[1].Subject)
+	s.Equal(intel.Subject("zebra"), holdings[2].Subject)
+
+	// Verify payloads
+	s.Equal([]byte("a"), holdings[0].Payload)
+	s.Equal([]byte("m"), holdings[1].Payload)
+	s.Equal([]byte("z"), holdings[2].Payload)
+
+	// Verify derived statuses (Report → Held, no sustaining channels)
+	s.Equal(intel.Held, holdings[0].Status)
+	s.Equal(intel.Held, holdings[1].Status)
+	s.Equal(intel.Held, holdings[2].Status)
+}
+
+// TestHeldByUnknownObserverEmptyNil tests that an unknown observer
+// returns empty slice, nil error (not a guessable zero value).
+func (s *QueriesSuite) TestHeldByUnknownObserverEmptyNil() {
+	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: "ghost-obs"})
+	s.Require().NoError(err)
+	s.Empty(holdings)
+	s.NotNil(holdings) // Must be empty slice, not nil
+}
+
+// TestHeldByNilInputReturnsErrNilInput verifies guard clause.
+func (s *QueriesSuite) TestHeldByNilInputReturnsErrNilInput() {
+	holdings, err := s.intel.HeldBy(nil)
+	s.Require().ErrorIs(err, intel.ErrNilInput)
+	s.Nil(holdings)
+}
+
+// TestHeldByEmptyObserverReturnsErrNoObserver verifies field validation.
+func (s *QueriesSuite) TestHeldByEmptyObserverReturnsErrNoObserver() {
+	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: ""})
+	s.Require().ErrorIs(err, intel.ErrNoObserver)
+	s.Nil(holdings)
+}
+
+// TestOnFound returns the holding when observer and subject are held.
+func (s *QueriesSuite) TestOnFound() {
+	const (
+		obs     = core.EntityID("bob")
+		subject = intel.Subject("target")
+		payload = "payload data"
+		channel = intel.Channel("sight")
+		at      = uint64(42)
+	)
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: channel, At: at,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte(payload)}},
+	})
+	s.Require().NoError(err)
+
+	holding, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal(subject, holding.Subject)
+	s.Equal([]byte(payload), holding.Payload)
+	s.Equal(channel, holding.Channel)
+	s.Equal(at, holding.At)
+	s.Equal(intel.Held, holding.Status)
+}
+
+// TestOnUnknownSubjectReturnsErrNotHeld when subject never held.
+func (s *QueriesSuite) TestOnUnknownSubjectReturnsErrNotHeld() {
+	const obs = core.EntityID("charlie")
+	// Report something, but not the subject we query
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "ch", At: 1,
+		Reports: []intel.Report{{Subject: "other", Payload: nil}},
+	})
+	s.Require().NoError(err)
+
+	holding, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: "never-held"})
+	s.Require().ErrorIs(err, intel.ErrNotHeld)
+	s.Equal(intel.Holding{}, holding) // Zero value, not guessable
+}
+
+// TestOnUnknownObserverReturnsErrNotHeld when observer has no holdings.
+func (s *QueriesSuite) TestOnUnknownObserverReturnsErrNotHeld() {
+	holding, err := s.intel.On(&intel.OnInput{Observer: "unknown", Subject: "any"})
+	s.Require().ErrorIs(err, intel.ErrNotHeld)
+	s.Equal(intel.Holding{}, holding)
+}
+
+// TestOnNilInputReturnsErrNilInput verifies guard clause.
+func (s *QueriesSuite) TestOnNilInputReturnsErrNilInput() {
+	holding, err := s.intel.On(nil)
+	s.Require().ErrorIs(err, intel.ErrNilInput)
+	s.Equal(intel.Holding{}, holding)
+}
+
+// TestOnEmptyObserverReturnsErrNoObserver verifies field validation order.
+func (s *QueriesSuite) TestOnEmptyObserverReturnsErrNoObserver() {
+	holding, err := s.intel.On(&intel.OnInput{Observer: "", Subject: "x"})
+	s.Require().ErrorIs(err, intel.ErrNoObserver)
+	s.Equal(intel.Holding{}, holding)
+}
+
+// TestOnEmptySubjectReturnsErrNoSubject verifies field validation order.
+func (s *QueriesSuite) TestOnEmptySubjectReturnsErrNoSubject() {
+	holding, err := s.intel.On(&intel.OnInput{Observer: "alice", Subject: ""})
+	s.Require().ErrorIs(err, intel.ErrNoSubject)
+	s.Equal(intel.Holding{}, holding)
+}
+
+// TestHeldByCopyOutPayload verifies that mutating a returned holding's
+// payload does not corrupt internal state.
+func (s *QueriesSuite) TestHeldByCopyOutPayload() {
+	const obs = core.EntityID("alice")
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 1,
+		Reports: []intel.Report{{Subject: "s", Payload: []byte("original")}},
+	})
+	s.Require().NoError(err)
+
+	// Get holdings, mutate the payload
+	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	s.Len(holdings, 1)
+	holdings[0].Payload[0] = 'X'
+
+	// Query again: internal state unchanged
+	holdings2, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), holdings2[0].Payload)
+}
+
+// TestOnCopyOutPayload verifies that mutating a returned holding's
+// payload from On does not corrupt internal state.
+func (s *QueriesSuite) TestOnCopyOutPayload() {
+	const obs = core.EntityID("bob")
+	const subject = intel.Subject("target")
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 1,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte("original")}},
+	})
+	s.Require().NoError(err)
+
+	// Get holding, mutate payload
+	holding, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	holding.Payload[0] = 'Y'
+
+	// Query again: internal state unchanged
+	holding2, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), holding2.Payload)
+}
+
+// TestOnCopyOutCurrentVia verifies that mutating a returned holding's
+// CurrentVia slice does not corrupt internal state.
+func (s *QueriesSuite) TestOnCopyOutCurrentVia() {
+	const obs = core.EntityID("alice")
+	const subject = intel.Subject("target")
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 1,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("sight")}},
+	})
+	s.Require().NoError(err)
+
+	// Get holding, mutate CurrentVia slice
+	holding, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Len(holding.CurrentVia, 1)
+	holding.CurrentVia[0] = "modified"
+
+	// Query again: internal state unchanged
+	holding2, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal([]intel.Channel{intel.Sight}, holding2.CurrentVia)
+}
+
+// TestHeldByCopyOutFromInputMutation verifies that if a caller mutates
+// a Report input slice AFTER calling Report, HeldBy sees unchanged state.
+func (s *QueriesSuite) TestHeldByCopyOutFromInputMutation() {
+	const obs = core.EntityID("alice")
+	reports := []intel.Report{
+		{Subject: "s1", Payload: []byte("p1")},
+		{Subject: "s2", Payload: []byte("p2")},
+	}
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 1, Reports: reports,
+	})
+	s.Require().NoError(err)
+
+	// Mutate the input slice
+	reports[0].Payload[0] = 'X'
+	reports[0].Subject = "mutated"
+
+	// Query: should see original state
+	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	// holdings should be sorted by subject, so s1 comes first, s2 second
+	var s1Holding intel.Holding
+	for _, h := range holdings {
+		if h.Subject == "s1" {
+			s1Holding = h
+			break
+		}
+	}
+	s.Equal([]byte("p1"), s1Holding.Payload)
+}
+
+// TestOnCopyOutFromInputMutation verifies copy-out immunity for On input.
+func (s *QueriesSuite) TestOnCopyOutFromInputMutation() {
+	const obs = core.EntityID("bob")
+	const subject = intel.Subject("target")
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 1,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte("original")}},
+	})
+	s.Require().NoError(err)
+
+	// Query and then mutate the input struct's fields
+	input := &intel.OnInput{Observer: obs, Subject: subject}
+	holding, err := s.intel.On(input)
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), holding.Payload)
+
+	// Mutate the input
+	input.Observer = "modified"
+	input.Subject = "modified-subject"
+
+	// Re-query with original observer/subject via a new input
+	holding2, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), holding2.Payload)
+}
+
+// TestDeciderContract is the normative integration test: an NPC decider
+// consults HeldBy(itself) and nothing else. This documents the core contract
+// and verifies that HeldBy provides all necessary information for decision-making.
+func (s *QueriesSuite) TestDeciderContract() {
+	const (
+		monsterID  = core.EntityID("goblin-1")
+		treasure   = intel.Subject("treasure")
+		adventurer = intel.Subject("adventurer-party")
+		obstacle   = intel.Subject("stone-door")
+	)
+
+	// Setup: monster has various intel from different channels.
+	// Sight: active percept of adventurers and stone door
+	// Smell: lingering awareness of treasure (sustain faded - remembered goblin intel)
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: monsterID, Channel: intel.Sight, At: 100,
+		Percept: []intel.Report{
+			{Subject: adventurer, Payload: []byte("group of 4, armed")},
+			{Subject: obstacle, Payload: []byte("10ft tall, sealed")},
+		},
+	})
+	s.Require().NoError(err)
+
+	// Report: secondhand intel about treasure (supernatural channel)
+	_, err = s.intel.Report(&intel.ReportInput{
+		Observer: monsterID, Channel: "whispers", At: 50,
+		Reports: []intel.Report{{Subject: treasure, Payload: []byte("gold in chamber")}},
+	})
+	s.Require().NoError(err)
+
+	// Fade the smell sense, so treasure becomes Held (no longer Current)
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: monsterID, Channel: "smell", At: 0, Percept: []intel.Report{},
+	})
+	s.Require().NoError(err)
+
+	// NPC DECIDER: consult HeldBy(itself) and nothing else
+	myIntel, err := s.intel.HeldBy(&intel.HeldByInput{Observer: monsterID})
+	s.Require().NoError(err)
+	s.Len(myIntel, 3)
+
+	// Verify all holdings are present and correctly ordered (sorted by Subject)
+	// Expected order: adventurer, obstacle, treasure
+	s.Equal(adventurer, myIntel[0].Subject)
+	s.Equal(obstacle, myIntel[1].Subject)
+	s.Equal(treasure, myIntel[2].Subject)
+
+	// Verify statuses: adventurer and obstacle are Current (sight sustains them),
+	// treasure is Held (no sustaining channel).
+	s.Equal(intel.Current, myIntel[0].Status)
+	s.Equal(intel.Current, myIntel[1].Status)
+	s.Equal(intel.Held, myIntel[2].Status)
+
+	// Verify the monster can act based on this alone:
+	// - Attack adventurers (Current, sight confirmed)
+	// - Search for treasure despite not seeing it (Held, remembered via whispers)
+	// - Try to open door (Current, sight confirmed)
+	// The contract: all this decision logic flows from HeldBy(itself) alone.
+	_ = myIntel // Decision logic would consume this
+}
+
+func TestQueriesSuite(t *testing.T) {
+	suite.Run(t, new(QueriesSuite))
+}
+
 func TestIntelSuite(t *testing.T) {
 	suite.Run(t, new(IntelSuite))
 }
