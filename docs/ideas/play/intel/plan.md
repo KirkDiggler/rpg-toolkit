@@ -316,3 +316,20 @@ stay in agreement (clock precedent):
   to `Data` when T is the package namesake; the loader keeps
   disambiguation as `LoadIntel`). Recorded in design R3 and the
   Persistence section; applied as `refactor(play/intel)`.
+- **Task 5 quality review (high-rigor tier) + fix cycle**: the
+  implementation survived every adversarial probe — LoadIntel accepts
+  each verb-reachable state (including mixed provenance: a Report
+  overwrite leaving `Channel` outside a Surveil-established
+  `CurrentVia`) and rejects each listed forgery — but mutation testing
+  proved three pins theatrical: the suite passed with ToData's
+  deep-copy replaced by an alias, with the `current_via` wire tag
+  renamed, and with a bogus always-marshaled field added. Fixes landed
+  with mutation-proof evidence (each mutation re-run and shown to fail
+  the new pin): a genuine in-place snapshot-mutation pin, exact-string
+  golden JSON for both wire shapes (held and current), and a
+  mixed-provenance round-trip pin protecting the module from a future
+  Channel-in-CurrentVia "tightening" that would reject its own
+  snapshots. Minors: ToData now preserves nil payloads; the LoadIntel
+  doc no longer overclaims iteration determinism; behavior-identical
+  round-trip strengthened to full-HeldBy equality plus set-semantics
+  re-Surveil.
