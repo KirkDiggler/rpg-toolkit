@@ -297,7 +297,8 @@ func matchTags(entryTags, filter map[string]string) bool {
 
 	// Every filter key must be present in entryTags with exactly the value
 	for k, v := range filter {
-		if entryTags[k] != v {
+		val, ok := entryTags[k]
+		if !ok || val != v {
 			return false
 		}
 	}

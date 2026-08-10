@@ -11,21 +11,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-const (
-	alice      = "alice"
-	bob        = "bob"
-	door3      = "door-3"
-	kind       = "kind"
-	subject    = "subject"
-	flag       = "flag"
-	mutated    = "mutated"
-	kindShared = "shared"
-	kindIntel  = "intel.first_contact"
-	kindGMNote = "gm.note"
-	kindClock  = "clock.turn_started"
-	actorKey   = "actor"
-)
-
 type RecordSuite struct {
 	suite.Suite
 	log *record.Log
@@ -38,6 +23,13 @@ func (s *RecordSuite) SetupTest() {
 }
 
 func (s *RecordSuite) TestAppendAssignsGaplessSeqFromOne() {
+	const (
+		alice     = "alice"
+		bob       = "bob"
+		kind      = "kind"
+		kindClock = "clock.turn_started"
+		actorKey  = "actor"
+	)
 	out, err := s.log.Append(&record.AppendInput{
 		At: 7, Correlation: "act-1",
 		Audience: []core.EntityID{alice, bob},
@@ -81,6 +73,10 @@ func (s *RecordSuite) TestAppendValidationOrderAndSentinels() {
 }
 
 func (s *RecordSuite) TestAppendNormalizesAndCopies() {
+	const (
+		alice   = "alice"
+		mutated = "mutated"
+	)
 	aud := []core.EntityID{alice}
 	tags := map[string]string{"k": "v"}
 	payload := []byte("p")
@@ -191,6 +187,16 @@ func (s *RecordSuite) TestTrimBefore() {
 }
 
 func (s *RecordSuite) TestSliceForProjectsAudienceAndTags() {
+	const (
+		alice      = "alice"
+		bob        = "bob"
+		door3      = "door-3"
+		kind       = "kind"
+		subject    = "subject"
+		kindShared = "shared"
+		kindIntel  = "intel.first_contact"
+		kindGMNote = "gm.note"
+	)
 	s.appendBeat([]core.EntityID{alice, bob}, map[string]string{kind: kindShared}, "b1")
 	s.appendBeat([]core.EntityID{alice}, map[string]string{kind: kindIntel, subject: door3}, "b2")
 	s.appendBeat([]core.EntityID{bob}, map[string]string{kind: kindIntel, subject: door3}, "b3")
@@ -220,6 +226,7 @@ func (s *RecordSuite) TestSliceForProjectsAudienceAndTags() {
 }
 
 func (s *RecordSuite) TestSliceForAndAllErrorHandling() {
+	const alice = "alice"
 	// All(nil) → ErrNilInput
 	_, err := s.log.All(nil)
 	s.Require().ErrorIs(err, record.ErrNilInput)
@@ -253,18 +260,34 @@ func (s *RecordSuite) TestSliceForAndAllErrorHandling() {
 }
 
 func (s *RecordSuite) TestEmptyValueTagFilter() {
-	// Append one beat with empty value and one with non-empty
+	const (
+		alice = "alice"
+		flag  = "flag"
+	)
+	// Append beats: one with empty value, one with non-empty, one with nil tags, one missing the key
 	s.appendBeat([]core.EntityID{alice}, map[string]string{flag: ""}, "b1")
 	s.appendBeat([]core.EntityID{alice}, map[string]string{flag: "y"}, "b2")
+	s.appendBeat([]core.EntityID{alice}, nil, "b3")                                 // nil tags
+	s.appendBeat([]core.EntityID{alice}, map[string]string{"other": "value"}, "b4") // missing the key
 
 	// Filter {flag: ""} returns only the first
 	result, err := s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1,
 		Tags: map[string]string{flag: ""}})
 	s.Require().NoError(err)
-	s.Equal([]uint64{1}, seqs(result))
+	s.Equal([]uint64{1}, seqs(result), "only entry with flag='' should match")
+
+	// Verify nil-tags entry does NOT match filter
+	s.NotContains(seqs(result), uint64(3), "entry with nil tags must not match {flag: ''} filter")
+
+	// Verify missing-key entry does NOT match filter
+	s.NotContains(seqs(result), uint64(4), "entry with tags missing the key must not match {flag: ''} filter")
 }
 
 func (s *RecordSuite) TestCopyOutImmunity() {
+	const (
+		alice   = "alice"
+		mutated = "mutated"
+	)
 	// Append a beat
 	s.appendBeat([]core.EntityID{alice}, map[string]string{"k": "v"}, "payload")
 
