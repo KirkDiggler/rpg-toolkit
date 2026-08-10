@@ -33,8 +33,8 @@ restated here as binding:
   `*XxxOutput`, zero-arg reads return bare value + error). Nil-Input
   rule as revised 2026-08-09: every Input-taking function guards nil
   first and returns `ErrNilInput`. Persistence pair exempt per family
-  convention (`ToData() IntelData`, package-level
-  `LoadIntel(data IntelData) (*Intel, error)` — the family persistence
+  convention (`ToData() Data`, package-level
+  `LoadIntel(data Data) (*Intel, error)` — the family persistence
   naming law: every persistable type T pairs the method `ToData() TData`
   with the package-level constructor `Load<T>(data TData) (*T, error)`.
   The loader carries the type name because packages may host multiple
@@ -43,7 +43,15 @@ restated here as binding:
   family. The scheme serves a spirit older than its letter — the host
   keeps rich runtime models and can always obtain a savable copy that
   loads back to exactly here; the letter has evolved before and may
-  again).
+  again. Namesake-collision clause, decided 2026-08-09 during execution:
+  intel is the family's first module whose persistable type IS the
+  package's namesake, and `TData`'s letter would produce
+  `intel.IntelData` — a stutter the qualified name already resolves
+  (revive agrees). When T is the package namesake, `TData` collapses to
+  `Data`: the caller reads `intel.Data` alongside `clock.TurnData` and
+  `record.LogData`, and disambiguation stays where it always lived, in
+  the loader's name — a second persistable type here would still be
+  `Load<Other>(OtherData)`).
 - **R4** — Deltas are returned in the verb's Output, never published,
   never delivered.
 - **R5** — Verbs are atomic: on a non-nil error, no state changed.
@@ -53,7 +61,7 @@ restated here as binding:
 - **R7** — No randomness.
 - **R8** — Dynamic state round-trips via `ToData`/`LoadIntel` (plain
   JSON-serializable structs, no behavior). Idle snapshot deep-equals the
-  zero `IntelData` and marshals to `{}`.
+  zero `Data` and marshals to `{}`.
 - **R9** — `LoadIntel` MUST reject unreachable states with
   `ErrInvalidData`: empty observer keys, empty subject keys, duplicate
   entries in a holding's `CurrentVia`, empty channel identifiers (in a
@@ -130,7 +138,9 @@ All errors wrap one sentinel; `errors.Is` dispatch; messages user-facing.
 
 ## Persistence
 
-`IntelData` = `struct{ Holdings map[core.EntityID]map[Subject]HoldingData }`
+`Data` = `struct{ Holdings map[core.EntityID]map[Subject]HoldingData }`
+(named per the namesake-collision clause in R3 — `intel.Data`, not
+`intel.IntelData`)
 (field tag `holdings,omitempty` — a struct wrapper, not a bare map, so the
 zero value marshals to `{}` per R8, matching TurnData/TickData) with
 `HoldingData{Payload []byte, Channel Channel, At uint64, CurrentVia
