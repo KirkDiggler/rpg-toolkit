@@ -53,7 +53,7 @@ Family laws, restated as binding:
   or duplicates; nil payloads (empty non-nil is legal). Affirmative
   notes, not rejections: an empty entries slice is legal with stored
   `NextSeq` 0 (fresh) or >= 2 (trimmed-empty — reachable and MUST
-  load); a trimmed log's first retained `Seq` may be any value.
+  load); a trimmed log's first retained `Seq` may be any value >= 1.
 - **R10** — Not safe for concurrent use.
 
 ## Types
@@ -79,7 +79,7 @@ Family laws, restated as binding:
 
 | Query | Input | Returns | Semantics |
 |-------|-------|---------|-----------|
-| `SliceFor` | `{Viewer core.EntityID, FromSeq uint64}` | `([]Entry, error)` | Entries with `Seq >= FromSeq` whose audience contains Viewer, in Seq order — the reconnect/replay call. Empty viewer errs `ErrNoViewer`. No holdings → empty result, nil error. Copy-out: returned entries (audience and payload included) MUST NOT alias internal state. |
+| `SliceFor` | `{Viewer core.EntityID, FromSeq uint64}` | `([]Entry, error)` | Entries with `Seq >= FromSeq` whose audience contains Viewer, in Seq order — the reconnect/replay call. Empty viewer errs `ErrNoViewer`. No matching entries → empty result, nil error. Copy-out: returned entries (audience and payload included) MUST NOT alias internal state. |
 | `All` | `{FromSeq uint64}` | `([]Entry, error)` | Every retained entry from `FromSeq`, Seq order — the GM/debug/host view. Copy-out as above. |
 | `NextSeq()` | — | `(uint64, error)` | The Seq the next `Append` will assign (zero-arg read, bare value per R3(c)). Never errs today; the error slot is the law's. |
 
