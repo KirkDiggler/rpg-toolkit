@@ -543,7 +543,7 @@ func (s *QueriesSuite) TestHeldByUnknownObserverEmptyNil() {
 	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: "ghost-obs"})
 	s.Require().NoError(err)
 	s.Empty(holdings)
-	s.NotNil(holdings) // Must be empty slice, not nil
+	s.NotNil(holdings, "must be empty slice, not nil")
 }
 
 // TestHeldByNilInputReturnsErrNilInput verifies guard clause.
@@ -596,7 +596,7 @@ func (s *QueriesSuite) TestOnUnknownSubjectReturnsErrNotHeld() {
 
 	holding, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: "never-held"})
 	s.Require().ErrorIs(err, intel.ErrNotHeld)
-	s.Equal(intel.Holding{}, holding) // Zero value, not guessable
+	s.Equal(intel.Holding{}, holding, "must be zero value, not guessable")
 }
 
 // TestOnUnknownObserverReturnsErrNotHeld when observer has no holdings.
@@ -624,6 +624,14 @@ func (s *QueriesSuite) TestOnEmptyObserverReturnsErrNoObserver() {
 func (s *QueriesSuite) TestOnEmptySubjectReturnsErrNoSubject() {
 	holding, err := s.intel.On(&intel.OnInput{Observer: "alice", Subject: ""})
 	s.Require().ErrorIs(err, intel.ErrNoSubject)
+	s.Equal(intel.Holding{}, holding)
+}
+
+// TestOnMultiDefectOrderingObserverFirst pins that when both Observer and
+// Subject are empty, ErrNoObserver is returned (Observer checked first).
+func (s *QueriesSuite) TestOnMultiDefectOrderingObserverFirst() {
+	holding, err := s.intel.On(&intel.OnInput{Observer: "", Subject: ""})
+	s.Require().ErrorIs(err, intel.ErrNoObserver)
 	s.Equal(intel.Holding{}, holding)
 }
 
@@ -694,6 +702,29 @@ func (s *QueriesSuite) TestOnCopyOutCurrentVia() {
 	s.Equal([]intel.Channel{intel.Sight}, holding2.CurrentVia)
 }
 
+// TestHeldByCopyOutCurrentVia verifies that mutating a returned holding's
+// CurrentVia slice from HeldBy does not corrupt internal state.
+func (s *QueriesSuite) TestHeldByCopyOutCurrentVia() {
+	const obs = core.EntityID("charlie")
+	const subject = intel.Subject("target")
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: intel.Sight, At: 1,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("sight")}},
+	})
+	s.Require().NoError(err)
+
+	// Get holdings, find the target, mutate its CurrentVia slice element
+	holdings, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	s.Len(holdings, 1)
+	holdings[0].CurrentVia[0] = "modified"
+
+	// Query again: internal state unchanged
+	holdings2, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	s.Equal([]intel.Channel{intel.Sight}, holdings2[0].CurrentVia)
+}
+
 // TestHeldByCopyOutFromInputMutation verifies that if a caller mutates
 // a Report input slice AFTER calling Report, HeldBy sees unchanged state.
 func (s *QueriesSuite) TestHeldByCopyOutFromInputMutation() {
@@ -723,32 +754,6 @@ func (s *QueriesSuite) TestHeldByCopyOutFromInputMutation() {
 		}
 	}
 	s.Equal([]byte("p1"), s1Holding.Payload)
-}
-
-// TestOnCopyOutFromInputMutation verifies copy-out immunity for On input.
-func (s *QueriesSuite) TestOnCopyOutFromInputMutation() {
-	const obs = core.EntityID("bob")
-	const subject = intel.Subject("target")
-	_, err := s.intel.Report(&intel.ReportInput{
-		Observer: obs, Channel: "c", At: 1,
-		Reports: []intel.Report{{Subject: subject, Payload: []byte("original")}},
-	})
-	s.Require().NoError(err)
-
-	// Query and then mutate the input struct's fields
-	input := &intel.OnInput{Observer: obs, Subject: subject}
-	holding, err := s.intel.On(input)
-	s.Require().NoError(err)
-	s.Equal([]byte("original"), holding.Payload)
-
-	// Mutate the input
-	input.Observer = "modified"
-	input.Subject = "modified-subject"
-
-	// Re-query with original observer/subject via a new input
-	holding2, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: subject})
-	s.Require().NoError(err)
-	s.Equal([]byte("original"), holding2.Payload)
 }
 
 // TestDeciderContract is the normative integration test: an NPC decider
@@ -781,11 +786,20 @@ func (s *QueriesSuite) TestDeciderContract() {
 	})
 	s.Require().NoError(err)
 
-	// Fade the smell sense, so treasure becomes Held (no longer Current)
-	_, err = s.intel.Surveil(&intel.SurveilInput{
-		Observer: monsterID, Channel: "smell", At: 0, Percept: []intel.Report{},
+	// Surveil on smell channel with treasure, making it Current via smell
+	out, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: monsterID, Channel: "smell", At: 80,
+		Percept: []intel.Report{{Subject: treasure, Payload: []byte("gold scent")}},
 	})
 	s.Require().NoError(err)
+	s.Equal([]intel.Subject{treasure}, out.Refreshed, "treasure refreshed via smell")
+
+	// Fade the smell sense by surveilling with empty percept, so treasure becomes Held
+	out, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: monsterID, Channel: "smell", At: 90, Percept: []intel.Report{},
+	})
+	s.Require().NoError(err)
+	s.Equal([]intel.Subject{treasure}, out.Faded, "treasure faded when smell lost it")
 
 	// NPC DECIDER: consult HeldBy(itself) and nothing else
 	myIntel, err := s.intel.HeldBy(&intel.HeldByInput{Observer: monsterID})

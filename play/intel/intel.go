@@ -5,6 +5,7 @@ package intel
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
@@ -166,13 +167,15 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 
 	// Sort Faded by Subject for deterministic transcripts; only assign if non-empty
 	if len(fadedSubjects) > 0 {
-		for i := 0; i < len(fadedSubjects)-1; i++ {
-			for j := i + 1; j < len(fadedSubjects); j++ {
-				if fadedSubjects[j] < fadedSubjects[i] {
-					fadedSubjects[i], fadedSubjects[j] = fadedSubjects[j], fadedSubjects[i]
-				}
+		slices.SortFunc(fadedSubjects, func(a, b Subject) int {
+			if a < b {
+				return -1
 			}
-		}
+			if a > b {
+				return 1
+			}
+			return 0
+		})
 		out.Faded = fadedSubjects
 	}
 
@@ -317,13 +320,15 @@ func (i *Intel) HeldBy(in *HeldByInput) ([]Holding, error) {
 	}
 
 	// Sort by Subject (deterministic order)
-	for idx := 0; idx < len(results)-1; idx++ {
-		for j := idx + 1; j < len(results); j++ {
-			if results[j].Subject < results[idx].Subject {
-				results[idx], results[j] = results[j], results[idx]
-			}
+	slices.SortFunc(results, func(a, b Holding) int {
+		if a.Subject < b.Subject {
+			return -1
 		}
-	}
+		if a.Subject > b.Subject {
+			return 1
+		}
+		return 0
+	})
 
 	return results, nil
 }
@@ -399,13 +404,15 @@ func (h *holding) toHolding(subject Subject) Holding {
 			currentVia = append(currentVia, ch)
 		}
 		// Sort for determinism
-		for i := 0; i < len(currentVia)-1; i++ {
-			for j := i + 1; j < len(currentVia); j++ {
-				if currentVia[j] < currentVia[i] {
-					currentVia[i], currentVia[j] = currentVia[j], currentVia[i]
-				}
+		slices.SortFunc(currentVia, func(a, b Channel) int {
+			if a < b {
+				return -1
 			}
-		}
+			if a > b {
+				return 1
+			}
+			return 0
+		})
 	}
 
 	// Derive status
