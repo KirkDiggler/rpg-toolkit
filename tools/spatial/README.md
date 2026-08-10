@@ -530,8 +530,7 @@ for i := 0; i < len(floors)-1; i++ {
         fmt.Sprintf("stairs-%d-%d", i+1, i+2),
         floors[i].GetID(),
         floors[i+1].GetID(),
-        spatial.Position{X: 10, Y: 10},
-        spatial.Position{X: 10, Y: 10},
+        2.0,
         true, // going up
     )
     orchestrator.AddConnection(stairs)
@@ -578,8 +577,7 @@ for i, branchID := range branches {
         fmt.Sprintf("door-to-%s", branchID),
         "central-hub",
         branchID,
-        positions[i],
-        spatial.Position{X: 10, Y: 10}, // Center of branch room
+        1.0,
     )
     orchestrator.AddConnection(door)
 }
@@ -717,17 +715,11 @@ func CreateDungeonExample() {
     
     // Create connections
     door1 := spatial.CreateDoorConnection(
-        "entrance-to-corridor",
-        "entrance", "corridor",
-        spatial.Position{X: 19, Y: 10},
-        spatial.Position{X: 0, Y: 5},
+        "entrance-to-corridor", "entrance", "corridor", 1.0,
     )
     
     door2 := spatial.CreateDoorConnection(
-        "corridor-to-treasure",
-        "corridor", "treasure",
-        spatial.Position{X: 29, Y: 5},
-        spatial.Position{X: 0, Y: 7},
+        "corridor-to-treasure", "corridor", "treasure", 1.0,
     )
     
     orchestrator.AddConnection(door1)
@@ -1287,22 +1279,22 @@ The module provides helper functions for creating common connection types:
 
 ```go
 // Door connection (bidirectional, cost 1.0)
-func CreateDoorConnection(id, fromRoom, toRoom string, fromPos, toPos Position) *BasicConnection
+func CreateDoorConnection(id, fromRoom, toRoom string, cost float64) *BasicConnection
 
 // Stair connection (bidirectional, cost 2.0, may have climb requirement)
-func CreateStairsConnection(id, fromRoom, toRoom string, fromPos, toPos Position, goingUp bool) *BasicConnection
+func CreateStairsConnection(id, fromRoom, toRoom string, cost float64, goingUp bool) *BasicConnection
 
 // Secret passage (bidirectional, cost 1.0, requires discovery)
-func CreateSecretPassageConnection(id, fromRoom, toRoom string, fromPos, toPos Position, requirements []string) *BasicConnection
+func CreateSecretPassageConnection(id, fromRoom, toRoom string, cost float64, requirements []string) *BasicConnection
 
 // Portal connection (configurable direction, cost 0.5, requires portal use)
-func CreatePortalConnection(id, fromRoom, toRoom string, fromPos, toPos Position, bidirectional bool) *BasicConnection
+func CreatePortalConnection(id, fromRoom, toRoom string, cost float64, bidirectional bool) *BasicConnection
 
 // Bridge connection (bidirectional, cost 1.0)
-func CreateBridgeConnection(id, fromRoom, toRoom string, fromPos, toPos Position) *BasicConnection
+func CreateBridgeConnection(id, fromRoom, toRoom string, cost float64) *BasicConnection
 
 // Tunnel connection (bidirectional, cost 1.5)
-func CreateTunnelConnection(id, fromRoom, toRoom string, fromPos, toPos Position) *BasicConnection
+func CreateTunnelConnection(id, fromRoom, toRoom string, cost float64) *BasicConnection
 ```
 
 ### Query System
@@ -1460,7 +1452,7 @@ eventBus.SubscribeFunc(spatial.EventConnectionAdded, 0, func(ctx context.Context
 
 ```go
 // Create locked door that can be unlocked
-door := spatial.CreateDoorConnection("treasure-door", "hallway", "treasure-room", pos1, pos2)
+door := spatial.CreateDoorConnection("treasure-door", "hallway", "treasure-room", 1.0)
 door.SetPassable(false) // Initially locked
 door.AddRequirement("has_key")
 orchestrator.AddConnection(door)
@@ -1526,8 +1518,7 @@ func createTowerDungeon(orchestrator spatial.RoomOrchestrator, floors int) {
                 fmt.Sprintf("stairs-%d", i),
                 fmt.Sprintf("floor-%d", i-1),
                 fmt.Sprintf("floor-%d", i),
-                spatial.Position{X: 10, Y: 10},
-                spatial.Position{X: 10, Y: 10},
+                2.0,
                 true, // going up
             )
             orchestrator.AddConnection(stairs)
@@ -1545,11 +1536,7 @@ func createBranchingDungeon(orchestrator spatial.RoomOrchestrator, hubRoom spati
         
         // Connect each branch to hub
         door := spatial.CreateDoorConnection(
-            fmt.Sprintf("hub-to-branch-%d", i),
-            hubRoom.GetID(),
-            branch.GetID(),
-            getHubExitPosition(i),
-            getBranchEntryPosition(),
+            fmt.Sprintf("hub-to-branch-%d", i), hubRoom.GetID(), branch.GetID(), 1.0,
         )
         orchestrator.AddConnection(door)
     }
@@ -1573,7 +1560,7 @@ func TestOrchestratorBehavior(t *testing.T) {
     orchestrator.AddRoom(room1)
     orchestrator.AddRoom(room2)
     
-    door := spatial.CreateDoorConnection("door1", "room1", "room2", pos1, pos2)
+    door := spatial.CreateDoorConnection("door1", "room1", "room2", 1.0)
     orchestrator.AddConnection(door)
     
     // Test entity movement

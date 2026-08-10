@@ -227,8 +227,7 @@ orchestrator.AddRoom(room1)
 orchestrator.AddRoom(room2)
 
 // 3. Connect rooms with typed connections
-door := spatial.CreateDoorConnection("door-1", "room-1", "room-2",
-    spatial.Position{X: 9, Y: 5}, spatial.Position{X: 0, Y: 5})
+door := spatial.CreateDoorConnection("door-1", "room-1", "room-2", 1.0)
 orchestrator.AddConnection(door)
 
 // 4. Mutate managed membership and consume returned values
