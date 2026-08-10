@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -178,4 +179,33 @@ type MemberOutcome struct {
 
 	// Position is their position within the room.
 	Position spatial.Position
+}
+
+// MoveInput contains the member and target position for a movement action.
+type MoveInput struct {
+	// Member is the ID of the member moving.
+	Member MemberID
+
+	// To is the target position within the same room (v1 constraint).
+	To spatial.Position
+}
+
+// MoveOutput reports the results of a movement action.
+type MoveOutput struct {
+	// Moved contains the member's ID, original position, and new position.
+	Moved struct {
+		Member MemberID
+		From   spatial.Position
+		To     spatial.Position
+	}
+
+	// IntelDeltas maps member IDs to their updated percepts after movement
+	// (SurveilOutput deltas from the refreshSight cycle).
+	IntelDeltas map[MemberID]*intel.SurveilOutput
+
+	// Seq is the sequence number of the recorded movement beat.
+	Seq uint64
+
+	// Outcome is the encounter outcome if an ending fired; nil otherwise.
+	Outcome *Outcome
 }

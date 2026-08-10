@@ -189,49 +189,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		e.endings[ei.Key] = ei.Trigger
 	}
 
-	// First light: build sight percepts for each member
-	for _, memberID := range memberIDs {
-		memberData := in.Members[findMemberIndex(in.Members, memberID)]
-		room := roomMap[memberData.Room]
-
-		// Get all other members in the same room
-		var percept []intel.Report
-		for _, other := range in.Members {
-			if other.ID == memberID {
-				continue // Skip self
-			}
-			if other.Room != memberData.Room {
-				continue // Different room
-			}
-
-			// Check line of sight
-			if room.IsLineOfSightBlocked(memberData.Position, other.Position) {
-				continue // Blocked by obstacle
-			}
-
-			// Add to percept
-			pos := SightPayload{
-				Room: other.Room,
-				X:    other.Position.X,
-				Y:    other.Position.Y,
-			}
-			payload, _ := json.Marshal(pos)
-			percept = append(percept, intel.Report{
-				Subject: intel.Subject(other.ID),
-				Payload: payload,
-			})
-		}
-
-		// Surveil with all visible members
-		_, err = e.intelLog.Surveil(&intel.SurveilInput{
-			Observer: memberID,
-			Channel:  intel.Sight,
-			Percept:  percept,
-			At:       0,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("newencounter surveil: %w", err)
-		}
+	// First light: build sight percepts for each member using refreshSight
+	_, err = e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("newencounter first light: %w", err)
 	}
 
 	// Opening record beat: all members hear "scene-opened"
@@ -287,12 +248,19 @@ func (e *Encounter) Members() ([]Member, error) {
 }
 
 // Status returns the encounter's current state (Open or Closed with Outcome).
-// Returns a deep copy of the outcome to prevent aliasing.
+// Returns a deep copy of the outcome to prevent aliasing (MUTATION-PROOF).
 func (e *Encounter) Status() (*Status, error) {
 	if e.outcome != nil {
-		// Deep-copy outcome and its Members slice
+		// Deep-copy outcome and its Members slice to prevent aliasing
+		// (mutation-proof: modifying returned outcome does not affect internal state)
 		members := make([]MemberOutcome, len(e.outcome.Members))
-		copy(members, e.outcome.Members)
+		for i, m := range e.outcome.Members {
+			members[i] = MemberOutcome{
+				ID:       m.ID,
+				Room:     m.Room,
+				Position: m.Position,
+			}
+		}
 		return &Status{
 			Open: false,
 			Outcome: &Outcome{
@@ -329,14 +297,245 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 	return entries, nil
 }
 
-// Helper to find a member in the slice by ID
-func findMemberIndex(members []MemberInput, id MemberID) int {
-	for i, m := range members {
-		if m.ID == id {
-			return i
-		}
+// Move executes a continuous player movement within the same room.
+// Validation order (R5 atomicity): nil input → empty member → closed →
+// not a member → spatial move rejection. On success, refreshes sight for all members,
+// records beat, and evaluates ReachedPosition endings.
+func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
+	// Validation order
+	if in == nil {
+		return nil, fmt.Errorf("move: %w", ErrNilInput)
 	}
-	return -1
+
+	if in.Member == "" {
+		return nil, fmt.Errorf("move: %w", ErrNoMember)
+	}
+
+	if e.outcome != nil {
+		return nil, fmt.Errorf("move: %w", ErrClosed)
+	}
+
+	member, ok := e.members[in.Member]
+	if !ok {
+		return nil, fmt.Errorf("move: %w", ErrNotMember)
+	}
+
+	// Get the room and current position
+	room, ok := e.orchestrator.GetRoom(member.Room)
+	if !ok {
+		return nil, fmt.Errorf("move: %w", ErrBadPlacement)
+	}
+
+	currentPos, ok := room.GetEntityPosition(string(in.Member))
+	if !ok {
+		return nil, fmt.Errorf("move: %w", ErrBadPlacement)
+	}
+
+	// Attempt the spatial move via managed seam using MoveEntity
+	_, err := e.orchestrator.MoveEntity(&spatial.MoveEntityInput{
+		RoomID:   spatial.RoomID(member.Room),
+		EntityID: core.EntityID(in.Member),
+		To:       in.To,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("move: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Get all member IDs for the refresh scope (v1: refresh everyone)
+	memberIDs := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		memberIDs = append(memberIDs, id)
+	}
+	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+
+	// Refresh sight for all members
+	intelDeltas, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("move refresh sight: %w", err)
+	}
+
+	// Record the movement beat
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReadingForBeat := uint64(clockReadingInt)
+	beatPayload := map[string]interface{}{
+		"beat":     "moved",
+		"member":   string(in.Member),
+		"position": in.To,
+	}
+	beatBytes, _ := json.Marshal(beatPayload)
+
+	appendOut, err := e.story.Append(&record.AppendInput{
+		At:       clockReadingForBeat,
+		Audience: memberIDs,
+		Tags:     map[string]string{"tag": "movement"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("move append beat: %w", err)
+	}
+
+	seqNum := appendOut.Seq
+
+	// Evaluate ReachedPosition endings
+	var firedOutcome *Outcome
+	for endingKey, trigger := range e.endings {
+		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
+		if !ok {
+			continue // Not a ReachedPosition trigger
+		}
+
+		// Check if the ending fires
+		if reachedPosTrigger.Room != member.Room {
+			continue // Different room
+		}
+
+		if reachedPosTrigger.Position.X != in.To.X || reachedPosTrigger.Position.Y != in.To.Y {
+			continue // Different position
+		}
+
+		// Check member filter: empty = any player member; non-empty = specific member
+		if reachedPosTrigger.Member != "" && reachedPosTrigger.Member != in.Member {
+			continue // Member filter doesn't match
+		}
+
+		// Member filter passes (empty or matches) but we need to check kind
+		if reachedPosTrigger.Member == "" && member.Kind != KindPlayer {
+			continue // Empty filter means players only, but moved member is not player
+		}
+
+		// Ending fires! Build the outcome with all members' current positions
+		memberOutcomes := make([]MemberOutcome, 0, len(e.members))
+		for _, m := range e.members {
+			mRoom, ok := e.orchestrator.GetRoom(m.Room)
+			if !ok {
+				continue
+			}
+			mPos, ok := mRoom.GetEntityPosition(string(m.ID))
+			if !ok {
+				continue
+			}
+			memberOutcomes = append(memberOutcomes, MemberOutcome{
+				ID:       m.ID,
+				Room:     m.Room,
+				Position: mPos,
+			})
+		}
+
+		e.outcome = &Outcome{
+			Ending:  endingKey,
+			At:      clockReadingForBeat,
+			Members: memberOutcomes,
+		}
+		// Return a deep copy of the outcome (mutation-proof)
+		outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
+		for i, m := range e.outcome.Members {
+			outcomeMembers[i] = MemberOutcome{
+				ID:       m.ID,
+				Room:     m.Room,
+				Position: m.Position,
+			}
+		}
+		firedOutcome = &Outcome{
+			Ending:  e.outcome.Ending,
+			At:      e.outcome.At,
+			Members: outcomeMembers,
+		}
+		break
+	}
+
+	return &MoveOutput{
+		Moved: struct {
+			Member MemberID
+			From   spatial.Position
+			To     spatial.Position
+		}{
+			Member: in.Member,
+			From:   currentPos,
+			To:     in.To,
+		},
+		IntelDeltas: intelDeltas,
+		Seq:         seqNum,
+		Outcome:     firedOutcome,
+	}, nil
+}
+
+
+// refreshSight rebuilds the complete percept for all given observers,
+// surveils each, and returns a map of member IDs to their SurveilOutput deltas.
+// This is shared between Setup's first-light and Move's percept refresh.
+// The current clock reading is stamped on each Surveil call.
+func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.SurveilOutput, error) {
+	// Get current clock reading
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReading := uint64(clockReadingInt)
+	deltas := make(map[MemberID]*intel.SurveilOutput)
+
+	for _, observerID := range observers {
+		member, ok := e.members[observerID]
+		if !ok {
+			continue // Skip if not found
+		}
+
+		// Get the room
+		room, ok := e.orchestrator.GetRoom(member.Room)
+		if !ok {
+			continue // Room not found
+		}
+
+		// Get observer's position
+		observerPos, ok := room.GetEntityPosition(string(observerID))
+		if !ok {
+			continue // Observer position not found
+		}
+
+		// List all OTHER members in the same room and check line of sight
+		var percept []intel.Report
+		for _, otherMember := range e.members {
+			if otherMember.ID == observerID {
+				continue // Skip self
+			}
+			if otherMember.Room != member.Room {
+				continue // Different room
+			}
+
+			// Get the other member's position
+			otherPos, ok := room.GetEntityPosition(string(otherMember.ID))
+			if !ok {
+				continue // Position not found
+			}
+
+			// Check line of sight
+			if room.IsLineOfSightBlocked(observerPos, otherPos) {
+				continue // Blocked by obstacle
+			}
+
+			// Add to percept
+			pos := SightPayload{
+				Room: otherMember.Room,
+				X:    otherPos.X,
+				Y:    otherPos.Y,
+			}
+			payload, _ := json.Marshal(pos)
+			percept = append(percept, intel.Report{
+				Subject: intel.Subject(otherMember.ID),
+				Payload: payload,
+			})
+		}
+
+		// Surveil with the complete percept and current clock reading
+		out, err := e.intelLog.Surveil(&intel.SurveilInput{
+			Observer: observerID,
+			Channel:  intel.Sight,
+			Percept:  percept,
+			At:       clockReading,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("refreshsight surveil: %w", err)
+		}
+		deltas[observerID] = out
+	}
+
+	return deltas, nil
 }
 
 // occluderEntity is an internal entity for blocking line of sight
