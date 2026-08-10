@@ -10,6 +10,12 @@
 
 **Normative source:** `docs/ideas/play/record/design.md` — on any disagreement, STOP and reconcile the design (with Kirk sign-off), never code around it.
 
+**HARD GATE before Task 1:** the docs PR carrying this triplet
+(`docs/play-axis2-designs`, PR #906) MUST be merged to main first —
+implementation worktrees are cut from `origin/main`, and every design
+reference in this plan (including `doc.go`'s contract pointer and the
+PR body) resolves only after that merge.
+
 **Working setup** (plain worktree; module isolation rules apply — only files under `play/record/` plus the one `compat.yml` edit in Task 6):
 
 ```bash
@@ -33,7 +39,9 @@ cd /home/kirk/game-dev/.worktrees/toolkit-play-record/play/record
 go mod init github.com/KirkDiggler/rpg-toolkit/play/record
 go get github.com/KirkDiggler/rpg-toolkit/core@v0.11.0
 ```
-Then edit `go.mod`: directive `go 1.24`.
+Then edit `go.mod`: directive `go 1.24`, and REMOVE any `toolchain` line
+`go mod init` added (a 1.25.x local toolchain writes both; the clock
+addenda hit this twice).
 
 - [ ] **Step 2: `doc.go`** (license header as in play/clock):
 
@@ -52,7 +60,7 @@ Then edit `go.mod`: directive `go 1.24`.
 package record
 ```
 
-- [ ] **Step 3: `errors.go`** — six sentinels, verbatim:
+- [ ] **Step 3: `errors.go`** — seven sentinels, verbatim:
 
 ```go
 // Copyright (C) 2026 Kirk Diggler
@@ -158,7 +166,7 @@ func (s *RecordSuite) TestAppendNormalizesAndCopies() {
 (Tests reference `All`/`NextSeq` — declare them in this task as minimal implementations so the suite compiles: `All` without filtering lands fully in Task 4; here it may return copy-out entries with no tag filter yet. Alternatively split assertions; the implementer may stage compilation however TDD requires, but every listed assertion must pass by end of Task 4 at the latest, and Steps below implement enough for them to pass NOW.)
 
 - [ ] **Step 2:** verify FAIL (undefined types).
-- [ ] **Step 3: implement** (`log.go`): internal `entry` mirror struct; `Log{entries []entry, nextSeq uint64}`; `NewLog() (*Log, error)` starting `nextSeq: 1`; `Entry` read-side struct per design; `AppendInput/AppendOutput`; `Append` with first-failure-wins validation (nil → Audience: dup/empty-ID check → Tags: empty-key check → Payload nil check), empty→nil normalization, defensive copies, seq assignment; `NextSeq() (uint64, error)`; a minimal `All(in *AllInput) ([]Entry, error)` (nil guard + copy-out, `FromSeq` honored, no tag filter yet) and the deep-copy helpers (`copyAudience`, `copyTags`, `copyEntryOut`).
+- [ ] **Step 3: implement** (`log.go`): internal `entry` mirror struct; `Log{entries []entry, nextSeq uint64}` (doc comment carries the family notes: "Not safe for concurrent use (design R10)"; "zero value not usable; construct via NewLog or LoadLog"); `NewLog() (*Log, error)` starting `nextSeq: 1`; `Entry` read-side struct per design; `AppendInput/AppendOutput`; `Append` with first-failure-wins validation (nil → Audience: dup/empty-ID check → Tags: empty-key check → Payload nil check), empty→nil normalization, defensive copies, seq assignment; `NextSeq() (uint64, error)`; a minimal `All(in *AllInput) ([]Entry, error)` (nil guard + copy-out, `FromSeq` honored, no tag filter yet) and the deep-copy helpers (`copyAudience`, `copyTags`, `copyEntryOut`).
 - [ ] **Step 4:** suite green; full gate clean.
 - [ ] **Step 5:** Commit `feat(play/record): Log + Append with validation order and normalization`.
 
@@ -168,7 +176,12 @@ func (s *RecordSuite) TestAppendNormalizesAndCopies() {
 
 **Files:** Modify `log.go`; test in `log_test.go`
 
-- [ ] **Step 1: failing tests:** append seqs 1..4 (helper `appendN`); `TrimBefore{Seq: 3}` → `Removed: 2`, `All{FromSeq:1}` returns seqs `[3,4]` (never renumbered); `TrimBefore{Seq: 3}` again → `Removed: 0` (at/below oldest retained = no-op); `TrimBefore{Seq: 5}` (== NextSeq) → legal, empties, `Removed: 2`; `TrimBefore{Seq: 6}` (> NextSeq) → `ErrBadSeq`, state unchanged (R5: `NextSeq` still 5); `TrimBefore(nil)` → `ErrNilInput`; `TrimBefore{Seq: 1}` on a fresh log → `Removed: 0`, no error.
+Helpers (declare in `log_test.go`): `appendN(n int)` appends n entries
+with `s.Require().NoError`; `appendBeat(aud []core.EntityID, tags
+map[string]string, payload string)` likewise; `seqs(es []record.Entry)
+[]uint64` maps entries to their Seq values.
+
+- [ ] **Step 1: failing tests:** append seqs 1..4 (via `appendN`); `TrimBefore{Seq: 3}` → `Removed: 2`, `All{FromSeq:1}` returns seqs `[3,4]` (never renumbered); `TrimBefore{Seq: 3}` again → `Removed: 0` (at/below oldest retained = no-op); `TrimBefore{Seq: 5}` (== NextSeq) → legal, empties, `Removed: 2`; `TrimBefore{Seq: 6}` (> NextSeq) → `ErrBadSeq`, state unchanged (R5: `NextSeq` still 5); `TrimBefore(nil)` → `ErrNilInput`; `TrimBefore{Seq: 1}` on a fresh log → `Removed: 0`, no error.
 - [ ] **Step 2:** FAIL. **Step 3: implement** per design row. **Step 4:** gate. **Step 5:** Commit `feat(play/record): TrimBefore — retention as visible policy`.
 
 ---
@@ -210,7 +223,7 @@ func (s *RecordSuite) TestSliceForProjectsAudienceAndTags() {
 }
 ```
 
-Plus: `SliceFor` errors — nil → `ErrNilInput`; empty viewer → `ErrNoViewer`; empty filter key → `ErrBadTag` (and viewer-before-tags precedence: `{Viewer: "", Tags: {"": "x"}}` → `ErrNoViewer`); `All` with empty filter key → `ErrBadTag`; filter with empty VALUE matches only empty-valued tags (flags case); copy-out immunity (mutate returned entries' audience/tags/payload; internal state unchanged, re-query identical).
+Plus: `All(nil)` and `SliceFor(nil)` → `ErrNilInput`; empty viewer → `ErrNoViewer`; empty filter key → `ErrBadTag` (and viewer-before-tags precedence: `{Viewer: "", Tags: {"": "x"}}` → `ErrNoViewer`); `All` with empty filter key → `ErrBadTag`; filter with empty VALUE matches only empty-valued tags (flags case); copy-out immunity (mutate returned entries' audience/tags/payload; internal state unchanged, re-query identical).
 
 - [ ] **Steps 2-4:** FAIL → implement (`matchTags` helper: every filter k=v present exactly; `SliceFor` audience-contains + filter; `All` gains the filter; both `FromSeq`-bounded, Seq order, copy-out) → gate.
 - [ ] **Step 5:** Commit `feat(play/record): SliceFor/All with tag question-surface`.
@@ -225,6 +238,7 @@ Plus: `SliceFor` errors — nil → `ErrNilInput`; empty viewer → `ErrNoViewer
   - Fresh: `NewLog().ToData()` deep-equals zero `LogData`; marshals `{}`; `LoadLog(LogData{})` → fresh log, `NextSeq()` answers 1.
   - Trimmed-empty: append 2, trim at NextSeq → `ToData` = `{NextSeq: 3, Entries: nil}`; round-trips; next append gets Seq 3.
   - Populated round-trip: behavior-identical (append after reload continues the sequence; `SliceFor` identical).
+  - **Post-trim POPULATED round-trip** (the natural-mistake catcher): append 4, `TrimBefore{3}` → snapshot has entries `[3,4]`, `NextSeq: 5`, first retained Seq > 1; `LoadLog` MUST accept (a contiguity check that demands Seq start at 1 fails here); behavior-identical after reload.
   - Golden JSON: populated log marshals to the exact expected string (`{"next_seq":3,"entries":[{"seq":1,...,"payload":"..."}...]}` — payloads base64 per encoding/json `[]byte`; tags keys sorted by the marshaler); trimmed-empty marshals `{"next_seq":3}`.
   - R9 rejection table (each `ErrInvalidData`): non-contiguous seqs `[1,3]`; zero seq; duplicate seqs; out-of-order seqs; non-empty with `NextSeq != last+1` (both directions); empty with `NextSeq: 1`; audience with empty ID; audience with duplicates; tag map with empty key; nil payload entry.
   - Snapshot immunity: `ToData`, then `Append`; snapshot unchanged. Load-side aliasing: mutate the caller's `LogData` after `LoadLog`; log unchanged.
@@ -237,8 +251,8 @@ Plus: `SliceFor` errors — nil → `ErrNilInput`; empty viewer → `ErrNoViewer
 
 **Files:** Create `story_test.go`; Modify `.github/workflows/compat.yml`
 
-- [ ] **Step 1: the two-viewer story** (plain functions + require, the documented family exception): script the design's AC1 verbatim — shared beat; opener's audience-of-one big reveal (`kind: intel.first_contact`); follower's smaller reveal; GM-only beat; `SliceFor` each viewer asserts their exact story (seqs + payload order); tag questions across mixed-shape beats (all first-contacts for the opener; everything tagged one subject; every `kind=clock.turn_started` via `All`); `TrimBefore` after "acknowledgment" then a `SliceFor` from an early `FromSeq` returns only retained entries with original seqs. Expected to PASS immediately; any failure is a regression — report, never bend expectations.
-- [ ] **Step 2: compat.yml** — add `play/record/**` to the workflow `paths` and a `gorelease-play-record` job cloned from the clock job (same pinned gorelease version, `base=$(git tag -l 'play/record/v*' ...)`, cd `play/record`). Commit with explicit `git add .github/workflows/compat.yml play/record/` (the -a-misses-untracked lesson).
+- [ ] **Step 1: the two-viewer story** (plain functions + require, the documented family exception): script the design's AC1 verbatim — shared beat; opener's audience-of-one big reveal (`kind: intel.first_contact`); follower's smaller reveal; GM-only beat; `SliceFor` each viewer asserts their exact story (seqs + payload order); unfiltered `All` returns everything; tag questions across mixed-shape beats (all first-contacts for the opener; everything tagged one subject; every `kind=clock.turn_started` via `All`); `TrimBefore` after "acknowledgment" then a `SliceFor` from an early `FromSeq` returns only retained entries with original seqs. Expected to PASS immediately; any failure is a regression — report, never bend expectations.
+- [ ] **Step 2: compat.yml** — add `play/record/**` to the workflow `paths` and a `gorelease-play-record` job cloned from the clock job (heads-up: play/intel's plan touches the same file; whichever lands second rebases a one-hunk conflict) (same pinned gorelease version, `base=$(git tag -l 'play/record/v*' ...)`, cd `play/record`). Commit with explicit `git add .github/workflows/compat.yml play/record/` (the -a-misses-untracked lesson).
 - [ ] **Step 3:** Commit `test(play/record): AC1 two-viewer story; ci: compat gate`.
 
 ---
