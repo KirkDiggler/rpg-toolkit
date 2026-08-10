@@ -393,9 +393,12 @@ func dedupeReports(reports []Report) []Report {
 // toHolding converts an internal holding to an exported Holding,
 // deep-copying the payload and sorting CurrentVia.
 func (h *holding) toHolding(subject Subject) Holding {
-	// Deep-copy payload
-	payloadCopy := make([]byte, len(h.payload))
-	copy(payloadCopy, h.payload)
+	// Deep-copy payload (nil payloads remain nil; empty payloads are copied)
+	var payloadCopy []byte
+	if h.payload != nil {
+		payloadCopy = make([]byte, len(h.payload))
+		copy(payloadCopy, h.payload)
+	}
 
 	// Convert currentVia map to sorted slice
 	var currentVia []Channel

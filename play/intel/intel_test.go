@@ -4,6 +4,8 @@
 package intel_test
 
 import (
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -824,6 +826,436 @@ func (s *QueriesSuite) TestDeciderContract() {
 	// - Try to open door (Current, sight confirmed)
 	// The contract: all this decision logic flows from HeldBy(itself) alone.
 	_ = myIntel // Decision logic would consume this
+}
+
+// PersistenceSuite tests the persistence layer: ToData/LoadIntel.
+type PersistenceSuite struct {
+	suite.Suite
+	intel *intel.Intel
+}
+
+func (s *PersistenceSuite) SetupTest() {
+	var err error
+	s.intel, err = intel.NewIntel()
+	s.Require().NoError(err)
+}
+
+// TestIdleConventionZeroValue tests that NewIntel().ToData() returns a zero
+// IntelData with nil map (not empty non-nil).
+func (s *PersistenceSuite) TestIdleConventionZeroValue() {
+	data := s.intel.ToData()
+	// Zero value: nil map, not empty non-nil
+	s.Nil(data.Holdings, "idle Intel should marshal to nil Holdings map")
+}
+
+// TestIdleConventionMarshalEmpty tests that zero IntelData marshals to "{}".
+func (s *PersistenceSuite) TestIdleConventionMarshalEmpty() {
+	data := s.intel.ToData()
+	b, err := json.Marshal(data)
+	s.Require().NoError(err)
+	s.Equal([]byte("{}"), b, "idle IntelData must marshal to empty object")
+}
+
+// TestIdleConventionLoadEmpty tests that LoadIntel(IntelData{}) succeeds
+// and the Intel is usable (verbs work).
+func (s *PersistenceSuite) TestIdleConventionLoadEmpty() {
+	loaded, err := intel.LoadIntel(intel.IntelData{})
+	s.Require().NoError(err)
+	// Verify it's usable: HeldBy on empty Intel succeeds
+	holdings, err := loaded.HeldBy(&intel.HeldByInput{Observer: "test"})
+	s.Require().NoError(err)
+	s.Empty(holdings)
+}
+
+// TestRoundTripSingleHolding tests round-trip of a single Report holding.
+func (s *PersistenceSuite) TestRoundTripSingleHolding() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("target")
+		payload = "test-data"
+		channel = intel.Channel("hearing")
+		at      = uint64(42)
+	)
+	// Create a holding
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: channel, At: at,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte(payload)}},
+	})
+	s.Require().NoError(err)
+
+	// Snapshot
+	data := s.intel.ToData()
+
+	// Load
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	// Verify the holding is accessible
+	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal([]byte(payload), h.Payload)
+	s.Equal(channel, h.Channel)
+	s.Equal(at, h.At)
+	s.Nil(h.CurrentVia, "Report holding should have nil CurrentVia")
+	s.Equal(intel.Held, h.Status)
+}
+
+// TestRoundTripMultiChannelCurrent tests round-trip of a Current holding
+// with multiple sustaining channels.
+func (s *PersistenceSuite) TestRoundTripMultiChannelCurrent() {
+	const (
+		obs      = core.EntityID("bob")
+		subject  = intel.Subject("prey")
+		channel1 = intel.Channel("sight")
+		channel2 = intel.Channel("hearing")
+	)
+	// Create Current holding via sight
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel1, At: 1,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v1")}},
+	})
+	s.Require().NoError(err)
+
+	// Sustain via hearing
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel2, At: 2,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("v2")}},
+	})
+	s.Require().NoError(err)
+
+	// Snapshot
+	data := s.intel.ToData()
+
+	// Load
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	// Verify the holding is Current with both channels
+	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal(intel.Current, h.Status)
+	s.Len(h.CurrentVia, 2)
+	s.ElementsMatch([]intel.Channel{channel1, channel2}, h.CurrentVia)
+}
+
+// TestRoundTripPostFadeState tests round-trip preserves faded (Held) state.
+func (s *PersistenceSuite) TestRoundTripPostFadeState() {
+	const (
+		obs     = core.EntityID("charlie")
+		subject = intel.Subject("ghost")
+		channel = intel.Channel("sight")
+	)
+	// Create Current holding
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel, At: 1,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("saw it")}},
+	})
+	s.Require().NoError(err)
+
+	// Fade it
+	_, err = s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel, At: 2, Percept: []intel.Report{},
+	})
+	s.Require().NoError(err)
+
+	// Snapshot
+	data := s.intel.ToData()
+
+	// Load
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	// Verify holding is Held (faded state preserved)
+	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal(intel.Held, h.Status)
+	s.Nil(h.CurrentVia)
+}
+
+// TestRoundTripBehaviorIdentical tests that a Surveil after reload behaves
+// identically to the same Surveil on the original Intel.
+func (s *PersistenceSuite) TestRoundTripBehaviorIdentical() {
+	const (
+		obs     = core.EntityID("dave")
+		subj1   = intel.Subject("s1")
+		subj2   = intel.Subject("s2")
+		channel = intel.Channel("sight")
+	)
+	// Setup: create holdings, then snapshot and load
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel, At: 1,
+		Percept: []intel.Report{
+			{Subject: subj1, Payload: []byte("v1")},
+			{Subject: subj2, Payload: []byte("v2")},
+		},
+	})
+	s.Require().NoError(err)
+
+	data := s.intel.ToData()
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	// Apply same Surveil to both: only s1 present (s2 fades)
+	out1, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel, At: 2,
+		Percept: []intel.Report{{Subject: subj1, Payload: []byte("v1-refreshed")}},
+	})
+	s.Require().NoError(err)
+
+	out2, err := loaded.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel, At: 2,
+		Percept: []intel.Report{{Subject: subj1, Payload: []byte("v1-refreshed")}},
+	})
+	s.Require().NoError(err)
+
+	// Deltas must match
+	s.Equal(out1.FirstContact, out2.FirstContact, "FirstContact must match")
+	s.Equal(out1.Refreshed, out2.Refreshed, "Refreshed must match")
+	s.Equal(out1.Faded, out2.Faded, "Faded must match")
+
+	// Final state must match
+	h1, _ := s.intel.On(&intel.OnInput{Observer: obs, Subject: subj2})
+	h2, _ := loaded.On(&intel.OnInput{Observer: obs, Subject: subj2})
+	s.Equal(h1.Status, h2.Status, "final status must match")
+}
+
+// TestGoldenJSON tests that a populated holding marshals to exact JSON.
+func (s *PersistenceSuite) TestGoldenJSON() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("behind-door-3")
+		payload = "treasure"
+		channel = intel.Channel("hearing")
+		at      = uint64(5)
+	)
+	// Create holding
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: channel, At: at,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte(payload)}},
+	})
+	s.Require().NoError(err)
+
+	data := s.intel.ToData()
+	b, err := json.Marshal(data)
+	s.Require().NoError(err)
+
+	// Unmarshal to verify structure: holdings[alice][behind-door-3] exists
+	// with payload (base64), channel, at; current_via omitted when nil
+	var unmarshaled map[string]interface{}
+	err = json.Unmarshal(b, &unmarshaled)
+	s.Require().NoError(err)
+
+	holdings, ok := unmarshaled["holdings"].(map[string]interface{})
+	s.Require().True(ok, "holdings key must exist and be a map")
+
+	aliceHoldings, ok := holdings[string(obs)].(map[string]interface{})
+	s.Require().True(ok, "alice holdings must exist and be a map")
+
+	doorHolding, ok := aliceHoldings[string(subject)].(map[string]interface{})
+	s.Require().True(ok, "behind-door-3 holding must exist and be a map")
+
+	// Verify fields: payload should be a base64-encoded string (json.Marshal encodes []byte as base64)
+	payloadStr, ok := doorHolding["payload"].(string)
+	s.Require().True(ok, "payload must be a string (base64-encoded)")
+	// Verify the base64 string decodes to original payload by round-tripping through json.Marshal
+	var decodedPayload []byte
+	err = json.Unmarshal([]byte(`"`+payloadStr+`"`), &decodedPayload)
+	s.Require().NoError(err)
+	s.Equal([]byte(payload), decodedPayload)
+
+	channelStr, ok := doorHolding["channel"].(string)
+	s.Require().True(ok, "channel must be a string")
+	s.Equal(channel, intel.Channel(channelStr))
+
+	atNum, ok := doorHolding["at"].(float64)
+	s.Require().True(ok, "at must be a number")
+	s.Equal(at, uint64(atNum))
+
+	// current_via should be omitted (nil)
+	_, hasCurrentVia := doorHolding["current_via"]
+	s.False(hasCurrentVia, "current_via should be omitted when nil")
+}
+
+// TestSnapshotImmutability tests that mutating runtime Intel after ToData
+// doesn't affect the snapshot.
+func (s *PersistenceSuite) TestSnapshotImmutability() {
+	const obs = core.EntityID("eve")
+	// Create initial holding
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 1,
+		Reports: []intel.Report{{Subject: "s", Payload: []byte("original")}},
+	})
+	s.Require().NoError(err)
+
+	// Snapshot
+	data := s.intel.ToData()
+
+	// Mutate the runtime Intel
+	_, err = s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 2,
+		Reports: []intel.Report{{Subject: "s", Payload: []byte("modified")}},
+	})
+	s.Require().NoError(err)
+
+	// Load snapshot: must have original payload
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: "s"})
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), h.Payload, "snapshot payload must be unchanged")
+}
+
+// TestLoadSnapshotMutationImmunity tests that mutating the caller's IntelData
+// maps after LoadIntel doesn't affect the loaded Intel.
+func (s *PersistenceSuite) TestLoadSnapshotMutationImmunity() {
+	const obs = core.EntityID("frank")
+	// Create holding
+	_, err := s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: "c", At: 1,
+		Reports: []intel.Report{{Subject: "s", Payload: []byte("original")}},
+	})
+	s.Require().NoError(err)
+
+	data := s.intel.ToData()
+
+	// Load first
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	// Mutate the data's maps AFTER LoadIntel (in-place index write, not append)
+	observerHoldings := data.Holdings[obs]
+	// Modify an existing holding's payload
+	for _, h := range observerHoldings {
+		h.Payload[0] = 'X'
+	}
+
+	// Verify loaded Intel is immune to snapshot mutations
+	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: "s"})
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), h.Payload, "loaded Intel must be immune to caller mutations after LoadIntel")
+}
+
+// TestR9EmptyObserverKey tests that empty observer key is rejected.
+func (s *PersistenceSuite) TestR9EmptyObserverKey() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"": {}, // Empty observer key
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "empty observer key must be rejected")
+}
+
+// TestR9EmptySubjectKey tests that empty subject key is rejected.
+func (s *PersistenceSuite) TestR9EmptySubjectKey() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": {"": {}}, // Empty subject key
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "empty subject key must be rejected")
+}
+
+// TestR9DuplicateCurrentVia tests that duplicate channels in CurrentVia are rejected.
+func (s *PersistenceSuite) TestR9DuplicateCurrentVia() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": {
+				"target": {
+					Payload:    []byte("data"),
+					Channel:    "sight",
+					At:         1,
+					CurrentVia: []intel.Channel{"sight", "sight"}, // Duplicate
+				},
+			},
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "duplicate CurrentVia channels must be rejected")
+}
+
+// TestR9EmptyHoldingChannel tests that empty holding Channel is rejected.
+func (s *PersistenceSuite) TestR9EmptyHoldingChannel() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": {
+				"target": {
+					Payload: []byte("data"),
+					Channel: "", // Empty channel
+					At:      1,
+				},
+			},
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "empty holding Channel must be rejected")
+}
+
+// TestR9EmptyChannelInCurrentVia tests that empty channel in CurrentVia is rejected.
+func (s *PersistenceSuite) TestR9EmptyChannelInCurrentVia() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": {
+				"target": {
+					Payload:    []byte("data"),
+					Channel:    "sight",
+					At:         1,
+					CurrentVia: []intel.Channel{""}, // Empty channel
+				},
+			},
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "empty channel in CurrentVia must be rejected")
+}
+
+// TestR9NilInnerMap tests that nil inner map is rejected.
+func (s *PersistenceSuite) TestR9NilInnerMap() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": nil, // Nil inner map
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "nil inner map must be rejected")
+}
+
+// TestR9EmptyInnerMap tests that empty (non-nil) inner map is rejected.
+func (s *PersistenceSuite) TestR9EmptyInnerMap() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": {}, // Empty non-nil map
+		},
+	}
+	_, err := intel.LoadIntel(data)
+	s.Require().True(errors.Is(err, intel.ErrInvalidData), "empty inner map must be rejected")
+}
+
+// TestNilPayloadLegal tests that nil payload in HoldingData is legal.
+func (s *PersistenceSuite) TestNilPayloadLegal() {
+	data := intel.IntelData{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			"alice": {
+				"target": {
+					Payload: nil, // Nil payload is legal
+					Channel: "sight",
+					At:      1,
+				},
+			},
+		},
+	}
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err, "nil payload must be legal")
+
+	// Verify it loads and is usable
+	h, err := loaded.On(&intel.OnInput{Observer: "alice", Subject: "target"})
+	s.Require().NoError(err)
+	s.Nil(h.Payload, "nil payload should load as nil")
+}
+
+func TestPersistenceSuite(t *testing.T) {
+	suite.Run(t, new(PersistenceSuite))
 }
 
 func TestQueriesSuite(t *testing.T) {
