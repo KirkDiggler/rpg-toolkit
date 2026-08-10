@@ -84,7 +84,23 @@ question-surface is uniform even when payloads are not. Deliberately
 bounded: AND-only; anything richer is the host projecting from `All`
 into a real query engine — record is the story, not the database.
 
-### 6. Plain vocabulary
+### 6. Runtime metadata — the structured-logging pattern (forward note)
+
+Kirk's extension of tags: key-value runtime metadata as a general idiom
+— "we could even load the game ctx with it." Record is structured
+logging for the story, and the slog/zap precedent maps exactly: Append
+is the line, tags are the fields, ambient scope-tags (`encounter_id`,
+round, acting entity, correlation) are `logger.With(...)`. The layering
+that keeps it honest: ambient tags live in the composition/host (the
+future encounter's gameCtx — journey 048's pattern finally has a place
+to land); the composition merges ambient + per-beat tags and hands
+record the final map; leaves never read ambient anything — metadata
+about the telling rides along, but any value a leaf needs is an
+explicit Input field. A record-side `With(tags)` pre-merge handle is
+anticipated as a five-line additive ergonomic, deferred per the
+outside-in rule until encounter's call sites prove the repetition.
+
+### 7. Plain vocabulary
 
 Intel earned its register; record needs none. `Log`, `Entry`, `Append`,
 `SliceFor`, `TrimBefore` — the words every reader already holds.
