@@ -50,7 +50,7 @@ func TestTwoViewerStory(t *testing.T) {
 		map[string]string{kind: clockStart, actor: string(opener)},
 		"shared-1",
 	)
-	require.Equal(t, uint64(1), seq1)
+	require.Equal(t, uint64(1), seq1, "seq1 should be 1")
 
 	// Beat 2: opener's big reveal — only the door opener sees the first contact.
 	seq2 := appendBeat(
@@ -58,7 +58,7 @@ func TestTwoViewerStory(t *testing.T) {
 		map[string]string{kind: intelFirst, subject: room7},
 		"opener-reveal",
 	)
-	require.Equal(t, uint64(2), seq2)
+	require.Equal(t, uint64(2), seq2, "seq2 should be 2")
 
 	// Beat 3: follower's smaller reveal — only the door follower sees their first contact.
 	seq3 := appendBeat(
@@ -66,7 +66,7 @@ func TestTwoViewerStory(t *testing.T) {
 		map[string]string{kind: intelFirst, subject: room7},
 		"follower-reveal",
 	)
-	require.Equal(t, uint64(3), seq3)
+	require.Equal(t, uint64(3), seq3, "seq3 should be 3")
 
 	// Beat 4: GM-only beat — empty audience means NO VIEWER.
 	seq4 := appendBeat(
@@ -74,7 +74,7 @@ func TestTwoViewerStory(t *testing.T) {
 		map[string]string{kind: gmNote},
 		"gm-1",
 	)
-	require.Equal(t, uint64(4), seq4)
+	require.Equal(t, uint64(4), seq4, "seq4 should be 4")
 
 	// Beat 5: shared — both viewers see the turn end.
 	seq5 := appendBeat(
@@ -82,7 +82,7 @@ func TestTwoViewerStory(t *testing.T) {
 		map[string]string{kind: clockEnd, actor: string(opener)},
 		"shared-2",
 	)
-	require.Equal(t, uint64(5), seq5)
+	require.Equal(t, uint64(5), seq5, "seq5 should be 5")
 
 	// Helper to extract seq values from entries.
 	seqs := func(es []record.Entry) []uint64 {
@@ -146,6 +146,23 @@ func TestTwoViewerStory(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1}, seqs(turnStart), "clock.turn_started seqs should be [1]")
 
+	// Multi-key AND filter pin: All(Tags {"kind": "clock.turn_started", "actor": opener}) → [1]
+	// (proves AND-not-OR: filtering by actor alone returns [1,5], two-key filter returns [1])
+	turnStartWithOpener, err := log.All(&record.AllInput{
+		FromSeq: 1,
+		Tags:    map[string]string{kind: clockStart, actor: string(opener)},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1}, seqs(turnStartWithOpener), "kind AND actor filter should return [1] (AND semantics, not OR)")
+
+	// All(Tags {"actor": opener}) alone → [1,5] (both beats have same actor, different kinds)
+	actorOnly, err := log.All(&record.AllInput{
+		FromSeq: 1,
+		Tags:    map[string]string{actor: string(opener)},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 5}, seqs(actorOnly), "actor filter alone should return [1,5]")
+
 	// Assertion (e): GM beat invisible to both viewers; SliceFor(opener, FromSeq 4) → [5] only.
 	openerAfter4, err := log.SliceFor(&record.SliceForInput{Viewer: opener, FromSeq: 4})
 	require.NoError(t, err)
@@ -184,17 +201,13 @@ func TestTwoViewerStory(t *testing.T) {
 	// Re-run assertions on loaded log.
 	openerLoaded, err := loadedLog.SliceFor(&record.SliceForInput{Viewer: opener, FromSeq: 1})
 	require.NoError(t, err)
-	require.Equal(t, seqs(openerPostTrim), seqs(openerLoaded), "loaded opener slice mismatch")
+	require.Equal(t, openerPostTrim, openerLoaded, "loaded opener slice mismatch (full-fidelity: Seq, At, Correlation, Audience, Tags, Payload)")
 
 	followerLoaded, err := loadedLog.SliceFor(&record.SliceForInput{Viewer: follower, FromSeq: 1})
 	require.NoError(t, err)
-	require.Equal(t, seqs(followerPostTrim), seqs(followerLoaded), "loaded follower slice mismatch")
+	require.Equal(t, followerPostTrim, followerLoaded, "loaded follower slice mismatch (full-fidelity: Seq, At, Correlation, Audience, Tags, Payload)")
 
 	allLoaded, err := loadedLog.All(&record.AllInput{FromSeq: 1})
 	require.NoError(t, err)
-	require.Equal(t, seqs(allPostTrim), seqs(allLoaded), "loaded all slice mismatch")
-
-	// Verify payloads and audience survive round-trip.
-	require.Equal(t, []byte("follower-reveal"), followerLoaded[0].Payload, "loaded payload mismatch")
-	require.Equal(t, []core.EntityID{follower}, followerLoaded[0].Audience, "loaded audience mismatch")
+	require.Equal(t, allPostTrim, allLoaded, "loaded all slice mismatch (full-fidelity: Seq, At, Correlation, Audience, Tags, Payload)")
 }
