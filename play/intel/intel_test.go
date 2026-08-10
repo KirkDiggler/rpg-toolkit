@@ -6,6 +6,7 @@ package intel_test
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -842,6 +843,12 @@ func (s *PersistenceSuite) SetupTest() {
 	s.Require().NoError(err)
 }
 
+func (s *PersistenceSuite) holdingOn(observer core.EntityID, subject intel.Subject) intel.Holding {
+	h, err := s.intel.On(&intel.OnInput{Observer: observer, Subject: subject})
+	s.Require().NoError(err)
+	return h
+}
+
 // TestIdleConventionZeroValue tests that NewIntel().ToData() returns a zero
 // Data with nil map (not empty non-nil).
 func (s *PersistenceSuite) TestIdleConventionZeroValue() {
@@ -975,7 +982,8 @@ func (s *PersistenceSuite) TestRoundTripPostFadeState() {
 }
 
 // TestRoundTripBehaviorIdentical tests that a Surveil after reload behaves
-// identically to the same Surveil on the original Intel.
+// identically to the same Surveil on the original Intel, including full state
+// comparison and set-semantics idempotence of re-Surveil on the same channel.
 func (s *PersistenceSuite) TestRoundTripBehaviorIdentical() {
 	const (
 		obs     = core.EntityID("dave")
@@ -1015,25 +1023,41 @@ func (s *PersistenceSuite) TestRoundTripBehaviorIdentical() {
 	s.Equal(out1.Refreshed, out2.Refreshed, "Refreshed must match")
 	s.Equal(out1.Faded, out2.Faded, "Faded must match")
 
-	// Final state must match
-	h1, _ := s.intel.On(&intel.OnInput{Observer: obs, Subject: subj2})
-	h2, _ := loaded.On(&intel.OnInput{Observer: obs, Subject: subj2})
-	s.Equal(h1.Status, h2.Status, "final status must match")
+	// Full HeldBy state must match (deep comparison)
+	holdings1, err := s.intel.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	holdings2, err := loaded.HeldBy(&intel.HeldByInput{Observer: obs})
+	s.Require().NoError(err)
+	s.True(reflect.DeepEqual(holdings1, holdings2), "HeldBy results pre and post reload must be fully equal")
+
+	// Test set-semantics idempotence: re-Surveil same channel with same percept should not duplicate CurrentVia
+	out3, err := loaded.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: channel, At: 3,
+		Percept: []intel.Report{{Subject: subj1, Payload: []byte("v1-refreshed")}},
+	})
+	s.Require().NoError(err)
+	s.Empty(out3.FirstContact, "re-Surveil same subject should not add to FirstContact")
+	s.Equal([]intel.Subject{subj1}, out3.Refreshed, "re-Surveil same subject should Refresh")
+
+	h := s.holdingOn(obs, subj1)
+	s.Len(h.CurrentVia, 1, "CurrentVia should still have exactly one entry (set semantics, not duplicated)")
+	s.Equal(channel, h.CurrentVia[0], "CurrentVia should still be the original channel")
 }
 
-// TestGoldenJSON tests that a populated holding marshals to exact JSON.
+// TestGoldenJSON tests that holdings marshal to exact JSON strings (wire format),
+// pinning Held (no CurrentVia) and Current (with CurrentVia) shapes.
 func (s *PersistenceSuite) TestGoldenJSON() {
+	// Test 1: Held shape (Report-only, no CurrentVia)
 	const (
-		obs     = core.EntityID("alice")
-		subject = intel.Subject("behind-door-3")
-		payload = "treasure"
-		channel = intel.Channel("hearing")
-		at      = uint64(5)
+		alice    = core.EntityID("alice")
+		heldSubj = intel.Subject("behind-door-3")
+		payload1 = "treasure"
+		channel1 = intel.Channel("hearing")
+		at1      = uint64(5)
 	)
-	// Create holding
 	_, err := s.intel.Report(&intel.ReportInput{
-		Observer: obs, Channel: channel, At: at,
-		Reports: []intel.Report{{Subject: subject, Payload: []byte(payload)}},
+		Observer: alice, Channel: channel1, At: at1,
+		Reports: []intel.Report{{Subject: heldSubj, Payload: []byte(payload1)}},
 	})
 	s.Require().NoError(err)
 
@@ -1041,45 +1065,103 @@ func (s *PersistenceSuite) TestGoldenJSON() {
 	b, err := json.Marshal(data)
 	s.Require().NoError(err)
 
-	// Unmarshal to verify structure: holdings[alice][behind-door-3] exists
-	// with payload (base64), channel, at; current_via omitted when nil
-	var unmarshaled map[string]interface{}
-	err = json.Unmarshal(b, &unmarshaled)
+	// Pin exact string for Held shape (payload is base64("treasure") = "dHJlYXN1cmU=")
+	goldenHeld := `{"holdings":{"alice":{"behind-door-3":{"payload":"dHJlYXN1cmU=","channel":"hearing","at":5}}}}`
+	s.Equal(goldenHeld, string(b), "Held shape must match exact JSON (payload base64, no current_via)")
+
+	// Test 2: Current shape (via Surveil, with CurrentVia)
+	const (
+		currentSubj = intel.Subject("goblin")
+		payload2    = "near"
+		channel2    = intel.Channel("sight")
+		at2         = uint64(5)
+	)
+	intel2, err := intel.NewIntel()
 	s.Require().NoError(err)
 
-	holdings, ok := unmarshaled["holdings"].(map[string]interface{})
-	s.Require().True(ok, "holdings key must exist and be a map")
-
-	aliceHoldings, ok := holdings[string(obs)].(map[string]interface{})
-	s.Require().True(ok, "alice holdings must exist and be a map")
-
-	doorHolding, ok := aliceHoldings[string(subject)].(map[string]interface{})
-	s.Require().True(ok, "behind-door-3 holding must exist and be a map")
-
-	// Verify fields: payload should be a base64-encoded string (json.Marshal encodes []byte as base64)
-	payloadStr, ok := doorHolding["payload"].(string)
-	s.Require().True(ok, "payload must be a string (base64-encoded)")
-	// Verify the base64 string decodes to original payload by round-tripping through json.Marshal
-	var decodedPayload []byte
-	err = json.Unmarshal([]byte(`"`+payloadStr+`"`), &decodedPayload)
+	_, err = intel2.Surveil(&intel.SurveilInput{
+		Observer: alice, Channel: channel2, At: at2,
+		Percept: []intel.Report{{Subject: currentSubj, Payload: []byte(payload2)}},
+	})
 	s.Require().NoError(err)
-	s.Equal([]byte(payload), decodedPayload)
 
-	channelStr, ok := doorHolding["channel"].(string)
-	s.Require().True(ok, "channel must be a string")
-	s.Equal(channel, intel.Channel(channelStr))
+	data2 := intel2.ToData()
+	b2, err := json.Marshal(data2)
+	s.Require().NoError(err)
 
-	atNum, ok := doorHolding["at"].(float64)
-	s.Require().True(ok, "at must be a number")
-	s.Equal(at, uint64(atNum))
-
-	// current_via should be omitted (nil)
-	_, hasCurrentVia := doorHolding["current_via"]
-	s.False(hasCurrentVia, "current_via should be omitted when nil")
+	// Pin exact string for Current shape
+	// (payload is base64("near") = "bmVhcg==", current_via has "sight")
+	golden := `{"holdings":{"alice":{"goblin":{"payload":"bmVhcg==","channel":"sight","at":5,"current_via":["sight"]}}}}`
+	s.Equal(golden, string(b2), "Current shape must match exact JSON wire format")
 }
 
-// TestSnapshotImmutability tests that mutating runtime Intel after ToData
-// doesn't affect the snapshot.
+// TestMixedProvenanceChannelNotInCurrentVia pins that Channel ∉ CurrentVia is legal.
+// This occurs when Report overwrites a Surveil-established holding, rewriting payload/Channel/At
+// while leaving CurrentVia (the sustaining channels) intact. This mixed provenance is legal
+// and must round-trip through ToData/LoadIntel without rejection.
+func (s *PersistenceSuite) TestMixedProvenanceChannelNotInCurrentVia() {
+	const (
+		obs     = core.EntityID("alice")
+		subject = intel.Subject("goblin")
+		ch1     = intel.Channel("sight")
+		ch2     = intel.Channel("hearing")
+	)
+
+	// Step 1: Surveil via "sight" establishes subject as Current
+	_, err := s.intel.Surveil(&intel.SurveilInput{
+		Observer: obs, Channel: ch1, At: 1,
+		Percept: []intel.Report{{Subject: subject, Payload: []byte("see it")}},
+	})
+	s.Require().NoError(err)
+
+	h := s.holdingOn(obs, subject)
+	s.Equal(intel.Current, h.Status)
+	s.Equal([]intel.Channel{ch1}, h.CurrentVia)
+	s.Equal([]byte("see it"), h.Payload)
+	s.Equal(ch1, h.Channel)
+
+	// Step 2: Report via "hearing" channel overwrites payload, channel, at but NOT currentVia
+	// This creates the mixed-provenance state: Channel="hearing" but CurrentVia=["sight"]
+	_, err = s.intel.Report(&intel.ReportInput{
+		Observer: obs, Channel: ch2, At: 2,
+		Reports: []intel.Report{{Subject: subject, Payload: []byte("hear it")}},
+	})
+	s.Require().NoError(err)
+
+	h = s.holdingOn(obs, subject)
+	s.Equal(intel.Current, h.Status, "still Current because sight sustains it")
+	s.Equal([]intel.Channel{ch1}, h.CurrentVia, "CurrentVia unchanged from Surveil")
+	s.Equal([]byte("hear it"), h.Payload, "Payload overwritten by Report")
+	s.Equal(ch2, h.Channel, "Channel changed to Report's channel")
+
+	// Step 3: Verify mixed provenance round-trips through ToData→LoadIntel→ToData
+	data := s.intel.ToData()
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err, "LoadIntel must accept mixed-provenance holding")
+
+	h2, err := loaded.On(&intel.OnInput{Observer: obs, Subject: subject})
+	s.Require().NoError(err)
+	s.Equal(h.Status, h2.Status)
+	s.Equal(h.CurrentVia, h2.CurrentVia)
+	s.Equal(h.Payload, h2.Payload)
+	s.Equal(h.Channel, h2.Channel)
+
+	// Step 4: Verify ToData deep-equals pre-reload
+	data2 := loaded.ToData()
+	holdings1 := data.Holdings[obs][subject]
+	holdings2 := data2.Holdings[obs][subject]
+	s.Equal(holdings1.Payload, holdings2.Payload)
+	s.Equal(holdings1.Channel, holdings2.Channel)
+	s.Equal(holdings1.At, holdings2.At)
+	s.Equal(holdings1.CurrentVia, holdings2.CurrentVia)
+
+	// Step 5: Commentary: This pins mixed provenance as LEGAL. A future Channel∈CurrentVia
+	// "tightening" would make LoadIntel reject the module's own snapshots (R8 violation).
+	// Such a rule would break persistence layer semantics and is not permitted.
+}
+
+// TestSnapshotImmutability tests that both mutating snapshot data after ToData
+// and mutating runtime Intel doesn't affect the original or vice versa (genuine aliasing detection).
 func (s *PersistenceSuite) TestSnapshotImmutability() {
 	const obs = core.EntityID("eve")
 	// Create initial holding
@@ -1092,19 +1174,32 @@ func (s *PersistenceSuite) TestSnapshotImmutability() {
 	// Snapshot
 	data := s.intel.ToData()
 
-	// Mutate the runtime Intel
+	// SNAPSHOT MUTATION: mutate the snapshot data's payload in-place
+	// This tests that the backing arrays are NOT aliased
+	h := data.Holdings[obs]["s"]
+	if len(h.Payload) > 0 {
+		h.Payload[0] = 'X'
+	}
+
+	// Verify original runtime Intel is unchanged (aliasing detection)
+	runtimeHolding, err := s.intel.On(&intel.OnInput{Observer: obs, Subject: "s"})
+	s.Require().NoError(err)
+	s.Equal([]byte("original"), runtimeHolding.Payload, "runtime payload must be immune to snapshot byte mutations")
+
+	// Also test runtime mutation doesn't affect snapshot
 	_, err = s.intel.Report(&intel.ReportInput{
 		Observer: obs, Channel: "c", At: 2,
 		Reports: []intel.Report{{Subject: "s", Payload: []byte("modified")}},
 	})
 	s.Require().NoError(err)
 
-	// Load snapshot: must have original payload
+	// Load snapshot: must have original payload (first byte still 'X' from our mutation, not 'm')
 	loaded, err := intel.LoadIntel(data)
 	s.Require().NoError(err)
-	h, err := loaded.On(&intel.OnInput{Observer: obs, Subject: "s"})
+	snapshotHolding, err := loaded.On(&intel.OnInput{Observer: obs, Subject: "s"})
 	s.Require().NoError(err)
-	s.Equal([]byte("original"), h.Payload, "snapshot payload must be unchanged")
+	expected := []byte("Xriginal")
+	s.Equal(expected, snapshotHolding.Payload, "snapshot must retain mutations (immune to runtime changes)")
 }
 
 // TestLoadSnapshotMutationImmunity tests that mutating the caller's Data
@@ -1275,6 +1370,38 @@ func (s *PersistenceSuite) TestNilPayloadLegal() {
 	h, err := loaded.On(&intel.OnInput{Observer: alice, Subject: target})
 	s.Require().NoError(err)
 	s.Nil(h.Payload, "nil payload should load as nil")
+}
+
+// TestNilPayloadRoundTrip tests that nil payload is preserved through ToData→LoadIntel→ToData.
+func (s *PersistenceSuite) TestNilPayloadRoundTrip() {
+	const (
+		alice  = core.EntityID("alice")
+		target = intel.Subject("target")
+	)
+	data := intel.Data{
+		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			alice: {
+				target: {
+					Payload: nil, // Nil payload
+					Channel: "sight",
+					At:      1,
+				},
+			},
+		},
+	}
+	loaded, err := intel.LoadIntel(data)
+	s.Require().NoError(err)
+
+	// Round-trip: LoadIntel → ToData → LoadIntel → ToData
+	data2 := loaded.ToData()
+	loaded2, err := intel.LoadIntel(data2)
+	s.Require().NoError(err)
+
+	data3 := loaded2.ToData()
+
+	// Verify both Data instances have nil payload
+	s.Nil(data2.Holdings[alice][target].Payload)
+	s.Nil(data3.Holdings[alice][target].Payload)
 }
 
 func TestPersistenceSuite(t *testing.T) {

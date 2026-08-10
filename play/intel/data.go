@@ -46,9 +46,12 @@ func (i *Intel) ToData() Data {
 	for obs, subjects := range i.holdings {
 		subjectMap := make(map[Subject]HoldingData)
 		for subj, h := range subjects {
-			// Deep-copy payload
-			payloadCopy := make([]byte, len(h.payload))
-			copy(payloadCopy, h.payload)
+			// Deep-copy payload (only when not nil)
+			var payloadCopy []byte
+			if h.payload != nil {
+				payloadCopy = make([]byte, len(h.payload))
+				copy(payloadCopy, h.payload)
+			}
 
 			// Copy CurrentVia slice
 			var currentViaCopy []Channel
@@ -86,8 +89,11 @@ func (i *Intel) ToData() Data {
 
 // LoadIntel reconstructs an Intel from persistent data.
 // Returns (*Intel, error). On error, returns nil Intel and error wrapping ErrInvalidData.
-// Validates in deterministic order: observer keys, subject keys, channels, CurrentVia.
-// All validation before any mutation (R5). Payload nil is legal (see HoldingData doc).
+// Validates all holdings: per-holding checks are in deterministic order (observer validation, nil/empty map checks,
+// subject key validation, channel validation, CurrentVia validation including empty-channel and duplicate detection).
+// On any defect, the load rejects with ErrInvalidData and no partial state is constructed (R5).
+// Rejections are indistinguishable by design (all wrapped as ErrInvalidData, no additional context).
+// All validation completes before any construction. Payload nil is legal (see HoldingData doc).
 // Deep-copies all data: mutating the caller's Data after LoadIntel will not
 // affect the loaded Intel (R4).
 func LoadIntel(data Data) (*Intel, error) {
