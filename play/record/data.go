@@ -94,6 +94,11 @@ func LoadLog(data LogData) (*Log, error) {
 
 	// Non-empty: validate contiguity, NextSeq, and per-entry constraints
 
+	// Reject NextSeq 0 on non-empty path (fresh encodes as 0; 0 with entries is unreachable)
+	if data.NextSeq == 0 {
+		return nil, fmt.Errorf("load log: next seq 0 with entries: %w", ErrInvalidData)
+	}
+
 	// Check contiguity: first seq >= 1, each seq == prev + 1
 	for i, ed := range data.Entries {
 		if ed.Seq == 0 {
@@ -125,12 +130,14 @@ func LoadLog(data LogData) (*Log, error) {
 	for i, ed := range data.Entries {
 		// Validate audience (no empty IDs, no duplicates)
 		if err := validateAudience(ed.Audience); err != nil {
-			return nil, fmt.Errorf("load log: entry[%d] audience: invalid data: %w", i, ErrInvalidData)
+			// Include validation detail in message without double-wrapping
+			return nil, fmt.Errorf("load log: entry[%d] %v: %w", i, err, ErrInvalidData)
 		}
 
 		// Validate tags (no empty keys)
 		if err := validateTags(ed.Tags); err != nil {
-			return nil, fmt.Errorf("load log: entry[%d] tags: invalid data: %w", i, ErrInvalidData)
+			// Include validation detail in message without double-wrapping
+			return nil, fmt.Errorf("load log: entry[%d] %v: %w", i, err, ErrInvalidData)
 		}
 
 		// Validate payload (not nil)

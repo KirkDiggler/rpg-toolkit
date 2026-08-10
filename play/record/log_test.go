@@ -485,6 +485,41 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 	s.Equal([]core.EntityID{alice}, all[0].Audience)
 	s.Equal(map[string]string{kind: kindX}, all[0].Tags)
 	s.Equal([]byte("p"), all[0].Payload)
+
+	// Pin empty-payload round-trip (legal: presence with no content)
+	emptyPayloadLog, err := record.NewLog()
+	s.Require().NoError(err)
+	_, err = emptyPayloadLog.Append(&record.AppendInput{Payload: []byte("")})
+	s.Require().NoError(err)
+
+	emptyPayloadData := emptyPayloadLog.ToData()
+	emptyPayloadJSON, err := json.Marshal(emptyPayloadData)
+	s.Require().NoError(err)
+
+	// Unmarshal and LoadLog
+	var emptyPayloadLoaded record.LogData
+	err = json.Unmarshal(emptyPayloadJSON, &emptyPayloadLoaded)
+	s.Require().NoError(err)
+	emptyPayloadReloaded, err := record.LoadLog(emptyPayloadLoaded)
+	s.Require().NoError(err)
+
+	// Verify payload is empty but non-nil
+	allEmpty, err := emptyPayloadReloaded.All(&record.AllInput{FromSeq: 1})
+	s.Require().NoError(err)
+	s.Len(allEmpty, 1)
+	s.NotNil(allEmpty[0].Payload, "empty payload must be non-nil")
+	s.Equal([]byte(""), allEmpty[0].Payload, "empty payload must be empty bytes")
+
+	// Pin empty non-nil Entries slice (trimmed-empty NextSeq >= 2 accepted)
+	trimmedData := record.LogData{
+		NextSeq: 42,
+		Entries: []record.EntryData{}, // explicitly empty non-nil slice
+	}
+	trimmedReloaded, err := record.LoadLog(trimmedData)
+	s.Require().NoError(err)
+	nextTrimmed, err := trimmedReloaded.NextSeq()
+	s.Require().NoError(err)
+	s.Equal(uint64(42), nextTrimmed, "trimmed-empty with explicit empty slice must accept NextSeq >= 2")
 }
 
 func (s *RecordSuite) TestLoadLogRejectsInvalid() {
@@ -594,20 +629,42 @@ func (s *RecordSuite) TestLoadLogRejectsInvalid() {
 				},
 			},
 		},
+		{
+			name: "next seq 0 with entries (wraparound catch)",
+			data: record.LogData{
+				NextSeq: 0, // Would wrap arithmetic if not checked early
+				Entries: []record.EntryData{
+					{Seq: 1, Payload: []byte("p")},
+				},
+			},
+		},
+		{
+			name: "next seq 0 with max uint64 seq",
+			data: record.LogData{
+				NextSeq: 0, // Wraparound: math.MaxUint64+1 == 0
+				Entries: []record.EntryData{
+					{Seq: 1, Payload: []byte("p")}, // Just Seq 1; NextSeq 0 is the issue
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			_, err := record.LoadLog(tc.data)
+			result, err := record.LoadLog(tc.data)
+			s.Nil(result, "LoadLog must return nil *Log on ErrInvalidData")
 			s.ErrorIs(err, record.ErrInvalidData, "must return ErrInvalidData for %s", tc.name)
 		})
 	}
 }
 
 func (s *RecordSuite) TestSnapshotImmunity() {
-	const alice = "alice"
+	const (
+		alice   = "alice"
+		mutated = "mutated"
+	)
 
-	// ToData then Append → snapshot unchanged
+	// Part 1: ToData then Append → snapshot unchanged
 	s.appendBeat([]core.EntityID{alice}, map[string]string{"k": "v"}, "b1")
 	data1 := s.log.ToData()
 
@@ -620,32 +677,75 @@ func (s *RecordSuite) TestSnapshotImmunity() {
 	s.Len(data1.Entries, 1)
 	s.Equal(uint64(2), data1.NextSeq)
 
-	// Load-side aliasing: mutate the caller's LogData after LoadLog → log unchanged
+	// Part 2: ToData side nested mutation immunity — mutate returned data in-place,
+	// then re-query the SOURCE log and verify it's unchanged
 	log2, err := record.NewLog()
 	s.Require().NoError(err)
 	_, err = log2.Append(&record.AppendInput{
 		At:       42,
 		Audience: []core.EntityID{alice},
 		Tags:     map[string]string{"k": "v"},
+		Payload:  []byte("payload"),
+	})
+	s.Require().NoError(err)
+
+	data := log2.ToData()
+	// In-place mutations on returned data
+	if len(data.Entries) > 0 {
+		if len(data.Entries[0].Audience) > 0 {
+			data.Entries[0].Audience[0] = mutated
+		}
+		if data.Entries[0].Tags != nil {
+			data.Entries[0].Tags["k"] = mutated
+		}
+		if len(data.Entries[0].Payload) > 0 {
+			data.Entries[0].Payload[0] = 'X'
+		}
+	}
+
+	// Re-query SOURCE log and verify unchanged
+	all, err := log2.All(&record.AllInput{FromSeq: 1})
+	s.Require().NoError(err)
+	s.Len(all, 1)
+	s.Equal([]core.EntityID{alice}, all[0].Audience,
+		"source log must have original audience after ToData mutation")
+	s.Equal(map[string]string{"k": "v"}, all[0].Tags,
+		"source log must have original tags after ToData mutation")
+	s.Equal([]byte("payload"), all[0].Payload,
+		"source log must have original payload after ToData mutation")
+
+	// Part 3: LoadLog side aliasing immunity — mutate caller's LogData after
+	// LoadLog, then re-query the loaded log and verify it's unchanged
+	log3, err := record.NewLog()
+	s.Require().NoError(err)
+	_, err = log3.Append(&record.AppendInput{
+		At:       42,
+		Audience: []core.EntityID{alice},
+		Tags:     map[string]string{"k": "v"},
 		Payload:  []byte("p"),
 	})
 	s.Require().NoError(err)
-	data3 := log2.ToData()
+	data3 := log3.ToData()
 
 	// LoadLog first (this makes a deep copy)
 	loaded, err := record.LoadLog(data3)
 	s.Require().NoError(err)
 
-	// NOW mutate the caller's data3
-	data3.NextSeq = 99
+	// NOW mutate the caller's data3 in-place
 	if len(data3.Entries) > 0 {
-		data3.Entries[0].Audience = append(data3.Entries[0].Audience, "mutated")
-		data3.Entries[0].Tags["mutated"] = "yes"
-		data3.Entries[0].Payload = []byte("mutated")
+		if len(data3.Entries[0].Audience) > 0 {
+			data3.Entries[0].Audience[0] = mutated
+		}
+		if data3.Entries[0].Tags != nil {
+			data3.Entries[0].Tags["k"] = mutated
+		}
+		if len(data3.Entries[0].Payload) > 0 {
+			data3.Entries[0].Payload[0] = 'X'
+		}
 	}
 
 	// Re-query loaded and verify unchanged (deep-copy immunity)
-	all, err := loaded.All(&record.AllInput{FromSeq: 1})
+	all, err = loaded.All(&record.AllInput{FromSeq: 1})
 	s.Require().NoError(err)
 	s.Len(all, 1)
 	s.Equal(uint64(1), all[0].Seq)
