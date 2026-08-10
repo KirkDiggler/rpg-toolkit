@@ -89,11 +89,14 @@ func (i *Intel) ToData() Data {
 
 // LoadIntel reconstructs an Intel from persistent data.
 // Returns (*Intel, error). On error, returns nil Intel and error wrapping ErrInvalidData.
-// Validates all holdings: per-holding checks are in deterministic order (observer validation, nil/empty map checks,
-// subject key validation, channel validation, CurrentVia validation including empty-channel and duplicate detection).
-// On any defect, the load rejects with ErrInvalidData and no partial state is constructed (R5).
-// Rejections are indistinguishable by design (all wrapped as ErrInvalidData, no additional context).
-// All validation completes before any construction. Payload nil is legal (see HoldingData doc).
+// Validates every holding: within a single holding the checks run in a fixed
+// order (observer key, nil/empty inner map, subject key, channel, CurrentVia
+// including empty-channel and duplicate detection), but observers and subjects
+// are visited in Go map order — which defect of a multi-defect Data is hit
+// first is NOT deterministic. That is unobservable by design: every rejection
+// is the same wrapped ErrInvalidData with no defect detail, and no partial
+// state is constructed (R5). All validation completes before any construction.
+// Payload nil is legal (see HoldingData doc).
 // Deep-copies all data: mutating the caller's Data after LoadIntel will not
 // affect the loaded Intel (R4).
 func LoadIntel(data Data) (*Intel, error) {

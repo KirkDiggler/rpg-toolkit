@@ -226,20 +226,20 @@ type ReportOutput struct {
 // → channel → subjects. All validation before any mutation (R5).
 func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 	if in == nil {
-		return nil, fmt.Errorf("%w", ErrNilInput)
+		return nil, fmt.Errorf("report: %w", ErrNilInput)
 	}
 
 	if in.Observer == "" {
-		return nil, fmt.Errorf("%w", ErrNoObserver)
+		return nil, fmt.Errorf("report: %w", ErrNoObserver)
 	}
 
 	if in.Channel == "" {
-		return nil, fmt.Errorf("%w", ErrNoChannel)
+		return nil, fmt.Errorf("report: %w", ErrNoChannel)
 	}
 
 	for _, report := range in.Reports {
 		if report.Subject == "" {
-			return nil, fmt.Errorf("%w", ErrNoSubject)
+			return nil, fmt.Errorf("report: %w", ErrNoSubject)
 		}
 	}
 
@@ -301,11 +301,11 @@ type HeldByInput struct {
 // returns empty slice, nil error.
 func (i *Intel) HeldBy(in *HeldByInput) ([]Holding, error) {
 	if in == nil {
-		return nil, fmt.Errorf("%w", ErrNilInput)
+		return nil, fmt.Errorf("held by: %w", ErrNilInput)
 	}
 
 	if in.Observer == "" {
-		return nil, fmt.Errorf("%w", ErrNoObserver)
+		return nil, fmt.Errorf("held by: %w", ErrNoObserver)
 	}
 
 	observerHoldings, exists := i.holdings[in.Observer]
@@ -343,25 +343,25 @@ type OnInput struct {
 // Returns ErrNotHeld if not held. Payload is deep-copied.
 func (i *Intel) On(in *OnInput) (Holding, error) {
 	if in == nil {
-		return Holding{}, fmt.Errorf("%w", ErrNilInput)
+		return Holding{}, fmt.Errorf("on: %w", ErrNilInput)
 	}
 
 	if in.Observer == "" {
-		return Holding{}, fmt.Errorf("%w", ErrNoObserver)
+		return Holding{}, fmt.Errorf("on: %w", ErrNoObserver)
 	}
 
 	if in.Subject == "" {
-		return Holding{}, fmt.Errorf("%w", ErrNoSubject)
+		return Holding{}, fmt.Errorf("on: %w", ErrNoSubject)
 	}
 
 	observerHoldings, exists := i.holdings[in.Observer]
 	if !exists {
-		return Holding{}, fmt.Errorf("%w", ErrNotHeld)
+		return Holding{}, fmt.Errorf("on: %w", ErrNotHeld)
 	}
 
 	h, exists := observerHoldings[in.Subject]
 	if !exists {
-		return Holding{}, fmt.Errorf("%w", ErrNotHeld)
+		return Holding{}, fmt.Errorf("on: %w", ErrNotHeld)
 	}
 
 	return h.toHolding(in.Subject), nil
@@ -380,10 +380,9 @@ func dedupeReports(reports []Report) []Report {
 	var result []Report
 	for i, report := range reports {
 		if lastOccurrence[report.Subject] == i {
-			// Make a copy of the payload
-			payloadCopy := make([]byte, len(report.Payload))
-			copy(payloadCopy, report.Payload)
-			result = append(result, Report{Subject: report.Subject, Payload: payloadCopy})
+			// Payload passed through as-is: both callers copy independently
+			// into storage and outputs, so a dedupe-level copy is redundant.
+			result = append(result, Report{Subject: report.Subject, Payload: report.Payload})
 		}
 	}
 
