@@ -121,30 +121,37 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 		Updated:      []Subject{},
 	}
 
-	// Ensure observer map exists
+	// No testimony means no mutation (R9 unreachable state guard)
+	if len(deduped) == 0 {
+		return out, nil
+	}
+
+	// Ensure observer map exists (only after confirming work to do)
 	if _, exists := i.holdings[in.Observer]; !exists {
 		i.holdings[in.Observer] = make(map[Subject]*holding)
 	}
 
 	// Process each deduplicated report
 	for _, report := range deduped {
-		// Make a copy of the payload
-		payloadCopy := make([]byte, len(report.Payload))
-		copy(payloadCopy, report.Payload)
+		// Make two independent copies: one for storage, one for FirstContact (copy-out R4)
+		storageCopy := make([]byte, len(report.Payload))
+		copy(storageCopy, report.Payload)
 
 		if _, exists := i.holdings[in.Observer][report.Subject]; !exists {
-			// New subject: create holding and add to FirstContact
+			// New subject: create holding and add to FirstContact with independent copy
+			firstContactCopy := make([]byte, len(report.Payload))
+			copy(firstContactCopy, report.Payload)
 			i.holdings[in.Observer][report.Subject] = &holding{
-				payload:    payloadCopy,
+				payload:    storageCopy,
 				channel:    in.Channel,
 				at:         in.At,
 				currentVia: make(map[Channel]struct{}),
 			}
-			out.FirstContact = append(out.FirstContact, Report{Subject: report.Subject, Payload: payloadCopy})
+			out.FirstContact = append(out.FirstContact, Report{Subject: report.Subject, Payload: firstContactCopy})
 		} else {
 			// Known subject: overwrite payload, channel, at; leave currentVia untouched
 			h := i.holdings[in.Observer][report.Subject]
-			h.payload = payloadCopy
+			h.payload = storageCopy
 			h.channel = in.Channel
 			h.at = in.At
 			out.Updated = append(out.Updated, report.Subject)
@@ -183,10 +190,10 @@ func (i *Intel) HeldBy(in *HeldByInput) ([]Holding, error) {
 	}
 
 	// Sort by Subject (deterministic order)
-	for i := 0; i < len(results)-1; i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].Subject < results[i].Subject {
-				results[i], results[j] = results[j], results[i]
+	for idx := 0; idx < len(results)-1; idx++ {
+		for j := idx + 1; j < len(results); j++ {
+			if results[j].Subject < results[idx].Subject {
+				results[idx], results[j] = results[j], results[idx]
 			}
 		}
 	}

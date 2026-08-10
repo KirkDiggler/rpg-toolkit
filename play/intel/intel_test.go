@@ -12,11 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 )
 
-const (
-	testObserver = core.EntityID("alice")
-	testSubject  = intel.Subject("s")
-)
-
 type IntelSuite struct {
 	suite.Suite
 	intel *intel.Intel
@@ -56,6 +51,10 @@ func (s *IntelSuite) TestReportOverwritesLastWins() {
 }
 
 func (s *IntelSuite) overwriteTest(p1 string, at1 uint64, ch1 string, p2 string, at2 uint64, ch2 string) {
+	const (
+		testObserver = core.EntityID("alice")
+		testSubject  = intel.Subject("s")
+	)
 	_, err := s.intel.Report(&intel.ReportInput{
 		Observer: testObserver, Channel: intel.Channel(ch1), At: at1,
 		Reports: []intel.Report{{Subject: testSubject, Payload: []byte(p1)}},
@@ -99,6 +98,50 @@ func (s *IntelSuite) TestReportDedupeAndValidationOrder() {
 func (s *IntelSuite) TestReportAtBlindness() {
 	// Later testimony carrying a SMALLER At still wins
 	s.overwriteTest("v1", 9, "hearing", "v2", 3, "rumor")
+}
+
+func (s *IntelSuite) TestReportCopyOutPayload() {
+	// Pin: mutating returned FirstContact payload must not corrupt stored payload
+	out, err := s.intel.Report(&intel.ReportInput{
+		Observer: "alice", Channel: "hearing", At: 5,
+		Reports: []intel.Report{{Subject: "s", Payload: []byte("original")}},
+	})
+	s.Require().NoError(err)
+	s.Len(out.FirstContact, 1)
+
+	// Mutate the returned FirstContact payload
+	out.FirstContact[0].Payload[0] = 'X'
+
+	// Internal storage must be unchanged
+	h := s.holdingOn("alice", "s")
+	s.Equal([]byte("original"), h.Payload, "stored payload must be immune to mutation of FirstContact")
+}
+
+func (s *IntelSuite) TestReportEmptyReportsNoPhantomObserver() {
+	// Pin: empty/nil reports after dedupe must not create phantom observer state
+	const ghostObs = core.EntityID("ghost-obs")
+	out, err := s.intel.Report(&intel.ReportInput{
+		Observer: ghostObs, Channel: "c", Reports: nil,
+	})
+	s.Require().NoError(err)
+	s.Empty(out.FirstContact)
+	s.Empty(out.Updated)
+
+	// Verify no phantom state: HeldBy returns empty
+	held, err := s.intel.HeldBy(&intel.HeldByInput{Observer: ghostObs})
+	s.Require().NoError(err)
+	s.Empty(held, "empty reports must not create phantom observer")
+
+	// Verify subsequent normal flow doesn't linger: Report a real holding
+	out2, err := s.intel.Report(&intel.ReportInput{
+		Observer: ghostObs, Channel: "c",
+		Reports: []intel.Report{{Subject: "real", Payload: []byte("data")}},
+	})
+	s.Require().NoError(err)
+	s.Len(out2.FirstContact, 1)
+	held2, err := s.intel.HeldBy(&intel.HeldByInput{Observer: ghostObs})
+	s.Require().NoError(err)
+	s.Len(held2, 1, "only real report should be held")
 }
 
 func TestIntelSuite(t *testing.T) {
