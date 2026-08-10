@@ -131,6 +131,15 @@ type ViewInput struct {
 	Member MemberID
 }
 
+// StoryInput is used to query a member's story entries after a given sequence number.
+type StoryInput struct {
+	// Audience is the member requesting their story.
+	Audience MemberID
+
+	// AfterSeq is the sequence number after which to return entries.
+	AfterSeq uint64
+}
+
 // Member represents a member's public read-side data.
 type Member struct {
 	ID   MemberID

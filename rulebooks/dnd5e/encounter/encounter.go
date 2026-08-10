@@ -15,6 +15,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+// SightPayload is the composition-owned encoding of a sighted member's position —
+// the payload of every sight-channel intel report. Hosts decode it to render what
+// a player sees; intel itself never interprets it.
+type SightPayload struct {
+	Room string  `json:"room"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+
 // Encounter is the aggregate encounter composition: members, field, clock,
 // intel, and record. Construct via NewEncounter; zero value unusable.
 type Encounter struct {
@@ -121,7 +130,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 				Position: pos,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("newencounter occluder placement: %w", fmt.Errorf("%w", err))
+				return nil, fmt.Errorf("newencounter occluder placement: %w: %w", ErrBadPlacement, err)
 			}
 		}
 
@@ -132,7 +141,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 				if br, ok := interface{}(boundaryRoom).(spatial.BoundaryAwareRoom); ok {
 					err = br.RegisterBoundary(b)
 					if err != nil {
-						return nil, fmt.Errorf("newencounter boundary: %w", fmt.Errorf("%w", err))
+						return nil, fmt.Errorf("newencounter boundary: %w: %w", ErrBadPlacement, err)
 					}
 				}
 			}
@@ -164,7 +173,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Position: mi.Position,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("newencounter member placement: %w", fmt.Errorf("%w", err))
+			return nil, fmt.Errorf("newencounter member placement: %w: %w", ErrBadPlacement, err)
 		}
 
 		member := &Member{
@@ -201,11 +210,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			}
 
 			// Add to percept
-			pos := struct {
-				Room string  `json:"room"`
-				X    float64 `json:"x"`
-				Y    float64 `json:"y"`
-			}{
+			pos := SightPayload{
 				Room: other.Room,
 				X:    other.Position.X,
 				Y:    other.Position.Y,
@@ -282,14 +287,46 @@ func (e *Encounter) Members() ([]Member, error) {
 }
 
 // Status returns the encounter's current state (Open or Closed with Outcome).
+// Returns a deep copy of the outcome to prevent aliasing.
 func (e *Encounter) Status() (*Status, error) {
 	if e.outcome != nil {
+		// Deep-copy outcome and its Members slice
+		members := make([]MemberOutcome, len(e.outcome.Members))
+		copy(members, e.outcome.Members)
 		return &Status{
-			Open:    false,
-			Outcome: e.outcome,
+			Open: false,
+			Outcome: &Outcome{
+				Ending:  e.outcome.Ending,
+				At:      e.outcome.At,
+				Members: members,
+			},
 		}, nil
 	}
 	return &Status{Open: true}, nil
+}
+
+// Story returns the story entries for a member after the given sequence number.
+// Returns ErrNilInput if the input is nil, ErrNoMember if the member is not in
+// the encounter. Copy-out follows record's own conventions (returned entries are
+// already copies per record's implementation).
+func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
+	if in == nil {
+		return nil, fmt.Errorf("story: %w", ErrNilInput)
+	}
+
+	if _, ok := e.members[in.Audience]; !ok {
+		return nil, fmt.Errorf("story: %w", ErrNoMember)
+	}
+
+	entries, err := e.story.SliceFor(&record.SliceForInput{
+		Viewer:  in.Audience,
+		FromSeq: in.AfterSeq,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
+
+	return entries, nil
 }
 
 // Helper to find a member in the slice by ID
