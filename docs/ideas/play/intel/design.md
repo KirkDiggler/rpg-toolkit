@@ -40,7 +40,10 @@ restated here as binding:
   The loader carries the type name because packages may host multiple
   persistable types (clock does: LoadTurn/LoadTick); a literal LoadData
   cannot disambiguate, so Load<T> is the one scheme uniform across the
-  family).
+  family. The scheme serves a spirit older than its letter — the host
+  keeps rich runtime models and can always obtain a savable copy that
+  loads back to exactly here; the letter has evolved before and may
+  again).
 - **R4** — Deltas are returned in the verb's Output, never published,
   never delivered.
 - **R5** — Verbs are atomic: on a non-nil error, no state changed.

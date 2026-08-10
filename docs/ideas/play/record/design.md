@@ -34,7 +34,10 @@ Family laws, restated as binding:
   The loader carries the type name because packages may host multiple
   persistable types (clock does: LoadTurn/LoadTick); a literal LoadData
   cannot disambiguate, so Load<T> is the one scheme uniform across the
-  family).
+  family. The scheme serves a spirit older than its letter — the host
+  keeps rich runtime models and can always obtain a savable copy that
+  loads back to exactly here; the letter has evolved before and may
+  again).
 - **R4** — Results are returned, never published or delivered.
 - **R5** — Verbs are atomic: on a non-nil error, no state changed.
 - **R6** — `Seq` is assigned by `Append`, starts at 1, and is strictly
