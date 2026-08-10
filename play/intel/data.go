@@ -10,9 +10,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// IntelData is the persistent representation of Intel state.
+// Data is the persistent representation of Intel state.
 // Holdings maps observer ID → (subject → holding data).
-type IntelData struct {
+type Data struct {
 	Holdings map[core.EntityID]map[Subject]HoldingData `json:"holdings,omitempty"`
 }
 
@@ -29,17 +29,17 @@ type HoldingData struct {
 }
 
 // ToData returns a persistent snapshot of this Intel.
-// Returns zero IntelData (nil Holdings map, not empty non-nil) if Intel is empty (R8 idle convention).
-// All payloads and slices are deep-copied; mutating the returned IntelData
+// Returns zero Data (nil Holdings map, not empty non-nil) if Intel is empty (R8 idle convention).
+// All payloads and slices are deep-copied; mutating the returned Data
 // will not affect this Intel.
-func (i *Intel) ToData() IntelData {
+func (i *Intel) ToData() Data {
 	if len(i.holdings) == 0 {
 		// Idle convention: return zero value with nil map, not empty map
-		return IntelData{}
+		return Data{}
 	}
 
 	// Copy holdings map
-	result := IntelData{
+	result := Data{
 		Holdings: make(map[core.EntityID]map[Subject]HoldingData),
 	}
 
@@ -88,9 +88,9 @@ func (i *Intel) ToData() IntelData {
 // Returns (*Intel, error). On error, returns nil Intel and error wrapping ErrInvalidData.
 // Validates in deterministic order: observer keys, subject keys, channels, CurrentVia.
 // All validation before any mutation (R5). Payload nil is legal (see HoldingData doc).
-// Deep-copies all data: mutating the caller's IntelData after LoadIntel will not
+// Deep-copies all data: mutating the caller's Data after LoadIntel will not
 // affect the loaded Intel (R4).
-func LoadIntel(data IntelData) (*Intel, error) {
+func LoadIntel(data Data) (*Intel, error) {
 	// R5: validate everything first, then mutate
 	if data.Holdings != nil {
 		// Validate all keys and fields

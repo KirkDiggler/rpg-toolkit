@@ -110,9 +110,10 @@ func (s *IntelSuite) TestReportAtBlindness() {
 }
 
 func (s *IntelSuite) TestReportCopyOutPayload() {
+	const alice = core.EntityID("alice")
 	// Pin: mutating returned FirstContact payload must not corrupt stored payload
 	out, err := s.intel.Report(&intel.ReportInput{
-		Observer: "alice", Channel: "hearing", At: 5,
+		Observer: alice, Channel: "hearing", At: 5,
 		Reports: []intel.Report{{Subject: "s", Payload: []byte("original")}},
 	})
 	s.Require().NoError(err)
@@ -122,7 +123,7 @@ func (s *IntelSuite) TestReportCopyOutPayload() {
 	out.FirstContact[0].Payload[0] = 'X'
 
 	// Internal storage must be unchanged
-	h := s.holdingOn("alice", "s")
+	h := s.holdingOn(alice, "s")
 	s.Equal([]byte("original"), h.Payload, "stored payload must be immune to mutation of FirstContact")
 }
 
@@ -624,7 +625,8 @@ func (s *QueriesSuite) TestOnEmptyObserverReturnsErrNoObserver() {
 
 // TestOnEmptySubjectReturnsErrNoSubject verifies field validation order.
 func (s *QueriesSuite) TestOnEmptySubjectReturnsErrNoSubject() {
-	holding, err := s.intel.On(&intel.OnInput{Observer: "alice", Subject: ""})
+	const alice = core.EntityID("alice")
+	holding, err := s.intel.On(&intel.OnInput{Observer: alice, Subject: ""})
 	s.Require().ErrorIs(err, intel.ErrNoSubject)
 	s.Equal(intel.Holding{}, holding)
 }
@@ -841,25 +843,25 @@ func (s *PersistenceSuite) SetupTest() {
 }
 
 // TestIdleConventionZeroValue tests that NewIntel().ToData() returns a zero
-// IntelData with nil map (not empty non-nil).
+// Data with nil map (not empty non-nil).
 func (s *PersistenceSuite) TestIdleConventionZeroValue() {
 	data := s.intel.ToData()
 	// Zero value: nil map, not empty non-nil
 	s.Nil(data.Holdings, "idle Intel should marshal to nil Holdings map")
 }
 
-// TestIdleConventionMarshalEmpty tests that zero IntelData marshals to "{}".
+// TestIdleConventionMarshalEmpty tests that zero Data marshals to "{}".
 func (s *PersistenceSuite) TestIdleConventionMarshalEmpty() {
 	data := s.intel.ToData()
 	b, err := json.Marshal(data)
 	s.Require().NoError(err)
-	s.Equal([]byte("{}"), b, "idle IntelData must marshal to empty object")
+	s.Equal([]byte("{}"), b, "idle Data must marshal to empty object")
 }
 
-// TestIdleConventionLoadEmpty tests that LoadIntel(IntelData{}) succeeds
+// TestIdleConventionLoadEmpty tests that LoadIntel(Data{}) succeeds
 // and the Intel is usable (verbs work).
 func (s *PersistenceSuite) TestIdleConventionLoadEmpty() {
-	loaded, err := intel.LoadIntel(intel.IntelData{})
+	loaded, err := intel.LoadIntel(intel.Data{})
 	s.Require().NoError(err)
 	// Verify it's usable: HeldBy on empty Intel succeeds
 	holdings, err := loaded.HeldBy(&intel.HeldByInput{Observer: "test"})
@@ -1105,7 +1107,7 @@ func (s *PersistenceSuite) TestSnapshotImmutability() {
 	s.Equal([]byte("original"), h.Payload, "snapshot payload must be unchanged")
 }
 
-// TestLoadSnapshotMutationImmunity tests that mutating the caller's IntelData
+// TestLoadSnapshotMutationImmunity tests that mutating the caller's Data
 // maps after LoadIntel doesn't affect the loaded Intel.
 func (s *PersistenceSuite) TestLoadSnapshotMutationImmunity() {
 	const obs = core.EntityID("frank")
@@ -1137,7 +1139,7 @@ func (s *PersistenceSuite) TestLoadSnapshotMutationImmunity() {
 
 // TestR9EmptyObserverKey tests that empty observer key is rejected.
 func (s *PersistenceSuite) TestR9EmptyObserverKey() {
-	data := intel.IntelData{
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
 			"": {}, // Empty observer key
 		},
@@ -1148,9 +1150,10 @@ func (s *PersistenceSuite) TestR9EmptyObserverKey() {
 
 // TestR9EmptySubjectKey tests that empty subject key is rejected.
 func (s *PersistenceSuite) TestR9EmptySubjectKey() {
-	data := intel.IntelData{
+	const alice = core.EntityID("alice")
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": {"": {}}, // Empty subject key
+			alice: {"": {}}, // Empty subject key
 		},
 	}
 	_, err := intel.LoadIntel(data)
@@ -1159,14 +1162,19 @@ func (s *PersistenceSuite) TestR9EmptySubjectKey() {
 
 // TestR9DuplicateCurrentVia tests that duplicate channels in CurrentVia are rejected.
 func (s *PersistenceSuite) TestR9DuplicateCurrentVia() {
-	data := intel.IntelData{
+	const (
+		alice  = core.EntityID("alice")
+		target = intel.Subject("target")
+		sight  = intel.Channel("sight")
+	)
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": {
-				"target": {
+			alice: {
+				target: {
 					Payload:    []byte("data"),
-					Channel:    "sight",
+					Channel:    sight,
 					At:         1,
-					CurrentVia: []intel.Channel{"sight", "sight"}, // Duplicate
+					CurrentVia: []intel.Channel{sight, sight}, // Duplicate
 				},
 			},
 		},
@@ -1177,10 +1185,14 @@ func (s *PersistenceSuite) TestR9DuplicateCurrentVia() {
 
 // TestR9EmptyHoldingChannel tests that empty holding Channel is rejected.
 func (s *PersistenceSuite) TestR9EmptyHoldingChannel() {
-	data := intel.IntelData{
+	const (
+		alice  = core.EntityID("alice")
+		target = intel.Subject("target")
+	)
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": {
-				"target": {
+			alice: {
+				target: {
 					Payload: []byte("data"),
 					Channel: "", // Empty channel
 					At:      1,
@@ -1194,12 +1206,17 @@ func (s *PersistenceSuite) TestR9EmptyHoldingChannel() {
 
 // TestR9EmptyChannelInCurrentVia tests that empty channel in CurrentVia is rejected.
 func (s *PersistenceSuite) TestR9EmptyChannelInCurrentVia() {
-	data := intel.IntelData{
+	const (
+		alice  = core.EntityID("alice")
+		target = intel.Subject("target")
+		sight  = intel.Channel("sight")
+	)
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": {
-				"target": {
+			alice: {
+				target: {
 					Payload:    []byte("data"),
-					Channel:    "sight",
+					Channel:    sight,
 					At:         1,
 					CurrentVia: []intel.Channel{""}, // Empty channel
 				},
@@ -1212,9 +1229,10 @@ func (s *PersistenceSuite) TestR9EmptyChannelInCurrentVia() {
 
 // TestR9NilInnerMap tests that nil inner map is rejected.
 func (s *PersistenceSuite) TestR9NilInnerMap() {
-	data := intel.IntelData{
+	const alice = core.EntityID("alice")
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": nil, // Nil inner map
+			alice: nil, // Nil inner map
 		},
 	}
 	_, err := intel.LoadIntel(data)
@@ -1223,9 +1241,10 @@ func (s *PersistenceSuite) TestR9NilInnerMap() {
 
 // TestR9EmptyInnerMap tests that empty (non-nil) inner map is rejected.
 func (s *PersistenceSuite) TestR9EmptyInnerMap() {
-	data := intel.IntelData{
+	const alice = core.EntityID("alice")
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": {}, // Empty non-nil map
+			alice: {}, // Empty non-nil map
 		},
 	}
 	_, err := intel.LoadIntel(data)
@@ -1234,10 +1253,14 @@ func (s *PersistenceSuite) TestR9EmptyInnerMap() {
 
 // TestNilPayloadLegal tests that nil payload in HoldingData is legal.
 func (s *PersistenceSuite) TestNilPayloadLegal() {
-	data := intel.IntelData{
+	const (
+		alice  = core.EntityID("alice")
+		target = intel.Subject("target")
+	)
+	data := intel.Data{
 		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			"alice": {
-				"target": {
+			alice: {
+				target: {
 					Payload: nil, // Nil payload is legal
 					Channel: "sight",
 					At:      1,
@@ -1249,7 +1272,7 @@ func (s *PersistenceSuite) TestNilPayloadLegal() {
 	s.Require().NoError(err, "nil payload must be legal")
 
 	// Verify it loads and is usable
-	h, err := loaded.On(&intel.OnInput{Observer: "alice", Subject: "target"})
+	h, err := loaded.On(&intel.OnInput{Observer: alice, Subject: target})
 	s.Require().NoError(err)
 	s.Nil(h.Payload, "nil payload should load as nil")
 }
