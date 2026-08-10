@@ -79,7 +79,9 @@ restated here as binding:
   construction).
 - `Report` — one piece of testimony: `{Subject Subject, Payload []byte}`.
   Payload is opaque; intel never interprets it. Empty payloads are legal
-  ("something is there"). Compositions control the dominant size term of
+  ("something is there"); nil and empty are the same legal empty payload,
+  and `LoadIntel` accepts payload-less holdings (unlike record, whose
+  `ErrNoPayload` makes them unreachable there). Compositions control the dominant size term of
   persisted intel through payload discipline — keep payloads small
   (refs, compact snapshots).
 - `Holding` — the read-side value: `{Subject, Payload, Channel, At,

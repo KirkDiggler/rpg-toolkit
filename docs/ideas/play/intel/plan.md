@@ -49,9 +49,19 @@ Family exemplar: shipped `play/clock` (and `play/record` if merged first). Licen
 package intel
 ```
 
-- [ ] **Step 3: `errors.go`** — six sentinels, verbatim (block comment: "Sentinel errors — the module's error vocabulary (design: Errors). All returned errors wrap exactly one of these; callers dispatch with errors.Is. Messages are user-facing."):
+- [ ] **Step 3: `errors.go`** — six sentinels, verbatim:
 
 ```go
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package intel
+
+import "errors"
+
+// Sentinel errors — the module's error vocabulary (design: Errors).
+// All returned errors wrap exactly one of these; callers dispatch with
+// errors.Is. Messages are user-facing.
 var (
 	// ErrNilInput reports a nil *XxxInput. Caller defect, dedicated sentinel.
 	ErrNilInput = errors.New("nil input")
@@ -69,7 +79,7 @@ var (
 )
 ```
 
-- [ ] **Step 4:** `errors_test.go` — `TestSentinelsAreDistinct` (all six, pairwise `errors.Is`-distinct). **Step 5:** tidy/test/lint clean; commit `feat(play/intel): module scaffold — sentinel vocabulary`.
+- [ ] **Step 4:** `errors_test.go` — black-box `package intel_test` (AC5) — `TestSentinelsAreDistinct` (all six, pairwise `errors.Is`-distinct). **Step 5:** tidy/test/lint clean; commit `feat(play/intel): module scaffold — sentinel vocabulary`.
 
 ---
 
@@ -200,7 +210,7 @@ func (s *IntelSuite) TestReportOverwriteKeepsCurrency() {
 }
 ```
 
-Plus: Surveil validation order + dedupe tests mirroring Report's; Faded sorted by Subject when multiple fade (three subjects, assert order); observer isolation (bob's surveil never touches alice's holdings).
+Plus: an At-blindness pin (design MUST NOT: later testimony carrying a SMALLER At still wins — overwrite happens, holding shows the smaller At as provenance; intel never orders by At); Surveil validation order + dedupe tests mirroring Report's; Faded sorted by Subject when multiple fade (three subjects, assert order); observer isolation (bob's surveil never touches alice's holdings).
 
 - [ ] **Step 2:** FAIL. **Step 3: implement** `Surveil` per design: validate → dedupe → fade pass FIRST from pre-mutation state (subjects sustained via this channel, absent from the deduped percept: remove channel; if set empties, collect for Faded; sort Faded) → land pass in percept order (unknown → create with `currentVia={channel}`, FirstContact with copied payloads; known → overwrite payload/channel/at + add channel to set, Refreshed). Lazy map creation only after validation (R5).
 - [ ] **Step 4:** green + gate. **Step 5:** commit `feat(play/intel): Surveil — complete-percept currency, the ghost goblin`.
@@ -225,7 +235,7 @@ Plus: Surveil validation order + dedupe tests mirroring Report's; Faded sorted b
   - Round-trips at: mixed Current/Held; multi-channel CurrentVia; post-fade; Report-only holdings. Behavior-identical (a Surveil after reload fades/refreshes exactly as pre-snapshot).
   - Golden JSON: one populated holding marshals exactly (`{"holdings":{"alice":{"behind-door-3":{"payload":"...", "channel":"hearing","at":5}}}}` — payload base64; `current_via` omitted when nil; map keys sorted by the marshaler).
   - Snapshot immunity + load-side aliasing (mutate caller's IntelData post-Load).
-  - R9 rejections (each `ErrInvalidData`): empty observer key; empty subject key; duplicate CurrentVia entries; empty channel in holding.Channel; empty channel inside CurrentVia; nil inner map; empty inner map; nil payload? — design says payloads may be empty; nil payload in HoldingData: normalize or reject? Design is silent → treat nil payload as the empty payload (normalize to nil-stored, legal) — note this in the implementation comment; do NOT invent a rejection the design doesn't list.
+  - R9 rejections (each `ErrInvalidData`): empty observer key; empty subject key; duplicate CurrentVia entries; empty channel in holding.Channel; empty channel inside CurrentVia; nil inner map; empty inner map; nil payload in HoldingData is LEGAL — design-forced, not a judgment call: (1) empty payloads are legal per Types; (2) verb validation checks only observer/channel/subject, so payload-less holdings are reachable, and R9 rejects unreachable states only; (3) `payload` is `omitempty`, so ToData round-trips every empty payload back as nil — rejecting it would make LoadIntel refuse the module's own snapshots (R8 violation). Cite this chain in the implementation comment. (Contrast: record rejects nil payloads because ITS design has ErrNoPayload, making them unreachable there.)
 - [ ] **Steps 2-4:** implement (`IntelData`/`HoldingData` per design tags; `ToData` normalizes empty containers → nil/zero-value idle; `LoadIntel` validates in a deterministic order then deep-copies; CurrentVia slice → internal set) → gate. **Step 5:** commit `feat(play/intel): persistence — R9 validation, wire pin`.
 
 ---
