@@ -10,11 +10,17 @@
 
 **Normative source:** `docs/ideas/play/record/design.md` — on any disagreement, STOP and reconcile the design (with Kirk sign-off), never code around it.
 
-**HARD GATE before Task 1:** the docs PR carrying this triplet
-(`docs/play-axis2-designs`, PR #906) MUST be merged to main first —
-implementation worktrees are cut from `origin/main`, and every design
-reference in this plan (including `doc.go`'s contract pointer and the
-PR body) resolves only after that merge.
+**Docs-PR flow (the ratification rule):** PR #906 stays OPEN as the
+living review surface through implementation — plans may change, and
+amendments land on its branch as the build discovers them (the clock
+precedent: its docs branch accumulated every mid-build amendment and
+merged as ratification alongside the module). During the build, the
+normative design and this plan live in the docs worktree at
+`/home/kirk/game-dev/.worktrees/toolkit-axis2/docs/ideas/play/` —
+dispatches point implementers there, never at origin/main. `doc.go`'s
+design-contract path is a forward reference that resolves at
+ratification; PR #906 merges just before or alongside this module's
+implementation PR.
 
 **Working setup** (plain worktree; module isolation rules apply — only files under `play/record/` plus the one `compat.yml` edit in Task 6):
 
