@@ -23,16 +23,16 @@ func (s *RecordSuite) SetupTest() {
 }
 
 func (s *RecordSuite) TestAppendAssignsGaplessSeqFromOne() {
-	//nolint:goconst
+	const alice = "alice"
 	out, err := s.log.Append(&record.AppendInput{
 		At: 7, Correlation: "act-1",
-		Audience: []core.EntityID{"alice", "bob"},
-		Tags:     map[string]string{"kind": "clock.turn_started", "actor": "alice"},
+		Audience: []core.EntityID{alice, "bob"},
+		Tags:     map[string]string{"kind": "clock.turn_started", "actor": alice},
 		Payload:  []byte(`{"x":1}`),
 	})
 	s.Require().NoError(err)
 	s.Equal(uint64(1), out.Seq)
-	out, err = s.log.Append(&record.AppendInput{Audience: []core.EntityID{"alice"}, Payload: []byte{}})
+	out, err = s.log.Append(&record.AppendInput{Audience: []core.EntityID{alice}, Payload: []byte{}})
 	s.Require().NoError(err)
 	s.Equal(uint64(2), out.Seq)
 	next, err := s.log.NextSeq()
@@ -63,7 +63,8 @@ func (s *RecordSuite) TestAppendValidationOrderAndSentinels() {
 }
 
 func (s *RecordSuite) TestAppendNormalizesAndCopies() {
-	aud := []core.EntityID{"alice"}
+	const alice = "alice"
+	aud := []core.EntityID{alice}
 	tags := map[string]string{"k": "v"}
 	_, err := s.log.Append(&record.AppendInput{Audience: aud, Tags: tags, Payload: []byte("p")})
 	s.Require().NoError(err)
@@ -71,7 +72,7 @@ func (s *RecordSuite) TestAppendNormalizesAndCopies() {
 	tags["k"] = "mutated"
 	all, err := s.log.All(&record.AllInput{FromSeq: 1})
 	s.Require().NoError(err)
-	s.Equal([]core.EntityID{"alice"}, all[0].Audience)
+	s.Equal([]core.EntityID{alice}, all[0].Audience)
 	s.Equal(map[string]string{"k": "v"}, all[0].Tags)
 	// empty-non-nil normalized to nil on store (family convention)
 	_, err = s.log.Append(&record.AppendInput{
