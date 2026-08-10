@@ -678,36 +678,36 @@ eventBus.SubscribeFunc(spatial.EventEntityTransitionBegan, 0, func(ctx context.C
 ```go
 func CreateDungeonExample() {
     // Setup
-    eventBus := events.NewBus()
+    eventBus := events.NewEventBus()
     orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-        ID:       "dungeon-orchestrator",
-        Type:     "orchestrator",
-        EventBus: eventBus,
-        Layout:   spatial.LayoutTypeBranching,
+        ID:     "dungeon-orchestrator",
+        Type:   "orchestrator",
+        Layout: spatial.LayoutTypeBranching,
     })
+    orchestrator.ConnectToEventBus(eventBus) // Optional observer publication.
     
     // Create rooms
     entrance := spatial.NewBasicRoom(spatial.BasicRoomConfig{
         ID:       "entrance",
         Type:     "chamber",
         Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 20, Height: 20}),
-        EventBus: eventBus,
     })
     
     corridor := spatial.NewBasicRoom(spatial.BasicRoomConfig{
         ID:       "corridor",
         Type:     "hallway",
         Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 30, Height: 10}),
-        EventBus: eventBus,
     })
     
     treasureRoom := spatial.NewBasicRoom(spatial.BasicRoomConfig{
         ID:       "treasure",
         Type:     "chamber",
         Grid:     spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 15, Height: 15}),
-        EventBus: eventBus,
     })
-    
+    entrance.ConnectToEventBus(eventBus) // Optional room-event publication.
+    corridor.ConnectToEventBus(eventBus)
+    treasureRoom.ConnectToEventBus(eventBus)
+
     // Add rooms to orchestrator
     orchestrator.AddRoom(entrance)
     orchestrator.AddRoom(corridor)
@@ -725,18 +725,33 @@ func CreateDungeonExample() {
     orchestrator.AddConnection(door1)
     orchestrator.AddConnection(door2)
     
-    // Place entities
+    // Place entities through the managed seam.
     hero := &Character{id: "hero", entityType: "character"}
     monster := &Character{id: "orc", entityType: "monster"}
-    
-    entrance.PlaceEntity(hero, spatial.Position{X: 5, Y: 5})
-    treasureRoom.PlaceEntity(monster, spatial.Position{X: 10, Y: 10})
-    
-    // Move hero through dungeon
-    orchestrator.MoveEntityBetweenRooms("hero", "entrance", "corridor", "entrance-to-corridor")
-    orchestrator.MoveEntityBetweenRooms("hero", "corridor", "treasure", "corridor-to-treasure")
-    
-    // Hero is now in treasure room with the monster
+    _, _ = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+        RoomID: "entrance", Entity: hero, Position: spatial.Position{X: 5, Y: 5},
+    })
+    _, _ = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+        RoomID: "treasure", Entity: monster, Position: spatial.Position{X: 10, Y: 10},
+    })
+
+    // Each abstract transition returns the entity for caller-chosen placement.
+    toCorridor, _ := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+        EntityID: "hero", FromRoom: "entrance", ToRoom: "corridor",
+        ConnectionID: "entrance-to-corridor",
+    })
+    _, _ = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+        RoomID: "corridor", Entity: toCorridor.Entity, Position: spatial.Position{X: 1, Y: 1},
+    })
+    toTreasure, _ := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+        EntityID: "hero", FromRoom: "corridor", ToRoom: "treasure",
+        ConnectionID: "corridor-to-treasure",
+    })
+    _, _ = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+        RoomID: "treasure", Entity: toTreasure.Entity, Position: spatial.Position{X: 1, Y: 1},
+    })
+
+    // Hero is physically placed and indexed in the treasure room.
     heroRoom, _ := orchestrator.GetEntityRoom("hero")
     fmt.Printf("Hero is in: %s\n", heroRoom) // "treasure"
 }
@@ -1548,10 +1563,8 @@ func createBranchingDungeon(orchestrator spatial.RoomOrchestrator, hubRoom spati
 ```go
 func TestOrchestratorBehavior(t *testing.T) {
     // Setup
-    eventBus := events.NewBus()
     orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-        ID:       "test-orchestrator",
-        EventBus: eventBus,
+        ID: "test-orchestrator",
     })
     
     // Create test scenario
@@ -1563,24 +1576,30 @@ func TestOrchestratorBehavior(t *testing.T) {
     door := spatial.CreateDoorConnection("door1", "room1", "room2", 1.0)
     orchestrator.AddConnection(door)
     
-    // Test entity movement
+    // Test managed placement and transition.
     entity := createTestEntity("hero")
-    room1.PlaceEntity(entity, spatial.Position{X: 5, Y: 5})
-    
-    // Verify initial state
+    _, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+        RoomID: "room1", Entity: entity, Position: spatial.Position{X: 5, Y: 5},
+    })
+    assert.NoError(t, err)
     roomID, exists := orchestrator.GetEntityRoom("hero")
     assert.True(t, exists)
     assert.Equal(t, "room1", roomID)
-    
-    // Test movement
-    err := orchestrator.MoveEntityBetweenRooms("hero", "room1", "room2", "door1")
+
+    transitioned, err := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+        EntityID: "hero", FromRoom: "room1", ToRoom: "room2", ConnectionID: "door1",
+    })
     assert.NoError(t, err)
-    
-    // Verify final state
+    _, exists = orchestrator.GetEntityRoom("hero")
+    assert.False(t, exists, "transition is unplaced until managed placement")
+    _, err = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+        RoomID: "room2", Entity: transitioned.Entity, Position: spatial.Position{X: 1, Y: 1},
+    })
+    assert.NoError(t, err)
     roomID, exists = orchestrator.GetEntityRoom("hero")
     assert.True(t, exists)
     assert.Equal(t, "room2", roomID)
-    
+
     // Test pathfinding
     path, err := orchestrator.FindPath("room1", "room2", entity)
     assert.NoError(t, err)

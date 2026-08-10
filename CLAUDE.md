@@ -295,32 +295,42 @@ func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
 The spatial module now includes multi-room orchestration capabilities:
 
 ```go
-// Create orchestrator
+// Create orchestrator. Event wiring is optional and observer-only.
 orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-    ID:       "dungeon-orchestrator",
-    Type:     "orchestrator",
-    EventBus: eventBus,
-    Layout:   spatial.LayoutTypeOrganic,
+    ID:     "dungeon-orchestrator",
+    Type:   "orchestrator",
+    Layout: spatial.LayoutTypeOrganic,
 })
+orchestrator.ConnectToEventBus(eventBus) // Optional observer publication.
+room1.ConnectToEventBus(eventBus)        // Optional room-event publication.
+room2.ConnectToEventBus(eventBus)
 
-// Add rooms
+// Add rooms, then mutate their membership through the managed seam.
 orchestrator.AddRoom(room1)
 orchestrator.AddRoom(room2)
+_, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+    RoomID: "room-1", Entity: hero, Position: spatial.Position{X: 9, Y: 5},
+})
 
-// Create connections
-door := spatial.CreateDoorConnection("door-1", "room-1", "room-2", 
-    spatial.Position{X: 9, Y: 5}, spatial.Position{X: 0, Y: 5})
+// Connections are abstract; the cost is spatial infrastructure.
+door := spatial.CreateDoorConnection("door-1", "room-1", "room-2", 1.0)
 orchestrator.AddConnection(door)
 
-// Move entities between rooms
-orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
+// Transition removes and returns the entity; the composition chooses its
+// destination position through a second managed placement.
+transitioned, err := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+    EntityID: "hero", FromRoom: "room-1", ToRoom: "room-2", ConnectionID: "door-1",
+})
+_, err = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+    RoomID: "room-2", Entity: transitioned.Entity, Position: spatial.Position{X: 0, Y: 5},
+})
 ```
 
 **Key Features**:
 - Connection types: doors, stairs, passages, portals, bridges, tunnels
 - Layout patterns: tower, branching, grid, organic
 - Entity tracking across rooms
-- Event-driven architecture
+- Observer-only event publication; spatial results return as values
 - Pathfinding between connected rooms
 
 ### Spawn Module Features (Completed)
