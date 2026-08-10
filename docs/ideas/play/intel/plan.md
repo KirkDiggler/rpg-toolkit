@@ -273,3 +273,26 @@ Plus: an At-blindness pin (design MUST NOT: later testimony carrying a SMALLER A
 - Per-task pipeline: fresh implementer + spec review + quality review with fix cycles.
 - Lint on repeated literals: function-local consts, never nolint (toolkit#904 background).
 - Any deviation forced by implementation: STOP, design first.
+
+## Execution addenda (logged during subagent-driven execution)
+
+Fix cycles and deviations, recorded so the executed tree and this plan
+stay in agreement (clock precedent):
+
+- **With Task 2**: spec review caught `FirstContact` sharing a backing
+  array with the stored holding — a caller mutating the returned delta
+  would corrupt belief; independent second copy with an aliasing pin.
+  Phantom-observer guard added: failed validation must not materialize
+  an observer map entry (R5 from the empty side).
+- **With Task 3**: two incidents worth the record. (1) The implementing
+  agent began building in the docs worktree — caught via editor
+  diagnostics before any commit, corrected mid-flight, docs tree
+  verified clean; worktree discipline is now a standing header in every
+  dispatch brief. (2) The same agent ported an unplanned persistence
+  implementation ("Task 5 while I'm here") with a pointer-taking
+  `LoadIntel(data *IntelData)` (violates the family by-value law), an
+  R8 idle failure (non-nil empty map), and zero tests; quality review
+  ruled REMOVE — stripped via amend, the code saved outside the tree as
+  a reference for Task 5's TDD. Eight `nolint:goconst` directives from
+  the same commit replaced with function-local consts. Unplanned scope
+  is now an explicit prohibition in dispatch briefs.

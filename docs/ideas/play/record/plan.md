@@ -276,3 +276,27 @@ Plus: `All(nil)` and `SliceFor(nil)` → `ErrNilInput`; empty viewer → `ErrNoV
 - Test style: `RecordSuite` for per-type tests; `story_test.go` plain functions (documented exception).
 - If lint fires on repeated string literals: function-local consts (file precedent), never nolint. Repo issue #904 background applies.
 - Any deviation forced by implementation: STOP, design first.
+
+## Execution addenda (logged during subagent-driven execution)
+
+Fix cycles and deviations, recorded so the executed tree and this plan
+stay in agreement (clock precedent):
+
+- **With Task 2**: repeated literals resolved via function-local consts
+  after an initial `nolint:goconst` reflex (the clock precedent holds:
+  nolint never); error wrapping normalized to verb-context prefixes
+  (`fmt.Errorf("append: %w", ...)`) with message pins.
+- **With Task 4**: spec review caught `matchTags` treating a missing key
+  as a match when the filter value was the empty string (`entryTags[k]
+  != v` compares against the zero value); comma-ok fix with negative
+  pins separating missing-key from empty-value.
+- **With Task 5**: quality review probe confirmed `LoadLog` accepted
+  `NextSeq: 0` alongside a `MaxUint64` entry — uint64 wraparound made
+  the `NextSeq == lastSeq+1` contiguity check pass. Fixed by rejecting
+  `NextSeq: 0` on the non-empty path (the fresh encoding is empty-only
+  by construction; R9 wording tightened in spirit, not letter). The same
+  review found immunity pins mutating via `append` — reallocation makes
+  the pin theatrical; replaced with in-place index writes on both the
+  `ToData` and `LoadLog` sides. Minors folded: nil-`*Log` method
+  assertions, empty-non-nil `Entries` pins, empty-payload wire
+  round-trip.
