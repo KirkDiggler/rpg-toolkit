@@ -34,7 +34,13 @@ restated here as binding:
   rule as revised 2026-08-09: every Input-taking function guards nil
   first and returns `ErrNilInput`. Persistence pair exempt per family
   convention (`ToData() IntelData`, package-level
-  `LoadIntel(data IntelData) (*Intel, error)`).
+  `LoadIntel(data IntelData) (*Intel, error)` — the family persistence
+  naming law: every persistable type T pairs the method `ToData() TData`
+  with the package-level constructor `Load<T>(data TData) (*T, error)`.
+  The loader carries the type name because packages may host multiple
+  persistable types (clock does: LoadTurn/LoadTick); a literal LoadData
+  cannot disambiguate, so Load<T> is the one scheme uniform across the
+  family).
 - **R4** — Deltas are returned in the verb's Output, never published,
   never delivered.
 - **R5** — Verbs are atomic: on a non-nil error, no state changed.
