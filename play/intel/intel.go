@@ -76,12 +76,139 @@ func NewIntel() (*Intel, error) {
 	}, nil
 }
 
+// SurveilInput carries a complete percept for this observer+channel.
+type SurveilInput struct {
+	Observer core.EntityID
+	Channel  Channel
+	Percept  []Report
+	At       uint64
+}
+
+// SurveilOutput reports the deltas Surveil caused.
+type SurveilOutput struct {
+	FirstContact []Report
+	Refreshed    []Subject
+	Faded        []Subject
+}
+
 // ReportInput is the input to the Report verb.
 type ReportInput struct {
 	Observer core.EntityID
 	Channel  Channel
 	Reports  []Report
 	At       uint64
+}
+
+// Surveil records a complete percept for an observer+channel. Fading is
+// derived: every subject previously current via this channel but absent from
+// Percept has that channel removed from CurrentVia. If CurrentVia becomes
+// empty, the subject fades (still held — the ghost goblin). An empty Percept
+// is legal (seeing nothing: fades everything this channel sustained). Errors:
+// ErrNilInput, ErrNoObserver, ErrNoChannel, ErrNoSubject — validation first,
+// all before any mutation (R5).
+func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("surveil: %w", ErrNilInput)
+	}
+
+	if in.Observer == "" {
+		return nil, fmt.Errorf("surveil: %w", ErrNoObserver)
+	}
+
+	if in.Channel == "" {
+		return nil, fmt.Errorf("surveil: %w", ErrNoChannel)
+	}
+
+	for _, report := range in.Percept {
+		if report.Subject == "" {
+			return nil, fmt.Errorf("surveil: %w", ErrNoSubject)
+		}
+	}
+
+	// Dedupe percept (same as Report): last entry wins, survivor at last position
+	deduped := dedupeReports(in.Percept)
+	dedupeSubjectSet := make(map[Subject]struct{}, len(deduped))
+	for _, r := range deduped {
+		dedupeSubjectSet[r.Subject] = struct{}{}
+	}
+
+	out := &SurveilOutput{}
+
+	// Phantom-observer guard: lazy observer-map creation only after validation
+	// and only if the deduped percept is non-empty OR observer already exists
+	if len(deduped) == 0 && i.holdings[in.Observer] == nil {
+		// Empty percept for unknown observer must not create state
+		return out, nil
+	}
+
+	// Ensure observer exists if we're about to do something
+	if i.holdings[in.Observer] == nil {
+		i.holdings[in.Observer] = make(map[Subject]*holding)
+	}
+
+	// FADE PASS: from pre-mutation state, remove channel from holdings
+	// whose currentVia contains this channel AND subject absent from deduped percept
+	var fadedSubjects []Subject
+	for subj, h := range i.holdings[in.Observer] {
+		// Check if this subject was sustained by this channel
+		if _, ok := h.currentVia[in.Channel]; ok {
+			// Check if it's absent from the deduped percept
+			if _, present := dedupeSubjectSet[subj]; !present {
+				// Remove the channel
+				delete(h.currentVia, in.Channel)
+				// If currentVia is now empty, collect for Faded
+				if len(h.currentVia) == 0 {
+					fadedSubjects = append(fadedSubjects, subj)
+				}
+			}
+		}
+	}
+
+	// Sort Faded by Subject for deterministic transcripts; only assign if non-empty
+	if len(fadedSubjects) > 0 {
+		for i := 0; i < len(fadedSubjects)-1; i++ {
+			for j := i + 1; j < len(fadedSubjects); j++ {
+				if fadedSubjects[j] < fadedSubjects[i] {
+					fadedSubjects[i], fadedSubjects[j] = fadedSubjects[j], fadedSubjects[i]
+				}
+			}
+		}
+		out.Faded = fadedSubjects
+	}
+
+	// LAND PASS: in post-dedupe percept order
+	for _, report := range deduped {
+		h, exists := i.holdings[in.Observer][report.Subject]
+		if !exists {
+			// Unknown subject: create holding with independent payload copy
+			payloadCopy := make([]byte, len(report.Payload))
+			copy(payloadCopy, report.Payload)
+			i.holdings[in.Observer][report.Subject] = &holding{
+				payload:    payloadCopy,
+				channel:    in.Channel,
+				at:         in.At,
+				currentVia: map[Channel]struct{}{in.Channel: {}},
+			}
+			// Return independent copy for FirstContact
+			fcPayload := make([]byte, len(report.Payload))
+			copy(fcPayload, report.Payload)
+			out.FirstContact = append(out.FirstContact, Report{
+				Subject: report.Subject,
+				Payload: fcPayload,
+			})
+		} else {
+			// Known: overwrite payload (copy), channel, at, and add channel to currentVia
+			payloadCopy := make([]byte, len(report.Payload))
+			copy(payloadCopy, report.Payload)
+			h.payload = payloadCopy
+			h.channel = in.Channel
+			h.at = in.At
+			h.currentVia[in.Channel] = struct{}{}
+			out.Refreshed = append(out.Refreshed, report.Subject)
+		}
+	}
+
+	return out, nil
 }
 
 // ReportOutput is the output of the Report verb.
@@ -244,17 +371,8 @@ func dedupeReports(reports []Report) []Report {
 		lastOccurrence[report.Subject] = i
 	}
 
-	// Build result with survivors in their last position order
-	seen := make(map[Subject]bool)
-	var result []Report
-	for i, report := range reports {
-		if lastOccurrence[report.Subject] == i && !seen[report.Subject] {
-			// This is the last occurrence of this subject
-			seen[report.Subject] = true
-		}
-	}
-
 	// Collect survivors in their last occurrence positions
+	var result []Report
 	for i, report := range reports {
 		if lastOccurrence[report.Subject] == i {
 			// Make a copy of the payload
