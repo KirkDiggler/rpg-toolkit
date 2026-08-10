@@ -80,10 +80,26 @@ type AppendOutput struct {
 	Seq uint64
 }
 
+// SliceForInput is the input to the SliceFor query.
+type SliceForInput struct {
+	// Viewer is the audience member whose story is requested. MUST be non-empty.
+	Viewer core.EntityID
+	// FromSeq is the inclusive lower bound of sequences to return.
+	FromSeq uint64
+	// Tags is an optional AND-exact-match filter. Nil/empty = no filter; keys
+	// must be non-empty. Every tag key must be present in the entry with exactly
+	// the given value; an entry with nil tags fails any non-empty filter.
+	Tags map[string]string
+}
+
 // AllInput is the input to the All query.
 type AllInput struct {
 	// FromSeq is the inclusive lower bound of sequences to return.
 	FromSeq uint64
+	// Tags is an optional AND-exact-match filter. Nil/empty = no filter; keys
+	// must be non-empty. Every tag key must be present in the entry with exactly
+	// the given value; an entry with nil tags fails any non-empty filter.
+	Tags map[string]string
 }
 
 // TrimBeforeInput is the input to the TrimBefore verb.
@@ -218,21 +234,84 @@ func (l *Log) TrimBefore(in *TrimBeforeInput) (*TrimBeforeOutput, error) {
 	return &TrimBeforeOutput{Removed: removed}, nil
 }
 
-// All returns every retained entry with Seq >= in.FromSeq, in Seq order.
-// Nil guard → ErrNilInput. Copy-out: returned entries MUST NOT alias
-// internal state (nil stays nil, non-nil is deep-copied).
+// All returns every retained entry with Seq >= in.FromSeq matching the optional
+// tag filter, in Seq order. This is the GM/debug/host view.
+// Nil guard → ErrNilInput; filter-key validation → ErrBadTag. Copy-out: returned
+// entries MUST NOT alias internal state (nil stays nil, non-nil is deep-copied).
 func (l *Log) All(in *AllInput) ([]Entry, error) {
 	if in == nil {
 		return nil, fmt.Errorf("all: %w", ErrNilInput)
 	}
 
+	// Validate filter keys (no empty keys)
+	if err := validateTags(in.Tags); err != nil {
+		return nil, fmt.Errorf("all: tag key: %w", err)
+	}
+
 	var result []Entry
 	for _, e := range l.entries {
-		if e.seq >= in.FromSeq {
+		if e.seq >= in.FromSeq && matchTags(e.tags, in.Tags) {
 			result = append(result, copyEntryOut(e))
 		}
 	}
 	return result, nil
+}
+
+// SliceFor returns entries with Seq >= in.FromSeq whose audience contains Viewer
+// AND which carry every given tag key with exactly the given value (AND semantics;
+// nil/empty Tags = no filter). This is the reconnect/replay call for a specific viewer.
+// Validation first-failure-wins: nil → ErrNilInput, empty viewer → ErrNoViewer,
+// filter keys non-empty → ErrBadTag. Copy-out: returned entries MUST NOT alias
+// internal state (nil stays nil, non-nil is deep-copied).
+func (l *Log) SliceFor(in *SliceForInput) ([]Entry, error) {
+	if in == nil {
+		return nil, fmt.Errorf("slice for: %w", ErrNilInput)
+	}
+
+	if in.Viewer == "" {
+		return nil, fmt.Errorf("slice for: %w", ErrNoViewer)
+	}
+
+	// Validate filter keys (no empty keys)
+	if err := validateTags(in.Tags); err != nil {
+		return nil, fmt.Errorf("slice for: tag key: %w", err)
+	}
+
+	var result []Entry
+	for _, e := range l.entries {
+		if e.seq >= in.FromSeq && containsViewer(e.audience, in.Viewer) && matchTags(e.tags, in.Tags) {
+			result = append(result, copyEntryOut(e))
+		}
+	}
+	return result, nil
+}
+
+// matchTags checks whether every tag key in the filter is present in entryTags
+// with exactly the given value. Empty filter → true (no filter means everything matches).
+// Note: an entry with nil tags fails any non-empty filter.
+func matchTags(entryTags, filter map[string]string) bool {
+	// No filter means everything matches
+	if len(filter) == 0 {
+		return true
+	}
+
+	// Every filter key must be present in entryTags with exactly the value
+	for k, v := range filter {
+		if entryTags[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// containsViewer checks whether the audience slice contains the given viewer.
+func containsViewer(audience []core.EntityID, viewer core.EntityID) bool {
+	for _, id := range audience {
+		if id == viewer {
+			return true
+		}
+	}
+	return false
 }
 
 // copyEntryOut converts an internal entry to an exported Entry with deep copies.

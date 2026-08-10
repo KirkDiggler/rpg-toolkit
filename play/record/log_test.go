@@ -11,6 +11,21 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const (
+	alice      = "alice"
+	bob        = "bob"
+	door3      = "door-3"
+	kind       = "kind"
+	subject    = "subject"
+	flag       = "flag"
+	mutated    = "mutated"
+	kindShared = "shared"
+	kindIntel  = "intel.first_contact"
+	kindGMNote = "gm.note"
+	kindClock  = "clock.turn_started"
+	actorKey   = "actor"
+)
+
 type RecordSuite struct {
 	suite.Suite
 	log *record.Log
@@ -23,11 +38,10 @@ func (s *RecordSuite) SetupTest() {
 }
 
 func (s *RecordSuite) TestAppendAssignsGaplessSeqFromOne() {
-	const alice = "alice"
 	out, err := s.log.Append(&record.AppendInput{
 		At: 7, Correlation: "act-1",
-		Audience: []core.EntityID{alice, "bob"},
-		Tags:     map[string]string{"kind": "clock.turn_started", "actor": alice},
+		Audience: []core.EntityID{alice, bob},
+		Tags:     map[string]string{kind: kindClock, actorKey: alice},
 		Payload:  []byte(`{"x":1}`),
 	})
 	s.Require().NoError(err)
@@ -67,7 +81,6 @@ func (s *RecordSuite) TestAppendValidationOrderAndSentinels() {
 }
 
 func (s *RecordSuite) TestAppendNormalizesAndCopies() {
-	const alice = "alice"
 	aud := []core.EntityID{alice}
 	tags := map[string]string{"k": "v"}
 	payload := []byte("p")
@@ -75,8 +88,8 @@ func (s *RecordSuite) TestAppendNormalizesAndCopies() {
 		At: 42, Correlation: "test-corr", Audience: aud, Tags: tags, Payload: payload,
 	})
 	s.Require().NoError(err)
-	aud[0] = "mutated"
-	tags["k"] = "mutated"
+	aud[0] = mutated
+	tags["k"] = mutated
 	payload[0] = 'X'
 	all, err := s.log.All(&record.AllInput{FromSeq: 1})
 	s.Require().NoError(err)
@@ -107,6 +120,17 @@ func (s *RecordSuite) appendN(n int) {
 		_, err := s.log.Append(&record.AppendInput{Payload: []byte("p")})
 		s.Require().NoError(err)
 	}
+}
+
+// appendBeat appends a beat with the given audience, tags, and payload.
+// Panics on error.
+func (s *RecordSuite) appendBeat(aud []core.EntityID, tags map[string]string, payload string) {
+	_, err := s.log.Append(&record.AppendInput{
+		Audience: aud,
+		Tags:     tags,
+		Payload:  []byte(payload),
+	})
+	s.Require().NoError(err)
 }
 
 // seqs maps entries to their Seq values.
@@ -164,6 +188,105 @@ func (s *RecordSuite) TestTrimBefore() {
 	out, err = freshLog.TrimBefore(&record.TrimBeforeInput{Seq: 1})
 	s.Require().NoError(err)
 	s.Equal(0, out.Removed)
+}
+
+func (s *RecordSuite) TestSliceForProjectsAudienceAndTags() {
+	s.appendBeat([]core.EntityID{alice, bob}, map[string]string{kind: kindShared}, "b1")
+	s.appendBeat([]core.EntityID{alice}, map[string]string{kind: kindIntel, subject: door3}, "b2")
+	s.appendBeat([]core.EntityID{bob}, map[string]string{kind: kindIntel, subject: door3}, "b3")
+	s.appendBeat(nil, map[string]string{kind: kindGMNote}, "b4") // empty audience: no viewer
+
+	aliceSlice, err := s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1})
+	s.Require().NoError(err)
+	s.Equal([]uint64{1, 2}, seqs(aliceSlice))
+
+	firsts, err := s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1,
+		Tags: map[string]string{kind: kindIntel}})
+	s.Require().NoError(err)
+	s.Equal([]uint64{2}, seqs(firsts))
+
+	door, err := s.log.All(&record.AllInput{FromSeq: 1, Tags: map[string]string{subject: door3}})
+	s.Require().NoError(err)
+	s.Equal([]uint64{2, 3}, seqs(door))
+
+	gm, err := s.log.All(&record.AllInput{FromSeq: 1, Tags: map[string]string{kind: kindGMNote}})
+	s.Require().NoError(err)
+	s.Equal([]uint64{4}, seqs(gm))
+	for _, v := range []core.EntityID{alice, bob} {
+		sl, serr := s.log.SliceFor(&record.SliceForInput{Viewer: v, FromSeq: 4})
+		s.Require().NoError(serr)
+		s.Empty(sl, "empty audience means no viewer")
+	}
+}
+
+func (s *RecordSuite) TestSliceForAndAllErrorHandling() {
+	// All(nil) → ErrNilInput
+	_, err := s.log.All(nil)
+	s.Require().ErrorIs(err, record.ErrNilInput)
+
+	// SliceFor(nil) → ErrNilInput
+	_, err = s.log.SliceFor(nil)
+	s.Require().ErrorIs(err, record.ErrNilInput)
+
+	// Empty viewer → ErrNoViewer
+	_, err = s.log.SliceFor(&record.SliceForInput{Viewer: "", FromSeq: 1})
+	s.Require().ErrorIs(err, record.ErrNoViewer)
+
+	// SliceFor with empty filter key → ErrBadTag
+	_, err = s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1,
+		Tags: map[string]string{"": "x"}})
+	s.Require().ErrorIs(err, record.ErrBadTag)
+
+	// Viewer-before-tags precedence: {Viewer: "", Tags: {"": "x"}} → ErrNoViewer
+	_, err = s.log.SliceFor(&record.SliceForInput{Viewer: "", FromSeq: 1,
+		Tags: map[string]string{"": "x"}})
+	s.Require().ErrorIs(err, record.ErrNoViewer)
+
+	// All with empty filter key → ErrBadTag
+	_, err = s.log.All(&record.AllInput{FromSeq: 1, Tags: map[string]string{"": "x"}})
+	s.Require().ErrorIs(err, record.ErrBadTag)
+
+	// R5: none of these mutate (NextSeq still 1)
+	next, err := s.log.NextSeq()
+	s.Require().NoError(err)
+	s.Equal(uint64(1), next)
+}
+
+func (s *RecordSuite) TestEmptyValueTagFilter() {
+	// Append one beat with empty value and one with non-empty
+	s.appendBeat([]core.EntityID{alice}, map[string]string{flag: ""}, "b1")
+	s.appendBeat([]core.EntityID{alice}, map[string]string{flag: "y"}, "b2")
+
+	// Filter {flag: ""} returns only the first
+	result, err := s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1,
+		Tags: map[string]string{flag: ""}})
+	s.Require().NoError(err)
+	s.Equal([]uint64{1}, seqs(result))
+}
+
+func (s *RecordSuite) TestCopyOutImmunity() {
+	// Append a beat
+	s.appendBeat([]core.EntityID{alice}, map[string]string{"k": "v"}, "payload")
+
+	// Query and mutate the result
+	results, err := s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1})
+	s.Require().NoError(err)
+	s.Len(results, 1)
+
+	// Mutate the result's Audience, Tags, and Payload
+	if results[0].Audience != nil {
+		results[0].Audience[0] = mutated
+	}
+	results[0].Tags["k"] = mutated
+	results[0].Payload[0] = 'X'
+
+	// Re-query and verify the original is unchanged
+	results2, err := s.log.SliceFor(&record.SliceForInput{Viewer: alice, FromSeq: 1})
+	s.Require().NoError(err)
+	s.Len(results2, 1)
+	s.Equal([]core.EntityID{alice}, results2[0].Audience)
+	s.Equal(map[string]string{"k": "v"}, results2[0].Tags)
+	s.Equal([]byte("payload"), results2[0].Payload)
 }
 
 func TestRecordSuite(t *testing.T) {
