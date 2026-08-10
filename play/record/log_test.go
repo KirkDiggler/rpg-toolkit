@@ -5,6 +5,7 @@ package record_test
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -641,9 +642,10 @@ func (s *RecordSuite) TestLoadLogRejectsInvalid() {
 		{
 			name: "next seq 0 with max uint64 seq",
 			data: record.LogData{
-				NextSeq: 0, // Wraparound: math.MaxUint64+1 == 0
+				NextSeq: 0, // The forgery: math.MaxUint64+1 wraps to 0, so the
+				// NextSeq == lastSeq+1 contiguity check alone would accept this
 				Entries: []record.EntryData{
-					{Seq: 1, Payload: []byte("p")}, // Just Seq 1; NextSeq 0 is the issue
+					{Seq: math.MaxUint64, Payload: []byte("p")},
 				},
 			},
 		},
