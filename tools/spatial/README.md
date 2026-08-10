@@ -22,7 +22,7 @@ The spatial module provides 2D spatial positioning and movement capabilities for
 
 The spatial module is designed to handle 2D spatial positioning for tabletop RPGs and provides:
 
-- **Multiple Grid Systems**: Square grids (D&D 5e style), hex grids, and gridless (theater-of-mind) systems
+- **Multiple Grid Systems**: Square, offset-coordinate hex, axial-coordinate hex, and continuous gridless systems
 - **Entity Management**: Place, move, and track entities in spatial environments
 - **Multi-Room Orchestration**: Connect and manage multiple rooms with typed connections
 - **Event Integration**: Automatic event publishing for spatial changes
@@ -45,9 +45,10 @@ type Position struct {
 
 ### Grid
 The `Grid` interface defines how spatial calculations work:
-- **Square Grid**: Uses D&D 5e distance rules (Chebyshev distance)
-- **Hex Grid**: Uses cube coordinate system for hexagonal grids
-- **Gridless**: Uses Euclidean distance for theater-of-mind play
+- **Square Grid**: Uses Chebyshev distance
+- **HexGrid**: Uses bounded, non-negative offset column/row coordinates with pointy-top or flat-top orientation
+- **AxialHexGrid**: Uses origin-centered axial Q/R coordinates
+- **Gridless**: Uses Euclidean distance on continuous positions
 
 ### Room
 A `Room` is a spatial container that implements `core.Entity` and manages:
@@ -175,7 +176,7 @@ func main() {
     queryHandler.RegisterWithEventBus(eventBus)
     
     // Create query utilities
-    queryUtils := spatial.NewQueryUtils(eventBus)
+    queryUtils := spatial.NewQueryUtils(queryHandler)
 }
 ```
 
@@ -218,57 +219,60 @@ blocked := room.IsLineOfSightBlocked(position, newPosition)
 
 ## Grid Systems
 
-### Square Grid (D&D 5e Style)
+### Square Grid
 
-Best for traditional tabletop RPGs with square battle mats:
+`SquareGrid` uses Chebyshev distance, so diagonal and orthogonal neighbors are
+both one unit apart.
 
 ```go
 grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-    Width:  20,  // 20 squares wide
-    Height: 20,  // 20 squares tall
+    Width:  20,
+    Height: 20,
 })
 ```
 
-**Features:**
-- Uses D&D 5e distance rules (Chebyshev distance)
-- Diagonal movement costs the same as orthogonal
-- 8 neighbors per position
-- Integer coordinates recommended
+### Offset-Coordinate Hex Grid
 
-### Hex Grid
-
-Perfect for hex-based games:
+`HexGrid` interprets `Position.X/Y` as bounded, non-negative offset column/row
+coordinates. It converts those values to cube coordinates internally and honors
+the configured pointy-top or flat-top orientation.
 
 ```go
 grid := spatial.NewHexGrid(spatial.HexGridConfig{
-    Width:     15,
-    Height:    15,
-    PointyTop: true,  // false for flat-top hexes
+    Width:       15,
+    Height:      15,
+    Orientation: spatial.HexOrientationPointyTop,
 })
 ```
 
-**Features:**
-- Uses cube coordinate system
-- 6 neighbors per position
-- More natural movement patterns
-- Supports pointy-top and flat-top orientations
+### Axial-Coordinate Hex Grid
 
-### Gridless (Theater-of-Mind)
+`AxialHexGrid` interprets `Position.X/Y` directly as axial Q/R coordinates. Its
+bounds are centered on the origin, so negative coordinates can be valid. It has
+no orientation setting because axial coordinates already describe the hex axes.
 
-For narrative-focused games without strict positioning:
+```go
+grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
+    SpanWidth:  30,
+    SpanHeight: 30,
+})
+```
+
+These two hex implementations are intentionally distinct. A `Position{X: 5,
+Y: 5}` means offset column 5/row 5 to `HexGrid`, but axial Q=5/R=5 to
+`AxialHexGrid`; callers must select the implementation matching their stored
+coordinate contract.
+
+### Gridless
+
+`GridlessRoom` uses Euclidean distance and allows fractional positioning.
 
 ```go
 grid := spatial.NewGridlessRoom(spatial.GridlessConfig{
-    Width:  100.0,  // Arbitrary units
+    Width:  100.0,
     Height: 100.0,
 })
 ```
-
-**Features:**
-- Uses Euclidean distance
-- Allows fractional positioning
-- 8 neighbors (conceptual)
-- Flexible positioning
 
 ## Room Management
 
@@ -627,50 +631,25 @@ for _, conn := range connections {
 canMove := orchestrator.CanMoveEntityBetweenRooms("hero", "room-a", "room-b", "door-1")
 ```
 
-#### Layout Metrics
-```go
-// Get layout information
-orchestrator.SetLayout(spatial.LayoutTypeGrid)
+#### Layout Selection
 
-// Layout metrics are available through events
-eventBus.SubscribeFunc(spatial.EventLayoutChanged, 0, func(ctx context.Context, event events.Event) error {
-    metrics, _ := event.Context().Get("metrics")
-    layoutMetrics := metrics.(spatial.LayoutMetrics)
-    
-    fmt.Printf("Layout: %s\n", layoutMetrics.LayoutType)
-    fmt.Printf("Rooms: %d\n", layoutMetrics.TotalRooms)
-    fmt.Printf("Connections: %d\n", layoutMetrics.TotalConnections)
-    fmt.Printf("Connectivity: %.2f\n", layoutMetrics.Connectivity)
-    
-    return nil
-})
-```
+`SetLayout` stores one of the caller-selected `LayoutType` values and publishes
+`LayoutChangedTopic` for observers. The module does not calculate room
+positions or layout metrics.
 
 ### Event System Integration
 
-The orchestrator publishes events for all operations:
+Orchestrator topics are optional observer notifications. Managed mutations
+return their results directly; events are not a hidden result channel.
+`TransitionEntity` continues to publish the active room-transition observation:
 
 ```go
-// Subscribe to orchestrator events
-eventBus.SubscribeFunc(spatial.EventRoomAdded, 0, func(ctx context.Context, event events.Event) error {
-    orchestratorID, _ := event.Context().Get("orchestrator_id")
-    room, _ := event.Context().Get("room")
-    fmt.Printf("Room added to orchestrator %s\n", orchestratorID)
-    return nil
-})
-
-eventBus.SubscribeFunc(spatial.EventConnectionAdded, 0, func(ctx context.Context, event events.Event) error {
-    connection, _ := event.Context().Get("connection")
-    conn := connection.(spatial.Connection)
-    fmt.Printf("Connection added: %s -> %s\n", conn.GetFromRoom(), conn.GetToRoom())
-    return nil
-})
-
-eventBus.SubscribeFunc(spatial.EventEntityTransitionBegan, 0, func(ctx context.Context, event events.Event) error {
-    transition, _ := event.Context().Get("transition")
-    fmt.Printf("Entity transition started\n")
-    return nil
-})
+spatial.EntityRoomTransitionTopic.On(eventBus).Subscribe(
+    func(ctx context.Context, event spatial.EntityRoomTransitionEvent) error {
+        fmt.Printf("Entity %s left %s for %s\n", event.EntityID, event.FromRoom, event.ToRoom)
+        return nil
+    },
+)
 ```
 
 ### Complete Multi-Room Example
@@ -786,40 +765,23 @@ func (m *Monster) BlocksLineOfSight() bool    { return m.solid }
 
 ## Event System Integration
 
-The spatial module publishes events for all spatial changes:
-
-### Event Types
-
-```go
-// Entity events
-spatial.EventEntityPlaced   // "spatial.entity.placed"
-spatial.EventEntityMoved    // "spatial.entity.moved"
-spatial.EventEntityRemoved  // "spatial.entity.removed"
-
-// Room events
-spatial.EventRoomCreated    // "spatial.room.created"
-
-// Query events
-spatial.EventQueryPositionsInRange // "spatial.query.positions_in_range"
-spatial.EventQueryEntitiesInRange  // "spatial.query.entities_in_range"
-spatial.EventQueryLineOfSight      // "spatial.query.line_of_sight"
-spatial.EventQueryMovement         // "spatial.query.movement"
-spatial.EventQueryPlacement        // "spatial.query.placement"
-```
-
-### Event Listening
+Spatial notifications use typed topics. Room topics include
+`EntityPlacedTopic`, `EntityMovedTopic`, `EntityRemovedTopic`, and
+`RoomCreatedTopic`. Orchestrator topics include `RoomAddedTopic`,
+`RoomRemovedTopic`, `ConnectionAddedTopic`, `ConnectionRemovedTopic`,
+`EntityRoomTransitionTopic`, and `LayoutChangedTopic`.
 
 ```go
-// Listen for entity placement
-eventBus.SubscribeFunc(spatial.EventEntityPlaced, 0, func(ctx context.Context, event events.Event) error {
-    entity := event.Data().(core.Entity)
-    position, _ := event.Context().Get("position")
-    roomID, _ := event.Context().Get("room_id")
-    
-    fmt.Printf("Entity %s placed at %v in room %s\n", entity.GetID(), position, roomID)
-    return nil
-})
+spatial.EntityPlacedTopic.On(eventBus).Subscribe(
+    func(ctx context.Context, event spatial.EntityPlacedEvent) error {
+        fmt.Printf("Entity %s placed at %v in room %s\n", event.EntityID, event.Position, event.RoomID)
+        return nil
+    },
+)
 ```
+
+Queries are synchronous calls through `SpatialQueryHandler`; they do not
+publish notifications.
 
 ## Query System
 
@@ -839,38 +801,20 @@ losPositions := room.GetLineOfSight(from, to)
 blocked := room.IsLineOfSightBlocked(from, to)
 ```
 
-### Event-Based Queries
+### Query Handler
 
-For complex scenarios or when you need to query across multiple rooms:
+For queries routed across registered rooms, construct `QueryUtils` with the
+direct handler and provide any entity-type vocabulary at the call site:
 
 ```go
-queryUtils := spatial.NewQueryUtils(eventBus)
-
-// Query entities in range with filtering
-filter := spatial.CreateCharacterFilter()  // Only characters
+queryUtils := spatial.NewQueryUtils(queryHandler)
+filter := spatial.NewSimpleEntityFilter().
+    WithEntityTypes("ally", "opponent").
+    WithExcludeIDs("entity-1")
 entities, err := queryUtils.QueryEntitiesInRange(ctx, center, radius, roomID, filter)
 
-// Query movement validity
 valid, path, distance, err := queryUtils.QueryMovement(ctx, entity, from, to, roomID)
-
-// Query line of sight
 positions, blocked, err := queryUtils.QueryLineOfSight(ctx, from, to, roomID)
-```
-
-### Entity Filters
-
-Built-in filters for common queries:
-
-```go
-// Pre-built filters
-characterFilter := spatial.CreateCharacterFilter()
-monsterFilter := spatial.CreateMonsterFilter()
-combatantFilter := spatial.CreateCombatantFilter()  // Characters + monsters
-
-// Custom filters
-filter := spatial.NewSimpleEntityFilter().
-    WithEntityTypes("character", "npc").
-    WithExcludeIDs("hero-1")
 ```
 
 ## API Reference
@@ -987,7 +931,7 @@ func NewBasicRoom(config BasicRoomConfig) *BasicRoom
 func NewSpatialQueryHandler() *SpatialQueryHandler
 
 // Query utilities
-func NewQueryUtils(eventBus events.EventBus) *QueryUtils
+func NewQueryUtils(queryHandler *SpatialQueryHandler) *QueryUtils
 ```
 
 ## Examples
@@ -1041,7 +985,7 @@ func main() {
     queryHandler.RegisterRoom(room)
     queryHandler.RegisterWithEventBus(eventBus)
     
-    queryUtils := spatial.NewQueryUtils(eventBus)
+    queryUtils := spatial.NewQueryUtils(queryHandler)
     
     // Create combatants
     hero := &Combatant{
@@ -1075,7 +1019,7 @@ func main() {
     
     // Query nearby enemies
     ctx := context.Background()
-    enemyFilter := spatial.CreateMonsterFilter()
+    enemyFilter := spatial.NewSimpleEntityFilter().WithEntityTypes("monster")
     
     nearbyEnemies, err := queryUtils.QueryEntitiesInRange(
         ctx, 
@@ -1319,46 +1263,32 @@ func CreateTunnelConnection(id, fromRoom, toRoom string, cost float64) *BasicCon
 func NewSpatialQueryHandler() *SpatialQueryHandler
 
 // Query utilities
-func NewQueryUtils(eventBus events.EventBus) *QueryUtils
+func NewQueryUtils(queryHandler *SpatialQueryHandler) *QueryUtils
 ```
 
-### Event Constants
+### Typed Event Topics
 
-#### Single Room Events
+Room and orchestrator observations are exposed as typed topics:
+
 ```go
-const (
-    EventEntityPlaced   = "spatial.entity.placed"
-    EventEntityMoved    = "spatial.entity.moved"
-    EventEntityRemoved  = "spatial.entity.removed"
-    EventRoomCreated    = "spatial.room.created"
-)
+spatial.EntityPlacedTopic
+spatial.EntityMovedTopic
+spatial.EntityRemovedTopic
+spatial.RoomCreatedTopic
+spatial.RoomAddedTopic
+spatial.RoomRemovedTopic
+spatial.ConnectionAddedTopic
+spatial.ConnectionRemovedTopic
+spatial.EntityRoomTransitionTopic
+spatial.LayoutChangedTopic
 ```
 
-#### Multi-Room Orchestration Events
-```go
-const (
-    EventRoomAdded             = "spatial.orchestrator.room_added"
-    EventRoomRemoved           = "spatial.orchestrator.room_removed"
-    EventConnectionAdded       = "spatial.orchestrator.connection_added"
-    EventConnectionRemoved     = "spatial.orchestrator.connection_removed"
-    EventEntityTransitionBegan = "spatial.orchestrator.entity_transition_began"
-    EventEntityTransitionEnded = "spatial.orchestrator.entity_transition_ended"
-    EventLayoutChanged         = "spatial.orchestrator.layout_changed"
-)
-```
-
-#### Query Events
-```go
-const (
-    EventQueryPositionsInRange = "spatial.query.positions_in_range"
-    EventQueryEntitiesInRange  = "spatial.query.entities_in_range"
-    EventQueryLineOfSight      = "spatial.query.line_of_sight"
-    EventQueryMovement         = "spatial.query.movement"
-    EventQueryPlacement        = "spatial.query.placement"
-)
-```
+Spatial queries use direct handler calls and have no event constants.
 
 ### Types and Constants
+
+Managed entity membership accepts `core.EntityID`. Spatial-specific identity
+remains available as `RoomID`, `ConnectionID`, and `OrchestratorID`.
 
 #### Connection Types
 ```go
@@ -1444,23 +1374,20 @@ if err := orchestrator.MoveEntityBetweenRooms(entityID, fromRoom, toRoom, connec
 }
 ```
 
-### Event-Driven Game Logic
+### Event-Driven Observer Logic
 
 ```go
-// Set up event handlers for game mechanics
-eventBus.SubscribeFunc(spatial.EventEntityTransitionBegan, 0, func(ctx context.Context, event events.Event) error {
-    // Handle entity entering new room
-    transition := event.Context().Get("transition").(spatial.Transition)
-    
-    // Trigger room-specific events (traps, encounters, etc.)
-    return triggerRoomEvents(transition.GetToRoom(), transition.GetEntity())
-})
+spatial.EntityRoomTransitionTopic.On(eventBus).Subscribe(
+    func(ctx context.Context, event spatial.EntityRoomTransitionEvent) error {
+        return observeRoomDeparture(event.EntityID, event.FromRoom, event.ToRoom)
+    },
+)
 
-eventBus.SubscribeFunc(spatial.EventConnectionAdded, 0, func(ctx context.Context, event events.Event) error {
-    // Update minimap or UI when new connections are discovered
-    connection := event.Context().Get("connection").(spatial.Connection)
-    return updateGameMap(connection)
-})
+spatial.ConnectionAddedTopic.On(eventBus).Subscribe(
+    func(ctx context.Context, event spatial.ConnectionAddedEvent) error {
+        return updateMapConnection(event.ConnectionID, event.FromRoom, event.ToRoom)
+    },
+)
 ```
 
 ### Dynamic Connection Management
