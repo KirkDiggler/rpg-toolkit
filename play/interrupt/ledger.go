@@ -126,11 +126,11 @@ type PendingForInput struct {
 // Validates: nil input, audience. Returns ErrNilInput or ErrNoAudience on defective input.
 func (l *Ledger) PendingFor(in *PendingForInput) ([]Window, error) {
 	if in == nil {
-		return nil, fmt.Errorf("pending-for: %w", ErrNilInput)
+		return nil, fmt.Errorf("pending for: %w", ErrNilInput)
 	}
 
 	if in.Audience == "" {
-		return nil, fmt.Errorf("pending-for: %w", ErrNoAudience)
+		return nil, fmt.Errorf("pending for: %w", ErrNoAudience)
 	}
 
 	result := make([]Window, 0, len(l.windows))
