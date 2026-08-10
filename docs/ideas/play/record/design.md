@@ -16,7 +16,10 @@ payload interpretation (opaque, composition-encoded); computing audiences
 assignment (caller-supplied); ordering by `At` (Seq is the only order;
 `At` is provenance); mutation or deletion of individual entries (append
 + trim only — the story is not editable); event-sourcing state rebuilds
-(available by composition, imposed on nobody).
+(available by composition, imposed on nobody); rich query languages
+(OR, ranges, full-text, indices) — the host projects from `All` into
+whatever engine it likes; record's filter is the common-case
+question-surface, not a database.
 
 ## Rules
 
@@ -59,7 +62,8 @@ Family laws, restated as binding:
   logs, `NextSeq` != last `Seq` + 1 (exactly — no verb can produce
   slack); for empty logs, stored `NextSeq: 1` (fresh encodes as 0 per
   R8; trimmed-empty is always >= 2); an audience containing empty IDs
-  or duplicates; nil payloads (empty non-nil is legal). Affirmative
+  or duplicates; tag maps containing empty keys; nil payloads (empty
+  non-nil is legal). Affirmative
   notes, not rejections: an empty entries slice is legal with stored
   `NextSeq` 0 (fresh) or >= 2 (trimmed-empty — reachable and MUST
   load); a trimmed log's first retained `Seq` may be any value >= 1.
@@ -75,21 +79,30 @@ Family laws, restated as binding:
   (uncorrelated beat). `Audience` is materialized and duplicate-free (enforced at `Append` via `ErrBadAudience`, never silently deduped);
   EMPTY MEANS NO VIEWER (GM/debug beat) — "everyone" is an explicit
   roster. `Payload` is opaque; composition-encoded story beats (leaf
-  deltas, outcomes); record never interprets.
+  deltas, outcomes); record never interprets. `Tags map[string]string` is
+  the caller-chosen question-surface: queryable metadata flattened out of
+  the payload by the composition (typical keys: `kind` —
+  "intel.first_contact", "clock.turn_started" — `observer`, `subject`,
+  `actor`; the vocabulary is the composition's, same naming-is-testimony
+  doctrine as intel's subjects). Record never interprets keys or values;
+  keys MUST be non-empty (`ErrBadTag`); empty values are legal (flags);
+  nil/empty tags are legal (an unaskable beat). Differently-shaped
+  sources coexist in one log because the question-surface is uniform even
+  when payloads are not.
 
 ## Verbs
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
-| `Append` | `{At uint64, Correlation string, Audience []core.EntityID, Payload []byte}` | `{Seq uint64}` | Appends one immutable entry, assigning the next `Seq`. Audience is defensively copied and MUST be duplicate-free with no empty IDs (`ErrBadAudience`); payload MUST be non-nil (`ErrNoPayload`; empty non-nil is legal — presence with no content). Errors: `ErrNilInput`, `ErrBadAudience`, `ErrNoPayload`. |
+| `Append` | `{At uint64, Correlation string, Audience []core.EntityID, Tags map[string]string, Payload []byte}` | `{Seq uint64}` | Appends one immutable entry, assigning the next `Seq`. Audience and tags are defensively copied; audience MUST be duplicate-free with no empty IDs (`ErrBadAudience`); tag keys MUST be non-empty (`ErrBadTag`); payload MUST be non-nil (`ErrNoPayload`; empty non-nil is legal — presence with no content). Errors: `ErrNilInput`, `ErrBadAudience`, `ErrBadTag`, `ErrNoPayload`. |
 | `TrimBefore` | `{Seq uint64}` | `{Removed int}` | Drops all entries with `Seq < in.Seq`. Retention is the composition's policy made visible (brainstorm §4). Trimming at or below the oldest retained `Seq` is a no-op (`Removed: 0`), not an error; `in.Seq == NextSeq` is legal and empties the log; `in.Seq > NextSeq` errors `ErrBadSeq` (a policy bug — you cannot forget the future). Never renumbers. |
 
 ## Queries
 
 | Query | Input | Returns | Semantics |
 |-------|-------|---------|-----------|
-| `SliceFor` | `{Viewer core.EntityID, FromSeq uint64}` | `([]Entry, error)` | Entries with `Seq >= FromSeq` whose audience contains Viewer, in Seq order — the reconnect/replay call. Empty viewer errs `ErrNoViewer`. No matching entries → empty result, nil error. Copy-out: returned entries (audience and payload included) MUST NOT alias internal state. |
-| `All` | `{FromSeq uint64}` | `([]Entry, error)` | Every retained entry from `FromSeq`, Seq order — the GM/debug/host view. Copy-out as above. |
+| `SliceFor` | `{Viewer core.EntityID, FromSeq uint64, Tags map[string]string}` | `([]Entry, error)` | Entries with `Seq >= FromSeq` whose audience contains Viewer AND which carry every given tag key with exactly the given value (AND semantics; nil/empty Tags = no filter; filter keys MUST be non-empty, `ErrBadTag`), in Seq order — the reconnect/replay call. Empty viewer errs `ErrNoViewer`. No matching entries → empty result, nil error. Copy-out: returned entries (audience and payload included) MUST NOT alias internal state. |
+| `All` | `{FromSeq uint64, Tags map[string]string}` | `([]Entry, error)` | Every retained entry from `FromSeq` matching the same optional tag filter, Seq order — the GM/debug/host view. Copy-out as above. |
 | `NextSeq()` | — | `(uint64, error)` | The Seq the next `Append` will assign (zero-arg read, bare value per R3(c)). Never errs today; the error slot is the law's. |
 
 ## Errors
@@ -99,6 +112,7 @@ Family laws, restated as binding:
 | `ErrNilInput` | nil `*XxxInput` | every Input-taking function |
 | `ErrBadAudience` | audience with empty IDs or duplicates | `Append` |
 | `ErrNoPayload` | nil payload | `Append` |
+| `ErrBadTag` | a tag (or filter) key that is empty | `Append`, `SliceFor`, `All` |
 | `ErrBadSeq` | trim point beyond `NextSeq` | `TrimBefore` |
 | `ErrNoViewer` | empty viewer ID | `SliceFor` |
 | `ErrInvalidData` | any R9 rejection | `LoadLog` |
@@ -108,7 +122,8 @@ Family laws, restated as binding:
 `LogData` = `struct{ NextSeq uint64; Entries []EntryData }` (tags
 `next_seq,omitempty` / `entries,omitempty`; `EntryData` mirrors `Entry`
 with tags `seq`/`at,omitempty`/`correlation,omitempty`/`audience,omitempty`/
-`payload`). Struct wrapper so the zero value marshals `{}` (R8). Family
+`tags,omitempty`/`payload`; `encoding/json` sorts map keys, so the
+golden-JSON test stays deterministic). Struct wrapper so the zero value marshals `{}` (R8). Family
 conventions: deep copies both directions; wire shape pinned by a
 golden-JSON test. Size note: the log grows with time by design; the
 pressure valve is `TrimBefore`, owned by the composition (brainstorm §4)
@@ -123,7 +138,11 @@ pressure valve is `TrimBefore`, owned by the composition (brainstorm §4)
   returns exactly their story in order; `All` returns everything;
   `TrimBefore` after "acknowledgment" shortens replay without
   renumbering; a post-trim `SliceFor` from an early `FromSeq` returns
-  only retained entries.
+  only retained entries. Beats carry mixed-shape tags (intel-style and
+  clock-style) and the tag filter answers questions across them: all
+  `kind=intel.first_contact` beats for the opener; everything tagged
+  with one subject; every `kind=clock.turn_started` regardless of
+  viewer (via `All`).
 - **AC2 (invariants)** — Seq gapless/monotonic across appends and trims;
   R5 atomicity (failed appends change nothing, `NextSeq` unmoved);
   copy-out immunity both directions.

@@ -70,7 +70,21 @@ Event sourcing stays exactly where the intel dialogue left it: a host
 that records complete testimony *may* rebuild intel by replay — an
 option by composition, imposed on no one.
 
-### 5. Plain vocabulary
+### 5. Tags — the question-surface (Kirk's customer probe)
+
+Kirk tested the design against its actual customer: encounter records
+intel deltas AND clock milestones — differently shaped — and "I might
+want to ask questions about it." An opaque-payload-only envelope makes
+the story streamable but not askable, and record can never decode
+payloads (sibling import). The subjects doctrine from intel, applied to
+the envelope: **tags** — caller-chosen key-value metadata the
+composition flattens out of each beat (`kind`, `observer`, `subject`,
+...), queryable by exact AND-match, never interpreted. The
+question-surface is uniform even when payloads are not. Deliberately
+bounded: AND-only; anything richer is the host projecting from `All`
+into a real query engine — record is the story, not the database.
+
+### 6. Plain vocabulary
 
 Intel earned its register; record needs none. `Log`, `Entry`, `Append`,
 `SliceFor`, `TrimBefore` — the words every reader already holds.
