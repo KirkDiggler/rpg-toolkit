@@ -644,6 +644,7 @@ return their results directly; events are not a hidden result channel.
 
 ```go
 spatial.EntityRoomTransitionTopic.On(eventBus).Subscribe(
+    context.Background(),
     func(ctx context.Context, event spatial.EntityRoomTransitionEvent) error {
         fmt.Printf("Entity %s left %s for %s\n", event.EntityID, event.FromRoom, event.ToRoom)
         return nil
@@ -772,6 +773,7 @@ Spatial notifications use typed topics. Room topics include
 
 ```go
 spatial.EntityPlacedTopic.On(eventBus).Subscribe(
+    context.Background(),
     func(ctx context.Context, event spatial.EntityPlacedEvent) error {
         fmt.Printf("Entity %s placed at %v in room %s\n", event.EntityID, event.Position, event.RoomID)
         return nil
@@ -1376,12 +1378,14 @@ if err := orchestrator.MoveEntityBetweenRooms(entityID, fromRoom, toRoom, connec
 
 ```go
 spatial.EntityRoomTransitionTopic.On(eventBus).Subscribe(
+    context.Background(),
     func(ctx context.Context, event spatial.EntityRoomTransitionEvent) error {
         return observeRoomDeparture(event.EntityID, event.FromRoom, event.ToRoom)
     },
 )
 
 spatial.ConnectionAddedTopic.On(eventBus).Subscribe(
+    context.Background(),
     func(ctx context.Context, event spatial.ConnectionAddedEvent) error {
         return updateMapConnection(event.ConnectionID, event.FromRoom, event.ToRoom)
     },
