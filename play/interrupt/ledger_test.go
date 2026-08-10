@@ -24,6 +24,7 @@ const (
 	optShield    = "shield"
 	optDecline   = "decline"
 	optCorrupted = "corrupted"
+	testMonster  = "monster"
 	testGrunk    = "grunk"
 )
 
@@ -429,6 +430,58 @@ func (s *LedgerSuite) TestAnswerValidationComboAuthorizationBeforeMembership() {
 	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{Audience: testAudience})
 	s.Require().NoError(err)
 	s.Require().Len(pending, 1, "failed Answer left the window open (R5)")
+}
+
+// TestQueryValidation pins the query-side input guards (Task 4).
+func (s *LedgerSuite) TestQueryValidation() {
+	_, err := s.ledger.PendingFor(nil)
+	s.Require().ErrorIs(err, interrupt.ErrNilInput)
+	_, err = s.ledger.PendingFor(&interrupt.PendingForInput{Audience: ""})
+	s.Require().ErrorIs(err, interrupt.ErrNoAudience)
+}
+
+// TestOpenPoseOrderInterleaved pins pose order across audiences: Open
+// returns the table's windows in the order they were posed, not
+// grouped by audience.
+func (s *LedgerSuite) TestOpenPoseOrderInterleaved() {
+	for _, aud := range []core.EntityID{testAudience, "grunk", testAudience} {
+		_, err := s.ledger.Pose(&interrupt.PoseInput{Audience: aud, Options: []interrupt.Option{optShield}})
+		s.Require().NoError(err)
+	}
+	open, err := s.ledger.Open()
+	s.Require().NoError(err)
+	s.Require().Len(open, 3)
+	s.Equal(interrupt.WindowID(1), open[0].ID, "pose order, not audience grouping")
+	s.Equal(interrupt.WindowID(2), open[1].ID)
+	s.Equal(interrupt.WindowID(3), open[2].ID)
+	s.Equal(core.EntityID("grunk"), open[1].Audience)
+}
+
+// TestDeciderContract is executable documentation of the design's
+// decider contract: a machine decider is shown ONLY its own pending
+// windows (PendingFor(itself)) and answers through the ordinary verb —
+// indistinguishable from a human. This is how auto-OA and monster
+// reactions ride the same machinery as the Shield prompt.
+func (s *LedgerSuite) TestDeciderContract() {
+	_, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: testMonster, Options: []interrupt.Option{"take-oa", optDecline}})
+	s.Require().NoError(err)
+
+	// The decider's entire view: its own pending windows. Not the world,
+	// not other audiences' windows.
+	view, err := s.ledger.PendingFor(&interrupt.PendingForInput{Audience: testMonster})
+	s.Require().NoError(err)
+	s.Require().Len(view, 1)
+
+	// Policy decider: always take the opportunity attack.
+	choice := view[0].Options[0]
+	out, err := s.ledger.Answer(&interrupt.AnswerInput{Window: view[0].ID, By: testMonster, Choice: choice})
+	s.Require().NoError(err)
+	s.Equal(interrupt.Option("take-oa"), out.Choice)
+
+	open, err := s.ledger.Open()
+	s.Require().NoError(err)
+	s.Empty(open, "posed and answered in one host call — the world never observed a wait")
 }
 
 func TestLedgerSuite(t *testing.T) {
