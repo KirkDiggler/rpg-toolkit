@@ -173,7 +173,6 @@ func main() {
     // Setup query system
     queryHandler := spatial.NewSpatialQueryHandler()
     queryHandler.RegisterRoom(room)
-    queryHandler.RegisterWithEventBus(eventBus)
     
     // Create query utilities
     queryUtils := spatial.NewQueryUtils(queryHandler)
@@ -983,7 +982,6 @@ func main() {
     
     queryHandler := spatial.NewSpatialQueryHandler()
     queryHandler.RegisterRoom(room)
-    queryHandler.RegisterWithEventBus(eventBus)
     
     queryUtils := spatial.NewQueryUtils(queryHandler)
     
