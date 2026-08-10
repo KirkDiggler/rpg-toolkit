@@ -117,7 +117,7 @@ func (bro *BasicRoomOrchestrator) PlaceEntity(in *PlaceEntityInput) (*PlaceEntit
 	entityID := core.EntityID(in.Entity.GetID())
 	bro.mu.RLock()
 	room, roomExists := bro.rooms[in.RoomID]
-	currentRoom, indexed := bro.entityRooms[EntityID(entityID)]
+	currentRoom, indexed := bro.entityRooms[entityID]
 	bro.mu.RUnlock()
 	if !roomExists {
 		return nil, fmt.Errorf("place entity: room %s not found", in.RoomID)
@@ -131,7 +131,7 @@ func (bro *BasicRoomOrchestrator) PlaceEntity(in *PlaceEntityInput) (*PlaceEntit
 	}
 
 	bro.mu.Lock()
-	bro.entityRooms[EntityID(entityID)] = in.RoomID
+	bro.entityRooms[entityID] = in.RoomID
 	bro.mu.Unlock()
 
 	return &PlaceEntityOutput{Delta: EntityPlacementDelta{
@@ -188,7 +188,7 @@ func (bro *BasicRoomOrchestrator) RemoveEntity(in *RemoveEntityInput) (*RemoveEn
 	}
 
 	bro.mu.Lock()
-	delete(bro.entityRooms, EntityID(in.EntityID))
+	delete(bro.entityRooms, in.EntityID)
 	bro.mu.Unlock()
 
 	return &RemoveEntityOutput{
@@ -226,7 +226,7 @@ func (bro *BasicRoomOrchestrator) TransitionEntity(
 	}
 
 	bro.mu.Lock()
-	delete(bro.entityRooms, EntityID(in.EntityID))
+	delete(bro.entityRooms, in.EntityID)
 	topic := bro.entityRoomTransition
 	bro.mu.Unlock()
 
@@ -259,7 +259,7 @@ func (bro *BasicRoomOrchestrator) TransitionEntity(
 
 func (bro *BasicRoomOrchestrator) indexedRoom(roomID RoomID, entityID core.EntityID) (Room, error) {
 	bro.mu.RLock()
-	indexedRoom, indexed := bro.entityRooms[EntityID(entityID)]
+	indexedRoom, indexed := bro.entityRooms[entityID]
 	room, roomExists := bro.rooms[roomID]
 	bro.mu.RUnlock()
 	if !roomExists {
@@ -291,7 +291,7 @@ func (bro *BasicRoomOrchestrator) transitionSource(
 	connectionID ConnectionID,
 ) (Room, Connection, core.Entity, Position, bool) {
 	bro.mu.RLock()
-	indexedRoom, indexed := bro.entityRooms[EntityID(entityID)]
+	indexedRoom, indexed := bro.entityRooms[entityID]
 	room, sourceExists := bro.rooms[fromRoom]
 	_, destinationExists := bro.rooms[toRoom]
 	connection, connectionExists := bro.connections[connectionID]

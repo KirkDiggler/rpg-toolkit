@@ -38,7 +38,7 @@ func (s *PathFinderTestSuite) TestDirectPath_NoObstacles() {
 }
 
 func (s *PathFinderTestSuite) TestPathAroundLShapedWall() {
-	// Monster at (0,0,0), target at (3,0,-3)
+	// Entity at (0,0,0), target at (3,0,-3)
 	// L-shaped wall blocking direct path:
 	//   (1,-1,0), (1,0,-1), (2,0,-2)
 	start := CubeCoordinate{X: 0, Y: 0, Z: 0}

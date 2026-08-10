@@ -77,7 +77,7 @@ type HexOrientation int
 
 const (
 	// HexOrientationPointyTop is the default orientation where hexes have a pointed top
-	// This is the standard D&D 5e hex grid orientation
+	// This is the zero-value hex grid orientation
 	HexOrientationPointyTop HexOrientation = iota
 	// HexOrientationFlatTop is an alternative orientation where hexes have a flat top
 	HexOrientationFlatTop

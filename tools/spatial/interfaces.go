@@ -9,11 +9,11 @@ import (
 type GridShape int
 
 const (
-	// GridShapeSquare represents a square grid system with D&D 5e distance rules
+	// GridShapeSquare represents a square grid system using Chebyshev distance
 	GridShapeSquare GridShape = iota
 	// GridShapeHex represents a hexagonal grid system using cube coordinates
 	GridShapeHex
-	// GridShapeGridless represents a gridless system for theater-of-mind play
+	// GridShapeGridless represents a continuous gridless system
 	GridShapeGridless
 )
 

@@ -599,15 +599,10 @@ See "Paused / on hold" below.
   do their own A* for square grid intra-room movement. This is undocumented as a
   gap.
 
-- **`LayoutOrchestrator` and `TransitionSystem` interfaces are defined but not
-  implemented.** Documented in `tools/spatial/CLAUDE.md` as "future work" but the
-  unimplemented interfaces sit next to implemented ones without a `// not implemented`
-  marker. Easy to be confused about what is callable.
-
 - **No pathfinder tests cover cycles or very large grids.** `pathfinder_test.go`
-  covers direct path, L-shaped wall, surrounded (no path), same position, and
-  blocked goal — that is five cases. There are no tests for large grids, performance
-  bounds, or edge cases around the priority queue (equal-cost nodes).
+  covers eight direct, obstructed, blocked, bounded-detour, and sealed-goal cases.
+  There are no tests for large grids, performance bounds, or edge cases around
+  the priority queue (equal-cost nodes).
 
 ### dnd5e rulebook
 

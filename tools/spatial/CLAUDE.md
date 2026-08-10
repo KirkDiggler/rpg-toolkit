@@ -55,8 +55,6 @@ RoomRemovedTopic
 // Orchestrator lifecycle
 ConnectionAddedTopic
 ConnectionRemovedTopic
-EntityTransitionBeganTopic
-EntityTransitionEndedTopic
 EntityRoomTransitionTopic
 LayoutChangedTopic
 ```
@@ -79,20 +77,20 @@ Both `BasicRoom` and `BasicRoomOrchestrator` use `sync.RWMutex`:
 
 ## Grid Systems
 
-### Three Grid Types (All Complete)
+### Three Grid Shapes, Four Implementations
 
-1. **Square Grid**: D&D 5e Chebyshev distance, 8 neighbors
-   - Use for traditional grid-based games
-   - Distance = max(abs(dx), abs(dy))
+1. **SquareGrid**: Chebyshev distance, 8 neighbors
+2. **HexGrid**: non-negative offset column/row coordinates, 6 neighbors
+   - bounded from `(0,0)` by Width/Height
+   - supports pointy-top and flat-top orientation
+3. **AxialHexGrid**: origin-centered axial Q/R coordinates, 6 neighbors
+   - bounded symmetrically by SpanWidth/SpanHeight
+   - no orientation setting; Q/R already defines the axes
+4. **GridlessRoom**: Euclidean distance, continuous positions
 
-2. **Hex Grid**: Cube coordinates, 6 neighbors
-   - Supports pointy-top and flat-top orientation
-   - Use for tactical hex-based games
-   - Distance = (abs(x) + abs(y) + abs(z)) / 2
-
-3. **Gridless**: Euclidean distance, continuous positioning
-   - Use for theater-of-mind or free-form positioning
-   - Distance = sqrt(dx² + dy²)
+`HexGrid` and `AxialHexGrid` are distinct public coordinate contracts. Do not
+feed axial positions to `HexGrid` or offset positions to `AxialHexGrid`, and do
+not consolidate or rename them without an explicit migration.
 
 ### Distance Calculation Philosophy
 
@@ -180,33 +178,6 @@ import (
 
 This is the v0.6.1 standard enforced by `goimports`.
 
-## Unimplemented Interfaces (Future Work)
-
-These interfaces are defined but **NOT implemented** - they are forward-looking designs:
-
-### LayoutOrchestrator (connection.go:108-121)
-
-For automatic room positioning and layout metrics:
-- `ArrangeRooms()` - Auto-position rooms based on connections
-- `CalculateRoomPositions()` - Compute spatial layout
-- `ValidateLayout()` - Check layout constraints
-- `GetLayoutMetrics()` - Layout quality metrics
-
-**When to implement**: When you need visual generation of room layouts or automatic positioning.
-
-### TransitionSystem (connection.go:135-150)
-
-For progress tracking during room transitions:
-- `BeginTransition()` - Start tracking entity movement
-- `CompleteTransition()` - Finish transition
-- `CancelTransition()` - Abort transition
-- `GetActiveTransitions()` - Query in-progress transitions
-- `GetTransition()` - Get specific transition details
-
-**When to implement**: When you need real-time movement animation or granular transition states.
-
-**Current behavior**: Transitions work via direct entity movement (`MoveEntityBetweenRooms`) without progress tracking.
-
 ## Common Implementation Patterns
 
 ### Creating Multi-Room Scenarios
@@ -242,19 +213,12 @@ path, err := orchestrator.FindPath("room-1", "room-2")
 
 ### Entity Filtering
 
-Use pre-built filters from `query_utils.go`:
-```go
-// Filter for specific entity types
-filter := spatial.CreateCharacterFilter()
-filter := spatial.CreateMonsterFilter()
-filter := spatial.CreateCombatantFilter()
+Entity-type vocabulary belongs to callers. Build generic filters explicitly:
 
-// Include/exclude specific entities
+```go
+filter := spatial.NewSimpleEntityFilter().WithEntityTypes("ally", "opponent")
 filter := spatial.CreateIncludeFilter(entityIDs...)
 filter := spatial.CreateExcludeFilter(entityIDs...)
-
-// Use in queries
-entities := room.GetEntitiesInRange(center, radius, filter)
 ```
 
 ### Connection Types

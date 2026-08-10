@@ -330,15 +330,15 @@ func (s *QueryHandlerTestSuite) TestQueryConvenienceMethods() {
 
 // TestFilterFactories tests the filter factory functions
 func (s *QueryHandlerTestSuite) TestFilterFactories() {
-	s.Run("create monster filter", func() {
-		filter := spatial.CreateMonsterFilter()
+	s.Run("caller-supplied single-type filter", func() {
+		filter := spatial.NewSimpleEntityFilter().WithEntityTypes("monster")
 		s.Assert().True(filter.Matches(s.entity2))  // monster
 		s.Assert().False(filter.Matches(s.entity1)) // character
 		s.Assert().False(filter.Matches(s.entity3)) // item
 	})
 
-	s.Run("create combatant filter", func() {
-		filter := spatial.CreateCombatantFilter()
+	s.Run("caller-supplied multi-type filter", func() {
+		filter := spatial.NewSimpleEntityFilter().WithEntityTypes("character", "monster")
 		s.Assert().True(filter.Matches(s.entity1))  // character
 		s.Assert().True(filter.Matches(s.entity2))  // monster
 		s.Assert().False(filter.Matches(s.entity3)) // item

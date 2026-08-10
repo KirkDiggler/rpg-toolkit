@@ -9,7 +9,7 @@
 //
 // Scope:
 //   - 2D coordinate system with configurable units
-//   - Grid support (square, hex, gridless)
+//   - Grid support (square, offset hex, axial hex, gridless)
 //   - Room-based spatial organization
 //   - Collision detection and spatial queries
 //   - Path validation (not pathfinding algorithms)
@@ -21,7 +21,7 @@
 //   - Movement rules: Speed, difficult terrain are game-specific
 //   - Line of sight rules: Cover/concealment mechanics belong in games
 //   - Pathfinding algorithms: AI navigation belongs in behavior package
-//   - Combat ranges: Weapon/spell ranges are game-specific
+//   - Interaction ranges: Their meanings and effects are game-specific
 //   - 3D positioning: This is explicitly 2D only
 //   - Movement costs: Action economy is game-specific
 //   - Elevation: Height/flying is game-specific

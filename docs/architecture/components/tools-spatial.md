@@ -44,41 +44,42 @@ orchestrator — its dungeon graph lives in `tools/environments` (see
 
 | File | Purpose |
 |---|---|
-| `interfaces.go` | `Room`, `Orchestrator`, `Placeable` interfaces |
+| `interfaces.go` | `Room`, `Placeable`, query, boundary, and event-bus interfaces |
 | `room.go` | `BasicRoom` — entity placement, movement, queries |
-| `hex_grid.go` | `HexGrid` — cube coordinates, distance, neighbors, ring, spiral |
+| `hex_grid.go` | `HexGrid` (offset) and `AxialHexGrid` (Q/R) — hex distance, neighbors, and lines |
 | `square_grid.go` | `SquareGrid` — Chebyshev distance, 8-neighbor grid |
 | `gridless.go` | `GridlessRoom` — Euclidean, continuous positioning |
 | `position.go` | `Position`, `CubeCoordinate`, `SquareCoord` types |
 | `pathfinder.go` | `PathFinder` interface + `SimplePathFinder` (hex A*) |
-| `orchestrator.go` | `Orchestrator` interface + `BasicRoomOrchestrator`, `LayoutOrchestrator` (unimplemented), `TransitionSystem` (unimplemented) |
+| `orchestrator.go` | `Connection`, `RoomOrchestrator`, and layout-type contracts |
 | `connection.go` | `Connection`, `BasicConnection` |
 | `connection_helpers.go` | `CreateDoorConnection`, `CreateStairsConnection`, etc. |
 | `basic_orchestrator.go` | `BasicRoomOrchestrator` room/connection/index implementation |
 | `managed_membership.go` | Additive `ManagedRoomMutator` verbs and returned spatial deltas |
 | `query_handler.go` | `SpatialQueryHandler` — multi-room entity queries |
-| `query_utils.go` | Filter helpers (`CreateCharacterFilter`, `CreateMonsterFilter`, etc.) |
-| `events.go` | Event types: `EntityPlacedEvent`, `EntityMovedEvent`, `RoomAddedEvent`, etc. |
-| `topics.go` | Typed topic definitions |
+| `query_utils.go` | Direct query utilities plus generic include/exclude filter helpers |
+| `events.go` | Direct query data and `SimpleEntityFilter` |
+| `topics.go` | Typed spatial event definitions and topics |
 | `data.go` | `RoomData`, `EntityCubePlacement`, `EntityPlacement` — the serializable surface rpg-api stores |
-| `ids.go` | Typed ID constants |
+| `ids.go` | `RoomID`, `ConnectionID`, and `OrchestratorID` constructors |
+
+Managed entity membership uses canonical `core.EntityID`; spatial defines no parallel entity-ID type.
 
 ## Grid systems
 
-All three grid types are fully implemented:
+The module exposes three grid shapes through four implementations:
 
-| Grid | Coordinate type | Distance | Neighbors |
-|---|---|---|---|
-| Hex | `CubeCoordinate` (q, r, s) | `(abs(q) + abs(r) + abs(s)) / 2` | 6 |
-| Square | `SquareCoord` (x, y) | Chebyshev: `max(abs(dx), abs(dy))` | 8 |
-| Gridless | `Position` (float64 x, y) | Euclidean | N/A |
+| Implementation | `Position` contract | Bounds | Distance | Neighbors |
+|---|---|---|---|---|
+| `HexGrid` | offset column/row | non-negative Width/Height | cube hex distance after orientation-aware conversion | 6 |
+| `AxialHexGrid` | axial Q/R | origin-centered SpanWidth/SpanHeight | `(abs(dQ) + abs(dR) + abs(dS)) / 2` | 6 |
+| `SquareGrid` | x/y | non-negative Width/Height | Chebyshev: `max(abs(dx), abs(dy))` | 8 |
+| `GridlessRoom` | continuous x/y | non-negative Width/Height | Euclidean | conceptual samples |
 
-Each grid implements its own distance calculation. `Position` is a data type;
-the grid decides the math.
-
-The hex grid supports two orientations — `HexOrientationPointyTop` (the rpg-api
-default) and `HexOrientationFlatTop`. rpg-api uses pointy-top consistently; the
-flat-top constant exists for future use.
+`HexGrid` and `AxialHexGrid` are not interchangeable aliases. `HexGrid`
+honors `HexOrientationPointyTop` or `HexOrientationFlatTop`; `AxialHexGrid`
+has no orientation configuration because its Q/R axes are intrinsic. Focused
+tests pin both their distance and bounds differences.
 
 ## RoomData and EntityCubePlacement — the persistence shape
 
@@ -110,7 +111,10 @@ The event bus is observer-only. `BasicRoomOrchestrator` does not subscribe to
 correctness therefore does not depend on a bus, topic wiring order, or rooms and
 orchestrator sharing a bus. Synchronous observers may re-enter read getters, but
 hosts serialize managed mutations and re-entrant managed mutation from an
-observer is outside the contract.
+observer is outside the contract. `EntityRoomTransitionTopic` remains the active
+observer notification for a successful managed `TransitionEntity` departure.
+The unused began/ended transition lifecycle topics and progress-tracking shelf
+were removed; there is no replacement notification channel.
 
 Connections remain abstract and do not choose destination positions.
 `TransitionEntity` consequently removes and unindexes the entity, then returns
@@ -150,25 +154,11 @@ navigation. This is undocumented as a gap in the source. Fix: add
 `SquarePathFinder` implementing `FindPath(start, goal SquareCoord, blocked
 map[SquareCoord]bool) []SquareCoord`.
 
-### Unimplemented interfaces with no marker (issue #614 adjacent)
-
-`orchestrator.go` defines `LayoutOrchestrator` and `TransitionSystem`:
-
-- `LayoutOrchestrator` — auto-position rooms, calculate layout metrics
-- `TransitionSystem` — track in-progress entity transitions between rooms
-
-Both are defined but have no implementation in this package.
-`tools/spatial/CLAUDE.md` documents them as "future work," but a reader of
-`orchestrator.go` alone has no indication. There is no `// Not implemented`
-comment, no `var _ LayoutOrchestrator = (*notImplemented)(nil)` guard,
-nothing. Risk: a new contributor implements them incorrectly assuming an
-interface contract that is actually advisory.
-
 ### Test coverage
 
-`pathfinder_test.go` covers 5 cases: direct path, L-shaped wall, surrounded
-(no path), same position, blocked goal. No tests for large grids, cycles, or
-priority queue tie-breaking. For the current use case (small dungeon rooms)
+`pathfinder_test.go` covers 8 cases, including direct and obstructed paths,
+blocked endpoints, bounded traversal-predicate detours, and a sealed goal. No
+tests cover large grids, cycles, or priority queue tie-breaking. For the current use case (small dungeon rooms)
 this is acceptable, but it is worth noting before scaling to large
 environments.
 

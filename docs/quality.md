@@ -187,25 +187,23 @@ coverage. Spell events pattern is tested. No known logic bugs.
 
 ### tools/spatial — B+
 
-The load-bearing spatial math is well-covered. Cube coordinates, hex distance,
-neighbor calculation, ring, spiral, and conversion round-trips are all tested in
-`hex_grid_test.go` with suite pattern. Square grid covers distance (D&D 5e
-Chebyshev), neighbors, adjacency, line of sight, and range queries.
-`orchestrator_test.go` covers multi-room setup, connections, entity movement,
-pathfinding, and layout types.
+The load-bearing spatial math is well-covered. Offset and axial hex coordinate
+contracts, cube coordinates, distance, neighbors, ring, spiral, line of sight,
+and conversions are tested with suite pattern. Square grid covers Chebyshev
+distance, neighbors, adjacency, line of sight, and range queries.
+`orchestrator_test.go` and `managed_orchestrator_test.go` cover topology,
+managed membership, connections, transitions, observer events, and layout
+selection.
 
-Two honest gaps:
-1. The **in-room pathfinder (`SimplePathFinder`) only works on hex grids
-   (CubeCoordinate).** There is no square-grid pathfinder for intra-room A*.
-   The orchestrator's `FindPath` is room-to-room only. This means a monster
-   navigating obstacles inside a square room has no toolkit path to follow.
-2. `LayoutOrchestrator` and `TransitionSystem` interfaces are defined in
-   `connection.go` with no implementations. They are documented as "future work"
-   in CLAUDE.md but a reader of the interface file alone has no indication.
-   `pathfinder_test.go` covers only 5 cases; no stress tests.
+The primary honest gap is that the **in-room pathfinder
+(`SimplePathFinder`) only works on hex cube coordinates**. There is no
+square-grid pathfinder for intra-room A*; the orchestrator's `FindPath` is
+room-to-room only. The public shelf that promised automatic layout metrics and
+in-progress transition tracking without implementations has been removed
+rather than kept as an advisory API.
 
-Grade would reach A- with a square-grid pathfinder and a "not implemented" comment
-on the empty interfaces.
+Grade would reach A- with a square-grid pathfinder and broader pathfinder stress
+coverage.
 
 ### tools/environments — B
 

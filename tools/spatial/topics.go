@@ -29,10 +29,6 @@ var (
 	ConnectionAddedTopic = events.DefineTypedTopic[ConnectionAddedEvent]("spatial.orchestrator.connection_added")
 	// ConnectionRemovedTopic publishes events when connections are removed between rooms
 	ConnectionRemovedTopic = events.DefineTypedTopic[ConnectionRemovedEvent]("spatial.orchestrator.connection_removed")
-	// EntityTransitionBeganTopic publishes events when entity transitions begin
-	EntityTransitionBeganTopic = events.DefineTypedTopic[EntityTransitionBeganEvent]("spatial.entity.transition.began")
-	// EntityTransitionEndedTopic publishes events when entity transitions complete
-	EntityTransitionEndedTopic = events.DefineTypedTopic[EntityTransitionEndedEvent]("spatial.entity.transition.ended")
 	// EntityRoomTransitionTopic publishes events when entities transition between rooms
 	EntityRoomTransitionTopic = events.DefineTypedTopic[EntityRoomTransitionEvent]("entity.room_transition")
 	// LayoutChangedTopic publishes events when orchestrator layouts change
@@ -109,27 +105,6 @@ type ConnectionRemovedEvent struct {
 	ConnectionID   string    `json:"connection_id"`
 	Reason         string    `json:"reason,omitempty"`
 	RemovedAt      time.Time `json:"removed_at"`
-}
-
-// EntityTransitionBeganEvent contains data for entity transition start events
-type EntityTransitionBeganEvent struct {
-	EntityID       string    `json:"entity_id"`
-	FromRoom       string    `json:"from_room"`
-	ToRoom         string    `json:"to_room"`
-	ConnectionID   string    `json:"connection_id,omitempty"`
-	TransitionType string    `json:"transition_type"` // "door", "stairs", "portal", etc.
-	BeganAt        time.Time `json:"began_at"`
-}
-
-// EntityTransitionEndedEvent contains data for entity transition completion events
-type EntityTransitionEndedEvent struct {
-	EntityID       string    `json:"entity_id"`
-	FromRoom       string    `json:"from_room"`
-	ToRoom         string    `json:"to_room"`
-	ConnectionID   string    `json:"connection_id,omitempty"`
-	TransitionType string    `json:"transition_type"`
-	Success        bool      `json:"success"`
-	EndedAt        time.Time `json:"ended_at"`
 }
 
 // EntityRoomTransitionEvent contains data for entity room transition events

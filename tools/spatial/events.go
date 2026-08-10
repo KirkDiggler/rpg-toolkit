@@ -5,16 +5,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// Legacy event constants kept only for query operations (non-notification events)
-const (
-	// Query events - these remain as direct function calls, not migrated to typed events
-	EventQueryPositionsInRange = "spatial.query.positions_in_range"
-	EventQueryEntitiesInRange  = "spatial.query.entities_in_range"
-	EventQueryLineOfSight      = "spatial.query.line_of_sight"
-	EventQueryMovement         = "spatial.query.movement"
-	EventQueryPlacement        = "spatial.query.placement"
-)
-
 // NOTE: Entity and room lifecycle events have been migrated to typed topics.
 // See topics.go for: EntityPlacedEvent, EntityMovedEvent, EntityRemovedEvent, RoomCreatedEvent
 
