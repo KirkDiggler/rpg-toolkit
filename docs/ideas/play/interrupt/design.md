@@ -101,7 +101,7 @@ restated here as binding:
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
 | `Pose` | `{Audience core.EntityID, Options []Option, Payload []byte, At uint64}` | `{Window Window}` | Opens a window: assigns the next ID, stores a deep copy (payload and options copied in), returns the stored window (copied out — the caller's slices never alias the ledger's). Options MUST be non-empty: with no timeout machinery, a window without options is unanswerable and would deadlock the encounter — `ErrNoOptions` is the liveness guard. MUST error: `ErrNilInput`, `ErrNoAudience` (empty audience), `ErrNoOptions` (nil or empty options), then per option in slice order: `ErrNoOption` (empty token), `ErrDuplicateOption` (repeated token — options are distinct choices; a duplicate is caller defect, not transport-for-a-set). Validation in that listed order, first failure wins, all before any mutation (R5 — a failed Pose does not consume an ID). |
-| `Answer` | `{Window WindowID, By core.EntityID, Choice Option}` | `{Window Window, Choice Option}` | Closes a window: validates, removes it from the ledger, and returns the full envelope (deep-copied) plus the accepted choice — composition hands both to the rulebook's resume. Validation order: `ErrNilInput`; `ErrNoAudience` (empty `By` — an empty audience claim is a shape defect, checked before lookup); `ErrNoOption` (empty `Choice`); `ErrNotOpen` (no open window with that ID — unknown, never posed, or already answered); `ErrNotAudience` (`By` differs from the window's audience); `ErrNotOffered` (`Choice` not among the window's options). Shape, then existence, then authorization, then membership; first failure wins; on any error the window remains open and unchanged (R5). |
+| `Answer` | `{Window WindowID, By core.EntityID, Choice Option}` | `{Window Window, Choice Option}` | Closes a window: validates, removes it from the ledger, and returns the envelope plus the accepted choice — composition hands both to the rulebook's resume. *Ownership transfer, not copy-out (amended during execution, Task 3 review):* the returned envelope is the spliced window itself — after removal nothing internal retains it, so a defensive copy would be a pin that cannot fail, which the mutation-proof law forbids as an unfalsifiable clause. Queries copy out because internal state stays; Answer transfers because it removes. Validation order: `ErrNilInput`; `ErrNoAudience` (empty `By` — an empty audience claim is a shape defect, checked before lookup); `ErrNoOption` (empty `Choice`); `ErrNotOpen` (no open window with that ID — unknown, never posed, or already answered); `ErrNotAudience` (`By` differs from the window's audience); `ErrNotOffered` (`Choice` not among the window's options). Shape, then existence, then authorization, then membership; first failure wins; on any error the window remains open and unchanged (R5). |
 
 There is no `Withdraw`, `Expire`, or default-answer path in v1 — see
 Non-goals. Auto-answered windows (the OA-autofire case) are ordinary
@@ -180,9 +180,12 @@ are never reused within an encounter).
 - **AC2 (invariants)** — R5 atomicity from populated states (every
   error path leaves `Open()` identical); one-answer-per-window (second
   `Answer` → `ErrNotOpen`); failed `Pose` consumes no ID (next
-  successful pose gets the expected ID); copy-out immunity both
-  directions (mutate returned windows/options/payloads and the caller's
-  input slices post-call; internal state unchanged); audience isolation
+  successful pose gets the expected ID); copy-out immunity where
+  live state is aliasable — Pose's returned window, `PendingFor`, and
+  `Open` (mutate returned windows/options/payloads and the caller's
+  input slices post-call; internal state unchanged); `Answer`'s envelope
+  is an ownership transfer, deliberately unpinned (see the Answer row);
+  audience isolation
   (`PendingFor("bob")` empty while Aldric holds windows); pose-order
   stability in both queries.
 - **AC3 (round-trips)** — `ToData`/`LoadLedger` at every distinct

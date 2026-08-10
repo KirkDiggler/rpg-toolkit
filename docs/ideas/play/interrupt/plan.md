@@ -276,4 +276,20 @@ sibling window and re-queries unaffected).
 Fix cycles and deviations, recorded so the executed tree and this plan
 stay in agreement (family precedent):
 
-*(empty — build not started)*
+- **With Task 2**: review's mutation sweep proved the suite survived a
+  neutered `copyWindow` — implementation right, copy-out pin absent on
+  all three read surfaces (the axis-two disease class, caught at Task 2
+  this time by the standing mutation obligation). `TestCopyOutImmunity`
+  added and mutation-proven; R5-from-populated-state pin added;
+  `pending-for` wrap context conformed to family style; repeated test
+  literals extracted to consts.
+- **With Task 3 (design amendment: ownership transfer)**: review proved
+  `TestAnswerEnvelopeCopyOut` unfalsifiable — after the splice nothing
+  internal retains the window, so skipping Answer's defensive copy
+  cannot corrupt ledger state and no test can make it fail. Resolved by
+  amendment, not by keeping a lying pin: the design's Answer row now
+  reads *ownership transfer* (queries copy out because internal state
+  stays; Answer transfers because it removes), the dead copy and the
+  can't-fail test were removed, and the review's second finding landed
+  as a combo validation-order pin (wrong audience + unoffered choice →
+  `ErrNotAudience` wins, authorization before membership).
