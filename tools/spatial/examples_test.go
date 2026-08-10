@@ -347,9 +347,11 @@ func TestMultiRoomOrchestration(t *testing.T) {
 	err = orchestrator.AddConnection(door)
 	require.NoError(t, err)
 
-	// Create and place entity
+	// Create and place entity through the managed-room mutation seam.
 	hero := NewMockEntity("hero", "character")
-	err = room1.PlaceEntity(hero, spatial.Position{X: 5, Y: 5})
+	_, err = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID: "room-1", Entity: hero, Position: spatial.Position{X: 5, Y: 5},
+	})
 	require.NoError(t, err)
 
 	// Test pathfinding between rooms
@@ -361,15 +363,23 @@ func TestMultiRoomOrchestration(t *testing.T) {
 	canMove := orchestrator.CanMoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
 	assert.True(t, canMove)
 
-	err = orchestrator.MoveEntityBetweenRooms("hero", "room-1", "room-2", "door-1")
+	transition, err := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+		EntityID: "hero", FromRoom: "room-1", ToRoom: "room-2", ConnectionID: "door-1",
+	})
 	require.NoError(t, err)
+	assert.True(t, transition.Transition.PlacementRequired)
+	_, exists := orchestrator.GetEntityRoom("hero")
+	assert.False(t, exists, "transition is unplaced until the composition chooses a position")
 
-	// Verify entity is now in room-2
+	_, err = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID: "room-2", Entity: transition.Entity, Position: spatial.Position{X: 1, Y: 1},
+	})
+	require.NoError(t, err)
 	currentRoom, exists := orchestrator.GetEntityRoom("hero")
 	assert.True(t, exists)
 	assert.Equal(t, "room-2", currentRoom)
 
-	t.Logf("Successfully moved hero from room-1 to room-2 through door-1")
+	t.Logf("Successfully transitioned and placed hero from room-1 to room-2 through door-1")
 }
 
 // TestConnectionTypes demonstrates different connection types

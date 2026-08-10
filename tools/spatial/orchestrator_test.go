@@ -136,88 +136,54 @@ func TestBasicConnectionSystem(t *testing.T) {
 }
 
 func TestEntityMovementBetweenRooms(t *testing.T) {
-	t.Skip("Skipping until spawn layer is implemented to handle entity placement via events (ADR-0015)")
-	// Setup
 	eventBus := events.NewEventBus()
 	orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:     "movement-orchestrator",
-		Type:   "orchestrator",
-		Layout: spatial.LayoutTypeOrganic,
+		ID: "movement-orchestrator", Type: "orchestrator", Layout: spatial.LayoutTypeOrganic,
 	})
 	orchestrator.ConnectToEventBus(eventBus)
-
-	// Create rooms
-	grid1 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room1 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:   "room-a",
-		Type: "chamber",
-		Grid: grid1,
+		ID: "room-a", Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
 	room1.ConnectToEventBus(eventBus)
-
-	grid2 := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
 	room2 := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:   "room-b",
-		Type: "chamber",
-		Grid: grid2,
+		ID: "room-b", Type: "chamber",
+		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10}),
 	})
 	room2.ConnectToEventBus(eventBus)
+	require.NoError(t, orchestrator.AddRoom(room1))
+	require.NoError(t, orchestrator.AddRoom(room2))
+	require.NoError(t, orchestrator.AddConnection(spatial.CreateDoorConnection(
+		"door-ab", "room-a", "room-b", 1,
+	)))
 
-	err := orchestrator.AddRoom(room1)
-	require.NoError(t, err)
-	err = orchestrator.AddRoom(room2)
-	require.NoError(t, err)
-
-	// Create connection
-	door := spatial.CreateDoorConnection(
-		"door-ab",
-		"room-a", "room-b",
-		1.0, // Standard movement cost
-	)
-	err = orchestrator.AddConnection(door)
-	require.NoError(t, err)
-
-	// Create and place an entity
 	entity := NewMockEntity("hero", "character")
-	err = room1.PlaceEntity(entity, spatial.Position{X: 5, Y: 5})
+	_, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID: "room-a", Entity: entity, Position: spatial.Position{X: 5, Y: 5},
+	})
 	require.NoError(t, err)
-
-	// Verify entity room tracking
 	currentRoom, exists := orchestrator.GetEntityRoom("hero")
 	assert.True(t, exists)
 	assert.Equal(t, "room-a", currentRoom)
+	assert.True(t, orchestrator.CanMoveEntityBetweenRooms("hero", "room-a", "room-b", "door-ab"))
 
-	// Test movement capability
-	canMove := orchestrator.CanMoveEntityBetweenRooms("hero", "room-a", "room-b", "door-ab")
-	assert.True(t, canMove)
+	// The legacy wrapper keeps its signature but now reports the physical
+	// truth: departure leaves the entity unplaced until managed placement.
+	require.NoError(t, orchestrator.MoveEntityBetweenRooms("hero", "room-a", "room-b", "door-ab"))
+	_, exists = orchestrator.GetEntityRoom("hero")
+	assert.False(t, exists)
+	assert.Empty(t, room1.GetAllEntities())
+	assert.Empty(t, room2.GetAllEntities())
+	assert.False(t, orchestrator.CanMoveEntityBetweenRooms("hero", "room-b", "room-a", "door-ab"))
 
-	// Test actual movement
-	err = orchestrator.MoveEntityBetweenRooms("hero", "room-a", "room-b", "door-ab")
+	_, err = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID: "room-b", Entity: entity, Position: spatial.Position{X: 4, Y: 4},
+	})
 	require.NoError(t, err)
-
-	// Verify entity moved
-	currentRoom, exists = orchestrator.GetEntityRoom("hero")
-	assert.True(t, exists)
-	assert.Equal(t, "room-b", currentRoom)
-
-	// Verify entity is no longer in source room (ADR-0015: Abstract Connections)
-	entitiesInRoomA := room1.GetAllEntities()
-	assert.NotContains(t, entitiesInRoomA, "hero")
-
-	// Note: In abstract connection mode, entity placement in destination room
-	// is handled by game layer via events. The orchestrator only tracks logical room assignment.
-
-	// Test reverse movement (door is bidirectional)
-	canMoveBack := orchestrator.CanMoveEntityBetweenRooms("hero", "room-b", "room-a", "door-ab")
-	assert.True(t, canMoveBack)
-
-	err = orchestrator.MoveEntityBetweenRooms("hero", "room-b", "room-a", "door-ab")
-	require.NoError(t, err)
-
-	// Verify entity moved back
-	currentRoom, exists = orchestrator.GetEntityRoom("hero")
-	assert.True(t, exists)
-	assert.Equal(t, "room-a", currentRoom)
+	assert.True(t, orchestrator.CanMoveEntityBetweenRooms("hero", "room-b", "room-a", "door-ab"))
+	require.NoError(t, orchestrator.MoveEntityBetweenRooms("hero", "room-b", "room-a", "door-ab"))
+	_, exists = orchestrator.GetEntityRoom("hero")
+	assert.False(t, exists)
 }
 
 func TestPathfinding(t *testing.T) {
