@@ -101,22 +101,22 @@ func NewLog() (*Log, error) {
 func (l *Log) Append(in *AppendInput) (*AppendOutput, error) {
 	// Step 1: nil guard
 	if in == nil {
-		return nil, fmt.Errorf("%w", ErrNilInput)
+		return nil, fmt.Errorf("append: %w", ErrNilInput)
 	}
 
 	// Step 2: validate audience (no empty IDs, no duplicates)
-	if err := l.validateAudience(in.Audience); err != nil {
-		return nil, err
+	if err := validateAudience(in.Audience); err != nil {
+		return nil, fmt.Errorf("append: %w", err)
 	}
 
 	// Step 3: validate tags (no empty keys)
-	if err := l.validateTags(in.Tags); err != nil {
-		return nil, err
+	if err := validateTags(in.Tags); err != nil {
+		return nil, fmt.Errorf("append: %w", err)
 	}
 
 	// Step 4: validate payload (must be non-nil)
 	if in.Payload == nil {
-		return nil, fmt.Errorf("%w", ErrNoPayload)
+		return nil, fmt.Errorf("append: %w", ErrNoPayload)
 	}
 
 	// All validation passed; now mutate state (R5 atomicity)
@@ -167,20 +167,20 @@ func (l *Log) NextSeq() (uint64, error) {
 // internal state (nil stays nil, non-nil is deep-copied).
 func (l *Log) All(in *AllInput) ([]Entry, error) {
 	if in == nil {
-		return nil, fmt.Errorf("%w", ErrNilInput)
+		return nil, fmt.Errorf("all: %w", ErrNilInput)
 	}
 
 	var result []Entry
 	for _, e := range l.entries {
 		if e.seq >= in.FromSeq {
-			result = append(result, l.entryToCopy(e))
+			result = append(result, copyEntryOut(e))
 		}
 	}
 	return result, nil
 }
 
-// entryToCopy converts an internal entry to an exported Entry with deep copies.
-func (l *Log) entryToCopy(e entry) Entry {
+// copyEntryOut converts an internal entry to an exported Entry with deep copies.
+func copyEntryOut(e entry) Entry {
 	return Entry{
 		Seq:         e.seq,
 		At:          e.at,
@@ -192,14 +192,14 @@ func (l *Log) entryToCopy(e entry) Entry {
 }
 
 // validateAudience checks that audience is duplicate-free with no empty IDs.
-func (l *Log) validateAudience(aud []core.EntityID) error {
+func validateAudience(aud []core.EntityID) error {
 	seen := make(map[core.EntityID]bool)
 	for _, id := range aud {
 		if id == "" {
-			return fmt.Errorf("%w", ErrBadAudience)
+			return fmt.Errorf("audience: %w", ErrBadAudience)
 		}
 		if seen[id] {
-			return fmt.Errorf("%w", ErrBadAudience)
+			return fmt.Errorf("audience: duplicate %q: %w", id, ErrBadAudience)
 		}
 		seen[id] = true
 	}
@@ -207,10 +207,10 @@ func (l *Log) validateAudience(aud []core.EntityID) error {
 }
 
 // validateTags checks that all keys are non-empty.
-func (l *Log) validateTags(tags map[string]string) error {
+func validateTags(tags map[string]string) error {
 	for k := range tags {
 		if k == "" {
-			return fmt.Errorf("%w", ErrBadTag)
+			return fmt.Errorf("tag key: empty: %w", ErrBadTag)
 		}
 	}
 	return nil
