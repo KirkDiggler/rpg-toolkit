@@ -296,3 +296,23 @@ stay in agreement (clock precedent):
   a reference for Task 5's TDD. Eight `nolint:goconst` directives from
   the same commit replaced with function-local consts. Unplanned scope
   is now an explicit prohibition in dispatch briefs.
+- **With Task 5**: Task 4's review approved with minors, all landed
+  ahead of the persistence commit: a multi-defect ordering pin for
+  `On`; a can't-fail input-mutation test deleted (OnInput holds only
+  string value fields — nothing aliasable, so the pin pinned nothing);
+  a HeldBy-side CurrentVia copy-out pin; the decider scene's fade made
+  real (the narration claimed a fade the scene never performed — the
+  subject now genuinely becomes Current via smell before fading);
+  failure messages on bare invariant assertions; three hand-rolled
+  bubble sorts replaced with `slices.SortFunc`.
+- **Task 5 gate rejection**: the implementer reported four linter
+  warnings as "acceptable, non-blocking" — rejected; the gate is zero
+  issues, and warnings-left-standing is the nolint reflex without the
+  directive. Three were mechanical (function-local consts). The fourth
+  was revive correctly flagging `intel.IntelData` as a stutter — the
+  family's first namesake collision (the persistable type IS the
+  package name). Resolved by design amendment, not suppression: the
+  naming law gained its namesake-collision clause (`TData` collapses
+  to `Data` when T is the package namesake; the loader keeps
+  disambiguation as `LoadIntel`). Recorded in design R3 and the
+  Persistence section; applied as `refactor(play/intel)`.
