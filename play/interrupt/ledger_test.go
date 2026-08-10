@@ -24,6 +24,7 @@ const (
 	optShield    = "shield"
 	optDecline   = "decline"
 	optCorrupted = "corrupted"
+	testGrunk    = "grunk"
 )
 
 type LedgerSuite struct {
@@ -268,6 +269,200 @@ func (s *LedgerSuite) TestPoseAtomicityFromPopulatedState() {
 	second, err := s.ledger.Pose(&interrupt.PoseInput{Audience: "grunk", Options: []interrupt.Option{"attack"}})
 	s.Require().NoError(err)
 	s.Equal(interrupt.WindowID(2), second.Window.ID, "failed Pose must not consume an ID (R5)")
+}
+
+func (s *LedgerSuite) TestAnswerClosesAndReturnsEnvelope() {
+	posed, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options: []interrupt.Option{
+			interrupt.Option(optShield),
+			interrupt.Option(optDecline),
+		},
+		Payload: []byte("frozen"),
+		At:      7,
+	})
+	s.Require().NoError(err)
+	out, err := s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     core.EntityID(testAudience),
+		Choice: interrupt.Option(optShield),
+	})
+	s.Require().NoError(err)
+	s.Equal(posed.Window, out.Window, "the envelope returns intact — custody proven")
+	s.Equal(interrupt.Option(optShield), out.Choice)
+	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{
+		Audience: core.EntityID(testAudience),
+	})
+	s.Require().NoError(err)
+	s.Empty(pending, "answered windows leave the ledger")
+	// one answer per window
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     core.EntityID(testAudience),
+		Choice: interrupt.Option(optShield),
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNotOpen)
+}
+
+func (s *LedgerSuite) TestAnswerValidationOrderAndAtomicity() {
+	posed, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options: []interrupt.Option{
+			interrupt.Option(optShield),
+			interrupt.Option(optDecline),
+		},
+		Payload: []byte("frozen"),
+	})
+	s.Require().NoError(err)
+	// shape → existence → authorization → membership; first failure wins
+	_, err = s.ledger.Answer(nil)
+	s.Require().ErrorIs(err, interrupt.ErrNilInput)
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     "",
+		Choice: "",
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNoAudience)
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     core.EntityID(testAudience),
+		Choice: "",
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNoOption)
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: 99,
+		By:     core.EntityID(testAudience),
+		Choice: interrupt.Option(optShield),
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNotOpen)
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     "fighter",
+		Choice: interrupt.Option(optShield),
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNotAudience)
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     core.EntityID(testAudience),
+		Choice: "fireball",
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNotOffered)
+	// R5: every failure left the window open and unchanged
+	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{
+		Audience: core.EntityID(testAudience),
+	})
+	s.Require().NoError(err)
+	s.Require().Len(pending, 1)
+	s.Equal(posed.Window, pending[0])
+}
+
+func (s *LedgerSuite) TestAnswerWindowIDZeroIsNotOpen() {
+	_, err := s.ledger.Answer(&interrupt.AnswerInput{
+		Window: 0,
+		By:     core.EntityID(testAudience),
+		Choice: interrupt.Option(optShield),
+	})
+	s.Require().ErrorIs(err, interrupt.ErrNotOpen,
+		"Window ID 0 is never-posed, not a shape error")
+}
+
+func (s *LedgerSuite) TestAnswerRemovesExactlyOne() {
+	// Pose three windows: two for aldric, one for grunk
+	out1, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options:  []interrupt.Option{"opt1"},
+		Payload:  []byte("p1"),
+		At:       1,
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(1), out1.Window.ID)
+	out2, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testGrunk),
+		Options:  []interrupt.Option{"opt2"},
+		Payload:  []byte("p2"),
+		At:       2,
+	})
+	s.Require().NoError(err)
+	out3, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options:  []interrupt.Option{"opt3"},
+		Payload:  []byte("p3"),
+		At:       3,
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(3), out3.Window.ID)
+
+	// Answer the middle one (ID 2, grunk's window)
+	_, err = s.ledger.Answer(&interrupt.AnswerInput{
+		Window: out2.Window.ID,
+		By:     core.EntityID(testGrunk),
+		Choice: "opt2",
+	})
+	s.Require().NoError(err)
+
+	// Verify the others remain, in pose order
+	open, err := s.ledger.Open()
+	s.Require().NoError(err)
+	s.Len(open, 2)
+	s.Equal(interrupt.WindowID(1), open[0].ID, "first window remains")
+	s.Equal(interrupt.WindowID(3), open[1].ID, "third window remains in pose order")
+
+	// Verify next Pose still gets monotonic ID
+	out4, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: "alice",
+		Options:  []interrupt.Option{"opt4"},
+	})
+	s.Require().NoError(err)
+	s.Equal(interrupt.WindowID(4), out4.Window.ID, "next Pose continues monotonic sequence")
+}
+
+func (s *LedgerSuite) TestAnswerEnvelopeCopyOut() {
+	posed, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options: []interrupt.Option{
+			interrupt.Option(optShield),
+			interrupt.Option(optDecline),
+		},
+		Payload: []byte("frozen"),
+		At:      7,
+	})
+	s.Require().NoError(err)
+
+	// Also pose a sibling window for the same audience
+	sibling, err := s.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(testAudience),
+		Options:  []interrupt.Option{"sibling-opt"},
+		Payload:  []byte("sibling-payload"),
+		At:       8,
+	})
+	s.Require().NoError(err)
+
+	// Answer the first window
+	out, err := s.ledger.Answer(&interrupt.AnswerInput{
+		Window: posed.Window.ID,
+		By:     core.EntityID(testAudience),
+		Choice: interrupt.Option(optShield),
+	})
+	s.Require().NoError(err)
+
+	// Mutate the returned envelope
+	out.Window.Options[0] = "mutated"
+	out.Window.Payload[0] = 'X'
+
+	// Verify sibling is untouched via PendingFor
+	pending, err := s.ledger.PendingFor(&interrupt.PendingForInput{
+		Audience: core.EntityID(testAudience),
+	})
+	s.Require().NoError(err)
+	s.Len(pending, 1)
+	s.Equal(sibling.Window, pending[0],
+		"sibling window unaffected by mutation of returned envelope")
+
+	// Verify Open also reflects uncorrupted state
+	open, err := s.ledger.Open()
+	s.Require().NoError(err)
+	s.Len(open, 1)
+	s.Equal(sibling.Window, open[0], "Open reflects uncorrupted state")
 }
 
 func TestLedgerSuite(t *testing.T) {

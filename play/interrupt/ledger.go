@@ -116,6 +116,79 @@ func (l *Ledger) Pose(in *PoseInput) (*PoseOutput, error) {
 	}, nil
 }
 
+// AnswerInput carries the parameters for closing an interrupt window.
+type AnswerInput struct {
+	Window WindowID
+	By     core.EntityID
+	Choice Option
+}
+
+// AnswerOutput reports the window that was closed and the choice that was accepted.
+type AnswerOutput struct {
+	Window Window
+	Choice Option
+}
+
+// Answer closes an open interrupt window. Validates in order: nil input, audience (By),
+// choice (empty), lookup by ID, authorization (By must match window's audience),
+// membership (Choice must be in options). On any validation error, the window remains
+// open and unchanged (R5 atomicity). On success, removes the window from the ledger
+// and returns a deep copy of the window plus the accepted choice. One answer per
+// window: a second Answer to the same ID is ErrNotOpen.
+func (l *Ledger) Answer(in *AnswerInput) (*AnswerOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("answer: %w", ErrNilInput)
+	}
+
+	if in.By == "" {
+		return nil, fmt.Errorf("answer: %w", ErrNoAudience)
+	}
+
+	if in.Choice == "" {
+		return nil, fmt.Errorf("answer: %w", ErrNoOption)
+	}
+
+	// Lookup the window by ID
+	windowIndex := -1
+	var window Window
+	for i, w := range l.windows {
+		if w.ID == in.Window {
+			windowIndex = i
+			window = w
+			break
+		}
+	}
+
+	if windowIndex == -1 {
+		return nil, fmt.Errorf("answer: %w", ErrNotOpen)
+	}
+
+	// Check authorization: By must match the window's audience
+	if in.By != window.Audience {
+		return nil, fmt.Errorf("answer: %w", ErrNotAudience)
+	}
+
+	// Check membership: Choice must be in the window's options
+	found := false
+	for _, opt := range window.Options {
+		if opt == in.Choice {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("answer: %w", ErrNotOffered)
+	}
+
+	// All validation passed; splice out the window and return a deep copy
+	l.windows = append(l.windows[:windowIndex], l.windows[windowIndex+1:]...)
+
+	return &AnswerOutput{
+		Window: l.copyWindow(window),
+		Choice: in.Choice,
+	}, nil
+}
+
 // PendingForInput carries the query for open windows an audience may answer.
 type PendingForInput struct {
 	Audience core.EntityID
