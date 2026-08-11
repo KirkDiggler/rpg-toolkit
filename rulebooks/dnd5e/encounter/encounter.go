@@ -666,13 +666,17 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 // not a member → connection not found → endpoint mismatch (wrong room or
 // wrong position, either rejects the same way).
 //
-// The spatial layer genuinely moves the entity between rooms: RemoveEntity
-// from the departure room, then PlaceEntity into the arrival room — the
-// SAME two managed seams Exit and Join already use individually, just
-// composed. This matters: omitting RemoveEntity leaks the entity in the
-// departure room's registry even though it's invisible to Members/View
-// (see TestExitThenRejoinSameID's doc comment — the wave-1 lesson).
-// Composing the two proven seams here means the lesson can't regress.
+// The spatial layer genuinely moves the entity between rooms: spatial's
+// purpose-built TransitionEntity removes from the departure room (the
+// SAME registry cleanup RemoveEntity performs — omitting it leaks the
+// entity in the room's registry even though it's invisible to
+// Members/View; see TestExitThenRejoinSameID's doc comment, the wave-1
+// lesson) and, as a backstop behind our own endpoint check above,
+// independently re-validates against spatial's own bookkeeping that the
+// named connection exists and actually links the two rooms (in either
+// direction — door connections are Reversible). PlaceEntity into the
+// arrival room always follows — TransitionEntity deliberately leaves the
+// entity unplaced.
 //
 // The clock is NOT advanced — traversal is an activity, not time (law T4).
 // Sight refreshes for ALL members in one refreshSight call: since
@@ -742,22 +746,29 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 		return nil, fmt.Errorf("traverse: member %s is not at connection %s's endpoint: %w", in.Member, in.Connection, ErrBadPlacement)
 	}
 
-	// Move the entity between rooms via the two proven managed seams.
-	_, err := e.orchestrator.RemoveEntity(&spatial.RemoveEntityInput{
-		RoomID:   spatial.RoomID(fromRoom),
-		EntityID: core.EntityID(in.Member),
+	// Move the entity between rooms via spatial's purpose-built transition
+	// seam: TransitionEntity removes from the source room (the SAME
+	// registry cleanup RemoveEntity performs — the wave-1 Exit lesson
+	// applies here too) and, as a backstop BEHIND our own checks above,
+	// independently re-validates against spatial's own bookkeeping that
+	// the connection exists, actually links these two rooms (in either
+	// direction, since door connections are Reversible), and the entity
+	// was truly indexed in the departure room. TransitionEntity
+	// deliberately does NOT place the entity — PlaceEntity must always
+	// follow, using the SAME entity value TransitionEntity returned.
+	transitioned, err := e.orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+		EntityID:     core.EntityID(in.Member),
+		FromRoom:     spatial.RoomID(fromRoom),
+		ToRoom:       spatial.RoomID(toRoom),
+		ConnectionID: spatial.ConnectionID(in.Connection),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("traverse remove entity: %w: %w", ErrBadPlacement, err)
+		return nil, fmt.Errorf("traverse transition entity: %w: %w", ErrBadPlacement, err)
 	}
 
-	entity := &memberEntity{
-		id:   string(in.Member),
-		kind: member.Kind,
-	}
 	_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
 		RoomID:   spatial.RoomID(toRoom),
-		Entity:   entity,
+		Entity:   transitioned.Entity,
 		Position: toPos,
 	})
 	if err != nil {
