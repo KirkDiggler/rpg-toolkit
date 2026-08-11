@@ -55,6 +55,22 @@ type Encounter struct {
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
 // no endings, reserved ending key, empty member ID, duplicate member IDs,
 // spatial placement errors.
+
+// deepCopyRoomInputs snapshots the caller's room descriptions — the
+// persistence source must never alias caller-owned slices (T6 review
+// M4: a caller editing its SetupInput after construction silently
+// corrupted ToData and made the encounter unsavable).
+func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
+	out := make([]RoomInput, len(rooms))
+	for i, r := range rooms {
+		rc := r
+		rc.Occluders = append([]spatial.Position(nil), r.Occluders...)
+		rc.Boundaries = append([]spatial.Boundary(nil), r.Boundaries...)
+		out[i] = rc
+	}
+	return out
+}
+
 func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
@@ -99,8 +115,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
 		endings:          nil,
-		fieldInput:       in.Field.Rooms,
-		connectionsInput: in.Field.Connections,
+		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
+		connectionsInput: append([]ConnectionInput(nil), in.Field.Connections...),
 	}
 
 	// Build clock and intel
@@ -260,6 +276,32 @@ func (e *Encounter) View(in *ViewInput) ([]intel.Holding, error) {
 }
 
 // Members returns the current member roster in stable order.
+
+// buildMemberOutcomes snapshots every current member's placement in
+// sorted-ID order — deterministic output for outcomes and persistence
+// (map iteration here was a latent nondeterminism, T6 review M1).
+func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
+	ids := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	outcomes := make([]MemberOutcome, 0, len(ids))
+	for _, id := range ids {
+		m := e.members[id]
+		mRoom, ok := e.orchestrator.GetRoom(m.Room)
+		if !ok {
+			continue
+		}
+		mPos, ok := mRoom.GetEntityPosition(string(m.ID))
+		if !ok {
+			continue
+		}
+		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Room: m.Room, Position: mPos})
+	}
+	return outcomes
+}
+
 func (e *Encounter) Members() ([]Member, error) {
 	// Sort by ID for stability
 	ids := make([]MemberID, 0, len(e.members))
@@ -450,22 +492,7 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		}
 
 		// Ending fires! Build the outcome with all members' current positions
-		memberOutcomes := make([]MemberOutcome, 0, len(e.members))
-		for _, m := range e.members {
-			mRoom, ok := e.orchestrator.GetRoom(m.Room)
-			if !ok {
-				continue
-			}
-			mPos, ok := mRoom.GetEntityPosition(string(m.ID))
-			if !ok {
-				continue
-			}
-			memberOutcomes = append(memberOutcomes, MemberOutcome{
-				ID:       m.ID,
-				Room:     m.Room,
-				Position: mPos,
-			})
-		}
+		memberOutcomes := e.buildMemberOutcomes()
 
 		e.outcome = &Outcome{
 			Ending:  endingKey,
@@ -693,22 +720,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			}
 
 			// Ending fires! Build the outcome with all members' current positions
-			memberOutcomes := make([]MemberOutcome, 0, len(e.members))
-			for _, m := range e.members {
-				mRoom, ok := e.orchestrator.GetRoom(m.Room)
-				if !ok {
-					continue
-				}
-				mPos, ok := mRoom.GetEntityPosition(string(m.ID))
-				if !ok {
-					continue
-				}
-				memberOutcomes = append(memberOutcomes, MemberOutcome{
-					ID:       m.ID,
-					Room:     m.Room,
-					Position: mPos,
-				})
-			}
+			memberOutcomes := e.buildMemberOutcomes()
 
 			e.outcome = &Outcome{
 				Ending:  endingKey,
@@ -986,22 +998,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		}
 
 		// Ending fires! Build the outcome with all members' current positions
-		memberOutcomes := make([]MemberOutcome, 0, len(e.members))
-		for _, m := range e.members {
-			mRoom, ok := e.orchestrator.GetRoom(m.Room)
-			if !ok {
-				continue
-			}
-			mPos, ok := mRoom.GetEntityPosition(string(m.ID))
-			if !ok {
-				continue
-			}
-			memberOutcomes = append(memberOutcomes, MemberOutcome{
-				ID:       m.ID,
-				Room:     m.Room,
-				Position: mPos,
-			})
-		}
+		memberOutcomes := e.buildMemberOutcomes()
 
 		e.outcome = &Outcome{
 			Ending:  endingKey,
@@ -1195,22 +1192,7 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 	}
 
 	// Build outcome with all current members' positions
-	memberOutcomes := make([]MemberOutcome, 0, len(e.members))
-	for _, m := range e.members {
-		mRoom, ok := e.orchestrator.GetRoom(m.Room)
-		if !ok {
-			continue
-		}
-		mPos, ok := mRoom.GetEntityPosition(string(m.ID))
-		if !ok {
-			continue
-		}
-		memberOutcomes = append(memberOutcomes, MemberOutcome{
-			ID:       m.ID,
-			Room:     m.Room,
-			Position: mPos,
-		})
-	}
+	memberOutcomes := e.buildMemberOutcomes()
 
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)

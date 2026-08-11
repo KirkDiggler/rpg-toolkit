@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -17,6 +18,101 @@ import (
 
 type DataTestSuite struct {
 	suite.Suite
+}
+
+// TestGoldenJSONRich pins the tags the two small goldens cannot see:
+// occluders, boundaries, connections, a member-filtered ending, an
+// External ending, intel-free monsters in a second room, and non-zero
+// clock/At fields. Eleven tag renames survived the small goldens
+// because omitempty hid these fields (T6 review).
+func (s *DataTestSuite) TestGoldenJSONRich() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "crypt", Width: 8, Height: 8,
+					Occluders:  []spatial.Position{{X: 4, Y: 4}},
+					Boundaries: []spatial.Boundary{{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 2, Y: 3}, BlocksMovement: true, BlocksLineOfSight: true}},
+				},
+				{ID: "hall", Width: 6, Height: 6},
+			},
+			Connections: []encounter.ConnectionInput{{ID: "door1", From: "crypt", To: "hall"}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "g1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 3, Y: 3}, Decider: &testDecider{intent: encounter.IntentHold{}}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 7, Y: 7}, Member: core.EntityID("p1")}},
+			{Key: "leave", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	s.Require().NoError(err)
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+
+	bs, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6}],"connections":[{"id":"door1","from":"crypt","to":"hall"}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	s.Equal(expected, string(bs))
+}
+
+// TestEndingsOrderSurvivesReload pins C8 first-declared-wins across the
+// persistence boundary: two endings match the same position; the FIRST
+// declared fires, before and after a reload. A load that scrambles
+// ending order changes which outcome the campaign receives.
+func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "first", Trigger: encounter.TriggerReachedPosition{Room: "r1", Position: spatial.Position{X: 3, Y: 3}}},
+			{Key: "second", Trigger: encounter.TriggerReachedPosition{Room: "r1", Position: spatial.Position{X: 3, Y: 3}}},
+		},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+	enc2, err := encounter.LoadEncounter(enc1.ToData(), nil)
+	s.Require().NoError(err)
+
+	out, err := enc2.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: 3, Y: 3}})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Outcome)
+	s.Equal("first", out.Outcome.Ending,
+		"first-declared wins after reload — a load that scrambles ending order is a C8 violation")
+}
+
+// TestSetupInputNotAliased pins T6 review M4: a caller that edits its
+// own SetupInput after construction must not corrupt the persistence
+// source (the encounter deep-copies the field description).
+func (s *DataTestSuite) TestSetupInputNotAliased() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+			{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
+		}},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	enc, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	setup.Field.Rooms[0].ID = "VANDALIZED"
+	setup.Field.Rooms[0].Width = 999
+	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 4, Y: 4}
+
+	data := enc.ToData()
+	s.Require().Len(data.Field.Rooms, 1)
+	s.Equal("r1", data.Field.Rooms[0].ID, "the snapshot must not see the caller's vandalism")
+	s.Equal(5, data.Field.Rooms[0].Width)
+	s.Equal(encounter.PositionData{X: 3, Y: 3}, data.Field.Rooms[0].Occluders[0])
+
+	// And the corrupted-input snapshot must still LOAD (the M4 symptom
+	// was an encounter that became permanently unsavable).
+	_, err = encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err)
 }
 
 func TestDataSuite(t *testing.T) {
@@ -783,267 +879,108 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 // ============================================================================
 
 // TestRejectNilData rejects nil-equivalent zero Data.
-func (s *DataTestSuite) TestRejectNilData() {
-	s.Run("reject zero/nil Data", func() {
-		_, err := encounter.LoadEncounter(encounter.EncounterData{}, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
+// validEncounterData is the minimal fully-loadable Data: every
+// rejection case below starts here and breaks EXACTLY ONE thing, then
+// asserts the DISCRIMINATING message fragment — the T6 review proved
+// that fixtures invalid in several ways let the last-run check absorb
+// every deletion (7 of 8 checks were individually deletable, suite
+// green). One defect per fixture makes each check's pin falsifiable.
 
-// TestRejectNoRooms rejects Data with no rooms.
-func (s *DataTestSuite) TestRejectNoRooms() {
-	s.Run("reject no rooms", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{},
-			},
-			Members: []encounter.MemberData{
-				{
-					ID:   "p1",
-					Kind: encounter.KindPlayer,
-					Room: "room1",
-				},
-			},
-			Endings: []encounter.EndingData{
-				{
-					Key:  "done",
-					Kind: "reached_position",
-				},
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectDuplicateMemberIDs rejects duplicate member IDs.
-func (s *DataTestSuite) TestRejectDuplicateMemberIDs() {
-	s.Run("reject duplicate member IDs", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "reached_position"},
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectMemberRoomNotInField rejects member in non-existent room.
-func (s *DataTestSuite) TestRejectMemberRoomNotInField() {
-	s.Run("reject member in non-existent room", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room2"}, // room2 doesn't exist
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "reached_position"},
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectMemberOutOfBounds rejects member position outside room bounds.
-func (s *DataTestSuite) TestRejectMemberOutOfBounds() {
-	s.Run("reject member position out of bounds", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{
-					ID:       "p1",
-					Kind:     encounter.KindPlayer,
-					Room:     "room1",
-					Position: encounter.PositionData{X: 20, Y: 20}, // Out of bounds
-				},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "reached_position"},
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectNoEndings rejects Data with no endings.
-func (s *DataTestSuite) TestRejectNoEndings() {
-	s.Run("reject no endings", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectEmptyEndingKey rejects ending with empty key.
-func (s *DataTestSuite) TestRejectEmptyEndingKey() {
-	s.Run("reject empty ending key", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "", Kind: "reached_position"}, // Empty key
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectUnknownEndingKind rejects unknown ending kind.
-func (s *DataTestSuite) TestRejectUnknownEndingKind() {
-	s.Run("reject unknown ending kind", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "unknown_kind"}, // Unknown kind
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectOutcomeUndeclaredEnding rejects outcome with undeclared ending key.
-func (s *DataTestSuite) TestRejectOutcomeUndeclaredEnding() {
-	s.Run("reject outcome with undeclared ending key", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "reached_position"},
-			},
-			Outcome: &encounter.OutcomeData{
-				Ending: "undeclared", // Not in Endings
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectConnectionMissingRoom rejects connection referencing missing room.
-func (s *DataTestSuite) TestRejectConnectionMissingRoom() {
-	s.Run("reject connection referencing missing room", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-				Connections: []encounter.ConnectionData{
-					{ID: "door1", From: "room1", To: "room2"}, // room2 doesn't exist
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "reached_position"},
-			},
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// TestRejectEverMembersMissingCurrent rejects everMembers missing a current member.
-func (s *DataTestSuite) TestRejectEverMembersMissingCurrent() {
-	s.Run("reject everMembers missing a current member", func() {
-		data := encounter.EncounterData{
-			Field: encounter.FieldData{
-				Rooms: []encounter.RoomData{
-					{ID: "room1", Width: 10, Height: 10},
-				},
-			},
-			Members: []encounter.MemberData{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "room1"},
-			},
-			Endings: []encounter.EndingData{
-				{Key: "done", Kind: "reached_position"},
-			},
-			EverMembers: []encounter.MemberID{}, // p1 is missing
-		}
-		_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{})
-		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrInvalidData))
-	})
-}
-
-// ============================================================================
-// Test Decider
-// ============================================================================
-
+// testDecider returns a fixed intent every time (persistence-test fixture).
 type testDecider struct {
 	intent encounter.Intent
 }
 
-func (t *testDecider) Decide(holdings []intel.Holding) (encounter.Intent, error) {
-	return t.intent, nil
+func (d *testDecider) Decide(_ []intel.Holding) (encounter.Intent, error) {
+	return d.intent, nil
 }
 
-// ============================================================================
-// Mutation Tests (7 rows)
-// ============================================================================
+func validEncounterData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{Rooms: []encounter.RoomData{{ID: "r1", Width: 5, Height: 5}}},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
 
-// Mutation 1: ToData aliases embedded slices
+// TestLoadRejections: every unreachable state rejects with
+// ErrInvalidData AND the check that fired is the one the case targets.
+func (s *DataTestSuite) TestLoadRejections() {
+	cases := []struct {
+		name     string
+		mutate   func(d *encounter.EncounterData)
+		fragment string
+	}{
+		{"zero data", func(d *encounter.EncounterData) { *d = encounter.EncounterData{} }, "no rooms"},
+		{"no rooms", func(d *encounter.EncounterData) { d.Field.Rooms = nil; d.Members = nil; d.EverMembers = nil }, "no rooms"},
+		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings"},
+		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings"},
+		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings"},
+		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind"},
+		{"reached_position without position", func(d *encounter.EncounterData) {
+			d.Endings[0] = encounter.EndingData{Key: "done", Kind: "reached_position", Room: "r1"}
+		}, "without room/position"},
+		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id"},
+		{"duplicate member ids", func(d *encounter.EncounterData) {
+			d.Members = append(d.Members, d.Members[0])
+		}, "duplicate member"},
+		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field"},
+		{"member out of bounds", func(d *encounter.EncounterData) {
+			d.Members[0].Position = encounter.PositionData{X: 99, Y: 99}
+		}, "out of bounds"},
+		{"connection missing room", func(d *encounter.EncounterData) {
+			d.Field.Connections = []encounter.ConnectionData{{ID: "c1", From: "r1", To: "nowhere"}}
+		}, "connection"},
+		{"outcome undeclared ending", func(d *encounter.EncounterData) {
+			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
+		}, "outcome"},
+		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
+			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
+		}, "abandoned outcome with members"},
+		{"outcome member room missing", func(d *encounter.EncounterData) {
+			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
+				{ID: "ghost", Room: "nowhere", Position: encounter.PositionData{X: 1, Y: 1}}}}
+		}, "outcome member"},
+		{"outcome member out of bounds", func(d *encounter.EncounterData) {
+			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
+				{ID: "p1", Room: "r1", Position: encounter.PositionData{X: 999, Y: 999}}}}
+		}, "out of bounds"},
+		{"ever_members missing current member", func(d *encounter.EncounterData) {
+			d.EverMembers = nil
+		}, "ever_members"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validEncounterData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must load — the one-defect discipline only
+	// means something if zero defects pass.
+	_, err := encounter.LoadEncounter(validEncounterData(), nil)
+	s.Require().NoError(err, "the valid base fixture must load")
+}
+
+// TestLoadRejectsPlayerWithDecider pins C2 at the third seam: a player
+// cannot carry a decider at load any more than at Setup or Join.
+func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
+	data := validEncounterData()
+	_, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{
+		"p1": &spyDecider{},
+	})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().Contains(err.Error(), "cannot carry a decider")
+}
+
 func (s *DataTestSuite) TestMutation1ToDataAliases() {
 	s.Run("mutation 1: ToData aliases slices", func() {
 		setup := &encounter.SetupInput{

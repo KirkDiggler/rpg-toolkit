@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 	"slices"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
@@ -103,9 +104,17 @@ type EndingData struct {
 // All slices and embedded data are deep-copied; mutating the returned
 // EncounterData will not affect this Encounter (snapshot immunity).
 func (e *Encounter) ToData() EncounterData {
-	// Deep-copy members and their positions
-	membersData := make([]MemberData, 0, len(e.members))
-	for _, m := range e.members {
+	// Members in sorted-ID order: an unchanged encounter must produce
+	// byte-identical snapshots (T6 review M1 — map iteration here made
+	// ToData nondeterministic and the round-trip suite ~16% flaky).
+	memberIDs := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		memberIDs = append(memberIDs, id)
+	}
+	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+	membersData := make([]MemberData, 0, len(memberIDs))
+	for _, id := range memberIDs {
+		m := e.members[id]
 		room, ok := e.orchestrator.GetRoom(m.Room)
 		if !ok {
 			continue // Room not found (shouldn't happen in valid encounter)
@@ -250,6 +259,13 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		if ed.Kind != "reached_position" && ed.Kind != "external" {
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w", ed.Kind, ErrInvalidData)
 		}
+
+		// A reached_position ending without a position would panic at
+		// construction — LoadEncounter is the trust boundary for
+		// persisted bytes and must reject, never crash (T6 review M2).
+		if ed.Kind == "reached_position" && (ed.Position == nil || ed.Room == "") {
+			return nil, fmt.Errorf("load encounter: ending %q reached_position without room/position: %w", ed.Key, ErrInvalidData)
+		}
 	}
 
 	// Validate outcome (if present) references a declared ending
@@ -272,8 +288,10 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 
 	// Build room map for validation
 	roomMap := make(map[string]bool)
+	roomsByID := make(map[string]RoomData)
 	for _, r := range data.Field.Rooms {
 		roomMap[r.ID] = true
+		roomsByID[r.ID] = r
 	}
 
 	// Validate connections reference existing rooms
@@ -286,6 +304,10 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	// Validate members: no duplicates, rooms exist, positions in bounds
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range data.Members {
+		// Empty member IDs are unreachable (Setup and Join both reject).
+		if m.ID == "" {
+			return nil, fmt.Errorf("load encounter: empty member id: %w", ErrInvalidData)
+		}
 		if seenIDs[m.ID] {
 			return nil, fmt.Errorf("load encounter: duplicate member %q: %w", m.ID, ErrInvalidData)
 		}
@@ -315,6 +337,25 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 	}
 
+	// Outcome members must reference rooms that exist with in-bounds
+	// positions (design R9 — the outcome list was wholly unvalidated,
+	// T6 review M5), and an abandoned outcome with members still
+	// present is unreachable (abandonment means the membership emptied).
+	if data.Outcome != nil {
+		if data.Outcome.Ending == "abandoned" && len(data.Members) > 0 {
+			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w", ErrInvalidData)
+		}
+		for _, om := range data.Outcome.Members {
+			r, ok := roomsByID[om.Room]
+			if !ok {
+				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w", om.ID, om.Room, ErrInvalidData)
+			}
+			if om.Position.X < 0 || om.Position.Y < 0 || om.Position.X >= float64(r.Width) || om.Position.Y >= float64(r.Height) {
+				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w", om.ID, ErrInvalidData)
+			}
+		}
+	}
+
 	// Validate everMembers contains all current members
 	for _, m := range data.Members {
 		found := false
@@ -329,20 +370,22 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 	}
 
-	// Leaf validation via loaders (they wrap with ErrInvalidData)
-	_, err := clock.LoadTick(data.Clock)
+	// Leaf validation via loaders (delegated — they own their rules).
+	// Load ONCE and keep the results: a second call with a discarded
+	// error was a needless crash path (T6 review, item 8).
+	loadedClock, err := clock.LoadTick(data.Clock)
 	if err != nil {
-		return nil, fmt.Errorf("load encounter clock: %w", err)
+		return nil, fmt.Errorf("load encounter clock: %w: %w", ErrInvalidData, err)
 	}
 
-	_, err = intel.LoadIntel(data.Intel)
+	loadedIntel, err := intel.LoadIntel(data.Intel)
 	if err != nil {
-		return nil, fmt.Errorf("load encounter intel: %w", err)
+		return nil, fmt.Errorf("load encounter intel: %w: %w", ErrInvalidData, err)
 	}
 
-	_, err = record.LoadLog(data.Log)
+	loadedLog, err := record.LoadLog(data.Log)
 	if err != nil {
-		return nil, fmt.Errorf("load encounter log: %w", err)
+		return nil, fmt.Errorf("load encounter log: %w: %w", ErrInvalidData, err)
 	}
 
 	// All validated; now reconstruct via the same path Setup uses
@@ -374,7 +417,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		})
 		err = e.orchestrator.AddRoom(room)
 		if err != nil {
-			return nil, fmt.Errorf("load encounter add room: %w: %w", ErrBadPlacement, err)
+			return nil, fmt.Errorf("load encounter add room: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 		}
 		spatialRoomMap[ri.ID] = room
 
@@ -387,7 +430,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 				Position: spatial.Position{X: pos.X, Y: pos.Y},
 			})
 			if err != nil {
-				return nil, fmt.Errorf("load encounter occluder placement: %w: %w", ErrBadPlacement, err)
+				return nil, fmt.Errorf("load encounter occluder placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 			}
 		}
 
@@ -404,7 +447,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 				if br, ok := interface{}(boundaryRoom).(spatial.BoundaryAwareRoom); ok {
 					err = br.RegisterBoundary(boundary)
 					if err != nil {
-						return nil, fmt.Errorf("load encounter boundary: %w: %w", ErrBadPlacement, err)
+						return nil, fmt.Errorf("load encounter boundary: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 					}
 				}
 			}
@@ -416,14 +459,14 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		door := spatial.CreateDoorConnection(ci.ID, ci.From, ci.To, 1.0)
 		err = e.orchestrator.AddConnection(door)
 		if err != nil {
-			return nil, fmt.Errorf("load encounter add connection: %w", err)
+			return nil, fmt.Errorf("load encounter add connection: %w: %w", ErrInvalidData, err)
 		}
 	}
 
 	// Load leaf state (constructors always succeed after validation)
-	e.clock, _ = clock.LoadTick(data.Clock)
-	e.intelLog, _ = intel.LoadIntel(data.Intel)
-	e.story, _ = record.LoadLog(data.Log)
+	e.clock = loadedClock
+	e.intelLog = loadedIntel
+	e.story = loadedLog
 
 	// Re-place members at persisted positions (no surveil here — outcomes already in intel)
 	for _, m := range data.Members {
@@ -438,7 +481,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			Position: spatial.Position{X: m.Position.X, Y: m.Position.Y},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("load encounter member placement: %w: %w", ErrBadPlacement, err)
+			return nil, fmt.Errorf("load encounter member placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 		}
 
 		member := &Member{
@@ -449,8 +492,12 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
-		// Re-attach decider if present
+		// Re-attach decider if present — players cannot carry deciders
+		// (C2, enforced at all three seams: Setup, Join, and load).
 		if d, ok := deciders[m.ID]; ok {
+			if m.Kind == KindPlayer {
+				return nil, fmt.Errorf("load encounter: player %s cannot carry a decider: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
+			}
 			e.deciders[m.ID] = d
 		}
 	}
