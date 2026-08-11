@@ -208,3 +208,21 @@ invalid under centered spans — the correction doubles as a negative-
 axial proof); the build-square-always mutant now dies via hex tests
 directly, superseding the "only gridless discriminates" finding. 269
 tests; gorelease verdict unchanged (v0.2.0).
+
+**Platform round (commit f8f3a29) — COMPLETE.** Platform review found
+two real boundary defects, both reproduced with probes: (1) a map-
+present NIL decider passed LoadEncounter and panicked the first Pump —
+nil entry now ≡ absent (the Setup/Join optional posture; Join's nil-
+holds behavior gained its missing pin), regression tests incl. the
+mixed nil+real map; (2) fractional axial positions (Position is
+float64) were accepted by spatial's AxialHexGrid bounds check while
+all cube math truncates — (0.5,0.5) persisted as a distinct hex
+position behaving as (0,0), silently breaking the axial↔cube
+identity. Semantic-owner fix filed as toolkit#926 (spatial ingress);
+interim: the composition enforces integral axial at every seam a hex
+position enters (Setup/Load members, endpoints both sides, occluders,
+Move targets — the path Pump shares, so fractional decider intents
+fall under the phase-2 silent-skip contract for free — and Join),
+hex-only (square fractional-tolerant, gridless continuous by design),
+each seam's existing defect family, all rows mutant-verified. 288
+tests; gorelease verdict unchanged (v0.2.0).
