@@ -205,3 +205,13 @@ Commit `test(dnd5e/encounter): AC1 tomb watch; ci: compat gate`.
   goldens. Standing lesson, now family law shape: **rejection fixtures
   must be valid except for exactly one defect, and every golden set
   must exercise every omitempty field at least once.**
+- **With Task 7**: the drafted tomb watch was nine disconnected
+  vignettes — nine separate encounters, one per subtest — where AC1's
+  entire point is state FLOWING through one story (the mid-scene ghost
+  surviving the reload; the transcript accumulating; the outcome
+  seeding the sequel). The director rewrote it as one continuous scene
+  with beat-labeled assertions ending in the full ten-beat transcript
+  pin and the sequel-seed epilogue; it passed end-to-end on the first
+  run — the model held. compat.yml gained its fifth gorelease job.
+- **With Task 8**: 172 tests, full gate (lint by exit code, gofmt
+  verified), PR #921 opened ready-for-review.
