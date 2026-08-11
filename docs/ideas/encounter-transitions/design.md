@@ -127,6 +127,15 @@ map it was built with.
 
 `gorelease` gate stays in CI; tag `rulebooks/dnd5e/encounter/v0.2.0`.
 
+Wire-shape amendments (Copilot round on PR #924, ratified): the blob
+persists grid shape as a **string** using spatial's own serialization
+vocabulary (`GridTypeHex`/`GridTypeGridless`; empty = square), never
+the iota integer — constant reordering must not reinterpret stored
+data. Connection endpoints persist as pointers with **presence
+required at load** (nil → ErrInvalidData+ErrBadConnection naming the
+side) — a missing endpoint must reject, not silently become the legal
+cell (0,0). This is what makes compat note 1 above genuinely true.
+
 ## Acceptance criteria
 
 - A two-room field with one opening validates, round-trips, and

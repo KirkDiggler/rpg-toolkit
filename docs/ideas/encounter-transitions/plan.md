@@ -181,3 +181,17 @@ else additive, suggested version v0.2.0.
 **Wave complete: PR #924, eleven commits, 259 subtests.** Awaiting
 merge + tag `rulebooks/dnd5e/encounter/v0.2.0` (Platform's dependency
 signal on rpg-api#793).
+
+**Copilot round (commit 095e6f5) — COMPLETE.** Both findings verified
+real and fixed pre-tag while the wire shape was still free: (1) grid
+persisted as the iota INTEGER — brittle against constant reordering
+and inconsistent with spatial's own string serialization → RoomData.
+Grid is now a string reusing spatial's GridType* constants (empty =
+square; goldens byte-stable; unknown strings rejected, mutant-
+verified); (2) missing connection endpoints silently unmarshaled to
+the LEGAL cell (0,0) — invented topology, and the design's "v0.1
+blobs fail v0.2 load" claim was unenforced → endpoints are now
+*PositionData with presence required (two one-defect rows, mutant-
+verified), making the compat claim true. 261 tests; gorelease verdict
+unchanged (v0.2.0, one ratified incompatible change). Copilot replies
+posted on both threads.
