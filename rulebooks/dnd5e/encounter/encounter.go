@@ -459,7 +459,6 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}, nil
 }
 
-
 // refreshSight rebuilds the complete percept for all given observers,
 // surveils each, and returns a map of member IDs to their SurveilOutput deltas.
 // This is shared between Setup's first-light and Move's percept refresh.

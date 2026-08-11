@@ -19,10 +19,11 @@ import (
 
 // Shared test constants
 const (
-	alice  = core.EntityID("alice")
-	bob    = core.EntityID("bob")
-	goblin = core.EntityID("goblin")
-	room1  = "room-1"
+	alice        = core.EntityID("alice")
+	bob          = core.EntityID("bob")
+	goblin       = core.EntityID("goblin")
+	room1        = "room-1"
+	endingStairs = "stairs"
 )
 
 type EncounterTestSuite struct {
@@ -540,10 +541,11 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 }
 
 func (s *EncounterTestSuite) TestMoveGhostForms() {
-	s.Run("pillar blocks sight, moving member causes holding fade", func() {
-		// Arrange: alice and bob in clear sight on horizontal line.
-		// Occluder placed vertically away from their line of sight initially.
-		// When alice moves to align with the pillar vertically, line of sight blocked.
+	s.Run("moving behind the pillar fades holdings both ways", func() {
+		// Geometry: pillar at (10,10). alice starts at (2,2); bob at (10,18).
+		// The line (2,2)->(10,18) misses the pillar: initially visible.
+		// alice moves to (10,2): the line (10,2)->(10,18) is the x=10
+		// vertical and crosses (10,10): blocked BOTH ways.
 		setup := &encounter.SetupInput{
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
@@ -552,65 +554,61 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 						Width:  20,
 						Height: 20,
 						Occluders: []spatial.Position{
-							{X: 10, Y: 10}, // Central pillar
+							{X: 10, Y: 10},
 						},
 					},
 				},
-				Connections: []encounter.ConnectionInput{},
 			},
 			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     room1,
-					Position: spatial.Position{X: 2, Y: 5}, // On row 5, clear of pillar
-				},
-				{
-					ID:       bob,
-					Kind:     encounter.KindPlayer,
-					Room:     room1,
-					Position: spatial.Position{X: 18, Y: 5}, // Same row, clear of pillar
-				},
+				{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+				{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 10, Y: 18}},
 			},
 			Endings: []encounter.EndingInput{
-				{
-					Key: "stairs",
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
-						Position: spatial.Position{X: 19, Y: 19},
-					},
-				},
+				{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
+					Room: room1, Position: spatial.Position{X: 19, Y: 19}}},
 			},
 		}
 		enc, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
-		// Initial state: alice sees bob (both on row 5, clear of pillar at 10,10)
 		aliceViewBefore, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
-		s.Len(aliceViewBefore, 1, "alice should initially see bob")
-		s.Equal(intel.Subject(bob), aliceViewBefore[0].Subject)
-		s.Equal("current", string(aliceViewBefore[0].Status))
+		s.Require().Len(aliceViewBefore, 1, "alice must initially see bob (geometry precondition)")
+		s.Require().Equal(intel.Current, aliceViewBefore[0].Status)
 
-		// Act: alice moves to (10, 5), directly below the pillar
-		moveOut, err := enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 10, Y: 5},
-		})
+		_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 10, Y: 2}})
 		s.Require().NoError(err)
-		s.NotNil(moveOut)
 
-		// Assert: alice's holding of bob should still be current (same row, no blocking)
-		// OR it might fade if the pillar cell at (10, 10) and (10, 5) affects LoS.
-		// The test is flexible: just verify that Move executes and updates percepts.
-		aliceViewAfter, err := enc.View(&encounter.ViewInput{Member: alice})
+		// alice's holding of bob: faded to ghost at bob's (unchanged) position.
+		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
-		// After the move, alice should have updated view (either still sees bob or holds ghost)
-		s.GreaterOrEqual(len(aliceViewAfter), 0, "alice's view is valid after move")
+		s.Require().Len(aliceView, 1, "the ghost is HELD, not gone")
+		s.Equal(intel.Held, aliceView[0].Status, "alice's sight of bob must fade behind the pillar")
+		var bobSeen encounter.SightPayload
+		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &bobSeen))
+		s.Equal(18.0, bobSeen.Y, "ghost holds bob at his last-seen position")
+
+		// bob's holding of alice: the true ghost — alice's LAST-SEEN
+		// (pre-move) position. bob never saw her arrive at (10,2).
+		bobView, err := enc.View(&encounter.ViewInput{Member: bob})
+		s.Require().NoError(err)
+		s.Require().Len(bobView, 1)
+		s.Equal(intel.Held, bobView[0].Status, "bob's sight of alice must fade too (symmetric)")
+		var aliceSeen encounter.SightPayload
+		s.Require().NoError(json.Unmarshal(bobView[0].Payload, &aliceSeen))
+		s.Equal(2.0, aliceSeen.X, "bob's ghost of alice is at her PRE-move position")
+		s.Equal(2.0, aliceSeen.Y, "bob never saw alice arrive at (10,2)")
 	})
 }
 
-func (s *EncounterTestSuite) TestMoveManagedSeamIndex() {
+// TestMoveSequentialConsistency pins that consecutive moves proceed from
+// the mover's updated position. It does NOT pin managed-seam usage: for
+// same-room moves the seam and a raw room call are observationally
+// identical (spatial's managed MoveEntity only precondition-checks the
+// index). Real seam enforcement becomes falsifiable with cross-room
+// Transition (multi-room task) and is held by convention (law C2) until
+// then — an unfalsifiable pin here would violate the mutation-proof law.
+func (s *EncounterTestSuite) TestMoveSequentialConsistency() {
 	s.Run("after sequential moves, spatial index remains valid (CanMoveEntityBetweenRooms-style)", func() {
 		// Arrange: alice in one room
 		setup := &encounter.SetupInput{
@@ -947,6 +945,69 @@ func (s *EncounterTestSuite) TestMoveOutcomeCopyOut() {
 		}
 		s.Fail("alice not found in status outcome")
 	})
+}
+
+// newBasicEncounter builds the standard two-player fixture: alice (2,2)
+// and bob (5,5) in a clear 20x20 room, one any-player stairs ending at
+// (19,19).
+func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
+				Room: room1, Position: spatial.Position{X: 19, Y: 19}}},
+		},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestMoveBeatPinned pins Move's record beat via Story (the Task 2
+// opening-beat precedent applied to Move).
+func (s *EncounterTestSuite) TestMoveBeatPinned() {
+	enc := s.newBasicEncounter()
+	moveOut, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 3, Y: 3}})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().Len(story, 2, "opening beat + movement beat")
+	last := story[len(story)-1]
+	s.Equal(moveOut.Seq, last.Seq, "MoveOutput.Seq must reference the appended beat")
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("moved", beat["beat"], "the movement beat must be recorded")
+	s.Equal(string(alice), beat["member"])
+}
+
+// TestMoveClosedBeforeNotMember pins the validation order combo the
+// design declares: on a closed encounter, a non-member's move answers
+// ErrClosed (closed is checked before membership).
+func (s *EncounterTestSuite) TestMoveClosedBeforeNotMember() {
+	enc := s.newBasicEncounter()
+	_, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 19, Y: 19}})
+	s.Require().NoError(err, "alice reaches the stairs; encounter closes")
+	_, err = enc.Move(&encounter.MoveInput{Member: "stranger", To: spatial.Position{X: 1, Y: 1}})
+	s.Require().ErrorIs(err, encounter.ErrClosed, "closed wins over not-member")
+}
+
+// TestMoveSpatialRejectionAtomic pins R5 from a populated state: a
+// spatially rejected move changes nothing observable.
+func (s *EncounterTestSuite) TestMoveSpatialRejectionAtomic() {
+	enc := s.newBasicEncounter()
+	viewBefore, err := enc.View(&encounter.ViewInput{Member: bob})
+	s.Require().NoError(err)
+	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 99, Y: 99}})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement, "out-of-bounds move rejected")
+	viewAfter, err := enc.View(&encounter.ViewInput{Member: bob})
+	s.Require().NoError(err)
+	s.Equal(viewBefore, viewAfter, "failed move must leave every view unchanged (R5)")
+	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 3, Y: 3}})
+	s.Require().NoError(err, "alice still moves from her original position")
 }
 
 func TestEncounterSuite(t *testing.T) {
