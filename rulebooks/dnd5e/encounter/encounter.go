@@ -44,6 +44,11 @@ type Encounter struct {
 	// deterministic, first-declared-wins (law C8).
 	endings []declaredEnding
 	outcome *Outcome
+	// fieldInput and connectionsInput are stored at Setup time for persistence.
+	// LoadEncounter uses them to rebuild the field deterministically without
+	// re-running surveil or requiring an event bus.
+	fieldInput       []RoomInput
+	connectionsInput []ConnectionInput
 }
 
 // NewEncounter constructs and initializes an encounter from SetupInput.
@@ -90,10 +95,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		members:     make(map[MemberID]*Member),
-		everMembers: make(map[MemberID]bool),
-		deciders:    make(map[MemberID]Decider),
-		endings:     nil,
+		members:          make(map[MemberID]*Member),
+		everMembers:      make(map[MemberID]bool),
+		deciders:         make(map[MemberID]Decider),
+		endings:          nil,
+		fieldInput:       in.Field.Rooms,
+		connectionsInput: in.Field.Connections,
 	}
 
 	// Build clock and intel
