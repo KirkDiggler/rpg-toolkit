@@ -57,10 +57,12 @@ encounter/  (SDK)           AttackInput{AttackerDamageDice, AttackerDamageType, 
 ### The attack damage flow
 
 ```mermaid
-flowchart TD
+%%{init: {'flowchart': {'useMaxWidth': false, 'htmlLabels': true}}}%%
+flowchart LR
     AI["combat.AttackInput<br/>Weapon (Damage='1d8', DamageType=bludgeoning)<br/>Roller, EventBus, AttackerID, TargetID<br/>v1: AdditionalDamage []DamageComponentSpec"]
 
     subgraph P1["attack_phases.go - ResolveAttackHit, phase 1"]
+        direction TB
         R1["roll d20 -> AttackRoll"]
         AC["AttackChain staged: advantage, pack tactics, improved-crit threshold"]
         CTX["AttackContext{AttackRoll, AbilityMod, AbilityUsed,<br/>CriticalThreshold, Weapon, IsMelee}<br/>v1: + AdditionalDamage"]
@@ -70,6 +72,7 @@ flowchart TD
     WIN["reaction window - Shield, Protection"]
 
     subgraph P2["attack_phases.go - ApplyAttackOutcome, phase 2"]
+        direction TB
         HIT["hit? crit?  roll vs effectiveAC, crit if >= threshold"]
         ROLL["parse Weapon.Damage -> dice.Pool<br/>roll pool crit?2:1 -> weaponComponent<br/>(DamageComponent: dice rolls, IsCritical=crit)"]
         ABIL["abilityComponent (FlatBonus=AbilityMod, never doubled)"]
@@ -78,6 +81,7 @@ flowchart TD
     end
 
     subgraph CH["combat/damage.go - ResolveDamage, the chain"]
+        direction TB
         CE["DamageChainEvent{Components: weapon, ability, additional...}"]
         ST["staged chain Base->Features->Conditions->Equipment->Final<br/>conditions add/modify components:<br/>rage, sneak attack (crit-eligible dice), GWF reroll,<br/>resistance x0.5, vulnerability x2, immunity x0"]
         CALC["calculateFinalDamage: group by Type, apply multipliers<br/>-> []DamageInstanceInput{Amount int, Type}  dice become INTS here"]
@@ -86,12 +90,14 @@ flowchart TD
     end
 
     subgraph OUT["ApplyAttackOutcome returns + notifies"]
+        direction TB
         AR["AttackResult{TotalDamage, Critical, Breakdown.Components}"]
         DRE["publish DamageReceivedEvent"]
         AR --> DRE
     end
 
     subgraph DOWN["DOWNSTREAM - rpg-api / encounter SDK, not rpg-toolkit combat"]
+        direction TB
         HP["Target.ApplyDamage -> HP mutation"]
         DDE["encounter DamageDealtEvent{Components}"]
         HP --> DDE
@@ -168,17 +174,12 @@ Pseudopod = weapon pool `1d8 bludgeoning` (crit-eligible, as today) +
 `AdditionalDamage: [{Dice: "1d6", Type: damage.Acid}]` (never crits). On a crit:
 2× bludgeoning dice, 1× acid dice. On a normal hit: 1× each.
 
-### Property abstraction is deliberately deferred
+### Primary damage pool
 
-A general "damage properties" model (mirroring `weapons.WeaponProperty`) is the
-natural evolution — crit eligibility would become one `DamageProperty` among
-many. We are **not** building it in v1. v1 has exactly one behavior ("additional
-damage does not double on a crit"); a property enum with a single value is
-speculative structure. The `DamageProperty` enum will be extracted the moment a
-second property appears (e.g. "this additional damage *can* crit," or "this
-damage ignores resistance"). This is the intended "embrace the refactor" path:
-ship the simplest model that solves the ooze, then refactor upward when a second
-case demands it.
+The weapon's own pool stays **implicitly crit-eligible** (backwards compatible).
+Additional damage is the only place the "never crits" rule applies; making every
+pool — including the primary — go through the spec list from day one would be a
+larger blast radius across the weapons catalog for no v1 benefit.
 
 ## Consequences
 
@@ -189,16 +190,12 @@ case demands it.
   chain and resistance/vulnerability logic are untouched (already correct).
 - Fully testable inside `rpg-toolkit` at the combat layer, independent of
   rpg-api plumbing.
-- Leaves the composable "damage recipe" / property model as a clean future
-  refactor rather than forcing it prematurely.
 
 ### Negative
 - Does not cover the rare case where additional damage *should* crit (e.g. a
   flametongue's fire under strict RAW). Sneak attack is unaffected — it is
   already a condition on the damage chain, not intrinsic attack damage.
-- "Additional never crits" is a variant rule, not RAW. Adopted deliberately; if
-  the game later wants RAW crit doubling for a specific source, that is the
-  trigger to introduce `DamageProperty`.
+- "Additional never crits" is a variant rule, not RAW, adopted deliberately.
 - End-to-end exercise for a real monster in a live encounter requires follow-on
   rpg-api resolver plumbing to populate `AttackInput.AdditionalDamage` from a
   monster action. The crit behavior itself is proven at the combat layer first.
@@ -226,10 +223,3 @@ In `rulebooks/dnd5e/combat/`, driven through `ApplyAttackOutcome` with a rigged
 4. On a crit, `result.Breakdown.Components` shows bludgeoning `IsCritical: true`
    and acid `IsCritical: false`, so the combat log / animation can narrate the
    difference.
-
-### Open design choice (ratified)
-
-The weapon's primary pool stays **implicitly crit-eligible** (backwards
-compatible). Making every pool — including the primary — go through the spec
-list from day one is a larger blast radius across the weapons catalog for no v1
-benefit, and is left for the composable-recipe refactor.
