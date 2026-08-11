@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -17,11 +18,12 @@ import (
 
 // MeleeConfig holds configuration for creating a melee action
 type MeleeConfig struct {
-	Name        string      `json:"name"`         // e.g., "shortsword", "greataxe"
-	AttackBonus int         `json:"attack_bonus"` // e.g., +4
-	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
-	Reach       int         `json:"reach"`        // in hexes, typically 1 (5ft) or 2 (10ft reach)
-	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing, slashing
+	Name        string             `json:"name"`         // e.g., "shortsword", "greataxe"
+	AttackBonus int                `json:"attack_bonus"` // e.g., +4
+	DamageDice  string             `json:"damage_dice"`  // e.g., "1d6+2"
+	Reach       int                `json:"reach"`        // in hexes, typically 1 (5ft) or 2 (10ft reach)
+	DamageType  damage.Type        `json:"damage_type"`  // e.g., piercing, slashing
+	DamageSpec  *damage.DamageSpec `json:"damage_spec,omitempty"`
 	// DamageComponents supports attacks with more than one damage type. The
 	// legacy DamageDice and DamageType fields remain for old saved monsters.
 	DamageComponents []dnd5eEvents.AttackDamageComponent `json:"damage_components,omitempty"`
@@ -35,6 +37,7 @@ type MeleeAction struct {
 	damageDice       string
 	reach            int
 	damageType       damage.Type
+	damageSpec       damage.DamageSpec
 	damageComponents []dnd5eEvents.AttackDamageComponent
 }
 
@@ -43,9 +46,16 @@ var _ monster.MonsterAction = (*MeleeAction)(nil)
 
 // NewMeleeAction creates a melee action with the given config
 func NewMeleeAction(config MeleeConfig) *MeleeAction {
+	damageSpec := damage.DamageSpec{Pools: []damage.Damage{{Dice: config.DamageDice, Type: config.DamageType}}}
+	if config.DamageSpec != nil {
+		damageSpec = *config.DamageSpec
+	}
 	components := config.DamageComponents
 	if len(components) == 0 {
-		components = []dnd5eEvents.AttackDamageComponent{{Dice: config.DamageDice, DamageType: config.DamageType}}
+		components = make([]dnd5eEvents.AttackDamageComponent, len(damageSpec.Pools))
+		for i, pool := range damageSpec.Pools {
+			components[i] = dnd5eEvents.AttackDamageComponent{Dice: pool.Dice, DamageType: pool.Type}
+		}
 	}
 	return &MeleeAction{
 		name:             config.Name,
@@ -53,6 +63,7 @@ func NewMeleeAction(config MeleeConfig) *MeleeAction {
 		damageDice:       config.DamageDice,
 		reach:            config.Reach,
 		damageType:       config.DamageType,
+		damageSpec:       damageSpec,
 		damageComponents: components,
 	}
 }
@@ -130,8 +141,13 @@ func (m *MeleeAction) Activate(ctx context.Context, owner core.Entity, input mon
 	// Publish attack event - the combat system handles the actual resolution
 	attackTopic := dnd5eEvents.AttackTopic.On(input.Bus)
 	err := attackTopic.Publish(ctx, dnd5eEvents.AttackEvent{
-		AttackerID:       owner.GetID(),
-		TargetID:         input.Target.GetID(),
+		AttackerID: owner.GetID(),
+		TargetID:   input.Target.GetID(),
+		Definition: attack.Definition{
+			ActionID: m.GetID(), DisplayName: m.name, Category: attack.CategoryNatural,
+			Bonus: attack.FixedBonus(m.attackBonus), Targeting: attack.MeleeReach(m.reach),
+			Damage: m.damageSpec,
+		},
 		WeaponRef:        m.name,
 		IsMelee:          true,
 		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), m.damageComponents...),
@@ -151,6 +167,7 @@ func (m *MeleeAction) ToData() monster.ActionData {
 		DamageDice:       m.damageDice,
 		Reach:            m.reach,
 		DamageType:       m.damageType,
+		DamageSpec:       &m.damageSpec,
 		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), m.damageComponents...),
 	}
 	configJSON, _ := json.Marshal(config)

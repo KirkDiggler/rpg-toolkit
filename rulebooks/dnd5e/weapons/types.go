@@ -55,6 +55,7 @@ type Weapon struct {
 	Cost           string      // "5 gp"
 	Damage         string      // "1d8"
 	DamageType     damage.Type // "slashing"
+	DamageSpec     *damage.DamageSpec
 	Weight         float64
 	Properties     []WeaponProperty
 	Range          *Range          // nil for melee-only weapons

@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -175,13 +176,14 @@ type DamageSourceType string
 
 // Damage source category constants
 const (
-	DamageSourceWeapon       DamageSourceType = "weapon"        // Damage from a weapon
-	DamageSourceAbility      DamageSourceType = "ability"       // Damage from ability modifier
-	DamageSourceCondition    DamageSourceType = "condition"     // Damage from an active condition (rage, etc.)
-	DamageSourceFeature      DamageSourceType = "feature"       // Damage from a class/racial feature
-	DamageSourceSpell        DamageSourceType = "spell"         // Damage from a spell
-	DamageSourceItem         DamageSourceType = "item"          // Damage from a magic item
-	DamageSourceMonsterTrait DamageSourceType = "monster_trait" // Modifier from monster trait (vulnerability, etc.)
+	DamageSourceWeapon        DamageSourceType = "weapon"         // Damage from a weapon
+	DamageSourceAbility       DamageSourceType = "ability"        // Damage from ability modifier
+	DamageSourceCondition     DamageSourceType = "condition"      // Damage from an active condition (rage, etc.)
+	DamageSourceFeature       DamageSourceType = "feature"        // Damage from a class/racial feature
+	DamageSourceSpell         DamageSourceType = "spell"          // Damage from a spell
+	DamageSourceItem          DamageSourceType = "item"           // Damage from a magic item
+	DamageSourceMonsterTrait  DamageSourceType = "monster_trait"  // Modifier from monster trait (vulnerability, etc.)
+	DamageSourceNaturalAttack DamageSourceType = "natural_attack" // Damage from a monster's natural attack
 )
 
 // =============================================================================
@@ -551,10 +553,11 @@ type ConditionRemovedEvent struct {
 
 // AttackEvent is published when a character makes an attack (before rolls)
 type AttackEvent struct {
-	AttackerID string // ID of the attacking character
-	TargetID   string // ID of the target
-	WeaponRef  string // Reference to the weapon used
-	IsMelee    bool   // True for melee attacks, false for ranged
+	AttackerID string            // ID of the attacking character
+	TargetID   string            // ID of the target
+	Definition attack.Definition // Complete static definition of the attack
+	WeaponRef  string            // Reference to the weapon used
+	IsMelee    bool              // True for melee attacks, false for ranged
 	// DamageComponents describes the attack's unrolled damage parts. It lets
 	// natural weapons and future attacks carry mixed damage such as bludgeoning
 	// plus acid without collapsing them into one type.

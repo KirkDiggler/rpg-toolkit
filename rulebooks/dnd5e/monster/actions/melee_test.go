@@ -230,6 +230,46 @@ func (s *MeleeActionTestSuite) TestActivatePublishesEveryDamageComponent() {
 	}, received.DamageComponents)
 }
 
+func (s *MeleeActionTestSuite) TestMeleeActionPrefersDamageSpec() {
+	action := NewMeleeAction(MeleeConfig{
+		Name: "Pseudopod", AttackBonus: 3, Reach: 1,
+		DamageDice: "1d6", DamageType: damage.Bludgeoning,
+		DamageSpec: &damage.DamageSpec{Pools: []damage.Damage{{Dice: "2d6", Type: damage.Acid}}},
+	})
+
+	event := s.activateAndReceiveEvent(action)
+
+	s.Equal("2d6", event.Definition.Damage.Pools[0].Dice)
+}
+
+func (s *MeleeActionTestSuite) TestMeleeActionConvertsLegacySinglePool() {
+	action := NewMeleeAction(MeleeConfig{
+		Name: "Club", AttackBonus: 2, Reach: 1,
+		DamageDice: "1d4", DamageType: damage.Bludgeoning,
+	})
+
+	event := s.activateAndReceiveEvent(action)
+
+	s.Equal("1d4", event.Definition.Damage.Pools[0].Dice)
+}
+
+func (s *MeleeActionTestSuite) activateAndReceiveEvent(action *MeleeAction) dnd5eEvents.AttackEvent {
+	s.T().Helper()
+	owner := &mockEntity{id: "monster"}
+	target := &mockEntity{id: "target"}
+	perception := &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 1}}}
+	var received dnd5eEvents.AttackEvent
+	_, err := dnd5eEvents.AttackTopic.On(s.bus).Subscribe(context.Background(), func(_ context.Context, event dnd5eEvents.AttackEvent) error {
+		received = event
+		return nil
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(action.Activate(context.Background(), owner, monster.MonsterActionInput{
+		Bus: s.bus, Target: target, Perception: perception,
+	}))
+	return received
+}
+
 func (s *MeleeActionTestSuite) TestScore_AdjacentEnemy() {
 	// Arrange
 	action := NewMeleeAction(MeleeConfig{
