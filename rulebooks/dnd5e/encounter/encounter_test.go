@@ -399,9 +399,9 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 	s.Require().NoError(err, "the valid base fixture must construct")
 	data := enc.ToData()
 	s.Require().Len(data.Field.Connections, 1)
-	s.Equal(encounter.PositionData{X: 7, Y: 1}, data.Field.Connections[0].FromPosition,
+	s.Equal(&encounter.PositionData{X: 7, Y: 1}, data.Field.Connections[0].FromPosition,
 		"from-position must survive unswapped")
-	s.Equal(encounter.PositionData{X: 1, Y: 7}, data.Field.Connections[0].ToPosition,
+	s.Equal(&encounter.PositionData{X: 1, Y: 7}, data.Field.Connections[0].ToPosition,
 		"to-position must survive unswapped")
 }
 

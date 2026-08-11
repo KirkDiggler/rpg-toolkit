@@ -52,15 +52,19 @@ type FieldData struct {
 }
 
 // RoomData mirrors RoomInput exactly to persist construction inputs.
-// Grid omits when GridShapeSquare (the zero value) so pre-v0.2 blobs and
-// square-only encounters keep byte-identical output.
+// Grid is persisted as spatial's own GridType string ("hex" or
+// "gridless" — tools/spatial's GridTypeHex/GridTypeGridless), not the
+// GridShape iota: the iota is an in-process enumeration order, not a
+// wire contract, and would silently reinterpret old blobs if spatial
+// ever reordered it. Grid omits when empty (the square zero value) so
+// pre-v0.2 blobs and square-only encounters keep byte-identical output.
 type RoomData struct {
-	ID         string            `json:"id"`
-	Width      int               `json:"width"`
-	Height     int               `json:"height"`
-	Grid       spatial.GridShape `json:"grid,omitempty"`
-	Occluders  []PositionData    `json:"occluders,omitempty"`
-	Boundaries []BoundaryData    `json:"boundaries,omitempty"`
+	ID         string         `json:"id"`
+	Width      int            `json:"width"`
+	Height     int            `json:"height"`
+	Grid       string         `json:"grid,omitempty"`
+	Occluders  []PositionData `json:"occluders,omitempty"`
+	Boundaries []BoundaryData `json:"boundaries,omitempty"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -78,12 +82,17 @@ type BoundaryData struct {
 }
 
 // ConnectionData is the persistent representation of a connection.
+// FromPosition and ToPosition are required — ToData always populates
+// both; a nil pointer at Load means the field was absent from the
+// blob and is rejected (a connection without both endpoints has no
+// meaning, and a missing endpoint must never silently default to
+// (0,0), a legal cell that would invent topology).
 type ConnectionData struct {
-	ID           string       `json:"id"`
-	From         string       `json:"from"`
-	To           string       `json:"to"`
-	FromPosition PositionData `json:"from_position"`
-	ToPosition   PositionData `json:"to_position"`
+	ID           string        `json:"id"`
+	From         string        `json:"from"`
+	To           string        `json:"to"`
+	FromPosition *PositionData `json:"from_position"`
+	ToPosition   *PositionData `json:"to_position"`
 }
 
 // MemberData is the persistent representation of a member's current placement.
@@ -182,7 +191,7 @@ func (e *Encounter) ToData() EncounterData {
 			ID:         ri.ID,
 			Width:      ri.Width,
 			Height:     ri.Height,
-			Grid:       ri.Grid,
+			Grid:       gridShapeToData(ri.Grid),
 			Occluders:  make([]PositionData, len(ri.Occluders)),
 			Boundaries: make([]BoundaryData, len(ri.Boundaries)),
 		}
@@ -208,8 +217,8 @@ func (e *Encounter) ToData() EncounterData {
 			ID:           ci.ID,
 			From:         ci.From,
 			To:           ci.To,
-			FromPosition: PositionData{X: ci.FromPosition.X, Y: ci.FromPosition.Y},
-			ToPosition:   PositionData{X: ci.ToPosition.X, Y: ci.ToPosition.Y},
+			FromPosition: &PositionData{X: ci.FromPosition.X, Y: ci.FromPosition.Y},
+			ToPosition:   &PositionData{X: ci.ToPosition.X, Y: ci.ToPosition.Y},
 		}
 	}
 
@@ -239,6 +248,41 @@ func (e *Encounter) ToData() EncounterData {
 		Members:     membersData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
+	}
+}
+
+// gridShapeToData maps a room's constructed grid shape to its persisted
+// string form, reusing spatial's own GridType* constants
+// (tools/spatial/data.go) so the wire vocabulary matches spatial's own
+// persistence. Square (the zero value) maps to "" so byte-compat
+// goldens keep omitting the field entirely.
+func gridShapeToData(shape spatial.GridShape) string {
+	switch shape {
+	case spatial.GridShapeHex:
+		return spatial.GridTypeHex
+	case spatial.GridShapeGridless:
+		return spatial.GridTypeGridless
+	default:
+		return ""
+	}
+}
+
+// gridDataToShape is gridShapeToData's inverse, used at Load. Empty
+// string and the literal "square" both mean the zero-value shape —
+// ToData never emits "square" (it omits the field), but Load accepts
+// it defensively for hand-authored fixtures. An unrecognized string
+// returns ok=false so the caller can reject with a fragment naming
+// the bad value, rather than silently defaulting to square.
+func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
+	switch s {
+	case "", spatial.GridTypeSquare:
+		return spatial.GridShapeSquare, true
+	case spatial.GridTypeHex:
+		return spatial.GridShapeHex, true
+	case spatial.GridTypeGridless:
+		return spatial.GridShapeGridless, true
+	default:
+		return spatial.GridShapeSquare, false
 	}
 }
 
@@ -321,14 +365,13 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		if roomMap[r.ID] {
 			return nil, fmt.Errorf("load encounter: duplicate room %q: %w: %w", r.ID, ErrInvalidData, ErrNoField)
 		}
-		switch r.Grid {
-		case spatial.GridShapeSquare, spatial.GridShapeHex, spatial.GridShapeGridless:
-		default:
-			return nil, fmt.Errorf("load encounter: room %q has unknown grid shape %d: %w: %w", r.ID, r.Grid, ErrInvalidData, ErrNoField)
+		shape, ok := gridDataToShape(r.Grid)
+		if !ok {
+			return nil, fmt.Errorf("load encounter: room %q has unknown grid shape %q: %w: %w", r.ID, r.Grid, ErrInvalidData, ErrNoField)
 		}
 		roomMap[r.ID] = true
 		roomsByID[r.ID] = r
-		roomGrids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
+		roomGrids[r.ID] = buildRoomGrid(shape, r.Width, r.Height)
 	}
 
 	// Validate connections: unique non-empty IDs, endpoints resolve to
@@ -356,6 +399,19 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 		if c.From == c.To {
 			return nil, fmt.Errorf("load encounter: connection %q connects room %q to itself: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
+		}
+
+		// Both endpoints are required — ToData always populates them, so
+		// a nil pointer here means the field was absent from the blob
+		// (not merely zero-valued). Without this check a missing endpoint
+		// would unmarshal to a nil *PositionData and panic below; worse,
+		// if the field type were still a value struct, it would silently
+		// default to (0,0), a legal cell that invents topology.
+		if c.FromPosition == nil {
+			return nil, fmt.Errorf("load encounter: connection %q missing from_position: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if c.ToPosition == nil {
+			return nil, fmt.Errorf("load encounter: connection %q missing to_position: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
 		}
 
 		if !roomGrids[c.From].IsValidPosition(spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
@@ -613,11 +669,14 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 	result := make([]RoomInput, len(rooms))
 	for i, rd := range rooms {
+		// gridDataToShape's ok is ignored: LoadEncounter has already
+		// validated every room's Grid string before this conversion runs.
+		shape, _ := gridDataToShape(rd.Grid)
 		ri := RoomInput{
 			ID:         rd.ID,
 			Width:      rd.Width,
 			Height:     rd.Height,
-			Grid:       rd.Grid,
+			Grid:       shape,
 			Occluders:  make([]spatial.Position, len(rd.Occluders)),
 			Boundaries: make([]spatial.Boundary, len(rd.Boundaries)),
 		}
