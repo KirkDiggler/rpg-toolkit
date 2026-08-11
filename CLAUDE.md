@@ -16,7 +16,7 @@ and never imports rpg-api or rpg-api-protos.
 - `docs/journey/` — exploration narratives (49 docs). How the engine got to where it is. Future contributors learn the engine from these. Do not archive.
 - `docs/plans/` — design explorations for specific features (10 plans). Historical; some are implemented, some stale.
 - `docs/ideas/` — cross-repo design work scoped to toolkit (3 ideas: action-economy-history, monster-behavior, type-safe-refs).
-- `docs/how-to/` — task guides: run-tests, add-a-mechanic, add-a-rulebook-entry, fix-go-mod-replace-directives
+- `docs/how-to/` — task guides: run-tests, add-a-mechanic, add-a-rulebook-entry, fix-go-mod-replace-directives, verified-transcripts (show a module working as designed: `./scripts/verify.sh <module>`)
 - `docs/archive/` — genuine archive: pre-Dec-2025 design docs, diagrams, guides that no longer reflect current architecture. Read for historical context only.
 
 ## RPG Toolkit Development Guidelines
