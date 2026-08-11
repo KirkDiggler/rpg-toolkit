@@ -136,6 +136,20 @@ required at load** (nil → ErrInvalidData+ErrBadConnection naming the
 side) — a missing endpoint must reject, not silently become the legal
 cell (0,0). This is what makes compat note 1 above genuinely true.
 
+Coordinate-model amendment (Kirk, 2026-08-11, ratified): **hex rooms
+speak axial/cube, not offset.** `buildRoomGrid` constructs spatial's
+`AxialHexGrid` — Position.X/Y are axial Q/R (S = -(Q+R) derived);
+bounds are origin-centered spans (negative coordinates legal), unlike
+square/gridless's (0,0)-origin rectangles; distance/adjacency/LoS run
+the pure cube formulas. Why: the wire and server pathing already speak
+cube — axial is cube's lossless 2D projection, so the projection at
+the seam is an identity, where the previously-chosen offset HexGrid
+would have forced a parity-dependent conversion (the exact confusion
+Platform flagged). Side effect: hex validity now diverges from
+square's, so the hex tests independently kill the build-square-always
+mutant (superseding the earlier "only gridless discriminates"
+finding).
+
 ## Acceptance criteria
 
 - A two-room field with one opening validates, round-trips, and

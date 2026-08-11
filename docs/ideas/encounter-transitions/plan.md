@@ -195,3 +195,16 @@ blobs fail v0.2 load" claim was unenforced → endpoints are now
 verified), making the compat claim true. 261 tests; gorelease verdict
 unchanged (v0.2.0, one ratified incompatible change). Copilot replies
 posted on both threads.
+
+**Axial round (commit 41412f5, Kirk-directed) — COMPLETE.** Kirk
+caught the coordinate-model confusion at its root: T1.5 had wired
+spatial's bounded OFFSET HexGrid; the wire and Platform's pathing
+speak CUBE. Hex rooms now construct AxialHexGrid — X/Y are axial Q/R,
+true cube math for distance/LoS, origin-centered spans with legal
+negative coordinates, identity wire projection. Test matrix rewritten
+both seams (negative-Q accepted — the flip; ±Width/2 boundary
+semantics); golden's hex fixture corrected (its old endpoint was
+invalid under centered spans — the correction doubles as a negative-
+axial proof); the build-square-always mutant now dies via hex tests
+directly, superseding the "only gridless discriminates" finding. 269
+tests; gorelease verdict unchanged (v0.2.0).
