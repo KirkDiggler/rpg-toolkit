@@ -168,7 +168,11 @@ code after taking the separately scoped new-mechanic lane.
 
 ## 4. Follow the canonical simple fixture
 
-Use the existing one-action bandit as the worked pattern:
+Use the existing one-action bandit as the worked **structural** pattern. Do
+not copy its distance literals: the older factories use feet-shaped values such
+as `Reach: 5` and `RangeNormal: 80`, while the current generic action configs
+and `PerceptionData.Distance` interpret reach/ranges as hex counts. New content
+must use current units (5 feet = 1 hex) and pin them in tests.
 
 - factory: [`monster/monsters/bandit.go`](../../rulebooks/dnd5e/monster/monsters/bandit.go)
   (`NewBanditMelee` is the smallest example);
