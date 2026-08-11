@@ -240,3 +240,59 @@ type PumpOutput struct {
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
 	Outcome *Outcome
 }
+
+// JoinInput contains the member and placement information for joining the encounter.
+type JoinInput struct {
+	// Member describes the joining member (ID, kind, room, position, optional decider).
+	Member MemberInput
+}
+
+// JoinOutput reports the results of a successful join.
+type JoinOutput struct {
+	// Member is the joined member's read-side data.
+	Member Member
+
+	// IntelDeltas maps member IDs to their updated percepts after the join
+	// (SurveilOutput deltas from the refreshSight cycle).
+	IntelDeltas map[MemberID]*intel.SurveilOutput
+
+	// Seq is the sequence number of the recorded join beat.
+	Seq uint64
+
+	// Outcome is the encounter outcome if an ending fired during join; nil otherwise.
+	Outcome *Outcome
+}
+
+// ExitInput contains the member ID of the member exiting.
+type ExitInput struct {
+	// Member is the ID of the member exiting.
+	Member MemberID
+}
+
+// ExitOutput reports the results of a successful exit.
+type ExitOutput struct {
+	// Outcome is the exiting member's final placement and holdings.
+	Outcome MemberOutcome
+
+	// Carry contains the exiting member's holdings at the time of exit (copy-out).
+	Carry []intel.Holding
+
+	// Seq is the sequence number of the recorded exit beat.
+	Seq uint64
+
+	// Closed is the encounter outcome if the encounter auto-closed due to
+	// the last member exiting; nil otherwise.
+	Closed *Outcome
+}
+
+// EndInput contains the ending key to fire.
+type EndInput struct {
+	// Ending is the key of the ending to fire (must be External).
+	Ending string
+}
+
+// EndOutput reports the results of a successful ending.
+type EndOutput struct {
+	// Outcome is the final state of the encounter when closed.
+	Outcome Outcome
+}

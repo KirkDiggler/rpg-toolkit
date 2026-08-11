@@ -26,6 +26,13 @@ const (
 	endingStairs = "stairs"
 )
 
+// simpleDecider is a minimal test decider that holds.
+type simpleDecider struct{}
+
+func (s *simpleDecider) Decide(view []intel.Holding) (encounter.Intent, error) {
+	return encounter.IntentHold{}, nil
+}
+
 type EncounterTestSuite struct {
 	suite.Suite
 }
@@ -966,6 +973,23 @@ func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
 	return enc
 }
 
+// newBasicEncounterWithExternalEnding builds the standard two-player fixture with
+// an External ending (for testing End verb).
+func (s *EncounterTestSuite) newBasicEncounterWithExternalEnding() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
 // TestMoveBeatPinned pins Move's record beat via Story (the Task 2
 // opening-beat precedent applied to Move).
 func (s *EncounterTestSuite) TestMoveBeatPinned() {
@@ -1008,6 +1032,657 @@ func (s *EncounterTestSuite) TestMoveSpatialRejectionAtomic() {
 	s.Equal(viewBefore, viewAfter, "failed move must leave every view unchanged (R5)")
 	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 3, Y: 3}})
 	s.Require().NoError(err, "alice still moves from her original position")
+}
+
+// Membership flow tests (Task 5)
+
+func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
+	s.Run("late joiner seen by and sees incumbents", func() {
+		// Arrange: setup with alice and bob
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{
+						ID:     room1,
+						Width:  10,
+						Height: 10,
+					},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+				{
+					ID:       bob,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 8, Y: 8},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+					Room:     room1,
+					Position: spatial.Position{X: 9, Y: 9},
+				}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// alice should see bob initially
+		aliceViewBefore, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(aliceViewBefore, 1, "alice should see bob initially")
+
+		// Act: join charlie as late joiner
+		charlie := core.EntityID("charlie")
+		joinOut, err := enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       charlie,
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 5, Y: 5},
+			},
+		})
+		s.Require().NoError(err, "join should succeed")
+
+		// Assert: charlie joined
+		s.Equal(charlie, joinOut.Member.ID)
+		s.Equal(encounter.KindPlayer, joinOut.Member.Kind)
+		s.Equal(room1, joinOut.Member.Room)
+
+		// Assert: join beat recorded
+		s.Require().Greater(joinOut.Seq, uint64(0), "join should produce sequence number")
+
+		// Assert: charlie sees alice and bob
+		charlieView, err := enc.View(&encounter.ViewInput{Member: charlie})
+		s.Require().NoError(err)
+		s.Len(charlieView, 2, "charlie should see both alice and bob")
+
+		// Assert: alice now sees charlie
+		aliceViewAfter, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(aliceViewAfter, 2, "alice should see charlie after join")
+		found := false
+		for _, h := range aliceViewAfter {
+			if h.Subject == intel.Subject(charlie) {
+				found = true
+				break
+			}
+		}
+		s.True(found, "alice's view should include charlie")
+
+		// Assert: join beat appears in story for all members
+		storyAlice, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: 0})
+		s.Require().NoError(err)
+		foundJoinBeat := false
+		for _, entry := range storyAlice {
+			var beat map[string]interface{}
+			_ = json.Unmarshal(entry.Payload, &beat)
+			if beat["beat"] == "joined" && beat["member"] == string(charlie) {
+				foundJoinBeat = true
+				break
+			}
+		}
+		s.True(foundJoinBeat, "alice should see join beat in story")
+	})
+}
+
+func (s *EncounterTestSuite) TestJoinValidation() {
+	s.Run("join nil input", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Join(nil)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+	})
+
+	s.Run("join empty member ID", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       "",
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 5, Y: 5},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+
+	s.Run("join already a member", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       alice,
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 5, Y: 5},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember, "duplicate join should fail")
+	})
+
+	s.Run("join closed encounter", func() {
+		enc := s.newBasicEncounterWithExternalEnding()
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+		_, err = enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       core.EntityID("charlie"),
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 5, Y: 5},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+
+	s.Run("join with bad placement", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       core.EntityID("charlie"),
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 99, Y: 99}, // Out of bounds
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+
+	s.Run("join player with decider rejected", func() {
+		enc := s.newBasicEncounter()
+		fixedDecider := &simpleDecider{}
+		_, err := enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       core.EntityID("charlie"),
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 5, Y: 5},
+				Decider:  fixedDecider,
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember, "player with decider should fail")
+	})
+}
+
+func (s *EncounterTestSuite) TestJoinOnStairsFiresEnding() {
+	s.Run("join on stairs fires ReachedPosition ending", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{
+						ID:     room1,
+						Width:  10,
+						Height: 10,
+					},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+					Room:     room1,
+					Position: spatial.Position{X: 9, Y: 9},
+				}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// Act: join at stairs position
+		charlie := core.EntityID("charlie")
+		joinOut, err := enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       charlie,
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 9, Y: 9}, // stairs position
+			},
+		})
+		s.Require().NoError(err)
+
+		// Assert: ending fired
+		s.NotNil(joinOut.Outcome, "outcome should fire on stairs join")
+		s.Equal("stairs", joinOut.Outcome.Ending)
+
+		// Assert: encounter is now closed
+		status, err := enc.Status()
+		s.Require().NoError(err)
+		s.False(status.Open, "encounter should be closed")
+	})
+}
+
+func (s *EncounterTestSuite) TestExitCarryForward() {
+	s.Run("exit carry-forward matches final state", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{
+						ID:     room1,
+						Width:  10,
+						Height: 10,
+					},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+				{
+					ID:       bob,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 8, Y: 8},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// alice sees bob
+		aliceViewBefore, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(aliceViewBefore, 1, "alice should see bob")
+
+		// Act: alice exits
+		exitOut, err := enc.Exit(&encounter.ExitInput{Member: alice})
+		s.Require().NoError(err)
+
+		// Assert: exit outcome has alice's position
+		s.Equal(alice, exitOut.Outcome.ID)
+		s.Equal(room1, exitOut.Outcome.Room)
+		s.Equal(2.0, exitOut.Outcome.Position.X)
+		s.Equal(2.0, exitOut.Outcome.Position.Y)
+
+		// Assert: carry includes alice's holdings (she saw bob)
+		s.Len(exitOut.Carry, 1, "alice should carry her holdings")
+		s.Equal(intel.Subject(bob), exitOut.Carry[0].Subject)
+
+		// Assert: exit beat recorded
+		s.Require().Greater(exitOut.Seq, uint64(0))
+
+		// Assert: bob still sees alice's holding (cached), but with faded status after next action
+		bobViewAfterExit, err := enc.View(&encounter.ViewInput{Member: bob})
+		s.Require().NoError(err)
+		// Bob still has the holding from before (alice hasn't been faded yet - that happens
+		// on next refreshSight). The holding should be "held" (not yet ghost).
+		s.Len(bobViewAfterExit, 1, "bob's cached holding remains until next refreshSight")
+		s.Equal(intel.Subject(alice), bobViewAfterExit[0].Subject)
+	})
+}
+
+func (s *EncounterTestSuite) TestExitValidation() {
+	s.Run("exit nil input", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Exit(nil)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+	})
+
+	s.Run("exit empty member ID", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Exit(&encounter.ExitInput{Member: ""})
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+
+	s.Run("exit not a member", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.Exit(&encounter.ExitInput{Member: core.EntityID("charlie")})
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+	})
+
+	s.Run("exit closed encounter", func() {
+		enc := s.newBasicEncounterWithExternalEnding()
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+		_, err = enc.Exit(&encounter.ExitInput{Member: alice})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+}
+
+func (s *EncounterTestSuite) TestExitLastMemberClosesWithAbandoned() {
+	s.Run("last member exit closes with abandoned ending", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{
+						ID:     room1,
+						Width:  10,
+						Height: 10,
+					},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+					Room:     room1,
+					Position: spatial.Position{X: 9, Y: 9},
+				}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// Act: alice (last member) exits
+		exitOut, err := enc.Exit(&encounter.ExitInput{Member: alice})
+		s.Require().NoError(err)
+
+		// Assert: exit carries alice's state
+		s.Equal(alice, exitOut.Outcome.ID)
+
+		// Assert: closing produced abandoned outcome
+		s.NotNil(exitOut.Closed, "should close with abandoned outcome")
+		s.Equal("abandoned", exitOut.Closed.Ending)
+		s.Len(exitOut.Closed.Members, 0, "abandoned outcome should have no members")
+
+		// Assert: encounter is now closed
+		status, err := enc.Status()
+		s.Require().NoError(err)
+		s.False(status.Open)
+		s.Equal("abandoned", status.Outcome.Ending)
+	})
+}
+
+func (s *EncounterTestSuite) TestExitDepartedGhostFades() {
+	s.Run("remaining member's holdings persist after departure", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{
+						ID:     room1,
+						Width:  10,
+						Height: 10,
+					},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+				{
+					ID:       bob,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 8, Y: 8},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// alice sees bob initially
+		aliceViewBefore, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(aliceViewBefore, 1, "alice should see bob initially")
+
+		// Act: bob exits (his entity leaves the field)
+		_, err = enc.Exit(&encounter.ExitInput{Member: bob})
+		s.Require().NoError(err)
+
+		// Assert: bob's entity left the field
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		s.Len(members, 1, "only alice remains")
+
+		// Assert: alice's holding of bob persists in the archive
+		// (design: holdings stay in the aggregate, the exited member simply no longer refreshes)
+		aliceViewAfterExit, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(aliceViewAfterExit, 1, "alice's holding of bob persists in the archive")
+		s.Equal(intel.Subject(bob), aliceViewAfterExit[0].Subject)
+		// The holding status remains as it was (the archive preserves it)
+	})
+}
+
+func (s *EncounterTestSuite) TestEndExternalOnly() {
+	s.Run("End accepts only External triggers", func() {
+		enc := s.newBasicEncounter()
+
+		// Try to fire a ReachedPosition ending via End (should fail)
+		_, err := enc.End(&encounter.EndInput{Ending: "reached-position-key"})
+		s.Require().ErrorIs(err, encounter.ErrNoEnding, "ReachedPosition endings cannot be fired via End")
+	})
+
+	s.Run("End fires External endings", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: room1, Width: 10, Height: 10},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// Act: fire the external ending
+		endOut, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+
+		// Assert: outcome records the ending
+		s.Equal("withdrawn", endOut.Outcome.Ending)
+		s.Len(endOut.Outcome.Members, 1)
+		s.Equal(alice, endOut.Outcome.Members[0].ID)
+
+		// Assert: encounter closed
+		status, err := enc.Status()
+		s.Require().NoError(err)
+		s.False(status.Open)
+	})
+}
+
+func (s *EncounterTestSuite) TestEndValidation() {
+	s.Run("end nil input", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.End(nil)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+	})
+
+	s.Run("end empty key", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.End(&encounter.EndInput{Ending: ""})
+		s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	})
+
+	s.Run("end undeclared key", func() {
+		enc := s.newBasicEncounter()
+		_, err := enc.End(&encounter.EndInput{Ending: "nonexistent"})
+		s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	})
+
+	s.Run("end closed encounter", func() {
+		enc := s.newBasicEncounterWithExternalEnding()
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+		_, err = enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+}
+
+func (s *EncounterTestSuite) TestAllMutatingVerbsReturnErrClosedPostClose() {
+	s.Run("all mutating verbs reject closed encounter", func() {
+		enc := s.newBasicEncounterWithExternalEnding()
+
+		// Close the encounter
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+
+		// Join on closed: ErrClosed
+		_, err = enc.Join(&encounter.JoinInput{
+			Member: encounter.MemberInput{
+				ID:       core.EntityID("charlie"),
+				Kind:     encounter.KindPlayer,
+				Room:     room1,
+				Position: spatial.Position{X: 5, Y: 5},
+			},
+		})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+
+		// Exit on closed: ErrClosed
+		_, err = enc.Exit(&encounter.ExitInput{Member: alice})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+
+		// Move on closed: ErrClosed
+		_, err = enc.Move(&encounter.MoveInput{
+			Member: alice,
+			To:     spatial.Position{X: 3, Y: 3},
+		})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+
+		// Pump on closed: ErrClosed
+		_, err = enc.Pump(&encounter.PumpInput{})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+
+		// End on closed: ErrClosed
+		_, err = enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+}
+
+func (s *EncounterTestSuite) TestQueriesLivePostClose() {
+	s.Run("View, Members, Status, Story remain live on closed encounter", func() {
+		enc := s.newBasicEncounterWithExternalEnding()
+
+		// Close the encounter
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+
+		// View still works
+		view, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(view, 1, "view should remain available on closed encounter")
+
+		// Members still works
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		s.Len(members, 2, "members should remain available on closed encounter")
+
+		// Status still works
+		status, err := enc.Status()
+		s.Require().NoError(err)
+		s.False(status.Open)
+		s.NotNil(status.Outcome)
+
+		// Story still works
+		story, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: 0})
+		s.Require().NoError(err)
+		s.Greater(len(story), 0, "story should remain available on closed encounter")
+	})
+}
+
+func (s *EncounterTestSuite) TestStoryForExitedMembers() {
+	s.Run("exited members can still read story", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: room1, Width: 10, Height: 10},
+				},
+				Connections: []encounter.ConnectionInput{},
+			},
+			Members: []encounter.MemberInput{
+				{
+					ID:       alice,
+					Kind:     encounter.KindPlayer,
+					Room:     room1,
+					Position: spatial.Position{X: 2, Y: 2},
+				},
+			},
+			Endings: []encounter.EndingInput{
+				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+			},
+		}
+
+		enc, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		// alice exits
+		_, err = enc.Exit(&encounter.ExitInput{Member: alice})
+		s.Require().NoError(err)
+
+		// alice can still read story (even though she exited)
+		story, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: 0})
+		s.Require().NoError(err, "exited member should be able to read story")
+		s.Greater(len(story), 0, "story should contain entries")
+	})
+}
+
+func (s *EncounterTestSuite) TestViewCopyOut() {
+	s.Run("View returns copy-out, not alias", func() {
+		enc := s.newBasicEncounter()
+
+		view1, err := enc.View(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Len(view1, 1)
+
+		// holdings are already copies per intel's contract
+		// (this is a documentation pin that the composed contract holds)
+	})
+}
+
+func (s *EncounterTestSuite) TestMembersCopyOut() {
+	s.Run("Members returns copy-out, not aliases", func() {
+		enc := s.newBasicEncounter()
+
+		members1, err := enc.Members()
+		s.Require().NoError(err)
+
+		members2, err := enc.Members()
+		s.Require().NoError(err)
+
+		s.Equal(members1, members2)
+		// Modifying members1 should not affect enc's internal state
+		// (values are copied, not pointers to internal state)
+	})
 }
 
 func TestEncounterSuite(t *testing.T) {

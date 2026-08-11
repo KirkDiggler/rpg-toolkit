@@ -38,6 +38,7 @@ type Encounter struct {
 	intelLog     *intel.Intel
 	story        *record.Log
 	members      map[MemberID]*Member
+	everMembers  map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders     map[MemberID]Decider
 	// endings holds declared endings in Setup order — evaluation is
 	// deterministic, first-declared-wins (law C8).
@@ -89,9 +90,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		members:  make(map[MemberID]*Member),
-		deciders: make(map[MemberID]Decider),
-		endings:  nil,
+		members:     make(map[MemberID]*Member),
+		everMembers: make(map[MemberID]bool),
+		deciders:    make(map[MemberID]Decider),
+		endings:     nil,
 	}
 
 	// Build clock and intel
@@ -197,6 +199,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Room: mi.Room,
 		}
 		e.members[mi.ID] = member
+		e.everMembers[mi.ID] = true // Track in everMembers
 
 		// Store decider if present (monsters only, validated above)
 		if mi.Decider != nil {
@@ -294,15 +297,16 @@ func (e *Encounter) Status() (*Status, error) {
 }
 
 // Story returns the story entries for a member after the given sequence number.
-// Returns ErrNilInput if the input is nil, ErrNoMember if the member is not in
-// the encounter. Copy-out follows record's own conventions (returned entries are
-// already copies per record's implementation).
+// Allows both current members and members who have exited (everMembers).
+// Returns ErrNilInput if the input is nil, ErrNoMember if the member never joined.
+// Copy-out follows record's own conventions (returned entries are already copies
+// per record's implementation).
 func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 	if in == nil {
 		return nil, fmt.Errorf("story: %w", ErrNilInput)
 	}
 
-	if _, ok := e.members[in.Audience]; !ok {
+	if _, ok := e.everMembers[in.Audience]; !ok {
 		return nil, fmt.Errorf("story: %w", ErrNoMember)
 	}
 
@@ -852,6 +856,404 @@ func (o *occluderEntity) BlocksLineOfSight() bool {
 // BlocksMovement returns false for occluders
 func (o *occluderEntity) BlocksMovement() bool {
 	return false
+}
+
+// Join adds a new member to the encounter. The ambient field is always there
+// to join. Validation order (R5 atomicity): nil input → closed → empty member ID →
+// already a member → player-with-decider rejected → spatial placement rejection.
+// On success, the joiner is placed, all members' sight is refreshed (the joiner's
+// first percepts AND incumbents now seeing them), and a beat is recorded.
+// ReachedPosition endings are evaluated (a player could join ON the stairs — fires YES).
+func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
+	// Validation
+	if in == nil {
+		return nil, fmt.Errorf("join: %w", ErrNilInput)
+	}
+
+	if e.outcome != nil {
+		return nil, fmt.Errorf("join: %w", ErrClosed)
+	}
+
+	if in.Member.ID == "" {
+		return nil, fmt.Errorf("join: %w", ErrNoMember)
+	}
+
+	// Check if already a member
+	if _, exists := e.members[in.Member.ID]; exists {
+		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member.ID, ErrNoMember)
+	}
+
+	// Players cannot carry deciders (design law C2)
+	if in.Member.Kind == KindPlayer && in.Member.Decider != nil {
+		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member.ID, ErrNoMember)
+	}
+
+	// Place the new member via managed seam
+	entity := &memberEntity{
+		id:   string(in.Member.ID),
+		kind: in.Member.Kind,
+	}
+
+	_, err := e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID:   spatial.RoomID(in.Member.Room),
+		Entity:   entity,
+		Position: in.Member.Position,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Register the member
+	member := &Member{
+		ID:   in.Member.ID,
+		Kind: in.Member.Kind,
+		Room: in.Member.Room,
+	}
+	e.members[in.Member.ID] = member
+	e.everMembers[in.Member.ID] = true // Track in everMembers
+
+	// Store decider if present (monsters only, validated above)
+	if in.Member.Decider != nil {
+		e.deciders[in.Member.ID] = in.Member.Decider
+	}
+
+	// refreshSight for all members: the joiner sees incumbents, incumbents see the joiner
+	memberIDs := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		memberIDs = append(memberIDs, id)
+	}
+	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+
+	intelDeltas, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("join refresh sight: %w", err)
+	}
+
+	// Record the join beat (audience = all members including the joiner)
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReadingForBeat := uint64(clockReadingInt)
+	beatPayload := map[string]interface{}{
+		"beat":   "joined",
+		"member": string(in.Member.ID),
+	}
+	beatBytes, _ := json.Marshal(beatPayload)
+
+	appendOut, err := e.story.Append(&record.AppendInput{
+		At:       clockReadingForBeat,
+		Audience: memberIDs,
+		Tags:     map[string]string{"tag": "membership"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("join append beat: %w", err)
+	}
+
+	seqNum := appendOut.Seq
+
+	// Evaluate ReachedPosition endings (a player could join ON the stairs)
+	var firedOutcome *Outcome
+	for _, de := range e.endings {
+		endingKey, trigger := de.key, de.trigger
+		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
+		if !ok {
+			continue // Not a ReachedPosition trigger
+		}
+
+		// Check if the ending fires
+		if reachedPosTrigger.Room != member.Room {
+			continue // Different room
+		}
+
+		if reachedPosTrigger.Position.X != in.Member.Position.X || reachedPosTrigger.Position.Y != in.Member.Position.Y {
+			continue // Different position
+		}
+
+		// Check member filter: empty = any player member; non-empty = specific member
+		if reachedPosTrigger.Member != "" && reachedPosTrigger.Member != in.Member.ID {
+			continue // Member filter doesn't match
+		}
+
+		// Member filter passes but check kind
+		if reachedPosTrigger.Member == "" && member.Kind != KindPlayer {
+			continue // Empty filter means players only
+		}
+
+		// Ending fires! Build the outcome with all members' current positions
+		memberOutcomes := make([]MemberOutcome, 0, len(e.members))
+		for _, m := range e.members {
+			mRoom, ok := e.orchestrator.GetRoom(m.Room)
+			if !ok {
+				continue
+			}
+			mPos, ok := mRoom.GetEntityPosition(string(m.ID))
+			if !ok {
+				continue
+			}
+			memberOutcomes = append(memberOutcomes, MemberOutcome{
+				ID:       m.ID,
+				Room:     m.Room,
+				Position: mPos,
+			})
+		}
+
+		e.outcome = &Outcome{
+			Ending:  endingKey,
+			At:      clockReadingForBeat,
+			Members: memberOutcomes,
+		}
+		// Return a deep copy of the outcome (mutation-proof)
+		outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
+		for i, m := range e.outcome.Members {
+			outcomeMembers[i] = MemberOutcome{
+				ID:       m.ID,
+				Room:     m.Room,
+				Position: m.Position,
+			}
+		}
+		firedOutcome = &Outcome{
+			Ending:  e.outcome.Ending,
+			At:      e.outcome.At,
+			Members: outcomeMembers,
+		}
+		break
+	}
+
+	return &JoinOutput{
+		Member:      *member,
+		IntelDeltas: intelDeltas,
+		Seq:         seqNum,
+		Outcome:     firedOutcome,
+	}, nil
+}
+
+// Exit removes a member from the encounter. The member leaves with carry-forward:
+// they are removed from the field, their final MemberOutcome is returned, and their
+// intel holdings are copied out for the campaign. The encounter auto-closes with the
+// reserved ending "abandoned" if the last member exits and no declared ending has fired.
+// After exit, remaining members' views fade the departed naturally (their entity left,
+// so next refreshSight removes them from new percepts; old holdings ghost).
+func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
+	// Validation
+	if in == nil {
+		return nil, fmt.Errorf("exit: %w", ErrNilInput)
+	}
+
+	if in.Member == "" {
+		return nil, fmt.Errorf("exit: %w", ErrNoMember)
+	}
+
+	if e.outcome != nil {
+		return nil, fmt.Errorf("exit: %w", ErrClosed)
+	}
+
+	member, ok := e.members[in.Member]
+	if !ok {
+		return nil, fmt.Errorf("exit: %w", ErrNotMember)
+	}
+
+	// Get the exiting member's final position
+	room, ok := e.orchestrator.GetRoom(member.Room)
+	if !ok {
+		return nil, fmt.Errorf("exit: %w", ErrBadPlacement)
+	}
+
+	finalPos, ok := room.GetEntityPosition(string(in.Member))
+	if !ok {
+		return nil, fmt.Errorf("exit: %w", ErrBadPlacement)
+	}
+
+	// Capture the exiting member's holdings (carry-forward)
+	carry, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: in.Member})
+	if err != nil {
+		return nil, fmt.Errorf("exit held_by: %w", err)
+	}
+
+	// Remove from the field via managed seam
+	_, err = e.orchestrator.RemoveEntity(&spatial.RemoveEntityInput{
+		RoomID:   spatial.RoomID(member.Room),
+		EntityID: core.EntityID(in.Member),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("exit remove entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Remove from member set (and deciders if present)
+	delete(e.members, in.Member)
+	delete(e.deciders, in.Member)
+
+	// Get remaining member IDs for story and refresh
+	memberIDs := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		memberIDs = append(memberIDs, id)
+	}
+	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+
+	// Record the exit beat (audience = all REMAINING members; exiter does not receive it)
+	// Actually, design says "all members INCLUDING the exiter", so they witness their own exit
+	allMemberIDs := make([]MemberID, 0, len(e.members)+1)
+	allMemberIDs = append(allMemberIDs, in.Member) // Add the exiter
+	for id := range e.members {
+		allMemberIDs = append(allMemberIDs, id)
+	}
+	sort.Slice(allMemberIDs, func(i, j int) bool { return allMemberIDs[i] < allMemberIDs[j] })
+
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReadingForBeat := uint64(clockReadingInt)
+	beatPayload := map[string]interface{}{
+		"beat":   "exited",
+		"member": string(in.Member),
+	}
+	beatBytes, _ := json.Marshal(beatPayload)
+
+	appendOut, err := e.story.Append(&record.AppendInput{
+		At:       clockReadingForBeat,
+		Audience: allMemberIDs,
+		Tags:     map[string]string{"tag": "membership"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("exit append beat: %w", err)
+	}
+
+	seqNum := appendOut.Seq
+
+	// refreshSight for REMAINING members only (the exiter's holdings remain in intel archive)
+	if len(memberIDs) > 0 {
+		_, err := e.refreshSight(memberIDs)
+		if err != nil {
+			return nil, fmt.Errorf("exit refresh sight: %w", err)
+		}
+	}
+
+	// Check if we need to auto-close (last member exited and no ending has fired)
+	var closedOutcome *Outcome
+	if len(e.members) == 0 && e.outcome == nil {
+		e.outcome = &Outcome{
+			Ending:  "abandoned",
+			At:      clockReadingForBeat,
+			Members: []MemberOutcome{}, // No members remain
+		}
+		closedOutcome = &Outcome{
+			Ending:  "abandoned",
+			At:      clockReadingForBeat,
+			Members: []MemberOutcome{},
+		}
+	}
+
+	return &ExitOutput{
+		Outcome: MemberOutcome{
+			ID:       in.Member,
+			Room:     member.Room,
+			Position: finalPos,
+		},
+		Carry:  carry,
+		Seq:    seqNum,
+		Closed: closedOutcome,
+	}, nil
+}
+
+// End fires an externally-triggered ending. Validates the key was declared and
+// has an External trigger, then closes the encounter with that Outcome.
+func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
+	// Validation
+	if in == nil {
+		return nil, fmt.Errorf("end: %w", ErrNilInput)
+	}
+
+	if e.outcome != nil {
+		return nil, fmt.Errorf("end: %w", ErrClosed)
+	}
+
+	if in.Ending == "" {
+		return nil, fmt.Errorf("end: %w", ErrNoEnding)
+	}
+
+	// Find and validate the ending
+	var foundEnding *declaredEnding
+	for i := range e.endings {
+		if e.endings[i].key == in.Ending {
+			foundEnding = &e.endings[i]
+			break
+		}
+	}
+
+	if foundEnding == nil {
+		return nil, fmt.Errorf("end: ending %s not declared: %w", in.Ending, ErrNoEnding)
+	}
+
+	// Verify it's an External trigger
+	_, isExternal := foundEnding.trigger.(TriggerExternal)
+	if !isExternal {
+		return nil, fmt.Errorf("end: ending %s is not External: %w", in.Ending, ErrNoEnding)
+	}
+
+	// Build outcome with all current members' positions
+	memberOutcomes := make([]MemberOutcome, 0, len(e.members))
+	for _, m := range e.members {
+		mRoom, ok := e.orchestrator.GetRoom(m.Room)
+		if !ok {
+			continue
+		}
+		mPos, ok := mRoom.GetEntityPosition(string(m.ID))
+		if !ok {
+			continue
+		}
+		memberOutcomes = append(memberOutcomes, MemberOutcome{
+			ID:       m.ID,
+			Room:     m.Room,
+			Position: mPos,
+		})
+	}
+
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReadingForBeat := uint64(clockReadingInt)
+
+	e.outcome = &Outcome{
+		Ending:  in.Ending,
+		At:      clockReadingForBeat,
+		Members: memberOutcomes,
+	}
+
+	// Record the end beat
+	allMemberIDs := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		allMemberIDs = append(allMemberIDs, id)
+	}
+	sort.Slice(allMemberIDs, func(i, j int) bool { return allMemberIDs[i] < allMemberIDs[j] })
+
+	beatPayload := map[string]interface{}{
+		"beat":   "ended",
+		"ending": in.Ending,
+	}
+	beatBytes, _ := json.Marshal(beatPayload)
+
+	_, err := e.story.Append(&record.AppendInput{
+		At:       clockReadingForBeat,
+		Audience: allMemberIDs,
+		Tags:     map[string]string{"tag": "scene"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("end append beat: %w", err)
+	}
+
+	// Return a deep copy of the outcome (mutation-proof)
+	outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
+	for i, m := range e.outcome.Members {
+		outcomeMembers[i] = MemberOutcome{
+			ID:       m.ID,
+			Room:     m.Room,
+			Position: m.Position,
+		}
+	}
+
+	return &EndOutput{
+		Outcome: Outcome{
+			Ending:  e.outcome.Ending,
+			At:      e.outcome.At,
+			Members: outcomeMembers,
+		},
+	}, nil
 }
 
 // memberEntity is an internal entity for members
