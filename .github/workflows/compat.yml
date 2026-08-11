@@ -7,6 +7,7 @@ on:
       - 'play/intel/**'
       - 'play/record/**'
       - 'play/interrupt/**'
+      - 'rulebooks/dnd5e/encounter/**'
 
 jobs:
   gorelease-play-clock:
@@ -84,3 +85,22 @@ jobs:
           fi
           cd play/interrupt
           go run golang.org/x/exp/cmd/gorelease@v0.0.0-20260727155853-b88d891fe743 -base "${base#play/interrupt/}"
+
+  gorelease-dnd5e-encounter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: gorelease rulebooks/dnd5e/encounter
+        run: |
+          base=$(git tag -l 'rulebooks/dnd5e/encounter/v*' --sort=-v:refname | head -1)
+          if [ -z "$base" ]; then
+            echo "no rulebooks/dnd5e/encounter tag yet — first release, gate activates from the first tag"
+            exit 0
+          fi
+          cd rulebooks/dnd5e/encounter
+          go run golang.org/x/exp/cmd/gorelease@v0.0.0-20260727155853-b88d891fe743 -base "${base#rulebooks/dnd5e/encounter/}"
