@@ -532,16 +532,18 @@ func (s *EncounterTestSuite) TestSetupRoomValidation() {
 
 // TestHexRoomBounds pins that a hex-shaped room's member-placement bounds
 // defer to the room's own constructed Grid rather than hardcoded rectangle
-// math. HexGrid (tools/spatial/hex_grid.go:54-57) — the offset column/row
-// coordinate hex grid this module constructs for GridShapeHex — uses the
-// IDENTICAL non-negative/strictly-less-than-dimension rule as SquareGrid,
-// so a hex room's accept/reject boundary values are numerically the same
-// shape as square's. This test therefore pins that hex construction
-// succeeds and Width/Height correctly bound the constructed grid; it does
-// NOT by itself prove hex (vs. square) construction happened — see
-// TestGridlessRoomInclusiveBounds for a shape whose validity genuinely
-// diverges from the rectangle math this task deletes.
+// math — and, since the switch to AxialHexGrid (tools/spatial's origin-
+// centered axial Q/R grid, see RoomInput.Grid's doc comment), that hex
+// validity now genuinely DIVERGES from square's, not just gridless's: a
+// hex room's bounds are centered on the origin ([-Width/2, Width/2) for Q,
+// [-Height/2, Height/2) for R), so NEGATIVE coordinates are legal — a
+// position square would reject outright. This supersedes an earlier
+// finding (when this module built spatial.HexGrid, a bounded offset grid)
+// that hex's accept/reject shape was numerically identical to square's and
+// only gridless could kill a "grid shape ignored, always builds square"
+// mutant; the negative-Q case below now kills that mutant independently.
 func (s *EncounterTestSuite) TestHexRoomBounds() {
+	// Width=4, Height=3 => Q valid in [-2,2), R valid in [-1.5,1.5).
 	hexSetup := func(pos spatial.Position) *encounter.SetupInput {
 		return &encounter.SetupInput{
 			Field: encounter.FieldInput{
@@ -556,27 +558,72 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 		}
 	}
 
-	s.Run("position within hex bounds accepted", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 3, Y: 2})) // Width-1, Height-1
+	s.Run("positive Q, positive R within span accepted", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 1, Y: 1}))
 		s.Require().NoError(err)
 	})
 
-	s.Run("position at width boundary rejected", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 4, Y: 0}))
+	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -1, Y: 0}))
+		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
+	})
+
+	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 2, Y: 0}))
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+
+	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -2, Y: 0}))
+		s.Require().NoError(err)
+	})
+
+	s.Run("Q beyond -Width/2 rejected", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -3, Y: 0}))
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 	})
 }
 
-// TestGridlessRoomInclusiveBounds pins the one shape whose validity
-// genuinely diverges from the rectangle math this task deletes:
-// GridlessRoom.IsValidPosition (tools/spatial/gridless.go:33-36) uses an
-// INCLUSIVE upper bound (x <= Width), unlike Square/Hex's exclusive
-// (x < Width). A position exactly AT Width — rejected for square/hex — is
-// the sharpest available proof that bounds checks ask the room's OWN
-// constructed grid rather than a hardcoded rectangle: a "grid shape
-// ignored, always builds square" mutant would reject this position; the
-// correct code accepts it.
+// TestHexConnectionEndpointNegativeAxial pins connection endpoints in a
+// hex room at the Setup seam: a negative axial Q/R endpoint — the
+// ordinary case for an origin-centered hex room — validates exactly like
+// a positive one, via the same grid-deferred bounds check members use.
+// Load-seam counterpart: TestHexConnectionEndpointNegativeAxialLoad in
+// data_test.go.
+func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "square-room", Width: 10, Height: 10},
+				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "square-room", To: "hex-room",
+				FromPosition: spatial.Position{X: 9, Y: 9},
+				ToPosition:   spatial.Position{X: -2, Y: -2},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
+}
+
+// TestGridlessRoomInclusiveBounds pins gridless's own divergence from the
+// rectangle math this task deletes: GridlessRoom.IsValidPosition
+// (tools/spatial/gridless.go:33-36) uses an INCLUSIVE upper bound
+// (x <= Width), unlike SquareGrid's exclusive (x < Width). A position
+// exactly AT Width — rejected for square — is a sharp, independent proof
+// that bounds checks ask the room's OWN constructed grid rather than a
+// hardcoded rectangle: a "grid shape ignored, always builds square" mutant
+// would reject this position; the correct code accepts it. (AxialHexGrid
+// diverges from square too, but via origin-centered bounds and legal
+// negative coordinates, not an inclusive upper bound — see
+// TestHexRoomBounds.)
 func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 	gridlessSetup := func(pos spatial.Position) *encounter.SetupInput {
 		return &encounter.SetupInput{

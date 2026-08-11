@@ -78,10 +78,20 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 // GridShape values; the switch's default (square) is therefore unreachable
 // in practice and exists only so an unvalidated caller degrades gracefully
 // rather than panicking.
+//
+// Hex rooms build spatial.AxialHexGrid, NOT spatial.HexGrid: the wire (and
+// Platform's pathing) speaks cube coordinates natively, and axial (Q, R,
+// with S = -(Q+R) derived) is cube's 2D projection — an IDENTITY mapping to
+// the wire. HexGrid's bounded offset column/row coordinates would force a
+// lossy, orientation-dependent offset<->cube conversion at that seam for no
+// benefit inside the composition, which never renders a grid itself.
+// width/height become AxialHexGridConfig's SpanWidth/SpanHeight — see
+// RoomInput.Grid's doc comment for what that means for a hex room's
+// Position values (origin-centered, negative coordinates legal).
 func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 	switch shape {
 	case spatial.GridShapeHex:
-		return spatial.NewHexGrid(spatial.HexGridConfig{Width: float64(width), Height: float64(height)})
+		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: float64(width), SpanHeight: float64(height)})
 	case spatial.GridShapeGridless:
 		return spatial.NewGridlessRoom(spatial.GridlessConfig{Width: float64(width), Height: float64(height)})
 	default:

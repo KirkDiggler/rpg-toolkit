@@ -33,17 +33,24 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 					Occluders:  []spatial.Position{{X: 4, Y: 4}},
 					Boundaries: []spatial.Boundary{{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 2, Y: 3}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
+				// hall is axial hex (Width=6,Height=6 => Q,R valid in
+				// [-3,3)): door1's arrival endpoint sits at a NEGATIVE
+				// axial coordinate on purpose — the ordinary case for an
+				// origin-centered hex room, and a fixture proving
+				// endpoints validate there at both seams (Setup here,
+				// Load in TestConnectionEndpointBoundsBoundariesLoad's
+				// hex sibling).
 				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "door1", From: "crypt", To: "hall",
 				FromPosition: spatial.Position{X: 0, Y: 6},
-				ToPosition:   spatial.Position{X: 5, Y: 5},
+				ToPosition:   spatial.Position{X: -1, Y: -1},
 			}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "g1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 3, Y: 3}, Decider: &testDecider{intent: encounter.IntentHold{}}},
+			{ID: "g1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 0, Y: 0}, Decider: &testDecider{intent: encounter.IntentHold{}}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 7, Y: 7}, Member: core.EntityID("p1")}},
@@ -56,7 +63,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":"hex"}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":5,"y":5}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":"hex"}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":-1,"y":-1}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -1317,8 +1324,8 @@ func (s *DataTestSuite) TestLoadRoomValidation() {
 
 // connHexRoomData returns a fresh EncounterData with one 4x3 hex room and a
 // member at pos — the Load-seam counterpart to encounter_test.go's
-// TestHexRoomBounds. See that test's comment for why hex's accept/reject
-// boundary values are numerically identical to square's.
+// TestHexRoomBounds. Width=4, Height=3 => Q valid in [-2,2), R valid in
+// [-1.5,1.5) (axial, origin-centered — see that test's comment).
 func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
@@ -1337,17 +1344,59 @@ func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 // TestHexRoomBoundsLoad is the Load-seam counterpart to
 // encounter_test.go's TestHexRoomBounds.
 func (s *DataTestSuite) TestHexRoomBoundsLoad() {
-	s.Run("position within hex bounds accepted", func() {
-		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 3, Y: 2}), nil)
+	s.Run("positive Q, positive R within span accepted", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 1, Y: 1}), nil)
 		s.Require().NoError(err)
 	})
 
-	s.Run("position at width boundary rejected", func() {
-		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 4, Y: 0}), nil)
+	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: -1, Y: 0}), nil)
+		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
+	})
+
+	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 2, Y: 0}), nil)
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "out of bounds")
 	})
+
+	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: -2, Y: 0}), nil)
+		s.Require().NoError(err)
+	})
+
+	s.Run("Q beyond -Width/2 rejected", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: -3, Y: 0}), nil)
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "out of bounds")
+	})
+}
+
+// TestHexConnectionEndpointNegativeAxialLoad is the Load-seam counterpart
+// to encounter_test.go's TestHexConnectionEndpointNegativeAxial.
+func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "square-room", Width: 10, Height: 10},
+				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridTypeHex},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "square-room", To: "hex-room",
+				FromPosition: &encounter.PositionData{X: 9, Y: 9},
+				ToPosition:   &encounter.PositionData{X: -2, Y: -2},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
 }
 
 // connGridlessRoomData returns a fresh EncounterData with one 4x3 gridless

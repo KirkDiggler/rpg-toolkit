@@ -35,11 +35,25 @@ type RoomInput struct {
 	Height int
 
 	// Grid selects the room's coordinate system: GridShapeSquare (the zero
-	// value — Width x Height cells, Chebyshev distance), GridShapeHex
-	// (Width x Height offset column/row hex cells — see tools/spatial's
-	// HexGrid), or GridShapeGridless (continuous positions within Width x
-	// Height). The zero value keeps every pre-existing room square, so v0.1
-	// persisted blobs without this field unmarshal to square unchanged.
+	// value — Width x Height cells, origin (0,0), Chebyshev distance),
+	// GridShapeHex, or GridShapeGridless (continuous positions within
+	// Width x Height, origin (0,0)). The zero value keeps every
+	// pre-existing room square, so v0.1 persisted blobs without this
+	// field unmarshal to square unchanged.
+	//
+	// GridShapeHex rooms speak AXIAL cube coordinates (tools/spatial's
+	// AxialHexGrid), not offset: Position.X is Q, Position.Y is R, and S
+	// = -(Q+R) is derived. Bounds are ORIGIN-CENTERED spans, unlike
+	// square/gridless — Q is valid in [-Width/2, Width/2) and R in
+	// [-Height/2, Height/2), so negative coordinates are legal and
+	// expected, not a defect. Distance, adjacency, and line of sight in a
+	// hex room run true cube hex math via spatial. This is a deliberate
+	// choice, not an implementation detail: the wire (and Platform's
+	// pathing) already speaks cube coordinates natively, and axial is
+	// cube's 2D projection — an IDENTITY mapping to the wire. A bounded
+	// offset column/row grid (spatial's HexGrid) would force a lossy,
+	// orientation-dependent offset<->cube conversion at that seam for no
+	// benefit, since the composition never renders a grid itself.
 	Grid spatial.GridShape
 
 	// Occluders are positions that block line of sight.
