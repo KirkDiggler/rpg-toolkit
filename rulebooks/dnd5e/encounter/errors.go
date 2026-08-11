@@ -32,6 +32,12 @@ var (
 	// Wraps the underlying spatial error.
 	ErrBadPlacement = errors.New("bad placement")
 
+	// ErrBadConnection is returned when a connection's ID is empty or
+	// duplicated, its From/To names an unknown room or itself, or an
+	// endpoint lies outside its room's bounds or on an occluder position.
+	// Returned at both Setup and Load.
+	ErrBadConnection = errors.New("bad connection")
+
 	// ErrInvalidData is returned when LoadEncounter rejects the input data.
 	ErrInvalidData = errors.New("invalid encounter data")
 )

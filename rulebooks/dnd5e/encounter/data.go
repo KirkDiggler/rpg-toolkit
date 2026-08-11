@@ -76,9 +76,11 @@ type BoundaryData struct {
 
 // ConnectionData is the persistent representation of a connection.
 type ConnectionData struct {
-	ID   string `json:"id"`
-	From string `json:"from"`
-	To   string `json:"to"`
+	ID           string       `json:"id"`
+	From         string       `json:"from"`
+	To           string       `json:"to"`
+	FromPosition PositionData `json:"from_position"`
+	ToPosition   PositionData `json:"to_position"`
 }
 
 // MemberData is the persistent representation of a member's current placement.
@@ -198,7 +200,13 @@ func (e *Encounter) ToData() EncounterData {
 	}
 
 	for i, ci := range e.connectionsInput {
-		fieldData.Connections[i] = ConnectionData(ci)
+		fieldData.Connections[i] = ConnectionData{
+			ID:           ci.ID,
+			From:         ci.From,
+			To:           ci.To,
+			FromPosition: PositionData{X: ci.FromPosition.X, Y: ci.FromPosition.Y},
+			ToPosition:   PositionData{X: ci.ToPosition.X, Y: ci.ToPosition.Y},
+		}
 	}
 
 	// Build outcome if present
@@ -233,8 +241,9 @@ func (e *Encounter) ToData() EncounterData {
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
 // no rooms, no endings, duplicate member IDs, member's room not in field, member position
-// out of bounds, empty/reserved ending keys, undeclared outcome ending, connection
-// referencing missing room, everMembers missing a current member.
+// out of bounds, empty/reserved ending keys, undeclared outcome ending, connection defects
+// (empty/duplicate ID, missing room, self-connection, endpoint out of bounds or on an
+// occluder), everMembers missing a current member.
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
@@ -294,10 +303,49 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		roomsByID[r.ID] = r
 	}
 
-	// Validate connections reference existing rooms
+	// Validate connections: unique non-empty IDs, endpoints resolve to
+	// distinct declared rooms, and endpoints lie within their room's
+	// bounds and off any occluder. ErrBadConnection rides alongside
+	// ErrInvalidData so connection defects are discriminable from other
+	// load rejections.
+	seenConnectionIDs := make(map[string]bool, len(data.Field.Connections))
 	for _, c := range data.Field.Connections {
-		if !roomMap[c.From] || !roomMap[c.To] {
-			return nil, fmt.Errorf("load encounter: connection %q references missing room: %w", c.ID, ErrInvalidData)
+		if c.ID == "" {
+			return nil, fmt.Errorf("load encounter: connection has empty id: %w: %w", ErrInvalidData, ErrBadConnection)
+		}
+		if seenConnectionIDs[c.ID] {
+			return nil, fmt.Errorf("load encounter: duplicate connection %q: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		seenConnectionIDs[c.ID] = true
+
+		fromRoom, ok := roomsByID[c.From]
+		if !ok {
+			return nil, fmt.Errorf("load encounter: connection %q references missing room %q: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
+		}
+		toRoom, ok := roomsByID[c.To]
+		if !ok {
+			return nil, fmt.Errorf("load encounter: connection %q references missing room %q: %w: %w", c.ID, c.To, ErrInvalidData, ErrBadConnection)
+		}
+		if c.From == c.To {
+			return nil, fmt.Errorf("load encounter: connection %q connects room %q to itself: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
+		}
+
+		if !positionInBounds(c.FromPosition.X, c.FromPosition.Y, fromRoom.Width, fromRoom.Height) {
+			return nil, fmt.Errorf("load encounter: connection %q from-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if !positionInBounds(c.ToPosition.X, c.ToPosition.Y, toRoom.Width, toRoom.Height) {
+			return nil, fmt.Errorf("load encounter: connection %q to-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+
+		for _, occ := range fromRoom.Occluders {
+			if occ.X == c.FromPosition.X && occ.Y == c.FromPosition.Y {
+				return nil, fmt.Errorf("load encounter: connection %q from-position on occluder: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+			}
+		}
+		for _, occ := range toRoom.Occluders {
+			if occ.X == c.ToPosition.X && occ.Y == c.ToPosition.Y {
+				return nil, fmt.Errorf("load encounter: connection %q to-position on occluder: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+			}
 		}
 	}
 
@@ -540,9 +588,11 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.outcome = outcome
 	}
 
-	// Store field and connections inputs for future ToData calls
+	// Store field and connections inputs for future ToData calls. Connections
+	// are kept sorted by ID (C8 determinism — order is observable in ToData).
 	e.fieldInput = convertRoomDataToRoomInput(data.Field.Rooms)
 	e.connectionsInput = convertConnectionDataToConnectionInput(data.Field.Connections)
+	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
 
 	return e, nil
 }
@@ -581,7 +631,13 @@ func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 func convertConnectionDataToConnectionInput(conns []ConnectionData) []ConnectionInput {
 	result := make([]ConnectionInput, len(conns))
 	for i, cd := range conns {
-		result[i] = ConnectionInput(cd)
+		result[i] = ConnectionInput{
+			ID:           cd.ID,
+			From:         cd.From,
+			To:           cd.To,
+			FromPosition: spatial.Position{X: cd.FromPosition.X, Y: cd.FromPosition.Y},
+			ToPosition:   spatial.Position{X: cd.ToPosition.X, Y: cd.ToPosition.Y},
+		}
 	}
 	return result
 }

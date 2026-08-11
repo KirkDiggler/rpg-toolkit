@@ -41,7 +41,11 @@ type RoomInput struct {
 	Boundaries []spatial.Boundary
 }
 
-// ConnectionInput describes a connection between two rooms.
+// ConnectionInput describes a connection between two rooms: a bidirectional
+// open doorway. FromPosition and ToPosition are the endpoint cells — the
+// position a member must stand on in each room to traverse the connection.
+// Traversal itself is not implemented here; this only declares where the
+// doorway sits.
 type ConnectionInput struct {
 	// ID is the unique connection identifier.
 	ID string
@@ -51,6 +55,12 @@ type ConnectionInput struct {
 
 	// To is the destination room ID.
 	To string
+
+	// FromPosition is the endpoint cell within room From.
+	FromPosition spatial.Position
+
+	// ToPosition is the endpoint cell within room To.
+	ToPosition spatial.Position
 }
 
 // FieldInput describes the layout of rooms and connections.

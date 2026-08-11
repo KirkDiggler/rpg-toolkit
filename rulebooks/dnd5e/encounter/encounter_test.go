@@ -308,6 +308,76 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 	})
 }
 
+// validConnSetup returns a fresh SetupInput with two rooms (r1 carries an
+// occluder at (2,2)) and one fully valid connection between them — the base
+// for TestSetupConnectionValidation's one-defect rows, mirroring the same
+// defect classes rejected at Load (TestLoadRejections).
+func validConnSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "c1", From: "r1", To: "r2",
+					FromPosition: spatial.Position{X: 0, Y: 0},
+					ToPosition:   spatial.Position{X: 0, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupConnectionValidation mirrors TestLoadRejections' connection
+// defect classes at the Setup seam: each case breaks exactly one thing
+// about an otherwise-valid connection and must reject with ErrBadConnection.
+func (s *EncounterTestSuite) TestSetupConnectionValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		fragment string
+	}{
+		{"empty connection id", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ID = ""
+		}, "empty id"},
+		{"duplicate connection id", func(in *encounter.SetupInput) {
+			in.Field.Connections = append(in.Field.Connections, in.Field.Connections[0])
+		}, "duplicate connection"},
+		{"connection unknown room", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].To = "nowhere"
+		}, "unknown room"},
+		{"connection self-connection", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].To = "r1"
+		}, "itself"},
+		{"connection endpoint out of bounds", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].FromPosition = spatial.Position{X: 99, Y: 99}
+		}, "from-position out of bounds"},
+		{"connection endpoint on occluder", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].FromPosition = spatial.Position{X: 2, Y: 2}
+		}, "from-position on occluder"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validConnSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrBadConnection, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct — the one-defect discipline only
+	// means something if zero defects pass.
+	_, err := encounter.NewEncounter(validConnSetup())
+	s.Require().NoError(err, "the valid base fixture must construct")
+}
+
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {
 	s.Run("opening beat reaches all members via Story", func() {
 		// Arrange

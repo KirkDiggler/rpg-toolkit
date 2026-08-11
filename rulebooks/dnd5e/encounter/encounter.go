@@ -54,7 +54,8 @@ type Encounter struct {
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
 // no endings, reserved ending key, empty member ID, duplicate member IDs,
-// spatial placement errors.
+// connection defects (empty/duplicate ID, unknown room, self-connection,
+// endpoint out of bounds or on an occluder), spatial placement errors.
 
 // deepCopyRoomInputs snapshots the caller's room descriptions — the
 // persistence source must never alias caller-owned slices (T6 review
@@ -69,6 +70,67 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 		out[i] = rc
 	}
 	return out
+}
+
+// positionInBounds reports whether (x, y) lies within a room of the given
+// width and height — the same rule applied to member placement: non-negative
+// and strictly less than each dimension. Shared by connection validation at
+// both Setup and Load.
+func positionInBounds(x, y float64, width, height int) bool {
+	return x >= 0 && y >= 0 && x < float64(width) && y < float64(height)
+}
+
+// validateConnectionInputs rejects connection defects before construction
+// (R5 atomicity — no observable state until Setup succeeds): empty or
+// duplicate ID, an unknown or self-referencing room, and an endpoint outside
+// its room's bounds or on an occluder position.
+func validateConnectionInputs(rooms []RoomInput, connections []ConnectionInput) error {
+	roomsByID := make(map[string]RoomInput, len(rooms))
+	for _, r := range rooms {
+		roomsByID[r.ID] = r
+	}
+
+	seenIDs := make(map[string]bool, len(connections))
+	for _, c := range connections {
+		if c.ID == "" {
+			return fmt.Errorf("newencounter: connection has empty id: %w", ErrBadConnection)
+		}
+		if seenIDs[c.ID] {
+			return fmt.Errorf("newencounter: duplicate connection %q: %w", c.ID, ErrBadConnection)
+		}
+		seenIDs[c.ID] = true
+
+		fromRoom, ok := roomsByID[c.From]
+		if !ok {
+			return fmt.Errorf("newencounter: connection %q references unknown room %q: %w", c.ID, c.From, ErrBadConnection)
+		}
+		toRoom, ok := roomsByID[c.To]
+		if !ok {
+			return fmt.Errorf("newencounter: connection %q references unknown room %q: %w", c.ID, c.To, ErrBadConnection)
+		}
+		if c.From == c.To {
+			return fmt.Errorf("newencounter: connection %q connects room %q to itself: %w", c.ID, c.From, ErrBadConnection)
+		}
+
+		if !positionInBounds(c.FromPosition.X, c.FromPosition.Y, fromRoom.Width, fromRoom.Height) {
+			return fmt.Errorf("newencounter: connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
+		}
+		if !positionInBounds(c.ToPosition.X, c.ToPosition.Y, toRoom.Width, toRoom.Height) {
+			return fmt.Errorf("newencounter: connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
+		}
+
+		for _, occ := range fromRoom.Occluders {
+			if occ.X == c.FromPosition.X && occ.Y == c.FromPosition.Y {
+				return fmt.Errorf("newencounter: connection %q from-position on occluder: %w", c.ID, ErrBadConnection)
+			}
+		}
+		for _, occ := range toRoom.Occluders {
+			if occ.X == c.ToPosition.X && occ.Y == c.ToPosition.Y {
+				return fmt.Errorf("newencounter: connection %q to-position on occluder: %w", c.ID, ErrBadConnection)
+			}
+		}
+	}
+	return nil
 }
 
 func NewEncounter(in *SetupInput) (*Encounter, error) {
@@ -109,6 +171,17 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
+	// Check connections: unique non-empty IDs, endpoints resolve to distinct
+	// declared rooms, endpoints in bounds and off any occluder.
+	if err := validateConnectionInputs(in.Field.Rooms, in.Field.Connections); err != nil {
+		return nil, err
+	}
+
+	// Connections are stored sorted by ID (C8 determinism — order is
+	// observable in ToData).
+	connectionsInput := append([]ConnectionInput(nil), in.Field.Connections...)
+	sort.Slice(connectionsInput, func(i, j int) bool { return connectionsInput[i].ID < connectionsInput[j].ID })
+
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
 		members:          make(map[MemberID]*Member),
@@ -116,7 +189,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		deciders:         make(map[MemberID]Decider),
 		endings:          nil,
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
-		connectionsInput: append([]ConnectionInput(nil), in.Field.Connections...),
+		connectionsInput: connectionsInput,
 	}
 
 	// Build clock and intel

@@ -35,7 +35,11 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 				},
 				{ID: "hall", Width: 6, Height: 6},
 			},
-			Connections: []encounter.ConnectionInput{{ID: "door1", From: "crypt", To: "hall"}},
+			Connections: []encounter.ConnectionInput{{
+				ID: "door1", From: "crypt", To: "hall",
+				FromPosition: spatial.Position{X: 0, Y: 6},
+				ToPosition:   spatial.Position{X: 5, Y: 5},
+			}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
@@ -52,7 +56,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6}],"connections":[{"id":"door1","from":"crypt","to":"hall"}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":5,"y":5}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -83,14 +87,65 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 		"first-declared wins after reload — a load that scrambles ending order is a C8 violation")
 }
 
+// TestConnectionsSurviveReload pins connection persistence (#922 T1):
+// endpoints round-trip through ToData -> LoadEncounter intact, and
+// connection order is sorted by ID regardless of declaration order (C8
+// determinism — persisted order must not leak the caller's declaration
+// sequence).
+func (s *DataTestSuite) TestConnectionsSurviveReload() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			// Declared out of ID order — persistence must not echo this order.
+			Connections: []encounter.ConnectionInput{
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 0, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 0}, ToPosition: spatial.Position{X: 1, Y: 0}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 2, Y: 0}, ToPosition: spatial.Position{X: 2, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 4, Y: 4}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	data1 := enc1.ToData()
+	expected := []encounter.ConnectionData{
+		{ID: "a-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 1, Y: 0}, ToPosition: encounter.PositionData{X: 1, Y: 0}},
+		{ID: "m-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 2, Y: 0}, ToPosition: encounter.PositionData{X: 2, Y: 0}},
+		{ID: "z-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 0, Y: 0}, ToPosition: encounter.PositionData{X: 0, Y: 0}},
+	}
+	s.Equal(expected, data1.Field.Connections, "connections persist sorted by ID with endpoints intact")
+
+	enc2, err := encounter.LoadEncounter(data1, nil)
+	s.Require().NoError(err)
+
+	data2 := enc2.ToData()
+	s.Equal(expected, data2.Field.Connections, "connections stay sorted and intact across a second round-trip")
+}
+
 // TestSetupInputNotAliased pins T6 review M4: a caller that edits its
 // own SetupInput after construction must not corrupt the persistence
-// source (the encounter deep-copies the field description).
+// source (the encounter deep-copies the field description). Also covers
+// connections: mutating the caller's ConnectionInput slice (and its
+// endpoint positions) after NewEncounter must not affect the encounter.
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
-			{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
-		}},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
+			},
+		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -102,12 +157,22 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup.Field.Rooms[0].ID = "VANDALIZED"
 	setup.Field.Rooms[0].Width = 999
 	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 4, Y: 4}
+	setup.Field.Connections[0].ID = "VANDALIZED"
+	setup.Field.Connections[0].From = "VANDALIZED"
+	setup.Field.Connections[0].FromPosition = spatial.Position{X: 4, Y: 4}
+	setup.Field.Connections[0].ToPosition = spatial.Position{X: 4, Y: 4}
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Rooms, 1)
+	s.Require().Len(data.Field.Rooms, 2)
 	s.Equal("r1", data.Field.Rooms[0].ID, "the snapshot must not see the caller's vandalism")
 	s.Equal(5, data.Field.Rooms[0].Width)
 	s.Equal(encounter.PositionData{X: 3, Y: 3}, data.Field.Rooms[0].Occluders[0])
+
+	s.Require().Len(data.Field.Connections, 1)
+	s.Equal("door1", data.Field.Connections[0].ID, "the snapshot must not see the caller's vandalism")
+	s.Equal("r1", data.Field.Connections[0].From)
+	s.Equal(encounter.PositionData{X: 1, Y: 0}, data.Field.Connections[0].FromPosition)
+	s.Equal(encounter.PositionData{X: 0, Y: 0}, data.Field.Connections[0].ToPosition)
 
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
@@ -906,6 +971,23 @@ func validEncounterData() encounter.EncounterData {
 	}
 }
 
+// validEncounterDataWithConnection extends validEncounterData with a second
+// room (r2) and a fully valid connection between them — the base for the
+// connection defect rows below (one-defect discipline: each row breaks
+// exactly one thing about this otherwise-valid connection). r1 carries an
+// occluder at (2,2) so the "endpoint on occluder" row has something to hit.
+func validEncounterDataWithConnection() encounter.EncounterData {
+	d := validEncounterData()
+	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
+	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{ID: "r2", Width: 5, Height: 5})
+	d.Field.Connections = []encounter.ConnectionData{
+		{ID: "c1", From: "r1", To: "r2",
+			FromPosition: encounter.PositionData{X: 0, Y: 0},
+			ToPosition:   encounter.PositionData{X: 0, Y: 0}},
+	}
+	return d
+}
+
 // TestLoadRejections: every unreachable state rejects with
 // ErrInvalidData AND the check that fired is the one the case targets.
 func (s *DataTestSuite) TestLoadRejections() {
@@ -934,6 +1016,26 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"connection missing room", func(d *encounter.EncounterData) {
 			d.Field.Connections = []encounter.ConnectionData{{ID: "c1", From: "r1", To: "nowhere"}}
 		}, "connection"},
+		{"connection empty id", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ID = ""
+		}, "empty id"},
+		{"duplicate connection ids", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections = append(d.Field.Connections, d.Field.Connections[0])
+		}, "duplicate connection"},
+		{"connection self-connection", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].To = "r1"
+		}, "itself"},
+		{"connection endpoint out of bounds", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].FromPosition = encounter.PositionData{X: 99, Y: 99}
+		}, "from-position out of bounds"},
+		{"connection endpoint on occluder", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].FromPosition = encounter.PositionData{X: 2, Y: 2}
+		}, "from-position on occluder"},
 		{"outcome undeclared ending", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
 		}, "outcome"},
