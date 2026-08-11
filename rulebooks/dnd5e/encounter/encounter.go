@@ -66,19 +66,62 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 	return out
 }
 
-// positionInBounds reports whether (x, y) lies within a room of the given
-// width and height — the same rule applied to member placement: non-negative
-// and strictly less than each dimension. Shared by connection validation at
-// both Setup and Load.
-func positionInBounds(x, y float64, width, height int) bool {
-	return x >= 0 && y >= 0 && x < float64(width) && y < float64(height)
+// buildRoomGrid constructs the spatial Grid for a room's declared shape.
+// Called only after validation has confirmed Grid is one of the three known
+// GridShape values; the switch's default (square) is therefore unreachable
+// in practice and exists only so an unvalidated caller degrades gracefully
+// rather than panicking.
+func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
+	switch shape {
+	case spatial.GridShapeHex:
+		return spatial.NewHexGrid(spatial.HexGridConfig{Width: float64(width), Height: float64(height)})
+	case spatial.GridShapeGridless:
+		return spatial.NewGridlessRoom(spatial.GridlessConfig{Width: float64(width), Height: float64(height)})
+	default:
+		return spatial.NewSquareGrid(spatial.SquareGridConfig{Width: float64(width), Height: float64(height)})
+	}
+}
+
+// buildValidRoomGrids rejects room defects before construction (R5
+// atomicity — no observable state until Setup succeeds): empty or
+// duplicate room ID, and an unrecognized grid shape. On success, returns
+// each room's constructed Grid keyed by room ID — reused both for
+// downstream bounds checks (connections, and transitively member
+// placement via spatial's own PlaceEntity) and later in NewEncounter's
+// room-construction loop, so a room's shape is built exactly once and
+// every consumer asks the SAME grid. A hardcoded rectangle bounds check
+// would silently diverge from GridlessRoom's inclusive upper bound
+// (tools/spatial/gridless.go: IsValidPosition uses x <= Width, not
+// x < Width like Square/Hex). Reuses ErrNoField — a malformed room list
+// is as unusable as an empty one.
+func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
+	seenIDs := make(map[string]bool, len(rooms))
+	grids := make(map[string]spatial.Grid, len(rooms))
+	for _, r := range rooms {
+		if r.ID == "" {
+			return nil, fmt.Errorf("newencounter: room has empty id: %w", ErrNoField)
+		}
+		if seenIDs[r.ID] {
+			return nil, fmt.Errorf("newencounter: duplicate room %q: %w", r.ID, ErrNoField)
+		}
+		seenIDs[r.ID] = true
+
+		switch r.Grid {
+		case spatial.GridShapeSquare, spatial.GridShapeHex, spatial.GridShapeGridless:
+		default:
+			return nil, fmt.Errorf("newencounter: room %q has unknown grid shape %d: %w", r.ID, r.Grid, ErrNoField)
+		}
+		grids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
+	}
+	return grids, nil
 }
 
 // validateConnectionInputs rejects connection defects before construction
 // (R5 atomicity — no observable state until Setup succeeds): empty or
 // duplicate ID, an unknown or self-referencing room, and an endpoint outside
-// its room's bounds or on an occluder position.
-func validateConnectionInputs(rooms []RoomInput, connections []ConnectionInput) error {
+// its room's bounds (per that room's own constructed Grid, from roomGrids —
+// see buildValidRoomGrids) or on an occluder position.
+func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Grid, connections []ConnectionInput) error {
 	roomsByID := make(map[string]RoomInput, len(rooms))
 	for _, r := range rooms {
 		roomsByID[r.ID] = r
@@ -106,10 +149,10 @@ func validateConnectionInputs(rooms []RoomInput, connections []ConnectionInput) 
 			return fmt.Errorf("newencounter: connection %q connects room %q to itself: %w", c.ID, c.From, ErrBadConnection)
 		}
 
-		if !positionInBounds(c.FromPosition.X, c.FromPosition.Y, fromRoom.Width, fromRoom.Height) {
+		if !roomGrids[c.From].IsValidPosition(c.FromPosition) {
 			return fmt.Errorf("newencounter: connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
-		if !positionInBounds(c.ToPosition.X, c.ToPosition.Y, toRoom.Width, toRoom.Height) {
+		if !roomGrids[c.To].IsValidPosition(c.ToPosition) {
 			return fmt.Errorf("newencounter: connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
 
@@ -130,8 +173,9 @@ func validateConnectionInputs(rooms []RoomInput, connections []ConnectionInput) 
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
 // no endings, reserved ending key, empty member ID, duplicate member IDs,
-// connection defects (empty/duplicate ID, unknown room, self-connection,
-// endpoint out of bounds or on an occluder), spatial placement errors.
+// room defects (empty/duplicate ID, unrecognized grid shape), connection
+// defects (empty/duplicate ID, unknown room, self-connection, endpoint out
+// of bounds or on an occluder), spatial placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
@@ -170,9 +214,19 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
+	// Check rooms: unique non-empty IDs, recognized grid shape. roomGrids
+	// holds each room's constructed Grid, reused below for connection
+	// bounds validation and again in the room-construction loop so a
+	// room's shape is built exactly once.
+	roomGrids, err := buildValidRoomGrids(in.Field.Rooms)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check connections: unique non-empty IDs, endpoints resolve to distinct
-	// declared rooms, endpoints in bounds and off any occluder.
-	if err := validateConnectionInputs(in.Field.Rooms, in.Field.Connections); err != nil {
+	// declared rooms, endpoints in bounds (per the room's own grid) and off
+	// any occluder.
+	if err = validateConnectionInputs(in.Field.Rooms, roomGrids, in.Field.Connections); err != nil {
 		return nil, err
 	}
 
@@ -192,7 +246,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	// Build clock and intel
-	var err error
 	e.clock, err = clock.NewTick()
 	if err != nil {
 		return nil, fmt.Errorf("newencounter clock: %w", err)
@@ -215,17 +268,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		Layout: spatial.LayoutTypeOrganic,
 	})
 
-	// Create all rooms
+	// Create all rooms, reusing each room's already-constructed Grid
+	// (roomGrids, built above) so validation and placement agree exactly.
 	roomMap := make(map[string]*spatial.BasicRoom)
 	for _, ri := range in.Field.Rooms {
-		grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-			Width:  float64(ri.Width),
-			Height: float64(ri.Height),
-		})
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
-			Grid: grid,
+			Grid: roomGrids[ri.ID],
 		})
 		err = e.orchestrator.AddRoom(room)
 		if err != nil {

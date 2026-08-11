@@ -476,6 +476,134 @@ func (s *EncounterTestSuite) TestConnectionEndpointBoundsBoundaries() {
 	})
 }
 
+// validRoomSetup returns a fresh SetupInput with a single valid square room
+// and one member — the base for TestSetupRoomValidation's one-defect rows.
+func validRoomSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupRoomValidation pins room-level defects at the Setup seam
+// (#922 T1.5, deferred from the Opus T1 review): empty room ID, duplicate
+// room ID, and an unrecognized grid shape all reject with ErrNoField — a
+// malformed room list is as unusable as an empty one.
+func (s *EncounterTestSuite) TestSetupRoomValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		fragment string
+	}{
+		{"room has empty id", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].ID = ""
+		}, "room has empty id"},
+		{"duplicate room id", func(in *encounter.SetupInput) {
+			in.Field.Rooms = append(in.Field.Rooms, in.Field.Rooms[0])
+		}, "duplicate room"},
+		{"room has unknown grid shape", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Grid = spatial.GridShape(99)
+		}, "unknown grid shape"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validRoomSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct — the one-defect discipline only
+	// means something if zero defects pass.
+	_, err := encounter.NewEncounter(validRoomSetup())
+	s.Require().NoError(err, "the valid base fixture must construct")
+}
+
+// TestHexRoomBounds pins that a hex-shaped room's member-placement bounds
+// defer to the room's own constructed Grid rather than hardcoded rectangle
+// math. HexGrid (tools/spatial/hex_grid.go:54-57) — the offset column/row
+// coordinate hex grid this module constructs for GridShapeHex — uses the
+// IDENTICAL non-negative/strictly-less-than-dimension rule as SquareGrid,
+// so a hex room's accept/reject boundary values are numerically the same
+// shape as square's. This test therefore pins that hex construction
+// succeeds and Width/Height correctly bound the constructed grid; it does
+// NOT by itself prove hex (vs. square) construction happened — see
+// TestGridlessRoomInclusiveBounds for a shape whose validity genuinely
+// diverges from the rectangle math this task deletes.
+func (s *EncounterTestSuite) TestHexRoomBounds() {
+	hexSetup := func(pos spatial.Position) *encounter.SetupInput {
+		return &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
+	}
+
+	s.Run("position within hex bounds accepted", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 3, Y: 2})) // Width-1, Height-1
+		s.Require().NoError(err)
+	})
+
+	s.Run("position at width boundary rejected", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 4, Y: 0}))
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+}
+
+// TestGridlessRoomInclusiveBounds pins the one shape whose validity
+// genuinely diverges from the rectangle math this task deletes:
+// GridlessRoom.IsValidPosition (tools/spatial/gridless.go:33-36) uses an
+// INCLUSIVE upper bound (x <= Width), unlike Square/Hex's exclusive
+// (x < Width). A position exactly AT Width — rejected for square/hex — is
+// the sharpest available proof that bounds checks ask the room's OWN
+// constructed grid rather than a hardcoded rectangle: a "grid shape
+// ignored, always builds square" mutant would reject this position; the
+// correct code accepts it.
+func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
+	gridlessSetup := func(pos spatial.Position) *encounter.SetupInput {
+		return &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeGridless},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
+	}
+
+	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: 4, Y: 0}))
+		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+	})
+
+	s.Run("position negative is still rejected", func() {
+		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: -1, Y: 0}))
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+}
+
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {
 	s.Run("opening beat reaches all members via Story", func() {
 		// Arrange

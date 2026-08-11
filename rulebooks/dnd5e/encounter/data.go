@@ -52,12 +52,15 @@ type FieldData struct {
 }
 
 // RoomData mirrors RoomInput exactly to persist construction inputs.
+// Grid omits when GridShapeSquare (the zero value) so pre-v0.2 blobs and
+// square-only encounters keep byte-identical output.
 type RoomData struct {
-	ID         string         `json:"id"`
-	Width      int            `json:"width"`
-	Height     int            `json:"height"`
-	Occluders  []PositionData `json:"occluders,omitempty"`
-	Boundaries []BoundaryData `json:"boundaries,omitempty"`
+	ID         string            `json:"id"`
+	Width      int               `json:"width"`
+	Height     int               `json:"height"`
+	Grid       spatial.GridShape `json:"grid,omitempty"`
+	Occluders  []PositionData    `json:"occluders,omitempty"`
+	Boundaries []BoundaryData    `json:"boundaries,omitempty"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -179,6 +182,7 @@ func (e *Encounter) ToData() EncounterData {
 			ID:         ri.ID,
 			Width:      ri.Width,
 			Height:     ri.Height,
+			Grid:       ri.Grid,
 			Occluders:  make([]PositionData, len(ri.Occluders)),
 			Boundaries: make([]BoundaryData, len(ri.Boundaries)),
 		}
@@ -241,10 +245,11 @@ func (e *Encounter) ToData() EncounterData {
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
 // no rooms, no endings, empty/reserved ending keys (and kind/reached_position checks),
-// undeclared outcome ending, connection defects (empty/duplicate ID, missing room,
-// self-connection, endpoint out of bounds or on an occluder), duplicate member IDs,
-// member's room not in field, member position out of bounds, outcome member room/bounds
-// checks, everMembers missing a current member.
+// undeclared outcome ending, room defects (empty/duplicate ID, unrecognized grid shape),
+// connection defects (empty/duplicate ID, missing room, self-connection, endpoint out of
+// bounds or on an occluder), duplicate member IDs, member's room not in field, member
+// position out of bounds, outcome member room/bounds checks, everMembers missing a
+// current member.
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
@@ -296,19 +301,41 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 	}
 
-	// Build room map for validation
+	// Validate rooms: unique non-empty IDs, recognized grid shape (deferred
+	// from Opus T1 review — empty/duplicate room IDs previously went
+	// unvalidated, and connections resolved via last-wins map insertion).
+	// Reuses ErrNoField: a malformed room list is as unusable as an empty
+	// one. roomGrids holds each room's constructed Grid so downstream bounds
+	// checks (connections, members, outcome members) ask the SAME grid the
+	// room will actually be built with — a hardcoded rectangle check would
+	// silently diverge from GridlessRoom's inclusive upper bound
+	// (tools/spatial/gridless.go: IsValidPosition uses x <= Width, not
+	// x < Width like Square/Hex).
 	roomMap := make(map[string]bool)
 	roomsByID := make(map[string]RoomData)
+	roomGrids := make(map[string]spatial.Grid, len(data.Field.Rooms))
 	for _, r := range data.Field.Rooms {
+		if r.ID == "" {
+			return nil, fmt.Errorf("load encounter: room has empty id: %w: %w", ErrInvalidData, ErrNoField)
+		}
+		if roomMap[r.ID] {
+			return nil, fmt.Errorf("load encounter: duplicate room %q: %w: %w", r.ID, ErrInvalidData, ErrNoField)
+		}
+		switch r.Grid {
+		case spatial.GridShapeSquare, spatial.GridShapeHex, spatial.GridShapeGridless:
+		default:
+			return nil, fmt.Errorf("load encounter: room %q has unknown grid shape %d: %w: %w", r.ID, r.Grid, ErrInvalidData, ErrNoField)
+		}
 		roomMap[r.ID] = true
 		roomsByID[r.ID] = r
+		roomGrids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
 	}
 
 	// Validate connections: unique non-empty IDs, endpoints resolve to
 	// distinct declared rooms, and endpoints lie within their room's
-	// bounds and off any occluder. ErrBadConnection rides alongside
-	// ErrInvalidData so connection defects are discriminable from other
-	// load rejections.
+	// bounds (per the room's own grid) and off any occluder.
+	// ErrBadConnection rides alongside ErrInvalidData so connection defects
+	// are discriminable from other load rejections.
 	seenConnectionIDs := make(map[string]bool, len(data.Field.Connections))
 	for _, c := range data.Field.Connections {
 		if c.ID == "" {
@@ -331,10 +358,10 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter: connection %q connects room %q to itself: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
 		}
 
-		if !positionInBounds(c.FromPosition.X, c.FromPosition.Y, fromRoom.Width, fromRoom.Height) {
+		if !roomGrids[c.From].IsValidPosition(spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
 			return nil, fmt.Errorf("load encounter: connection %q from-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
 		}
-		if !positionInBounds(c.ToPosition.X, c.ToPosition.Y, toRoom.Width, toRoom.Height) {
+		if !roomGrids[c.To].IsValidPosition(spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
 			return nil, fmt.Errorf("load encounter: connection %q to-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
 		}
 
@@ -366,22 +393,9 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter: member %q room %q not in field: %w", m.ID, m.Room, ErrInvalidData)
 		}
 
-		// Validate position in bounds
-		if m.Position.X < 0 || m.Position.Y < 0 {
-			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w", m.ID, ErrInvalidData)
-		}
-
-		// Find room and check bounds
-		var roomHeight, roomWidth int
-		for _, r := range data.Field.Rooms {
-			if r.ID == m.Room {
-				roomWidth = r.Width
-				roomHeight = r.Height
-				break
-			}
-		}
-
-		if m.Position.X >= float64(roomWidth) || m.Position.Y >= float64(roomHeight) {
+		// Validate position in bounds — grid-deferred: the room's own
+		// constructed Grid decides validity (see roomGrids above).
+		if !roomGrids[m.Room].IsValidPosition(spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
 			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w", m.ID, ErrInvalidData)
 		}
 	}
@@ -395,11 +409,11 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w", ErrInvalidData)
 		}
 		for _, om := range data.Outcome.Members {
-			r, ok := roomsByID[om.Room]
+			_, ok := roomsByID[om.Room]
 			if !ok {
 				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w", om.ID, om.Room, ErrInvalidData)
 			}
-			if om.Position.X < 0 || om.Position.Y < 0 || om.Position.X >= float64(r.Width) || om.Position.Y >= float64(r.Height) {
+			if !roomGrids[om.Room].IsValidPosition(spatial.Position{X: om.Position.X, Y: om.Position.Y}) {
 				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w", om.ID, ErrInvalidData)
 			}
 		}
@@ -452,17 +466,14 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		Layout: spatial.LayoutTypeOrganic,
 	})
 
-	// Create all rooms
+	// Create all rooms, reusing each room's already-constructed Grid
+	// (roomGrids, built above) so validation and placement agree exactly.
 	spatialRoomMap := make(map[string]*spatial.BasicRoom)
 	for _, ri := range data.Field.Rooms {
-		grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-			Width:  float64(ri.Width),
-			Height: float64(ri.Height),
-		})
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
-			Grid: grid,
+			Grid: roomGrids[ri.ID],
 		})
 		err = e.orchestrator.AddRoom(room)
 		if err != nil {
@@ -606,6 +617,7 @@ func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 			ID:         rd.ID,
 			Width:      rd.Width,
 			Height:     rd.Height,
+			Grid:       rd.Grid,
 			Occluders:  make([]spatial.Position, len(rd.Occluders)),
 			Boundaries: make([]spatial.Boundary, len(rd.Boundaries)),
 		}

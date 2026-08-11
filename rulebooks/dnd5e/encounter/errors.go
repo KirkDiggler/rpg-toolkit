@@ -25,7 +25,10 @@ var (
 	// is called on a closed encounter. A closed encounter has an Outcome.
 	ErrClosed = errors.New("encounter closed")
 
-	// ErrNoField is returned when Setup is called without rooms.
+	// ErrNoField is returned when Setup is called without rooms, or when a
+	// declared room is itself defective (empty or duplicate ID, unrecognized
+	// grid shape) — a malformed room list is as unusable as an empty one.
+	// Returned at both Setup and Load.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement fails spatial validation.

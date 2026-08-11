@@ -33,7 +33,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 					Occluders:  []spatial.Position{{X: 4, Y: 4}},
 					Boundaries: []spatial.Boundary{{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 2, Y: 3}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
-				{ID: "hall", Width: 6, Height: 6},
+				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "door1", From: "crypt", To: "hall",
@@ -56,7 +56,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":5,"y":5}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":1}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":5,"y":5}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -171,6 +171,40 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 	gotIDs := []string{got[0].ID, got[1].ID, got[2].ID}
 	s.Equal([]string{"a-door", "m-door", "z-door"}, gotIDs,
 		"LoadEncounter's own sort must run even when the input was never produced by ToData")
+}
+
+// TestRoomGridShapeSurvivesReload pins connection persistence's newest
+// field (#922 T1.5): a room's declared Grid shape round-trips through
+// ToData -> LoadEncounter -> ToData intact, for both the square zero value
+// and a non-zero shape (hex), in the same encounter.
+func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "square-room", Width: 5, Height: 5},
+				{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	data1 := enc1.ToData()
+	s.Require().Len(data1.Field.Rooms, 2)
+	s.Equal(spatial.GridShapeSquare, data1.Field.Rooms[0].Grid, "square is the zero value")
+	s.Equal(spatial.GridShapeHex, data1.Field.Rooms[1].Grid)
+
+	enc2, err := encounter.LoadEncounter(data1, nil)
+	s.Require().NoError(err)
+
+	data2 := enc2.ToData()
+	s.Equal(spatial.GridShapeSquare, data2.Field.Rooms[0].Grid, "grid shape must survive a second round-trip")
+	s.Equal(spatial.GridShapeHex, data2.Field.Rooms[1].Grid, "grid shape must survive a second round-trip")
 }
 
 // TestSetupInputNotAliased pins T6 review M4: a caller that edits its
@@ -1233,6 +1267,111 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 		data.Field.Connections[0].FromPosition = encounter.PositionData{X: 3, Y: 2}
 		_, err := encounter.LoadEncounter(data, nil)
 		s.Require().NoError(err, "the last valid cell must be accepted")
+	})
+}
+
+// TestLoadRoomValidation is the Load-seam counterpart to
+// encounter_test.go's TestSetupRoomValidation (#922 T1.5, deferred from
+// the Opus T1 review): empty room ID, duplicate room ID, and an
+// unrecognized grid shape all reject with ErrInvalidData + ErrNoField.
+func (s *DataTestSuite) TestLoadRoomValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(d *encounter.EncounterData)
+		fragment string
+	}{
+		{"room has empty id", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].ID = ""
+		}, "room has empty id"},
+		{"duplicate room id", func(d *encounter.EncounterData) {
+			d.Field.Rooms = append(d.Field.Rooms, d.Field.Rooms[0])
+		}, "duplicate room"},
+		{"room has unknown grid shape", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Grid = spatial.GridShape(99)
+		}, "unknown grid shape"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validEncounterData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+}
+
+// connHexRoomData returns a fresh EncounterData with one 4x3 hex room and a
+// member at pos — the Load-seam counterpart to encounter_test.go's
+// TestHexRoomBounds. See that test's comment for why hex's accept/reject
+// boundary values are numerically identical to square's.
+func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestHexRoomBoundsLoad is the Load-seam counterpart to
+// encounter_test.go's TestHexRoomBounds.
+func (s *DataTestSuite) TestHexRoomBoundsLoad() {
+	s.Run("position within hex bounds accepted", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 3, Y: 2}), nil)
+		s.Require().NoError(err)
+	})
+
+	s.Run("position at width boundary rejected", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 4, Y: 0}), nil)
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "out of bounds")
+	})
+}
+
+// connGridlessRoomData returns a fresh EncounterData with one 4x3 gridless
+// room and a member at pos — the Load-seam counterpart to
+// encounter_test.go's TestGridlessRoomInclusiveBounds.
+func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeGridless},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestGridlessRoomInclusiveBoundsLoad is the Load-seam counterpart to
+// encounter_test.go's TestGridlessRoomInclusiveBounds — see that test's
+// comment for why this is the sharpest available proof that bounds checks
+// ask the room's own constructed grid rather than a hardcoded rectangle.
+func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
+	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+		_, err := encounter.LoadEncounter(connGridlessRoomData(encounter.PositionData{X: 4, Y: 0}), nil)
+		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+	})
+
+	s.Run("position negative is still rejected", func() {
+		_, err := encounter.LoadEncounter(connGridlessRoomData(encounter.PositionData{X: -1, Y: 0}), nil)
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "out of bounds")
 	})
 }
 

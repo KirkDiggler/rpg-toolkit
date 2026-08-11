@@ -34,6 +34,14 @@ type RoomInput struct {
 	// Height is the room's vertical dimension.
 	Height int
 
+	// Grid selects the room's coordinate system: GridShapeSquare (the zero
+	// value — Width x Height cells, Chebyshev distance), GridShapeHex
+	// (Width x Height offset column/row hex cells — see tools/spatial's
+	// HexGrid), or GridShapeGridless (continuous positions within Width x
+	// Height). The zero value keeps every pre-existing room square, so v0.1
+	// persisted blobs without this field unmarshal to square unchanged.
+	Grid spatial.GridShape
+
 	// Occluders are positions that block line of sight.
 	Occluders []spatial.Position
 
