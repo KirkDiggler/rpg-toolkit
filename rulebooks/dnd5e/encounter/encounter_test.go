@@ -613,6 +613,134 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
 }
 
+// validHexAxialSetup returns a fresh SetupInput with two hex rooms joined
+// by one connection, a member, and an occluder — every position integral
+// axial, including a negative one (gate.ToPosition). The base for
+// TestSetupHexIntegralAxial's one-defect rows: interim tools/spatial#926
+// enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
+// any of these positions in a hex room.
+func validHexAxialSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
+					Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: spatial.Position{X: 1, Y: 1},
+				ToPosition:   spatial.Position{X: -1, Y: -1},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupHexIntegralAxial pins the interim tools/spatial#926
+// enforcement at the Setup seam: a fractional X or Y is rejected for
+// every position kind a hex room accepts externally — member, both
+// connection endpoints, and an occluder — each with the error class its
+// existing defect family already uses. Load-seam counterpart:
+// TestLoadHexIntegralAxial in data_test.go.
+func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
+	cases := []struct {
+		name    string
+		mutate  func(in *encounter.SetupInput)
+		alsoErr error
+	}{
+		{"member position fractional", func(in *encounter.SetupInput) {
+			in.Members[0].Position = spatial.Position{X: 0.5, Y: 0}
+		}, encounter.ErrBadPlacement},
+		{"connection from-position fractional", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
+		}, encounter.ErrBadConnection},
+		{"connection to-position fractional", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ToPosition = spatial.Position{X: -1.5, Y: -1}
+		}, encounter.ErrBadConnection},
+		{"occluder position fractional", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
+		}, encounter.ErrNoField},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validHexAxialSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			s.Require().Contains(err.Error(), "not an integral axial cell",
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// Positive control: the valid base — integral throughout, including
+	// a NEGATIVE axial position (gate.ToPosition at (-1,-1)) — constructs.
+	_, err := encounter.NewEncounter(validHexAxialSetup())
+	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
+}
+
+// TestMoveHexIntegralAxial is Move's verb-seam counterpart: a fractional
+// target in a hex room is rejected (moveMember is the shared path with
+// Pump's IntentMoveTo, so this also covers decider-driven moves).
+func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	s.Run("fractional target rejected", func() {
+		_, err := enc.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: 1.5, Y: 0}})
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().Contains(err.Error(), "not an integral axial cell")
+	})
+
+	s.Run("integral negative axial target accepted", func() {
+		_, err := enc.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: -2, Y: -1}})
+		s.Require().NoError(err)
+	})
+}
+
+// TestJoinHexIntegralAxial is Join's verb-seam counterpart.
+func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	s.Run("fractional position rejected", func() {
+		_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+			ID: "p2", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 1, Y: 0.5},
+		}})
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().Contains(err.Error(), "not an integral axial cell")
+	})
+
+	s.Run("integral negative axial position accepted", func() {
+		_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+			ID: "p3", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: -3, Y: -3},
+		}})
+		s.Require().NoError(err)
+	})
+}
+
 // TestGridlessRoomInclusiveBounds pins gridless's own divergence from the
 // rectangle math this task deletes: GridlessRoom.IsValidPosition
 // (tools/spatial/gridless.go:33-36) uses an INCLUSIVE upper bound

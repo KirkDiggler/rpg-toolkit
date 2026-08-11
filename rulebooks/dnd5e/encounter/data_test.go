@@ -1023,6 +1023,76 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 	})
 }
 
+// TestDeciderReattachmentNilEntryHolds pins reject-never-crash at the
+// reattachment map itself: a caller-supplied entry that is PRESENT but
+// nil (map[MemberID]Decider{"goblin": nil}, distinct from an ABSENT key —
+// TestDeciderReattachmentWithoutDecider's case) must not panic Pump. A
+// nil entry is equivalent to an absent one: the monster simply holds.
+func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 8, Y: 8},
+				Decider: &testDecider{intent: encounter.IntentHold{}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Room: "crypt", Position: spatial.Position{X: 0, Y: 0}}}},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+	data1 := enc1.ToData()
+
+	enc2, err := encounter.LoadEncounter(data1, map[encounter.MemberID]encounter.Decider{
+		"goblin": nil,
+	})
+	s.Require().NoError(err, "a present-but-nil reattachment entry must load, not reject")
+
+	s.Require().NotPanics(func() {
+		out, pumpErr := enc2.Pump(&encounter.PumpInput{})
+		s.Require().NoError(pumpErr, "the first pump must not panic on a nil-decider monster")
+		s.Empty(out.MonsterMoves, "a nil-decider monster is absent from decisions and beats — it simply holds")
+	})
+}
+
+// TestDeciderReattachmentMixedNilAndReal pins that a nil entry for one
+// monster does not disturb a real decider re-attached for another in the
+// same reattachment map: the real one decides normally, the nil one holds.
+func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 8, Y: 8},
+				Decider: &testDecider{intent: encounter.IntentHold{}}},
+			{ID: "rat", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 2, Y: 8},
+				Decider: &testDecider{intent: encounter.IntentHold{}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Room: "crypt", Position: spatial.Position{X: 0, Y: 0}}}},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+	data1 := enc1.ToData()
+
+	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: spatial.Position{X: 3, Y: 8}}}
+	enc2, err := encounter.LoadEncounter(data1, map[encounter.MemberID]encounter.Decider{
+		"goblin": nil,
+		"rat":    ratDecider,
+	})
+	s.Require().NoError(err)
+
+	out, err := enc2.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().Len(out.MonsterMoves, 1, "only rat's real decider produces a move")
+	s.Equal(encounter.MemberID("rat"), out.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 3, Y: 8}, out.MonsterMoves[0].To)
+}
+
 // ============================================================================
 // Rejection Tests
 // ============================================================================
@@ -1397,6 +1467,72 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 	}
 	_, err := encounter.LoadEncounter(data, nil)
 	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
+}
+
+// validHexAxialData returns a fresh EncounterData with two hex rooms
+// joined by one connection, a member, and an occluder — the Load-seam
+// counterpart to encounter_test.go's validHexAxialSetup. Every position
+// is integral axial, including a negative one (gate.ToPosition).
+func validHexAxialData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex,
+					Occluders: []encounter.PositionData{{X: 2, Y: 2}}},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: &encounter.PositionData{X: 1, Y: 1},
+				ToPosition:   &encounter.PositionData{X: -1, Y: -1},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestLoadHexIntegralAxial is the Load-seam counterpart to
+// encounter_test.go's TestSetupHexIntegralAxial.
+func (s *DataTestSuite) TestLoadHexIntegralAxial() {
+	cases := []struct {
+		name    string
+		mutate  func(d *encounter.EncounterData)
+		alsoErr error
+	}{
+		{"member position fractional", func(d *encounter.EncounterData) {
+			d.Members[0].Position = encounter.PositionData{X: 0.5, Y: 0}
+		}, nil},
+		{"connection from-position fractional", func(d *encounter.EncounterData) {
+			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
+		}, encounter.ErrBadConnection},
+		{"connection to-position fractional", func(d *encounter.EncounterData) {
+			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: -1.5, Y: -1}
+		}, encounter.ErrBadConnection},
+		{"occluder position fractional", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
+		}, encounter.ErrNoField},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validHexAxialData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			if tc.alsoErr != nil {
+				s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			}
+			s.Require().Contains(err.Error(), "not an integral axial cell",
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	_, err := encounter.LoadEncounter(validHexAxialData(), nil)
+	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
 }
 
 // connGridlessRoomData returns a fresh EncounterData with one 4x3 gridless

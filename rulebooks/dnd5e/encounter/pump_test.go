@@ -661,6 +661,34 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 	})
 }
 
+// TestPumpJoinedMonsterWithNilDeciderHolds is Join's counterpart to
+// TestPumpMonsterWithNilDecider (Setup) and
+// TestDeciderReattachmentWithoutDecider (Load): a monster that joins with
+// a nil Decider is legal and simply holds — Join already guards this
+// (encounter.go's `if in.Member.Decider != nil`), previously unpinned at
+// this seam.
+func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
+			Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+		ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 5, Y: 5},
+		// No Decider.
+	}})
+	s.Require().NoError(err)
+
+	out, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Empty(out.MonsterMoves, "a joined monster with no decider should not move")
+}
+
 func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 	s.Run("pump on closed encounter returns ErrClosed", func() {
 		// Arrange: goblin with patrol that reaches the ending position

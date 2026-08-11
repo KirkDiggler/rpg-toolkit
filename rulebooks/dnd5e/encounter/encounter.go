@@ -6,6 +6,7 @@ package encounter
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -99,6 +100,28 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 	}
 }
 
+// isIntegralAxialPosition reports whether pos satisfies spatial's
+// implicit integer-cube contract for hex rooms — upholds it at this
+// composition's boundary until tools/spatial#926 enforces it at ingress;
+// becomes redundant defense once the fixed spatial tag is consumed.
+// AxialHexGrid bounds-checks Position.X/Y but does not integrality-check
+// them, and all of its cube math truncates, so a fractional axial
+// position like (0.5, 0.5) would otherwise persist as a distinct
+// position that behaves exactly like (0,0) — an invisible collision with
+// an unrelated, legitimately-placed cell. Applies ONLY to hex rooms:
+// square stays fractional-tolerant as today, and gridless is continuous
+// by design — call this next to every grid-deferred IsValidPosition
+// check (or, where no such check exists at a seam, next to where the
+// position first enters) so every externally supplied hex-room position
+// is covered: member/Move/Join positions, connection endpoints, and
+// occluders.
+func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
+	if grid.GetShape() != spatial.GridShapeHex {
+		return true
+	}
+	return pos.X == math.Trunc(pos.X) && pos.Y == math.Trunc(pos.Y)
+}
+
 // buildValidRoomGrids rejects room defects before construction (R5
 // atomicity — no observable state until Setup succeeds): empty or
 // duplicate room ID, and an unrecognized grid shape. On success, returns
@@ -129,6 +152,14 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 			return nil, fmt.Errorf("newencounter: room %q has unknown grid shape %d: %w", r.ID, r.Grid, ErrNoField)
 		}
 		grids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
+
+		// Hex rooms require integral axial occluder positions (interim
+		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		for _, occ := range r.Occluders {
+			if !isIntegralAxialPosition(grids[r.ID], occ) {
+				return nil, fmt.Errorf("newencounter: room %q occluder (%g,%g) is not an integral axial cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
+			}
+		}
 	}
 	return grids, nil
 }
@@ -169,8 +200,14 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 		if !roomGrids[c.From].IsValidPosition(c.FromPosition) {
 			return fmt.Errorf("newencounter: connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
+		if !isIntegralAxialPosition(roomGrids[c.From], c.FromPosition) {
+			return fmt.Errorf("newencounter: connection %q from-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
+		}
 		if !roomGrids[c.To].IsValidPosition(c.ToPosition) {
 			return fmt.Errorf("newencounter: connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
+		}
+		if !isIntegralAxialPosition(roomGrids[c.To], c.ToPosition) {
+			return fmt.Errorf("newencounter: connection %q to-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
 		}
 
 		for _, occ := range fromRoom.Occluders {
@@ -245,6 +282,19 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// any occluder.
 	if err = validateConnectionInputs(in.Field.Rooms, roomGrids, in.Field.Connections); err != nil {
 		return nil, err
+	}
+
+	// Hex rooms require integral axial member positions (interim
+	// tools/spatial#926 enforcement — see isIntegralAxialPosition). No
+	// existing bounds pre-check covers members at this seam (placement
+	// bounds are enforced by spatial's own PlaceEntity below), so this
+	// runs as its own pass over the grid this member's declared room
+	// resolved to — a member whose room doesn't exist is caught later,
+	// at placement, unrelated to this check.
+	for _, mi := range in.Members {
+		if grid, ok := roomGrids[mi.Room]; ok && !isIntegralAxialPosition(grid, mi.Position) {
+			return nil, fmt.Errorf("newencounter: member %q position is not an integral axial cell: %w", mi.ID, ErrBadPlacement)
+		}
 	}
 
 	// Connections are stored sorted by ID (C8 determinism — order is
@@ -523,6 +573,16 @@ func (e *Encounter) moveMember(member *Member, to spatial.Position) (spatial.Pos
 	currentPos, ok := room.GetEntityPosition(string(member.ID))
 	if !ok {
 		return spatial.Position{}, fmt.Errorf("movemember: %w", ErrBadPlacement)
+	}
+
+	// Hex rooms require integral axial targets (interim tools/spatial#926
+	// enforcement — see isIntegralAxialPosition). This is the SHARED path
+	// for both the Move verb and Pump's IntentMoveTo execution: a
+	// fractional target from either source is rejected here, and Pump's
+	// existing silent-skip contract for a rejected move applies exactly
+	// as it does for an out-of-bounds one — no special case needed there.
+	if !isIntegralAxialPosition(room.GetGrid(), to) {
+		return spatial.Position{}, fmt.Errorf("movemember: target is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
 	// Attempt the spatial move via managed seam using MoveEntity
@@ -1404,6 +1464,14 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// Players cannot carry deciders (design law C2)
 	if in.Member.Kind == KindPlayer && in.Member.Decider != nil {
 		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member.ID, ErrNoMember)
+	}
+
+	// Hex rooms require integral axial join positions (interim
+	// tools/spatial#926 enforcement — see isIntegralAxialPosition). A
+	// nonexistent room is left to PlaceEntity's own failure below,
+	// unrelated to this check.
+	if room, ok := e.orchestrator.GetRoom(in.Member.Room); ok && !isIntegralAxialPosition(room.GetGrid(), in.Member.Position) {
+		return nil, fmt.Errorf("join: position is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
 	// Place the new member via managed seam

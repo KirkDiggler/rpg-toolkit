@@ -372,6 +372,15 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		roomMap[r.ID] = true
 		roomsByID[r.ID] = r
 		roomGrids[r.ID] = buildRoomGrid(shape, r.Width, r.Height)
+
+		// Hex rooms require integral axial occluder positions (interim
+		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		for _, occ := range r.Occluders {
+			pos := spatial.Position{X: occ.X, Y: occ.Y}
+			if !isIntegralAxialPosition(roomGrids[r.ID], pos) {
+				return nil, fmt.Errorf("load encounter: room %q occluder (%g,%g) is not an integral axial cell: %w: %w", r.ID, occ.X, occ.Y, ErrInvalidData, ErrNoField)
+			}
+		}
 	}
 
 	// Validate connections: unique non-empty IDs, endpoints resolve to
@@ -417,8 +426,14 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		if !roomGrids[c.From].IsValidPosition(spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
 			return nil, fmt.Errorf("load encounter: connection %q from-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
 		}
+		if !isIntegralAxialPosition(roomGrids[c.From], spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
+			return nil, fmt.Errorf("load encounter: connection %q from-position is not an integral axial cell: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
 		if !roomGrids[c.To].IsValidPosition(spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
 			return nil, fmt.Errorf("load encounter: connection %q to-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if !isIntegralAxialPosition(roomGrids[c.To], spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
+			return nil, fmt.Errorf("load encounter: connection %q to-position is not an integral axial cell: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
 		}
 
 		for _, occ := range fromRoom.Occluders {
@@ -453,6 +468,12 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		// constructed Grid decides validity (see roomGrids above).
 		if !roomGrids[m.Room].IsValidPosition(spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
 			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w", m.ID, ErrInvalidData)
+		}
+
+		// Hex rooms require integral axial member positions (interim
+		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		if !isIntegralAxialPosition(roomGrids[m.Room], spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
+			return nil, fmt.Errorf("load encounter: member %q position is not an integral axial cell: %w", m.ID, ErrInvalidData)
 		}
 	}
 
@@ -608,9 +629,16 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
-		// Re-attach decider if present — players cannot carry deciders
-		// (C2, enforced at all three seams: Setup, Join, and load).
-		if d, ok := deciders[m.ID]; ok {
+		// Re-attach decider if present and non-nil — a literal nil entry
+		// in the reattachment map is equivalent to an ABSENT one: a
+		// monster without a decider is legal and simply holds (Setup and
+		// Join already treat a nil MemberInput.Decider this way). Storing
+		// a nil Decider interface here would panic Pump's first Decide
+		// call on that monster (reject-never-crash: LoadEncounter is the
+		// trust boundary for the caller-supplied reattachment map too,
+		// not just the persisted bytes). Players cannot carry deciders
+		// regardless (C2, enforced at all three seams: Setup, Join, load).
+		if d, ok := deciders[m.ID]; ok && d != nil {
 			if m.Kind == KindPlayer {
 				return nil, fmt.Errorf("load encounter: player %s cannot carry a decider: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
 			}
