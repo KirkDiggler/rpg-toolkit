@@ -118,10 +118,13 @@ must perform the extra action and trait steps. A test that calls only
 ## Supported first contribution
 
 Use [`monster/monsters/bandit.go`](monsters/bandit.go) and
-[`bandit_test.go`](monsters/bandit_test.go) as the canonical simple fixture:
-one factory, one supported generic attack, no special trait clause, explicit
-speed, and direct stat/action assertions. Also follow
-[`registry.go`](monsters/registry.go) and
+[`bandit_test.go`](monsters/bandit_test.go) as the canonical simple **structural**
+fixture: one factory, one supported generic attack, no special trait clause,
+explicit speed, and direct stat/action assertions. Do not copy its older
+distance literals: values such as `Reach: 5` and `RangeNormal: 80` are
+feet-shaped, while current action configs and `PerceivedEntity.Distance` use
+hex counts (5 feet = 1 hex). New content must use and test current units.
+Also follow [`registry.go`](monsters/registry.go) and
 [`registry_test.go`](monsters/registry_test.go), which prove that each registered
 ref constructs a monster carrying the same ref.
 

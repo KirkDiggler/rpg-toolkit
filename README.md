@@ -30,7 +30,9 @@ not shipped.
 ## Architecture and module map
 
 The repository has no root `go.mod`. It currently contains 22 Go module roots,
-each with its own dependencies, tests, versions, and module-prefixed Git tag.
+each with its own dependency/version boundary and module-prefixed Git tags.
+Each module has its own test command, although some packages/modules currently
+contain no test files.
 Dependency direction is generally **Core → Mechanics / Play primitives → Tools
 → Rulebooks**; higher layers may import lower ones, not the reverse.
 

@@ -12,9 +12,11 @@ confidence: high — verified by directory listing, grep over public symbols, rp
 **Grade:** B+
 
 The top of the dependency tree. The most actively worked module. Implements
-all D&D 5e game rules: character creation and leveling, combat resolution,
-initiative, features (Rage, Second Wind, Martial Arts, etc.), conditions
-(Raging, Dodging, Unconscious, etc.), spells, monsters, and dungeon layouts.
+the D&D 5e rules and content currently supported by this toolkit: character
+creation and leveling paths, combat resolution, initiative, selected features
+(Rage, Second Wind, Martial Arts, etc.), conditions (Raging, Dodging,
+Unconscious, etc.), spells, monsters, and dungeon layouts. It is not a complete
+implementation of every D&D 5e rule or content clause.
 
 ## What rpg-api consumes
 

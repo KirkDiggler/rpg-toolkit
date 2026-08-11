@@ -50,7 +50,7 @@ Allowed inputs are:
    required attribution and change notices preserved. The primary official
    source for 2014 D&D 5e open content is the
    [System Reference Document 5.1 PDF](https://media.wizards.com/2023/downloads/dnd/SRD_CC_v5.1.pdf),
-   released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+   released under CC BY 4.0.
 
 Do **not** copy monster statistics, descriptive text, abilities, or other clauses
 from a closed Monster Manual or another unlicensed book. A monster also appearing
@@ -59,19 +59,41 @@ SRD version only. Do not treat a third-party API, wiki, video, search result, or
 model memory as the legal source unless its own provenance and license are
 verified.
 
-For adapted SRD 5.1 content, preserve an attribution record in the PR and add a
-short source comment next to the factory when values are derived from it. At a
-minimum record:
+### Required SRD 5.1 notice
 
-```text
-Source: System Reference Document 5.1 by Wizards of the Coast LLC
-Source URL: https://media.wizards.com/2023/downloads/dnd/SRD_CC_v5.1.pdf
-License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/
-Changes: <identify renaming, omitted clauses, or other adaptation>
+Do not invent, abbreviate, or paraphrase an SRD attribution. WotC's SRD 5.1
+Legal Information instructs users to include this exact statement in their own
+work:
+
+> This work includes material taken from the System Reference Document 5.1
+> (“SRD 5.1”) by Wizards of the Coast LLC and available at
+> https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is
+> licensed under the Creative Commons Attribution 4.0 International License
+> available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
+For any SRD-derived contribution, preserve that statement verbatim in the
+repository-root `NOTICE` file. If `NOTICE` does not exist, the content PR must
+create it. A distributed source archive, game build, or other work containing
+the SRD-derived material must also carry the exact statement in its included
+legal notices/credits; keeping it only in a PR description is not sufficient.
+Do not add any other attribution regarding Wizards beyond the statement above,
+per the SRD's own instruction.
+
+Record adaptations separately from the verbatim attribution. In the same
+`NOTICE`, use a separate “Modifications to SRD-derived material” heading and
+identify conversions, renaming, omissions, or other changes. Repeat the relevant
+change note next to the factory without adding another Wizards credit, for
+example:
+
+```go
+// Adaptation: converted movement and attack ranges from feet to hex counts;
+// omitted clauses not supported by the current rulebook.
 ```
 
-This is a minimum repository guardrail, not legal advice. If the source's terms
-cannot be satisfied confidently, use original content or stop for human review.
+Also repeat the modification summary in the PR so reviewers can check fidelity,
+but do not rely on the PR as the distributed notice. This repository guidance
+is not legal advice. If the source terms or required notice cannot be satisfied
+confidently, use original content or stop for human review.
 
 ## 2. Choose the lane clause by clause
 
@@ -171,7 +193,7 @@ code after taking the separately scoped new-mechanic lane.
 Use the existing one-action bandit as the worked **structural** pattern. Do
 not copy its distance literals: the older factories use feet-shaped values such
 as `Reach: 5` and `RangeNormal: 80`, while the current generic action configs
-and `PerceptionData.Distance` interpret reach/ranges as hex counts. New content
+and `PerceivedEntity.Distance` interpret reach/ranges as hex counts. New content
 must use current units (5 feet = 1 hex) and pin them in tests.
 
 - factory: [`monster/monsters/bandit.go`](../../rulebooks/dnd5e/monster/monsters/bandit.go)
@@ -224,10 +246,50 @@ factory
   → loaded.ToData
 ```
 
-Assert that ID/ref, current and max HP, AC, ability scores, speed, targeting,
-action ref/config, and supported trait JSON survive as applicable. Use a real
-event bus and clean up the loaded monster. For a trait, assert its actual chain
-behavior as well as JSON presence; serialization alone does not prove a rule.
+Use [`monster/actions/integration_test.go`](../../rulebooks/dnd5e/monster/actions/integration_test.go)
+as the current action-hydration example. A new factory test should extend that
+proof to JSON and the complete applicable definition, following this concise
+skeleton (names abbreviated):
+
+```go
+ctx := context.Background()
+bus := events.NewEventBus() // test-local: discard the whole bus after the test
+before := NewExampleBeast("example-1").ToData()
+raw, err := json.Marshal(before)
+require.NoError(t, err)
+var persisted monster.Data
+require.NoError(t, json.Unmarshal(raw, &persisted))
+
+loaded, err := monster.LoadFromData(ctx, &persisted, bus)
+require.NoError(t, err)
+require.NoError(t, actions.LoadMonsterActions(loaded, persisted.Actions))
+require.NoError(t, monstertraits.LoadMonsterConditions(
+    ctx, loaded, persisted.Conditions, bus, dice.NewRoller(),
+))
+
+after := loaded.ToData()
+require.Equal(t, before.Ref.String(), after.Ref.String())
+require.Equal(t, before.HitPoints, after.HitPoints)
+require.Equal(t, before.Speed, after.Speed)
+require.Len(t, loaded.Actions(), len(before.Actions))
+require.Equal(t, "claw", loaded.Actions()[0].GetID())
+require.Equal(t, monster.TypeMeleeAttack, loaded.Actions()[0].ActionType())
+require.Equal(t, before.Actions[0].Ref, after.Actions[0].Ref)
+require.JSONEq(t, string(before.Actions[0].Config), string(after.Actions[0].Config))
+```
+
+Also assert max HP, AC, all six ability scores, targeting, every action (not just
+the first), and supported trait JSON/behavior as applicable. For a trait, assert
+its actual chain behavior as well as JSON presence; serialization alone does not
+prove a rule.
+
+`Monster.Cleanup` removes only the base monster's own subscriptions; it does
+**not** remove trait subscriptions applied by `LoadMonsterConditions`. The
+simplest test isolation is one bus per test and discarding that bus with the
+loaded graph. If a test intentionally reuses a long-lived bus, call `Remove` on
+each condition returned by `loaded.GetConditions()` before
+`loaded.Cleanup(ctx)`. Do not claim `Monster.Cleanup` alone cleans the full
+hydrated monster.
 
 The encounter hydration cascade already performs these loading steps, but a
 rulebook content test should keep the factory contract understandable without
@@ -267,7 +329,11 @@ Makefile, so do not report one as if it existed.
 ### Provenance
 
 - [ ] Human approved an original or permissively licensed source.
-- [ ] PR records source, URL/reference, license, attribution, and adaptations.
+- [ ] For SRD-derived content, the exact SRD 5.1 attribution statement is in
+      root `NOTICE` and the distribution's legal notices/credits, with no other
+      Wizards attribution.
+- [ ] Modifications are recorded separately in `NOTICE`, beside the factory,
+      and in the PR.
 - [ ] No closed Monster Manual or unverified aggregator content was copied.
 
 ### Capability and scope
@@ -298,6 +364,6 @@ Makefile, so do not report one as if it existed.
 - [ ] Focused package tests pass with the race detector.
 - [ ] Full `rulebooks/dnd5e` tests and lint pass.
 - [ ] `git diff --check`, Markdown link sanity, and `make pre-commit` pass (or a
-      concrete environment blocker is reported).
+      known repository or concrete environment blocker is reported).
 - [ ] Diff contains no package move, new module, unrelated behavior, or local
       `replace` directive.

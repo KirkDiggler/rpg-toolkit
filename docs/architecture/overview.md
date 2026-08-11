@@ -213,10 +213,8 @@ infrastructure at the general layer.
 ## Code violations against these rules (2026-05-02)
 
 ### Rule: No local `replace` directives on main
-**Violated by four modules committed to main:**
-- `items/go.mod` — `replace github.com/KirkDiggler/rpg-toolkit/core => ../core`
+**Violated by two modules committed to main (verified 2026-08-10):**
 - `mechanics/conditions/go.mod` — 4 replace directives (`core`, `dice`, `events`, `effects`)
-- `mechanics/proficiency/go.mod` — `replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects`
 - `mechanics/spells/go.mod` — 6 replace directives (`core`, `dice`, `events`, `conditions`, `effects`, `resources`)
 
 Tracked in issue #613. These work locally but break CI because published module resolution fails when directives are present.
