@@ -161,3 +161,47 @@ Commit `test(dnd5e/encounter): AC1 tomb watch; ci: compat gate`.
   Process note: two director-run mutants initially "passed" because
   they broke the build — a build-broken mutant proves nothing; the
   compiling-mutant rule is now explicit in every brief.
+- **With Task 4 (a live R5 bug)**: review proved the clock advanced
+  BEFORE the decider loop — a decider error permanently ate a tick
+  (repro'd live; the "clock NOT advanced" test never read the clock) —
+  and the same shape implied partial mutation with multiple monsters.
+  Restructured to decide-then-execute: phase 1 consults every decider
+  (any error aborts with zero state touched), phase 2 advances and
+  executes. Pinning the partial-abort took three honest attempts at an
+  observable: Views can't see it (no refresh ran), occupancy can't
+  (members don't block movement) — the next pump's From-position can.
+  The redundant decider-view copy was REMOVED (intel.HeldBy's
+  documented copy-out is the protection; a vandal-decider test pins the
+  composed guarantee); endings became an ordered slice (deterministic
+  first-declared-wins — a latent C8 hazard on map iteration).
+- **With Task 5**: review killed 6 of 8 mutants; the two survivors were
+  an External-only guard never reached (the test used an undeclared key,
+  dying at the earlier branch) and Exit's RemoveEntity omission —
+  invisible to every query but permanently leaking the ID in the room
+  registry, which would have locked out a RETURNING player (the sequel
+  model's premise). Pinned via exit-then-rejoin-same-ID. Also pinned:
+  the exited beat, and exited-monster deciders never consulted again.
+- **With Task 6 (persistence; implementer died mid-stream twice, the
+  director completed directly; design amendment: FieldData persists
+  construction inputs, construct-path reload — the C4 events wart never
+  entered the module)**: the director's own seven-mutant checklist
+  caught two theatrical pins in the drafted tests (tick-continuation
+  snapshotted at tick 0; no-surveil-on-load geometry agreed with the
+  belief — rewritten with a DIVERGENT belief: a ghost in clear LoS,
+  legal under C2, that a re-surveilling load would resurrect). The
+  Opus review then found SIX majors including in the director's work:
+  ToData was nondeterministic via map iteration (the round-trip suite
+  was ~16% flaky ON THE CLEAN TREE); a reachable SIGSEGV at the trust
+  boundary (reached_position ending without position); the rejection
+  tests were theatrical — 7 of 8 checks individually deletable because
+  every fixture was invalid in MULTIPLE ways and the last-run check
+  absorbed all deletions (fixed: a table where each case starts VALID,
+  breaks exactly one thing, and asserts the discriminating fragment);
+  NewEncounter aliased the caller's SetupInput (post-construction edits
+  corrupted snapshots into unsavable states); three forgery classes
+  loaded; construct-path rejections escaped ErrInvalidData. All fixed,
+  all re-proven with compiling mutants; a rich golden was added because
+  eleven tag renames had survived behind omitempty in the two small
+  goldens. Standing lesson, now family law shape: **rejection fixtures
+  must be valid except for exactly one defect, and every golden set
+  must exercise every omitempty field at least once.**
