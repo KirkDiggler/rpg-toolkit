@@ -16,841 +16,241 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// Additional test constants for AC1 (reuse alice, goblin, endingStairs from encounter_test.go)
+// Scene cast and set (alice and endingStairs come from encounter_test.go).
 const (
 	bella          = core.EntityID("bella")
 	cormac         = core.EntityID("cormac")
 	cryptRoom      = "crypt"
 	withdrawEnding = "withdrew"
-	pillarX        = 6.0
-	pillarY        = 6.0
 )
 
-// TestTombWatch is a narrative scene test covering AC1 requirements:
-// Setup, line-of-sight blocking with pillar occluder, refresh during movement,
-// mid-scene save/load, Join/Exit, ending evaluation, and story archival.
+// seen decodes a member's holding of a subject, requiring it to exist.
+func seen(t *testing.T, enc *encounter.Encounter, observer core.EntityID, subject core.EntityID) (intel.Status, encounter.SightPayload) {
+	t.Helper()
+	view, err := enc.View(&encounter.ViewInput{Member: observer})
+	require.NoError(t, err)
+	for _, h := range view {
+		if h.Subject == intel.Subject(subject) {
+			var p encounter.SightPayload
+			require.NoError(t, json.Unmarshal(h.Payload, &p))
+			return h.Status, p
+		}
+	}
+	t.Fatalf("%s holds nothing on %s", observer, subject)
+	return "", encounter.SightPayload{}
+}
+
+// TestTombWatch is AC1: ONE continuous scene from first light to the
+// sequel seed. It is deliberately a single flowing story — the ghost
+// formed mid-scene must survive the mid-scene reload, the story must
+// accumulate into a true transcript, and the outcome must seed the
+// campaign's sequel. This test doubles as the composition's usage
+// documentation: a host wires the free-roam encounter exactly like this.
 func TestTombWatch(t *testing.T) {
-	t.Run("setup the crypt", func(t *testing.T) {
-		// Beat 1: Setup — 12x12 crypt with pillar at (6,6).
-		// Alice (player) at (2,2), Bella (player) at (3,2), Goblin (monster) at (6,10).
-		// Goblin patrols between (6,10) and (7,10).
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY}, // Pillar at center
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       bella,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 3, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-				{
-					Key:     withdrawEnding,
-					Trigger: encounter.TriggerExternal{},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err, "setup should succeed")
-
-		// Assert: Both players see the goblin (and each other in clear LoS).
-		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(aliceView), 1, "alice should see at least goblin")
-
-		// Find goblin in alice's holdings
-		goblinFound := false
-		for _, h := range aliceView {
-			if h.Subject == intel.Subject(goblin) {
-				goblinFound = true
-				require.Equal(t, "current", string(h.Status), "goblin should be current")
-				break
-			}
-		}
-		require.True(t, goblinFound, "alice should see goblin")
-
-		bellaView, err := enc.View(&encounter.ViewInput{Member: bella})
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(bellaView), 1, "bella should see at least goblin")
-
-		// Assert: Goblin sees both players (symmetric — anti-wall-hack contract).
-		goblinView, err := enc.View(&encounter.ViewInput{Member: goblin})
-		require.NoError(t, err)
-		require.Len(t, goblinView, 2, "goblin should see both players (symmetric LoS)")
-
-		// Extract IDs from holdings
-		holdings := make(map[intel.Subject]bool)
-		for _, h := range goblinView {
-			holdings[h.Subject] = true
-		}
-		require.True(t, holdings[intel.Subject(alice)], "goblin should see alice")
-		require.True(t, holdings[intel.Subject(bella)], "goblin should see bella")
+	// ---- Beat 1: the crypt lights up -------------------------------
+	// A 12x12 crypt with a pillar at (6,6). Alice (2,2) and Bella (3,2)
+	// enter; a goblin patrols the far end between (7,10) and (6,10).
+	goblinPatrol := &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{
+				ID: cryptRoom, Width: 12, Height: 12,
+				Occluders: []spatial.Position{{X: 6, Y: 6}},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bella, Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 3, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: cryptRoom,
+				Position: spatial.Position{X: 6, Y: 10}, Decider: goblinPatrol},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
+				Room: cryptRoom, Position: spatial.Position{X: 11, Y: 11}}},
+			{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}},
+		},
 	})
+	require.NoError(t, err, "beat 1: the crypt assembles")
 
-	t.Run("the watch: alice moves and refresh during pump", func(t *testing.T) {
-		// Beat 2: Alice moves to (2,6), triggering a refresh.
-		// Beat 3: Pump once — goblin patrols and its new position appears in alice's View.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
-		}
+	st, _ := seen(t, enc, alice, goblin)
+	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open crypt")
+	st, _ = seen(t, enc, bella, goblin)
+	require.Equal(t, intel.Current, st, "beat 1: bella sees it too")
+	st, _ = seen(t, enc, goblin, alice)
+	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees them back — intel is symmetric, nobody wall-hacks")
 
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
+	// ---- Beat 2: the watch -----------------------------------------
+	// Alice advances to (2,6) to watch; the world moves on her action:
+	// the pump ticks and the goblin takes its first patrol step to (7,10).
+	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 2, Y: 6}})
+	require.NoError(t, err, "beat 2: alice advances")
+	pumpOut, err := enc.Pump(&encounter.PumpInput{})
+	require.NoError(t, err, "beat 2: her activity pumps the clock")
+	require.Equal(t, uint64(1), pumpOut.Tick, "beat 2: the exploration clock ticks once")
+	_, p := seen(t, enc, alice, goblin)
+	require.Equal(t, 7.0, p.X, "beat 2: alice's view tracks the patrol step to (7,10)")
 
-		// Alice moves to (2,6)
-		moveOut, err := enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 2, Y: 6},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, moveOut)
+	// A second pump brings the goblin back to (6,10) — directly behind
+	// the pillar's file, setting up the ghost.
+	_, err = enc.Pump(&encounter.PumpInput{})
+	require.NoError(t, err, "beat 2: the watch continues")
+	_, p = seen(t, enc, alice, goblin)
+	require.Equal(t, 6.0, p.X, "beat 2: the goblin returns to (6,10), still in alice's sight from (2,6)")
 
-		// Check alice's view after move — should still see goblin at (6,10)
-		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.Len(t, aliceView, 1, "alice should see goblin after move")
+	// ---- Beat 3: the ghost forms -----------------------------------
+	// Alice slips to (6,2): the pillar at (6,6) now sits square on the
+	// vertical line between her and the goblin at (6,10). Both lose
+	// sight of each other — and both keep a ghost at last-seen.
+	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 6, Y: 2}})
+	require.NoError(t, err, "beat 3: alice slips behind the pillar's file")
 
-		var payload encounter.SightPayload
-		err = json.Unmarshal(aliceView[0].Payload, &payload)
-		require.NoError(t, err)
-		require.Equal(t, 6.0, payload.X)
-		require.Equal(t, 10.0, payload.Y)
+	st, p = seen(t, enc, alice, goblin)
+	require.Equal(t, intel.Held, st, "beat 3: alice's sight of the goblin fades — the ghost forms")
+	require.Equal(t, spatial.Position{X: 6, Y: 10}, spatial.Position{X: p.X, Y: p.Y},
+		"beat 3: her ghost holds the goblin at last-seen (6,10)")
+	st, p = seen(t, enc, goblin, alice)
+	require.Equal(t, intel.Held, st, "beat 3: the goblin loses her too — symmetric")
+	require.Equal(t, 2.0, p.X, "beat 3: its ghost of alice is at (2,6) — it never saw her arrive at (6,2)")
+	st, _ = seen(t, enc, bella, goblin)
+	require.Equal(t, intel.Current, st, "beat 3: bella, off the blocked file, still sees the goblin plainly")
 
-		// Pump once — goblin patrols. Since patrolDecider starts at callCount=0,
-		// first pump will pick positions[0 % 2] = positions[0] = (6,10).
-		// So goblin stays at (6,10) on first pump (no visible movement).
-		// After pump 2, it will be at (7,10).
-		pumpOut, err := enc.Pump(&encounter.PumpInput{})
-		require.NoError(t, err)
-		require.NotNil(t, pumpOut)
-
-		// Check alice's view after pump — goblin should still be at (6,10)
-		aliceView, err = enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.Len(t, aliceView, 1)
-
-		// Pump again to move goblin to (7,10)
-		_, err = enc.Pump(&encounter.PumpInput{})
-		require.NoError(t, err)
-
-		aliceView, err = enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.Len(t, aliceView, 1)
-		err = json.Unmarshal(aliceView[0].Payload, &payload)
-		require.NoError(t, err)
-		require.Equal(t, 7.0, payload.X, "goblin should have moved to x=7")
+	// ---- Beat 4: the pause (pause is free) -------------------------
+	// The table closes the Discord activity. The host persists ONE
+	// aggregate and rehydrates it later — same encounter, mid-scene.
+	// Deciders are behavior, not state: the campaign re-attaches the
+	// goblin's patrol at load (its route position restarts; its INTEL
+	// does not — beliefs are state and traveled in the aggregate).
+	data := enc.ToData()
+	enc2, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{
+		goblin: &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}},
 	})
+	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
+	enc = enc2 // the reload IS the encounter now
 
-	t.Run("the ghost: pillar blocks line of sight", func(t *testing.T) {
-		// Beat 4: Set up alice and goblin with pillar between them such that
-		// they cannot see each other. Alice sees goblin, then loses sight when
-		// goblin moves behind pillar or LoS geometry changes.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: 5.0, Y: 5.0}, // Pillar positioned to block diagonal
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 0, Y: 5},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 11, Y: 5},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 11, Y: 5},
-							{X: 10, Y: 5},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
+	st, p = seen(t, enc, alice, goblin)
+	require.Equal(t, intel.Held, st, "beat 4: the ghost survived the reload")
+	require.Equal(t, 10.0, p.Y, "beat 4: still at last-seen (6,10) — loading never re-derives sight")
+	st, _ = seen(t, enc, bella, goblin)
+	require.Equal(t, intel.Current, st, "beat 4: bella's live sight survived too")
+
+	// ---- Beat 5: the reinforcement ---------------------------------
+	// Cormac connects late — the ambient is always there to join.
+	joinOut, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+		ID: cormac, Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 10, Y: 2},
+	}})
+	require.NoError(t, err, "beat 5: cormac joins the delve")
+	require.NotZero(t, joinOut.Seq, "beat 5: his arrival is a story beat")
+	st, _ = seen(t, enc, cormac, goblin)
+	require.Equal(t, intel.Current, st, "beat 5: from (10,2) the pillar doesn't block him — first light lands")
+	st, _ = seen(t, enc, goblin, cormac)
+	require.Equal(t, intel.Current, st, "beat 5: the goblin notices the newcomer")
+	st, _ = seen(t, enc, alice, goblin)
+	require.Equal(t, intel.Held, st, "beat 5: the join's refresh does not disturb alice's ghost")
+
+	// ---- Beat 6: the departure -------------------------------------
+	// Bella heads back to town. Members exit; encounters close — her
+	// exit is not an ending, and her carry-forward is the sequel seed
+	// the campaign holds for her return.
+	exitOut, err := enc.Exit(&encounter.ExitInput{Member: bella})
+	require.NoError(t, err, "beat 6: bella departs")
+	require.Equal(t, spatial.Position{X: 3, Y: 2},
+		spatial.Position{X: exitOut.Outcome.Position.X, Y: exitOut.Outcome.Position.Y},
+		"beat 6: her carry-forward records where she left")
+	require.NotEmpty(t, exitOut.Carry, "beat 6: and what she believed — her holdings travel with her")
+
+	st, p = seen(t, enc, goblin, bella)
+	require.Equal(t, intel.Held, st, "beat 6: the goblin's sight of bella fades to a ghost")
+	require.Equal(t, 3.0, p.X, "beat 6: at the door where it last saw her")
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: bella})
+	require.NoError(t, err, "beat 6: the departed can still read the story (everMembers)")
+	require.NotEmpty(t, story)
+
+	// ---- Beat 7: the stairs ----------------------------------------
+	// Alice crosses the crypt and finds the stairs down. The declared
+	// ending fires; the encounter closes with the Outcome the campaign
+	// consumes.
+	moveOut, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 11, Y: 11}})
+	require.NoError(t, err, "beat 7: alice reaches the stairs")
+	require.NotNil(t, moveOut.Outcome, "beat 7: the ending fires in the Move's own output")
+	require.Equal(t, endingStairs, moveOut.Outcome.Ending)
+	require.Len(t, moveOut.Outcome.Members, 3, "beat 7: alice, cormac, and the goblin remain")
+	require.Equal(t, alice, moveOut.Outcome.Members[0].ID, "beat 7: outcome members in sorted order")
+
+	status, err := enc.Status()
+	require.NoError(t, err)
+	require.False(t, status.Open, "beat 7: closed = has an Outcome")
+
+	for name, verb := range map[string]func() error{
+		"Move": func() error {
+			_, e := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
+			return e
+		},
+		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
+		"Join": func() error {
+			_, e := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+				ID: "late", Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 1, Y: 1}}})
+			return e
+		},
+		"Exit": func() error { _, e := enc.Exit(&encounter.ExitInput{Member: alice}); return e },
+		"End":  func() error { _, e := enc.End(&encounter.EndInput{Ending: withdrawEnding}); return e },
+	} {
+		require.ErrorIs(t, verb(), encounter.ErrClosed, "beat 7: %s on a closed encounter", name)
+	}
+
+	// ---- Beat 8: the archive ---------------------------------------
+	// Closed encounters answer queries forever. The story is the
+	// scene's own narration — assert the FULL transcript of beat kinds.
+	view, err := enc.View(&encounter.ViewInput{Member: alice})
+	require.NoError(t, err, "beat 8: the archive answers View")
+	require.NotEmpty(t, view)
+
+	story, err = enc.Story(&encounter.StoryInput{Audience: alice})
+	require.NoError(t, err, "beat 8: the archive answers Story")
+	kinds := make([]string, 0, len(story))
+	for _, e := range story {
+		var beat map[string]any
+		require.NoError(t, json.Unmarshal(e.Payload, &beat))
+		kinds = append(kinds, beat["beat"].(string))
+	}
+	require.Equal(t, []string{
+		"scene-opened",  // beat 1
+		"moved",         // beat 2: alice advances
+		"tick", "moved", // beat 2: pump 1, goblin steps out
+		"tick", "moved", // beat 2: pump 2, goblin steps back
+		"moved",  // beat 3: alice slips behind the pillar's file
+		"joined", // beat 5: cormac (the pause leaves no beat — pause is free)
+		"exited", // beat 6: bella
+		"moved",  // beat 7: alice reaches the stairs
+	}, kinds, "beat 8: the story IS the scene, told in order")
+
+	// ---- Beat 9: the sequel seed -----------------------------------
+	// The campaign holds the Outcome. A return to this crypt is a NEW
+	// encounter seeded from it — members at their outcome positions.
+	// (Bella's separate carry from beat 6 would seed her return the
+	// same way; intel transfer is the campaign's wave-two work.)
+	sequelMembers := make([]encounter.MemberInput, 0, len(status.Outcome.Members))
+	for _, mo := range status.Outcome.Members {
+		kind := encounter.KindPlayer
+		if mo.ID == goblin {
+			kind = encounter.KindMonster
 		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Setup: alice at (0,5), goblin at (11,5), pillar at (5,5) should block horizontal sight
-		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.Len(t, aliceView, 0, "alice should NOT see goblin initially (blocked by pillar)")
-
-		// Goblin should also not see alice (symmetric)
-		goblinView, err := enc.View(&encounter.ViewInput{Member: goblin})
-		require.NoError(t, err)
-		require.Len(t, goblinView, 0, "goblin should NOT see alice initially (blocked by pillar)")
-
-		// Move goblin perpendicular to line of sight to escape pillar blockage
-		// However, since the pillar is at (5,5) and line is at y=5, moving off y=5 clears it
-		// But we can't directly move a monster. Instead, pump to make goblin move via decider.
-		// Actually, patrolDecider only patrols along x-axis, so it won't help here.
-		// Let's just verify the pillar blocking is working by moving alice to unblock.
-
-		// Move alice to (7,5) — still blocked by pillar at (5,5) on the line
-		_, err = enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 7, Y: 5},
+		sequelMembers = append(sequelMembers, encounter.MemberInput{
+			ID: mo.ID, Kind: kind, Room: mo.Room, Position: mo.Position,
 		})
-		require.NoError(t, err)
-
-		// Alice at (7,5) should see goblin at (11,5) — both on same side of pillar
-		aliceView, err = enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.Len(t, aliceView, 1, "alice should see goblin when both on same side of pillar")
+	}
+	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{
+				ID: cryptRoom, Width: 12, Height: 12,
+				Occluders: []spatial.Position{{X: 6, Y: 6}},
+			}},
+		},
+		Members: sequelMembers,
+		Endings: []encounter.EndingInput{{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}}},
 	})
-
-	t.Run("the pause (mid-scene save/load)", func(t *testing.T) {
-		// Beat 5: ToData → LoadEncounter round-trip.
-		// Verify state is preserved and scene can continue.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
-		}
-
-		enc1, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Move and pump to establish state
-		_, err = enc1.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 2, Y: 6},
-		})
-		require.NoError(t, err)
-
-		_, err = enc1.Pump(&encounter.PumpInput{})
-		require.NoError(t, err)
-
-		// Get view before serialization
-		enc1View, err := enc1.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-
-		// Serialize
-		data := enc1.ToData()
-
-		// Re-attach decider and load
-		goblinDecider := &patrolDecider{
-			positions: []spatial.Position{
-				{X: 6, Y: 10},
-				{X: 7, Y: 10},
-			},
-			callCount: 1, // Match the call count from enc1 (one pump occurred)
-		}
-
-		enc2, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{
-			goblin: goblinDecider,
-		})
-		require.NoError(t, err)
-
-		// Views should be identical
-		enc2View, err := enc2.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-
-		require.Len(t, enc2View, len(enc1View), "alice's view should match after reload")
-
-		// Continue the scene on enc2
-		_, err = enc2.Pump(&encounter.PumpInput{})
-		require.NoError(t, err)
-
-		// Verify continued operation works
-		enc2ViewAfter, err := enc2.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.NotNil(t, enc2ViewAfter)
-	})
-
-	t.Run("the reinforcement (Join)", func(t *testing.T) {
-		// Beat 6: Cormac joins at (10,2). Incumbents see him and he sees them.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 6},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Cormac joins at (10,2)
-		joinOut, err := enc.Join(&encounter.JoinInput{
-			Member: encounter.MemberInput{
-				ID:       cormac,
-				Kind:     encounter.KindPlayer,
-				Room:     cryptRoom,
-				Position: spatial.Position{X: 10, Y: 2},
-			},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, joinOut)
-
-		// Cormac should see alice and goblin
-		cormacView, err := enc.View(&encounter.ViewInput{Member: cormac})
-		require.NoError(t, err)
-		require.Len(t, cormacView, 2, "cormac should see alice and goblin")
-
-		// Alice should see goblin and cormac
-		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.Len(t, aliceView, 2, "alice should see goblin and cormac")
-	})
-
-	t.Run("the departure (Exit)", func(t *testing.T) {
-		// Beat 7: Bella exits ("heads back to town").
-		// Assert: her carry-forward (position + holdings), remaining members' views update.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 6},
-				},
-				{
-					ID:       bella,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 3, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Exit bella
-		exitOut, err := enc.Exit(&encounter.ExitInput{
-			Member: bella,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, exitOut)
-
-		// Check carry-forward
-		require.Equal(t, bella, exitOut.Outcome.ID)
-		require.Equal(t, cryptRoom, exitOut.Outcome.Room)
-		require.Equal(t, 3.0, exitOut.Outcome.Position.X)
-		require.Equal(t, 2.0, exitOut.Outcome.Position.Y)
-
-		// Bella should still be able to access story (everMembers)
-		bellaStory, err := enc.Story(&encounter.StoryInput{
-			Audience: bella,
-			AfterSeq: 0,
-		})
-		require.NoError(t, err)
-		require.Len(t, bellaStory, 2, "bella should read story (opened + exited)")
-	})
-
-	t.Run("the stairs (ending)", func(t *testing.T) {
-		// Beat 8: Alice moves to (11,11) — fires the "stairs" ending.
-		// Assert: Outcome carries members, Status closed, all mutating verbs return ErrClosed.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       bella,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 3, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-				{
-					Key:     withdrawEnding,
-					Trigger: encounter.TriggerExternal{},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Alice moves to stairs
-		moveOut, err := enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 11, Y: 11},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, moveOut.Outcome, "moving to stairs should fire the ending")
-		require.Equal(t, endingStairs, moveOut.Outcome.Ending)
-
-		// Outcome should carry all three members in sorted order
-		require.Len(t, moveOut.Outcome.Members, 3, "outcome should have all three members")
-		require.Equal(t, alice, moveOut.Outcome.Members[0].ID)
-		require.Equal(t, bella, moveOut.Outcome.Members[1].ID)
-		require.Equal(t, goblin, moveOut.Outcome.Members[2].ID)
-
-		// Status should show closed
-		status, err := enc.Status()
-		require.NoError(t, err)
-		require.False(t, status.Open)
-		require.NotNil(t, status.Outcome)
-		require.Equal(t, endingStairs, status.Outcome.Ending)
-
-		// All mutating verbs should return ErrClosed
-		_, err = enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 11, Y: 10},
-		})
-		require.ErrorIs(t, err, encounter.ErrClosed)
-
-		_, err = enc.Pump(&encounter.PumpInput{})
-		require.ErrorIs(t, err, encounter.ErrClosed)
-
-		_, err = enc.Exit(&encounter.ExitInput{
-			Member: alice,
-		})
-		require.ErrorIs(t, err, encounter.ErrClosed)
-
-		_, err = enc.End(&encounter.EndInput{
-			Ending: withdrawEnding,
-		})
-		require.ErrorIs(t, err, encounter.ErrClosed)
-	})
-
-	t.Run("the archive (closed encounter queries)", func(t *testing.T) {
-		// Beat 9: Closed encounter still answers View and Story.
-		// Story transcript shows scene progression.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       bella,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 3, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Run a scenario: move, pump, exit, move to stairs
-		_, err = enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 2, Y: 6},
-		})
-		require.NoError(t, err)
-
-		_, err = enc.Pump(&encounter.PumpInput{})
-		require.NoError(t, err)
-
-		_, err = enc.Exit(&encounter.ExitInput{
-			Member: bella,
-		})
-		require.NoError(t, err)
-
-		moveOut, err := enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 11, Y: 11},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, moveOut.Outcome)
-
-		// Get the story from alice's perspective
-		story, err := enc.Story(&encounter.StoryInput{
-			Audience: alice,
-			AfterSeq: 0,
-		})
-		require.NoError(t, err)
-
-		// Assert beat sequence: scene-opened, moved, tick+moved, exited, moved
-		// Note: Move-triggered endings don't append a separate "ended" beat;
-		// the last beat is the move that triggered the ending.
-		require.Greater(t, len(story), 0, "story should have beats")
-
-		// First beat should be scene-opened
-		require.NotNil(t, story[0])
-		var firstBeat map[string]interface{}
-		err = json.Unmarshal(story[0].Payload, &firstBeat)
-		require.NoError(t, err)
-		require.Equal(t, "scene-opened", firstBeat["beat"])
-
-		// Last beat should be "moved" (the Move that fired the ending; no separate ended beat)
-		require.NotNil(t, story[len(story)-1])
-		var lastBeat map[string]interface{}
-		err = json.Unmarshal(story[len(story)-1].Payload, &lastBeat)
-		require.NoError(t, err)
-		require.Equal(t, "moved", lastBeat["beat"], "last beat should be moved (Move-triggered ending)")
-
-		// View should still work on closed encounter
-		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
-		require.NoError(t, err)
-		require.NotNil(t, aliceView)
-	})
-
-	t.Run("the sequel seed (outcome carry-forward)", func(t *testing.T) {
-		// Beat 10: Build carry from Outcome — positions for campaign sequel.
-		// Prove the Outcome's data suffices to seed a new Encounter.
-		setup := &encounter.SetupInput{
-			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     cryptRoom,
-						Width:  12,
-						Height: 12,
-						Occluders: []spatial.Position{
-							{X: pillarX, Y: pillarY},
-						},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
-			},
-			Members: []encounter.MemberInput{
-				{
-					ID:       alice,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       bella,
-					Kind:     encounter.KindPlayer,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 3, Y: 2},
-				},
-				{
-					ID:       goblin,
-					Kind:     encounter.KindMonster,
-					Room:     cryptRoom,
-					Position: spatial.Position{X: 6, Y: 10},
-					Decider: &patrolDecider{
-						positions: []spatial.Position{
-							{X: 6, Y: 10},
-							{X: 7, Y: 10},
-						},
-					},
-				},
-			},
-			Endings: []encounter.EndingInput{
-				{
-					Key: endingStairs,
-					Trigger: encounter.TriggerReachedPosition{
-						Room:     cryptRoom,
-						Position: spatial.Position{X: 11, Y: 11},
-					},
-				},
-			},
-		}
-
-		enc, err := encounter.NewEncounter(setup)
-		require.NoError(t, err)
-
-		// Run minimal scenario to close
-		_, err = enc.Move(&encounter.MoveInput{
-			Member: alice,
-			To:     spatial.Position{X: 11, Y: 11},
-		})
-		require.NoError(t, err)
-
-		// Get outcome
-		status, err := enc.Status()
-		require.NoError(t, err)
-		require.NotNil(t, status.Outcome)
-
-		// Verify outcome data is sufficient for carry-forward
-		require.Len(t, status.Outcome.Members, 3, "outcome should have all members")
-
-		// Verify sorted order
-		require.Equal(t, alice, status.Outcome.Members[0].ID)
-		require.Equal(t, bella, status.Outcome.Members[1].ID)
-		require.Equal(t, goblin, status.Outcome.Members[2].ID)
-
-		// Each should have valid positions
-		for _, mo := range status.Outcome.Members {
-			require.Equal(t, cryptRoom, mo.Room)
-			require.GreaterOrEqual(t, mo.Position.X, 0.0)
-			require.GreaterOrEqual(t, mo.Position.Y, 0.0)
-			require.Less(t, mo.Position.X, 12.0)
-			require.Less(t, mo.Position.Y, 12.0)
-		}
-	})
+	require.NoError(t, err, "beat 9: the outcome alone seeds the sequel — encounters end, places persist")
+	seqStatus, err := sequel.Status()
+	require.NoError(t, err)
+	require.True(t, seqStatus.Open, "beat 9: the next scene begins")
 }
