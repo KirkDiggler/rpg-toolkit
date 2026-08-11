@@ -8,9 +8,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// Intent represents a decision made by a decider in response to their view.
-// The anti-wall-hack contract: a decider receives ONLY its own holdings,
-// never the full encounter state. Intent is a sealed type (unexported marker method).
+// Intent represents a decision made by a decider in response to their
+// Snapshot. The anti-wall-hack contract: a decider receives ONLY its own
+// Snapshot (own room, own position, own holdings), never the full
+// encounter state or another member's live truth. Intent is a sealed
+// type (unexported marker method).
 type Intent interface {
 	isIntent()
 }

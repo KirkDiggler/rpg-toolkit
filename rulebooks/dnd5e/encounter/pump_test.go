@@ -1119,11 +1119,21 @@ func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances")
 	s.Empty(out.MonsterTraverses)
-	s.Len(out.Seqs, 1, "exactly the tick beat")
+	s.Len(out.Seqs, 1, "exactly the tick beat — no traversed beat for the failure")
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: goblinID, AfterSeq: 0})
+	s.Require().NoError(err)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		s.NotEqual("traversed", beat["beat"], "no traversed beat for a failed traverse")
+	}
 
 	data := enc.ToData()
 	s.Require().Len(data.Members, 1)
 	s.Equal("room-a", data.Members[0].Room, "the monster never left its room")
+	s.Equal(9.0, data.Members[0].Position.X, "the monster's position is unchanged")
+	s.Equal(5.0, data.Members[0].Position.Y)
 }
 
 // TestPumpDeciderErrorAbortsEvenWithTraversableTopology extends the
@@ -1259,4 +1269,102 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 		}
 	}
 	s.True(sawTraversed, "the goblin's traversal must appear in the Story")
+}
+
+// TestPumpFullTickThenEvaluateAcrossTraverse pins full-tick-then-evaluate
+// as law, now that IntentTraverse raises its stakes (a fired ending
+// during phase-2 execution would otherwise need to REVERT a room
+// mutation, not just a same-room position). Two monsters decide in the
+// SAME pump: "aaa-goblin" (decides first — Members() stable order sorts
+// its ID before "zzz-goblin") traverses onto a FILTERED ending naming
+// it; "zzz-goblin" has an unrelated same-room move queued. The shipped
+// contract (wave-1 loop skeleton, deliberate, reviewer-verified): phase
+// 2 executes BOTH actions and records BOTH beats BEFORE any ending
+// evaluation; evaluation walks executed in decision order, the first
+// match sets the outcome and stops evaluating further endings, but never
+// reverts an already-applied action; Outcome.Members reflects the FULL
+// post-tick state, including zzz-goblin at its NEW position; the next
+// Pump returns ErrClosed.
+func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
+	aID := core.EntityID("aaa-goblin")
+	bID := core.EntityID("zzz-goblin")
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{twoRoomDoor},
+		},
+		Members: []encounter.MemberInput{
+			// aaa-goblin is AT the threshold, ready to traverse onto the
+			// filtered ending below.
+			{ID: aID, Kind: encounter.KindMonster, Room: "room-a",
+				Position: spatial.Position{X: 9, Y: 5}, Decider: &onceTraverseDecider{connection: "door1"}},
+			// zzz-goblin has an unrelated same-room move queued.
+			{ID: bID, Kind: encounter.KindMonster, Room: "room-a",
+				Position: spatial.Position{X: 3, Y: 3}, Decider: &patrolDecider{positions: []spatial.Position{{X: 4, Y: 4}}}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
+				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}, Member: aID}},
+		},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+
+	// Both actions executed and both beats recorded — the closing ending
+	// (fired by aaa-goblin's traverse) did not suppress zzz-goblin's move.
+	s.Require().Len(out.MonsterTraverses, 1)
+	s.Equal(aID, out.MonsterTraverses[0].Member)
+	s.Require().Len(out.MonsterMoves, 1)
+	s.Equal(bID, out.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 4, Y: 4}, out.MonsterMoves[0].To)
+
+	s.Require().NotNil(out.Outcome, "aaa-goblin's traverse must fire the filtered ending")
+	s.Equal("escaped", out.Outcome.Ending)
+	s.Require().Len(out.Outcome.Members, 2)
+
+	var aOutcome, bOutcome encounter.MemberOutcome
+	for _, m := range out.Outcome.Members {
+		switch m.ID {
+		case aID:
+			aOutcome = m
+		case bID:
+			bOutcome = m
+		}
+	}
+	s.Equal("room-b", aOutcome.Room)
+	s.Equal(spatial.Position{X: 0, Y: 5}, aOutcome.Position)
+	// The full-tick-then-evaluate law, made observable: zzz-goblin's
+	// ALREADY-APPLIED move is reflected in the outcome — its NEW
+	// position, not its pre-pump one. A revert-on-close implementation
+	// would show (3,3) here instead.
+	s.Equal("room-a", bOutcome.Room)
+	s.Equal(spatial.Position{X: 4, Y: 4}, bOutcome.Position,
+		"the outcome must reflect zzz-goblin's post-tick position, not its pre-tick one")
+
+	// Both beats actually landed in the Story (not just the output structs).
+	story, err := enc.Story(&encounter.StoryInput{Audience: aID, AfterSeq: 0})
+	s.Require().NoError(err)
+	var sawTraversed, sawMoved bool
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		switch beat["beat"] {
+		case "traversed":
+			sawTraversed = true
+		case "moved":
+			sawMoved = true
+		}
+	}
+	s.True(sawTraversed, "aaa-goblin's traverse beat must be recorded")
+	s.True(sawMoved, "zzz-goblin's move beat must be recorded despite the mid-tick closure")
+
+	// The encounter is closed: the next pump returns ErrClosed.
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().ErrorIs(err, encounter.ErrClosed)
 }
