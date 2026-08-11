@@ -309,15 +309,16 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 }
 
 // validConnSetup returns a fresh SetupInput with two rooms (r1 carries an
-// occluder at (2,2)) and one fully valid connection between them — the base
-// for TestSetupConnectionValidation's one-defect rows, mirroring the same
-// defect classes rejected at Load (TestLoadRejections).
+// occluder at (2,2), r2 carries an occluder at (3,3)) and one fully valid
+// connection between them — the base for TestSetupConnectionValidation's
+// one-defect rows, mirroring the same defect classes rejected at Load
+// (TestLoadRejections).
 func validConnSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "r2", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
@@ -335,6 +336,8 @@ func validConnSetup() *encounter.SetupInput {
 // TestSetupConnectionValidation mirrors TestLoadRejections' connection
 // defect classes at the Setup seam: each case breaks exactly one thing
 // about an otherwise-valid connection and must reject with ErrBadConnection.
+// Fragments name the missing room where applicable — a check neutered in
+// favor of the coincidental zero-value-room bounds fallback must not pass.
 func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 	cases := []struct {
 		name     string
@@ -347,18 +350,27 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 		{"duplicate connection id", func(in *encounter.SetupInput) {
 			in.Field.Connections = append(in.Field.Connections, in.Field.Connections[0])
 		}, "duplicate connection"},
-		{"connection unknown room", func(in *encounter.SetupInput) {
+		{"connection unknown from room", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].From = "nowhere"
+		}, `unknown room "nowhere"`},
+		{"connection unknown to room", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].To = "nowhere"
-		}, "unknown room"},
+		}, `unknown room "nowhere"`},
 		{"connection self-connection", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].To = "r1"
 		}, "itself"},
-		{"connection endpoint out of bounds", func(in *encounter.SetupInput) {
+		{"connection from-position out of bounds", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 99, Y: 99}
 		}, "from-position out of bounds"},
-		{"connection endpoint on occluder", func(in *encounter.SetupInput) {
+		{"connection to-position out of bounds", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 99, Y: 99}
+		}, "to-position out of bounds"},
+		{"connection from-position on occluder", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 2, Y: 2}
 		}, "from-position on occluder"},
+		{"connection to-position on occluder", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 3, Y: 3}
+		}, "to-position on occluder"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {

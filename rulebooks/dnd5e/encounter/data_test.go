@@ -975,11 +975,15 @@ func validEncounterData() encounter.EncounterData {
 // room (r2) and a fully valid connection between them — the base for the
 // connection defect rows below (one-defect discipline: each row breaks
 // exactly one thing about this otherwise-valid connection). r1 carries an
-// occluder at (2,2) so the "endpoint on occluder" row has something to hit.
+// occluder at (2,2) and r2 an occluder at (3,3), so both the from- and
+// to-side "endpoint on occluder" rows have something to hit.
 func validEncounterDataWithConnection() encounter.EncounterData {
 	d := validEncounterData()
 	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
-	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{ID: "r2", Width: 5, Height: 5})
+	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{
+		ID: "r2", Width: 5, Height: 5,
+		Occluders: []encounter.PositionData{{X: 3, Y: 3}},
+	})
 	d.Field.Connections = []encounter.ConnectionData{
 		{ID: "c1", From: "r1", To: "r2",
 			FromPosition: encounter.PositionData{X: 0, Y: 0},
@@ -988,71 +992,91 @@ func validEncounterDataWithConnection() encounter.EncounterData {
 	return d
 }
 
-// TestLoadRejections: every unreachable state rejects with
-// ErrInvalidData AND the check that fired is the one the case targets.
+// TestLoadRejections: every unreachable state rejects with ErrInvalidData
+// AND the check that fired is the one the case targets. Connection rows
+// also assert ErrBadConnection (via alsoErr) and, where a room name is
+// involved, quote the missing room in the fragment — a check neutered in
+// favor of the coincidental zero-value-room bounds fallback must not pass.
 func (s *DataTestSuite) TestLoadRejections() {
 	cases := []struct {
 		name     string
 		mutate   func(d *encounter.EncounterData)
 		fragment string
+		alsoErr  error
 	}{
-		{"zero data", func(d *encounter.EncounterData) { *d = encounter.EncounterData{} }, "no rooms"},
-		{"no rooms", func(d *encounter.EncounterData) { d.Field.Rooms = nil; d.Members = nil; d.EverMembers = nil }, "no rooms"},
-		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings"},
-		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings"},
-		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings"},
-		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind"},
+		{"zero data", func(d *encounter.EncounterData) { *d = encounter.EncounterData{} }, "no rooms", nil},
+		{"no rooms", func(d *encounter.EncounterData) { d.Field.Rooms = nil; d.Members = nil; d.EverMembers = nil }, "no rooms", nil},
+		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings", nil},
+		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings", nil},
+		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings", nil},
+		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind", nil},
 		{"reached_position without position", func(d *encounter.EncounterData) {
 			d.Endings[0] = encounter.EndingData{Key: "done", Kind: "reached_position", Room: "r1"}
-		}, "without room/position"},
-		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id"},
+		}, "without room/position", nil},
+		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id", nil},
 		{"duplicate member ids", func(d *encounter.EncounterData) {
 			d.Members = append(d.Members, d.Members[0])
-		}, "duplicate member"},
-		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field"},
+		}, "duplicate member", nil},
+		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field", nil},
 		{"member out of bounds", func(d *encounter.EncounterData) {
 			d.Members[0].Position = encounter.PositionData{X: 99, Y: 99}
-		}, "out of bounds"},
+		}, "out of bounds", nil},
 		{"connection missing room", func(d *encounter.EncounterData) {
 			d.Field.Connections = []encounter.ConnectionData{{ID: "c1", From: "r1", To: "nowhere"}}
-		}, "connection"},
+		}, `missing room "nowhere"`, encounter.ErrBadConnection},
 		{"connection empty id", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].ID = ""
-		}, "empty id"},
+		}, "empty id", encounter.ErrBadConnection},
 		{"duplicate connection ids", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections = append(d.Field.Connections, d.Field.Connections[0])
-		}, "duplicate connection"},
+		}, "duplicate connection", encounter.ErrBadConnection},
+		{"connection unknown from room", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].From = "nowhere"
+		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+		{"connection unknown to room", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].To = "nowhere"
+		}, `missing room "nowhere"`, encounter.ErrBadConnection},
 		{"connection self-connection", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].To = "r1"
-		}, "itself"},
-		{"connection endpoint out of bounds", func(d *encounter.EncounterData) {
+		}, "itself", encounter.ErrBadConnection},
+		{"connection from-position out of bounds", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].FromPosition = encounter.PositionData{X: 99, Y: 99}
-		}, "from-position out of bounds"},
-		{"connection endpoint on occluder", func(d *encounter.EncounterData) {
+		}, "from-position out of bounds", encounter.ErrBadConnection},
+		{"connection to-position out of bounds", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ToPosition = encounter.PositionData{X: 99, Y: 99}
+		}, "to-position out of bounds", encounter.ErrBadConnection},
+		{"connection from-position on occluder", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].FromPosition = encounter.PositionData{X: 2, Y: 2}
-		}, "from-position on occluder"},
+		}, "from-position on occluder", encounter.ErrBadConnection},
+		{"connection to-position on occluder", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ToPosition = encounter.PositionData{X: 3, Y: 3}
+		}, "to-position on occluder", encounter.ErrBadConnection},
 		{"outcome undeclared ending", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
-		}, "outcome"},
+		}, "outcome", nil},
 		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
-		}, "abandoned outcome with members"},
+		}, "abandoned outcome with members", nil},
 		{"outcome member room missing", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "ghost", Room: "nowhere", Position: encounter.PositionData{X: 1, Y: 1}}}}
-		}, "outcome member"},
+		}, "outcome member", nil},
 		{"outcome member out of bounds", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "p1", Room: "r1", Position: encounter.PositionData{X: 999, Y: 999}}}}
-		}, "out of bounds"},
+		}, "out of bounds", nil},
 		{"ever_members missing current member", func(d *encounter.EncounterData) {
 			d.EverMembers = nil
-		}, "ever_members"},
+		}, "ever_members", nil},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -1063,6 +1087,9 @@ func (s *DataTestSuite) TestLoadRejections() {
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().Contains(err.Error(), tc.fragment,
 				"the check that fired must be the one this case targets")
+			if tc.alsoErr != nil {
+				s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			}
 		})
 	}
 

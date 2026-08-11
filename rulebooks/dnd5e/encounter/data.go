@@ -240,10 +240,11 @@ func (e *Encounter) ToData() EncounterData {
 
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
-// no rooms, no endings, duplicate member IDs, member's room not in field, member position
-// out of bounds, empty/reserved ending keys, undeclared outcome ending, connection defects
-// (empty/duplicate ID, missing room, self-connection, endpoint out of bounds or on an
-// occluder), everMembers missing a current member.
+// no rooms, no endings, empty/reserved ending keys (and kind/reached_position checks),
+// undeclared outcome ending, connection defects (empty/duplicate ID, missing room,
+// self-connection, endpoint out of bounds or on an occluder), duplicate member IDs,
+// member's room not in field, member position out of bounds, outcome member room/bounds
+// checks, everMembers missing a current member.
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
