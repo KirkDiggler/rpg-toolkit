@@ -1476,9 +1476,14 @@ func (s *EncounterTestSuite) TestEndExternalOnly() {
 	s.Run("End accepts only External triggers", func() {
 		enc := s.newBasicEncounter()
 
-		// Try to fire a ReachedPosition ending via End (should fail)
-		_, err := enc.End(&encounter.EndInput{Ending: "reached-position-key"})
+		// Fire the DECLARED ReachedPosition key via End: declared but
+		// wrong trigger kind must be rejected (only External endings
+		// may be fired externally).
+		_, err := enc.End(&encounter.EndInput{Ending: endingStairs})
 		s.Require().ErrorIs(err, encounter.ErrNoEnding, "ReachedPosition endings cannot be fired via End")
+		// An undeclared key is also ErrNoEnding (the earlier branch).
+		_, err = enc.End(&encounter.EndInput{Ending: "never-declared"})
+		s.Require().ErrorIs(err, encounter.ErrNoEnding, "undeclared keys are rejected")
 	})
 
 	s.Run("End fires External endings", func() {
@@ -1683,6 +1688,37 @@ func (s *EncounterTestSuite) TestMembersCopyOut() {
 		// Modifying members1 should not affect enc's internal state
 		// (values are copied, not pointers to internal state)
 	})
+}
+
+// TestExitThenRejoinSameID is the load-bearing pin for Exit's spatial
+// removal: omitting RemoveEntity is invisible to Members/View/Status
+// but permanently leaks the ID in the room's registry — the returning
+// player (the sequel model's whole premise) would be locked out.
+func (s *EncounterTestSuite) TestExitThenRejoinSameID() {
+	enc := s.newBasicEncounter()
+	_, err := enc.Exit(&encounter.ExitInput{Member: bob})
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+		ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 6, Y: 6},
+	}})
+	s.Require().NoError(err, "a departed member must be able to return with the same ID (exit must truly vacate the field)")
+}
+
+// TestExitBeatPinned pins the exited beat: tag, payload, and the
+// exiter reading their own departure via Story (everMembers).
+func (s *EncounterTestSuite) TestExitBeatPinned() {
+	enc := s.newBasicEncounter()
+	out, err := enc.Exit(&encounter.ExitInput{Member: bob})
+	s.Require().NoError(err)
+	story, err := enc.Story(&encounter.StoryInput{Audience: bob})
+	s.Require().NoError(err, "the exiter can still read the story (everMembers)")
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq, "ExitOutput.Seq references the exited beat")
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("exited", beat["beat"], "the departure is recorded")
+	s.Equal(string(bob), beat["member"])
 }
 
 func TestEncounterSuite(t *testing.T) {

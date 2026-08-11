@@ -93,6 +93,26 @@ func (e *errorDecider) Decide(view []intel.Holding) (encounter.Intent, error) {
 	return nil, e.err
 }
 
+// TestPumpDoesNotConsultExitedMonsterDecider pins Exit's decider
+// cleanup: an exited monster's decider must never be consulted again.
+func (s *PumpTestSuite) TestPumpDoesNotConsultExitedMonsterDecider() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Members: []encounter.MemberInput{
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 4, Y: 4}, Decider: &errorDecider{err: errors.New("must never be called")}},
+		},
+		Endings: []encounter.EndingInput{{Key: endingStairs,
+			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+	})
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: core.EntityID("goblin")})
+	s.Require().NoError(err)
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err, "an exited monster's decider must not be consulted (no leak)")
+}
+
 func TestPumpTestSuite(t *testing.T) {
 	suite.Run(t, new(PumpTestSuite))
 }
