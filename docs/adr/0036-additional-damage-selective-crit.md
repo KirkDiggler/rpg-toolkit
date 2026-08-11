@@ -57,54 +57,52 @@ encounter/  (SDK)           AttackInput{AttackerDamageDice, AttackerDamageType, 
 ### The attack damage flow
 
 ```mermaid
-%%{init: {'flowchart': {'useMaxWidth': false, 'htmlLabels': true}}}%%
-flowchart LR
-    AI["combat.AttackInput<br/>Weapon (Damage='1d8', DamageType=bludgeoning)<br/>Roller, EventBus, AttackerID, TargetID<br/>v1: AdditionalDamage []DamageComponentSpec"]
-
-    subgraph P1["attack_phases.go - ResolveAttackHit, phase 1"]
-        direction TB
+flowchart TD
+    subgraph P1["phase 1 - ResolveAttackHit (attack_phases.go)"]
+        direction LR
+        AI["AttackInput<br/>Weapon (1d8 bludgeoning),<br/>Roller, EventBus, IDs<br/>v1: AdditionalDamage []DamageComponentSpec"]
         R1["roll d20 -> AttackRoll"]
-        AC["AttackChain staged: advantage, pack tactics, improved-crit threshold"]
-        CTX["AttackContext{AttackRoll, AbilityMod, AbilityUsed,<br/>CriticalThreshold, Weapon, IsMelee}<br/>v1: + AdditionalDamage"]
-        R1 --> AC --> CTX
+        AC["AttackChain: advantage,<br/>pack tactics, crit threshold"]
+        CTX["AttackContext{AttackRoll, AbilityMod,<br/>CriticalThreshold, Weapon, IsMelee}<br/>v1: + AdditionalDamage"]
+        AI --> R1 --> AC --> CTX
     end
 
     WIN["reaction window - Shield, Protection"]
 
-    subgraph P2["attack_phases.go - ApplyAttackOutcome, phase 2"]
-        direction TB
-        HIT["hit? crit?  roll vs effectiveAC, crit if >= threshold"]
-        ROLL["parse Weapon.Damage -> dice.Pool<br/>roll pool crit?2:1 -> weaponComponent<br/>(DamageComponent: dice rolls, IsCritical=crit)"]
-        ABIL["abilityComponent (FlatBonus=AbilityMod, never doubled)"]
-        ADD["v1: each AdditionalDamage spec<br/>parse Dice -> pool, roll ONCE<br/>-> DamageComponent{Type, IsCritical=false}"]
+    subgraph P2["phase 2 - ApplyAttackOutcome (attack_phases.go)"]
+        direction LR
+        HIT["hit? crit? vs effectiveAC"]
+        ROLL["parse Weapon.Damage -> Pool<br/>roll crit?2:1 -> weaponComponent"]
+        ABIL["abilityComponent<br/>FlatBonus=AbilityMod, never doubled"]
+        ADD["v1: each AdditionalDamage spec<br/>roll ONCE -> DamageComponent<br/>{Type, IsCritical=false}"]
         HIT --> ROLL --> ABIL --> ADD
     end
 
-    subgraph CH["combat/damage.go - ResolveDamage, the chain"]
-        direction TB
-        CE["DamageChainEvent{Components: weapon, ability, additional...}"]
-        ST["staged chain Base->Features->Conditions->Equipment->Final<br/>conditions add/modify components:<br/>rage, sneak attack (crit-eligible dice), GWF reroll,<br/>resistance x0.5, vulnerability x2, immunity x0"]
-        CALC["calculateFinalDamage: group by Type, apply multipliers<br/>-> []DamageInstanceInput{Amount int, Type}  dice become INTS here"]
+    subgraph CH["ResolveDamage - the chain (combat/damage.go)"]
+        direction LR
+        CE["DamageChainEvent{Components:<br/>weapon, ability, additional}"]
+        ST["staged chain Base->Features-><br/>Conditions->Equipment->Final<br/>rage, sneak attack, GWF reroll,<br/>resist x0.5, vuln x2, immune x0"]
+        CALC["calculateFinalDamage: group by Type,<br/>apply multipliers -><br/>[]DamageInstanceInput{int}  dice->INTS"]
         TOTAL["TotalDamage + FinalComponents"]
         CE --> ST --> CALC --> TOTAL
     end
 
-    subgraph OUT["ApplyAttackOutcome returns + notifies"]
-        direction TB
-        AR["AttackResult{TotalDamage, Critical, Breakdown.Components}"]
+    subgraph OUT["returns + notifies"]
+        direction LR
+        AR["AttackResult{TotalDamage, Critical,<br/>Breakdown.Components}"]
         DRE["publish DamageReceivedEvent"]
         AR --> DRE
     end
 
-    subgraph DOWN["DOWNSTREAM - rpg-api / encounter SDK, not rpg-toolkit combat"]
-        direction TB
+    subgraph DOWN["DOWNSTREAM - rpg-api / encounter SDK"]
+        direction LR
         HP["Target.ApplyDamage -> HP mutation"]
         DDE["encounter DamageDealtEvent{Components}"]
         HP --> DDE
     end
 
-    AI --> R1
-    CTX --> WIN --> HIT
+    CTX --> WIN
+    WIN --> HIT
     ADD --> CE
     TOTAL --> AR
     DRE --> HP
