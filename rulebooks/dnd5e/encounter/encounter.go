@@ -26,6 +26,12 @@ type SightPayload struct {
 
 // Encounter is the aggregate encounter composition: members, field, clock,
 // intel, and record. Construct via NewEncounter; zero value unusable.
+// declaredEnding pairs an ending key with its trigger, in Setup order.
+type declaredEnding struct {
+	key     string
+	trigger Trigger
+}
+
 type Encounter struct {
 	orchestrator *spatial.BasicRoomOrchestrator
 	clock        *clock.Tick
@@ -33,8 +39,10 @@ type Encounter struct {
 	story        *record.Log
 	members      map[MemberID]*Member
 	deciders     map[MemberID]Decider
-	endings      map[string]Trigger
-	outcome      *Outcome
+	// endings holds declared endings in Setup order — evaluation is
+	// deterministic, first-declared-wins (law C8).
+	endings []declaredEnding
+	outcome *Outcome
 }
 
 // NewEncounter constructs and initializes an encounter from SetupInput.
@@ -75,7 +83,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 		// Players cannot carry deciders (design law C2)
 		if m.Kind == KindPlayer && m.Decider != nil {
-			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNilInput)
+			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNoMember)
 		}
 	}
 
@@ -83,7 +91,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	e := &Encounter{
 		members:  make(map[MemberID]*Member),
 		deciders: make(map[MemberID]Decider),
-		endings:  make(map[string]Trigger),
+		endings:  nil,
 	}
 
 	// Build clock and intel
@@ -196,9 +204,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
-	// Store endings
+	// Store endings in declaration order (deterministic evaluation, C8)
 	for _, ei := range in.Endings {
-		e.endings[ei.Key] = ei.Trigger
+		e.endings = append(e.endings, declaredEnding{key: ei.Key, trigger: ei.Trigger})
 	}
 
 	// First light: build sight percepts for each member using refreshSight
@@ -404,7 +412,8 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 
 	// Evaluate ReachedPosition endings
 	var firedOutcome *Outcome
-	for endingKey, trigger := range e.endings {
+	for _, de := range e.endings {
+		endingKey, trigger := de.key, de.trigger
 		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
 		if !ok {
 			continue // Not a ReachedPosition trigger
@@ -513,8 +522,53 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		return nil, fmt.Errorf("pump: %w", ErrClosed)
 	}
 
-	// Advance the exploration clock by 1 tick (the driver is the "world" itself)
-	_, err := e.clock.Advance(&clock.AdvanceInput{
+	// PHASE 1 — decide. Every decider is consulted BEFORE anything
+	// mutates: a decider error aborts here with zero state touched
+	// (R5 — no clock advance, no moves, no beats). This also means a
+	// later monster's decider error cannot leave an earlier monster's
+	// move half-applied.
+	allMembers, err := e.Members()
+	if err != nil {
+		return nil, fmt.Errorf("pump members: %w", err)
+	}
+
+	type plannedMove struct {
+		member Member
+		to     spatial.Position
+	}
+	var planned []plannedMove
+
+	for _, m := range allMembers {
+		if m.Kind != KindMonster {
+			continue
+		}
+		decider, hasDecider := e.deciders[m.ID]
+		if !hasDecider {
+			continue // no decider = hold
+		}
+
+		// The monster's own holdings and nothing else (C2). HeldBy's
+		// copy-out is intel's documented contract (pinned in play/intel)
+		// — no redundant defensive copy here; the mutating-decider
+		// integration test pins the composed guarantee.
+		ownHoldings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
+		if err != nil {
+			return nil, fmt.Errorf("pump held_by: %w", err)
+		}
+
+		intent, err := decider.Decide(ownHoldings)
+		if err != nil {
+			return nil, fmt.Errorf("pump decide: %w", err)
+		}
+
+		if mv, ok := intent.(IntentMoveTo); ok {
+			planned = append(planned, plannedMove{member: m, to: mv.To})
+		}
+	}
+
+	// PHASE 2 — execute. Nothing below returns a decider-shaped error;
+	// the world now advances.
+	_, err = e.clock.Advance(&clock.AdvanceInput{
 		Driver:       core.EntityID("world"),
 		Displacement: 1,
 	})
@@ -524,20 +578,6 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	newTickReading := uint64(e.clock.ToData().HighWater)
 
-	// Collect all members in deterministic order and filter to monsters
-	allMembers, err := e.Members()
-	if err != nil {
-		return nil, fmt.Errorf("pump members: %w", err)
-	}
-
-	var monsterMembers []Member
-	for _, m := range allMembers {
-		if m.Kind == KindMonster {
-			monsterMembers = append(monsterMembers, m)
-		}
-	}
-
-	// Track successful monster moves and any decider error
 	type monsterMove struct {
 		member *Member
 		from   spatial.Position
@@ -545,48 +585,17 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	}
 	var successfulMoves []monsterMove
 
-	// Execute each monster's decision
-	for _, monsterMember := range monsterMembers {
-		m := monsterMember // Copy for pointer
-		decider, hasDecider := e.deciders[m.ID]
-
-		// No decider = hold (do nothing)
-		if !hasDecider {
-			continue
-		}
-
-		// Get the monster's own holdings (anti-wall-hack contract)
-		ownHoldings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
-		if err != nil {
-			return nil, fmt.Errorf("pump held_by: %w", err)
-		}
-
-		// Copy the holdings slice so the decider cannot mutate encounter state
-		holdingsCopy := make([]intel.Holding, len(ownHoldings))
-		copy(holdingsCopy, ownHoldings)
-
-		// Ask the decider what to do
-		intent, err := decider.Decide(holdingsCopy)
-		if err != nil {
-			return nil, fmt.Errorf("pump decide: %w", err)
-		}
-
-		// Execute the intent
-		switch i := intent.(type) {
-		case IntentHold:
-			// Do nothing
-		case IntentMoveTo:
-			// Try to move; spatial rejection does not abort (just skip the move)
-			fromPos, moveErr := e.moveMember(&m, i.To)
-			if moveErr == nil {
-				// Move succeeded; record it
-				successfulMoves = append(successfulMoves, monsterMove{
-					member: &m,
-					from:   fromPos,
-					to:     i.To,
-				})
-			}
-			// If moveErr != nil, the monster simply fails to move; we continue
+	for i := range planned {
+		p := planned[i]
+		// Spatial rejection does not abort the pump; the monster simply
+		// fails to move and no beat is recorded for it.
+		fromPos, moveErr := e.moveMember(&p.member, p.to)
+		if moveErr == nil {
+			successfulMoves = append(successfulMoves, monsterMove{
+				member: &planned[i].member,
+				from:   fromPos,
+				to:     p.to,
+			})
 		}
 	}
 
@@ -647,7 +656,8 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	var firedOutcome *Outcome
 	for _, move := range successfulMoves {
 		// Check all endings for this position
-		for endingKey, trigger := range e.endings {
+		for _, de := range e.endings {
+			endingKey, trigger := de.key, de.trigger
 			reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
 			if !ok {
 				continue // Not a ReachedPosition trigger

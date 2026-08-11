@@ -54,6 +54,37 @@ func (s *spyDecider) Decide(view []intel.Holding) (encounter.Intent, error) {
 }
 
 // errorDecider returns an error when asked to decide.
+// failOnceDecider errors on its first call, holds forever after —
+// lets a test prove a failed pump advanced nothing by succeeding next.
+type failOnceDecider struct {
+	calls int
+}
+
+func (f *failOnceDecider) Decide(_ []intel.Holding) (encounter.Intent, error) {
+	f.calls++
+	if f.calls == 1 {
+		return nil, errors.New("first call fails")
+	}
+	return encounter.IntentHold{}, nil
+}
+
+// vandalDecider mutates every byte of its view then holds.
+type vandalDecider struct {
+	sawAlice bool
+}
+
+func (v *vandalDecider) Decide(view []intel.Holding) (encounter.Intent, error) {
+	for i := range view {
+		if view[i].Subject == "alice" {
+			v.sawAlice = true
+		}
+		for j := range view[i].Payload {
+			view[i].Payload[j] = 'X'
+		}
+	}
+	return encounter.IntentHold{}, nil
+}
+
 type errorDecider struct {
 	err error
 }
@@ -292,27 +323,118 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		_, err = enc.Pump(&encounter.PumpInput{})
 		s.Require().Error(err, "pump should fail with decider error")
 
-		// Assert: Clock NOT advanced
+		// Assert: still open, and no record entries added (R5)
 		status, err := enc.Status()
 		s.Require().NoError(err)
 		s.True(status.Open, "encounter should still be open")
-
-		// Assert: No new record entries were added (atomicity: story unchanged)
 		afterStory, err := enc.Story(&encounter.StoryInput{Audience: aliceID, AfterSeq: 0})
 		s.Require().NoError(err)
 		s.Equal(initialLen, len(afterStory), "story should not have new entries after failed pump")
 
-		// Assert: Goblin didn't move
-		goblinView, err := enc.View(&encounter.ViewInput{Member: goblinID})
+		// Assert: alice's holding of the goblin is unchanged (it never moved)
+		aliceView, err := enc.View(&encounter.ViewInput{Member: aliceID})
 		s.Require().NoError(err)
+		s.Require().Len(aliceView, 1, "alice must still hold the goblin")
 		var payload encounter.SightPayload
-		if len(goblinView) > 0 {
-			err = json.Unmarshal(goblinView[0].Payload, &payload)
-			s.Require().NoError(err)
-			s.NotEqual(spatial.Position{X: 5, Y: 5}, spatial.Position{X: payload.X, Y: payload.Y},
-				"goblin position should not have changed")
-		}
+		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &payload))
+		s.Equal(5.0, payload.X, "goblin must not have moved on a failed pump (R5)")
 	})
+}
+
+// TestPumpFailedPumpAdvancesNothing pins the tick side of R5 with a
+// fail-once decider: the failed pump must not consume a tick, so the
+// NEXT (successful) pump reports reading 1, not 2.
+func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Members: []encounter.MemberInput{
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 4, Y: 4}, Decider: &failOnceDecider{}},
+		},
+		Endings: []encounter.EndingInput{{Key: endingStairs,
+			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().Error(err, "first pump fails via the decider")
+
+	out, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err, "second pump succeeds")
+	s.Equal(uint64(1), out.Tick, "the failed pump must not have consumed a tick (R5)")
+}
+
+// TestPumpPartialAbort pins decide-then-execute: when a LATER monster's
+// decider errors, an EARLIER monster that would have moved must not
+// have moved — no partial mutation (R5).
+func (s *PumpTestSuite) TestPumpPartialAbort() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Members: []encounter.MemberInput{
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			// "aaa-goblin" sorts before "zzz-goblin": it decides (and
+			// would move) before the erroring decider is consulted.
+			{ID: core.EntityID("aaa-goblin"), Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 4, Y: 4}, Decider: &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 6}}}},
+			{ID: core.EntityID("zzz-goblin"), Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 7, Y: 7}, Decider: &failOnceDecider{}},
+		},
+		Endings: []encounter.EndingInput{{Key: endingStairs,
+			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().Error(err)
+
+	// The phantom half-move is invisible to Views (no refreshSight ran on
+	// the aborted pump) and members don't block movement — but it IS
+	// visible in where the goblin truly stands next: the following
+	// successful pump's move delta must depart from the ORIGINAL
+	// position, not from a phantom one.
+	out, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err, "second pump succeeds (fail-once decider)")
+	s.Require().NotEmpty(out.MonsterMoves)
+	var found bool
+	for _, mm := range out.MonsterMoves {
+		if mm.Member == core.EntityID("aaa-goblin") {
+			found = true
+			s.Equal(4.0, mm.From.X,
+				"aaa-goblin departs from (4,4): a later decider error aborted the whole first pump (R5)")
+		}
+	}
+	s.Require().True(found, "aaa-goblin moved on the second pump")
+}
+
+// TestPumpMutatingDeciderCannotCorrupt is the composed-system aliasing
+// pin: a decider that scribbles on its view must not corrupt encounter
+// state (the protection is intel.HeldBy's documented copy-out — pinned
+// in play/intel; this test pins the composed guarantee end to end).
+func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
+	vandal := &vandalDecider{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Members: []encounter.MemberInput{
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 4, Y: 4}, Decider: vandal},
+		},
+		Endings: []encounter.EndingInput{{Key: endingStairs,
+			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().True(vandal.sawAlice, "precondition: the vandal saw and scribbled on a holding")
+
+	goblinView, err := enc.View(&encounter.ViewInput{Member: core.EntityID("goblin")})
+	s.Require().NoError(err)
+	s.Require().Len(goblinView, 1)
+	var p encounter.SightPayload
+	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &p))
+	s.Equal(room1, p.Room, "the vandal's scribbles must not reach encounter state")
 }
 
 func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
@@ -715,8 +837,8 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 		// Act: NewEncounter should fail
 		_, err := encounter.NewEncounter(setup)
 
-		// Assert: Error with ErrNilInput (per design resolution)
+		// Assert: a player carrying a decider is a member-shaped defect
 		s.Require().Error(err)
-		s.True(errors.Is(err, encounter.ErrNilInput), "should reject player with decider")
+		s.True(errors.Is(err, encounter.ErrNoMember), "player-with-decider wraps ErrNoMember")
 	})
 }
