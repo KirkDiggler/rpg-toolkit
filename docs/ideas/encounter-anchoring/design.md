@@ -176,7 +176,9 @@ on to render traversal as ordinary movement.
 
 Room rotation; door state/locks/Interact; multi-level dungeons (the
 absolute plane is single-level; cube Z is a hex coordinate, not
-elevation); wall-segment derivation (hosts derive from Atlas cell-set
-boundaries minus doorways; Atlas grows walls only when a second
-consumer asks); the authored dungeon document (rpg-api content lane —
+elevation); walls (explicit authored segments with start/end in the dungeon
+document — Kirk-resolved 2026-08-11: they ride the authoring lane to
+the wire as content; the composition neither stores nor derives them
+in v0.3, and wall↔doorway coherence is the authoring compiler's check
+until walls gain blocking semantics in a later wave); the authored dungeon document (rpg-api content lane —
 it compiles down to `SetupInput`).

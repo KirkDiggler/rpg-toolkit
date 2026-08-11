@@ -112,10 +112,14 @@ separate map module.
   is Atlas + the bridge query enough? Leaning bridge-only to keep the
   v0.2 read surface stable; the host projects holdings through the one
   bridge.
-- Wall segments: the wire renders walls with door openings. Derivable
-  from Atlas (cell-set boundary minus doorway pairs) — does the host
-  derive, or should Atlas serve them? Leaning host-derives in v0.3,
-  Atlas grows walls only if a second consumer wants them.
+- ~~Wall segments: host-derived from Atlas or Atlas-served?~~
+  **RESOLVED (Kirk, 2026-08-11): neither.** Walls are explicit authored
+  content in the dungeon YAML — segments with starts and ends. They
+  ride the authoring lane to the wire as content the composition never
+  sees in v0.3; nothing derives them from geometry. Wall↔doorway
+  coherence (no authored segment contradicting a kissing pair) is the
+  authoring compiler's check until walls gain blocking semantics in a
+  later wave.
 - Gridless adjacency bound (the "(0, 1]" above) — is coincidence at a
   shared boundary point acceptable for a gridless doorway? Leaning
   forbid (strictly positive distance) for the same reason endpoints
