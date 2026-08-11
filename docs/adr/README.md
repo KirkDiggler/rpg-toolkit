@@ -28,6 +28,7 @@ Each ADR follows this structure:
 - [ADR-0005: Effect Composition](0005-effect-composition.md) - Design for composable effects system
 - [ADR-0006: Feature Management Pattern](0006-feature-management-pattern.md) - Hybrid approach for feature management
 - [ADR-0007: Generic Restoration Triggers](0007-generic-restoration-triggers.md) - Generic trigger system for resource restoration
+- [ADR-0036: Additional Damage and Selective Critical Hits](0036-additional-damage-selective-crit.md) - Multi-damage-type attacks where only the weapon pool doubles on a crit (companion to ADR-0026)
 
 ## Creating a New ADR
 
