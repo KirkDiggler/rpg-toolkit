@@ -93,10 +93,9 @@ separate map module.
    undefined. Mixed grid families reject at declaration. (v0.2 never
    forbade mixing; nothing exercised it. Honest tightening.)
 4. **Doorways kiss.** Endpoint pairs project to adjacent absolute
-   cells — cube distance exactly 1 for hex, Chebyshev 1 for square,
-   Euclidean in (0, 1] for gridless. This is "simple to traverse" as a
-   law: a traversal is one ordinary step in world space, and the
-   client never learns rooms exist.
+   cells — cube distance exactly 1 for hex, Chebyshev 1 for square.
+   This is "simple to traverse" as a law: a traversal is one ordinary
+   step in world space, and the client never learns rooms exist.
 5. **Projection is a read.** Rules, verbs, percepts, deciders stay
    room-local — T3 and C2 untouched. Absolute appears in query outputs
    only: a static `Atlas` (the map: room cells, occluders, doorway
@@ -105,13 +104,33 @@ separate map module.
 6. **Compatibility is explicitly not a constraint.** Kirk: dev is held
    until we come out the other side; main stays where it is. v0.2
    blobs with rooms fail v0.3 load; only this repo's fixtures exist.
+7. **Gridless leaves the composition** (Kirk, 2026-08-11 — the YAGNI
+   knife: "when would we have a gridless room?"). The wire cannot
+   carry it (integral hex cube — contract impossibility), its one real
+   contribution (shape-routing discrimination while bounded-hex
+   validity ≡ square's) was superseded by the axial switch, and it was
+   the sole source of special cases in W2/W3/Atlas. spatial keeps
+   `GridlessRoom`; re-adding is additive. Squares stay deliberately
+   (Kirk: tempted to drop them too; kept — squares at least have a
+   conversion path).
+8. **The reverse bridge (`Locate`) is in.** Found by enumerating the
+   rpg-api wiring work: wire requests carry dungeon-absolute targets
+   while verbs speak room-local, so the host's inbound path needs
+   absolute → (room, local) — the prototype's `AbsoluteToLocal`, whose
+   heir was missing from the first draft. W2 is exactly what makes it
+   well-defined (at most one owner per absolute cell). Caught in
+   design, not mid-wiring — the enumeration exercise paying for
+   itself.
 
-## Open questions (for design review)
+## Open questions (all resolved 2026-08-11)
 
-- Should `View`/percept projections also carry absolute positions, or
-  is Atlas + the bridge query enough? Leaning bridge-only to keep the
-  v0.2 read surface stable; the host projects holdings through the one
-  bridge.
+- ~~Should `View`/percept projections also carry absolute positions,
+  or is Atlas + the bridge query enough?~~ **RESOLVED (Kirk):
+  bridge-only.** The v0.2 read surface stays stable; the host projects
+  through `Absolute`/`Locate`. The mixing-spaces leak class is caught
+  by an api-side pin instead (fixture with a non-zero origin — any
+  unprojected coordinate shows up off-by-origin). Revisit only if
+  wiring shows the same projection loop repeated across call sites.
 - ~~Wall segments: host-derived from Atlas or Atlas-served?~~
   **RESOLVED (Kirk, 2026-08-11): neither.** Walls are explicit authored
   content in the dungeon YAML — segments with starts and ends. They
@@ -120,7 +139,7 @@ separate map module.
   coherence (no authored segment contradicting a kissing pair) is the
   authoring compiler's check until walls gain blocking semantics in a
   later wave.
-- Gridless adjacency bound (the "(0, 1]" above) — is coincidence at a
-  shared boundary point acceptable for a gridless doorway? Leaning
-  forbid (strictly positive distance) for the same reason endpoints
-  can't share a cell on grids.
+- ~~Gridless adjacency bound — is coincidence at a shared boundary
+  point acceptable for a gridless doorway?~~ **MOOT (Kirk): gridless
+  dropped from the composition entirely** (decision 7). The question
+  existed only because of gridless.

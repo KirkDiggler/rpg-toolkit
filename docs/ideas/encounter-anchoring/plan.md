@@ -16,10 +16,11 @@ the vault chase gets extended, not rewritten.
 
 ## Task 1 — anchors and the W-laws at Setup
 
-`RoomInput.Origin`; W1 (one geometry per field), W2 (no overlap,
-touching legal), W3 (doorways kiss, per-family adjacency), integral
-origins for hex. All at `NewEncounter`/Setup validation, ordered per
-design. New fixtures: the anchored two-room hex field (asymmetric:
+`RoomInput.Origin`; gridless leaves the composition (a gridless
+declaration is a room-list defect — squares stay); W1 (one geometry
+per field), W2 (no overlap, touching legal), W3 (doorways kiss,
+per-family adjacency), integral origins for hex. All at
+`NewEncounter`/Setup validation, ordered per design. New fixtures: the anchored two-room hex field (asymmetric:
 r1 10x4 at origin (0,0), r2 3x9 at a **negative-axial** origin placing
 its endpoint adjacent to r1's — the corrected-golden lesson from v0.2
 carried forward). One-defect table rows per rejection class; sibling
@@ -35,7 +36,8 @@ only adjacent-in-slice room pairs.
 
 `RoomData.Origin *PositionData`, presence-required (W5); ToData always
 writes (declared zero persists explicitly); Load re-runs every W-law
-one-defect row plus nil-origin-per-room. Rich golden grows origins on
+one-defect row plus nil-origin-per-room plus stored-`"gridless"`
+rejection. Rich golden grows origins on
 every room including the negative-axial hex room; exact-string pin
 updated. Round-trip: reload's Atlas deep-equals pre-reload's (pin lands
 fully in Task 3; the round-trip of origin data pins here).
@@ -49,15 +51,20 @@ standard).
 ## Task 3 — Atlas and the bridge
 
 `Atlas()` (zero-arg read, deterministic ordering per C8, copy-out
-immune) and `Absolute(*AbsoluteInput)` (nil-input, unknown-room,
-out-of-bounds rejections; legal for any in-bounds position). Gridless
-rooms: nil `Cells`, bounds+origin carried. Copy-out immunity pins:
-mutate returned atlas slices, internal state unchanged.
+immune), `Absolute(*AbsoluteInput)` (nil-input, unknown-room,
+out-of-bounds rejections; legal for any in-bounds position), and
+`Locate(*LocateInput)` — the reverse bridge (absolute → room + local;
+void positions between rooms reject; round-trip pin
+`Locate(Absolute(r,p)) == (r,p)` over every cell of the asymmetric
+fixture). Copy-out immunity pins: mutate returned atlas slices,
+internal state unchanged.
 
 Mutants: doorway ordering (sorted by connection ID — swap to insertion
 order); bridge subtracting instead of adding the origin (dies on any
-asymmetric fixture); Atlas computed from live member state instead of
-construction data (place a member, Atlas unchanged — pin as a test).
+asymmetric fixture); Locate answering the wrong owner for a kissing
+pair (each doorway cell locates to its own room — pin); Atlas computed
+from live member state instead of construction data (place a member,
+Atlas unchanged — pin as a test).
 
 ## Task 4 — the absolute-continuity scene
 
