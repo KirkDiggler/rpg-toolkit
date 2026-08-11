@@ -48,7 +48,7 @@ type patrol struct {
 // Decide returns the next waypoint regardless of what the goblin
 // believes — a deliberately dumb decider; the point of the workbench is
 // watching the courier loop, not clever monsters.
-func (p *patrol) Decide(_ []intel.Holding) (encounter.Intent, error) {
+func (p *patrol) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 	target := p.route[p.step%len(p.route)]
 	p.step++
 	return encounter.IntentMoveTo{To: target}, nil

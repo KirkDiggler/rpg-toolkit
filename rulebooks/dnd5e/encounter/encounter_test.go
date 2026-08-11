@@ -29,7 +29,7 @@ const (
 // simpleDecider is a minimal test decider that holds.
 type simpleDecider struct{}
 
-func (s *simpleDecider) Decide(view []intel.Holding) (encounter.Intent, error) {
+func (s *simpleDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 	return encounter.IntentHold{}, nil
 }
 

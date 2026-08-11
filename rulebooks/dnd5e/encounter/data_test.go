@@ -1033,7 +1033,7 @@ type testDecider struct {
 	intent encounter.Intent
 }
 
-func (d *testDecider) Decide(_ []intel.Holding) (encounter.Intent, error) {
+func (d *testDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 	return d.intent, nil
 }
 

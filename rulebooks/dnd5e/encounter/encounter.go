@@ -658,38 +658,137 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}, nil
 }
 
-// Traverse moves a member across a connection from their current endpoint to
-// the connection's OTHER endpoint, in the other room. The member must be
-// standing EXACTLY on one of the connection's two endpoints; connections are
-// bidirectional (T1 law), so traversal works in either direction through the
-// same connection. Validation order (R5 atomicity): nil input → closed →
-// not a member → connection not found → endpoint mismatch (wrong room or
-// wrong position, either rejects the same way).
+// traverseResult holds the outcome of a successful cross-room move via
+// traverseMember — shared by the Traverse verb and Pump's IntentTraverse
+// executor.
+type traverseResult struct {
+	fromRoom string
+	fromPos  spatial.Position
+	toRoom   string
+	toPos    spatial.Position
+}
+
+// traverseMember resolves connectionID against this encounter's declared
+// connections, determines direction from member's CURRENT room/position
+// (they must be standing exactly on one of the connection's two
+// endpoints — connections are bidirectional, T1 law), and moves the
+// entity between rooms via spatial's TransitionEntity + PlaceEntity
+// managed seams, mutating member.Room on success. ANY failure (unknown
+// connection, endpoint mismatch, or a spatial rejection) returns before
+// member.Room is touched.
 //
-// The spatial layer genuinely moves the entity between rooms: spatial's
-// purpose-built TransitionEntity removes from the departure room (the
-// SAME registry cleanup RemoveEntity performs — omitting it leaks the
-// entity in the room's registry even though it's invisible to
-// Members/View; see TestExitThenRejoinSameID's doc comment, the wave-1
-// lesson) and, as a backstop behind our own endpoint check above,
-// independently re-validates against spatial's own bookkeeping that the
-// named connection exists and actually links the two rooms (in either
-// direction — door connections are Reversible). PlaceEntity into the
-// arrival room always follows — TransitionEntity deliberately leaves the
-// entity unplaced.
+// Shared by the Traverse verb (which owns the nil/closed/member-lookup
+// guards and propagates this function's error as its own public
+// contract — ErrNoConnection or ErrBadPlacement, already correctly
+// wrapped here) and Pump's phase-2 IntentTraverse executor (which owns
+// Pump's silent-skip-on-failure semantics: ANY error returned here is
+// treated exactly like a spatially-rejected IntentMoveTo — the monster
+// simply fails to act this tick, no abort).
+func (e *Encounter) traverseMember(member *Member, connectionID string) (traverseResult, error) {
+	var conn *ConnectionInput
+	for i := range e.connectionsInput {
+		if e.connectionsInput[i].ID == connectionID {
+			conn = &e.connectionsInput[i]
+			break
+		}
+	}
+	if conn == nil {
+		return traverseResult{}, fmt.Errorf("connection %s not found: %w", connectionID, ErrNoConnection)
+	}
+
+	room, ok := e.orchestrator.GetRoom(member.Room)
+	if !ok {
+		return traverseResult{}, fmt.Errorf("%w", ErrBadPlacement)
+	}
+	fromPos, ok := room.GetEntityPosition(string(member.ID))
+	if !ok {
+		return traverseResult{}, fmt.Errorf("%w", ErrBadPlacement)
+	}
+	fromRoom := member.Room
+
+	// The member must be standing exactly on one of the connection's two
+	// endpoints. Determine direction from WHICH endpoint they're on — the
+	// arrival side is always the connection's OTHER endpoint (never the
+	// one the member is currently standing on).
+	var toRoom string
+	var toPos spatial.Position
+	switch {
+	case fromRoom == conn.From && fromPos.X == conn.FromPosition.X && fromPos.Y == conn.FromPosition.Y:
+		toRoom, toPos = conn.To, conn.ToPosition
+	case fromRoom == conn.To && fromPos.X == conn.ToPosition.X && fromPos.Y == conn.ToPosition.Y:
+		toRoom, toPos = conn.From, conn.FromPosition
+	default:
+		return traverseResult{}, fmt.Errorf("member %s is not at connection %s's endpoint: %w", member.ID, connectionID, ErrBadPlacement)
+	}
+
+	// Move the entity between rooms via spatial's purpose-built transition
+	// seam: TransitionEntity removes from the source room (the SAME
+	// registry cleanup RemoveEntity performs — the wave-1 Exit lesson
+	// applies here too) and, as a backstop behind our own checks above,
+	// independently re-validates against spatial's own bookkeeping that
+	// the connection exists, actually links these two rooms (in either
+	// direction, since door connections are Reversible), and the entity
+	// was truly indexed in the departure room. TransitionEntity
+	// deliberately does NOT place the entity — PlaceEntity must always
+	// follow, using the SAME entity value TransitionEntity returned.
+	transitioned, err := e.orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
+		EntityID:     core.EntityID(member.ID),
+		FromRoom:     spatial.RoomID(fromRoom),
+		ToRoom:       spatial.RoomID(toRoom),
+		ConnectionID: spatial.ConnectionID(connectionID),
+	})
+	if err != nil {
+		return traverseResult{}, fmt.Errorf("transition entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	// LIMBO WINDOW (defensive, currently unreachable): if PlaceEntity below
+	// were to fail after TransitionEntity above already succeeded, the
+	// entity would be removed from every room and placed in none — this
+	// function does not roll back. Four invariants keep that window
+	// unreachable today: (1) rooms are immutable after Setup/Load, so
+	// fromRoom/toRoom always exist; (2) member entities never block
+	// placement (memberEntity.BlocksMovement() is always false), so
+	// occupancy can never reject PlaceEntity; (3) connection endpoints are
+	// grid-validated at both entry seams (Setup and Load), so toPos is
+	// always valid on the arrival room's grid; (4) door connections are
+	// permanently Passable and Reversible (CreateDoorConnection, never
+	// mutated after Setup/Load), so TransitionEntity's own passability and
+	// direction checks always agree with ours. A future change that
+	// violates any one of these must meet this comment as a deliberate
+	// decision point, not a silent atomicity regression.
+	_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID:   spatial.RoomID(toRoom),
+		Entity:   transitioned.Entity,
+		Position: toPos,
+	})
+	if err != nil {
+		return traverseResult{}, fmt.Errorf("place entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	member.Room = toRoom
+
+	return traverseResult{fromRoom: fromRoom, fromPos: fromPos, toRoom: toRoom, toPos: toPos}, nil
+}
+
+// Traverse moves a member across a connection from their current endpoint to
+// the connection's OTHER endpoint, in the other room. Validation order (R5
+// atomicity): nil input → closed → not a member → traverseMember's own
+// checks (connection not found: ErrNoConnection; endpoint mismatch — wrong
+// room or wrong position, either rejects the same way: ErrBadPlacement).
 //
 // The clock is NOT advanced — traversal is an activity, not time (law T4).
 // Sight refreshes for ALL members in one refreshSight call: since
 // refreshSight scopes each observer's percept to members currently in
-// THEIR OWN room, updating member.Room before the refresh is sufficient —
-// departure-room observers naturally stop seeing the traverser (intel's
-// existing complete-percept contract ghosts them at their last-known
-// position, the departure endpoint) and arrival-room observers naturally
-// gain them Current. No per-room special-casing needed, and sight cannot
-// cross the opening in either direction: rooms are separate spatial
-// containers with no shared geometry (spatial ADR-0015), so there is no
-// code path by which an observer's line-of-sight computation — scoped
-// entirely to entities in their own room — could see into the other room.
+// THEIR OWN room, updating member.Room before the refresh (done inside
+// traverseMember) is sufficient — departure-room observers naturally stop
+// seeing the traverser (intel's existing complete-percept contract ghosts
+// them at their last-known position, the departure endpoint) and
+// arrival-room observers naturally gain them Current. No per-room
+// special-casing needed, and sight cannot cross the opening in either
+// direction: rooms are separate spatial containers with no shared
+// geometry (spatial ADR-0015), so there is no code path by which an
+// observer's line-of-sight computation — scoped entirely to entities in
+// their own room — could see into the other room.
 //
 // Ending evaluation mirrors Move exactly, evaluated against the ARRIVAL
 // room/position: unfiltered ReachedPosition triggers fire for player
@@ -710,74 +809,10 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 		return nil, fmt.Errorf("traverse: %w", ErrNotMember)
 	}
 
-	var conn *ConnectionInput
-	for i := range e.connectionsInput {
-		if e.connectionsInput[i].ID == in.Connection {
-			conn = &e.connectionsInput[i]
-			break
-		}
-	}
-	if conn == nil {
-		return nil, fmt.Errorf("traverse: connection %s not found: %w", in.Connection, ErrNoConnection)
-	}
-
-	room, ok := e.orchestrator.GetRoom(member.Room)
-	if !ok {
-		return nil, fmt.Errorf("traverse: %w", ErrBadPlacement)
-	}
-	fromPos, ok := room.GetEntityPosition(string(in.Member))
-	if !ok {
-		return nil, fmt.Errorf("traverse: %w", ErrBadPlacement)
-	}
-	fromRoom := member.Room
-
-	// The member must be standing exactly on one of the connection's two
-	// endpoints. Determine direction from WHICH endpoint they're on — the
-	// arrival side is always the connection's OTHER endpoint (never the
-	// one the member is currently standing on).
-	var toRoom string
-	var toPos spatial.Position
-	switch {
-	case fromRoom == conn.From && fromPos.X == conn.FromPosition.X && fromPos.Y == conn.FromPosition.Y:
-		toRoom, toPos = conn.To, conn.ToPosition
-	case fromRoom == conn.To && fromPos.X == conn.ToPosition.X && fromPos.Y == conn.ToPosition.Y:
-		toRoom, toPos = conn.From, conn.FromPosition
-	default:
-		return nil, fmt.Errorf("traverse: member %s is not at connection %s's endpoint: %w", in.Member, in.Connection, ErrBadPlacement)
-	}
-
-	// Move the entity between rooms via spatial's purpose-built transition
-	// seam: TransitionEntity removes from the source room (the SAME
-	// registry cleanup RemoveEntity performs — the wave-1 Exit lesson
-	// applies here too) and, as a backstop BEHIND our own checks above,
-	// independently re-validates against spatial's own bookkeeping that
-	// the connection exists, actually links these two rooms (in either
-	// direction, since door connections are Reversible), and the entity
-	// was truly indexed in the departure room. TransitionEntity
-	// deliberately does NOT place the entity — PlaceEntity must always
-	// follow, using the SAME entity value TransitionEntity returned.
-	transitioned, err := e.orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
-		EntityID:     core.EntityID(in.Member),
-		FromRoom:     spatial.RoomID(fromRoom),
-		ToRoom:       spatial.RoomID(toRoom),
-		ConnectionID: spatial.ConnectionID(in.Connection),
-	})
+	result, err := e.traverseMember(member, in.Connection)
 	if err != nil {
-		return nil, fmt.Errorf("traverse transition entity: %w: %w", ErrBadPlacement, err)
+		return nil, fmt.Errorf("traverse: %w", err)
 	}
-
-	_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-		RoomID:   spatial.RoomID(toRoom),
-		Entity:   transitioned.Entity,
-		Position: toPos,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("traverse place entity: %w: %w", ErrBadPlacement, err)
-	}
-
-	// Update the member's room before refreshSight — see the doc comment
-	// above for why this alone is sufficient for correct two-room percepts.
-	member.Room = toRoom
 
 	memberIDs := make([]MemberID, 0, len(e.members))
 	for id := range e.members {
@@ -797,8 +832,8 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 		"beat":       "traversed",
 		"member":     string(in.Member),
 		"connection": in.Connection,
-		"room":       toRoom,
-		"position":   toPos,
+		"room":       result.toRoom,
+		"position":   result.toPos,
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -823,11 +858,11 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 			continue // Not a ReachedPosition trigger
 		}
 
-		if reachedPosTrigger.Room != toRoom {
+		if reachedPosTrigger.Room != result.toRoom {
 			continue // Different room
 		}
 
-		if reachedPosTrigger.Position.X != toPos.X || reachedPosTrigger.Position.Y != toPos.Y {
+		if reachedPosTrigger.Position.X != result.toPos.X || reachedPosTrigger.Position.Y != result.toPos.Y {
 			continue // Different position
 		}
 
@@ -875,10 +910,10 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 			To       spatial.Position
 		}{
 			Member:   in.Member,
-			FromRoom: fromRoom,
-			From:     fromPos,
-			ToRoom:   toRoom,
-			To:       toPos,
+			FromRoom: result.fromRoom,
+			From:     result.fromPos,
+			ToRoom:   result.toRoom,
+			To:       result.toPos,
 		},
 		IntelDeltas: intelDeltas,
 		Seq:         seqNum,
@@ -888,22 +923,29 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 
 // Pump advances the world by one tick: the exploration clock advances,
 // each monster member (in deterministic order) acts on its own intel via Decider,
-// the complete sight refresh happens once, and the story accrues tick and move beats.
-// Errors from a decider abort the pump atomically (R5): no clock advance, no moves,
-// no record entries.
+// the complete sight refresh happens once, and the story accrues tick and
+// move/traverse beats. Errors from a decider abort the pump atomically (R5):
+// no clock advance, no moves, no record entries.
 //
 // Semantics:
 //   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
 //   - Monsters act in deterministic order (stable Members() order, filtered to KindMonster).
-//   - Each decider receives exactly its own holdings (anti-wall-hack contract C2).
-//   - IntentHold means do nothing; IntentMoveTo executes via managed seam.
-//   - A spatial rejection of a monster's move does NOT abort the pump; the monster
-//     simply fails to move. Only a decider error aborts.
+//   - Each decider receives exactly its own Snapshot: own room, own position,
+//     own holdings (anti-wall-hack contract C2 — placement included, not just sight).
+//   - IntentHold means do nothing; IntentMoveTo executes via the same-room managed
+//     seam; IntentTraverse executes via traverseMember (the Traverse verb's own
+//     mechanics, shared — see its doc comment).
+//   - A spatial rejection of a monster's move, or an illegal traverse intent
+//     (unknown connection, or not at the threshold), does NOT abort the pump; the
+//     monster simply fails to act. Only a decider error aborts.
 //   - After all monster actions: ONE refreshSight for all members, ONE tick beat
-//     (stamped with the new clock reading), then move beats in order.
+//     (stamped with the new clock reading), then move/traverse beats in
+//     decision order (the same order monsters were consulted in).
 //   - Ending evaluation fires ReachedPosition triggers (only if the filter matches;
-//     empty filter = players only, not monsters).
-//   - Returns PumpOutput with the new Tick reading, successful moves, deltas, and beats.
+//     empty filter = players only, not monsters) against each action's resulting
+//     room/position, in the same decision order.
+//   - Returns PumpOutput with the new Tick reading, successful moves, successful
+//     traverses, deltas, and beats.
 func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	// Validation
 	if in == nil {
@@ -924,11 +966,11 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		return nil, fmt.Errorf("pump members: %w", err)
 	}
 
-	type plannedMove struct {
-		member Member
-		to     spatial.Position
+	type plannedAction struct {
+		memberID MemberID
+		intent   Intent
 	}
-	var planned []plannedMove
+	var planned []plannedAction
 
 	for _, m := range allMembers {
 		if m.Kind != KindMonster {
@@ -937,6 +979,19 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		decider, hasDecider := e.deciders[m.ID]
 		if !hasDecider {
 			continue // no decider = hold
+		}
+
+		// The monster's own placement, read fresh from spatial — never
+		// another member's. A decider that received anyone else's room or
+		// position would be a wall hack extended to placement, not just
+		// sight (C2).
+		room, ok := e.orchestrator.GetRoom(m.Room)
+		if !ok {
+			return nil, fmt.Errorf("pump snapshot room: %w", ErrBadPlacement)
+		}
+		ownPos, ok := room.GetEntityPosition(string(m.ID))
+		if !ok {
+			return nil, fmt.Errorf("pump snapshot position: %w", ErrBadPlacement)
 		}
 
 		// The monster's own holdings and nothing else (C2). HeldBy's
@@ -948,13 +1003,14 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			return nil, fmt.Errorf("pump held_by: %w", err)
 		}
 
-		intent, err := decider.Decide(ownHoldings)
+		intent, err := decider.Decide(Snapshot{Room: m.Room, Position: ownPos, Holdings: ownHoldings})
 		if err != nil {
 			return nil, fmt.Errorf("pump decide: %w", err)
 		}
 
-		if mv, ok := intent.(IntentMoveTo); ok {
-			planned = append(planned, plannedMove{member: m, to: mv.To})
+		switch intent.(type) {
+		case IntentMoveTo, IntentTraverse:
+			planned = append(planned, plannedAction{memberID: m.ID, intent: intent})
 		}
 	}
 
@@ -970,24 +1026,51 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	newTickReading := uint64(e.clock.ToData().HighWater)
 
-	type monsterMove struct {
-		member *Member
-		from   spatial.Position
-		to     spatial.Position
+	// executedAction is built in PLANNED (decision) order regardless of
+	// kind, so beats and ending evaluation below stay in the same
+	// deterministic per-monster order the deciders were consulted in
+	// (C8) — not "all moves then all traverses".
+	type executedAction struct {
+		member     *Member
+		kind       string // "move" or "traverse"
+		connection string // only meaningful for "traverse"
+		fromRoom   string // only meaningful for "traverse"; a move never changes room
+		from       spatial.Position
+		toRoom     string // only meaningful for "traverse"
+		to         spatial.Position
 	}
-	var successfulMoves []monsterMove
+	var executed []executedAction
 
-	for i := range planned {
-		p := planned[i]
-		// Spatial rejection does not abort the pump; the monster simply
-		// fails to move and no beat is recorded for it.
-		fromPos, moveErr := e.moveMember(&p.member, p.to)
-		if moveErr == nil {
-			successfulMoves = append(successfulMoves, monsterMove{
-				member: &planned[i].member,
-				from:   fromPos,
-				to:     p.to,
-			})
+	for _, p := range planned {
+		// The REAL member pointer, not a Members()-derived copy: a
+		// traverse mutates member.Room, and that mutation must reach the
+		// live e.members entry, not a value copy that planned would
+		// otherwise have carried since Setup/Wave-1 (moves never needed
+		// to write back Room, so this distinction was previously latent).
+		member := e.members[p.memberID]
+		switch intent := p.intent.(type) {
+		case IntentMoveTo:
+			// Spatial rejection does not abort the pump; the monster
+			// simply fails to move and no beat is recorded for it.
+			fromPos, moveErr := e.moveMember(member, intent.To)
+			if moveErr == nil {
+				executed = append(executed, executedAction{
+					member: member, kind: "move", from: fromPos, to: intent.To,
+				})
+			}
+		case IntentTraverse:
+			// An illegal traverse (unknown connection, or not at the
+			// threshold) does not abort the pump either — same silent-skip
+			// contract as a spatially-rejected move (see traverseMember's
+			// doc comment).
+			result, travErr := e.traverseMember(member, intent.Connection)
+			if travErr == nil {
+				executed = append(executed, executedAction{
+					member: member, kind: "traverse", connection: intent.Connection,
+					fromRoom: result.fromRoom, from: result.fromPos,
+					toRoom: result.toRoom, to: result.toPos,
+				})
+			}
 		}
 	}
 
@@ -1022,32 +1105,46 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	seqs := []uint64{tickAppendOut.Seq}
 
-	// Then record move beats for each successful move (in order)
-	for _, move := range successfulMoves {
-		moveBeatPayload := map[string]interface{}{
-			"beat":     "moved",
-			"member":   string(move.member.ID),
-			"position": move.to,
+	// Then record a beat for each successful action, in decision order.
+	for _, action := range executed {
+		var beatPayload map[string]interface{}
+		switch action.kind {
+		case "move":
+			beatPayload = map[string]interface{}{
+				"beat":     "moved",
+				"member":   string(action.member.ID),
+				"position": action.to,
+			}
+		case "traverse":
+			beatPayload = map[string]interface{}{
+				"beat":       "traversed",
+				"member":     string(action.member.ID),
+				"connection": action.connection,
+				"room":       action.toRoom,
+				"position":   action.to,
+			}
 		}
-		moveBeatBytes, _ := json.Marshal(moveBeatPayload)
+		beatBytes, _ := json.Marshal(beatPayload)
 
-		moveAppendOut, err := e.story.Append(&record.AppendInput{
+		actionAppendOut, err := e.story.Append(&record.AppendInput{
 			At:       newTickReading,
 			Audience: memberIDs,
 			Tags:     map[string]string{"tag": "movement"},
-			Payload:  moveBeatBytes,
+			Payload:  beatBytes,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("pump append move beat: %w", err)
+			return nil, fmt.Errorf("pump append %s beat: %w", action.kind, err)
 		}
 
-		seqs = append(seqs, moveAppendOut.Seq)
+		seqs = append(seqs, actionAppendOut.Seq)
 	}
 
-	// Evaluate ReachedPosition endings
+	// Evaluate ReachedPosition endings, in decision order. For a
+	// traverse, action.member.Room is already the ARRIVAL room
+	// (traverseMember mutated it); for a move it's unchanged — either
+	// way action.member.Room is correct to check against.
 	var firedOutcome *Outcome
-	for _, move := range successfulMoves {
-		// Check all endings for this position
+	for _, action := range executed {
 		for _, de := range e.endings {
 			endingKey, trigger := de.key, de.trigger
 			reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
@@ -1055,21 +1152,21 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 				continue // Not a ReachedPosition trigger
 			}
 
-			if reachedPosTrigger.Room != move.member.Room {
+			if reachedPosTrigger.Room != action.member.Room {
 				continue // Different room
 			}
 
-			if reachedPosTrigger.Position.X != move.to.X || reachedPosTrigger.Position.Y != move.to.Y {
+			if reachedPosTrigger.Position.X != action.to.X || reachedPosTrigger.Position.Y != action.to.Y {
 				continue // Different position
 			}
 
 			// Check member filter: non-empty = specific member; empty = players only
 			// Monsters should never trigger an unfiltered (empty-filter) ending
 			if reachedPosTrigger.Member == "" {
-				continue // Empty filter means players only, but this moved member is a monster
+				continue // Empty filter means players only, but this member is a monster
 			}
 
-			if reachedPosTrigger.Member != move.member.ID {
+			if reachedPosTrigger.Member != action.member.ID {
 				continue // Member filter doesn't match
 			}
 
@@ -1102,24 +1199,46 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 	}
 
-	// Build the output with successful moves
-	outputMoves := make([]struct {
+	// Build the output, splitting executed actions by kind (each output
+	// slice preserves the SAME relative order it had in executed).
+	var outputMoves []struct {
 		Member MemberID
 		From   spatial.Position
 		To     spatial.Position
-	}, len(successfulMoves))
-	for i, m := range successfulMoves {
-		outputMoves[i].Member = m.member.ID
-		outputMoves[i].From = m.from
-		outputMoves[i].To = m.to
+	}
+	var outputTraverses []struct {
+		Member   MemberID
+		FromRoom string
+		From     spatial.Position
+		ToRoom   string
+		To       spatial.Position
+	}
+	for _, action := range executed {
+		switch action.kind {
+		case "move":
+			outputMoves = append(outputMoves, struct {
+				Member MemberID
+				From   spatial.Position
+				To     spatial.Position
+			}{Member: action.member.ID, From: action.from, To: action.to})
+		case "traverse":
+			outputTraverses = append(outputTraverses, struct {
+				Member   MemberID
+				FromRoom string
+				From     spatial.Position
+				ToRoom   string
+				To       spatial.Position
+			}{Member: action.member.ID, FromRoom: action.fromRoom, From: action.from, ToRoom: action.toRoom, To: action.to})
+		}
 	}
 
 	return &PumpOutput{
-		Tick:         newTickReading,
-		MonsterMoves: outputMoves,
-		IntelDeltas:  intelDeltas,
-		Seqs:         seqs,
-		Outcome:      firedOutcome,
+		Tick:             newTickReading,
+		MonsterMoves:     outputMoves,
+		MonsterTraverses: outputTraverses,
+		IntelDeltas:      intelDeltas,
+		Seqs:             seqs,
+		Outcome:          firedOutcome,
 	}, nil
 }
 

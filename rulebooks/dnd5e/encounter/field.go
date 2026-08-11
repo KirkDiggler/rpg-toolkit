@@ -275,18 +275,32 @@ type PumpOutput struct {
 	// Tick is the exploration clock's reading after the advance.
 	Tick uint64
 
-	// MonsterMoves contains the successful moves executed by monsters during this pump.
+	// MonsterMoves contains the successful same-room moves executed by monsters during this pump.
 	MonsterMoves []struct {
 		Member MemberID
 		From   spatial.Position
 		To     spatial.Position
 	}
 
+	// MonsterTraverses contains the successful cross-room traverses executed by
+	// monsters during this pump (IntentTraverse). An illegal traverse intent
+	// (unknown connection, or the monster not at its threshold) does not appear
+	// here — it is silently skipped, matching MonsterMoves' spatial-rejection
+	// contract.
+	MonsterTraverses []struct {
+		Member   MemberID
+		FromRoom string
+		From     spatial.Position
+		ToRoom   string
+		To       spatial.Position
+	}
+
 	// IntelDeltas maps member IDs to their updated percepts after all monster actions
 	// (SurveilOutput deltas from the single refreshSight cycle).
 	IntelDeltas map[MemberID]*intel.SurveilOutput
 
-	// Seqs contains the sequence numbers of the recorded beats (tick beat first, then move beats).
+	// Seqs contains the sequence numbers of the recorded beats (tick beat
+	// first, then move/traverse beats in decision order).
 	Seqs []uint64
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
