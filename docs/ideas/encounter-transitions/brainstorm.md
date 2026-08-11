@@ -78,7 +78,20 @@ playable."* The composition's authoring surface stays `SetupInput`;
 rpg-api's wave-1 dungeon keys use a minimal direct spec. Nothing here
 consumes or emits the dungeon-builder pipeline.
 
-### 8. Version and compatibility
+### 8. Rooms choose their grid (added 2026-08-11, Platform pushback)
+
+Platform flagged the composition's square-grid usage against the
+hex-cube wire. The truth: spatial underneath is the same hex engine
+the old module ships to the wire (`GridShape`, `NewHexGrid`, cube
+coordinates, all LoS/adjacency behind the Grid interface); the
+composition merely *chose* square at its two grid-construction sites.
+v0.2 makes the choice per-room: `RoomInput` gains a `GridShape`
+(zero value = square, fully compatible), and in-bounds validation
+defers to the grid's own validity check instead of rectangle math.
+Rooms constructed hex make the wire projection identity rather than a
+lossy square→hex remap.
+
+### 9. Version and compatibility
 
 `v0.2.0`, additive in spirit. Two honest compat notes, both acceptable
 at zero external consumers (rpg-api is not wired yet): connection

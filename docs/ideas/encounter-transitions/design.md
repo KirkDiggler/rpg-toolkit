@@ -27,6 +27,17 @@ discipline.
 ## Type changes
 
 ```go
+// RoomInput gains a grid choice. Zero value is GridShapeSquare —
+// existing setups, tests, and goldens are untouched. Hex rooms make
+// the dungeon-absolute hex wire projection an identity mapping.
+type RoomInput struct {
+	// ... existing fields ...
+	Grid spatial.GridShape // square (default) | hex | gridless
+}
+// In-bounds validation (member placement, connection endpoints,
+// movement targets) defers to the constructed grid's own validity
+// check; the module owns no rectangle math of its own.
+
 // ConnectionInput gains endpoints (BREAKING for stored v0.1 data that
 // declared connections — none exists; rpg-api is not wired yet).
 type ConnectionInput struct {

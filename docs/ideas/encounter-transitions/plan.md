@@ -22,6 +22,17 @@ fields; one-defect rejection table rows + fragments; rich golden grows
 a connection with both endpoints; `deepCopyRoomInputs`-style aliasing
 protection extended to connections; reload pin for connection survival.
 
+## Task 1.5 — rooms choose their grid
+
+`RoomInput.Grid spatial.GridShape` (zero value square) routed into
+both grid-construction sites (Setup and load path); persisted in
+`FieldData`; rich golden grows a hex room; in-bounds validation
+(members, connection endpoints, move targets) refactored to defer to
+the grid's `IsValidPosition` — delete the module's own rectangle math.
+Tests: hex room constructs, validates a legal hex position, rejects an
+illegal one at both seams; square defaults byte-stable (existing
+goldens unchanged); reload preserves grid shape.
+
 ## Task 2 — the Traverse verb
 
 `TraverseInput`/`TraverseOutput`, `ErrNoConnection` sentinel wired
