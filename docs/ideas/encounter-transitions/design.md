@@ -82,7 +82,7 @@ type IntentTraverse struct {
 |---|---|
 | `Traverse(*TraverseInput) (*TraverseOutput, error)` | NEW. Precondition per T2. Refreshes percepts in **both** rooms (departure and arrival are observable absences/appearances). Appends a `traversed` beat. Runs ending evaluation at the arrival position. Rejects on `ErrClosed`, `ErrNilInput`, `ErrNoMember`, `ErrNoConnection`, `ErrBadPlacement`. |
 | `Move` | Unchanged, still same-room; its doc comment stays honest about that. |
-| `Pump` | Phase 2 executes `IntentTraverse` with the same T2 precondition; a decider intent that fails precondition aborts the pump atomically (R5), exactly like a failed `IntentMoveTo`. |
+| `Pump` | Phase 2 executes `IntentTraverse` with the same T2 precondition. Failure contract (corrected during Task 3 to match the module's shipped v0.1 semantics): a phase-1 decider ERROR aborts the pump atomically (R5 — clock untouched, no beats, nothing executed); a phase-2 EXECUTION failure (illegal position, unknown connection) is silently skipped — the pump completes, and that action is simply absent from output and beats — exactly like a failed `IntentMoveTo` has always behaved. |
 | `View`, `Story`, `Join`, `Exit`, `End`, `ToData`/`LoadEncounter` | Unchanged surfaces; behavior notes below. |
 
 New sentinel: `ErrNoConnection` (unknown connection ID), wrapped
