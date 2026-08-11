@@ -1,4 +1,4 @@
-.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module
+.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module freeroam
 
 # Default target
 help:
@@ -19,6 +19,7 @@ help:
 	@echo "  check-versions - Check current versions of all modules"
 	@echo "  tag-module   - Tag a specific module with a new version"
 	@echo "  release-module - Create a release for a module (runs tests first)"
+	@echo "  freeroam     - Play the free-roam encounter workbench in the terminal"
 	@echo "  help         - Show this help message"
 
 # Run tests for all modules
@@ -235,3 +236,6 @@ release-module:
 	@echo ""
 	@echo "Users can then install with:"
 	@echo "  go get github.com/KirkDiggler/rpg-toolkit/$(MODULE)@$(MODULE)/$(VERSION)"
+# Play the free-roam encounter workbench (the pre-UI loop)
+freeroam:
+	@./scripts/freeroam-workbench.sh
