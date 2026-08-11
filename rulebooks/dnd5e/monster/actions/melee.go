@@ -48,10 +48,10 @@ var _ monster.MonsterAction = (*MeleeAction)(nil)
 func NewMeleeAction(config MeleeConfig) *MeleeAction {
 	damageSpec := damage.DamageSpec{Pools: []damage.Damage{{Dice: config.DamageDice, Type: config.DamageType}}}
 	if config.DamageSpec != nil {
-		damageSpec = *config.DamageSpec
+		damageSpec = cloneDamageSpec(*config.DamageSpec)
 	}
-	components := config.DamageComponents
-	if len(components) == 0 {
+	components := append([]dnd5eEvents.AttackDamageComponent(nil), config.DamageComponents...)
+	if config.DamageSpec != nil || len(components) == 0 {
 		components = make([]dnd5eEvents.AttackDamageComponent, len(damageSpec.Pools))
 		for i, pool := range damageSpec.Pools {
 			components[i] = dnd5eEvents.AttackDamageComponent{Dice: pool.Dice, DamageType: pool.Type}
@@ -66,6 +66,19 @@ func NewMeleeAction(config MeleeConfig) *MeleeAction {
 		damageSpec:       damageSpec,
 		damageComponents: components,
 	}
+}
+
+func cloneDamageSpec(spec damage.DamageSpec) damage.DamageSpec {
+	cloned := damage.DamageSpec{Pools: make([]damage.Damage, len(spec.Pools))}
+	for i, pool := range spec.Pools {
+		cloned.Pools[i] = pool
+		cloned.Pools[i].Properties = append([]damage.Property(nil), pool.Properties...)
+		if pool.Save != nil {
+			save := *pool.Save
+			cloned.Pools[i].Save = &save
+		}
+	}
+	return cloned
 }
 
 // GetID implements core.Entity
@@ -146,7 +159,7 @@ func (m *MeleeAction) Activate(ctx context.Context, owner core.Entity, input mon
 		Definition: attack.Definition{
 			ActionID: m.GetID(), DisplayName: m.name, Category: attack.CategoryNatural,
 			Bonus: attack.FixedBonus(m.attackBonus), Targeting: attack.MeleeReach(m.reach),
-			Damage: m.damageSpec,
+			Damage: cloneDamageSpec(m.damageSpec),
 		},
 		WeaponRef:        m.name,
 		IsMelee:          true,
@@ -161,13 +174,14 @@ func (m *MeleeAction) Activate(ctx context.Context, owner core.Entity, input mon
 
 // ToData converts the action to its serializable form
 func (m *MeleeAction) ToData() monster.ActionData {
+	damageSpec := cloneDamageSpec(m.damageSpec)
 	config := MeleeConfig{
 		Name:             m.name,
 		AttackBonus:      m.attackBonus,
 		DamageDice:       m.damageDice,
 		Reach:            m.reach,
 		DamageType:       m.damageType,
-		DamageSpec:       &m.damageSpec,
+		DamageSpec:       &damageSpec,
 		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), m.damageComponents...),
 	}
 	configJSON, _ := json.Marshal(config)

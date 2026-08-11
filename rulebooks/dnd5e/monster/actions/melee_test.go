@@ -253,6 +253,43 @@ func (s *MeleeActionTestSuite) TestMeleeActionConvertsLegacySinglePool() {
 	s.Equal("1d4", event.Definition.Damage.Pools[0].Dice)
 }
 
+func (s *MeleeActionTestSuite) TestMeleeActionPublishesIsolatedDamageSpec() {
+	spec := &damage.DamageSpec{Pools: []damage.Damage{{
+		Dice: "2d6", Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible},
+		Save: &damage.SaveSpec{DC: 12},
+	}}}
+	action := NewMeleeAction(MeleeConfig{Name: "Pseudopod", AttackBonus: 3, Reach: 1, DamageSpec: spec})
+
+	spec.Pools[0].Dice = "9d9"
+	spec.Pools[0].Properties[0] = "changed"
+	spec.Pools[0].Save.DC = 99
+	first := s.activateAndReceiveEvent(action)
+	s.Equal("2d6", first.Definition.Damage.Pools[0].Dice)
+	s.Equal(damage.PropertyCritEligible, first.Definition.Damage.Pools[0].Properties[0])
+	s.Equal(12, first.Definition.Damage.Pools[0].Save.DC)
+
+	first.Definition.Damage.Pools[0].Dice = "8d8"
+	first.Definition.Damage.Pools[0].Properties[0] = "changed again"
+	first.Definition.Damage.Pools[0].Save.DC = 88
+	second := s.activateAndReceiveEvent(action)
+	s.Equal("2d6", second.Definition.Damage.Pools[0].Dice)
+	s.Equal(damage.PropertyCritEligible, second.Definition.Damage.Pools[0].Properties[0])
+	s.Equal(12, second.Definition.Damage.Pools[0].Save.DC)
+}
+
+func (s *MeleeActionTestSuite) TestMeleeActionDamageSpecOverridesLegacyDamageComponents() {
+	action := NewMeleeAction(MeleeConfig{
+		Name: "Pseudopod", AttackBonus: 3, Reach: 1,
+		DamageSpec:       &damage.DamageSpec{Pools: []damage.Damage{{Dice: "2d6", Type: damage.Acid}}},
+		DamageComponents: []dnd5eEvents.AttackDamageComponent{{Dice: "1d6", DamageType: damage.Bludgeoning}},
+	})
+
+	event := s.activateAndReceiveEvent(action)
+
+	s.Equal("2d6", event.Definition.Damage.Pools[0].Dice)
+	s.Equal([]dnd5eEvents.AttackDamageComponent{{Dice: "2d6", DamageType: damage.Acid}}, event.DamageComponents)
+}
+
 func (s *MeleeActionTestSuite) activateAndReceiveEvent(action *MeleeAction) dnd5eEvents.AttackEvent {
 	s.T().Helper()
 	owner := &mockEntity{id: "monster"}
