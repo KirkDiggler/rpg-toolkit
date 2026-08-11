@@ -45,7 +45,7 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 		Name:        "longsword",
 		AttackBonus: 5,       // +3 STR + 2 proficiency
 		DamageDice:  "1d8+3", // 1d8 + STR
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Slashing,
 	}))
 

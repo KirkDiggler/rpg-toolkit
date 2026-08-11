@@ -36,7 +36,7 @@ func NewZombie(id string) *monster.Monster {
 		Name:        "slam",
 		AttackBonus: 3,       // +1 STR + 2 proficiency
 		DamageDice:  "1d6+1", // 1d6 + STR
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Bludgeoning,
 	}))
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage/affinity"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -27,6 +28,15 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 
 	// Route based on ref ID
 	switch peek.Ref.ID {
+	case refs.DamageAffinities.Resistance().ID,
+		refs.DamageAffinities.Vulnerability().ID,
+		refs.DamageAffinities.Immunity().ID:
+		effect, err := affinity.LoadJSON(data)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load damage affinity")
+		}
+		return effect, nil
+
 	case refs.Conditions.Raging().ID:
 		raging := &RagingCondition{}
 		if err := raging.loadJSON(data); err != nil {

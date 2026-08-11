@@ -6,6 +6,7 @@ package monsters
 import (
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/stretchr/testify/suite"
 )
@@ -26,6 +27,7 @@ func (s *BrownBearTestSuite) TestNewBrownBear() {
 	s.Require().NotNil(bear)
 	s.Assert().Equal("bear-1", bear.GetID())
 	s.Assert().Equal("Brown Bear", bear.Name())
+	s.Assert().Equal(dnd5e.SizeLarge, bear.Size())
 
 	// Check stats (CR 1 boss)
 	s.Assert().Equal(34, bear.HP())

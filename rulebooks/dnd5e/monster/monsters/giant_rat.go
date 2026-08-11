@@ -4,6 +4,7 @@
 package monsters
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -18,6 +19,7 @@ func NewGiantRat(id string) *monster.Monster {
 		ID:   id,
 		Name: "Giant Rat",
 		Ref:  refs.Monsters.GiantRat(),
+		Size: dnd5e.SizeSmall,
 		HP:   7,  // 2d6
 		AC:   12, // Natural armor
 		AbilityScores: shared.AbilityScores{
@@ -35,7 +37,7 @@ func NewGiantRat(id string) *monster.Monster {
 		Name:        "bite",
 		AttackBonus: 4,       // +2 DEX + 2 proficiency
 		DamageDice:  "1d4+2", // 1d4 + DEX
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Piercing,
 	}))
 

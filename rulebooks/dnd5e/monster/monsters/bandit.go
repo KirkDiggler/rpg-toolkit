@@ -36,7 +36,7 @@ func NewBanditMelee(id string) *monster.Monster {
 		Name:        "scimitar",
 		AttackBonus: 3,       // +1 DEX + 2 proficiency
 		DamageDice:  "1d6+1", // 1d6 + DEX
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Slashing,
 	}))
 

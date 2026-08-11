@@ -35,7 +35,7 @@ func NewGhoul(id string) *monster.Monster {
 		Name:        "bite",
 		AttackBonus: 4,       // +2 DEX + 2 proficiency
 		DamageDice:  "2d6+2", // 2d6 + DEX
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Piercing,
 	}))
 
@@ -44,7 +44,7 @@ func NewGhoul(id string) *monster.Monster {
 		Name:        "claw",
 		AttackBonus: 4,       // +2 DEX + 2 proficiency
 		DamageDice:  "2d4+2", // 2d4 + DEX
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Slashing,
 	}))
 

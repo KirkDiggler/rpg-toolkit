@@ -48,6 +48,10 @@ const (
 	ConditionStunned ConditionType = "stunned"
 	// ConditionUnconscious is a condition that makes a character unconscious
 	ConditionUnconscious ConditionType = "unconscious"
+	// ConditionExhaustion is the canonical condition identity used by effects
+	// such as condition immunity. Actual exhaustion is still applied in one of
+	// the six levels below.
+	ConditionExhaustion ConditionType = "exhaustion"
 
 	// ConditionExhaustion1 is a condition that exhausts a character
 	ConditionExhaustion1 ConditionType = "exhaustion_1"
@@ -84,6 +88,37 @@ const (
 	// when consumed or at the helper's next turn if unused.
 	ConditionHelped ConditionType = "helped"
 )
+
+// IsStandardCondition reports whether conditionType is one of the fifteen
+// standard D&D 5e conditions. Toolkit statuses and passive effects are not
+// standard conditions.
+func IsStandardCondition(conditionType ConditionType) bool {
+	switch conditionType {
+	case ConditionBlinded, ConditionCharmed, ConditionDeafened,
+		ConditionExhaustion, ConditionFrightened, ConditionGrappled,
+		ConditionIncapacitated, ConditionInvisible, ConditionParalyzed,
+		ConditionPetrified, ConditionPoisoned, ConditionProne,
+		ConditionRestrained, ConditionStunned, ConditionUnconscious:
+		return true
+	default:
+		return false
+	}
+}
+
+// MatchesConditionImmunity reports whether a canonical condition immunity
+// blocks an applied condition. Exhaustion immunity blocks every exhaustion
+// level while keeping the stat-block vocabulary to the standard fifteen.
+func MatchesConditionImmunity(immuneTo, applied ConditionType) bool {
+	if immuneTo == ConditionExhaustion {
+		switch applied {
+		case ConditionExhaustion, ConditionExhaustion1, ConditionExhaustion2,
+			ConditionExhaustion3, ConditionExhaustion4, ConditionExhaustion5,
+			ConditionExhaustion6:
+			return true
+		}
+	}
+	return immuneTo == applied
+}
 
 // ConditionSource identifies where a condition originated
 type ConditionSource string
@@ -520,6 +555,16 @@ type AttackEvent struct {
 	TargetID   string // ID of the target
 	WeaponRef  string // Reference to the weapon used
 	IsMelee    bool   // True for melee attacks, false for ranged
+	// DamageComponents describes the attack's unrolled damage parts. It lets
+	// natural weapons and future attacks carry mixed damage such as bludgeoning
+	// plus acid without collapsing them into one type.
+	DamageComponents []AttackDamageComponent
+}
+
+// AttackDamageComponent describes one unrolled piece of an attack's damage.
+type AttackDamageComponent struct {
+	Dice       string      `json:"dice"`
+	DamageType damage.Type `json:"damage_type"`
 }
 
 // ReactionUsedEvent is published when a character uses their reaction.

@@ -36,7 +36,7 @@ func NewSkeleton(id string) *monster.Monster {
 		Name:        "shortsword",
 		AttackBonus: 4,       // +2 DEX + 2 proficiency
 		DamageDice:  "1d6+2", // 1d6 + DEX
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Piercing,
 	}))
 

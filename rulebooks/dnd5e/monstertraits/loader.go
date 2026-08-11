@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage/affinity"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -35,6 +36,15 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 
 	// Route based on ref ID
 	switch peek.Ref.ID {
+	case refs.DamageAffinities.Resistance().ID,
+		refs.DamageAffinities.Vulnerability().ID,
+		refs.DamageAffinities.Immunity().ID:
+		condition, err := affinity.LoadJSON(data)
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load damage affinity")
+		}
+		return condition, nil
+
 	case refs.MonsterTraits.Immunity().ID:
 		trait := &immunityCondition{}
 		if err := trait.loadJSON(data); err != nil {
@@ -46,6 +56,13 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 		trait := &vulnerabilityCondition{}
 		if err := trait.loadJSON(data); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to load vulnerability trait")
+		}
+		return trait, nil
+
+	case refs.MonsterTraits.ConditionImmunity().ID:
+		trait := &ConditionImmunityTrait{}
+		if err := trait.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load condition immunity trait")
 		}
 		return trait, nil
 
@@ -90,8 +107,12 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 // from instead of mirroring. Tracked as rpg-toolkit#780.
 func AllTraitRefs() []string {
 	return []string{
+		refs.DamageAffinities.Resistance().String(),
+		refs.DamageAffinities.Vulnerability().String(),
+		refs.DamageAffinities.Immunity().String(),
 		refs.MonsterTraits.Immunity().String(),
 		refs.MonsterTraits.Vulnerability().String(),
+		refs.MonsterTraits.ConditionImmunity().String(),
 		refs.MonsterTraits.PackTactics().String(),
 		refs.MonsterTraits.UndeadFortitude().String(),
 	}

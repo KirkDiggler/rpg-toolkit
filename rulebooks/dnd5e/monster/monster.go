@@ -12,12 +12,20 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+// conditionImmunity is intentionally small so monster does not need to
+// import the monstertraits package. Any innate trait that answers this
+// question can provide condition immunity.
+type conditionImmunity interface {
+	IsImmuneTo(dnd5eEvents.ConditionType) bool
+}
 
 // Monster represents a hostile creature for combat encounters.
 // This is the runtime representation with event bus wiring.
@@ -26,6 +34,7 @@ type Monster struct {
 	id   string
 	name string
 	ref  *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
+	size dnd5e.Size
 
 	// Stats
 	hp            int
@@ -39,7 +48,8 @@ type Monster struct {
 	actions []MonsterAction
 
 	// Conditions (wired to bus)
-	conditions []dnd5eEvents.ConditionBehavior
+	conditions          []dnd5eEvents.ConditionBehavior
+	conditionImmunities []conditionImmunity
 
 	// Trait data (unapplied - for serialization before bus is available)
 	// This is populated by factory functions and serialized to Data.Conditions.
@@ -66,6 +76,7 @@ type Config struct {
 	ID               string
 	Name             string
 	Ref              *core.Ref // Type reference (e.g., refs.Monsters.Skeleton())
+	Size             dnd5e.Size
 	HP               int
 	AC               int
 	AbilityScores    shared.AbilityScores
@@ -82,6 +93,7 @@ func New(config Config) *Monster {
 		id:               config.ID,
 		name:             config.Name,
 		ref:              config.Ref,
+		size:             dnd5e.NormalizeSize(config.Size),
 		hp:               config.HP,
 		maxHP:            config.HP,
 		ac:               config.AC,
@@ -108,6 +120,12 @@ func (m *Monster) Name() string {
 // Ref returns the monster's type reference (e.g., refs.Monsters.Skeleton())
 func (m *Monster) Ref() *core.Ref {
 	return m.ref
+}
+
+// Size returns the monster's D&D 5e combat size category. Every size currently
+// occupies one hex; size-based footprints will be added in later work.
+func (m *Monster) Size() dnd5e.Size {
+	return dnd5e.NormalizeSize(m.size)
 }
 
 // HP returns current hit points
@@ -230,6 +248,7 @@ func NewGoblin(id string) *Monster {
 		ID:   id,
 		Name: "Goblin",
 		Ref:  refs.Monsters.Goblin(),
+		Size: dnd5e.SizeSmall,
 		HP:   7,  // 2d6 average
 		AC:   15, // Leather armor + DEX
 		AbilityScores: shared.AbilityScores{
@@ -327,6 +346,27 @@ func (m *Monster) MeleeWeapon() *weapons.Weapon {
 // The condition should already be applied to the event bus before adding.
 func (m *Monster) AddCondition(condition dnd5eEvents.ConditionBehavior) {
 	m.conditions = append(m.conditions, condition)
+	if immunity, ok := condition.(conditionImmunity); ok {
+		m.conditionImmunities = append(m.conditionImmunities, immunity)
+	}
+}
+
+// AddConditionEffect implements conditions.ApplicationTarget. The technical
+// name remains for compatibility while this method accepts any active effect.
+func (m *Monster) AddConditionEffect(effect dnd5eEvents.ConditionBehavior) {
+	m.AddCondition(effect)
+}
+
+// IsConditionImmune reports whether this monster is immune to one of the
+// fifteen standard D&D 5e conditions. It is the target-side check used by a
+// future centralized condition-application path.
+func (m *Monster) IsConditionImmune(conditionType dnd5eEvents.ConditionType) bool {
+	for _, immunity := range m.conditionImmunities {
+		if immunity.IsImmuneTo(conditionType) {
+			return true
+		}
+	}
+	return false
 }
 
 // AddTraitData adds raw trait JSON data to the monster.
@@ -355,6 +395,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, 
 		id:               d.ID,
 		name:             d.Name,
 		ref:              d.Ref,
+		size:             dnd5e.NormalizeSize(d.Size),
 		hp:               d.HitPoints,
 		maxHP:            d.MaxHitPoints,
 		ac:               d.ArmorClass,
@@ -408,8 +449,16 @@ func (m *Monster) subscribeToEvents(ctx context.Context) error {
 	}
 
 	// Subscribe to damage received
+	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(m.bus)
+	subID, err := conditionTopic.Subscribe(ctx, m.onConditionApplied)
+	if err != nil {
+		return err
+	}
+	m.subscriptionIDs = append(m.subscriptionIDs, subID)
+
+	// Subscribe to damage received
 	damageTopic := dnd5eEvents.DamageReceivedTopic.On(m.bus)
-	subID, err := damageTopic.Subscribe(ctx, m.onDamageReceived)
+	subID, err = damageTopic.Subscribe(ctx, m.onDamageReceived)
 	if err != nil {
 		return err
 	}
@@ -423,6 +472,17 @@ func (m *Monster) subscribeToEvents(ctx context.Context) error {
 	}
 	m.subscriptionIDs = append(m.subscriptionIDs, subID)
 
+	return nil
+}
+
+func (m *Monster) onConditionApplied(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+	if event.Target == nil || event.Target.GetID() != m.id {
+		return nil
+	}
+	_, err := conditions.ApplyEffect(ctx, m.bus, m, event.Type, event.Condition)
+	if err != nil {
+		return rpgerr.Wrap(err, "apply condition effect")
+	}
 	return nil
 }
 
@@ -727,6 +787,7 @@ func (m *Monster) ToData() *Data {
 		ID:               m.id,
 		Name:             m.name,
 		Ref:              m.ref,
+		Size:             m.Size(),
 		HitPoints:        m.hp,
 		MaxHitPoints:     m.maxHP,
 		ArmorClass:       m.ac,

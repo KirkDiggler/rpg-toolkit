@@ -5,10 +5,11 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 
 // Monster trait singletons - unexported for controlled access via methods
 var (
-	monsterTraitImmunity        = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "immunity"}
-	monsterTraitVulnerability   = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "vulnerability"}
-	monsterTraitPackTactics     = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "pack_tactics"}
-	monsterTraitUndeadFortitude = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "undead_fortitude"}
+	monsterTraitImmunity          = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "immunity"}
+	monsterTraitVulnerability     = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "vulnerability"}
+	monsterTraitConditionImmunity = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "condition_immunity"}
+	monsterTraitPackTactics       = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "pack_tactics"}
+	monsterTraitUndeadFortitude   = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "undead_fortitude"}
 )
 
 // MonsterTraits provides type-safe, discoverable references to monster trait behaviors.
@@ -23,6 +24,10 @@ func (n monsterTraitsNS) Immunity() *core.Ref { return monsterTraitImmunity }
 
 // Vulnerability returns the ref for damage vulnerability trait
 func (n monsterTraitsNS) Vulnerability() *core.Ref { return monsterTraitVulnerability }
+
+// ConditionImmunity returns the ref for the trait that blocks one or more of
+// the fifteen standard D&D 5e conditions.
+func (n monsterTraitsNS) ConditionImmunity() *core.Ref { return monsterTraitConditionImmunity }
 
 // PackTactics returns the ref for pack tactics trait
 func (n monsterTraitsNS) PackTactics() *core.Ref { return monsterTraitPackTactics }

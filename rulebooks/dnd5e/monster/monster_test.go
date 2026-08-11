@@ -61,6 +61,7 @@ func (s *MonsterTestSuite) TestNewGoblin() {
 	s.Equal(7, goblin.HP())
 	s.Equal(7, goblin.MaxHP())
 	s.Equal(15, goblin.AC())
+	s.Equal(dnd5e.SizeSmall, goblin.Size())
 
 	// Check ability scores
 	scores := goblin.AbilityScores()

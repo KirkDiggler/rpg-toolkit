@@ -206,6 +206,30 @@ func (s *MeleeActionTestSuite) TestActivate_PublishesAttackEvent() {
 	s.Assert().True(receivedEvent.IsMelee)
 }
 
+func (s *MeleeActionTestSuite) TestActivatePublishesEveryDamageComponent() {
+	action := NewMeleeAction(MeleeConfig{
+		Name: "pseudopod", AttackBonus: 3, Reach: 1,
+		DamageComponents: []dnd5eEvents.AttackDamageComponent{
+			{Dice: "1d6-1", DamageType: damage.Bludgeoning},
+			{Dice: "2d6", DamageType: damage.Acid},
+		},
+	})
+	owner := &mockEntity{id: "ooze"}
+	target := &mockEntity{id: "target"}
+	perception := &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 1}}}
+	var received dnd5eEvents.AttackEvent
+	_, err := dnd5eEvents.AttackTopic.On(s.bus).Subscribe(context.Background(), func(_ context.Context, event dnd5eEvents.AttackEvent) error {
+		received = event
+		return nil
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(action.Activate(context.Background(), owner, monster.MonsterActionInput{Target: target, Perception: perception, Bus: s.bus}))
+	s.Require().Equal([]dnd5eEvents.AttackDamageComponent{
+		{Dice: "1d6-1", DamageType: damage.Bludgeoning},
+		{Dice: "2d6", DamageType: damage.Acid},
+	}, received.DamageComponents)
+}
+
 func (s *MeleeActionTestSuite) TestScore_AdjacentEnemy() {
 	// Arrange
 	action := NewMeleeAction(MeleeConfig{

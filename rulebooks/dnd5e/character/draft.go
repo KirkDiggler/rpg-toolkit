@@ -603,6 +603,7 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		id:                  characterID,
 		playerID:            d.playerID,
 		name:                d.name,
+		size:                characterSize("", d.race),
 		level:               1,
 		proficiencyBonus:    2,
 		raceID:              d.race,

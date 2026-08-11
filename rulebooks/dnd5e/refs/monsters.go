@@ -11,6 +11,7 @@ var (
 	monsterSkeletonArcher  = &core.Ref{Module: Module, Type: TypeMonsters, ID: "skeleton-archer"}
 	monsterSkeletonCaptain = &core.Ref{Module: Module, Type: TypeMonsters, ID: "skeleton-captain"}
 	monsterGhoul           = &core.Ref{Module: Module, Type: TypeMonsters, ID: "ghoul"}
+	monsterGrayOoze        = &core.Ref{Module: Module, Type: TypeMonsters, ID: "gray-ooze"}
 
 	// Beasts (Cave theme)
 	monsterGiantRat        = &core.Ref{Module: Module, Type: TypeMonsters, ID: "giant-rat"}
@@ -40,6 +41,7 @@ func (n monstersNS) Zombie() *core.Ref          { return monsterZombie }
 func (n monstersNS) SkeletonArcher() *core.Ref  { return monsterSkeletonArcher }
 func (n monstersNS) SkeletonCaptain() *core.Ref { return monsterSkeletonCaptain }
 func (n monstersNS) Ghoul() *core.Ref           { return monsterGhoul }
+func (n monstersNS) GrayOoze() *core.Ref        { return monsterGrayOoze }
 
 // Beasts (Cave theme)
 func (n monstersNS) GiantRat() *core.Ref        { return monsterGiantRat }

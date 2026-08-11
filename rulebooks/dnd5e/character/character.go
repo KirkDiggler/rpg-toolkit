@@ -12,16 +12,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage/affinity"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -42,6 +47,7 @@ type Character struct {
 	id       string
 	playerID string
 	name     string
+	size     dnd5e.Size
 
 	// Core attributes
 	level            int
@@ -87,7 +93,8 @@ type Character struct {
 	actions []actions.Action
 
 	// Conditions (raging, poisoned, stunned, etc) - passive effects
-	conditions []dnd5eEvents.ConditionBehavior
+	conditions          []dnd5eEvents.ConditionBehavior
+	conditionImmunities []conditionImmunity
 
 	// Death saves (tracked when at 0 HP)
 	deathSaveState *saves.DeathSaveState
@@ -103,6 +110,13 @@ type Character struct {
 	dirty bool
 }
 
+// conditionImmunity keeps the character package independent from a concrete
+// effect implementation while allowing innate traits, features, and items to
+// share the same canonical condition-immunity list.
+type conditionImmunity interface {
+	IsImmuneTo(dnd5eEvents.ConditionType) bool
+}
+
 // GetID returns the character's unique identifier
 func (c *Character) GetID() string {
 	return c.id
@@ -113,9 +127,27 @@ func (c *Character) GetType() core.EntityType {
 	return "character"
 }
 
+// Size returns the character's D&D 5e combat size category. Every size
+// currently occupies one hex; size-based footprints will be added later.
+func (c *Character) Size() dnd5e.Size {
+	return dnd5e.NormalizeSize(c.size)
+}
+
 // GetName returns the character's name
 func (c *Character) GetName() string {
 	return c.name
+}
+
+// characterSize chooses an explicit persisted size when present, otherwise
+// derives the legacy/default size from the character's race data.
+func characterSize(size dnd5e.Size, race races.Race) dnd5e.Size {
+	if size != "" {
+		return dnd5e.NormalizeSize(size)
+	}
+	if raceData := races.GetData(race); raceData != nil {
+		return dnd5e.NormalizeSize(dnd5e.Size(raceData.Size))
+	}
+	return dnd5e.SizeMedium
 }
 
 // GetLevel returns the character's level
@@ -994,6 +1026,7 @@ func (c *Character) ToData() *Data {
 		ID:                  c.id,
 		PlayerID:            c.playerID,
 		Name:                c.name,
+		Size:                c.Size(),
 		Level:               c.level,
 		ProficiencyBonus:    c.proficiencyBonus,
 		RaceID:              c.raceID,
@@ -1137,18 +1170,49 @@ func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.Co
 	if event.Target.GetID() != c.id {
 		return nil
 	}
-
-	// Apply the condition (subscribes to events)
-	if err := event.Condition.Apply(ctx, c.bus); err != nil {
-		// Clean up any partial subscriptions to avoid resource leaks
-		_ = event.Condition.Remove(ctx, c.bus)
-		return rpgerr.Wrapf(err, "failed to apply condition")
+	_, err := conditions.ApplyEffect(ctx, c.bus, c, event.Type, event.Condition)
+	if err != nil {
+		return rpgerr.Wrap(err, "apply condition effect")
 	}
-
-	// Store the condition
-	c.conditions = append(c.conditions, event.Condition)
-
 	return nil
+}
+
+// AddConditionEffect attaches a passive effect, status, or condition to this
+// character. Features can use the shared ConditionImmunityTrait here.
+func (c *Character) AddConditionEffect(effect dnd5eEvents.ConditionBehavior) {
+	c.addCondition(effect)
+}
+
+func (c *Character) addCondition(effect dnd5eEvents.ConditionBehavior) {
+	c.conditions = append(c.conditions, effect)
+	if immunity, ok := effect.(conditionImmunity); ok {
+		c.conditionImmunities = append(c.conditionImmunities, immunity)
+	}
+}
+
+// IsConditionImmune reports whether this character is immune to a standard
+// D&D 5e condition. Statuses and passive effects are never condition-immunity
+// targets.
+func (c *Character) IsConditionImmune(conditionType dnd5eEvents.ConditionType) bool {
+	for _, immunity := range c.conditionImmunities {
+		if immunity.IsImmuneTo(conditionType) {
+			return true
+		}
+	}
+	return false
+}
+
+// NewConditionImmunityEffect exposes the shared condition-immunity effect to
+// character features without duplicating the canonical list.
+func NewConditionImmunityEffect(ownerID string, types ...dnd5eEvents.ConditionType) (dnd5eEvents.ConditionBehavior, error) {
+	return monstertraits.NewConditionImmunity(ownerID, types...)
+}
+
+// NewDamageAffinityEffect creates a shared damage resistance, vulnerability,
+// or immunity for this character. Features and equipped items can retain the
+// returned effect and remove it when their source ends.
+func NewDamageAffinityEffect(ownerID string, kind affinity.Kind, damageType damage.Type, sourceID string) (dnd5eEvents.ConditionBehavior, error) {
+	return affinity.New(kind, ownerID, damageType, sourceID)
 }
 
 // onConditionRemoved handles ConditionRemovedEvent

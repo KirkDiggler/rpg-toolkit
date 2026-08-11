@@ -10,6 +10,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -30,9 +31,10 @@ import (
 // This is what gets stored in the database
 type Data struct {
 	// Identity
-	ID       string `json:"id"`
-	PlayerID string `json:"player_id"`
-	Name     string `json:"name"`
+	ID       string     `json:"id"`
+	PlayerID string     `json:"player_id"`
+	Name     string     `json:"name"`
+	Size     dnd5e.Size `json:"size,omitempty"`
 
 	// Core attributes
 	Level            int `json:"level"`
@@ -125,6 +127,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		id:                  d.ID,
 		playerID:            d.PlayerID,
 		name:                d.Name,
+		size:                characterSize(d.Size, d.RaceID),
 		level:               d.Level,
 		proficiencyBonus:    d.ProficiencyBonus,
 		raceID:              d.RaceID,
@@ -244,7 +247,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 			continue
 		}
 
-		char.conditions = append(char.conditions, condition)
+		char.addCondition(condition)
 	}
 
 	// Load resources from persisted data

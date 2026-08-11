@@ -35,7 +35,7 @@ func NewThug(id string) *monster.Monster {
 		Name:        "mace",
 		AttackBonus: 4,       // +2 STR + 2 proficiency
 		DamageDice:  "1d6+2", // 1d6 + STR
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Bludgeoning,
 	}))
 

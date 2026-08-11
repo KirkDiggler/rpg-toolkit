@@ -4,6 +4,7 @@
 package monsters
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -18,6 +19,7 @@ func NewBrownBear(id string) *monster.Monster {
 		ID:   id,
 		Name: "Brown Bear",
 		Ref:  refs.Monsters.BrownBear(),
+		Size: dnd5e.SizeLarge,
 		HP:   34, // 4d10+12
 		AC:   11, // Natural armor
 		AbilityScores: shared.AbilityScores{
@@ -35,7 +37,7 @@ func NewBrownBear(id string) *monster.Monster {
 		Name:        "bite",
 		AttackBonus: 6,       // +4 STR + 2 proficiency
 		DamageDice:  "1d8+4", // 1d8 + STR
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Piercing,
 	}))
 
@@ -44,7 +46,7 @@ func NewBrownBear(id string) *monster.Monster {
 		Name:        "claw",
 		AttackBonus: 6,       // +4 STR + 2 proficiency
 		DamageDice:  "2d4+4", // 2d4 + STR
-		Reach:       5,
+		Reach:       1,
 		DamageType:  damage.Slashing,
 	}))
 

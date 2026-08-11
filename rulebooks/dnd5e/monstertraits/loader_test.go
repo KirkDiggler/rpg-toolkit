@@ -9,7 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage/affinity"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -32,6 +35,18 @@ func TestAllTraitRefs_NoPhantomEntries(t *testing.T) {
 
 	blobs := map[string]json.RawMessage{}
 
+	for _, ref := range []*core.Ref{
+		refs.DamageAffinities.Resistance(),
+		refs.DamageAffinities.Vulnerability(),
+		refs.DamageAffinities.Immunity(),
+	} {
+		affinityJSON, err := json.Marshal(affinity.Data{
+			Ref: ref, OwnerID: "test-monster", DamageType: damage.Slashing,
+		})
+		require.NoError(t, err)
+		blobs[ref.String()] = affinityJSON
+	}
+
 	immunityJSON, err := json.Marshal(ImmunityData{
 		Ref: refs.MonsterTraits.Immunity(), OwnerID: "test-monster", DamageType: damage.Slashing,
 	})
@@ -43,6 +58,13 @@ func TestAllTraitRefs_NoPhantomEntries(t *testing.T) {
 	})
 	require.NoError(t, err)
 	blobs[refs.MonsterTraits.Vulnerability().String()] = vulnerabilityJSON
+
+	conditionImmunityJSON, err := json.Marshal(ConditionImmunityData{
+		Ref: refs.MonsterTraits.ConditionImmunity(), OwnerID: "test-monster",
+		Conditions: []dnd5eEvents.ConditionType{dnd5eEvents.ConditionBlinded},
+	})
+	require.NoError(t, err)
+	blobs[refs.MonsterTraits.ConditionImmunity().String()] = conditionImmunityJSON
 
 	packTacticsJSON, err := json.Marshal(PackTacticsData{
 		Ref: refs.MonsterTraits.PackTactics(), OwnerID: "test-monster",

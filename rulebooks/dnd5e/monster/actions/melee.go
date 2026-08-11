@@ -22,16 +22,20 @@ type MeleeConfig struct {
 	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
 	Reach       int         `json:"reach"`        // in hexes, typically 1 (5ft) or 2 (10ft reach)
 	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing, slashing
+	// DamageComponents supports attacks with more than one damage type. The
+	// legacy DamageDice and DamageType fields remain for old saved monsters.
+	DamageComponents []dnd5eEvents.AttackDamageComponent `json:"damage_components,omitempty"`
 }
 
 // MeleeAction implements a generic melee weapon attack.
 // This generalizes ScimitarAction to work with any melee weapon.
 type MeleeAction struct {
-	name        string
-	attackBonus int
-	damageDice  string
-	reach       int
-	damageType  damage.Type
+	name             string
+	attackBonus      int
+	damageDice       string
+	reach            int
+	damageType       damage.Type
+	damageComponents []dnd5eEvents.AttackDamageComponent
 }
 
 // Ensure MeleeAction implements MonsterAction
@@ -39,12 +43,17 @@ var _ monster.MonsterAction = (*MeleeAction)(nil)
 
 // NewMeleeAction creates a melee action with the given config
 func NewMeleeAction(config MeleeConfig) *MeleeAction {
+	components := config.DamageComponents
+	if len(components) == 0 {
+		components = []dnd5eEvents.AttackDamageComponent{{Dice: config.DamageDice, DamageType: config.DamageType}}
+	}
 	return &MeleeAction{
-		name:        config.Name,
-		attackBonus: config.AttackBonus,
-		damageDice:  config.DamageDice,
-		reach:       config.Reach,
-		damageType:  config.DamageType,
+		name:             config.Name,
+		attackBonus:      config.AttackBonus,
+		damageDice:       config.DamageDice,
+		reach:            config.Reach,
+		damageType:       config.DamageType,
+		damageComponents: components,
 	}
 }
 
@@ -121,10 +130,11 @@ func (m *MeleeAction) Activate(ctx context.Context, owner core.Entity, input mon
 	// Publish attack event - the combat system handles the actual resolution
 	attackTopic := dnd5eEvents.AttackTopic.On(input.Bus)
 	err := attackTopic.Publish(ctx, dnd5eEvents.AttackEvent{
-		AttackerID: owner.GetID(),
-		TargetID:   input.Target.GetID(),
-		WeaponRef:  m.name,
-		IsMelee:    true,
+		AttackerID:       owner.GetID(),
+		TargetID:         input.Target.GetID(),
+		WeaponRef:        m.name,
+		IsMelee:          true,
+		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), m.damageComponents...),
 	})
 	if err != nil {
 		return rpgerr.Wrapf(err, "failed to publish attack event")
@@ -136,11 +146,12 @@ func (m *MeleeAction) Activate(ctx context.Context, owner core.Entity, input mon
 // ToData converts the action to its serializable form
 func (m *MeleeAction) ToData() monster.ActionData {
 	config := MeleeConfig{
-		Name:        m.name,
-		AttackBonus: m.attackBonus,
-		DamageDice:  m.damageDice,
-		Reach:       m.reach,
-		DamageType:  m.damageType,
+		Name:             m.name,
+		AttackBonus:      m.attackBonus,
+		DamageDice:       m.damageDice,
+		Reach:            m.reach,
+		DamageType:       m.damageType,
+		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), m.damageComponents...),
 	}
 	configJSON, _ := json.Marshal(config)
 
