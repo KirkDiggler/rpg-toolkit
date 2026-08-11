@@ -29,7 +29,7 @@ const (
 // simpleDecider is a minimal test decider that holds.
 type simpleDecider struct{}
 
-func (s *simpleDecider) Decide(view []intel.Holding) (encounter.Intent, error) {
+func (s *simpleDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 	return encounter.IntentHold{}, nil
 }
 
@@ -274,6 +274,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		}
 		_, err := encounter.NewEncounter(setup)
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().Contains(err.Error(), "duplicate member alice",
+			"the duplicate-ID rejection must name the duplicated ID, not echo the empty-ID message")
 	})
 
 	s.Run("atomicity: after error, valid setup works", func() {
@@ -305,6 +307,475 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		enc, err := encounter.NewEncounter(setup2)
 		s.Require().NoError(err)
 		s.NotNil(enc)
+	})
+}
+
+// validConnSetup returns a fresh SetupInput with two DELIBERATELY
+// mismatched rooms — r1 is 10x4 (occluder at (2,2)), r2 is 3x9 (occluder
+// at (1,3)) — and one fully valid connection between them, with
+// FromPosition{7,1} valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2.
+// Same-sized rooms and equal From/To positions would make a check that
+// validates an endpoint against the WRONG room (or a Load-side From/To
+// transposition) invisible: this is the base for
+// TestSetupConnectionValidation's one-defect rows, mirroring the same
+// defect classes rejected at Load (TestLoadRejections).
+func validConnSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 10, Height: 4, Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "r2", Width: 3, Height: 9, Occluders: []spatial.Position{{X: 1, Y: 3}}},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "c1", From: "r1", To: "r2",
+					FromPosition: spatial.Position{X: 7, Y: 1},
+					ToPosition:   spatial.Position{X: 1, Y: 7}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupConnectionValidation mirrors TestLoadRejections' connection
+// defect classes at the Setup seam: each case breaks exactly one thing
+// about an otherwise-valid connection and must reject with ErrBadConnection.
+// Fragments name the missing room where applicable — a check neutered in
+// favor of the coincidental zero-value-room bounds fallback must not pass.
+func (s *EncounterTestSuite) TestSetupConnectionValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		fragment string
+	}{
+		{"empty connection id", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ID = ""
+		}, "empty id"},
+		{"duplicate connection id", func(in *encounter.SetupInput) {
+			in.Field.Connections = append(in.Field.Connections, in.Field.Connections[0])
+		}, "duplicate connection"},
+		{"connection unknown from room", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].From = "nowhere"
+		}, `unknown room "nowhere"`},
+		{"connection unknown to room", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].To = "nowhere"
+		}, `unknown room "nowhere"`},
+		{"connection self-connection", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].To = "r1"
+		}, "itself"},
+		{"connection from-position out of bounds", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].FromPosition = spatial.Position{X: 99, Y: 99}
+		}, "from-position out of bounds"},
+		{"connection to-position out of bounds", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 99, Y: 99}
+		}, "to-position out of bounds"},
+		{"connection from-position on occluder", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].FromPosition = spatial.Position{X: 2, Y: 2}
+		}, "from-position on occluder"},
+		{"connection to-position on occluder", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 3}
+		}, "to-position on occluder"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validConnSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrBadConnection, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct — the one-defect discipline only
+	// means something if zero defects pass. Since FromPosition{7,1} is valid
+	// ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive control
+	// also pins that each endpoint is checked against ITS OWN room: a check
+	// wired to the wrong room would reject this valid connection.
+	enc, err := encounter.NewEncounter(validConnSetup())
+	s.Require().NoError(err, "the valid base fixture must construct")
+	data := enc.ToData()
+	s.Require().Len(data.Field.Connections, 1)
+	s.Equal(&encounter.PositionData{X: 7, Y: 1}, data.Field.Connections[0].FromPosition,
+		"from-position must survive unswapped")
+	s.Equal(&encounter.PositionData{X: 1, Y: 7}, data.Field.Connections[0].ToPosition,
+		"to-position must survive unswapped")
+}
+
+// connBoundsSetup returns a fresh SetupInput with a 4x3 room r1 (valid
+// coordinates 0..3 x 0..2) and an r2 large enough to always hold the
+// connection's fixed ToPosition — used to pin the square grid's strictly-
+// less-than bounds semantics against FromPosition in r1, independent of any
+// cross-room concern (that's validConnSetup's job).
+func connBoundsSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 4, Height: 3},
+				{ID: "r2", Width: 4, Height: 3},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "c1", From: "r1", To: "r2",
+					FromPosition: spatial.Position{X: 0, Y: 0},
+					ToPosition:   spatial.Position{X: 0, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestConnectionEndpointBoundsBoundaries pins the square grid's strictly-
+// less-than bounds semantics at the Setup seam (#922 T1 Opus review, minor M3/M4):
+// a coordinate exactly at the room's Width/Height is out of bounds (valid
+// range is 0..dimension-1, matching member placement), a negative coordinate
+// is out of bounds, and Width-1/Height-1 — the last valid cell — is accepted.
+func (s *EncounterTestSuite) TestConnectionEndpointBoundsBoundaries() {
+	s.Run("X exactly at width is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 4, Y: 0}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Y exactly at height is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 0, Y: 3}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative X is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: -1, Y: 0}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative Y is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 0, Y: -1}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Width-1,Height-1 is accepted (positive control)", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 3, Y: 2}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err, "the last valid cell must be accepted")
+	})
+}
+
+// validRoomSetup returns a fresh SetupInput with a single valid square room
+// and one member — the base for TestSetupRoomValidation's one-defect rows.
+func validRoomSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupRoomValidation pins room-level defects at the Setup seam
+// (#922 T1.5, deferred from the Opus T1 review): empty room ID, duplicate
+// room ID, and an unrecognized grid shape all reject with ErrNoField — a
+// malformed room list is as unusable as an empty one.
+func (s *EncounterTestSuite) TestSetupRoomValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		fragment string
+	}{
+		{"room has empty id", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].ID = ""
+		}, "room has empty id"},
+		{"duplicate room id", func(in *encounter.SetupInput) {
+			in.Field.Rooms = append(in.Field.Rooms, in.Field.Rooms[0])
+		}, "duplicate room"},
+		{"room has unknown grid shape", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Grid = spatial.GridShape(99)
+		}, "unknown grid shape"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validRoomSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct — the one-defect discipline only
+	// means something if zero defects pass.
+	_, err := encounter.NewEncounter(validRoomSetup())
+	s.Require().NoError(err, "the valid base fixture must construct")
+}
+
+// TestHexRoomBounds pins that a hex-shaped room's member-placement bounds
+// defer to the room's own constructed Grid rather than hardcoded rectangle
+// math — and, since the switch to AxialHexGrid (tools/spatial's origin-
+// centered axial Q/R grid, see RoomInput.Grid's doc comment), that hex
+// validity now genuinely DIVERGES from square's, not just gridless's: a
+// hex room's bounds are centered on the origin ([-Width/2, Width/2) for Q,
+// [-Height/2, Height/2) for R), so NEGATIVE coordinates are legal — a
+// position square would reject outright. This supersedes an earlier
+// finding (when this module built spatial.HexGrid, a bounded offset grid)
+// that hex's accept/reject shape was numerically identical to square's and
+// only gridless could kill a "grid shape ignored, always builds square"
+// mutant; the negative-Q case below now kills that mutant independently.
+func (s *EncounterTestSuite) TestHexRoomBounds() {
+	// Width=4, Height=3 => Q valid in [-2,2), R valid in [-1.5,1.5).
+	hexSetup := func(pos spatial.Position) *encounter.SetupInput {
+		return &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
+	}
+
+	s.Run("positive Q, positive R within span accepted", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 1, Y: 1}))
+		s.Require().NoError(err)
+	})
+
+	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -1, Y: 0}))
+		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
+	})
+
+	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 2, Y: 0}))
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+
+	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -2, Y: 0}))
+		s.Require().NoError(err)
+	})
+
+	s.Run("Q beyond -Width/2 rejected", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -3, Y: 0}))
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+}
+
+// TestHexConnectionEndpointNegativeAxial pins connection endpoints in a
+// hex room at the Setup seam: a negative axial Q/R endpoint — the
+// ordinary case for an origin-centered hex room — validates exactly like
+// a positive one, via the same grid-deferred bounds check members use.
+// Load-seam counterpart: TestHexConnectionEndpointNegativeAxialLoad in
+// data_test.go.
+func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "square-room", Width: 10, Height: 10},
+				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "square-room", To: "hex-room",
+				FromPosition: spatial.Position{X: 9, Y: 9},
+				ToPosition:   spatial.Position{X: -2, Y: -2},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
+}
+
+// validHexAxialSetup returns a fresh SetupInput with two hex rooms joined
+// by one connection, a member, and an occluder — every position integral
+// axial, including a negative one (gate.ToPosition). The base for
+// TestSetupHexIntegralAxial's one-defect rows: interim tools/spatial#926
+// enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
+// any of these positions in a hex room.
+func validHexAxialSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
+					Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: spatial.Position{X: 1, Y: 1},
+				ToPosition:   spatial.Position{X: -1, Y: -1},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupHexIntegralAxial pins the interim tools/spatial#926
+// enforcement at the Setup seam: a fractional X or Y is rejected for
+// every position kind a hex room accepts externally — member, both
+// connection endpoints, and an occluder — each with the error class its
+// existing defect family already uses. Load-seam counterpart:
+// TestLoadHexIntegralAxial in data_test.go.
+func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
+	cases := []struct {
+		name    string
+		mutate  func(in *encounter.SetupInput)
+		alsoErr error
+	}{
+		{"member position fractional", func(in *encounter.SetupInput) {
+			in.Members[0].Position = spatial.Position{X: 0.5, Y: 0}
+		}, encounter.ErrBadPlacement},
+		{"connection from-position fractional", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
+		}, encounter.ErrBadConnection},
+		{"connection to-position fractional", func(in *encounter.SetupInput) {
+			in.Field.Connections[0].ToPosition = spatial.Position{X: -1.5, Y: -1}
+		}, encounter.ErrBadConnection},
+		{"occluder position fractional", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
+		}, encounter.ErrNoField},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validHexAxialSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			s.Require().Contains(err.Error(), "not an integral axial cell",
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// Positive control: the valid base — integral throughout, including
+	// a NEGATIVE axial position (gate.ToPosition at (-1,-1)) — constructs.
+	_, err := encounter.NewEncounter(validHexAxialSetup())
+	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
+}
+
+// TestMoveHexIntegralAxial is Move's verb-seam counterpart: a fractional
+// target in a hex room is rejected (moveMember is the shared path with
+// Pump's IntentMoveTo, so this also covers decider-driven moves).
+func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	s.Run("fractional target rejected", func() {
+		_, err := enc.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: 1.5, Y: 0}})
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().Contains(err.Error(), "not an integral axial cell")
+	})
+
+	s.Run("integral negative axial target accepted", func() {
+		_, err := enc.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: -2, Y: -1}})
+		s.Require().NoError(err)
+	})
+}
+
+// TestJoinHexIntegralAxial is Join's verb-seam counterpart.
+func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	s.Run("fractional position rejected", func() {
+		_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+			ID: "p2", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 1, Y: 0.5},
+		}})
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().Contains(err.Error(), "not an integral axial cell")
+	})
+
+	s.Run("integral negative axial position accepted", func() {
+		_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+			ID: "p3", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: -3, Y: -3},
+		}})
+		s.Require().NoError(err)
+	})
+}
+
+// TestGridlessRoomInclusiveBounds pins gridless's own divergence from the
+// rectangle math this task deletes: GridlessRoom.IsValidPosition
+// (tools/spatial/gridless.go:33-36) uses an INCLUSIVE upper bound
+// (x <= Width), unlike SquareGrid's exclusive (x < Width). A position
+// exactly AT Width — rejected for square — is a sharp, independent proof
+// that bounds checks ask the room's OWN constructed grid rather than a
+// hardcoded rectangle: a "grid shape ignored, always builds square" mutant
+// would reject this position; the correct code accepts it. (AxialHexGrid
+// diverges from square too, but via origin-centered bounds and legal
+// negative coordinates, not an inclusive upper bound — see
+// TestHexRoomBounds.)
+func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
+	gridlessSetup := func(pos spatial.Position) *encounter.SetupInput {
+		return &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeGridless},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
+	}
+
+	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: 4, Y: 0}))
+		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+	})
+
+	s.Run("position negative is still rejected", func() {
+		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: -1, Y: 0}))
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 	})
 }
 
@@ -1034,6 +1505,390 @@ func (s *EncounterTestSuite) TestMoveSpatialRejectionAtomic() {
 	s.Require().NoError(err, "alice still moves from her original position")
 }
 
+// Traverse tests (Task 2)
+
+// newTwoRoomEncounterWithConnection returns an encounter with room-a and
+// room-b connected by "door1": FromPosition {9,5} in room-a, ToPosition
+// {0,5} in room-b — DELIBERATELY asymmetric endpoints (T1 review lesson)
+// so a from/to transposition mutant (landing the traverser back at the
+// DEPARTURE endpoint instead of the far one) is observable. alice starts
+// AT room-a's door endpoint, ready to traverse. bob starts adjacent to
+// her in room-a (mutual line of sight, for ghost-at-threshold pins).
+// goblin starts in room-b adjacent to the arrival endpoint (for
+// arrival-Current and T3 pins).
+func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "room-a", To: "room-b",
+					FromPosition: spatial.Position{X: 9, Y: 5},
+					ToPosition:   spatial.Position{X: 0, Y: 5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 8, Y: 5}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: "room-b", Position: spatial.Position{X: 1, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestTraverseValidation pins the guard order (nil input, closed, unknown
+// member, unknown connection, endpoint mismatch) and that each rejection
+// uses the correct sentinel.
+func (s *EncounterTestSuite) TestTraverseValidation() {
+	s.Run("nil input returns ErrNilInput", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(nil)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+	})
+
+	s.Run("closed encounter returns ErrClosed", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+
+		_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+
+	s.Run("unknown member returns ErrNotMember", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: core.EntityID("nobody"), Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+	})
+
+	s.Run("unknown connection returns ErrNoConnection", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "no-such-door"})
+		s.Require().ErrorIs(err, encounter.ErrNoConnection)
+	})
+
+	s.Run("off-threshold position (right room, wrong cell) returns ErrBadPlacement", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		// bob is in room-a (the connection's From room) but not at the door.
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: bob, Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+
+	s.Run("wrong room (connection doesn't touch it) returns ErrBadPlacement", func() {
+		// alice sits at room-a's door COORDINATES, but in room-c — a room
+		// the connection doesn't touch at all. Proves room membership is
+		// checked, not just coordinate equality.
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "room-a", Width: 10, Height: 10},
+					{ID: "room-b", Width: 10, Height: 10},
+					{ID: "room-c", Width: 10, Height: 10},
+				},
+				Connections: []encounter.ConnectionInput{
+					{ID: "door1", From: "room-a", To: "room-b",
+						FromPosition: spatial.Position{X: 9, Y: 5},
+						ToPosition:   spatial.Position{X: 0, Y: 5}},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: alice, Kind: encounter.KindPlayer, Room: "room-c", Position: spatial.Position{X: 9, Y: 5}},
+			},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		s.Require().NoError(err)
+
+		_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+}
+
+// TestTraverseBothDirections pins the threshold-success path in BOTH
+// directions through the same connection (T1 law: connections are
+// bidirectional), asserting room+position after each hop.
+func (s *EncounterTestSuite) TestTraverseBothDirections() {
+	s.Run("room-a to room-b", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+		s.Equal(alice, out.Traversed.Member)
+		s.Equal("room-a", out.Traversed.FromRoom)
+		s.Equal(spatial.Position{X: 9, Y: 5}, out.Traversed.From)
+		s.Equal("room-b", out.Traversed.ToRoom)
+		s.Equal(spatial.Position{X: 0, Y: 5}, out.Traversed.To)
+
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		found := false
+		for _, m := range members {
+			if m.ID == alice {
+				s.Equal("room-b", m.Room)
+				found = true
+			}
+		}
+		s.True(found, "alice must still be a member, now in room-b")
+	})
+
+	s.Run("room-b to room-a (bidirectional through the same connection)", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+
+		out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+		s.Equal("room-b", out.Traversed.FromRoom)
+		s.Equal(spatial.Position{X: 0, Y: 5}, out.Traversed.From)
+		s.Equal("room-a", out.Traversed.ToRoom)
+		s.Equal(spatial.Position{X: 9, Y: 5}, out.Traversed.To)
+
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		for _, m := range members {
+			if m.ID == alice {
+				s.Equal("room-a", m.Room)
+			}
+		}
+	})
+}
+
+// TestTraverseGhostAtThreshold pins that a departure-room observer's
+// holding of the traverser fades to a ghost AT THE DEPARTURE ENDPOINT —
+// their last-observed position — not the (never-seen) arrival position.
+func (s *EncounterTestSuite) TestTraverseGhostAtThreshold() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	bobBefore, err := enc.View(&encounter.ViewInput{Member: bob})
+	s.Require().NoError(err)
+	s.Require().Len(bobBefore, 1, "bob must see alice before the traverse (geometry precondition)")
+	s.Equal(intel.Current, bobBefore[0].Status)
+
+	_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	bobAfter, err := enc.View(&encounter.ViewInput{Member: bob})
+	s.Require().NoError(err)
+	s.Require().Len(bobAfter, 1, "the ghost is HELD, not gone")
+	s.Equal(intel.Held, bobAfter[0].Status, "bob's sight of alice must fade — she left room-a")
+
+	var aliceSeen encounter.SightPayload
+	s.Require().NoError(json.Unmarshal(bobAfter[0].Payload, &aliceSeen))
+	s.Equal("room-a", aliceSeen.Room, "ghost holds alice's LAST-SEEN room")
+	s.Equal(9.0, aliceSeen.X, "ghost holds alice at the DEPARTURE endpoint, not the arrival one")
+	s.Equal(5.0, aliceSeen.Y)
+}
+
+// TestTraverseArrivalCurrent pins that an arrival-room observer gains the
+// traverser as Current at the arrival endpoint.
+func (s *EncounterTestSuite) TestTraverseArrivalCurrent() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	goblinView, err := enc.View(&encounter.ViewInput{Member: goblin})
+	s.Require().NoError(err)
+	s.Require().Len(goblinView, 1)
+	s.Equal(intel.Subject(alice), goblinView[0].Subject)
+	s.Equal(intel.Current, goblinView[0].Status, "goblin must see alice as Current — she arrived in room-b")
+
+	var aliceSeen encounter.SightPayload
+	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
+	s.Equal("room-b", aliceSeen.Room)
+	s.Equal(0.0, aliceSeen.X)
+	s.Equal(5.0, aliceSeen.Y)
+}
+
+// TestTraverseSightNeverCrossesOpening pins law T3: sight never crosses a
+// connection's opening. goblin stands in room-b, adjacent to the arrival
+// endpoint. Before alice traverses — while she's still in room-a, at the
+// connection's OTHER endpoint — goblin must have NO holding of her at
+// all, not even a ghost: rooms are separate spatial containers with no
+// shared geometry (spatial ADR-0015), so there is no code path by which
+// goblin's line-of-sight computation, scoped entirely to room-b, could
+// observe alice in room-a.
+func (s *EncounterTestSuite) TestTraverseSightNeverCrossesOpening() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	goblinBefore, err := enc.View(&encounter.ViewInput{Member: goblin})
+	s.Require().NoError(err)
+	s.Empty(goblinBefore, "goblin must not perceive alice through the unopened doorway")
+}
+
+// TestTraverseOwnView pins that after traversing, the traverser's OWN
+// percept reflects arrival-room members Current and departure-room
+// members faded to ghosts — the same complete-percept contract that
+// governs everyone else's view of them.
+func (s *EncounterTestSuite) TestTraverseOwnView() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	aliceBefore, err := enc.View(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(aliceBefore, 1, "alice sees only bob before traversing (goblin is behind the unopened door)")
+	s.Equal(intel.Subject(bob), aliceBefore[0].Subject)
+	s.Equal(intel.Current, aliceBefore[0].Status)
+
+	_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	aliceAfter, err := enc.View(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(aliceAfter, 2, "alice now holds both bob (ghosted) and goblin (Current)")
+
+	var bobHolding, goblinHolding *intel.Holding
+	for i := range aliceAfter {
+		switch aliceAfter[i].Subject {
+		case intel.Subject(bob):
+			bobHolding = &aliceAfter[i]
+		case intel.Subject(goblin):
+			goblinHolding = &aliceAfter[i]
+		}
+	}
+	s.Require().NotNil(bobHolding, "alice must still hold bob (ghosted)")
+	s.Equal(intel.Held, bobHolding.Status, "bob fades to a ghost — alice left room-a")
+	s.Require().NotNil(goblinHolding, "alice must now hold goblin (Current)")
+	s.Equal(intel.Current, goblinHolding.Status, "goblin is Current — alice arrived in room-b")
+}
+
+// TestTraverseEndingFiresOnArrival pins that a ReachedPosition ending
+// declared at the connection's far endpoint fires on arrival, exactly
+// like Move firing endings at a movement target.
+func (s *EncounterTestSuite) TestTraverseEndingFiresOnArrival() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "room-a", To: "room-b",
+					FromPosition: spatial.Position{X: 9, Y: 5},
+					ToPosition:   spatial.Position{X: 0, Y: 5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
+				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}}},
+		},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Outcome, "outcome should be set when arriving at the ending position")
+	s.Equal("escaped", out.Outcome.Ending)
+	s.Require().Len(out.Outcome.Members, 1)
+	s.Equal(alice, out.Outcome.Members[0].ID)
+	s.Equal("room-b", out.Outcome.Members[0].Room)
+	s.Equal(spatial.Position{X: 0, Y: 5}, out.Outcome.Members[0].Position)
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.False(status.Open)
+}
+
+// TestTraverseMonsterOnUnfilteredEndingDoesNotClose pins the players-only
+// rule for unfiltered ReachedPosition endings, carried over verbatim from
+// Move/Pump: a monster traversing onto an unfiltered ending's cell must
+// NOT close the encounter.
+func (s *EncounterTestSuite) TestTraverseMonsterOnUnfilteredEndingDoesNotClose() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "room-a", To: "room-b",
+					FromPosition: spatial.Position{X: 9, Y: 5},
+					ToPosition:   spatial.Position{X: 0, Y: 5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: goblin, Kind: encounter.KindMonster, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			// Unfiltered: empty Member means players only.
+			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
+				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}, Member: ""}},
+		},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: goblin, Connection: "door1"})
+	s.Require().NoError(err)
+	s.Nil(out.Outcome, "unfiltered ending must not fire for a monster")
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.True(status.Open, "encounter should remain open")
+}
+
+// TestTraverseBeatPinned pins the traversed beat: tag, payload, and
+// Story reflects it in position (the Move/Exit precedent applied here).
+func (s *EncounterTestSuite) TestTraverseBeatPinned() {
+	enc := s.newTwoRoomEncounterWithConnection()
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq, "TraverseOutput.Seq references the traversed beat")
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("traversed", beat["beat"])
+	s.Equal(string(alice), beat["member"])
+	s.Equal("door1", beat["connection"])
+}
+
+// TestTraverseClockUnchanged pins law T4: traversal is an activity, not
+// time — the exploration clock does not advance.
+func (s *EncounterTestSuite) TestTraverseClockUnchanged() {
+	enc := s.newTwoRoomEncounterWithConnection()
+	before := enc.ToData().Clock.HighWater
+
+	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	after := enc.ToData().Clock.HighWater
+	s.Equal(before, after, "traversal is an activity, not time — the clock must not advance")
+}
+
+// TestTraverseThenJoinVacatedCellThenTraverseBack pins the wave-1 Exit
+// lesson (see TestExitThenRejoinSameID) against Traverse's own
+// remove+place composition: after alice traverses room-a -> room-b, a
+// NEW member can Join at the vacated room-a endpoint cell (proving
+// RemoveEntity truly cleared it, not just hid it from Members/View), and
+// alice can traverse BACK through the same connection (proving
+// PlaceEntity into room-b left no stale index entry either).
+func (s *EncounterTestSuite) TestTraverseThenJoinVacatedCellThenTraverseBack() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+		ID: core.EntityID("charlie"), Kind: encounter.KindPlayer,
+		Room: "room-a", Position: spatial.Position{X: 9, Y: 5},
+	}})
+	s.Require().NoError(err, "the vacated cell must truly be free — no stale registry entry in room-a")
+
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err, "alice must be able to traverse back — no stale registry entry in room-b either")
+	s.Equal("room-a", out.Traversed.ToRoom)
+}
+
 // Membership flow tests (Task 5)
 
 func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
@@ -1586,6 +2441,11 @@ func (s *EncounterTestSuite) TestAllMutatingVerbsReturnErrClosedPostClose() {
 
 		// Pump on closed: ErrClosed
 		_, err = enc.Pump(&encounter.PumpInput{})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+
+		// Traverse on closed: ErrClosed (checked before connection lookup,
+		// so a nonexistent connection ID still surfaces ErrClosed first)
+		_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
 		s.Require().ErrorIs(err, encounter.ErrClosed)
 
 		// End on closed: ErrClosed

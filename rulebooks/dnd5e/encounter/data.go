@@ -52,10 +52,17 @@ type FieldData struct {
 }
 
 // RoomData mirrors RoomInput exactly to persist construction inputs.
+// Grid is persisted as spatial's own GridType string ("hex" or
+// "gridless" — tools/spatial's GridTypeHex/GridTypeGridless), not the
+// GridShape iota: the iota is an in-process enumeration order, not a
+// wire contract, and would silently reinterpret old blobs if spatial
+// ever reordered it. Grid omits when empty (the square zero value) so
+// pre-v0.2 blobs and square-only encounters keep byte-identical output.
 type RoomData struct {
 	ID         string         `json:"id"`
 	Width      int            `json:"width"`
 	Height     int            `json:"height"`
+	Grid       string         `json:"grid,omitempty"`
 	Occluders  []PositionData `json:"occluders,omitempty"`
 	Boundaries []BoundaryData `json:"boundaries,omitempty"`
 }
@@ -75,10 +82,17 @@ type BoundaryData struct {
 }
 
 // ConnectionData is the persistent representation of a connection.
+// FromPosition and ToPosition are required — ToData always populates
+// both; a nil pointer at Load means the field was absent from the
+// blob and is rejected (a connection without both endpoints has no
+// meaning, and a missing endpoint must never silently default to
+// (0,0), a legal cell that would invent topology).
 type ConnectionData struct {
-	ID   string `json:"id"`
-	From string `json:"from"`
-	To   string `json:"to"`
+	ID           string        `json:"id"`
+	From         string        `json:"from"`
+	To           string        `json:"to"`
+	FromPosition *PositionData `json:"from_position"`
+	ToPosition   *PositionData `json:"to_position"`
 }
 
 // MemberData is the persistent representation of a member's current placement.
@@ -177,6 +191,7 @@ func (e *Encounter) ToData() EncounterData {
 			ID:         ri.ID,
 			Width:      ri.Width,
 			Height:     ri.Height,
+			Grid:       gridShapeToData(ri.Grid),
 			Occluders:  make([]PositionData, len(ri.Occluders)),
 			Boundaries: make([]BoundaryData, len(ri.Boundaries)),
 		}
@@ -198,7 +213,13 @@ func (e *Encounter) ToData() EncounterData {
 	}
 
 	for i, ci := range e.connectionsInput {
-		fieldData.Connections[i] = ConnectionData(ci)
+		fieldData.Connections[i] = ConnectionData{
+			ID:           ci.ID,
+			From:         ci.From,
+			To:           ci.To,
+			FromPosition: &PositionData{X: ci.FromPosition.X, Y: ci.FromPosition.Y},
+			ToPosition:   &PositionData{X: ci.ToPosition.X, Y: ci.ToPosition.Y},
+		}
 	}
 
 	// Build outcome if present
@@ -230,11 +251,49 @@ func (e *Encounter) ToData() EncounterData {
 	}
 }
 
+// gridShapeToData maps a room's constructed grid shape to its persisted
+// string form, reusing spatial's own GridType* constants
+// (tools/spatial/data.go) so the wire vocabulary matches spatial's own
+// persistence. Square (the zero value) maps to "" so byte-compat
+// goldens keep omitting the field entirely.
+func gridShapeToData(shape spatial.GridShape) string {
+	switch shape {
+	case spatial.GridShapeHex:
+		return spatial.GridTypeHex
+	case spatial.GridShapeGridless:
+		return spatial.GridTypeGridless
+	default:
+		return ""
+	}
+}
+
+// gridDataToShape is gridShapeToData's inverse, used at Load. Empty
+// string and the literal "square" both mean the zero-value shape —
+// ToData never emits "square" (it omits the field), but Load accepts
+// it defensively for hand-authored fixtures. An unrecognized string
+// returns ok=false so the caller can reject with a fragment naming
+// the bad value, rather than silently defaulting to square.
+func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
+	switch s {
+	case "", spatial.GridTypeSquare:
+		return spatial.GridShapeSquare, true
+	case spatial.GridTypeHex:
+		return spatial.GridShapeHex, true
+	case spatial.GridTypeGridless:
+		return spatial.GridShapeGridless, true
+	default:
+		return spatial.GridShapeSquare, false
+	}
+}
+
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
-// no rooms, no endings, duplicate member IDs, member's room not in field, member position
-// out of bounds, empty/reserved ending keys, undeclared outcome ending, connection
-// referencing missing room, everMembers missing a current member.
+// no rooms, no endings, empty/reserved ending keys (and kind/reached_position checks),
+// undeclared outcome ending, room defects (empty/duplicate ID, unrecognized grid shape),
+// connection defects (empty/duplicate ID, missing room, self-connection, endpoint out of
+// bounds or on an occluder), duplicate member IDs, member's room not in field, member
+// position out of bounds, outcome member room/bounds checks, everMembers missing a
+// current member.
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
@@ -286,18 +345,106 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 	}
 
-	// Build room map for validation
+	// Validate rooms: unique non-empty IDs, recognized grid shape (deferred
+	// from Opus T1 review — empty/duplicate room IDs previously went
+	// unvalidated, and connections resolved via last-wins map insertion).
+	// Reuses ErrNoField: a malformed room list is as unusable as an empty
+	// one. roomGrids holds each room's constructed Grid so downstream bounds
+	// checks (connections, members, outcome members) ask the SAME grid the
+	// room will actually be built with — a hardcoded rectangle check would
+	// silently diverge from GridlessRoom's inclusive upper bound
+	// (tools/spatial/gridless.go: IsValidPosition uses x <= Width, not
+	// x < Width like Square/Hex).
 	roomMap := make(map[string]bool)
 	roomsByID := make(map[string]RoomData)
+	roomGrids := make(map[string]spatial.Grid, len(data.Field.Rooms))
 	for _, r := range data.Field.Rooms {
+		if r.ID == "" {
+			return nil, fmt.Errorf("load encounter: room has empty id: %w: %w", ErrInvalidData, ErrNoField)
+		}
+		if roomMap[r.ID] {
+			return nil, fmt.Errorf("load encounter: duplicate room %q: %w: %w", r.ID, ErrInvalidData, ErrNoField)
+		}
+		shape, ok := gridDataToShape(r.Grid)
+		if !ok {
+			return nil, fmt.Errorf("load encounter: room %q has unknown grid shape %q: %w: %w", r.ID, r.Grid, ErrInvalidData, ErrNoField)
+		}
 		roomMap[r.ID] = true
 		roomsByID[r.ID] = r
+		roomGrids[r.ID] = buildRoomGrid(shape, r.Width, r.Height)
+
+		// Hex rooms require integral axial occluder positions (interim
+		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		for _, occ := range r.Occluders {
+			pos := spatial.Position{X: occ.X, Y: occ.Y}
+			if !isIntegralAxialPosition(roomGrids[r.ID], pos) {
+				return nil, fmt.Errorf("load encounter: room %q occluder (%g,%g) is not an integral axial cell: %w: %w", r.ID, occ.X, occ.Y, ErrInvalidData, ErrNoField)
+			}
+		}
 	}
 
-	// Validate connections reference existing rooms
+	// Validate connections: unique non-empty IDs, endpoints resolve to
+	// distinct declared rooms, and endpoints lie within their room's
+	// bounds (per the room's own grid) and off any occluder.
+	// ErrBadConnection rides alongside ErrInvalidData so connection defects
+	// are discriminable from other load rejections.
+	seenConnectionIDs := make(map[string]bool, len(data.Field.Connections))
 	for _, c := range data.Field.Connections {
-		if !roomMap[c.From] || !roomMap[c.To] {
-			return nil, fmt.Errorf("load encounter: connection %q references missing room: %w", c.ID, ErrInvalidData)
+		if c.ID == "" {
+			return nil, fmt.Errorf("load encounter: connection has empty id: %w: %w", ErrInvalidData, ErrBadConnection)
+		}
+		if seenConnectionIDs[c.ID] {
+			return nil, fmt.Errorf("load encounter: duplicate connection %q: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		seenConnectionIDs[c.ID] = true
+
+		fromRoom, ok := roomsByID[c.From]
+		if !ok {
+			return nil, fmt.Errorf("load encounter: connection %q references missing room %q: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
+		}
+		toRoom, ok := roomsByID[c.To]
+		if !ok {
+			return nil, fmt.Errorf("load encounter: connection %q references missing room %q: %w: %w", c.ID, c.To, ErrInvalidData, ErrBadConnection)
+		}
+		if c.From == c.To {
+			return nil, fmt.Errorf("load encounter: connection %q connects room %q to itself: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
+		}
+
+		// Both endpoints are required — ToData always populates them, so
+		// a nil pointer here means the field was absent from the blob
+		// (not merely zero-valued). Without this check a missing endpoint
+		// would unmarshal to a nil *PositionData and panic below; worse,
+		// if the field type were still a value struct, it would silently
+		// default to (0,0), a legal cell that invents topology.
+		if c.FromPosition == nil {
+			return nil, fmt.Errorf("load encounter: connection %q missing from_position: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if c.ToPosition == nil {
+			return nil, fmt.Errorf("load encounter: connection %q missing to_position: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+
+		if !roomGrids[c.From].IsValidPosition(spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
+			return nil, fmt.Errorf("load encounter: connection %q from-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if !isIntegralAxialPosition(roomGrids[c.From], spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
+			return nil, fmt.Errorf("load encounter: connection %q from-position is not an integral axial cell: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if !roomGrids[c.To].IsValidPosition(spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
+			return nil, fmt.Errorf("load encounter: connection %q to-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+		if !isIntegralAxialPosition(roomGrids[c.To], spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
+			return nil, fmt.Errorf("load encounter: connection %q to-position is not an integral axial cell: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+		}
+
+		for _, occ := range fromRoom.Occluders {
+			if occ.X == c.FromPosition.X && occ.Y == c.FromPosition.Y {
+				return nil, fmt.Errorf("load encounter: connection %q from-position on occluder: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+			}
+		}
+		for _, occ := range toRoom.Occluders {
+			if occ.X == c.ToPosition.X && occ.Y == c.ToPosition.Y {
+				return nil, fmt.Errorf("load encounter: connection %q to-position on occluder: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
+			}
 		}
 	}
 
@@ -317,23 +464,16 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter: member %q room %q not in field: %w", m.ID, m.Room, ErrInvalidData)
 		}
 
-		// Validate position in bounds
-		if m.Position.X < 0 || m.Position.Y < 0 {
+		// Validate position in bounds — grid-deferred: the room's own
+		// constructed Grid decides validity (see roomGrids above).
+		if !roomGrids[m.Room].IsValidPosition(spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
 			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w", m.ID, ErrInvalidData)
 		}
 
-		// Find room and check bounds
-		var roomHeight, roomWidth int
-		for _, r := range data.Field.Rooms {
-			if r.ID == m.Room {
-				roomWidth = r.Width
-				roomHeight = r.Height
-				break
-			}
-		}
-
-		if m.Position.X >= float64(roomWidth) || m.Position.Y >= float64(roomHeight) {
-			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w", m.ID, ErrInvalidData)
+		// Hex rooms require integral axial member positions (interim
+		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		if !isIntegralAxialPosition(roomGrids[m.Room], spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
+			return nil, fmt.Errorf("load encounter: member %q position is not an integral axial cell: %w", m.ID, ErrInvalidData)
 		}
 	}
 
@@ -346,11 +486,11 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w", ErrInvalidData)
 		}
 		for _, om := range data.Outcome.Members {
-			r, ok := roomsByID[om.Room]
+			_, ok := roomsByID[om.Room]
 			if !ok {
 				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w", om.ID, om.Room, ErrInvalidData)
 			}
-			if om.Position.X < 0 || om.Position.Y < 0 || om.Position.X >= float64(r.Width) || om.Position.Y >= float64(r.Height) {
+			if !roomGrids[om.Room].IsValidPosition(spatial.Position{X: om.Position.X, Y: om.Position.Y}) {
 				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w", om.ID, ErrInvalidData)
 			}
 		}
@@ -403,17 +543,14 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		Layout: spatial.LayoutTypeOrganic,
 	})
 
-	// Create all rooms
+	// Create all rooms, reusing each room's already-constructed Grid
+	// (roomGrids, built above) so validation and placement agree exactly.
 	spatialRoomMap := make(map[string]*spatial.BasicRoom)
 	for _, ri := range data.Field.Rooms {
-		grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-			Width:  float64(ri.Width),
-			Height: float64(ri.Height),
-		})
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
-			Grid: grid,
+			Grid: roomGrids[ri.ID],
 		})
 		err = e.orchestrator.AddRoom(room)
 		if err != nil {
@@ -492,9 +629,16 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
-		// Re-attach decider if present — players cannot carry deciders
-		// (C2, enforced at all three seams: Setup, Join, and load).
-		if d, ok := deciders[m.ID]; ok {
+		// Re-attach decider if present and non-nil — a literal nil entry
+		// in the reattachment map is equivalent to an ABSENT one: a
+		// monster without a decider is legal and simply holds (Setup and
+		// Join already treat a nil MemberInput.Decider this way). Storing
+		// a nil Decider interface here would panic Pump's first Decide
+		// call on that monster (reject-never-crash: LoadEncounter is the
+		// trust boundary for the caller-supplied reattachment map too,
+		// not just the persisted bytes). Players cannot carry deciders
+		// regardless (C2, enforced at all three seams: Setup, Join, load).
+		if d, ok := deciders[m.ID]; ok && d != nil {
 			if m.Kind == KindPlayer {
 				return nil, fmt.Errorf("load encounter: player %s cannot carry a decider: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
 			}
@@ -540,9 +684,11 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.outcome = outcome
 	}
 
-	// Store field and connections inputs for future ToData calls
+	// Store field and connections inputs for future ToData calls. Connections
+	// are kept sorted by ID (C8 determinism — order is observable in ToData).
 	e.fieldInput = convertRoomDataToRoomInput(data.Field.Rooms)
 	e.connectionsInput = convertConnectionDataToConnectionInput(data.Field.Connections)
+	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
 
 	return e, nil
 }
@@ -551,10 +697,14 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 	result := make([]RoomInput, len(rooms))
 	for i, rd := range rooms {
+		// gridDataToShape's ok is ignored: LoadEncounter has already
+		// validated every room's Grid string before this conversion runs.
+		shape, _ := gridDataToShape(rd.Grid)
 		ri := RoomInput{
 			ID:         rd.ID,
 			Width:      rd.Width,
 			Height:     rd.Height,
+			Grid:       shape,
 			Occluders:  make([]spatial.Position, len(rd.Occluders)),
 			Boundaries: make([]spatial.Boundary, len(rd.Boundaries)),
 		}
@@ -581,7 +731,13 @@ func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 func convertConnectionDataToConnectionInput(conns []ConnectionData) []ConnectionInput {
 	result := make([]ConnectionInput, len(conns))
 	for i, cd := range conns {
-		result[i] = ConnectionInput(cd)
+		result[i] = ConnectionInput{
+			ID:           cd.ID,
+			From:         cd.From,
+			To:           cd.To,
+			FromPosition: spatial.Position{X: cd.FromPosition.X, Y: cd.FromPosition.Y},
+			ToPosition:   spatial.Position{X: cd.ToPosition.X, Y: cd.ToPosition.Y},
+		}
 	}
 	return result
 }

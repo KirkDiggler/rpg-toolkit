@@ -33,13 +33,24 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 					Occluders:  []spatial.Position{{X: 4, Y: 4}},
 					Boundaries: []spatial.Boundary{{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 2, Y: 3}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
-				{ID: "hall", Width: 6, Height: 6},
+				// hall is axial hex (Width=6,Height=6 => Q,R valid in
+				// [-3,3)): door1's arrival endpoint sits at a NEGATIVE
+				// axial coordinate on purpose — the ordinary case for an
+				// origin-centered hex room, and a fixture proving
+				// endpoints validate there at both seams (Setup here,
+				// Load in TestConnectionEndpointBoundsBoundariesLoad's
+				// hex sibling).
+				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
 			},
-			Connections: []encounter.ConnectionInput{{ID: "door1", From: "crypt", To: "hall"}},
+			Connections: []encounter.ConnectionInput{{
+				ID: "door1", From: "crypt", To: "hall",
+				FromPosition: spatial.Position{X: 0, Y: 6},
+				ToPosition:   spatial.Position{X: -1, Y: -1},
+			}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "g1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 3, Y: 3}, Decider: &testDecider{intent: encounter.IntentHold{}}},
+			{ID: "g1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 0, Y: 0}, Decider: &testDecider{intent: encounter.IntentHold{}}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 7, Y: 7}, Member: core.EntityID("p1")}},
@@ -52,7 +63,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6}],"connections":[{"id":"door1","from":"crypt","to":"hall"}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":3,"y":3}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":"hex"}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":-1,"y":-1}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -83,14 +94,142 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 		"first-declared wins after reload — a load that scrambles ending order is a C8 violation")
 }
 
+// TestConnectionsSurviveReload pins connection persistence (#922 T1):
+// endpoints round-trip through ToData -> LoadEncounter intact, and
+// connection order is sorted by ID regardless of declaration order (C8
+// determinism — persisted order must not leak the caller's declaration
+// sequence). Every connection's FromPosition != ToPosition (X != Y within
+// each, and neither is the other transposed) so a From/To swap anywhere in
+// the round-trip — most notably in convertConnectionDataToConnectionInput,
+// which only ever sees pre-sorted, already-round-tripped ToData output in
+// other tests — would change the observed values, not just their order.
+func (s *DataTestSuite) TestConnectionsSurviveReload() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			// Declared out of ID order — persistence must not echo this order.
+			Connections: []encounter.ConnectionInput{
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 0, Y: 3}, ToPosition: spatial.Position{X: 2, Y: 1}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 4}, ToPosition: spatial.Position{X: 3, Y: 2}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 2, Y: 0}, ToPosition: spatial.Position{X: 4, Y: 3}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 4, Y: 4}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	data1 := enc1.ToData()
+	expected := []encounter.ConnectionData{
+		{ID: "a-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 1, Y: 4}, ToPosition: &encounter.PositionData{X: 3, Y: 2}},
+		{ID: "m-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 2, Y: 0}, ToPosition: &encounter.PositionData{X: 4, Y: 3}},
+		{ID: "z-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 0, Y: 3}, ToPosition: &encounter.PositionData{X: 2, Y: 1}},
+	}
+	s.Equal(expected, data1.Field.Connections, "connections persist sorted by ID with endpoints intact")
+
+	enc2, err := encounter.LoadEncounter(data1, nil)
+	s.Require().NoError(err)
+
+	data2 := enc2.ToData()
+	s.Equal(expected, data2.Field.Connections, "connections stay sorted and intact across a second round-trip")
+}
+
+// TestLoadSortsUnsortedConnections pins LoadEncounter's own sort in
+// isolation (#922 T1 Opus review): every other test's EncounterData either
+// comes from ToData (already sorted by construction, since NewEncounter and
+// LoadEncounter both sort connectionsInput on the way in) or carries a
+// single connection (trivially sorted) — so LoadEncounter's sort.Slice call
+// is never exercised on genuinely unsorted input elsewhere in this suite.
+// This hand-authors an EncounterData directly, bypassing NewEncounter/ToData
+// entirely, with connections declared out of ID order.
+func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			// Hand-authored out of ID order — NOT produced by ToData.
+			Connections: []encounter.ConnectionData{
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 0, Y: 0}, ToPosition: &encounter.PositionData{X: 1, Y: 1}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 2, Y: 0}, ToPosition: &encounter.PositionData{X: 3, Y: 1}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 0}, ToPosition: &encounter.PositionData{X: 0, Y: 4}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+
+	enc, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err)
+
+	got := enc.ToData().Field.Connections
+	s.Require().Len(got, 3)
+	gotIDs := []string{got[0].ID, got[1].ID, got[2].ID}
+	s.Equal([]string{"a-door", "m-door", "z-door"}, gotIDs,
+		"LoadEncounter's own sort must run even when the input was never produced by ToData")
+}
+
+// TestRoomGridShapeSurvivesReload pins connection persistence's newest
+// field (#922 T1.5): a room's declared Grid shape round-trips through
+// ToData -> LoadEncounter -> ToData intact, for both the square zero value
+// and a non-zero shape (hex), in the same encounter.
+func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "square-room", Width: 5, Height: 5},
+				{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	data1 := enc1.ToData()
+	s.Require().Len(data1.Field.Rooms, 2)
+	s.Equal("", data1.Field.Rooms[0].Grid, "square is the zero value — omitted, not the literal \"square\"")
+	s.Equal(spatial.GridTypeHex, data1.Field.Rooms[1].Grid)
+
+	enc2, err := encounter.LoadEncounter(data1, nil)
+	s.Require().NoError(err)
+
+	data2 := enc2.ToData()
+	s.Equal("", data2.Field.Rooms[0].Grid, "grid shape must survive a second round-trip")
+	s.Equal(spatial.GridTypeHex, data2.Field.Rooms[1].Grid, "grid shape must survive a second round-trip")
+}
+
 // TestSetupInputNotAliased pins T6 review M4: a caller that edits its
 // own SetupInput after construction must not corrupt the persistence
-// source (the encounter deep-copies the field description).
+// source (the encounter deep-copies the field description). Also covers
+// connections: mutating the caller's ConnectionInput slice (and its
+// endpoint positions) after NewEncounter must not affect the encounter.
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
-			{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
-		}},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
+			},
+		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -102,12 +241,22 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup.Field.Rooms[0].ID = "VANDALIZED"
 	setup.Field.Rooms[0].Width = 999
 	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 4, Y: 4}
+	setup.Field.Connections[0].ID = "VANDALIZED"
+	setup.Field.Connections[0].From = "VANDALIZED"
+	setup.Field.Connections[0].FromPosition = spatial.Position{X: 4, Y: 4}
+	setup.Field.Connections[0].ToPosition = spatial.Position{X: 4, Y: 4}
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Rooms, 1)
+	s.Require().Len(data.Field.Rooms, 2)
 	s.Equal("r1", data.Field.Rooms[0].ID, "the snapshot must not see the caller's vandalism")
 	s.Equal(5, data.Field.Rooms[0].Width)
 	s.Equal(encounter.PositionData{X: 3, Y: 3}, data.Field.Rooms[0].Occluders[0])
+
+	s.Require().Len(data.Field.Connections, 1)
+	s.Equal("door1", data.Field.Connections[0].ID, "the snapshot must not see the caller's vandalism")
+	s.Equal("r1", data.Field.Connections[0].From)
+	s.Equal(&encounter.PositionData{X: 1, Y: 0}, data.Field.Connections[0].FromPosition)
+	s.Equal(&encounter.PositionData{X: 0, Y: 0}, data.Field.Connections[0].ToPosition)
 
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
@@ -874,6 +1023,76 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 	})
 }
 
+// TestDeciderReattachmentNilEntryHolds pins reject-never-crash at the
+// reattachment map itself: a caller-supplied entry that is PRESENT but
+// nil (map[MemberID]Decider{"goblin": nil}, distinct from an ABSENT key —
+// TestDeciderReattachmentWithoutDecider's case) must not panic Pump. A
+// nil entry is equivalent to an absent one: the monster simply holds.
+func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 8, Y: 8},
+				Decider: &testDecider{intent: encounter.IntentHold{}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Room: "crypt", Position: spatial.Position{X: 0, Y: 0}}}},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+	data1 := enc1.ToData()
+
+	enc2, err := encounter.LoadEncounter(data1, map[encounter.MemberID]encounter.Decider{
+		"goblin": nil,
+	})
+	s.Require().NoError(err, "a present-but-nil reattachment entry must load, not reject")
+
+	s.Require().NotPanics(func() {
+		out, pumpErr := enc2.Pump(&encounter.PumpInput{})
+		s.Require().NoError(pumpErr, "the first pump must not panic on a nil-decider monster")
+		s.Empty(out.MonsterMoves, "a nil-decider monster is absent from decisions and beats — it simply holds")
+	})
+}
+
+// TestDeciderReattachmentMixedNilAndReal pins that a nil entry for one
+// monster does not disturb a real decider re-attached for another in the
+// same reattachment map: the real one decides normally, the nil one holds.
+func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 8, Y: 8},
+				Decider: &testDecider{intent: encounter.IntentHold{}}},
+			{ID: "rat", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 2, Y: 8},
+				Decider: &testDecider{intent: encounter.IntentHold{}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Room: "crypt", Position: spatial.Position{X: 0, Y: 0}}}},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+	data1 := enc1.ToData()
+
+	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: spatial.Position{X: 3, Y: 8}}}
+	enc2, err := encounter.LoadEncounter(data1, map[encounter.MemberID]encounter.Decider{
+		"goblin": nil,
+		"rat":    ratDecider,
+	})
+	s.Require().NoError(err)
+
+	out, err := enc2.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().Len(out.MonsterMoves, 1, "only rat's real decider produces a move")
+	s.Equal(encounter.MemberID("rat"), out.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 3, Y: 8}, out.MonsterMoves[0].To)
+}
+
 // ============================================================================
 // Rejection Tests
 // ============================================================================
@@ -891,7 +1110,7 @@ type testDecider struct {
 	intent encounter.Intent
 }
 
-func (d *testDecider) Decide(_ []intel.Holding) (encounter.Intent, error) {
+func (d *testDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 	return d.intent, nil
 }
 
@@ -906,51 +1125,129 @@ func validEncounterData() encounter.EncounterData {
 	}
 }
 
-// TestLoadRejections: every unreachable state rejects with
-// ErrInvalidData AND the check that fired is the one the case targets.
+// validEncounterDataWithConnection extends validEncounterData with a second,
+// DELIBERATELY mismatched room (r1 resized to 10x4, r2 added at 3x9) and one
+// fully valid connection between them — the base for the connection defect
+// rows below (one-defect discipline: each row breaks exactly one thing about
+// this otherwise-valid connection). FromPosition{7,1} is valid ONLY in r1
+// and ToPosition{1,7} valid ONLY in r2: same-sized rooms and equal From/To
+// positions would make a check that validates an endpoint against the WRONG
+// room (or a From/To transposition in convertConnectionDataToConnectionInput)
+// invisible. r1 carries an occluder at (2,2) and r2 an occluder at (1,3), so
+// both the from- and to-side "endpoint on occluder" rows have something to hit.
+func validEncounterDataWithConnection() encounter.EncounterData {
+	d := validEncounterData()
+	d.Field.Rooms[0].Width = 10
+	d.Field.Rooms[0].Height = 4
+	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
+	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{
+		ID: "r2", Width: 3, Height: 9,
+		Occluders: []encounter.PositionData{{X: 1, Y: 3}},
+	})
+	d.Field.Connections = []encounter.ConnectionData{
+		{ID: "c1", From: "r1", To: "r2",
+			FromPosition: &encounter.PositionData{X: 7, Y: 1},
+			ToPosition:   &encounter.PositionData{X: 1, Y: 7}},
+	}
+	return d
+}
+
+// TestLoadRejections: every unreachable state rejects with ErrInvalidData
+// AND the check that fired is the one the case targets. Connection rows
+// also assert ErrBadConnection (via alsoErr) and, where a room name is
+// involved, quote the missing room in the fragment — a check neutered in
+// favor of the coincidental zero-value-room bounds fallback must not pass.
 func (s *DataTestSuite) TestLoadRejections() {
 	cases := []struct {
 		name     string
 		mutate   func(d *encounter.EncounterData)
 		fragment string
+		alsoErr  error
 	}{
-		{"zero data", func(d *encounter.EncounterData) { *d = encounter.EncounterData{} }, "no rooms"},
-		{"no rooms", func(d *encounter.EncounterData) { d.Field.Rooms = nil; d.Members = nil; d.EverMembers = nil }, "no rooms"},
-		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings"},
-		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings"},
-		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings"},
-		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind"},
+		{"zero data", func(d *encounter.EncounterData) { *d = encounter.EncounterData{} }, "no rooms", nil},
+		{"no rooms", func(d *encounter.EncounterData) { d.Field.Rooms = nil; d.Members = nil; d.EverMembers = nil }, "no rooms", nil},
+		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings", nil},
+		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings", nil},
+		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings", nil},
+		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind", nil},
 		{"reached_position without position", func(d *encounter.EncounterData) {
 			d.Endings[0] = encounter.EndingData{Key: "done", Kind: "reached_position", Room: "r1"}
-		}, "without room/position"},
-		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id"},
+		}, "without room/position", nil},
+		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id", nil},
 		{"duplicate member ids", func(d *encounter.EncounterData) {
 			d.Members = append(d.Members, d.Members[0])
-		}, "duplicate member"},
-		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field"},
+		}, "duplicate member", nil},
+		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field", nil},
 		{"member out of bounds", func(d *encounter.EncounterData) {
 			d.Members[0].Position = encounter.PositionData{X: 99, Y: 99}
-		}, "out of bounds"},
+		}, "out of bounds", nil},
 		{"connection missing room", func(d *encounter.EncounterData) {
 			d.Field.Connections = []encounter.ConnectionData{{ID: "c1", From: "r1", To: "nowhere"}}
-		}, "connection"},
+		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+		{"connection empty id", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ID = ""
+		}, "empty id", encounter.ErrBadConnection},
+		{"duplicate connection ids", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections = append(d.Field.Connections, d.Field.Connections[0])
+		}, "duplicate connection", encounter.ErrBadConnection},
+		{"connection unknown from room", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].From = "nowhere"
+		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+		{"connection unknown to room", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].To = "nowhere"
+		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+		{"connection self-connection", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].To = "r1"
+		}, "itself", encounter.ErrBadConnection},
+		{"connection from-position out of bounds", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 99, Y: 99}
+		}, "from-position out of bounds", encounter.ErrBadConnection},
+		{"connection to-position out of bounds", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 99, Y: 99}
+		}, "to-position out of bounds", encounter.ErrBadConnection},
+		{"connection from-position on occluder", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 2, Y: 2}
+		}, "from-position on occluder", encounter.ErrBadConnection},
+		{"connection to-position on occluder", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 1, Y: 3}
+		}, "to-position on occluder", encounter.ErrBadConnection},
+		{"connection missing from_position", func(d *encounter.EncounterData) {
+			// Deletes the field from the wire path (nil), not a zero-valued
+			// position — a missing endpoint must never silently default to
+			// (0,0), a legal cell that would invent topology.
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].FromPosition = nil
+		}, "missing from_position", encounter.ErrBadConnection},
+		{"connection missing to_position", func(d *encounter.EncounterData) {
+			*d = validEncounterDataWithConnection()
+			d.Field.Connections[0].ToPosition = nil
+		}, "missing to_position", encounter.ErrBadConnection},
 		{"outcome undeclared ending", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
-		}, "outcome"},
+		}, "outcome", nil},
 		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
-		}, "abandoned outcome with members"},
+		}, "abandoned outcome with members", nil},
 		{"outcome member room missing", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "ghost", Room: "nowhere", Position: encounter.PositionData{X: 1, Y: 1}}}}
-		}, "outcome member"},
+		}, "outcome member", nil},
 		{"outcome member out of bounds", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "p1", Room: "r1", Position: encounter.PositionData{X: 999, Y: 999}}}}
-		}, "out of bounds"},
+		}, "out of bounds", nil},
 		{"ever_members missing current member", func(d *encounter.EncounterData) {
 			d.EverMembers = nil
-		}, "ever_members"},
+		}, "ever_members", nil},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -961,6 +1258,9 @@ func (s *DataTestSuite) TestLoadRejections() {
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().Contains(err.Error(), tc.fragment,
 				"the check that fired must be the one this case targets")
+			if tc.alsoErr != nil {
+				s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			}
 		})
 	}
 
@@ -968,6 +1268,307 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// means something if zero defects pass.
 	_, err := encounter.LoadEncounter(validEncounterData(), nil)
 	s.Require().NoError(err, "the valid base fixture must load")
+
+	// The valid CONNECTION base must also load. Since FromPosition{7,1} is
+	// valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive
+	// control pins that each endpoint is checked against ITS OWN room (a
+	// check wired to the wrong room would reject this valid connection),
+	// and that endpoints survive Load unswapped (a From/To transposition
+	// in convertConnectionDataToConnectionInput would not error here —
+	// it would silently swap the values — so the values are re-inspected,
+	// not just the absence of an error).
+	connEnc, err := encounter.LoadEncounter(validEncounterDataWithConnection(), nil)
+	s.Require().NoError(err, "the valid connection base fixture must load")
+	connData := connEnc.ToData()
+	s.Require().Len(connData.Field.Connections, 1)
+	s.Equal(&encounter.PositionData{X: 7, Y: 1}, connData.Field.Connections[0].FromPosition,
+		"from-position must survive Load unswapped")
+	s.Equal(&encounter.PositionData{X: 1, Y: 7}, connData.Field.Connections[0].ToPosition,
+		"to-position must survive Load unswapped")
+}
+
+// connBoundsData returns a fresh EncounterData with a 4x3 room r1 (valid
+// coordinates 0..3 x 0..2) and one connection — the Load-seam counterpart to
+// encounter_test.go's connBoundsSetup, pinning the square grid's strictly-
+// less-than bounds semantics at Load independent of any cross-room concern.
+func connBoundsData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 4, Height: 3},
+				{ID: "r2", Width: 4, Height: 3},
+			},
+			Connections: []encounter.ConnectionData{
+				{ID: "c1", From: "r1", To: "r2",
+					FromPosition: &encounter.PositionData{X: 0, Y: 0},
+					ToPosition:   &encounter.PositionData{X: 0, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestConnectionEndpointBoundsBoundariesLoad is the Load-seam counterpart to
+// encounter_test.go's TestConnectionEndpointBoundsBoundaries (#922 T1 Opus
+// review, minor M3/M4): a coordinate exactly at the room's Width/Height is
+// out of bounds, a negative coordinate is out of bounds, and Width-1/Height-1
+// — the last valid cell — is accepted.
+func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
+	s.Run("X exactly at width is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 4, Y: 0}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Y exactly at height is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 0, Y: 3}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative X is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: -1, Y: 0}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative Y is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 0, Y: -1}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Width-1,Height-1 is accepted (positive control)", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 3, Y: 2}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().NoError(err, "the last valid cell must be accepted")
+	})
+}
+
+// TestLoadRoomValidation is the Load-seam counterpart to
+// encounter_test.go's TestSetupRoomValidation (#922 T1.5, deferred from
+// the Opus T1 review): empty room ID, duplicate room ID, and an
+// unrecognized grid shape all reject with ErrInvalidData + ErrNoField.
+func (s *DataTestSuite) TestLoadRoomValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(d *encounter.EncounterData)
+		fragment string
+	}{
+		{"room has empty id", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].ID = ""
+		}, "room has empty id"},
+		{"duplicate room id", func(d *encounter.EncounterData) {
+			d.Field.Rooms = append(d.Field.Rooms, d.Field.Rooms[0])
+		}, "duplicate room"},
+		{"room has unknown grid shape", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Grid = "triangle"
+		}, "unknown grid shape"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validEncounterData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+}
+
+// connHexRoomData returns a fresh EncounterData with one 4x3 hex room and a
+// member at pos — the Load-seam counterpart to encounter_test.go's
+// TestHexRoomBounds. Width=4, Height=3 => Q valid in [-2,2), R valid in
+// [-1.5,1.5) (axial, origin-centered — see that test's comment).
+func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeHex},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestHexRoomBoundsLoad is the Load-seam counterpart to
+// encounter_test.go's TestHexRoomBounds.
+func (s *DataTestSuite) TestHexRoomBoundsLoad() {
+	s.Run("positive Q, positive R within span accepted", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 1, Y: 1}), nil)
+		s.Require().NoError(err)
+	})
+
+	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: -1, Y: 0}), nil)
+		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
+	})
+
+	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: 2, Y: 0}), nil)
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "out of bounds")
+	})
+
+	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: -2, Y: 0}), nil)
+		s.Require().NoError(err)
+	})
+
+	s.Run("Q beyond -Width/2 rejected", func() {
+		_, err := encounter.LoadEncounter(connHexRoomData(encounter.PositionData{X: -3, Y: 0}), nil)
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "out of bounds")
+	})
+}
+
+// TestHexConnectionEndpointNegativeAxialLoad is the Load-seam counterpart
+// to encounter_test.go's TestHexConnectionEndpointNegativeAxial.
+func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "square-room", Width: 10, Height: 10},
+				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridTypeHex},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "square-room", To: "hex-room",
+				FromPosition: &encounter.PositionData{X: 9, Y: 9},
+				ToPosition:   &encounter.PositionData{X: -2, Y: -2},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
+}
+
+// validHexAxialData returns a fresh EncounterData with two hex rooms
+// joined by one connection, a member, and an occluder — the Load-seam
+// counterpart to encounter_test.go's validHexAxialSetup. Every position
+// is integral axial, including a negative one (gate.ToPosition).
+func validHexAxialData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex,
+					Occluders: []encounter.PositionData{{X: 2, Y: 2}}},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: &encounter.PositionData{X: 1, Y: 1},
+				ToPosition:   &encounter.PositionData{X: -1, Y: -1},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestLoadHexIntegralAxial is the Load-seam counterpart to
+// encounter_test.go's TestSetupHexIntegralAxial.
+func (s *DataTestSuite) TestLoadHexIntegralAxial() {
+	cases := []struct {
+		name    string
+		mutate  func(d *encounter.EncounterData)
+		alsoErr error
+	}{
+		{"member position fractional", func(d *encounter.EncounterData) {
+			d.Members[0].Position = encounter.PositionData{X: 0.5, Y: 0}
+		}, nil},
+		{"connection from-position fractional", func(d *encounter.EncounterData) {
+			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
+		}, encounter.ErrBadConnection},
+		{"connection to-position fractional", func(d *encounter.EncounterData) {
+			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: -1.5, Y: -1}
+		}, encounter.ErrBadConnection},
+		{"occluder position fractional", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
+		}, encounter.ErrNoField},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validHexAxialData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			if tc.alsoErr != nil {
+				s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			}
+			s.Require().Contains(err.Error(), "not an integral axial cell",
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	_, err := encounter.LoadEncounter(validHexAxialData(), nil)
+	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
+}
+
+// connGridlessRoomData returns a fresh EncounterData with one 4x3 gridless
+// room and a member at pos — the Load-seam counterpart to
+// encounter_test.go's TestGridlessRoomInclusiveBounds.
+func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeGridless},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestGridlessRoomInclusiveBoundsLoad is the Load-seam counterpart to
+// encounter_test.go's TestGridlessRoomInclusiveBounds — see that test's
+// comment for why this is the sharpest available proof that bounds checks
+// ask the room's own constructed grid rather than a hardcoded rectangle.
+func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
+	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+		_, err := encounter.LoadEncounter(connGridlessRoomData(encounter.PositionData{X: 4, Y: 0}), nil)
+		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+	})
+
+	s.Run("position negative is still rejected", func() {
+		_, err := encounter.LoadEncounter(connGridlessRoomData(encounter.PositionData{X: -1, Y: 0}), nil)
+		s.Require().Error(err)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "out of bounds")
+	})
 }
 
 // TestLoadRejectsPlayerWithDecider pins C2 at the third seam: a player

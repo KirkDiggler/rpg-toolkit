@@ -25,12 +25,27 @@ var (
 	// is called on a closed encounter. A closed encounter has an Outcome.
 	ErrClosed = errors.New("encounter closed")
 
-	// ErrNoField is returned when Setup is called without rooms.
+	// ErrNoField is returned when Setup is called without rooms, or when a
+	// declared room is itself defective (empty or duplicate ID, unrecognized
+	// grid shape) — a malformed room list is as unusable as an empty one.
+	// Returned at both Setup and Load.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement fails spatial validation.
 	// Wraps the underlying spatial error.
 	ErrBadPlacement = errors.New("bad placement")
+
+	// ErrBadConnection is returned when a connection's ID is empty or
+	// duplicated, its From/To names an unknown room or itself, or an
+	// endpoint lies outside its room's bounds or on an occluder position.
+	// Returned at both Setup and Load — a declaration-time defect.
+	ErrBadConnection = errors.New("bad connection")
+
+	// ErrNoConnection is returned by Traverse when the given connection ID
+	// does not name any connection in this encounter — a runtime lookup
+	// miss, the ErrNotMember analogue for connections. Distinct from
+	// ErrBadConnection, which is a declaration-time defect at Setup/Load.
+	ErrNoConnection = errors.New("no such connection")
 
 	// ErrInvalidData is returned when LoadEncounter rejects the input data.
 	ErrInvalidData = errors.New("invalid encounter data")

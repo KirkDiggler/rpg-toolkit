@@ -34,6 +34,28 @@ type RoomInput struct {
 	// Height is the room's vertical dimension.
 	Height int
 
+	// Grid selects the room's coordinate system: GridShapeSquare (the zero
+	// value — Width x Height cells, origin (0,0), Chebyshev distance),
+	// GridShapeHex, or GridShapeGridless (continuous positions within
+	// Width x Height, origin (0,0)). The zero value keeps every
+	// pre-existing room square, so v0.1 persisted blobs without this
+	// field unmarshal to square unchanged.
+	//
+	// GridShapeHex rooms speak AXIAL cube coordinates (tools/spatial's
+	// AxialHexGrid), not offset: Position.X is Q, Position.Y is R, and S
+	// = -(Q+R) is derived. Bounds are ORIGIN-CENTERED spans, unlike
+	// square/gridless — Q is valid in [-Width/2, Width/2) and R in
+	// [-Height/2, Height/2), so negative coordinates are legal and
+	// expected, not a defect. Distance, adjacency, and line of sight in a
+	// hex room run true cube hex math via spatial. This is a deliberate
+	// choice, not an implementation detail: the wire (and Platform's
+	// pathing) already speaks cube coordinates natively, and axial is
+	// cube's 2D projection — an IDENTITY mapping to the wire. A bounded
+	// offset column/row grid (spatial's HexGrid) would force a lossy,
+	// orientation-dependent offset<->cube conversion at that seam for no
+	// benefit, since the composition never renders a grid itself.
+	Grid spatial.GridShape
+
 	// Occluders are positions that block line of sight.
 	Occluders []spatial.Position
 
@@ -41,7 +63,11 @@ type RoomInput struct {
 	Boundaries []spatial.Boundary
 }
 
-// ConnectionInput describes a connection between two rooms.
+// ConnectionInput describes a connection between two rooms: a bidirectional
+// open doorway. FromPosition and ToPosition are the endpoint cells — the
+// position a member must stand on in each room to traverse the connection.
+// Traversal itself is not implemented here; this only declares where the
+// doorway sits.
 type ConnectionInput struct {
 	// ID is the unique connection identifier.
 	ID string
@@ -51,6 +77,12 @@ type ConnectionInput struct {
 
 	// To is the destination room ID.
 	To string
+
+	// FromPosition is the endpoint cell within room From.
+	FromPosition spatial.Position
+
+	// ToPosition is the endpoint cell within room To.
+	ToPosition spatial.Position
 }
 
 // FieldInput describes the layout of rooms and connections.
@@ -215,6 +247,40 @@ type MoveOutput struct {
 	Outcome *Outcome
 }
 
+// TraverseInput contains the member and connection to traverse. The member
+// must be standing exactly on one of the connection's two endpoints; they
+// arrive at the other.
+type TraverseInput struct {
+	// Member is the ID of the member traversing.
+	Member MemberID
+
+	// Connection is the ID of the connection to traverse.
+	Connection string
+}
+
+// TraverseOutput reports the results of a traversal action.
+type TraverseOutput struct {
+	// Traversed contains the member's ID, departure room/position, and
+	// arrival room/position.
+	Traversed struct {
+		Member   MemberID
+		FromRoom string
+		From     spatial.Position
+		ToRoom   string
+		To       spatial.Position
+	}
+
+	// IntelDeltas maps member IDs to their updated percepts after traversal
+	// (SurveilOutput deltas from the refreshSight cycle, across both rooms).
+	IntelDeltas map[MemberID]*intel.SurveilOutput
+
+	// Seq is the sequence number of the recorded traversal beat.
+	Seq uint64
+
+	// Outcome is the encounter outcome if an ending fired; nil otherwise.
+	Outcome *Outcome
+}
+
 // PumpInput contains no parameters; the pump is parameterless in wave 1.
 type PumpInput struct{}
 
@@ -223,18 +289,32 @@ type PumpOutput struct {
 	// Tick is the exploration clock's reading after the advance.
 	Tick uint64
 
-	// MonsterMoves contains the successful moves executed by monsters during this pump.
+	// MonsterMoves contains the successful same-room moves executed by monsters during this pump.
 	MonsterMoves []struct {
 		Member MemberID
 		From   spatial.Position
 		To     spatial.Position
 	}
 
+	// MonsterTraverses contains the successful cross-room traverses executed by
+	// monsters during this pump (IntentTraverse). An illegal traverse intent
+	// (unknown connection, or the monster not at its threshold) does not appear
+	// here — it is silently skipped, matching MonsterMoves' spatial-rejection
+	// contract.
+	MonsterTraverses []struct {
+		Member   MemberID
+		FromRoom string
+		From     spatial.Position
+		ToRoom   string
+		To       spatial.Position
+	}
+
 	// IntelDeltas maps member IDs to their updated percepts after all monster actions
 	// (SurveilOutput deltas from the single refreshSight cycle).
 	IntelDeltas map[MemberID]*intel.SurveilOutput
 
-	// Seqs contains the sequence numbers of the recorded beats (tick beat first, then move beats).
+	// Seqs contains the sequence numbers of the recorded beats (tick beat
+	// first, then move/traverse beats in decision order).
 	Seqs []uint64
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
