@@ -67,6 +67,9 @@ func TestGrayOozeConditionImmunityApplication(t *testing.T) {
 
 func TestGrayOozePseudopod(t *testing.T) {
 	def := grayOozePseudopod(t)
+	require.Equal(t, "pseudopod", def.ActionID)
+	require.Equal(t, attack.CategoryNatural, def.Category)
+	require.Equal(t, 1, def.Targeting.Reach)
 	require.Equal(t, 3, def.Bonus.Fixed)
 	require.Equal(t, -1, def.Damage.Pools[0].FlatBonus)
 	require.Equal(t, damage.Acid, def.Damage.Pools[1].Type)
