@@ -215,3 +215,14 @@ Commit `test(dnd5e/encounter): AC1 tomb watch; ci: compat gate`.
   run — the model held. compat.yml gained its fifth gorelease job.
 - **With Task 8**: 172 tests, full gate (lint by exit code, gofmt
   verified), PR #921 opened ready-for-review.
+- **Post-open (Kirk-requested)**: `cmd/freeroam-workbench` — the
+  dungeonspec-workbench tradition applied to the composition: an
+  interactive terminal REPL rendering world truth beside each player's
+  beliefs (capitals seen-now, lowercase ghosts), with save/load of the
+  one aggregate blob and decider re-attachment narrated. Building it
+  surfaced one design-vs-implementation gap for the ratification read:
+  the design's View row promises "holdings + their own placement" but
+  the implementation returns holdings only — the workbench takes own
+  placement from the aggregate snapshot (host-side, legal). Either
+  amend the design to match (own placement is host-derivable) or add
+  it to ViewOutput in a follow-up; deferred to Kirk's PR review.
