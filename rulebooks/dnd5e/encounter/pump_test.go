@@ -1368,3 +1368,127 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().ErrorIs(err, encounter.ErrClosed)
 }
+
+// TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrder pins the
+// honest law: ending evaluation walks EXECUTED ACTIONS in decision
+// order (C8's per-monster ordering), and declaration order is only a
+// tiebreak WITHIN one action's own scan of e.endings — not a global
+// "first-declared-wins" rule. The control lands each monster on its
+// "natural" declared-order slot, where decision order and declaration
+// order happen to agree — easy to misread as declaration order
+// driving the result. The cross scenario keeps decision order fixed
+// but swaps which ending each monster's landing position fires: the
+// SECOND-declared ending wins because it belongs to the FIRST-deciding
+// monster, disproving the declaration-order reading.
+func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrder() {
+	aID := core.EntityID("aaa-goblin") // decides first (Members() sorts by ID)
+	bID := core.EntityID("zzz-goblin") // decides second
+	posA := spatial.Position{X: 2, Y: 2}
+	posB := spatial.Position{X: 8, Y: 8}
+
+	s.Run("control: decision order and declaration order agree", func() {
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+			Members: []encounter.MemberInput{
+				{ID: aID, Kind: encounter.KindMonster, Room: room1,
+					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
+				{ID: bID, Kind: encounter.KindMonster, Room: room1,
+					Position: spatial.Position{X: 6, Y: 6}, Decider: &patrolDecider{positions: []spatial.Position{posB}}},
+			},
+			Endings: []encounter.EndingInput{
+				// Declared first: fires for aaa-goblin, who decides first.
+				{Key: "first", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posA, Member: aID}},
+				// Declared second: fires for zzz-goblin, who decides second.
+				{Key: "second", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posB, Member: bID}},
+			},
+		})
+		s.Require().NoError(err)
+
+		out, err := enc.Pump(&encounter.PumpInput{})
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Outcome)
+		s.Equal("first", out.Outcome.Ending, "aaa-goblin decides first and lands on the first-declared ending")
+	})
+
+	s.Run("cross: decision order dominates — the SECOND-declared ending wins", func() {
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+			Members: []encounter.MemberInput{
+				// Same decision order (aaa first, zzz second), but now each
+				// monster's landing position fires the OTHER declared ending.
+				{ID: aID, Kind: encounter.KindMonster, Room: room1,
+					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posB}}},
+				{ID: bID, Kind: encounter.KindMonster, Room: room1,
+					Position: spatial.Position{X: 6, Y: 6}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
+			},
+			Endings: []encounter.EndingInput{
+				// Declared first: fires for zzz-goblin (posA), who decides SECOND.
+				{Key: "first", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posA, Member: bID}},
+				// Declared second: fires for aaa-goblin (posB), who decides FIRST.
+				{Key: "second", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posB, Member: aID}},
+			},
+		})
+		s.Require().NoError(err)
+
+		out, err := enc.Pump(&encounter.PumpInput{})
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Outcome)
+		s.Equal("second", out.Outcome.Ending,
+			"aaa-goblin decides first and lands on the SECOND-declared ending — "+
+				"decision order wins, not declaration order")
+	})
+}
+
+// reentrantSelfExitDecider violates the decider contract: it calls
+// Exit on its own member from inside Decide, then still returns a
+// move intent. This is a contract-violating decider, not a supported
+// pattern — but the pump must survive it. Set enc after NewEncounter
+// returns (the encounter doesn't exist yet when Members are declared).
+type reentrantSelfExitDecider struct {
+	enc  *encounter.Encounter
+	self core.EntityID
+}
+
+func (r *reentrantSelfExitDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
+	if _, err := r.enc.Exit(&encounter.ExitInput{Member: r.self}); err != nil {
+		return nil, err
+	}
+	return encounter.IntentMoveTo{To: spatial.Position{X: 9, Y: 9}}, nil
+}
+
+// TestPumpSurvivesReentrantSelfExitingDecider pins the phase-1/phase-2
+// seam against a decider that mutates membership mid-decide: phase 1's
+// planned list is keyed by MemberID, and phase 2 looks the live member
+// pointer up fresh from e.members — which the reentrant Exit has
+// already deleted. Without a nil guard at that lookup, phase 2
+// dereferences a nil *Member and panics. The shipped contract treats
+// this exactly like any other phase-2 execution failure: silent skip,
+// nothing else disturbed.
+func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
+	aliceID := core.EntityID("alice")
+	goblinID := core.EntityID("goblin")
+	decider := &reentrantSelfExitDecider{self: goblinID}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Members: []encounter.MemberInput{
+			{ID: aliceID, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblinID, Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 4, Y: 4}, Decider: decider},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	decider.enc = enc
+
+	s.Require().NotPanics(func() {
+		out, pumpErr := enc.Pump(&encounter.PumpInput{})
+		s.Require().NoError(pumpErr, "a contract-violating self-exiting decider must not abort the pump")
+		s.Empty(out.MonsterMoves, "the exited monster's planned move has no live member left to execute")
+	})
+
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	s.Require().Len(members, 1, "only alice remains — goblin's self-exit went through")
+	s.Equal(aliceID, members[0].ID)
+}

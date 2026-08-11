@@ -192,8 +192,13 @@ func TestVaultChase(t *testing.T) {
 		},
 		"Exit": func() error { _, e := enc.Exit(&encounter.ExitInput{Member: alice}); return e },
 		"End":  func() error { _, e := enc.End(&encounter.EndInput{Ending: sanctuaryEnding}); return e },
+		// The goblin, not alice: it ends the scene standing exactly on
+		// the gate's vault-side endpoint (0,5), so this attempt is
+		// valid-if-open — the rejection below is attributable to
+		// ErrClosed alone, not also to alice's position (she is deeper
+		// in the vault, at (8,8), nowhere near either threshold).
 		"Traverse": func() error {
-			_, e := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: gateConnection})
+			_, e := enc.Traverse(&encounter.TraverseInput{Member: goblin, Connection: gateConnection})
 			return e
 		},
 	} {

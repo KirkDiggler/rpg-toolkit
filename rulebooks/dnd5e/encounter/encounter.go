@@ -40,8 +40,15 @@ type Encounter struct {
 	members      map[MemberID]*Member
 	everMembers  map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders     map[MemberID]Decider
-	// endings holds declared endings in Setup order — evaluation is
-	// deterministic, first-declared-wins (law C8).
+	// endings holds declared endings in Setup order. Evaluation is
+	// deterministic (law C8), but NOT globally "first-declared-wins":
+	// for a single action (Move, Traverse, Join) declaration order is
+	// the only axis, so the first matching declared ending does win.
+	// Pump can execute several monsters' actions in one tick, and there
+	// evaluation walks them in DECISION order first — the action
+	// decided earliest wins regardless of which of its matching endings
+	// was declared later; declaration order is only the tiebreak within
+	// one action's own scan. See Pump's ending-evaluation loop.
 	endings []declaredEnding
 	outcome *Outcome
 	// fieldInput and connectionsInput are stored at Setup time for persistence.
@@ -1048,6 +1055,15 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		// otherwise have carried since Setup/Wave-1 (moves never needed
 		// to write back Room, so this distinction was previously latent).
 		member := e.members[p.memberID]
+		if member == nil {
+			// A contract-violating decider removed itself from the
+			// encounter (e.g. called Exit on its own member) during
+			// phase 1's Decide. Its planned action has no live member
+			// to execute against — same silent-skip contract as a
+			// spatially-rejected move: absent from output and beats,
+			// the pump otherwise proceeds normally.
+			continue
+		}
 		switch intent := p.intent.(type) {
 		case IntentMoveTo:
 			// Spatial rejection does not abort the pump; the monster
