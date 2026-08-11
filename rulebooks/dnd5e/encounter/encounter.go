@@ -32,6 +32,7 @@ type Encounter struct {
 	intelLog     *intel.Intel
 	story        *record.Log
 	members      map[MemberID]*Member
+	deciders     map[MemberID]Decider
 	endings      map[string]Trigger
 	outcome      *Outcome
 }
@@ -61,7 +62,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
-	// Check member IDs: empty or duplicate
+	// Check member IDs: empty or duplicate; validate deciders
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range in.Members {
 		if m.ID == "" {
@@ -71,12 +72,18 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoMember)
 		}
 		seenIDs[m.ID] = true
+
+		// Players cannot carry deciders (design law C2)
+		if m.Kind == KindPlayer && m.Decider != nil {
+			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNilInput)
+		}
 	}
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		members: make(map[MemberID]*Member),
-		endings: make(map[string]Trigger),
+		members:  make(map[MemberID]*Member),
+		deciders: make(map[MemberID]Decider),
+		endings:  make(map[string]Trigger),
 	}
 
 	// Build clock and intel
@@ -182,6 +189,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Room: mi.Room,
 		}
 		e.members[mi.ID] = member
+
+		// Store decider if present (monsters only, validated above)
+		if mi.Decider != nil {
+			e.deciders[mi.ID] = mi.Decider
+		}
 	}
 
 	// Store endings
@@ -297,6 +309,35 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 	return entries, nil
 }
 
+// moveMember executes a spatial move for a member and returns the old position if successful,
+// or an error if the spatial move was rejected. This is the shared managed seam for both
+// player moves (Move verb) and monster moves (Pump). The member must exist and be in an
+// open encounter; spatial rejection does not abort the operation (handled by caller).
+func (e *Encounter) moveMember(member *Member, to spatial.Position) (spatial.Position, error) {
+	// Get the room and current position
+	room, ok := e.orchestrator.GetRoom(member.Room)
+	if !ok {
+		return spatial.Position{}, fmt.Errorf("movemember: %w", ErrBadPlacement)
+	}
+
+	currentPos, ok := room.GetEntityPosition(string(member.ID))
+	if !ok {
+		return spatial.Position{}, fmt.Errorf("movemember: %w", ErrBadPlacement)
+	}
+
+	// Attempt the spatial move via managed seam using MoveEntity
+	_, err := e.orchestrator.MoveEntity(&spatial.MoveEntityInput{
+		RoomID:   spatial.RoomID(member.Room),
+		EntityID: core.EntityID(member.ID),
+		To:       to,
+	})
+	if err != nil {
+		return spatial.Position{}, fmt.Errorf("movemember: %w: %w", ErrBadPlacement, err)
+	}
+
+	return currentPos, nil
+}
+
 // Move executes a continuous player movement within the same room.
 // Validation order (R5 atomicity): nil input → empty member → closed →
 // not a member → spatial move rejection. On success, refreshes sight for all members,
@@ -320,25 +361,10 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		return nil, fmt.Errorf("move: %w", ErrNotMember)
 	}
 
-	// Get the room and current position
-	room, ok := e.orchestrator.GetRoom(member.Room)
-	if !ok {
-		return nil, fmt.Errorf("move: %w", ErrBadPlacement)
-	}
-
-	currentPos, ok := room.GetEntityPosition(string(in.Member))
-	if !ok {
-		return nil, fmt.Errorf("move: %w", ErrBadPlacement)
-	}
-
-	// Attempt the spatial move via managed seam using MoveEntity
-	_, err := e.orchestrator.MoveEntity(&spatial.MoveEntityInput{
-		RoomID:   spatial.RoomID(member.Room),
-		EntityID: core.EntityID(in.Member),
-		To:       in.To,
-	})
+	// Execute the move through the managed seam
+	currentPos, err := e.moveMember(member, in.To)
 	if err != nil {
-		return nil, fmt.Errorf("move: %w: %w", ErrBadPlacement, err)
+		return nil, fmt.Errorf("move: %w", err)
 	}
 
 	// Get all member IDs for the refresh scope (v1: refresh everyone)
@@ -456,6 +482,257 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		IntelDeltas: intelDeltas,
 		Seq:         seqNum,
 		Outcome:     firedOutcome,
+	}, nil
+}
+
+// Pump advances the world by one tick: the exploration clock advances,
+// each monster member (in deterministic order) acts on its own intel via Decider,
+// the complete sight refresh happens once, and the story accrues tick and move beats.
+// Errors from a decider abort the pump atomically (R5): no clock advance, no moves,
+// no record entries.
+//
+// Semantics:
+//   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
+//   - Monsters act in deterministic order (stable Members() order, filtered to KindMonster).
+//   - Each decider receives exactly its own holdings (anti-wall-hack contract C2).
+//   - IntentHold means do nothing; IntentMoveTo executes via managed seam.
+//   - A spatial rejection of a monster's move does NOT abort the pump; the monster
+//     simply fails to move. Only a decider error aborts.
+//   - After all monster actions: ONE refreshSight for all members, ONE tick beat
+//     (stamped with the new clock reading), then move beats in order.
+//   - Ending evaluation fires ReachedPosition triggers (only if the filter matches;
+//     empty filter = players only, not monsters).
+//   - Returns PumpOutput with the new Tick reading, successful moves, deltas, and beats.
+func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
+	// Validation
+	if in == nil {
+		return nil, fmt.Errorf("pump: %w", ErrNilInput)
+	}
+
+	if e.outcome != nil {
+		return nil, fmt.Errorf("pump: %w", ErrClosed)
+	}
+
+	// Advance the exploration clock by 1 tick (the driver is the "world" itself)
+	_, err := e.clock.Advance(&clock.AdvanceInput{
+		Driver:       core.EntityID("world"),
+		Displacement: 1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pump advance: %w", err)
+	}
+
+	newTickReading := uint64(e.clock.ToData().HighWater)
+
+	// Collect all members in deterministic order and filter to monsters
+	allMembers, err := e.Members()
+	if err != nil {
+		return nil, fmt.Errorf("pump members: %w", err)
+	}
+
+	var monsterMembers []Member
+	for _, m := range allMembers {
+		if m.Kind == KindMonster {
+			monsterMembers = append(monsterMembers, m)
+		}
+	}
+
+	// Track successful monster moves and any decider error
+	type monsterMove struct {
+		member *Member
+		from   spatial.Position
+		to     spatial.Position
+	}
+	var successfulMoves []monsterMove
+
+	// Execute each monster's decision
+	for _, monsterMember := range monsterMembers {
+		m := monsterMember // Copy for pointer
+		decider, hasDecider := e.deciders[m.ID]
+
+		// No decider = hold (do nothing)
+		if !hasDecider {
+			continue
+		}
+
+		// Get the monster's own holdings (anti-wall-hack contract)
+		ownHoldings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
+		if err != nil {
+			return nil, fmt.Errorf("pump held_by: %w", err)
+		}
+
+		// Copy the holdings slice so the decider cannot mutate encounter state
+		holdingsCopy := make([]intel.Holding, len(ownHoldings))
+		copy(holdingsCopy, ownHoldings)
+
+		// Ask the decider what to do
+		intent, err := decider.Decide(holdingsCopy)
+		if err != nil {
+			return nil, fmt.Errorf("pump decide: %w", err)
+		}
+
+		// Execute the intent
+		switch i := intent.(type) {
+		case IntentHold:
+			// Do nothing
+		case IntentMoveTo:
+			// Try to move; spatial rejection does not abort (just skip the move)
+			fromPos, moveErr := e.moveMember(&m, i.To)
+			if moveErr == nil {
+				// Move succeeded; record it
+				successfulMoves = append(successfulMoves, monsterMove{
+					member: &m,
+					from:   fromPos,
+					to:     i.To,
+				})
+			}
+			// If moveErr != nil, the monster simply fails to move; we continue
+		}
+	}
+
+	// Single refreshSight for all members after all monster actions
+	memberIDs := make([]MemberID, 0, len(allMembers))
+	for _, m := range allMembers {
+		memberIDs = append(memberIDs, m.ID)
+	}
+	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+
+	intelDeltas, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("pump refresh sight: %w", err)
+	}
+
+	// Record the tick beat first (the frame)
+	tickBeatPayload := map[string]interface{}{
+		"beat": "tick",
+		"tick": newTickReading,
+	}
+	tickBeatBytes, _ := json.Marshal(tickBeatPayload)
+
+	tickAppendOut, err := e.story.Append(&record.AppendInput{
+		At:       newTickReading,
+		Audience: memberIDs,
+		Tags:     map[string]string{"tag": "clock"},
+		Payload:  tickBeatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pump append tick beat: %w", err)
+	}
+
+	seqs := []uint64{tickAppendOut.Seq}
+
+	// Then record move beats for each successful move (in order)
+	for _, move := range successfulMoves {
+		moveBeatPayload := map[string]interface{}{
+			"beat":     "moved",
+			"member":   string(move.member.ID),
+			"position": move.to,
+		}
+		moveBeatBytes, _ := json.Marshal(moveBeatPayload)
+
+		moveAppendOut, err := e.story.Append(&record.AppendInput{
+			At:       newTickReading,
+			Audience: memberIDs,
+			Tags:     map[string]string{"tag": "movement"},
+			Payload:  moveBeatBytes,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("pump append move beat: %w", err)
+		}
+
+		seqs = append(seqs, moveAppendOut.Seq)
+	}
+
+	// Evaluate ReachedPosition endings
+	var firedOutcome *Outcome
+	for _, move := range successfulMoves {
+		// Check all endings for this position
+		for endingKey, trigger := range e.endings {
+			reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
+			if !ok {
+				continue // Not a ReachedPosition trigger
+			}
+
+			if reachedPosTrigger.Room != move.member.Room {
+				continue // Different room
+			}
+
+			if reachedPosTrigger.Position.X != move.to.X || reachedPosTrigger.Position.Y != move.to.Y {
+				continue // Different position
+			}
+
+			// Check member filter: non-empty = specific member; empty = players only
+			// Monsters should never trigger an unfiltered (empty-filter) ending
+			if reachedPosTrigger.Member == "" {
+				continue // Empty filter means players only, but this moved member is a monster
+			}
+
+			if reachedPosTrigger.Member != move.member.ID {
+				continue // Member filter doesn't match
+			}
+
+			// Ending fires! Build the outcome with all members' current positions
+			memberOutcomes := make([]MemberOutcome, 0, len(e.members))
+			for _, m := range e.members {
+				mRoom, ok := e.orchestrator.GetRoom(m.Room)
+				if !ok {
+					continue
+				}
+				mPos, ok := mRoom.GetEntityPosition(string(m.ID))
+				if !ok {
+					continue
+				}
+				memberOutcomes = append(memberOutcomes, MemberOutcome{
+					ID:       m.ID,
+					Room:     m.Room,
+					Position: mPos,
+				})
+			}
+
+			e.outcome = &Outcome{
+				Ending:  endingKey,
+				At:      newTickReading,
+				Members: memberOutcomes,
+			}
+			// Return a deep copy of the outcome (mutation-proof)
+			outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
+			for i, m := range e.outcome.Members {
+				outcomeMembers[i] = MemberOutcome{
+					ID:       m.ID,
+					Room:     m.Room,
+					Position: m.Position,
+				}
+			}
+			firedOutcome = &Outcome{
+				Ending:  e.outcome.Ending,
+				At:      e.outcome.At,
+				Members: outcomeMembers,
+			}
+			break
+		}
+		if firedOutcome != nil {
+			break
+		}
+	}
+
+	// Build the output with successful moves
+	outputMoves := make([]struct {
+		Member MemberID
+		From   spatial.Position
+		To     spatial.Position
+	}, len(successfulMoves))
+	for i, m := range successfulMoves {
+		outputMoves[i].Member = m.member.ID
+		outputMoves[i].From = m.from
+		outputMoves[i].To = m.to
+	}
+
+	return &PumpOutput{
+		Tick:         newTickReading,
+		MonsterMoves: outputMoves,
+		IntelDeltas:  intelDeltas,
+		Seqs:         seqs,
+		Outcome:      firedOutcome,
 	}, nil
 }
 

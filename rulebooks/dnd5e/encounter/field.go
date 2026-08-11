@@ -75,6 +75,11 @@ type MemberInput struct {
 
 	// Position is the member's location within the room.
 	Position spatial.Position
+
+	// Decider is the monster's decision-making engine (monsters only).
+	// Players must not have a Decider; passing one for a player will fail validation.
+	// Deciders are NOT persisted; they are re-registered at load.
+	Decider Decider
 }
 
 // Trigger is an interface for ending conditions.
@@ -205,6 +210,32 @@ type MoveOutput struct {
 
 	// Seq is the sequence number of the recorded movement beat.
 	Seq uint64
+
+	// Outcome is the encounter outcome if an ending fired; nil otherwise.
+	Outcome *Outcome
+}
+
+// PumpInput contains no parameters; the pump is parameterless in wave 1.
+type PumpInput struct{}
+
+// PumpOutput reports the results of a world tick.
+type PumpOutput struct {
+	// Tick is the exploration clock's reading after the advance.
+	Tick uint64
+
+	// MonsterMoves contains the successful moves executed by monsters during this pump.
+	MonsterMoves []struct {
+		Member MemberID
+		From   spatial.Position
+		To     spatial.Position
+	}
+
+	// IntelDeltas maps member IDs to their updated percepts after all monster actions
+	// (SurveilOutput deltas from the single refreshSight cycle).
+	IntelDeltas map[MemberID]*intel.SurveilOutput
+
+	// Seqs contains the sequence numbers of the recorded beats (tick beat first, then move beats).
+	Seqs []uint64
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
 	Outcome *Outcome
