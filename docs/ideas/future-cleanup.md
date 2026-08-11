@@ -15,3 +15,10 @@ During an intentional architecture cleanup, rename the broad technical
 mechanism from `ConditionBehavior` to `EffectBehavior`. Provide compatibility
 support so existing toolkit code and external users can migrate safely. This
 rename must not imply that every effect is a D&D condition.
+
+## Retire legacy attack damage component types
+
+After all rpg-toolkit and rpg-api consumers use `damage.DamageSpec`, remove
+`combat.DamageProfileComponent` and `events.AttackDamageComponent`. Until
+then, keep the compatibility types synchronized with the canonical damage
+specification at their integration boundaries.

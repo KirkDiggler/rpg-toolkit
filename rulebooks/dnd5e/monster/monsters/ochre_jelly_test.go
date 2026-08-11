@@ -1,0 +1,28 @@
+package monsters
+
+import (
+	"testing"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/stretchr/testify/require"
+)
+
+func TestOchreJellyPseudopod(t *testing.T) {
+	def := ochreJellyPseudopod(t)
+	require.Equal(t, 4, def.Bonus.Fixed)
+	require.Equal(t, -2, def.Damage.Pools[0].FlatBonus)
+	require.Equal(t, damage.Acid, def.Damage.Pools[1].Type)
+}
+
+func TestOozesShareActionIDWithoutSharingRules(t *testing.T) {
+	gray, ochre := grayOozePseudopod(t), ochreJellyPseudopod(t)
+	require.Equal(t, gray.ActionID, ochre.ActionID)
+	require.NotEqual(t, gray.Bonus.Fixed, ochre.Bonus.Fixed)
+	require.NotEqual(t, gray.Damage.Pools, ochre.Damage.Pools)
+}
+
+func ochreJellyPseudopod(t *testing.T) attack.Definition {
+	t.Helper()
+	return emittedPseudopod(t, NewOchreJelly("ochre-jelly"))
+}
