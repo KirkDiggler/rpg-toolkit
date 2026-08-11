@@ -126,11 +126,21 @@ zero endings / End with undeclared key), `ErrClosed`, `ErrNoField`,
 
 ## Persistence
 
-`EncounterData` = `{Status/OutcomeData?, Clock clock.TickData, Intel
-intel.Data, Log record.LogData, Field FieldData{Rooms
-[]spatial.RoomData, Connections []ConnectionData}, Members
-[]MemberData, Endings []EndingData}` — leaves' Data embedded VERBATIM
-(C3). `ToData() EncounterData` / `LoadEncounter(EncounterData)
+`EncounterData` = `{OutcomeData? (present = closed), Clock
+clock.TickData, Intel intel.Data, Log record.LogData, Field FieldData,
+Members []MemberData, Endings []EndingData, EverMembers}` — leaves'
+Data embedded VERBATIM (C3). *Amended during execution (Task 6):*
+`FieldData` holds the composition's OWN room descriptions (id,
+dimensions, occluder positions, boundaries, connections) rather than
+`spatial.RoomData` — `LoadEncounter` rebuilds the field through the
+SAME construction path Setup uses and re-places members at their
+persisted positions. Why: spatial's room *loading* requires an event
+bus via `game.Context` (the C4 wart — now eliminated entirely: no
+`events` anywhere in this module), and `spatial.RoomData` rehydrates
+entities as stand-ins that would break subsequent managed moves; the
+composition constructs its field deterministically from inputs, so
+persisting the inputs plus current placements is the honest minimal
+state. `ToData() EncounterData` / `LoadEncounter(EncounterData)
 (*Encounter, error)` by value. R8 carries: fresh-built-idle… note the
 composition is never truly "idle" (Setup populates it), so the R8 zero
 convention applies as: `EncounterData{}` is NOT loadable (`ErrInvalidData`
