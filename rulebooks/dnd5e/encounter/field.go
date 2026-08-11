@@ -233,6 +233,40 @@ type MoveOutput struct {
 	Outcome *Outcome
 }
 
+// TraverseInput contains the member and connection to traverse. The member
+// must be standing exactly on one of the connection's two endpoints; they
+// arrive at the other.
+type TraverseInput struct {
+	// Member is the ID of the member traversing.
+	Member MemberID
+
+	// Connection is the ID of the connection to traverse.
+	Connection string
+}
+
+// TraverseOutput reports the results of a traversal action.
+type TraverseOutput struct {
+	// Traversed contains the member's ID, departure room/position, and
+	// arrival room/position.
+	Traversed struct {
+		Member   MemberID
+		FromRoom string
+		From     spatial.Position
+		ToRoom   string
+		To       spatial.Position
+	}
+
+	// IntelDeltas maps member IDs to their updated percepts after traversal
+	// (SurveilOutput deltas from the refreshSight cycle, across both rooms).
+	IntelDeltas map[MemberID]*intel.SurveilOutput
+
+	// Seq is the sequence number of the recorded traversal beat.
+	Seq uint64
+
+	// Outcome is the encounter outcome if an ending fired; nil otherwise.
+	Outcome *Outcome
+}
+
 // PumpInput contains no parameters; the pump is parameterless in wave 1.
 type PumpInput struct{}
 

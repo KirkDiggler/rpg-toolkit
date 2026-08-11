@@ -407,8 +407,8 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 
 // connBoundsSetup returns a fresh SetupInput with a 4x3 room r1 (valid
 // coordinates 0..3 x 0..2) and an r2 large enough to always hold the
-// connection's fixed ToPosition — used to pin positionInBounds' strictly-
-// less-than semantics against FromPosition in r1, independent of any
+// connection's fixed ToPosition — used to pin the square grid's strictly-
+// less-than bounds semantics against FromPosition in r1, independent of any
 // cross-room concern (that's validConnSetup's job).
 func connBoundsSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
@@ -430,8 +430,8 @@ func connBoundsSetup() *encounter.SetupInput {
 	}
 }
 
-// TestConnectionEndpointBoundsBoundaries pins positionInBounds' strictly-
-// less-than semantics at the Setup seam (#922 T1 Opus review, minor M3/M4):
+// TestConnectionEndpointBoundsBoundaries pins the square grid's strictly-
+// less-than bounds semantics at the Setup seam (#922 T1 Opus review, minor M3/M4):
 // a coordinate exactly at the room's Width/Height is out of bounds (valid
 // range is 0..dimension-1, matching member placement), a negative coordinate
 // is out of bounds, and Width-1/Height-1 — the last valid cell — is accepted.
@@ -1330,6 +1330,390 @@ func (s *EncounterTestSuite) TestMoveSpatialRejectionAtomic() {
 	s.Require().NoError(err, "alice still moves from her original position")
 }
 
+// Traverse tests (Task 2)
+
+// newTwoRoomEncounterWithConnection returns an encounter with room-a and
+// room-b connected by "door1": FromPosition {9,5} in room-a, ToPosition
+// {0,5} in room-b — DELIBERATELY asymmetric endpoints (T1 review lesson)
+// so a from/to transposition mutant (landing the traverser back at the
+// DEPARTURE endpoint instead of the far one) is observable. alice starts
+// AT room-a's door endpoint, ready to traverse. bob starts adjacent to
+// her in room-a (mutual line of sight, for ghost-at-threshold pins).
+// goblin starts in room-b adjacent to the arrival endpoint (for
+// arrival-Current and T3 pins).
+func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "room-a", To: "room-b",
+					FromPosition: spatial.Position{X: 9, Y: 5},
+					ToPosition:   spatial.Position{X: 0, Y: 5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 8, Y: 5}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: "room-b", Position: spatial.Position{X: 1, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+		},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestTraverseValidation pins the guard order (nil input, closed, unknown
+// member, unknown connection, endpoint mismatch) and that each rejection
+// uses the correct sentinel.
+func (s *EncounterTestSuite) TestTraverseValidation() {
+	s.Run("nil input returns ErrNilInput", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(nil)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+	})
+
+	s.Run("closed encounter returns ErrClosed", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+
+		_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+
+	s.Run("unknown member returns ErrNotMember", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: core.EntityID("nobody"), Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+	})
+
+	s.Run("unknown connection returns ErrNoConnection", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "no-such-door"})
+		s.Require().ErrorIs(err, encounter.ErrNoConnection)
+	})
+
+	s.Run("off-threshold position (right room, wrong cell) returns ErrBadPlacement", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		// bob is in room-a (the connection's From room) but not at the door.
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: bob, Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+
+	s.Run("wrong room (connection doesn't touch it) returns ErrBadPlacement", func() {
+		// alice sits at room-a's door COORDINATES, but in room-c — a room
+		// the connection doesn't touch at all. Proves room membership is
+		// checked, not just coordinate equality.
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "room-a", Width: 10, Height: 10},
+					{ID: "room-b", Width: 10, Height: 10},
+					{ID: "room-c", Width: 10, Height: 10},
+				},
+				Connections: []encounter.ConnectionInput{
+					{ID: "door1", From: "room-a", To: "room-b",
+						FromPosition: spatial.Position{X: 9, Y: 5},
+						ToPosition:   spatial.Position{X: 0, Y: 5}},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: alice, Kind: encounter.KindPlayer, Room: "room-c", Position: spatial.Position{X: 9, Y: 5}},
+			},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		s.Require().NoError(err)
+
+		_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	})
+}
+
+// TestTraverseBothDirections pins the threshold-success path in BOTH
+// directions through the same connection (T1 law: connections are
+// bidirectional), asserting room+position after each hop.
+func (s *EncounterTestSuite) TestTraverseBothDirections() {
+	s.Run("room-a to room-b", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+		s.Equal(alice, out.Traversed.Member)
+		s.Equal("room-a", out.Traversed.FromRoom)
+		s.Equal(spatial.Position{X: 9, Y: 5}, out.Traversed.From)
+		s.Equal("room-b", out.Traversed.ToRoom)
+		s.Equal(spatial.Position{X: 0, Y: 5}, out.Traversed.To)
+
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		found := false
+		for _, m := range members {
+			if m.ID == alice {
+				s.Equal("room-b", m.Room)
+				found = true
+			}
+		}
+		s.True(found, "alice must still be a member, now in room-b")
+	})
+
+	s.Run("room-b to room-a (bidirectional through the same connection)", func() {
+		enc := s.newTwoRoomEncounterWithConnection()
+		_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+
+		out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+		s.Equal("room-b", out.Traversed.FromRoom)
+		s.Equal(spatial.Position{X: 0, Y: 5}, out.Traversed.From)
+		s.Equal("room-a", out.Traversed.ToRoom)
+		s.Equal(spatial.Position{X: 9, Y: 5}, out.Traversed.To)
+
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		for _, m := range members {
+			if m.ID == alice {
+				s.Equal("room-a", m.Room)
+			}
+		}
+	})
+}
+
+// TestTraverseGhostAtThreshold pins that a departure-room observer's
+// holding of the traverser fades to a ghost AT THE DEPARTURE ENDPOINT —
+// their last-observed position — not the (never-seen) arrival position.
+func (s *EncounterTestSuite) TestTraverseGhostAtThreshold() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	bobBefore, err := enc.View(&encounter.ViewInput{Member: bob})
+	s.Require().NoError(err)
+	s.Require().Len(bobBefore, 1, "bob must see alice before the traverse (geometry precondition)")
+	s.Equal(intel.Current, bobBefore[0].Status)
+
+	_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	bobAfter, err := enc.View(&encounter.ViewInput{Member: bob})
+	s.Require().NoError(err)
+	s.Require().Len(bobAfter, 1, "the ghost is HELD, not gone")
+	s.Equal(intel.Held, bobAfter[0].Status, "bob's sight of alice must fade — she left room-a")
+
+	var aliceSeen encounter.SightPayload
+	s.Require().NoError(json.Unmarshal(bobAfter[0].Payload, &aliceSeen))
+	s.Equal("room-a", aliceSeen.Room, "ghost holds alice's LAST-SEEN room")
+	s.Equal(9.0, aliceSeen.X, "ghost holds alice at the DEPARTURE endpoint, not the arrival one")
+	s.Equal(5.0, aliceSeen.Y)
+}
+
+// TestTraverseArrivalCurrent pins that an arrival-room observer gains the
+// traverser as Current at the arrival endpoint.
+func (s *EncounterTestSuite) TestTraverseArrivalCurrent() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	goblinView, err := enc.View(&encounter.ViewInput{Member: goblin})
+	s.Require().NoError(err)
+	s.Require().Len(goblinView, 1)
+	s.Equal(intel.Subject(alice), goblinView[0].Subject)
+	s.Equal(intel.Current, goblinView[0].Status, "goblin must see alice as Current — she arrived in room-b")
+
+	var aliceSeen encounter.SightPayload
+	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
+	s.Equal("room-b", aliceSeen.Room)
+	s.Equal(0.0, aliceSeen.X)
+	s.Equal(5.0, aliceSeen.Y)
+}
+
+// TestTraverseSightNeverCrossesOpening pins law T3: sight never crosses a
+// connection's opening. goblin stands in room-b, adjacent to the arrival
+// endpoint. Before alice traverses — while she's still in room-a, at the
+// connection's OTHER endpoint — goblin must have NO holding of her at
+// all, not even a ghost: rooms are separate spatial containers with no
+// shared geometry (spatial ADR-0015), so there is no code path by which
+// goblin's line-of-sight computation, scoped entirely to room-b, could
+// observe alice in room-a.
+func (s *EncounterTestSuite) TestTraverseSightNeverCrossesOpening() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	goblinBefore, err := enc.View(&encounter.ViewInput{Member: goblin})
+	s.Require().NoError(err)
+	s.Empty(goblinBefore, "goblin must not perceive alice through the unopened doorway")
+}
+
+// TestTraverseOwnView pins that after traversing, the traverser's OWN
+// percept reflects arrival-room members Current and departure-room
+// members faded to ghosts — the same complete-percept contract that
+// governs everyone else's view of them.
+func (s *EncounterTestSuite) TestTraverseOwnView() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	aliceBefore, err := enc.View(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(aliceBefore, 1, "alice sees only bob before traversing (goblin is behind the unopened door)")
+	s.Equal(intel.Subject(bob), aliceBefore[0].Subject)
+	s.Equal(intel.Current, aliceBefore[0].Status)
+
+	_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	aliceAfter, err := enc.View(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(aliceAfter, 2, "alice now holds both bob (ghosted) and goblin (Current)")
+
+	var bobHolding, goblinHolding *intel.Holding
+	for i := range aliceAfter {
+		switch aliceAfter[i].Subject {
+		case intel.Subject(bob):
+			bobHolding = &aliceAfter[i]
+		case intel.Subject(goblin):
+			goblinHolding = &aliceAfter[i]
+		}
+	}
+	s.Require().NotNil(bobHolding, "alice must still hold bob (ghosted)")
+	s.Equal(intel.Held, bobHolding.Status, "bob fades to a ghost — alice left room-a")
+	s.Require().NotNil(goblinHolding, "alice must now hold goblin (Current)")
+	s.Equal(intel.Current, goblinHolding.Status, "goblin is Current — alice arrived in room-b")
+}
+
+// TestTraverseEndingFiresOnArrival pins that a ReachedPosition ending
+// declared at the connection's far endpoint fires on arrival, exactly
+// like Move firing endings at a movement target.
+func (s *EncounterTestSuite) TestTraverseEndingFiresOnArrival() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "room-a", To: "room-b",
+					FromPosition: spatial.Position{X: 9, Y: 5},
+					ToPosition:   spatial.Position{X: 0, Y: 5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
+				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}}},
+		},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Outcome, "outcome should be set when arriving at the ending position")
+	s.Equal("escaped", out.Outcome.Ending)
+	s.Require().Len(out.Outcome.Members, 1)
+	s.Equal(alice, out.Outcome.Members[0].ID)
+	s.Equal("room-b", out.Outcome.Members[0].Room)
+	s.Equal(spatial.Position{X: 0, Y: 5}, out.Outcome.Members[0].Position)
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.False(status.Open)
+}
+
+// TestTraverseMonsterOnUnfilteredEndingDoesNotClose pins the players-only
+// rule for unfiltered ReachedPosition endings, carried over verbatim from
+// Move/Pump: a monster traversing onto an unfiltered ending's cell must
+// NOT close the encounter.
+func (s *EncounterTestSuite) TestTraverseMonsterOnUnfilteredEndingDoesNotClose() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "door1", From: "room-a", To: "room-b",
+					FromPosition: spatial.Position{X: 9, Y: 5},
+					ToPosition:   spatial.Position{X: 0, Y: 5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: goblin, Kind: encounter.KindMonster, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			// Unfiltered: empty Member means players only.
+			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
+				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}, Member: ""}},
+		},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: goblin, Connection: "door1"})
+	s.Require().NoError(err)
+	s.Nil(out.Outcome, "unfiltered ending must not fire for a monster")
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.True(status.Open, "encounter should remain open")
+}
+
+// TestTraverseBeatPinned pins the traversed beat: tag, payload, and
+// Story reflects it in position (the Move/Exit precedent applied here).
+func (s *EncounterTestSuite) TestTraverseBeatPinned() {
+	enc := s.newTwoRoomEncounterWithConnection()
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq, "TraverseOutput.Seq references the traversed beat")
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("traversed", beat["beat"])
+	s.Equal(string(alice), beat["member"])
+	s.Equal("door1", beat["connection"])
+}
+
+// TestTraverseClockUnchanged pins law T4: traversal is an activity, not
+// time — the exploration clock does not advance.
+func (s *EncounterTestSuite) TestTraverseClockUnchanged() {
+	enc := s.newTwoRoomEncounterWithConnection()
+	before := enc.ToData().Clock.HighWater
+
+	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	after := enc.ToData().Clock.HighWater
+	s.Equal(before, after, "traversal is an activity, not time — the clock must not advance")
+}
+
+// TestTraverseThenJoinVacatedCellThenTraverseBack pins the wave-1 Exit
+// lesson (see TestExitThenRejoinSameID) against Traverse's own
+// remove+place composition: after alice traverses room-a -> room-b, a
+// NEW member can Join at the vacated room-a endpoint cell (proving
+// RemoveEntity truly cleared it, not just hid it from Members/View), and
+// alice can traverse BACK through the same connection (proving
+// PlaceEntity into room-b left no stale index entry either).
+func (s *EncounterTestSuite) TestTraverseThenJoinVacatedCellThenTraverseBack() {
+	enc := s.newTwoRoomEncounterWithConnection()
+
+	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+		ID: core.EntityID("charlie"), Kind: encounter.KindPlayer,
+		Room: "room-a", Position: spatial.Position{X: 9, Y: 5},
+	}})
+	s.Require().NoError(err, "the vacated cell must truly be free — no stale registry entry in room-a")
+
+	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err, "alice must be able to traverse back — no stale registry entry in room-b either")
+	s.Equal("room-a", out.Traversed.ToRoom)
+}
+
 // Membership flow tests (Task 5)
 
 func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
@@ -1882,6 +2266,11 @@ func (s *EncounterTestSuite) TestAllMutatingVerbsReturnErrClosedPostClose() {
 
 		// Pump on closed: ErrClosed
 		_, err = enc.Pump(&encounter.PumpInput{})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+
+		// Traverse on closed: ErrClosed (checked before connection lookup,
+		// so a nonexistent connection ID still surfaces ErrClosed first)
+		_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
 		s.Require().ErrorIs(err, encounter.ErrClosed)
 
 		// End on closed: ErrClosed

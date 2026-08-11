@@ -38,8 +38,14 @@ var (
 	// ErrBadConnection is returned when a connection's ID is empty or
 	// duplicated, its From/To names an unknown room or itself, or an
 	// endpoint lies outside its room's bounds or on an occluder position.
-	// Returned at both Setup and Load.
+	// Returned at both Setup and Load — a declaration-time defect.
 	ErrBadConnection = errors.New("bad connection")
+
+	// ErrNoConnection is returned by Traverse when the given connection ID
+	// does not name any connection in this encounter — a runtime lookup
+	// miss, the ErrNotMember analogue for connections. Distinct from
+	// ErrBadConnection, which is a declaration-time defect at Setup/Load.
+	ErrNoConnection = errors.New("no such connection")
 
 	// ErrInvalidData is returned when LoadEncounter rejects the input data.
 	ErrInvalidData = errors.New("invalid encounter data")

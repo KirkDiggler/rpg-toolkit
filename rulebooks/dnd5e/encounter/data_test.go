@@ -1201,8 +1201,8 @@ func (s *DataTestSuite) TestLoadRejections() {
 
 // connBoundsData returns a fresh EncounterData with a 4x3 room r1 (valid
 // coordinates 0..3 x 0..2) and one connection — the Load-seam counterpart to
-// encounter_test.go's connBoundsSetup, pinning positionInBounds' strictly-
-// less-than semantics at Load independent of any cross-room concern.
+// encounter_test.go's connBoundsSetup, pinning the square grid's strictly-
+// less-than bounds semantics at Load independent of any cross-room concern.
 func connBoundsData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{

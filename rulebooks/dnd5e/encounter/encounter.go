@@ -658,6 +658,223 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}, nil
 }
 
+// Traverse moves a member across a connection from their current endpoint to
+// the connection's OTHER endpoint, in the other room. The member must be
+// standing EXACTLY on one of the connection's two endpoints; connections are
+// bidirectional (T1 law), so traversal works in either direction through the
+// same connection. Validation order (R5 atomicity): nil input → closed →
+// not a member → connection not found → endpoint mismatch (wrong room or
+// wrong position, either rejects the same way).
+//
+// The spatial layer genuinely moves the entity between rooms: RemoveEntity
+// from the departure room, then PlaceEntity into the arrival room — the
+// SAME two managed seams Exit and Join already use individually, just
+// composed. This matters: omitting RemoveEntity leaks the entity in the
+// departure room's registry even though it's invisible to Members/View
+// (see TestExitThenRejoinSameID's doc comment — the wave-1 lesson).
+// Composing the two proven seams here means the lesson can't regress.
+//
+// The clock is NOT advanced — traversal is an activity, not time (law T4).
+// Sight refreshes for ALL members in one refreshSight call: since
+// refreshSight scopes each observer's percept to members currently in
+// THEIR OWN room, updating member.Room before the refresh is sufficient —
+// departure-room observers naturally stop seeing the traverser (intel's
+// existing complete-percept contract ghosts them at their last-known
+// position, the departure endpoint) and arrival-room observers naturally
+// gain them Current. No per-room special-casing needed, and sight cannot
+// cross the opening in either direction: rooms are separate spatial
+// containers with no shared geometry (spatial ADR-0015), so there is no
+// code path by which an observer's line-of-sight computation — scoped
+// entirely to entities in their own room — could see into the other room.
+//
+// Ending evaluation mirrors Move exactly, evaluated against the ARRIVAL
+// room/position: unfiltered ReachedPosition triggers fire for player
+// members only; member-filtered triggers fire for the named member
+// regardless of kind.
+func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
+	// Validation order
+	if in == nil {
+		return nil, fmt.Errorf("traverse: %w", ErrNilInput)
+	}
+
+	if e.outcome != nil {
+		return nil, fmt.Errorf("traverse: %w", ErrClosed)
+	}
+
+	member, ok := e.members[in.Member]
+	if !ok {
+		return nil, fmt.Errorf("traverse: %w", ErrNotMember)
+	}
+
+	var conn *ConnectionInput
+	for i := range e.connectionsInput {
+		if e.connectionsInput[i].ID == in.Connection {
+			conn = &e.connectionsInput[i]
+			break
+		}
+	}
+	if conn == nil {
+		return nil, fmt.Errorf("traverse: connection %s not found: %w", in.Connection, ErrNoConnection)
+	}
+
+	room, ok := e.orchestrator.GetRoom(member.Room)
+	if !ok {
+		return nil, fmt.Errorf("traverse: %w", ErrBadPlacement)
+	}
+	fromPos, ok := room.GetEntityPosition(string(in.Member))
+	if !ok {
+		return nil, fmt.Errorf("traverse: %w", ErrBadPlacement)
+	}
+	fromRoom := member.Room
+
+	// The member must be standing exactly on one of the connection's two
+	// endpoints. Determine direction from WHICH endpoint they're on — the
+	// arrival side is always the connection's OTHER endpoint (never the
+	// one the member is currently standing on).
+	var toRoom string
+	var toPos spatial.Position
+	switch {
+	case fromRoom == conn.From && fromPos.X == conn.FromPosition.X && fromPos.Y == conn.FromPosition.Y:
+		toRoom, toPos = conn.To, conn.ToPosition
+	case fromRoom == conn.To && fromPos.X == conn.ToPosition.X && fromPos.Y == conn.ToPosition.Y:
+		toRoom, toPos = conn.From, conn.FromPosition
+	default:
+		return nil, fmt.Errorf("traverse: member %s is not at connection %s's endpoint: %w", in.Member, in.Connection, ErrBadPlacement)
+	}
+
+	// Move the entity between rooms via the two proven managed seams.
+	_, err := e.orchestrator.RemoveEntity(&spatial.RemoveEntityInput{
+		RoomID:   spatial.RoomID(fromRoom),
+		EntityID: core.EntityID(in.Member),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("traverse remove entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	entity := &memberEntity{
+		id:   string(in.Member),
+		kind: member.Kind,
+	}
+	_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
+		RoomID:   spatial.RoomID(toRoom),
+		Entity:   entity,
+		Position: toPos,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("traverse place entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Update the member's room before refreshSight — see the doc comment
+	// above for why this alone is sufficient for correct two-room percepts.
+	member.Room = toRoom
+
+	memberIDs := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		memberIDs = append(memberIDs, id)
+	}
+	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+
+	intelDeltas, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("traverse refresh sight: %w", err)
+	}
+
+	// Record the traversal beat. The clock is NOT advanced (law T4).
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReadingForBeat := uint64(clockReadingInt)
+	beatPayload := map[string]interface{}{
+		"beat":       "traversed",
+		"member":     string(in.Member),
+		"connection": in.Connection,
+		"room":       toRoom,
+		"position":   toPos,
+	}
+	beatBytes, _ := json.Marshal(beatPayload)
+
+	appendOut, err := e.story.Append(&record.AppendInput{
+		At:       clockReadingForBeat,
+		Audience: memberIDs,
+		Tags:     map[string]string{"tag": "movement"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("traverse append beat: %w", err)
+	}
+
+	seqNum := appendOut.Seq
+
+	// Evaluate ReachedPosition endings against the ARRIVAL room/position.
+	var firedOutcome *Outcome
+	for _, de := range e.endings {
+		endingKey, trigger := de.key, de.trigger
+		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
+		if !ok {
+			continue // Not a ReachedPosition trigger
+		}
+
+		if reachedPosTrigger.Room != toRoom {
+			continue // Different room
+		}
+
+		if reachedPosTrigger.Position.X != toPos.X || reachedPosTrigger.Position.Y != toPos.Y {
+			continue // Different position
+		}
+
+		// Check member filter: empty = any player member; non-empty = specific member
+		if reachedPosTrigger.Member != "" && reachedPosTrigger.Member != in.Member {
+			continue // Member filter doesn't match
+		}
+
+		// Member filter passes (empty or matches) but we need to check kind
+		if reachedPosTrigger.Member == "" && member.Kind != KindPlayer {
+			continue // Empty filter means players only, but traversing member is not player
+		}
+
+		// Ending fires! Build the outcome with all members' current positions
+		memberOutcomes := e.buildMemberOutcomes()
+
+		e.outcome = &Outcome{
+			Ending:  endingKey,
+			At:      clockReadingForBeat,
+			Members: memberOutcomes,
+		}
+		// Return a deep copy of the outcome (mutation-proof)
+		outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
+		for i, m := range e.outcome.Members {
+			outcomeMembers[i] = MemberOutcome{
+				ID:       m.ID,
+				Room:     m.Room,
+				Position: m.Position,
+			}
+		}
+		firedOutcome = &Outcome{
+			Ending:  e.outcome.Ending,
+			At:      e.outcome.At,
+			Members: outcomeMembers,
+		}
+		break
+	}
+
+	return &TraverseOutput{
+		Traversed: struct {
+			Member   MemberID
+			FromRoom string
+			From     spatial.Position
+			ToRoom   string
+			To       spatial.Position
+		}{
+			Member:   in.Member,
+			FromRoom: fromRoom,
+			From:     fromPos,
+			ToRoom:   toRoom,
+			To:       toPos,
+		},
+		IntelDeltas: intelDeltas,
+		Seq:         seqNum,
+		Outcome:     firedOutcome,
+	}, nil
+}
+
 // Pump advances the world by one tick: the exploration clock advances,
 // each monster member (in deterministic order) acts on its own intel via Decider,
 // the complete sight refresh happens once, and the story accrues tick and move beats.
