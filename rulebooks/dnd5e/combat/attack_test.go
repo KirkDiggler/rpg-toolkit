@@ -12,10 +12,12 @@ import (
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	mock_combat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/mock"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage/affinity"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -44,6 +46,252 @@ func (s *AttackTestSuite) SetupTest() {
 
 func (s *AttackTestSuite) TearDownTest() {
 	s.ctrl.Finish()
+}
+
+func TestResolveAttackNaturalAttackRollsEveryPool(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("gray").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("hero").Return(defender, nil).AnyTimes()
+	defender.EXPECT().AC().Return(15).AnyTimes()
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(12, nil)
+	roller.EXPECT().RollN(ctx, 1, 6).Return([]int{5}, nil)
+	roller.EXPECT().RollN(ctx, 2, 6).Return([]int{4, 4}, nil)
+
+	pseudopod := &attack.Definition{
+		ActionID:    "pseudopod",
+		DisplayName: "Pseudopod",
+		Category:    attack.CategoryNatural,
+		Bonus:       attack.FixedBonus(3),
+		Targeting:   attack.MeleeReach(1),
+		Damage: damage.DamageSpec{Pools: []damage.Damage{
+			{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: -1, Properties: []damage.Property{damage.PropertyCritEligible}},
+			{Dice: "2d6", Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible}},
+		}},
+	}
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "gray",
+		TargetID:   "hero",
+		Attack:     pseudopod,
+		EventBus:   eventBus,
+		Roller:     roller,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Hit {
+		t.Fatal("expected fixed +3 natural attack to hit AC 15 on a roll of 12")
+	}
+	if result.Breakdown == nil || len(result.Breakdown.Components) != 2 {
+		t.Fatalf("expected both natural attack pools, got %#v", result.Breakdown)
+	}
+	if result.AttackBonus != 3 {
+		t.Fatalf("expected declared fixed attack bonus 3, got %d", result.AttackBonus)
+	}
+	if result.Breakdown.Components[0].FlatBonus != -1 {
+		t.Fatalf("expected intrinsic flat bonus once, got %#v", result.Breakdown.Components[0])
+	}
+}
+
+func TestResolveAttackNaturalAttackAddsNoAbilityComponent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("gray").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("hero").Return(defender, nil).AnyTimes()
+	defender.EXPECT().AC().Return(10).AnyTimes()
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(10, nil)
+	roller.EXPECT().RollN(ctx, 1, 6).Return([]int{5}, nil)
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "gray",
+		TargetID:   "hero",
+		Attack: &attack.Definition{
+			ActionID: "pseudopod", Category: attack.CategoryNatural,
+			Bonus: attack.FixedBonus(3), Targeting: attack.MeleeReach(1),
+			Damage: damage.DamageSpec{Pools: []damage.Damage{{
+				Dice: "1d6", Type: damage.Bludgeoning,
+			}}},
+		},
+		EventBus: eventBus,
+		Roller:   roller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, component := range result.Breakdown.Components {
+		if component.Source == dnd5eEvents.DamageSourceAbility {
+			t.Fatalf("natural attack must not add an ability component: %#v", result.Breakdown.Components)
+		}
+	}
+	if result.Breakdown.Components[0].Source != dnd5eEvents.DamageSourceNaturalAttack {
+		t.Fatalf("expected natural attack damage source, got %q", result.Breakdown.Components[0].Source)
+	}
+}
+
+func TestResolveAttackCriticalDoublesOnlyEligibleDice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("attacker").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("target").Return(defender, nil).AnyTimes()
+	defender.EXPECT().AC().Return(30).AnyTimes()
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(20, nil)
+	roller.EXPECT().RollN(ctx, 1, 6).Return([]int{6}, nil).Times(2)
+	roller.EXPECT().RollN(ctx, 1, 4).Return([]int{4}, nil)
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "attacker",
+		TargetID:   "target",
+		Attack: &attack.Definition{
+			ActionID: "selective-critical", Category: attack.CategoryNatural,
+			Bonus: attack.FixedBonus(0), Targeting: attack.MeleeReach(1),
+			Damage: damage.DamageSpec{Pools: []damage.Damage{
+				{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: -1, Properties: []damage.Property{damage.PropertyCritEligible}},
+				{Dice: "1d4", Type: damage.Acid},
+			}},
+		},
+		EventBus: eventBus,
+		Roller:   roller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Breakdown.Components[0].FinalDiceRolls; len(got) != 2 || got[0] != 6 || got[1] != 6 {
+		t.Fatalf("eligible pool did not double: %v", got)
+	}
+	if got := result.Breakdown.Components[1].FinalDiceRolls; len(got) != 1 || got[0] != 4 {
+		t.Fatalf("ineligible pool doubled: %v", got)
+	}
+	if result.Breakdown.Components[0].FlatBonus != -1 {
+		t.Fatalf("critical doubled intrinsic flat bonus: %#v", result.Breakdown.Components[0])
+	}
+}
+
+func TestResolveAttackAcidResistanceLeavesBludgeoningUntouched(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("gray").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("hero").Return(defender, nil).AnyTimes()
+	defender.EXPECT().AC().Return(10).AnyTimes()
+
+	resistance, err := affinity.New(affinity.Resistance, "hero", damage.Acid, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resistance.Apply(ctx, eventBus); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resistance.Remove(ctx, eventBus) })
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(10, nil)
+	roller.EXPECT().RollN(ctx, 1, 6).Return([]int{6}, nil)
+	roller.EXPECT().RollN(ctx, 2, 6).Return([]int{4, 4}, nil)
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "gray",
+		TargetID:   "hero",
+		Attack: &attack.Definition{
+			ActionID: "pseudopod", Category: attack.CategoryNatural,
+			Bonus: attack.FixedBonus(3), Targeting: attack.MeleeReach(1),
+			Damage: damage.DamageSpec{Pools: []damage.Damage{
+				{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: -1},
+				{Dice: "2d6", Type: damage.Acid},
+			}},
+		},
+		EventBus: eventBus,
+		Roller:   roller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TotalDamage != 9 {
+		t.Fatalf("expected untouched 5 bludgeoning plus resisted 4 acid, got %d", result.TotalDamage)
+	}
+	if result.Breakdown.Components[0].Total() != 5 || result.Breakdown.Components[0].DamageType != damage.Bludgeoning {
+		t.Fatalf("bludgeoning pool changed unexpectedly: %#v", result.Breakdown.Components[0])
+	}
+	acidMultiplierFound := false
+	for _, component := range result.Breakdown.Components {
+		if component.DamageType == damage.Acid && component.Multiplier == 0.5 {
+			acidMultiplierFound = true
+		}
+		if component.DamageType == damage.Bludgeoning && component.Multiplier != 0 {
+			t.Fatalf("acid resistance affected bludgeoning: %#v", component)
+		}
+	}
+	if !acidMultiplierFound {
+		t.Fatalf("acid resistance modifier missing: %#v", result.Breakdown.Components)
+	}
+}
+
+func TestResolveAttackLegacyWeaponKeepsWeaponAndAbilityComponents(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("fighter").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("target").Return(defender, nil).AnyTimes()
+	attacker.EXPECT().AbilityScores().Return(shared.AbilityScores{abilities.STR: 16}).AnyTimes()
+	attacker.EXPECT().ProficiencyBonus().Return(2).AnyTimes()
+	defender.EXPECT().AC().Return(15).AnyTimes()
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(15, nil)
+	roller.EXPECT().RollN(ctx, 1, 8).Return([]int{5}, nil)
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "fighter",
+		TargetID:   "target",
+		Weapon: &weapons.Weapon{
+			ID: weapons.Longsword, Name: "Longsword", Category: weapons.CategoryMartialMelee,
+			Damage: "1d8", DamageType: damage.Slashing,
+		},
+		EventBus: eventBus,
+		Roller:   roller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Breakdown == nil || len(result.Breakdown.Components) != 2 {
+		t.Fatalf("expected weapon and ability components, got %#v", result.Breakdown)
+	}
+	if result.Breakdown.Components[0].Source != dnd5eEvents.DamageSourceWeapon {
+		t.Fatalf("expected weapon component, got %q", result.Breakdown.Components[0].Source)
+	}
+	if result.Breakdown.Components[1].Source != dnd5eEvents.DamageSourceAbility {
+		t.Fatalf("expected ability component, got %q", result.Breakdown.Components[1].Source)
+	}
 }
 
 func (s *AttackTestSuite) TestResolveAttack_BasicMeleeHit() {

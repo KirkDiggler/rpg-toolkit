@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -73,7 +74,13 @@ type AttackInput struct {
 	TargetID string
 
 	// Weapon is the weapon being used for the attack.
+	// Exactly one of Attack or Weapon must be provided.
 	Weapon *weapons.Weapon
+
+	// Attack is a reusable attack definition. It is the authoritative input
+	// when provided and supports attacks that do not use equipment.
+	// Exactly one of Attack or Weapon must be provided.
+	Attack *attack.Definition
 
 	// EventBus is required for publishing attack/damage events.
 	EventBus events.EventBus
@@ -109,8 +116,14 @@ func (ai *AttackInput) Validate() error {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "TargetID is required")
 	}
 
-	if ai.Weapon == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "Weapon is nil")
+	if (ai.Attack == nil) == (ai.Weapon == nil) {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "exactly one of Attack or Weapon is required")
+	}
+
+	if ai.Attack != nil {
+		if err := ai.Attack.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if ai.EventBus == nil {
@@ -177,6 +190,7 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 	hitResult, err := ResolveAttackHit(ctx, &ResolveAttackHitInput{
 		AttackerID: input.AttackerID,
 		TargetID:   input.TargetID,
+		Attack:     input.Attack,
 		Weapon:     input.Weapon,
 		EventBus:   input.EventBus,
 		Roller:     input.Roller,
@@ -194,6 +208,51 @@ func ResolveAttack(ctx context.Context, input *AttackInput) (*AttackResult, erro
 		EventBus:  input.EventBus,
 		Roller:    input.Roller,
 	})
+}
+
+func normalizeAttackDefinition(definition *attack.Definition, weapon *weapons.Weapon) (*attack.Definition, error) {
+	if definition != nil {
+		if weapon != nil {
+			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "exactly one of Attack or Weapon is required")
+		}
+		if err := definition.Validate(); err != nil {
+			return nil, err
+		}
+		return definition, nil
+	}
+	if weapon == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "exactly one of Attack or Weapon is required")
+	}
+
+	damageSpec := damage.DamageSpec{Pools: []damage.Damage{{
+		Dice:       weapon.Damage,
+		Type:       weapon.DamageType,
+		Properties: []damage.Property{damage.PropertyCritEligible},
+	}}}
+	if weapon.DamageSpec != nil {
+		damageSpec = *weapon.DamageSpec
+	}
+	if err := damageSpec.Validate(); err != nil {
+		return nil, err
+	}
+
+	actionID := string(weapon.ID)
+	if actionID == "" {
+		actionID = weapon.Name
+	}
+	if actionID == "" {
+		actionID = "weapon"
+	}
+
+	return &attack.Definition{
+		ActionID:        actionID,
+		DisplayName:     weapon.Name,
+		Category:        attack.CategoryEquipmentWeapon,
+		Bonus:           attack.DerivedBonus(),
+		Targeting:       attack.MeleeReach(1),
+		EquipmentWeapon: weapon,
+		Damage:          damageSpec,
+	}, nil
 }
 
 // rollDamageDice rolls the damage pool the specified number of times and combines results

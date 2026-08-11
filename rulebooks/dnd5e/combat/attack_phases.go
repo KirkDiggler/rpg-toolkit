@@ -5,13 +5,13 @@ package combat
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -48,7 +48,8 @@ type AttackContext struct {
 	// Identity
 	AttackerID string
 	TargetID   string
-	Weapon     *weapons.Weapon
+	Attack     *attack.Definition
+	Weapon     *weapons.Weapon // Retained for compatibility; Attack is authoritative.
 
 	// Original state (before any reactions)
 	OriginalAC int  // Target AC before any reaction modifiers
@@ -82,10 +83,11 @@ type AttackContext struct {
 	// Damage-chain context — populated by ResolveAttackHit and consumed by
 	// ApplyAttackOutcome. Exported so the AttackContext is fully serializable;
 	// orchestrators should not modify these between phases.
-	AbilityMod      int
-	AbilityUsed     abilities.Ability
-	IsOffHandAttack bool
-	IsMelee         bool // True for melee attacks, false for ranged (from the attack chain's weapon check)
+	AbilityMod       int
+	AbilityUsed      abilities.Ability
+	UsesDerivedBonus bool
+	IsOffHandAttack  bool
+	IsMelee          bool // True for melee attacks, false for ranged (from the attack chain's weapon check)
 }
 
 // ReactionModifier represents an AC or roll modification chosen by a player
@@ -114,8 +116,13 @@ type ResolveAttackHitInput struct {
 	// TargetID is the combatant being attacked.
 	TargetID string
 
-	// Weapon is the weapon being used for the attack.
+	// Weapon is the legacy weapon being used for the attack.
+	// Exactly one of Attack or Weapon must be provided.
 	Weapon *weapons.Weapon
+
+	// Attack is the authoritative reusable attack definition.
+	// Exactly one of Attack or Weapon must be provided.
+	Attack *attack.Definition
 
 	// EventBus is required for publishing attack/damage events.
 	EventBus events.EventBus
@@ -142,8 +149,13 @@ func (r *ResolveAttackHitInput) Validate() error {
 	if r.TargetID == "" {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "TargetID is required")
 	}
-	if r.Weapon == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "Weapon is nil")
+	if (r.Attack == nil) == (r.Weapon == nil) {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "exactly one of Attack or Weapon is required")
+	}
+	if r.Attack != nil {
+		if err := r.Attack.Validate(); err != nil {
+			return err
+		}
 	}
 	if r.EventBus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "EventBus is nil")
@@ -211,6 +223,15 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 	if err := input.Validate(); err != nil {
 		return nil, err
 	}
+	attackDefinition, err := normalizeAttackDefinition(input.Attack, input.Weapon)
+	if err != nil {
+		return nil, err
+	}
+	weapon := attackDefinition.EquipmentWeapon
+	usesDerivedBonus := attackDefinition.Bonus == attack.DerivedBonus()
+	if usesDerivedBonus && weapon == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "derived attacks require an equipment weapon")
+	}
 
 	// Look up attacker from context
 	attacker, err := GetCombatantFromContext(ctx, input.AttackerID)
@@ -224,16 +245,14 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		return nil, rpgerr.Wrapf(err, "failed to look up defender %s", input.TargetID)
 	}
 
-	attackerScores := attacker.AbilityScores()
-	proficiencyBonus := attacker.ProficiencyBonus()
 	defenderAC := GetEffectiveAC(ctx, defender)
 
 	isOffHandAttack := input.AttackHand == AttackHandOff
-	if isOffHandAttack {
+	if isOffHandAttack && usesDerivedBonus {
 		if err := validateOffHandAttack(ctx, &AttackInput{
 			AttackerID: input.AttackerID,
 			TargetID:   input.TargetID,
-			Weapon:     input.Weapon,
+			Weapon:     weapon,
 			EventBus:   input.EventBus,
 			Roller:     input.Roller,
 			AttackHand: input.AttackHand,
@@ -248,14 +267,26 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		roller = dice.NewRoller()
 	}
 
-	abilityMod := calculateAttackAbilityModifier(input.Weapon, attackerScores)
-	baseBonus := abilityMod + proficiencyBonus
+	abilityMod := 0
+	abilityUsed := abilities.Ability("")
+	baseBonus := attackDefinition.Bonus.Fixed
+	if usesDerivedBonus {
+		attackerScores := attacker.AbilityScores()
+		abilityMod = calculateAttackAbilityModifier(weapon, attackerScores)
+		abilityUsed = determineAbilityUsed(weapon, attackerScores)
+		baseBonus = abilityMod + attacker.ProficiencyBonus()
+	}
+
+	isMelee := attackDefinition.Targeting.Mode == attack.TargetingMeleeReach
+	if weapon != nil {
+		isMelee = !weapon.IsRanged()
+	}
 
 	attackEvent := dnd5eEvents.AttackChainEvent{
 		AttackerID:          input.AttackerID,
 		TargetID:            input.TargetID,
-		WeaponRef:           weaponToRef(input.Weapon),
-		IsMelee:             !input.Weapon.IsRanged(),
+		WeaponRef:           weaponToRef(weapon),
+		IsMelee:             isMelee,
 		AttackType:          resolveAttackType(input.AttackType),
 		AdvantageSources:    nil,
 		DisadvantageSources: nil,
@@ -379,7 +410,8 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 	return &AttackContext{
 		AttackerID:          input.AttackerID,
 		TargetID:            input.TargetID,
-		Weapon:              input.Weapon,
+		Attack:              attackDefinition,
+		Weapon:              weapon,
 		OriginalAC:          defenderAC,
 		WouldHit:            wouldHit,
 		AttackRoll:          attackRoll,
@@ -395,7 +427,8 @@ func ResolveAttackHit(ctx context.Context, input *ResolveAttackHitInput) (*Attac
 		CriticalThreshold:   finalAttackEvent.CriticalThreshold,
 		ReactionsConsumed:   finalAttackEvent.ReactionsConsumed,
 		AbilityMod:          abilityMod,
-		AbilityUsed:         determineAbilityUsed(input.Weapon, attackerScores),
+		AbilityUsed:         abilityUsed,
+		UsesDerivedBonus:    usesDerivedBonus,
 		IsOffHandAttack:     isOffHandAttack,
 		IsMelee:             finalAttackEvent.IsMelee,
 	}, nil
@@ -422,6 +455,24 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	}
 
 	ac := input.HitResult
+	attackDefinition := ac.Attack
+	usesDerivedBonus := ac.UsesDerivedBonus
+	if attackDefinition == nil {
+		var err error
+		attackDefinition, err = normalizeAttackDefinition(nil, ac.Weapon)
+		if err != nil {
+			return nil, err
+		}
+		usesDerivedBonus = true
+	}
+	weapon := attackDefinition.EquipmentWeapon
+	if weapon == nil {
+		weapon = ac.Weapon
+	}
+	if err := attackDefinition.Damage.Validate(); err != nil {
+		return nil, err
+	}
+	primaryDamage := attackDefinition.Damage.Pools[0]
 	roller := input.Roller
 	if roller == nil {
 		roller = dice.NewRoller()
@@ -463,59 +514,56 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		HasDisadvantage:     ac.HasDisadvantage,
 		AdvantageSources:    ac.AdvantageSources,
 		DisadvantageSources: ac.DisadvantageSources,
-		DamageType:          ac.Weapon.DamageType,
+		DamageType:          primaryDamage.Type,
 	}
 
 	if !hit {
 		return result, nil
 	}
 
-	// Phase 2: Roll and apply damage
-	damagePool, err := dice.ParseNotation(ac.Weapon.Damage)
-	if err != nil {
-		return nil, rpgerr.Wrap(err, fmt.Sprintf("invalid weapon damage %s", ac.Weapon.Damage))
+	componentSource := dnd5eEvents.DamageSourceNaturalAttack
+	var componentSourceRef *core.Ref
+	if attackDefinition.Category == attack.CategoryEquipmentWeapon {
+		componentSource = dnd5eEvents.DamageSourceWeapon
+		componentSourceRef = weaponToRef(weapon)
 	}
-
-	var damageRolls []int
-	if isCritical {
-		damageRolls, err = rollDamageDice(ctx, damagePool, roller, 2)
-	} else {
-		damageRolls, err = rollDamageDice(ctx, damagePool, roller, 1)
-	}
+	components, err := rollAttackDamage(
+		ctx,
+		attackDefinition.Damage,
+		componentSource,
+		componentSourceRef,
+		isCritical,
+		roller,
+	)
 	if err != nil {
 		return nil, err
 	}
-	result.DamageRolls = damageRolls
-
-	weaponComponent := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		SourceRef:         weaponToRef(ac.Weapon),
-		OriginalDiceRolls: damageRolls,
-		FinalDiceRolls:    damageRolls,
-		DamageType:        ac.Weapon.DamageType,
-		IsCritical:        isCritical,
+	for _, component := range components {
+		result.DamageRolls = append(result.DamageRolls, component.OriginalDiceRolls...)
 	}
 
-	abilityComponent := dnd5eEvents.DamageComponent{
-		Source:     dnd5eEvents.DamageSourceAbility,
-		SourceRef:  abilityToRef(ac.AbilityUsed),
-		FlatBonus:  ac.AbilityMod,
-		DamageType: ac.Weapon.DamageType,
-		IsCritical: isCritical,
+	if usesDerivedBonus && attackDefinition.Category == attack.CategoryEquipmentWeapon {
+		components = append(components, dnd5eEvents.DamageComponent{
+			Source:     dnd5eEvents.DamageSourceAbility,
+			SourceRef:  abilityToRef(ac.AbilityUsed),
+			FlatBonus:  ac.AbilityMod,
+			DamageType: primaryDamage.Type,
+			IsCritical: isCritical,
+		})
 	}
 
 	resolveOutput, err := ResolveDamage(ctx, &ResolveDamageInput{
 		AttackerID:      ac.AttackerID,
 		TargetID:        ac.TargetID,
-		Components:      []dnd5eEvents.DamageComponent{weaponComponent, abilityComponent},
+		Components:      components,
 		IsCritical:      isCritical,
 		HasAdvantage:    ac.HasAdvantage,
 		IsOffHandAttack: ac.IsOffHandAttack,
 		AbilityModifier: ac.AbilityMod,
 		EventBus:        input.EventBus,
-		WeaponDamage:    ac.Weapon.Damage,
+		WeaponDamage:    primaryDamage.Dice,
 		AbilityUsed:     ac.AbilityUsed,
-		WeaponRef:       weaponToRef(ac.Weapon),
+		WeaponRef:       weaponToRef(weapon),
 		IsMelee:         ac.IsMelee,
 	})
 	if err != nil {
@@ -529,12 +577,14 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		finalAbilityUsed = resolveOutput.AbilityUsed
 	}
 
-	// Look up attacker to get final ability modifier (may have been changed by chain)
-	attacker, err := GetCombatantFromContext(ctx, ac.AttackerID)
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to look up attacker %s for damage bonus", ac.AttackerID)
+	if usesDerivedBonus && attackDefinition.Category == attack.CategoryEquipmentWeapon {
+		// Look up attacker to get final ability modifier (may have been changed by chain)
+		attacker, err := GetCombatantFromContext(ctx, ac.AttackerID)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to look up attacker %s for damage bonus", ac.AttackerID)
+		}
+		result.DamageBonus = attacker.AbilityScores().Modifier(finalAbilityUsed)
 	}
-	result.DamageBonus = attacker.AbilityScores().Modifier(finalAbilityUsed)
 
 	if result.TotalDamage < 0 {
 		result.TotalDamage = 0
@@ -550,9 +600,9 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	if err := damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID:   ac.TargetID,
 		SourceID:   ac.AttackerID,
-		SourceRef:  weaponToRef(ac.Weapon),
+		SourceRef:  weaponToRef(weapon),
 		Amount:     result.TotalDamage,
-		DamageType: ac.Weapon.DamageType,
+		DamageType: primaryDamage.Type,
 	}); err != nil {
 		return nil, rpgerr.Wrap(err, "failed to publish damage received event")
 	}
