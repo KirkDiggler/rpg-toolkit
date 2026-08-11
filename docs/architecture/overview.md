@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit architecture overview
 description: Module dependency map + rules-vs-room seam (two diagrams), persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
-updated: 2026-07-04
+updated: 2026-08-10
 confidence: high — diagrams verified against go.mod files 2026-07-04; encounter boundary per ADR-0034
 ---
 
@@ -122,6 +122,8 @@ Conditions and features use a JSON variant of the same pattern:
 
 The difference: `LoadFromData` is used when the data schema is homogeneous (one struct type per entity); `LoadJSON` is used when the loader routes by ref (multiple condition/feature types serialized to the same opaque blob field).
 
+Monster reload currently composes both forms and is explicitly multi-step: `monster.LoadFromData` restores the base entity, `monster/actions.LoadMonsterActions` restores polymorphic actions, and `monstertraits.LoadMonsterConditions` routes and applies trait JSON. The encounter hydration cascade owns all three. See the [current monster README](../../rulebooks/dnd5e/monster/README.md).
+
 ## The boundary rule
 
 ```
@@ -188,6 +190,10 @@ infrastructure at the general layer.
 | events | `events/` | Core | EventBus, BusEffect, TypedTopic, ChainedTopic |
 | game | `game/` | Core | game.Context pattern for passing game state through event chains |
 | items | `items/` | Core | Item/EquippableItem/WeaponItem interfaces — base only, no implementation |
+| play/clock | `play/clock/` | Play primitive | Explicit clock state and advance contracts |
+| play/intel | `play/intel/` | Play primitive | Viewer knowledge/intelligence facts and merge contracts |
+| play/interrupt | `play/interrupt/` | Play primitive | Owned interruption windows and answer custody contracts |
+| play/record | `play/record/` | Play primitive | Append-only play record contracts |
 | mechanics/effects | `mechanics/effects/` | Mechanics | Shared effect infrastructure (tracker, behaviors) |
 | mechanics/conditions | `mechanics/conditions/` | Mechanics | Condition manager, simple/enhanced condition types |
 | mechanics/resources | `mechanics/resources/` | Mechanics | Resource pools (spell slots, ki, rage uses) |

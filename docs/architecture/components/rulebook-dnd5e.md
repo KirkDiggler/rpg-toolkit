@@ -388,35 +388,39 @@ Subclass modifications live in `subclass_modifications.go`. The `submissions.go`
 file is the input shape rpg-api converts proto requests into. Implementation
 notes are in `character/choices/CHOICES_SYSTEM.md`.
 
-## monster/ — note on sibling sub-packages
+## monster/ — runtime, actions, content, and traits
 
-`monster/` is imported by 14 rpg-api files. **Important nuance**:
-`monster/actions` and `monster/monsters` are **sibling sub-packages** of
-`monster/`, not subdirectories in the import sense — they cannot be reached
-through `monster/` because of an import cycle. rpg-api imports them directly
-where it needs them: `monster/actions` from
-`internal/orchestrators/encounter/monster_turns.go` (1 file) and
-`monster/monsters` from `internal/components/dungeon/monster_factory.go` and
-`internal/orchestrators/encounter/orchestrator_test.go` (2 files). The audit
-at `docs/journey/049-rpg-api-toolkit-usage-audit.md` Section 1 incorrectly
-records both as 0 files; this needs a follow-up correction to the audit.
+Monster support currently spans four packages inside the single D&D 5e module:
 
-The built-in monster factory functions like `NewGoblin` live in
-`rulebooks/dnd5e/monster/monster.go` (search for `func NewGoblin`), **not** in
-`monster/monsters/`. `monster/monsters/` contains `Bandit`, `BrownBear`, and
-`Ghoul` — newer additions. `monster/actions/` contains `Bite`, `Melee`,
-`Ranged`, `Multiattack` — the action types monsters compose into their
-turns.
-
-Top symbols rpg-api consumes from `monster/`:
-
-| Symbol | Role |
+| Package | Current owner |
 |---|---|
-| `monster.Data` | persisted monster shape (62 references; deprecation comment in rpg-api repository at `internal/repositories/encounters/repository.go` flags migration in flight) |
-| `monster.LoadFromData` | reconstitute a Monster from Data + bus |
-| `monster.PerceivedEntity`, `monster.PerceptionData` | perception output |
-| `monster.NewGoblin`, `monster.ScimitarConfig` | encounter-setup helpers |
-| `monster.ActionData`, `monster.TypeMeleeAttack`, `monster.TypeRangedAttack`, `monster.TakeDamage` | action plumbing |
+| `monster` | Runtime `Monster`, persisted `Data`, perception/action contracts, `TakeTurn`, targeting, base `LoadFromData`/`ToData`; also the older `NewGoblin` factory |
+| `monster/actions` | Loadable generic action implementations and `LoadMonsterActions` |
+| `monster/monsters` | Built-in factory functions and canonical-ref constructor registry |
+| `monstertraits` | Condition-style trait loader and implementations |
+
+`monster/actions` and `monster/monsters` are directly imported subpackages; they
+are not surfaced through package `monster`. The registry in
+`monster/monsters/registry.go` is the current author/load seam and is consumed by
+encounter seeding and dungeonspec validation.
+
+Monster reload is deliberately multi-step today: `monster.LoadFromData` creates
+the base runtime object, `monster/actions.LoadMonsterActions` restores action
+implementations, and `monstertraits.LoadMonsterConditions` loads and applies
+persisted traits. The encounter hydration cascade owns those steps for held
+combatants. `monster.LoadFromData` alone is not a complete factory round trip.
+
+`Monster.TakeTurn` is the shipped tactics/decision path. It chooses a targeting
+strategy, moves via `tools/spatial` A*, scores and activates actions, and returns
+movement/action attempts. Generic attack actions publish D&D 5e attack events;
+the currently D&D-5e-coupled top-level encounter module captures those events
+and delegates hit/damage to its `CombatResolver`.
+
+See the [current monster README](../../../rulebooks/dnd5e/monster/README.md) and
+[monster contribution guide](../../how-to/add-a-dnd5e-monster.md) for the exact
+current paths, known unsupported clauses, and the clearly labelled proposal to
+flatten built-in content to `rulebooks/dnd5e/monsters` later without creating a
+new module.
 
 ## initiative/ — round/turn tracker
 

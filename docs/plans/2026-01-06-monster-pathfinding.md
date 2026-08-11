@@ -1,5 +1,10 @@
 # Monster Pathfinding Implementation Plan
 
+> **Historical implementation plan — do not execute these steps now.** A* is
+> shipped in `tools/spatial`, and `monster.TakeTurn` calls that implementation;
+> the proposed monster-local files and commands below are not the current API.
+> See the [current monster README](../../rulebooks/dnd5e/monster/README.md).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace greedy monster movement with A* pathfinding that navigates around walls and obstacles.

@@ -1,5 +1,11 @@
 # Monster Structure Design
 
+> **Historical design note — not current API documentation.** This captured the
+> direction before the present implementation. Some concepts shipped, but fields,
+> refs, loaders, and examples below differ from current code and may not compile.
+> Start with the [current monster README](../../../rulebooks/dnd5e/monster/README.md)
+> and verify behavior in code/tests.
+
 Following the character pattern: Data struct for persistence, LoadFromData to wire to bus.
 
 ---

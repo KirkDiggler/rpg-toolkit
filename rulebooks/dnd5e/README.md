@@ -1,308 +1,124 @@
-# D&D 5e Rulebook
+# D&D 5e rulebook
 
-This package implements Dungeons & Dragons 5th Edition rules using the rpg-toolkit infrastructure.
+`rulebooks/dnd5e` is one Go module:
 
-## Overview
-
-The D&D 5e rulebook provides:
-- Character creation with the builder pattern
-- Rich domain models with game mechanics (Attack, SaveThrow, etc.)
-- Data structures for persistence
-- Validation of D&D 5e rules
-- Clear separation between game logic and storage
-
-## Package Structure
-
-The D&D 5e rulebook is organized into bounded contexts:
-
-```
-dnd5e/
-├── character/     # Character creation, persistence, validation
-├── features/      # Character features (rage, second wind, etc.)
-├── combat/        # Attack rolls, damage, initiative
-├── magic/         # Spells, spell slots, casting mechanics
-├── equipment/     # Items, inventory, attunement
-├── rules/         # Core calculations, modifiers
-├── shared/        # Shared types (AbilityScores, etc.)
-└── dnd5e.go       # Package facade for easy imports
+```text
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e
 ```
 
-### Usage
+It implements D&D 5e rules and content. It does not store game state or know
+about a particular database, API, proto, or UI. A host supplies IDs, loads
+rulebook-owned data, calls rulebook behavior, and stores the resulting data.
 
-You can import the entire package:
-```go
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
+## Recommended first contribution
 
-// Use the facade
-builder, err := dnd5e.NewCharacterBuilder("draft-123")
-char := &dnd5e.Character{}
+Add a simple monster whose entire stat block can be composed from behavior that
+already exists. The [human + agent monster guide](../../docs/how-to/add-a-dnd5e-monster.md)
+contains the provenance gate, supported-capability audit, exact files, tests,
+and round-trip checklist.
+
+Do not copy closed Monster Manual text or statistics. SRD 5.1 content may be
+used under its CC BY 4.0 terms with attribution; original content is also
+welcome. The guide has the full source contract.
+
+## The rulebook mental model
+
+Follow one fact through these layers:
+
+```text
+ref/key → definition or factory → runtime rule behavior → Data/JSON → host storage
+                                      ↑
+                               event bus / rule chains
 ```
 
-Or import specific contexts:
+1. **Refs are boundary keys.** `refs.Monsters.Bandit()` identifies content as
+   `dnd5e:monsters:bandit`. Hosts pass keys; they do not reproduce the rule.
+2. **Definitions compose existing rules.** A monster factory chooses identity,
+   stats, supported actions, supported traits, speed, and targeting. Character,
+   class, weapon, spell, and other packages follow their own composition
+   patterns.
+3. **Runtime types own behavior.** Packages such as `combat`, `character`,
+   `conditions`, `features`, `monster`, and `monstertraits` implement rules and
+   subscribe to or publish on the event bus.
+4. **Data is the persistence boundary.** Stateful runtime objects expose
+   `ToData` (or `ToJSON` for polymorphic conditions/features); rulebook loaders
+   reconstruct behavior and subscriptions. The host persists the data but does
+   not interpret it.
+5. **Composition is above rule resolution.** The top-level `encounter` module
+   currently composes D&D 5e monster decisions, combat resolution, spatial
+   state, and encounter events. It is D&D-5e-coupled today.
+
+For monsters, loading is currently multi-step: `monster.LoadFromData` creates
+and subscribes the base runtime monster, `monster/actions.LoadMonsterActions`
+restores its action implementations, and
+`monstertraits.LoadMonsterConditions` loads and applies persisted traits. The
+`encounter.LoadFromData` hydration cascade performs all three. Calling only
+`monster.LoadFromData` does **not** restore a complete factory-created monster.
+
+## Current package map
+
+The module contains many packages. Start with the nearest package rather than
+trying to learn all of them.
+
+| Area | Current packages | What they own |
+|---|---|---|
+| Boundary vocabulary | `refs`, `abilities`, `damage`, `skills`, `languages`, `weapons`, `armor` | Typed identifiers and rulebook vocabulary |
+| Characters | `character`, `character/choices`, `class`, `classes`, `race`, `races`, `backgrounds`, `packs`, `equipment` | Character authoring, grants, equipment, runtime state, and persistence |
+| Rules | `actions`, `combat`, `combatabilities`, `checks`, `saves`, `initiative`, `features`, `conditions`, `fightingstyles`, `resources`, `spells` | D&D-specific resolution and behavior |
+| Monsters | `monster`, `monster/actions`, `monster/monsters`, `monstertraits` | Runtime/data model, reusable actions, built-in factories/registry, and trait behaviors |
+| Integration/composition helpers | `events`, `gamectx`, `dungeon`, `integration` | D&D event vocabulary, runtime lookup context, dungeon content, and end-to-end rule tests |
+
+The root `dnd5e` package is a small facade containing aliases for selected race,
+class, and shared character-creation types. It is **not** a facade for the whole
+rulebook. Import the owning subpackage directly.
+
+There is no `rulebooks/dnd5e/monsters` package today. Built-in content currently
+lives at `rulebooks/dnd5e/monster/monsters` inside this same module. A possible
+cleanup is recorded as a proposed follow-up in the
+[nearest monster README](monster/README.md); current instructions do not depend
+on it.
+
+## Install
+
+Because this repository is multi-module, install this module directly:
+
+```bash
+go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@latest
+```
+
+Import the package that owns the behavior:
+
 ```go
 import (
-    "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-    "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+    "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+    "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
+
+constructor, ok := monsters.ByRef(refs.Monsters.Bandit().String())
 ```
 
-## Key Concepts
+No root toolkit package needs to be installed, and this directory must not gain
+another `go.mod` for each content family.
 
-### Features & Conditions System
+## Contributor routes
 
-Character features and conditions use an event-driven architecture for clean separation:
+- [Add a D&D 5e monster](../../docs/how-to/add-a-dnd5e-monster.md)
+- [Monster package guide](monster/README.md)
+- [Add a mechanic](../../docs/how-to/add-a-mechanic.md)
+- [Add another rulebook entry](../../docs/how-to/add-a-rulebook-entry.md)
+- [Rulebook architecture component](../../docs/architecture/components/rulebook-dnd5e.md)
+- [Data model and round trips](../../docs/architecture/data-model.md)
+- [Run tests](../../docs/how-to/run-tests.md)
 
-#### Features
-Features (rage, second wind, action surge) handle activation and resource consumption:
-- Load from JSON configuration for flexibility
-- Check activation requirements (uses remaining, prerequisites)
-- Publish condition events when activated
-- Don't track ongoing state - that's the condition's job
+## Validate this module
 
-#### Conditions
-Conditions are self-contained effects that manage their own lifecycle:
-- Applied via events (from features, spells, items, environment)
-- Subscribe to relevant game events (attacks, damage, round end)
-- Apply modifiers and effects during their lifetime
-- Remove themselves when their duration ends or conditions are met
+From `rulebooks/dnd5e`:
 
-#### The Flow
-```go
-// 1. Load and activate a feature
-featureJSON := `{
-    "ref": "dnd5e:features:rage",
-    "id": "barbarian-rage",
-    "data": {"uses": 3, "level": 5}
-}`
-rage, _ := features.LoadJSON([]byte(featureJSON), eventBus)
-
-// 2. Feature publishes condition event
-rage.Activate(ctx, barbarian, features.FeatureInput{})
-// → Publishes: ConditionAppliedEvent{Target: "barbarian", Type: "raging"}
-
-// 3. Character receives and applies condition
-// Character.OnConditionApplied() → loads RagingCondition → calls Apply()
-
-// 4. Condition manages everything
-// RagingCondition subscribes to attacks, damage, rounds
-// Adds damage bonus, applies resistance, tracks duration
-// Removes itself when rage ends
+```bash
+go test -race ./...
+golangci-lint run ./...
 ```
 
-Key benefits:
-- **Clean separation**: Features, conditions, and characters each have one job
-- **Event-driven**: No direct coupling between components
-- **Self-contained**: Each condition knows its complete ruleset
-- **Persistence-friendly**: Conditions save/load with character data
-
-See [features/README.md](features/README.md) for detailed documentation.
-
-### Character Data vs Game Data
-
-The rulebook separates character state from game reference data:
-
-1. **Character** - The runtime character with all capabilities "baked in"
-   - No references to race/class objects
-   - Everything extracted during creation
-   - Tracks current state (HP, conditions, effects)
-
-2. **Game Data** (RaceData, ClassData) - Reference data for character creation
-   - Only needed during character creation
-   - Defines available choices and features
-   - Not needed during gameplay
-
-### Conditions and Effects
-
-Characters track their current state through typed conditions and effects:
-
-```go
-// Apply conditions
-character.AddCondition(conditions.Condition{
-    Type:   conditions.Poisoned,
-    Source: "giant_spider",
-})
-
-// Apply spell effects
-character.AddEffect(effects.NewBlessEffect("cleric_spell"))
-
-// Effects modify calculations
-ac := character.AC() // Includes any AC bonuses from effects
-
-// Everything persists automatically
-data := character.ToData() // Includes conditions and effects
-```
-
-### During Gameplay
-
-```go
-// Load character for session
-character, _ := LoadCharacterFromData(savedData, raceData, classData, backgroundData)
-
-// During combat...
-character.AddEffect(effects.NewRageEffect("barbarian_rage"))
-character.AddCondition(conditions.Grappled)
-
-// Each character tracks their own state
-char1.AddEffect(effects.NewBlessEffect("cleric_123"))
-char2.AddEffect(effects.NewBlessEffect("cleric_123"))
-char3.AddEffect(effects.NewBlessEffect("cleric_123"))
-
-// Save state after changes
-save(char1.ToData()) // Has bless
-save(char2.ToData()) // Has bless
-save(char3.ToData()) // Has bless
-```
-
-### Character Creation
-
-Two ways to create characters:
-
-#### Simple Direct Creation
-
-```go
-// Load your game data
-raceData := loadRaceData("human")
-classData := loadClassData("fighter")
-backgroundData := loadBackgroundData("soldier")
-
-// Create character directly
-character, err := character.NewFromCreationData(character.CreationData{
-    ID:             "char-ragnar-001", // Game service provides ID
-    Name:           "Ragnar",
-    RaceData:       raceData,
-    ClassData:      classData,
-    BackgroundData: backgroundData,
-    AbilityScores: shared.AbilityScores{
-        Strength: 15, Dexterity: 14, Constitution: 13,
-        Intelligence: 12, Wisdom: 10, Charisma: 8,
-    },
-    Choices: map[string]any{
-        "skills": []string{"athletics", "intimidation"},
-        "language": "orcish",
-    },
-})
-
-// Save the character
-data := character.ToData()
-saveToDatabase(data)
-```
-
-#### Builder Pattern (for multi-step UIs)
-
-```go
-// Create builder
-builder, err := NewCharacterBuilder("draft-123")
-
-// Load your game data from wherever (API, files, etc.)
-raceData := loadRaceData("human")     // You implement this
-classData := loadClassData("wizard")   // You implement this
-backgroundData := loadBackgroundData("sage") // You implement this
-
-// Set character details with the data
-builder.SetName("Gandalf")
-builder.SetRaceData(raceData, "")     // Pass race data, optional subrace ID
-builder.SetClassData(classData)        // Pass class data
-builder.SetBackgroundData(backgroundData) // Pass background data
-
-// Set ability scores
-builder.SetAbilityScores(AbilityScores{
-    Strength: 10,
-    Dexterity: 14,
-    Constitution: 13,
-    Intelligence: 18,
-    Wisdom: 15,
-    Charisma: 12,
-})
-
-// Select skills from available options
-builder.SelectSkills([]string{"arcana", "history"})
-
-// Check progress
-progress := builder.Progress()
-fmt.Printf("%.0f%% complete\n", progress.PercentComplete)
-
-// Build when ready
-if progress.CanBuild {
-    character, err := builder.Build()
-    if err == nil {
-        // Convert to data for persistence
-        charData := character.ToData()
-        saveToDatabase(charData) // You implement this
-    }
-}
-
-// Or save draft to continue later
-draftData := builder.ToData()
-saveDraft(draftData) // You implement this
-
-// Later, load and continue
-builder2, err := LoadDraft(draftData)
-```
-
-### Data Contract
-
-The rulebook defines what data needs persisting:
-
-- `CharacterData` - Everything needed to recreate a character
-- `CharacterDraftData` - In-progress character creation state
-- Choice tracking - Player selections during creation
-- Conditions and resources - Current character state
-
-### Integration with Game Services
-
-Game services (like rpg-api) use this rulebook by:
-
-1. Storing the data structures we define
-2. Using the builder for character creation
-3. Loading characters with a DataLoader
-4. Calling game mechanics methods
-
-```go
-// In your game service
-type Repository struct {
-    db Database
-}
-
-func (r *Repository) SaveCharacter(ctx context.Context, char *dnd5e.Character) error {
-    data := char.ToData()
-    return r.db.Save("character", data)
-}
-
-func (r *Repository) LoadCharacter(ctx context.Context, id string) (*dnd5e.Character, error) {
-    var data dnd5e.CharacterData
-    if err := r.db.Load("character", id, &data); err != nil {
-        return nil, err
-    }
-    return dnd5e.LoadCharacter(data, r.loader)
-}
-```
-
-## Current Status
-
-### Completed
-- ✅ Character creation with builder pattern
-- ✅ Features system with LoadJSON pattern
-- ✅ Rage feature with event-driven effects
-- ✅ Type-safe modifiers and events
-- ✅ Thread-safe feature implementation
-- ✅ Initiative tracking system
-
-### In Progress
-- 🚧 Additional features (second wind, action surge)
-- 🚧 Turn/round tracking for durations
-
-### Future Enhancements
-- [ ] Complete choice compilation logic
-- [ ] Add spell casting mechanics
-- [ ] Implement remaining combat actions
-- [ ] Expand conditions and effects system
-- [ ] Support for multiclassing
-- [ ] Magic item attunement
-- [ ] Feat selection
-
-## Design Principles
-
-1. **Game logic lives here** - Not in the API service
-2. **Data/Domain separation** - Clear boundaries for persistence
-3. **Validation is game rules** - We enforce D&D 5e rules
-4. **No persistence logic** - We define what to store, not how
+A content contribution should also run the focused commands in its nearest
+how-to. The code and tests are the final behavior truth; architecture docs,
+plans, and examples can lag.
