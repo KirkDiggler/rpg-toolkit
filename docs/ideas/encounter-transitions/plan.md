@@ -126,3 +126,58 @@ panic). Debt: an invariant comment at the shared seam (Task 3 item 0);
 ending-evaluation loop now duplicated 3-4x file-wide (pre-existing,
 refactor candidate); beat-audience narrowing mutant unpinned file-wide
 (pre-existing).
+
+**Task 3 (commits 4236390, f869e81) — COMPLETE.** Snapshot{Room,
+Position, Holdings} replaces the bare holdings slice (the wave-1
+own-placement gap, resolved); IntentTraverse executes through a helper
+shared with the Traverse verb. REAL latent bug found during the
+restructure: Pump's planned list stored member VALUE COPIES — harmless
+while only same-room moves existed, state corruption once traverses
+mutate member.Room — fixed with live-pointer lookups and pinned by
+reintroduction-mutant. Design correction ratified: Pump's shipped
+failure contract is decider-error-aborts (phase 1) / execution-
+failure-skips (phase 2) — the triplet's original "aborts atomically"
+claim was wrong about v0.1 and is amended. Sonnet round: APPROVED, two
+minors (mid-pump closure coherent-but-unpinned → TestPumpFullTickThen
+EvaluateAcrossTraverse, whose falsifiable signal is the second
+monster's POST-move outcome position; sibling-rigor gap on the
+unknown-connection skip test → phantom-beat mutant now dies).
+
+**Task 4 (commit 736db19) — COMPLETE.** The vault chase: corridor +
+vault + "gate", one continuous scene — sight, the slip, the ghost
+pinned symmetrically at the true last-seen threshold, mid-chase
+save/reload with a fresh decider re-attached, pursuit walk + the
+goblin's OWN traverse decision, Current reacquired same-pump, ending
+with full-position Outcome, archive sweep grown to Traverse, exact
+nine-beat transcript pin (predicted from code before first run;
+liveness proven by beat-rename mutant in review).
+
+**Opus deep pass (T3+T4 combined; first attempt stalled mid-stream on
+an API error and was replaced) — APPROVED, three minors, all closed in
+fefbbcb:** (1) reentrant contract-violating decider could nil-panic
+phase 2 → nil-guard + TestPumpSurvivesReentrantSelfExitingDecider
+(reject-never-crash upheld); (2) the endings field comment overstated
+first-declared-wins — the true, now-PINNED law: decision order
+dominates across actions in one pump, declaration order tiebreaks
+within one action (loop-nesting mutant flips only the cross-ordering
+subtest); (3) chase sweep's Traverse entry made valid-if-open (goblin,
+who ends on the vault endpoint, replaces alice). Also proven: percept
+simultaneity (refreshSight once, end-of-tick, both rooms final
+positions); phase-1 purity on the early-error path (byte-identical
+ToData); member.Room-vs-spatial divergence UNREPRESENTABLE (both
+derive from the one persisted room field); PumpOutput aliasing
+impossible. Observation recorded, pre-existing, wave-1 follow-up:
+intel Refreshed delta ORDERING is nondeterministic across runs (4
+orderings / 200 runs) but never reaches blobs or transcripts (1 blob,
+1 transcript / 200 runs).
+
+**Task 5 (commits fefbbcb, 44371c4) — COMPLETE.** Example_theTraverse
+with pinned transcript; workbench gains the ossuary + a traverse
+command with room-aware world/belief grids; verify.sh green (259
+tests); `gorelease -base v0.1.0` verdict matches the design exactly —
+one intentional incompatible change (Decider.Decide signature), all
+else additive, suggested version v0.2.0.
+
+**Wave complete: PR #924, eleven commits, 259 subtests.** Awaiting
+merge + tag `rulebooks/dnd5e/encounter/v0.2.0` (Platform's dependency
+signal on rpg-api#793).
