@@ -142,3 +142,22 @@ Commit `test(dnd5e/encounter): AC1 tomb watch; ci: compat gate`.
   deliberately deferred to Task 3, where movement gives it a behavioral
   surface instead of new API. Reviewer confirmed placements correctly
   ride the managed orchestrator seam (no #909-style bypass).
+- **With Task 3**: review found the commit's tagline test could not
+  fail — `TestMoveGhostForms` asserted `len >= 0` and its pillar sat
+  five rows off the sightline, so the ghost never formed; rewritten
+  with occluding geometry and the true ghost assertion (bob's holding
+  of alice pinned at her PRE-move position — he never saw her arrive).
+  Move's record beat was unpinned (Append deletion survived) — pinned
+  via Story with Seq matched to the Output. The deferred managed-seam
+  pin turned out UNFALSIFIABLE for same-room moves (spatial's managed
+  MoveEntity is observationally identical to a raw room call there) —
+  per the mutation-proof law the test was renamed to what it honestly
+  pins (sequential-move consistency); seam enforcement stays convention
+  (C2) until cross-room Transition makes it falsifiable. Also landed:
+  closed-before-not-member combo pin, populated-state spatial-rejection
+  atomicity pin, and a gofmt fix on the committed file (the
+  implementer's gate had been read through a pipe that hid it — gates
+  now check `gofmt -l` output and lint exit codes explicitly).
+  Process note: two director-run mutants initially "passed" because
+  they broke the build — a build-broken mutant proves nothing; the
+  compiling-mutant rule is now explicit in every brief.
