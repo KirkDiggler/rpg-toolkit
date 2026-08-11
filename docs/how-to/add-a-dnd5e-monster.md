@@ -176,7 +176,7 @@ change set is:
 |---|---|
 | `rulebooks/dnd5e/refs/monsters.go` | Add the unexported singleton ref and the `refs.Monsters.ExampleBeast()` method. Use lowercase hyphenated ref IDs. |
 | `rulebooks/dnd5e/refs/refs_test.go` | Assert the new ref's module, type, and ID (add a monster namespace table if needed). |
-| `rulebooks/dnd5e/monster/monsters/example_beast.go` | Add `NewExampleBeast(id string) *monster.Monster`, source comment, supported stats/actions, and speed. |
+| `rulebooks/dnd5e/monster/monsters/example_beast.go` | Add `NewExampleBeast(id string) *monster.Monster`, an adaptation/change comment per the provenance section, supported stats/actions, and speed. |
 | `rulebooks/dnd5e/monster/monsters/example_beast_test.go` | Assert ID, ref, name, stats, ability scores, speed, action IDs/types, and any supported attached trait data. |
 | `rulebooks/dnd5e/monster/monsters/registry.go` | Map the full `refs.Monsters.ExampleBeast().String()` to the constructor. |
 | `rulebooks/dnd5e/monster/monsters/registry_test.go` | Add the ref to the expected registry list; the existing test proves ref → constructor → same ref. |
