@@ -648,10 +648,8 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 		// Check if closed
 		status, err := enc.Status()
 		s.Require().NoError(err)
-		if status.Open {
-			// Goblin move might have been rejected, try without filter
-			return // Goblin didn't close in this case
-		}
+		s.Require().False(status.Open,
+			"the goblin's filtered move is deterministic and must have closed the encounter")
 
 		// Act: Try to pump on closed encounter
 		_, err = enc.Pump(&encounter.PumpInput{})

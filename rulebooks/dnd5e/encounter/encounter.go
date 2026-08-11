@@ -399,7 +399,11 @@ func (e *Encounter) moveMember(member *Member, to spatial.Position) (spatial.Pos
 	return currentPos, nil
 }
 
-// Move executes a continuous player movement within the same room.
+// Move executes a continuous movement within the same room for ANY
+// member — players move themselves; Pump routes monster intents through
+// the same path. Unfiltered ReachedPosition endings fire only for
+// player members; member-filtered endings fire only for the named
+// member.
 // Validation order (R5 atomicity): nil input → empty member → closed →
 // not a member → spatial move rejection. On success, refreshes sight for all members,
 // records beat, and evaluates ReachedPosition endings.
@@ -1092,8 +1096,8 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	// Record the exit beat (audience = all REMAINING members; exiter does not receive it)
-	// Actually, design says "all members INCLUDING the exiter", so they witness their own exit
+	// The exit beat's audience is every member INCLUDING the exiter —
+	// they witness their own departure (and can re-read it via Story).
 	allMemberIDs := make([]MemberID, 0, len(e.members)+1)
 	allMemberIDs = append(allMemberIDs, in.Member) // Add the exiter
 	for id := range e.members {
